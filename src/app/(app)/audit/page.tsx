@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { Card, Eyebrow, Badge } from "@/components/ui";
+import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
 import type { Prisma } from "@prisma/client";
 
 const inputStyle: React.CSSProperties = {
@@ -45,6 +45,11 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
         <button type="submit" style={{ ...inputStyle, cursor: "pointer", background: "var(--accent)", color: "var(--accent-on)", border: "none", padding: "0 18px" }}>
           Filter
         </button>
+        <ExportCsvButton
+          filename="audit-log.csv"
+          columns={[{ key: "when", label: "When" }, { key: "actor", label: "Actor" }, { key: "type", label: "Type" }, { key: "action", label: "Action" }, { key: "summary", label: "What changed" }]}
+          rows={entries.map((e) => ({ when: e.createdAt.toISOString().slice(0, 19).replace("T", " "), actor: e.actorEmail, type: e.entityType, action: e.action, summary: e.summary }))}
+        />
       </form>
 
       <Card padding="0">

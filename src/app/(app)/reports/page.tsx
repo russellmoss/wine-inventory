@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { classifyBlend } from "@/lib/bulk/blend";
 import { casesAndLoose } from "@/lib/bottling/draw";
-import { Card, Eyebrow, Badge } from "@/components/ui";
+import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
+
+const sectionHead: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 };
+const h2Style: React.CSSProperties = { fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: 0 };
 
 function round2(n: number) {
   return Math.round(n * 100) / 100;
@@ -59,7 +62,10 @@ export default async function ReportsPage() {
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 24px" }}>Inventory reports</h1>
 
       <section style={{ marginBottom: 36 }}>
-        <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, marginBottom: 12 }}>Bulk wine by variety</h2>
+        <div style={sectionHead}>
+          <h2 style={h2Style}>Bulk wine by variety</h2>
+          <ExportCsvButton filename="bulk-by-variety.csv" columns={[{ key: "variety", label: "Variety" }, { key: "unblendedL", label: "Unblended (L)" }, { key: "blendedL", label: "In blends (L)" }, { key: "totalL", label: "Total (L)" }]} rows={bulk} />
+        </div>
         <Card padding="0">
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
             <thead><tr><th style={th}>Variety</th><th style={{ ...th, textAlign: "right" }}>Unblended (L)</th><th style={{ ...th, textAlign: "right" }}>In blends (L)</th><th style={{ ...th, textAlign: "right" }}>Total (L)</th></tr></thead>
@@ -79,7 +85,10 @@ export default async function ReportsPage() {
       </section>
 
       <section style={{ marginBottom: 36 }}>
-        <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, marginBottom: 12 }}>Bottled wine by SKU &amp; location</h2>
+        <div style={sectionHead}>
+          <h2 style={h2Style}>Bottled wine by SKU &amp; location</h2>
+          <ExportCsvButton filename="bottled-by-location.csv" columns={[{ key: "sku", label: "SKU" }, { key: "location", label: "Location" }, { key: "cases", label: "Cases" }, { key: "loose", label: "Loose bottles" }, { key: "total", label: "Total bottles" }]} rows={bottled} />
+        </div>
         <Card padding="0">
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
             <thead><tr><th style={th}>SKU</th><th style={th}>Location</th><th style={{ ...th, textAlign: "right" }}>Cases + loose</th><th style={{ ...th, textAlign: "right" }}>Bottles</th></tr></thead>
@@ -98,7 +107,10 @@ export default async function ReportsPage() {
       </section>
 
       <section style={{ marginBottom: 12 }}>
-        <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, marginBottom: 12 }}>Finished goods by category &amp; location</h2>
+        <div style={sectionHead}>
+          <h2 style={h2Style}>Finished goods by category &amp; location</h2>
+          <ExportCsvButton filename="finished-goods-by-location.csv" columns={[{ key: "category", label: "Category" }, { key: "item", label: "Item" }, { key: "location", label: "Location" }, { key: "quantity", label: "Quantity" }]} rows={finished} />
+        </div>
         <Card padding="0">
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
             <thead><tr><th style={th}>Category</th><th style={th}>Item</th><th style={th}>Location</th><th style={{ ...th, textAlign: "right" }}>Qty</th></tr></thead>

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Card, Input, Button, Badge, Eyebrow, Modal } from "@/components/ui";
+import { Card, Input, Button, Badge, Eyebrow, Modal, ExportCsvButton } from "@/components/ui";
 import type { BlendInfo } from "@/lib/bulk/blend";
 import type { Fill } from "@/lib/vessels/fill";
 import { addComponent, updateComponentVolume, removeComponent } from "@/lib/bulk/actions";
@@ -88,9 +88,17 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
     <div>
       <Eyebrow rule>In-process wine · Winery</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Bulk wine</h1>
-      <p style={{ color: "var(--text-secondary)", marginBottom: 24, maxWidth: "64ch" }}>
+      <p style={{ color: "var(--text-secondary)", marginBottom: 16, maxWidth: "64ch" }}>
         Barrels and tanks at the winery. Click a vessel to see what&rsquo;s inside and add, adjust, or remove wine.
       </p>
+
+      <div style={{ marginBottom: 20 }}>
+        <ExportCsvButton
+          filename="bulk-wine.csv"
+          columns={[{ key: "vessel", label: "Vessel" }, { key: "type", label: "Type" }, { key: "variety", label: "Variety" }, { key: "vineyard", label: "Vineyard" }, { key: "vintage", label: "Vintage" }, { key: "volumeL", label: "Volume (L)" }]}
+          rows={vessels.flatMap((v) => v.components.map((c) => ({ vessel: v.code, type: v.type, variety: c.varietyName, vineyard: c.vineyardName, vintage: c.vintage, volumeL: c.volumeL })))}
+        />
+      </div>
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
       {!canFill ? (
