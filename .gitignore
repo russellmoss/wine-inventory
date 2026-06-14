@@ -48,3 +48,6 @@ next-env.d.ts
 /src/generated/prisma
 
 .vercel
+
+# Design-system reference kit (not part of the app build)
+design-system/
