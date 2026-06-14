@@ -3,30 +3,43 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { accessDecision, type AppUser } from "@/lib/access";
 
 export { accessDecision } from "@/lib/access";
 export type { AppUser, AccessDecision } from "@/lib/access";
 
-/** Read the current user from the session, or null. Cached per request. */
+/**
+ * Read the current user, cached per request. Security-sensitive flags
+ * (banned, mustChangePassword, role) are loaded AUTHORITATIVELY from the DB,
+ * never trusted from the session payload — and we fail CLOSED: if the session's
+ * user row is missing, return null (forces re-auth).
+ */
 export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = session.user as unknown as AppUser;
+  if (!session?.user?.id) return null;
+  const record = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true, name: true, email: true, role: true, banned: true, mustChangePassword: true },
+  });
+  if (!record) return null; // session points at a deleted user -> deny
   return {
-    id: u.id,
-    name: u.name ?? null,
-    email: u.email,
-    role: u.role ?? null,
-    banned: u.banned ?? false,
-    mustChangePassword: u.mustChangePassword ?? false,
+    id: record.id,
+    name: record.name ?? null,
+    email: record.email,
+    role: record.role ?? null,
+    banned: record.banned ?? false,
+    mustChangePassword: record.mustChangePassword ?? false,
   };
 });
 
-/** Only ensures a session exists (no ready check). Used by /change-password. */
+/**
+ * Ensures a non-banned session exists (but allows mustChangePassword). Used by
+ * /change-password so a flagged user can reset, while banned users are bounced.
+ */
 export async function requireSession(): Promise<AppUser> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user || user.banned) redirect("/login");
   return user;
 }
 
