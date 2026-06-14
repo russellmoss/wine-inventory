@@ -37,6 +37,35 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // refresh daily
   },
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          // Login event ledger. Never block login on an audit failure.
+          try {
+            const user = await prisma.user.findUnique({
+              where: { id: session.userId },
+              select: { email: true },
+            });
+            await prisma.auditLog.create({
+              data: {
+                actorUserId: session.userId,
+                actorEmail: user?.email ?? "unknown",
+                action: "LOGIN",
+                entityType: "Session",
+                entityId: session.id,
+                summary: "Signed in",
+                ipAddress: session.ipAddress ?? null,
+                userAgent: session.userAgent ?? null,
+              },
+            });
+          } catch {
+            // swallow
+          }
+        },
+      },
+    },
+  },
   // admin() = admin/user roles + createUser/setRole/setPassword/ban/remove.
   // nextCookies() MUST be last so Set-Cookie is handled in server actions.
   plugins: [admin(), nextCookies()],
