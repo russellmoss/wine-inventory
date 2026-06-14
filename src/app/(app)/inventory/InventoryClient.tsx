@@ -23,6 +23,20 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
   const [mode, setMode] = React.useState<Mode>("RECEIVE");
   const [itemRef, setItemRef] = React.useState(""); // "KIND:id"
   const [editKey, setEditKey] = React.useState<string | null>(null);
+  const [fCategory, setFCategory] = React.useState("all");
+  const [fLocation, setFLocation] = React.useState("all");
+
+  // Filter options: union of registry names and anything currently on hand (stays
+  // dynamic as categories/locations are added, edited, or removed).
+  const catOptions = React.useMemo(
+    () => [...new Set([...categories.map((c) => c.name), ...onHand.map((r) => r.category)])].sort((a, b) => a.localeCompare(b)),
+    [categories, onHand],
+  );
+  const locOptions = React.useMemo(
+    () => [...new Set([...locations.map((l) => l.name), ...onHand.map((r) => r.location)])].sort((a, b) => a.localeCompare(b)),
+    [locations, onHand],
+  );
+  const filtered = onHand.filter((r) => (fCategory === "all" || r.category === fCategory) && (fLocation === "all" || r.location === fLocation));
 
   function run(fn: () => Promise<void>, form?: HTMLFormElement, after?: () => void) {
     setError(null);
@@ -118,10 +132,34 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
         <ExportCsvButton
           filename="inventory-on-hand.csv"
           columns={[{ key: "item", label: "Item" }, { key: "category", label: "Category" }, { key: "location", label: "Location" }, { key: "quantity", label: "Quantity" }, { key: "detail", label: "Cases + loose" }, { key: "kind", label: "Kind" }]}
-          rows={onHand.map((r) => ({ item: r.item, category: r.category, location: r.location, quantity: r.qty, detail: r.detail, kind: r.kind === "BOTTLED_WINE" ? "Wine" : "Merch" }))}
+          rows={filtered.map((r) => ({ item: r.item, category: r.category, location: r.location, quantity: r.qty, detail: r.detail, kind: r.kind === "BOTTLED_WINE" ? "Wine" : "Merch" }))}
         />
       </div>
-      <Card padding="0" style={{ marginTop: 14 }}>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", margin: "12px 0" }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-secondary)" }}>
+          Category
+          <select value={fCategory} onChange={(e) => setFCategory(e.target.value)} style={{ ...sel, height: 38, width: "auto" }}>
+            <option value="all">All categories</option>
+            {catOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-secondary)" }}>
+          Location
+          <select value={fLocation} onChange={(e) => setFLocation(e.target.value)} style={{ ...sel, height: 38, width: "auto" }}>
+            <option value="all">All locations</option>
+            {locOptions.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </label>
+        {fCategory !== "all" || fLocation !== "all" ? (
+          <>
+            <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{filtered.length} of {onHand.length}</span>
+            <Button variant="ghost" size="sm" onClick={() => { setFCategory("all"); setFLocation("all"); }}>Clear</Button>
+          </>
+        ) : null}
+      </div>
+
+      <Card padding="0">
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
@@ -133,10 +171,10 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
             </tr>
           </thead>
           <tbody>
-            {onHand.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: "20px 16px", color: "var(--text-muted)" }}>Nothing on hand yet.</td></tr>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={5} style={{ padding: "20px 16px", color: "var(--text-muted)" }}>{onHand.length === 0 ? "Nothing on hand yet." : "Nothing matches these filters."}</td></tr>
             ) : (
-              onHand.map((r) => {
+              filtered.map((r) => {
                 const key = `${r.kind}:${r.itemId}:${r.locationId}`;
                 const editing = editKey === key;
                 return (
