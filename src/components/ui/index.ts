@@ -18,3 +18,5 @@ export { Quote } from "./Quote";
 export type { QuoteProps } from "./Quote";
 export { ConfirmButton } from "./ConfirmButton";
 export type { ConfirmButtonProps } from "./ConfirmButton";
+export { Modal } from "./Modal";
+export type { ModalProps } from "./Modal";
