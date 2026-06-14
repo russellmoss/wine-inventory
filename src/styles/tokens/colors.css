@@ -1,0 +1,69 @@
+/* ============================================================
+   Bhutan Wine Company — Color tokens
+   Warm, editorial palette. Cream paper + ink black, anchored by a
+   wine burgundy accent and a muted "old-master" secondary set.
+   ============================================================ */
+:root {
+  /* ---- Primary / brand ---------------------------------- */
+  --white:        #FFFFFF;
+  --cream:        #FFF8F1; /* warm paper — primary light surface */
+  --sand:         #C7BCA1; /* warm sand — borders, muted fills   */
+  --wine-primary: #722F37; /* the signature accent               */
+  --ink:          #000000;
+
+  /* Cream/paper neutral ramp (warm grays derived from cream→black) */
+  --paper-0:  #FFFFFF;
+  --paper-50: #FFF8F1; /* cream */
+  --paper-100:#F5F2EC; /* warm off-white surface                    */
+  --paper-200:#ECE7DC;
+  --paper-300:#DED7C6;
+  --paper-400:#C7BCA1; /* sand                                     */
+  --ink-600:  #6B6555; /* warm gray text                           */
+  --ink-700:  #4D4A42;
+  --ink-800:  #2B2A26;
+  --ink-900:  #14130F;
+  --ink-950:  #000000;
+
+  /* ---- Secondary (editorial accents) -------------------- */
+  --maroon:        #6B484D;
+  --deep-green:    #175242;
+  --deep-blue:     #095972;
+  --golden-yellow: #D79F32;
+  --lavender:      #A98EB1;
+  --red:           #B63D35;
+  --orange:        #F19E70;
+  --bright-mauve:  #C06F74;
+
+  /* ---- Semantic aliases --------------------------------- */
+  --surface-page:    var(--cream);
+  --surface-raised:  var(--white);
+  --surface-sunken:  var(--paper-100);
+  --surface-inverse: var(--ink);
+  --surface-muted:   var(--paper-200);
+
+  --text-primary:    var(--ink-900);
+  --text-secondary:  var(--ink-700);
+  --text-muted:      var(--ink-600);
+  --text-on-dark:    var(--cream);
+  --text-on-dark-muted: rgba(255, 248, 241, 0.66);
+  --text-accent:     var(--wine-primary);
+
+  --border-subtle:   rgba(20, 19, 15, 0.08);
+  --border-default:  var(--paper-300);
+  --border-strong:   var(--sand);
+  --border-inverse:  rgba(255, 248, 241, 0.18);
+
+  --accent:          var(--wine-primary);
+  --accent-hover:    #5A2630; /* wine, darkened ~10%               */
+  --accent-press:    #4A1F25;
+  --accent-soft:     rgba(114, 47, 55, 0.12);
+  --accent-on:       var(--white);
+
+  /* Status — drawn from the secondary set */
+  --positive: var(--deep-green);
+  --info:     var(--deep-blue);
+  --warning:  var(--golden-yellow);
+  --danger:   var(--red);
+
+  --focus-ring: rgba(114, 47, 55, 0.45);
+}

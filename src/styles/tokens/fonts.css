@@ -1,0 +1,20 @@
+/* ============================================================
+   Bhutan Wine Company — Webfonts
+   Display: Big Caslon (local OTF). Workhorse: Inter Tight + Inter.
+   ============================================================ */
+/* Inter + Inter Tight are imported at the top of globals.css (must precede
+   Tailwind rules). Big Caslon is shipped locally below. */
+@font-face {
+  font-family: "Big Caslon";
+  src: url("/assets/fonts/BigCaslon-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Big Caslon";
+  src: url("/assets/fonts/BigCaslon-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
