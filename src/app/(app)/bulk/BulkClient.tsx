@@ -4,11 +4,11 @@ import React from "react";
 import { Card, Input, Button, Badge, Eyebrow, Modal, ExportCsvButton } from "@/components/ui";
 import type { BlendInfo } from "@/lib/bulk/blend";
 import type { Fill } from "@/lib/vessels/fill";
-import { addComponent, updateComponentVolume, removeComponent } from "@/lib/bulk/actions";
+import { addComponent, updateComponentVolume, removeComponent, setBlendName } from "@/lib/bulk/actions";
 
 export type Option = { id: string; name: string };
 export type Comp = { id: string; varietyId: string; varietyName: string; vineyardName: string; vintage: number; volumeL: number };
-export type VesselWithContents = { id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; components: Comp[]; blend: BlendInfo; fill: Fill };
+export type VesselWithContents = { id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null; components: Comp[]; blend: BlendInfo; fill: Fill };
 
 const selectStyle: React.CSSProperties = {
   height: 38, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
@@ -17,8 +17,8 @@ const selectStyle: React.CSSProperties = {
 
 function StatusBadge({ v }: { v: VesselWithContents }) {
   if (v.components.length === 0) return <Badge tone="neutral" variant="soft">empty</Badge>;
-  if (v.blend.isBlend) return <Badge tone="maroon" variant="soft">Blend · {v.blend.varieties.length}</Badge>;
-  return <Badge tone="green" variant="soft">100% {v.blend.varieties[0]?.varietyName}</Badge>;
+  if (v.blend.isBlend) return <Badge tone="maroon" variant="soft">{v.blendName || `Blend · ${v.blend.varieties.length}`}</Badge>;
+  return <Badge tone="green" variant="soft">{v.blendName || `100% ${v.blend.varieties[0]?.varietyName}`}</Badge>;
 }
 
 function FillBar({ v }: { v: VesselWithContents }) {
@@ -125,6 +125,16 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
       >
         {selected ? (
           <div>
+            {selected.components.length > 1 ? (
+              <form
+                key={`bn-${selected.id}-${selected.blendName ?? ""}`}
+                onSubmit={(e) => { e.preventDefault(); run(() => setBlendName(selected.id, new FormData(e.currentTarget))); }}
+                style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}
+              >
+                <input name="blendName" defaultValue={selected.blendName ?? ""} placeholder="Name this blend (e.g. Reserve Red)" style={{ ...selectStyle, flex: 1, height: 40 }} />
+                <Button type="submit" variant="secondary" size="sm" disabled={pending}>Save name</Button>
+              </form>
+            ) : null}
             {selected.components.length > 0 ? (
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, marginBottom: 14 }}>
                 <thead>

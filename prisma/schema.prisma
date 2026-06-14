@@ -162,6 +162,7 @@ model Vessel {
   type            VesselType
   capacityL       Decimal           @db.Decimal(10, 2)
   isActive        Boolean           @default(true)
+  blendName       String? // optional label for the current blend in this vessel
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   components      VesselComponent[]

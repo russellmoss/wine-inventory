@@ -106,6 +106,26 @@ export const updateComponentVolume = action(async ({ actor }, componentId: strin
   revalidatePath(PATH);
 });
 
+export const setBlendName = action(async ({ actor }, vesselId: string, formData: FormData) => {
+  const raw = String(formData.get("blendName") ?? "").trim();
+  if (raw.length > 80) throw new ActionError("Blend name is too long.");
+  const name = raw || null;
+  const vessel = await prisma.vessel.findUnique({ where: { id: vesselId } });
+  if (!vessel) throw new ActionError("Vessel not found.");
+  await prisma.$transaction(async (tx) => {
+    await tx.vessel.update({ where: { id: vesselId }, data: { blendName: name } });
+    await writeAudit(tx, {
+      ...actor,
+      action: "UPDATE",
+      entityType: "Vessel",
+      entityId: vesselId,
+      changes: diff({ blendName: vessel.blendName }, { blendName: name }),
+      summary: name ? `Named ${vessel.code} blend "${name}"` : `Cleared blend name on ${vessel.code}`,
+    });
+  });
+  revalidatePath(PATH);
+});
+
 export const removeComponent = action(async ({ actor }, componentId: string) => {
   const comp = await prisma.vesselComponent.findUnique({
     where: { id: componentId },

@@ -35,6 +35,7 @@ export default async function BulkPage() {
       code: v.code,
       type: v.type,
       capacityL: Number(v.capacityL),
+      blendName: v.blendName,
       components: comps,
       blend,
       fill,
