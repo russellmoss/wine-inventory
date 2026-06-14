@@ -15,16 +15,16 @@ export type RunRow = {
   bottlesProduced: number;
   destinationLocationId: string;
   location: string;
-  vesselId: string;
+  vesselIds: string[];
   sources: string[];
 };
 
-const selectStyle: React.CSSProperties = {
+const sel: React.CSSProperties = {
   height: 44, padding: "0 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)", width: "100%",
 };
 
-type Initial = { vesselId: string; skuName: string; skuVintage: number | ""; bottles: number | ""; destinationLocationId: string; date: string };
+type Initial = { vesselIds: string[]; skuName: string; skuVintage: number | ""; bottles: number | ""; destinationLocationId: string; date: string };
 
 function BottlingForm({
   vessels, locations, initial, mode, onSubmit, onCancel, pending,
@@ -32,48 +32,57 @@ function BottlingForm({
   vessels: VesselOpt[]; locations: LocOpt[]; initial: Initial; mode: "create" | "edit";
   onSubmit: (fd: FormData) => void; onCancel?: () => void; pending: boolean;
 }) {
-  const [vesselId, setVesselId] = React.useState(initial.vesselId);
+  const [picked, setPicked] = React.useState<string[]>(initial.vesselIds);
   const [bottles, setBottles] = React.useState<number | "">(initial.bottles);
-  const vessel = vessels.find((v) => v.id === vesselId);
-  const max = mode === "create" && vessel ? suggestBottles(vessel.availableL) : undefined;
+
+  const availableL = Math.round(vessels.filter((v) => picked.includes(v.id)).reduce((a, v) => a + v.availableL, 0) * 100) / 100;
+  const max = mode === "create" ? suggestBottles(availableL) : undefined;
   const consumed = consumedForBottles(Number(bottles) || 0);
   const split = casesAndLoose(Number(bottles) || 0);
 
+  function toggle(id: string) {
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  }
+
   return (
-    <form
-      onSubmit={(e) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }}
-      style={{ display: "flex", flexDirection: "column", gap: 14 }}
-    >
-      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Vessel</span>
-        <select name="vesselId" value={vesselId} onChange={(e) => setVesselId(e.target.value)} style={selectStyle} required>
-          <option value="" disabled>Choose vessel</option>
-          {vessels.map((v) => <option key={v.id} value={v.id}>{v.code} — {v.availableL} L available</option>)}
-        </select>
-      </label>
-      {vessel && vessel.contents.length > 0 ? (
-        <div style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: 10, borderRadius: "var(--radius-md)" }}>
-          {vessel.contents.map((c, i) => <div key={i}>{c}</div>)}
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {picked.map((id) => <input key={id} type="hidden" name="vesselIds" value={id} />)}
+
+      <div>
+        <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Vessels (pick one or more)</span>
+        <div style={{ marginTop: 6, border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", maxHeight: 200, overflowY: "auto" }}>
+          {vessels.length === 0 ? (
+            <p style={{ padding: 12, margin: 0, color: "var(--text-muted)", fontSize: 14 }}>No vessels with wine.</p>
+          ) : (
+            vessels.map((v) => {
+              const on = picked.includes(v.id);
+              return (
+                <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderTop: "1px solid var(--border-subtle)", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent" }}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(v.id)} />
+                  <span style={{ flex: 1, fontSize: 14 }}>{v.code}</span>
+                  <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{v.availableL} L</span>
+                </label>
+              );
+            })
+          )}
         </div>
-      ) : null}
+        {picked.length > 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6 }}>{picked.length} vessel{picked.length > 1 ? "s" : ""} · {availableL} L available</div> : null}
+      </div>
+
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Input label="Wine name" name="skuName" defaultValue={initial.skuName} required style={{ flex: "1 1 200px" }} />
         <Input label="Vintage" name="skuVintage" type="number" defaultValue={initial.skuVintage} required style={{ flex: "0 1 110px" }} />
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ flex: "0 1 170px" }}>
-          <Input
-            label={max !== undefined ? `Bottles (max ${max})` : "Bottles"}
-            name="bottlesProduced" type="number" min="1" max={max}
-            value={bottles} onChange={(e) => setBottles(e.target.value === "" ? "" : Number(e.target.value))} required
-          />
+          <Input label={max !== undefined ? `Bottles (max ${max})` : "Bottles"} name="bottlesProduced" type="number" min="1" max={max} value={bottles} onChange={(e) => setBottles(e.target.value === "" ? "" : Number(e.target.value))} required />
         </div>
         <span style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 12 }}>= {split.cases}c + {split.loose} · uses {consumed} L</span>
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 220px" }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Destination</span>
-          <select name="destinationLocationId" defaultValue={initial.destinationLocationId} style={selectStyle} required>
+          <select name="destinationLocationId" defaultValue={initial.destinationLocationId} style={sel} required>
             <option value="" disabled>Choose location</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
@@ -81,7 +90,7 @@ function BottlingForm({
         <Input label="Date" name="date" type="date" defaultValue={initial.date} style={{ flex: "0 1 170px" }} />
       </div>
       <div style={{ display: "flex", gap: 10 }}>
-        <Button type="submit" variant="primary" disabled={pending}>
+        <Button type="submit" variant="primary" disabled={pending || picked.length === 0}>
           {pending ? "Working..." : mode === "create" ? "Record bottling run" : "Save changes"}
         </Button>
         {onCancel ? <Button type="button" variant="secondary" disabled={pending} onClick={onCancel}>Cancel</Button> : null}
@@ -95,6 +104,7 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
   const [pending, startTransition] = React.useTransition();
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
+  const withWine = vessels.filter((v) => v.availableL > 0);
 
   function run(fn: () => Promise<void>, after?: () => void) {
     setError(null);
@@ -107,21 +117,22 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
   return (
     <div>
       <Eyebrow rule>Bottling</Eyebrow>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Bottle a vessel</h1>
+      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Bottle vessels</h1>
       <p style={{ color: "var(--text-secondary)", marginBottom: 24, maxWidth: "64ch" }}>
-        Draw from a vessel into a bottled SKU. Wine is deducted proportionally across the vessel&rsquo;s
-        components and the run is traceable. You can edit or delete a run; deleting puts the wine back.
+        Pick one or more vessels and bottle them into a single SKU. Wine is drawn proportionally
+        across every component of the selected vessels, and the run stays traceable. Edit or delete
+        a run; deleting puts the wine back.
       </p>
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
 
-      {vessels.length === 0 ? (
-        <Card><p style={{ margin: 0, color: "var(--text-secondary)" }}>No vessels yet. Register and fill one first.</p></Card>
+      {withWine.length === 0 ? (
+        <Card><p style={{ margin: 0, color: "var(--text-secondary)" }}>No vessels have wine to bottle. Fill one in <strong>Bulk wine</strong> first.</p></Card>
       ) : (
         <Card style={{ maxWidth: 640, marginBottom: 32 }}>
           <BottlingForm
-            vessels={vessels} locations={locations} mode="create" pending={pending}
-            initial={{ vesselId: "", skuName: "", skuVintage: "", bottles: "", destinationLocationId: "", date: today }}
+            vessels={withWine} locations={locations} mode="create" pending={pending}
+            initial={{ vesselIds: [], skuName: "", skuVintage: "", bottles: "", destinationLocationId: "", date: today }}
             onSubmit={(fd) => run(() => createBottlingRun(fd))}
           />
         </Card>
@@ -149,7 +160,7 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
                   <div style={{ marginTop: 14, borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}>
                     <BottlingForm
                       vessels={vessels} locations={locations} mode="edit" pending={pending}
-                      initial={{ vesselId: r.vesselId, skuName: r.skuName, skuVintage: r.skuVintage, bottles: r.bottlesProduced, destinationLocationId: r.destinationLocationId, date: r.date }}
+                      initial={{ vesselIds: r.vesselIds, skuName: r.skuName, skuVintage: r.skuVintage, bottles: r.bottlesProduced, destinationLocationId: r.destinationLocationId, date: r.date }}
                       onSubmit={(fd) => run(() => editBottlingRun(r.id, fd), () => setEditingId(null))}
                       onCancel={() => setEditingId(null)}
                     />

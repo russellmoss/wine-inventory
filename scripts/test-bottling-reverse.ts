@@ -22,7 +22,7 @@ async function main() {
   const latestRun = async () => (await prisma.bottlingRun.findFirst({ where: { wineSku: { name: SKU } }, orderBy: { createdAt: "desc" } }))!;
   const problems: string[] = [];
 
-  const input = (bottles: number) => ({ vesselId: vessel.id, destinationLocationId: loc.id, skuName: SKU, skuVintage: 2025, bottlesProduced: bottles, date: new Date("2026-06-14") });
+  const input = (bottles: number) => ({ vesselIds: [vessel.id], destinationLocationId: loc.id, skuName: SKU, skuVintage: 2025, bottlesProduced: bottles, date: new Date("2026-06-14") });
 
   // 1) bottle 1000 (750 L)
   await executeBottling(input(1000), actor);

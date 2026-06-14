@@ -22,7 +22,7 @@ function parseInput(formData: FormData): BottlingInput {
   const date = dateStr ? new Date(dateStr) : new Date();
   if (Number.isNaN(date.getTime())) throw new ActionError("Invalid bottling date.");
   return {
-    vesselId: String(formData.get("vesselId") ?? ""),
+    vesselIds: formData.getAll("vesselIds").map(String).filter(Boolean),
     destinationLocationId: String(formData.get("destinationLocationId") ?? ""),
     skuName: String(formData.get("skuName") ?? "").trim(),
     skuVintage: parseVintage(formData.get("skuVintage")),

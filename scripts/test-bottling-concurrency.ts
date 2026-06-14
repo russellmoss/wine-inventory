@@ -31,7 +31,7 @@ async function main() {
   });
 
   const input = (n: number) => ({
-    vesselId: vessel.id,
+    vesselIds: [vessel.id],
     destinationLocationId: location.id,
     skuName: `${TAG} Reserve`,
     skuVintage: 2025,
