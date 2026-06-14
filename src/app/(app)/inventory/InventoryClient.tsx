@@ -51,13 +51,7 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
           <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 20, marginBottom: 12 }}>New wine SKU</h2>
           <form onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => createWineSku(new FormData(f)), f); }} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <Input name="name" placeholder="Ser Kem Marp Reserve" required />
-            <div style={{ display: "flex", gap: 8 }}>
-              <Input name="vintage" type="number" placeholder="Vintage" required style={{ flex: "0 1 110px" }} />
-              <select name="categoryId" style={{ ...sel, height: 44 }} defaultValue="">
-                <option value="">Category: Wine (default)</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+            <Input name="vintage" type="number" placeholder="Vintage" required />
             <Button type="submit" variant="primary" disabled={pending}>Add wine</Button>
           </form>
         </Card>

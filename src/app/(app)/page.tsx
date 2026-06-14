@@ -27,7 +27,7 @@ export default async function DashboardPage() {
       <p style={{ color: "var(--text-secondary)", marginBottom: 28 }}>Bhutan Wine Company inventory at a glance.</p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 32 }}>
-        <Card><Metric value={`${bulkL.toLocaleString()} L`} caption="Bulk wine at the winery" /></Card>
+        <Card><Metric value={bulkL.toLocaleString()} caption="Litres of bulk wine at the winery" /></Card>
         <Card><Metric value={cases.toLocaleString()} caption={`Bottled cases (+${loose} loose)`} /></Card>
         <Card><Metric value={totalBottles.toLocaleString()} caption="Total bottles" serif /></Card>
         <Card><Metric value={goodsQty.toLocaleString()} caption="Finished goods on hand" /></Card>

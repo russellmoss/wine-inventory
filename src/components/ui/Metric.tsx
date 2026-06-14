@@ -52,6 +52,7 @@ export function Metric({
           lineHeight: 1,
           letterSpacing: serif ? "0" : "-0.02em",
           color: "var(--text-primary)",
+          whiteSpace: "nowrap",
         }}
       >
         {value}
