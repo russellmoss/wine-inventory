@@ -1,16 +1,9 @@
 import "server-only";
 import { getCurrentUser } from "@/lib/dal";
 import { accessDecision, type AppUser } from "@/lib/access";
+import { ActionError } from "@/lib/action-error";
 
-export class ActionError extends Error {
-  constructor(
-    message: string,
-    public code: "UNAUTHENTICATED" | "FORBIDDEN" | "MUST_CHANGE_PASSWORD" | "VALIDATION" | "CONFLICT" = "VALIDATION",
-  ) {
-    super(message);
-    this.name = "ActionError";
-  }
-}
+export { ActionError } from "@/lib/action-error";
 
 export type ActionCtx = {
   user: AppUser;
