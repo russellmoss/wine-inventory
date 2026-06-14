@@ -19,6 +19,10 @@ async function main() {
   });
   console.log(`Winery location ready (${winery.id})`);
 
+  // Default category for bottled wine.
+  await prisma.finishedGoodCategory.upsert({ where: { name: "Wine" }, update: {}, create: { name: "Wine" } });
+  console.log("Wine category ready");
+
   // Admin user + credential account.
   const hash = await hashPassword(password);
   const user = await prisma.user.upsert({

@@ -6,16 +6,12 @@ export default async function BottlingPage() {
     prisma.vessel.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
-      include: {
-        components: {
-          include: { variety: { select: { name: true } }, vineyard: { select: { name: true } } },
-        },
-      },
+      include: { components: { include: { variety: { select: { name: true } }, vineyard: { select: { name: true } } } } },
     }),
     prisma.location.findMany({ where: { isActive: true }, orderBy: [{ isSystem: "desc" }, { name: "asc" }], select: { id: true, name: true } }),
     prisma.bottlingRun.findMany({
       orderBy: { createdAt: "desc" },
-      take: 10,
+      take: 12,
       include: {
         wineSku: { select: { name: true, vintage: true } },
         destinationLocation: { select: { name: true } },
@@ -24,21 +20,22 @@ export default async function BottlingPage() {
     }),
   ]);
 
-  const vesselOpts: VesselOpt[] = vessels
-    .map((v) => ({
-      id: v.id,
-      code: v.code,
-      availableL: Math.round(v.components.reduce((a, c) => a + Number(c.volumeL), 0) * 100) / 100,
-      contents: v.components.map((c) => `${c.variety.name} · ${c.vineyard.name} · ${c.vintage} (${Number(c.volumeL)} L)`),
-    }))
-    .filter((v) => v.availableL > 0);
+  const vesselOpts: VesselOpt[] = vessels.map((v) => ({
+    id: v.id,
+    code: v.code,
+    availableL: Math.round(v.components.reduce((a, c) => a + Number(c.volumeL), 0) * 100) / 100,
+    contents: v.components.map((c) => `${c.variety.name} · ${c.vineyard.name} · ${c.vintage} (${Number(c.volumeL)} L)`),
+  }));
 
   const runRows: RunRow[] = runs.map((r) => ({
     id: r.id,
     date: r.date.toISOString().slice(0, 10),
-    sku: `${r.wineSku.name} ${r.wineSku.vintage}`,
-    bottles: r.bottlesProduced,
+    skuName: r.wineSku.name,
+    skuVintage: r.wineSku.vintage,
+    bottlesProduced: r.bottlesProduced,
+    destinationLocationId: r.destinationLocationId,
     location: r.destinationLocation.name,
+    vesselId: r.sources[0]?.vesselId ?? "",
     sources: r.sources.map((s) => `${s.variety.name} · ${s.vineyard.name} · ${s.vintage}: ${Number(s.volumeConsumedL)} L`),
   }));
 

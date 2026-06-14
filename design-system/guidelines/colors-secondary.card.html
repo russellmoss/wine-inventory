@@ -1,0 +1,27 @@
+<!-- @dsCard group="Colors" viewport="700x180" name="Secondary palette" subtitle="Editorial accents — data-viz & section color" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; padding: 22px; background: var(--surface-page); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .chip { height: 48px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); }
+  .name { font-family: var(--font-body); font-size: 12.5px; font-weight: 600; color: var(--text-primary); margin-top: 8px; }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div><div class="chip" style="background:var(--maroon)"></div><div class="name">Maroon</div><div class="hex">#6B484D</div></div>
+    <div><div class="chip" style="background:var(--deep-green)"></div><div class="name">Deep Green</div><div class="hex">#175242</div></div>
+    <div><div class="chip" style="background:var(--deep-blue)"></div><div class="name">Deep Blue</div><div class="hex">#095972</div></div>
+    <div><div class="chip" style="background:var(--golden-yellow)"></div><div class="name">Golden Yellow</div><div class="hex">#D79F32</div></div>
+    <div><div class="chip" style="background:var(--lavender)"></div><div class="name">Lavender</div><div class="hex">#A98EB1</div></div>
+    <div><div class="chip" style="background:var(--red)"></div><div class="name">Red</div><div class="hex">#B63D35</div></div>
+    <div><div class="chip" style="background:var(--orange)"></div><div class="name">Orange</div><div class="hex">#F19E70</div></div>
+    <div><div class="chip" style="background:var(--bright-mauve)"></div><div class="name">Bright Mauve</div><div class="hex">#C06F74</div></div>
+  </div>
+</body>
+</html>

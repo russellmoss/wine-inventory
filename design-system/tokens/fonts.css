@@ -1,0 +1,29 @@
+/* ============================================================
+   Savvy — Webfonts
+   Display: Big Caslon (provided OTF) — wordmark + editorial serif
+   Workhorse: Inter Tight + Inter (Google Fonts) — titles, UI, body
+   ============================================================ */
+
+/* Inter + Inter Tight come from Google Fonts. Consumers that cannot
+   reach Google can fall back to the system stack declared in
+   typography.css. We import the CSS here so the font binaries ship
+   with the system closure. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@200;300;400;500;600;700&display=swap");
+
+/* Big Caslon — the Savvy wordmark face. Distinctive high-contrast
+   Caslon display serif; no close Google substitute, so the real
+   binaries are shipped. */
+@font-face {
+  font-family: "Big Caslon";
+  src: url("../assets/fonts/BigCaslon-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Big Caslon";
+  src: url("../assets/fonts/BigCaslon-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

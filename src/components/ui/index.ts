@@ -16,3 +16,5 @@ export { Metric } from "./Metric";
 export type { MetricProps } from "./Metric";
 export { Quote } from "./Quote";
 export type { QuoteProps } from "./Quote";
+export { ConfirmButton } from "./ConfirmButton";
+export type { ConfirmButtonProps } from "./ConfirmButton";

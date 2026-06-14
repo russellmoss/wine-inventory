@@ -1,154 +1,163 @@
 "use client";
 
 import React from "react";
-import { Card, Input, Button, Badge, Eyebrow } from "@/components/ui";
-import { createBottlingRun } from "@/lib/bottling/actions";
+import { Card, Input, Button, Badge, Eyebrow, ConfirmButton } from "@/components/ui";
+import { createBottlingRun, editBottlingRun, deleteBottlingRun } from "@/lib/bottling/actions";
 import { suggestBottles, consumedForBottles, casesAndLoose } from "@/lib/bottling/draw";
 
 export type VesselOpt = { id: string; code: string; availableL: number; contents: string[] };
 export type LocOpt = { id: string; name: string };
-export type RunRow = { id: string; date: string; sku: string; bottles: number; location: string; sources: string[] };
+export type RunRow = {
+  id: string;
+  date: string;
+  skuName: string;
+  skuVintage: number;
+  bottlesProduced: number;
+  destinationLocationId: string;
+  location: string;
+  vesselId: string;
+  sources: string[];
+};
 
 const selectStyle: React.CSSProperties = {
-  height: 44,
-  padding: "0 12px",
-  border: "1px solid var(--border-strong)",
-  borderRadius: "var(--radius-md)",
-  background: "var(--surface-raised)",
-  fontFamily: "var(--font-body)",
-  fontSize: 15,
-  color: "var(--text-primary)",
-  width: "100%",
+  height: 44, padding: "0 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
+  background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)", width: "100%",
 };
+
+type Initial = { vesselId: string; skuName: string; skuVintage: number | ""; bottles: number | ""; destinationLocationId: string; date: string };
+
+function BottlingForm({
+  vessels, locations, initial, mode, onSubmit, onCancel, pending,
+}: {
+  vessels: VesselOpt[]; locations: LocOpt[]; initial: Initial; mode: "create" | "edit";
+  onSubmit: (fd: FormData) => void; onCancel?: () => void; pending: boolean;
+}) {
+  const [vesselId, setVesselId] = React.useState(initial.vesselId);
+  const [bottles, setBottles] = React.useState<number | "">(initial.bottles);
+  const vessel = vessels.find((v) => v.id === vesselId);
+  const max = mode === "create" && vessel ? suggestBottles(vessel.availableL) : undefined;
+  const consumed = consumedForBottles(Number(bottles) || 0);
+  const split = casesAndLoose(Number(bottles) || 0);
+
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }}
+      style={{ display: "flex", flexDirection: "column", gap: 14 }}
+    >
+      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Vessel</span>
+        <select name="vesselId" value={vesselId} onChange={(e) => setVesselId(e.target.value)} style={selectStyle} required>
+          <option value="" disabled>Choose vessel</option>
+          {vessels.map((v) => <option key={v.id} value={v.id}>{v.code} — {v.availableL} L available</option>)}
+        </select>
+      </label>
+      {vessel && vessel.contents.length > 0 ? (
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: 10, borderRadius: "var(--radius-md)" }}>
+          {vessel.contents.map((c, i) => <div key={i}>{c}</div>)}
+        </div>
+      ) : null}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Input label="Wine name" name="skuName" defaultValue={initial.skuName} required style={{ flex: "1 1 200px" }} />
+        <Input label="Vintage" name="skuVintage" type="number" defaultValue={initial.skuVintage} required style={{ flex: "0 1 110px" }} />
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ flex: "0 1 170px" }}>
+          <Input
+            label={max !== undefined ? `Bottles (max ${max})` : "Bottles"}
+            name="bottlesProduced" type="number" min="1" max={max}
+            value={bottles} onChange={(e) => setBottles(e.target.value === "" ? "" : Number(e.target.value))} required
+          />
+        </div>
+        <span style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 12 }}>= {split.cases}c + {split.loose} · uses {consumed} L</span>
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 220px" }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Destination</span>
+          <select name="destinationLocationId" defaultValue={initial.destinationLocationId} style={selectStyle} required>
+            <option value="" disabled>Choose location</option>
+            {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </label>
+        <Input label="Date" name="date" type="date" defaultValue={initial.date} style={{ flex: "0 1 170px" }} />
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <Button type="submit" variant="primary" disabled={pending}>
+          {pending ? "Working..." : mode === "create" ? "Record bottling run" : "Save changes"}
+        </Button>
+        {onCancel ? <Button type="button" variant="secondary" disabled={pending} onClick={onCancel}>Cancel</Button> : null}
+      </div>
+    </form>
+  );
+}
 
 export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOpt[]; locations: LocOpt[]; runs: RunRow[] }) {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
-  const [vesselId, setVesselId] = React.useState(vessels[0]?.id ?? "");
-  const [bottles, setBottles] = React.useState<number>(0);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
 
-  const vessel = vessels.find((v) => v.id === vesselId);
-  const maxBottles = vessel ? suggestBottles(vessel.availableL) : 0;
-  const consumed = consumedForBottles(bottles || 0);
-  const split = casesAndLoose(bottles || 0);
-
-  React.useEffect(() => {
-    // Default to the full suggested count when the vessel changes.
-    setBottles(vessel ? suggestBottles(vessel.availableL) : 0);
-  }, [vesselId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const fd = new FormData(form);
+  function run(fn: () => Promise<void>, after?: () => void) {
     setError(null);
     startTransition(async () => {
-      try {
-        await createBottlingRun(fd);
-        form.reset();
-        setVesselId(vessels[0]?.id ?? "");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Bottling failed.");
-      }
+      try { await fn(); after?.(); }
+      catch (e) { setError(e instanceof Error ? e.message : "Something went wrong."); }
     });
   }
-
-  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div>
       <Eyebrow rule>Bottling</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Bottle a vessel</h1>
       <p style={{ color: "var(--text-secondary)", marginBottom: 24, maxWidth: "64ch" }}>
-        Draw from a vessel into a bottled SKU. The wine is deducted proportionally across the
-        vessel&rsquo;s components, and the run is traceable to its exact composition.
+        Draw from a vessel into a bottled SKU. Wine is deducted proportionally across the vessel&rsquo;s
+        components and the run is traceable. You can edit or delete a run; deleting puts the wine back.
       </p>
 
+      {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
+
       {vessels.length === 0 ? (
-        <Card><p style={{ margin: 0, color: "var(--text-secondary)" }}>No vessels have wine to bottle. Fill one in <strong>Bulk wine</strong> first.</p></Card>
+        <Card><p style={{ margin: 0, color: "var(--text-secondary)" }}>No vessels yet. Register and fill one first.</p></Card>
       ) : (
         <Card style={{ maxWidth: 640, marginBottom: 32 }}>
-          <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Vessel</span>
-              <select name="vesselId" value={vesselId} onChange={(e) => setVesselId(e.target.value)} style={selectStyle} required>
-                {vessels.map((v) => (
-                  <option key={v.id} value={v.id}>{v.code} — {v.availableL} L available</option>
-                ))}
-              </select>
-            </label>
-
-            {vessel ? (
-              <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: 12, borderRadius: "var(--radius-md)" }}>
-                {vessel.contents.map((c, i) => <div key={i}>{c}</div>)}
-              </div>
-            ) : null}
-
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <Input label="Wine name" name="skuName" placeholder="Ser Kem Marp Reserve" required style={{ flex: "1 1 220px" }} />
-              <Input label="Vintage" name="skuVintage" type="number" placeholder="2025" required style={{ flex: "0 1 120px" }} />
-            </div>
-
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <div style={{ flex: "0 1 160px" }}>
-                <Input
-                  label={`Bottles (max ${maxBottles})`}
-                  name="bottlesProduced"
-                  type="number"
-                  min="1"
-                  max={maxBottles}
-                  value={bottles || ""}
-                  onChange={(e) => setBottles(Number(e.target.value))}
-                  required
-                />
-              </div>
-              <span style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 12 }}>
-                = {split.cases} cases + {split.loose} · uses {consumed} L
-              </span>
-            </div>
-
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 220px" }}>
-                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Destination location</span>
-                <select name="destinationLocationId" style={selectStyle} required defaultValue="">
-                  <option value="" disabled>Choose location</option>
-                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-              </label>
-              <Input label="Bottling date" name="date" type="date" defaultValue={today} style={{ flex: "0 1 180px" }} />
-            </div>
-
-            {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, margin: 0 }}>{error}</p> : null}
-            <Button type="submit" variant="primary" disabled={pending || maxBottles < 1}>
-              {pending ? "Bottling..." : "Record bottling run"}
-            </Button>
-          </form>
+          <BottlingForm
+            vessels={vessels} locations={locations} mode="create" pending={pending}
+            initial={{ vesselId: "", skuName: "", skuVintage: "", bottles: "", destinationLocationId: "", date: today }}
+            onSubmit={(fd) => run(() => createBottlingRun(fd))}
+          />
         </Card>
       )}
 
       <Eyebrow rule>Recent runs</Eyebrow>
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-        {runs.length === 0 ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No bottling runs yet.</p>
-        ) : (
+        {runs.length === 0 ? <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No bottling runs yet.</p> :
           runs.map((r) => {
-            const s = casesAndLoose(r.bottles);
+            const s = casesAndLoose(r.bottlesProduced);
+            const editing = editingId === r.id;
             return (
               <Card key={r.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                  <strong>{r.sku}</strong>
-                  <Badge tone="gold" variant="soft">{r.bottles} bottles · {s.cases}c + {s.loose}</Badge>
+                  <strong>{r.skuName} {r.skuVintage}</strong>
+                  <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                    <Badge tone="gold" variant="soft">{r.bottlesProduced} bottles · {s.cases}c + {s.loose}</Badge>
+                    {!editing ? <Button variant="ghost" size="sm" disabled={pending} onClick={() => setEditingId(r.id)}>edit</Button> : null}
+                    <ConfirmButton onConfirm={() => run(() => deleteBottlingRun(r.id))} disabled={pending}>delete</ConfirmButton>
+                  </span>
                 </div>
-                <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-                  {r.date} → {r.location}
-                </div>
-                <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>
-                  {r.sources.map((src, i) => <div key={i}>↳ {src}</div>)}
-                </div>
+                <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{r.date} → {r.location}</div>
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>{r.sources.map((src, i) => <div key={i}>↳ {src}</div>)}</div>
+                {editing ? (
+                  <div style={{ marginTop: 14, borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}>
+                    <BottlingForm
+                      vessels={vessels} locations={locations} mode="edit" pending={pending}
+                      initial={{ vesselId: r.vesselId, skuName: r.skuName, skuVintage: r.skuVintage, bottles: r.bottlesProduced, destinationLocationId: r.destinationLocationId, date: r.date }}
+                      onSubmit={(fd) => run(() => editBottlingRun(r.id, fd), () => setEditingId(null))}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  </div>
+                ) : null}
               </Card>
             );
-          })
-        )}
+          })}
       </div>
     </div>
   );

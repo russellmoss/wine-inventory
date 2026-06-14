@@ -192,17 +192,20 @@ model VesselComponent {
 // ───────────────────────── Bottling ─────────────────────────
 
 model WineSku {
-  id               String             @id @default(cuid())
+  id               String                @id @default(cuid())
   name             String
   vintage          Int
-  bottleSizeMl     Int                @default(750)
-  isActive         Boolean            @default(true)
-  createdAt        DateTime           @default(now())
+  bottleSizeMl     Int                   @default(750)
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  categoryId       String?
+  category         FinishedGoodCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   bottlingRuns     BottlingRun[]
   bottledInventory BottledInventory[]
   stockMovements   StockMovement[]
 
   @@unique([name, vintage, bottleSizeMl])
+  @@index([categoryId])
   @@map("wine_sku")
 }
 
@@ -295,6 +298,7 @@ model FinishedGoodCategory {
   isActive  Boolean        @default(true)
   createdAt DateTime       @default(now())
   goods     FinishedGood[]
+  wineSkus  WineSku[]
 
   @@map("finished_good_category")
 }

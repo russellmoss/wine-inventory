@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Winning the Competitive Deal — Savvy SGA / SGM Enablement</title>
+<link rel="stylesheet" href="../../styles.css" />
+<style>
+  html, body { margin: 0; background: #0c0c0c; }
+  deck-stage:not(:defined) { visibility: hidden; }
+
+  /* ---- Slide foundation ---------------------------------- */
+  .pad {
+    position: relative;
+    width: 100%; height: 100%;
+    box-sizing: border-box;
+    padding: 60px 76px 64px;
+    background: var(--surface-page);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .pad.cream { background: var(--paper-100); }
+  .pad.dark  { background: var(--savvy-black); color: var(--text-on-dark); }
+
+  .brand { position: absolute; top: 34px; left: 76px; height: 22px; }
+  .brand img { height: 100%; display: block; }
+  .pageno { position: absolute; bottom: 30px; right: 44px; font-size: 12px; letter-spacing: 0.06em; color: var(--text-muted); }
+  .dark .pageno { color: var(--text-on-dark-muted); }
+  .kicker-tag { position: absolute; top: 34px; right: 76px; font-family: var(--font-body); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text-muted); }
+  .dark .kicker-tag { color: var(--text-on-dark-muted); }
+
+  .eyebrow { font-family: var(--font-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; font-size: 15px; color: var(--savvy-gold); display: inline-flex; align-items: center; gap: 12px; }
+  .eyebrow::before { content: ""; width: 26px; height: 1.5px; background: currentColor; display: inline-block; }
+  .dark .eyebrow { color: var(--savvy-ecru); }
+
+  .title { font-family: var(--font-heading); font-weight: 300; letter-spacing: -0.02em; line-height: 1.05; font-size: 52px; color: inherit; margin: 0; }
+  .title.lg { font-size: 78px; }
+  .subtitle { font-family: var(--font-body); font-weight: 400; font-size: 21px; line-height: 1.45; color: var(--text-secondary); margin: 0; }
+  .dark .subtitle { color: var(--text-on-dark-muted); }
+  .lead { font-family: var(--font-body); font-size: 19px; line-height: 1.55; color: var(--text-secondary); }
+  .dark .lead { color: var(--text-on-dark-muted); }
+  .serif { font-family: var(--font-display); }
+  .gold { color: var(--savvy-gold); }
+  .ecru { color: var(--savvy-ecru); }
+
+  .head { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+  .head .title { margin-top: 4px; }
+
+  /* ---- Cards / grids ------------------------------------- */
+  .card { background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 24px 26px; box-shadow: var(--shadow-sm); }
+  .dark .card { background: rgba(255,248,241,0.05); border-color: var(--border-inverse); box-shadow: none; }
+  .card h3 { font-family: var(--font-heading); font-weight: 500; font-size: 21px; letter-spacing: -0.01em; margin: 0; }
+  .card p { font-family: var(--font-body); font-size: 15.5px; line-height: 1.5; color: var(--text-secondary); margin: 0; }
+  .dark .card p { color: var(--text-on-dark-muted); }
+
+  .grid { display: grid; gap: 18px; }
+  .num { font-family: var(--font-display); color: var(--savvy-gold); }
+
+  /* two-col compare */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 36px; }
+  .compare .col { border-radius: var(--radius-lg); padding: 28px 30px; border: 1px solid var(--border-strong); }
+  .compare .col.passive { background: var(--surface-raised); }
+  .compare .col.active { background: #f3ede1; border-color: var(--savvy-ecru); }
+  .compare .col .lbl { font-family: var(--font-body); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--savvy-gold); }
+  .compare .col .ch { font-family: var(--font-heading); font-weight: 400; font-size: 26px; margin: 8px 0 16px; letter-spacing: -0.01em; }
+  .compare ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
+  .compare li { font-family: var(--font-body); font-size: 16px; line-height: 1.45; color: var(--text-secondary); padding-left: 22px; position: relative; }
+  .compare li::before { content: ""; position: absolute; left: 0; top: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--savvy-gold); }
+
+  /* numbered agenda */
+  .agenda { display: flex; flex-direction: column; margin-top: 14px; }
+  .agenda .row { display: grid; grid-template-columns: 64px 1fr; gap: 26px; align-items: baseline; padding: 20px 0; border-top: 1px solid var(--border-default); }
+  .agenda .row:last-child { border-bottom: 1px solid var(--border-default); }
+  .agenda .n { font-family: var(--font-display); font-size: 30px; color: var(--savvy-gold); }
+  .agenda .t { font-family: var(--font-heading); font-weight: 300; font-size: 27px; letter-spacing: -0.01em; }
+  .agenda .d { font-family: var(--font-body); font-size: 15px; color: var(--text-muted); margin-top: 3px; }
+
+  /* quote lines list */
+  .lines { display: flex; flex-direction: column; gap: 14px; margin-top: 10px; }
+  .qline { font-family: var(--font-display); font-size: 22px; line-height: 1.4; color: var(--text-primary); padding-left: 26px; border-left: 2px solid var(--savvy-gold); }
+  .dark .qline { color: var(--text-on-dark); }
+
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-body); font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; padding: 5px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--savvy-gold); }
+
+  .art-tr { position: absolute; right: -70px; top: -40px; height: 360px; opacity: 0.5; }
+  .art-br { position: absolute; right: -90px; bottom: -90px; height: 380px; opacity: 0.9; }
+
+  /* firm-type table */
+  .firms { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-top: 30px; }
+  .firm { background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 18px 16px; display: flex; flex-direction: column; gap: 9px; }
+  .firm .ft { font-family: var(--font-heading); font-weight: 600; font-size: 16px; letter-spacing: -0.005em; }
+  .firm .ex { font-family: var(--font-body); font-size: 12.5px; color: var(--text-muted); }
+  .firm .gap { font-family: var(--font-body); font-size: 13.5px; line-height: 1.4; color: var(--text-secondary); }
+  .firm .edge { font-family: var(--font-body); font-size: 13px; line-height: 1.4; color: var(--savvy-gold); margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+
+  /* AI competitor rows */
+  .airows { display: flex; flex-direction: column; gap: 12px; margin-top: 26px; }
+  .airow { display: grid; grid-template-columns: 150px 1fr; gap: 24px; align-items: center; padding: 14px 22px; border-radius: var(--radius-md); background: rgba(255,248,241,0.05); border: 1px solid var(--border-inverse); }
+  .airow .who { font-family: var(--font-heading); font-weight: 600; font-size: 19px; color: var(--text-on-dark); }
+  .airow .who small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 12.5px; letter-spacing: 0.02em; color: var(--text-on-dark-muted); margin-top: 3px; }
+  .airow .pos { font-family: var(--font-body); font-size: 15.5px; line-height: 1.45; color: var(--text-on-dark); }
+  .airow .pos b { color: var(--savvy-ecru); font-weight: 600; }
+
+  /* do/don't */
+  .dd { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 32px; }
+  .dd .col { border-radius: var(--radius-lg); padding: 26px 28px; }
+  .dd .do { background: rgba(23,82,66,0.08); border: 1px solid rgba(23,82,66,0.3); }
+  .dd .dont { background: rgba(182,61,53,0.07); border: 1px solid rgba(182,61,53,0.28); }
+  .dd h4 { font-family: var(--font-body); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; margin: 0 0 14px; }
+  .dd .do h4 { color: var(--deep-green); }
+  .dd .dont h4 { color: var(--red); }
+  .dd ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 11px; }
+  .dd li { font-family: var(--font-body); font-size: 15.5px; line-height: 1.42; color: var(--text-secondary); padding-left: 22px; position: relative; }
+  .dd .do li::before { content: "✓"; position: absolute; left: 0; color: var(--deep-green); font-weight: 700; }
+  .dd .dont li::before { content: "✕"; position: absolute; left: 0; color: var(--red); font-weight: 700; }
+
+  /* metrics strip */
+  .mstrip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 46px; margin-top: 40px; }
+  .mstrip .m .r { width: 40px; height: 3px; background: var(--savvy-gold); margin-bottom: 14px; }
+  .mstrip .m .v { font-family: var(--font-heading); font-weight: 200; font-size: 64px; line-height: 0.95; letter-spacing: -0.03em; }
+  .mstrip .m .c { font-family: var(--font-body); font-size: 15.5px; color: var(--text-muted); margin-top: 8px; max-width: 26ch; }
+  .dark .mstrip .m .c { color: var(--text-on-dark-muted); }
+
+  /* resource links */
+  .reslist { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-top: 26px; }
+  .res { display: flex; align-items: baseline; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-inverse); }
+  .res .rt { font-family: var(--font-body); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--savvy-ecru); width: 96px; flex: none; }
+  .res .rn { font-family: var(--font-body); font-size: 16px; color: var(--text-on-dark); }
+
+  .footnote { font-family: var(--font-body); font-size: 12px; color: var(--text-muted); margin-top: auto; padding-top: 18px; }
+  .dark .footnote { color: var(--text-on-dark-muted); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    [data-deck-active] .anim { animation: rise 0.5s var(--ease-out) both; }
+    [data-deck-active] .anim2 { animation: rise 0.5s var(--ease-out) 0.08s both; }
+    [data-deck-active] .anim3 { animation: rise 0.5s var(--ease-out) 0.16s both; }
+    @keyframes rise { from { transform: translateY(16px); } to { transform: none; } }
+  }
+</style>
+</head>
+<body>
+<deck-stage width="1280" height="720">
+
+  <!-- 1 · COVER -->
+  <section data-label="Cover">
+    <div class="pad dark">
+      <img class="art-br" src="../../assets/illustrations/white/globe-striped.png" alt="" />
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-white.png" alt="Savvy" /></div>
+      <div class="kicker-tag">Internal · Sales enablement</div>
+      <div style="margin-top:auto; margin-bottom:auto; display:flex; flex-direction:column; align-items:flex-start; gap:24px; max-width:880px;">
+        <div class="eyebrow anim">SGA &amp; SGM Playbook</div>
+        <h1 class="title lg anim2">Winning the<br/>competitive deal</h1>
+        <p class="subtitle anim3" style="max-width:620px;">How to handle the advisor who's also talking to Farther, LPL, a wirehouse, or the RIA down the street — without bashing, panicking, or discounting.</p>
+      </div>
+      <div class="pageno">01</div>
+    </div>
+  </section>
+
+  <!-- 2 · THE REALITY -->
+  <section data-label="The reality">
+    <div class="pad">
+      <img class="art-tr" src="../../assets/illustrations/gold/venn-three.png" alt="" />
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:64px; max-width:900px;">
+        <div class="eyebrow">The reality</div>
+        <h2 class="title">Every advisor is coming<br/>from somewhere — and<br/>weighing someone else</h2>
+      </div>
+      <p class="lead" style="margin-top:30px; max-width:740px;">A wirehouse, an IBD, a solo RIA, or a platform that oversold and underdelivered. Serious advisors are almost always evaluating more than one option at once. The deal isn't won by pretending the competition doesn't exist — <span class="gold">it's won by how you handle the comparison.</span></p>
+      <div class="pill" style="margin-top:34px;">Acknowledge it · Reframe to where differences matter · Move it forward</div>
+      <div class="pageno">02</div>
+    </div>
+  </section>
+
+  <!-- 3 · THE FRAMEWORK -->
+  <section data-label="Framework">
+    <div class="pad cream">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:60px;">
+        <div class="eyebrow">The four moves</div>
+        <h2 class="title">A repeatable way to run<br/>a competitive deal</h2>
+      </div>
+      <div class="agenda">
+        <div class="row"><span class="n">01</span><div><div class="t">Surface the competition</div><div class="d">Ask directly who else is in the mix — don't avoid it.</div></div></div>
+        <div class="row"><span class="n">02</span><div><div class="t">Classify the move mindset</div><div class="d">Active shopper or passive responder? It changes everything.</div></div></div>
+        <div class="row"><span class="n">03</span><div><div class="t">Flag it cleanly in the handoff</div><div class="d">Mindset + competing firms passed SGA → SGM, every time.</div></div></div>
+        <div class="row"><span class="n">04</span><div><div class="t">Reframe to where differences matter</div><div class="d">Know the firm type. Use the battle card. Lead with value.</div></div></div>
+      </div>
+      <div class="pageno">03</div>
+    </div>
+  </section>
+
+  <!-- 4 · STEP 1 SURFACE -->
+  <section data-label="Surface it">
+    <div class="pad">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:60px;">
+        <div class="eyebrow">Move 01 · Discovery</div>
+        <h2 class="title">Surface the competition</h2>
+      </div>
+      <p class="lead" style="margin-top:20px; max-width:760px;">You can't position against something you haven't named. Ask with curiosity, not defensiveness — map the field early so the SGM walks in prepared.</p>
+      <div class="lines" style="margin-top:26px; max-width:880px;">
+        <div class="qline">"Got it — so who else are you talking to right now? Just trying to get a sense of what's in the mix."</div>
+        <div class="qline">"Are the other firms you're looking at structured similarly to us, or are you exploring different models?"</div>
+        <div class="qline">"You mentioned a local RIA — I want my colleague to know that going into the next call, because it changes how we'd position things."</div>
+      </div>
+      <div class="pageno">04</div>
+    </div>
+  </section>
+
+  <!-- 5 · STEP 2 ACTIVE VS PASSIVE -->
+  <section data-label="Active vs passive">
+    <div class="pad cream">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:58px;">
+        <div class="eyebrow">Move 02 · Move mindset</div>
+        <h2 class="title">Active shopper, or passive responder?</h2>
+      </div>
+      <div class="compare">
+        <div class="col passive">
+          <div class="lbl">Passive</div>
+          <div class="ch">Picked up the phone — hasn't really shopped</div>
+          <ul>
+            <li>You have relative access and a strong team. Use it.</li>
+            <li><b>Hard-close the SGM meeting</b> on this call.</li>
+            <li>Frame the SGM intro around curiosity, not pain.</li>
+          </ul>
+        </div>
+        <div class="col active">
+          <div class="lbl">Active</div>
+          <div class="ch">Talking to multiple firms right now</div>
+          <ul>
+            <li>Get who else is in the mix — and their model.</li>
+            <li>Ask if they've floated the move with best clients.</li>
+            <li>Close harder on <b>urgency</b>; flag any local-RIA name.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="footnote">A miscategorized mindset is one of the most common SGA → SGM friction points. When in doubt, ask: "Have you actually decided to move, or are you still feeling it out?"</p>
+      <div class="pageno">05</div>
+    </div>
+  </section>
+
+  <!-- 6 · STEP 3 HANDOFF -->
+  <section data-label="The handoff rule">
+    <div class="pad">
+      <img class="art-br" src="../../assets/illustrations/gold/orbit-dot.png" alt="" style="opacity:0.5;" />
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:60px;">
+        <div class="eyebrow">Move 03 · The handoff</div>
+        <h2 class="title">What the SGM must know<br/>before the intro call</h2>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 1fr; margin-top:34px; max-width:940px;">
+        <div class="card"><h3>Mindset</h3><p>Active vs. passive — it sets the entire tone of the SGM's intro call (curiosity vs. pain framing).</p></div>
+        <div class="card"><h3>Who's in the mix</h3><p>Every competing firm named, and whether their model is similar to Savvy's or fundamentally different.</p></div>
+        <div class="card"><h3>The local-RIA flag</h3><p>Local offers things Savvy can't — office space, in-person teams. The SGM needs to weigh how much that matters.</p></div>
+        <div class="card"><h3>Timing &amp; blockers</h3><p>Payout schedules, renewals, non-competes — anything that changes urgency or the path to a "yes."</p></div>
+      </div>
+      <div class="pageno">06</div>
+    </div>
+  </section>
+
+  <!-- 7 · SECTION DIVIDER -->
+  <section data-label="Know the landscape">
+    <div class="pad dark">
+      <img class="art-br" src="../../assets/illustrations/white/rings-row.png" alt="" />
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-white.png" alt="Savvy" /></div>
+      <div style="margin-top:auto; margin-bottom:auto; display:flex; flex-direction:column; align-items:flex-start; gap:18px;">
+        <div class="eyebrow">Move 04 · Know the landscape</div>
+        <div class="serif" style="font-size:180px; line-height:0.8; color:var(--savvy-gold);">04</div>
+        <h2 class="title" style="font-size:46px;">Reframe to where the<br/>differences actually matter</h2>
+      </div>
+      <div class="pageno">07</div>
+    </div>
+  </section>
+
+  <!-- 8 · FIVE FIRM TYPES -->
+  <section data-label="Five firm types">
+    <div class="pad">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:54px;">
+        <div class="eyebrow">The competitive set</div>
+        <h2 class="title" style="font-size:46px;">Five firm types — and Savvy's edge on each</h2>
+      </div>
+      <div class="firms">
+        <div class="firm">
+          <div class="ft">Wirehouse / Bank</div>
+          <div class="ex">Merrill, Morgan Stanley, Wells, UBS</div>
+          <div class="gap">Captive. The advisor is the firm's brand, not their own. Most restrictive model in the industry.</div>
+          <div class="edge">"You are the brand, not the firm."</div>
+        </div>
+        <div class="firm">
+          <div class="ft">Independent BD</div>
+          <div class="ex">LPL, Osaic, Cetera</div>
+          <div class="gap">High splits on paper — but the advisor pays all their own overhead and tech.</div>
+          <div class="edge">Reframe split → take-home after overhead.</div>
+        </div>
+        <div class="firm">
+          <div class="ft">Traditional RIA</div>
+          <div class="ex">Mariner, Mercer</div>
+          <div class="gap">Team &amp; support, but slow-moving, corporate, boilerplate tech. Limited independence.</div>
+          <div class="edge">Team support + true independence + AI.</div>
+        </div>
+        <div class="firm">
+          <div class="ft">RIA Platform</div>
+          <div class="ex">RFG Advisory, New Edge</div>
+          <div class="gap">More fee-based, but tech is bolt-on, advisors carry overhead, no equity.</div>
+          <div class="edge">Unified AI platform · no overhead · equity.</div>
+        </div>
+        <div class="firm">
+          <div class="ft">Tech RIA</div>
+          <div class="ex">Farther, Compound</div>
+          <div class="gap">Closest profile to us. Independence + tech — but data is fragmented, not AI-native.</div>
+          <div class="edge">Own system of record → AI across it all.</div>
+        </div>
+      </div>
+      <p class="footnote">Don't assume support level from the firm name. A Mariner advisor at $40M is treated very differently than one at $400M — always dig in on what they actually get today.</p>
+      <div class="pageno">08</div>
+    </div>
+  </section>
+
+  <!-- 9 · TECH RIA / FARTHER -->
+  <section data-label="Tech RIAs — closest fight">
+    <div class="pad cream">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:54px;">
+        <div class="eyebrow">Closest fight · Farther &amp; Compound</div>
+        <h2 class="title" style="font-size:44px;">"Savvy doesn't feel that different"</h2>
+      </div>
+      <p class="lead" style="margin-top:16px; max-width:820px;">Acknowledge the surface similarity, then move to where it matters. Don't manufacture urgency on a "not unhappy" advisor — <span class="gold">flip it: "Not unhappy and genuinely excited about where you're headed are two different things."</span></p>
+      <div class="grid" style="grid-template-columns:1fr 1fr 1fr; margin-top:24px;">
+        <div class="card"><h3>System of record</h3><p>Savvy owns it; Farther doesn't. Unified data is what lets AI work across the whole business — theirs is fragmented.</p></div>
+        <div class="card"><h3>People vs. technology</h3><p>Farther throws people at problems — their family-office offering is people-based with no data flow between systems.</p></div>
+        <div class="card"><h3>Whose customer?</h3><p>Farther is moving toward the end customer and limiting advisor upside. Savvy keeps the advisor at the center.</p></div>
+      </div>
+      <div class="mstrip" style="margin-top:26px; grid-template-columns: auto auto auto; gap:54px;">
+        <div class="m"><div class="r"></div><div class="v" style="font-size:48px;">~25%</div><div class="c">of advisors leaving Farther have landed at Savvy — offer the connection.</div></div>
+        <div class="m"><div class="r"></div><div class="v" style="font-size:48px;">~19 hrs</div><div class="c">a week given back to advisors by Savvy Intelligence.</div></div>
+      </div>
+      <div class="pageno">09</div>
+    </div>
+  </section>
+
+  <!-- 10 · FARTHER DEEP BATTLE CARD -->
+  <section data-label="Farther battle card">
+    <div class="pad">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:54px;">
+        <div class="eyebrow">Battle card · the structural reframes</div>
+        <h2 class="title" style="font-size:44px;">Farther: look past the nominal number</h2>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 1fr; margin-top:30px; max-width:1000px;">
+        <div class="card"><h3>Right of first refusal</h3><p>Farther can match the price if an advisor ever sells their book — it locks in their optionality. Savvy has none; sell to anyone.</p></div>
+        <div class="card"><h3>PE pressure</h3><p>Their first PE round (General Atlantic) carries revenue-target hooks &amp; 3–5 yr return clocks. Savvy's venture backers take 10–15 yr views.</p></div>
+        <div class="card"><h3>The tech stack</h3><p>Farther's platform runs on HubSpot with an overlay — that's what limits margin and the multiples that drive real equity upside.</p></div>
+        <div class="card"><h3>Equity structure, not size</h3><p>A bigger nominal grant at a higher strike isn't more value. Compass spreads 4 grants over ~7 yrs; Savvy is one grant, one low strike, 5-yr vest.</p></div>
+      </div>
+      <p class="footnote">Frame: it's not "how much equity" — it's "what is the equity actually worth, and where can it go." Always offer to connect them with an advisor who made the move.</p>
+      <div class="pageno">10</div>
+    </div>
+  </section>
+
+  <!-- 11 · MY FIRM ALREADY HAS AI -->
+  <section data-label="My firm has AI">
+    <div class="pad dark">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-white.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:50px;">
+        <div class="eyebrow">Objection · "My firm already has AI"</div>
+        <h2 class="title" style="font-size:42px; color:var(--text-on-dark);">A note-taker isn't an operating system</h2>
+      </div>
+      <div class="airows">
+        <div class="airow"><div class="who">Farther <small>Google Gemini</small></div><div class="pos">An <b>investor-driven</b> bet on a general LLM, running on fragmented data. We chose Claude for complex financial reasoning — beholden to no investor's stack.</div></div>
+        <div class="airow"><div class="who">Jump <small>Meeting assistant</small></div><div class="pos">Great at summarizing meetings. <b>Knows what was said — not what to do about it.</b> A point solution, not a platform.</div></div>
+        <div class="airow"><div class="who">LPL <small>Claude — announced</small></div><div class="pos">Announced a partnership; <b>nothing has shipped.</b> A patchwork of third-party tools bolted onto a legacy platform. We're already in production.</div></div>
+        <div class="airow"><div class="who">Altruist Hazel <small>Custodian add-on</small></div><div class="pos">A custodian-locked chatbot that reads what you hand it. <b>It can't act on data it can't see.</b> Savvy Intelligence knows your whole book.</div></div>
+      </div>
+      <p class="footnote">Structural argument: AI can't exist without organized data. Only a unified system of record can deliver AI across the entire advisor experience — bolt-on tools can't, no matter the investment.</p>
+      <div class="pageno">11</div>
+    </div>
+  </section>
+
+  <!-- 12 · WIREHOUSE / IBD / RIA REFRAMES -->
+  <section data-label="Legacy firm reframes">
+    <div class="pad">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:54px;">
+        <div class="eyebrow">Wirehouse · IBD · Traditional RIA</div>
+        <h2 class="title" style="font-size:44px;">The reframes that move legacy advisors</h2>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 1fr; margin-top:30px; max-width:1000px;">
+        <div class="card"><h3>Wirehouse → "You are the brand"</h3><p>Full independence with enterprise infrastructure. An advisor under 40 in a captive model is in the worst seat for their profession.</p></div>
+        <div class="card"><h3>IBD → split vs. take-home</h3><p>"Freedom's great, high split — but you get what you pay for." Reframe top-line split to bottom-line after overhead, tech, staff, marketing.</p></div>
+        <div class="card"><h3>Social proof that lands</h3><p>Marc Casady, former CEO of LPL, is one of Savvy's biggest investors — and Savvy is the only fintech in his portfolio.</p></div>
+        <div class="card"><h3>Timing the disruption</h3><p>LPL's acquisition of Commonwealth created real culture friction. Commonwealth advisors who valued that community are open right now.</p></div>
+      </div>
+      <div class="pageno">12</div>
+    </div>
+  </section>
+
+  <!-- 13 · ECONOMICS TRAP -->
+  <section data-label="The economics trap">
+    <div class="pad dark">
+      <img class="art-br" src="../../assets/illustrations/white/venn-two.png" alt="" style="opacity:0.5;" />
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-white.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:56px;">
+        <div class="eyebrow">When it becomes a bidding war</div>
+        <h2 class="title" style="color:var(--text-on-dark);">Reset the max-payout shopper</h2>
+      </div>
+      <div class="qline" style="margin-top:30px; max-width:860px; font-size:25px; color:var(--text-on-dark);">"If you're just about the dollars, we might not be the right place for you. The advisors who join with us are thinking about the next phase — and when you see all of that <span class="ecru">and then</span> we put the economics together, that's the sweet spot."</div>
+      <p class="lead" style="margin-top:28px; max-width:780px;">It resets the conversation around partnership value, signals Savvy is selective, and puts the advisor on their heels. Then make the bigger point:</p>
+      <div class="pill" style="margin-top:18px; background:rgba(255,248,241,0.1); color:var(--savvy-ecru);">You own your book · your business · and equity in Savvy — three wealth-building vehicles no single split can match.</div>
+      <div class="pageno">13</div>
+    </div>
+  </section>
+
+  <!-- 14 · GOLDEN RULES -->
+  <section data-label="Golden rules">
+    <div class="pad cream">
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-black.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:54px;">
+        <div class="eyebrow">The golden rules</div>
+        <h2 class="title">How we win competitive deals</h2>
+      </div>
+      <div class="dd">
+        <div class="col do">
+          <h4>Do</h4>
+          <ul>
+            <li>Ask directly who else is in the mix — early.</li>
+            <li>Acknowledge good firms; compete on where it matters.</li>
+            <li>Reframe to value: data, AI, independence, equity.</li>
+            <li>Use social proof and offer advisor-to-advisor intros.</li>
+            <li>Flag mindset + competitors in every SGA → SGM handoff.</li>
+          </ul>
+        </div>
+        <div class="col dont">
+          <h4>Don't</h4>
+          <ul>
+            <li>Pretend the competition isn't there.</li>
+            <li>Bash competitors — let the structure speak.</li>
+            <li>Manufacture urgency on a "not unhappy" advisor.</li>
+            <li>Let it become a pure payout bidding war.</li>
+            <li>Quote specific valuation multiples to advisors.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="pageno">14</div>
+    </div>
+  </section>
+
+  <!-- 15 · RESOURCES -->
+  <section data-label="Go deeper">
+    <div class="pad dark">
+      <img class="art-br" src="../../assets/illustrations/white/spiral.png" alt="" />
+      <div class="brand"><img src="../../assets/logos/savvy-wordmark-white.png" alt="Savvy" /></div>
+      <div class="head" style="margin-top:56px;">
+        <div class="eyebrow">Go deeper</div>
+        <h2 class="title" style="color:var(--text-on-dark);">The collateral behind this playbook</h2>
+      </div>
+      <div class="reslist" style="max-width:1000px;">
+        <a class="res" href="https://docs.google.com/presentation/d/1VON_VTTfsFHlOriv1YUNDtyPA7C29GMsypDEzFnt-Hs/edit?usp=sharing" target="_blank" rel="noopener"><span class="rt">Training</span><span class="rn">Competitive Intelligence &amp; Objections →</span></a>
+        <a class="res" href="https://docs.google.com/presentation/d/1HZP4H2GJv4nhkBIugDxP4kUU8LX6TdsNDa-y7Fa6znI/edit?usp=sharing" target="_blank" rel="noopener"><span class="rt">Battle Card</span><span class="rn">Firm-level Battle Cards →</span></a>
+        <a class="res" href="https://drive.google.com/file/d/1iCL6IiduRsVBvRDO5tXL8ARH-c66_nCi/view?usp=drive_link" target="_blank" rel="noopener"><span class="rt">Recording</span><span class="rn">Sharpen the Knife · Session 4 →</span></a>
+        <a class="res" href="https://savvywealth.slite.com/app/docs/mdaU5KwQ4KIlQa" target="_blank" rel="noopener"><span class="rt">Video</span><span class="rn">Advisor Testimonial Videos →</span></a>
+        <a class="res" href="https://savvywealth.slite.com/app/docs/tIhdfIIBxIXH7m" target="_blank" rel="noopener"><span class="rt">Case Study</span><span class="rn">Advisor Case Study Slides →</span></a>
+        <a class="res" href="https://docs.google.com/presentation/d/1XeuAkKnT2JiV57R7DHyKyeBqyaKAPYMVYKGyZxTb8Bs/edit" target="_blank" rel="noopener"><span class="rt">Reference</span><span class="rn">Brand Narrative for Sales →</span></a>
+      </div>
+      <p class="footnote">Internal use only · Sourced from the Savvy sales coaching knowledge base.</p>
+      <div class="pageno">15</div>
+    </div>
+  </section>
+
+</deck-stage>
+<script src="./deck-stage.js"></script>
+</body>
+</html>

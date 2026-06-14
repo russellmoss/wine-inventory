@@ -1,0 +1,32 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Paper & ink ramp" subtitle="Warm neutral scale from vanilla paper to ink black" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; padding: 22px; background: var(--surface-page); }
+  .ramp { display: flex; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-subtle); }
+  .ramp > div { flex: 1; height: 64px; }
+  .labels { display: flex; margin-top: 8px; }
+  .labels > div { flex: 1; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); text-align: center; }
+</style>
+</head>
+<body>
+  <div class="ramp">
+    <div style="background:var(--paper-0)"></div>
+    <div style="background:var(--paper-50)"></div>
+    <div style="background:var(--paper-100)"></div>
+    <div style="background:var(--paper-200)"></div>
+    <div style="background:var(--paper-300)"></div>
+    <div style="background:var(--paper-400)"></div>
+    <div style="background:var(--ink-600)"></div>
+    <div style="background:var(--ink-700)"></div>
+    <div style="background:var(--ink-800)"></div>
+    <div style="background:var(--ink-900)"></div>
+  </div>
+  <div class="labels">
+    <div>0</div><div>50</div><div>100</div><div>200</div><div>300</div><div>400</div><div>600</div><div>700</div><div>800</div><div>900</div>
+  </div>
+</body>
+</html>

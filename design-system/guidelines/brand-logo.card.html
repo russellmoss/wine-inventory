@@ -1,0 +1,26 @@
+<!-- @dsCard group="Brand" viewport="700x180" name="Logo & submark" subtitle="Savvy wordmark (Big Caslon) + interlocking-S submark" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; padding: 0; background: var(--surface-page); }
+  .wrap { display: flex; height: 180px; }
+  .cell { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+  .cell.dark { background: var(--savvy-black); }
+  .cell.line { border-right: 1px solid var(--border-subtle); }
+  img.word { height: 42px; }
+  img.mark { height: 56px; }
+  .cap { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+  .cap.on { color: var(--text-on-dark-muted); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="cell line"><img class="word" src="../assets/logos/savvy-wordmark-black.png" alt="Savvy" /><div class="cap">Wordmark · on light</div></div>
+    <div class="cell line dark"><img class="word" src="../assets/logos/savvy-wordmark-white.png" alt="Savvy" /><div class="cap on">Wordmark · on dark</div></div>
+    <div class="cell"><img class="mark" src="../assets/logos/savvy-submark-black.png" alt="Savvy submark" /><div class="cap">Submark</div></div>
+  </div>
+</body>
+</html>
