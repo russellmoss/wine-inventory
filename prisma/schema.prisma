@@ -1,6 +1,6 @@
-// Wine Inventory — Prisma schema
-// Neon Postgres. DATABASE_URL is the pooled connection (runtime);
-// DATABASE_URL_UNPOOLED is the direct connection (migrations).
+// Bhutan Wine Company — Prisma schema (Prisma 6, Neon Postgres)
+// Auth models (User/Session/Account/Verification) are owned by Better Auth
+// (generated via its CLI). Domain + audit models follow.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,39 +12,7 @@ datasource db {
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
-model Wine {
-  id            String   @id @default(cuid())
-  name          String
-  producer      String?
-  vintage       Int?
-  varietal      String?
-  region        String?
-  country       String?
-  type          WineType @default(RED)
-  quantity      Int      @default(0)
-  bottleSize    String   @default("750ml")
-  purchasePrice Decimal? @db.Decimal(10, 2)
-  currentValue  Decimal? @db.Decimal(10, 2)
-  location      String?
-  notes         String?
-  drinkFrom     Int?
-  drinkUntil    Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([name])
-  @@index([producer])
-  @@index([region])
-}
-
-enum WineType {
-  RED
-  WHITE
-  ROSE
-  SPARKLING
-  DESSERT
-  FORTIFIED
-}
+// ───────────────────────── Auth (Better Auth) ─────────────────────────
 
 model User {
   id                 String    @id
@@ -114,4 +82,268 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum VesselType {
+  BARREL
+  TANK
+}
+
+enum ItemKind {
+  BOTTLED_WINE
+  FINISHED_GOOD
+}
+
+enum MovementKind {
+  RECEIVE
+  ADJUST
+  TRANSFER
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  PASSWORD_RESET
+  PASSWORD_CHANGE
+  USER_CREATED
+  USER_DELETED
+  BOTTLING
+  STOCK_MOVEMENT
+}
+
+// ───────────────────────── Shared registries ─────────────────────────
+
+model Location {
+  id                    String                  @id @default(cuid())
+  name                  String                  @unique
+  isSystem              Boolean                 @default(false) // "Winery" = true
+  isActive              Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  bottledInventory      BottledInventory[]
+  finishedGoodInventory FinishedGoodInventory[]
+  stockMovements        StockMovement[]
+  bottlingRuns          BottlingRun[]
+
+  @@map("location")
+}
+
+model Variety {
+  id              String            @id @default(cuid())
+  name            String            @unique
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  components      VesselComponent[]
+  bottlingSources BottlingSource[]
+
+  @@map("variety")
+}
+
+model Vineyard {
+  id              String            @id @default(cuid())
+  name            String            @unique
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  components      VesselComponent[]
+  bottlingSources BottlingSource[]
+
+  @@map("vineyard")
+}
+
+// ───────────────────────── Bulk / in-process wine ─────────────────────────
+
+model Vessel {
+  id              String            @id @default(cuid())
+  code            String            @unique
+  type            VesselType
+  capacityL       Decimal           @db.Decimal(10, 2)
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  components      VesselComponent[]
+  bottlingSources BottlingSource[]
+
+  @@map("vessel")
+}
+
+model VesselComponent {
+  id         String   @id @default(cuid())
+  vesselId   String
+  varietyId  String
+  vineyardId String
+  vintage    Int
+  volumeL    Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  vessel     Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  variety    Variety  @relation(fields: [varietyId], references: [id], onDelete: Restrict)
+  vineyard   Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
+
+  @@unique([vesselId, varietyId, vineyardId, vintage])
+  @@index([vesselId])
+  @@index([varietyId])
+  @@map("vessel_component")
+}
+
+// ───────────────────────── Bottling ─────────────────────────
+
+model WineSku {
+  id               String             @id @default(cuid())
+  name             String
+  vintage          Int
+  bottleSizeMl     Int                @default(750)
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  bottlingRuns     BottlingRun[]
+  bottledInventory BottledInventory[]
+  stockMovements   StockMovement[]
+
+  @@unique([name, vintage, bottleSizeMl])
+  @@map("wine_sku")
+}
+
+model BottlingRun {
+  id                    String           @id @default(cuid())
+  date                  DateTime
+  wineSkuId             String
+  bottlesProduced       Int
+  volumeConsumedL       Decimal          @db.Decimal(10, 2)
+  destinationLocationId String
+  createdById           String? // soft-deleted users; snapshot below survives
+  createdByEmail        String
+  createdAt             DateTime         @default(now())
+  wineSku               WineSku          @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
+  destinationLocation   Location         @relation(fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  sources               BottlingSource[]
+  stockMovements        StockMovement[]
+
+  @@index([wineSkuId])
+  @@index([date])
+  @@map("bottling_run")
+}
+
+model BottlingSource {
+  id              String      @id @default(cuid())
+  bottlingRunId   String
+  vesselId        String
+  varietyId       String
+  vineyardId      String
+  vintage         Int
+  volumeConsumedL Decimal     @db.Decimal(10, 2)
+  bottlingRun     BottlingRun @relation(fields: [bottlingRunId], references: [id], onDelete: Cascade)
+  vessel          Vessel      @relation(fields: [vesselId], references: [id], onDelete: Restrict)
+  variety         Variety     @relation(fields: [varietyId], references: [id], onDelete: Restrict)
+  vineyard        Vineyard    @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
+
+  @@index([bottlingRunId])
+  @@index([vesselId])
+  @@map("bottling_source")
+}
+
+// ───────────────────────── Inventory ledger + cached balances ─────────────────────────
+
+model StockMovement {
+  id              String       @id @default(cuid())
+  createdAt       DateTime     @default(now())
+  createdById     String?
+  createdByEmail  String
+  itemKind        ItemKind
+  wineSkuId       String?
+  finishedGoodId  String?
+  locationId      String
+  kind            MovementKind
+  deltaUnits      Int // bottles (wine) or each (goods); signed
+  reason          String?
+  transferGroupId String? // pairs the out/in legs of a TRANSFER
+  bottlingRunId   String?
+  wineSku         WineSku?     @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
+  finishedGood    FinishedGood? @relation(fields: [finishedGoodId], references: [id], onDelete: Restrict)
+  location        Location     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  bottlingRun     BottlingRun? @relation(fields: [bottlingRunId], references: [id], onDelete: SetNull)
+
+  @@index([wineSkuId])
+  @@index([finishedGoodId])
+  @@index([locationId])
+  @@index([createdAt])
+  @@index([transferGroupId])
+  @@map("stock_movement")
+}
+
+model BottledInventory {
+  id           String   @id @default(cuid())
+  wineSkuId    String
+  locationId   String
+  totalBottles Int      @default(0)
+  updatedAt    DateTime @updatedAt
+  wineSku      WineSku  @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
+  location     Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([wineSkuId, locationId])
+  @@index([locationId])
+  @@map("bottled_inventory")
+}
+
+// ───────────────────────── Finished goods (merch) ─────────────────────────
+
+model FinishedGoodCategory {
+  id        String         @id @default(cuid())
+  name      String         @unique
+  isActive  Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  goods     FinishedGood[]
+
+  @@map("finished_good_category")
+}
+
+model FinishedGood {
+  id             String                  @id @default(cuid())
+  name           String
+  categoryId     String
+  isActive       Boolean                 @default(true)
+  createdAt      DateTime                @default(now())
+  category       FinishedGoodCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  inventory      FinishedGoodInventory[]
+  stockMovements StockMovement[]
+
+  @@index([categoryId])
+  @@map("finished_good")
+}
+
+model FinishedGoodInventory {
+  id             String       @id @default(cuid())
+  finishedGoodId String
+  locationId     String
+  quantity       Int          @default(0)
+  updatedAt      DateTime     @updatedAt
+  finishedGood   FinishedGood @relation(fields: [finishedGoodId], references: [id], onDelete: Restrict)
+  location       Location     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([finishedGoodId, locationId])
+  @@index([locationId])
+  @@map("finished_good_inventory")
+}
+
+// ───────────────────────── Audit ─────────────────────────
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  createdAt   DateTime    @default(now())
+  actorUserId String?
+  actorEmail  String
+  action      AuditAction
+  entityType  String
+  entityId    String?
+  changes     Json?
+  summary     String
+  ipAddress   String?
+  userAgent   String?
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@map("audit_log")
 }
