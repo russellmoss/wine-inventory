@@ -118,18 +118,19 @@ export function AppShell({
     router.refresh();
   }
 
+  // NOTE: no `display` here — the responsive classes own it (inline display would override them).
   const sidebarBox: React.CSSProperties = {
     width: 248, flex: "none", borderRight: "1px solid var(--border-strong)", background: "var(--surface-raised)",
-    display: "flex", flexDirection: "column",
+    flexDirection: "column",
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--surface-page)" }} className="md:flex">
-      {/* Mobile top bar */}
+    <div className="bw-shell" style={{ minHeight: "100vh", background: "var(--surface-page)" }}>
+      {/* Mobile top bar (hidden on desktop via .bw-mobile-bar) */}
       <header
-        className="md:hidden"
+        className="bw-mobile-bar"
         style={{
-          position: "sticky", top: 0, zIndex: 30, display: "flex", alignItems: "center", justifyContent: "space-between",
+          position: "sticky", top: 0, zIndex: 30, alignItems: "center", justifyContent: "space-between",
           padding: "12px 16px", background: "var(--surface-raised)", borderBottom: "1px solid var(--border-strong)",
         }}
       >
@@ -137,17 +138,17 @@ export function AppShell({
         <button onClick={() => setDrawer(true)} aria-label="Open menu" style={{ background: "none", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", padding: "6px 10px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>☰</button>
       </header>
 
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
+      {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
+      <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
         <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} />
       </aside>
 
       {/* Mobile drawer */}
       {drawer ? (
-        <div className="md:hidden" style={{ position: "fixed", inset: 0, zIndex: 50 }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 50 }}>
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
-          <aside style={{ ...sidebarBox, position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
-            <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
+          <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
+            <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
             <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} />
           </aside>
         </div>

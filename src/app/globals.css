@@ -19,6 +19,16 @@
   --font-body: var(--font-body);
 }
 
+/* Responsive app shell. These own `display` so inline styles don't fight them. */
+.bw-shell { display: block; }
+.bw-mobile-bar { display: flex; }
+.bw-desktop-sidebar { display: none; }
+@media (min-width: 768px) {
+  .bw-shell { display: flex; }
+  .bw-mobile-bar { display: none; }
+  .bw-desktop-sidebar { display: flex; }
+}
+
 /* Mobile: wide tables scroll horizontally instead of breaking the layout. */
 @media (max-width: 767px) {
   .app-main table {
