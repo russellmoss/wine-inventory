@@ -18,3 +18,17 @@
   --font-heading: var(--font-heading);
   --font-body: var(--font-body);
 }
+
+/* Mobile: wide tables scroll horizontally instead of breaking the layout. */
+@media (max-width: 767px) {
+  .app-main table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Tame oversized display headings on small screens. */
+  .app-main h1 {
+    font-size: 30px !important;
+  }
+}
