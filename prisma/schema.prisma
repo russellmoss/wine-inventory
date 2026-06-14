@@ -13,24 +13,24 @@ datasource db {
 }
 
 model Wine {
-  id          String    @id @default(cuid())
-  name        String
-  producer    String?
-  vintage     Int?
-  varietal    String?
-  region      String?
-  country     String?
-  type        WineType  @default(RED)
-  quantity    Int       @default(0)
-  bottleSize  String    @default("750ml")
+  id            String   @id @default(cuid())
+  name          String
+  producer      String?
+  vintage       Int?
+  varietal      String?
+  region        String?
+  country       String?
+  type          WineType @default(RED)
+  quantity      Int      @default(0)
+  bottleSize    String   @default("750ml")
   purchasePrice Decimal? @db.Decimal(10, 2)
   currentValue  Decimal? @db.Decimal(10, 2)
-  location    String?
-  notes       String?
-  drinkFrom   Int?
-  drinkUntil  Int?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  location      String?
+  notes         String?
+  drinkFrom     Int?
+  drinkUntil    Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([name])
   @@index([producer])
@@ -44,4 +44,74 @@ enum WineType {
   SPARKLING
   DESSERT
   FORTIFIED
+}
+
+model User {
+  id                 String    @id
+  name               String
+  email              String
+  emailVerified      Boolean   @default(false)
+  image              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  role               String?
+  banned             Boolean?  @default(false)
+  banReason          String?
+  banExpires         DateTime?
+  mustChangePassword Boolean?  @default(false)
+  passwordChangedAt  DateTime?
+  sessions           Session[]
+  accounts           Account[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id             String   @id
+  expiresAt      DateTime
+  token          String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy String?
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
 }
