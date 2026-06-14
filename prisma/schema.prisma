@@ -1,0 +1,47 @@
+// Wine Inventory — Prisma schema
+// Neon Postgres. DATABASE_URL is the pooled connection (runtime);
+// DATABASE_URL_UNPOOLED is the direct connection (migrations).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+model Wine {
+  id          String    @id @default(cuid())
+  name        String
+  producer    String?
+  vintage     Int?
+  varietal    String?
+  region      String?
+  country     String?
+  type        WineType  @default(RED)
+  quantity    Int       @default(0)
+  bottleSize  String    @default("750ml")
+  purchasePrice Decimal? @db.Decimal(10, 2)
+  currentValue  Decimal? @db.Decimal(10, 2)
+  location    String?
+  notes       String?
+  drinkFrom   Int?
+  drinkUntil  Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([name])
+  @@index([producer])
+  @@index([region])
+}
+
+enum WineType {
+  RED
+  WHITE
+  ROSE
+  SPARKLING
+  DESSERT
+  FORTIFIED
+}

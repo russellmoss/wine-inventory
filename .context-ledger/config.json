@@ -1,0 +1,50 @@
+{
+  "capture": {
+    "enabled": true,
+    "ignore_paths": [
+      "dist/",
+      "node_modules/",
+      ".next/",
+      "coverage/",
+      ".agent-guard/",
+      "src/generated/"
+    ],
+    "scope_mappings": {
+      "prisma/": { "type": "domain", "id": "data-model" },
+      "src/lib/": { "type": "domain", "id": "lib" },
+      "src/app/api/": { "type": "domain", "id": "api-routes" },
+      "src/app/": { "type": "domain", "id": "pages" },
+      "src/components/": { "type": "domain", "id": "components" }
+    },
+    "redact_patterns": [],
+    "no_capture_marker": "[no-capture]",
+    "inbox_ttl_days": 14,
+    "inbox_max_prompts_per_item": 3,
+    "inbox_max_items_per_session": 3
+  },
+  "retrieval": {
+    "default_limit": 20,
+    "include_superseded": false,
+    "include_unreviewed": false,
+    "auto_promotion_min_weight": 0.7,
+    "token_budget": 4000,
+    "feature_hint_mappings": {
+      "inventory": ["data-model"],
+      "wine": ["data-model"],
+      "schema": ["data-model"],
+      "prisma": ["data-model"],
+      "api": ["api-routes"],
+      "ui": ["components"],
+      "page": ["pages"]
+    }
+  },
+  "workflow_integration": {
+    "selective_writeback": true,
+    "check_inbox_on_session_start": true,
+    "jit_backfill": true
+  },
+  "monorepo": {
+    "package_name": null,
+    "root_relative_path": null
+  }
+}

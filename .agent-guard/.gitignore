@@ -1,0 +1,6 @@
+.auto-fix-ran
+.docs-stale
+log.json
+
+# Ensure session context is always tracked
+!session-context.md
