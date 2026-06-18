@@ -43,6 +43,12 @@ function parseBarrelMeta(formData: FormData): BarrelMeta {
   };
 }
 
+function conflictMessage(type: VesselType, code: string): string {
+  return type === "BARREL"
+    ? `Barrel # ${code} already exists. Each barrel needs a unique number.`
+    : `A tank with code "${code}" already exists.`;
+}
+
 function parseInput(formData: FormData) {
   const code = String(formData.get("code") ?? "").trim();
   const type = String(formData.get("type") ?? "") as VesselType;
@@ -57,8 +63,8 @@ function parseInput(formData: FormData) {
 
 export const createVessel = action(async ({ actor }, formData: FormData) => {
   const { code, type, capacityL, meta } = parseInput(formData);
-  if (await prisma.vessel.findUnique({ where: { code } })) {
-    throw new ActionError("A vessel with that code already exists.", "CONFLICT");
+  if (await prisma.vessel.findFirst({ where: { type, code } })) {
+    throw new ActionError(conflictMessage(type, code), "CONFLICT");
   }
   await prisma.$transaction(async (tx) => {
     const v = await tx.vessel.create({ data: { code, type, capacityL, ...meta } });
@@ -79,8 +85,8 @@ export const updateVessel = action(async ({ actor }, id: string, formData: FormD
   const v = await prisma.vessel.findUnique({ where: { id }, include: { components: true } });
   if (!v) throw new ActionError("Vessel not found.");
   if (v.code !== code) {
-    const clash = await prisma.vessel.findUnique({ where: { code } });
-    if (clash) throw new ActionError("A vessel with that code already exists.", "CONFLICT");
+    const clash = await prisma.vessel.findFirst({ where: { type, code, NOT: { id } } });
+    if (clash) throw new ActionError(conflictMessage(type, code), "CONFLICT");
   }
   const filled = v.components.reduce((a, c) => a + Number(c.volumeL), 0);
   if (capacityL < filled) {
