@@ -11,7 +11,7 @@ export type Comp = { id: string; varietyId: string; varietyName: string; vineyar
 export type VesselWithContents = {
   id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null;
   components: Comp[]; blend: BlendInfo; fill: Fill;
-  barrelNumber: number | null; oakOrigin: string | null; cooperageYear: number | null; cooperage: string | null; toastLevel: string | null;
+  oakOrigin: string | null; cooperageYear: number | null; cooperage: string | null; toastLevel: string | null;
 };
 
 const selectStyle: React.CSSProperties = {
@@ -41,7 +41,7 @@ function FillBar({ v }: { v: VesselWithContents }) {
 function BarrelMeta({ v }: { v: VesselWithContents }) {
   if (v.type !== "BARREL") return null;
   const rows: Array<[string, React.ReactNode]> = [
-    ["Barrel #", v.barrelNumber != null ? `#${v.barrelNumber}` : null],
+    ["Barrel #", v.code],
     ["Volume", `${v.capacityL} L`],
     ["Oak origin", v.oakOrigin],
     ["Year of cooperage", v.cooperageYear],
@@ -126,7 +126,6 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
           columns={[
             { key: "vessel", label: "Vessel" },
             { key: "type", label: "Type" },
-            { key: "barrelNumber", label: "Barrel #" },
             { key: "oakOrigin", label: "Oak origin" },
             { key: "cooperageYear", label: "Year of cooperage" },
             { key: "cooperage", label: "Cooperage" },
@@ -139,7 +138,6 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
           rows={vessels.flatMap((v) => v.components.map((c) => ({
             vessel: v.code,
             type: v.type,
-            barrelNumber: v.barrelNumber ?? "",
             oakOrigin: v.oakOrigin ?? "",
             cooperageYear: v.cooperageYear ?? "",
             cooperage: v.cooperage ?? "",

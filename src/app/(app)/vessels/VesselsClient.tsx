@@ -14,7 +14,6 @@ export type VesselRow = {
   filledL: number;
   pct: number;
   over: boolean;
-  barrelNumber: number | null;
   oakOrigin: string | null;
   cooperageYear: number | null;
   cooperage: string | null;
@@ -49,11 +48,10 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
           style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 8 }}
         >
           <input type="hidden" name="type" value={type} />
-          <Input label="Code" name="code" placeholder={type === "BARREL" ? "BARREL-001" : "TANK-001"} required style={{ flex: "1 1 150px" }} />
+          <Input label={type === "BARREL" ? "Barrel #" : "Code"} name="code" placeholder={type === "BARREL" ? "1" : "TANK-001"} required style={{ flex: "1 1 150px" }} />
           <Input label={type === "BARREL" ? "Volume (L)" : "Capacity (L)"} name="capacityL" type="number" step="0.01" min="0.01" placeholder={type === "BARREL" ? "225" : "5000"} required style={{ flex: "0 1 130px" }} />
           {type === "BARREL" ? (
             <>
-              <Input label="Barrel #" name="barrelNumber" type="number" step="1" min="1" placeholder="1" style={{ flex: "0 1 90px" }} />
               <Input label="Oak origin" name="oakOrigin" placeholder="French" style={{ flex: "1 1 120px" }} />
               <Input label="Year of cooperage" name="cooperageYear" type="number" step="1" min="1900" placeholder="2024" style={{ flex: "0 1 120px" }} />
               <Input label="Cooperage" name="cooperage" placeholder="Seguin Moreau" style={{ flex: "1 1 140px" }} />
@@ -123,11 +121,10 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
               style={{ display: "flex", flexDirection: "column", gap: 12 }}
             >
               <input type="hidden" name="type" value={selected.type} />
-              <Input label="Code" name="code" defaultValue={selected.code} required />
+              <Input label={selected.type === "BARREL" ? "Barrel #" : "Code"} name="code" defaultValue={selected.code} required />
               <Input label={selected.type === "BARREL" ? "Volume (L)" : "Capacity (L)"} name="capacityL" type="number" step="0.01" min="0.01" defaultValue={selected.capacityL} hint={selected.filledL > 0 ? `Can't go below current contents (${selected.filledL} L)` : undefined} required />
               {selected.type === "BARREL" ? (
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <Input label="Barrel #" name="barrelNumber" type="number" step="1" min="1" defaultValue={selected.barrelNumber ?? ""} style={{ flex: "0 1 90px" }} />
                   <Input label="Oak origin" name="oakOrigin" defaultValue={selected.oakOrigin ?? ""} style={{ flex: "1 1 130px" }} />
                   <Input label="Year of cooperage" name="cooperageYear" type="number" step="1" min="1900" defaultValue={selected.cooperageYear ?? ""} style={{ flex: "0 1 120px" }} />
                   <Input label="Cooperage" name="cooperage" defaultValue={selected.cooperage ?? ""} style={{ flex: "1 1 150px" }} />

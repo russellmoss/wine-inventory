@@ -10,16 +10,15 @@ const TYPES = ["BARREL", "TANK"] as const;
 type VesselType = (typeof TYPES)[number];
 const CURRENT_YEAR = 2026;
 
-// Barrel-only metadata. Volume is `capacityL` (handled above), not duplicated here.
+// Barrel-only metadata. The barrel's "Barrel #" is its `code`; volume is `capacityL`.
 type BarrelMeta = {
-  barrelNumber: number | null;
   oakOrigin: string | null;
   cooperageYear: number | null;
   cooperage: string | null;
   toastLevel: string | null;
 };
 
-const EMPTY_META: BarrelMeta = { barrelNumber: null, oakOrigin: null, cooperageYear: null, cooperage: null, toastLevel: null };
+const EMPTY_META: BarrelMeta = { oakOrigin: null, cooperageYear: null, cooperage: null, toastLevel: null };
 
 function optText(formData: FormData, key: string, max = 80): string | null {
   const s = String(formData.get(key) ?? "").trim();
@@ -29,13 +28,6 @@ function optText(formData: FormData, key: string, max = 80): string | null {
 }
 
 function parseBarrelMeta(formData: FormData): BarrelMeta {
-  let barrelNumber: number | null = null;
-  const rawNum = String(formData.get("barrelNumber") ?? "").trim();
-  if (rawNum !== "") {
-    const n = Number(rawNum);
-    if (!Number.isInteger(n) || n <= 0) throw new ActionError("Barrel # must be a positive whole number.");
-    barrelNumber = n;
-  }
   let cooperageYear: number | null = null;
   const rawYear = String(formData.get("cooperageYear") ?? "").trim();
   if (rawYear !== "") {
@@ -44,7 +36,6 @@ function parseBarrelMeta(formData: FormData): BarrelMeta {
     cooperageYear = y;
   }
   return {
-    barrelNumber,
     oakOrigin: optText(formData, "oakOrigin"),
     cooperageYear,
     cooperage: optText(formData, "cooperage"),
@@ -64,18 +55,11 @@ function parseInput(formData: FormData) {
   return { code, type, capacityL, meta };
 }
 
-async function assertBarrelNumberFree(barrelNumber: number | null, excludeId?: string) {
-  if (barrelNumber == null) return;
-  const clash = await prisma.vessel.findUnique({ where: { barrelNumber } });
-  if (clash && clash.id !== excludeId) throw new ActionError(`Barrel # ${barrelNumber} is already in use.`, "CONFLICT");
-}
-
 export const createVessel = action(async ({ actor }, formData: FormData) => {
   const { code, type, capacityL, meta } = parseInput(formData);
   if (await prisma.vessel.findUnique({ where: { code } })) {
     throw new ActionError("A vessel with that code already exists.", "CONFLICT");
   }
-  await assertBarrelNumberFree(meta.barrelNumber);
   await prisma.$transaction(async (tx) => {
     const v = await tx.vessel.create({ data: { code, type, capacityL, ...meta } });
     await writeAudit(tx, {
@@ -102,8 +86,7 @@ export const updateVessel = action(async ({ actor }, id: string, formData: FormD
   if (capacityL < filled) {
     throw new ActionError(`Capacity (${capacityL} L) is below current contents (${filled} L).`, "CONFLICT");
   }
-  await assertBarrelNumberFree(meta.barrelNumber, id);
-  const before = { code: v.code, type: v.type, capacityL: v.capacityL, barrelNumber: v.barrelNumber, oakOrigin: v.oakOrigin, cooperageYear: v.cooperageYear, cooperage: v.cooperage, toastLevel: v.toastLevel };
+  const before = { code: v.code, type: v.type, capacityL: v.capacityL, oakOrigin: v.oakOrigin, cooperageYear: v.cooperageYear, cooperage: v.cooperage, toastLevel: v.toastLevel };
   const after = { code, type, capacityL, ...meta };
   await prisma.$transaction(async (tx) => {
     await tx.vessel.update({ where: { id }, data: after });

@@ -39,7 +39,6 @@ export default async function BulkPage() {
       components: comps,
       blend,
       fill,
-      barrelNumber: v.barrelNumber,
       oakOrigin: v.oakOrigin,
       cooperageYear: v.cooperageYear,
       cooperage: v.cooperage,

@@ -164,7 +164,7 @@ model Vessel {
   isActive        Boolean           @default(true)
   blendName       String? // optional label for the current blend in this vessel
   // Barrel-only metadata (null for tanks). Volume = capacityL (not duplicated here).
-  barrelNumber    Int?              @unique // manual "Barrel #", unique among barrels; NULLs (tanks) allowed
+  // The barrel's "Barrel #" is its `code` above — no separate number column.
   oakOrigin       String? // e.g. French, American, Hungarian
   cooperageYear   Int? // year the barrel was made
   cooperage       String? // barrel maker, e.g. Seguin Moreau
