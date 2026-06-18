@@ -4,9 +4,14 @@ import { VesselsClient, type VesselRow } from "./VesselsClient";
 
 export default async function VesselsPage() {
   const vessels = await prisma.vessel.findMany({
-    orderBy: [{ isActive: "desc" }, { code: "asc" }],
     include: { components: { select: { volumeL: true } } },
   });
+  // Natural sort: codes are strings ("1","2","10"), so sort numerically not lexically.
+  vessels.sort((a, b) =>
+    a.isActive !== b.isActive
+      ? (a.isActive ? -1 : 1)
+      : a.code.localeCompare(b.code, undefined, { numeric: true }),
+  );
 
   const rows: VesselRow[] = vessels.map((v) => {
     const fill = computeFill(

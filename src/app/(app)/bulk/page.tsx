@@ -46,5 +46,8 @@ export default async function BulkPage() {
     };
   });
 
+  // Natural sort: codes are strings ("1","2","10"), so sort numerically not lexically.
+  data.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+
   return <BulkClient vessels={data} varieties={varieties as Option[]} vineyards={vineyards as Option[]} />;
 }
