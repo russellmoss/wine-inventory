@@ -20,12 +20,16 @@ export default async function BottlingPage() {
     }),
   ]);
 
-  const vesselOpts: VesselOpt[] = vessels.map((v) => ({
-    id: v.id,
-    code: v.code,
-    availableL: Math.round(v.components.reduce((a, c) => a + Number(c.volumeL), 0) * 100) / 100,
-    contents: v.components.map((c) => `${c.variety.name} · ${c.vineyard.name} · ${c.vintage} (${Number(c.volumeL)} L)`),
-  }));
+  const vesselOpts: VesselOpt[] = vessels
+    .slice()
+    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
+    .map((v) => ({
+      id: v.id,
+      code: v.code,
+      type: v.type,
+      availableL: Math.round(v.components.reduce((a, c) => a + Number(c.volumeL), 0) * 100) / 100,
+      contents: v.components.map((c) => `${c.variety.name} · ${c.vineyard.name} · ${c.vintage} (${Number(c.volumeL)} L)`),
+    }));
 
   const runRows: RunRow[] = runs.map((r) => ({
     id: r.id,

@@ -5,7 +5,7 @@ import { Card, Input, Button, Badge, Eyebrow, ConfirmButton } from "@/components
 import { createBottlingRun, editBottlingRun, deleteBottlingRun } from "@/lib/bottling/actions";
 import { suggestBottles, consumedForBottles, casesAndLoose } from "@/lib/bottling/draw";
 
-export type VesselOpt = { id: string; code: string; availableL: number; contents: string[] };
+export type VesselOpt = { id: string; code: string; type: "BARREL" | "TANK"; availableL: number; contents: string[] };
 export type LocOpt = { id: string; name: string };
 export type RunRow = {
   id: string;
@@ -59,7 +59,8 @@ function BottlingForm({
               return (
                 <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderTop: "1px solid var(--border-subtle)", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent" }}>
                   <input type="checkbox" checked={on} onChange={() => toggle(v.id)} />
-                  <span style={{ flex: 1, fontSize: 14 }}>{v.code}</span>
+                  <Badge tone={v.type === "BARREL" ? "maroon" : "gold"} variant="soft">{v.type === "BARREL" ? "Barrel" : "Tank"}</Badge>
+                  <span style={{ flex: 1, fontSize: 14 }}>{v.type === "BARREL" ? `Barrel ${v.code}` : v.code}</span>
                   <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{v.availableL} L</span>
                 </label>
               );
