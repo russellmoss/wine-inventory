@@ -8,8 +8,8 @@ export default async function InventoryPage() {
     prisma.wineSku.findMany({ where: { isActive: true }, orderBy: [{ name: "asc" }, { vintage: "desc" }], include: { category: { select: { name: true } } } }),
     prisma.finishedGood.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, include: { category: { select: { name: true } } } }),
     prisma.location.findMany({ where: { isActive: true }, orderBy: [{ isSystem: "desc" }, { name: "asc" }], select: { id: true, name: true } }),
-    prisma.bottledInventory.findMany({ where: { totalBottles: { gt: 0 } }, include: { wineSku: { select: { name: true, vintage: true, category: { select: { name: true } } } }, location: { select: { name: true } } } }),
-    prisma.finishedGoodInventory.findMany({ where: { quantity: { gt: 0 } }, include: { finishedGood: { select: { name: true, category: { select: { name: true } } } }, location: { select: { name: true } } } }),
+    prisma.bottledInventory.findMany({ where: { totalBottles: { gt: 0 } }, include: { wineSku: { select: { name: true, vintage: true, categoryId: true, category: { select: { name: true } } } }, location: { select: { name: true } } } }),
+    prisma.finishedGoodInventory.findMany({ where: { quantity: { gt: 0 } }, include: { finishedGood: { select: { name: true, categoryId: true, category: { select: { name: true } } } }, location: { select: { name: true } } } }),
   ]);
 
   const items: ItemOpt[] = [
@@ -20,9 +20,9 @@ export default async function InventoryPage() {
   const onHand: OnHandRow[] = [
     ...bottled.map((b) => {
       const { cases, loose } = casesAndLoose(b.totalBottles);
-      return { kind: "BOTTLED_WINE" as const, itemId: b.wineSkuId, item: `${b.wineSku.name} ${b.wineSku.vintage}`, category: b.wineSku.category?.name ?? "Wine", locationId: b.locationId, location: b.location.name, qty: b.totalBottles, detail: `${cases}c + ${loose}` };
+      return { kind: "BOTTLED_WINE" as const, itemId: b.wineSkuId, item: `${b.wineSku.name} ${b.wineSku.vintage}`, name: b.wineSku.name, vintage: b.wineSku.vintage, categoryId: b.wineSku.categoryId, category: b.wineSku.category?.name ?? "Wine", locationId: b.locationId, location: b.location.name, qty: b.totalBottles, detail: `${cases}c + ${loose}` };
     }),
-    ...fg.map((f) => ({ kind: "FINISHED_GOOD" as const, itemId: f.finishedGoodId, item: f.finishedGood.name, category: f.finishedGood.category.name, locationId: f.locationId, location: f.location.name, qty: f.quantity, detail: "" })),
+    ...fg.map((f) => ({ kind: "FINISHED_GOOD" as const, itemId: f.finishedGoodId, item: f.finishedGood.name, name: f.finishedGood.name, vintage: null, categoryId: f.finishedGood.categoryId, category: f.finishedGood.category.name, locationId: f.locationId, location: f.location.name, qty: f.quantity, detail: "" })),
   ].sort((a, b) => a.category.localeCompare(b.category) || a.item.localeCompare(b.item));
 
   return <InventoryClient categories={categories} items={items} locations={locations} onHand={onHand} />;

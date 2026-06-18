@@ -3,12 +3,14 @@
 import React from "react";
 import { Card, Input, Button, Badge, Eyebrow, ConfirmButton, ExportCsvButton } from "@/components/ui";
 import type { ItemKind } from "@/lib/stock/movements";
-import { createCategory, createWineSku, createGood, moveStock, setOnHand, deleteOnHand } from "@/lib/inventory/actions";
+import { createCategory, createWineSku, createGood, moveStock, updateOnHand, deleteOnHand } from "@/lib/inventory/actions";
 
 export type Cat = { id: string; name: string };
 export type ItemOpt = { kind: ItemKind; id: string; label: string; category: string };
 export type LocOpt = { id: string; name: string };
-export type OnHandRow = { kind: ItemKind; itemId: string; item: string; category: string; locationId: string; location: string; qty: number; detail: string };
+export type OnHandRow = { kind: ItemKind; itemId: string; item: string; name: string; vintage: number | null; categoryId: string | null; category: string; locationId: string; location: string; qty: number; detail: string };
+
+type Draft = { name: string; vintage: string; categoryId: string; locationId: string; qty: string };
 
 type Mode = "RECEIVE" | "ADJUST" | "TRANSFER";
 
@@ -23,6 +25,7 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
   const [mode, setMode] = React.useState<Mode>("RECEIVE");
   const [itemRef, setItemRef] = React.useState(""); // "KIND:id"
   const [editKey, setEditKey] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState<Draft | null>(null);
   const [fCategory, setFCategory] = React.useState("all");
   const [fLocation, setFLocation] = React.useState("all");
 
@@ -44,6 +47,34 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
       try { await fn(); form?.reset(); after?.(); }
       catch (e) { setError(e instanceof Error ? e.message : "Something went wrong."); }
     });
+  }
+
+  function startEdit(r: OnHandRow) {
+    setError(null);
+    setEditKey(`${r.kind}:${r.itemId}:${r.locationId}`);
+    setDraft({ name: r.name, vintage: r.vintage != null ? String(r.vintage) : "", categoryId: r.categoryId ?? "", locationId: r.locationId, qty: String(r.qty) });
+  }
+  function cancelEdit() {
+    setEditKey(null);
+    setDraft(null);
+  }
+  function saveEdit(r: OnHandRow) {
+    if (!draft) return;
+    run(
+      () =>
+        updateOnHand({
+          kind: r.kind,
+          itemId: r.itemId,
+          fromLocationId: r.locationId,
+          name: draft.name,
+          vintage: r.kind === "BOTTLED_WINE" ? Number(draft.vintage) : undefined,
+          categoryId: draft.categoryId,
+          toLocationId: draft.locationId,
+          qty: Number(draft.qty),
+        }),
+      undefined,
+      cancelEdit,
+    );
   }
 
   const [selKind, selId] = itemRef ? (itemRef.split(":") as [ItemKind, string]) : ["", ""];
@@ -177,23 +208,49 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
               filtered.map((r) => {
                 const key = `${r.kind}:${r.itemId}:${r.locationId}`;
                 const editing = editKey === key;
+                if (editing && draft) {
+                  const edSel = { ...sel, height: 34, fontSize: 14 };
+                  return (
+                    <tr key={key} style={{ borderTop: "1px solid var(--border-strong)", background: "var(--surface-sunken, rgba(0,0,0,0.02))" }}>
+                      <td style={{ padding: "12px 16px" }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Name" style={{ ...edSel, flex: 1, minWidth: 120 }} />
+                          {r.kind === "BOTTLED_WINE" ? (
+                            <input value={draft.vintage} onChange={(e) => setDraft({ ...draft, vintage: e.target.value })} type="number" placeholder="Vintage" style={{ ...edSel, width: 90 }} />
+                          ) : null}
+                        </div>
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <select value={draft.categoryId} onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })} style={edSel}>
+                          {r.kind === "BOTTLED_WINE" ? <option value="">— none —</option> : <option value="" disabled>Category</option>}
+                          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <select value={draft.locationId} onChange={(e) => setDraft({ ...draft, locationId: e.target.value })} style={edSel}>
+                          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                        <input value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value })} type="number" min="0" style={{ ...edSel, width: 90, textAlign: "right" }} />
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                        <Button variant="ghost" size="sm" disabled={pending} onClick={() => saveEdit(r)}>save</Button>
+                        <Button variant="ghost" size="sm" disabled={pending} onClick={cancelEdit}>cancel</Button>
+                      </td>
+                    </tr>
+                  );
+                }
                 return (
                   <tr key={key} style={{ borderTop: "1px solid var(--border-strong)" }}>
                     <td style={{ padding: "12px 16px" }}>{r.item}</td>
                     <td style={{ padding: "12px 16px" }}><Badge tone={r.kind === "BOTTLED_WINE" ? "gold" : "blue"} variant="soft">{r.category}</Badge></td>
                     <td style={{ padding: "12px 16px" }}>{r.location}</td>
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                      {editing ? (
-                        <form onSubmit={(e) => { e.preventDefault(); const t = Number(new FormData(e.currentTarget).get("target")); run(() => setOnHand(r.kind, r.itemId, r.locationId, t), undefined, () => setEditKey(null)); }} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          <input name="target" type="number" min="0" defaultValue={r.qty} style={{ ...sel, width: 90, height: 32 }} />
-                          <Button type="submit" variant="ghost" size="sm" disabled={pending}>save</Button>
-                        </form>
-                      ) : (
-                        <span>{r.qty}{r.detail ? <span style={{ color: "var(--text-muted)" }}> ({r.detail})</span> : null}</span>
-                      )}
+                      <span>{r.qty}{r.detail ? <span style={{ color: "var(--text-muted)" }}> ({r.detail})</span> : null}</span>
                     </td>
                     <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      {!editing ? <Button variant="ghost" size="sm" disabled={pending} onClick={() => setEditKey(key)}>edit</Button> : <Button variant="ghost" size="sm" onClick={() => setEditKey(null)}>cancel</Button>}
+                      <Button variant="ghost" size="sm" disabled={pending} onClick={() => startEdit(r)}>edit</Button>
                       <ConfirmButton onConfirm={() => run(() => deleteOnHand(r.kind, r.itemId, r.locationId))} disabled={pending}>delete</ConfirmButton>
                     </td>
                   </tr>
