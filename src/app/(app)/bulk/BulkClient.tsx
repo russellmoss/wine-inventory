@@ -123,8 +123,32 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
       <div style={{ marginBottom: 20 }}>
         <ExportCsvButton
           filename="bulk-wine.csv"
-          columns={[{ key: "vessel", label: "Vessel" }, { key: "type", label: "Type" }, { key: "variety", label: "Variety" }, { key: "vineyard", label: "Vineyard" }, { key: "vintage", label: "Vintage" }, { key: "volumeL", label: "Volume (L)" }]}
-          rows={vessels.flatMap((v) => v.components.map((c) => ({ vessel: v.code, type: v.type, variety: c.varietyName, vineyard: c.vineyardName, vintage: c.vintage, volumeL: c.volumeL })))}
+          columns={[
+            { key: "vessel", label: "Vessel" },
+            { key: "type", label: "Type" },
+            { key: "barrelNumber", label: "Barrel #" },
+            { key: "oakOrigin", label: "Oak origin" },
+            { key: "cooperageYear", label: "Year of cooperage" },
+            { key: "cooperage", label: "Cooperage" },
+            { key: "toastLevel", label: "Toast level" },
+            { key: "variety", label: "Variety" },
+            { key: "vineyard", label: "Vineyard" },
+            { key: "vintage", label: "Vintage" },
+            { key: "volumeL", label: "Volume (L)" },
+          ]}
+          rows={vessels.flatMap((v) => v.components.map((c) => ({
+            vessel: v.code,
+            type: v.type,
+            barrelNumber: v.barrelNumber ?? "",
+            oakOrigin: v.oakOrigin ?? "",
+            cooperageYear: v.cooperageYear ?? "",
+            cooperage: v.cooperage ?? "",
+            toastLevel: v.toastLevel ?? "",
+            variety: c.varietyName,
+            vineyard: c.vineyardName,
+            vintage: c.vintage,
+            volumeL: c.volumeL,
+          })))}
         />
       </div>
 
