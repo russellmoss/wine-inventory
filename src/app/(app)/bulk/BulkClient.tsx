@@ -8,7 +8,11 @@ import { addComponent, updateComponentVolume, removeComponent, setBlendName } fr
 
 export type Option = { id: string; name: string };
 export type Comp = { id: string; varietyId: string; varietyName: string; vineyardName: string; vintage: number; volumeL: number };
-export type VesselWithContents = { id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null; components: Comp[]; blend: BlendInfo; fill: Fill };
+export type VesselWithContents = {
+  id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null;
+  components: Comp[]; blend: BlendInfo; fill: Fill;
+  barrelNumber: number | null; oakOrigin: string | null; cooperageYear: number | null; cooperage: string | null; toastLevel: string | null;
+};
 
 const selectStyle: React.CSSProperties = {
   height: 38, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
@@ -30,6 +34,30 @@ function FillBar({ v }: { v: VesselWithContents }) {
       <span style={{ fontSize: 12.5, color: v.fill.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>
         {v.fill.filledL}/{v.capacityL} L{v.fill.over ? " ⚠" : ""}
       </span>
+    </div>
+  );
+}
+
+function BarrelMeta({ v }: { v: VesselWithContents }) {
+  if (v.type !== "BARREL") return null;
+  const rows: Array<[string, React.ReactNode]> = [
+    ["Barrel #", v.barrelNumber != null ? `#${v.barrelNumber}` : null],
+    ["Volume", `${v.capacityL} L`],
+    ["Oak origin", v.oakOrigin],
+    ["Year of cooperage", v.cooperageYear],
+    ["Cooperage", v.cooperage],
+    ["Toast level", v.toastLevel],
+  ];
+  const shown = rows.filter(([, val]) => val != null && val !== "");
+  if (shown.length === 0) return null;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px 18px", padding: "12px 0 14px", borderBottom: "1px solid var(--border-strong)", marginBottom: 14 }}>
+      {shown.map(([label, val]) => (
+        <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>{label}</span>
+          <span style={{ fontSize: 14, color: "var(--text-primary)" }}>{val}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -125,6 +153,7 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
       >
         {selected ? (
           <div>
+            <BarrelMeta v={selected} />
             {selected.components.length > 1 ? (
               <form
                 key={`bn-${selected.id}-${selected.blendName ?? ""}`}

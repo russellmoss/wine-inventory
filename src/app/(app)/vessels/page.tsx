@@ -23,6 +23,11 @@ export default async function VesselsPage() {
       filledL: fill.filledL,
       pct: fill.pct,
       over: fill.over,
+      barrelNumber: v.barrelNumber,
+      oakOrigin: v.oakOrigin,
+      cooperageYear: v.cooperageYear,
+      cooperage: v.cooperage,
+      toastLevel: v.toastLevel,
     };
   });
 

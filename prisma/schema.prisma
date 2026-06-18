@@ -163,6 +163,12 @@ model Vessel {
   capacityL       Decimal           @db.Decimal(10, 2)
   isActive        Boolean           @default(true)
   blendName       String? // optional label for the current blend in this vessel
+  // Barrel-only metadata (null for tanks). Volume = capacityL (not duplicated here).
+  barrelNumber    Int?              @unique // manual "Barrel #", unique among barrels; NULLs (tanks) allowed
+  oakOrigin       String? // e.g. French, American, Hungarian
+  cooperageYear   Int? // year the barrel was made
+  cooperage       String? // barrel maker, e.g. Seguin Moreau
+  toastLevel      String? // e.g. Light, Medium, Medium+, Heavy
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   components      VesselComponent[]
