@@ -5,8 +5,20 @@ import { prisma } from "@/lib/prisma";
 import { adminAction, ActionError } from "@/lib/actions";
 import { hashPassword } from "@/lib/password";
 import { writeAudit, summarize, diff } from "@/lib/audit";
+import { sendEmail, welcomeEmailHtml, passwordResetByAdminEmailHtml } from "@/lib/email";
 
 const PATH = "/users";
+
+// Best-effort: never let an email failure roll back account creation. The admin
+// still sees the temp password in the UI as a fallback. Returns whether it sent.
+async function trySend(to: string, subject: string, html: string): Promise<boolean> {
+  try {
+    await sendEmail({ to, subject, html });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function tempPassword(): string {
   return "Bwc-" + crypto.randomUUID().replace(/-/g, "").slice(0, 10);
@@ -25,7 +37,7 @@ function cleanRole(raw: unknown): "admin" | "user" {
 }
 
 /** Create a user with a generated temporary password. Returns it ONCE for the admin. */
-export const createUser = adminAction(async ({ actor }, formData: FormData): Promise<{ email: string; tempPassword: string }> => {
+export const createUser = adminAction(async ({ actor }, formData: FormData): Promise<{ email: string; tempPassword: string; emailed: boolean }> => {
   const email = cleanEmail(formData.get("email"));
   const name = String(formData.get("name") ?? "").trim() || email.split("@")[0];
   const role = cleanRole(formData.get("role"));
@@ -61,12 +73,13 @@ export const createUser = adminAction(async ({ actor }, formData: FormData): Pro
       summary: summarize("USER_CREATED", "User", { label: email }),
     });
   });
+  const emailed = await trySend(email, "Welcome to Bhutan Wine Inventory", welcomeEmailHtml({ name, email, tempPassword: temp }));
   revalidatePath(PATH);
-  return { email, tempPassword: temp };
+  return { email, tempPassword: temp, emailed };
 });
 
 /** Reset a user's password to a fresh temporary one (forces change on next login). */
-export const resetUserPassword = adminAction(async ({ actor }, userId: string): Promise<{ email: string; tempPassword: string }> => {
+export const resetUserPassword = adminAction(async ({ actor }, userId: string): Promise<{ email: string; tempPassword: string; emailed: boolean }> => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new ActionError("User not found.");
   const temp = tempPassword();
@@ -80,8 +93,9 @@ export const resetUserPassword = adminAction(async ({ actor }, userId: string): 
     await tx.session.deleteMany({ where: { userId } }); // revoke active sessions
     await writeAudit(tx, { ...actor, action: "PASSWORD_RESET", entityType: "User", entityId: userId, summary: summarize("PASSWORD_RESET", "User", { label: user.email }) });
   });
+  const emailed = await trySend(user.email, "Your Bhutan Wine Inventory password was reset", passwordResetByAdminEmailHtml({ name: user.name, email: user.email, tempPassword: temp }));
   revalidatePath(PATH);
-  return { email: user.email, tempPassword: temp };
+  return { email: user.email, tempPassword: temp, emailed };
 });
 
 export const setUserRole = adminAction(async ({ actor, user: me }, userId: string, role: "admin" | "user") => {

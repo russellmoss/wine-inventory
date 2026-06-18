@@ -27,7 +27,7 @@ const selectStyle: React.CSSProperties = {
 
 export function UsersClient({ users }: { users: UserRow[] }) {
   const [error, setError] = React.useState<string | null>(null);
-  const [secret, setSecret] = React.useState<{ email: string; tempPassword: string } | null>(null);
+  const [secret, setSecret] = React.useState<{ email: string; tempPassword: string; emailed?: boolean } | null>(null);
   const [pending, startTransition] = React.useTransition();
 
   function run(fn: () => Promise<unknown>, form?: HTMLFormElement) {
@@ -36,7 +36,7 @@ export function UsersClient({ users }: { users: UserRow[] }) {
       try {
         const res = await fn();
         if (res && typeof res === "object" && "tempPassword" in res) {
-          setSecret(res as { email: string; tempPassword: string });
+          setSecret(res as { email: string; tempPassword: string; emailed?: boolean });
         }
         form?.reset();
       } catch (e) {
@@ -60,7 +60,9 @@ export function UsersClient({ users }: { users: UserRow[] }) {
         <Card style={{ marginBottom: 20, borderColor: "var(--accent)" }}>
           <strong>Temporary password for {secret.email}</strong>
           <p style={{ margin: "8px 0", color: "var(--text-secondary)", fontSize: 14 }}>
-            Share this once. They&rsquo;ll be required to change it at first sign-in.
+            {secret.emailed
+              ? "We emailed these sign-in details to the user. This copy is a backup — they'll be required to change the password at first sign-in."
+              : "Couldn't email the user — share this with them directly. They'll be required to change it at first sign-in."}
           </p>
           <code style={{ fontSize: 16, background: "var(--surface-sunken)", padding: "6px 12px", borderRadius: "var(--radius-sm)" }}>
             {secret.tempPassword}
