@@ -4,6 +4,7 @@ import { admin } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "./prisma";
 import { hashPassword, verifyPassword } from "./password";
+import { sendEmail, resetPasswordEmailHtml } from "./email";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
@@ -14,6 +15,15 @@ export const auth = betterAuth({
     password: {
       hash: hashPassword,
       verify: verifyPassword,
+    },
+    // Self-service reset: emails a one-hour link. `url` is built from BETTER_AUTH_URL.
+    resetPasswordTokenExpiresIn: 60 * 60, // 1 hour
+    sendResetPassword: async ({ user, url }) => {
+      await sendEmail({
+        to: user.email,
+        subject: "Reset your Bhutan Wine Inventory password",
+        html: resetPasswordEmailHtml(user.name, url),
+      });
     },
   },
   user: {

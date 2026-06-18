@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Suspense } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "@/lib/auth-client";
 import { Card, Input, Button, Eyebrow } from "@/components/ui";
@@ -74,6 +75,11 @@ function LoginForm() {
             {pending ? "Signing in..." : "Sign in"}
           </Button>
         </form>
+        <p style={{ marginTop: 16, textAlign: "center", fontSize: 13.5 }}>
+          <Link href="/forgot-password" style={{ color: "var(--text-accent)", textDecoration: "none" }}>
+            Forgot password?
+          </Link>
+        </p>
       </Card>
     </div>
   );
