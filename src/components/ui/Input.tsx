@@ -11,6 +11,7 @@ export interface InputProps
   error?: string;
   size?: Size;
   iconLeft?: React.ReactNode;
+  iconRight?: React.ReactNode;
   style?: React.CSSProperties;
   inputStyle?: React.CSSProperties;
 }
@@ -27,6 +28,7 @@ export function Input({
   type = "text",
   size = "md",
   iconLeft,
+  iconRight,
   disabled = false,
   style,
   inputStyle,
@@ -102,6 +104,9 @@ export function Input({
           }}
           {...rest}
         />
+        {iconRight ? (
+          <span style={{ display: "inline-flex", color: "var(--text-muted)" }}>{iconRight}</span>
+        ) : null}
       </div>
       {error ? (
         <span style={{ fontFamily: "var(--font-body)", fontSize: 12.5, color: "var(--danger)" }}>
