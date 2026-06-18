@@ -66,6 +66,7 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({});
 
   function run(fn: () => Promise<void>, after?: () => void) {
     setError(null);
@@ -81,12 +82,25 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
   const selected = vessels.find((v) => v.id === selectedId) ?? null;
 
   function TypeCard({ title, items }: { title: string; items: VesselWithContents[] }) {
+    const isOpen = openSections[title] ?? false;
     return (
       <Card style={{ flex: "1 1 380px" }}>
-        <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 22, marginBottom: 12 }}>
-          {title} <span style={{ color: "var(--text-muted)", fontSize: 15 }}>({items.length})</span>
-        </h2>
-        {items.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => setOpenSections((s) => ({ ...s, [title]: !isOpen }))}
+          aria-expanded={isOpen}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 8, padding: 0,
+            background: "transparent", border: "none", cursor: "pointer", textAlign: "left",
+            marginBottom: isOpen ? 12 : 0,
+          }}
+        >
+          <span style={{ color: "var(--text-muted)", fontSize: 13, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast, 0.15s) ease", display: "inline-block" }}>▸</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 22 }}>
+            {title} <span style={{ color: "var(--text-muted)", fontSize: 15 }}>({items.length})</span>
+          </span>
+        </button>
+        {!isOpen ? null : items.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No active {title.toLowerCase()}.</p>
         ) : (
           <div>
