@@ -1,7 +1,7 @@
 ---
 title: Bulk CSV Inventory Upload
 type: feat
-status: draft
+status: completed
 date: 2026-06-19
 branch: feat/bulk-csv-inventory-upload
 depth: standard

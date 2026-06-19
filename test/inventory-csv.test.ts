@@ -89,6 +89,30 @@ describe("parseInventoryCsv", () => {
     expect(rows[0]).toMatchObject({ name: "Pinot", vintage: 2021, location: "Cellar", qty: 7 });
   });
 
+  it("rejects names shorter than 2 chars (matches server clean())", () => {
+    const csv = "Item,Vintage,Category,Location,Quantity\nA,2024,Wine,Cellar,10";
+    const { rows, errors } = parseInventoryCsv(csv);
+    expect(rows).toHaveLength(0);
+    expect(errors[0].message).toMatch(/at least 2 characters/);
+  });
+
+  it("rejects a category/location shorter than 2 chars", () => {
+    const csv = "Item,Vintage,Category,Location,Quantity\nMerlot,2024,Wine,X,10";
+    const { rows, errors } = parseInventoryCsv(csv);
+    expect(rows).toHaveLength(0);
+    expect(errors[0].message).toMatch(/Location must be at least/);
+  });
+
+  it("validates the wine name AFTER the vintage is stripped from it", () => {
+    // "2024 ab" -> name "ab" (2 chars) is still valid; "2024 a" -> "a" too short.
+    const ok = parseInventoryCsv("Item,Category,Location,Quantity\n2024 ab,Wine,Cellar,1");
+    expect(ok.errors).toEqual([]);
+    expect(ok.rows[0]).toMatchObject({ name: "ab", vintage: 2024 });
+    const bad = parseInventoryCsv("Item,Category,Location,Quantity\n2024 a,Wine,Cellar,1");
+    expect(bad.rows).toHaveLength(0);
+    expect(bad.errors[0].message).toMatch(/Item must be at least/);
+  });
+
   it("reports missing required columns", () => {
     const csv = "Item,Vintage,Quantity\nMerlot,2022,5";
     const { rows, errors } = parseInventoryCsv(csv);

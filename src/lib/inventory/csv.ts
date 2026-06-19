@@ -35,6 +35,15 @@ export const MAX_IMPORT_ROWS = 2000;
 const VINTAGE_MIN = 1900;
 const VINTAGE_MAX = 2027;
 const INT32_MAX = 2147483647;
+// Mirror clean() in actions.ts so the preview agrees with what the server accepts.
+const NAME_MIN = 2;
+const NAME_MAX = 80;
+
+function lengthError(value: string, label: string): string | null {
+  if (value.length < NAME_MIN) return `${label} must be at least ${NAME_MIN} characters`;
+  if (value.length > NAME_MAX) return `${label} is too long (max ${NAME_MAX})`;
+  return null;
+}
 
 const REQUIRED_HEADERS = ["item", "category", "location", "quantity"] as const;
 
@@ -174,6 +183,8 @@ export function parseInventoryCsv(text: string): ParseResult {
     if (!itemRaw) rowErrors.push("Item is required");
     if (!category) rowErrors.push("Category is required");
     if (!location) rowErrors.push("Location is required");
+    if (category) { const e = lengthError(category, "Category"); if (e) rowErrors.push(e); }
+    if (location) { const e = lengthError(location, "Location"); if (e) rowErrors.push(e); }
 
     const qty = Number(qtyRaw);
     if (!qtyRaw || !Number.isInteger(qty) || qty <= 0 || qty > INT32_MAX) {
@@ -202,6 +213,8 @@ export function parseInventoryCsv(text: string): ParseResult {
         }
       }
     }
+
+    if (itemRaw) { const e = lengthError(name, "Item"); if (e) rowErrors.push(e); }
 
     if (rowErrors.length > 0) {
       errors.push({ lineNo, message: rowErrors.join("; ") });

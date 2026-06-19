@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
@@ -193,52 +194,90 @@ export type ImportSummary = {
   rowErrors: Array<{ lineNo: number; message: string }>;
 };
 
-/** Find-or-create a category by name; audits creation. Returns its id. */
-async function ensureCategory(actor: Actor, name: string, created: Set<string>): Promise<string> {
-  const existing = await prisma.finishedGoodCategory.findUnique({ where: { name }, select: { id: true } });
-  if (existing) return existing.id;
-  return prisma.$transaction(async (tx) => {
-    const cat = await tx.finishedGoodCategory.create({ data: { name } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, changes: diff(null, { name }), summary: summarize("CREATE", "Category", { label: name }) });
-    created.add(name);
-    return cat.id;
-  });
+function isUniqueViolation(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 }
 
-/** Find-or-create an active location by name; audits creation. Returns its id. */
-async function ensureLocation(actor: Actor, name: string, created: Set<string>): Promise<string> {
-  const existing = await prisma.location.findUnique({ where: { name }, select: { id: true } });
+/**
+ * Find-or-create with two safeguards: the lookup is case-insensitive (so "wine"
+ * reuses an existing "Wine" instead of forking a duplicate), and a unique-constraint
+ * race on create is recovered by re-running the lookup. `create` returns the new id
+ * and records the audit + tracks the name as newly created; on a recovered race it is
+ * not re-run, so nothing is double-audited.
+ */
+async function findOrCreate(
+  find: () => Promise<{ id: string } | null>,
+  create: () => Promise<string>,
+): Promise<string> {
+  const existing = await find();
   if (existing) return existing.id;
-  return prisma.$transaction(async (tx) => {
-    const loc = await tx.location.create({ data: { name } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Location", entityId: loc.id, changes: diff(null, { name }), summary: summarize("CREATE", "Location", { label: name }) });
-    created.add(name);
-    return loc.id;
-  });
+  try {
+    return await create();
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      const again = await find();
+      if (again) return again.id;
+    }
+    throw e;
+  }
+}
+
+const ciName = (name: string) => ({ name: { equals: name, mode: "insensitive" as const } });
+
+/** Find-or-create a category by name (case-insensitive); audits creation. */
+async function ensureCategory(actor: Actor, name: string, created: Set<string>): Promise<string> {
+  return findOrCreate(
+    () => prisma.finishedGoodCategory.findFirst({ where: ciName(name), select: { id: true } }),
+    () =>
+      prisma.$transaction(async (tx) => {
+        const cat = await tx.finishedGoodCategory.create({ data: { name } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, changes: diff(null, { name }), summary: summarize("CREATE", "Category", { label: name }) });
+        created.add(name);
+        return cat.id;
+      }),
+  );
+}
+
+/** Find-or-create an active location by name (case-insensitive); audits creation. */
+async function ensureLocation(actor: Actor, name: string, created: Set<string>): Promise<string> {
+  return findOrCreate(
+    () => prisma.location.findFirst({ where: ciName(name), select: { id: true } }),
+    () =>
+      prisma.$transaction(async (tx) => {
+        const loc = await tx.location.create({ data: { name } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Location", entityId: loc.id, changes: diff(null, { name }), summary: summarize("CREATE", "Location", { label: name }) });
+        created.add(name);
+        return loc.id;
+      }),
+  );
 }
 
 /** Find-or-create a wine SKU (name+vintage+750ml) under the given category; audits creation. */
 async function ensureWineSku(actor: Actor, name: string, vintage: number, categoryId: string, created: Set<string>): Promise<string> {
-  const existing = await prisma.wineSku.findUnique({ where: { name_vintage_bottleSizeMl: { name, vintage, bottleSizeMl: 750 } }, select: { id: true } });
-  if (existing) return existing.id;
-  return prisma.$transaction(async (tx) => {
-    const sku = await tx.wineSku.create({ data: { name, vintage, bottleSizeMl: 750, categoryId } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, changes: diff(null, { name, vintage }), summary: summarize("CREATE", "Wine SKU", { label: `${name} ${vintage}` }) });
-    created.add(`${name} ${vintage}`);
-    return sku.id;
-  });
+  return findOrCreate(
+    () => prisma.wineSku.findUnique({ where: { name_vintage_bottleSizeMl: { name, vintage, bottleSizeMl: 750 } }, select: { id: true } }),
+    () =>
+      prisma.$transaction(async (tx) => {
+        const sku = await tx.wineSku.create({ data: { name, vintage, bottleSizeMl: 750, categoryId } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, changes: diff(null, { name, vintage }), summary: summarize("CREATE", "Wine SKU", { label: `${name} ${vintage}` }) });
+        created.add(`${name} ${vintage}`);
+        return sku.id;
+      }),
+  );
 }
 
-/** Find-or-create a finished good (name within category); audits creation. */
+/** Find-or-create a finished good (name within category, case-insensitive); audits creation. */
 async function ensureGood(actor: Actor, name: string, categoryId: string, created: Set<string>): Promise<string> {
-  const existing = await prisma.finishedGood.findFirst({ where: { name, categoryId }, select: { id: true } });
-  if (existing) return existing.id;
-  return prisma.$transaction(async (tx) => {
-    const good = await tx.finishedGood.create({ data: { name, categoryId } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, changes: diff(null, { name }), summary: summarize("CREATE", "Item", { label: name }) });
-    created.add(name);
-    return good.id;
-  });
+  return findOrCreate(
+    () => prisma.finishedGood.findFirst({ where: { ...ciName(name), categoryId }, select: { id: true } }),
+    () =>
+      prisma.$transaction(async (tx) => {
+        const good = await tx.finishedGood.create({ data: { name, categoryId } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, changes: diff(null, { name }), summary: summarize("CREATE", "Item", { label: name }) });
+        created.add(name);
+        return good.id;
+      }),
+  );
 }
 
 /**
