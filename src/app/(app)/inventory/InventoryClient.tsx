@@ -4,6 +4,7 @@ import React from "react";
 import { Card, Input, Button, Badge, Eyebrow, ConfirmButton, ExportCsvButton } from "@/components/ui";
 import type { ItemKind } from "@/lib/stock/movements";
 import { createCategory, createWineSku, createGood, moveStock, updateOnHand, deleteOnHand } from "@/lib/inventory/actions";
+import { ImportCsvModal } from "./ImportCsvModal";
 
 export type Cat = { id: string; name: string };
 export type ItemOpt = { kind: ItemKind; id: string; label: string; category: string };
@@ -160,11 +161,14 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <Eyebrow rule>On hand</Eyebrow>
-        <ExportCsvButton
-          filename="inventory-on-hand.csv"
-          columns={[{ key: "item", label: "Item" }, { key: "category", label: "Category" }, { key: "location", label: "Location" }, { key: "quantity", label: "Quantity" }, { key: "detail", label: "Cases + loose" }, { key: "kind", label: "Kind" }]}
-          rows={filtered.map((r) => ({ item: r.item, category: r.category, location: r.location, quantity: r.qty, detail: r.detail, kind: r.kind === "BOTTLED_WINE" ? "Wine" : "Merch" }))}
-        />
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ImportCsvModal categories={categories} locations={locations} />
+          <ExportCsvButton
+            filename="inventory-on-hand.csv"
+            columns={[{ key: "item", label: "Item" }, { key: "category", label: "Category" }, { key: "location", label: "Location" }, { key: "quantity", label: "Quantity" }, { key: "detail", label: "Cases + loose" }, { key: "kind", label: "Kind" }]}
+            rows={filtered.map((r) => ({ item: r.item, category: r.category, location: r.location, quantity: r.qty, detail: r.detail, kind: r.kind === "BOTTLED_WINE" ? "Wine" : "Merch" }))}
+          />
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", margin: "12px 0" }}>
