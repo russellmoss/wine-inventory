@@ -51,3 +51,6 @@ next-env.d.ts
 
 # Design-system reference kit (not part of the app build)
 design-system/
+
+# Local MCP server config (machine-specific paths / credentials refs)
+.mcp.json
