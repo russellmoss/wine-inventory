@@ -20,9 +20,9 @@ export default async function InventoryPage() {
   const onHand: OnHandRow[] = [
     ...bottled.map((b) => {
       const { cases, loose } = casesAndLoose(b.totalBottles);
-      return { kind: "BOTTLED_WINE" as const, itemId: b.wineSkuId, item: `${b.wineSku.name} ${b.wineSku.vintage}`, name: b.wineSku.name, vintage: b.wineSku.vintage, categoryId: b.wineSku.categoryId, category: b.wineSku.category?.name ?? "Wine", locationId: b.locationId, location: b.location.name, qty: b.totalBottles, detail: `${cases}c + ${loose}` };
+      return { kind: "BOTTLED_WINE" as const, itemId: b.wineSkuId, item: `${b.wineSku.name} ${b.wineSku.vintage}`, name: b.wineSku.name, vintage: b.wineSku.vintage, categoryId: b.wineSku.categoryId, category: b.wineSku.category?.name ?? "Wine", locationId: b.locationId, location: b.location.name, qty: b.totalBottles, cases, loose, detail: `${cases}c + ${loose}` };
     }),
-    ...fg.map((f) => ({ kind: "FINISHED_GOOD" as const, itemId: f.finishedGoodId, item: f.finishedGood.name, name: f.finishedGood.name, vintage: null, categoryId: f.finishedGood.categoryId, category: f.finishedGood.category.name, locationId: f.locationId, location: f.location.name, qty: f.quantity, detail: "" })),
+    ...fg.map((f) => ({ kind: "FINISHED_GOOD" as const, itemId: f.finishedGoodId, item: f.finishedGood.name, name: f.finishedGood.name, vintage: null, categoryId: f.finishedGood.categoryId, category: f.finishedGood.category.name, locationId: f.locationId, location: f.location.name, qty: f.quantity, cases: 0, loose: f.quantity, detail: "" })),
   ].sort((a, b) => a.category.localeCompare(b.category) || a.item.localeCompare(b.item));
 
   return <InventoryClient categories={categories} items={items} locations={locations} onHand={onHand} />;

@@ -9,7 +9,7 @@ import { ImportCsvModal } from "./ImportCsvModal";
 export type Cat = { id: string; name: string };
 export type ItemOpt = { kind: ItemKind; id: string; label: string; category: string };
 export type LocOpt = { id: string; name: string };
-export type OnHandRow = { kind: ItemKind; itemId: string; item: string; name: string; vintage: number | null; categoryId: string | null; category: string; locationId: string; location: string; qty: number; detail: string };
+export type OnHandRow = { kind: ItemKind; itemId: string; item: string; name: string; vintage: number | null; categoryId: string | null; category: string; locationId: string; location: string; qty: number; cases: number; loose: number; detail: string };
 
 type Draft = { name: string; vintage: string; categoryId: string; locationId: string; qty: string };
 
@@ -165,8 +165,8 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
           <ImportCsvModal categories={categories} locations={locations} />
           <ExportCsvButton
             filename="inventory-on-hand.csv"
-            columns={[{ key: "item", label: "Item" }, { key: "category", label: "Category" }, { key: "location", label: "Location" }, { key: "quantity", label: "Quantity" }, { key: "detail", label: "Cases + loose" }, { key: "kind", label: "Kind" }]}
-            rows={filtered.map((r) => ({ item: r.item, category: r.category, location: r.location, quantity: r.qty, detail: r.detail, kind: r.kind === "BOTTLED_WINE" ? "Wine" : "Merch" }))}
+            columns={[{ key: "name", label: "Item" }, { key: "vintage", label: "Vintage" }, { key: "category", label: "Category" }, { key: "location", label: "Location" }, { key: "fullCases", label: "Full cases" }, { key: "remainingBottles", label: "Remaining bottles" }, { key: "totalBottles", label: "Total bottles" }, { key: "kind", label: "Kind" }]}
+            rows={filtered.map((r) => ({ name: r.name, vintage: r.vintage ?? "", category: r.category, location: r.location, fullCases: r.cases, remainingBottles: r.loose, totalBottles: r.qty, kind: r.kind === "BOTTLED_WINE" ? "Wine" : "Merch" }))}
           />
         </div>
       </div>
