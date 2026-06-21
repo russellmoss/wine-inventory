@@ -3,7 +3,7 @@
 import React from "react";
 import { Button, Modal, Badge, ExportCsvButton } from "@/components/ui";
 import { parseInventoryCsv, type ParsedInventoryRow, type RowError } from "@/lib/inventory/csv";
-import { closestMatch } from "@/lib/inventory/similarity";
+import { closestMatch, canonicalKey, canonicalNameMap } from "@/lib/inventory/similarity";
 import { importInventory, type ImportSummary } from "@/lib/inventory/actions";
 
 type DisplayRow =
@@ -50,13 +50,22 @@ export function ImportCsvModal({
   const existingCats = React.useMemo(() => new Set(catNames.map((n) => n.toLowerCase())), [catNames]);
   const existingLocs = React.useMemo(() => new Set(locNames.map((n) => n.toLowerCase())), [locNames]);
 
+  // Canonical casing so capitalization never spawns a distinct category/location.
+  // Existing registry casing wins; otherwise the first-seen casing in the upload wins,
+  // collapsing within-upload variants ("Cellar"/"cellar") to one. Mirrors the server's
+  // case-insensitive find-or-create, and makes the preview show the casing that lands.
+  const catCanon = React.useMemo(() => canonicalNameMap(catNames, rows.map((r) => r.category)), [catNames, rows]);
+  const locCanon = React.useMemo(() => canonicalNameMap(locNames, rows.map((r) => r.location)), [locNames, rows]);
+  const canonCat = React.useCallback((v: string) => catCanon.get(canonicalKey(v)) ?? v, [catCanon]);
+  const canonLoc = React.useCallback((v: string) => locCanon.get(canonicalKey(v)) ?? v, [locCanon]);
+
   const newCats = React.useMemo(
-    () => [...new Set(rows.map((r) => r.category).filter((c) => !existingCats.has(c.toLowerCase())))],
-    [rows, existingCats],
+    () => [...new Set(rows.map((r) => canonCat(r.category)).filter((c) => !existingCats.has(c.toLowerCase())))],
+    [rows, canonCat, existingCats],
   );
   const newLocs = React.useMemo(
-    () => [...new Set(rows.map((r) => r.location).filter((l) => !existingLocs.has(l.toLowerCase())))],
-    [rows, existingLocs],
+    () => [...new Set(rows.map((r) => canonLoc(r.location)).filter((l) => !existingLocs.has(l.toLowerCase())))],
+    [rows, canonLoc, existingLocs],
   );
 
   // "Wine" is the reserved keyword that routes a row to bottled wine (see csv.ts). Never
@@ -76,8 +85,13 @@ export function ImportCsvModal({
   const locRemap = React.useMemo(() => remapFrom(locSuggestions, locDecision), [locSuggestions, locDecision]);
 
   const effectiveRows = React.useMemo(
-    () => rows.map((r) => ({ ...r, category: catRemap[r.category] ?? r.category, location: locRemap[r.location] ?? r.location })),
-    [rows, catRemap, locRemap],
+    () =>
+      rows.map((r) => {
+        const cat = canonCat(r.category);
+        const loc = canonLoc(r.location);
+        return { ...r, category: catRemap[cat] ?? cat, location: locRemap[loc] ?? loc };
+      }),
+    [rows, canonCat, canonLoc, catRemap, locRemap],
   );
 
   // O(1) lookup of the originally-typed values per line, so the preview can show
@@ -295,6 +309,9 @@ function remapFrom(suggestions: Suggestion[], decision: Record<string, Decision>
 /** Show the effective value; if it was remapped, note what the user originally typed. */
 function Remapped({ original, effective }: { original: string; effective: string }) {
   if (original === effective) return <>{effective}</>;
+  // Pure case/whitespace canonicalization ("cellar" -> "Cellar") isn't a "did you mean"
+  // remap — just show the canonical casing without the noisy "(was ...)" note.
+  if (canonicalKey(original) === canonicalKey(effective)) return <>{effective}</>;
   return (
     <span>
       {effective}{" "}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalize, closestMatch } from "@/lib/inventory/similarity";
+import { normalize, closestMatch, canonicalKey, canonicalNameMap } from "@/lib/inventory/similarity";
 
 describe("normalize", () => {
   it("lowercases, trims, and collapses inner whitespace", () => {
@@ -94,5 +94,45 @@ describe("closestMatch", () => {
     expect(closestMatch("Cabernet", ["Cabernay"])).toBeNull();
     const loose = closestMatch("Cabernet", ["Cabernay"], { threshold: 0.7 });
     expect(loose?.match).toBe("Cabernay");
+  });
+});
+
+describe("canonicalKey", () => {
+  it("lowercases and trims (case + surrounding whitespace insensitive)", () => {
+    expect(canonicalKey("  Wine Bar ")).toBe("wine bar");
+    expect(canonicalKey("CELLAR")).toBe("cellar");
+  });
+  it("keeps internal punctuation and spacing (only case/edges fold)", () => {
+    expect(canonicalKey("T-Shirt")).toBe("t-shirt");
+    expect(canonicalKey("Wine  Bar")).not.toBe(canonicalKey("Wine Bar")); // internal spacing preserved
+  });
+});
+
+describe("canonicalNameMap", () => {
+  it("uses existing registry casing when a value matches case-insensitively", () => {
+    const m = canonicalNameMap(["Wine Bar"], ["wine bar"]);
+    expect(m.get("wine bar")).toBe("Wine Bar");
+  });
+
+  it("collapses within-upload case variants to the first-seen casing", () => {
+    const m = canonicalNameMap([], ["Cellar", "cellar", "CELLAR"]);
+    expect(m.get("cellar")).toBe("Cellar");
+  });
+
+  it("prefers existing casing over upload casing", () => {
+    const m = canonicalNameMap(["Cellar"], ["CELLAR", "cellar"]);
+    expect(m.get("cellar")).toBe("Cellar");
+  });
+
+  it("ignores empty / whitespace-only names", () => {
+    const m = canonicalNameMap(["", "   ", "Wine"], []);
+    expect(m.has("")).toBe(false);
+    expect(m.get("wine")).toBe("Wine");
+  });
+
+  it("lets a lookup of any casing resolve to the canonical display name", () => {
+    const m = canonicalNameMap(["Wine Bar"], ["Tasting Room", "tasting room"]);
+    expect(m.get(canonicalKey("WINE BAR"))).toBe("Wine Bar");
+    expect(m.get(canonicalKey("TASTING ROOM"))).toBe("Tasting Room");
   });
 });
