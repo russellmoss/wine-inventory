@@ -95,3 +95,32 @@ export function closestMatch(
   if (!best || best.score < threshold) return null;
   return best;
 }
+
+/**
+ * Case- and edge-whitespace-insensitive grouping key. Matches the server's
+ * case-insensitive find-or-create (ensureCategory/ensureLocation use mode:"insensitive"),
+ * so "Cellar" and "cellar" map to the same registry record. Internal punctuation and
+ * spacing are preserved (those are handled by the "did you mean" suggestions, not here).
+ */
+export function canonicalKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * Decide the canonical display casing for category/location values so capitalization
+ * never spawns a distinct entry. Keyed by `canonicalKey`. Existing registry casing wins
+ * (an upload reuses the stored casing); otherwise the first-seen casing in `used` order
+ * wins, collapsing within-upload case variants ("Cellar"/"cellar") to one.
+ */
+export function canonicalNameMap(existing: readonly string[], used: readonly string[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const n of existing) {
+    const k = canonicalKey(n);
+    if (k && !m.has(k)) m.set(k, n);
+  }
+  for (const v of used) {
+    const k = canonicalKey(v);
+    if (k && !m.has(k)) m.set(k, v);
+  }
+  return m;
+}
