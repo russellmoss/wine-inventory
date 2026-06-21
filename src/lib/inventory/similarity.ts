@@ -13,20 +13,23 @@ export type Match = { match: string; score: number };
 export type ClosestMatchOptions = { threshold?: number };
 
 const DEFAULT_THRESHOLD = 0.8;
-const PREFIX_MIN_LEN = 3; // shorter side must be this long to count as an abbreviation
+// Shorter side must be this long to count as an abbreviation. 4 (not 3) so a short
+// real name like "Bar" or "Red" doesn't fuzzy-trigger on every longer value ("Barrel").
+const PREFIX_MIN_LEN = 4;
 const PREFIX_SCORE = 0.85; // confidence floor for a clean prefix/abbreviation match
 
 /**
  * Canonicalize a name for comparison: lowercase, collapse internal whitespace to a
  * single space, trim, then strip leading/trailing punctuation. Internal punctuation
- * (e.g. the hyphen in "t-shirt") is preserved.
+ * (e.g. the hyphen in "t-shirt") is preserved. Unicode-aware: accented and non-Latin
+ * letters (é, CJK) are kept, so "Café" stays "café" rather than degrading to "caf".
  */
 export function normalize(s: string): string {
   return s
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "");
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
 }
 
 /** Classic Levenshtein edit distance (insert/delete/substitute = 1). */

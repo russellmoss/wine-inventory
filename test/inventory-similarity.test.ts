@@ -12,6 +12,14 @@ describe("normalize", () => {
   it("treats a hyphen/space/case mix as the same shape", () => {
     expect(normalize("t shirt")).toBe(normalize("T Shirt"));
   });
+  it("keeps accented and non-Latin letters (Unicode-aware)", () => {
+    expect(normalize("Café")).toBe("café");
+    expect(normalize("  Éire ")).toBe("éire");
+  });
+  it("reduces an all-punctuation/empty name to the empty string", () => {
+    expect(normalize("!!!")).toBe("");
+    expect(normalize("   ")).toBe("");
+  });
 });
 
 describe("closestMatch", () => {
@@ -45,10 +53,39 @@ describe("closestMatch", () => {
     expect(closestMatch("Merch", [])).toBeNull();
   });
 
+  it("returns null when the value normalizes to nothing", () => {
+    expect(closestMatch("!!!", ["Merchandise"])).toBeNull();
+  });
+
+  it("skips candidates that normalize to nothing", () => {
+    // The only real candidate is too far -> no suggestion, and the empty one is ignored.
+    expect(closestMatch("Glassware", ["!!!", "Wine"])).toBeNull();
+  });
+
+  it("does not give a prefix bonus to a sub-minimum (3-char) prefix", () => {
+    // "Bar" is a prefix of "Barrel" but too short to count as an abbreviation,
+    // so plain edit-distance (0.5) keeps it below the 0.8 threshold.
+    expect(closestMatch("Barrel", ["Bar"])).toBeNull();
+  });
+
   it("picks the highest-scoring candidate deterministically", () => {
     // "Merch" is closer to "Merchandise" than to "Merlot"
     const r = closestMatch("Merch", ["Merlot", "Merchandise"]);
     expect(r?.match).toBe("Merchandise");
+  });
+
+  it("keeps the first candidate on a genuine score tie", () => {
+    // "Cat" -> "Bat" and "Cat" -> "Hat" are both one substitution (same score);
+    // strict '>' comparison keeps the first-listed candidate.
+    const r = closestMatch("Cat", ["Bat", "Hat"], { threshold: 0.6 });
+    expect(r?.match).toBe("Bat");
+  });
+
+  it("includes a match exactly at the threshold (inclusive boundary)", () => {
+    // "abcde" vs "abcdX": one substitution over 5 chars -> similarity exactly 0.8.
+    const r = closestMatch("abcde", ["abcdX"], { threshold: 0.8 });
+    expect(r?.match).toBe("abcdX");
+    expect(r!.score).toBeCloseTo(0.8, 5);
   });
 
   it("respects a custom threshold", () => {

@@ -63,23 +63,11 @@ export function ImportCsvModal({
   // suggest it as a target and never second-guess a literal "Wine" — remapping it would
   // desync the row's kind (already decided at parse time) from its category.
   const catCandidates = React.useMemo(() => catNames.filter((n) => n.toLowerCase() !== "wine"), [catNames]);
-  const catSuggestions = React.useMemo<Suggestion[]>(
-    () =>
-      newCats
-        .filter((v) => v.toLowerCase() !== "wine")
-        .map((v) => ({ v, m: closestMatch(v, catCandidates) }))
-        .filter((x): x is { v: string; m: NonNullable<typeof x.m> } => x.m !== null)
-        .map((x) => ({ value: x.v, match: x.m.match, score: x.m.score })),
+  const catSuggestions = React.useMemo(
+    () => buildSuggestions(newCats.filter((v) => v.toLowerCase() !== "wine"), catCandidates),
     [newCats, catCandidates],
   );
-  const locSuggestions = React.useMemo<Suggestion[]>(
-    () =>
-      newLocs
-        .map((v) => ({ v, m: closestMatch(v, locNames) }))
-        .filter((x): x is { v: string; m: NonNullable<typeof x.m> } => x.m !== null)
-        .map((x) => ({ value: x.v, match: x.m.match, score: x.m.score })),
-    [newLocs, locNames],
-  );
+  const locSuggestions = React.useMemo(() => buildSuggestions(newLocs, locNames), [newLocs, locNames]);
 
   // Accepted suggestions become a value->canonical remap, applied to every row with
   // that value before import. The server then reuses the existing record (its
@@ -91,6 +79,14 @@ export function ImportCsvModal({
     () => rows.map((r) => ({ ...r, category: catRemap[r.category] ?? r.category, location: locRemap[r.location] ?? r.location })),
     [rows, catRemap, locRemap],
   );
+
+  // O(1) lookup of the originally-typed values per line, so the preview can show
+  // "(was X)" without scanning all rows for every cell it renders.
+  const originalByLine = React.useMemo(() => {
+    const m = new Map<number, { category: string; location: string }>();
+    for (const r of rows) m.set(r.lineNo, { category: r.category, location: r.location });
+    return m;
+  }, [rows]);
 
   // What the import will actually create: a typed value that wasn't remapped onto an
   // existing record.
@@ -204,13 +200,13 @@ export function ImportCsvModal({
             {fileName && display.length > 0 ? (
               <>
                 <SuggestionBlock
-                  noun="category"
+                  pluralNoun="categories"
                   suggestions={catSuggestions}
                   decision={catDecision}
                   onDecide={(value, d) => setCatDecision((prev) => ({ ...prev, [value]: d }))}
                 />
                 <SuggestionBlock
-                  noun="location"
+                  pluralNoun="locations"
                   suggestions={locSuggestions}
                   decision={locDecision}
                   onDecide={(value, d) => setLocDecision((prev) => ({ ...prev, [value]: d }))}
@@ -243,8 +239,8 @@ export function ImportCsvModal({
                             <td style={{ ...cellTd, color: "var(--text-muted)" }}>{d.lineNo}</td>
                             <td style={cellTd}>{d.row.name}</td>
                             <td style={cellTd}>{d.row.vintage ?? "—"}</td>
-                            <td style={cellTd}><Remapped original={originalCategory(rows, d.lineNo)} effective={d.row.category} /></td>
-                            <td style={cellTd}><Remapped original={originalLocation(rows, d.lineNo)} effective={d.row.location} /></td>
+                            <td style={cellTd}><Remapped original={originalByLine.get(d.lineNo)?.category ?? d.row.category} effective={d.row.category} /></td>
+                            <td style={cellTd}><Remapped original={originalByLine.get(d.lineNo)?.location ?? d.row.location} effective={d.row.location} /></td>
                             <td style={{ ...cellTd, textAlign: "right" }}>{d.row.qty}</td>
                             <td style={cellTd}><Badge tone="green" variant="soft">ok</Badge></td>
                           </tr>
@@ -281,19 +277,19 @@ export function ImportCsvModal({
   );
 }
 
+/** For each new value, the closest existing name (or nothing). Shared by category + location. */
+function buildSuggestions(values: string[], candidates: string[]): Suggestion[] {
+  return values
+    .map((v) => ({ v, m: closestMatch(v, candidates) }))
+    .filter((x): x is { v: string; m: NonNullable<typeof x.m> } => x.m !== null)
+    .map((x) => ({ value: x.v, match: x.m.match, score: x.m.score }));
+}
+
 /** Build a value->canonical remap from the accepted suggestions only. */
 function remapFrom(suggestions: Suggestion[], decision: Record<string, Decision>): Record<string, string> {
   const m: Record<string, string> = {};
   for (const s of suggestions) if (decision[s.value] === "accept") m[s.value] = s.match;
   return m;
-}
-
-/** The category exactly as it was typed for a given preview line (pre-remap). */
-function originalCategory(rows: ParsedInventoryRow[], lineNo: number): string {
-  return rows.find((r) => r.lineNo === lineNo)?.category ?? "";
-}
-function originalLocation(rows: ParsedInventoryRow[], lineNo: number): string {
-  return rows.find((r) => r.lineNo === lineNo)?.location ?? "";
 }
 
 /** Show the effective value; if it was remapped, note what the user originally typed. */
@@ -360,12 +356,12 @@ function ChipRow({ label, names }: { label: string; names: string[] }) {
 
 /** "You entered X — did you mean Y?" with accept (remap) / keep controls, per value. */
 function SuggestionBlock({
-  noun,
+  pluralNoun,
   suggestions,
   decision,
   onDecide,
 }: {
-  noun: string;
+  pluralNoun: string;
   suggestions: Suggestion[];
   decision: Record<string, Decision>;
   onDecide: (value: string, d: Decision) => void;
@@ -374,7 +370,7 @@ function SuggestionBlock({
   return (
     <div style={{ marginBottom: 12, padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "rgba(180,140,40,0.06)" }}>
       <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 8px" }}>
-        Possible duplicate {noun === "category" ? "categories" : "locations"} — pick one per row:
+        Possible duplicate {pluralNoun} — choose one for each:
       </p>
       {suggestions.map((s) => {
         const state = decision[s.value];
