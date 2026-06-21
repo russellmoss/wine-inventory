@@ -3,11 +3,15 @@
 import React from "react";
 import { Button, Modal, Badge, ExportCsvButton } from "@/components/ui";
 import { parseInventoryCsv, type ParsedInventoryRow, type RowError } from "@/lib/inventory/csv";
+import { closestMatch } from "@/lib/inventory/similarity";
 import { importInventory, type ImportSummary } from "@/lib/inventory/actions";
 
 type DisplayRow =
   | { lineNo: number; ok: true; row: ParsedInventoryRow }
   | { lineNo: number; ok: false; message: string };
+
+type Suggestion = { value: string; match: string; score: number };
+type Decision = "accept" | "reject";
 
 const TEMPLATE_COLUMNS = [
   { key: "item", label: "Item" },
@@ -34,11 +38,17 @@ export function ImportCsvModal({
   const [parseErrors, setParseErrors] = React.useState<RowError[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [summary, setSummary] = React.useState<ImportSummary | null>(null);
+  // Per-distinct-value decisions for "did you mean" suggestions. Absent = undecided
+  // (treated as "keep what they typed" — suggestions never block the import).
+  const [catDecision, setCatDecision] = React.useState<Record<string, Decision>>({});
+  const [locDecision, setLocDecision] = React.useState<Record<string, Decision>>({});
   const [pending, startTransition] = React.useTransition();
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const existingCats = React.useMemo(() => new Set(categories.map((c) => c.name.toLowerCase())), [categories]);
-  const existingLocs = React.useMemo(() => new Set(locations.map((l) => l.name.toLowerCase())), [locations]);
+  const catNames = React.useMemo(() => categories.map((c) => c.name), [categories]);
+  const locNames = React.useMemo(() => locations.map((l) => l.name), [locations]);
+  const existingCats = React.useMemo(() => new Set(catNames.map((n) => n.toLowerCase())), [catNames]);
+  const existingLocs = React.useMemo(() => new Set(locNames.map((n) => n.toLowerCase())), [locNames]);
 
   const newCats = React.useMemo(
     () => [...new Set(rows.map((r) => r.category).filter((c) => !existingCats.has(c.toLowerCase())))],
@@ -49,13 +59,51 @@ export function ImportCsvModal({
     [rows, existingLocs],
   );
 
+  // "Wine" is the reserved keyword that routes a row to bottled wine (see csv.ts). Never
+  // suggest it as a target and never second-guess a literal "Wine" — remapping it would
+  // desync the row's kind (already decided at parse time) from its category.
+  const catCandidates = React.useMemo(() => catNames.filter((n) => n.toLowerCase() !== "wine"), [catNames]);
+  const catSuggestions = React.useMemo<Suggestion[]>(
+    () =>
+      newCats
+        .filter((v) => v.toLowerCase() !== "wine")
+        .map((v) => ({ v, m: closestMatch(v, catCandidates) }))
+        .filter((x): x is { v: string; m: NonNullable<typeof x.m> } => x.m !== null)
+        .map((x) => ({ value: x.v, match: x.m.match, score: x.m.score })),
+    [newCats, catCandidates],
+  );
+  const locSuggestions = React.useMemo<Suggestion[]>(
+    () =>
+      newLocs
+        .map((v) => ({ v, m: closestMatch(v, locNames) }))
+        .filter((x): x is { v: string; m: NonNullable<typeof x.m> } => x.m !== null)
+        .map((x) => ({ value: x.v, match: x.m.match, score: x.m.score })),
+    [newLocs, locNames],
+  );
+
+  // Accepted suggestions become a value->canonical remap, applied to every row with
+  // that value before import. The server then reuses the existing record (its
+  // find-or-create is case-insensitive), so no near-duplicate is born.
+  const catRemap = React.useMemo(() => remapFrom(catSuggestions, catDecision), [catSuggestions, catDecision]);
+  const locRemap = React.useMemo(() => remapFrom(locSuggestions, locDecision), [locSuggestions, locDecision]);
+
+  const effectiveRows = React.useMemo(
+    () => rows.map((r) => ({ ...r, category: catRemap[r.category] ?? r.category, location: locRemap[r.location] ?? r.location })),
+    [rows, catRemap, locRemap],
+  );
+
+  // What the import will actually create: a typed value that wasn't remapped onto an
+  // existing record.
+  const remainingNewCats = React.useMemo(() => newCats.filter((c) => !catRemap[c]), [newCats, catRemap]);
+  const remainingNewLocs = React.useMemo(() => newLocs.filter((l) => !locRemap[l]), [newLocs, locRemap]);
+
   const display: DisplayRow[] = React.useMemo(() => {
     const merged: DisplayRow[] = [
-      ...rows.map((r) => ({ lineNo: r.lineNo, ok: true as const, row: r })),
+      ...effectiveRows.map((r) => ({ lineNo: r.lineNo, ok: true as const, row: r })),
       ...parseErrors.map((e) => ({ lineNo: e.lineNo, ok: false as const, message: e.message })),
     ];
     return merged.sort((a, b) => a.lineNo - b.lineNo);
-  }, [rows, parseErrors]);
+  }, [effectiveRows, parseErrors]);
 
   function reset() {
     setFileName(null);
@@ -63,6 +111,8 @@ export function ImportCsvModal({
     setParseErrors([]);
     setError(null);
     setSummary(null);
+    setCatDecision({});
+    setLocDecision({});
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -75,6 +125,8 @@ export function ImportCsvModal({
     const file = e.target.files?.[0];
     setError(null);
     setSummary(null);
+    setCatDecision({});
+    setLocDecision({});
     if (!file) return;
     setFileName(file.name);
     try {
@@ -90,11 +142,11 @@ export function ImportCsvModal({
   }
 
   function doImport() {
-    if (rows.length === 0) return;
+    if (effectiveRows.length === 0) return;
     setError(null);
     startTransition(async () => {
       try {
-        const res = await importInventory(rows);
+        const res = await importInventory(effectiveRows);
         setSummary(res);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Import failed.");
@@ -145,14 +197,29 @@ export function ImportCsvModal({
               (a year in the item name works too). Quantities are <strong>received</strong> — added on top of what is already on hand.
             </p>
 
+            <ReferencePanel categories={catNames} locations={locNames} />
+
             {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 12 }}>{error}</p> : null}
 
             {fileName && display.length > 0 ? (
               <>
-                {newCats.length > 0 || newLocs.length > 0 ? (
+                <SuggestionBlock
+                  noun="category"
+                  suggestions={catSuggestions}
+                  decision={catDecision}
+                  onDecide={(value, d) => setCatDecision((prev) => ({ ...prev, [value]: d }))}
+                />
+                <SuggestionBlock
+                  noun="location"
+                  suggestions={locSuggestions}
+                  decision={locDecision}
+                  onDecide={(value, d) => setLocDecision((prev) => ({ ...prev, [value]: d }))}
+                />
+
+                {remainingNewCats.length > 0 || remainingNewLocs.length > 0 ? (
                   <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 10 }}>
-                    {newLocs.length > 0 ? <>Will create {newLocs.length} new location(s): <strong>{newLocs.join(", ")}</strong>. </> : null}
-                    {newCats.length > 0 ? <>Will create {newCats.length} new category(ies): <strong>{newCats.join(", ")}</strong>.</> : null}
+                    {remainingNewLocs.length > 0 ? <>Will create {remainingNewLocs.length} new location(s): <strong>{remainingNewLocs.join(", ")}</strong>. </> : null}
+                    {remainingNewCats.length > 0 ? <>Will create {remainingNewCats.length} new category(ies): <strong>{remainingNewCats.join(", ")}</strong>.</> : null}
                   </p>
                 ) : null}
 
@@ -176,8 +243,8 @@ export function ImportCsvModal({
                             <td style={{ ...cellTd, color: "var(--text-muted)" }}>{d.lineNo}</td>
                             <td style={cellTd}>{d.row.name}</td>
                             <td style={cellTd}>{d.row.vintage ?? "—"}</td>
-                            <td style={cellTd}>{d.row.category}</td>
-                            <td style={cellTd}>{d.row.location}</td>
+                            <td style={cellTd}><Remapped original={originalCategory(rows, d.lineNo)} effective={d.row.category} /></td>
+                            <td style={cellTd}><Remapped original={originalLocation(rows, d.lineNo)} effective={d.row.location} /></td>
                             <td style={{ ...cellTd, textAlign: "right" }}>{d.row.qty}</td>
                             <td style={cellTd}><Badge tone="green" variant="soft">ok</Badge></td>
                           </tr>
@@ -211,6 +278,121 @@ export function ImportCsvModal({
         )}
       </Modal>
     </>
+  );
+}
+
+/** Build a value->canonical remap from the accepted suggestions only. */
+function remapFrom(suggestions: Suggestion[], decision: Record<string, Decision>): Record<string, string> {
+  const m: Record<string, string> = {};
+  for (const s of suggestions) if (decision[s.value] === "accept") m[s.value] = s.match;
+  return m;
+}
+
+/** The category exactly as it was typed for a given preview line (pre-remap). */
+function originalCategory(rows: ParsedInventoryRow[], lineNo: number): string {
+  return rows.find((r) => r.lineNo === lineNo)?.category ?? "";
+}
+function originalLocation(rows: ParsedInventoryRow[], lineNo: number): string {
+  return rows.find((r) => r.lineNo === lineNo)?.location ?? "";
+}
+
+/** Show the effective value; if it was remapped, note what the user originally typed. */
+function Remapped({ original, effective }: { original: string; effective: string }) {
+  if (original === effective) return <>{effective}</>;
+  return (
+    <span>
+      {effective}{" "}
+      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>(was “{original}”)</span>
+    </span>
+  );
+}
+
+/** Copyable chips of the names already in the registry, so users reuse them. */
+function ReferencePanel({ categories, locations }: { categories: string[]; locations: string[] }) {
+  if (categories.length === 0 && locations.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 14, padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-sunken, rgba(0,0,0,0.02))" }}>
+      <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 8px" }}>
+        Reuse an existing name (click to copy) — new names are allowed, but reusing these keeps the list tidy.
+      </p>
+      <ChipRow label="Categories" names={categories} />
+      <ChipRow label="Locations" names={locations} />
+    </div>
+  );
+}
+
+function ChipRow({ label, names }: { label: string; names: string[] }) {
+  const [copied, setCopied] = React.useState<string | null>(null);
+  const sorted = React.useMemo(() => [...names].sort((a, b) => a.localeCompare(b)), [names]);
+  async function copy(name: string) {
+    try {
+      await navigator.clipboard?.writeText(name);
+      setCopied(name);
+      window.setTimeout(() => setCopied((c) => (c === name ? null : c)), 1200);
+    } catch {
+      /* clipboard unavailable — chips still show as reference */
+    }
+  }
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap", margin: "4px 0" }}>
+      <span style={{ fontSize: 12, color: "var(--text-muted)", minWidth: 72 }}>{label}:</span>
+      {sorted.length === 0 ? (
+        <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>none yet</span>
+      ) : (
+        sorted.map((name) => (
+          <button
+            key={name}
+            type="button"
+            onClick={() => copy(name)}
+            title="Copy"
+            style={{
+              cursor: "pointer", fontSize: 12.5, padding: "2px 8px", borderRadius: 999,
+              border: "1px solid var(--border-strong)", background: "var(--surface-raised)", color: "var(--text-secondary)",
+            }}
+          >
+            {copied === name ? "✓ copied" : name}
+          </button>
+        ))
+      )}
+    </div>
+  );
+}
+
+/** "You entered X — did you mean Y?" with accept (remap) / keep controls, per value. */
+function SuggestionBlock({
+  noun,
+  suggestions,
+  decision,
+  onDecide,
+}: {
+  noun: string;
+  suggestions: Suggestion[];
+  decision: Record<string, Decision>;
+  onDecide: (value: string, d: Decision) => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 12, padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "rgba(180,140,40,0.06)" }}>
+      <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 8px" }}>
+        Possible duplicate {noun === "category" ? "categories" : "locations"} — pick one per row:
+      </p>
+      {suggestions.map((s) => {
+        const state = decision[s.value];
+        return (
+          <div key={s.value} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "4px 0", fontSize: 13.5 }}>
+            <span>
+              You entered <strong>“{s.value}”</strong> — did you mean <strong>“{s.match}”</strong>?
+            </span>
+            <Button size="sm" variant={state === "accept" ? "primary" : "secondary"} onClick={() => onDecide(s.value, "accept")}>
+              {state === "accept" ? `Using “${s.match}”` : `Use “${s.match}”`}
+            </Button>
+            <Button size="sm" variant={state === "reject" ? "primary" : "ghost"} onClick={() => onDecide(s.value, "reject")}>
+              {state === "reject" ? `Keeping “${s.value}”` : `Keep “${s.value}”`}
+            </Button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
