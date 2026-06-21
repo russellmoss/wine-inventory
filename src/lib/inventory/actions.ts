@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { receiveStock, adjustStock, transferStock, type ItemKind } from "@/lib/stock/movements";
+import { MAX_IMPORT_ROWS, type ParsedInventoryRow } from "@/lib/inventory/csv";
 
 const PATH = "/inventory";
 
@@ -177,6 +179,162 @@ export const deleteOnHand = action(async ({ actor }, kind: ItemKind, itemId: str
   if (kind === "BOTTLED_WINE") await prisma.bottledInventory.deleteMany({ where: { wineSkuId: itemId, locationId } });
   else await prisma.finishedGoodInventory.deleteMany({ where: { finishedGoodId: itemId, locationId } });
   revalidatePath(PATH);
+});
+
+// ───────────────────────── Bulk CSV import ─────────────────────────
+
+type Actor = { actorUserId: string | null; actorEmail: string };
+
+export type ImportSummary = {
+  received: number; // rows successfully received
+  newCategories: string[];
+  newLocations: string[];
+  newSkus: string[]; // "Name Vintage"
+  newGoods: string[];
+  rowErrors: Array<{ lineNo: number; message: string }>;
+};
+
+function isUniqueViolation(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+}
+
+/**
+ * Find-or-create with two safeguards: the lookup is case-insensitive (so "wine"
+ * reuses an existing "Wine" instead of forking a duplicate), and a unique-constraint
+ * race on create is recovered by re-running the lookup. `create` returns the new id
+ * and records the audit + tracks the name as newly created; on a recovered race it is
+ * not re-run, so nothing is double-audited.
+ */
+async function findOrCreate(
+  find: () => Promise<{ id: string } | null>,
+  create: () => Promise<string>,
+): Promise<string> {
+  const existing = await find();
+  if (existing) return existing.id;
+  try {
+    return await create();
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      const again = await find();
+      if (again) return again.id;
+    }
+    throw e;
+  }
+}
+
+const ciName = (name: string) => ({ name: { equals: name, mode: "insensitive" as const } });
+
+/** Find-or-create a category by name (case-insensitive); audits creation. */
+async function ensureCategory(actor: Actor, name: string, created: Set<string>): Promise<string> {
+  return findOrCreate(
+    () => prisma.finishedGoodCategory.findFirst({ where: ciName(name), select: { id: true } }),
+    () =>
+      prisma.$transaction(async (tx) => {
+        const cat = await tx.finishedGoodCategory.create({ data: { name } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, changes: diff(null, { name }), summary: summarize("CREATE", "Category", { label: name }) });
+        created.add(name);
+        return cat.id;
+      }),
+  );
+}
+
+/** Find-or-create an active location by name (case-insensitive); audits creation. */
+async function ensureLocation(actor: Actor, name: string, created: Set<string>): Promise<string> {
+  return findOrCreate(
+    () => prisma.location.findFirst({ where: ciName(name), select: { id: true } }),
+    () =>
+      prisma.$transaction(async (tx) => {
+        const loc = await tx.location.create({ data: { name } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Location", entityId: loc.id, changes: diff(null, { name }), summary: summarize("CREATE", "Location", { label: name }) });
+        created.add(name);
+        return loc.id;
+      }),
+  );
+}
+
+/** Find-or-create a wine SKU (name+vintage+750ml) under the given category; audits creation. */
+async function ensureWineSku(actor: Actor, name: string, vintage: number, categoryId: string, created: Set<string>): Promise<string> {
+  return findOrCreate(
+    () => prisma.wineSku.findUnique({ where: { name_vintage_bottleSizeMl: { name, vintage, bottleSizeMl: 750 } }, select: { id: true } }),
+    () =>
+      prisma.$transaction(async (tx) => {
+        const sku = await tx.wineSku.create({ data: { name, vintage, bottleSizeMl: 750, categoryId } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, changes: diff(null, { name, vintage }), summary: summarize("CREATE", "Wine SKU", { label: `${name} ${vintage}` }) });
+        created.add(`${name} ${vintage}`);
+        return sku.id;
+      }),
+  );
+}
+
+/** Find-or-create a finished good (name within category, case-insensitive); audits creation. */
+async function ensureGood(actor: Actor, name: string, categoryId: string, created: Set<string>): Promise<string> {
+  return findOrCreate(
+    () => prisma.finishedGood.findFirst({ where: { ...ciName(name), categoryId }, select: { id: true } }),
+    () =>
+      prisma.$transaction(async (tx) => {
+        const good = await tx.finishedGood.create({ data: { name, categoryId } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, changes: diff(null, { name }), summary: summarize("CREATE", "Item", { label: name }) });
+        created.add(name);
+        return good.id;
+      }),
+  );
+}
+
+/**
+ * Bulk import inventory rows parsed from a CSV. Each row is RECEIVED (additive) into
+ * the stock ledger after find-or-creating its category, location, and item. Rows are
+ * processed independently: a failing row is recorded and skipped, the rest still land.
+ */
+export const importInventory = action(async ({ actor }, rows: ParsedInventoryRow[]): Promise<ImportSummary> => {
+  if (!Array.isArray(rows) || rows.length === 0) throw new ActionError("No rows to import.");
+  if (rows.length > MAX_IMPORT_ROWS) throw new ActionError(`Too many rows. Limit is ${MAX_IMPORT_ROWS} per upload.`);
+
+  const newCategories = new Set<string>();
+  const newLocations = new Set<string>();
+  const newSkus = new Set<string>();
+  const newGoods = new Set<string>();
+  const rowErrors: ImportSummary["rowErrors"] = [];
+  let received = 0;
+
+  for (const row of rows) {
+    try {
+      // Re-validate server-side — never trust the client payload.
+      const name = clean(row.name, row.kind === "BOTTLED_WINE" ? "Wine name" : "Item name");
+      const categoryName = clean(row.category, "Category");
+      const locationName = clean(row.location, "Location");
+      const qty = parseInt10(row.qty, "Quantity");
+      if (qty <= 0) throw new ActionError("Quantity must be greater than 0.");
+
+      const categoryId = await ensureCategory(actor, categoryName, newCategories);
+      const locationId = await ensureLocation(actor, locationName, newLocations);
+
+      let kind: ItemKind;
+      let itemId: string;
+      if (row.kind === "BOTTLED_WINE") {
+        const vintage = parseVintage(row.vintage);
+        itemId = await ensureWineSku(actor, name, vintage, categoryId, newSkus);
+        kind = "BOTTLED_WINE";
+      } else {
+        itemId = await ensureGood(actor, name, categoryId, newGoods);
+        kind = "FINISHED_GOOD";
+      }
+
+      await receiveStock(kind, itemId, locationId, qty, actor, "CSV import");
+      received++;
+    } catch (e) {
+      rowErrors.push({ lineNo: row?.lineNo ?? 0, message: e instanceof Error ? e.message : "Could not import this row." });
+    }
+  }
+
+  revalidatePath(PATH);
+  return {
+    received,
+    newCategories: [...newCategories],
+    newLocations: [...newLocations],
+    newSkus: [...newSkus],
+    newGoods: [...newGoods],
+    rowErrors,
+  };
 });
 
 async function currentBalance(kind: ItemKind, itemId: string, locationId: string): Promise<number> {
