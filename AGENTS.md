@@ -41,7 +41,9 @@ Secrets live in `.env` (gitignored). Template is `.env.example`.
   vineyard satellite basemap (`src/components/ui/SatelliteMap.tsx`). Client-exposed
   by design (restrict by referrer + Map Tiles API in Cloud Console). Unset → the
   map falls back to keyless Esri World Imagery. Map deps: `leaflet` (no
-  react-leaflet); imagery is keyless Esri unless this key is set.
+  react-leaflet); imagery is keyless Esri unless this key is set. The map's
+  opt-in "History" mode uses the keyless Esri World Imagery Wayback archive
+  (`src/lib/map/wayback.ts`) — no key, no env.
 
 ## rstack toolchain
 

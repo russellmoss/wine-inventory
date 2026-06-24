@@ -23,6 +23,7 @@ import {
   getGoogleAttribution,
   getGoogleMapSession,
 } from "@/lib/map/google-tiles";
+import { loadWaybackReleases, type WaybackRelease } from "@/lib/map/wayback";
 
 const ESRI_IMAGERY_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -34,12 +35,14 @@ const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const MAX_ZOOM = 22;
 
 /** Keyless fallback basemap. maxNativeZoom lets it upscale cleanly past z19. */
-function addEsriBasemap(map: L.Map): void {
-  L.tileLayer(ESRI_IMAGERY_URL, {
+function addEsriBasemap(map: L.Map, setBase?: (l: L.TileLayer) => void): L.TileLayer {
+  const l = L.tileLayer(ESRI_IMAGERY_URL, {
     attribution: ESRI_ATTRIBUTION,
     maxNativeZoom: 19,
     maxZoom: MAX_ZOOM,
   }).addTo(map);
+  setBase?.(l);
+  return l;
 }
 
 /** Keep the required Google copyright string current as the viewport changes. */
@@ -77,7 +80,11 @@ function wireGoogleAttribution(
  * otherwise keyless Esri. If Google tiles never load (bad key / billing off /
  * Map Tiles API not enabled), swap to Esri so the map still works.
  */
-async function addBasemap(map: L.Map, isCancelled: () => boolean): Promise<void> {
+async function addBasemap(
+  map: L.Map,
+  isCancelled: () => boolean,
+  setBase: (l: L.TileLayer) => void,
+): Promise<void> {
   if (GOOGLE_KEY) {
     try {
       const session = await getGoogleMapSession(GOOGLE_KEY, "satellite");
@@ -94,10 +101,11 @@ async function addBasemap(map: L.Map, isCancelled: () => boolean): Promise<void>
         if (!loadedOk && map.hasLayer(gl)) {
           loadedOk = true; // guard against repeated swaps
           map.removeLayer(gl);
-          addEsriBasemap(map);
+          addEsriBasemap(map, setBase);
         }
       });
       gl.addTo(map);
+      setBase(gl);
       wireGoogleAttribution(map, GOOGLE_KEY, session, isCancelled);
       return;
     } catch {
@@ -105,7 +113,7 @@ async function addBasemap(map: L.Map, isCancelled: () => boolean): Promise<void>
       // fall through to Esri
     }
   }
-  if (!isCancelled()) addEsriBasemap(map);
+  if (!isCancelled()) addEsriBasemap(map, setBase);
 }
 
 export interface SatelliteMapProps {
@@ -203,7 +211,17 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
   const mapRef = React.useRef<L.Map | null>(null);
   const overlayRef = React.useRef<L.FeatureGroup | null>(null);
   const markerRef = React.useRef<L.Marker | null>(null);
+  const baseLayerRef = React.useRef<L.TileLayer | null>(null);
+  const waybackLayerRef = React.useRef<L.TileLayer | null>(null);
+  const historyModeRef = React.useRef(false);
   const [markerVisible, setMarkerVisible] = React.useState(true);
+
+  // Opt-in imagery history (Esri Wayback). Google stays the default basemap.
+  const [historyMode, setHistoryMode] = React.useState(false);
+  const [releases, setReleases] = React.useState<WaybackRelease[]>([]);
+  const [selectedIdx, setSelectedIdx] = React.useState(0);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [historyError, setHistoryError] = React.useState<string | null>(null);
 
   const hasCoords = lat != null && lng != null;
   const hasGeometry = blocks.some((b) => isPolygonGeometry(b.polygon));
@@ -225,7 +243,11 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
     mapRef.current = map;
 
     // Google satellite when keyed, else keyless Esri (async: needs a session token).
-    void addBasemap(map, () => cancelled);
+    void addBasemap(map, () => cancelled, (l) => {
+      baseLayerRef.current = l;
+      // If history mode is already on when the base resolves, keep it hidden.
+      if (historyModeRef.current && map.hasLayer(l)) map.removeLayer(l);
+    });
 
     // Leaflet renders blank/offset when its container had no size at init (common
     // inside a modal). Invalidate once layout settles, and on every resize.
@@ -244,9 +266,46 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
       mapRef.current = null;
       overlayRef.current = null;
       markerRef.current = null;
+      baseLayerRef.current = null;
+      waybackLayerRef.current = null;
     };
     // showMap toggles whether the container exists at all; re-init if it flips on.
   }, [showMap]);
+
+  // Keep a ref mirror so the async setBase callback can read the latest mode.
+  React.useEffect(() => {
+    historyModeRef.current = historyMode;
+  }, [historyMode]);
+
+  // History mode: swap the default basemap for the selected Esri Wayback vintage,
+  // and restore the default when history is turned off. View/zoom is untouched.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (waybackLayerRef.current) {
+      map.removeLayer(waybackLayerRef.current);
+      waybackLayerRef.current = null;
+    }
+
+    const release = releases[selectedIdx];
+    if (historyMode && release) {
+      if (baseLayerRef.current && map.hasLayer(baseLayerRef.current)) {
+        map.removeLayer(baseLayerRef.current);
+      }
+      const wl = L.tileLayer(release.tileUrl, {
+        maxNativeZoom: 19,
+        maxZoom: MAX_ZOOM,
+        attribution: `Esri World Imagery (${release.date}) — Wayback`,
+      });
+      wl.addTo(map);
+      wl.bringToBack(); // sit under polygons/markers
+      waybackLayerRef.current = wl;
+    } else if (baseLayerRef.current && !map.hasLayer(baseLayerRef.current)) {
+      baseLayerRef.current.addTo(map);
+      baseLayerRef.current.bringToBack();
+    }
+  }, [historyMode, selectedIdx, releases, showMap]);
 
   // The location pin is its own layer so toggling it never disturbs the polygons
   // or the current pan/zoom (it's not part of the fit-bounds group).
@@ -307,6 +366,43 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
     map.invalidateSize();
   }, [blocks, unit, lat, lng]);
 
+  const toggleHistory = React.useCallback(async () => {
+    if (historyMode) {
+      setHistoryMode(false);
+      return;
+    }
+    if (releases.length === 0) {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const rs = await loadWaybackReleases();
+        setReleases(rs);
+        setSelectedIdx(Math.max(0, rs.length - 1)); // newest first
+      } catch {
+        setHistoryError("Couldn't load imagery history.");
+        setHistoryLoading(false);
+        return;
+      }
+      setHistoryLoading(false);
+    }
+    setHistoryMode(true);
+  }, [historyMode, releases.length]);
+
+  const controlBtnStyle: React.CSSProperties = {
+    minHeight: 32,
+    padding: "6px 10px",
+    fontFamily: "var(--font-body)",
+    fontSize: 12.5,
+    color: "var(--text-primary)",
+    background: "var(--surface-raised)",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    boxShadow: "0 1px 3px rgba(43, 42, 38, 0.18)",
+    cursor: "pointer",
+  };
+
+  const selectedRelease = releases[selectedIdx];
+
   if (!showMap) {
     return (
       <div
@@ -341,33 +437,97 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
             boxShadow: "var(--shadow-sm)",
           }}
         />
-        {hasCoords ? (
+        {/* Top-right control cluster */}
+        <div
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            zIndex: 1000,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 6,
+          }}
+        >
           <button
             type="button"
-            onClick={() => setMarkerVisible((v) => !v)}
-            aria-pressed={markerVisible}
-            title={markerVisible ? "Hide the location pin" : "Show the location pin"}
+            onClick={toggleHistory}
+            aria-pressed={historyMode}
+            disabled={historyLoading}
+            title="Browse past satellite imagery (Esri Wayback)"
             style={{
-              position: "absolute",
-              top: 10,
-              right: 10,
-              zIndex: 1000,
-              minHeight: 32,
-              padding: "6px 10px",
-              fontFamily: "var(--font-body)",
-              fontSize: 12.5,
-              color: "var(--text-primary)",
-              background: "var(--surface-raised)",
-              border: "1px solid var(--border-subtle)",
-              borderRadius: "var(--radius-sm)",
-              boxShadow: "0 1px 3px rgba(43, 42, 38, 0.18)",
-              cursor: "pointer",
+              ...controlBtnStyle,
+              ...(historyMode
+                ? { background: "var(--wine-primary)", color: "var(--cream)", borderColor: "var(--wine-primary)" }
+                : null),
+              cursor: historyLoading ? "wait" : "pointer",
             }}
           >
-            {markerVisible ? "Hide pin" : "Show pin"}
+            {historyLoading ? "Loading…" : historyMode ? "Exit history" : "History"}
           </button>
+          {hasCoords ? (
+            <button
+              type="button"
+              onClick={() => setMarkerVisible((v) => !v)}
+              aria-pressed={markerVisible}
+              title={markerVisible ? "Hide the location pin" : "Show the location pin"}
+              style={controlBtnStyle}
+            >
+              {markerVisible ? "Hide pin" : "Show pin"}
+            </button>
+          ) : null}
+        </div>
+
+        {/* History timeline */}
+        {historyMode && releases.length > 0 ? (
+          <div
+            style={{
+              position: "absolute",
+              left: 10,
+              right: 10,
+              bottom: 10,
+              zIndex: 1000,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "8px 12px",
+              background: "rgba(255, 248, 241, 0.94)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "0 2px 8px rgba(43, 42, 38, 0.18)",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "var(--font-body)",
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--text-primary)",
+                fontVariantNumeric: "tabular-nums",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {selectedRelease?.date ?? "—"}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={releases.length - 1}
+              value={selectedIdx}
+              onChange={(e) => setSelectedIdx(Number(e.target.value))}
+              aria-label="Imagery date"
+              style={{ flex: 1, accentColor: "var(--wine-primary)", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+              {releases[0]?.date} – {releases[releases.length - 1]?.date}
+            </span>
+          </div>
         ) : null}
       </div>
+      {historyError ? (
+        <p style={{ marginTop: 8, fontSize: 12.5, color: "var(--danger)" }}>{historyError}</p>
+      ) : null}
       {hasCoords ? (
         <div style={{ marginTop: 8, fontSize: 12.5 }}>
           <a
