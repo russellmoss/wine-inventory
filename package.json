@@ -21,6 +21,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
     "@geoman-io/leaflet-geoman-free": "^2.20.0",
     "@mapbox/shp-write": "^0.4.3",
     "@node-rs/argon2": "^2.0.2",
