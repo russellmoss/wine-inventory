@@ -15,6 +15,7 @@ import {
   fromCanonicalSpacing,
   toCanonicalSpacing,
   formatArea,
+  formatSpacing,
   vinesPerRow,
   spacingUnitLabel,
   type Unit,
@@ -92,6 +93,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function ReadField({ label, value }: { label: string; value: React.ReactNode }) {
+  const empty = value == null || value === "";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>{label}</span>
+      <span style={{ fontSize: 14.5, color: empty ? "var(--text-muted)" : "var(--text-primary)" }}>
+        {empty ? "—" : value}
+      </span>
+    </div>
+  );
+}
+
 export function VineyardSetup({
   vineyardId,
   detail,
@@ -106,6 +119,7 @@ export function VineyardSetup({
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<BlockDraft | null>(null);
   const [draftUnit, setDraftUnit] = React.useState<Unit>(unit);
+  const [viewId, setViewId] = React.useState<string | null>(null); // read-only detail open
 
   const spLabel = spacingUnitLabel(unit);
 
@@ -141,12 +155,16 @@ export function VineyardSetup({
 
   function expand(b: SerializedBlock) {
     setError(null);
+    setViewId(null);
     setExpandedId(b.id);
     setDraft(draftFromBlock(b, unit));
   }
   function collapse() {
     setExpandedId(null);
     setDraft(null);
+  }
+  function toggleView(id: string) {
+    setViewId((cur) => (cur === id ? null : id));
   }
 
   function draftFormData(d: BlockDraft): FormData {
@@ -260,19 +278,41 @@ export function VineyardSetup({
             const area = blockArea(b.rowSpacingM, b.vineSpacingM, b.vineCount, unit);
             return (
               <div key={b.id} style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                {/* Compact row */}
+                {/* Compact row — clicking the info area opens a read-only summary */}
                 <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", flexWrap: "wrap" }}>
-                  <span aria-hidden style={{ width: 14, height: 14, borderRadius: "var(--radius-xs)", background: color, border: "1px solid var(--border-subtle)", flex: "0 0 auto" }} />
-                  <span style={{ minWidth: 90, fontSize: 14.5 }}>{b.blockLabel || "Untitled block"}</span>
-                  <span style={{ flex: 1, minWidth: 120, color: "var(--text-secondary)", fontSize: 13.5 }}>
-                    {b.variety?.name ?? <span style={{ color: "var(--text-muted)" }}>No variety</span>}
-                  </span>
-                  <span style={{ fontSize: 13.5, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                    {b.vineCount != null ? `${b.vineCount} vines` : "—"}
-                  </span>
-                  <span style={{ fontSize: 13.5, fontVariantNumeric: "tabular-nums", minWidth: 90, textAlign: "right" }}>
-                    {area != null ? formatArea(area, unit) : "—"}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleView(b.id)}
+                    aria-expanded={viewId === b.id}
+                    title="Show block details"
+                    style={{
+                      flex: 1,
+                      minWidth: 220,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: 0,
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      font: "inherit",
+                      color: "inherit",
+                    }}
+                  >
+                    <span aria-hidden style={{ width: 14, height: 14, borderRadius: "var(--radius-xs)", background: color, border: "1px solid var(--border-subtle)", flex: "0 0 auto" }} />
+                    <span aria-hidden style={{ color: "var(--text-muted)", fontSize: 13, transform: viewId === b.id ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast, 0.15s) ease", display: "inline-block", flex: "0 0 auto" }}>▸</span>
+                    <span style={{ minWidth: 80, fontSize: 14.5 }}>{b.blockLabel || "Untitled block"}</span>
+                    <span style={{ flex: 1, minWidth: 100, color: "var(--text-secondary)", fontSize: 13.5 }}>
+                      {b.variety?.name ?? <span style={{ color: "var(--text-muted)" }}>No variety</span>}
+                    </span>
+                    <span style={{ fontSize: 13.5, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+                      {b.vineCount != null ? `${b.vineCount} vines` : "—"}
+                    </span>
+                    <span style={{ fontSize: 13.5, fontVariantNumeric: "tabular-nums", minWidth: 90, textAlign: "right" }}>
+                      {area != null ? formatArea(area, unit) : "—"}
+                    </span>
+                  </button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -285,6 +325,41 @@ export function VineyardSetup({
                     {expanded ? "Close" : "Edit"}
                   </Button>
                 </div>
+
+                {/* Read-only summary (click the row); hidden while editing */}
+                {viewId === b.id && !expanded ? (
+                  <div style={{ padding: "4px 14px 16px", background: "var(--surface-sunken)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+                      <ReadField label="Block #" value={b.blockLabel} />
+                      <ReadField label="# of rows" value={b.numRows} />
+                      <ReadField label={`Row spacing (${spLabel})`} value={b.rowSpacingM != null ? formatSpacing(b.rowSpacingM, unit) : null} />
+                      <ReadField label={`Vine spacing (${spLabel})`} value={b.vineSpacingM != null ? formatSpacing(b.vineSpacingM, unit) : null} />
+                      <ReadField label="Variety" value={b.variety?.name} />
+                      <ReadField label="Clone" value={b.clone} />
+                      <ReadField label="Rootstock" value={b.rootstock} />
+                      <ReadField label="# of vines" value={b.vineCount} />
+                      <ReadField label="Year planted" value={b.yearPlanted} />
+                      <ReadField label="Irrigation" value={b.irrigated == null ? null : b.irrigated ? "Yes" : "No"} />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 13.5 }}>
+                        Planted area (spacing-based):{" "}
+                        <strong style={{ fontVariantNumeric: "tabular-nums" }}>
+                          {area != null ? formatArea(area, unit) : "—"}
+                        </strong>
+                      </span>
+                      {vinesPerRow(b.vineCount, b.numRows) != null ? (
+                        <Badge tone="neutral" variant="soft">
+                          ~{Math.round(vinesPerRow(b.vineCount, b.numRows)!)} vines/row
+                        </Badge>
+                      ) : null}
+                      <span style={{ flex: 1 }} />
+                      <Button variant="ghost" size="sm" onClick={() => expand(b)}>
+                        Edit block
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Expanded editor */}
                 {expanded && draft ? (
