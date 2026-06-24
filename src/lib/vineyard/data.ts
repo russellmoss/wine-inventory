@@ -84,6 +84,11 @@ export type VineyardDetailPayload = {
   blocks: SerializedBlock[];
 };
 
+// NOTE: the per-vineyard loader lives in ./actions.ts (a "use server" module) so
+// it can be called from client components without dragging server-only deps
+// (prisma, auth) into the client bundle. The pure serializers above are used by
+// that loader and are also unit-tested directly.
+
 /** Pure: convert a block row's Decimals to numbers; leave GeoJSON geometry intact. */
 export function serializeBlock(row: RawBlock): SerializedBlock {
   return {
@@ -120,26 +125,3 @@ export function serializeDetail(row: RawDetail): SerializedDetail {
   };
 }
 
-/**
- * Server action: everything the vineyard modal needs in one round-trip, fully
- * serialized (no Decimals cross the boundary). Lazy-loaded per vineyard on open.
- */
-export async function loadVineyardDetail(vineyardId: string): Promise<VineyardDetailPayload> {
-  "use server";
-  // Imported lazily so this module stays pure for unit tests (no server-only deps).
-  const { prisma } = await import("@/lib/prisma");
-  const { getActionUser } = await import("@/lib/actions");
-  await getActionUser();
-  const [detail, blocks] = await Promise.all([
-    prisma.vineyardDetail.findUnique({ where: { vineyardId } }),
-    prisma.vineyardBlock.findMany({
-      where: { vineyardId },
-      orderBy: { sortOrder: "asc" },
-      include: { variety: { select: { id: true, name: true, color: true } } },
-    }),
-  ]);
-  return {
-    detail: detail ? serializeDetail(detail) : null,
-    blocks: blocks.map(serializeBlock),
-  };
-}

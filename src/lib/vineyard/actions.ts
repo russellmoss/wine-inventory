@@ -3,12 +3,35 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { action, ActionError } from "@/lib/actions";
+import { action, ActionError, getActionUser } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
 import { ftToM, toCanonicalSpacing, type Unit } from "@/lib/vineyard/units";
+import { serializeBlock, serializeDetail, type VineyardDetailPayload } from "@/lib/vineyard/data";
 
 const PATH = "/reference";
+
+/**
+ * Everything the vineyard modal needs in one round-trip, fully serialized (no
+ * Decimals cross the boundary). Lazy-loaded per vineyard on modal open. Lives
+ * in this "use server" module so it can be called from a client component
+ * without dragging server-only deps into the client bundle.
+ */
+export async function loadVineyardDetail(vineyardId: string): Promise<VineyardDetailPayload> {
+  await getActionUser();
+  const [detail, blocks] = await Promise.all([
+    prisma.vineyardDetail.findUnique({ where: { vineyardId } }),
+    prisma.vineyardBlock.findMany({
+      where: { vineyardId },
+      orderBy: { sortOrder: "asc" },
+      include: { variety: { select: { id: true, name: true, color: true } } },
+    }),
+  ]);
+  return {
+    detail: detail ? serializeDetail(detail) : null,
+    blocks: blocks.map(serializeBlock),
+  };
+}
 
 // ── Parsing helpers (everything optional; validate only when present) ──────
 
