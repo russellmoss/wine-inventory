@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { BottlingClient, type VesselOpt, type LocOpt, type RunRow } from "./BottlingClient";
+import { BottlingClient, type VesselOpt, type RunRow } from "./BottlingClient";
 
 export default async function BottlingPage() {
   const [vessels, locations, runs] = await Promise.all([

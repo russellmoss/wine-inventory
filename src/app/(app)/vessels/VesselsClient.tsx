@@ -37,7 +37,7 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
   const tanks = vessels.filter((v) => v.type === "TANK");
   const selected = vessels.find((v) => v.id === selectedId) ?? null;
 
-  function TypeCard({ title, type, items }: { title: string; type: "BARREL" | "TANK"; items: VesselRow[] }) {
+  const renderTypeCard = (title: string, type: "BARREL" | "TANK", items: VesselRow[]) => {
     return (
       <Card style={{ flex: "1 1 380px" }}>
         <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 22, marginBottom: 12 }}>
@@ -103,8 +103,8 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
 
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <TypeCard title="Barrels" type="BARREL" items={barrels} />
-        <TypeCard title="Tanks" type="TANK" items={tanks} />
+        {renderTypeCard("Barrels", "BARREL", barrels)}
+        {renderTypeCard("Tanks", "TANK", tanks)}
       </div>
 
       <Modal

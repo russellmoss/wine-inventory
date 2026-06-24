@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored, gitignored design-system skill export (not app source).
+    "design-system/**",
   ]),
 ]);
 

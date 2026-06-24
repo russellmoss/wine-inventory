@@ -30,7 +30,7 @@ async function main() {
     },
   });
 
-  const input = (n: number) => ({
+  const input = () => ({
     vesselIds: [vessel.id],
     destinationLocationId: location.id,
     skuName: `${TAG} Reserve`,
@@ -40,7 +40,7 @@ async function main() {
   });
 
   // --- fire two concurrent runs ---
-  const results = await Promise.allSettled([executeBottling(input(1), actor), executeBottling(input(2), actor)]);
+  const results = await Promise.allSettled([executeBottling(input(), actor), executeBottling(input(), actor)]);
   const ok = results.filter((r) => r.status === "fulfilled").length;
   const failed = results.filter((r) => r.status === "rejected");
 

@@ -54,7 +54,11 @@ export function Button({
     lineHeight: 1,
     letterSpacing: "0.005em",
     borderRadius: "var(--radius-md)",
-    border: "1px solid transparent",
+    // Longhand (not the `border` shorthand) so variants can override `borderColor`
+    // alone without React 19's shorthand/longhand conflict warning.
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "transparent",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.45 : 1,
     width: fullWidth ? "100%" : "auto",
