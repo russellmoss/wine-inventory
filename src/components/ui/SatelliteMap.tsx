@@ -152,6 +152,11 @@ export interface SatelliteMapProps {
    * then re-renders through the read-only polygon effect.
    */
   onPolygonSaved?: (blockId: string, geometry: PolygonGeometry | null) => void;
+  /**
+   * Called when a block's polygon (or its row in the on-map key) is clicked.
+   * The consumer opens a detail modal for that block. Suppressed while drawing.
+   */
+  onBlockClick?: (blockId: string) => void;
 }
 
 /** Minimal GeoJSON Polygon shape (a linear ring of [lng, lat] positions). */
@@ -169,53 +174,6 @@ function isPolygonGeometry(g: unknown): g is PolygonGeometry {
       pt.length >= 2 &&
       Number.isFinite(pt[0]) &&
       Number.isFinite(pt[1]),
-  );
-}
-
-function esc(v: unknown): string {
-  if (v == null) return "";
-  return String(v)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/** Permanent on-polygon label: block # / variety (never color-only — a11y). */
-function labelText(b: SerializedBlock): string {
-  const parts = [b.blockLabel, b.variety?.name].filter(Boolean) as string[];
-  return parts.length ? esc(parts.join(" · ")) : "Block";
-}
-
-/** Detail popup HTML for a block, styled with tokens so it matches the app. */
-function popupHtml(b: SerializedBlock, unit: Unit): string {
-  const area = blockArea(b.rowSpacingM, b.vineSpacingM, b.vineCount, unit);
-  const fields: Array<[string, string | number | null]> = [
-    ["Variety", b.variety?.name ?? null],
-    ["Planted area (spacing-based)", area != null ? formatArea(area, unit) : null],
-    ["Clone", b.clone],
-    ["Rootstock", b.rootstock],
-    ["# of vines", b.vineCount],
-    ["# of rows", b.numRows],
-    ["Year planted", b.yearPlanted],
-    ["Irrigation", b.irrigated == null ? null : b.irrigated ? "Yes" : "No"],
-  ];
-  const rows = fields
-    .filter(([, v]) => v != null && v !== "")
-    .map(
-      ([k, v]) =>
-        `<div style="display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:1px 0;">` +
-        `<span style="color:var(--text-muted);">${esc(k)}</span>` +
-        `<span style="color:var(--text-primary);font-variant-numeric:tabular-nums;">${esc(v)}</span>` +
-        `</div>`,
-    )
-    .join("");
-  const title = b.blockLabel ? `Block ${esc(b.blockLabel)}` : "Block";
-  return (
-    `<div style="font-family:var(--font-body);min-width:180px;">` +
-    `<div style="font-family:var(--font-heading);font-weight:500;font-size:14.5px;margin-bottom:6px;">${title}</div>` +
-    (rows || `<div style="font-size:13px;color:var(--text-muted);">No details yet.</div>`) +
-    `</div>`
   );
 }
 
@@ -241,6 +199,7 @@ export function SatelliteMap({
   editable = false,
   activeBlockId = null,
   onPolygonSaved,
+  onBlockClick,
 }: SatelliteMapProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<L.Map | null>(null);
@@ -257,6 +216,17 @@ export function SatelliteMap({
   React.useEffect(() => {
     onPolygonSavedRef.current = onPolygonSaved;
   }, [onPolygonSaved]);
+
+  // Same trick for the click-for-details callback, plus a flag the polygon click
+  // handler reads to avoid hijacking clicks while the user is drawing.
+  const onBlockClickRef = React.useRef(onBlockClick);
+  React.useEffect(() => {
+    onBlockClickRef.current = onBlockClick;
+  }, [onBlockClick]);
+  const drawingRef = React.useRef(false);
+  React.useEffect(() => {
+    drawingRef.current = editable && activeBlockId != null;
+  }, [editable, activeBlockId]);
 
   // Bridge between the two Geoman effects: the polygon effect tags each editable
   // layer with its block id; the edit effect's map-level commit handler reads it
@@ -397,17 +367,15 @@ export function SatelliteMap({
       const layer = L.geoJSON(b.polygon, {
         style: { color, weight: 2, fillColor: color, fillOpacity: 0.35 },
       });
-      layer.bindTooltip(labelText(b), {
-        permanent: true,
-        direction: "center",
-        className: "bw-poly-label",
-        opacity: 1,
+      // No on-polygon text labels — they congest and overlap. Identity comes from
+      // the color + the on-map key (below) + click-for-details. Clicking a polygon
+      // opens its detail modal (suppressed mid-draw so it can't hijack vertices).
+      const blockId = b.id;
+      layer.on("click", () => {
+        if (drawingRef.current) return;
+        onBlockClickRef.current?.(blockId);
       });
-      // Detail popups are a read-only affordance; suppress them while editing so
-      // clicks drive vertex editing, not popups.
-      if (!editable) {
-        layer.bindPopup(popupHtml(b, unit), { className: "bw-map-popup", maxWidth: 260 });
-      } else {
+      if (editable) {
         // Tag the actual editable polygon(s) so the commit handler (in the edit
         // effect) can map a pm:update/pm:dragend back to this block, and seed the
         // dedupe baseline from Geoman's own serialization of the current shape.
@@ -545,6 +513,10 @@ export function SatelliteMap({
 
   const selectedRelease = releases[selectedIdx];
 
+  // Blocks with a drawn shape — the on-map key. Carries the text identity that
+  // used to live in the (removed) on-polygon labels: block #, variety, acreage.
+  const keyedBlocks = blocks.filter((b) => isPolygonGeometry(b.polygon));
+
   if (!showMap) {
     return (
       <div
@@ -579,6 +551,79 @@ export function SatelliteMap({
             boxShadow: "var(--shadow-sm)",
           }}
         />
+        {/* On-map key: block # · variety · acreage. Doubles as the colorblind-safe
+            text key now that polygons carry no label. Hidden in history mode (the
+            timeline owns the bottom) and when nothing is drawn yet. */}
+        {keyedBlocks.length > 0 && !historyMode ? (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 10,
+              left: 10,
+              zIndex: 1000,
+              maxWidth: 240,
+              maxHeight: "calc(100% - 20px)",
+              overflowY: "auto",
+              padding: "6px 4px",
+              background: "rgba(255, 248, 241, 0.92)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "0 1px 3px rgba(43, 42, 38, 0.18)",
+            }}
+          >
+            <table style={{ borderCollapse: "collapse", fontFamily: "var(--font-body)", fontSize: 12.5 }}>
+              <tbody>
+                {keyedBlocks.map((b) => {
+                  const c = effectiveColor({
+                    blockColor: b.color,
+                    varietyColor: b.variety?.color,
+                    varietyId: b.varietyId,
+                  });
+                  const area = blockArea(b.rowSpacingM, b.vineSpacingM, b.vineCount, unit);
+                  return (
+                    <tr
+                      key={b.id}
+                      onClick={() => onBlockClickRef.current?.(b.id)}
+                      style={{ cursor: onBlockClick ? "pointer" : "default" }}
+                      title="Show block details"
+                    >
+                      <td style={{ padding: "2px 6px", verticalAlign: "middle" }}>
+                        <span
+                          aria-hidden
+                          style={{
+                            display: "inline-block",
+                            width: 12,
+                            height: 12,
+                            borderRadius: "var(--radius-xs)",
+                            background: c,
+                            border: "1px solid var(--border-subtle)",
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: "2px 6px", color: "var(--text-primary)", whiteSpace: "nowrap" }}>
+                        {b.blockLabel || "—"}
+                      </td>
+                      <td style={{ padding: "2px 6px", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                        {b.variety?.name ?? "—"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "2px 6px",
+                          color: "var(--text-muted)",
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {area != null ? formatArea(area, unit) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
         {/* Top-right control cluster */}
         <div
           style={{

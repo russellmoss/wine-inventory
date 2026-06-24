@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Modal, Button, MapLegend } from "@/components/ui";
+import { Modal, Button, MapLegend, ConfirmButton } from "@/components/ui";
 import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import { blockArea, formatArea, mToFt, type Unit } from "@/lib/vineyard/units";
@@ -41,6 +41,8 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
   const [unit, setUnit] = React.useState<Unit>("imperial");
   // The block whose polygon is being drawn (setup mode only). Null = not drawing.
   const [activeBlockId, setActiveBlockId] = React.useState<string | null>(null);
+  // The block whose detail modal is open (clicked on the map). Null = closed.
+  const [infoBlockId, setInfoBlockId] = React.useState<string | null>(null);
   const [payload, setPayload] = React.useState<VineyardDetailPayload | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -102,6 +104,20 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
   // Drawing needs a map to draw on: coords, or an existing polygon to anchor the view.
   const canDraw = (detail?.gpsLat != null && detail?.gpsLng != null) || blocks.some((b) => b.polygon != null);
   const activeBlock = activeBlockId ? blocks.find((b) => b.id === activeBlockId) ?? null : null;
+  const infoBlock = infoBlockId ? blocks.find((b) => b.id === infoBlockId) ?? null : null;
+
+  // Clear a block's drawn shape (from its detail modal), then close + refetch.
+  const clearShape = React.useCallback(
+    (blockId: string) => {
+      saveBlockPolygon(blockId, null)
+        .then(() => {
+          setInfoBlockId(null);
+          refetch();
+        })
+        .catch((e) => setLoadError(e instanceof Error ? e.message : "Couldn't clear that shape."));
+    },
+    [refetch],
+  );
 
   // Persist a finished/edited polygon, then leave draw mode and refetch so the
   // saved shape re-renders from the server (its source of truth).
@@ -117,21 +133,23 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
     [refetch],
   );
 
-  // Esc cancels an in-progress draw. Capture phase + stopPropagation so it beats
-  // the Modal's own close-on-Escape; without draw active, Esc closes the modal.
+  // Esc closes the topmost overlay first: the block detail modal, then an
+  // in-progress draw. Capture phase + stopPropagation so it beats the outer
+  // Modal's own close-on-Escape; with no overlay, Esc closes the whole modal.
   React.useEffect(() => {
-    if (!activeBlockId) return;
+    if (!infoBlockId && !activeBlockId) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setActiveBlockId(null);
-      }
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      if (infoBlockId) setInfoBlockId(null);
+      else setActiveBlockId(null);
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [activeBlockId]);
+  }, [infoBlockId, activeBlockId]);
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -176,6 +194,7 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
               editable
               activeBlockId={activeBlockId}
               onPolygonSaved={handlePolygonSaved}
+              onBlockClick={setInfoBlockId}
             />
             <div style={{ marginTop: 12 }}>
               <MapLegend blocks={blocks} unit={unit} />
@@ -230,6 +249,7 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
               lng={detail?.gpsLng ?? null}
               blocks={blocks}
               unit={unit}
+              onBlockClick={setInfoBlockId}
             />
             <div style={{ marginTop: 12 }}>
               <MapLegend blocks={blocks} unit={unit} />
@@ -294,6 +314,42 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
         </div>
       )}
     </Modal>
+
+    {/* Block detail modal — opened by clicking a polygon or its on-map key row.
+        In setup mode it also offers redraw + delete-shape so a wrong/ripped-out
+        block can be fixed without hunting through the editor. */}
+    {infoBlock ? (
+      <Modal
+        open
+        onClose={() => setInfoBlockId(null)}
+        maxWidth={640}
+        title={infoBlock.blockLabel ? `Block ${infoBlock.blockLabel}` : "Block"}
+        subtitle={infoBlock.variety?.name ?? "Block details"}
+      >
+        <BlockDetails block={infoBlock} unit={unit} />
+        {mode === "setup" ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 20, flexWrap: "wrap" }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setActiveBlockId(infoBlock.id);
+                setInfoBlockId(null);
+              }}
+            >
+              {infoBlock.polygon != null ? "Redraw shape" : "Draw shape"}
+            </Button>
+            <span style={{ flex: 1 }} />
+            {infoBlock.polygon != null ? (
+              <ConfirmButton confirmLabel="Delete shape" onConfirm={() => clearShape(infoBlock.id)}>
+                Delete shape
+              </ConfirmButton>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
+    ) : null}
+    </>
   );
 }
 
