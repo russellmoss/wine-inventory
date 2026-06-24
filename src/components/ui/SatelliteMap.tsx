@@ -921,7 +921,7 @@ export function SatelliteMap({
             title={expanded ? "Exit fullscreen" : "View the map fullscreen"}
             style={
               expanded
-                ? { ...controlBtnStyle, background: "var(--wine-primary)", color: "var(--cream)", borderColor: "var(--wine-primary)" }
+                ? { ...controlBtnStyle, background: "var(--wine-primary)", color: "var(--cream)", border: "1px solid var(--wine-primary)" }
                 : controlBtnStyle
             }
           >
@@ -974,7 +974,7 @@ export function SatelliteMap({
             style={{
               ...controlBtnStyle,
               ...(historyMode
-                ? { background: "var(--wine-primary)", color: "var(--cream)", borderColor: "var(--wine-primary)" }
+                ? { background: "var(--wine-primary)", color: "var(--cream)", border: "1px solid var(--wine-primary)" }
                 : null),
               cursor: historyLoading ? "wait" : "pointer",
             }}
