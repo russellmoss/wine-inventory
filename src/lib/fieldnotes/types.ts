@@ -3,6 +3,8 @@
 // validate on write and parse on read, and carry a `schemaVersion` on the row so
 // the shape can evolve. No server-only imports (kept unit-testable).
 
+import { toISODateUTC } from "@/lib/fieldnotes/week";
+
 /** Bump when the stored JSON shape changes; persisted on FieldNote.schemaVersion. */
 export const SCHEMA_VERSION = 1;
 
@@ -71,6 +73,19 @@ export type BlockStatus = {
   diseasePestSpotted: boolean;
   diseaseDescription: string | null;
   photoUrls: string[];
+};
+
+/** A fully blank status — used to initialize a newly-added block (manager must fill). */
+export const EMPTY_BLOCK_STATUS: BlockStatus = {
+  phenoStage: null,
+  shootTip: null,
+  canopyDensity: null,
+  waterStress: null,
+  weedPressure: null,
+  leafConditions: [],
+  diseasePestSpotted: false,
+  diseaseDescription: null,
+  photoUrls: [],
 };
 
 /** Baseline a manager can stamp onto untouched blocks via "mark remaining healthy". */
@@ -183,4 +198,78 @@ export function parseBlockStatuses(raw: unknown): Record<string, BlockStatus> {
     out[blockId] = parseBlockStatus(status);
   }
   return out;
+}
+
+// ───────────────────────── Read DTO (parsed) ─────────────────────────
+// One canonical parsed shape for a stored FieldNote. All JSON columns are
+// validated, all Dates are mapped to strings (no Date/Decimal crosses to the
+// client). Used by the manager view, admin dashboard, and the AI generator.
+
+export type ParsedFieldNote = {
+  id: string;
+  vineyardId: string;
+  userId: string | null;
+  userEmail: string;
+  weekOf: string; // "YYYY-MM-DD"
+  weatherData: WeatherData;
+  spraysApplied: InputApplication[];
+  fertilizersApplied: InputApplication[];
+  blockLevelStatuses: Record<string, BlockStatus>;
+  generalNotes: string | null;
+  aiSummary: string | null;
+  aiSummaryStatus: string;
+  aiSummaryAt: string | null;
+  schemaVersion: number;
+  createdAt: string;
+};
+
+/** Payload the manager form submits to createFieldNote. */
+export type CreateFieldNoteInput = {
+  vineyardId: string;
+  weekOf: string; // "YYYY-MM-DD"
+  weatherData: WeatherData;
+  spraysApplied: InputApplication[];
+  fertilizersApplied: InputApplication[];
+  blockLevelStatuses: Record<string, BlockStatus>;
+  generalNotes?: string | null;
+};
+
+/** Structural subset of a Prisma FieldNote row needed to parse it. */
+export type FieldNoteRowLike = {
+  id: string;
+  vineyardId: string;
+  userId: string | null;
+  userEmail: string;
+  weekOf: Date;
+  weatherData: unknown;
+  spraysApplied: unknown;
+  fertilizersApplied: unknown;
+  blockLevelStatuses: unknown;
+  generalNotes: string | null;
+  aiSummary: string | null;
+  aiSummaryStatus: string;
+  aiSummaryAt: Date | null;
+  schemaVersion: number;
+  createdAt: Date;
+};
+
+/** Validate + map a stored row into the parsed DTO. Throws on malformed JSON. */
+export function parseFieldNoteRow(row: FieldNoteRowLike): ParsedFieldNote {
+  return {
+    id: row.id,
+    vineyardId: row.vineyardId,
+    userId: row.userId,
+    userEmail: row.userEmail,
+    weekOf: toISODateUTC(row.weekOf),
+    weatherData: parseWeatherData(row.weatherData),
+    spraysApplied: parseInputApplications(row.spraysApplied),
+    fertilizersApplied: parseInputApplications(row.fertilizersApplied),
+    blockLevelStatuses: parseBlockStatuses(row.blockLevelStatuses),
+    generalNotes: row.generalNotes,
+    aiSummary: row.aiSummary,
+    aiSummaryStatus: row.aiSummaryStatus,
+    aiSummaryAt: row.aiSummaryAt ? row.aiSummaryAt.toISOString() : null,
+    schemaVersion: row.schemaVersion,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
