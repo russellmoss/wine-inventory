@@ -37,6 +37,11 @@ Secrets live in `.env` (gitignored). Template is `.env.example`.
 - `GEMINI_API_KEY` — read by `council-mcp` from this `.env` for cross-LLM review.
 - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY` — reused from the
   Dashboard project for council / research tooling.
+- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — optional. Google Map Tiles API key for the
+  vineyard satellite basemap (`src/components/ui/SatelliteMap.tsx`). Client-exposed
+  by design (restrict by referrer + Map Tiles API in Cloud Console). Unset → the
+  map falls back to keyless Esri World Imagery. Map deps: `leaflet` (no
+  react-leaflet); imagery is keyless Esri unless this key is set.
 
 ## rstack toolchain
 

@@ -18,10 +18,95 @@ import * as L from "leaflet";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import { blockArea, formatArea, type Unit } from "@/lib/vineyard/units";
 import type { SerializedBlock } from "@/lib/vineyard/data";
+import {
+  GOOGLE_2D_TILE_URL,
+  getGoogleAttribution,
+  getGoogleMapSession,
+} from "@/lib/map/google-tiles";
 
 const ESRI_IMAGERY_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const ESRI_ATTRIBUTION = "Esri, Maxar, Earthstar Geographics";
+
+// Google Map Tiles API key (client-exposed by design; restrict by referrer +
+// Map Tiles API in Google Cloud). When unset, the map falls back to keyless Esri.
+const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const MAX_ZOOM = 22;
+
+/** Keyless fallback basemap. maxNativeZoom lets it upscale cleanly past z19. */
+function addEsriBasemap(map: L.Map): void {
+  L.tileLayer(ESRI_IMAGERY_URL, {
+    attribution: ESRI_ATTRIBUTION,
+    maxNativeZoom: 19,
+    maxZoom: MAX_ZOOM,
+  }).addTo(map);
+}
+
+/** Keep the required Google copyright string current as the viewport changes. */
+function wireGoogleAttribution(
+  map: L.Map,
+  key: string,
+  session: string,
+  isCancelled: () => boolean,
+): void {
+  let last = "";
+  let timer: number | undefined;
+  const refresh = async () => {
+    const b = map.getBounds();
+    const txt = await getGoogleAttribution(
+      key,
+      session,
+      { north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() },
+      map.getZoom(),
+    );
+    if (isCancelled() || !txt || txt === last) return;
+    if (last) map.attributionControl.removeAttribution(last);
+    map.attributionControl.addAttribution(txt);
+    last = txt;
+  };
+  const onMove = () => {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(refresh, 400);
+  };
+  map.on("moveend", onMove);
+  void refresh();
+}
+
+/**
+ * Add the basemap: Google satellite (sharper, more current) when a key is set,
+ * otherwise keyless Esri. If Google tiles never load (bad key / billing off /
+ * Map Tiles API not enabled), swap to Esri so the map still works.
+ */
+async function addBasemap(map: L.Map, isCancelled: () => boolean): Promise<void> {
+  if (GOOGLE_KEY) {
+    try {
+      const session = await getGoogleMapSession(GOOGLE_KEY, "satellite");
+      if (isCancelled()) return;
+      const gl = L.tileLayer(
+        `${GOOGLE_2D_TILE_URL}?session=${encodeURIComponent(session)}&key=${encodeURIComponent(GOOGLE_KEY)}`,
+        { maxZoom: MAX_ZOOM, tileSize: 256, attribution: "Imagery ©Google" },
+      );
+      let loadedOk = false;
+      gl.on("tileload", () => {
+        loadedOk = true;
+      });
+      gl.on("tileerror", () => {
+        if (!loadedOk && map.hasLayer(gl)) {
+          loadedOk = true; // guard against repeated swaps
+          map.removeLayer(gl);
+          addEsriBasemap(map);
+        }
+      });
+      gl.addTo(map);
+      wireGoogleAttribution(map, GOOGLE_KEY, session, isCancelled);
+      return;
+    } catch {
+      if (isCancelled()) return;
+      // fall through to Esri
+    }
+  }
+  if (!isCancelled()) addEsriBasemap(map);
+}
 
 export interface SatelliteMapProps {
   /** Vineyard GPS in decimal degrees; null when not set. */
@@ -129,16 +214,16 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
     const el = containerRef.current;
     if (!el || mapRef.current) return;
 
-    const map = L.map(el, { scrollWheelZoom: true, attributionControl: true }).setView(
-      [20, 0],
-      2,
-    );
+    let cancelled = false;
+    const map = L.map(el, {
+      scrollWheelZoom: true,
+      attributionControl: true,
+      maxZoom: MAX_ZOOM,
+    }).setView([20, 0], 2);
     mapRef.current = map;
 
-    L.tileLayer(ESRI_IMAGERY_URL, {
-      attribution: ESRI_ATTRIBUTION,
-      maxZoom: 19,
-    }).addTo(map);
+    // Google satellite when keyed, else keyless Esri (async: needs a session token).
+    void addBasemap(map, () => cancelled);
 
     // Leaflet renders blank/offset when its container had no size at init (common
     // inside a modal). Invalidate once layout settles, and on every resize.
@@ -150,6 +235,7 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
     if (ro) ro.observe(el);
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
       if (ro) ro.disconnect();
       map.remove();
