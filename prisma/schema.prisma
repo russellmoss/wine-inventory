@@ -15,23 +15,27 @@ datasource db {
 // ───────────────────────── Auth (Better Auth) ─────────────────────────
 
 model User {
-  id                 String    @id
+  id                 String      @id
   name               String
   email              String
-  emailVerified      Boolean   @default(false)
+  emailVerified      Boolean     @default(false)
   image              String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
   role               String?
-  banned             Boolean?  @default(false)
+  banned             Boolean?    @default(false)
   banReason          String?
   banExpires         DateTime?
-  mustChangePassword Boolean?  @default(false)
+  mustChangePassword Boolean?    @default(false)
   passwordChangedAt  DateTime?
+  assignedVineyardId String? // managers are scoped to one vineyard (Prisma-only; never declared to Better Auth)
   sessions           Session[]
   accounts           Account[]
+  assignedVineyard   Vineyard?   @relation("VineyardManagers", fields: [assignedVineyardId], references: [id], onDelete: SetNull)
+  fieldNotes         FieldNote[]
 
   @@unique([email])
+  @@index([assignedVineyardId])
   @@map("user")
 }
 
@@ -113,6 +117,12 @@ enum AuditAction {
   USER_DELETED
   BOTTLING
   STOCK_MOVEMENT
+  FIELD_NOTE_CREATED
+  FIELD_INPUT_CREATED
+  USER_VINEYARD_ASSIGNED
+  BRIX_LOGGED
+  HARVEST_ESTIMATED
+  HARVEST_PICK_RECORDED
 }
 
 // ───────────────────────── Shared registries ─────────────────────────
@@ -154,6 +164,10 @@ model Vineyard {
   bottlingSources BottlingSource[]
   detail          VineyardDetail?
   blocks          VineyardBlock[]
+  managers        User[]            @relation("VineyardManagers")
+  fieldNotes      FieldNote[]
+  brixLogs        BrixLog[]
+  harvestRecords  HarvestRecord[]
 
   @@map("vineyard")
 }
@@ -181,29 +195,138 @@ model VineyardDetail {
 // A planted block within a vineyard. All fields optional; nothing required to save.
 // Acreage is NOT stored — it is derived from rowSpacing * vineSpacing * vineCount.
 model VineyardBlock {
-  id           String   @id @default(cuid())
-  vineyardId   String
-  blockLabel   String? // e.g. "Block 1", "A"
-  numRows      Int? // informational (drives optional vines/row readout)
-  rowSpacingM  Decimal? @db.Decimal(10, 4) // canonical metric
-  vineSpacingM Decimal? @db.Decimal(10, 4) // canonical metric
-  varietyId    String?
-  clone        String?
-  rootstock    String?
-  vineCount    Int?
-  yearPlanted  Int?
-  irrigated    Boolean?
-  polygon      Json? // GeoJSON Polygon geometry (illustrative, not the area source)
-  color        String? // optional per-block polygon color override (hex)
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  vineyard     Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
-  variety      Variety? @relation(fields: [varietyId], references: [id], onDelete: SetNull)
+  id             String          @id @default(cuid())
+  vineyardId     String
+  blockLabel     String? // e.g. "Block 1", "A"
+  numRows        Int? // informational (drives optional vines/row readout)
+  rowSpacingM    Decimal?        @db.Decimal(10, 4) // canonical metric
+  vineSpacingM   Decimal?        @db.Decimal(10, 4) // canonical metric
+  varietyId      String?
+  clone          String?
+  rootstock      String?
+  vineCount      Int?
+  yearPlanted    Int?
+  irrigated      Boolean?
+  polygon        Json? // GeoJSON Polygon geometry (illustrative, not the area source)
+  color          String? // optional per-block polygon color override (hex)
+  sortOrder      Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  vineyard       Vineyard        @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
+  variety        Variety?        @relation(fields: [varietyId], references: [id], onDelete: SetNull)
+  brixLogs       BrixLog[]
+  harvestRecords HarvestRecord[]
 
   @@index([vineyardId])
   @@index([varietyId])
   @@map("vineyard_block")
+}
+
+// ───────────────────────── Vineyard operations: field notes ─────────────────────────
+
+// One canonical weekly field report per vineyard (Friday-anchored). JSON columns
+// hold the LLM-friendly weather / inputs / per-block status payloads; vineyard +
+// manager stay real FKs for querying. `userEmail` snapshots provenance (mirror
+// BottlingRun) so deleting the manager (SetNull) never erases who logged it.
+model FieldNote {
+  id                 String    @id @default(cuid())
+  vineyardId         String
+  userId             String? // manager who logged it; SetNull so user delete doesn't cascade
+  userEmail          String // durable provenance snapshot
+  weekOf             DateTime  @db.Date // Friday anchor, written via the canonical UTC helper
+  weatherData        Json // { rainfallMm, maxTempC, minTempC }
+  spraysApplied      Json // [{ name, scope: "WHOLE"|"BLOCKS", blockIds: [] }]
+  fertilizersApplied Json // same shape as spraysApplied
+  blockLevelStatuses Json // { [blockId]: BlockStatus }
+  schemaVersion      Int       @default(1) // JSON shape version
+  generalNotes       String?
+  aiSummary          String?
+  aiSummaryStatus    String    @default("PENDING") // PENDING | READY | FAILED
+  aiSummaryAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  vineyard           Vineyard  @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
+  user               User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([vineyardId, weekOf]) // one canonical note per vineyard per week
+  @@index([vineyardId, weekOf])
+  @@map("field_note")
+}
+
+// Master list of sprays/fertilizers. `normalizedKey` (strip-all-non-alphanumeric
+// UPPERCASE) dedupes "NEEM OIL" / "NEEM-OIL" to one row; `name` keeps the label.
+model FieldInput {
+  id            String   @id @default(cuid())
+  type          String // SPRAY | FERTILIZER
+  name          String // display, cleaned UPPERCASE
+  normalizedKey String // dedup key, strip-all-non-alphanumeric UPPERCASE
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@unique([type, normalizedKey])
+  @@map("field_input")
+}
+
+// ───────────────────────── Vineyard operations: harvest ledger ─────────────────────────
+
+// Per-block Brix readings logged repeatedly across the ripening window.
+// `vineyardId` denormalized for clean aggregates; block delete is Restricted so
+// ripening history is never erased by a block edit. DB CHECK enforces 0..40.
+model BrixLog {
+  id             String        @id @default(cuid())
+  blockId        String
+  vineyardId     String // denormalized FK for aggregates
+  brixValue      Decimal       @db.Decimal(4, 1)
+  recordedAt     DateTime      @default(now())
+  createdById    String?
+  createdByEmail String // provenance snapshot
+  note           String?
+  block          VineyardBlock @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  vineyard       Vineyard      @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
+
+  @@index([blockId, recordedAt])
+  @@index([vineyardId])
+  @@map("brix_log")
+}
+
+// One record per (block, vintage): holds the pre-harvest estimate and parents the
+// pick passes. `totalWeightKg` is NOT stored — it is the sum of `picks`.
+model HarvestRecord {
+  id              String        @id @default(cuid())
+  blockId         String
+  vineyardId      String // denormalized FK for aggregates
+  vintageYear     Int
+  yieldEstimateKg Decimal?      @db.Decimal(12, 3) // pre-harvest estimate, canonical kg
+  createdById     String?
+  createdByEmail  String
+  updatedByEmail  String?
+  note            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  block           VineyardBlock @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  vineyard        Vineyard      @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
+  picks           HarvestPick[]
+
+  @@unique([blockId, vintageYear])
+  @@index([vineyardId, vintageYear])
+  @@map("harvest_record")
+}
+
+// Each pick pass against a HarvestRecord. Vineyards pick a block in multiple
+// passes; the total auto-rolls up from these rows.
+model HarvestPick {
+  id              String        @id @default(cuid())
+  harvestRecordId String
+  pickDate        DateTime      @db.Date
+  weightKg        Decimal       @db.Decimal(12, 3) // canonical kg
+  createdById     String?
+  createdByEmail  String
+  note            String?
+  createdAt       DateTime      @default(now())
+  harvestRecord   HarvestRecord @relation(fields: [harvestRecordId], references: [id], onDelete: Cascade)
+
+  @@index([harvestRecordId, pickDate])
+  @@map("harvest_pick")
 }
 
 // ───────────────────────── Bulk / in-process wine ─────────────────────────
@@ -310,8 +433,8 @@ model BottlingSource {
 // ───────────────────────── Inventory ledger + cached balances ─────────────────────────
 
 model StockMovement {
-  id              String       @id @default(cuid())
-  createdAt       DateTime     @default(now())
+  id              String        @id @default(cuid())
+  createdAt       DateTime      @default(now())
   createdById     String?
   createdByEmail  String
   itemKind        ItemKind
@@ -323,10 +446,10 @@ model StockMovement {
   reason          String?
   transferGroupId String? // pairs the out/in legs of a TRANSFER
   bottlingRunId   String?
-  wineSku         WineSku?     @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
+  wineSku         WineSku?      @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
   finishedGood    FinishedGood? @relation(fields: [finishedGoodId], references: [id], onDelete: Restrict)
-  location        Location     @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  bottlingRun     BottlingRun? @relation(fields: [bottlingRunId], references: [id], onDelete: SetNull)
+  location        Location      @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  bottlingRun     BottlingRun?  @relation(fields: [bottlingRunId], references: [id], onDelete: SetNull)
 
   @@index([wineSkuId])
   @@index([finishedGoodId])
