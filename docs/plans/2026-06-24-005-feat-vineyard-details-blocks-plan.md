@@ -257,6 +257,15 @@ support this:
   `npx next build`, and `npm test` (114 pass) all green. Awaiting review before PR.
 - **PR3 — Interactive drawing:** Unit 7 (Geoman draw/edit/snap, commit-on-end, per-block
   draw buttons enabled). The highest-UX-risk piece, isolated so the rest is already live.
+  **STATUS: built on branch `feat/vineyard-drawing` (2026-06-24).** Added
+  `@geoman-io/leaflet-geoman-free`; CSS imported in the root layout; `SatelliteMap`
+  extended with an editable mode (props `editable`/`activeBlockId`/`onPolygonSaved`):
+  snapping, per-block `enableDraw('Polygon')`, token-styled Geoman toolbar (edit + drag
+  only). Persists only on commit (`pm:create` for new shapes, `pm:update`/`pm:dragend`
+  for edits), deduped to one save + one audit row per finished shape. Wired the per-block
+  "Draw / edit shape" buttons through `VineyardModal` (draw-mode banner, Esc-to-cancel,
+  `saveBlockPolygon`) + a "Clear shape" action. `npm run lint`, `npx tsc --noEmit`,
+  `npx next build`, and `npm test` (114 pass) all green. Awaiting review before PR.
 
 ## Implementation Units
 
