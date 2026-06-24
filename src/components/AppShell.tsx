@@ -148,7 +148,7 @@ export function AppShell({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <BrandEmblem size={24} />
-          <div style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Bhutan Wine</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 18, letterSpacing: "0.01em" }}>BWC</div>
         </div>
         <button onClick={() => setDrawer(true)} aria-label="Open menu" style={{ background: "none", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", padding: "6px 10px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>☰</button>
       </header>

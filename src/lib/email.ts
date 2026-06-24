@@ -7,7 +7,7 @@ const BREVO_URL = "https://api.brevo.com/v3/smtp/email";
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }): Promise<void> {
   const apiKey = process.env.BREVO_API_KEY;
   const senderEmail = process.env.BREVO_SENDER_EMAIL;
-  const senderName = process.env.BREVO_SENDER_NAME ?? "Bhutan Wine Inventory";
+  const senderName = process.env.BREVO_SENDER_NAME ?? "BWC Operating System";
 
   if (!apiKey || !senderEmail) {
     throw new Error("Email is not configured: set BREVO_API_KEY and BREVO_SENDER_EMAIL.");
@@ -60,7 +60,7 @@ export function welcomeEmailHtml(args: { name: string | null | undefined; email:
   const { name, email, tempPassword } = args;
   const loginUrl = `${appBaseUrl()}/login`;
   const greeting = name ? `Hi ${name},` : "Hi,";
-  return brandShell("Welcome to Bhutan Wine Inventory", `
+  return brandShell("Welcome to BWC Operating System", `
     <p style="font-size:15px;line-height:1.5">${greeting}</p>
     <p style="font-size:15px;line-height:1.5">An account has been created for you. Use the credentials below to sign in. You&rsquo;ll be asked to set your own password the first time you log in.</p>
     ${pill("Username (your email)", email)}
@@ -77,7 +77,7 @@ export function passwordResetByAdminEmailHtml(args: { name: string | null | unde
   const greeting = name ? `Hi ${name},` : "Hi,";
   return brandShell("Your password was reset", `
     <p style="font-size:15px;line-height:1.5">${greeting}</p>
-    <p style="font-size:15px;line-height:1.5">An administrator reset your Bhutan Wine Inventory password. Sign in with the temporary password below, then choose a new one.</p>
+    <p style="font-size:15px;line-height:1.5">An administrator reset your BWC Operating System password. Sign in with the temporary password below, then choose a new one.</p>
     ${pill("Username (your email)", email)}
     ${pill("Temporary password", tempPassword)}
     ${ctaButton(loginUrl, "Sign in")}
@@ -92,7 +92,7 @@ export function resetPasswordEmailHtml(name: string | null | undefined, url: str
     <p style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#7a2e2e;margin:0 0 4px">Bhutan Wine Company</p>
     <h1 style="font-size:24px;font-weight:400;margin:0 0 16px">Reset your password</h1>
     <p style="font-size:15px;line-height:1.5">${greeting}</p>
-    <p style="font-size:15px;line-height:1.5">We received a request to reset the password for your Bhutan Wine Inventory account. Click the button below to choose a new one. This link expires in 1 hour.</p>
+    <p style="font-size:15px;line-height:1.5">We received a request to reset the password for your BWC Operating System account. Click the button below to choose a new one. This link expires in 1 hour.</p>
     <p style="margin:24px 0">
       <a href="${url}" style="background:#7a2e2e;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-family:Arial,sans-serif;font-size:15px;display:inline-block">Reset password</a>
     </p>

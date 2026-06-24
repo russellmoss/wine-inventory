@@ -6,7 +6,7 @@ import React from "react";
  * surfaces (sidebar, login). The favicon (src/app/icon.svg) is the wine glass
  * alone; this is the fuller logo mark.
  */
-export function BrandEmblem({ size = 36, title = "Bhutan Wine Company" }: { size?: number; title?: string }) {
+export function BrandEmblem({ size = 36, title = "BWC Operating System" }: { size?: number; title?: string }) {
   const height = Math.round((size * 48) / 56);
   return (
     <svg
@@ -66,7 +66,7 @@ export function BrandMark({ variant = "app" }: BrandMarkProps) {
             BWC
           </div>
           <div className="ds-eyebrow" style={{ marginTop: 6 }}>
-            Bhutan Wine Company
+            Operating System
           </div>
         </div>
       </div>
@@ -76,11 +76,11 @@ export function BrandMark({ variant = "app" }: BrandMarkProps) {
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
       <BrandEmblem size={34} />
       <div>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 20, lineHeight: 1.05, color: "var(--text-primary)" }}>
-          Bhutan Wine
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 24, lineHeight: 1, letterSpacing: "0.01em", color: "var(--text-primary)" }}>
+          BWC
         </div>
         <div className="ds-eyebrow" style={{ marginTop: 5 }}>
-          Inventory
+          Operating System
         </div>
       </div>
     </div>

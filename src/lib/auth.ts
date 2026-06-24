@@ -21,7 +21,7 @@ export const auth = betterAuth({
     sendResetPassword: async ({ user, url }) => {
       await sendEmail({
         to: user.email,
-        subject: "Reset your Bhutan Wine Inventory password",
+        subject: "Reset your BWC Operating System password",
         html: resetPasswordEmailHtml(user.name, url),
       });
     },

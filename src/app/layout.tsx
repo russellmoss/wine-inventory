@@ -4,8 +4,8 @@ import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Bhutan Wine Company — Inventory",
-  description: "Bulk, bottled, and finished-goods inventory for the Bhutan Wine Company.",
+  title: "BWC Operating System",
+  description: "The Bhutan Wine Company operating system — inventory, production, records, financials, and scouting.",
 };
 
 export const viewport: Viewport = {
