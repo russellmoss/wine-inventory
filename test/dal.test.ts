@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { accessDecision, type AppUser } from "@/lib/access";
+import { accessDecision, canManagerAccessVineyard, type AppUser } from "@/lib/access";
 
 const base: AppUser = {
   id: "u1",
@@ -8,6 +8,7 @@ const base: AppUser = {
   role: "user",
   banned: false,
   mustChangePassword: false,
+  assignedVineyardId: null,
 };
 
 describe("accessDecision", () => {
@@ -39,5 +40,27 @@ describe("accessDecision", () => {
 
   it("allows admin into admin areas", () => {
     expect(accessDecision({ ...base, role: "admin" }, { requireAdmin: true })).toBe("ok");
+  });
+});
+
+describe("canManagerAccessVineyard", () => {
+  it("denies anonymous", () => {
+    expect(canManagerAccessVineyard(null, "v1")).toBe(false);
+  });
+  it("admin reaches any vineyard", () => {
+    expect(canManagerAccessVineyard({ ...base, role: "admin" }, "v1")).toBe(true);
+    expect(canManagerAccessVineyard({ ...base, role: "admin", assignedVineyardId: "v2" }, "v1")).toBe(
+      true,
+    );
+  });
+  it("manager reaches only their assigned vineyard", () => {
+    const mgr = { ...base, role: "user", assignedVineyardId: "v1" };
+    expect(canManagerAccessVineyard(mgr, "v1")).toBe(true);
+    expect(canManagerAccessVineyard(mgr, "v2")).toBe(false);
+  });
+  it("manager with no assignment reaches nothing", () => {
+    expect(canManagerAccessVineyard({ ...base, role: "user", assignedVineyardId: null }, "v1")).toBe(
+      false,
+    );
   });
 });
