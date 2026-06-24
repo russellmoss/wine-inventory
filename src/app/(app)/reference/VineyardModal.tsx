@@ -154,6 +154,28 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
             <Stat label="Blocks" value={String(blocks.length)} />
           </div>
 
+          {/* Location & site — summary metadata, kept near the top */}
+          <section>
+            <SectionTitle>Location & site</SectionTitle>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+              <Meta label="Vineyard manager" value={detail?.manager} />
+              <Meta label="Soil type" value={detail?.soilType} />
+              <Meta
+                label="Elevation"
+                value={detail?.elevationM != null ? elevationText(detail.elevationM, unit) : null}
+              />
+              <Meta
+                label="Coordinates"
+                value={detail?.gpsLat != null && detail?.gpsLng != null ? `${detail.gpsLat.toFixed(5)}, ${detail.gpsLng.toFixed(5)}` : null}
+              />
+            </div>
+            {detail?.gpsLat == null || detail?.gpsLng == null ? (
+              <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 10 }}>
+                Add a location in Set up to place this vineyard on the map.
+              </p>
+            ) : null}
+          </section>
+
           {/* Map slot (satellite map arrives in a later update) + variety key */}
           <section>
             <div
@@ -215,28 +237,6 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
                 })}
               </div>
             )}
-          </section>
-
-          {/* Secondary metadata */}
-          <section>
-            <SectionTitle>Location & site</SectionTitle>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-              <Meta label="Vineyard manager" value={detail?.manager} />
-              <Meta label="Soil type" value={detail?.soilType} />
-              <Meta
-                label="Elevation"
-                value={detail?.elevationM != null ? elevationText(detail.elevationM, unit) : null}
-              />
-              <Meta
-                label="Coordinates"
-                value={detail?.gpsLat != null && detail?.gpsLng != null ? `${detail.gpsLat.toFixed(5)}, ${detail.gpsLng.toFixed(5)}` : null}
-              />
-            </div>
-            {detail?.gpsLat == null || detail?.gpsLng == null ? (
-              <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 10 }}>
-                Add a location in Set up to place this vineyard on the map.
-              </p>
-            ) : null}
           </section>
         </div>
       )}
