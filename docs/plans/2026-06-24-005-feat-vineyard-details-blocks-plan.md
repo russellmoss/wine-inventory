@@ -250,6 +250,11 @@ support this:
   with server-only deps breaks the build. Awaiting review before PR.
 - **PR2 — Read-only map:** Unit 6 (vanilla Leaflet + Esri, colored polygons, fit-bounds,
   popups) wired into the summary + legend on the map.
+  **STATUS: built on branch `feat/vineyard-map` (2026-06-24).** Added `leaflet@^1.9` +
+  `@types/leaflet`; `SatelliteMap.tsx` + `SatelliteMap.client.tsx` (next/dynamic
+  ssr:false); Leaflet CSS in the root layout; Leaflet chrome restyled to tokens in
+  `globals.css`; wired into `VineyardModal` summary. `npm run lint`, `npx tsc --noEmit`,
+  `npx next build`, and `npm test` (114 pass) all green. Awaiting review before PR.
 - **PR3 — Interactive drawing:** Unit 7 (Geoman draw/edit/snap, commit-on-end, per-block
   draw buttons enabled). The highest-UX-risk piece, isolated so the rest is already live.
 
