@@ -325,11 +325,13 @@ export function SatelliteMap({
   // stay on the canvas while the map is open and vanish when it unmounts.
   const [measuring, setMeasuring] = React.useState(false);
   const [measureCount, setMeasureCount] = React.useState(0);
-  const [liveMeasure, setLiveMeasure] = React.useState<string | null>(null);
   const measureGroupRef = React.useRef<L.FeatureGroup | null>(null);
   const measureVerticesRef = React.useRef<L.LatLng[]>([]);
   const measureDrawingRef = React.useRef(false);
   const measureMetersRef = React.useRef(new WeakMap<L.Layer, number>());
+  // A standalone tooltip that follows the cursor and ticks the distance live
+  // (updated directly via Leaflet, not React state, so the drag stays smooth).
+  const liveTipRef = React.useRef<L.Tooltip | null>(null);
   const liveTsRef = React.useRef(0);
   const unitRef = React.useRef(unit);
   React.useEffect(() => {
@@ -626,29 +628,53 @@ export function SatelliteMap({
     measureVerticesRef.current = [];
     measureDrawingRef.current = false;
 
+    const hideLiveTip = () => {
+      if (liveTipRef.current) {
+        liveTipRef.current.remove();
+        liveTipRef.current = null;
+      }
+    };
+    // Place/update the cursor-following live label at `at`, showing the segment
+    // being drawn now (and the running total once there's more than one).
+    const showLiveTip = (at: L.LatLng) => {
+      const pts = measureVerticesRef.current;
+      if (pts.length === 0) return;
+      const seg = map.distance(pts[pts.length - 1], at);
+      const total = polylineMeters(map, pts) + seg;
+      const text =
+        pts.length > 1
+          ? `${formatDistance(seg, unitRef.current)}  ·  Σ ${formatDistance(total, unitRef.current)}`
+          : formatDistance(seg, unitRef.current);
+      if (!liveTipRef.current) {
+        liveTipRef.current = L.tooltip({
+          permanent: true,
+          direction: "right",
+          offset: [14, 0],
+          className: "bw-measure-live",
+          opacity: 1,
+        }).setLatLng(at).setContent(text).addTo(map);
+      } else {
+        liveTipRef.current.setLatLng(at).setContent(text);
+      }
+    };
+
     const onDrawStart = (e: { shape?: string }) => {
       if (e.shape !== "Line") return;
       measureDrawingRef.current = true;
       measureVerticesRef.current = [];
-      setLiveMeasure(null);
+      hideLiveTip();
     };
     const onVertex = (e: { latlng: L.LatLng }) => {
       if (!measureDrawingRef.current) return;
       measureVerticesRef.current.push(e.latlng);
-      const total = polylineMeters(map, measureVerticesRef.current);
-      setLiveMeasure(`${formatDistance(total, unitRef.current)} total`);
+      showLiveTip(e.latlng); // reset the live label to the just-placed point
     };
     const onMove = (e: L.LeafletMouseEvent) => {
-      const pts = measureVerticesRef.current;
-      if (!measureDrawingRef.current || pts.length === 0) return;
+      if (!measureDrawingRef.current || measureVerticesRef.current.length === 0) return;
       const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-      if (now - liveTsRef.current < 55) return; // throttle re-renders
+      if (now - liveTsRef.current < 16) return; // ~60fps cap, direct DOM update
       liveTsRef.current = now;
-      const placed = polylineMeters(map, pts);
-      const seg = map.distance(pts[pts.length - 1], e.latlng);
-      setLiveMeasure(
-        `${formatDistance(placed + seg, unitRef.current)} total · ${formatDistance(seg, unitRef.current)} segment`,
-      );
+      showLiveTip(e.latlng);
     };
     const onCreate = (e: { shape?: string; layer: L.Layer }) => {
       if (e.shape !== "Line") return;
@@ -665,7 +691,7 @@ export function SatelliteMap({
       measureGroupRef.current?.addLayer(line);
       measureDrawingRef.current = false;
       measureVerticesRef.current = [];
-      setLiveMeasure(null);
+      hideLiveTip();
       setMeasureCount((n) => n + 1);
       map.pm.enableDraw("Line"); // re-arm for the next measurement
     };
@@ -682,7 +708,7 @@ export function SatelliteMap({
       map.off("pm:create", onCreate);
       map.pm.disableDraw();
       measureDrawingRef.current = false;
-      setLiveMeasure(null);
+      hideLiveTip();
     };
   }, [editable, measuring, activeBlockId, showMap]);
 
@@ -699,7 +725,6 @@ export function SatelliteMap({
   const clearMeasurements = React.useCallback(() => {
     measureGroupRef.current?.clearLayers();
     setMeasureCount(0);
-    setLiveMeasure(null);
   }, []);
 
   // Starting a draw maximizes the map so there's room to work. Detect the
@@ -971,10 +996,7 @@ export function SatelliteMap({
             }}
           >
             <span style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--cream)" }}>
-              📏 Measuring — click points, double-click to finish.
-              {liveMeasure ? (
-                <strong style={{ marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>{liveMeasure}</strong>
-              ) : null}
+              📏 Measuring — click to start, the length ticks up at the cursor; click again to set, double-click to finish.
             </span>
             <button
               type="button"
