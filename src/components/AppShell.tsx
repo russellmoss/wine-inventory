@@ -11,11 +11,14 @@ type NavItem = { href: string; label: string; admin?: boolean };
 
 const MAIN: NavItem[] = [
   { href: "/", label: "Dashboard" },
-  { href: "/bulk", label: "Bulk wine" },
-  { href: "/bottling", label: "Bottling" },
   { href: "/inventory", label: "Inventory" },
   { href: "/reports", label: "Reports" },
   { href: "/audit", label: "Audit log", admin: true },
+];
+
+const WINERY: NavItem[] = [
+  { href: "/bulk", label: "Wine in-progress" },
+  { href: "/bottling", label: "Bottling" },
 ];
 
 const SETUP: NavItem[] = [
@@ -36,10 +39,50 @@ const linkStyle = (active: boolean): React.CSSProperties => ({
   fontWeight: active ? 500 : 400,
 });
 
+function CollapsibleNavGroup({
+  label,
+  items,
+  open,
+  setOpen,
+  isActive,
+  onNavigate,
+}: {
+  label: string;
+  items: NavItem[];
+  open: boolean;
+  setOpen: (fn: (o: boolean) => boolean) => void;
+  isActive: (href: string) => boolean;
+  onNavigate: () => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px",
+          border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 12,
+          letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 600,
+        }}
+      >
+        {label}
+        <span style={{ transition: "transform 0.15s", transform: open ? "rotate(90deg)" : "none" }}>›</span>
+      </button>
+      {open ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 6 }}>
+          {items.map((n) => <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(isActive(n.href))}>{n.label}</Link>)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function SidebarContent({
   user,
   isActive,
   isAdmin,
+  wineryOpen,
+  setWineryOpen,
   setupOpen,
   setSetupOpen,
   onNavigate,
@@ -48,6 +91,8 @@ function SidebarContent({
   user: { name?: string | null; email: string; role?: string | null };
   isActive: (href: string) => boolean;
   isAdmin: boolean;
+  wineryOpen: boolean;
+  setWineryOpen: (fn: (o: boolean) => boolean) => void;
   setupOpen: boolean;
   setSetupOpen: (fn: (o: boolean) => boolean) => void;
   onNavigate: () => void;
@@ -63,26 +108,8 @@ function SidebarContent({
         {MAIN.filter((n) => !n.admin || isAdmin).map((n) => (
           <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(isActive(n.href))}>{n.label}</Link>
         ))}
-        {visibleSetup.length > 0 ? (
-          <div style={{ marginTop: 10 }}>
-            <button
-              onClick={() => setSetupOpen((o) => !o)}
-              style={{
-                width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px",
-                border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 12,
-                letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 600,
-              }}
-            >
-              Setup
-              <span style={{ transition: "transform 0.15s", transform: setupOpen ? "rotate(90deg)" : "none" }}>›</span>
-            </button>
-            {setupOpen ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 6 }}>
-                {visibleSetup.map((n) => <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(isActive(n.href))}>{n.label}</Link>)}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <CollapsibleNavGroup label="Winery" items={WINERY} open={wineryOpen} setOpen={setWineryOpen} isActive={isActive} onNavigate={onNavigate} />
+        <CollapsibleNavGroup label="Setup" items={visibleSetup} open={setupOpen} setOpen={setSetupOpen} isActive={isActive} onNavigate={onNavigate} />
       </nav>
       <div style={{ borderTop: "1px solid var(--border-strong)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
         <Avatar name={user.name || user.email} size={34} />
@@ -106,13 +133,20 @@ export function AppShell({
   const router = useRouter();
   const isAdmin = user.role === "admin";
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const wineryActive = WINERY.some((s) => isActive(s.href));
   const setupActive = SETUP.some((s) => isActive(s.href));
+  const [wineryOpen, setWineryOpen] = React.useState(wineryActive);
   const [setupOpen, setSetupOpen] = React.useState(setupActive);
   const [drawer, setDrawer] = React.useState(false);
 
   // Respond to navigation during render (React's sanctioned pattern) rather than
-  // in an effect: expand the Setup group when entering a setup route, and close
-  // the mobile drawer whenever the path changes.
+  // in an effect: expand the relevant group when entering one of its routes, and
+  // close the mobile drawer whenever the path changes.
+  const [prevWineryActive, setPrevWineryActive] = React.useState(wineryActive);
+  if (wineryActive !== prevWineryActive) {
+    setPrevWineryActive(wineryActive);
+    if (wineryActive) setWineryOpen(true);
+  }
   const [prevSetupActive, setPrevSetupActive] = React.useState(setupActive);
   if (setupActive !== prevSetupActive) {
     setPrevSetupActive(setupActive);
@@ -155,7 +189,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} />
       </aside>
 
       {/* Mobile drawer */}
@@ -164,7 +198,7 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} />
           </aside>
         </div>
       ) : null}

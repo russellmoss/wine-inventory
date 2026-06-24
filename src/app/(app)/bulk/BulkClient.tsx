@@ -129,7 +129,7 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
   return (
     <div>
       <Eyebrow rule>In-process wine · Winery</Eyebrow>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Bulk wine</h1>
+      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Wine in-progress</h1>
       <p style={{ color: "var(--text-secondary)", marginBottom: 16, maxWidth: "64ch" }}>
         Barrels and tanks at the winery. Click a vessel to see what&rsquo;s inside and add, adjust, or remove wine.
       </p>
