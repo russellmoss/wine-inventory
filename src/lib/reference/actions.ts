@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
+import { isValidHex } from "@/lib/vineyard/colors";
 
 const PATH = "/reference";
 
@@ -65,6 +66,31 @@ export const createRef = action(async ({ actor }, kind: RefKind, formData: FormD
       entityId: created.id,
       changes: diff(null, { name: created.name }),
       summary: summarize("CREATE", entityType(kind), { label: created.name }),
+    });
+  });
+  revalidatePath(PATH);
+});
+
+/** Set a variety's canonical map color. Pass null to clear (revert to default). */
+export const setVarietyColor = action(async ({ actor }, id: string, color: string | null) => {
+  const next = color == null || color === "" ? null : color.trim();
+  if (next !== null && !isValidHex(next)) {
+    throw new ActionError("That isn't a valid color.");
+  }
+  const row = await prisma.variety.findUnique({ where: { id } });
+  if (!row) throw new ActionError("Variety not found.");
+  await prisma.$transaction(async (tx) => {
+    await tx.variety.update({ where: { id }, data: { color: next } });
+    await writeAudit(tx, {
+      ...actor,
+      action: "UPDATE",
+      entityType: "Variety",
+      entityId: id,
+      changes: diff({ color: row.color }, { color: next }),
+      summary: summarize("UPDATE", "Variety", {
+        label: row.name,
+        changes: diff({ color: row.color }, { color: next }),
+      }),
     });
   });
   revalidatePath(PATH);
