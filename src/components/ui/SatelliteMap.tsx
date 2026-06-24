@@ -329,9 +329,10 @@ export function SatelliteMap({
   const measureVerticesRef = React.useRef<L.LatLng[]>([]);
   const measureDrawingRef = React.useRef(false);
   const measureMetersRef = React.useRef(new WeakMap<L.Layer, number>());
-  // A standalone tooltip that follows the cursor and ticks the distance live
-  // (updated directly via Leaflet, not React state, so the drag stays smooth).
-  const liveTipRef = React.useRef<L.Tooltip | null>(null);
+  // A plain DOM chip that follows the cursor and ticks the distance live
+  // (updated directly, not via React state, so the drag stays smooth).
+  const liveLabelElRef = React.useRef<HTMLDivElement | null>(null);
+  const workingLayerRef = React.useRef<L.Polyline | null>(null);
   const liveTsRef = React.useRef(0);
   const unitRef = React.useRef(unit);
   React.useEffect(() => {
@@ -624,56 +625,54 @@ export function SatelliteMap({
     const map = mapRef.current;
     if (!map || !editable || !measuring || activeBlockId) return;
 
-    const hideLiveTip = () => {
-      if (liveTipRef.current) {
-        liveTipRef.current.remove();
-        liveTipRef.current = null;
-      }
+    const hideLive = () => {
+      const el = liveLabelElRef.current;
+      if (el) el.style.display = "none";
     };
-    // Place/update the cursor-following live label at `at`, showing the segment
-    // being drawn now (and the running total once there's more than one).
-    const showLiveTip = (at: L.LatLng) => {
-      const pts = measureVerticesRef.current;
-      if (pts.length === 0) return;
-      const seg = map.distance(pts[pts.length - 1], at);
+    // Placed points so far this draw: read straight from Geoman's working layer
+    // when available (most reliable), else the vertices we accumulate.
+    const placedPoints = (): L.LatLng[] => {
+      const wl = workingLayerRef.current;
+      if (wl) {
+        const ll = wl.getLatLngs() as L.LatLng[];
+        if (Array.isArray(ll) && ll.length) return ll;
+      }
+      return measureVerticesRef.current;
+    };
+    // Position a plain DOM chip at the cursor (fixed → viewport coords, so it
+    // works inline and in fullscreen) showing the live segment + running total.
+    const updateLive = (cursor: L.LatLng, clientX: number, clientY: number) => {
+      const el = liveLabelElRef.current;
+      const pts = placedPoints();
+      if (!el || pts.length === 0) return;
+      const seg = map.distance(pts[pts.length - 1], cursor);
       const total = polylineMeters(map, pts) + seg;
-      const text =
+      el.textContent =
         pts.length > 1
           ? `${formatDistance(seg, unitRef.current)}  ·  Σ ${formatDistance(total, unitRef.current)}`
           : formatDistance(seg, unitRef.current);
-      if (!liveTipRef.current) {
-        liveTipRef.current = L.tooltip({
-          permanent: true,
-          direction: "top",
-          offset: [0, -8],
-          className: "bw-measure-live",
-          opacity: 1,
-        })
-          .setContent(text)
-          .setLatLng(at);
-        liveTipRef.current.addTo(map);
-      } else {
-        liveTipRef.current.setLatLng(at).setContent(text);
-      }
+      el.style.left = `${clientX + 14}px`;
+      el.style.top = `${clientY - 14}px`;
+      el.style.display = "block";
     };
 
-    const onDrawStart = (e: { shape?: string }) => {
+    const onDrawStart = (e: { shape?: string; workingLayer?: L.Layer }) => {
       if (e.shape !== "Line") return;
       measureDrawingRef.current = true;
+      workingLayerRef.current = (e.workingLayer as L.Polyline) ?? null;
       measureVerticesRef.current = [];
-      hideLiveTip();
+      hideLive();
     };
     const onVertex = (e: { latlng: L.LatLng }) => {
       if (!measureDrawingRef.current) return;
       measureVerticesRef.current.push(e.latlng);
-      showLiveTip(e.latlng); // reset the live label to the just-placed point
     };
     const onMove = (e: L.LeafletMouseEvent) => {
-      if (!measureDrawingRef.current || measureVerticesRef.current.length === 0) return;
+      if (!measureDrawingRef.current) return;
       const now = typeof performance !== "undefined" ? performance.now() : Date.now();
       if (now - liveTsRef.current < 16) return; // ~60fps cap, direct DOM update
       liveTsRef.current = now;
-      showLiveTip(e.latlng);
+      updateLive(e.latlng, e.originalEvent.clientX, e.originalEvent.clientY);
     };
     const onCreate = (e: { shape?: string; layer: L.Layer }) => {
       if (e.shape !== "Line") return;
@@ -689,7 +688,8 @@ export function SatelliteMap({
       });
       measureGroupRef.current?.addLayer(line);
       measureVerticesRef.current = [];
-      hideLiveTip();
+      workingLayerRef.current = null;
+      hideLive();
       setMeasureCount((n) => n + 1);
       map.pm.enableDraw("Line", { tooltips: false }); // re-arm for the next line
       measureDrawingRef.current = true;
@@ -712,7 +712,8 @@ export function SatelliteMap({
       map.off("pm:create", onCreate);
       map.pm.disableDraw();
       measureDrawingRef.current = false;
-      hideLiveTip();
+      workingLayerRef.current = null;
+      hideLive();
     };
   }, [editable, measuring, activeBlockId, showMap]);
 
@@ -1011,6 +1012,28 @@ export function SatelliteMap({
             </button>
           </div>
         ) : null}
+        {/* Live distance chip that follows the cursor while measuring (positioned
+            directly via the DOM; fixed → viewport coords, works in fullscreen). */}
+        <div
+          ref={liveLabelElRef}
+          className="bw-export-exclude"
+          style={{
+            position: "fixed",
+            display: "none",
+            zIndex: 2200,
+            pointerEvents: "none",
+            background: "var(--wine-primary)",
+            color: "var(--cream)",
+            fontFamily: "var(--font-body)",
+            fontSize: 12.5,
+            fontWeight: 600,
+            fontVariantNumeric: "tabular-nums",
+            padding: "2px 7px",
+            borderRadius: "var(--radius-sm)",
+            boxShadow: "0 1px 4px rgba(43, 42, 38, 0.45)",
+            whiteSpace: "nowrap",
+          }}
+        />
         {/* On-map key: block # · variety · acreage. Doubles as the colorblind-safe
             text key now that polygons carry no label. Hidden in history mode (the
             timeline owns the bottom) and when nothing is drawn yet. */}

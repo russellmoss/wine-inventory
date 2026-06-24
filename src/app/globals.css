@@ -112,24 +112,8 @@
 .bw-measure-label.leaflet-tooltip::before {
   display: none;
 }
-/* The live cursor label while a measurement line is being drawn */
-.bw-measure-live.leaflet-tooltip {
-  background: var(--wine-primary);
-  border: 1px solid var(--wine-primary);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 1px 3px rgba(43, 42, 38, 0.4);
-  color: var(--cream);
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  padding: 2px 7px;
-  white-space: nowrap;
-  pointer-events: none;
-}
-.bw-measure-live.leaflet-tooltip-top::before {
-  border-top-color: var(--wine-primary);
-}
+/* (The live cursor distance chip is a plain DOM element styled inline in
+   SatelliteMap; no Leaflet tooltip styling needed.) */
 
 /* Location pin (divIcon — avoids Leaflet's 404-prone default marker assets) */
 .bw-map-pin {
