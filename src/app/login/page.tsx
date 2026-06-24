@@ -4,7 +4,8 @@ import React, { Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "@/lib/auth-client";
-import { Card, Input, Button, Eyebrow } from "@/components/ui";
+import { Card, Input, Button } from "@/components/ui";
+import { BrandMark } from "@/components/BrandMark";
 
 export default function LoginPage() {
   return (
@@ -48,8 +49,8 @@ function LoginForm() {
       }}
     >
       <Card padding="var(--space-7)" style={{ width: "100%", maxWidth: 400 }}>
-        <Eyebrow rule>Bhutan Wine Company</Eyebrow>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 34, margin: "10px 0 24px" }}>
+        <BrandMark variant="auth" />
+        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 34, margin: "20px 0 24px" }}>
           Sign in
         </h1>
         <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>

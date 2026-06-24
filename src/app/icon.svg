@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Cream chip so the wine-red glass reads on both light and dark tab bars -->
+  <rect width="64" height="64" rx="14" fill="#FFF8F1"/>
+  <g fill="#722F37">
+    <!-- Bowl filled with red wine -->
+    <path d="M18 13 H46 C46 29 40 39 32 39 C24 39 18 29 18 13 Z"/>
+    <!-- Stem -->
+    <rect x="29.6" y="38" width="4.8" height="13" rx="1.6"/>
+    <!-- Foot -->
+    <rect x="20" y="50" width="24" height="5" rx="2.5"/>
+  </g>
+  <!-- Wine surface highlight -->
+  <ellipse cx="32" cy="14.5" rx="13.4" ry="2.1" fill="#8C3a43"/>
+</svg>

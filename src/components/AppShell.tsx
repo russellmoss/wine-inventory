@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth-client";
 import { Avatar } from "@/components/ui";
+import { BrandMark, BrandEmblem } from "@/components/BrandMark";
 
 type NavItem = { href: string; label: string; admin?: boolean };
 
@@ -56,8 +57,7 @@ function SidebarContent({
   return (
     <>
       <div style={{ padding: "20px 20px 12px" }}>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text-primary)", lineHeight: 1.1 }}>Bhutan Wine</div>
-        <div className="ds-eyebrow" style={{ marginTop: 6 }}>Inventory</div>
+        <BrandMark />
       </div>
       <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", flex: 1, overflowY: "auto" }}>
         {MAIN.filter((n) => !n.admin || isAdmin).map((n) => (
@@ -146,7 +146,10 @@ export function AppShell({
           padding: "12px 16px", background: "var(--surface-raised)", borderBottom: "1px solid var(--border-strong)",
         }}
       >
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Bhutan Wine</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <BrandEmblem size={24} />
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Bhutan Wine</div>
+        </div>
         <button onClick={() => setDrawer(true)} aria-label="Open menu" style={{ background: "none", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", padding: "6px 10px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>☰</button>
       </header>
 
