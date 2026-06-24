@@ -8,6 +8,7 @@ import {
   updateBlock,
   deleteBlock,
   setBlockColor,
+  saveBlockPolygon,
 } from "@/lib/vineyard/actions";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import {
@@ -30,8 +31,12 @@ export interface VineyardSetupProps {
   blocks: SerializedBlock[];
   varietyOptions: VarietyOption[];
   unit: Unit;
-  /** Map drawing arrives in a later PR; the per-block Draw button is disabled until then. */
+  /** When true, the per-block "Draw / edit shape" button drives the shared map's draw mode. */
   drawEnabled?: boolean;
+  /** The block currently in draw mode (owned by VineyardModal), or null. */
+  activeBlockId?: string | null;
+  /** Toggle draw mode for a block on the shared map. */
+  onDraw?: (blockId: string) => void;
   onChanged: () => void;
 }
 
@@ -100,6 +105,8 @@ export function VineyardSetup({
   varietyOptions,
   unit,
   drawEnabled = false,
+  activeBlockId = null,
+  onDraw,
   onChanged,
 }: VineyardSetupProps) {
   const [error, setError] = React.useState<string | null>(null);
@@ -302,12 +309,21 @@ export function VineyardSetup({
                     </span>
                   </button>
                   <Button
-                    variant="ghost"
+                    variant={activeBlockId === b.id ? "primary" : "ghost"}
                     size="sm"
                     disabled={!drawEnabled}
-                    title={drawEnabled ? "Draw / edit shape" : "Map drawing arrives in a later update"}
+                    onClick={() => onDraw?.(b.id)}
+                    title={
+                      drawEnabled
+                        ? "Draw / edit this block's shape on the map"
+                        : "Add a location in Set up to draw shapes"
+                    }
                   >
-                    Draw / edit shape
+                    {activeBlockId === b.id
+                      ? "Cancel draw"
+                      : b.polygon != null
+                        ? "Edit shape"
+                        : "Draw shape"}
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => (expanded ? collapse() : expand(b))}>
                     {expanded ? "Close" : "Edit"}
@@ -412,6 +428,15 @@ export function VineyardSetup({
                         Cancel
                       </Button>
                       <span style={{ flex: 1 }} />
+                      {b.polygon != null ? (
+                        <ConfirmButton
+                          confirmLabel="Clear shape"
+                          onConfirm={() => run(() => saveBlockPolygon(b.id, null))}
+                          disabled={pending}
+                        >
+                          Clear shape
+                        </ConfirmButton>
+                      ) : null}
                       {b.color ? (
                         <ConfirmButton
                           confirmLabel="Clear color"

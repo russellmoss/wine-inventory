@@ -135,3 +135,36 @@
   border: 3px solid var(--cream);
   box-shadow: 0 1px 3px rgba(43, 42, 38, 0.45);
 }
+
+/* ── Leaflet-Geoman toolbar → token palette ───────────────────────────────────
+   Geoman's drawing toolbar ships gray buttons + a dark gray action bar in its
+   own font. Restyle it into the wine/cream system so editable maps match the
+   read-only chrome above. (Geoman's CSS is imported in the root layout; these
+   override it.) Buttons are <a> inside .leaflet-bar, so the .leaflet-bar rules
+   above already cover the base; here we fix hover, the active toggle, and the
+   Finish/Cancel action bar. */
+.leaflet-pm-toolbar .leaflet-buttons-control-button:hover,
+.leaflet-pm-toolbar .leaflet-buttons-control-button:focus {
+  background-color: var(--surface-sunken);
+}
+.leaflet-pm-toolbar .leaflet-buttons-control-button:focus-visible {
+  box-shadow: var(--shadow-focus);
+  z-index: 1;
+}
+/* Active tool (drawing/editing in progress) → wine, like our other toggles */
+.leaflet-pm-toolbar .button-container.active .leaflet-buttons-control-button,
+.leaflet-pm-toolbar .active > .leaflet-buttons-control-button {
+  background-color: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--wine-primary);
+}
+/* The Finish / Cancel / Remove-last-vertex action bar */
+.leaflet-pm-toolbar .leaflet-pm-actions-container .leaflet-pm-action {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  background-color: var(--wine-primary);
+  color: var(--cream);
+  border-right: 1px solid rgba(255, 248, 241, 0.18);
+}
+.leaflet-pm-toolbar .leaflet-pm-actions-container .leaflet-pm-action:hover {
+  background-color: var(--accent-hover);
+}

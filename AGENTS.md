@@ -40,9 +40,12 @@ Secrets live in `.env` (gitignored). Template is `.env.example`.
 - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — optional. Google Map Tiles API key for the
   vineyard satellite basemap (`src/components/ui/SatelliteMap.tsx`). Client-exposed
   by design (restrict by referrer + Map Tiles API in Cloud Console). Unset → the
-  map falls back to keyless Esri World Imagery. Map deps: `leaflet` (no
-  react-leaflet); imagery is keyless Esri unless this key is set. The map's
-  opt-in "History" mode uses the keyless Esri World Imagery Wayback archive
+  map falls back to keyless Esri World Imagery. Map deps: `leaflet` +
+  `@geoman-io/leaflet-geoman-free` (interactive polygon draw/edit/snap; no
+  react-leaflet). Both stylesheets are imported once in the root layout
+  (`src/app/layout.tsx`) — App Router only allows global CSS at the root.
+  Imagery is keyless Esri unless this key is set. The map's opt-in "History"
+  mode uses the keyless Esri World Imagery Wayback archive
   (`src/lib/map/wayback.ts`) — no key, no env.
 
 ## rstack toolchain

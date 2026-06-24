@@ -9,12 +9,20 @@
 // Leaflet touches `window`, so it must never run on the server. Leaflet's global
 // CSS is imported once in the root layout (App Router only allows global CSS there).
 //
-// Interactive drawing/editing (Leaflet-Geoman) arrives in a later unit; this is
-// the read-only base: tiles, a location pin, color-coded block polygons with
-// permanent labels + detail popups, and auto fit-bounds.
+// Two modes. Read-only (default): tiles, a location pin, color-coded block
+// polygons with permanent labels + detail popups, and auto fit-bounds. Editable
+// (`editable`): Leaflet-Geoman drawing/editing with snapping — when an
+// `activeBlockId` is set the user draws that block's polygon; existing polygons
+// become vertex-editable. Geometry is persisted only on COMMIT (a finished draw,
+// or an edit/drag that settles), via `onPolygonSaved`, never on every vertex
+// move — one save + one audit row per finished shape.
 
 import React from "react";
 import * as L from "leaflet";
+// Side-effect import: registers Leaflet-Geoman (`map.pm`, `layer.pm`) on Leaflet
+// and augments the `leaflet` type module. Its global CSS is loaded once in the
+// root layout, next to leaflet.css (App Router only allows global CSS there).
+import "@geoman-io/leaflet-geoman-free";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import { blockArea, formatArea, type Unit } from "@/lib/vineyard/units";
 import type { SerializedBlock } from "@/lib/vineyard/data";
@@ -126,6 +134,24 @@ export interface SatelliteMapProps {
   unit: Unit;
   /** Map container height. Defaults to 380px. */
   height?: number | string;
+  /**
+   * Turn on Leaflet-Geoman drawing/editing. When false (default) the map is
+   * read-only and all Geoman controls are disabled.
+   */
+  editable?: boolean;
+  /**
+   * The block currently being drawn. When set (and `editable`), polygon-draw
+   * mode is on; the finished shape is reported via `onPolygonSaved` for THIS
+   * block. Clearing it cancels any in-progress draw.
+   */
+  activeBlockId?: string | null;
+  /**
+   * Called once per committed shape: a finished new polygon, or an edit/drag of
+   * an existing one. `geometry` is null only when a shape is cleared elsewhere.
+   * The consumer persists it (Unit 5 `saveBlockPolygon`); the saved geometry
+   * then re-renders through the read-only polygon effect.
+   */
+  onPolygonSaved?: (blockId: string, geometry: PolygonGeometry | null) => void;
 }
 
 /** Minimal GeoJSON Polygon shape (a linear ring of [lng, lat] positions). */
@@ -206,7 +232,16 @@ function googleMapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
-export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: SatelliteMapProps) {
+export function SatelliteMap({
+  lat,
+  lng,
+  blocks,
+  unit,
+  height = 380,
+  editable = false,
+  activeBlockId = null,
+  onPolygonSaved,
+}: SatelliteMapProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<L.Map | null>(null);
   const overlayRef = React.useRef<L.FeatureGroup | null>(null);
@@ -215,6 +250,21 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
   const waybackLayerRef = React.useRef<L.TileLayer | null>(null);
   const historyModeRef = React.useRef(false);
   const [markerVisible, setMarkerVisible] = React.useState(true);
+
+  // Keep the save callback in a ref so the Geoman effects don't re-run (and
+  // tear down draw/edit state) every time the parent passes a new closure.
+  const onPolygonSavedRef = React.useRef(onPolygonSaved);
+  React.useEffect(() => {
+    onPolygonSavedRef.current = onPolygonSaved;
+  }, [onPolygonSaved]);
+
+  // Bridge between the two Geoman effects: the polygon effect tags each editable
+  // layer with its block id; the edit effect's map-level commit handler reads it
+  // back. lastSaved holds the last persisted geometry per block so an edit that
+  // ends unchanged (or a commit event that fires twice) writes nothing — one
+  // save + one audit row per finished shape.
+  const layerBlockIdRef = React.useRef(new WeakMap<L.Layer, string>());
+  const lastSavedRef = React.useRef(new Map<string, string>());
 
   // Opt-in imagery history (Esri Wayback). Google stays the default basemap.
   const [historyMode, setHistoryMode] = React.useState(false);
@@ -353,7 +403,20 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
         className: "bw-poly-label",
         opacity: 1,
       });
-      layer.bindPopup(popupHtml(b, unit), { className: "bw-map-popup", maxWidth: 260 });
+      // Detail popups are a read-only affordance; suppress them while editing so
+      // clicks drive vertex editing, not popups.
+      if (!editable) {
+        layer.bindPopup(popupHtml(b, unit), { className: "bw-map-popup", maxWidth: 260 });
+      } else {
+        // Tag the actual editable polygon(s) so the commit handler (in the edit
+        // effect) can map a pm:update/pm:dragend back to this block, and seed the
+        // dedupe baseline from Geoman's own serialization of the current shape.
+        layer.eachLayer((child) => {
+          layerBlockIdRef.current.set(child, b.id);
+          const geom = (child as L.Polygon).toGeoJSON();
+          lastSavedRef.current.set(b.id, JSON.stringify((geom as GeoJSON.Feature).geometry));
+        });
+      }
       layer.addTo(group);
       polyCount++;
     }
@@ -364,7 +427,86 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
       map.setView([lat, lng], 16);
     }
     map.invalidateSize();
-  }, [blocks, unit, lat, lng]);
+  }, [blocks, unit, lat, lng, editable]);
+
+  // Geoman edit setup: snapping, a token-styled toolbar (edit + drag only —
+  // drawing is per-block via the buttons below, removal is the block's Clear
+  // shape button), and commit handlers. pm:update fires when a layer's edit
+  // session ends with changed coordinates; pm:dragend when a drag settles. Both
+  // persist exactly once per finished shape (deduped against lastSaved). All
+  // handlers/controls are torn down in cleanup so toggling editable off (the
+  // summary view) leaves no live Geoman controls behind.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !editable) return;
+
+    map.pm.setGlobalOptions({ snappable: true, snapDistance: 20, allowSelfIntersection: false });
+    if (!map.pm.controlsVisible()) {
+      map.pm.addControls({
+        position: "topleft",
+        drawMarker: false,
+        drawCircle: false,
+        drawCircleMarker: false,
+        drawPolyline: false,
+        drawRectangle: false,
+        drawPolygon: false,
+        drawText: false,
+        cutPolygon: false,
+        rotateMode: false,
+        removalMode: false,
+        editMode: true,
+        dragMode: true,
+      });
+    }
+
+    const commit = (e: { layer: L.Layer }) => {
+      const blockId = layerBlockIdRef.current.get(e.layer);
+      if (!blockId) return;
+      const geometry = (e.layer as L.Polygon).toGeoJSON();
+      const geom = (geometry as GeoJSON.Feature).geometry;
+      if (!isPolygonGeometry(geom)) return;
+      const key = JSON.stringify(geom);
+      if (lastSavedRef.current.get(blockId) === key) return; // unchanged → no write
+      lastSavedRef.current.set(blockId, key);
+      onPolygonSavedRef.current?.(blockId, geom);
+    };
+    map.on("pm:update", commit);
+    map.on("pm:dragend", commit);
+
+    return () => {
+      map.off("pm:update", commit);
+      map.off("pm:dragend", commit);
+      map.pm.disableGlobalEditMode();
+      map.pm.disableGlobalDragMode();
+      if (map.pm.controlsVisible()) map.pm.removeControls();
+    };
+  }, [editable, showMap]);
+
+  // Draw mode: when a block is active, enter polygon-draw. On pm:create read the
+  // finished geometry, hand it to the consumer (→ saveBlockPolygon), drop the
+  // temporary draw layer (the saved shape re-renders via the polygon effect),
+  // and leave draw mode. Cancelling (activeBlockId → null) tears the draw down.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !editable || !activeBlockId) return;
+
+    const blockId = activeBlockId;
+    map.pm.enableDraw("Polygon");
+
+    const onCreate = (e: { layer: L.Layer }) => {
+      const feature = (e.layer as L.Polygon).toGeoJSON();
+      const geom = (feature as GeoJSON.Feature).geometry;
+      e.layer.remove();
+      map.pm.disableDraw();
+      if (isPolygonGeometry(geom)) onPolygonSavedRef.current?.(blockId, geom);
+    };
+    map.on("pm:create", onCreate);
+
+    return () => {
+      map.off("pm:create", onCreate);
+      map.pm.disableDraw();
+    };
+  }, [editable, activeBlockId, showMap]);
 
   const toggleHistory = React.useCallback(async () => {
     if (historyMode) {

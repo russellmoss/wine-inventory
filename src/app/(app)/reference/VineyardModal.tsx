@@ -5,7 +5,7 @@ import { Modal, Button, MapLegend } from "@/components/ui";
 import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import { blockArea, formatArea, mToFt, type Unit } from "@/lib/vineyard/units";
-import { loadVineyardDetail } from "@/lib/vineyard/actions";
+import { loadVineyardDetail, saveBlockPolygon } from "@/lib/vineyard/actions";
 import type { VineyardDetailPayload } from "@/lib/vineyard/data";
 import { VineyardSetup } from "./VineyardSetup";
 import { BlockDetails } from "./BlockDetails";
@@ -39,6 +39,8 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
   // loads fresh on mount and resets its own state naturally — no reset effect.
   const [mode, setMode] = React.useState<Mode>("summary");
   const [unit, setUnit] = React.useState<Unit>("imperial");
+  // The block whose polygon is being drawn (setup mode only). Null = not drawing.
+  const [activeBlockId, setActiveBlockId] = React.useState<string | null>(null);
   const [payload, setPayload] = React.useState<VineyardDetailPayload | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -97,6 +99,38 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
     [blocks, unit],
   );
 
+  // Drawing needs a map to draw on: coords, or an existing polygon to anchor the view.
+  const canDraw = (detail?.gpsLat != null && detail?.gpsLng != null) || blocks.some((b) => b.polygon != null);
+  const activeBlock = activeBlockId ? blocks.find((b) => b.id === activeBlockId) ?? null : null;
+
+  // Persist a finished/edited polygon, then leave draw mode and refetch so the
+  // saved shape re-renders from the server (its source of truth).
+  const handlePolygonSaved = React.useCallback(
+    (blockId: string, geometry: unknown) => {
+      saveBlockPolygon(blockId, geometry ?? null)
+        .then(() => {
+          setActiveBlockId(null);
+          refetch();
+        })
+        .catch((e) => setLoadError(e instanceof Error ? e.message : "Couldn't save that shape."));
+    },
+    [refetch],
+  );
+
+  // Esc cancels an in-progress draw. Capture phase + stopPropagation so it beats
+  // the Modal's own close-on-Escape; without draw active, Esc closes the modal.
+  React.useEffect(() => {
+    if (!activeBlockId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setActiveBlockId(null);
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [activeBlockId]);
+
   return (
     <Modal
       open={open}
@@ -110,7 +144,10 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
         <Button
           variant={mode === "setup" ? "ghost" : "secondary"}
           size="sm"
-          onClick={() => setMode(mode === "setup" ? "summary" : "setup")}
+          onClick={() => {
+            setActiveBlockId(null);
+            setMode(mode === "setup" ? "summary" : "setup");
+          }}
         >
           {mode === "setup" ? "Back to summary" : "Set up"}
         </Button>
@@ -126,15 +163,36 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
       {loading && !payload ? (
         <SummarySkeleton />
       ) : mode === "setup" ? (
-        <VineyardSetup
-          vineyardId={vineyardId}
-          detail={detail}
-          blocks={blocks}
-          varietyOptions={varietyOptions}
-          unit={unit}
-          drawEnabled={false}
-          onChanged={refetch}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          <section>
+            {activeBlockId ? (
+              <DrawBanner label={activeBlock?.blockLabel || "this block"} onCancel={() => setActiveBlockId(null)} />
+            ) : null}
+            <SatelliteMap
+              lat={detail?.gpsLat ?? null}
+              lng={detail?.gpsLng ?? null}
+              blocks={blocks}
+              unit={unit}
+              editable
+              activeBlockId={activeBlockId}
+              onPolygonSaved={handlePolygonSaved}
+            />
+            <div style={{ marginTop: 12 }}>
+              <MapLegend blocks={blocks} unit={unit} />
+            </div>
+          </section>
+          <VineyardSetup
+            vineyardId={vineyardId}
+            detail={detail}
+            blocks={blocks}
+            varietyOptions={varietyOptions}
+            unit={unit}
+            drawEnabled={canDraw}
+            activeBlockId={activeBlockId}
+            onDraw={(id) => setActiveBlockId((cur) => (cur === id ? null : id))}
+            onChanged={refetch}
+          />
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           {/* Stat line */}
@@ -242,6 +300,33 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
 function elevationText(elevationM: number, unit: Unit): string {
   if (unit === "metric") return `${elevationM.toFixed(0)} m`;
   return `${mToFt(elevationM).toFixed(0)} ft`;
+}
+
+function DrawBanner({ label, onCancel }: { label: string; onCancel: () => void }) {
+  return (
+    <div
+      role="status"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flexWrap: "wrap",
+        marginBottom: 10,
+        padding: "8px 12px",
+        borderRadius: "var(--radius-md)",
+        background: "var(--accent-soft)",
+        border: "1px solid var(--wine-primary)",
+      }}
+    >
+      <span style={{ fontSize: 13.5, color: "var(--text-primary)" }}>
+        Drawing <strong>{label}</strong> — click to add points, double-click to finish, Esc to cancel.
+      </span>
+      <span style={{ flex: 1 }} />
+      <Button variant="ghost" size="sm" onClick={onCancel}>
+        Cancel
+      </Button>
+    </div>
+  );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
