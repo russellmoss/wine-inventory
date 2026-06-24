@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Modal, Button, MapLegend } from "@/components/ui";
+import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import { blockArea, formatArea, mToFt, type Unit } from "@/lib/vineyard/units";
 import { loadVineyardDetail } from "@/lib/vineyard/actions";
@@ -164,21 +165,14 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
             ) : null}
           </section>
 
-          {/* Map slot (satellite map arrives in a later update) + variety key */}
+          {/* Satellite map + variety key */}
           <section>
-            <div
-              style={{
-                border: "1px solid var(--border-strong)",
-                borderRadius: "var(--radius-md)",
-                background: "var(--surface-sunken)",
-                padding: "var(--space-5)",
-                textAlign: "center",
-                color: "var(--text-muted)",
-                fontSize: 13.5,
-              }}
-            >
-              Satellite map arrives in a later update.
-            </div>
+            <SatelliteMap
+              lat={detail?.gpsLat ?? null}
+              lng={detail?.gpsLng ?? null}
+              blocks={blocks}
+              unit={unit}
+            />
             <div style={{ marginTop: 12 }}>
               <MapLegend blocks={blocks} unit={unit} />
             </div>
