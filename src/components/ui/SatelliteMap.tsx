@@ -288,6 +288,10 @@ export function SatelliteMap({
   vineyardMeta,
 }: SatelliteMapProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  // The relative wrapper around the map AND its HTML overlays (key, controls).
+  // PNG export captures this, not just the Leaflet container, so the on-map key
+  // is included; the filter drops the control chrome.
+  const frameRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<L.Map | null>(null);
   const overlayRef = React.useRef<L.FeatureGroup | null>(null);
   const markerRef = React.useRef<L.Marker | null>(null);
@@ -597,7 +601,7 @@ export function SatelliteMap({
   // (zoom, Geoman toolbar, our button cluster) are filtered out; attribution
   // stays for legal credit.
   const exportPng = React.useCallback(async () => {
-    const el = containerRef.current;
+    const el = frameRef.current;
     if (!el) return;
     setExportOpen(false);
     setExporting("png");
@@ -702,7 +706,7 @@ export function SatelliteMap({
 
   return (
     <div>
-      <div style={{ position: "relative" }}>
+      <div ref={frameRef} style={{ position: "relative" }}>
         <div
           ref={containerRef}
           role="application"
@@ -873,6 +877,7 @@ export function SatelliteMap({
         {/* History timeline */}
         {historyMode && releases.length > 0 ? (
           <div
+            className="bw-export-exclude"
             style={{
               position: "absolute",
               left: 10,
