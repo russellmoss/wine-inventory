@@ -165,6 +165,8 @@ export interface SatelliteMapProps {
    * The consumer opens a detail modal for that block. Suppressed while drawing.
    */
   onBlockClick?: (blockId: string) => void;
+  /** Cancel the in-progress draw (clears activeBlockId in the parent). */
+  onCancelDraw?: () => void;
   /** Vineyard name — used as the export filename stem and a shapefile attribute. */
   exportName?: string;
   /** Vineyard-level metadata copied onto every exported feature (optional). */
@@ -284,6 +286,7 @@ export function SatelliteMap({
   activeBlockId = null,
   onPolygonSaved,
   onBlockClick,
+  onCancelDraw,
   exportName,
   vineyardMeta,
 }: SatelliteMapProps) {
@@ -304,6 +307,13 @@ export function SatelliteMap({
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState<null | "png" | "shp">(null);
   const [exportError, setExportError] = React.useState<string | null>(null);
+
+  // Fullscreen (maximize). Same map instance — we just restyle the frame.
+  const [expanded, setExpanded] = React.useState(false);
+  const onCancelDrawRef = React.useRef(onCancelDraw);
+  React.useEffect(() => {
+    onCancelDrawRef.current = onCancelDraw;
+  }, [onCancelDraw]);
 
   // Keep the save callback in a ref so the Geoman effects don't re-run (and
   // tear down draw/edit state) every time the parent passes a new closure.
@@ -572,6 +582,44 @@ export function SatelliteMap({
     };
   }, [editable, activeBlockId, showMap]);
 
+  // Starting a draw maximizes the map so there's room to work. Detect the
+  // transition into draw during render (React's sanctioned "adjust state on prop
+  // change" pattern) and expand once — never auto-collapse, so the user finishes
+  // and exits fullscreen themselves (returning to the modal they came from).
+  const prevActiveRef = React.useRef(activeBlockId);
+  if (activeBlockId !== prevActiveRef.current) {
+    prevActiveRef.current = activeBlockId;
+    if (editable && activeBlockId) setExpanded(true);
+  }
+
+  // The map was resized by the fullscreen toggle — let Leaflet recompute.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const raf = requestAnimationFrame(() => map.invalidateSize());
+    return () => cancelAnimationFrame(raf);
+  }, [expanded]);
+
+  // Esc exits fullscreen (when not drawing — drawing's own Esc-to-cancel is the
+  // parent's). Capture + stopPropagation so it doesn't reach the outer Modal's
+  // close-on-Escape. The Exit button is the primary affordance; this is parity.
+  React.useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (editable && activeBlockId) return; // let the parent cancel the draw
+      e.stopPropagation();
+      setExpanded(false);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [expanded, editable, activeBlockId]);
+
+  const exitFullscreen = React.useCallback(() => {
+    setExpanded(false);
+    if (onCancelDrawRef.current) onCancelDrawRef.current(); // end any draw on exit
+  }, []);
+
   const toggleHistory = React.useCallback(async () => {
     if (historyMode) {
       setHistoryMode(false);
@@ -686,6 +734,9 @@ export function SatelliteMap({
   // used to live in the (removed) on-polygon labels: block #, variety, acreage.
   const keyedBlocks = blocks.filter((b) => isPolygonGeometry(b.polygon));
 
+  const drawing = editable && activeBlockId != null;
+  const activeBlock = activeBlockId ? blocks.find((b) => b.id === activeBlockId) ?? null : null;
+
   if (!showMap) {
     return (
       <div
@@ -706,20 +757,75 @@ export function SatelliteMap({
 
   return (
     <div>
-      <div ref={frameRef} style={{ position: "relative" }}>
+      <div
+        ref={frameRef}
+        style={
+          expanded
+            ? {
+                position: "fixed",
+                inset: 0,
+                zIndex: 1500,
+                background: "var(--surface-page)",
+                padding: 10,
+                boxSizing: "border-box",
+              }
+            : { position: "relative" }
+        }
+      >
         <div
           ref={containerRef}
           role="application"
           aria-label="Vineyard satellite map"
           style={{
-            height: typeof height === "number" ? `${height}px` : height,
+            height: expanded ? "100%" : typeof height === "number" ? `${height}px` : height,
             width: "100%",
-            borderRadius: "var(--radius-md)",
+            borderRadius: expanded ? "var(--radius-sm)" : "var(--radius-md)",
             overflow: "hidden",
             border: "1px solid var(--border-strong)",
             boxShadow: "var(--shadow-sm)",
           }}
         />
+        {/* Draw-mode pill — lives on the map so it shows in fullscreen too. */}
+        {drawing ? (
+          <div
+            className="bw-export-exclude"
+            style={{
+              position: "absolute",
+              top: 10,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 1200,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              maxWidth: "calc(100% - 20px)",
+              padding: "8px 12px",
+              background: "var(--accent-soft)",
+              border: "1px solid var(--wine-primary)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "0 2px 8px rgba(43, 42, 38, 0.18)",
+            }}
+          >
+            <span style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--text-primary)" }}>
+              Drawing <strong>{activeBlock?.blockLabel || "this block"}</strong> — click to add points,
+              double-click to finish, Esc to cancel.
+            </span>
+            {onCancelDraw ? (
+              <button
+                type="button"
+                onClick={() => onCancelDraw()}
+                style={{
+                  ...controlBtnStyle,
+                  minHeight: 28,
+                  padding: "4px 10px",
+                  background: "var(--surface-raised)",
+                }}
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {/* On-map key: block # · variety · acreage. Doubles as the colorblind-safe
             text key now that polygons carry no label. Hidden in history mode (the
             timeline owns the bottom) and when nothing is drawn yet. */}
@@ -808,6 +914,19 @@ export function SatelliteMap({
             gap: 6,
           }}
         >
+          <button
+            type="button"
+            onClick={() => (expanded ? exitFullscreen() : setExpanded(true))}
+            aria-pressed={expanded}
+            title={expanded ? "Exit fullscreen" : "View the map fullscreen"}
+            style={
+              expanded
+                ? { ...controlBtnStyle, background: "var(--wine-primary)", color: "var(--cream)", borderColor: "var(--wine-primary)" }
+                : controlBtnStyle
+            }
+          >
+            {expanded ? "Exit fullscreen ✕" : "⤢ Fullscreen"}
+          </button>
           <div style={{ position: "relative" }}>
             <button
               type="button"
