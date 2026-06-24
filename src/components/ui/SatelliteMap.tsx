@@ -624,10 +624,6 @@ export function SatelliteMap({
     const map = mapRef.current;
     if (!map || !editable || !measuring || activeBlockId) return;
 
-    map.pm.enableDraw("Line");
-    measureVerticesRef.current = [];
-    measureDrawingRef.current = false;
-
     const hideLiveTip = () => {
       if (liveTipRef.current) {
         liveTipRef.current.remove();
@@ -648,11 +644,14 @@ export function SatelliteMap({
       if (!liveTipRef.current) {
         liveTipRef.current = L.tooltip({
           permanent: true,
-          direction: "right",
-          offset: [14, 0],
+          direction: "top",
+          offset: [0, -8],
           className: "bw-measure-live",
           opacity: 1,
-        }).setLatLng(at).setContent(text).addTo(map);
+        })
+          .setContent(text)
+          .setLatLng(at);
+        liveTipRef.current.addTo(map);
       } else {
         liveTipRef.current.setLatLng(at).setContent(text);
       }
@@ -689,17 +688,22 @@ export function SatelliteMap({
         opacity: 1,
       });
       measureGroupRef.current?.addLayer(line);
-      measureDrawingRef.current = false;
       measureVerticesRef.current = [];
       hideLiveTip();
       setMeasureCount((n) => n + 1);
-      map.pm.enableDraw("Line"); // re-arm for the next measurement
+      map.pm.enableDraw("Line", { tooltips: false }); // re-arm for the next line
+      measureDrawingRef.current = true;
     };
 
+    // Attach handlers BEFORE enabling draw — pm:drawstart fires during enableDraw.
     map.on("pm:drawstart", onDrawStart);
     map.on("pm:vertexadded", onVertex);
     map.on("mousemove", onMove);
     map.on("pm:create", onCreate);
+
+    map.pm.enableDraw("Line", { tooltips: false });
+    measureVerticesRef.current = [];
+    measureDrawingRef.current = true; // draw is active for this effect's lifetime
 
     return () => {
       map.off("pm:drawstart", onDrawStart);

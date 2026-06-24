@@ -127,8 +127,8 @@
   white-space: nowrap;
   pointer-events: none;
 }
-.bw-measure-live.leaflet-tooltip-right::before {
-  border-right-color: var(--wine-primary);
+.bw-measure-live.leaflet-tooltip-top::before {
+  border-top-color: var(--wine-primary);
 }
 
 /* Location pin (divIcon — avoids Leaflet's 404-prone default marker assets) */
