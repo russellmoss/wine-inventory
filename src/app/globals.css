@@ -95,6 +95,24 @@
    and polygons carry no text label — identity comes from the on-map key. So the
    former .bw-map-popup / .bw-poly-label chrome is gone. */
 
+/* Temporary measurement-line length labels (measure tool) */
+.bw-measure-label.leaflet-tooltip {
+  background: rgba(20, 19, 15, 0.82);
+  border: 1px solid rgba(255, 248, 241, 0.18);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 2px rgba(43, 42, 38, 0.3);
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.bw-measure-label.leaflet-tooltip::before {
+  display: none;
+}
+
 /* Location pin (divIcon — avoids Leaflet's 404-prone default marker assets) */
 .bw-map-pin {
   width: 18px;

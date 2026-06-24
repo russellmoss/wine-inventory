@@ -232,6 +232,19 @@ function num(v: number | null | undefined, dp = 4): number | null {
   return v == null || !Number.isFinite(v) ? null : Number(v.toFixed(dp));
 }
 
+/** Format a metric distance for display in the active unit. */
+function formatDistance(meters: number, unit: Unit): string {
+  if (unit === "metric") return `${meters >= 100 ? Math.round(meters) : meters.toFixed(1)} m`;
+  return `${Math.round(mToFt(meters))} ft`;
+}
+
+/** Total length of a polyline (sum of great-circle segment distances, meters). */
+function polylineMeters(map: L.Map, latlngs: L.LatLng[]): number {
+  let m = 0;
+  for (let i = 1; i < latlngs.length; i++) m += map.distance(latlngs[i - 1], latlngs[i]);
+  return m;
+}
+
 /**
  * Build a WGS84 GeoJSON FeatureCollection of every block with a drawn polygon,
  * each feature carrying ALL of that block's metadata as DBF-friendly attributes
@@ -308,6 +321,21 @@ export function SatelliteMap({
   const [exporting, setExporting] = React.useState<null | "png" | "shp">(null);
   const [exportError, setExportError] = React.useState<string | null>(null);
 
+  // Measure tool: temporary, non-persisted distance lines (feet/meters). They
+  // stay on the canvas while the map is open and vanish when it unmounts.
+  const [measuring, setMeasuring] = React.useState(false);
+  const [measureCount, setMeasureCount] = React.useState(0);
+  const [liveMeasure, setLiveMeasure] = React.useState<string | null>(null);
+  const measureGroupRef = React.useRef<L.FeatureGroup | null>(null);
+  const measureVerticesRef = React.useRef<L.LatLng[]>([]);
+  const measureDrawingRef = React.useRef(false);
+  const measureMetersRef = React.useRef(new WeakMap<L.Layer, number>());
+  const liveTsRef = React.useRef(0);
+  const unitRef = React.useRef(unit);
+  React.useEffect(() => {
+    unitRef.current = unit;
+  }, [unit]);
+
   // Fullscreen (maximize). Same map instance — we just restyle the frame.
   const [expanded, setExpanded] = React.useState(false);
   const onCancelDrawRef = React.useRef(onCancelDraw);
@@ -383,6 +411,9 @@ export function SatelliteMap({
         : null;
     if (ro) ro.observe(el);
 
+    // Temporary measurement lines live here (never persisted, wiped on unmount).
+    measureGroupRef.current = L.featureGroup().addTo(map);
+
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
@@ -393,6 +424,7 @@ export function SatelliteMap({
       markerRef.current = null;
       baseLayerRef.current = null;
       waybackLayerRef.current = null;
+      measureGroupRef.current = null;
     };
     // showMap toggles whether the container exists at all; re-init if it flips on.
   }, [showMap]);
@@ -582,6 +614,94 @@ export function SatelliteMap({
     };
   }, [editable, activeBlockId, showMap]);
 
+  // Measure tool: draw temporary distance lines (Geoman 'Line'). Live readout of
+  // the running total + current segment while drawing; on finish the line is
+  // styled + labelled with its length and kept in the (non-persisted) measure
+  // group, then re-armed for the next line. Mutually exclusive with block draw.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !editable || !measuring || activeBlockId) return;
+
+    map.pm.enableDraw("Line");
+    measureVerticesRef.current = [];
+    measureDrawingRef.current = false;
+
+    const onDrawStart = (e: { shape?: string }) => {
+      if (e.shape !== "Line") return;
+      measureDrawingRef.current = true;
+      measureVerticesRef.current = [];
+      setLiveMeasure(null);
+    };
+    const onVertex = (e: { latlng: L.LatLng }) => {
+      if (!measureDrawingRef.current) return;
+      measureVerticesRef.current.push(e.latlng);
+      const total = polylineMeters(map, measureVerticesRef.current);
+      setLiveMeasure(`${formatDistance(total, unitRef.current)} total`);
+    };
+    const onMove = (e: L.LeafletMouseEvent) => {
+      const pts = measureVerticesRef.current;
+      if (!measureDrawingRef.current || pts.length === 0) return;
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - liveTsRef.current < 55) return; // throttle re-renders
+      liveTsRef.current = now;
+      const placed = polylineMeters(map, pts);
+      const seg = map.distance(pts[pts.length - 1], e.latlng);
+      setLiveMeasure(
+        `${formatDistance(placed + seg, unitRef.current)} total · ${formatDistance(seg, unitRef.current)} segment`,
+      );
+    };
+    const onCreate = (e: { shape?: string; layer: L.Layer }) => {
+      if (e.shape !== "Line") return;
+      const line = e.layer as L.Polyline;
+      const meters = polylineMeters(map, line.getLatLngs() as L.LatLng[]);
+      measureMetersRef.current.set(line, meters);
+      line.setStyle({ color: "#FFFFFF", weight: 2, dashArray: "6 6", opacity: 0.9 });
+      line.bindTooltip(formatDistance(meters, unitRef.current), {
+        permanent: true,
+        direction: "center",
+        className: "bw-measure-label",
+        opacity: 1,
+      });
+      measureGroupRef.current?.addLayer(line);
+      measureDrawingRef.current = false;
+      measureVerticesRef.current = [];
+      setLiveMeasure(null);
+      setMeasureCount((n) => n + 1);
+      map.pm.enableDraw("Line"); // re-arm for the next measurement
+    };
+
+    map.on("pm:drawstart", onDrawStart);
+    map.on("pm:vertexadded", onVertex);
+    map.on("mousemove", onMove);
+    map.on("pm:create", onCreate);
+
+    return () => {
+      map.off("pm:drawstart", onDrawStart);
+      map.off("pm:vertexadded", onVertex);
+      map.off("mousemove", onMove);
+      map.off("pm:create", onCreate);
+      map.pm.disableDraw();
+      measureDrawingRef.current = false;
+      setLiveMeasure(null);
+    };
+  }, [editable, measuring, activeBlockId, showMap]);
+
+  // Relabel existing measurement lines when the unit toggles.
+  React.useEffect(() => {
+    const group = measureGroupRef.current;
+    if (!group) return;
+    group.eachLayer((l) => {
+      const m = measureMetersRef.current.get(l);
+      if (m != null) l.setTooltipContent(formatDistance(m, unit));
+    });
+  }, [unit, measureCount]);
+
+  const clearMeasurements = React.useCallback(() => {
+    measureGroupRef.current?.clearLayers();
+    setMeasureCount(0);
+    setLiveMeasure(null);
+  }, []);
+
   // Starting a draw maximizes the map so there's room to work. Detect the
   // transition into draw during render (React's sanctioned "adjust state on prop
   // change" pattern) and expand once — never auto-collapse, so the user finishes
@@ -589,7 +709,10 @@ export function SatelliteMap({
   const prevActiveRef = React.useRef(activeBlockId);
   if (activeBlockId !== prevActiveRef.current) {
     prevActiveRef.current = activeBlockId;
-    if (editable && activeBlockId) setExpanded(true);
+    if (editable && activeBlockId) {
+      setExpanded(true);
+      setMeasuring(false); // block-draw and measure are mutually exclusive
+    }
   }
 
   // The map was resized by the fullscreen toggle — let Leaflet recompute.
@@ -826,6 +949,42 @@ export function SatelliteMap({
             ) : null}
           </div>
         ) : null}
+        {/* Measure-mode pill — instructions + live distance readout. */}
+        {measuring ? (
+          <div
+            className="bw-export-exclude"
+            style={{
+              position: "absolute",
+              top: 10,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 1200,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              maxWidth: "calc(100% - 20px)",
+              padding: "8px 12px",
+              background: "rgba(20, 19, 15, 0.82)",
+              border: "1px solid rgba(255,248,241,0.18)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "0 2px 8px rgba(43, 42, 38, 0.28)",
+            }}
+          >
+            <span style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--cream)" }}>
+              📏 Measuring — click points, double-click to finish.
+              {liveMeasure ? (
+                <strong style={{ marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>{liveMeasure}</strong>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              onClick={() => setMeasuring(false)}
+              style={{ ...controlBtnStyle, minHeight: 28, padding: "4px 10px" }}
+            >
+              Done
+            </button>
+          </div>
+        ) : null}
         {/* On-map key: block # · variety · acreage. Doubles as the colorblind-safe
             text key now that polygons carry no label. Hidden in history mode (the
             timeline owns the bottom) and when nothing is drawn yet. */}
@@ -927,6 +1086,33 @@ export function SatelliteMap({
           >
             {expanded ? "Exit fullscreen ✕" : "⤢ Fullscreen"}
           </button>
+          {editable ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (measuring) {
+                  setMeasuring(false);
+                  return;
+                }
+                onCancelDraw?.(); // measure and block-draw are exclusive
+                setMeasuring(true);
+              }}
+              aria-pressed={measuring}
+              title="Draw temporary measurement lines (not saved)"
+              style={
+                measuring
+                  ? { ...controlBtnStyle, background: "var(--wine-primary)", color: "var(--cream)", border: "1px solid var(--wine-primary)" }
+                  : controlBtnStyle
+              }
+            >
+              {measuring ? "Measuring ✕" : "📏 Measure"}
+            </button>
+          ) : null}
+          {editable && measureCount > 0 ? (
+            <button type="button" onClick={clearMeasurements} title="Remove all measurement lines" style={controlBtnStyle}>
+              Clear lines
+            </button>
+          ) : null}
           <div style={{ position: "relative" }}>
             <button
               type="button"
