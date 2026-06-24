@@ -7,6 +7,7 @@ import { blockArea, formatArea, mToFt, type Unit } from "@/lib/vineyard/units";
 import { loadVineyardDetail } from "@/lib/vineyard/actions";
 import type { VineyardDetailPayload } from "@/lib/vineyard/data";
 import { VineyardSetup } from "./VineyardSetup";
+import { BlockDetails } from "./BlockDetails";
 
 type VarietyOption = { id: string; name: string; color: string | null };
 
@@ -84,6 +85,7 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
 
   const blocks = React.useMemo(() => payload?.blocks ?? [], [payload]);
   const detail = payload?.detail ?? null;
+  const [openBlockId, setOpenBlockId] = React.useState<string | null>(null);
 
   const totalArea = React.useMemo(
     () =>
@@ -93,20 +95,6 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
       }, 0),
     [blocks, unit],
   );
-
-  const breakdown = React.useMemo(() => {
-    const map = new Map<string, { name: string; color: string; area: number }>();
-    for (const b of blocks) {
-      const key = b.varietyId ?? "__none__";
-      const name = b.variety?.name ?? "Unassigned";
-      const color = effectiveColor({ varietyColor: b.variety?.color, varietyId: b.varietyId });
-      const a = blockArea(b.rowSpacingM, b.vineSpacingM, b.vineCount, unit) ?? 0;
-      const cur = map.get(key) ?? { name, color, area: 0 };
-      cur.area += a;
-      map.set(key, cur);
-    }
-    return [...map.values()].sort((a, b) => b.area - a.area || a.name.localeCompare(b.name));
-  }, [blocks, unit]);
 
   return (
     <Modal
@@ -196,42 +184,55 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
             </div>
           </section>
 
-          {/* Per-variety breakdown */}
-          {breakdown.length ? (
-            <section>
-              <SectionTitle>Varieties by planted area</SectionTitle>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {breakdown.map((e) => {
-                  const pct = totalArea > 0 ? Math.round((e.area / totalArea) * 100) : 0;
-                  return (
-                    <div key={e.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--border-subtle)" }}>
-                      <span aria-hidden style={{ width: 14, height: 14, borderRadius: "var(--radius-xs)", background: e.color, border: "1px solid var(--border-subtle)", flex: "0 0 auto" }} />
-                      <span style={{ flex: 1 }}>{e.name}</span>
-                      <span style={{ color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>{formatArea(e.area, unit)}</span>
-                      <span style={{ width: 48, textAlign: "right", color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-
-          {/* Block list */}
+          {/* Blocks — click a row for full details */}
           <section>
             <SectionTitle>Blocks</SectionTitle>
             {blocks.length === 0 ? (
               <p style={{ color: "var(--text-muted)", fontSize: 14, margin: 0 }}>No blocks yet.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column" }}>
+                {/* Column header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 0 6px", fontSize: 12.5, color: "var(--text-muted)" }}>
+                  <span aria-hidden style={{ width: 12, flex: "0 0 auto" }} />
+                  <span aria-hidden style={{ width: 10, flex: "0 0 auto" }} />
+                  <span style={{ width: 70, flex: "0 0 auto" }}>Block #</span>
+                  <span style={{ flex: 1, minWidth: 110 }}>Variety</span>
+                  <span style={{ width: 80, flex: "0 0 auto" }}>Clone</span>
+                  <span style={{ width: 100, flex: "0 0 auto", textAlign: "right" }}>Planted area</span>
+                  <span style={{ width: 90, flex: "0 0 auto", textAlign: "right" }}>Year planted</span>
+                </div>
                 {blocks.map((b) => {
                   const color = effectiveColor({ blockColor: b.color, varietyColor: b.variety?.color, varietyId: b.varietyId });
                   const area = blockArea(b.rowSpacingM, b.vineSpacingM, b.vineCount, unit);
+                  const open = openBlockId === b.id;
                   return (
-                    <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--border-subtle)", fontSize: 14 }}>
-                      <span aria-hidden style={{ width: 12, height: 12, borderRadius: "var(--radius-xs)", background: color, border: "1px solid var(--border-subtle)", flex: "0 0 auto" }} />
-                      <span style={{ minWidth: 100 }}>{b.blockLabel || "Untitled block"}</span>
-                      <span style={{ flex: 1, color: "var(--text-secondary)" }}>{b.variety?.name ?? "—"}</span>
-                      <span style={{ color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{area != null ? formatArea(area, unit) : "—"}</span>
+                    <div key={b.id} style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenBlockId((cur) => (cur === b.id ? null : b.id))}
+                        aria-expanded={open}
+                        title="Show block details"
+                        style={{
+                          width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
+                          background: "transparent", border: "none", cursor: "pointer", textAlign: "left",
+                          font: "inherit", color: "inherit", fontSize: 14,
+                        }}
+                      >
+                        <span aria-hidden style={{ width: 12, height: 12, borderRadius: "var(--radius-xs)", background: color, border: "1px solid var(--border-subtle)", flex: "0 0 auto" }} />
+                        <span aria-hidden style={{ width: 10, flex: "0 0 auto", color: "var(--text-muted)", fontSize: 13, transform: open ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast, 0.15s) ease", display: "inline-block" }}>▸</span>
+                        <span style={{ width: 70, flex: "0 0 auto" }}>{b.blockLabel || "—"}</span>
+                        <span style={{ flex: 1, minWidth: 110, color: "var(--text-secondary)" }}>{b.variety?.name ?? "—"}</span>
+                        <span style={{ width: 80, flex: "0 0 auto", color: "var(--text-secondary)" }}>{b.clone ?? "—"}</span>
+                        <span style={{ width: 100, flex: "0 0 auto", textAlign: "right", color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{area != null ? formatArea(area, unit) : "—"}</span>
+                        <span style={{ width: 90, flex: "0 0 auto", textAlign: "right", color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{b.yearPlanted ?? "—"}</span>
+                      </button>
+                      {open ? (
+                        <div style={{ padding: "4px 0 16px", background: "var(--surface-sunken)", borderRadius: "var(--radius-md)", margin: "0 0 8px" }}>
+                          <div style={{ padding: "8px 14px 0" }}>
+                            <BlockDetails block={b} unit={unit} />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

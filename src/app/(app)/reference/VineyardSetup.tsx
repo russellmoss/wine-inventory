@@ -15,12 +15,12 @@ import {
   fromCanonicalSpacing,
   toCanonicalSpacing,
   formatArea,
-  formatSpacing,
   vinesPerRow,
   spacingUnitLabel,
   type Unit,
 } from "@/lib/vineyard/units";
 import type { SerializedBlock, SerializedDetail } from "@/lib/vineyard/data";
+import { BlockDetails } from "./BlockDetails";
 
 type VarietyOption = { id: string; name: string; color: string | null };
 
@@ -90,18 +90,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>{label}</span>
       {children}
     </label>
-  );
-}
-
-function ReadField({ label, value }: { label: string; value: React.ReactNode }) {
-  const empty = value == null || value === "";
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>{label}</span>
-      <span style={{ fontSize: 14.5, color: empty ? "var(--text-muted)" : "var(--text-primary)" }}>
-        {empty ? "—" : value}
-      </span>
-    </div>
   );
 }
 
@@ -329,30 +317,8 @@ export function VineyardSetup({
                 {/* Read-only summary (click the row); hidden while editing */}
                 {viewId === b.id && !expanded ? (
                   <div style={{ padding: "4px 14px 16px", background: "var(--surface-sunken)" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-                      <ReadField label="Block #" value={b.blockLabel} />
-                      <ReadField label="# of rows" value={b.numRows} />
-                      <ReadField label={`Row spacing (${spLabel})`} value={b.rowSpacingM != null ? formatSpacing(b.rowSpacingM, unit) : null} />
-                      <ReadField label={`Vine spacing (${spLabel})`} value={b.vineSpacingM != null ? formatSpacing(b.vineSpacingM, unit) : null} />
-                      <ReadField label="Variety" value={b.variety?.name} />
-                      <ReadField label="Clone" value={b.clone} />
-                      <ReadField label="Rootstock" value={b.rootstock} />
-                      <ReadField label="# of vines" value={b.vineCount} />
-                      <ReadField label="Year planted" value={b.yearPlanted} />
-                      <ReadField label="Irrigation" value={b.irrigated == null ? null : b.irrigated ? "Yes" : "No"} />
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 13.5 }}>
-                        Planted area (spacing-based):{" "}
-                        <strong style={{ fontVariantNumeric: "tabular-nums" }}>
-                          {area != null ? formatArea(area, unit) : "—"}
-                        </strong>
-                      </span>
-                      {vinesPerRow(b.vineCount, b.numRows) != null ? (
-                        <Badge tone="neutral" variant="soft">
-                          ~{Math.round(vinesPerRow(b.vineCount, b.numRows)!)} vines/row
-                        </Badge>
-                      ) : null}
+                    <BlockDetails block={b} unit={unit} />
+                    <div style={{ display: "flex", marginTop: 14 }}>
                       <span style={{ flex: 1 }} />
                       <Button variant="ghost" size="sm" onClick={() => expand(b)}>
                         Edit block
