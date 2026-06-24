@@ -24,7 +24,14 @@ import * as L from "leaflet";
 // root layout, next to leaflet.css (App Router only allows global CSS there).
 import "@geoman-io/leaflet-geoman-free";
 import { effectiveColor } from "@/lib/vineyard/colors";
-import { blockArea, formatArea, type Unit } from "@/lib/vineyard/units";
+import {
+  blockArea,
+  blockAcres,
+  blockHectares,
+  formatArea,
+  mToFt,
+  type Unit,
+} from "@/lib/vineyard/units";
 import type { SerializedBlock } from "@/lib/vineyard/data";
 import {
   GOOGLE_2D_TILE_URL,
@@ -48,6 +55,7 @@ function addEsriBasemap(map: L.Map, setBase?: (l: L.TileLayer) => void): L.TileL
     attribution: ESRI_ATTRIBUTION,
     maxNativeZoom: 19,
     maxZoom: MAX_ZOOM,
+    crossOrigin: true, // let PNG export read the tiles without tainting the canvas
   }).addTo(map);
   setBase?.(l);
   return l;
@@ -99,7 +107,7 @@ async function addBasemap(
       if (isCancelled()) return;
       const gl = L.tileLayer(
         `${GOOGLE_2D_TILE_URL}?session=${encodeURIComponent(session)}&key=${encodeURIComponent(GOOGLE_KEY)}`,
-        { maxZoom: MAX_ZOOM, tileSize: 256, attribution: "Imagery ©Google" },
+        { maxZoom: MAX_ZOOM, tileSize: 256, attribution: "Imagery ©Google", crossOrigin: true },
       );
       let loadedOk = false;
       gl.on("tileload", () => {
@@ -157,6 +165,14 @@ export interface SatelliteMapProps {
    * The consumer opens a detail modal for that block. Suppressed while drawing.
    */
   onBlockClick?: (blockId: string) => void;
+  /** Vineyard name — used as the export filename stem and a shapefile attribute. */
+  exportName?: string;
+  /** Vineyard-level metadata copied onto every exported feature (optional). */
+  vineyardMeta?: {
+    soilType?: string | null;
+    manager?: string | null;
+    elevationM?: number | null;
+  };
 }
 
 /** Minimal GeoJSON Polygon shape (a linear ring of [lng, lat] positions). */
@@ -190,6 +206,74 @@ function googleMapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
+/** File-system-safe stem from a vineyard name. */
+function slugify(name: string | undefined): string {
+  const s = (name ?? "vineyard")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "vineyard";
+}
+
+/** Kick off a client-side download for a data URL or object URL. */
+function triggerDownload(href: string, filename: string): void {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function num(v: number | null | undefined, dp = 4): number | null {
+  return v == null || !Number.isFinite(v) ? null : Number(v.toFixed(dp));
+}
+
+/**
+ * Build a WGS84 GeoJSON FeatureCollection of every block with a drawn polygon,
+ * each feature carrying ALL of that block's metadata as DBF-friendly attributes
+ * (≤10-char field names; planted area in both acres and hectares regardless of
+ * the on-screen unit). This is the attribute table the exported shapefile gets.
+ */
+function blocksToFeatureCollection(
+  blocks: SerializedBlock[],
+  meta: SatelliteMapProps["vineyardMeta"],
+  vineyardName: string | undefined,
+): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  for (const b of blocks) {
+    if (!isPolygonGeometry(b.polygon)) continue;
+    features.push({
+      type: "Feature",
+      geometry: b.polygon as GeoJSON.Polygon,
+      properties: {
+        vineyard: vineyardName ?? "",
+        block: b.blockLabel ?? "",
+        variety: b.variety?.name ?? "",
+        clone: b.clone ?? "",
+        rootstock: b.rootstock ?? "",
+        vines: b.vineCount ?? null,
+        rows: b.numRows ?? null,
+        rowspc_m: num(b.rowSpacingM),
+        vinespc_m: num(b.vineSpacingM),
+        rowspc_ft: b.rowSpacingM != null ? num(mToFt(b.rowSpacingM)) : null,
+        vinespc_ft: b.vineSpacingM != null ? num(mToFt(b.vineSpacingM)) : null,
+        yr_plant: b.yearPlanted ?? null,
+        irrig: b.irrigated == null ? "" : b.irrigated ? "Yes" : "No",
+        acres: num(blockAcres(b.rowSpacingM, b.vineSpacingM, b.vineCount), 3),
+        hectares: num(blockHectares(b.rowSpacingM, b.vineSpacingM, b.vineCount), 4),
+        color: effectiveColor({ blockColor: b.color, varietyColor: b.variety?.color, varietyId: b.varietyId }),
+        varietyid: b.varietyId ?? "",
+        soil: meta?.soilType ?? "",
+        manager: meta?.manager ?? "",
+        elev_m: meta?.elevationM != null ? num(meta.elevationM, 2) : null,
+      },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
 export function SatelliteMap({
   lat,
   lng,
@@ -200,6 +284,8 @@ export function SatelliteMap({
   activeBlockId = null,
   onPolygonSaved,
   onBlockClick,
+  exportName,
+  vineyardMeta,
 }: SatelliteMapProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<L.Map | null>(null);
@@ -209,6 +295,11 @@ export function SatelliteMap({
   const waybackLayerRef = React.useRef<L.TileLayer | null>(null);
   const historyModeRef = React.useRef(false);
   const [markerVisible, setMarkerVisible] = React.useState(true);
+
+  // Export menu (PNG image / shapefile).
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [exporting, setExporting] = React.useState<null | "png" | "shp">(null);
+  const [exportError, setExportError] = React.useState<string | null>(null);
 
   // Keep the save callback in a ref so the Geoman effects don't re-run (and
   // tear down draw/edit state) every time the parent passes a new closure.
@@ -317,6 +408,7 @@ export function SatelliteMap({
         maxNativeZoom: 19,
         maxZoom: MAX_ZOOM,
         attribution: `Esri World Imagery (${release.date}) — Wayback`,
+        crossOrigin: true,
       });
       wl.addTo(map);
       wl.bringToBack(); // sit under polygons/markers
@@ -498,6 +590,67 @@ export function SatelliteMap({
     setHistoryMode(true);
   }, [historyMode, releases.length]);
 
+  const stem = slugify(exportName);
+
+  // PNG: capture the live map DOM (tiles + polygons + key) via html-to-image.
+  // Tiles carry crossOrigin so the capture isn't tainted. The map controls
+  // (zoom, Geoman toolbar, our button cluster) are filtered out; attribution
+  // stays for legal credit.
+  const exportPng = React.useCallback(async () => {
+    const el = containerRef.current;
+    if (!el) return;
+    setExportOpen(false);
+    setExporting("png");
+    setExportError(null);
+    try {
+      const { toPng } = await import("html-to-image");
+      const dataUrl = await toPng(el, {
+        pixelRatio: 2,
+        cacheBust: true,
+        filter: (node) => {
+          const cl = (node as HTMLElement).classList;
+          if (!cl) return true;
+          return !(
+            cl.contains("bw-export-exclude") ||
+            cl.contains("leaflet-control-zoom") ||
+            cl.contains("leaflet-pm-toolbar")
+          );
+        },
+      });
+      triggerDownload(dataUrl, `${stem}-map.png`);
+    } catch {
+      setExportError("Couldn't export the image — map tiles may have blocked capture.");
+    } finally {
+      setExporting(null);
+    }
+  }, [stem]);
+
+  // Shapefile: zip a WGS84 polygon shapefile (.shp/.shx/.dbf/.prj) of every drawn
+  // block, with all block metadata in the DBF attribute table.
+  const exportShapefile = React.useCallback(async () => {
+    setExportOpen(false);
+    const fc = blocksToFeatureCollection(blocks, vineyardMeta, exportName);
+    if (fc.features.length === 0) {
+      setExportError("No drawn block shapes to export yet.");
+      return;
+    }
+    setExporting("shp");
+    setExportError(null);
+    try {
+      const shpwrite = await import("@mapbox/shp-write");
+      await shpwrite.download(fc, {
+        filename: `${stem}-blocks`,
+        outputType: "blob",
+        compression: "DEFLATE",
+        types: { polygon: "blocks", multipolygon: "blocks" },
+      });
+    } catch {
+      setExportError("Couldn't export the shapefile.");
+    } finally {
+      setExporting(null);
+    }
+  }, [blocks, vineyardMeta, exportName, stem]);
+
   const controlBtnStyle: React.CSSProperties = {
     minHeight: 32,
     padding: "6px 10px",
@@ -508,6 +661,18 @@ export function SatelliteMap({
     border: "1px solid var(--border-subtle)",
     borderRadius: "var(--radius-sm)",
     boxShadow: "0 1px 3px rgba(43, 42, 38, 0.18)",
+    cursor: "pointer",
+  };
+
+  const menuItemStyle: React.CSSProperties = {
+    padding: "8px 12px",
+    fontFamily: "var(--font-body)",
+    fontSize: 13,
+    textAlign: "left",
+    color: "var(--text-primary)",
+    background: "transparent",
+    border: "none",
+    borderBottom: "1px solid var(--border-subtle)",
     cursor: "pointer",
   };
 
@@ -624,8 +789,9 @@ export function SatelliteMap({
             </table>
           </div>
         ) : null}
-        {/* Top-right control cluster */}
+        {/* Top-right control cluster (bw-export-exclude → kept out of PNG export) */}
         <div
+          className="bw-export-exclude"
           style={{
             position: "absolute",
             top: 10,
@@ -637,6 +803,44 @@ export function SatelliteMap({
             gap: 6,
           }}
         >
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setExportOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              disabled={exporting != null}
+              title="Export the map"
+              style={{ ...controlBtnStyle, cursor: exporting != null ? "wait" : "pointer" }}
+            >
+              {exporting === "png" ? "Exporting…" : exporting === "shp" ? "Zipping…" : "Export ▾"}
+            </button>
+            {exportOpen ? (
+              <div
+                role="menu"
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  right: 0,
+                  minWidth: 168,
+                  display: "flex",
+                  flexDirection: "column",
+                  background: "var(--surface-raised)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "var(--radius-sm)",
+                  boxShadow: "0 4px 14px rgba(43, 42, 38, 0.18)",
+                  overflow: "hidden",
+                }}
+              >
+                <button type="button" role="menuitem" onClick={exportPng} style={menuItemStyle}>
+                  PNG image
+                </button>
+                <button type="button" role="menuitem" onClick={exportShapefile} style={menuItemStyle}>
+                  Shapefile (.zip)
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={toggleHistory}
@@ -714,6 +918,9 @@ export function SatelliteMap({
       </div>
       {historyError ? (
         <p style={{ marginTop: 8, fontSize: 12.5, color: "var(--danger)" }}>{historyError}</p>
+      ) : null}
+      {exportError ? (
+        <p style={{ marginTop: 8, fontSize: 12.5, color: "var(--danger)" }}>{exportError}</p>
       ) : null}
       {hasCoords ? (
         <div style={{ marginTop: 8, fontSize: 12.5 }}>

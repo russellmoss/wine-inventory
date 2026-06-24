@@ -195,6 +195,8 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
               activeBlockId={activeBlockId}
               onPolygonSaved={handlePolygonSaved}
               onBlockClick={setInfoBlockId}
+              exportName={vineyardName}
+              vineyardMeta={{ soilType: detail?.soilType, manager: detail?.manager, elevationM: detail?.elevationM }}
             />
             <div style={{ marginTop: 12 }}>
               <MapLegend blocks={blocks} unit={unit} />
@@ -250,6 +252,8 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
               blocks={blocks}
               unit={unit}
               onBlockClick={setInfoBlockId}
+              exportName={vineyardName}
+              vineyardMeta={{ soilType: detail?.soilType, manager: detail?.manager, elevationM: detail?.elevationM }}
             />
             <div style={{ marginTop: 12 }}>
               <MapLegend blocks={blocks} unit={unit} />

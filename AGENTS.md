@@ -46,7 +46,10 @@ Secrets live in `.env` (gitignored). Template is `.env.example`.
   (`src/app/layout.tsx`) — App Router only allows global CSS at the root.
   Imagery is keyless Esri unless this key is set. The map's opt-in "History"
   mode uses the keyless Esri World Imagery Wayback archive
-  (`src/lib/map/wayback.ts`) — no key, no env.
+  (`src/lib/map/wayback.ts`) — no key, no env. The map's "Export" menu writes a
+  PNG (DOM capture via `html-to-image`; tile layers set `crossOrigin`) or a
+  zipped WGS84 shapefile of the drawn blocks with all block metadata in the DBF
+  (`@mapbox/shp-write`); both libs are dynamically imported on the client only.
 
 ## rstack toolchain
 
