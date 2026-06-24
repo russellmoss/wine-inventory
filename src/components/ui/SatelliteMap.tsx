@@ -730,11 +730,12 @@ export function SatelliteMap({
               bottom: 10,
               left: 10,
               zIndex: 1000,
-              maxWidth: 240,
-              maxHeight: "calc(100% - 20px)",
-              overflowY: "auto",
-              padding: "6px 4px",
-              background: "rgba(255, 248, 241, 0.92)",
+              // Size to content — no scroll/clip — so the key is always fully
+              // visible (on screen and in PNG export). Stays within the map width.
+              maxWidth: "calc(100% - 20px)",
+              overflow: "visible",
+              padding: "6px 8px",
+              background: "rgba(255, 248, 241, 0.94)",
               border: "1px solid var(--border-subtle)",
               borderRadius: "var(--radius-md)",
               boxShadow: "0 1px 3px rgba(43, 42, 38, 0.18)",
