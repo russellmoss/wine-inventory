@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { casesAndLoose } from "@/lib/bottling/draw";
-import { InventoryClient, type Cat, type ItemOpt, type LocOpt, type OnHandRow } from "./InventoryClient";
+import { InventoryClient, type ItemOpt, type OnHandRow } from "./InventoryClient";
 
 export default async function InventoryPage() {
   const [categories, skus, goods, locations, bottled, fg] = await Promise.all([

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Card, Input, Button, Badge, Eyebrow, Modal, ExportCsvButton } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, Modal, ExportCsvButton } from "@/components/ui";
 import type { BlendInfo } from "@/lib/bulk/blend";
 import type { Fill } from "@/lib/vessels/fill";
 import { addComponent, updateComponentVolume, removeComponent, setBlendName } from "@/lib/bulk/actions";
@@ -81,7 +81,7 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
   const tanks = vessels.filter((v) => v.type === "TANK");
   const selected = vessels.find((v) => v.id === selectedId) ?? null;
 
-  function TypeCard({ title, items }: { title: string; items: VesselWithContents[] }) {
+  const renderTypeCard = (title: string, items: VesselWithContents[]) => {
     const isOpen = openSections[title] ?? false;
     return (
       <Card style={{ flex: "1 1 380px" }}>
@@ -176,8 +176,8 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
         <Card><p style={{ color: "var(--text-secondary)", margin: 0 }}>No active vessels. Register barrels/tanks in <strong>Setup → Vessels</strong> first.</p></Card>
       ) : (
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <TypeCard title="Barrels" items={barrels} />
-          <TypeCard title="Tanks" items={tanks} />
+          {renderTypeCard("Barrels", barrels)}
+          {renderTypeCard("Tanks", tanks)}
         </div>
       )}
 

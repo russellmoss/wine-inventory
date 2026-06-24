@@ -109,8 +109,20 @@ export function AppShell({
   const setupActive = SETUP.some((s) => isActive(s.href));
   const [setupOpen, setSetupOpen] = React.useState(setupActive);
   const [drawer, setDrawer] = React.useState(false);
-  React.useEffect(() => { if (setupActive) setSetupOpen(true); }, [setupActive]);
-  React.useEffect(() => { setDrawer(false); }, [pathname]); // close drawer on navigation
+
+  // Respond to navigation during render (React's sanctioned pattern) rather than
+  // in an effect: expand the Setup group when entering a setup route, and close
+  // the mobile drawer whenever the path changes.
+  const [prevSetupActive, setPrevSetupActive] = React.useState(setupActive);
+  if (setupActive !== prevSetupActive) {
+    setPrevSetupActive(setupActive);
+    if (setupActive) setSetupOpen(true);
+  }
+  const [prevPathname, setPrevPathname] = React.useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
+    setDrawer(false);
+  }
 
   async function handleSignOut() {
     await signOut();

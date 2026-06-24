@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { action, ActionError } from "@/lib/actions";
-import { writeAudit, summarize, diff } from "@/lib/audit";
+import { writeAudit, diff } from "@/lib/audit";
 
 const PATH = "/bulk";
 

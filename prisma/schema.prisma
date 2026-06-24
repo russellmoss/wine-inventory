@@ -136,9 +136,11 @@ model Variety {
   id              String            @id @default(cuid())
   name            String            @unique
   isActive        Boolean           @default(true)
+  color           String? // canonical per-variety map color (hex), consistent across vineyards
   createdAt       DateTime          @default(now())
   components      VesselComponent[]
   bottlingSources BottlingSource[]
+  vineyardBlocks  VineyardBlock[]
 
   @@map("variety")
 }
@@ -150,8 +152,58 @@ model Vineyard {
   createdAt       DateTime          @default(now())
   components      VesselComponent[]
   bottlingSources BottlingSource[]
+  detail          VineyardDetail?
+  blocks          VineyardBlock[]
 
   @@map("vineyard")
+}
+
+// ───────────────────────── Vineyard details + blocks ─────────────────────────
+
+// Sparse, optional per-vineyard metadata (1:1 with Vineyard, created lazily).
+// Spacing/elevation are stored canonically in METRIC; the UI converts for display.
+model VineyardDetail {
+  id          String   @id @default(cuid())
+  vineyardId  String   @unique
+  gpsLat      Decimal? @db.Decimal(9, 6)
+  gpsLng      Decimal? @db.Decimal(9, 6)
+  elevationM  Decimal? @db.Decimal(8, 2)
+  soilType    String?
+  manager     String?
+  defaultUnit String   @default("imperial") // "imperial" | "metric"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  vineyard    Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
+
+  @@map("vineyard_detail")
+}
+
+// A planted block within a vineyard. All fields optional; nothing required to save.
+// Acreage is NOT stored — it is derived from rowSpacing * vineSpacing * vineCount.
+model VineyardBlock {
+  id           String   @id @default(cuid())
+  vineyardId   String
+  blockLabel   String? // e.g. "Block 1", "A"
+  numRows      Int? // informational (drives optional vines/row readout)
+  rowSpacingM  Decimal? @db.Decimal(10, 4) // canonical metric
+  vineSpacingM Decimal? @db.Decimal(10, 4) // canonical metric
+  varietyId    String?
+  clone        String?
+  rootstock    String?
+  vineCount    Int?
+  yearPlanted  Int?
+  irrigated    Boolean?
+  polygon      Json? // GeoJSON Polygon geometry (illustrative, not the area source)
+  color        String? // optional per-block polygon color override (hex)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  vineyard     Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
+  variety      Variety? @relation(fields: [varietyId], references: [id], onDelete: SetNull)
+
+  @@index([vineyardId])
+  @@index([varietyId])
+  @@map("vineyard_block")
 }
 
 // ───────────────────────── Bulk / in-process wine ─────────────────────────

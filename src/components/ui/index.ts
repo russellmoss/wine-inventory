@@ -22,3 +22,5 @@ export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
 export { ExportCsvButton } from "./ExportCsvButton";
 export type { ExportCsvButtonProps, CsvColumn } from "./ExportCsvButton";
+export { MapLegend } from "./MapLegend";
+export type { MapLegendProps } from "./MapLegend";
