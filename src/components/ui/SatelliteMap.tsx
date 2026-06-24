@@ -202,6 +202,8 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<L.Map | null>(null);
   const overlayRef = React.useRef<L.FeatureGroup | null>(null);
+  const markerRef = React.useRef<L.Marker | null>(null);
+  const [markerVisible, setMarkerVisible] = React.useState(true);
 
   const hasCoords = lat != null && lng != null;
   const hasGeometry = blocks.some((b) => isPolygonGeometry(b.polygon));
@@ -241,11 +243,29 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
       map.remove();
       mapRef.current = null;
       overlayRef.current = null;
+      markerRef.current = null;
     };
     // showMap toggles whether the container exists at all; re-init if it flips on.
   }, [showMap]);
 
-  // Rebuild pin + polygon overlays whenever the data or unit changes.
+  // The location pin is its own layer so toggling it never disturbs the polygons
+  // or the current pan/zoom (it's not part of the fit-bounds group).
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (markerRef.current) {
+      markerRef.current.remove();
+      markerRef.current = null;
+    }
+    if (markerVisible && lat != null && lng != null) {
+      markerRef.current = L.marker([lat, lng], {
+        icon: makePinIcon(),
+        interactive: false,
+      }).addTo(map);
+    }
+  }, [markerVisible, lat, lng, showMap]);
+
+  // Rebuild polygon overlays + fit the view whenever the data or unit changes.
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -256,10 +276,6 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
     }
     const group = L.featureGroup().addTo(map);
     overlayRef.current = group;
-
-    if (lat != null && lng != null) {
-      L.marker([lat, lng], { icon: makePinIcon(), interactive: false }).addTo(group);
-    }
 
     let polyCount = 0;
     for (const b of blocks) {
@@ -311,19 +327,47 @@ export function SatelliteMap({ lat, lng, blocks, unit, height = 380 }: Satellite
 
   return (
     <div>
-      <div
-        ref={containerRef}
-        role="application"
-        aria-label="Vineyard satellite map"
-        style={{
-          height: typeof height === "number" ? `${height}px` : height,
-          width: "100%",
-          borderRadius: "var(--radius-md)",
-          overflow: "hidden",
-          border: "1px solid var(--border-strong)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      />
+      <div style={{ position: "relative" }}>
+        <div
+          ref={containerRef}
+          role="application"
+          aria-label="Vineyard satellite map"
+          style={{
+            height: typeof height === "number" ? `${height}px` : height,
+            width: "100%",
+            borderRadius: "var(--radius-md)",
+            overflow: "hidden",
+            border: "1px solid var(--border-strong)",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        />
+        {hasCoords ? (
+          <button
+            type="button"
+            onClick={() => setMarkerVisible((v) => !v)}
+            aria-pressed={markerVisible}
+            title={markerVisible ? "Hide the location pin" : "Show the location pin"}
+            style={{
+              position: "absolute",
+              top: 10,
+              right: 10,
+              zIndex: 1000,
+              minHeight: 32,
+              padding: "6px 10px",
+              fontFamily: "var(--font-body)",
+              fontSize: 12.5,
+              color: "var(--text-primary)",
+              background: "var(--surface-raised)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-sm)",
+              boxShadow: "0 1px 3px rgba(43, 42, 38, 0.18)",
+              cursor: "pointer",
+            }}
+          >
+            {markerVisible ? "Hide pin" : "Show pin"}
+          </button>
+        ) : null}
+      </div>
       {hasCoords ? (
         <div style={{ marginTop: 8, fontSize: 12.5 }}>
           <a
