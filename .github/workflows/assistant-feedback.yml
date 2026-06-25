@@ -1,0 +1,78 @@
+name: Assistant feedback fix
+
+# Investigates negative assistant feedback with Claude and opens a PR with a
+# proposed fix. It NEVER commits to main — a human (and CI) gate the change.
+#
+# Triggers:
+#  - repository_dispatch (the app fires this on thumbs-down + comment, if a
+#    GITHUB_DISPATCH_TOKEN is configured) — near-immediate.
+#  - workflow_dispatch (manual, optional feedbackId).
+#  - schedule (fallback sweep).
+#
+# Required repo secrets: ANTHROPIC_API_KEY, DATABASE_URL, DATABASE_URL_UNPOOLED.
+# Optional: GH_PAT (so the opened PR triggers the CI workflow; GITHUB_TOKEN-made
+# PRs do not). Falls back to GITHUB_TOKEN (you then re-run CI manually).
+on:
+  repository_dispatch:
+    types: [assistant_feedback]
+  workflow_dispatch:
+    inputs:
+      feedbackId:
+        description: "Specific feedback id (optional; newest NEW down-feedback if blank)"
+        required: false
+  schedule:
+    - cron: "*/30 * * * *"
+
+concurrency:
+  group: assistant-feedback
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+
+      - name: Run feedback agent
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          FEEDBACK_ID: ${{ github.event.client_payload.feedbackId || github.event.inputs.feedbackId }}
+        run: npx tsx scripts/assistant-feedback-agent.ts
+
+      - name: Open pull request
+        if: steps.agent.outputs.changed == 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GH_PAT || github.token }}
+          base: main
+          branch: ${{ steps.agent.outputs.branch }}
+          title: ${{ steps.agent.outputs.title }}
+          body-path: .assistant-fix-body.md
+          labels: assistant-feedback
+          delete-branch: true
+          add-paths: |
+            src/lib/assistant
+            src/app/(app)/assistant
+
+      - name: Mark feedback triaged
+        if: steps.cpr.outputs.pull-request-number
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npx tsx scripts/assistant-feedback-mark.ts "${{ steps.agent.outputs.feedbackId }}" "${{ steps.cpr.outputs.pull-request-url }}"
