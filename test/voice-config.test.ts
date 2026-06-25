@@ -39,19 +39,17 @@ describe("voice config gates", () => {
     expect(ttsEnabled()).toBe(true);
   });
 
-  it("sttEnabled tracks the OpenAI key", async () => {
+  it("sttEnabled tracks the ElevenLabs key (Scribe shares the TTS key)", async () => {
     const { sttEnabled } = await import("@/lib/voice/config");
     expect(sttEnabled()).toBe(false);
-    process.env.OPENAI_API_KEY = "sk-openai";
+    process.env.ELEVENLABS_API_KEY = "sk_test";
     expect(sttEnabled()).toBe(true);
   });
 
-  it("voiceEnabled requires both keys", async () => {
+  it("voiceEnabled needs only the ElevenLabs key (both directions use it)", async () => {
     const { voiceEnabled } = await import("@/lib/voice/config");
     expect(voiceEnabled()).toBe(false);
     process.env.ELEVENLABS_API_KEY = "sk_test";
-    expect(voiceEnabled()).toBe(false);
-    process.env.OPENAI_API_KEY = "sk-openai";
     expect(voiceEnabled()).toBe(true);
   });
 });

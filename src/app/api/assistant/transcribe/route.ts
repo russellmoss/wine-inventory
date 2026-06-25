@@ -39,7 +39,9 @@ export async function POST(req: Request) {
   try {
     const text = await transcribeAudio(file);
     return Response.json({ text });
-  } catch {
-    return Response.json({ error: "Transcription failed." }, { status: 502 });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[transcribe] failed:", detail, "| audio:", file.type, file.size, "bytes");
+    return Response.json({ error: "Transcription failed.", detail }, { status: 502 });
   }
 }
