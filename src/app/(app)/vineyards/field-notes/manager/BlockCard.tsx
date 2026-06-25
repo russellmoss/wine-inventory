@@ -4,6 +4,8 @@ import React from "react";
 import { Card, Button, Checkbox, Badge } from "@/components/ui";
 import {
   PHENO_STAGES,
+  PHENO_PCT_OPTIONS,
+  phenoStageUsesPct,
   SHOOT_TIP_STATES,
   CANOPY_DENSITIES,
   WATER_STRESS_LEVELS,
@@ -171,9 +173,11 @@ export function BlockCard({
         <select
           style={selectStyle}
           value={status.phenoStage ?? ""}
-          onChange={(e) =>
-            update({ phenoStage: (e.target.value || null) as PhenoStage | null })
-          }
+          onChange={(e) => {
+            const next = (e.target.value || null) as PhenoStage | null;
+            // Drop any % reading if the new stage doesn't take one.
+            update({ phenoStage: next, phenoStagePct: phenoStageUsesPct(next) ? status.phenoStagePct : null });
+          }}
         >
           <option value="">— Select —</option>
           {PHENO_STAGES.map((s) => (
@@ -182,6 +186,25 @@ export function BlockCard({
             </option>
           ))}
         </select>
+        {phenoStageUsesPct(status.phenoStage) ? (
+          <div style={{ marginTop: 10 }}>
+            <label style={fieldLabel}>Stage progress</label>
+            <select
+              style={selectStyle}
+              value={status.phenoStagePct ?? ""}
+              onChange={(e) =>
+                update({ phenoStagePct: e.target.value ? Number(e.target.value) : null })
+              }
+            >
+              <option value="">— Select —</option>
+              {PHENO_PCT_OPTIONS.map((p) => (
+                <option key={p} value={p}>
+                  {p}%
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
 
       <div style={sectionGap}>

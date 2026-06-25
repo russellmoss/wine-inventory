@@ -4,6 +4,7 @@ import { type BlockStatus, EMPTY_BLOCK_STATUS } from "@/lib/fieldnotes/types";
 
 const prev: BlockStatus = {
   phenoStage: "VERAISON",
+  phenoStagePct: 50,
   shootTip: "STAGNANT",
   canopyDensity: "DENSE",
   waterStress: "MILD",
@@ -26,6 +27,7 @@ describe("buildPrepopulationDefaults", () => {
   it("carries slow-changing block phenology/canopy forward", () => {
     const out = buildPrepopulationDefaults({ b1: prev }, ["b1"]);
     expect(out.blockLevelStatuses.b1.phenoStage).toBe("VERAISON");
+    expect(out.blockLevelStatuses.b1.phenoStagePct).toBe(50);
     expect(out.blockLevelStatuses.b1.canopyDensity).toBe("DENSE");
     expect(out.blockLevelStatuses.b1.waterStress).toBe("MILD");
     expect(out.blockLevelStatuses.b1.leafConditions).toEqual(["YELLOWING"]);

@@ -47,6 +47,15 @@ export type LeafCondition = (typeof LEAF_CONDITIONS)[number];
 export const INPUT_TYPES = ["SPRAY", "FERTILIZER"] as const;
 export type InputType = (typeof INPUT_TYPES)[number];
 
+// Progress reading (% complete) for the stages where it's meaningful.
+export const PHENO_PCT_OPTIONS = [5, 25, 50, 75, 100] as const;
+export type PhenoPct = (typeof PHENO_PCT_OPTIONS)[number];
+export const PHENO_PCT_STAGES = ["BUD_BREAK", "FLOWERING", "VERAISON"] as const;
+/** Does this phenological stage take a % progress reading? */
+export function phenoStageUsesPct(stage: PhenoStage | null): boolean {
+  return stage != null && (PHENO_PCT_STAGES as readonly string[]).includes(stage);
+}
+
 // ───────────────────────── Payload shapes ─────────────────────────
 
 export type WeatherData = {
@@ -65,6 +74,7 @@ export type InputApplication = {
 
 export type BlockStatus = {
   phenoStage: PhenoStage | null;
+  phenoStagePct: number | null; // % progress, only for PHENO_PCT_STAGES
   shootTip: ShootTip | null;
   canopyDensity: CanopyDensity | null;
   waterStress: WaterStress | null;
@@ -78,6 +88,7 @@ export type BlockStatus = {
 /** A fully blank status — used to initialize a newly-added block (manager must fill). */
 export const EMPTY_BLOCK_STATUS: BlockStatus = {
   phenoStage: null,
+  phenoStagePct: null,
   shootTip: null,
   canopyDensity: null,
   waterStress: null,
@@ -91,6 +102,7 @@ export const EMPTY_BLOCK_STATUS: BlockStatus = {
 /** Baseline a manager can stamp onto untouched blocks via "mark remaining healthy". */
 export const DEFAULT_HEALTHY_BLOCK_STATUS: BlockStatus = {
   phenoStage: null, // varies by season; manager sets it
+  phenoStagePct: null,
   shootTip: "ACTIVE",
   canopyDensity: "MODERATE",
   waterStress: "NONE",
@@ -172,6 +184,13 @@ export function parseInputApplications(raw: unknown): InputApplication[] {
   return raw.map(parseInputApplication);
 }
 
+/** Phenology % — one of PHENO_PCT_OPTIONS, or null. Tolerates legacy rows (undefined → null). */
+function parsePhenoPct(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number" && (PHENO_PCT_OPTIONS as readonly number[]).includes(v)) return v;
+  throw new FieldNoteParseError(`Invalid phenoStagePct: ${JSON.stringify(v)}.`);
+}
+
 export function parseBlockStatus(raw: unknown): BlockStatus {
   if (!isObject(raw)) throw new FieldNoteParseError("Block status must be an object.");
   const leafConditions = (
@@ -179,6 +198,7 @@ export function parseBlockStatus(raw: unknown): BlockStatus {
   ).map((c) => parseEnum<LeafCondition>(c, LEAF_CONDITIONS, "leafConditions[]"));
   return {
     phenoStage: parseNullableEnum(raw.phenoStage, PHENO_STAGES, "phenoStage"),
+    phenoStagePct: parsePhenoPct(raw.phenoStagePct),
     shootTip: parseNullableEnum(raw.shootTip, SHOOT_TIP_STATES, "shootTip"),
     canopyDensity: parseNullableEnum(raw.canopyDensity, CANOPY_DENSITIES, "canopyDensity"),
     waterStress: parseNullableEnum(raw.waterStress, WATER_STRESS_LEVELS, "waterStress"),

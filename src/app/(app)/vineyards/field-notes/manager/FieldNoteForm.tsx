@@ -337,7 +337,7 @@ export function FieldNoteForm({
     value: number | null,
     set: (v: number | null) => void,
   ) => (
-    <div style={{ flex: 1 }}>
+    <div style={{ flex: 1, minWidth: 0 }}>
       <label style={fieldLabel}>{label}</label>
       <Input
         type="number"
@@ -348,6 +348,7 @@ export function FieldNoteForm({
           set(v === "" ? null : Number(v));
         }}
         size="lg"
+        style={{ width: "100%" }}
       />
     </div>
   );

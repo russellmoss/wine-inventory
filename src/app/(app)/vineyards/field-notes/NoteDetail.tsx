@@ -60,7 +60,14 @@ function InputList({
 
 function BlockRow({ label, status }: { label: string; status: BlockStatus }) {
   const chips: { text: string; tone: "neutral" | "red" | "green" }[] = [];
-  if (status.phenoStage) chips.push({ text: pretty(status.phenoStage), tone: "neutral" });
+  if (status.phenoStage)
+    chips.push({
+      text:
+        status.phenoStagePct != null
+          ? `${pretty(status.phenoStage)} ${status.phenoStagePct}%`
+          : pretty(status.phenoStage),
+      tone: "neutral",
+    });
   if (status.canopyDensity) chips.push({ text: `Canopy: ${pretty(status.canopyDensity)}`, tone: "neutral" });
   if (status.waterStress) chips.push({ text: `Water: ${pretty(status.waterStress)}`, tone: "neutral" });
   if (status.weedPressure) chips.push({ text: `Weeds: ${pretty(status.weedPressure)}`, tone: "neutral" });

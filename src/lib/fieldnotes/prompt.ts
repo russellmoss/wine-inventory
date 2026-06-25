@@ -36,7 +36,7 @@ function describeInputs(apps: InputApplication[], blockLabels: Record<string, st
 
 function describeBlock(label: string, s: BlockStatus): string {
   const parts = [
-    `phenology ${s.phenoStage ?? "—"}`,
+    `phenology ${s.phenoStage ?? "—"}${s.phenoStagePct != null ? ` (${s.phenoStagePct}%)` : ""}`,
     `shoot tip ${s.shootTip ?? "—"}`,
     `canopy ${s.canopyDensity ?? "—"}`,
     `water stress ${s.waterStress ?? "—"}`,

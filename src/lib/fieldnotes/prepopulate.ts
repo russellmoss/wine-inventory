@@ -27,6 +27,7 @@ const BLANK_WEATHER: WeatherData = { rainfallMm: null, maxTempC: null, minTempC:
 function carryForward(prev: BlockStatus): BlockStatus {
   return {
     phenoStage: prev.phenoStage,
+    phenoStagePct: prev.phenoStagePct,
     shootTip: prev.shootTip,
     canopyDensity: prev.canopyDensity,
     waterStress: prev.waterStress,

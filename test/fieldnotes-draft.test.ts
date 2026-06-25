@@ -30,6 +30,7 @@ function sampleForm(weekOf = "2026-06-19"): DraftFormState {
     blockLevelStatuses: {
       b1: {
         phenoStage: "FLOWERING",
+        phenoStagePct: 25,
         shootTip: "ACTIVE",
         canopyDensity: "MODERATE",
         waterStress: "NONE",
