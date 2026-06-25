@@ -4,6 +4,8 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import { type ParsedFieldNote } from "@/lib/fieldnotes/types";
+import { parseBriefing } from "@/lib/fieldnotes/prompt";
+import { StructuredBriefing } from "./StructuredBriefing";
 
 // Renders a field note's AI briefing. PENDING -> "Generating…"; FAILED -> error
 // + Regenerate. Regenerate awaits the summarize route then refreshes the route.
@@ -20,6 +22,7 @@ export function BriefingCard({
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const status = note.aiSummaryStatus;
+  const briefing = status === "READY" ? parseBriefing(note.aiSummary) : null;
 
   async function regenerate() {
     setBusy(true);
@@ -54,7 +57,10 @@ export function BriefingCard({
         </span>
       </div>
 
-      {status === "READY" && note.aiSummary ? (
+      {status === "READY" && briefing ? (
+        <StructuredBriefing briefing={briefing} />
+      ) : status === "READY" && note.aiSummary ? (
+        // Legacy plain-text briefing (pre-structured): render as-is.
         <p style={{ fontSize: 15, lineHeight: 1.65, color: "var(--text-secondary)", margin: 0, whiteSpace: "pre-wrap" }}>
           {note.aiSummary}
         </p>

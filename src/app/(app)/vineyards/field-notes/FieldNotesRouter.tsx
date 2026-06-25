@@ -17,7 +17,6 @@ export type ManagerProps = {
 
 export type AdminProps = {
   vineyards: VineyardSummary[];
-  topBriefing: ParsedFieldNote | null;
 };
 
 type Props =
@@ -30,7 +29,7 @@ export function FieldNotesRouter(props: Props) {
     // AdminDashboard reads useSearchParams (URL-addressable drill-in) -> Suspense.
     return (
       <React.Suspense fallback={null}>
-        <AdminDashboard vineyards={props.admin.vineyards} topBriefing={props.admin.topBriefing} />
+        <AdminDashboard vineyards={props.admin.vineyards} />
       </React.Suspense>
     );
   }

@@ -2,7 +2,12 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { parseFieldNoteRow } from "@/lib/fieldnotes/types";
-import { buildBriefingInput, BRIEFING_SYSTEM_PROMPT } from "@/lib/fieldnotes/prompt";
+import {
+  buildBriefingInput,
+  parseBriefing,
+  BRIEFING_SYSTEM_PROMPT,
+  BRIEFING_JSON_SCHEMA,
+} from "@/lib/fieldnotes/prompt";
 
 // Confirmed via the claude-api skill: default to claude-opus-4-8 (don't downgrade
 // without an explicit instruction). Summarization output is short, so a bounded
@@ -84,6 +89,8 @@ export async function generateBriefing(noteId: string): Promise<string> {
       max_tokens: MAX_TOKENS,
       system: BRIEFING_SYSTEM_PROMPT,
       messages: [{ role: "user", content: input }],
+      // Structured output: the response text is JSON matching the briefing schema.
+      output_config: { format: { type: "json_schema", schema: BRIEFING_JSON_SCHEMA } },
     });
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -91,7 +98,11 @@ export async function generateBriefing(noteId: string): Promise<string> {
       .join("\n")
       .trim();
     if (!text) throw new BriefingError("Claude returned an empty briefing.");
-    return text;
+    // Validate the JSON before storing so the admin UI never has to handle garbage;
+    // store the normalized form.
+    const parsed = parseBriefing(text);
+    if (!parsed) throw new BriefingError("Claude returned a malformed briefing.");
+    return JSON.stringify(parsed);
   } catch (e) {
     if (e instanceof BriefingError) throw e;
     throw new BriefingError(e instanceof Error ? e.message : "Claude request failed.");

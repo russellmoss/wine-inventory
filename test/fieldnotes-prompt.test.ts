@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildBriefingInput, BRIEFING_SYSTEM_PROMPT } from "@/lib/fieldnotes/prompt";
+import { buildBriefingInput, BRIEFING_SYSTEM_PROMPT, parseBriefing } from "@/lib/fieldnotes/prompt";
 import { type ParsedFieldNote, EMPTY_BLOCK_STATUS, DEFAULT_HEALTHY_BLOCK_STATUS } from "@/lib/fieldnotes/types";
 
 function note(weekOf: string, over: Partial<ParsedFieldNote> = {}): ParsedFieldNote {
@@ -30,16 +30,19 @@ describe("BRIEFING_SYSTEM_PROMPT", () => {
     expect(BRIEFING_SYSTEM_PROMPT).toMatch(/SUMMARIZER, not a diagnostician/i);
     expect(BRIEFING_SYSTEM_PROMPT).toMatch(/not issue definitive agronomic diagnoses/i);
   });
-  it("instructs the four analyses", () => {
-    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/rain-vs-spray/i);
-    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/task slippage/i);
-    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/leaf condition/i);
-    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/disease\/pest/i);
+  it("instructs the four analyses (section keys)", () => {
+    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/rain_vs_spray/);
+    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/task_slippage/);
+    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/leaf_conditions/);
+    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/disease_pest/);
   });
-  it("requires a 3-bullet agenda framed as questions", () => {
-    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/3-bullet agenda/i);
-    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/exactly three bullets/i);
+  it("requires exactly 3 agenda items framed as questions", () => {
+    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/agenda/i);
+    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/EXACTLY 3/);
     expect(BRIEFING_SYSTEM_PROMPT).toMatch(/question/i);
+  });
+  it("instructs JSON-only structured output", () => {
+    expect(BRIEFING_SYSTEM_PROMPT).toMatch(/JSON/);
   });
 });
 
@@ -93,5 +96,59 @@ describe("buildBriefingInput", () => {
     const out = buildBriefingInput([diseased], "Paro Estate", labels);
     expect(out).toMatch(/DISEASE\/PEST FLAGGED: mildew on lower leaves/);
     expect(out).toContain("leaf YELLOWING");
+  });
+});
+
+describe("parseBriefing", () => {
+  const good = JSON.stringify({
+    headline: "Heavy rain after last week's spray.",
+    agenda: [
+      { priority: "high", question: "Does protectant coverage need refreshing after 300mm rain?" },
+      { priority: "medium", question: "Which block does the magnesium note refer to?" },
+      { priority: "low", question: "Any weed-control planned?" },
+    ],
+    sections: [
+      {
+        key: "rain_vs_spray",
+        title: "Rain vs spray",
+        items: [{ tone: "alert", text: "300mm rain, no spray logged.", block: "" }],
+      },
+      {
+        key: "leaf_conditions",
+        title: "Leaf conditions",
+        items: [{ tone: "watch", text: "Yellowing reported.", block: "Block 4" }],
+      },
+    ],
+  });
+
+  it("parses a valid structured briefing", () => {
+    const b = parseBriefing(good)!;
+    expect(b.headline).toMatch(/Heavy rain/);
+    expect(b.agenda).toHaveLength(3);
+    expect(b.agenda[0].priority).toBe("high");
+    expect(b.sections[1].items[0].block).toBe("Block 4");
+  });
+
+  it("returns null for legacy plain text (the UI falls back to text)", () => {
+    expect(parseBriefing("Vineyard Bajo — Weekly Briefing\n- bullet")).toBeNull();
+    expect(parseBriefing(null)).toBeNull();
+    expect(parseBriefing("")).toBeNull();
+  });
+
+  it("returns null for JSON missing agenda/sections", () => {
+    expect(parseBriefing(JSON.stringify({ headline: "x" }))).toBeNull();
+  });
+
+  it("coerces unknown enum values to safe defaults", () => {
+    const b = parseBriefing(
+      JSON.stringify({
+        headline: "",
+        agenda: [{ priority: "URGENT", question: "q?" }],
+        sections: [{ key: "weird", title: "T", items: [{ tone: "boom", text: "t", block: "" }] }],
+      }),
+    )!;
+    expect(b.agenda[0].priority).toBe("medium");
+    expect(b.sections[0].key).toBe("task_slippage");
+    expect(b.sections[0].items[0].tone).toBe("info");
   });
 });

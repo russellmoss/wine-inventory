@@ -121,13 +121,10 @@ export default async function FieldNotesPage({
       };
     });
 
-    // Top briefing: the single most-recently submitted note across all vineyards.
-    const topBriefing = notes.length > 0 ? parseFieldNoteRow(notes[0]) : null;
-
     return (
       <div>
         <AdminViewToggle view="admin" />
-        <FieldNotesRouter mode="admin" admin={{ vineyards: summaries, topBriefing }} />
+        <FieldNotesRouter mode="admin" admin={{ vineyards: summaries }} />
       </div>
     );
   }

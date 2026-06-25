@@ -4,7 +4,8 @@ import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import { type ParsedFieldNote } from "@/lib/fieldnotes/types";
-import { BriefingCard } from "./BriefingCard";
+import { parseBriefing } from "@/lib/fieldnotes/prompt";
+import { AgendaList } from "./StructuredBriefing";
 import { VineyardNoteModal } from "./VineyardNoteModal";
 
 export type VineyardSummary = {
@@ -14,13 +15,7 @@ export type VineyardSummary = {
   blockLabels: Record<string, string>;
 };
 
-export function AdminDashboard({
-  vineyards,
-  topBriefing,
-}: {
-  vineyards: VineyardSummary[];
-  topBriefing: ParsedFieldNote | null;
-}) {
+export function AdminDashboard({ vineyards }: { vineyards: VineyardSummary[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const openVineyard = searchParams.get("vineyard");
@@ -47,6 +42,19 @@ export function AdminDashboard({
     ? vineyards.find((v) => v.vineyardId === openVineyard) ?? null
     : null;
 
+  // This week's agendas: every vineyard whose latest report has a ready briefing.
+  const agendas = vineyards
+    .map((v) => ({
+      v,
+      briefing:
+        v.latestNote && v.latestNote.aiSummaryStatus === "READY"
+          ? parseBriefing(v.latestNote.aiSummary)
+          : null,
+    }))
+    .filter((x): x is { v: VineyardSummary; briefing: NonNullable<typeof x.briefing> } =>
+      Boolean(x.briefing && x.briefing.agenda.length > 0),
+    );
+
   return (
     <div>
       <Eyebrow rule>Vineyard operations</Eyebrow>
@@ -56,15 +64,25 @@ export function AdminDashboard({
         Click a vineyard to read the full report.
       </p>
 
-      {topBriefing ? (
-        <div style={{ marginBottom: "var(--space-5)" }}>
-          <BriefingCard
-            note={topBriefing}
-            vineyardName={
-              vineyards.find((v) => v.vineyardId === topBriefing.vineyardId)?.vineyardName
-            }
-          />
-        </div>
+      {agendas.length > 0 ? (
+        <Card padding="var(--space-5)" style={{ marginBottom: "var(--space-5)" }}>
+          <Eyebrow rule>This week&rsquo;s call agendas</Eyebrow>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", marginTop: "var(--space-3)" }}>
+            {agendas.map(({ v, briefing }) => (
+              <div key={v.vineyardId}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                  <Button variant="link" size="sm" onClick={() => open(v.vineyardId, v.latestNote?.weekOf)} style={{ fontSize: 17, fontFamily: "var(--font-heading)" }}>
+                    {v.vineyardName}
+                  </Button>
+                  <span style={{ fontSize: 12.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                    week of {v.latestNote?.weekOf}
+                  </span>
+                </div>
+                <AgendaList briefing={briefing} dense />
+              </div>
+            ))}
+          </div>
+        </Card>
       ) : null}
 
       <Card padding="0">
