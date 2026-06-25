@@ -3,6 +3,12 @@
 import React from "react";
 import { Button } from "@/components/ui";
 import { Markdown } from "./Markdown";
+import {
+  ConversationSidebar,
+  type ConversationSummary,
+  type SearchResult,
+} from "./ConversationSidebar";
+import { messagesToItems } from "@/lib/assistant/history";
 
 type Role = "user" | "assistant";
 
@@ -22,6 +28,7 @@ type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
   | { type: "proposal"; tool: string; preview: string; token: string }
+  | { type: "conversation"; id: string; title?: string }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -47,6 +54,114 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
   const [error, setError] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<Record<number, FeedbackState>>({});
   const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Conversation persistence: the active conversation, the sidebar list, and
+  // cross-conversation search state.
+  const [conversationId, setConversationId] = React.useState<string | null>(null);
+  const [conversations, setConversations] = React.useState<ConversationSummary[]>([]);
+  const [listLoading, setListLoading] = React.useState(true);
+  const [query, setQuery] = React.useState("");
+  const [searchResults, setSearchResults] = React.useState<SearchResult[] | null>(null);
+  const [searching, setSearching] = React.useState(false);
+
+  // Note: no synchronous setState here — the first state update happens after the
+  // await, so this stays clear of react-hooks/set-state-in-effect.
+  const refreshList = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/assistant/conversations");
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(Array.isArray(data?.conversations) ? data.conversations : []);
+      }
+    } catch {
+      /* best-effort */
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const handle = setTimeout(() => void refreshList(), 0);
+    return () => clearTimeout(handle);
+  }, [refreshList]);
+
+  // Debounced cross-conversation search. Empty query => show the list (null).
+  // All setState lives inside the timeout callback (not the effect body).
+  React.useEffect(() => {
+    const q = query.trim();
+    const handle = setTimeout(async () => {
+      if (!q) {
+        setSearchResults(null);
+        setSearching(false);
+        return;
+      }
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/assistant/conversations/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(Array.isArray(data?.results) ? data.results : []);
+        } else {
+          setSearchResults([]);
+        }
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, q ? 250 : 0);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  function startNewChat() {
+    setItems([]);
+    setConversationId(null);
+    setFeedback({});
+    setError(null);
+    setStatus(null);
+    setQuery("");
+    setSearchResults(null);
+  }
+
+  async function openConversation(id: string) {
+    if (busy) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/assistant/conversations/${id}`);
+      if (!res.ok) throw new Error("Could not load that conversation.");
+      const data = await res.json();
+      setItems(messagesToItems(data?.messages ?? []));
+      setConversationId(id);
+      setFeedback({});
+      setQuery("");
+      setSearchResults(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load that conversation.");
+    }
+  }
+
+  async function renameConversation(id: string, title: string) {
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
+    try {
+      await fetch(`/api/assistant/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+    } catch {
+      void refreshList();
+    }
+  }
+
+  async function deleteConversation(id: string) {
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (id === conversationId) startNewChat();
+    try {
+      await fetch(`/api/assistant/conversations/${id}`, { method: "DELETE" });
+    } finally {
+      void refreshList();
+    }
+  }
 
   function setFb(i: number, patch: Partial<FeedbackState>) {
     setFeedback((prev) => {
@@ -108,7 +223,7 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, conversationId }),
       });
       if (!res.ok || !res.body) {
         const msg = await res.json().catch(() => null);
@@ -127,6 +242,8 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
         } else if (evt.type === "proposal") {
           setStatus(null);
           setItems((prev) => [...prev, { kind: "proposal", preview: evt.preview, token: evt.token, status: "pending" }]);
+        } else if (evt.type === "conversation") {
+          setConversationId(evt.id);
         } else if (evt.type === "error") {
           setError(evt.message);
         }
@@ -154,6 +271,8 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
     } finally {
       setBusy(false);
       setStatus(null);
+      // Reflect the new/updated conversation (title, order) in the sidebar.
+      void refreshList();
     }
   }
 
@@ -192,7 +311,22 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
   const column: React.CSSProperties = { width: "100%", maxWidth: CONTENT_MAX, marginLeft: "auto", marginRight: "auto" };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 7rem)", minHeight: 420 }}>
+    <div style={{ display: "flex", flexDirection: "row", gap: "var(--space-4)", height: "calc(100vh - 7rem)", minHeight: 420 }}>
+      <ConversationSidebar
+        conversations={conversations}
+        activeId={conversationId}
+        loading={listLoading}
+        query={query}
+        onQueryChange={setQuery}
+        searching={searching}
+        searchResults={searchResults}
+        onSelect={(id) => void openConversation(id)}
+        onNew={startNewChat}
+        onRename={(id, title) => void renameConversation(id, title)}
+        onDelete={(id) => void deleteConversation(id)}
+      />
+
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       <div style={{ ...column, paddingBottom: "var(--space-3)" }}>
         <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: "var(--text-h2)", margin: 0 }}>Assistant</h1>
         <p style={{ fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", color: "var(--text-muted)", marginTop: 4 }}>
@@ -270,6 +404,7 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
         <div style={{ ...column, fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-body)", paddingTop: 6, paddingBottom: 2 }}>
           The assistant can make mistakes. It only acts on your permitted vineyards, and changes need your confirmation.
         </div>
+      </div>
       </div>
     </div>
   );
