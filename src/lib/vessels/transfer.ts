@@ -95,6 +95,8 @@ export const transferWine = action(
     const varietyName = new Map(from.components.map((c) => [c.varietyId, c.variety.name]));
     const vineyardName = new Map(from.components.map((c) => [c.vineyardId, c.vineyard.name]));
     const snapshot = plan.additions.map((a) => ({
+      varietyId: a.varietyId,
+      vineyardId: a.vineyardId,
       varietyName: varietyName.get(a.varietyId) ?? null,
       vineyardName: vineyardName.get(a.vineyardId) ?? null,
       vintage: a.vintage,
