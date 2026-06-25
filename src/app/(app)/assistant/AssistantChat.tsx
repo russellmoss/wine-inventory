@@ -14,6 +14,9 @@ type AssistantEvent =
 
 const TOOL_LABELS: Record<string, string> = {
   query_brix: "Checking Brix readings",
+  query_yield: "Checking yields",
+  query_vineyard_status: "Checking vineyard status",
+  query_audit: "Searching the audit log",
 };
 
 export function AssistantChat({ userLabel }: { userLabel: string }) {

@@ -25,8 +25,16 @@ export type AssistantTool = {
 };
 
 import { queryBrixTool } from "./tools/query-brix";
+import { queryYieldTool } from "./tools/query-yield";
+import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
+import { queryAuditTool } from "./tools/query-audit";
 
-const ALL_TOOLS: AssistantTool[] = [queryBrixTool];
+const ALL_TOOLS: AssistantTool[] = [
+  queryBrixTool,
+  queryYieldTool,
+  queryVineyardStatusTool,
+  queryAuditTool,
+];
 
 /** Tools this user is allowed to see, after role filtering. */
 export function getToolsFor(user: AppUser): AssistantTool[] {
