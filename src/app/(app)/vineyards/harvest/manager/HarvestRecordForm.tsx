@@ -9,6 +9,7 @@ import {
   type HarvestBlockDTO,
 } from "@/lib/harvest/actions";
 import {
+  toKg,
   fromKg,
   formatWeightFromKg,
   weightUnitLabel,
@@ -78,6 +79,19 @@ export function HarvestRecordForm({ blockId, defaultUnit, vintageYear, record }:
 
   const [weight, setWeight] = React.useState("");
   const [pickDate, setPickDate] = React.useState(todayISO);
+
+  // Re-convert an in-progress (unsaved) pick weight when the unit toggles, so a
+  // number typed in lb isn't silently reinterpreted as kg. Done during render
+  // (the codebase pattern) by tracking the previous unit.
+  const [prevUnit, setPrevUnit] = React.useState(defaultUnit);
+  if (defaultUnit !== prevUnit) {
+    setPrevUnit(defaultUnit);
+    const n = Number(weight);
+    if (weight.trim() !== "" && Number.isFinite(n)) {
+      const converted = fromKg(toKg(n, prevUnit), defaultUnit);
+      setWeight(converted == null ? "" : String(Math.round(converted * 100) / 100));
+    }
+  }
 
   const estimateRunner = useRunner();
   const pickRunner = useRunner();

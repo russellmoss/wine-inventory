@@ -2,7 +2,6 @@
 
 import React from "react";
 import { Card, Eyebrow } from "@/components/ui";
-import type { Unit } from "@/lib/harvest/units";
 import type { HarvestBlockDTO } from "@/lib/harvest/actions";
 import { HarvestManagerView, type ManagerBlock } from "./manager/HarvestManagerView";
 import { HarvestYieldsView } from "./admin/HarvestYieldsView";
@@ -10,7 +9,6 @@ import { HarvestYieldsView } from "./admin/HarvestYieldsView";
 export type ManagerData = {
   vineyardId: string;
   vineyardName: string;
-  defaultUnit: Unit;
   blocks: ManagerBlock[];
   latestBrix: Record<string, { brixValue: number; recordedAt: string }>;
   records: HarvestBlockDTO[];

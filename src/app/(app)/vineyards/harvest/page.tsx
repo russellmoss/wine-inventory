@@ -1,16 +1,11 @@
 import { requireReadyUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { getLatestBrixByBlock, getVineyardHarvest } from "@/lib/harvest/actions";
-import type { Unit } from "@/lib/harvest/units";
 import { Card } from "@/components/ui";
 import { HarvestRouter } from "./HarvestRouter";
 import { AdminViewToggle } from "../AdminViewToggle";
 
 export const dynamic = "force-dynamic";
-
-function normalizeUnit(raw: string | null | undefined): Unit {
-  return raw === "metric" ? "metric" : "imperial";
-}
 
 export default async function HarvestPage({
   searchParams,
@@ -26,7 +21,7 @@ export default async function HarvestPage({
     const vineyards = await prisma.vineyard.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, detail: { select: { defaultUnit: true } } },
+      select: { id: true, name: true },
     });
     const pickerVineyards = vineyards.map((v) => ({ id: v.id, name: v.name }));
 
@@ -50,7 +45,11 @@ export default async function HarvestPage({
         prisma.vineyardBlock.findMany({
           where: { vineyardId },
           orderBy: { sortOrder: "asc" },
-          select: { id: true, blockLabel: true, variety: { select: { name: true } } },
+          select: {
+        id: true,
+        blockLabel: true,
+        variety: { select: { id: true, name: true, color: true } },
+      },
         }),
         getLatestBrixByBlock(vineyardId),
         getVineyardHarvest(vineyardId),
@@ -64,11 +63,12 @@ export default async function HarvestPage({
             manager={{
               vineyardId,
               vineyardName: selected.name,
-              defaultUnit: normalizeUnit(selected.detail?.defaultUnit),
               blocks: blocks.map((b) => ({
                 id: b.id,
                 label: b.blockLabel ?? b.id,
                 varietyName: b.variety?.name ?? null,
+                varietyId: b.variety?.id ?? null,
+                varietyColor: b.variety?.color ?? null,
               })),
               latestBrix,
               records: harvest.records,
@@ -95,18 +95,20 @@ export default async function HarvestPage({
   const [vineyard, blocks, latestBrix, harvest] = await Promise.all([
     prisma.vineyard.findUnique({
       where: { id: vineyardId },
-      select: { name: true, detail: { select: { defaultUnit: true } } },
+      select: { name: true },
     }),
     prisma.vineyardBlock.findMany({
       where: { vineyardId },
       orderBy: { sortOrder: "asc" },
-      select: { id: true, blockLabel: true, variety: { select: { name: true } } },
+      select: {
+        id: true,
+        blockLabel: true,
+        variety: { select: { id: true, name: true, color: true } },
+      },
     }),
     getLatestBrixByBlock(vineyardId),
     getVineyardHarvest(vineyardId),
   ]);
-
-  const defaultUnit = normalizeUnit(vineyard?.detail?.defaultUnit);
 
   return (
     <HarvestRouter
@@ -114,11 +116,12 @@ export default async function HarvestPage({
       manager={{
         vineyardId,
         vineyardName: vineyard?.name ?? "Your vineyard",
-        defaultUnit,
         blocks: blocks.map((b) => ({
           id: b.id,
           label: b.blockLabel ?? b.id,
           varietyName: b.variety?.name ?? null,
+          varietyId: b.variety?.id ?? null,
+          varietyColor: b.variety?.color ?? null,
         })),
         latestBrix,
         records: harvest.records,

@@ -44,6 +44,14 @@ function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
 
+/** A hex color as an `rgba(...)` string at the given alpha (0..1). Invalid → returned as-is. */
+export function withAlpha(hex: string, alpha: number): string {
+  if (!isValidHex(hex)) return hex;
+  const { r, g, b } = parseHex(hex);
+  const a = Math.max(0, Math.min(1, alpha));
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
 function toHex(r: number, g: number, b: number): string {
   const h = (n: number) => clampByte(n).toString(16).padStart(2, "0");
   return `#${h(r)}${h(g)}${h(b)}`;
