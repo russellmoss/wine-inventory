@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui";
+import { Markdown } from "./Markdown";
 
 type Role = "user" | "assistant";
 
@@ -261,7 +262,7 @@ function Bubble({ role, content }: { role: Role; content: string }) {
       </div>
     );
   }
-  // Assistant: flowing text, no bubble (Claude-native).
+  // Assistant: flowing, markdown-rendered text, no bubble (Claude-native).
   return (
     <div
       style={{
@@ -270,11 +271,10 @@ function Bubble({ role, content }: { role: Role; content: string }) {
         fontFamily: "var(--font-body)",
         fontSize: "var(--text-body)",
         lineHeight: "var(--leading-normal)",
-        whiteSpace: "pre-wrap",
         wordBreak: "break-word",
       }}
     >
-      {content}
+      <Markdown text={content} />
     </div>
   );
 }
