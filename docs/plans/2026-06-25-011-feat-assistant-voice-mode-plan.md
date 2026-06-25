@@ -1,7 +1,7 @@
 ---
 title: Jarvis-style Voice Mode for the Assistant
 type: feat
-status: draft
+status: completed
 date: 2026-06-25
 branch: feat/assistant-voice-mode
 depth: deep

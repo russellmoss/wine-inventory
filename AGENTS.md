@@ -36,7 +36,13 @@ Secrets live in `.env` (gitignored). Template is `.env.example`.
 - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` — Neon Postgres (pooled / direct).
 - `GEMINI_API_KEY` — read by `council-mcp` from this `.env` for cross-LLM review.
 - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY` — reused from the
-  Dashboard project for council / research tooling.
+  Dashboard project for council / research tooling. `OPENAI_API_KEY` also powers
+  assistant voice-mode speech-to-text (see below).
+- `ELEVENLABS_API_KEY` — assistant voice mode text-to-speech. Reuse the same key
+  from the `horseplay` project's `.env`. Optional overrides: `ELEVENLABS_VOICE_ID`,
+  `ELEVENLABS_MODEL_ID` (default `eleven_turbo_v2_5`), `ELEVENLABS_STABILITY`,
+  `ELEVENLABS_SIMILARITY_BOOST`. Unset → the "Talk" button is hidden and the
+  assistant stays text-only.
 - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — optional. Google Map Tiles API key for the
   vineyard satellite basemap (`src/components/ui/SatelliteMap.tsx`). Client-exposed
   by design (restrict by referrer + Map Tiles API in Cloud Console). Unset → the
@@ -50,6 +56,29 @@ Secrets live in `.env` (gitignored). Template is `.env.example`.
   PNG (DOM capture via `html-to-image`; tile layers set `crossOrigin`) or a
   zipped WGS84 shapefile of the drawn blocks with all block metadata in the DBF
   (`@mapbox/shp-write`); both libs are dynamically imported on the client only.
+
+## Assistant voice mode
+
+Hands-free "talk to the assistant" mode (Jarvis-style). Opens from a "Talk" button
+in the chat (`src/app/(app)/assistant/AssistantChat.tsx`) into a full-screen overlay.
+
+- Loop: listen (mic + VAD) → transcribe (server) → think → speak → listen. It reuses
+  the exact same `/api/assistant` NDJSON stream + tool-use loop as the text chat, so
+  there is one assistant brain and history is shared/mirrored across modes.
+- Routes: `POST /api/assistant/transcribe` (OpenAI STT over a recorded utterance) and
+  `POST /api/assistant/speak` (streams ElevenLabs MP3 per sentence). Keys stay
+  server-side; both are auth-gated.
+- Server libs in `src/lib/voice/`: `config` (keys/gates), `elevenlabs` (TTS),
+  `transcribe` (STT), plus pure isomorphic logic — `speech` (markdown→spoken),
+  `sentence-chunker` (stream→sentences), `vad` (end-of-speech), `audio-queue`
+  (ordered playback). The pure logic is unit-tested in `test/voice-*.test.ts`.
+- Client in `src/app/(app)/assistant/voice/`: `useMicCapture`, `useAudioPlayback`,
+  `useVoiceSession` (state machine), `AudioVisualizer` (canvas orb, design tokens,
+  reduced-motion aware), `VoiceOverlay`. Lazy-loaded, no new runtime deps (raw fetch
+  + Web Audio + MediaRecorder).
+- Requirements: HTTPS (or localhost) + mic permission; best in Chrome/Edge/Safari.
+  Write actions still require explicit confirmation (signed-token / single-use nonce
+  path is unchanged) — voice can confirm by tap or by saying "confirm".
 
 ## rstack toolchain
 
