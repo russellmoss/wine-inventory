@@ -10,11 +10,15 @@ import { validateFields } from "../fields";
 type DbCreateInput = { entity?: string; values?: Record<string, unknown> };
 
 function assertScoped(entity: { vineyardScoped: boolean }, user: { role: string | null; assignedVineyardId: string | null }, data: Record<string, unknown>) {
-  if (entity.vineyardScoped && user.role !== "admin") {
-    const vid = (data as { vineyardId?: string }).vineyardId;
-    if (!vid || vid !== user.assignedVineyardId) {
-      throw new Error("You can only create records in your assigned vineyard.");
+  if (entity.vineyardScoped) {
+    if (user.role !== "admin") {
+      const vid = (data as { vineyardId?: string }).vineyardId;
+      if (!vid || vid !== user.assignedVineyardId) {
+        throw new Error("You can only create records in your assigned vineyard.");
+      }
     }
+  } else if (user.role !== "admin") {
+    throw new Error("Only an admin can create global records.");
   }
 }
 
