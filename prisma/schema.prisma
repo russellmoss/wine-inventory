@@ -395,12 +395,20 @@ model VesselTransfer {
   actorUserId    String?
   actorEmail     String
   rackedAt       DateTime @default(now())
+  // Revert tracking. `revertedAt` is set on a rack once it has been undone.
+  // `revertsId` points from a reversal row back to the rack it reverses (so a
+  // reversal is identifiable and can't itself be reverted).
+  revertedAt     DateTime?
+  revertsId      String?
+  reverts        VesselTransfer?  @relation("TransferReversal", fields: [revertsId], references: [id], onDelete: SetNull)
+  reversedBy     VesselTransfer[] @relation("TransferReversal")
   fromVessel     Vessel?  @relation("VesselTransfersOut", fields: [fromVesselId], references: [id], onDelete: SetNull)
   toVessel       Vessel?  @relation("VesselTransfersIn", fields: [toVesselId], references: [id], onDelete: SetNull)
 
   @@index([fromVesselId, rackedAt])
   @@index([toVesselId, rackedAt])
   @@index([rackedAt])
+  @@index([revertsId])
   @@map("vessel_transfer")
 }
 
