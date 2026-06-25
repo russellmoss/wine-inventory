@@ -1,7 +1,7 @@
 ---
 title: In-App AI Assistant — Phase 1 (chat panel, read + confirmed-write tools)
 type: feat
-status: draft
+status: completed
 date: 2026-06-25
 branch: feat/assistant-chat
 depth: standard
