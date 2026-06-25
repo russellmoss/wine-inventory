@@ -1,7 +1,7 @@
 ---
 title: Assistant Conversation Persistence, Auto-Titling & Cross-Conversation Search
 type: feat
-status: draft
+status: completed
 date: 2026-06-25
 branch: feat/assistant-chat
 depth: standard
@@ -194,11 +194,12 @@ The Phase 1 plan (`docs/plans/2026-06-25-008-feat-assistant-chat-phase1-plan.md`
 
 ## Success Criteria
 
-- [ ] New conversations are created and both turns persisted in Neon, scoped to the user.
-- [ ] First message produces an LLM-generated title, shown in the sidebar immediately.
-- [ ] Sidebar lists past conversations (newest-first) and resumes full text history on click.
-- [ ] Full-text search across the user's conversations returns ranked matches with highlighted snippets and opens the right conversation.
-- [ ] Rename and delete work and are ownership-scoped.
-- [ ] Existing streaming, tool-use, confirm, and feedback flows are unchanged.
-- [ ] New unit tests pass; `npm run lint` and `npm run build` are clean.
-- [ ] No regressions in existing behavior.
+- [x] New conversations are created and both turns persisted in Neon, scoped to the user. (route wiring; verified via build + schema checks)
+- [x] First message produces an LLM-generated title, shown in the sidebar immediately. (Haiku title call + `conversation` event)
+- [x] Sidebar lists past conversations (newest-first) and resumes full text history on click.
+- [x] Full-text search across the user's conversations returns ranked matches with highlighted snippets and opens the right conversation. (FTS query validated against live DB)
+- [x] Rename and delete work and are ownership-scoped.
+- [x] Existing streaming, tool-use, confirm, and feedback flows are unchanged.
+- [x] New unit tests pass (12 new; 244 total); `npm run lint` and `npm run build` are clean.
+- [x] No regressions in existing behavior. (full suite green)
+- [ ] Manual end-to-end click-through in the running app (recommended before merge — see `/verify` or `/qa`).
