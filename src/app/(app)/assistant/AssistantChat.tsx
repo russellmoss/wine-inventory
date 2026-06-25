@@ -9,6 +9,13 @@ import {
   type SearchResult,
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
+import type { Caption } from "./voice/useVoiceSession";
+
+// Voice mode is heavy (Web Audio, MediaRecorder, the visualizer) and only loads
+// when the user actually opens it — keep it out of the main chat bundle.
+const VoiceOverlay = React.lazy(() =>
+  import("./voice/VoiceOverlay").then((m) => ({ default: m.VoiceOverlay })),
+);
 
 type Role = "user" | "assistant";
 
@@ -47,9 +54,10 @@ const TOOL_LABELS: Record<string, string> = {
   adjust_inventory: "Preparing inventory adjustment",
 };
 
-export function AssistantChat({ userLabel }: { userLabel: string }) {
+export function AssistantChat({ userLabel, voiceEnabled = false }: { userLabel: string; voiceEnabled?: boolean }) {
   const [items, setItems] = React.useState<Item[]>([]);
   const [input, setInput] = React.useState("");
+  const [voiceOpen, setVoiceOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -203,6 +211,13 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
       return [...prev, { kind: "text", role: "assistant", content: text }];
     });
   }
+
+  // Voice mode produces the same kind of turns the text chat does; mirror each
+  // completed turn into the transcript so the conversation is continuous across
+  // modes (and gets persisted by the same /api/assistant flow voice reuses).
+  const addVoiceTurn = React.useCallback((turn: Caption) => {
+    setItems((prev) => [...prev, { kind: "text", role: turn.role, content: turn.content }]);
+  }, []);
 
   async function send() {
     const text = input.trim();
@@ -398,6 +413,18 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
               minHeight: 52, maxHeight: 200, boxShadow: "var(--shadow-md)",
             }}
           />
+          {voiceEnabled ? (
+            <Button
+              size="lg"
+              variant="secondary"
+              onClick={() => setVoiceOpen(true)}
+              disabled={busy}
+              title="Talk to the assistant"
+              aria-label="Talk to the assistant"
+            >
+              🎙 Talk
+            </Button>
+          ) : null}
           <Button size="lg" onClick={() => void send()} disabled={busy || input.trim().length === 0}>
             {busy ? "…" : "Send"}
           </Button>
@@ -407,6 +434,23 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
         </div>
       </div>
       </div>
+
+      {voiceOpen ? (
+        <React.Suspense fallback={null}>
+          <VoiceOverlay
+            initialHistory={items
+              .filter((it): it is TextItem => it.kind === "text")
+              .map((it) => ({ role: it.role, content: it.content }))}
+            conversationId={conversationId}
+            onConversationId={setConversationId}
+            onTurn={addVoiceTurn}
+            onClose={() => {
+              setVoiceOpen(false);
+              void refreshList();
+            }}
+          />
+        </React.Suspense>
+      ) : null}
     </div>
   );
 }

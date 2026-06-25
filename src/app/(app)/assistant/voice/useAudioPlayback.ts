@@ -34,7 +34,9 @@ export function useAudioPlayback(onDrained?: () => void): AudioPlayback {
   const currentSrcRef = React.useRef<AudioBufferSourceNode | null>(null);
   const queueRef = React.useRef<AudioQueue<Promise<ArrayBuffer>> | null>(null);
   const onDrainedRef = React.useRef(onDrained);
-  onDrainedRef.current = onDrained;
+  React.useEffect(() => {
+    onDrainedRef.current = onDrained;
+  });
 
   const ensureContext = React.useCallback(async () => {
     if (!ctxRef.current) {

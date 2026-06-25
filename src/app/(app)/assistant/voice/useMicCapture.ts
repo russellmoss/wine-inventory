@@ -54,6 +54,13 @@ export function useMicCapture(): MicCapture {
   const onUtteranceRef = React.useRef<((b: Blob) => void) | null>(null);
   const onSpeechRef = React.useRef<(() => void) | null>(null);
 
+  // Stop the active recorder and hand the assembled blob to the listener.
+  const finalizeListen = React.useCallback(() => {
+    modeRef.current = "idle";
+    const rec = recorderRef.current;
+    if (rec && rec.state !== "inactive") rec.stop(); // onstop emits the blob
+  }, []);
+
   const ensureReady = React.useCallback(async () => {
     if (streamRef.current && ctxRef.current) {
       if (ctxRef.current.state === "suspended") await ctxRef.current.resume();
@@ -109,13 +116,6 @@ export function useMicCapture(): MicCapture {
     };
     rafRef.current = requestAnimationFrame(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Stop the active recorder and hand the assembled blob to the listener.
-  const finalizeListen = React.useCallback(() => {
-    modeRef.current = "idle";
-    const rec = recorderRef.current;
-    if (rec && rec.state !== "inactive") rec.stop(); // onstop emits the blob
   }, []);
 
   const beginListen = React.useCallback((onUtterance: (b: Blob) => void) => {
