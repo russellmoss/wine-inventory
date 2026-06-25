@@ -4,13 +4,13 @@ import { getRecentFieldNotes, createFieldNote } from "@/lib/fieldnotes/actions";
 import { listFieldInputs, addFieldInput } from "@/lib/fieldnotes/input-actions";
 import { buildPrepopulationDefaults } from "@/lib/fieldnotes/prepopulate";
 import { todayISODateUTC, isValidReportDate } from "@/lib/fieldnotes/week";
-import { normalizeInputKey } from "@/lib/fieldnotes/sanitize";
-import { EMPTY_BLOCK_STATUS, type BlockStatus, type InputApplication, type WeatherData, type CreateFieldNoteInput } from "@/lib/fieldnotes/types";
+import { type BlockStatus, type InputApplication, type WeatherData, type CreateFieldNoteInput } from "@/lib/fieldnotes/types";
 import { generateBriefing } from "@/lib/fieldnotes/ai";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { resolveVineyards } from "../scope";
+import { assembleBlockStatuses, unknownInputNames } from "../report-merge";
 
 type SaveInput = {
   vineyard?: string;
@@ -23,13 +23,6 @@ type SaveInput = {
 };
 
 type NewInput = { type: "SPRAY" | "FERTILIZER"; name: string };
-
-function unknownNames(apps: InputApplication[], known: string[]): string[] {
-  const knownKeys = new Set(known.map(normalizeInputKey));
-  const out = new Set<string>();
-  for (const a of apps) if (a?.name && !knownKeys.has(normalizeInputKey(a.name))) out.add(a.name);
-  return [...out];
-}
 
 export const saveFieldReportTool: AssistantTool = {
   name: "save_field_report",
@@ -66,22 +59,17 @@ export const saveFieldReportTool: AssistantTool = {
     const existing = notes.find((n) => n.weekOf === reportDate) ?? null;
     const latest = notes[0] ?? null;
     const blockIds = blocks.map((b) => b.id);
-    const idSet = new Set(blockIds);
-    const labelToId = new Map(blocks.map((b) => [(b.blockLabel ?? "").toLowerCase().trim(), b.id]));
 
-    // Base = existing report (edit) or carried-forward defaults (new). Always covers all blocks.
-    const base: Record<string, BlockStatus> = existing
-      ? { ...existing.blockLevelStatuses }
+    // Base = existing report (edit) or carried-forward defaults (new). assembleBlockStatuses
+    // overlays the model's edits (by id or label) and guarantees coverage of every block.
+    const baseStatuses: Record<string, BlockStatus> = existing
+      ? existing.blockLevelStatuses
       : buildPrepopulationDefaults(latest?.blockLevelStatuses ?? null, blockIds).blockLevelStatuses;
-
-    // Overlay the model's block edits (keyed by id or label).
-    for (const [key, partial] of Object.entries(input.blockStatuses ?? {})) {
-      const id = idSet.has(key) ? key : labelToId.get(key.toLowerCase().trim());
-      if (!id) continue;
-      base[id] = { ...(base[id] ?? EMPTY_BLOCK_STATUS), ...partial };
-    }
-    // Guarantee coverage of every current block.
-    for (const id of blockIds) if (!base[id]) base[id] = { ...EMPTY_BLOCK_STATUS };
+    const blockLevelStatuses = assembleBlockStatuses(
+      baseStatuses,
+      input.blockStatuses ?? {},
+      blocks.map((b) => ({ id: b.id, label: b.blockLabel ?? "(unlabeled)" })),
+    );
 
     const weatherData: WeatherData = {
       rainfallMm: input.weather?.rainfallMm ?? existing?.weatherData.rainfallMm ?? null,
@@ -93,8 +81,8 @@ export const saveFieldReportTool: AssistantTool = {
     const generalNotes = input.generalNotes ?? existing?.generalNotes ?? null;
 
     const newInputs: NewInput[] = [
-      ...unknownNames(spraysApplied, inputs.sprays.map((s) => s.name)).map((name) => ({ type: "SPRAY" as const, name })),
-      ...unknownNames(fertilizersApplied, inputs.fertilizers.map((f) => f.name)).map((name) => ({ type: "FERTILIZER" as const, name })),
+      ...unknownInputNames(spraysApplied, inputs.sprays.map((s) => s.name)).map((name) => ({ type: "SPRAY" as const, name })),
+      ...unknownInputNames(fertilizersApplied, inputs.fertilizers.map((f) => f.name)).map((name) => ({ type: "FERTILIZER" as const, name })),
     ];
 
     const payload: CreateFieldNoteInput = {
@@ -103,7 +91,7 @@ export const saveFieldReportTool: AssistantTool = {
       weatherData,
       spraysApplied,
       fertilizersApplied,
-      blockLevelStatuses: base,
+      blockLevelStatuses,
       generalNotes,
     };
 
