@@ -150,5 +150,10 @@ export function useAudioPlayback(onDrained?: () => void): AudioPlayback {
 
   React.useEffect(() => () => dispose(), [dispose]);
 
-  return { levelRef, ensureContext, enqueue, stopAll, isActiveRef };
+  // Stable identity (see useMicCapture) so useVoiceSession's start/stop don't
+  // change every render and retrigger the overlay's mount effect.
+  return React.useMemo(
+    () => ({ levelRef, ensureContext, enqueue, stopAll, isActiveRef }),
+    [levelRef, ensureContext, enqueue, stopAll, isActiveRef],
+  );
 }

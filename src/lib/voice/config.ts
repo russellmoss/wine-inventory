@@ -32,12 +32,15 @@ export function ttsEnabled(): boolean {
   return Boolean(process.env.ELEVENLABS_API_KEY);
 }
 
-/** True when speech-to-text is configured (reuses the OpenAI key). */
+/** True when speech-to-text is configured (ElevenLabs Scribe — same key as TTS). */
 export function sttEnabled(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.ELEVENLABS_API_KEY);
 }
 
-/** True when the full hands-free voice loop can run (both directions configured). */
+/**
+ * True when the full hands-free voice loop can run. Both directions (TTS + STT)
+ * now use ElevenLabs, so a single ELEVENLABS_API_KEY enables everything.
+ */
 export function voiceEnabled(): boolean {
   return ttsEnabled() && sttEnabled();
 }

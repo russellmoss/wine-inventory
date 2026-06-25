@@ -223,7 +223,12 @@ export function AppShell({
       ) : null}
 
       <main className="app-main" style={{ flex: 1, minWidth: 0 }}>
-        <div className="mx-auto px-4 py-5 md:px-10 md:py-8" style={{ maxWidth: "var(--container-xl)" }}>{children}</div>
+        {pathname.startsWith("/assistant") ? (
+          // Full-bleed: the assistant is a workspace, not a document — use the width.
+          <div className="px-4 py-4 md:px-6 md:py-6" style={{ height: "100%" }}>{children}</div>
+        ) : (
+          <div className="mx-auto px-4 py-5 md:px-10 md:py-8" style={{ maxWidth: "var(--container-xl)" }}>{children}</div>
+        )}
       </main>
     </div>
   );

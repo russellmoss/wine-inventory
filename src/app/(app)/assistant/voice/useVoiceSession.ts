@@ -102,6 +102,15 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   const conversationIdRef = React.useRef<string | null>(opts.conversationId);
   const proposalRef = React.useRef<PendingProposal | null>(null);
   const optsRef = React.useRef(opts);
+  // Turn supersession: every assistant turn captures `turnRef.current`. interrupt(),
+  // stop(), and barge-in bump it (and abort the in-flight request), so a superseded
+  // turn's stream callbacks bail instead of talking over the user / a closed session.
+  const turnRef = React.useRef(0);
+  const abortRef = React.useRef<AbortController | null>(null);
+  // True once the current turn's assistant stream has fully arrived. onDrained only
+  // loops back to listening when this is set, so a transient queue-drain mid-stream
+  // (network jitter between sentences) doesn't flip us to listening early.
+  const streamDoneRef = React.useRef(false);
 
   React.useEffect(() => {
     optsRef.current = opts;
@@ -123,8 +132,17 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
 
     const startListening = () => {
       if (!activeRef.current) return;
+      if (stateRef.current === "listening") return; // already listening; don't stack
       go("listening");
       mic.beginListen((blob) => void implRef.current.handleUtterance(blob));
+    };
+
+    // Invalidate the in-flight assistant turn (stream + pending TTS) so its
+    // callbacks bail. Used by interrupt(), stop(), and barge-in.
+    const supersedeTurn = () => {
+      turnRef.current++;
+      abortRef.current?.abort();
+      abortRef.current = null;
     };
 
     const confirmProposal = () => {
@@ -139,6 +157,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
             body: JSON.stringify({ token: p.token }),
           });
           const data = await res.json().catch(() => null);
+          if (!activeRef.current) return; // overlay closed mid-request
           if (res.ok && data?.ok) setProp({ ...p, status: "done", result: data.message });
           else setProp({ ...p, status: "error", result: data?.error ?? "Could not apply." });
         } catch {
@@ -154,28 +173,34 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
 
     const interrupt = () => {
       if (!activeRef.current) return;
+      supersedeTurn();
       playback.stopAll();
       startListening();
     };
 
     const runAssistantTurn = async () => {
+      const myTurn = ++turnRef.current;
+      const ac = new AbortController();
+      abortRef.current = ac;
+      const isCurrent = () => activeRef.current && turnRef.current === myTurn;
+      streamDoneRef.current = false;
       go("thinking");
       const chunker = new SentenceChunker();
       let assistantText = "";
-      let spokeAnything = false;
 
       const speak = (sentence: string) => {
+        if (!isCurrent()) return; // superseded turn must not talk
         const clean = toSpeakable(sentence);
         if (!clean) return;
         if (stateRef.current !== "speaking") {
           go("speaking");
           mic.beginBargeIn(() => implRef.current.interrupt());
         }
-        spokeAnything = true;
         const clip = fetch("/api/assistant/speak", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: clean }),
+          signal: ac.signal,
         }).then((r) => {
           if (!r.ok) throw new Error("speak failed");
           return r.arrayBuffer();
@@ -188,6 +213,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages: historyRef.current, conversationId: conversationIdRef.current }),
+          signal: ac.signal,
         });
         if (!res.ok || !res.body) throw new Error("assistant request failed");
 
@@ -210,6 +236,10 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         };
 
         for (;;) {
+          if (!isCurrent()) {
+            await reader.cancel().catch(() => {});
+            break;
+          }
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
@@ -229,9 +259,14 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
 
         const tail = chunker.flush();
         if (tail) speak(tail);
-      } catch {
-        setError("The assistant could not respond. Try again.");
+      } catch (e) {
+        // An abort (interrupt/stop/barge-in) is intentional, not an error.
+        if (isCurrent() && (e as Error)?.name !== "AbortError") {
+          setError("The assistant could not respond. Try again.");
+        }
       }
+
+      if (!isCurrent()) return; // superseded while streaming — newer turn owns the UI
 
       if (assistantText.trim()) {
         pushCaption("assistant", assistantText);
@@ -239,8 +274,10 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         historyRef.current.push({ role: "assistant", content: assistantText });
       }
 
-      // If nothing was spoken, playback's onDrained never fires — loop back here.
-      if (!spokeAnything && activeRef.current) startListening();
+      // Stream fully arrived. If audio already finished (or none was queued), loop
+      // back now; otherwise onDrained handles it once the queue empties.
+      streamDoneRef.current = true;
+      if (!playback.isActiveRef.current) startListening();
     };
 
     const handleUtterance = async (blob: Blob) => {
@@ -294,7 +331,11 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     };
 
     const onDrained = () => {
-      if (activeRef.current && stateRef.current === "speaking") startListening();
+      // Only loop back once the stream is fully in (guards transient mid-stream
+      // drains). A stopped queue never fires onDrained, so this is current-turn only.
+      if (activeRef.current && stateRef.current === "speaking" && streamDoneRef.current) {
+        startListening();
+      }
     };
 
     implRef.current = {
@@ -329,6 +370,9 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
 
   const stop = React.useCallback(() => {
     activeRef.current = false;
+    turnRef.current++; // invalidate any in-flight turn
+    abortRef.current?.abort();
+    abortRef.current = null;
     playback.stopAll();
     mic.endTurn();
     mic.dispose();
@@ -343,6 +387,10 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   React.useEffect(() => {
     return () => {
       activeRef.current = false;
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional write: invalidate in-flight turn at unmount
+      turnRef.current++;
+      abortRef.current?.abort();
+      abortRef.current = null;
       playback.stopAll();
       mic.dispose();
     };
