@@ -40,6 +40,7 @@ export async function resolveVineyards(
 export type ScopedBlock = {
   id: string;
   label: string;
+  vineyardId: string;
   vineyardName: string;
   varietyName: string | null;
 };
@@ -75,6 +76,7 @@ export async function findScopedBlocks(
     select: {
       id: true,
       blockLabel: true,
+      vineyardId: true,
       vineyard: { select: { name: true } },
       variety: { select: { name: true } },
     },
@@ -83,6 +85,7 @@ export async function findScopedBlocks(
   let blocks: ScopedBlock[] = rows.map((b) => ({
     id: b.id,
     label: b.blockLabel ?? "(unlabeled)",
+    vineyardId: b.vineyardId,
     vineyardName: b.vineyard.name,
     varietyName: b.variety?.name ?? null,
   }));

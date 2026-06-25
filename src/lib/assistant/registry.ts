@@ -33,6 +33,8 @@ import { logBrixTool } from "./tools/log-brix";
 import { deleteBrixTool } from "./tools/delete-brix";
 import { setYieldEstimateTool } from "./tools/set-yield-estimate";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
+import { dbFindTool } from "./tools/db-find";
+import { dbDeleteTool } from "./tools/db-delete";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -44,6 +46,8 @@ const ALL_TOOLS: AssistantTool[] = [
   deleteBrixTool,
   setYieldEstimateTool,
   adjustInventoryTool,
+  dbFindTool,
+  dbDeleteTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */
