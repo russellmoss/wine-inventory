@@ -535,3 +535,19 @@ model AuditLog {
   @@index([actorUserId])
   @@map("audit_log")
 }
+
+// ───────────────────────── Assistant (chat) ─────────────────────────
+
+// Single-use guard for the assistant's confirm-before-write flow. A write tool
+// returns a signed, short-TTL proposal token; on confirm we insert the token's
+// nonce here (unique) BEFORE committing, so a replayed/double-submitted confirm
+// can never double-apply a change (critical for inventory deltas).
+model AssistantConfirmation {
+  id         String   @id @default(cuid())
+  nonce      String   @unique
+  tool       String
+  actorEmail String
+  usedAt     DateTime @default(now())
+
+  @@map("assistant_confirmation")
+}
