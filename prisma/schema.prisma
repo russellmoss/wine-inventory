@@ -350,6 +350,8 @@ model Vessel {
   updatedAt       DateTime          @updatedAt
   components      VesselComponent[]
   bottlingSources BottlingSource[]
+  transfersOut    VesselTransfer[]  @relation("VesselTransfersOut")
+  transfersIn     VesselTransfer[]  @relation("VesselTransfersIn")
 
   @@unique([type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
   @@map("vessel")
@@ -372,6 +374,34 @@ model VesselComponent {
   @@index([vesselId])
   @@index([varietyId])
   @@map("vessel_component")
+}
+
+// One racking / wine transfer between two vessels. `volumeL` is the volume drawn
+// OUT of the source; `lossL` is what was lost to lees (volume INTO the destination
+// = volumeL - lossL). `components` is a JSON snapshot of the moved breakdown
+// ([{ varietyName, vineyardName, vintage, volumeL }]) so history reads correctly
+// even for multi-lot (tank) racks and survives later vessel edits. Vessel codes
+// are snapshotted so a deleted vessel (FK SetNull) still shows in history.
+model VesselTransfer {
+  id             String   @id @default(cuid())
+  fromVesselId   String?
+  toVesselId     String?
+  fromVesselCode String
+  toVesselCode   String
+  volumeL        Decimal  @db.Decimal(10, 2)
+  lossL          Decimal  @default(0) @db.Decimal(10, 2)
+  components     Json
+  note           String?
+  actorUserId    String?
+  actorEmail     String
+  rackedAt       DateTime @default(now())
+  fromVessel     Vessel?  @relation("VesselTransfersOut", fields: [fromVesselId], references: [id], onDelete: SetNull)
+  toVessel       Vessel?  @relation("VesselTransfersIn", fields: [toVesselId], references: [id], onDelete: SetNull)
+
+  @@index([fromVesselId, rackedAt])
+  @@index([toVesselId, rackedAt])
+  @@index([rackedAt])
+  @@map("vessel_transfer")
 }
 
 // ───────────────────────── Bottling ─────────────────────────
