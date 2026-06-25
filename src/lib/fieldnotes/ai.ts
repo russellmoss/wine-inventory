@@ -14,7 +14,7 @@ import {
 // max_tokens + non-streaming call stays well inside the 60s route ceiling.
 const MODEL = "claude-opus-4-8";
 const MAX_TOKENS = 4096;
-const AI_WINDOW = 4; // this week + prior 3
+const AI_WINDOW = 4; // the report being summarized + the prior 3
 
 const noteSelect = {
   id: true,

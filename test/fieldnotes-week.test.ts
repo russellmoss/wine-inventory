@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   mostRecentFriday,
   isValidWeekOf,
+  isValidReportDate,
+  todayISODateUTC,
   toISODateUTC,
   parseISODateUTC,
 } from "@/lib/fieldnotes/week";
@@ -54,5 +56,32 @@ describe("isValidWeekOf", () => {
   it("round-trips toISODateUTC/parseISODateUTC", () => {
     const d = parseISODateUTC("2000-01-07")!;
     expect(toISODateUTC(d)).toBe("2000-01-07");
+  });
+});
+
+describe("todayISODateUTC", () => {
+  it("returns the UTC calendar date, ignoring intra-day time", () => {
+    expect(todayISODateUTC(utc(2000, 1, 8, 0))).toBe("2000-01-08");
+    expect(todayISODateUTC(utc(2000, 1, 8, 23))).toBe("2000-01-08");
+  });
+});
+
+describe("isValidReportDate", () => {
+  const now = utc(2000, 1, 20); // a Thursday
+  it("accepts any past day, not just Fridays", () => {
+    expect(isValidReportDate("2000-01-06", now)).toBe(true); // Thu
+    expect(isValidReportDate("2000-01-07", now)).toBe(true); // Fri
+    expect(isValidReportDate("2000-01-08", now)).toBe(true); // Sat
+  });
+  it("accepts today", () => {
+    expect(isValidReportDate("2000-01-20", now)).toBe(true);
+  });
+  it("rejects a future date", () => {
+    expect(isValidReportDate("2000-01-21", now)).toBe(false);
+  });
+  it("rejects malformed or impossible dates", () => {
+    expect(isValidReportDate("not-a-date", now)).toBe(false);
+    expect(isValidReportDate("2000-02-30", now)).toBe(false);
+    expect(isValidReportDate("2000-13-01", now)).toBe(false);
   });
 });

@@ -319,6 +319,7 @@ model HarvestPick {
   harvestRecordId String
   pickDate        DateTime      @db.Date
   weightKg        Decimal       @db.Decimal(12, 3) // canonical kg
+  brixAtPick      Decimal?      @db.Decimal(4, 1) // optional Brix the fruit came off at
   createdById     String?
   createdByEmail  String
   note            String?

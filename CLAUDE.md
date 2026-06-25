@@ -20,3 +20,10 @@ Key routing rules:
 - Design system, brand -> invoke design-consultation
 - Visual audit, design polish -> invoke design-review
 - Architecture review -> invoke plan-eng-review
+
+## Design System
+Always read DESIGN.md before making any visual or UI decisions.
+All font choices, colors, spacing, and aesthetic direction are defined there
+(and live in `src/styles/tokens/*.css`; preview at the `/styleguide` route).
+Do not hardcode colors, fonts, or spacing — reference the tokens. Do not deviate
+without explicit user approval. In QA mode, flag any code that doesn't match DESIGN.md.

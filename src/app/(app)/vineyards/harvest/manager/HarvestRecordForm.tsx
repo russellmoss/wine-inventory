@@ -78,6 +78,7 @@ export function HarvestRecordForm({ blockId, defaultUnit, vintageYear, record }:
   }
 
   const [weight, setWeight] = React.useState("");
+  const [pickBrix, setPickBrix] = React.useState("");
   const [pickDate, setPickDate] = React.useState(todayISO);
 
   // Re-convert an in-progress (unsaved) pick weight when the unit toggles, so a
@@ -111,10 +112,15 @@ export function HarvestRecordForm({ blockId, defaultUnit, vintageYear, record }:
     if (weight.trim() === "" || !Number.isFinite(n)) {
       return;
     }
+    const b = pickBrix.trim() === "" ? null : Number(pickBrix);
+    if (b != null && !Number.isFinite(b)) {
+      return;
+    }
     pickRunner.run(
-      () => addHarvestPick(blockId, n, defaultUnit, pickDate, vintageYear),
+      () => addHarvestPick(blockId, n, defaultUnit, pickDate, vintageYear, b),
       () => {
         setWeight("");
+        setPickBrix("");
         setPickDate(todayISO());
       },
     );
@@ -175,19 +181,37 @@ export function HarvestRecordForm({ blockId, defaultUnit, vintageYear, record }:
       <form onSubmit={submitPick}>
         <span style={{ ...sectionLabel, display: "block", marginBottom: 6 }}>Add a pick</span>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Input
-            name="weight"
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min={0}
-            placeholder={`Weight (${unitLabel})`}
-            size="lg"
-            value={weight}
-            onChange={(ev) => setWeight(ev.target.value)}
-            aria-label={`Pick weight in ${unitLabel}`}
-            iconRight={<span style={{ fontSize: 13 }}>{unitLabel}</span>}
-          />
+          <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+            <Input
+              name="weight"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min={0}
+              placeholder={`Weight (${unitLabel})`}
+              size="lg"
+              value={weight}
+              onChange={(ev) => setWeight(ev.target.value)}
+              aria-label={`Pick weight in ${unitLabel}`}
+              iconRight={<span style={{ fontSize: 13 }}>{unitLabel}</span>}
+              style={{ flex: 2 }}
+            />
+            <Input
+              name="pickBrix"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min={0}
+              max={35}
+              placeholder="Brix"
+              size="lg"
+              value={pickBrix}
+              onChange={(ev) => setPickBrix(ev.target.value)}
+              aria-label="Brix at pick (optional)"
+              iconRight={<span style={{ fontSize: 13 }}>°Bx</span>}
+              style={{ flex: 1 }}
+            />
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
             <Input
               name="pickDate"

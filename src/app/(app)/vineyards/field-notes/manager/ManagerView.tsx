@@ -2,12 +2,14 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Eyebrow } from "@/components/ui";
 import { type ParsedFieldNote } from "@/lib/fieldnotes/types";
 import { type FieldInputLists } from "@/lib/fieldnotes/input-actions";
-import { mostRecentFriday } from "@/lib/fieldnotes/week";
+import { todayISODateUTC } from "@/lib/fieldnotes/week";
 import { NoteDetail } from "../NoteDetail";
 import { FieldNoteForm, type FormBlock } from "./FieldNoteForm";
+
+type Mode = { kind: "list" } | { kind: "create" } | { kind: "edit"; note: ParsedFieldNote };
 
 export function ManagerView({
   vineyardId,
@@ -23,7 +25,7 @@ export function ManagerView({
   inputLists: FieldInputLists;
 }) {
   const router = useRouter();
-  const [creating, setCreating] = React.useState(false);
+  const [mode, setMode] = React.useState<Mode>({ kind: "list" });
 
   const blockLabels = React.useMemo(() => {
     const m: Record<string, string> = {};
@@ -31,55 +33,65 @@ export function ManagerView({
     return m;
   }, [blocks]);
 
-  const thisWeek = mostRecentFriday();
-  const alreadySubmitted = latestNote?.weekOf === thisWeek;
+  const today = todayISODateUTC();
+  const latestIsToday = latestNote?.weekOf === today;
 
-  if (creating) {
+  if (mode.kind !== "list") {
+    const editNote = mode.kind === "edit" ? mode.note : null;
     return (
       <FieldNoteForm
+        // Remount per mode/target so initial state hydrates correctly.
+        key={editNote ? `edit:${editNote.id}` : "create"}
         vineyardId={vineyardId}
         vineyardName={vineyardName}
         blocks={blocks}
         latestNote={latestNote}
+        editNote={editNote}
         inputLists={inputLists}
         onSubmitted={() => {
-          setCreating(false);
+          setMode({ kind: "list" });
           router.refresh();
         }}
-        onCancel={() => setCreating(false)}
+        onCancel={() => setMode({ kind: "list" })}
       />
     );
   }
 
   return (
     <div style={{ maxWidth: 560, margin: "0 auto" }}>
-      <Eyebrow rule>Weekly field report</Eyebrow>
+      <Eyebrow rule>Field report</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: "10px 0 6px" }}>{vineyardName}</h1>
 
-      {alreadySubmitted ? (
-        <Card padding="var(--space-3)" style={{ margin: "var(--space-4) 0", borderColor: "var(--accent)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Badge tone="green" variant="soft">submitted</Badge>
-            <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-              This week&rsquo;s report (week of {thisWeek}) is in.
-            </span>
-          </div>
-        </Card>
-      ) : (
-        <div style={{ margin: "var(--space-4) 0" }}>
-          <Button type="button" variant="primary" fullWidth onClick={() => setCreating(true)} style={{ height: 52 }}>
-            + Create this week&rsquo;s report
+      <div style={{ margin: "var(--space-4) 0" }}>
+        {latestIsToday && latestNote ? (
+          <Button
+            type="button"
+            variant="primary"
+            fullWidth
+            onClick={() => setMode({ kind: "edit", note: latestNote })}
+            style={{ height: 52 }}
+          >
+            Edit today&rsquo;s report
           </Button>
-        </div>
-      )}
+        ) : (
+          <Button type="button" variant="primary" fullWidth onClick={() => setMode({ kind: "create" })} style={{ height: 52 }}>
+            + New report
+          </Button>
+        )}
+      </div>
 
       <Card style={{ marginTop: "var(--space-4)" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "var(--space-3)" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "var(--space-3)", gap: 8 }}>
           <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 22, margin: 0 }}>
             Most recent field note
           </h2>
           {latestNote ? (
-            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>week of {latestNote.weekOf}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{latestNote.weekOf}</span>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setMode({ kind: "edit", note: latestNote })}>
+                Edit
+              </Button>
+            </div>
           ) : null}
         </div>
         {latestNote ? (

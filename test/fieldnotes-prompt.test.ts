@@ -47,21 +47,21 @@ describe("BRIEFING_SYSTEM_PROMPT", () => {
 });
 
 describe("buildBriefingInput", () => {
-  it("includes the vineyard name and week count", () => {
+  it("includes the vineyard name and report count", () => {
     const out = buildBriefingInput([note("2026-06-19")], "Paro Estate", labels);
     expect(out).toContain("Vineyard: Paro Estate");
-    expect(out).toContain("Weeks in window (chronological, oldest first): 1");
+    expect(out).toContain("Reports in window (chronological, oldest first): 1");
   });
 
-  it("orders weeks chronologically (oldest first) even when given newest-first", () => {
+  it("orders reports chronologically (oldest first) even when given newest-first", () => {
     const out = buildBriefingInput(
       [note("2026-06-26"), note("2026-06-12"), note("2026-06-19")],
       "Paro Estate",
       labels,
     );
-    const i12 = out.indexOf("Week of 2026-06-12");
-    const i19 = out.indexOf("Week of 2026-06-19");
-    const i26 = out.indexOf("Week of 2026-06-26");
+    const i12 = out.indexOf("Report dated 2026-06-12");
+    const i19 = out.indexOf("Report dated 2026-06-19");
+    const i26 = out.indexOf("Report dated 2026-06-26");
     expect(i12).toBeLessThan(i19);
     expect(i19).toBeLessThan(i26);
   });

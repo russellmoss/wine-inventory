@@ -84,7 +84,7 @@ export const BRIEFING_JSON_SCHEMA = {
  * anything actionable as a question to confirm, never a definitive diagnosis or
  * prescription. Output is JSON matching the schema above.
  */
-export const BRIEFING_SYSTEM_PROMPT = `You are a vineyard operations analyst preparing a weekly call briefing for an out-of-country vineyard owner. You receive this week's field report plus up to the prior three weeks, all logged by the on-site manager.
+export const BRIEFING_SYSTEM_PROMPT = `You are a vineyard operations analyst preparing a call briefing for an out-of-country vineyard owner. You receive the most recent field report plus up to the prior three, all logged by the on-site manager. Reports are filed per day, so the cadence between them may vary.
 
 YOUR ROLE: You are a DATA SUMMARIZER, not a diagnostician. Summarize and connect what is in the logged record. Do NOT issue definitive agronomic diagnoses or prescriptions. Never write things like "Block 4 has a magnesium deficiency, order fertilizer X." Surface patterns as observations tied to the data, and frame anything actionable as a question to confirm with the manager.
 
@@ -93,11 +93,11 @@ Ground every statement in the logged data. If something was not logged, say it w
 Return ONLY a JSON object matching the provided schema. No prose outside the JSON.
 
 Fields:
-- "headline": one plain sentence summarizing the week (e.g. "Heavy rain after last week's protectant spray; rising water and weed pressure across three blocks").
+- "headline": one plain sentence summarizing the latest report (e.g. "Heavy rain after the prior protectant spray; rising water and weed pressure across three blocks").
 - "agenda": EXACTLY 3 items, each a QUESTION or thing to confirm with the manager on the call. Each has a "priority" of "high", "medium", or "low" — order the most decision-critical first. This is the most important output.
 - "sections": one entry per analysis that the data supports (omit a section entirely if there's nothing to say). Use these "key" values and short human "title"s:
   • "rain_vs_spray" — rain logged after a protectant spray => coverage may have lapsed; confirm.
-  • "task_slippage" — what was logged vs not logged, this week vs prior weeks.
+  • "task_slippage" — what was logged vs not logged, in the latest report vs prior ones.
   • "leaf_conditions" — leaf symptoms co-occurring with input gaps, stated as a correlation to verify.
   • "disease_pest" — disease/pest items the manager flagged, with the week.
   Each section "items" entry has: "tone" = "alert" (needs action/confirmation, e.g. coverage lapse or a healthy→symptom flip), "watch" (worth monitoring), or "info" (neutral context); "text" = one concise observation tied to the data; "block" = the block label it concerns (e.g. "Block 4") or "" when it's vineyard-wide.
@@ -141,10 +141,10 @@ export function buildBriefingInput(
   blockLabels: Record<string, string>,
 ): string {
   const chronological = [...notes].sort((a, b) => a.weekOf.localeCompare(b.weekOf));
-  const weeks = chronological.map((note) => {
+  const reports = chronological.map((note) => {
     const w = note.weatherData;
     const lines = [
-      `## Week of ${note.weekOf} (logged by ${note.userEmail})`,
+      `## Report dated ${note.weekOf} (logged by ${note.userEmail})`,
       `Weather: rainfall ${w.rainfallMm ?? "—"} mm, max ${w.maxTempC ?? "—"}°C, min ${w.minTempC ?? "—"}°C`,
       `Sprays: ${describeInputs(note.spraysApplied, blockLabels)}`,
       `Fertilizers: ${describeInputs(note.fertilizersApplied, blockLabels)}`,
@@ -159,9 +159,9 @@ export function buildBriefingInput(
 
   return [
     `Vineyard: ${vineyardName}`,
-    `Weeks in window (chronological, oldest first): ${chronological.length}`,
+    `Reports in window (chronological, oldest first): ${chronological.length}`,
     "",
-    weeks.join("\n\n"),
+    reports.join("\n\n"),
   ].join("\n");
 }
 

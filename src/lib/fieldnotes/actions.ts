@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { action, getActionUser, ActionError } from "@/lib/actions";
 import { canManagerAccessVineyard } from "@/lib/access";
 import { writeAudit } from "@/lib/audit";
-import { isValidWeekOf, parseISODateUTC } from "@/lib/fieldnotes/week";
+import { isValidReportDate, parseISODateUTC } from "@/lib/fieldnotes/week";
 import {
   SCHEMA_VERSION,
   parseWeatherData,
@@ -48,9 +48,12 @@ async function requireVineyardAccess(vineyardId: string) {
 }
 
 /**
- * Create this week's report for a vineyard. Manager-scoped (admins any vineyard).
- * Validates weekOf (Friday, not future), the JSON payloads, and that every
- * current block has a status. One report per vineyard per week (unique).
+ * Save a report for a vineyard on a given date. Manager-scoped (admins any
+ * vineyard). Validates the report date (real date, not future), the JSON
+ * payloads, and that every current block has a status. One report per vineyard
+ * per calendar day (unique) — re-saving the same day UPDATES that report in
+ * place (edit + resubmit), it does not create a duplicate. Reports may be filed
+ * any day; there is no longer a weekly cadence.
  */
 export const createFieldNote = action(
   async ({ actor }, input: CreateFieldNoteInput): Promise<{ id: string }> => {
@@ -58,8 +61,8 @@ export const createFieldNote = action(
     if (!vineyardId) throw new ActionError("Missing vineyard.");
     await requireVineyardAccess(vineyardId);
 
-    if (!isValidWeekOf(input.weekOf)) {
-      throw new ActionError("Pick a valid report week (a Friday, not in the future).");
+    if (!isValidReportDate(input.weekOf)) {
+      throw new ActionError("Pick a valid report date (today or earlier).");
     }
     const weekOf = parseISODateUTC(input.weekOf)!;
 
@@ -87,41 +90,44 @@ export const createFieldNote = action(
     const cleanStatuses: Record<string, unknown> = {};
     for (const b of blocks) cleanStatuses[b.id] = blockLevelStatuses[b.id];
 
-    try {
-      const note = await prisma.$transaction(async (tx) => {
-        const created = await tx.fieldNote.create({
-          data: {
-            vineyardId,
-            userId: actor.actorUserId,
-            userEmail: actor.actorEmail,
-            weekOf,
-            weatherData: weatherData as Prisma.InputJsonValue,
-            spraysApplied: spraysApplied as unknown as Prisma.InputJsonValue,
-            fertilizersApplied: fertilizersApplied as unknown as Prisma.InputJsonValue,
-            blockLevelStatuses: cleanStatuses as Prisma.InputJsonValue,
-            generalNotes: input.generalNotes?.trim() || null,
-            schemaVersion: SCHEMA_VERSION,
-            aiSummaryStatus: "PENDING",
-          },
-          select: { id: true },
-        });
-        await writeAudit(tx, {
-          ...actor,
-          action: "FIELD_NOTE_CREATED",
-          entityType: "FieldNote",
-          entityId: created.id,
-          summary: `Logged field note for week of ${input.weekOf}`,
-        });
-        return created;
+    // Common payload for both insert and update of the canonical day's report.
+    const data = {
+      userId: actor.actorUserId,
+      userEmail: actor.actorEmail,
+      weatherData: weatherData as Prisma.InputJsonValue,
+      spraysApplied: spraysApplied as unknown as Prisma.InputJsonValue,
+      fertilizersApplied: fertilizersApplied as unknown as Prisma.InputJsonValue,
+      blockLevelStatuses: cleanStatuses as Prisma.InputJsonValue,
+      generalNotes: input.generalNotes?.trim() || null,
+      schemaVersion: SCHEMA_VERSION,
+      // Re-queue the AI briefing on every save so an edited report regenerates.
+      aiSummaryStatus: "PENDING",
+    };
+
+    const note = await prisma.$transaction(async (tx) => {
+      // Detect create-vs-edit up front so the audit trail is accurate. The
+      // (vineyardId, weekOf) unique makes this race-safe under the upsert below.
+      const existing = await tx.fieldNote.findUnique({
+        where: { vineyardId_weekOf: { vineyardId, weekOf } },
+        select: { id: true },
       });
-      revalidatePath(PATH);
-      return { id: note.id };
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-        throw new ActionError("A report has already been submitted for this week.", "CONFLICT");
-      }
-      throw e;
-    }
+      const saved = await tx.fieldNote.upsert({
+        where: { vineyardId_weekOf: { vineyardId, weekOf } },
+        create: { vineyardId, weekOf, ...data },
+        update: data,
+        select: { id: true },
+      });
+      await writeAudit(tx, {
+        ...actor,
+        action: existing ? "UPDATE" : "FIELD_NOTE_CREATED",
+        entityType: "FieldNote",
+        entityId: saved.id,
+        summary: `${existing ? "Updated" : "Logged"} field note for ${input.weekOf}`,
+      });
+      return saved;
+    });
+    revalidatePath(PATH);
+    return { id: note.id };
   },
 );
 

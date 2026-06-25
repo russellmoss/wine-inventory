@@ -14,6 +14,7 @@ import {
   type BlockMeta,
   type VintageGroup,
 } from "@/lib/harvest/aggregate";
+import { deriveBrixAtPick, groupSeriesByBlock } from "@/lib/harvest/dashboard";
 
 const PATH = "/vineyards/harvest";
 
@@ -29,12 +30,36 @@ export type BrixLogDTO = {
   note: string | null;
 };
 
-export type PickDTO = { id: string; pickDate: string; weightKg: number; createdByEmail: string };
+export type PickDTO = {
+  id: string;
+  pickDate: string;
+  weightKg: number;
+  brixAtPick: number | null;
+  createdByEmail: string;
+};
 export type HarvestBlockDTO = {
   blockId: string;
   vintageYear: number;
   yieldEstimateKg: number | null;
   picks: PickDTO[];
+};
+
+// ── Admin dashboard (in-season: Brix curve + estimate + picks per block) ──
+export type DashboardBlockDTO = {
+  blockId: string;
+  label: string;
+  varietyName: string | null;
+  varietyId: string | null;
+  varietyColor: string | null;
+  latestBrix: { brixValue: number; recordedAt: string } | null;
+  yieldEstimateKg: number | null;
+  picks: PickDTO[]; // picks[].brixAtPick is resolved (explicit or nearest reading)
+  series: { recordedAt: string; brixValue: number }[]; // this season, oldest-first
+};
+export type VineyardHarvestDashboard = {
+  vintageYear: number;
+  blocks: DashboardBlockDTO[];
+  groups: VintageGroup[]; // historic yields-by-vintage (secondary section)
 };
 
 function assertUnit(raw: unknown): Unit {
@@ -140,6 +165,7 @@ export const addHarvestPick = action(
     unit: string,
     pickDate: string,
     vintageYear?: number,
+    brixAtPick?: number | null,
   ): Promise<void> => {
     const vineyardId = await requireBlockAccess(blockId);
     const kg = toKg(weight, assertUnit(unit));
@@ -147,6 +173,13 @@ export const addHarvestPick = action(
     const date = parseISODateUTC(pickDate);
     if (!date) throw new ActionError("Enter a valid pick date.");
     const vintage = vintageYear ?? date.getUTCFullYear();
+    let brix: Prisma.Decimal | null = null;
+    if (brixAtPick != null) {
+      if (!Number.isFinite(brixAtPick) || brixAtPick < BRIX_MIN || brixAtPick > BRIX_MAX) {
+        throw new ActionError(`Brix must be between ${BRIX_MIN} and ${BRIX_MAX} °Bx.`);
+      }
+      brix = new Prisma.Decimal(brixAtPick);
+    }
     await prisma.$transaction(async (tx) => {
       const record = await tx.harvestRecord.upsert({
         where: { blockId_vintageYear: { blockId, vintageYear: vintage } },
@@ -165,6 +198,7 @@ export const addHarvestPick = action(
           harvestRecordId: record.id,
           pickDate: date,
           weightKg: new Prisma.Decimal(kg),
+          brixAtPick: brix,
           createdById: actor.actorUserId,
           createdByEmail: actor.actorEmail,
         },
@@ -263,7 +297,7 @@ export async function getVineyardHarvest(
         yieldEstimateKg: true,
         picks: {
           orderBy: { pickDate: "asc" },
-          select: { id: true, pickDate: true, weightKg: true, createdByEmail: true },
+          select: { id: true, pickDate: true, weightKg: true, brixAtPick: true, createdByEmail: true },
         },
       },
     }),
@@ -281,6 +315,7 @@ export async function getVineyardHarvest(
       id: p.id,
       pickDate: p.pickDate.toISOString().slice(0, 10),
       weightKg: p.weightKg.toNumber(),
+      brixAtPick: p.brixAtPick != null ? p.brixAtPick.toNumber() : null,
       createdByEmail: p.createdByEmail,
     })),
   }));
@@ -299,6 +334,104 @@ export async function getVineyardHarvest(
   }));
 
   return { records: dtos, groups: groupYieldsByVintage(recordsForAgg, meta) };
+}
+
+/**
+ * Everything the admin harvest dashboard renders for one vineyard: per-block Brix
+ * series for the current season, current Brix, yield estimate, and picks (each with
+ * its resolved Brix-at-pick), plus the historic yields-by-vintage groups. One scope
+ * check, three queries.
+ */
+export async function getVineyardHarvestDashboard(
+  vineyardId: string,
+): Promise<VineyardHarvestDashboard> {
+  await requireVineyardScope(vineyardId);
+  const vintageYear = new Date().getFullYear();
+  const yearStart = new Date(Date.UTC(vintageYear, 0, 1));
+  const yearEnd = new Date(Date.UTC(vintageYear + 1, 0, 1));
+
+  const [blocks, allRecords, brixRows] = await Promise.all([
+    prisma.vineyardBlock.findMany({
+      where: { vineyardId },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, blockLabel: true, variety: { select: { id: true, name: true, color: true } } },
+    }),
+    prisma.harvestRecord.findMany({
+      where: { vineyardId },
+      select: {
+        blockId: true,
+        vintageYear: true,
+        yieldEstimateKg: true,
+        picks: {
+          orderBy: { pickDate: "asc" },
+          select: { id: true, pickDate: true, weightKg: true, brixAtPick: true, createdByEmail: true },
+        },
+      },
+    }),
+    prisma.brixLog.findMany({
+      where: { vineyardId, recordedAt: { gte: yearStart, lt: yearEnd } },
+      orderBy: [{ recordedAt: "asc" }, { id: "asc" }],
+      select: { blockId: true, brixValue: true, recordedAt: true },
+    }),
+  ]);
+
+  // Brix series per block (this season, oldest-first).
+  const seriesByBlock = groupSeriesByBlock(
+    brixRows.map((r) => ({
+      blockId: r.blockId,
+      brixValue: r.brixValue.toNumber(),
+      recordedAt: r.recordedAt.toISOString(),
+    })),
+  );
+
+  // Current-season records keyed by block.
+  const recordByBlock = new Map<string, (typeof allRecords)[number]>();
+  for (const r of allRecords) {
+    if (r.vintageYear === vintageYear) recordByBlock.set(r.blockId, r);
+  }
+
+  const dashboardBlocks: DashboardBlockDTO[] = blocks.map((b) => {
+    const series = seriesByBlock[b.id] ?? [];
+    const latestBrix = series.length ? series[series.length - 1] : null;
+    const rec = recordByBlock.get(b.id);
+    const picks: PickDTO[] = (rec?.picks ?? []).map((p) => {
+      const pickDate = p.pickDate.toISOString().slice(0, 10);
+      const explicit = p.brixAtPick != null ? p.brixAtPick.toNumber() : null;
+      return {
+        id: p.id,
+        pickDate,
+        weightKg: p.weightKg.toNumber(),
+        brixAtPick: deriveBrixAtPick({ pickDate, brixAtPick: explicit }, series),
+        createdByEmail: p.createdByEmail,
+      };
+    });
+    return {
+      blockId: b.id,
+      label: b.blockLabel ?? b.id,
+      varietyName: b.variety?.name ?? null,
+      varietyId: b.variety?.id ?? null,
+      varietyColor: b.variety?.color ?? null,
+      latestBrix,
+      yieldEstimateKg: rec?.yieldEstimateKg ? rec.yieldEstimateKg.toNumber() : null,
+      picks,
+      series,
+    };
+  });
+
+  // Historic groups (all vintages) for the secondary "Past vintages" section.
+  const meta: BlockMeta[] = blocks.map((b) => ({
+    id: b.id,
+    label: b.blockLabel ?? b.id,
+    varietyName: b.variety?.name ?? null,
+  }));
+  const recordsForAgg: HarvestRecordDTO[] = allRecords.map((r) => ({
+    blockId: r.blockId,
+    vintageYear: r.vintageYear,
+    yieldEstimateKg: r.yieldEstimateKg ? r.yieldEstimateKg.toNumber() : null,
+    picks: r.picks.map((p) => ({ weightKg: p.weightKg.toNumber(), pickDate: p.pickDate.toISOString().slice(0, 10) })),
+  }));
+
+  return { vintageYear, blocks: dashboardBlocks, groups: groupYieldsByVintage(recordsForAgg, meta) };
 }
 
 /** Scope guard for vineyard-level reads. */

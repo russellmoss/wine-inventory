@@ -4,7 +4,7 @@ import React from "react";
 import { Card, Eyebrow } from "@/components/ui";
 import type { HarvestBlockDTO } from "@/lib/harvest/actions";
 import { HarvestManagerView, type ManagerBlock } from "./manager/HarvestManagerView";
-import { HarvestYieldsView } from "./admin/HarvestYieldsView";
+import { HarvestDashboard } from "./admin/HarvestDashboard";
 
 export type ManagerData = {
   vineyardId: string;
@@ -25,7 +25,7 @@ type Props =
 
 export function HarvestRouter(props: Props) {
   if (props.mode === "admin") {
-    return <HarvestYieldsView vineyards={props.admin.vineyards} />;
+    return <HarvestDashboard vineyards={props.admin.vineyards} />;
   }
 
   if (props.mode === "manager") {

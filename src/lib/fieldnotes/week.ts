@@ -29,7 +29,8 @@ export function parseISODateUTC(s: string): Date | null {
 
 /**
  * The most-recently-passed Friday (today included when today is Friday), as a
- * UTC "YYYY-MM-DD" string. This is the default weekOf for a new report.
+ * UTC "YYYY-MM-DD" string. Retained for any week-anchored callers; field-note
+ * reports are now dated per day and default to `todayISODateUTC`.
  */
 export function mostRecentFriday(now: Date = new Date()): string {
   const day = now.getUTCDay();
@@ -40,10 +41,27 @@ export function mostRecentFriday(now: Date = new Date()): string {
   return toISODateUTC(friday);
 }
 
+/** Today as a UTC "YYYY-MM-DD" string — the default report date for a new note. */
+export function todayISODateUTC(now: Date = new Date()): string {
+  return toISODateUTC(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())));
+}
+
+/**
+ * A report date is valid iff it is a real calendar date and is not in the future
+ * (not later than today, UTC). Any day is allowed — reports are no longer locked
+ * to a weekly Friday cadence. Accepts a "YYYY-MM-DD" string or a Date.
+ */
+export function isValidReportDate(reportDate: string | Date, now: Date = new Date()): boolean {
+  const iso = reportDate instanceof Date ? toISODateUTC(reportDate) : reportDate;
+  const date = parseISODateUTC(iso);
+  if (!date) return false;
+  return iso <= todayISODateUTC(now); // lexical compare is safe for ISO dates
+}
+
 /**
  * A weekOf is valid iff it is a real date, falls on a Friday, and is not in the
  * future (not later than the most-recently-passed Friday). Accepts a "YYYY-MM-DD"
- * string or a Date.
+ * string or a Date. Kept for back-compat; field notes use {@link isValidReportDate}.
  */
 export function isValidWeekOf(weekOf: string | Date, now: Date = new Date()): boolean {
   const iso = weekOf instanceof Date ? toISODateUTC(weekOf) : weekOf;

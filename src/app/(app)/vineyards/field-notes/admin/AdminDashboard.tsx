@@ -42,7 +42,7 @@ export function AdminDashboard({ vineyards }: { vineyards: VineyardSummary[] }) 
     ? vineyards.find((v) => v.vineyardId === openVineyard) ?? null
     : null;
 
-  // This week's agendas: every vineyard whose latest report has a ready briefing.
+  // Latest agendas: every vineyard whose most recent report has a ready briefing.
   const agendas = vineyards
     .map((v) => ({
       v,
@@ -60,13 +60,13 @@ export function AdminDashboard({ vineyards }: { vineyards: VineyardSummary[] }) 
       <Eyebrow rule>Vineyard operations</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Field notes</h1>
       <p style={{ color: "var(--text-secondary)", marginBottom: "var(--space-5)", maxWidth: "60ch" }}>
-        Weekly reports from each vineyard manager, with an AI briefing on the most recent submission.
+        Field reports from each vineyard manager, with an AI briefing on the most recent submission.
         Click a vineyard to read the full report.
       </p>
 
       {agendas.length > 0 ? (
         <Card padding="var(--space-5)" style={{ marginBottom: "var(--space-5)" }}>
-          <Eyebrow rule>This week&rsquo;s call agendas</Eyebrow>
+          <Eyebrow rule>Latest call agendas</Eyebrow>
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", marginTop: "var(--space-3)" }}>
             {agendas.map(({ v, briefing }) => (
               <div key={v.vineyardId}>
@@ -75,7 +75,7 @@ export function AdminDashboard({ vineyards }: { vineyards: VineyardSummary[] }) 
                     {v.vineyardName}
                   </Button>
                   <span style={{ fontSize: 12.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                    week of {v.latestNote?.weekOf}
+                    {v.latestNote?.weekOf}
                   </span>
                 </div>
                 <AgendaList briefing={briefing} dense />
@@ -122,7 +122,7 @@ export function AdminDashboard({ vineyards }: { vineyards: VineyardSummary[] }) 
                     </Button>
                   </td>
                   <td style={{ padding: "12px 16px", color: "var(--text-secondary)" }}>
-                    {note ? `week of ${note.weekOf}` : "—"}
+                    {note ? note.weekOf : "—"}
                   </td>
                   <td style={{ padding: "12px 16px" }}>
                     <Badge tone={tone} variant="soft">{label}</Badge>

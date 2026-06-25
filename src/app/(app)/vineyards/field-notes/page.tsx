@@ -39,7 +39,7 @@ export default async function FieldNotesPage({
     const sp = await searchParams;
     const view = sp.view === "manager" ? "manager" : "admin";
 
-    // Admin "Manager view": fill in a weekly report for any chosen vineyard.
+    // Admin "Manager view": fill in a field report for any chosen vineyard.
     if (view === "manager") {
       const vineyardList = await prisma.vineyard.findMany({
         where: { isActive: true },
@@ -133,7 +133,7 @@ export default async function FieldNotesPage({
   if (!user.assignedVineyardId) {
     return (
       <div style={{ maxWidth: 560, margin: "0 auto" }}>
-        <Eyebrow rule>Weekly field report</Eyebrow>
+        <Eyebrow rule>Field report</Eyebrow>
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: "10px 0 16px" }}>
           Field notes
         </h1>
@@ -161,7 +161,7 @@ export default async function FieldNotesPage({
   if (!vineyard) {
     return (
       <div style={{ maxWidth: 560, margin: "0 auto" }}>
-        <Eyebrow rule>Weekly field report</Eyebrow>
+        <Eyebrow rule>Field report</Eyebrow>
         <Card style={{ marginTop: 16 }}>
           <p style={{ color: "var(--text-secondary)", margin: 0 }}>
             Your assigned vineyard could not be found. Ask an admin to re-assign your vineyard.

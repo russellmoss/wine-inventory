@@ -11,7 +11,7 @@ import {
   type ParsedFieldNote,
 } from "@/lib/fieldnotes/types";
 import { buildPrepopulationDefaults } from "@/lib/fieldnotes/prepopulate";
-import { mostRecentFriday } from "@/lib/fieldnotes/week";
+import { todayISODateUTC } from "@/lib/fieldnotes/week";
 import { createFieldNote } from "@/lib/fieldnotes/actions";
 import { addFieldInput, type FieldInputDTO, type FieldInputLists } from "@/lib/fieldnotes/input-actions";
 import { BlockCard } from "./BlockCard";
@@ -162,6 +162,7 @@ export function FieldNoteForm({
   vineyardName,
   blocks,
   latestNote,
+  editNote = null,
   inputLists,
   onSubmitted,
   onCancel,
@@ -170,24 +171,55 @@ export function FieldNoteForm({
   vineyardName: string;
   blocks: FormBlock[];
   latestNote: ParsedFieldNote | null;
+  /** When set, the form edits this existing report in place instead of creating a new one. */
+  editNote?: ParsedFieldNote | null;
   inputLists: FieldInputLists;
   onSubmitted: () => void;
   onCancel: () => void;
 }) {
+  const isEditing = !!editNote;
   const blockIds = React.useMemo(() => blocks.map((b) => b.id), [blocks]);
-  const defaults = React.useMemo(
-    () => buildPrepopulationDefaults(latestNote?.blockLevelStatuses ?? null, blockIds),
-    [latestNote, blockIds],
-  );
 
-  const [weekOf, setWeekOf] = React.useState<string>(() => mostRecentFriday());
-  const [weather, setWeather] = React.useState(defaults.weatherData);
-  const [statuses, setStatuses] = React.useState<Record<string, BlockStatus>>(defaults.blockLevelStatuses);
-  const [generalNotes, setGeneralNotes] = React.useState(defaults.generalNotes);
+  // Initial form state: editing hydrates from the note itself; a new report
+  // carries forward slow-changing block phenology from the latest note. Computed
+  // once per mount (ManagerView remounts the form per mode via a key).
+  const initial = React.useMemo(() => {
+    if (editNote) {
+      const statuses: Record<string, BlockStatus> = {};
+      for (const id of blockIds) statuses[id] = editNote.blockLevelStatuses[id] ?? { ...EMPTY_BLOCK_STATUS };
+      const sp: Record<string, InputApplication> = {};
+      for (const a of editNote.spraysApplied) sp[a.name] = a;
+      const fp: Record<string, InputApplication> = {};
+      for (const a of editNote.fertilizersApplied) fp[a.name] = a;
+      return {
+        weekOf: editNote.weekOf,
+        weather: editNote.weatherData,
+        statuses,
+        generalNotes: editNote.generalNotes ?? "",
+        sprays: sp,
+        ferts: fp,
+      };
+    }
+    const d = buildPrepopulationDefaults(latestNote?.blockLevelStatuses ?? null, blockIds);
+    return {
+      weekOf: todayISODateUTC(),
+      weather: d.weatherData,
+      statuses: d.blockLevelStatuses,
+      generalNotes: d.generalNotes,
+      sprays: {} as Record<string, InputApplication>,
+      ferts: {} as Record<string, InputApplication>,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [weekOf, setWeekOf] = React.useState<string>(initial.weekOf);
+  const [weather, setWeather] = React.useState(initial.weather);
+  const [statuses, setStatuses] = React.useState<Record<string, BlockStatus>>(initial.statuses);
+  const [generalNotes, setGeneralNotes] = React.useState(initial.generalNotes);
 
   // Input selections keyed by display name.
-  const [sprays, setSprays] = React.useState<Record<string, InputApplication>>({});
-  const [ferts, setFerts] = React.useState<Record<string, InputApplication>>({});
+  const [sprays, setSprays] = React.useState<Record<string, InputApplication>>(initial.sprays);
+  const [ferts, setFerts] = React.useState<Record<string, InputApplication>>(initial.ferts);
 
   // Per-block "touched this session" set (manager edited it).
   const touchedRef = React.useRef<Set<string>>(new Set());
@@ -198,7 +230,8 @@ export function FieldNoteForm({
 
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
-  const defaultWeek = React.useMemo(() => mostRecentFriday(), []);
+  const defaultWeek = React.useMemo(() => todayISODateUTC(), []);
+  const maxDate = React.useMemo(() => todayISODateUTC(), []);
 
   const formState: DraftFormState = React.useMemo(
     () => ({
@@ -213,11 +246,14 @@ export function FieldNoteForm({
   );
 
   const { clear } = useDraft(vineyardId, formState, defaultWeek, {
-    enabled: true,
+    // Editing an existing report hydrates from the note itself, never the
+    // local draft — so don't autosave or restore while editing.
+    enabled: !isEditing,
     onRestore: (stored: StoredDraft, stale: boolean) => {
+      if (isEditing) return;
       const keep = stale
         ? window.confirm(
-            `Found a saved draft for the week of ${stored.form.weekOf}. Keep editing it?`,
+            `Found a saved draft dated ${stored.form.weekOf}. Keep editing it?`,
           )
         : true;
       if (!keep) return;
@@ -324,7 +360,7 @@ export function FieldNoteForm({
         } catch {
           /* ignore */
         }
-        clear();
+        if (!isEditing) clear();
         onSubmitted();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not submit the report.");
@@ -357,7 +393,7 @@ export function FieldNoteForm({
     <div style={{ maxWidth: 560, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "var(--space-4)", gap: 8 }}>
         <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: 0 }}>
-          This week&rsquo;s report
+          {isEditing ? "Edit report" : "New report"}
         </h2>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
           Cancel
@@ -371,15 +407,21 @@ export function FieldNoteForm({
         </Card>
       ) : null}
 
-      {/* (a) WEEK SELECTOR */}
+      {/* (a) REPORT DATE */}
       <Card padding="var(--space-4)" style={sectionStyle}>
-        <label style={fieldLabel}>Report week (Friday)</label>
+        <label style={fieldLabel}>Report date</label>
         <input
           type="date"
           value={weekOf}
+          max={maxDate}
           onChange={(e) => setWeekOf(e.target.value)}
           style={dateInputStyle}
         />
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "6px 0 0" }}>
+          {isEditing
+            ? "Re-saving updates this date’s report."
+            : "One report per day — picking a date that already has a report will update it."}
+        </p>
       </Card>
 
       {/* (b) WEATHER */}
@@ -464,7 +506,7 @@ export function FieldNoteForm({
 
       <div style={{ position: "sticky", bottom: 0, padding: "var(--space-3) 0", background: "var(--surface-page)" }}>
         <Button type="button" variant="primary" fullWidth onClick={submit} disabled={pending} style={{ height: 52 }}>
-          {pending ? "Submitting…" : "Submit report"}
+          {pending ? "Saving…" : isEditing ? "Save changes" : "Submit report"}
         </Button>
       </div>
     </div>

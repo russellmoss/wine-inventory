@@ -49,11 +49,11 @@ export function BriefingCard({
               margin: compact ? 0 : "8px 0 0",
             }}
           >
-            {vineyardName ? vineyardName : "Weekly briefing"}
+            {vineyardName ? vineyardName : "Call briefing"}
           </h2>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, whiteSpace: "nowrap" }}>
-          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>week of {note.weekOf}</span>
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{note.weekOf}</span>
           {status === "READY" ? (
             <Button type="button" variant="ghost" size="sm" onClick={regenerate} disabled={busy}>
               {busy ? "Regenerating…" : "Regenerate"}

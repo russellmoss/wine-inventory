@@ -27,7 +27,7 @@ export function VineyardNoteModal({
       open={open}
       onClose={onClose}
       title={vineyardName}
-      subtitle={note ? `Week of ${note.weekOf} · ${note.userEmail}` : "No reports yet"}
+      subtitle={note ? `${note.weekOf} · ${note.userEmail}` : "No reports yet"}
       maxWidth={720}
     >
       {note ? (
