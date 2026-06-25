@@ -38,6 +38,7 @@ const CONTENT_MAX = 880;
 const TOOL_LABELS: Record<string, string> = {
   query_brix: "Checking Brix readings",
   query_yield: "Checking yields",
+  query_recent_harvests: "Checking recent harvests",
   query_vineyard_status: "Checking vineyard status",
   query_audit: "Searching the audit log",
   log_brix: "Preparing Brix entry",

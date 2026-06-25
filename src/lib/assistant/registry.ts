@@ -26,6 +26,7 @@ export type AssistantTool = {
 
 import { queryBrixTool } from "./tools/query-brix";
 import { queryYieldTool } from "./tools/query-yield";
+import { queryRecentHarvestsTool } from "./tools/query-recent-harvests";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryAuditTool } from "./tools/query-audit";
 import { logBrixTool } from "./tools/log-brix";
@@ -36,6 +37,7 @@ import { adjustInventoryTool } from "./tools/adjust-inventory";
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
   queryYieldTool,
+  queryRecentHarvestsTool,
   queryVineyardStatusTool,
   queryAuditTool,
   logBrixTool,
