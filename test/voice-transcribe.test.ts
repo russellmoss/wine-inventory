@@ -44,7 +44,7 @@ describe("transcribeAudio", () => {
 
     expect(text).toBe("log 24 brix on block a"); // trimmed
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.openai.com/v1/audio/transcriptions");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer sk-openai");
     const form = init.body as FormData;
@@ -62,7 +62,7 @@ describe("transcribeAudio", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { transcribeAudio } = await import("@/lib/voice/transcribe");
     await transcribeAudio(new Blob(["x"]));
-    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.body as FormData).get("model")).toBe("whisper-1");
   });
 

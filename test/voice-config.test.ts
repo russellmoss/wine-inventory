@@ -103,7 +103,7 @@ describe("synthesizeStream", () => {
     expect(out).toBeInstanceOf(ReadableStream);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.elevenlabs.io/v1/text-to-speech/voiceABC/stream");
     expect(init.method).toBe("POST");
     const headers = init.headers as Record<string, string>;
