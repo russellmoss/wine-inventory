@@ -78,7 +78,7 @@ export function ConversationSidebar({
   return (
     <aside
       style={{
-        width: 280,
+        width: 320,
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",

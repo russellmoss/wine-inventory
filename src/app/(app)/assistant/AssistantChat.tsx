@@ -40,7 +40,7 @@ type AssistantEvent =
   | { type: "done" };
 
 // Readable conversation column width (Claude-native centered column).
-const CONTENT_MAX = 880;
+const CONTENT_MAX = 1040;
 
 const TOOL_LABELS: Record<string, string> = {
   query_brix: "Checking Brix readings",
