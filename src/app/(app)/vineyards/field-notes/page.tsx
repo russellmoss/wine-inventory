@@ -5,6 +5,7 @@ import { listFieldInputs } from "@/lib/fieldnotes/input-actions";
 import { parseFieldNoteRow } from "@/lib/fieldnotes/types";
 import { Card, Eyebrow } from "@/components/ui";
 import { FieldNotesRouter } from "./FieldNotesRouter";
+import { AdminViewToggle } from "../AdminViewToggle";
 import { type FormBlock } from "./manager/FieldNoteForm";
 import { type VineyardSummary } from "./admin/AdminDashboard";
 
@@ -27,12 +28,66 @@ const fieldNoteSelect = {
   createdAt: true,
 } as const;
 
-export default async function FieldNotesPage() {
+export default async function FieldNotesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; vineyard?: string }>;
+}) {
   const user = await requireReadyUser();
 
   if (user.role === "admin") {
-    // All active vineyards + their blocks (for labels), and the latest note per
-    // vineyard from ONE ordered findMany (pick latest per vineyard in JS).
+    const sp = await searchParams;
+    const view = sp.view === "manager" ? "manager" : "admin";
+
+    // Admin "Manager view": fill in a weekly report for any chosen vineyard.
+    if (view === "manager") {
+      const vineyardList = await prisma.vineyard.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      });
+      const selected = vineyardList.find((v) => v.id === sp.vineyard) ?? vineyardList[0];
+      if (!selected) {
+        return (
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
+            <AdminViewToggle view="manager" />
+            <Card>
+              <p style={{ color: "var(--text-secondary)", margin: 0 }}>
+                No active vineyards yet. Add one under Setup → Varieties &amp; vineyards.
+              </p>
+            </Card>
+          </div>
+        );
+      }
+      const vineyardId = selected.id;
+      const [blockRows, latestNote, inputLists] = await Promise.all([
+        prisma.vineyardBlock.findMany({
+          where: { vineyardId },
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, blockLabel: true, variety: { select: { name: true } } },
+        }),
+        getLatestFieldNote(vineyardId),
+        listFieldInputs(),
+      ]);
+      const blocks: FormBlock[] = blockRows.map((b, i) => ({
+        id: b.id,
+        blockLabel: b.blockLabel ?? `Block ${i + 1}`,
+        varietyName: b.variety?.name ?? null,
+      }));
+      return (
+        <div>
+          <AdminViewToggle view="manager" vineyards={vineyardList} selectedVineyardId={vineyardId} />
+          <FieldNotesRouter
+            key={vineyardId}
+            mode="manager"
+            manager={{ vineyardId, vineyardName: selected.name, blocks, latestNote, inputLists }}
+          />
+        </div>
+      );
+    }
+
+    // Admin dashboard (review). All active vineyards + their blocks (for labels),
+    // and the latest note per vineyard from ONE ordered findMany.
     const [vineyards, notes] = await Promise.all([
       prisma.vineyard.findMany({
         where: { isActive: true },
@@ -70,7 +125,10 @@ export default async function FieldNotesPage() {
     const topBriefing = notes.length > 0 ? parseFieldNoteRow(notes[0]) : null;
 
     return (
-      <FieldNotesRouter mode="admin" admin={{ vineyards: summaries, topBriefing }} />
+      <div>
+        <AdminViewToggle view="admin" />
+        <FieldNotesRouter mode="admin" admin={{ vineyards: summaries, topBriefing }} />
+      </div>
     );
   }
 
