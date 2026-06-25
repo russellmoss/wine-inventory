@@ -29,6 +29,8 @@ import { queryYieldTool } from "./tools/query-yield";
 import { queryRecentHarvestsTool } from "./tools/query-recent-harvests";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryFieldReportsTool } from "./tools/query-field-reports";
+import { getFieldReportFormTool } from "./tools/get-field-report-form";
+import { saveFieldReportTool } from "./tools/save-field-report";
 import { queryAuditTool } from "./tools/query-audit";
 import { logBrixTool } from "./tools/log-brix";
 import { deleteBrixTool } from "./tools/delete-brix";
@@ -45,6 +47,8 @@ const ALL_TOOLS: AssistantTool[] = [
   queryRecentHarvestsTool,
   queryVineyardStatusTool,
   queryFieldReportsTool,
+  getFieldReportFormTool,
+  saveFieldReportTool,
   queryAuditTool,
   logBrixTool,
   deleteBrixTool,
