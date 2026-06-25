@@ -2,7 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
-import { SYSTEM_PROMPT } from "./prompt";
+import { buildSystemPrompt } from "./prompt";
 
 // Repo standard (matches src/lib/fieldnotes/ai.ts): claude-opus-4-8. This is the
 // agentic tool-use loop, NOT the single-shot output_config call in ai.ts.
@@ -67,13 +67,14 @@ export async function runAssistant(opts: {
   }));
 
   const client = new Anthropic();
+  const system = buildSystemPrompt();
 
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       const stream = client.messages.stream({
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
+        system,
         tools: toolDefs,
         messages: convo,
       });
