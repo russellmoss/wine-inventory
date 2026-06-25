@@ -13,6 +13,7 @@ import { verifyProposal } from "./confirm";
 export type Committer = (user: AppUser, args: Record<string, unknown>) => Promise<{ message: string }>;
 
 import { commitLogBrix } from "./tools/log-brix";
+import { commitDeleteBrix } from "./tools/delete-brix";
 import { commitSetYieldEstimate } from "./tools/set-yield-estimate";
 import { commitAdjustInventory } from "./tools/adjust-inventory";
 
@@ -20,6 +21,7 @@ import { commitAdjustInventory } from "./tools/adjust-inventory";
 // cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
 const COMMITTERS: Record<string, Committer> = {
   log_brix: commitLogBrix,
+  delete_brix: commitDeleteBrix,
   set_yield_estimate: commitSetYieldEstimate,
   adjust_inventory: commitAdjustInventory,
 };

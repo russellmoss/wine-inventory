@@ -116,6 +116,31 @@ export const logBrix = action(
   },
 );
 
+/** Delete a single Brix reading (correcting a mistaken entry). Scoped + audited. */
+export const deleteBrixLog = action(
+  async ({ user, actor }, brixLogId: string): Promise<void> => {
+    const row = await prisma.brixLog.findUnique({
+      where: { id: brixLogId },
+      select: { id: true, vineyardId: true, brixValue: true, recordedAt: true },
+    });
+    if (!row) throw new ActionError("That Brix reading was not found.");
+    if (!canManagerAccessVineyard(user, row.vineyardId)) {
+      throw new ActionError("You can only work with your assigned vineyard.", "FORBIDDEN");
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.brixLog.delete({ where: { id: brixLogId } });
+      await writeAudit(tx, {
+        ...actor,
+        action: "DELETE",
+        entityType: "BrixLog",
+        entityId: brixLogId,
+        summary: `Deleted ${row.brixValue.toNumber()} °Bx reading`,
+      });
+    });
+    revalidatePath(PATH);
+  },
+);
+
 /** Record/update the pre-harvest yield estimate for a block+vintage (only the estimate). */
 export const recordYieldEstimate = action(
   async (

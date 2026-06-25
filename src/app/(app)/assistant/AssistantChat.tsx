@@ -34,6 +34,7 @@ const TOOL_LABELS: Record<string, string> = {
   query_vineyard_status: "Checking vineyard status",
   query_audit: "Searching the audit log",
   log_brix: "Preparing Brix entry",
+  delete_brix: "Finding the reading to delete",
   set_yield_estimate: "Preparing yield estimate",
   adjust_inventory: "Preparing inventory adjustment",
 };

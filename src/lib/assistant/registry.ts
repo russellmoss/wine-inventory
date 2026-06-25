@@ -29,6 +29,7 @@ import { queryYieldTool } from "./tools/query-yield";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryAuditTool } from "./tools/query-audit";
 import { logBrixTool } from "./tools/log-brix";
+import { deleteBrixTool } from "./tools/delete-brix";
 import { setYieldEstimateTool } from "./tools/set-yield-estimate";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
 
@@ -38,6 +39,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryVineyardStatusTool,
   queryAuditTool,
   logBrixTool,
+  deleteBrixTool,
   setYieldEstimateTool,
   adjustInventoryTool,
 ];
