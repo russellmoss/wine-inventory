@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AppUser } from "@/lib/access";
+import { parseVesselRef } from "@/lib/vessels/ref";
 
 /**
  * Shared scoping for assistant read tools. Scoping is the handler's job, NEVER
@@ -103,4 +104,29 @@ export async function findScopedBlocks(
     }
   }
   return blocks;
+}
+
+export type ResolvedVessel = Prisma.VesselGetPayload<{
+  include: { components: { include: { variety: true; vineyard: true } } };
+}>;
+
+/**
+ * Resolve a free-text vessel reference ("barrel 14", "tank 1") to the vessel,
+ * with its components loaded for preview. Vessels are cellar equipment and are
+ * NOT vineyard-scoped, so this is available to any ready user. Throws a clear,
+ * model-relayable message when the reference is unparseable or unknown.
+ */
+export async function resolveVessel(text: string): Promise<ResolvedVessel> {
+  const ref = parseVesselRef(text);
+  if (!ref) {
+    throw new Error(`I couldn't tell which vessel "${text}" is. Try e.g. "barrel 14" or "tank 1".`);
+  }
+  const vessel = await prisma.vessel.findFirst({
+    where: { type: ref.type, code: ref.code },
+    include: { components: { include: { variety: true, vineyard: true } } },
+  });
+  if (!vessel) {
+    throw new Error(`No ${ref.type === "BARREL" ? "barrel" : "tank"} "${ref.code}" exists.`);
+  }
+  return vessel;
 }
