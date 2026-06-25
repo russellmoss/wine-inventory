@@ -16,6 +16,8 @@ import { commitLogBrix } from "./tools/log-brix";
 import { commitDeleteBrix } from "./tools/delete-brix";
 import { commitSetYieldEstimate } from "./tools/set-yield-estimate";
 import { commitAdjustInventory } from "./tools/adjust-inventory";
+import { commitDbCreate } from "./tools/db-create";
+import { commitDbUpdate } from "./tools/db-update";
 import { commitDbDelete } from "./tools/db-delete";
 
 // Static map of tool name -> committer. No side-effect registration, no import
@@ -25,6 +27,8 @@ const COMMITTERS: Record<string, Committer> = {
   delete_brix: commitDeleteBrix,
   set_yield_estimate: commitSetYieldEstimate,
   adjust_inventory: commitAdjustInventory,
+  db_create: commitDbCreate,
+  db_update: commitDbUpdate,
   db_delete: commitDbDelete,
 };
 

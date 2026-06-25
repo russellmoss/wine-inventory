@@ -34,6 +34,8 @@ import { deleteBrixTool } from "./tools/delete-brix";
 import { setYieldEstimateTool } from "./tools/set-yield-estimate";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
 import { dbFindTool } from "./tools/db-find";
+import { dbCreateTool } from "./tools/db-create";
+import { dbUpdateTool } from "./tools/db-update";
 import { dbDeleteTool } from "./tools/db-delete";
 
 const ALL_TOOLS: AssistantTool[] = [
@@ -47,6 +49,8 @@ const ALL_TOOLS: AssistantTool[] = [
   setYieldEstimateTool,
   adjustInventoryTool,
   dbFindTool,
+  dbCreateTool,
+  dbUpdateTool,
   dbDeleteTool,
 ];
 
