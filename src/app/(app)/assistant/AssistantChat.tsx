@@ -16,6 +16,8 @@ type ProposalItem = {
 };
 type Item = TextItem | ProposalItem;
 
+type FeedbackState = { mode: "idle" | "form" | "sent"; rating?: "up" | "down" };
+
 type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
@@ -42,7 +44,31 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [feedback, setFeedback] = React.useState<Record<number, FeedbackState>>({});
   const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  function setFb(i: number, patch: Partial<FeedbackState>) {
+    setFeedback((prev) => {
+      const current: FeedbackState = prev[i] ?? { mode: "idle" };
+      return { ...prev, [i]: { ...current, ...patch } };
+    });
+  }
+
+  async function sendFeedback(i: number, rating: "up" | "down", comment?: string) {
+    setFb(i, { mode: "sent", rating });
+    const transcript = items
+      .filter((it): it is TextItem => it.kind === "text")
+      .map((it) => ({ role: it.role, content: it.content }));
+    try {
+      await fetch("/api/assistant/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating, comment, messages: transcript }),
+      });
+    } catch {
+      /* best-effort; don't disrupt the chat */
+    }
+  }
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -180,18 +206,34 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
               Try: <em>&ldquo;What&rsquo;s the latest Brix for Block 3?&rdquo;</em> or <em>&ldquo;Log 22.4 Brix for Block 3.&rdquo;</em>
             </div>
           ) : (
-            items.map((it, i) =>
-              it.kind === "text" ? (
-                <Bubble key={i} role={it.role} content={it.content} />
-              ) : (
-                <ProposalCard
-                  key={i}
-                  item={it}
-                  onConfirm={() => void confirmProposal(i)}
-                  onCancel={() => cancelProposal(i)}
-                />
-              ),
-            )
+            items.map((it, i) => {
+              if (it.kind === "proposal") {
+                return (
+                  <ProposalCard
+                    key={i}
+                    item={it}
+                    onConfirm={() => void confirmProposal(i)}
+                    onCancel={() => cancelProposal(i)}
+                  />
+                );
+              }
+              if (it.role === "user") return <Bubble key={i} role="user" content={it.content} />;
+              const streaming = busy && i === items.length - 1;
+              return (
+                <div key={i} style={{ alignSelf: "stretch" }}>
+                  <Bubble role="assistant" content={it.content} />
+                  {it.content && !streaming ? (
+                    <FeedbackBar
+                      state={feedback[i] ?? { mode: "idle" }}
+                      onUp={() => void sendFeedback(i, "up")}
+                      onAskDown={() => setFb(i, { mode: "form" })}
+                      onSubmitDown={(comment) => void sendFeedback(i, "down", comment)}
+                      onCancel={() => setFb(i, { mode: "idle" })}
+                    />
+                  ) : null}
+                </div>
+              );
+            })
           )}
           {status ? (
             <div style={{ alignSelf: "flex-start", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", fontStyle: "italic" }}>
@@ -237,6 +279,68 @@ function updateProposal(items: Item[], index: number, patch: Partial<ProposalIte
   const target = next[index];
   if (target && target.kind === "proposal") next[index] = { ...target, ...patch };
   return next;
+}
+
+function FeedbackBar({
+  state,
+  onUp,
+  onAskDown,
+  onSubmitDown,
+  onCancel,
+}: {
+  state: FeedbackState;
+  onUp: () => void;
+  onAskDown: () => void;
+  onSubmitDown: (comment: string) => void;
+  onCancel: () => void;
+}) {
+  const [comment, setComment] = React.useState("");
+
+  if (state.mode === "sent") {
+    return (
+      <div style={{ marginTop: 6, fontSize: "var(--text-body-sm)", color: "var(--text-muted)", fontFamily: "var(--font-body)" }}>
+        {state.rating === "down" ? "Thanks — logged. We'll use this to improve the assistant." : "Thanks for the feedback."}
+      </div>
+    );
+  }
+
+  const iconBtn: React.CSSProperties = {
+    background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: "var(--radius-md)",
+    fontSize: 15, lineHeight: 1, color: "var(--text-muted)",
+  };
+
+  return (
+    <div style={{ marginTop: 6, fontFamily: "var(--font-body)" }}>
+      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+        <button type="button" style={iconBtn} title="Helpful" aria-label="Helpful" onClick={onUp}>👍</button>
+        <button type="button" style={iconBtn} title="Not helpful" aria-label="Not helpful" onClick={onAskDown}>👎</button>
+      </div>
+      {state.mode === "form" ? (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, maxWidth: 520 }}>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={2}
+            placeholder="What was wrong? (this helps us fix it)"
+            autoFocus
+            style={{
+              resize: "none", padding: "8px 10px", borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border-strong)", background: "var(--surface-raised)",
+              fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", color: "var(--text-primary)",
+            }}
+          />
+          <div style={{ display: "flex", gap: "var(--space-2)" }}>
+            <Button size="sm" onClick={() => onSubmitDown(comment.trim())} disabled={comment.trim().length === 0}>
+              Submit
+            </Button>
+            <Button size="sm" variant="secondary" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function Bubble({ role, content }: { role: Role; content: string }) {

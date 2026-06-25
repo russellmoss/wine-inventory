@@ -551,3 +551,22 @@ model AssistantConfirmation {
 
   @@map("assistant_confirmation")
 }
+
+// User feedback on assistant replies (thumbs up/down + optional "what was wrong").
+// `conversation` snapshots the transcript so the feedback-fix agent has context.
+// `status` tracks the improvement loop: NEW -> TRIAGED (agent opened a PR) -> ...
+model AssistantFeedback {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  rating       String // "up" | "down"
+  comment      String? // free-text "what was wrong" (UNTRUSTED input)
+  conversation Json // [{ role, content }] transcript for context
+  actorUserId  String?
+  actorEmail   String
+  status       String   @default("NEW") // NEW | TRIAGED | RESOLVED | DISMISSED
+  prUrl        String?
+  notes        String?
+
+  @@index([status, createdAt])
+  @@map("assistant_feedback")
+}
