@@ -29,10 +29,11 @@ model User {
   mustChangePassword Boolean?    @default(false)
   passwordChangedAt  DateTime?
   assignedVineyardId String? // managers are scoped to one vineyard (Prisma-only; never declared to Better Auth)
-  sessions           Session[]
-  accounts           Account[]
-  assignedVineyard   Vineyard?   @relation("VineyardManagers", fields: [assignedVineyardId], references: [id], onDelete: SetNull)
-  fieldNotes         FieldNote[]
+  sessions               Session[]
+  accounts               Account[]
+  assignedVineyard       Vineyard?               @relation("VineyardManagers", fields: [assignedVineyardId], references: [id], onDelete: SetNull)
+  fieldNotes             FieldNote[]
+  assistantConversations AssistantConversation[]
 
   @@unique([email])
   @@index([assignedVineyardId])
@@ -569,4 +570,41 @@ model AssistantFeedback {
 
   @@index([status, createdAt])
   @@map("assistant_feedback")
+}
+
+// A persisted assistant chat. Scoped to the owning user (personal history, not
+// vineyard data). `title` is auto-generated from the first user message. Messages
+// cascade-delete with the conversation.
+model AssistantConversation {
+  id          String             @id @default(cuid())
+  ownerUserId String
+  title       String
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  owner       User               @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  messages    AssistantMessage[]
+
+  @@index([ownerUserId, updatedAt])
+  @@map("assistant_conversation")
+}
+
+// One persisted text turn in a conversation. Only "user"/"assistant" text turns
+// are stored (ephemeral write-proposal cards are not). `search_vector` is a
+// Postgres generated tsvector column (added in the migration, not managed by
+// Prisma) backing full-text search; it is intentionally absent from this model.
+model AssistantMessage {
+  id             String                  @id @default(cuid())
+  conversationId String
+  role           String // "user" | "assistant"
+  content        String                  @db.Text
+  metadata       Json?
+  createdAt      DateTime                @default(now())
+  // Postgres GENERATED tsvector over `content` (see migration). Declared here so
+  // Prisma tracks the column + GIN index and won't flag drift; never written by app.
+  searchVector   Unsupported("tsvector")? @map("search_vector")
+  conversation   AssistantConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([searchVector], type: Gin)
+  @@map("assistant_message")
 }
