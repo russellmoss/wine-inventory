@@ -20,14 +20,47 @@ type SaveInput = {
   fertilizers?: InputApplication[];
   blockStatuses?: Record<string, Partial<BlockStatus>>;
   generalNotes?: string;
+  // Set true only after the user has agreed to create a brand-new report for a
+  // date that has none yet (see the ask-before-create flow in run()).
+  confirmNewReport?: boolean;
 };
 
 type NewInput = { type: "SPRAY" | "FERTILIZER"; name: string };
 
+const TITLE = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
+const blockName = (label: string) => (/block/i.test(label) ? label : `Block ${label}`);
+
+/** Human-readable summary of the per-block edits the model is making (lead with
+ * the actual change, e.g. "Block 3 → Veraison 50%"), keyed by block label or id. */
+function summarizeBlockEdits(
+  edits: Record<string, Partial<BlockStatus>>,
+  blocks: { id: string; label: string }[],
+): string[] {
+  const idToLabel = new Map(blocks.map((b) => [b.id, b.label]));
+  const labelSet = new Map(blocks.map((b) => [b.label.toLowerCase().trim(), b.label]));
+  const out: string[] = [];
+  for (const [key, partial] of Object.entries(edits ?? {})) {
+    const label = idToLabel.get(key) ?? labelSet.get(key.toLowerCase().trim()) ?? key;
+    const parts: string[] = [];
+    if (partial.phenoStage !== undefined && partial.phenoStage !== null) {
+      const pct = partial.phenoStagePct != null ? ` ${partial.phenoStagePct}%` : "";
+      parts.push(`${TITLE(partial.phenoStage)}${pct}`);
+    }
+    if (partial.canopyDensity) parts.push(`canopy ${partial.canopyDensity.toLowerCase()}`);
+    if (partial.waterStress) parts.push(`water stress ${partial.waterStress.toLowerCase()}`);
+    if (partial.weedPressure) parts.push(`weeds ${partial.weedPressure.toLowerCase()}`);
+    if (partial.shootTip) parts.push(`shoot tips ${partial.shootTip.toLowerCase()}`);
+    if (partial.leafConditions && partial.leafConditions.length) parts.push(`leaf: ${partial.leafConditions.join(", ").toLowerCase()}`);
+    if (partial.diseasePestSpotted) parts.push("disease/pest spotted");
+    if (parts.length) out.push(`${blockName(label)} → ${parts.join(", ")}`);
+  }
+  return out;
+}
+
 export const saveFieldReportTool: AssistantTool = {
   name: "save_field_report",
   description:
-    "Create or update a weekly field report (manager report) for a vineyard on a date. Call get_field_report_form FIRST to learn the blocks and options. Pass only the parts you're setting; the rest carry forward. Block statuses are keyed by block label or id. This does NOT save immediately — it returns a preview the user must confirm.",
+    "Create or update a field report (manager report) for a vineyard on a date — this is the ONLY place per-block phenology (e.g. veraison %) and block conditions are stored. Call get_field_report_form FIRST to learn the blocks and options. Pass only the parts you're setting; the rest carry forward. Block statuses are keyed by block label or id. If NO report exists for the date yet, this tool will NOT create one silently — it returns a question for you to relay to the user (create a new report for that date, or add the change to the most recent existing report); proceed only after they choose, by re-calling with confirmNewReport:true (new) or reportDate set to the existing report's date (update). This does NOT save immediately — it returns a preview the user must confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -39,6 +72,7 @@ export const saveFieldReportTool: AssistantTool = {
       fertilizers: { type: "array", description: "Fertilizers applied, same shape as sprays.", items: { type: "object", additionalProperties: true } },
       blockStatuses: { type: "object", description: "Per-block status keyed by block label or id.", additionalProperties: true },
       generalNotes: { type: "string", description: "Free-text general notes." },
+      confirmNewReport: { type: "boolean", description: "Set true ONLY after the user agreed to create a brand-new report for a date that has none." },
     },
   },
   async run(ctx, rawInput) {
@@ -59,6 +93,21 @@ export const saveFieldReportTool: AssistantTool = {
     const existing = notes.find((n) => n.weekOf === reportDate) ?? null;
     const latest = notes[0] ?? null;
     const blockIds = blocks.map((b) => b.id);
+
+    // Ask before fabricating a report. If there's no report for this date and one
+    // or more reports already exist, don't silently create — hand the model a
+    // question to relay so the user picks new-vs-update. (First-ever report for
+    // the vineyard has nothing to attach to, so we let that create directly.)
+    if (!existing && latest && !input.confirmNewReport) {
+      const edits = summarizeBlockEdits(input.blockStatuses ?? {}, blocks.map((b) => ({ id: b.id, label: b.blockLabel ?? "(unlabeled)" })));
+      const changeText = edits.length ? edits.join("; ") : "these changes";
+      return (
+        `No field report exists for ${reportDate} at ${vineyard.name}. The most recent report is dated ${latest.weekOf}. ` +
+        `Ask the user which they want: (a) create a NEW report dated ${reportDate} for ${changeText}, or ` +
+        `(b) add it to the existing ${latest.weekOf} report. ` +
+        `Then call save_field_report again — for (a) add confirmNewReport:true; for (b) set reportDate:"${latest.weekOf}". Do not assume; wait for their choice.`
+      );
+    }
 
     // Base = existing report (edit) or carried-forward defaults (new). assembleBlockStatuses
     // overlays the model's edits (by id or label) and guarantees coverage of every block.
@@ -95,8 +144,29 @@ export const saveFieldReportTool: AssistantTool = {
       generalNotes,
     };
 
-    const mode = existing ? "Update" : "Create";
-    let preview = `${mode} the ${reportDate} report for ${vineyard.name}: rainfall ${weatherData.rainfallMm ?? "—"} mm, ${spraysApplied.length} spray(s), ${fertilizersApplied.length} fertilizer(s), ${blockIds.length} block(s) covered.`;
+    // Lead the preview with the ACTUAL change the user asked for, not the report
+    // envelope. e.g. "Set Block 3 → Veraison 50%" rather than "rainfall — mm, 0 sprays".
+    const blockEditList = summarizeBlockEdits(
+      input.blockStatuses ?? {},
+      blocks.map((b) => ({ id: b.id, label: b.blockLabel ?? "(unlabeled)" })),
+    );
+    const changeBits: string[] = [...blockEditList];
+    if (input.weather && (input.weather.rainfallMm != null || input.weather.maxTempC != null || input.weather.minTempC != null)) {
+      changeBits.push(`weather (rainfall ${input.weather.rainfallMm ?? "—"} mm)`);
+    }
+    if (input.sprays?.length) changeBits.push(`${input.sprays.length} spray(s)`);
+    if (input.fertilizers?.length) changeBits.push(`${input.fertilizers.length} fertilizer(s)`);
+    if (input.generalNotes) changeBits.push("general notes");
+    const changeSummary = changeBits.length ? changeBits.join("; ") : "no field changes";
+
+    let preview: string;
+    if (existing) {
+      preview = `Update the ${reportDate} report for ${vineyard.name}: ${changeSummary}. (Other fields unchanged.)`;
+    } else {
+      preview =
+        `Create a NEW ${reportDate} report for ${vineyard.name} and set: ${changeSummary}. ` +
+        `Other blocks carry forward${latest ? ` from the ${latest.weekOf} report` : ""}; rainfall/sprays/fertilizers are left blank unless listed above.`;
+    }
     if (newInputs.length) preview += ` New inputs to add: ${newInputs.map((n) => n.name).join(", ")}.`;
 
     const token = signProposal("save_field_report", { payload, newInputs, vineyardName: vineyard.name, reportDate });
