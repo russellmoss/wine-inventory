@@ -17,6 +17,7 @@ export type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
   | { type: "proposal"; tool: string; preview: string; token: string }
+  | { type: "conversation"; id: string; title?: string }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -45,13 +46,21 @@ export async function runAssistant(opts: {
   user: AppUser;
   messages: ChatMessage[];
   send: (e: AssistantEvent) => void;
-}): Promise<void> {
+}): Promise<string> {
   const { user, messages, send } = opts;
 
+  // Accumulate everything streamed to the user so the caller can persist the
+  // assistant turn. Mirrors what the UI renders (all text deltas concatenated).
+  let assistantText = "";
+  const emit = (e: AssistantEvent) => {
+    if (e.type === "text") assistantText += e.text;
+    send(e);
+  };
+
   if (!process.env.ANTHROPIC_API_KEY) {
-    send({ type: "error", message: "The assistant is not configured (missing API key)." });
-    send({ type: "done" });
-    return;
+    emit({ type: "error", message: "The assistant is not configured (missing API key)." });
+    emit({ type: "done" });
+    return assistantText;
   }
 
   const tools = getToolsFor(user);
@@ -78,7 +87,7 @@ export async function runAssistant(opts: {
         tools: toolDefs,
         messages: convo,
       });
-      stream.on("text", (delta) => send({ type: "text", text: delta }));
+      stream.on("text", (delta) => emit({ type: "text", text: delta }));
       const msg = await stream.finalMessage();
 
       if (msg.stop_reason === "tool_use") {
@@ -90,7 +99,7 @@ export async function runAssistant(opts: {
         );
         const results: Anthropic.ToolResultBlockParam[] = [];
         for (const tu of toolUses) {
-          send({ type: "tool", name: tu.name, phase: "start" });
+          emit({ type: "tool", name: tu.name, phase: "start" });
           try {
             const tool = tools.find((t) => t.name === tu.name);
             if (!tool) throw new Error(`Unknown tool: ${tu.name}`);
@@ -100,13 +109,13 @@ export async function runAssistant(opts: {
             if (proposal) {
               // Don't commit. Surface a confirm card to the user; tell the model
               // to stop and await the out-of-band confirmation.
-              send({ type: "proposal", tool: tu.name, preview: proposal.preview, token: proposal.token });
+              emit({ type: "proposal", tool: tu.name, preview: proposal.preview, token: proposal.token });
               results.push({
                 type: "tool_result",
                 tool_use_id: tu.id,
                 content: `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
               });
-              send({ type: "tool", name: tu.name, phase: "end", ok: true });
+              emit({ type: "tool", name: tu.name, phase: "end", ok: true });
               continue;
             }
 
@@ -115,7 +124,7 @@ export async function runAssistant(opts: {
               tool_use_id: tu.id,
               content: typeof out === "string" ? out : JSON.stringify(out),
             });
-            send({ type: "tool", name: tu.name, phase: "end", ok: true });
+            emit({ type: "tool", name: tu.name, phase: "end", ok: true });
           } catch (e) {
             results.push({
               type: "tool_result",
@@ -123,7 +132,7 @@ export async function runAssistant(opts: {
               content: e instanceof Error ? e.message : "Tool failed.",
               is_error: true,
             });
-            send({ type: "tool", name: tu.name, phase: "end", ok: false });
+            emit({ type: "tool", name: tu.name, phase: "end", ok: false });
           }
         }
         convo.push({ role: "user", content: results });
@@ -137,7 +146,7 @@ export async function runAssistant(opts: {
       }
 
       if (msg.stop_reason === "refusal") {
-        send({ type: "error", message: "I can't help with that request." });
+        emit({ type: "error", message: "I can't help with that request." });
         break;
       }
 
@@ -146,11 +155,13 @@ export async function runAssistant(opts: {
     }
   } catch (e) {
     if (e instanceof Anthropic.RateLimitError) {
-      send({ type: "error", message: "The assistant is busy right now. Try again in a moment." });
+      emit({ type: "error", message: "The assistant is busy right now. Try again in a moment." });
     } else {
-      send({ type: "error", message: e instanceof Error ? e.message : "Assistant error." });
+      emit({ type: "error", message: e instanceof Error ? e.message : "Assistant error." });
     }
   } finally {
-    send({ type: "done" });
+    emit({ type: "done" });
   }
+
+  return assistantText;
 }
