@@ -200,5 +200,11 @@ export function useMicCapture(): MicCapture {
 
   React.useEffect(() => () => dispose(), [dispose]);
 
-  return { levelRef, ensureReady, beginListen, beginBargeIn, endTurn, dispose };
+  // Stable object identity: consumers (useVoiceSession) put this in effect deps,
+  // so a fresh literal every render would cause a start/stop loop. All members
+  // are stable (refs + empty-dep useCallbacks), so this memo never changes.
+  return React.useMemo(
+    () => ({ levelRef, ensureReady, beginListen, beginBargeIn, endTurn, dispose }),
+    [levelRef, ensureReady, beginListen, beginBargeIn, endTurn, dispose],
+  );
 }

@@ -34,20 +34,27 @@ const STATE_LABEL: Record<VoiceState, string> = {
 
 export function VoiceOverlay({ initialHistory, conversationId, onConversationId, onTurn, onClose }: Props) {
   const session = useVoiceSession({ initialHistory, conversationId, onConversationId, onTurn });
-  const { start, stop } = session;
   const captionsRef = React.useRef<HTMLDivElement>(null);
 
+  // Keep a live handle to the session so the mount-once effect always calls the
+  // latest start/stop without taking them as deps (which would retrigger it).
+  const sessionRef = React.useRef(session);
   React.useEffect(() => {
-    void start();
-    return () => stop();
-  }, [start, stop]);
+    sessionRef.current = session;
+  });
+
+  // Start the hands-free loop exactly once on mount; stop exactly once on unmount.
+  React.useEffect(() => {
+    void sessionRef.current.start();
+    return () => sessionRef.current.stop();
+  }, []);
 
   React.useEffect(() => {
     captionsRef.current?.scrollTo({ top: captionsRef.current.scrollHeight, behavior: "smooth" });
   }, [session.captions]);
 
   function close() {
-    stop();
+    sessionRef.current.stop();
     onClose();
   }
 
