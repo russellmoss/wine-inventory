@@ -28,12 +28,18 @@ import { queryBrixTool } from "./tools/query-brix";
 import { queryYieldTool } from "./tools/query-yield";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryAuditTool } from "./tools/query-audit";
+import { logBrixTool } from "./tools/log-brix";
+import { setYieldEstimateTool } from "./tools/set-yield-estimate";
+import { adjustInventoryTool } from "./tools/adjust-inventory";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
   queryYieldTool,
   queryVineyardStatusTool,
   queryAuditTool,
+  logBrixTool,
+  setYieldEstimateTool,
+  adjustInventoryTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */

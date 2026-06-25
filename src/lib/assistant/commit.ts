@@ -12,10 +12,17 @@ import { verifyProposal } from "./confirm";
  */
 export type Committer = (user: AppUser, args: Record<string, unknown>) => Promise<{ message: string }>;
 
-// Static map of tool name -> committer. Write tools (Unit 4) add their committer
-// here by importing it directly (no side-effect registration, no import cycle:
-// commit.ts imports the tool modules; the tool modules never import commit.ts).
-const COMMITTERS: Record<string, Committer> = {};
+import { commitLogBrix } from "./tools/log-brix";
+import { commitSetYieldEstimate } from "./tools/set-yield-estimate";
+import { commitAdjustInventory } from "./tools/adjust-inventory";
+
+// Static map of tool name -> committer. No side-effect registration, no import
+// cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
+const COMMITTERS: Record<string, Committer> = {
+  log_brix: commitLogBrix,
+  set_yield_estimate: commitSetYieldEstimate,
+  adjust_inventory: commitAdjustInventory,
+};
 
 /**
  * Verify a confirmation token, burn its nonce (single-use, BEFORE committing so a

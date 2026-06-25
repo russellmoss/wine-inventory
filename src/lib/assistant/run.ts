@@ -16,8 +16,24 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
+  | { type: "proposal"; tool: string; preview: string; token: string }
   | { type: "error"; message: string }
   | { type: "done" };
+
+type WriteProposal = { needsConfirmation: true; preview: string; token: string };
+
+function asProposal(out: unknown): WriteProposal | null {
+  if (
+    out &&
+    typeof out === "object" &&
+    (out as { needsConfirmation?: unknown }).needsConfirmation === true &&
+    typeof (out as { preview?: unknown }).preview === "string" &&
+    typeof (out as { token?: unknown }).token === "string"
+  ) {
+    return out as WriteProposal;
+  }
+  return null;
+}
 
 /**
  * Run the multi-turn tool-use loop and push events to `send` as they happen.
@@ -78,6 +94,21 @@ export async function runAssistant(opts: {
             const tool = tools.find((t) => t.name === tu.name);
             if (!tool) throw new Error(`Unknown tool: ${tu.name}`);
             const out = await tool.run({ user }, tu.input);
+
+            const proposal = tool.kind === "write" ? asProposal(out) : null;
+            if (proposal) {
+              // Don't commit. Surface a confirm card to the user; tell the model
+              // to stop and await the out-of-band confirmation.
+              send({ type: "proposal", tool: tu.name, preview: proposal.preview, token: proposal.token });
+              results.push({
+                type: "tool_result",
+                tool_use_id: tu.id,
+                content: `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
+              });
+              send({ type: "tool", name: tu.name, phase: "end", ok: true });
+              continue;
+            }
+
             results.push({
               type: "tool_result",
               tool_use_id: tu.id,

@@ -4,11 +4,21 @@ import React from "react";
 import { Button } from "@/components/ui";
 
 type Role = "user" | "assistant";
-type ChatMessage = { role: Role; content: string };
+
+type TextItem = { kind: "text"; role: Role; content: string };
+type ProposalItem = {
+  kind: "proposal";
+  preview: string;
+  token: string;
+  status: "pending" | "applying" | "done" | "error";
+  result?: string;
+};
+type Item = TextItem | ProposalItem;
 
 type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
+  | { type: "proposal"; tool: string; preview: string; token: string }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -17,10 +27,13 @@ const TOOL_LABELS: Record<string, string> = {
   query_yield: "Checking yields",
   query_vineyard_status: "Checking vineyard status",
   query_audit: "Searching the audit log",
+  log_brix: "Preparing Brix entry",
+  set_yield_estimate: "Preparing yield estimate",
+  adjust_inventory: "Preparing inventory adjustment",
 };
 
 export function AssistantChat({ userLabel }: { userLabel: string }) {
-  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const [items, setItems] = React.useState<Item[]>([]);
   const [input, setInput] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
@@ -29,7 +42,20 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, status]);
+  }, [items, status]);
+
+  function appendText(text: string) {
+    setStatus(null);
+    setItems((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.kind === "text" && last.role === "assistant") {
+        const next = [...prev];
+        next[next.length - 1] = { ...last, content: last.content + text };
+        return next;
+      }
+      return [...prev, { kind: "text", role: "assistant", content: text }];
+    });
+  }
 
   async function send() {
     const text = input.trim();
@@ -37,9 +63,13 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
     setError(null);
     setInput("");
 
-    const history: ChatMessage[] = [...messages, { role: "user", content: text }];
-    // Show the user turn + an empty assistant turn we stream into.
-    setMessages([...history, { role: "assistant", content: "" }]);
+    // Conversation history for the API = prior text turns + this user turn.
+    const history = items
+      .filter((it): it is TextItem => it.kind === "text")
+      .map((it) => ({ role: it.role, content: it.content }));
+    history.push({ role: "user", content: text });
+
+    setItems((prev) => [...prev, { kind: "text", role: "user", content: text }]);
     setBusy(true);
     setStatus("Thinking…");
 
@@ -60,21 +90,17 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
 
       const handle = (evt: AssistantEvent) => {
         if (evt.type === "text") {
-          setStatus(null);
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last && last.role === "assistant") next[next.length - 1] = { ...last, content: last.content + evt.text };
-            return next;
-          });
+          appendText(evt.text);
         } else if (evt.type === "tool") {
           setStatus(evt.phase === "start" ? `${TOOL_LABELS[evt.name] ?? evt.name}…` : "Thinking…");
+        } else if (evt.type === "proposal") {
+          setStatus(null);
+          setItems((prev) => [...prev, { kind: "proposal", preview: evt.preview, token: evt.token, status: "pending" }]);
         } else if (evt.type === "error") {
           setError(evt.message);
         }
       };
 
-      // Parse newline-delimited JSON as it arrives.
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -97,13 +123,32 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
     } finally {
       setBusy(false);
       setStatus(null);
-      // Drop a trailing empty assistant bubble if the model said nothing.
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.role === "assistant" && last.content === "") return prev.slice(0, -1);
-        return prev;
-      });
     }
+  }
+
+  async function confirmProposal(index: number) {
+    const target = items[index];
+    if (!target || target.kind !== "proposal" || target.status !== "pending") return;
+    setItems((prev) => updateProposal(prev, index, { status: "applying" }));
+    try {
+      const res = await fetch("/api/assistant/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: target.token }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        setItems((prev) => updateProposal(prev, index, { status: "done", result: data.message }));
+      } else {
+        setItems((prev) => updateProposal(prev, index, { status: "error", result: data?.error ?? "Could not apply." }));
+      }
+    } catch {
+      setItems((prev) => updateProposal(prev, index, { status: "error", result: "Network error." }));
+    }
+  }
+
+  function cancelProposal(index: number) {
+    setItems((prev) => updateProposal(prev, index, { status: "error", result: "Cancelled." }));
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -130,12 +175,23 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
           border: "1px solid var(--border-strong)",
         }}
       >
-        {messages.length === 0 ? (
-          <div style={{ margin: "auto", textAlign: "center", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", maxWidth: 420 }}>
-            Try: <em>&ldquo;What&rsquo;s the latest Brix for Block 3?&rdquo;</em>
+        {items.length === 0 ? (
+          <div style={{ margin: "auto", textAlign: "center", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", maxWidth: 440 }}>
+            Try: <em>&ldquo;What&rsquo;s the latest Brix for Block 3?&rdquo;</em> or <em>&ldquo;Log 22.4 Brix for Block 3.&rdquo;</em>
           </div>
         ) : (
-          messages.map((m, i) => <Bubble key={i} role={m.role} content={m.content} />)
+          items.map((it, i) =>
+            it.kind === "text" ? (
+              <Bubble key={i} role={it.role} content={it.content} />
+            ) : (
+              <ProposalCard
+                key={i}
+                item={it}
+                onConfirm={() => void confirmProposal(i)}
+                onCancel={() => cancelProposal(i)}
+              />
+            ),
+          )
         )}
         {status ? (
           <div style={{ alignSelf: "flex-start", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", fontStyle: "italic" }}>
@@ -171,6 +227,13 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
   );
 }
 
+function updateProposal(items: Item[], index: number, patch: Partial<ProposalItem>): Item[] {
+  const next = [...items];
+  const target = next[index];
+  if (target && target.kind === "proposal") next[index] = { ...target, ...patch };
+  return next;
+}
+
 function Bubble({ role, content }: { role: Role; content: string }) {
   const isUser = role === "user";
   return (
@@ -191,6 +254,43 @@ function Bubble({ role, content }: { role: Role; content: string }) {
       }}
     >
       {content}
+    </div>
+  );
+}
+
+function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onConfirm: () => void; onCancel: () => void }) {
+  const done = item.status === "done";
+  const errored = item.status === "error";
+  return (
+    <div
+      style={{
+        alignSelf: "stretch",
+        padding: "var(--space-3) var(--space-4)",
+        borderRadius: "var(--radius-lg)",
+        background: "var(--surface-raised)",
+        border: `1px solid ${done ? "var(--positive)" : errored ? "var(--danger)" : "var(--accent)"}`,
+        fontFamily: "var(--font-body)",
+      }}
+    >
+      <div style={{ fontSize: "var(--text-body-sm)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", marginBottom: 6 }}>
+        Confirm change
+      </div>
+      <div style={{ fontSize: "var(--text-body)", color: "var(--text-primary)", marginBottom: 12 }}>{item.preview}</div>
+
+      {item.status === "pending" || item.status === "applying" ? (
+        <div style={{ display: "flex", gap: "var(--space-2)" }}>
+          <Button onClick={onConfirm} disabled={item.status === "applying"}>
+            {item.status === "applying" ? "Applying…" : "Confirm"}
+          </Button>
+          <Button variant="secondary" onClick={onCancel} disabled={item.status === "applying"}>
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <div style={{ fontSize: "var(--text-body-sm)", color: done ? "var(--positive)" : "var(--danger)" }}>
+          {done ? `✓ ${item.result ?? "Applied."}` : item.result ?? "Not applied."}
+        </div>
+      )}
     </div>
   );
 }

@@ -36,3 +36,45 @@ export async function resolveVineyards(
     select: { id: true, name: true },
   });
 }
+
+export type ScopedBlock = {
+  id: string;
+  label: string;
+  vineyardName: string;
+  varietyName: string | null;
+};
+
+/**
+ * Find blocks the user may access, narrowed by partial block label and/or
+ * vineyard name. Scoped to the manager's vineyard (admins see all). Used by write
+ * tools to resolve a single target block before proposing a change.
+ */
+export async function findScopedBlocks(
+  user: AppUser,
+  opts: { block?: string; vineyard?: string },
+): Promise<ScopedBlock[]> {
+  const where: Prisma.VineyardBlockWhereInput = {};
+  if (user.role !== "admin") {
+    if (!user.assignedVineyardId) return [];
+    where.vineyardId = user.assignedVineyardId;
+  }
+  if (opts.vineyard) where.vineyard = { name: { contains: opts.vineyard, mode: "insensitive" } };
+  if (opts.block) where.blockLabel = { contains: opts.block, mode: "insensitive" };
+  const rows = await prisma.vineyardBlock.findMany({
+    where,
+    take: 10,
+    orderBy: { sortOrder: "asc" },
+    select: {
+      id: true,
+      blockLabel: true,
+      vineyard: { select: { name: true } },
+      variety: { select: { name: true } },
+    },
+  });
+  return rows.map((b) => ({
+    id: b.id,
+    label: b.blockLabel ?? "(unlabeled)",
+    vineyardName: b.vineyard.name,
+    varietyName: b.variety?.name ?? null,
+  }));
+}
