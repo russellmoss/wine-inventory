@@ -9,6 +9,7 @@ import { resolveExactlyOne } from "./resolve";
 type SetYieldInput = {
   block?: string;
   vineyard?: string;
+  variety?: string;
   estimate?: number;
   unit?: string;
   vintageYear?: number;
@@ -29,13 +30,14 @@ export const setYieldEstimateTool: AssistantTool = {
   inputSchema: {
     type: "object",
     properties: {
-      block: { type: "string", description: "Block label, e.g. 'Block 2'." },
+      block: { type: "string", description: "Block label, e.g. 'Block 2'. Use the bare label, not the variety in parentheses." },
       vineyard: { type: "string", description: "Vineyard name, to disambiguate the block (optional for a manager)." },
+      variety: { type: "string", description: "Grape variety, to disambiguate when the block isn't named, e.g. 'Grenache'." },
       estimate: { type: "number", description: "The estimated yield, a non-negative number." },
       unit: { type: "string", description: "Weight unit: 'kg' (default) or 'lb'." },
       vintageYear: { type: "integer", description: "Vintage year the estimate applies to, e.g. 2024." },
     },
-    required: ["block", "estimate", "vintageYear"],
+    required: ["estimate", "vintageYear"],
   },
   async run(ctx, rawInput) {
     const input = (rawInput ?? {}) as SetYieldInput;
@@ -45,11 +47,15 @@ export const setYieldEstimateTool: AssistantTool = {
     if (typeof input.vintageYear !== "number" || !Number.isInteger(input.vintageYear)) {
       throw new Error("Specify the vintage year (e.g. 2024).");
     }
-    const blocks = await findScopedBlocks(ctx.user, { block: input.block, vineyard: input.vineyard });
+    const blocks = await findScopedBlocks(ctx.user, {
+      block: input.block,
+      vineyard: input.vineyard,
+      variety: input.variety,
+    });
     const block = resolveExactlyOne(blocks, {
-      describe: (b) => `${b.label} (${b.vineyardName})`,
-      noneMsg: `No block matches "${input.block ?? ""}" that you can access.`,
-      manyMsg: `Several blocks match "${input.block ?? ""}"`,
+      describe: (b) => `${b.label}${b.varietyName ? ` (${b.varietyName})` : ""} in ${b.vineyardName}`,
+      noneMsg: `No block matches that you can access (block "${input.block ?? "?"}"${input.variety ? `, variety "${input.variety}"` : ""}${input.vineyard ? `, vineyard "${input.vineyard}"` : ""}).`,
+      manyMsg: `Several blocks match`,
     });
 
     const unit = normUnit(input.unit);
