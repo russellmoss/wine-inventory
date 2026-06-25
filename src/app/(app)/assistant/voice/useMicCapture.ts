@@ -121,6 +121,17 @@ export function useMicCapture(): MicCapture {
   const beginListen = React.useCallback((onUtterance: (b: Blob) => void) => {
     const stream = streamRef.current;
     if (!stream) return;
+    // Re-entrancy guard: never stack a second MediaRecorder on the same stream.
+    // Drop the prior one's onstop so its trailing blob can't fire a stale turn.
+    const prev = recorderRef.current;
+    if (prev && prev.state !== "inactive") {
+      prev.onstop = null;
+      try {
+        prev.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
     onUtteranceRef.current = onUtterance;
     vadRef.current.reset();
     chunksRef.current = [];
@@ -166,12 +177,14 @@ export function useMicCapture(): MicCapture {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     const rec = recorderRef.current;
-    if (rec && rec.state !== "inactive") {
-      rec.onstop = null;
-      try {
-        rec.stop();
-      } catch {
-        /* already stopped */
+    if (rec) {
+      rec.onstop = null; // drop even if inactive, so a scheduled onstop can't fire
+      if (rec.state !== "inactive") {
+        try {
+          rec.stop();
+        } catch {
+          /* already stopped */
+        }
       }
     }
     recorderRef.current = null;

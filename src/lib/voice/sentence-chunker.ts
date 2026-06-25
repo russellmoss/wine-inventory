@@ -8,8 +8,11 @@
 // when the assistant stream ends.
 
 // Lowercased tokens that end in "." but don't end a sentence.
+// Note: deliberately NOT including "no"/"fig" — they collide with the common
+// words "no"/"fig" and would suppress legitimate sentence boundaries
+// ("...the answer is no." would never flush as its own sentence).
 const ABBREVIATIONS = new Set([
-  "mr", "mrs", "ms", "dr", "st", "vs", "etc", "approx", "no", "fig",
+  "mr", "mrs", "ms", "dr", "st", "vs", "etc", "approx",
   "e.g", "i.e", "a.m", "p.m", "u.s",
 ]);
 
