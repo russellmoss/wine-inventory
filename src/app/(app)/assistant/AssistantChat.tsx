@@ -22,6 +22,9 @@ type AssistantEvent =
   | { type: "error"; message: string }
   | { type: "done" };
 
+// Readable conversation column width (Claude-native centered column).
+const CONTENT_MAX = 880;
+
 const TOOL_LABELS: Record<string, string> = {
   query_brix: "Checking Brix readings",
   query_yield: "Checking yields",
@@ -158,70 +161,71 @@ export function AssistantChat({ userLabel }: { userLabel: string }) {
     }
   }
 
+  const column: React.CSSProperties = { width: "100%", maxWidth: CONTENT_MAX, marginLeft: "auto", marginRight: "auto" };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - var(--space-9))", maxWidth: 760, margin: "0 auto" }}>
-      <div style={{ marginBottom: "var(--space-4)" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 7rem)", minHeight: 420 }}>
+      <div style={{ ...column, paddingBottom: "var(--space-3)" }}>
         <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: "var(--text-h2)", margin: 0 }}>Assistant</h1>
         <p style={{ fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", color: "var(--text-muted)", marginTop: 4 }}>
           Ask about your vineyards in plain language, {userLabel.split("@")[0]}.
         </p>
       </div>
 
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "var(--space-3)",
-          padding: "var(--space-4)", background: "var(--surface-sunken)", borderRadius: "var(--radius-lg)",
-          border: "1px solid var(--border-strong)",
-        }}
-      >
-        {items.length === 0 ? (
-          <div style={{ margin: "auto", textAlign: "center", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", maxWidth: 440 }}>
-            Try: <em>&ldquo;What&rsquo;s the latest Brix for Block 3?&rdquo;</em> or <em>&ldquo;Log 22.4 Brix for Block 3.&rdquo;</em>
-          </div>
-        ) : (
-          items.map((it, i) =>
-            it.kind === "text" ? (
-              <Bubble key={i} role={it.role} content={it.content} />
-            ) : (
-              <ProposalCard
-                key={i}
-                item={it}
-                onConfirm={() => void confirmProposal(i)}
-                onCancel={() => cancelProposal(i)}
-              />
-            ),
-          )
-        )}
-        {status ? (
-          <div style={{ alignSelf: "flex-start", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", fontStyle: "italic" }}>
-            {status}
-          </div>
-        ) : null}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
+        <div style={{ ...column, display: "flex", flexDirection: "column", gap: "var(--space-5)", padding: "var(--space-4) 0 var(--space-6)" }}>
+          {items.length === 0 ? (
+            <div style={{ margin: "auto", textAlign: "center", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body)", maxWidth: 460, paddingTop: "var(--space-8)" }}>
+              Try: <em>&ldquo;What&rsquo;s the latest Brix for Block 3?&rdquo;</em> or <em>&ldquo;Log 22.4 Brix for Block 3.&rdquo;</em>
+            </div>
+          ) : (
+            items.map((it, i) =>
+              it.kind === "text" ? (
+                <Bubble key={i} role={it.role} content={it.content} />
+              ) : (
+                <ProposalCard
+                  key={i}
+                  item={it}
+                  onConfirm={() => void confirmProposal(i)}
+                  onCancel={() => cancelProposal(i)}
+                />
+              ),
+            )
+          )}
+          {status ? (
+            <div style={{ alignSelf: "flex-start", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", fontStyle: "italic" }}>
+              {status}
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {error ? (
-        <div style={{ marginTop: "var(--space-2)", color: "var(--danger)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)" }}>{error}</div>
-      ) : null}
-
-      <div style={{ display: "flex", gap: "var(--space-2)", marginTop: "var(--space-3)", alignItems: "flex-end" }}>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          rows={1}
-          placeholder="Ask a question…"
-          disabled={busy}
-          style={{
-            flex: 1, resize: "none", padding: "10px 12px", borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border-strong)", background: "var(--surface-raised)",
-            fontFamily: "var(--font-body)", fontSize: "var(--text-body)", color: "var(--text-primary)",
-            minHeight: 44, maxHeight: 160,
-          }}
-        />
-        <Button onClick={() => void send()} disabled={busy || input.trim().length === 0}>
-          {busy ? "…" : "Send"}
-        </Button>
+      <div style={{ borderTop: "1px solid var(--border-strong)", paddingTop: "var(--space-3)", background: "var(--surface-page)" }}>
+        {error ? (
+          <div style={{ ...column, color: "var(--danger)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", paddingBottom: "var(--space-2)" }}>{error}</div>
+        ) : null}
+        <div style={{ ...column, display: "flex", gap: "var(--space-2)", alignItems: "flex-end" }}>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            rows={1}
+            placeholder="Ask a question…"
+            disabled={busy}
+            style={{
+              flex: 1, resize: "none", padding: "14px 16px", borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-strong)", background: "var(--surface-raised)",
+              fontFamily: "var(--font-body)", fontSize: "var(--text-body)", color: "var(--text-primary)",
+              minHeight: 52, maxHeight: 200, boxShadow: "var(--shadow-md)",
+            }}
+          />
+          <Button size="lg" onClick={() => void send()} disabled={busy || input.trim().length === 0}>
+            {busy ? "…" : "Send"}
+          </Button>
+        </div>
+        <div style={{ ...column, fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-body)", paddingTop: 6, paddingBottom: 2 }}>
+          The assistant can make mistakes. It only acts on your permitted vineyards, and changes need your confirmation.
+        </div>
       </div>
     </div>
   );
@@ -236,16 +240,33 @@ function updateProposal(items: Item[], index: number, patch: Partial<ProposalIte
 
 function Bubble({ role, content }: { role: Role; content: string }) {
   const isUser = role === "user";
+  if (isUser) {
+    return (
+      <div
+        style={{
+          alignSelf: "flex-end",
+          maxWidth: "85%",
+          padding: "10px 16px",
+          borderRadius: "var(--radius-lg)",
+          background: "var(--accent)",
+          color: "var(--accent-on)",
+          fontFamily: "var(--font-body)",
+          fontSize: "var(--text-body)",
+          lineHeight: "var(--leading-normal)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
+        {content}
+      </div>
+    );
+  }
+  // Assistant: flowing text, no bubble (Claude-native).
   return (
     <div
       style={{
-        alignSelf: isUser ? "flex-end" : "flex-start",
-        maxWidth: "85%",
-        padding: "10px 14px",
-        borderRadius: "var(--radius-lg)",
-        background: isUser ? "var(--accent)" : "var(--surface-raised)",
-        color: isUser ? "var(--accent-on)" : "var(--text-primary)",
-        border: isUser ? "none" : "1px solid var(--border-strong)",
+        alignSelf: "stretch",
+        color: "var(--text-primary)",
         fontFamily: "var(--font-body)",
         fontSize: "var(--text-body)",
         lineHeight: "var(--leading-normal)",
