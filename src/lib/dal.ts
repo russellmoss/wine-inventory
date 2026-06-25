@@ -6,8 +6,46 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { accessDecision, type AppUser } from "@/lib/access";
 
-export { accessDecision } from "@/lib/access";
+export { accessDecision, canManagerAccessVineyard } from "@/lib/access";
 export type { AppUser, AccessDecision } from "@/lib/access";
+
+/**
+ * THE canonical column set for building an AppUser. Every site that loads a user
+ * into an AppUser MUST go through `userSelect` + `toAppUser`, so adding a field
+ * (e.g. assignedVineyardId) can never silently skip a construction site.
+ */
+export const userSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  banned: true,
+  mustChangePassword: true,
+  assignedVineyardId: true,
+} as const;
+
+type UserRecord = {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string | null;
+  banned: boolean | null;
+  mustChangePassword: boolean | null;
+  assignedVineyardId: string | null;
+};
+
+/** Map a DB user record (selected via `userSelect`) into the AppUser domain shape. */
+export function toAppUser(record: UserRecord): AppUser {
+  return {
+    id: record.id,
+    name: record.name ?? null,
+    email: record.email,
+    role: record.role ?? null,
+    banned: record.banned ?? false,
+    mustChangePassword: record.mustChangePassword ?? false,
+    assignedVineyardId: record.assignedVineyardId ?? null,
+  };
+}
 
 /**
  * Read the current user, cached per request. Security-sensitive flags
@@ -20,17 +58,10 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   if (!session?.user?.id) return null;
   const record = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, name: true, email: true, role: true, banned: true, mustChangePassword: true },
+    select: userSelect,
   });
   if (!record) return null; // session points at a deleted user -> deny
-  return {
-    id: record.id,
-    name: record.name ?? null,
-    email: record.email,
-    role: record.role ?? null,
-    banned: record.banned ?? false,
-    mustChangePassword: record.mustChangePassword ?? false,
-  };
+  return toAppUser(record);
 });
 
 /**

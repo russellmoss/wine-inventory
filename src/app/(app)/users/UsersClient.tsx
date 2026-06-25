@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Card, Input, Button, Badge, Eyebrow } from "@/components/ui";
-import { createUser, resetUserPassword, setUserRole, setUserBanned } from "@/lib/users/actions";
+import { createUser, resetUserPassword, setUserRole, setUserBanned, assignUserVineyard } from "@/lib/users/actions";
 
 export type UserRow = {
   id: string;
@@ -12,7 +12,10 @@ export type UserRow = {
   banned: boolean;
   mustChangePassword: boolean;
   isSelf: boolean;
+  assignedVineyardId: string | null;
 };
+
+export type VineyardOption = { id: string; name: string };
 
 const selectStyle: React.CSSProperties = {
   height: 36,
@@ -25,7 +28,7 @@ const selectStyle: React.CSSProperties = {
   color: "var(--text-primary)",
 };
 
-export function UsersClient({ users }: { users: UserRow[] }) {
+export function UsersClient({ users, vineyards }: { users: UserRow[]; vineyards: VineyardOption[] }) {
   const [error, setError] = React.useState<string | null>(null);
   const [secret, setSecret] = React.useState<{ email: string; tempPassword: string; emailed?: boolean } | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -98,6 +101,7 @@ export function UsersClient({ users }: { users: UserRow[] }) {
             <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
               <th style={{ padding: "12px 16px", fontWeight: 500 }}>User</th>
               <th style={{ padding: "12px 16px", fontWeight: 500 }}>Role</th>
+              <th style={{ padding: "12px 16px", fontWeight: 500 }}>Vineyard</th>
               <th style={{ padding: "12px 16px", fontWeight: 500 }}>Status</th>
               <th style={{ padding: "12px 16px", fontWeight: 500, textAlign: "right" }}>Actions</th>
             </tr>
@@ -111,6 +115,19 @@ export function UsersClient({ users }: { users: UserRow[] }) {
                 </td>
                 <td style={{ padding: "12px 16px" }}>
                   <Badge tone={u.role === "admin" ? "gold" : "neutral"} variant="soft">{u.role}</Badge>
+                </td>
+                <td style={{ padding: "12px 16px" }}>
+                  <select
+                    value={u.assignedVineyardId ?? ""}
+                    disabled={pending}
+                    style={selectStyle}
+                    onChange={(e) => run(() => assignUserVineyard(u.id, e.target.value || null))}
+                  >
+                    <option value="">— None —</option>
+                    {vineyards.map((v) => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
                 </td>
                 <td style={{ padding: "12px 16px" }}>
                   {u.banned ? <Badge tone="red" variant="soft">deactivated</Badge>

@@ -14,16 +14,19 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:field-inputs": "tsx prisma/seed-field-inputs.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
     "@geoman-io/leaflet-geoman-free": "^2.20.0",
     "@mapbox/shp-write": "^0.4.3",
     "@node-rs/argon2": "^2.0.2",
     "@prisma/client": "^6.3.1",
+    "@vercel/blob": "^2.4.1",
     "better-auth": "^1.6.18",
     "html-to-image": "^1.11.13",
     "leaflet": "^1.9.4",

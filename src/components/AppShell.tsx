@@ -11,6 +11,7 @@ type NavItem = { href: string; label: string; admin?: boolean };
 
 const MAIN: NavItem[] = [
   { href: "/", label: "Dashboard" },
+  { href: "/assistant", label: "Assistant" },
   { href: "/inventory", label: "Inventory" },
   { href: "/reports", label: "Reports" },
   { href: "/audit", label: "Audit log", admin: true },
@@ -19,6 +20,12 @@ const MAIN: NavItem[] = [
 const WINERY: NavItem[] = [
   { href: "/bulk", label: "Wine in-progress" },
   { href: "/bottling", label: "Bottling" },
+];
+
+const VINEYARDS: NavItem[] = [
+  { href: "/vineyards/field-notes", label: "Field notes" },
+  { href: "/vineyards/harvest", label: "Harvest" },
+  { href: "/vineyards/maps", label: "Maps" },
 ];
 
 const SETUP: NavItem[] = [
@@ -83,6 +90,8 @@ function SidebarContent({
   isAdmin,
   wineryOpen,
   setWineryOpen,
+  vineyardsOpen,
+  setVineyardsOpen,
   setupOpen,
   setSetupOpen,
   onNavigate,
@@ -93,6 +102,8 @@ function SidebarContent({
   isAdmin: boolean;
   wineryOpen: boolean;
   setWineryOpen: (fn: (o: boolean) => boolean) => void;
+  vineyardsOpen: boolean;
+  setVineyardsOpen: (fn: (o: boolean) => boolean) => void;
   setupOpen: boolean;
   setSetupOpen: (fn: (o: boolean) => boolean) => void;
   onNavigate: () => void;
@@ -109,6 +120,7 @@ function SidebarContent({
           <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(isActive(n.href))}>{n.label}</Link>
         ))}
         <CollapsibleNavGroup label="Winery" items={WINERY} open={wineryOpen} setOpen={setWineryOpen} isActive={isActive} onNavigate={onNavigate} />
+        <CollapsibleNavGroup label="Vineyards" items={VINEYARDS} open={vineyardsOpen} setOpen={setVineyardsOpen} isActive={isActive} onNavigate={onNavigate} />
         <CollapsibleNavGroup label="Setup" items={visibleSetup} open={setupOpen} setOpen={setSetupOpen} isActive={isActive} onNavigate={onNavigate} />
       </nav>
       <div style={{ borderTop: "1px solid var(--border-strong)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -134,8 +146,10 @@ export function AppShell({
   const isAdmin = user.role === "admin";
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const wineryActive = WINERY.some((s) => isActive(s.href));
+  const vineyardsActive = VINEYARDS.some((s) => isActive(s.href));
   const setupActive = SETUP.some((s) => isActive(s.href));
   const [wineryOpen, setWineryOpen] = React.useState(wineryActive);
+  const [vineyardsOpen, setVineyardsOpen] = React.useState(vineyardsActive);
   const [setupOpen, setSetupOpen] = React.useState(setupActive);
   const [drawer, setDrawer] = React.useState(false);
 
@@ -146,6 +160,11 @@ export function AppShell({
   if (wineryActive !== prevWineryActive) {
     setPrevWineryActive(wineryActive);
     if (wineryActive) setWineryOpen(true);
+  }
+  const [prevVineyardsActive, setPrevVineyardsActive] = React.useState(vineyardsActive);
+  if (vineyardsActive !== prevVineyardsActive) {
+    setPrevVineyardsActive(vineyardsActive);
+    if (vineyardsActive) setVineyardsOpen(true);
   }
   const [prevSetupActive, setPrevSetupActive] = React.useState(setupActive);
   if (setupActive !== prevSetupActive) {
@@ -189,7 +208,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} />
       </aside>
 
       {/* Mobile drawer */}
@@ -198,7 +217,7 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} />
           </aside>
         </div>
       ) : null}

@@ -4,10 +4,13 @@ import { UsersClient, type UserRow } from "./UsersClient";
 
 export default async function UsersPage() {
   const me = await requireAdmin();
-  const users = await prisma.user.findMany({
-    orderBy: { createdAt: "asc" },
-    select: { id: true, email: true, name: true, role: true, banned: true, mustChangePassword: true },
-  });
+  const [users, vineyards] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: { createdAt: "asc" },
+      select: { id: true, email: true, name: true, role: true, banned: true, mustChangePassword: true, assignedVineyardId: true },
+    }),
+    prisma.vineyard.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
   const rows: UserRow[] = users.map((u) => ({
     id: u.id,
     email: u.email,
@@ -16,6 +19,7 @@ export default async function UsersPage() {
     banned: !!u.banned,
     mustChangePassword: !!u.mustChangePassword,
     isSelf: u.id === me.id,
+    assignedVineyardId: u.assignedVineyardId ?? null,
   }));
-  return <UsersClient users={rows} />;
+  return <UsersClient users={rows} vineyards={vineyards} />;
 }

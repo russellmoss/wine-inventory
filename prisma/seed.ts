@@ -5,6 +5,7 @@
  */
 import { prisma } from "../src/lib/prisma";
 import { hashPassword } from "../src/lib/password";
+import { seedFieldInputs } from "./seed-field-inputs";
 
 async function main() {
   const email = (process.env.SEED_ADMIN_EMAIL || "admin@bhutanwine.com").toLowerCase();
@@ -22,6 +23,10 @@ async function main() {
   // Default category for bottled wine.
   await prisma.finishedGoodCategory.upsert({ where: { name: "Wine" }, update: {}, create: { name: "Wine" } });
   console.log("Wine category ready");
+
+  // Default spray/fertilizer master list.
+  const inputs = await seedFieldInputs();
+  console.log(`Field inputs ready (${inputs} defaults)`);
 
   // Admin user + credential account.
   const hash = await hashPassword(password);

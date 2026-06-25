@@ -110,6 +110,32 @@ export const setUserRole = adminAction(async ({ actor, user: me }, userId: strin
   revalidatePath(PATH);
 });
 
+/** Assign (or clear) a manager's single scoped vineyard. */
+export const assignUserVineyard = adminAction(async ({ actor }, userId: string, vineyardId: string | null) => {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, assignedVineyardId: true } });
+  if (!user) throw new ActionError("User not found.");
+  let vineyardName: string | null = null;
+  if (vineyardId !== null) {
+    const vineyard = await prisma.vineyard.findUnique({ where: { id: vineyardId }, select: { id: true, name: true } });
+    if (!vineyard) throw new ActionError("Vineyard not found.");
+    vineyardName = vineyard.name;
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: { assignedVineyardId: vineyardId } });
+    await writeAudit(tx, {
+      ...actor,
+      action: "USER_VINEYARD_ASSIGNED",
+      entityType: "User",
+      entityId: userId,
+      changes: diff({ assignedVineyardId: user.assignedVineyardId }, { assignedVineyardId: vineyardId }),
+      summary: vineyardId
+        ? `Assigned user "${user.email}" to vineyard "${vineyardName}"`
+        : `Cleared vineyard assignment for user "${user.email}"`,
+    });
+  });
+  revalidatePath(PATH);
+});
+
 /** Soft-delete: ban (or reinstate) a user. Banning revokes their sessions. */
 export const setUserBanned = adminAction(async ({ actor, user: me }, userId: string, banned: boolean) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
