@@ -38,6 +38,7 @@ import { deleteBrixTool } from "./tools/delete-brix";
 import { setYieldEstimateTool } from "./tools/set-yield-estimate";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
 import { rackWineTool } from "./tools/rack-wine";
+import { revertTransferTool } from "./tools/revert-transfer";
 import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
 import { dbUpdateTool } from "./tools/db-update";
@@ -58,6 +59,7 @@ const ALL_TOOLS: AssistantTool[] = [
   setYieldEstimateTool,
   adjustInventoryTool,
   rackWineTool,
+  revertTransferTool,
   dbFindTool,
   dbCreateTool,
   dbUpdateTool,

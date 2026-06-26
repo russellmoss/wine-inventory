@@ -56,6 +56,7 @@ const TOOL_LABELS: Record<string, string> = {
   set_yield_estimate: "Preparing yield estimate",
   adjust_inventory: "Preparing inventory adjustment",
   rack_wine: "Preparing the transfer",
+  revert_transfer: "Reverting the rack",
   query_transfers: "Checking recent rackings",
 };
 

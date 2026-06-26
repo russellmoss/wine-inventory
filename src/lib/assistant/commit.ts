@@ -17,6 +17,7 @@ import { commitDeleteBrix } from "./tools/delete-brix";
 import { commitSetYieldEstimate } from "./tools/set-yield-estimate";
 import { commitAdjustInventory } from "./tools/adjust-inventory";
 import { commitRackWine } from "./tools/rack-wine";
+import { commitRevertTransfer } from "./tools/revert-transfer";
 import { commitDbCreate } from "./tools/db-create";
 import { commitDbUpdate } from "./tools/db-update";
 import { commitDbDelete } from "./tools/db-delete";
@@ -30,6 +31,7 @@ const COMMITTERS: Record<string, Committer> = {
   set_yield_estimate: commitSetYieldEstimate,
   adjust_inventory: commitAdjustInventory,
   rack_wine: commitRackWine,
+  revert_transfer: commitRevertTransfer,
   db_create: commitDbCreate,
   db_update: commitDbUpdate,
   db_delete: commitDbDelete,

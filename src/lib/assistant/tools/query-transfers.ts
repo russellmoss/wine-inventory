@@ -53,6 +53,8 @@ export const queryTransfersTool: AssistantTool = {
         lossL: true,
         components: true,
         note: true,
+        revertedAt: true,
+        revertsId: true,
         fromVessel: { select: { type: true } },
         toVessel: { select: { type: true } },
       },
@@ -71,6 +73,8 @@ export const queryTransfersTool: AssistantTool = {
         lossL: Number(r.lossL),
         components: r.components,
         note: r.note,
+        reverted: r.revertedAt != null, // this rack was undone
+        isReversal: r.revertsId != null, // this entry is itself a revert of another rack
       })),
     };
   },

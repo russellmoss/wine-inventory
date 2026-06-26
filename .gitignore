@@ -54,3 +54,6 @@ design-system/
 
 # Local MCP server config (machine-specific paths / credentials refs)
 .mcp.json
+
+# Stray inventory exports (not part of the app)
+/Inventory - Sheet1.csv
