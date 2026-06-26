@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { planTransfer, type SourceComponent } from "@/lib/vessels/transfer-math";
+import {
+  planTransfer,
+  planRevert,
+  type SourceComponent,
+  type SnapshotLot,
+  type DestComponent,
+} from "@/lib/vessels/transfer-math";
 
 const sum = (xs: number[]) => Math.round(xs.reduce((a, b) => a + b, 0) * 100) / 100;
 
@@ -54,5 +60,57 @@ describe("planTransfer", () => {
     const p = planTransfer([merlot], 225, 225); // everything lost
     expect(p.additions).toEqual([]);
     expect(p.addedL).toBe(0);
+  });
+});
+
+describe("planRevert", () => {
+  const lot: SnapshotLot = { varietyId: "v1", vineyardId: "y1", vintage: 2025, volumeL: 225 };
+
+  it("clean revert: dest holds exactly the lot, moves it all back", () => {
+    const dest: DestComponent[] = [{ id: "d1", varietyId: "v1", vineyardId: "y1", vintage: 2025, volumeL: 225 }];
+    const p = planRevert([lot], dest);
+    expect(p.ok).toBe(true);
+    expect(p.totalL).toBe(225);
+    expect(p.deductions).toEqual([{ id: "d1", deduct: 225, remaining: 0 }]);
+    expect(p.additions).toEqual([{ varietyId: "v1", vineyardId: "y1", vintage: 2025, volumeL: 225 }]);
+  });
+
+  it("blended dest: only the recorded lot moves, extra wine untouched", () => {
+    const dest: DestComponent[] = [
+      { id: "d1", varietyId: "v1", vineyardId: "y1", vintage: 2025, volumeL: 300 }, // had 75 L of its own + 225 racked in
+      { id: "d2", varietyId: "v2", vineyardId: "y1", vintage: 2025, volumeL: 100 },
+    ];
+    const p = planRevert([lot], dest);
+    expect(p.ok).toBe(true);
+    expect(p.deductions).toEqual([{ id: "d1", deduct: 225, remaining: 75 }]);
+    expect(p.additions).toHaveLength(1);
+  });
+
+  it("shortfall: dest no longer holds enough -> ok:false with the missing lot", () => {
+    const dest: DestComponent[] = [{ id: "d1", varietyId: "v1", vineyardId: "y1", vintage: 2025, volumeL: 100 }];
+    const p = planRevert([lot], dest);
+    expect(p.ok).toBe(false);
+    expect(p.shortfalls).toEqual([{ varietyId: "v1", vineyardId: "y1", vintage: 2025, need: 225, have: 100 }]);
+  });
+
+  it("missing lot entirely -> shortfall have:0", () => {
+    const p = planRevert([lot], []);
+    expect(p.ok).toBe(false);
+    expect(p.shortfalls[0].have).toBe(0);
+  });
+
+  it("multi-lot revert sums and moves each back", () => {
+    const lots: SnapshotLot[] = [
+      { varietyId: "v1", vineyardId: "y1", vintage: 2025, volumeL: 300 },
+      { varietyId: "v2", vineyardId: "y1", vintage: 2025, volumeL: 200 },
+    ];
+    const dest: DestComponent[] = [
+      { id: "d1", varietyId: "v1", vineyardId: "y1", vintage: 2025, volumeL: 300 },
+      { id: "d2", varietyId: "v2", vineyardId: "y1", vintage: 2025, volumeL: 200 },
+    ];
+    const p = planRevert(lots, dest);
+    expect(p.ok).toBe(true);
+    expect(p.totalL).toBe(500);
+    expect(p.deductions).toHaveLength(2);
   });
 });

@@ -27,6 +27,7 @@ export type AssistantTool = {
 import { queryBrixTool } from "./tools/query-brix";
 import { queryYieldTool } from "./tools/query-yield";
 import { queryRecentHarvestsTool } from "./tools/query-recent-harvests";
+import { queryTransfersTool } from "./tools/query-transfers";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryFieldReportsTool } from "./tools/query-field-reports";
 import { getFieldReportFormTool } from "./tools/get-field-report-form";
@@ -36,6 +37,8 @@ import { logBrixTool } from "./tools/log-brix";
 import { deleteBrixTool } from "./tools/delete-brix";
 import { setYieldEstimateTool } from "./tools/set-yield-estimate";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
+import { rackWineTool } from "./tools/rack-wine";
+import { revertTransferTool } from "./tools/revert-transfer";
 import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
 import { dbUpdateTool } from "./tools/db-update";
@@ -45,6 +48,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
   queryYieldTool,
   queryRecentHarvestsTool,
+  queryTransfersTool,
   queryVineyardStatusTool,
   queryFieldReportsTool,
   getFieldReportFormTool,
@@ -54,6 +58,8 @@ const ALL_TOOLS: AssistantTool[] = [
   deleteBrixTool,
   setYieldEstimateTool,
   adjustInventoryTool,
+  rackWineTool,
+  revertTransferTool,
   dbFindTool,
   dbCreateTool,
   dbUpdateTool,

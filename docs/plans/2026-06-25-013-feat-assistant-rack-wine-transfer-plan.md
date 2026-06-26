@@ -1,7 +1,7 @@
 ---
 title: Rack / Transfer Wine Between Vessels (assistant + app)
 type: feat
-status: draft
+status: completed
 date: 2026-06-25
 branch: feat/assistant-voice-mode
 depth: standard
@@ -186,10 +186,11 @@ None needed — entirely internal patterns.
 
 ## Success Criteria
 
-- [ ] "I racked barrel 14 to barrel 16" produces a confirm card and, on confirm, empties the source and increases the destination correctly.
-- [ ] Partial transfers and optional loss work and never overdraw or exceed capacity.
-- [ ] Blend composition carries into the destination, merging like lots; volumes sum exactly.
-- [ ] Each rack writes a `VesselTransfer` row + an audit entry inside one transaction.
-- [ ] `query_transfers` lists recent rackings, filterable by vessel.
-- [ ] Prompt advertises racking and no longer says it's unavailable.
-- [ ] New unit tests pass; `npm run lint` and `npm run build` are clean; no regressions.
+- [x] "I racked barrel 14 to barrel 16" produces a confirm card and, on confirm, empties the source and increases the destination correctly. (built; verify live in-app)
+- [x] Partial transfers and optional loss work and never overdraw or exceed capacity. (validated in transferWine + planTransfer tests)
+- [x] Blend composition carries into the destination, merging like lots; volumes sum exactly. (planTransfer exact-sum tests; upsert-increment merge)
+- [x] Each rack writes a `VesselTransfer` row + an audit entry inside one transaction.
+- [x] `query_transfers` lists recent rackings, filterable by vessel.
+- [x] Prompt advertises racking and no longer says it's unavailable.
+- [x] New unit tests pass (12 new; 318 total); `npm run lint` (0 errors) and `npm run build` are clean; no regressions.
+- [ ] Manual end-to-end click-through in the running app (recommended before merge).
