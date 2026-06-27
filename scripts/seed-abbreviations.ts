@@ -13,6 +13,18 @@ const VARIETY_ABBR: { abbr: string; aliases: string[] }[] = [
   { abbr: "CF", aliases: ["cabernet franc", "cab franc"] },
   { abbr: "MR", aliases: ["merlot"] },
   { abbr: "MB", aliases: ["malbec"] },
+  // Remaining varieties (2-letter mnemonics, unique among varieties; SB avoided so it
+  // doesn't mirror the Ser Bhum vineyard code in a lot code).
+  { abbr: "SV", aliases: ["sauvignon blanc", "sauv blanc"] },
+  { abbr: "RS", aliases: ["riesling"] },
+  { abbr: "CH", aliases: ["chardonnay"] },
+  { abbr: "TR", aliases: ["traminette"] },
+  { abbr: "VB", aliases: ["vidal blanc", "vidal"] },
+  { abbr: "SY", aliases: ["syrah", "shiraz"] },
+  { abbr: "TP", aliases: ["tempranillo", "trempranillo"] },
+  { abbr: "CB", aliases: ["chenin blanc", "chenin"] },
+  { abbr: "PM", aliases: ["petite manseng", "petit manseng"] },
+  { abbr: "GR", aliases: ["grenache"] },
 ];
 
 const VINEYARD_ABBR: { abbr: string; aliases: string[] }[] = [
@@ -21,6 +33,11 @@ const VINEYARD_ABBR: { abbr: string; aliases: string[] }[] = [
   { abbr: "PS", aliases: ["pinsa"] },
   { abbr: "PR", aliases: ["paro"] },
   { abbr: "SB", aliases: ["ser bhum", "serbhum", "ser bum"] },
+  // Remaining vineyards (2-letter mnemonics, unique among vineyards).
+  { abbr: "BJ", aliases: ["bajo"] },
+  { abbr: "YS", aliases: ["yusipang"] },
+  { abbr: "GL", aliases: ["gelephu"] },
+  { abbr: "LM", aliases: ["lingmethang"] },
 ];
 
 const norm = (s: string) => s.trim().toLowerCase();
