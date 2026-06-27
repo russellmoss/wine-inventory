@@ -32,6 +32,12 @@ import {
   renameGroupCore,
   type VesselGroupDTO,
 } from "@/lib/vessels/groups";
+import {
+  correctBatchCore,
+  correctOperationCore,
+  type BatchCorrectResult,
+  type CorrectResult,
+} from "@/lib/cellar/correct";
 
 // "use server" wrappers for the Phase 3 cellar operations. Each authorizes a ready user,
 // then calls the script-safe core with the audit actor and revalidates the capture
@@ -140,6 +146,26 @@ export const removeGroupMemberAction = action(async ({ actor }, groupId: string,
 export const applyToGroupAction = action(
   async ({ actor }, target: GroupTarget, spec: GroupOpSpec): Promise<GroupApplyResult> => {
     const res = await applyToGroup(actor, target, spec);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+// ── Correction / undo ──
+
+/** Correct (revert volumetric / void neutral) one Phase 3 operation — also the toast Undo. */
+export const correctOperationAction = action(
+  async ({ actor }, operationId: number, note?: string): Promise<CorrectResult> => {
+    const res = await correctOperationCore(actor, { operationId, note });
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Correct every member op of a group fan-out (shared batchId). */
+export const correctBatchAction = action(
+  async ({ actor }, batchId: string): Promise<BatchCorrectResult> => {
+    const res = await correctBatchCore(actor, { batchId });
     revalidateCaptureSurfaces();
     return res;
   },
