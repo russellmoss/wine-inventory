@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
-import type { CaptureMethod } from "@/lib/ledger/vocabulary";
+import type { CaptureMethod, OperationType } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import {
   computeAdditionTotal,
@@ -12,14 +12,14 @@ import {
 } from "@/lib/cellar/additions-math";
 import { upsertMaterialCore } from "@/lib/cellar/materials";
 
-// Script-safe core for a volume-NEUTRAL material dose (Phase 3, Unit 4). An ADDITION is a
-// LotOperation with NO volumetric lines (the chokepoint accepts a zero-line op — empty
-// balance, no projection change) + one LotTreatment per resident lot. Open question #1
-// resolved (lean): when the vessel holds >1 lot the dose attaches to EVERY resident lot,
-// each with its own volume snapshot + proportional computed total, so each lot's timeline
-// is complete and the totals stay summable for Phase 8 cost. The rate, basis, computed
-// total + unit, and the volume snapshot are STORED, never recomputed (VISION D14).
-// actions.ts wraps this as a server action; scripts call it directly with an explicit actor.
+// Script-safe cores for volume-NEUTRAL material doses (Phase 3, Units 4–5). A neutral op
+// (ADDITION, FINING) is a LotOperation with NO volumetric lines — the chokepoint accepts a
+// zero-line op (empty balance, no projection change) — plus one LotTreatment per resident
+// lot. Open question #1 resolved (lean): when the vessel holds >1 lot the dose attaches to
+// EVERY resident lot, each with its own volume snapshot + proportional computed total, so
+// each lot's timeline is complete and the totals stay summable for Phase 8 cost. The rate,
+// basis, computed total + unit, and the volume snapshot are STORED, never recomputed
+// (VISION D14). actions.ts wraps these; scripts/the group engine call them with an actor.
 
 export type AddAdditionInput = {
   vesselId: string;
@@ -34,20 +34,34 @@ export type AddAdditionInput = {
   batchId?: string; // set by the group fan-out (Unit 7)
 };
 
-export type CellarOpResult = {
+export type CellarBaseResult = {
   operationId: number;
   message: string;
   treatmentIds: string[];
+};
+
+export type CellarOpResult = CellarBaseResult & {
   computedTotal: number;
   computedUnit: "g" | "mL";
 };
 
-function vesselLabel(v: { type: string; code: string }): string {
+export function vesselLabel(v: { type: string; code: string }): string {
   return v.type === "BARREL" ? `Barrel ${v.code}` : `Tank ${v.code}`;
 }
 
-/** Record a material dose against a vessel's lot(s), volume-neutral, with the dose math. */
-export async function addAdditionCore(actor: LedgerActor, input: AddAdditionInput): Promise<CellarOpResult> {
+type NeutralDoseConfig = {
+  opType: OperationType; // ADDITION | FINING
+  treatmentKind: string; // ADDITION | FINING (LotTreatment.kind)
+  defaultMaterialKind: string; // upsert hint when none given
+  makeSummary: (ctx: { rateValue: number; basisLabel: string; materialName: string; vessel: string; total: number; unit: string }) => string;
+};
+
+/** Shared engine for a neutral material dose; ADDITION and FINING differ only in copy/kind. */
+async function recordNeutralDose(
+  actor: LedgerActor,
+  input: AddAdditionInput,
+  cfg: NeutralDoseConfig,
+): Promise<CellarOpResult> {
   const { vesselId, rateValue, rateBasis } = input;
   if (!vesselId) throw new ActionError("A vessel is required.");
   if (!(rateValue > 0)) throw new ActionError("Enter a dose rate greater than 0.");
@@ -60,11 +74,8 @@ export async function addAdditionCore(actor: LedgerActor, input: AddAdditionInpu
   const residents = await prisma.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
   if (residents.length === 0) throw new ActionError(`${vesselLabel(vessel)} is empty — nothing to dose.`);
 
-  // Resolve target lots: a chosen lot (must be resident) or every resident lot.
   const targets = input.lotId ? residents.filter((r) => r.lotId === input.lotId) : residents;
-  if (input.lotId && targets.length === 0) {
-    throw new ActionError("That lot is not in this vessel.");
-  }
+  if (input.lotId && targets.length === 0) throw new ActionError("That lot is not in this vessel.");
 
   // Resolve the material: an explicit catalog id, or upsert the free-text name.
   let materialId: string | null = null;
@@ -75,7 +86,7 @@ export async function addAdditionCore(actor: LedgerActor, input: AddAdditionInpu
     materialId = m.id;
     materialName = m.name;
   } else if (input.materialName?.trim()) {
-    const m = await upsertMaterialCore(actor, { name: input.materialName, kind: input.materialKind });
+    const m = await upsertMaterialCore(actor, { name: input.materialName, kind: input.materialKind ?? cfg.defaultMaterialKind });
     materialId = m.id;
     materialName = m.name;
   } else {
@@ -86,16 +97,23 @@ export async function addAdditionCore(actor: LedgerActor, input: AddAdditionInpu
   const perLot = targets.map((t) => {
     const vol = round2(Number(t.volumeL));
     const { total, unit } = computeAdditionTotal(rateValue, rateBasis, vol);
-    return { lotId: t.lotId, lotCode: t.lot.code, volumeLAtAddition: vol, computedTotal: total, computedUnit: unit };
+    return { lotId: t.lotId, volumeLAtAddition: vol, computedTotal: total, computedUnit: unit };
   });
   const totalSum = round2(perLot.reduce((a, p) => a + p.computedTotal, 0));
   const unit = perLot[0].computedUnit;
   const basisLabel = RATE_BASIS_LABELS[rateBasis];
-  const summary = `Added ${rateValue} ${basisLabel} ${materialName} to ${vesselLabel(vessel)} → ${totalSum} ${unit}`;
+  const summary = cfg.makeSummary({
+    rateValue,
+    basisLabel,
+    materialName: materialName!,
+    vessel: vesselLabel(vessel),
+    total: totalSum,
+    unit,
+  });
 
   const { operationId, treatmentIds } = await runLedgerWrite(async (tx) => {
     const opId = await writeLotOperation(tx, {
-      type: "ADDITION",
+      type: cfg.opType,
       lines: [], // volume-neutral: no projection change
       actorUserId: actor.actorUserId,
       enteredBy: actor.actorEmail,
@@ -105,9 +123,7 @@ export async function addAdditionCore(actor: LedgerActor, input: AddAdditionInpu
       vesselCodes: new Map(),
       capacityByVessel: new Map(),
     });
-    if (input.batchId) {
-      await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
-    }
+    if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
     const ids: string[] = [];
     for (const p of perLot) {
       const row = await tx.lotTreatment.create({
@@ -115,7 +131,7 @@ export async function addAdditionCore(actor: LedgerActor, input: AddAdditionInpu
           operationId: opId,
           lotId: p.lotId,
           vesselId,
-          kind: "ADDITION",
+          kind: cfg.treatmentKind,
           materialId,
           materialName,
           rateValue,
@@ -140,4 +156,24 @@ export async function addAdditionCore(actor: LedgerActor, input: AddAdditionInpu
   });
 
   return { operationId, message: `${summary}.`, treatmentIds, computedTotal: totalSum, computedUnit: unit };
+}
+
+/** Record an addition (volume-neutral material dose) against a vessel's lot(s). */
+export function addAdditionCore(actor: LedgerActor, input: AddAdditionInput): Promise<CellarOpResult> {
+  return recordNeutralDose(actor, input, {
+    opType: "ADDITION",
+    treatmentKind: "ADDITION",
+    defaultMaterialKind: "OTHER",
+    makeSummary: (c) => `Added ${c.rateValue} ${c.basisLabel} ${c.materialName} to ${c.vessel} → ${c.total} ${c.unit}`,
+  });
+}
+
+/** Record a fining (volume-neutral; the loss comes later at racking). */
+export function addFiningCore(actor: LedgerActor, input: AddAdditionInput): Promise<CellarOpResult> {
+  return recordNeutralDose(actor, input, {
+    opType: "FINING",
+    treatmentKind: "FINING",
+    defaultMaterialKind: "FINING",
+    makeSummary: (c) => `Fined ${c.vessel}: ${c.rateValue} ${c.basisLabel} ${c.materialName} → ${c.total} ${c.unit}`,
+  });
 }

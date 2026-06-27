@@ -5,6 +5,7 @@ import {
   assertBalanced,
   planLedgerRack,
   planCorrection,
+  planVesselLoss,
   balanceKey,
   type LedgerLine,
   type VesselLotBalance,
@@ -192,5 +193,39 @@ describe("projection == fold of the full ledger (property over a sequence)", () 
     expect(vol(bals, "tank2", "L1")).toBe(40);
     expect(sum(bals.map((b) => b.volumeL))).toBe(225); // conserved
     expect(bals.every((b) => b.volumeL > 0)).toBe(true);
+  });
+});
+
+describe("planVesselLoss", () => {
+  it("removes the volume proportionally and balances per lot", () => {
+    const src: VesselLotBalance[] = [
+      { vesselId: "t1", lotId: "L1", volumeL: 300 },
+      { vesselId: "t1", lotId: "L2", volumeL: 150 },
+    ];
+    const plan = planVesselLoss(src, 45, "evaporation");
+    expect(plan.removedL).toBe(45);
+    expect(isBalanced(plan.lines)).toBe(true);
+    // 300:150 = 2:1 → 30 + 15
+    const removedByLot = Object.fromEntries(plan.perLot.map((p) => [p.lotId, p.removedL]));
+    expect(removedByLot.L1).toBe(30);
+    expect(removedByLot.L2).toBe(15);
+    // external counter-account legs carry the reason
+    expect(plan.lines.filter((l) => l.vesselId === null).every((l) => l.reason === "evaporation")).toBe(true);
+    // folding the loss reduces the vessel to 405 L total
+    const after = foldLines(src, plan.lines);
+    expect(sum(after.map((b) => b.volumeL))).toBe(405);
+  });
+
+  it("a full-volume loss empties the vessel", () => {
+    const src: VesselLotBalance[] = [{ vesselId: "t1", lotId: "L1", volumeL: 200 }];
+    const plan = planVesselLoss(src, 200, "filtration");
+    const after = foldLines(src, plan.lines);
+    expect(after.length).toBe(0);
+  });
+
+  it("rejects a non-positive or over-volume loss", () => {
+    const src: VesselLotBalance[] = [{ vesselId: "t1", lotId: "L1", volumeL: 100 }];
+    expect(() => planVesselLoss(src, 0, "loss")).toThrow();
+    expect(() => planVesselLoss(src, 150, "loss")).toThrow();
   });
 });

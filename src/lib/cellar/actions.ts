@@ -2,7 +2,20 @@
 
 import { revalidatePath } from "next/cache";
 import { action } from "@/lib/actions";
-import { addAdditionCore, type AddAdditionInput, type CellarOpResult } from "@/lib/cellar/addition";
+import {
+  addAdditionCore,
+  addFiningCore,
+  type AddAdditionInput,
+  type CellarBaseResult,
+  type CellarOpResult,
+} from "@/lib/cellar/addition";
+import {
+  capManagementCore,
+  filterVesselCore,
+  type CapManagementInput,
+  type FiltrationInput,
+} from "@/lib/cellar/treatments";
+import { recordLossCore, type RecordLossInput } from "@/lib/cellar/loss";
 import { upsertMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput } from "@/lib/cellar/materials";
 
 // "use server" wrappers for the Phase 3 cellar operations. Each authorizes a ready user,
@@ -28,6 +41,42 @@ export const upsertMaterialAction = action(
 export const addAdditionAction = action(
   async ({ actor }, input: AddAdditionInput): Promise<CellarOpResult> => {
     const res = await addAdditionCore(actor, input);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Record a fining (volume-neutral; the loss is realized later at racking). */
+export const addFiningAction = action(
+  async ({ actor }, input: AddAdditionInput): Promise<CellarOpResult> => {
+    const res = await addFiningCore(actor, input);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Record a filtration (volume loss + medium/micron detail). */
+export const filterVesselAction = action(
+  async ({ actor }, input: FiltrationInput): Promise<CellarBaseResult> => {
+    const res = await filterVesselCore(actor, input);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Record cap management (pump-over / punch-down) — one-tap, volume-neutral. */
+export const capManagementAction = action(
+  async ({ actor }, input: CapManagementInput): Promise<CellarBaseResult> => {
+    const res = await capManagementCore(actor, input);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Record a standalone loss / angel's share (volume drops). */
+export const recordLossAction = action(
+  async ({ actor }, input: RecordLossInput): Promise<CellarBaseResult> => {
+    const res = await recordLossCore(actor, input);
     revalidateCaptureSurfaces();
     return res;
   },

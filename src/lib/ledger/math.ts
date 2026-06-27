@@ -114,6 +114,46 @@ export function planLedgerRack(
   return { drawL: round2(drawL), lossL: round2(lossL), addedL: round2(drawL - lossL), lines };
 }
 
+export type VesselLossPlan = {
+  removedL: number;
+  lines: LedgerLine[];
+  perLot: { lotId: string; removedL: number }[];
+};
+
+/**
+ * Plan a pure volume LOSS out of a vessel (filtration loss, evaporation/angel's share):
+ * `removeL` leaves the system, split proportionally across the vessel's lots, each as a
+ * matched pair (- out of the vessel, + to the external counter-account with `reason`), so
+ * the op balances per lot. Volume only leaves — it does NOT move to another vessel. Throws
+ * on a non-positive amount or one exceeding what the vessel holds. (Phase 3.)
+ */
+export function planVesselLoss(
+  source: VesselLotBalance[],
+  removeL: number,
+  reason: LineReason,
+): VesselLossPlan {
+  if (!(removeL > 0)) throw new Error("Loss volume must be greater than 0.");
+  if (source.length === 0) throw new Error("Vessel is empty.");
+  const fromVesselId = source[0].vesselId;
+  const total = round2(source.reduce((a, b) => a + b.volumeL, 0));
+  if (removeL > total + EPS) throw new Error(`Can't remove ${removeL} L — the vessel holds ${total} L.`);
+
+  const shares = computeProportionalDraw(
+    source.map((b) => ({ id: b.lotId, volumeL: b.volumeL })),
+    removeL,
+  );
+  const lines: LedgerLine[] = [];
+  const perLot: { lotId: string; removedL: number }[] = [];
+  for (const s of shares) {
+    if (s.deduct <= 0) continue;
+    lines.push({ lotId: s.id, vesselId: fromVesselId, deltaL: round2(-s.deduct) });
+    lines.push({ lotId: s.id, vesselId: null, deltaL: round2(s.deduct), reason });
+    perLot.push({ lotId: s.id, removedL: round2(s.deduct) });
+  }
+  assertBalanced(lines);
+  return { removedL: round2(removeL), lines, perLot };
+}
+
 export type CorrectionPlan =
   | { ok: true; lines: LedgerLine[] }
   | { ok: false; reason: "downstream-activity"; blockedKeys: string[] }
