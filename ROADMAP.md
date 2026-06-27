@@ -54,7 +54,7 @@ op-type + form enums; the provenance field list.
 
 ---
 
-## Phase 1 — The Lot + ledger spine  ⬜  ← the foundation; get this right
+## Phase 1 — The Lot + ledger spine  ✅ shipped  ← the foundation
 **Goal:** Introduce `Lot`, the append-only operation ledger, the materialized
 projection, and lineage edges — and prove them end-to-end through **one rack**, safely
 under concurrency.
@@ -85,7 +85,10 @@ ops touched it; existing vessels show as Legacy Lots; app builds and existing te
 
 ---
 
-## Phase 2 — Lot timeline (read-only chronology)  ⬜
+## Phase 2 — Lot timeline (read-only chronology)  ✅ shipped
+> Also shipped alongside: **readable lot codes** — variety/vineyard abbreviations +
+> block/subblock geography + sublot tags, generated at lot creation, with a one-time
+> legacy recode. (Unplanned bonus; lives in `src/lib/lot/{code,generate}.ts`.)
 **Goal:** The CRM-style timeline view over the ledger, plus the two-views linkage.
 - Per-lot timeline (reverse-chronological feed of operations) + current-state header
   derived from the projection.
