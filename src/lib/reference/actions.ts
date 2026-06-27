@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
+import { normalizeAbbr } from "@/lib/lot/code";
 
 const PATH = "/reference";
 
@@ -15,6 +16,25 @@ function cleanName(raw: unknown): string {
   if (name.length < 2) throw new ActionError("Name must be at least 2 characters.");
   if (name.length > 80) throw new ActionError("Name is too long.");
   return name;
+}
+
+/** Normalize an abbreviation to 2–4 uppercase alphanumerics, with a friendly error. */
+function cleanAbbreviation(raw: unknown): string {
+  try {
+    return normalizeAbbr(raw);
+  } catch {
+    throw new ActionError("Abbreviation must be 2–4 letters or numbers.");
+  }
+}
+
+/** Is this abbreviation already used by another row of the same kind? */
+async function abbreviationTaken(kind: RefKind, value: string, exceptId: string | null): Promise<boolean> {
+  const where = { abbreviation: value, ...(exceptId ? { id: { not: exceptId } } : {}) };
+  const hit =
+    kind === "variety"
+      ? await prisma.variety.findFirst({ where, select: { id: true } })
+      : await prisma.vineyard.findFirst({ where, select: { id: true } });
+  return !!hit;
 }
 
 function entityType(kind: RefKind) {
@@ -54,18 +74,49 @@ export const createRef = action(async ({ actor }, kind: RefKind, formData: FormD
   if (await findByName(kind, name)) {
     throw new ActionError(`That ${kind} already exists.`, "CONFLICT");
   }
+  const abbrRaw = formData.get("abbreviation");
+  const abbreviation = abbrRaw != null && String(abbrRaw).trim() !== "" ? cleanAbbreviation(abbrRaw) : null;
+  if (abbreviation && (await abbreviationTaken(kind, abbreviation, null))) {
+    throw new ActionError(`Abbreviation "${abbreviation}" is already used by another ${kind}.`, "CONFLICT");
+  }
   await prisma.$transaction(async (tx) => {
     const created =
       kind === "variety"
-        ? await tx.variety.create({ data: { name } })
-        : await tx.vineyard.create({ data: { name } });
+        ? await tx.variety.create({ data: { name, abbreviation } })
+        : await tx.vineyard.create({ data: { name, abbreviation } });
     await writeAudit(tx, {
       ...actor,
       action: "CREATE",
       entityType: entityType(kind),
       entityId: created.id,
-      changes: diff(null, { name: created.name }),
+      changes: diff(null, { name: created.name, abbreviation }),
       summary: summarize("CREATE", entityType(kind), { label: created.name }),
+    });
+  });
+  revalidatePath(PATH);
+});
+
+/** Set or clear (null / empty) a variety's or vineyard's lot-code abbreviation. */
+export const setAbbreviation = action(async ({ actor }, kind: RefKind, id: string, value: string | null) => {
+  const row = await findById(kind, id);
+  if (!row) throw new ActionError(`${entityType(kind)} not found.`);
+  const next = value == null || String(value).trim() === "" ? null : cleanAbbreviation(value);
+  if (next && (await abbreviationTaken(kind, next, id))) {
+    throw new ActionError(`Abbreviation "${next}" is already used by another ${kind}.`, "CONFLICT");
+  }
+  await prisma.$transaction(async (tx) => {
+    if (kind === "variety") await tx.variety.update({ where: { id }, data: { abbreviation: next } });
+    else await tx.vineyard.update({ where: { id }, data: { abbreviation: next } });
+    await writeAudit(tx, {
+      ...actor,
+      action: "UPDATE",
+      entityType: entityType(kind),
+      entityId: id,
+      changes: diff({ abbreviation: row.abbreviation }, { abbreviation: next }),
+      summary: summarize("UPDATE", entityType(kind), {
+        label: row.name,
+        changes: diff({ abbreviation: row.abbreviation }, { abbreviation: next }),
+      }),
     });
   });
   revalidatePath(PATH);

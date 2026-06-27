@@ -3,8 +3,8 @@ import { ReferenceClient } from "./ReferenceClient";
 
 export default async function ReferencePage() {
   const [varieties, vineyards] = await Promise.all([
-    prisma.variety.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true, color: true } }),
-    prisma.vineyard.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true } }),
+    prisma.variety.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true, color: true, abbreviation: true } }),
+    prisma.vineyard.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true, abbreviation: true } }),
   ]);
   const varietyOptions = varieties
     .filter((v) => v.isActive)

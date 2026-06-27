@@ -2,13 +2,62 @@
 
 import React from "react";
 import { Card, Input, Button, Badge, Eyebrow } from "@/components/ui";
-import { createRef, setRefActive, setVarietyColor, type RefKind } from "@/lib/reference/actions";
+import { createRef, setRefActive, setVarietyColor, setAbbreviation, type RefKind } from "@/lib/reference/actions";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import { VineyardModal } from "./VineyardModal";
 
-type Row = { id: string; name: string; isActive: boolean };
+type Row = { id: string; name: string; isActive: boolean; abbreviation: string | null };
 type VarietyRow = Row & { color: string | null };
 type VarietyOption = { id: string; name: string; color: string | null };
+
+/** Inline editor for a variety/vineyard lot-code abbreviation (saves on blur if changed). */
+function AbbrInput({
+  kind,
+  id,
+  name,
+  value,
+  pending,
+  run,
+}: {
+  kind: RefKind;
+  id: string;
+  name: string;
+  value: string | null;
+  pending: boolean;
+  run: (fn: () => Promise<void>, after?: () => void) => void;
+}) {
+  const original = value ?? "";
+  const [val, setVal] = React.useState(original);
+  // Keep in sync if the server value changes under us (e.g. after a save elsewhere).
+  React.useEffect(() => setVal(original), [original]);
+  return (
+    <input
+      value={val}
+      onChange={(e) => setVal(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4))}
+      onBlur={() => {
+        if (val.trim() !== original) run(() => setAbbreviation(kind, id, val.trim() || null));
+      }}
+      placeholder="abbr"
+      maxLength={4}
+      disabled={pending}
+      aria-label={`Lot-code abbreviation for ${name}`}
+      title={`Lot-code abbreviation for ${name}`}
+      style={{
+        width: 58,
+        textAlign: "center",
+        textTransform: "uppercase",
+        fontVariantNumeric: "tabular-nums",
+        fontSize: 12.5,
+        letterSpacing: "0.04em",
+        padding: "3px 6px",
+        border: "1px solid var(--border-strong)",
+        borderRadius: "var(--radius-sm)",
+        background: "var(--surface-raised)",
+        fontFamily: "var(--font-body)",
+      }}
+    />
+  );
+}
 
 function useRunner() {
   const [error, setError] = React.useState<string | null>(null);
@@ -50,6 +99,7 @@ const addForm = (
     style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 14 }}
   >
     <Input name="name" placeholder={kind === "variety" ? "e.g. Merlot" : "e.g. Paro Vineyard"} size="sm" style={{ flex: 1 }} required />
+    <Input name="abbreviation" placeholder={kind === "variety" ? "MR" : "PR"} size="sm" maxLength={4} style={{ width: 72, textTransform: "uppercase" }} title="Lot-code abbreviation (optional; 2–4 chars)" />
     <Button type="submit" variant="primary" size="sm" disabled={pending}>
       Add
     </Button>
@@ -104,6 +154,7 @@ function VarietyList({ rows }: { rows: VarietyRow[] }) {
                   />
                 </label>
                 {r.name}
+                <AbbrInput kind="variety" id={r.id} name={r.name} value={r.abbreviation} pending={pending} run={run} />
                 {r.color ? (
                   <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setVarietyColor(r.id, null))}>
                     reset color
@@ -141,6 +192,7 @@ function VineyardList({ rows, varietyOptions }: { rows: Row[]; varietyOptions: V
                 <Button variant="link" size="sm" onClick={() => setOpenId(r.id)} style={{ fontSize: 15 }}>
                   {r.name}
                 </Button>
+                <AbbrInput kind="vineyard" id={r.id} name={r.name} value={r.abbreviation} pending={pending} run={run} />
                 {!r.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
               </span>
               <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setRefActive("vineyard", r.id, !r.isActive))}>
