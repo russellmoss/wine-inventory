@@ -28,8 +28,13 @@ function AbbrInput({
 }) {
   const original = value ?? "";
   const [val, setVal] = React.useState(original);
-  // Keep in sync if the server value changes under us (e.g. after a save elsewhere).
-  React.useEffect(() => setVal(original), [original]);
+  // Re-sync when the server value changes under us (React's adjust-state-during-render
+  // pattern — not an effect), e.g. after a save elsewhere refreshes the list.
+  const [prevOriginal, setPrevOriginal] = React.useState(original);
+  if (original !== prevOriginal) {
+    setPrevOriginal(original);
+    setVal(original);
+  }
   return (
     <input
       value={val}
