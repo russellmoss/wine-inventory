@@ -7,6 +7,7 @@ import type { Fill } from "@/lib/vessels/fill";
 import { addComponent, updateComponentVolume, removeComponent, setBlendName } from "@/lib/bulk/actions";
 
 export type Option = { id: string; name: string };
+export type BlockOption = { id: string; vineyardId: string; blockLabel: string | null; code: string | null };
 export type Comp = { id: string; varietyId: string; varietyName: string; vineyardName: string; vintage: number; volumeL: number };
 export type VesselWithContents = {
   id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null;
@@ -62,7 +63,61 @@ function BarrelMeta({ v }: { v: VesselWithContents }) {
   );
 }
 
-export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[] }) {
+// Add-wine form: variety + vineyard (drives the optional block select) + vintage + litres,
+// plus an optional sublot tag (experiments / differential picks). All feed the lot code.
+function AddWineForm({
+  vesselId,
+  varieties,
+  vineyards,
+  blocks,
+  pending,
+  run,
+}: {
+  vesselId: string;
+  varieties: Option[];
+  vineyards: Option[];
+  blocks: BlockOption[];
+  pending: boolean;
+  run: (fn: () => Promise<void>, after?: () => void) => void;
+}) {
+  const [vineyardId, setVineyardId] = React.useState("");
+  const vineyardBlocks = blocks.filter((b) => b.vineyardId === vineyardId);
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        const fd = new FormData(form);
+        fd.set("vesselId", vesselId);
+        run(async () => {
+          await addComponent(fd);
+          form.reset();
+          setVineyardId("");
+        });
+      }}
+      style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}
+    >
+      <select name="varietyId" style={selectStyle} required defaultValue="">
+        <option value="" disabled>Variety</option>
+        {varieties.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+      <select name="vineyardId" style={selectStyle} required value={vineyardId} onChange={(e) => setVineyardId(e.target.value)}>
+        <option value="" disabled>Vineyard</option>
+        {vineyards.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+      <select name="blockId" style={selectStyle} defaultValue="" disabled={!vineyardId || vineyardBlocks.length === 0} title="Block (optional)">
+        <option value="">Block (optional)</option>
+        {vineyardBlocks.map((b) => <option key={b.id} value={b.id}>{b.blockLabel || b.code || "Block"}</option>)}
+      </select>
+      <input name="vintage" type="number" placeholder="Vintage" style={{ ...selectStyle, width: 96 }} required />
+      <input name="volumeL" type="number" step="0.01" min="0.01" placeholder="Litres" style={{ ...selectStyle, width: 90 }} required />
+      <input name="sublotTag" placeholder="Tag (opt.)" maxLength={8} title="Sublot tag for experiments / differential picks (optional)" style={{ ...selectStyle, width: 96, textTransform: "uppercase" }} />
+      <Button type="submit" variant="primary" size="sm" disabled={pending}>Add to vessel</Button>
+    </form>
+  );
+}
+
+export function BulkClient({ vessels, varieties, vineyards, blocks }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[] }) {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -232,16 +287,7 @@ export function BulkClient({ vessels, varieties, vineyards }: { vessels: VesselW
             )}
 
             {canFill ? (
-              <form
-                onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); fd.set("vesselId", selected.id); run(async () => { await addComponent(fd); form.reset(); }); }}
-                style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}
-              >
-                <select name="varietyId" style={selectStyle} required defaultValue=""><option value="" disabled>Variety</option>{varieties.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
-                <select name="vineyardId" style={selectStyle} required defaultValue=""><option value="" disabled>Vineyard</option>{vineyards.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
-                <input name="vintage" type="number" placeholder="Vintage" style={{ ...selectStyle, width: 96 }} required />
-                <input name="volumeL" type="number" step="0.01" min="0.01" placeholder="Litres" style={{ ...selectStyle, width: 96 }} required />
-                <Button type="submit" variant="primary" size="sm" disabled={pending}>Add to vessel</Button>
-              </form>
+              <AddWineForm vesselId={selected.id} varieties={varieties} vineyards={vineyards} blocks={blocks} pending={pending} run={run} />
             ) : null}
           </div>
         ) : null}

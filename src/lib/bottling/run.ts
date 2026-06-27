@@ -5,6 +5,7 @@ import { ActionError } from "../action-error";
 import { computeProportionalDraw, consumedForBottles, casesAndLoose, round2 } from "./draw";
 import { writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
+import { nextLotCode } from "@/lib/lot/generate";
 
 export type BottlingInput = {
   vesselIds: string[];
@@ -165,8 +166,16 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
     let lotId = s.lotId;
     if (!lotId) {
       // Pre-cutover run with no lot link: mint a lot from the recorded tuple so the
-      // restore stays ledger-backed.
-      const code = `LOT-${s.vintage}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+      // restore stays ledger-backed. Use a readable code when abbreviations exist; fall
+      // back to a random code so this recovery path never blocks on missing reference data.
+      const [variety, vineyard] = await Promise.all([
+        tx.variety.findUnique({ where: { id: s.varietyId }, select: { abbreviation: true } }),
+        tx.vineyard.findUnique({ where: { id: s.vineyardId }, select: { abbreviation: true } }),
+      ]);
+      const code =
+        variety?.abbreviation && vineyard?.abbreviation
+          ? await nextLotCode(tx, { vintage: s.vintage, vineyardAbbr: vineyard.abbreviation, varietyAbbr: variety.abbreviation })
+          : `LOT-${s.vintage}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
       const lot = await tx.lot.create({
         data: { code, form: "WINE", originVarietyId: s.varietyId, originVineyardId: s.vineyardId, vintageYear: s.vintage },
         select: { id: true, code: true },

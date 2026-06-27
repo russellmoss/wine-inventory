@@ -7,6 +7,8 @@ import { writeAudit, diff } from "@/lib/audit";
 import { computeProportionalDraw, round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
+import { nextLotCode, isUniqueViolation } from "@/lib/lot/generate";
+import { normalizeToken } from "@/lib/lot/code";
 
 const PATH = "/bulk";
 const EPS = 1e-9;
@@ -45,12 +47,31 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
   const vesselId = String(formData.get("vesselId") ?? "");
   const varietyId = String(formData.get("varietyId") ?? "");
   const vineyardId = String(formData.get("vineyardId") ?? "");
+  const blockId = String(formData.get("blockId") ?? "") || null;
+  const tag = normalizeToken(formData.get("sublotTag")) || null;
   const vintage = parseVintage(formData.get("vintage"));
   const volumeL = parseVolume(formData.get("volumeL"));
 
   const vessel = await prisma.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel || !vessel.isActive) throw new ActionError("Vessel not found or inactive.");
   if (!varietyId || !vineyardId) throw new ActionError("Pick a variety and a vineyard.");
+
+  // Abbreviations are required to build a readable code (the user chose required+unique).
+  const [variety, vineyard] = await Promise.all([
+    prisma.variety.findUnique({ where: { id: varietyId }, select: { name: true, abbreviation: true } }),
+    prisma.vineyard.findUnique({ where: { id: vineyardId }, select: { name: true, abbreviation: true } }),
+  ]);
+  if (!variety?.abbreviation) {
+    throw new ActionError(`Set an abbreviation for variety "${variety?.name ?? varietyId}" in Varieties & vineyards first.`);
+  }
+  if (!vineyard?.abbreviation) {
+    throw new ActionError(`Set an abbreviation for vineyard "${vineyard?.name ?? vineyardId}" in Varieties & vineyards first.`);
+  }
+  // Optional block (must belong to the chosen vineyard to count toward the code).
+  const block = blockId
+    ? await prisma.vineyardBlock.findUnique({ where: { id: blockId }, select: { id: true, vineyardId: true, code: true, blockLabel: true } })
+    : null;
+  const blockForCode = block && block.vineyardId === vineyardId ? block : null;
 
   const capacity = Number(vessel.capacityL);
   const total = await vesselTotal(vesselId);
@@ -61,35 +82,59 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
     );
   }
 
-  await runLedgerWrite(async (tx) => {
-    const code = `LOT-${vintage}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
-    const lot = await tx.lot.create({
-      data: { code, form: "WINE", originVarietyId: varietyId, originVineyardId: vineyardId, vintageYear: vintage },
-      select: { id: true },
-    });
-    const lines: LedgerLine[] = [
-      { lotId: lot.id, vesselId, deltaL: volumeL },
-      { lotId: lot.id, vesselId: null, deltaL: -volumeL, reason: "seed" },
-    ];
-    await writeLotOperation(tx, {
-      type: "SEED",
-      lines,
-      actorUserId: actor.actorUserId,
-      enteredBy: actor.actorEmail,
-      note: `Filled ${vessel.code} with ${volumeL} L (${vintage})`,
-      lotCodes: new Map([[lot.id, code]]),
-      vesselCodes: new Map([[vesselId, vessel.code]]),
-      capacityByVessel: new Map([[vesselId, capacity]]),
-    });
-    await writeAudit(tx, {
-      ...actor,
-      action: "CREATE",
-      entityType: "Lot",
-      entityId: lot.id,
-      changes: diff(null, { vesselId, varietyId, vineyardId, vintage, volumeL }),
-      summary: `Filled ${vessel.code} with ${volumeL} L (${vintage})`,
-    });
-  });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await runLedgerWrite(async (tx) => {
+        const code = await nextLotCode(tx, {
+          vintage,
+          vineyardAbbr: vineyard.abbreviation!,
+          varietyAbbr: variety.abbreviation!,
+          blockCode: blockForCode?.code,
+          blockLabel: blockForCode?.blockLabel,
+          tag,
+        });
+        const lot = await tx.lot.create({
+          data: {
+            code,
+            form: "WINE",
+            originVarietyId: varietyId,
+            originVineyardId: vineyardId,
+            originBlockId: blockForCode?.id ?? null,
+            vintageYear: vintage,
+            sublotTag: tag,
+          },
+          select: { id: true },
+        });
+        const lines: LedgerLine[] = [
+          { lotId: lot.id, vesselId, deltaL: volumeL },
+          { lotId: lot.id, vesselId: null, deltaL: -volumeL, reason: "seed" },
+        ];
+        await writeLotOperation(tx, {
+          type: "SEED",
+          lines,
+          actorUserId: actor.actorUserId,
+          enteredBy: actor.actorEmail,
+          note: `Filled ${vessel.code} with ${volumeL} L (${vintage}) — lot ${code}`,
+          lotCodes: new Map([[lot.id, code]]),
+          vesselCodes: new Map([[vesselId, vessel.code]]),
+          capacityByVessel: new Map([[vesselId, capacity]]),
+        });
+        await writeAudit(tx, {
+          ...actor,
+          action: "CREATE",
+          entityType: "Lot",
+          entityId: lot.id,
+          changes: diff(null, { code, vesselId, varietyId, vineyardId, blockId: blockForCode?.id ?? null, vintage, volumeL, sublotTag: tag }),
+          summary: `Filled ${vessel.code} with ${volumeL} L — lot ${code}`,
+        });
+      });
+      break;
+    } catch (e) {
+      // Rare race: another create took the same code between disambiguation and insert.
+      if (isUniqueViolation(e) && attempt < 3) continue;
+      throw e;
+    }
+  }
   revalidatePath(PATH);
 });
 
