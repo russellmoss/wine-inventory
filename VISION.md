@@ -134,21 +134,39 @@ accruing operations after bottling until disgorge/dosage finalize a sellable SKU
 
 ---
 
-## 5. The journey, as a chronology
+## 5. Two surfaces: capture (vessel-first) and review (the Lot timeline)
 
-The Lot's page is a **timeline** — a CRM/Salesforce-style activity feed. At the top:
-what the lot *is* right now (location, volume, form, composition, latest numbers),
-all derived from the ledger projection. Below: a reverse-chronological feed of every
-operation, chemistry reading, tasting note, and work-order completion in its life.
+> Revised after the design review. The original draft made the Lot timeline the
+> primary object for everything. All three reviewers were unanimous: that is the
+> right model for *review* and the wrong model for *capture*. Winemakers **plan and
+> sell in lots, but they work in vessels** (a cellar hand doing morning pump-overs
+> navigates physical space, not abstract IDs). Forcing lot-first entry on the floor
+> kills adoption (D12).
 
-The natural stages (harvest → crush/press → fermentation → cellar/élevage →
-blending → bottling) are just **chapters** of that timeline. The stage names are not
-load-bearing; the timeline being **made of real, queryable records** is.
+**Capture is vessel-first.** The daily operating surface for cellar staff is the
+**vessel / cellar context** — tanks, barrels, groups. The make-or-break interactions:
 
-**Two views of the same truth:** "follow one wine" (open a Lot, read its life story —
-how a winemaker thinks) and "what's in my cellar right now" (the vessel floor plan —
-how a cellar hand thinks at the start of a shift). Both read from the same
-projection and link to each other constantly.
+- **Fermentation Round** — a bulk-entry worksheet: one row per vessel in route order,
+  oversized auto-advancing fields (Brix, temp), context (operator, time, zone)
+  inherited once for the whole round. A fast numpad beats voice for a 20-tank matrix.
+- **One-tap ad-hoc actions** on every vessel/lot header (log addition, rack, top, pull
+  a sample) — *no* requirement to create a work order first. Work orders are for
+  *planned/delegated* work; completing one creates a **prefilled-actuals** record, not
+  a blind auto-log. Reactive work uses quick-log.
+- **Group actions** — top or add SO₂ to 60 barrels in one action that fans out to the
+  child vessels (D13). Per-barrel logging is unusable.
+
+**Review is the Lot timeline.** The Lot's page is a CRM/Salesforce-style chronological
+feed — current-state header on top (location, volume, form, composition, latest
+numbers, all from the projection), then every operation, chemistry reading, tasting
+note, and work-order completion in the lot's life. This is the surface for
+investigation, lineage, planning, and compliance. It is one tap from any vessel, but
+it is not the daily capture driver.
+
+The natural stages (harvest → crush/press → fermentation → cellar/élevage → blending →
+bottling) are just **chapters** of that timeline. The stage names are not load-bearing;
+the timeline being **made of real, queryable records** is. The two surfaces read from
+the same ledger projection and link to each other constantly.
 
 ---
 
@@ -208,12 +226,14 @@ mode. The vision extends that pattern so the winemaker can talk to the winery �
 *"log a Brix of 22.4 and temp 78 on the Cab in Tank 4," "what's the pH on all my
 Chardonnay lots?", "which lots haven't been topped in two weeks?"*
 
-**Blast-radius guardrail (LOCKED — D10).** The council was firm here: keep the AI
-scoped to **reading** the timeline, **drafting** tasting notes, and **logging simple
-sensor data** (Brix/temp). The **costly, lineage-mutating volumetric operations**
-(blends, draws, bottling) stay behind explicit UI forms even with the nonce — an LLM
-hallucinating a blend of the wrong premium lots corrupts the cost and lineage DAG
-irreversibly.
+**Risk-based guardrail (LOCKED — D10).** The design review refined this: gate by
+**risk, not capability**. Auto-log **low-risk observations** (Brix, temp, pH, TA) with
+a short undo window; let voice **draft medium-risk ops** (single-vessel additions,
+top-ups) with a one-tap confirm and an explicit readback; keep **lineage-mutating
+volumetric operations** (blends, draws, bottling) behind UI confirmation even with the
+nonce. Speed where it's safe; a hard stop where a hallucinated blend of premium lots
+would irreversibly corrupt the cost and lineage DAG. (Plus a winemaking-jargon STT
+dictionary: Brix, TA, KMBS, ullage, Brett…)
 
 > **MCP angle.** Because the assistant is already built on a clean, safe tool set,
 > exposing those tools as an **MCP server** is a natural step, not a rebuild — and the
@@ -256,14 +276,18 @@ The design language in `DESIGN.md` carries straight through.
 | **D1** | Build on the existing repo, not greenfield | Platform work is paid for and orthogonal to the domain |
 | **D2** | Bulk wine is an **append-only operation ledger + materialized projection**, not mutable rows | Required for blends, corrections, and accurate cost roll-up |
 | **D3** | **Vintage is an attribute, not part of lot identity** | NV/multi-vintage sparkling, reserve wines, declassification |
-| **D4** | **Open/extensible operation vocabulary**; lot **form** is a changeable property (fruit→must→juice→wine→bottle) | Makes red/white/sparkling/rosé all just operation sequences |
+| **D4** | Operation type is a **controlled, versioned enum** extended each phase (NOT free-text); lot **form** is a changeable property (fruit→must→juice→wine→bottle) | Type-safe ledger; still makes red/white/sparkling/rosé just operation *sequences*. "Open" meant no fixed pipeline, not untyped. |
 | **D5** | **"Bottle" is a continuable container/state**, not a terminal dead-end; distinguish "bottled, in-process" from "finished good" | Sparkling: 2nd ferment, aging, disgorge, dosage happen *after* bottling |
 | **D6** | **Undo = compensating "correction" events** with temporal-validity guards, never row reversion | Once a lot has downstream ops, magic revert corrupts lineage |
 | **D7** | **Loss, topping, angel's share are first-class ledger operations** | Otherwise cost-per-liter silently drifts |
 | **D8** | **State change (kg→L at crush/press) records *measured actual yield*** — never arithmetic conversion | Extraction varies ~600–750 L/tonne |
 | **D9** | **RBAC redesigned for multi-vineyard lots** before blends ship (many-to-many source membership / tenant-level cellar perms) | A blended lot spans vineyards; per-vineyard-row auth breaks |
-| **D10** | AI/MCP scoped to **read + draft + sensor-logging**; gate volumetric/lineage ops behind UI confirm | LLM hallucination on a blend is irreversible |
-| **D11** | **Day-Zero migration: no fake history.** Wrap each current vessel tuple as a "Legacy Lot" seeded at current volume (old tuple stored as JSON snapshot); leave old tables read-only; do **not** fabricate links to historical picks/transfers | Existing data already collapsed multiple picks into one tuple — lineage is irrecoverably lossy |
+| **D10** | Voice/AI gated by **risk, not capability**: auto-log low-risk observations (+ undo), voice-*draft* medium-risk ops (one-tap confirm + readback), UI-only for lineage-mutating ops (blends/draws/bottling) | Speed where safe; hard stop where a hallucination is irreversible |
+| **D11** | **Day-Zero migration: no fake history.** Wrap each current vessel tuple as a "Legacy Lot" seeded at current volume (old tuple stored as JSON snapshot); leave old tables read-only; do **not** fabricate links to historical picks/transfers, and do **not** backfill `BottlingSource.lotId` from present-day lots | Existing data already collapsed multiple picks into one tuple — lineage is irrecoverably lossy; inferred links are fabricated provenance |
+| **D12** | **Capture is vessel-first; the Lot timeline is the review/audit/lineage spine**, not the daily capture surface | Winemakers work in vessels, plan/sell in lots; lot-first capture on the floor kills adoption |
+| **D13** | **Vessel/barrel *groups* are first-class**; a group operation fans out to child vessels (one action tops 60 barrels) | Per-barrel logging is unusable; the schema must allow group-targeted ops |
+| **D14** | Ledger writes use **SERIALIZABLE isolation + canonical row locking + DB-level constraints** (CHECK `volumeL`>0, `deltaL`<>0, unique `correctsOperationId`, vessel capacity), never app-only assertions; every op carries a **monotonic sequence** + observed/entered/method provenance | App-side folds lose updates and overfill vessels; timestamps collide and clocks drift |
+| **D15** | A correction is **blocked if any later non-correction op touched the affected vessel/lot positions** (not merely "enough volume present") | A mathematically-valid inverse can silently rewrite a blended/topped composition |
 
 **Product boundary (from D11):** full vine-to-bottle traceability **starts at
 cutover.** Pre-cutover data is explicitly labeled inferred/partial.

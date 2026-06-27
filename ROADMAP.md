@@ -38,34 +38,50 @@ For each phase, in order:
 
 ## Phase 0 — Decision lock-in & guardrails  ⬜
 **Goal:** Make the §11 locked decisions executable, before any schema work.
-- Record all of VISION §11 (D1–D11) into the context-ledger as decisions.
-- Write the operation-ledger invariants as plain assertions the code will enforce
-  (double-entry sums to zero per operation; projection == fold of ledger; no negative
-  vessel/lot volume; corrections never mutate prior events).
-- Define the initial **operation vocabulary** (D4) and the **lot form** enum
+- Record all of VISION §11 (**D1–D15**) into the context-ledger as decisions.
+- Write the ledger invariants and say which are **DB-level constraints** vs app checks
+  (D14): per-op `sum(deltaL)=0`; projection == fold of ledger; CHECK `volumeL`>0 and
+  `deltaL`<>0; unique `correctsOperationId`; vessel-capacity guard; corrections never
+  mutate prior events; correction blocked if a later op touched the positions (D15).
+- Define the **operation-type enum** (controlled, versioned — D4: `SEED`/`RACK`/`LOSS`/
+  `ADJUST`/`DEPLETE`/`BOTTLE`/`CORRECTION` to start) and the **lot form** enum
   (fruit → must → juice → wine → bottled-in-process → finished).
-**Exit:** decisions in the ledger; an `INVARIANTS.md`; agreed operation + form lists.
-**Honors:** D2, D4, D6.
+- Decide the **capture-provenance** fields every op carries: monotonic `sequence`,
+  `observedAt` vs `enteredAt`, `enteredBy`/`observedBy`, `captureMethod` (manual/voice/sensor).
+**Exit:** decisions in the ledger; an `INVARIANTS.md` (constraints vs app checks); the
+op-type + form enums; the provenance field list.
+**Honors:** D2, D4, D6, D14, D15.
 
 ---
 
 ## Phase 1 — The Lot + ledger spine  ⬜  ← the foundation; get this right
 **Goal:** Introduce `Lot`, the append-only operation ledger, the materialized
-projection, and lineage edges — and prove them end-to-end through **one rack**.
-- New models: `Lot` (identity, origin, form; **no vintage in the key**), the
-  operation ledger (immutable, double-entry volumetric lines), lineage edges.
+projection, and lineage edges — and prove them end-to-end through **one rack**, safely
+under concurrency.
+- New models: `Lot` (identity, origin, form; **no vintage in the key**; metadata
+  immutable after the first op); the operation ledger (immutable, double-entry
+  volumetric lines, monotonic `sequence`, provenance fields); lineage edges; a
+  **vessel-group** abstraction (structure-only this phase, like lineage — so group ops
+  can fan out later, D13).
 - `VesselComponent` evolves into the **projection** (current state = fold of ledger),
-  maintained transactionally.
+  maintained transactionally with **SERIALIZABLE isolation + canonical row locking +
+  DB constraints** (D14) — not app-only assertions. Include a dust/functional-zero rule
+  and Decimal-safe (centiliter-integer) fold math.
 - Cut **racking** over: `transferWine` writes a ledger operation + updates the
   projection instead of mutating component rows. Replace `planRevert` with a
-  **compensating correction** path (D6).
+  **compensating correction** path that is blocked if a later op touched the positions
+  (D6, D15). `VesselTransfer` becomes a **derived read-model** (unique `lotOperationId`
+  FK; "reverted" derived from a correction op; ledger-writer-only).
 - **Day-Zero migration (D11):** wrap each existing vessel tuple as a "Legacy Lot" at
-  current volume (old tuple as JSON snapshot); old tables become read-only; **no
-  fabricated historical lineage**.
-**Exit:** a real rack moves a lot via the ledger; projection matches; the rack can be
-corrected (not magically reverted); existing vessels show as Legacy Lots; app builds
-and existing tests pass.
-**Honors:** D1, D2, D3, D6, D11.
+  current volume (old tuple as JSON snapshot); deterministic + idempotent; verify volume
+  conservation and projection==fold (abort on drift); **no fabricated lineage, no
+  `BottlingSource.lotId` backfill**; archive the old table in a **later** step, not the
+  cutover commit (much code still reads it); snapshot + maintenance window for the switch.
+**Exit:** a real rack moves a lot via the ledger under concurrent writes without
+overfill or lost updates; projection == fold of ledger (parity checker passes); the rack
+can be corrected (not magically reverted) and the correction is blocked when downstream
+ops touched it; existing vessels show as Legacy Lots; app builds and existing tests pass.
+**Honors:** D1, D2, D3, D6, D11, D12, D13, D14, D15.
 
 ---
 
@@ -80,13 +96,21 @@ and existing tests pass.
 ---
 
 ## Phase 3 — Cellar operations beyond racking  ⬜
-**Goal:** Generalize the ledger to the rest of the cellar.
+**Goal:** Generalize the ledger to the rest of the cellar, with floor-fast capture.
 - Additions, topping, fining, filtration, **loss/angel's share** as first-class
   ledger operations (D7). Each: confirm → write event → update projection.
-- Correction/compensation semantics matured across these (D6).
-**Exit:** each operation logs, updates state, and is correctable; loss/topping move
-volume through the ledger, not manual edits.
-**Honors:** D6, D7.
+- **Vessel-group actions (D13):** one operation tops / adds to a whole barrel group and
+  fans out ledger lines to the child vessels (build the UI on the Phase 1 group schema).
+- **Additions math with basis provenance:** winemakers dictate *rates* (g/hL, ppm, %
+  solution); the app auto-computes *totals* (grams) from the current vessel-volume
+  projection and stores the basis + inputs used. The **topping keg** draws down a
+  separate lot and appends lineage to every topped vessel.
+- **Cap management** (pump-over / punch-down) as a near-zero-data, one-tap "done"
+  operation; **exceptions** ("couldn't complete / vessel empty / wrong barrel").
+- Correction/compensation semantics matured across these (D6, D15).
+**Exit:** each operation logs, updates state, and is correctable; a single group action
+tops 60 barrels; an addition entered as g/hL records the computed grams + basis.
+**Honors:** D6, D7, D13, D15.
 
 ---
 
@@ -94,7 +118,11 @@ volume through the ledger, not manual edits.
 **Goal:** pH, TA, SO₂, temp, etc. + tasting notes attached to the homogeneous liquid.
 - Analysis records (extensible analyte set) + tasting notes on the lot-in-vessel.
 - Trend charts (reuse the vineyard Brix charting).
-**Exit:** log pH/TA on a lot; see analyte trends over its timeline.
+- **Sample / lab lifecycle:** a reading isn't always instant — model `pulled → sent →
+  pending → result returned → attached to the lot`. Not every measurement appears at
+  capture time.
+**Exit:** log pH/TA on a lot; see analyte trends over its timeline; a pulled sample can
+sit pending and later attach its result.
 **Honors:** D2 (chemistry attaches to the lot, never a phantom parent share).
 
 ---
@@ -105,8 +133,11 @@ volume through the ledger, not manual edits.
   records and a parent→child lineage tree.
 - **Redesign RBAC for multi-vineyard lots (D9)** — many-to-many source membership /
   tenant-level cellar permissions.
+- **Bench trials:** temporary trial blends/additions with tasting outcomes that do
+  **not** mutate production lineage until explicitly *promoted* to a real operation.
 **Exit:** blend 3 lots → 1 new lot with correct lineage; a manager scoped to one
-vineyard sees a blend spanning theirs without an auth break.
+vineyard sees a blend spanning theirs without an auth break; a bench trial can be
+evaluated and discarded without touching the ledger.
 **Honors:** D2, D9.
 
 ---
@@ -123,8 +154,13 @@ daily life of an active fermentation.
 - **Press fractions are splits (D4 + lineage):** free-run vs. pressings (and harder
   press cuts) commonly become **separate lots** so they can be kept apart or blended
   back deliberately. The model must allow one press to originate multiple child lots.
-- **Fermentation logging:** Brix + temperature once/twice daily → the analyte trend
-  curve; surface a **stuck/sluggish fermentation** signal (sugar not dropping).
+- **Fermentation logging via a "Round" (vessel-first capture — D12):** the primary
+  capture UX is a **bulk-entry worksheet**, one row per active vessel in route order,
+  oversized auto-advancing Brix/temp fields, with operator/time/zone inherited once per
+  round and one-tap flags (stuck/hot/foam/sample-sent). A fast numpad beats voice for a
+  20-tank matrix; voice is for tasting notes and single messy-hand ops. Feeds the analyte
+  trend curve; surface a **stuck/sluggish fermentation** signal (sugar not dropping).
+  (The Round grid is a reusable bulk-capture surface, not fermentation-only.)
 - **Cap management for reds** (punch-down / pump-over) as logged operations; **cold
   soak / extended maceration** as states/operations.
 - **Staged additions during ferment** (yeast, rehydration nutrients, DAP in stages) —
@@ -244,12 +280,14 @@ templates instantiate? offline/poor-signal behavior on the cellar floor.
 **Domain requirements (durable):**
 - **Read everywhere:** the assistant can query any lot timeline, chemistry trend,
   current cellar state, cost, and work-order status across all new records.
-- **Draft + sensor-log:** draft tasting notes; log Brix/temp/analysis by voice; create
-  work orders. These are low-risk and voice-confirmable.
-- **Gated writes:** the costly, lineage-mutating volumetric operations (**blends,
-  draws/racking, bottling, disgorgement**) stay behind **explicit UI confirmation**
-  even when initiated by the assistant — an LLM hallucinating a blend of the wrong
-  premium lots corrupts the cost/lineage DAG irreversibly (D10).
+- **Risk-based gating (D10):** auto-log **low-risk observations** (Brix/temp/pH/TA) with
+  a ~5s undo toast (no mandatory tap); voice-**draft medium-risk ops** (single-vessel
+  additions, top-ups) with one-tap confirm + explicit readback; **UI-only** for
+  lineage-mutating ops (blends, draws/racking, bottling, disgorgement) — a hallucinated
+  blend of premium lots corrupts the cost/lineage DAG irreversibly.
+- **STT jargon dictionary** (Brix, TA, KMBS, ullage, Brett, varietals, vessel/lot
+  aliases) + first-class "undo last" / "correct X to Y" voice actions + batch confirm
+  for Rounds.
 - **MCP server** exposing the same tool set with the same read/draft-vs-gated-write
   boundary and the existing nonce-guarded confirm path; auth-scoped.
 
@@ -269,3 +307,18 @@ MCP auth model.
 - Phase 5 (blends) must not ship before its RBAC redesign (D9).
 - Phase 7 (sparkling) depends on the operation vocabulary (Phase 0/D4) and bottling.
 - Cost (Phase 8) depends on a complete operation ledger (Phases 1, 3, 5).
+
+## Cross-cutting capture requirements (apply to every phase that captures data)
+These came out of the design review and hold across phases — honor them whenever a
+capture surface is built, don't relitigate per phase:
+- **Vessel-first capture, lot timeline for review (D12).** Default cellar staff into the
+  physical (vessel/round/group) surface; the lot timeline is one tap away.
+- **One-tap ad-hoc actions** on every vessel/lot; never require creating a work order
+  first. Work-order completion creates a **prefilled-actuals** record, not a blind log.
+- **Capture provenance on every op** (D14): monotonic sequence, `observedAt` vs
+  `enteredAt`, who observed/entered, capture method (manual/voice/sensor).
+- **Exceptions are first-class** ("couldn't complete / vessel empty / wrong barrel /
+  volume lower than expected").
+- **Offline / degraded mode** — cellars have poor wifi; capture must tolerate it
+  (queue-and-sync). Decide the approach when the first heavy floor surface ships (Phase 6).
+- **Sticky context** — don't re-select block/vessel for every entry in a sequence.
