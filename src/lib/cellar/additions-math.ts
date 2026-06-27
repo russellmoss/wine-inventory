@@ -20,6 +20,18 @@ import type { OperationType } from "@/lib/ledger/vocabulary";
 export const RATE_BASES = ["G_HL", "MG_L", "G_L", "ML_L"] as const;
 export type RateBasis = (typeof RATE_BASES)[number];
 
+/** Material families for the light catalog (controlled, D4). `OTHER` is the fallback. */
+export const MATERIAL_KINDS = [
+  "SO2",
+  "NUTRIENT",
+  "ACID",
+  "TANNIN",
+  "FINING",
+  "ENZYME",
+  "OTHER",
+] as const;
+export type MaterialKind = (typeof MATERIAL_KINDS)[number];
+
 /** Human labels for the basis picker (Design Spec: "g/hL · ppm (mg/L) · g/L · mL/L"). */
 export const RATE_BASIS_LABELS: Record<RateBasis, string> = {
   G_HL: "g/hL",
