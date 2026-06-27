@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { Card, Input, Button, Badge, Eyebrow, Modal, ConfirmButton } from "@/components/ui";
 import { createVessel, updateVessel, setVesselActive } from "@/lib/vessels/actions";
+import { formatL } from "@/lib/lot/timeline";
 
 export type VesselRow = {
   id: string;
@@ -18,6 +20,7 @@ export type VesselRow = {
   cooperageYear: number | null;
   cooperage: string | null;
   toastLevel: string | null;
+  lots: { lotId: string; code: string; volumeL: number }[];
 };
 
 export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
@@ -66,25 +69,39 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
         ) : (
           <div>
             {items.map((v) => (
-              <button
+              <div
                 key={v.id}
-                onClick={() => setSelectedId(v.id)}
-                style={{
-                  width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 8px",
-                  borderTop: "1px solid var(--border-strong)", background: "transparent", border: "none",
-                  cursor: "pointer", textAlign: "left", fontFamily: "var(--font-body)", fontSize: 14, opacity: v.isActive ? 1 : 0.55,
-                }}
+                id={`vessel-${v.id}`}
+                style={{ borderTop: "1px solid var(--border-strong)", scrollMarginTop: 80, opacity: v.isActive ? 1 : 0.55 }}
               >
-                <span style={{ fontWeight: 500, minWidth: 90 }}>{v.code}</span>
-                <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, minWidth: 140 }}>
-                  <span style={{ flex: 1, height: 8, background: "var(--paper-200)", borderRadius: 999, overflow: "hidden" }}>
-                    <span style={{ display: "block", width: `${Math.min(100, v.pct)}%`, height: "100%", background: v.over ? "var(--danger)" : "var(--accent)" }} />
+                <button
+                  onClick={() => setSelectedId(v.id)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 8px",
+                    background: "transparent", border: "none",
+                    cursor: "pointer", textAlign: "left", fontFamily: "var(--font-body)", fontSize: 14,
+                  }}
+                >
+                  <span style={{ fontWeight: 500, minWidth: 90 }}>{v.code}</span>
+                  <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, minWidth: 140 }}>
+                    <span style={{ flex: 1, height: 8, background: "var(--paper-200)", borderRadius: 999, overflow: "hidden" }}>
+                      <span style={{ display: "block", width: `${Math.min(100, v.pct)}%`, height: "100%", background: v.over ? "var(--danger)" : "var(--accent)" }} />
+                    </span>
+                    <span style={{ fontSize: 12.5, color: v.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>{v.filledL}/{v.capacityL} L</span>
                   </span>
-                  <span style={{ fontSize: 12.5, color: v.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>{v.filledL}/{v.capacityL} L</span>
-                </span>
-                {!v.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
-                <span style={{ color: "var(--text-accent)", fontSize: 13 }}>edit ›</span>
-              </button>
+                  {!v.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
+                  <span style={{ color: "var(--text-accent)", fontSize: 13 }}>edit ›</span>
+                </button>
+                {v.lots.length > 0 ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 8px 10px 8px" }}>
+                    {v.lots.map((l) => (
+                      <Link key={l.lotId} href={`/lots/${l.lotId}`}>
+                        <Badge tone="neutral" variant="soft">{l.code} · {formatL(l.volumeL)} L</Badge>
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         )}

@@ -4,7 +4,11 @@ import { VesselsClient, type VesselRow } from "./VesselsClient";
 
 export default async function VesselsPage() {
   const vessels = await prisma.vessel.findMany({
-    include: { components: { select: { volumeL: true } } },
+    include: {
+      components: { select: { volumeL: true } },
+      // Phase 2: current lots from the projection, for read-only vessel -> lot links.
+      vesselLots: { include: { lot: { select: { id: true, code: true } } } },
+    },
   });
   // Natural sort: codes are strings ("1","2","10"), so sort numerically not lexically.
   vessels.sort((a, b) =>
@@ -32,6 +36,9 @@ export default async function VesselsPage() {
       cooperageYear: v.cooperageYear,
       cooperage: v.cooperage,
       toastLevel: v.toastLevel,
+      lots: v.vesselLots
+        .map((vl) => ({ lotId: vl.lotId, code: vl.lot.code, volumeL: Number(vl.volumeL) }))
+        .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })),
     };
   });
 
