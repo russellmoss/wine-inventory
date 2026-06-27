@@ -16,6 +16,7 @@ import {
   type FiltrationInput,
 } from "@/lib/cellar/treatments";
 import { recordLossCore, type RecordLossInput } from "@/lib/cellar/loss";
+import { topVesselCore, type ToppingInput, type ToppingResult } from "@/lib/cellar/topping";
 import { upsertMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput } from "@/lib/cellar/materials";
 
 // "use server" wrappers for the Phase 3 cellar operations. Each authorizes a ready user,
@@ -77,6 +78,15 @@ export const capManagementAction = action(
 export const recordLossAction = action(
   async ({ actor }, input: RecordLossInput): Promise<CellarBaseResult> => {
     const res = await recordLossCore(actor, input);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Top a vessel from a source keg lot (moves volume + appends lineage). */
+export const topVesselAction = action(
+  async ({ actor }, input: ToppingInput): Promise<ToppingResult> => {
+    const res = await topVesselCore(actor, input);
     revalidateCaptureSurfaces();
     return res;
   },
