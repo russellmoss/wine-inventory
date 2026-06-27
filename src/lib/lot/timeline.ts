@@ -39,6 +39,7 @@ export type TimelineLeg = {
   vesselId: string | null; // null = not linkable (external counter-account or deleted vessel)
   vesselCode: string | null;
   isExternal: boolean; // vesselCode == null
+  reason: string | null; // line reason (seed/loss/bottle/deplete/adjust) — set on external legs
   deltaL: number; // signed (this lot's leg)
   direction: "in" | "out";
 };
@@ -106,6 +107,7 @@ function toLeg(l: RawLine): TimelineLeg {
     vesselId: l.vesselId,
     vesselCode: l.vesselCode,
     isExternal: external,
+    reason: l.reason ?? null,
     deltaL: round2(l.deltaL),
     direction: l.deltaL >= 0 ? "in" : "out",
   };
