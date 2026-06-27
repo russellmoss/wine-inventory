@@ -4,13 +4,17 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, diff } from "@/lib/audit";
+import { computeProportionalDraw, round2 } from "@/lib/bottling/draw";
+import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
+import type { LedgerLine } from "@/lib/ledger/math";
 
 const PATH = "/bulk";
+const EPS = 1e-9;
 
 function parseVolume(raw: unknown): number {
   const v = Number(raw);
   if (!Number.isFinite(v) || v <= 0) throw new ActionError("Volume must be a positive number of liters.");
-  return Math.round(v * 100) / 100;
+  return round2(v);
 }
 
 function parseVintage(raw: unknown): number {
@@ -20,12 +24,21 @@ function parseVintage(raw: unknown): number {
   return y;
 }
 
-async function currentTotal(vesselId: string, excludeComponentId?: string): Promise<number> {
-  const comps = await prisma.vesselComponent.findMany({
-    where: { vesselId, ...(excludeComponentId ? { id: { not: excludeComponentId } } : {}) },
-    select: { volumeL: true },
+/** Current total in a vessel from the ledger projection (vessel_lot). */
+async function vesselTotal(vesselId: string): Promise<number> {
+  const rows = await prisma.vesselLot.findMany({ where: { vesselId }, select: { volumeL: true } });
+  return round2(rows.reduce((a, r) => a + Number(r.volumeL), 0));
+}
+
+/** The lots (with codes) backing one vessel_component tuple. */
+async function lotsForTuple(vesselId: string, varietyId: string, vineyardId: string, vintage: number) {
+  return prisma.vesselLot.findMany({
+    where: {
+      vesselId,
+      lot: { originVarietyId: varietyId, originVineyardId: vineyardId, vintageYear: vintage },
+    },
+    include: { lot: { select: { id: true, code: true } } },
   });
-  return comps.reduce((a, c) => a + Number(c.volumeL), 0);
 }
 
 export const addComponent = action(async ({ actor }, formData: FormData) => {
@@ -40,67 +53,96 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
   if (!varietyId || !vineyardId) throw new ActionError("Pick a variety and a vineyard.");
 
   const capacity = Number(vessel.capacityL);
-  const existing = await prisma.vesselComponent.findUnique({
-    where: { vesselId_varietyId_vineyardId_vintage: { vesselId, varietyId, vineyardId, vintage } },
-  });
-  const total = await currentTotal(vesselId);
-  if (total + volumeL > capacity + 1e-9) {
+  const total = await vesselTotal(vesselId);
+  if (total + volumeL > capacity + EPS) {
     throw new ActionError(
-      `That would exceed capacity: ${Math.round((total + volumeL) * 100) / 100} L into a ${capacity} L vessel.`,
+      `That would exceed capacity: ${round2(total + volumeL)} L into a ${capacity} L vessel.`,
       "CONFLICT",
     );
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (existing) {
-      const newVol = Math.round((Number(existing.volumeL) + volumeL) * 100) / 100;
-      await tx.vesselComponent.update({ where: { id: existing.id }, data: { volumeL: newVol } });
-      await writeAudit(tx, {
-        ...actor,
-        action: "UPDATE",
-        entityType: "VesselComponent",
-        entityId: existing.id,
-        changes: diff({ volumeL: existing.volumeL }, { volumeL: newVol }),
-        summary: `Added ${volumeL} L to ${vessel.code} (${vintage})`,
-      });
-    } else {
-      const created = await tx.vesselComponent.create({
-        data: { vesselId, varietyId, vineyardId, vintage, volumeL },
-      });
-      await writeAudit(tx, {
-        ...actor,
-        action: "CREATE",
-        entityType: "VesselComponent",
-        entityId: created.id,
-        changes: diff(null, { vesselId, varietyId, vineyardId, vintage, volumeL }),
-        summary: `Filled ${vessel.code} with ${volumeL} L (${vintage})`,
-      });
-    }
+  await runLedgerWrite(async (tx) => {
+    const code = `LOT-${vintage}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+    const lot = await tx.lot.create({
+      data: { code, form: "WINE", originVarietyId: varietyId, originVineyardId: vineyardId, vintageYear: vintage },
+      select: { id: true },
+    });
+    const lines: LedgerLine[] = [
+      { lotId: lot.id, vesselId, deltaL: volumeL },
+      { lotId: lot.id, vesselId: null, deltaL: -volumeL, reason: "seed" },
+    ];
+    await writeLotOperation(tx, {
+      type: "SEED",
+      lines,
+      actorUserId: actor.actorUserId,
+      enteredBy: actor.actorEmail,
+      note: `Filled ${vessel.code} with ${volumeL} L (${vintage})`,
+      lotCodes: new Map([[lot.id, code]]),
+      vesselCodes: new Map([[vesselId, vessel.code]]),
+      capacityByVessel: new Map([[vesselId, capacity]]),
+    });
+    await writeAudit(tx, {
+      ...actor,
+      action: "CREATE",
+      entityType: "Lot",
+      entityId: lot.id,
+      changes: diff(null, { vesselId, varietyId, vineyardId, vintage, volumeL }),
+      summary: `Filled ${vessel.code} with ${volumeL} L (${vintage})`,
+    });
   });
   revalidatePath(PATH);
 });
 
 export const updateComponentVolume = action(async ({ actor }, componentId: string, formData: FormData) => {
-  const volumeL = parseVolume(formData.get("volumeL"));
-  const comp = await prisma.vesselComponent.findUnique({
-    where: { id: componentId },
-    include: { vessel: true },
-  });
+  const target = parseVolume(formData.get("volumeL"));
+  const comp = await prisma.vesselComponent.findUnique({ where: { id: componentId }, include: { vessel: true } });
   if (!comp) throw new ActionError("Component not found.");
+
   const capacity = Number(comp.vessel.capacityL);
-  const others = await currentTotal(comp.vesselId, componentId);
-  if (others + volumeL > capacity + 1e-9) {
+  const lots = await lotsForTuple(comp.vesselId, comp.varietyId, comp.vineyardId, comp.vintage);
+  if (lots.length === 0) throw new ActionError("Can't adjust: no lot backs this wine anymore.");
+
+  const tupleTotal = round2(lots.reduce((a, r) => a + Number(r.volumeL), 0));
+  const others = round2((await vesselTotal(comp.vesselId)) - tupleTotal);
+  if (others + target > capacity + EPS) {
     throw new ActionError(`That would exceed the ${capacity} L capacity.`, "CONFLICT");
   }
-  await prisma.$transaction(async (tx) => {
-    await tx.vesselComponent.update({ where: { id: componentId }, data: { volumeL } });
+
+  const delta = round2(target - tupleTotal);
+  if (Math.abs(delta) < EPS) return; // no change
+
+  // Distribute the change across the tuple's lots proportionally to current volume.
+  const shares = computeProportionalDraw(
+    lots.map((r) => ({ id: r.lotId, volumeL: Number(r.volumeL) })),
+    Math.abs(delta),
+  );
+  const sign = delta > 0 ? 1 : -1;
+  const lines: LedgerLine[] = [];
+  for (const s of shares) {
+    if (s.deduct <= 0) continue;
+    const d = round2(sign * s.deduct);
+    lines.push({ lotId: s.id, vesselId: comp.vesselId, deltaL: d });
+    lines.push({ lotId: s.id, vesselId: null, deltaL: round2(-d), reason: "adjust" });
+  }
+
+  await runLedgerWrite(async (tx) => {
+    await writeLotOperation(tx, {
+      type: "ADJUST",
+      lines,
+      actorUserId: actor.actorUserId,
+      enteredBy: actor.actorEmail,
+      note: `Adjusted volume in ${comp.vessel.code} to ${target} L`,
+      lotCodes: new Map(lots.map((r) => [r.lotId, r.lot.code])),
+      vesselCodes: new Map([[comp.vesselId, comp.vessel.code]]),
+      capacityByVessel: new Map([[comp.vesselId, capacity]]),
+    });
     await writeAudit(tx, {
       ...actor,
       action: "UPDATE",
       entityType: "VesselComponent",
       entityId: componentId,
-      changes: diff({ volumeL: comp.volumeL }, { volumeL }),
-      summary: `Adjusted volume in ${comp.vessel.code} to ${volumeL} L`,
+      changes: diff({ volumeL: comp.volumeL }, { volumeL: target }),
+      summary: `Adjusted volume in ${comp.vessel.code} to ${target} L`,
     });
   });
   revalidatePath(PATH);
@@ -127,13 +169,34 @@ export const setBlendName = action(async ({ actor }, vesselId: string, formData:
 });
 
 export const removeComponent = action(async ({ actor }, componentId: string) => {
-  const comp = await prisma.vesselComponent.findUnique({
-    where: { id: componentId },
-    include: { vessel: true },
-  });
+  const comp = await prisma.vesselComponent.findUnique({ where: { id: componentId }, include: { vessel: true } });
   if (!comp) throw new ActionError("Component not found.");
-  await prisma.$transaction(async (tx) => {
-    await tx.vesselComponent.delete({ where: { id: componentId } });
+
+  const lots = await lotsForTuple(comp.vesselId, comp.varietyId, comp.vineyardId, comp.vintage);
+  const lines: LedgerLine[] = [];
+  for (const r of lots) {
+    const vol = round2(Number(r.volumeL));
+    if (vol <= 0) continue;
+    lines.push({ lotId: r.lotId, vesselId: comp.vesselId, deltaL: round2(-vol) });
+    lines.push({ lotId: r.lotId, vesselId: null, deltaL: vol, reason: "deplete" });
+  }
+
+  await runLedgerWrite(async (tx) => {
+    if (lines.length > 0) {
+      await writeLotOperation(tx, {
+        type: "DEPLETE",
+        lines,
+        actorUserId: actor.actorUserId,
+        enteredBy: actor.actorEmail,
+        note: `Removed ${Number(comp.volumeL)} L from ${comp.vessel.code}`,
+        lotCodes: new Map(lots.map((r) => [r.lotId, r.lot.code])),
+        vesselCodes: new Map([[comp.vesselId, comp.vessel.code]]),
+        capacityByVessel: new Map([[comp.vesselId, Number(comp.vessel.capacityL)]]),
+      });
+    } else {
+      // No backing lot (legacy edge): drop the stale projection row directly.
+      await tx.vesselComponent.delete({ where: { id: componentId } });
+    }
     await writeAudit(tx, {
       ...actor,
       action: "DELETE",

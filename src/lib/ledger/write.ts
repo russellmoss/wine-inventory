@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
+import { round2 } from "@/lib/bottling/draw";
 import {
   assertBalanced,
   balanceKey,
@@ -8,7 +9,7 @@ import {
   type LedgerLine,
   type VesselLotBalance,
 } from "@/lib/ledger/math";
-import { type CaptureMethod, type OperationType } from "@/lib/ledger/vocabulary";
+import { FUNCTIONAL_ZERO_L, type CaptureMethod, type OperationType } from "@/lib/ledger/vocabulary";
 
 // The single transactional chokepoint for every bulk-wine operation (Phase 1 spine).
 // Not a server action (no "server-only") so the Day-Zero migration + verification
@@ -144,5 +145,66 @@ export async function writeLotOperation(
     }
   }
 
+  await syncVesselComponents(tx, input.lines);
   return op.id;
+}
+
+/**
+ * Keep the legacy `vessel_component` table (variety/vineyard/vintage tuples) in sync as a
+ * SECOND derived projection of the ledger, via each lot's origin. This lets the existing
+ * read paths behave identically during transition; reads migrate to `vessel_lot` in
+ * Phase 2. `vessel_component` is no longer a source of truth. Lots without a full origin
+ * tuple (none in Phase 1) are skipped. Folds incrementally so unchanged rows keep their ids.
+ */
+async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerLine[]): Promise<void> {
+  const lotIds = [...new Set(lines.map((l) => l.lotId))];
+  const lots = await tx.lot.findMany({
+    where: { id: { in: lotIds } },
+    select: { id: true, originVarietyId: true, originVineyardId: true, vintageYear: true },
+  });
+  const originById = new Map(lots.map((l) => [l.id, l]));
+
+  type CompDelta = { vesselId: string; varietyId: string; vineyardId: string; vintage: number; delta: number };
+  const deltas = new Map<string, CompDelta>();
+  for (const line of lines) {
+    if (!line.vesselId) continue;
+    const o = originById.get(line.lotId);
+    if (!o?.originVarietyId || !o.originVineyardId || o.vintageYear == null) continue; // can't form a tuple
+    const key = `${line.vesselId}::${o.originVarietyId}::${o.originVineyardId}::${o.vintageYear}`;
+    const cur = deltas.get(key);
+    if (cur) cur.delta = round2(cur.delta + line.deltaL);
+    else
+      deltas.set(key, {
+        vesselId: line.vesselId,
+        varietyId: o.originVarietyId,
+        vineyardId: o.originVineyardId,
+        vintage: o.vintageYear,
+        delta: line.deltaL,
+      });
+  }
+
+  for (const c of deltas.values()) {
+    if (Math.abs(c.delta) < 1e-9) continue;
+    const existing = await tx.vesselComponent.findUnique({
+      where: {
+        vesselId_varietyId_vineyardId_vintage: {
+          vesselId: c.vesselId,
+          varietyId: c.varietyId,
+          vineyardId: c.vineyardId,
+          vintage: c.vintage,
+        },
+      },
+      select: { id: true, volumeL: true },
+    });
+    const next = round2((existing ? Number(existing.volumeL) : 0) + c.delta);
+    if (next <= FUNCTIONAL_ZERO_L) {
+      if (existing) await tx.vesselComponent.delete({ where: { id: existing.id } });
+    } else if (existing) {
+      await tx.vesselComponent.update({ where: { id: existing.id }, data: { volumeL: next } });
+    } else {
+      await tx.vesselComponent.create({
+        data: { vesselId: c.vesselId, varietyId: c.varietyId, vineyardId: c.vineyardId, vintage: c.vintage, volumeL: next },
+      });
+    }
+  }
 }
