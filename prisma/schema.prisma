@@ -15,20 +15,20 @@ datasource db {
 // ───────────────────────── Auth (Better Auth) ─────────────────────────
 
 model User {
-  id                 String      @id
-  name               String
-  email              String
-  emailVerified      Boolean     @default(false)
-  image              String?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
-  role               String?
-  banned             Boolean?    @default(false)
-  banReason          String?
-  banExpires         DateTime?
-  mustChangePassword Boolean?    @default(false)
-  passwordChangedAt  DateTime?
-  assignedVineyardId String? // managers are scoped to one vineyard (Prisma-only; never declared to Better Auth)
+  id                     String                  @id
+  name                   String
+  email                  String
+  emailVerified          Boolean                 @default(false)
+  image                  String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  role                   String?
+  banned                 Boolean?                @default(false)
+  banReason              String?
+  banExpires             DateTime?
+  mustChangePassword     Boolean?                @default(false)
+  passwordChangedAt      DateTime?
+  assignedVineyardId     String? // managers are scoped to one vineyard (Prisma-only; never declared to Better Auth)
   sessions               Session[]
   accounts               Account[]
   assignedVineyard       Vineyard?               @relation("VineyardManagers", fields: [assignedVineyardId], references: [id], onDelete: SetNull)
@@ -198,13 +198,13 @@ model VineyardDetail {
 // A planted block within a vineyard. All fields optional; nothing required to save.
 // Acreage is NOT stored — it is derived from rowSpacing * vineSpacing * vineCount.
 model VineyardBlock {
-  id             String          @id @default(cuid())
+  id             String             @id @default(cuid())
   vineyardId     String
   blockLabel     String? // e.g. "Block 1", "A"
   code           String? // short token for lot codes (e.g. "1", "A"); falls back to a normalized blockLabel
   numRows        Int? // informational (drives optional vines/row readout)
-  rowSpacingM    Decimal?        @db.Decimal(10, 4) // canonical metric
-  vineSpacingM   Decimal?        @db.Decimal(10, 4) // canonical metric
+  rowSpacingM    Decimal?           @db.Decimal(10, 4) // canonical metric
+  vineSpacingM   Decimal?           @db.Decimal(10, 4) // canonical metric
   varietyId      String?
   clone          String?
   rootstock      String?
@@ -213,9 +213,9 @@ model VineyardBlock {
   irrigated      Boolean?
   polygon        Json? // GeoJSON Polygon geometry (illustrative, not the area source)
   color          String? // optional per-block polygon color override (hex)
-  sortOrder      Int             @default(0)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  sortOrder      Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
   vineyard       Vineyard           @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
   variety        Variety?           @relation(fields: [varietyId], references: [id], onDelete: SetNull)
   brixLogs       BrixLog[]
@@ -354,29 +354,30 @@ model HarvestPick {
 // ───────────────────────── Bulk / in-process wine ─────────────────────────
 
 model Vessel {
-  id              String            @id @default(cuid())
-  code            String // barrels: "Barrel #"; tanks: code. Unique per type (see @@unique below).
-  type            VesselType
-  capacityL       Decimal           @db.Decimal(10, 2)
-  isActive        Boolean           @default(true)
-  blendName       String? // optional label for the current blend in this vessel
+  id               String              @id @default(cuid())
+  code             String // barrels: "Barrel #"; tanks: code. Unique per type (see @@unique below).
+  type             VesselType
+  capacityL        Decimal             @db.Decimal(10, 2)
+  isActive         Boolean             @default(true)
+  blendName        String? // optional label for the current blend in this vessel
   // Barrel-only metadata (null for tanks). Volume = capacityL (not duplicated here).
   // The barrel's "Barrel #" is its `code` above — no separate number column.
-  oakOrigin       String? // e.g. French, American, Hungarian
-  cooperageYear   Int? // year the barrel was made
-  cooperage       String? // barrel maker, e.g. Seguin Moreau
-  toastLevel      String? // e.g. Light, Medium, Medium+, Heavy
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  components      VesselComponent[]
-  bottlingSources BottlingSource[]
-  transfersOut    VesselTransfer[]  @relation("VesselTransfersOut")
-  transfersIn     VesselTransfer[]  @relation("VesselTransfersIn")
+  oakOrigin        String? // e.g. French, American, Hungarian
+  cooperageYear    Int? // year the barrel was made
+  cooperage        String? // barrel maker, e.g. Seguin Moreau
+  toastLevel       String? // e.g. Light, Medium, Medium+, Heavy
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  components       VesselComponent[]
+  bottlingSources  BottlingSource[]
+  transfersOut     VesselTransfer[]    @relation("VesselTransfersOut")
+  transfersIn      VesselTransfer[]    @relation("VesselTransfersIn")
   // Lot + ledger spine (Phase 1): the projection rows, group memberships, and the
   // operation lines that reference this vessel. Additive; existing relations unchanged.
   vesselLots       VesselLot[]
   groupMemberships VesselGroupMember[]
   operationLines   LotOperationLine[]
+  treatments       LotTreatment[]
 
   @@unique([type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
   @@map("vessel")
@@ -408,18 +409,18 @@ model VesselComponent {
 // even for multi-lot (tank) racks and survives later vessel edits. Vessel codes
 // are snapshotted so a deleted vessel (FK SetNull) still shows in history.
 model VesselTransfer {
-  id             String   @id @default(cuid())
+  id             String           @id @default(cuid())
   fromVesselId   String?
   toVesselId     String?
   fromVesselCode String
   toVesselCode   String
-  volumeL        Decimal  @db.Decimal(10, 2)
-  lossL          Decimal  @default(0) @db.Decimal(10, 2)
+  volumeL        Decimal          @db.Decimal(10, 2)
+  lossL          Decimal          @default(0) @db.Decimal(10, 2)
   components     Json
   note           String?
   actorUserId    String?
   actorEmail     String
-  rackedAt       DateTime @default(now())
+  rackedAt       DateTime         @default(now())
   // Revert tracking (LEGACY undo path). Phase 1 (D6/D15) replaces row-reversion with
   // a CORRECTION ledger op; "reverted" is derived from a correction's existence. These
   // columns remain for the pre-cutover history read and are dropped in a later cleanup.
@@ -427,12 +428,12 @@ model VesselTransfer {
   revertsId      String?
   reverts        VesselTransfer?  @relation("TransferReversal", fields: [revertsId], references: [id], onDelete: SetNull)
   reversedBy     VesselTransfer[] @relation("TransferReversal")
-  fromVessel     Vessel?  @relation("VesselTransfersOut", fields: [fromVesselId], references: [id], onDelete: SetNull)
-  toVessel       Vessel?  @relation("VesselTransfersIn", fields: [toVesselId], references: [id], onDelete: SetNull)
+  fromVessel     Vessel?          @relation("VesselTransfersOut", fields: [fromVesselId], references: [id], onDelete: SetNull)
+  toVessel       Vessel?          @relation("VesselTransfersIn", fields: [toVesselId], references: [id], onDelete: SetNull)
   // Phase 1: a RACK is a derived read-model of one ledger operation. Unique 1:1 link;
   // written only by the ledger writer.
-  lotOperationId Int?            @unique
-  lotOperation   LotOperation?   @relation(fields: [lotOperationId], references: [id], onDelete: SetNull)
+  lotOperationId Int?             @unique
+  lotOperation   LotOperation?    @relation(fields: [lotOperationId], references: [id], onDelete: SetNull)
 
   @@index([fromVesselId, rackedAt])
   @@index([toVesselId, rackedAt])
@@ -665,16 +666,16 @@ model AssistantConversation {
 // Postgres generated tsvector column (added in the migration, not managed by
 // Prisma) backing full-text search; it is intentionally absent from this model.
 model AssistantMessage {
-  id             String                  @id @default(cuid())
+  id             String                   @id @default(cuid())
   conversationId String
   role           String // "user" | "assistant"
-  content        String                  @db.Text
+  content        String                   @db.Text
   metadata       Json?
-  createdAt      DateTime                @default(now())
+  createdAt      DateTime                 @default(now())
   // Postgres GENERATED tsvector over `content` (see migration). Declared here so
   // Prisma tracks the column + GIN index and won't flag drift; never written by app.
   searchVector   Unsupported("tsvector")? @map("search_vector")
-  conversation   AssistantConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation   AssistantConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@index([searchVector], type: Gin)
@@ -706,6 +707,13 @@ enum OperationType {
   DEPLETE
   BOTTLE
   CORRECTION
+  // Phase 3 cellar operations (added in a dedicated enum-only migration — Postgres
+  // ALTER TYPE ... ADD VALUE can't be used in the same migration that adds it).
+  ADDITION
+  TOPPING
+  FINING
+  FILTRATION
+  CAP_MGMT
 }
 
 enum CaptureMethod {
@@ -741,6 +749,7 @@ model Lot {
   parentEdges     LotLineage[]       @relation("LotChild") // edges where this lot is the child
   childEdges      LotLineage[]       @relation("LotParent") // edges where this lot is the parent
   bottlingSources BottlingSource[]
+  treatments      LotTreatment[]
 
   @@index([status])
   @@index([originVineyardId])
@@ -760,15 +769,19 @@ model LotOperation {
   captureMethod       CaptureMethod @default(MANUAL)
   note                String?
   correctsOperationId Int?          @unique
+  batchId             String? // Phase 3: groups the per-vessel ops of one group fan-out (D13)
   metadata            Json?
   createdAt           DateTime      @default(now())
 
-  corrects       LotOperation?      @relation("OpCorrection", fields: [correctsOperationId], references: [id], onDelete: Restrict)
-  correctedBy    LotOperation?      @relation("OpCorrection")
-  lines          LotOperationLine[]
-  vesselTransfer VesselTransfer? // 1:1 derived read-model (FK lives on VesselTransfer)
+  corrects         LotOperation?      @relation("OpCorrection", fields: [correctsOperationId], references: [id], onDelete: Restrict)
+  correctedBy      LotOperation?      @relation("OpCorrection")
+  lines            LotOperationLine[]
+  vesselTransfer   VesselTransfer? // 1:1 derived read-model (FK lives on VesselTransfer)
+  treatments       LotTreatment[]     @relation("TreatmentOperation") // detail rows this op created
+  voidedTreatments LotTreatment[]     @relation("TreatmentVoid") // treatments this (CORRECTION) op voided
 
   @@index([type, observedAt])
+  @@index([batchId])
   @@map("lot_operation")
 }
 
@@ -826,6 +839,64 @@ model LotLineage {
   @@unique([parentLotId, childLotId])
   @@index([childLotId])
   @@map("lot_lineage")
+}
+
+// ───────────────────────── Cellar operations (Phase 3) ─────────────────────────
+// Detail rows for cellar operations that ride ON TOP of a LotOperation. A
+// volume-NEUTRAL op (addition, fining, cap management) is a LotOperation with NO
+// volumetric lines + one of these treatment rows; a volume-CHANGING op (filtration,
+// loss, topping) carries lines AND, where it has material/medium detail, a treatment.
+// The lot timeline UNIONs lot_operation_line.lotId with lot_treatment.lotId so neutral
+// ops still appear. Material/rate/total + the volume SNAPSHOT used are stored, never
+// recomputed (VISION D14). Corrected/voided via voidedByOperationId (stays visible).
+model LotTreatment {
+  id                  String   @id @default(cuid())
+  operationId         Int
+  lotId               String
+  vesselId            String? // the vessel the op happened in (snapshot context)
+  kind                String // ADDITION | FINING | FILTRATION | PUMPOVER | PUNCHDOWN
+  materialId          String? // optional catalog link
+  materialName        String? // durable snapshot of the material name
+  rateValue           Decimal? @db.Decimal(12, 4)
+  rateBasis           String? // G_HL | MG_L | G_L | ML_L (validated in code, not a DB enum)
+  computedTotal       Decimal? @db.Decimal(12, 3)
+  computedUnit        String? // g | mL
+  volumeLAtAddition   Decimal? @db.Decimal(10, 2) // vessel volume used for the math (snapshot)
+  durationMin         Int? // cap management duration
+  medium              String? // filtration medium (e.g. "pad", "membrane")
+  micron              Decimal? @db.Decimal(8, 2) // filtration nominal micron
+  note                String?
+  voidedByOperationId Int? // set when a CORRECTION op voids this treatment (D6/D15)
+  createdAt           DateTime @default(now())
+
+  operation LotOperation    @relation("TreatmentOperation", fields: [operationId], references: [id], onDelete: Cascade)
+  voidedBy  LotOperation?   @relation("TreatmentVoid", fields: [voidedByOperationId], references: [id], onDelete: SetNull)
+  lot       Lot             @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  vessel    Vessel?         @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  material  CellarMaterial? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+
+  @@index([lotId])
+  @@index([operationId])
+  @@index([vesselId])
+  @@map("lot_treatment")
+}
+
+// Light material catalog (SO₂, nutrients, acids, tannins, fining agents) upserted on
+// first use, deduped by normalizedKey within a kind (mirrors FieldInput). Carries a
+// default dose basis + optional %active; cost/inventory is deferred to Phase 8.
+model CellarMaterial {
+  id            String         @id @default(cuid())
+  name          String // display label
+  normalizedKey String // dedup key (strip-non-alphanumeric, UPPERCASE)
+  kind          String // SO2 | NUTRIENT | ACID | TANNIN | FINING | ENZYME | OTHER
+  defaultBasis  String? // G_HL | MG_L | G_L | ML_L
+  percentActive Decimal?       @db.Decimal(6, 3) // %active (material property, not a dose basis)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  treatments    LotTreatment[]
+
+  @@unique([kind, normalizedKey])
+  @@map("cellar_material")
 }
 
 // A named set of vessels (e.g. a barrel group) so one operation can fan out to its
