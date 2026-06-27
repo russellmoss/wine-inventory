@@ -9,6 +9,8 @@ import {
   deleteBlock,
   setBlockColor,
   saveBlockPolygon,
+  createSubblock,
+  deleteSubblock,
 } from "@/lib/vineyard/actions";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import {
@@ -418,6 +420,52 @@ export function VineyardSetup({
                           ~{Math.round(vinesPerRow(Number(draft.vineCount), Number(draft.numRows))!)} vines/row
                         </Badge>
                       ) : null}
+                    </div>
+
+                    <div style={{ borderTop: "1px solid var(--border-strong)", paddingTop: 12, marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", marginBottom: 8 }}>
+                        Subblocks{" "}
+                        <span style={{ textTransform: "none", letterSpacing: 0 }}>
+                          (optional · differential picks / experiments · appear in lot codes)
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                        {b.subblocks.length === 0 ? (
+                          <span style={{ color: "var(--text-muted)", fontSize: 13 }}>None.</span>
+                        ) : (
+                          b.subblocks.map((sb) => (
+                            <span
+                              key={sb.id}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 6px 3px 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-pill)", fontSize: 13 }}
+                            >
+                              <strong style={{ letterSpacing: "0.03em" }}>{sb.code}</strong>
+                              {sb.label ? <span style={{ color: "var(--text-muted)" }}>{sb.label}</span> : null}
+                              <button
+                                type="button"
+                                onClick={() => run(() => deleteSubblock(sb.id))}
+                                disabled={pending}
+                                aria-label={`Remove subblock ${sb.code}`}
+                                style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 16, lineHeight: 1, padding: 0 }}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const form = e.currentTarget;
+                          const fd = new FormData(form);
+                          run(() => createSubblock(b.id, fd), () => form.reset());
+                        }}
+                        style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}
+                      >
+                        <input name="code" placeholder="Code (e.g. A)" maxLength={8} required style={{ ...fieldInput, width: 120, textTransform: "uppercase" }} />
+                        <input name="label" placeholder="Label (optional)" style={{ ...fieldInput, width: 170 }} />
+                        <Button type="submit" variant="secondary" size="sm" disabled={pending}>Add subblock</Button>
+                      </form>
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

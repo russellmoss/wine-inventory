@@ -216,14 +216,31 @@ model VineyardBlock {
   sortOrder      Int             @default(0)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
-  vineyard       Vineyard        @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
-  variety        Variety?        @relation(fields: [varietyId], references: [id], onDelete: SetNull)
+  vineyard       Vineyard           @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
+  variety        Variety?           @relation(fields: [varietyId], references: [id], onDelete: SetNull)
   brixLogs       BrixLog[]
   harvestRecords HarvestRecord[]
+  subblocks      VineyardSubblock[]
 
   @@index([vineyardId])
   @@index([varietyId])
   @@map("vineyard_block")
+}
+
+// A geographic sub-division of a block (e.g. "A"/"B") for differential picks / experiments.
+// `code` is the short token that appears in a lot code between BLOCK and VARIETY.
+model VineyardSubblock {
+  id        String        @id @default(cuid())
+  blockId   String
+  code      String // short uppercase token for lot codes (e.g. "A")
+  label     String? // optional human label
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+  block     VineyardBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@unique([blockId, code])
+  @@index([blockId])
+  @@map("vineyard_subblock")
 }
 
 // ───────────────────────── Vineyard operations: field notes ─────────────────────────
@@ -708,6 +725,7 @@ model Lot {
   form             LotForm  @default(WINE)
   originVineyardId String?
   originBlockId    String?
+  originSubblockId String?
   originVarietyId  String?
   vintageYear      Int?
   status           String   @default("ACTIVE") // ACTIVE | DEPLETED | ARCHIVED

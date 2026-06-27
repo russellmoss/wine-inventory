@@ -8,6 +8,7 @@ import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
 import { ftToM, toCanonicalSpacing, type Unit } from "@/lib/vineyard/units";
 import { serializeBlock, serializeDetail, type VineyardDetailPayload } from "@/lib/vineyard/data";
+import { normalizeToken } from "@/lib/lot/code";
 
 const PATH = "/reference";
 
@@ -24,7 +25,10 @@ export async function loadVineyardDetail(vineyardId: string): Promise<VineyardDe
     prisma.vineyardBlock.findMany({
       where: { vineyardId },
       orderBy: { sortOrder: "asc" },
-      include: { variety: { select: { id: true, name: true, color: true } } },
+      include: {
+        variety: { select: { id: true, name: true, color: true } },
+        subblocks: { orderBy: { sortOrder: "asc" }, select: { id: true, code: true, label: true, sortOrder: true } },
+      },
     }),
   ]);
   return {
@@ -298,6 +302,57 @@ export const deleteBlock = action(async ({ actor }, blockId: string) => {
       entityId: blockId,
       changes: diff({ blockLabel: before.blockLabel }, null),
       summary: summarize("DELETE", "VineyardBlock", { label: before.blockLabel ?? "block" }),
+    });
+  });
+  revalidatePath(PATH);
+});
+
+// ── Subblock CRUD (geographic sub-divisions; feed the SUBBLOCK slot of a lot code) ──
+
+export const createSubblock = action(async ({ actor }, blockId: string, formData: FormData) => {
+  const block = await prisma.vineyardBlock.findUnique({ where: { id: blockId }, select: { id: true } });
+  if (!block) throw new ActionError("Block not found.");
+  const code = normalizeToken(formData.get("code"));
+  if (!code) throw new ActionError("Enter a subblock code (letters or numbers).");
+  if (code.length > 8) throw new ActionError("Subblock code is too long.");
+  const label = String(formData.get("label") ?? "").trim() || null;
+  const exists = await prisma.vineyardSubblock.findUnique({
+    where: { blockId_code: { blockId, code } },
+    select: { id: true },
+  });
+  if (exists) throw new ActionError(`Subblock "${code}" already exists on this block.`, "CONFLICT");
+  const last = await prisma.vineyardSubblock.findFirst({
+    where: { blockId },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+  const sortOrder = (last?.sortOrder ?? -1) + 1;
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.vineyardSubblock.create({ data: { blockId, code, label, sortOrder } });
+    await writeAudit(tx, {
+      ...actor,
+      action: "CREATE",
+      entityType: "VineyardSubblock",
+      entityId: created.id,
+      changes: diff(null, { blockId, code, label }),
+      summary: summarize("CREATE", "VineyardSubblock", { label: code }),
+    });
+  });
+  revalidatePath(PATH);
+});
+
+export const deleteSubblock = action(async ({ actor }, id: string) => {
+  const before = await prisma.vineyardSubblock.findUnique({ where: { id } });
+  if (!before) throw new ActionError("Subblock not found.");
+  await prisma.$transaction(async (tx) => {
+    await tx.vineyardSubblock.delete({ where: { id } });
+    await writeAudit(tx, {
+      ...actor,
+      action: "DELETE",
+      entityType: "VineyardSubblock",
+      entityId: id,
+      changes: diff({ code: before.code }, null),
+      summary: summarize("DELETE", "VineyardSubblock", { label: before.code }),
     });
   });
   revalidatePath(PATH);

@@ -19,10 +19,13 @@ function decToNum(v: DecimalLike): number | null {
 
 export type BlockVariety = { id: string; name: string; color: string | null };
 
+export type Subblock = { id: string; code: string; label: string | null; sortOrder: number };
+
 export type RawBlock = {
   id: string;
   vineyardId: string;
   blockLabel: string | null;
+  subblocks?: Subblock[];
   numRows: number | null;
   rowSpacingM: DecimalLike;
   vineSpacingM: DecimalLike;
@@ -55,6 +58,7 @@ export type SerializedBlock = {
   color: string | null;
   sortOrder: number;
   variety: BlockVariety | null;
+  subblocks: Subblock[];
 };
 
 export type RawDetail = {
@@ -108,6 +112,7 @@ export function serializeBlock(row: RawBlock): SerializedBlock {
     color: row.color,
     sortOrder: row.sortOrder,
     variety: row.variety ?? null,
+    subblocks: row.subblocks ?? [],
   };
 }
 
