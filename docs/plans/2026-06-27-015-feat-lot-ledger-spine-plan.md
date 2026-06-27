@@ -1,7 +1,7 @@
 ---
 title: Lot + Ledger Spine (Phase 0 + Phase 1)
 type: feat
-status: draft
+status: completed
 date: 2026-06-27
 branch: claude/zen-chebyshev-b2195e
 depth: deep
