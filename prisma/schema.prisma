@@ -146,6 +146,7 @@ model Location {
 model Variety {
   id              String            @id @default(cuid())
   name            String            @unique
+  abbreviation    String?           @unique // 2–4 uppercase code for lot codes (PN, CS). Nullable→backfilled; Postgres unique allows multiple NULLs.
   isActive        Boolean           @default(true)
   color           String? // canonical per-variety map color (hex), consistent across vineyards
   createdAt       DateTime          @default(now())
@@ -159,6 +160,7 @@ model Variety {
 model Vineyard {
   id              String            @id @default(cuid())
   name            String            @unique
+  abbreviation    String?           @unique // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
   components      VesselComponent[]
@@ -199,6 +201,7 @@ model VineyardBlock {
   id             String          @id @default(cuid())
   vineyardId     String
   blockLabel     String? // e.g. "Block 1", "A"
+  code           String? // short token for lot codes (e.g. "1", "A"); falls back to a normalized blockLabel
   numRows        Int? // informational (drives optional vines/row readout)
   rowSpacingM    Decimal?        @db.Decimal(10, 4) // canonical metric
   vineSpacingM   Decimal?        @db.Decimal(10, 4) // canonical metric
@@ -710,6 +713,7 @@ model Lot {
   status           String   @default("ACTIVE") // ACTIVE | DEPLETED | ARCHIVED
   isLegacy         Boolean  @default(false)
   legacySnapshot   Json?
+  sublotTag        String? // optional human variant tag in the lot code (experiments / differential picks)
   note             String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
