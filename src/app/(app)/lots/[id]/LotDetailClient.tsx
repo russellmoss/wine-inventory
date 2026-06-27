@@ -30,15 +30,30 @@ function opTone(type: string): Tone {
     case "SEED":
       return "green";
     case "RACK":
+    case "TOPPING":
       return "blue";
     case "BOTTLE":
       return "maroon";
     case "LOSS":
-      return "red";
+    case "FILTRATION":
     case "CORRECTION":
       return "red";
+    case "ADDITION":
+    case "FINING":
+    case "CAP_MGMT":
+      return "gold";
     default:
       return "neutral"; // ADJUST, DEPLETE
+  }
+}
+
+// Human label for an op type badge (sentence-case, never raw enum where it reads oddly).
+function opLabel(type: string): string {
+  switch (type) {
+    case "CAP_MGMT":
+      return "CAP MGMT";
+    default:
+      return type;
   }
 }
 
@@ -101,11 +116,11 @@ function TimelineItem({ event }: { event: TimelineEvent }) {
       />
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
         <Badge tone={opTone(event.type)} variant="soft" uppercase>
-          {event.type}
+          {opLabel(event.type)}
         </Badge>
         {event.corrected ? (
           <Badge tone="neutral" variant="outline">
-            corrected
+            {event.voided ? "voided" : "corrected"}
           </Badge>
         ) : null}
       </div>

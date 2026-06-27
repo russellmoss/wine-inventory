@@ -132,6 +132,59 @@ describe("describeOperation — summaries", () => {
     expect(ev.isCorrection).toBe(true);
     expect(ev.correctsId).toBe(6);
   });
+
+  it("ADDITION reads the dose from its treatment (no lines)", () => {
+    const ev = describeOperation(
+      op({ id: 30, type: "ADDITION", treatments: [{ kind: "ADDITION", materialName: "DAP", rateValue: 30, rateBasis: "G_HL", computedTotal: 135, computedUnit: "g", durationMin: null, medium: null, micron: null }] }),
+      [],
+    );
+    expect(ev.summary).toBe("Added 30 g/hL DAP → 135 g");
+    expect(ev.legs).toHaveLength(0);
+  });
+
+  it("FINING reads 'Fined: rate material → grams'", () => {
+    const ev = describeOperation(
+      op({ id: 31, type: "FINING", treatments: [{ kind: "FINING", materialName: "BENTONITE", rateValue: 50, rateBasis: "G_HL", computedTotal: 11.25, computedUnit: "g", durationMin: null, medium: null, micron: null }] }),
+      [],
+    );
+    expect(ev.summary).toBe("Fined: 50 g/hL BENTONITE → 11.25 g");
+  });
+
+  it("CAP_MGMT reads the cap kind + duration", () => {
+    const ev = describeOperation(
+      op({ id: 32, type: "CAP_MGMT", treatments: [{ kind: "PUMPOVER", materialName: null, rateValue: null, rateBasis: null, computedTotal: null, computedUnit: null, durationMin: 20, medium: null, micron: null }] }),
+      [],
+    );
+    expect(ev.summary).toBe("Pump-over (20 min)");
+  });
+
+  it("FILTRATION reads medium/micron + the loss", () => {
+    const ev = describeOperation(
+      op({ id: 33, type: "FILTRATION", treatments: [{ kind: "FILTRATION", materialName: null, rateValue: null, rateBasis: null, computedTotal: null, computedUnit: null, durationMin: null, medium: "pad", micron: 0.45 }] }),
+      [inVessel("1", -1, "TANK"), external(1, "filtration")],
+    );
+    expect(ev.summary).toBe("Filtered (pad, 0.45 µm) (1 L loss)");
+  });
+
+  it("TOPPING reads as a transfer into the target", () => {
+    const ev = describeOperation(op({ id: 34, type: "TOPPING" }), [
+      inVessel("KEG", -1.5, "BARREL"),
+      inVessel("14", 1.5, "BARREL"),
+    ]);
+    expect(ev.summary).toBe("Topped 1.5 L from Barrel KEG into Barrel 14");
+  });
+});
+
+describe("buildTimeline — neutral void pill", () => {
+  it("marks a corrected neutral op as voided (pill text differs from a volumetric correction)", () => {
+    const rawOps = [
+      { op: op({ id: 40, type: "ADDITION", treatments: [{ kind: "ADDITION", materialName: "DAP", rateValue: 30, rateBasis: "G_HL", computedTotal: 135, computedUnit: "g", durationMin: null, medium: null, micron: null }] }), lines: [] },
+    ];
+    // The void CORRECTION has no lines/treatments → its id is supplied by the loader.
+    const events = buildTimeline(rawOps, { correctedIds: new Set([40]) });
+    expect(events[0].corrected).toBe(true);
+    expect(events[0].voided).toBe(true);
+  });
 });
 
 describe("describeOperation — legs", () => {

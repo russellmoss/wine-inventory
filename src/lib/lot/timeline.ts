@@ -1,5 +1,16 @@
 import { round2 } from "@/lib/bottling/draw";
 import type { OperationType } from "@/lib/ledger/vocabulary";
+import { RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
+
+/** Op types that are volume-neutral (a treatment, no lines) — drives the "voided" pill. */
+const NEUTRAL_OPS = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT"]);
+
+const CAP_LABEL: Record<string, string> = { PUMPOVER: "Pump-over", PUNCHDOWN: "Punch-down" };
+
+function basisLabel(basis: string | null): string {
+  if (!basis) return "";
+  return RATE_BASIS_LABELS[basis as RateBasis] ?? basis;
+}
 
 // Pure display/derivation helpers for the Lot timeline (Phase 2). No prisma, no server
 // imports — turns raw ledger rows (lot_operation + lot_operation_line) into display-ready
@@ -23,6 +34,19 @@ export type RawLine = {
   reason?: string | null;
 };
 
+/** One cellar-treatment detail row for the viewed lot (Phase 3). */
+export type RawTreatment = {
+  kind: string; // ADDITION | FINING | FILTRATION | PUMPOVER | PUNCHDOWN
+  materialName: string | null;
+  rateValue: number | null;
+  rateBasis: string | null;
+  computedTotal: number | null;
+  computedUnit: string | null;
+  durationMin: number | null;
+  medium: string | null;
+  micron: number | null;
+};
+
 /** One ledger operation header, read from `lot_operation`. `id` IS the fold order. */
 export type RawOperation = {
   id: number;
@@ -32,6 +56,8 @@ export type RawOperation = {
   captureMethod: string;
   note: string | null;
   correctsOperationId: number | null;
+  /** Phase 3 treatment detail rows for THIS lot (neutral ops have these + no lines). */
+  treatments?: RawTreatment[];
 };
 
 export type TimelineLeg = {
@@ -54,9 +80,11 @@ export type TimelineEvent = {
   note: string | null;
   summary: string;
   legs: TimelineLeg[];
+  treatments: RawTreatment[]; // Phase 3 detail rows (for the rendered detail line)
   isCorrection: boolean;
   correctsId: number | null;
   corrected: boolean; // a later CORRECTION op reverted this one (D6 — shown, never hidden)
+  voided: boolean; // corrected AND volume-neutral → render a "voided" pill (vs "corrected")
 };
 
 export type VesselHolding = {
@@ -150,6 +178,18 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
   const bottleTotal = round2(
     externals.filter((l) => l.reason === "bottle").reduce((a, l) => a + Math.abs(l.deltaL), 0),
   );
+  const treatments = opn.treatments ?? [];
+  const filtrationLoss = round2(
+    externals.filter((l) => l.reason === "filtration").reduce((a, l) => a + Math.abs(l.deltaL), 0),
+  );
+  // A material dose's grams (sum across this lot's treatment rows), for ADDITION/FINING.
+  const dose = treatments[0];
+  const doseTotal = round2(treatments.reduce((a, t) => a + (t.computedTotal ?? 0), 0));
+  const doseClause =
+    dose?.rateValue != null && dose.rateBasis
+      ? `${formatL(dose.rateValue)} ${basisLabel(dose.rateBasis)} ${dose.materialName ?? "material"}`
+      : (dose?.materialName ?? "material");
+  const doseTail = doseTotal > 0 ? ` → ${doseTotal} ${dose?.computedUnit ?? "g"}` : "";
 
   let summary: string;
   switch (opn.type) {
@@ -184,6 +224,31 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
       summary =
         opn.correctsOperationId != null ? `Reverted operation #${opn.correctsOperationId}` : `Correction`;
       break;
+    case "ADDITION":
+      summary = `Added ${doseClause}${doseTail}`;
+      break;
+    case "FINING":
+      summary = `Fined: ${doseClause}${doseTail}`;
+      break;
+    case "CAP_MGMT": {
+      const t = treatments[0];
+      const lbl = t ? (CAP_LABEL[t.kind] ?? "Cap management") : "Cap management";
+      summary = t?.durationMin ? `${lbl} (${t.durationMin} min)` : lbl;
+      break;
+    }
+    case "FILTRATION": {
+      const t = treatments[0];
+      const detail = [t?.medium, t?.micron != null ? `${t.micron} µm` : null].filter(Boolean).join(", ");
+      const lossClause = filtrationLoss > 0 ? ` (${formatL(filtrationLoss)} L loss)` : "";
+      summary = `Filtered${detail ? ` (${detail})` : ""}${lossClause}`;
+      break;
+    }
+    case "TOPPING":
+      summary =
+        dests.length > 0
+          ? `Topped ${formatL(inTotal)} L${srcLabels ? ` from ${srcLabels}` : ""}${dstLabels ? ` into ${dstLabels}` : ""}`
+          : `Topped ${formatL(outTotal)} L from ${srcLabels || "—"}`;
+      break;
     default:
       summary = opn.type;
   }
@@ -199,9 +264,11 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     note: opn.note,
     summary,
     legs,
+    treatments,
     isCorrection: opn.type === "CORRECTION",
     correctsId: opn.correctsOperationId,
     corrected: false, // resolved across the set in buildTimeline
+    voided: false, // resolved across the set in buildTimeline
   };
 }
 
@@ -212,20 +279,21 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
  */
 export function buildTimeline(
   rawOps: { op: RawOperation; lines: RawLine[] }[],
-  opts: { legacy?: boolean } = {},
+  opts: { legacy?: boolean; correctedIds?: ReadonlySet<number> } = {},
 ): TimelineEvent[] {
   if (rawOps.length === 0) return [];
   const minId = Math.min(...rawOps.map((r) => r.op.id));
-  const correctedIds = new Set(
-    rawOps
-      .map((r) => r.op)
-      .filter((o) => o.type === "CORRECTION" && o.correctsOperationId != null)
-      .map((o) => o.correctsOperationId as number),
-  );
+  // Corrections in this set + any passed in by the loader (a neutral void correction has no
+  // lines/treatments, so it never appears in the lot's own ops — the loader supplies its id).
+  const correctedIds = new Set<number>(opts.correctedIds ?? []);
+  for (const { op } of rawOps) {
+    if (op.type === "CORRECTION" && op.correctsOperationId != null) correctedIds.add(op.correctsOperationId);
+  }
   return rawOps.map(({ op, lines }) => {
     const legacyCutover = !!opts.legacy && op.type === "SEED" && op.id === minId;
     const ev = describeOperation(op, lines, { legacyCutover });
     ev.corrected = correctedIds.has(op.id);
+    ev.voided = ev.corrected && NEUTRAL_OPS.has(op.type);
     return ev;
   });
 }

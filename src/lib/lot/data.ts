@@ -147,11 +147,14 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
   });
   if (!lot) return null;
 
-  // The ledger history for THIS lot: its operation lines, each with its operation header.
-  const lines = await prisma.lotOperationLine.findMany({
-    where: { lotId: id },
-    include: { operation: true },
-  });
+  // The ledger history for THIS lot: its operation lines + its cellar-treatment rows
+  // (Phase 3), each with its operation header. UNIONing lot_operation_line.lotId with
+  // lot_treatment.lotId is what makes volume-NEUTRAL ops (additions, fining, cap mgmt)
+  // appear on the timeline at all — they have no lines.
+  const [lines, treatments] = await Promise.all([
+    prisma.lotOperationLine.findMany({ where: { lotId: id }, include: { operation: true } }),
+    prisma.lotTreatment.findMany({ where: { lotId: id }, include: { operation: true } }),
+  ]);
 
   // Resolve vessel types for labeling (deleted vessels keep only their code snapshot).
   const vesselIds = [...new Set(lines.map((l) => l.vesselId).filter((x): x is string => !!x))];
@@ -160,12 +163,19 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
     : [];
   const typeById = new Map(vessels.map((v) => [v.id, v.type as VesselKind]));
 
-  // Group lines by operation, preserving each op header.
+  // Group BOTH sources by operation, preserving each op header.
   const byOp = new Map<number, { op: RawOperation; lines: RawLine[] }>();
-  for (const l of lines) {
-    let group = byOp.get(l.operationId);
+  function ensureOp(o: {
+    id: number;
+    type: RawOperation["type"];
+    observedAt: Date;
+    enteredBy: string;
+    captureMethod: string;
+    note: string | null;
+    correctsOperationId: number | null;
+  }) {
+    let group = byOp.get(o.id);
     if (!group) {
-      const o = l.operation;
       group = {
         op: {
           id: o.id,
@@ -175,11 +185,17 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
           captureMethod: o.captureMethod,
           note: o.note,
           correctsOperationId: o.correctsOperationId,
+          treatments: [],
         },
         lines: [],
       };
-      byOp.set(l.operationId, group);
+      byOp.set(o.id, group);
     }
+    return group;
+  }
+
+  for (const l of lines) {
+    const group = ensureOp(l.operation);
     group.lines.push({
       vesselId: l.vesselId,
       vesselCode: l.vesselCode,
@@ -188,10 +204,35 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
       reason: l.reason,
     });
   }
+  for (const t of treatments) {
+    const group = ensureOp(t.operation);
+    group.op.treatments!.push({
+      kind: t.kind,
+      materialName: t.materialName,
+      rateValue: t.rateValue == null ? null : Number(t.rateValue),
+      rateBasis: t.rateBasis,
+      computedTotal: t.computedTotal == null ? null : Number(t.computedTotal),
+      computedUnit: t.computedUnit,
+      durationMin: t.durationMin,
+      medium: t.medium,
+      micron: t.micron == null ? null : Number(t.micron),
+    });
+  }
+
+  // A neutral void CORRECTION op has no lines/treatments, so it never appears in this lot's
+  // own ops — find which of the lot's ops were corrected and feed those ids to buildTimeline.
+  const opIds = [...byOp.keys()];
+  const corrections = opIds.length
+    ? await prisma.lotOperation.findMany({
+        where: { type: "CORRECTION", correctsOperationId: { in: opIds } },
+        select: { correctsOperationId: true },
+      })
+    : [];
+  const correctedIds = new Set(corrections.map((c) => c.correctsOperationId as number));
 
   // Newest-first by operation id (the fold order), per D14 / the plan's Key Decisions.
   const rawOps = [...byOp.values()].sort((a, b) => b.op.id - a.op.id);
-  const events = buildTimeline(rawOps, { legacy: lot.isLegacy });
+  const events = buildTimeline(rawOps, { legacy: lot.isLegacy, correctedIds });
 
   const current = currentState(
     lot.vesselLots.map((vl) => ({
