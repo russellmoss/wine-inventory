@@ -352,6 +352,11 @@ model Vessel {
   bottlingSources BottlingSource[]
   transfersOut    VesselTransfer[]  @relation("VesselTransfersOut")
   transfersIn     VesselTransfer[]  @relation("VesselTransfersIn")
+  // Lot + ledger spine (Phase 1): the projection rows, group memberships, and the
+  // operation lines that reference this vessel. Additive; existing relations unchanged.
+  vesselLots       VesselLot[]
+  groupMemberships VesselGroupMember[]
+  operationLines   LotOperationLine[]
 
   @@unique([type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
   @@map("vessel")
@@ -395,15 +400,19 @@ model VesselTransfer {
   actorUserId    String?
   actorEmail     String
   rackedAt       DateTime @default(now())
-  // Revert tracking. `revertedAt` is set on a rack once it has been undone.
-  // `revertsId` points from a reversal row back to the rack it reverses (so a
-  // reversal is identifiable and can't itself be reverted).
+  // Revert tracking (LEGACY undo path). Phase 1 (D6/D15) replaces row-reversion with
+  // a CORRECTION ledger op; "reverted" is derived from a correction's existence. These
+  // columns remain for the pre-cutover history read and are dropped in a later cleanup.
   revertedAt     DateTime?
   revertsId      String?
   reverts        VesselTransfer?  @relation("TransferReversal", fields: [revertsId], references: [id], onDelete: SetNull)
   reversedBy     VesselTransfer[] @relation("TransferReversal")
   fromVessel     Vessel?  @relation("VesselTransfersOut", fields: [fromVesselId], references: [id], onDelete: SetNull)
   toVessel       Vessel?  @relation("VesselTransfersIn", fields: [toVesselId], references: [id], onDelete: SetNull)
+  // Phase 1: a RACK is a derived read-model of one ledger operation. Unique 1:1 link;
+  // written only by the ledger writer.
+  lotOperationId Int?            @unique
+  lotOperation   LotOperation?   @relation(fields: [lotOperationId], references: [id], onDelete: SetNull)
 
   @@index([fromVesselId, rackedAt])
   @@index([toVesselId, rackedAt])
@@ -460,13 +469,18 @@ model BottlingSource {
   vineyardId      String
   vintage         Int
   volumeConsumedL Decimal     @db.Decimal(10, 2)
+  // Phase 1: lot provenance for NEW runs going forward. Nullable; historical rows are
+  // NOT backfilled (D11 — inferred links are fabricated provenance).
+  lotId           String?
   bottlingRun     BottlingRun @relation(fields: [bottlingRunId], references: [id], onDelete: Cascade)
   vessel          Vessel      @relation(fields: [vesselId], references: [id], onDelete: Restrict)
   variety         Variety     @relation(fields: [varietyId], references: [id], onDelete: Restrict)
   vineyard        Vineyard    @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
+  lot             Lot?        @relation(fields: [lotId], references: [id], onDelete: SetNull)
 
   @@index([bottlingRunId])
   @@index([vesselId])
+  @@index([lotId])
   @@map("bottling_source")
 }
 
@@ -645,4 +659,174 @@ model AssistantMessage {
   @@index([conversationId, createdAt])
   @@index([searchVector], type: Gin)
   @@map("assistant_message")
+}
+
+// ───────────────────────── Lot + operation ledger (Phase 1 spine) ─────────────────────────
+// The append-only source of truth for BULK wine. `VesselComponent` (above) is retired
+// after the Day-Zero migration; `VesselLot` is the materialized projection. See
+// VISION §3, docs/INVARIANTS.md. Enums mirror src/lib/ledger/vocabulary.ts.
+//
+// NOTE: CHECK constraints (volumeL > 0, deltaL <> 0) and the vessel-capacity guard are
+// NOT expressible in Prisma — they are added in the migration's raw SQL (D14).
+
+enum LotForm {
+  FRUIT
+  MUST
+  JUICE
+  WINE
+  BOTTLED_IN_PROCESS
+  FINISHED
+}
+
+enum OperationType {
+  SEED
+  RACK
+  LOSS
+  ADJUST
+  DEPLETE
+  BOTTLE
+  CORRECTION
+}
+
+enum CaptureMethod {
+  MANUAL
+  VOICE
+  SENSOR
+  IMPORT
+}
+
+// A batch of wine with a durable identity (VISION §1–3). Vintage is an ATTRIBUTE, not
+// part of identity (D3). Origin columns are provenance snapshots (no FK — the
+// authoritative tuple lives in legacySnapshot for legacy lots). Provenance metadata is
+// immutable after the first operation (enforced in the service layer).
+model Lot {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  form             LotForm  @default(WINE)
+  originVineyardId String?
+  originBlockId    String?
+  originVarietyId  String?
+  vintageYear      Int?
+  status           String   @default("ACTIVE") // ACTIVE | DEPLETED | ARCHIVED
+  isLegacy         Boolean  @default(false)
+  legacySnapshot   Json?
+  note             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  operationLines  LotOperationLine[]
+  vesselLots      VesselLot[]
+  parentEdges     LotLineage[]       @relation("LotChild") // edges where this lot is the child
+  childEdges      LotLineage[]       @relation("LotParent") // edges where this lot is the parent
+  bottlingSources BottlingSource[]
+
+  @@index([status])
+  @@index([originVineyardId])
+  @@map("lot")
+}
+
+// One immutable ledger event. The autoincrement `id` IS the monotonic fold order
+// (deterministic ordering; `observedAt` can collide / drift — D14). `correctsOperationId`
+// is unique so any op can be corrected at most once (kills the double-correction race).
+model LotOperation {
+  id                  Int           @id @default(autoincrement())
+  type                OperationType
+  observedAt          DateTime      @default(now())
+  enteredAt           DateTime      @default(now())
+  actorUserId         String?
+  enteredBy           String // email snapshot (provenance)
+  captureMethod       CaptureMethod @default(MANUAL)
+  note                String?
+  correctsOperationId Int?          @unique
+  metadata            Json?
+  createdAt           DateTime      @default(now())
+
+  corrects       LotOperation?      @relation("OpCorrection", fields: [correctsOperationId], references: [id], onDelete: Restrict)
+  correctedBy    LotOperation?      @relation("OpCorrection")
+  lines          LotOperationLine[]
+  vesselTransfer VesselTransfer? // 1:1 derived read-model (FK lives on VesselTransfer)
+
+  @@index([type, observedAt])
+  @@map("lot_operation")
+}
+
+// A signed volumetric line. `vesselId = null` is the external counter-account that
+// keeps each operation balanced (seed-in, loss-out, bottle-out). `lotCode`/`vesselCode`
+// are durable snapshots so history reads survive later renames/deletes.
+model LotOperationLine {
+  id          Int          @id @default(autoincrement())
+  operationId Int
+  lotId       String
+  vesselId    String? // null = "outside the cellar"
+  deltaL      Decimal      @db.Decimal(10, 2) // signed; CHECK(deltaL <> 0) in migration
+  reason      String?
+  lotCode     String
+  vesselCode  String?
+  operation   LotOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  lot         Lot          @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  vessel      Vessel?      @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+
+  @@index([operationId])
+  @@index([lotId])
+  @@index([vesselId])
+  @@map("lot_operation_line")
+}
+
+// The materialized current-state projection: how much of one lot sits in one vessel.
+// Always equals the fold of the ledger (INVARIANT #7). CHECK(volumeL > 0) in migration;
+// a row at functional zero is deleted, never stored at 0.
+model VesselLot {
+  id        String   @id @default(cuid())
+  vesselId  String
+  lotId     String
+  volumeL   Decimal  @db.Decimal(10, 2)
+  updatedAt DateTime @updatedAt
+  vessel    Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  lot       Lot      @relation(fields: [lotId], references: [id], onDelete: Restrict)
+
+  @@unique([vesselId, lotId])
+  @@index([lotId])
+  @@map("vessel_lot")
+}
+
+// Parent→child lineage edges for splits/blends (structure-only in Phase 1; blends are
+// Phase 5). `fraction` is the parent's share of the child where meaningful.
+model LotLineage {
+  id          String   @id @default(cuid())
+  parentLotId String
+  childLotId  String
+  fraction    Decimal? @db.Decimal(6, 5)
+  kind        String // SPLIT | BLEND | TRANSFORM
+  createdAt   DateTime @default(now())
+  parent      Lot      @relation("LotParent", fields: [parentLotId], references: [id], onDelete: Restrict)
+  child       Lot      @relation("LotChild", fields: [childLotId], references: [id], onDelete: Cascade)
+
+  @@unique([parentLotId, childLotId])
+  @@index([childLotId])
+  @@map("lot_lineage")
+}
+
+// A named set of vessels (e.g. a barrel group) so one operation can fan out to its
+// members (D13). Structure-only in Phase 1; the fan-out UI/logic lands in Phase 3.
+model VesselGroup {
+  id        String              @id @default(cuid())
+  name      String              @unique
+  note      String?
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  members   VesselGroupMember[]
+
+  @@map("vessel_group")
+}
+
+model VesselGroupMember {
+  id       String      @id @default(cuid())
+  groupId  String
+  vesselId String
+  group    VesselGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  vessel   Vessel      @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, vesselId])
+  @@index([vesselId])
+  @@map("vessel_group_member")
 }

@@ -145,8 +145,7 @@ describe("planCorrection", () => {
     const touched = new Set([balanceKey("tank1", "L1")]);
     const corr = planCorrection(rack.lines, afterRack, touched);
     expect(corr.ok).toBe(false);
-    if (corr.ok) return;
-    expect(corr.reason).toBe("downstream-activity");
+    if (corr.ok || corr.reason !== "downstream-activity") throw new Error("expected downstream-activity block");
     expect(corr.blockedKeys).toContain(balanceKey("tank1", "L1"));
   });
 
