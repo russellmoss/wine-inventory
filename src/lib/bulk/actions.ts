@@ -48,6 +48,7 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
   const varietyId = String(formData.get("varietyId") ?? "");
   const vineyardId = String(formData.get("vineyardId") ?? "");
   const blockId = String(formData.get("blockId") ?? "") || null;
+  const subblockId = String(formData.get("subblockId") ?? "") || null;
   const tag = normalizeToken(formData.get("sublotTag")) || null;
   const vintage = parseVintage(formData.get("vintage"));
   const volumeL = parseVolume(formData.get("volumeL"));
@@ -72,6 +73,11 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
     ? await prisma.vineyardBlock.findUnique({ where: { id: blockId }, select: { id: true, vineyardId: true, code: true, blockLabel: true } })
     : null;
   const blockForCode = block && block.vineyardId === vineyardId ? block : null;
+  // Optional subblock (must belong to the chosen block).
+  const subblock = subblockId && blockForCode
+    ? await prisma.vineyardSubblock.findUnique({ where: { id: subblockId }, select: { id: true, blockId: true, code: true, label: true } })
+    : null;
+  const subblockForCode = subblock && subblock.blockId === blockForCode?.id ? subblock : null;
 
   const capacity = Number(vessel.capacityL);
   const total = await vesselTotal(vesselId);
@@ -91,6 +97,7 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
           varietyAbbr: variety.abbreviation!,
           blockCode: blockForCode?.code,
           blockLabel: blockForCode?.blockLabel,
+          subblockCode: subblockForCode?.code,
           tag,
         });
         const lot = await tx.lot.create({
@@ -100,6 +107,7 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
             originVarietyId: varietyId,
             originVineyardId: vineyardId,
             originBlockId: blockForCode?.id ?? null,
+            originSubblockId: subblockForCode?.id ?? null,
             vintageYear: vintage,
             sublotTag: tag,
           },

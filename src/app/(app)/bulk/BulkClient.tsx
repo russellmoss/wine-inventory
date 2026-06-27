@@ -8,6 +8,7 @@ import { addComponent, updateComponentVolume, removeComponent, setBlendName } fr
 
 export type Option = { id: string; name: string };
 export type BlockOption = { id: string; vineyardId: string; blockLabel: string | null; code: string | null };
+export type SubblockOption = { id: string; blockId: string; code: string; label: string | null };
 export type Comp = { id: string; varietyId: string; varietyName: string; vineyardName: string; vintage: number; volumeL: number };
 export type VesselWithContents = {
   id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null;
@@ -70,6 +71,7 @@ function AddWineForm({
   varieties,
   vineyards,
   blocks,
+  subblocks,
   pending,
   run,
 }: {
@@ -77,11 +79,14 @@ function AddWineForm({
   varieties: Option[];
   vineyards: Option[];
   blocks: BlockOption[];
+  subblocks: SubblockOption[];
   pending: boolean;
   run: (fn: () => Promise<void>, after?: () => void) => void;
 }) {
   const [vineyardId, setVineyardId] = React.useState("");
+  const [blockId, setBlockId] = React.useState("");
   const vineyardBlocks = blocks.filter((b) => b.vineyardId === vineyardId);
+  const blockSubblocks = subblocks.filter((s) => s.blockId === blockId);
   return (
     <form
       onSubmit={(e) => {
@@ -93,6 +98,7 @@ function AddWineForm({
           await addComponent(fd);
           form.reset();
           setVineyardId("");
+          setBlockId("");
         });
       }}
       style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}
@@ -101,13 +107,17 @@ function AddWineForm({
         <option value="" disabled>Variety</option>
         {varieties.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
       </select>
-      <select name="vineyardId" style={selectStyle} required value={vineyardId} onChange={(e) => setVineyardId(e.target.value)}>
+      <select name="vineyardId" style={selectStyle} required value={vineyardId} onChange={(e) => { setVineyardId(e.target.value); setBlockId(""); }}>
         <option value="" disabled>Vineyard</option>
         {vineyards.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
       </select>
-      <select name="blockId" style={selectStyle} defaultValue="" disabled={!vineyardId || vineyardBlocks.length === 0} title="Block (optional)">
+      <select name="blockId" style={selectStyle} value={blockId} onChange={(e) => setBlockId(e.target.value)} disabled={!vineyardId || vineyardBlocks.length === 0} title="Block (optional)">
         <option value="">Block (optional)</option>
         {vineyardBlocks.map((b) => <option key={b.id} value={b.id}>{b.blockLabel || b.code || "Block"}</option>)}
+      </select>
+      <select name="subblockId" style={selectStyle} defaultValue="" disabled={!blockId || blockSubblocks.length === 0} title="Subblock (optional)">
+        <option value="">Subblock (optional)</option>
+        {blockSubblocks.map((s) => <option key={s.id} value={s.id}>{s.code}{s.label ? ` · ${s.label}` : ""}</option>)}
       </select>
       <input name="vintage" type="number" placeholder="Vintage" style={{ ...selectStyle, width: 96 }} required />
       <input name="volumeL" type="number" step="0.01" min="0.01" placeholder="Litres" style={{ ...selectStyle, width: 90 }} required />
@@ -117,7 +127,7 @@ function AddWineForm({
   );
 }
 
-export function BulkClient({ vessels, varieties, vineyards, blocks }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[] }) {
+export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[]; subblocks: SubblockOption[] }) {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -287,7 +297,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks }: { vessels:
             )}
 
             {canFill ? (
-              <AddWineForm vesselId={selected.id} varieties={varieties} vineyards={vineyards} blocks={blocks} pending={pending} run={run} />
+              <AddWineForm vesselId={selected.id} varieties={varieties} vineyards={vineyards} blocks={blocks} subblocks={subblocks} pending={pending} run={run} />
             ) : null}
           </div>
         ) : null}
