@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { classifyBlend } from "@/lib/bulk/blend";
 import { computeFill } from "@/lib/vessels/fill";
+import { listMaterials } from "@/lib/cellar/materials";
+import { listGroups } from "@/lib/vessels/groups";
 import { BulkClient, type VesselWithContents, type Option, type BlockOption, type SubblockOption } from "./BulkClient";
 
 export default async function BulkPage() {
-  const [vessels, varieties, vineyards, blocks, subblocks] = await Promise.all([
+  const [vessels, varieties, vineyards, blocks, subblocks, materials, groups] = await Promise.all([
     prisma.vessel.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -25,6 +27,8 @@ export default async function BulkPage() {
       orderBy: [{ sortOrder: "asc" }],
       select: { id: true, blockId: true, code: true, label: true },
     }),
+    listMaterials(),
+    listGroups(),
   ]);
 
   const data: VesselWithContents[] = vessels.map((v) => {
@@ -57,5 +61,15 @@ export default async function BulkPage() {
   // Natural sort: codes are strings ("1","2","10"), so sort numerically not lexically.
   data.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
 
-  return <BulkClient vessels={data} varieties={varieties as Option[]} vineyards={vineyards as Option[]} blocks={blocks as BlockOption[]} subblocks={subblocks as SubblockOption[]} />;
+  return (
+    <BulkClient
+      vessels={data}
+      varieties={varieties as Option[]}
+      vineyards={vineyards as Option[]}
+      blocks={blocks as BlockOption[]}
+      subblocks={subblocks as SubblockOption[]}
+      materials={materials}
+      groups={groups}
+    />
+  );
 }

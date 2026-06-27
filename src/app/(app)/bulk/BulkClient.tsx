@@ -5,6 +5,14 @@ import { Card, Button, Badge, Eyebrow, Modal, ExportCsvButton } from "@/componen
 import type { BlendInfo } from "@/lib/bulk/blend";
 import type { Fill } from "@/lib/vessels/fill";
 import { addComponent, updateComponentVolume, removeComponent, setBlendName } from "@/lib/bulk/actions";
+import type { CellarMaterialDTO } from "@/lib/cellar/materials";
+import type { VesselGroupDTO } from "@/lib/vessels/groups";
+import { CellarActions, type KegOption } from "./CellarActions";
+import { GroupActions, type GroupVessel } from "./GroupActions";
+
+function vesselLabel(type: "BARREL" | "TANK", code: string): string {
+  return type === "BARREL" ? `Barrel ${code}` : `Tank ${code}`;
+}
 
 export type Option = { id: string; name: string };
 export type BlockOption = { id: string; vineyardId: string; blockLabel: string | null; code: string | null };
@@ -127,11 +135,15 @@ function AddWineForm({
   );
 }
 
-export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[]; subblocks: SubblockOption[] }) {
+export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, materials, groups }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[]; subblocks: SubblockOption[]; materials: CellarMaterialDTO[]; groups: VesselGroupDTO[] }) {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({});
+
+  // Keg sources (topping) + group multi-select rows, derived from the vessel list.
+  const kegOptions: KegOption[] = vessels.map((v) => ({ id: v.id, label: vesselLabel(v.type, v.code), totalL: v.fill.filledL }));
+  const groupVessels: GroupVessel[] = vessels.map((v) => ({ id: v.id, label: vesselLabel(v.type, v.code), type: v.type, totalL: v.fill.filledL }));
 
   function run(fn: () => Promise<void>, after?: () => void) {
     setError(null);
@@ -230,6 +242,9 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks }:
       </div>
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
+
+      {vessels.length > 0 ? <GroupActions groups={groups} vessels={groupVessels} materials={materials} /> : null}
+
       {!canFill ? (
         <Card style={{ marginBottom: 20 }}>
           <p style={{ color: "var(--text-secondary)", margin: 0 }}>
@@ -299,6 +314,12 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks }:
             {canFill ? (
               <AddWineForm vesselId={selected.id} varieties={varieties} vineyards={vineyards} blocks={blocks} subblocks={subblocks} pending={pending} run={run} />
             ) : null}
+
+            <CellarActions
+              vessel={{ id: selected.id, code: selected.code, type: selected.type, capacityL: selected.capacityL, totalL: selected.fill.filledL }}
+              materials={materials}
+              kegOptions={kegOptions}
+            />
           </div>
         ) : null}
       </Modal>
