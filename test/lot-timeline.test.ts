@@ -5,8 +5,13 @@ import {
   describeOperation,
   buildTimeline,
   currentState,
+  describeMeasurementPanel,
+  describeTastingNote,
+  describeSample,
+  mergeTimeline,
   type RawLine,
   type RawOperation,
+  type RawPanel,
 } from "@/lib/lot/timeline";
 
 // A minimal operation stub; tests override `type`/`correctsOperationId` as needed.
@@ -249,6 +254,134 @@ describe("buildTimeline", () => {
 
   it("returns [] for a lot with no operations", () => {
     expect(buildTimeline([])).toEqual([]);
+  });
+});
+
+// ── Phase 4: standalone-record describe + hybrid merge ──
+
+function panel(over: Partial<RawPanel> = {}): RawPanel {
+  return {
+    id: "panel-1",
+    observedAt: new Date("2026-03-07T10:00:00.000Z"),
+    enteredByEmail: "cellar@bwc.bt",
+    captureMethod: "MANUAL",
+    note: null,
+    sampleId: null,
+    createdAt: new Date("2026-03-07T10:00:00.000Z"),
+    readings: [],
+    ...over,
+  };
+}
+
+describe("describeMeasurementPanel", () => {
+  it("summarizes readings with registry labels + precision and derives molecular SO₂", () => {
+    const item = describeMeasurementPanel(
+      panel({
+        readings: [
+          { analyte: "PH", value: 3.5, unit: "pH" },
+          { analyte: "FREE_SO2", value: 40, unit: "mg/L" },
+        ],
+      }),
+    );
+    expect(item.kind).toBe("MEASUREMENT");
+    expect(item.summary).toBe("pH 3.50 · Free SO₂ 40 mg/L");
+    expect(item.molecular).not.toBeNull();
+    expect(item.molecular!.molecularSO2).toBeCloseTo(0.8, 2);
+  });
+
+  it("derives no molecular SO₂ without both free SO₂ and pH in the panel", () => {
+    const item = describeMeasurementPanel(panel({ readings: [{ analyte: "PH", value: 3.5, unit: "pH" }] }));
+    expect(item.molecular).toBeNull();
+  });
+
+  it("falls back to the raw key for an unknown stored analyte (append-only safety)", () => {
+    const item = describeMeasurementPanel(panel({ readings: [{ analyte: "MYSTERY", value: 1.23, unit: "x" }] }));
+    expect(item.readings[0].label).toBe("MYSTERY");
+    expect(item.summary).toBe("MYSTERY 1.23 x");
+  });
+});
+
+describe("describeTastingNote / describeSample", () => {
+  it("tasting summary reads score + readiness", () => {
+    const t = describeTastingNote({
+      id: "t1",
+      observedAt: new Date("2026-03-07T10:00:00.000Z"),
+      enteredByEmail: "cellar@bwc.bt",
+      captureMethod: "MANUAL",
+      note: null,
+      createdAt: new Date("2026-03-07T10:00:00.000Z"),
+      appearance: null,
+      aroma: "ripe cherry",
+      flavor: null,
+      tannin: 4,
+      acidity: 3,
+      body: null,
+      finish: null,
+      score: 92,
+      scoreScale: "HUNDRED_POINT",
+      readiness: "READY_TO_BOTTLE",
+    });
+    expect(t.summary).toBe("Tasting · 92/100 · ready to bottle");
+    expect(t.structure.tannin).toBe(4);
+  });
+
+  it("sample summary reads status + source + lab", () => {
+    const s = describeSample({
+      id: "s1",
+      pulledAt: new Date("2026-03-07T10:00:00.000Z"),
+      enteredByEmail: "cellar@bwc.bt",
+      captureMethod: "MANUAL",
+      note: null,
+      createdAt: new Date("2026-03-07T10:00:00.000Z"),
+      status: "PENDING",
+      source: "Barrel A3",
+      lab: "ETS",
+    });
+    expect(s.summary).toBe("Sample pending result · Barrel A3 (ETS)");
+    expect(s.observedAt).toBe("2026-03-07T10:00:00.000Z");
+  });
+});
+
+describe("mergeTimeline — hybrid ordering", () => {
+  // Loader passes ops newest-first by id (the fold order). observedAt is display-only.
+  const ops = buildTimeline([
+    { op: op({ id: 3, type: "ADDITION", observedAt: new Date("2026-03-10T00:00:00Z"), treatments: [{ kind: "ADDITION", materialName: "DAP", rateValue: 1, rateBasis: "G_HL", computedTotal: 1, computedUnit: "g", durationMin: null, medium: null, micron: null }] }), lines: [] },
+    { op: op({ id: 2, type: "SEED", observedAt: new Date("2026-03-05T00:00:00Z") }), lines: [inVessel("1", 100, "TANK"), external(-100, "seed")] },
+    { op: op({ id: 1, type: "SEED", observedAt: new Date("2026-03-01T00:00:00Z") }), lines: [inVessel("1", 50, "TANK"), external(-50, "seed")] },
+  ]);
+
+  it("D14 regression: an ops-only lot is byte-identical in order to buildTimeline", () => {
+    const merged = mergeTimeline(ops, []);
+    expect(merged.map((e) => e.id)).toEqual([3, 2, 1]);
+    expect(merged.every((e) => e.kind === "OP")).toBe(true);
+  });
+
+  it("slots a backdated panel between the correct ops by observedAt", () => {
+    const p = describeMeasurementPanel(panel({ id: "p", observedAt: new Date("2026-03-07T00:00:00Z"), readings: [{ analyte: "PH", value: 3.4, unit: "pH" }] }));
+    const merged = mergeTimeline(ops, [p]);
+    // Mar07 is newer than op2(Mar05) and op1(Mar01), older than op3(Mar10) → between op3 and op2.
+    expect(merged.map((e) => (e.kind === "OP" ? `op${e.id}` : e.id))).toEqual(["op3", "p", "op2", "op1"]);
+  });
+
+  it("keeps op id-order even when observedAt is non-monotonic with id; records still slot", () => {
+    const nm = buildTimeline([
+      { op: op({ id: 5, type: "SEED", observedAt: new Date("2026-03-01T00:00:00Z") }), lines: [inVessel("1", 50, "TANK"), external(-50, "seed")] },
+      { op: op({ id: 4, type: "ADDITION", observedAt: new Date("2026-03-20T00:00:00Z"), treatments: [{ kind: "ADDITION", materialName: "DAP", rateValue: 1, rateBasis: "G_HL", computedTotal: 1, computedUnit: "g", durationMin: null, medium: null, micron: null }] }), lines: [] },
+      { op: op({ id: 3, type: "ADDITION", observedAt: new Date("2026-03-10T00:00:00Z"), treatments: [{ kind: "ADDITION", materialName: "DAP", rateValue: 1, rateBasis: "G_HL", computedTotal: 1, computedUnit: "g", durationMin: null, medium: null, micron: null }] }), lines: [] },
+    ]);
+    expect(mergeTimeline(nm, []).map((e) => e.id)).toEqual([5, 4, 3]); // ops never reorder
+    const p = describeMeasurementPanel(panel({ id: "p", observedAt: new Date("2026-03-15T00:00:00Z"), readings: [{ analyte: "PH", value: 3.4, unit: "pH" }] }));
+    const merged = mergeTimeline(nm, [p]);
+    // op5(Mar01) is the first op older-or-equal to Mar15 → panel slots before op5.
+    expect(merged.map((e) => (e.kind === "OP" ? `op${e.id}` : e.id))).toEqual(["p", "op5", "op4", "op3"]);
+  });
+
+  it("orders records sharing a slot by observedAt desc then createdAt desc", () => {
+    const older = describeMeasurementPanel(panel({ id: "older", observedAt: new Date("2026-03-07T00:00:00Z"), createdAt: new Date("2026-03-07T09:00:00Z"), readings: [{ analyte: "PH", value: 3.4, unit: "pH" }] }));
+    const newer = describeMeasurementPanel(panel({ id: "newer", observedAt: new Date("2026-03-08T00:00:00Z"), createdAt: new Date("2026-03-08T09:00:00Z"), readings: [{ analyte: "PH", value: 3.4, unit: "pH" }] }));
+    const merged = mergeTimeline(ops, [older, newer]);
+    // Both newer than op2(Mar05), older than op3(Mar10) → same slot, newer observedAt first.
+    expect(merged.map((e) => (e.kind === "OP" ? `op${e.id}` : e.id))).toEqual(["op3", "newer", "older", "op2", "op1"]);
   });
 });
 

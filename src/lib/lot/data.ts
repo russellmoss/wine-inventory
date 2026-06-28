@@ -4,11 +4,16 @@ import { prisma } from "@/lib/prisma";
 import {
   buildTimeline,
   currentState,
+  describeMeasurementPanel,
+  describeSample,
+  describeTastingNote,
+  mergeTimeline,
   type CurrentState,
   type CurrentLocation,
   type RawLine,
   type RawOperation,
-  type TimelineEvent,
+  type RecordItem,
+  type TimelineItem,
   type VesselKind,
 } from "@/lib/lot/timeline";
 
@@ -46,7 +51,7 @@ export type LotDetail = {
   varietyName: string | null;
   vineyardName: string | null;
   current: CurrentState;
-  events: TimelineEvent[];
+  events: TimelineItem[];
   lineage: { parents: LotLineageRef[]; children: LotLineageRef[] };
 };
 
@@ -151,9 +156,18 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
   // (Phase 3), each with its operation header. UNIONing lot_operation_line.lotId with
   // lot_treatment.lotId is what makes volume-NEUTRAL ops (additions, fining, cap mgmt)
   // appear on the timeline at all — they have no lines.
-  const [lines, treatments] = await Promise.all([
+  const [lines, treatments, panels, tastingNotes, samples] = await Promise.all([
     prisma.lotOperationLine.findMany({ where: { lotId: id }, include: { operation: true } }),
     prisma.lotTreatment.findMany({ where: { lotId: id }, include: { operation: true } }),
+    // Phase 4 standalone records: non-voided panels (+ their readings), non-voided tasting
+    // notes, and live (non-cancelled) samples. These have no operationId — they slot into the
+    // op feed by observedAt (mergeTimeline), they do NOT join the byOp grouping.
+    prisma.analysisPanel.findMany({
+      where: { lotId: id, voidedAt: null },
+      include: { readings: { orderBy: { createdAt: "asc" } } },
+    }),
+    prisma.lotTastingNote.findMany({ where: { lotId: id, voidedAt: null } }),
+    prisma.sample.findMany({ where: { lotId: id, status: { not: "CANCELLED" } } }),
   ]);
 
   // Resolve vessel types for labeling (deleted vessels keep only their code snapshot).
@@ -232,7 +246,58 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
 
   // Newest-first by operation id (the fold order), per D14 / the plan's Key Decisions.
   const rawOps = [...byOp.values()].sort((a, b) => b.op.id - a.op.id);
-  const events = buildTimeline(rawOps, { legacy: lot.isLegacy, correctedIds });
+  const opEvents = buildTimeline(rawOps, { legacy: lot.isLegacy, correctedIds });
+
+  // Phase 4 standalone records → display items, then HYBRID-merged into the op backbone by
+  // observedAt (ops keep their id order; records slot in). Decimal → number at this boundary.
+  const recordItems: RecordItem[] = [
+    ...panels.map((p) =>
+      describeMeasurementPanel({
+        id: p.id,
+        observedAt: p.observedAt,
+        enteredByEmail: p.enteredByEmail,
+        captureMethod: p.captureMethod,
+        note: p.note,
+        sampleId: p.sampleId,
+        createdAt: p.createdAt,
+        readings: p.readings.map((r) => ({ analyte: r.analyte, value: Number(r.value), unit: r.unit })),
+      }),
+    ),
+    ...tastingNotes.map((t) =>
+      describeTastingNote({
+        id: t.id,
+        observedAt: t.observedAt,
+        enteredByEmail: t.enteredByEmail,
+        captureMethod: t.captureMethod,
+        note: t.notes, // the tasting note's free-text → the rail's note line
+        createdAt: t.createdAt,
+        appearance: t.appearance,
+        aroma: t.aroma,
+        flavor: t.flavor,
+        tannin: t.tannin,
+        acidity: t.acidity,
+        body: t.body,
+        finish: t.finish,
+        score: t.score,
+        scoreScale: t.scoreScale,
+        readiness: t.readiness,
+      }),
+    ),
+    ...samples.map((s) =>
+      describeSample({
+        id: s.id,
+        pulledAt: s.pulledAt,
+        enteredByEmail: s.enteredByEmail,
+        captureMethod: s.captureMethod,
+        note: s.note,
+        createdAt: s.createdAt,
+        status: s.status,
+        source: s.source,
+        lab: s.lab,
+      }),
+    ),
+  ];
+  const events = mergeTimeline(opEvents, recordItems);
 
   const current = currentState(
     lot.vesselLots.map((vl) => ({

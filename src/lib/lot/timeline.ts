@@ -1,6 +1,8 @@
 import { round2 } from "@/lib/bottling/draw";
 import type { OperationType } from "@/lib/ledger/vocabulary";
 import { RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
+import { getAnalyte } from "@/lib/chemistry/analytes";
+import { molecularSO2, type MolecularSO2 } from "@/lib/chemistry/so2";
 
 /** Op types that are volume-neutral (a treatment, no lines) — drives the "voided" pill. */
 const NEUTRAL_OPS = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT"]);
@@ -296,6 +298,264 @@ export function buildTimeline(
     ev.voided = ev.corrected && NEUTRAL_OPS.has(op.type);
     return ev;
   });
+}
+
+// ───────────────────────── Phase 4 standalone records on the timeline ─────────────────────────
+// Chemistry/tasting/sample records are NOT ledger ops — they have no operationId and no lines.
+// They slot into the op backbone by observedAt (hybrid ordering — see mergeTimeline). The feed
+// is a discriminated union TimelineItem { kind } so the renderer + Edit mode branch on kind
+// rather than overloading the op-shaped TimelineEvent (D14: ops keep their own id order).
+
+const READINESS_LABELS: Record<string, string> = {
+  NEEDS_MORE_TIME: "needs more time",
+  READY_TO_BLEND: "ready to blend",
+  READY_TO_BOTTLE: "ready to bottle",
+  HOLD: "hold",
+  DECLINING: "declining",
+};
+const SCALE_MAX: Record<string, number> = { HUNDRED_POINT: 100, TWENTY_POINT: 20 };
+
+/** Format a reading value at its analyte's display precision (raw key falls back to as-is). */
+export function formatAnalyteValue(analyte: string, value: number): string {
+  const def = getAnalyte(analyte);
+  if (!def) return String(value);
+  return value.toFixed(def.precision);
+}
+
+/** A reading prepared for display: registry label + precision-formatted value (or raw fallback). */
+export type ReadingView = { analyte: string; label: string; value: number; unit: string; valueLabel: string };
+
+function toReadingView(r: { analyte: string; value: number; unit: string }): ReadingView {
+  const def = getAnalyte(r.analyte);
+  return {
+    analyte: r.analyte,
+    label: def?.label ?? r.analyte, // unknown stored key → show the raw key
+    value: r.value,
+    unit: r.unit,
+    valueLabel: formatAnalyteValue(r.analyte, r.value),
+  };
+}
+
+/** "pH 3.70" / "Free SO₂ 28 mg/L" — unit suffix dropped only for the dimensionless pH. */
+function readingToken(v: ReadingView): string {
+  const unit = v.unit && v.unit !== "pH" ? ` ${v.unit}` : "";
+  return `${v.label} ${v.valueLabel}${unit}`;
+}
+
+export type TimelineMeta = {
+  observedAt: string; // ISO
+  dateLabel: string; // YYYY-MM-DD
+  enteredBy: string;
+  captureMethod: string;
+  note: string | null;
+  createdAt: string; // ISO — record-vs-record tiebreak
+};
+
+export type MeasurementItem = TimelineMeta & {
+  kind: "MEASUREMENT";
+  id: string; // panelId
+  summary: string;
+  readings: ReadingView[];
+  molecular: MolecularSO2 | null; // derived within THIS panel only
+  sampleId: string | null;
+};
+
+export type TastingItem = TimelineMeta & {
+  kind: "TASTING";
+  id: string;
+  summary: string;
+  appearance: string | null;
+  aroma: string | null;
+  flavor: string | null;
+  structure: { tannin: number | null; acidity: number | null; body: number | null; finish: number | null };
+  score: number | null;
+  scoreScale: string | null;
+  readiness: string | null;
+};
+
+export type SampleItem = TimelineMeta & {
+  kind: "SAMPLE";
+  id: string;
+  summary: string;
+  status: string;
+  source: string | null;
+  lab: string | null;
+};
+
+export type OpItem = TimelineEvent & { kind: "OP" };
+export type RecordItem = MeasurementItem | TastingItem | SampleItem;
+export type TimelineItem = OpItem | RecordItem;
+
+export type RawPanel = {
+  id: string;
+  observedAt: Date | string;
+  enteredByEmail: string;
+  captureMethod: string;
+  note: string | null;
+  sampleId: string | null;
+  createdAt: Date | string;
+  readings: { analyte: string; value: number; unit: string }[];
+};
+
+export type RawTastingNote = {
+  id: string;
+  observedAt: Date | string;
+  enteredByEmail: string;
+  captureMethod: string;
+  note: string | null;
+  createdAt: Date | string;
+  appearance: string | null;
+  aroma: string | null;
+  flavor: string | null;
+  tannin: number | null;
+  acidity: number | null;
+  body: number | null;
+  finish: number | null;
+  score: number | null;
+  scoreScale: string | null;
+  readiness: string | null;
+};
+
+export type RawSample = {
+  id: string;
+  pulledAt: Date | string; // the sample's observed time
+  enteredByEmail: string;
+  captureMethod: string;
+  note: string | null;
+  createdAt: Date | string;
+  status: string;
+  source: string | null;
+  lab: string | null;
+};
+
+function baseMeta(observed: Date | string, created: Date | string, enteredBy: string, captureMethod: string, note: string | null): TimelineMeta {
+  const observedISO = toISO(observed);
+  return {
+    observedAt: observedISO,
+    dateLabel: observedISO.slice(0, 10),
+    enteredBy,
+    captureMethod,
+    note,
+    createdAt: toISO(created),
+  };
+}
+
+/** One analysis panel → a display item. Molecular SO₂ derives from THIS panel's free SO₂ + pH. */
+export function describeMeasurementPanel(panel: RawPanel): MeasurementItem {
+  const readings = panel.readings.map(toReadingView);
+  const free = panel.readings.find((r) => r.analyte === "FREE_SO2");
+  const ph = panel.readings.find((r) => r.analyte === "PH");
+  const molecular = free && ph ? molecularSO2({ freeSO2: free.value, pH: ph.value }) : null;
+  const summary = readings.length ? readings.map(readingToken).join(" · ") : "Analysis (no readings)";
+  return {
+    kind: "MEASUREMENT",
+    id: panel.id,
+    summary,
+    readings,
+    molecular,
+    sampleId: panel.sampleId,
+    ...baseMeta(panel.observedAt, panel.createdAt, panel.enteredByEmail, panel.captureMethod, panel.note),
+  };
+}
+
+/** One tasting note → a display item. */
+export function describeTastingNote(note: RawTastingNote): TastingItem {
+  const parts = ["Tasting"];
+  if (note.score != null) parts.push(`${note.score}/${note.scoreScale ? SCALE_MAX[note.scoreScale] ?? 100 : 100}`);
+  if (note.readiness) parts.push(READINESS_LABELS[note.readiness] ?? note.readiness.toLowerCase());
+  return {
+    kind: "TASTING",
+    id: note.id,
+    summary: parts.join(" · "),
+    appearance: note.appearance,
+    aroma: note.aroma,
+    flavor: note.flavor,
+    structure: { tannin: note.tannin, acidity: note.acidity, body: note.body, finish: note.finish },
+    score: note.score,
+    scoreScale: note.scoreScale,
+    readiness: note.readiness,
+    ...baseMeta(note.observedAt, note.createdAt, note.enteredByEmail, note.captureMethod, note.note),
+  };
+}
+
+const SAMPLE_STATUS_WORD: Record<string, string> = {
+  PULLED: "pulled",
+  SENT: "sent to the lab",
+  PENDING: "pending result",
+  RESULT_RETURNED: "result returned",
+  ATTACHED: "results attached",
+  CANCELLED: "cancelled",
+};
+
+/** One sample → a display item (observed at its pull time). */
+export function describeSample(sample: RawSample): SampleItem {
+  const word = SAMPLE_STATUS_WORD[sample.status] ?? sample.status.toLowerCase();
+  let summary = `Sample ${word}`;
+  if (sample.source) summary += ` · ${sample.source}`;
+  if (sample.lab && (sample.status === "SENT" || sample.status === "PENDING")) summary += ` (${sample.lab})`;
+  return {
+    kind: "SAMPLE",
+    id: sample.id,
+    summary,
+    status: sample.status,
+    source: sample.source,
+    lab: sample.lab,
+    ...baseMeta(sample.pulledAt, sample.createdAt, sample.enteredByEmail, sample.captureMethod, sample.note),
+  };
+}
+
+function ms(iso: string): number {
+  return new Date(iso).getTime();
+}
+
+/** Sort records that share a slot: observedAt desc, then createdAt desc, then id desc. */
+function recordOrder(a: RecordItem, b: RecordItem): number {
+  const byObserved = ms(b.observedAt) - ms(a.observedAt);
+  if (byObserved !== 0) return byObserved;
+  const byCreated = ms(b.createdAt) - ms(a.createdAt);
+  if (byCreated !== 0) return byCreated;
+  return b.id.localeCompare(a.id);
+}
+
+/**
+ * HYBRID timeline merge (eng-review addendum). Operations form the backbone in the order the
+ * loader passes them (op.id desc — D14), and never reorder relative to each other. Each
+ * standalone record slots in immediately BEFORE the first op whose observedAt is older-or-equal
+ * (≤) to the record's observedAt; records sharing a slot order by observedAt/createdAt/id.
+ * A record newer than every op lands at the top; older than every op lands at the bottom.
+ * With no records this returns the ops verbatim (the D14 ops-only regression guard).
+ */
+export function mergeTimeline(ops: TimelineEvent[], records: RecordItem[]): TimelineItem[] {
+  const opItems: OpItem[] = ops.map((ev) => ({ kind: "OP", ...ev }));
+  if (records.length === 0) return opItems;
+
+  const opMs = opItems.map((o) => ms(o.observedAt));
+  // Anchor each record to the index of the first op that is older-or-equal (its insertion slot).
+  const byAnchor = new Map<number, RecordItem[]>();
+  for (const rec of records) {
+    const t = ms(rec.observedAt);
+    let anchor = opItems.length;
+    for (let i = 0; i < opItems.length; i++) {
+      if (opMs[i] <= t) {
+        anchor = i;
+        break;
+      }
+    }
+    const bucket = byAnchor.get(anchor);
+    if (bucket) bucket.push(rec);
+    else byAnchor.set(anchor, [rec]);
+  }
+
+  const out: TimelineItem[] = [];
+  for (let i = 0; i <= opItems.length; i++) {
+    const bucket = byAnchor.get(i);
+    if (bucket) {
+      bucket.sort(recordOrder);
+      out.push(...bucket);
+    }
+    if (i < opItems.length) out.push(opItems[i]);
+  }
+  return out;
 }
 
 /** Aggregate a lot's current holdings (from the vessel_lot projection) into header state. */

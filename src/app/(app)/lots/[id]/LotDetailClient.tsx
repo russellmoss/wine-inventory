@@ -4,7 +4,16 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Metric, Button, Modal, ConfirmButton } from "@/components/ui";
-import { formatL, type TimelineEvent, type TimelineLeg } from "@/lib/lot/timeline";
+import {
+  formatL,
+  type TimelineEvent,
+  type TimelineItem,
+  type TimelineLeg,
+  type OpItem,
+  type MeasurementItem,
+  type TastingItem,
+  type SampleItem,
+} from "@/lib/lot/timeline";
 import type { LotDetail } from "@/lib/lot/data";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { deleteOperationAction, editOperationAction, correctOperationAction } from "@/lib/cellar/actions";
@@ -99,7 +108,7 @@ function isActionable(event: TimelineEvent): boolean {
   return NEUTRAL_OPS.has(event.type) || REVERTABLE_OPS.has(event.type);
 }
 
-function TimelineItem({ event, editMode, onEdit }: { event: TimelineEvent; editMode: boolean; onEdit: (e: TimelineEvent) => void }) {
+function OpRow({ event, editMode, onEdit }: { event: OpItem; editMode: boolean; onEdit: (e: OpItem) => void }) {
   const dim = event.corrected;
   return (
     <li
@@ -162,6 +171,199 @@ function TimelineItem({ event, editMode, onEdit }: { event: TimelineEvent; editM
   );
 }
 
+// ── Phase 4 standalone records on the timeline (measurement / tasting / sample) ──
+
+const READINESS_TONE: Record<string, Tone> = {
+  READY_TO_BOTTLE: "green",
+  READY_TO_BLEND: "green",
+  NEEDS_MORE_TIME: "neutral",
+  HOLD: "neutral",
+  DECLINING: "red",
+};
+const READINESS_LABEL: Record<string, string> = {
+  NEEDS_MORE_TIME: "needs more time",
+  READY_TO_BLEND: "ready to blend",
+  READY_TO_BOTTLE: "ready to bottle",
+  HOLD: "hold",
+  DECLINING: "declining",
+};
+const SAMPLE_TONE: Record<string, Tone> = {
+  PULLED: "neutral",
+  SENT: "neutral",
+  PENDING: "neutral",
+  RESULT_RETURNED: "gold",
+  ATTACHED: "green",
+};
+
+// Shared rail shell for the standalone records — same node-dot + meta line as an op row.
+function RecordRail({
+  badgeTone,
+  badgeLabel,
+  summary,
+  observedAt,
+  dateLabel,
+  enteredBy,
+  captureMethod,
+  note,
+  children,
+}: {
+  badgeTone: Tone;
+  badgeLabel: string;
+  summary: string;
+  observedAt: string;
+  dateLabel: string;
+  enteredBy: string;
+  captureMethod: string;
+  note: string | null;
+  children?: React.ReactNode;
+}) {
+  return (
+    <li
+      style={{
+        position: "relative",
+        listStyle: "none",
+        borderLeft: "1px solid var(--border-strong)",
+        padding: "0 0 24px 20px",
+        marginLeft: 4,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: -5,
+          top: 4,
+          width: 9,
+          height: 9,
+          borderRadius: "50%",
+          background: "var(--surface-page)",
+          border: "1.5px solid var(--border-strong)",
+        }}
+      />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+        <Badge tone={badgeTone} variant="soft" uppercase>
+          {badgeLabel}
+        </Badge>
+      </div>
+      <div style={{ fontSize: 15.5, color: "var(--text-primary)", marginBottom: 4 }}>{summary}</div>
+      <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: children ? 8 : 0 }}>
+        <time dateTime={observedAt}>{dateLabel}</time>
+        {" · "}
+        {enteredBy}
+        {captureMethod && captureMethod !== "MANUAL" ? ` · ${captureMethod.toLowerCase()}` : ""}
+      </div>
+      {children}
+      {note ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6, fontStyle: "italic" }}>{note}</div>
+      ) : null}
+    </li>
+  );
+}
+
+function MeasurementRow({ item }: { item: MeasurementItem }) {
+  return (
+    <RecordRail
+      badgeTone="gold"
+      badgeLabel="ANALYSIS"
+      summary={item.summary}
+      observedAt={item.observedAt}
+      dateLabel={item.dateLabel}
+      enteredBy={item.enteredBy}
+      captureMethod={item.captureMethod}
+      note={item.note}
+    >
+      {item.molecular ? (
+        <div
+          aria-label="Derived molecular SO₂"
+          style={{ fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums", marginTop: 2 }}
+        >
+          Molecular SO₂ ≈ {item.molecular.molecularSO2.toFixed(2)} mg/L · derived from free{" "}
+          {item.molecular.freeSO2} + pH {item.molecular.pH.toFixed(2)} · pKa {item.molecular.pKa}
+        </div>
+      ) : null}
+    </RecordRail>
+  );
+}
+
+function TastingRow({ item }: { item: TastingItem }) {
+  const struct: [string, number | null][] = [
+    ["Tannin", item.structure.tannin],
+    ["Acidity", item.structure.acidity],
+    ["Body", item.structure.body],
+    ["Finish", item.structure.finish],
+  ];
+  const shownStruct = struct.filter(([, v]) => v != null);
+  const sensory: [string, string | null][] = [
+    ["Appearance", item.appearance],
+    ["Aroma", item.aroma],
+    ["Flavor", item.flavor],
+  ];
+  const shownSensory = sensory.filter(([, v]) => v && v.trim());
+  return (
+    <RecordRail
+      badgeTone="maroon"
+      badgeLabel="TASTING"
+      summary={item.summary}
+      observedAt={item.observedAt}
+      dateLabel={item.dateLabel}
+      enteredBy={item.enteredBy}
+      captureMethod={item.captureMethod}
+      note={item.note}
+    >
+      {item.readiness ? (
+        <div style={{ marginBottom: shownStruct.length || shownSensory.length ? 6 : 0 }}>
+          <Badge tone={READINESS_TONE[item.readiness] ?? "neutral"} variant="soft">
+            {READINESS_LABEL[item.readiness] ?? item.readiness.toLowerCase()}
+          </Badge>
+        </div>
+      ) : null}
+      {shownStruct.length ? (
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
+          {shownStruct.map(([k, v]) => `${k} ${v}/5`).join(" · ")}
+        </div>
+      ) : null}
+      {shownSensory.map(([k, v]) => (
+        <div key={k} style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>
+          <span style={{ color: "var(--text-muted)" }}>{k}:</span> {v}
+        </div>
+      ))}
+    </RecordRail>
+  );
+}
+
+function SampleRow({ item }: { item: SampleItem }) {
+  return (
+    <RecordRail
+      badgeTone={SAMPLE_TONE[item.status] ?? "neutral"}
+      badgeLabel="SAMPLE"
+      summary={item.summary}
+      observedAt={item.observedAt}
+      dateLabel={item.dateLabel}
+      enteredBy={item.enteredBy}
+      captureMethod={item.captureMethod}
+      note={item.note}
+    >
+      <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+        Status: {item.status.toLowerCase().replace(/_/g, " ")}
+        {item.lab ? ` · ${item.lab}` : ""}
+      </div>
+    </RecordRail>
+  );
+}
+
+function TimelineRow({ item, editMode, onEdit }: { item: TimelineItem; editMode: boolean; onEdit: (e: OpItem) => void }) {
+  switch (item.kind) {
+    case "OP":
+      return <OpRow event={item} editMode={editMode} onEdit={onEdit} />;
+    case "MEASUREMENT":
+      return <MeasurementRow item={item} />;
+    case "TASTING":
+      return <TastingRow item={item} />;
+    case "SAMPLE":
+      return <SampleRow item={item} />;
+  }
+}
+
 function LineageRefs({ label, refs }: { label: string; refs: { lotId: string; code: string }[] }) {
   if (refs.length === 0) return null;
   return (
@@ -186,8 +388,8 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
   const empty = lot.current.locations.length === 0;
 
   const [editMode, setEditMode] = React.useState(false);
-  const [selected, setSelected] = React.useState<TimelineEvent | null>(null);
-  const anyActionable = lot.events.some(isActionable);
+  const [selected, setSelected] = React.useState<OpItem | null>(null);
+  const anyActionable = lot.events.some((e) => e.kind === "OP" && isActionable(e));
 
   return (
     <div>
@@ -270,7 +472,7 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
       ) : null}
       <ol style={{ margin: 0, padding: 0 }}>
         {lot.events.map((e) => (
-          <TimelineItem key={e.id} event={e} editMode={editMode} onEdit={setSelected} />
+          <TimelineRow key={`${e.kind}-${e.id}`} item={e} editMode={editMode} onEdit={setSelected} />
         ))}
       </ol>
 
