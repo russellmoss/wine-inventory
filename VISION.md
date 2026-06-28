@@ -102,6 +102,14 @@ harvest lot can feed several bottlings. The system must make that tree easy to s
 - **Loss is first-class.** Lees, angel's share (barrel evaporation), and topping are
   ledger operations, not silent manual volume edits — otherwise cost-per-liter
   drifts from reality. (Locked decision D7.)
+  - **How each loss is captured (clarified Phase 3):** *lees loss* is recorded as part
+    of a **rack** — you record the volume moved and the measured volume that landed, and
+    the loss is **derived** (out − in), not entered separately. *Angel's share /
+    evaporation* is **never a manual event**: it is **derived from topping** — the volume
+    topped back into a vessel is, by definition, the headspace evaporation since the last
+    top-up, so cumulative top-ups give the evaporative loss for free. The standalone
+    **"dump" operation (the `LOSS` op type) is only for deliberately discarding wine**
+    (spoilage, failed lot, emptying a vessel) — not for evaporation.
 
 ---
 

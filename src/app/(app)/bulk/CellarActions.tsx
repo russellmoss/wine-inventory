@@ -15,7 +15,9 @@ import {
   capManagementAction,
   correctOperationAction,
   filterVesselAction,
+  rackVesselAction,
   recordLossAction,
+  revertRackAction,
   topVesselAction,
 } from "@/lib/cellar/actions";
 
@@ -40,17 +42,18 @@ const fieldStyle: React.CSSProperties = {
   color: "var(--text-primary)",
 };
 
-type Mode = null | "ADD" | "TOP" | "FINE" | "FILTER" | "CAP" | "LOSS";
+type Mode = null | "RACK" | "ADD" | "TOP" | "FINE" | "FILTER" | "CAP" | "DUMP";
 const ACTIONS: { mode: Exclude<Mode, null>; label: string }[] = [
+  { mode: "RACK", label: "Rack" },
   { mode: "ADD", label: "Add" },
   { mode: "TOP", label: "Top" },
   { mode: "FINE", label: "Fine" },
   { mode: "FILTER", label: "Filter" },
   { mode: "CAP", label: "Cap" },
-  { mode: "LOSS", label: "Loss" },
+  { mode: "DUMP", label: "Dump" },
 ];
 
-type LoggedToast = { operationId: number; label: string };
+type LoggedToast = { label: string; undo: () => Promise<unknown> };
 
 export function CellarActions({
   vessel,
@@ -75,23 +78,40 @@ export function CellarActions({
     return () => clearTimeout(t);
   }, [toast]);
 
-  function run(fn: () => Promise<{ operationId: number }>, label: string) {
+  // Cellar ops undo through the correction/void path (by operationId).
+  function runOp(fn: () => Promise<{ operationId: number }>, label: string) {
     setError(null);
     startTransition(async () => {
       try {
         const res = await fn();
         setMode(null);
-        setToast({ operationId: res.operationId, label });
+        setToast({ label, undo: () => correctOperationAction(res.operationId) });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
     });
   }
 
-  function undo(operationId: number) {
+  // Racking undoes through its own transfer-revert path (by transferId).
+  function runRack(fn: () => Promise<{ transferId: string }>, label: string) {
+    setError(null);
     startTransition(async () => {
       try {
-        await correctOperationAction(operationId);
+        const res = await fn();
+        setMode(null);
+        setToast({ label, undo: () => revertRackAction(res.transferId) });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong.");
+      }
+    });
+  }
+
+  function undo() {
+    if (!toast) return;
+    const fn = toast.undo;
+    startTransition(async () => {
+      try {
+        await fn();
         setToast(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't undo.");
@@ -121,16 +141,17 @@ export function CellarActions({
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13, margin: "4px 0 10px" }}>{error}</p> : null}
 
+      {mode === "RACK" ? <RackForm vessel={vessel} kegOptions={kegOptions} pending={pending} onSubmit={runRack} /> : null}
       {mode === "ADD" ? (
-        <DoseForm kind="add" vessel={vessel} materials={materials} pending={pending} onSubmit={run} />
+        <DoseForm kind="add" vessel={vessel} materials={materials} pending={pending} onSubmit={runOp} />
       ) : null}
       {mode === "FINE" ? (
-        <DoseForm kind="fine" vessel={vessel} materials={materials} pending={pending} onSubmit={run} />
+        <DoseForm kind="fine" vessel={vessel} materials={materials} pending={pending} onSubmit={runOp} />
       ) : null}
-      {mode === "TOP" ? <ToppingForm vessel={vessel} kegOptions={kegOptions} pending={pending} onSubmit={run} /> : null}
-      {mode === "FILTER" ? <FiltrationForm vessel={vessel} pending={pending} onSubmit={run} /> : null}
-      {mode === "LOSS" ? <LossForm vessel={vessel} pending={pending} onSubmit={run} /> : null}
-      {mode === "CAP" ? <CapForm vessel={vessel} pending={pending} onSubmit={run} /> : null}
+      {mode === "TOP" ? <ToppingForm vessel={vessel} kegOptions={kegOptions} pending={pending} onSubmit={runOp} /> : null}
+      {mode === "FILTER" ? <FiltrationForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
+      {mode === "DUMP" ? <DumpForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
+      {mode === "CAP" ? <CapForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
 
       {toast ? (
         <div
@@ -148,7 +169,7 @@ export function CellarActions({
           }}
         >
           <span style={{ color: "var(--text-primary)" }}>Logged · {toast.label}</span>
-          <Button variant="ghost" size="sm" disabled={pending} onClick={() => undo(toast.operationId)} style={{ minHeight: 36 }}>
+          <Button variant="ghost" size="sm" disabled={pending} onClick={undo} style={{ minHeight: 36 }}>
             Undo
           </Button>
         </div>
@@ -332,8 +353,8 @@ function FiltrationForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVe
   );
 }
 
-// ── Loss / angel's share ──
-function LossForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: (fn: () => Promise<{ operationId: number }>, label: string) => void }) {
+// ── Dump (deliberate disposal — NOT evaporation; angel's share is derived from topping) ──
+function DumpForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: (fn: () => Promise<{ operationId: number }>, label: string) => void }) {
   const [loss, setLoss] = React.useState("");
   const lossNum = Number(loss);
   const valid = Number.isFinite(lossNum) && lossNum > 0 && lossNum <= vessel.totalL + 1e-9;
@@ -341,18 +362,85 @@ function LossForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; 
 
   return (
     <FormShell>
-      <input value={loss} onChange={(e) => setLoss(e.target.value)} inputMode="decimal" placeholder="Litres lost" style={{ ...fieldStyle, width: 120 }} aria-label="Volume lost" />
+      <input value={loss} onChange={(e) => setLoss(e.target.value)} inputMode="decimal" placeholder="Litres to dump" style={{ ...fieldStyle, width: 130 }} aria-label="Volume to dump" />
+      <Button variant="ghost" size="sm" disabled={pending || vessel.totalL <= 0} onClick={() => setLoss(String(vessel.totalL))} style={{ minHeight: 44 }}>
+        Empty vessel
+      </Button>
       <Button
         variant="primary"
         size="sm"
         disabled={pending || !valid}
-        onClick={() => onSubmit(() => recordLossAction({ vesselId: vessel.id, lossL: lossNum }), `lost ${loss} L`)}
+        onClick={() => onSubmit(() => recordLossAction({ vesselId: vessel.id, lossL: lossNum }), `dumped ${loss} L`)}
         style={{ minHeight: 44 }}
       >
-        {pending ? "Saving…" : `Record loss`}
+        {pending ? "Saving…" : `Dump from ${vessel.code}`}
       </Button>
       <div aria-live="polite" style={{ width: "100%", marginTop: 8, fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-        {resulting != null ? `New volume = ${resulting} L (angel's share)` : vessel.totalL <= 0 ? "This vessel is empty." : "Enter the volume lost to evaporation."}
+        {resulting != null
+          ? `New volume = ${resulting} L`
+          : vessel.totalL <= 0
+            ? "This vessel is empty."
+            : "Dump wine you're discarding (spoilage, failed lot, emptying a vessel). Evaporation isn't recorded — angel's share is derived from topping."}
+      </div>
+    </FormShell>
+  );
+}
+
+// ── Rack (move wine to another vessel; lees loss = out − measured-in) ──
+function RackForm({
+  vessel,
+  kegOptions,
+  pending,
+  onSubmit,
+}: {
+  vessel: CellarActionsVessel;
+  kegOptions: KegOption[];
+  pending: boolean;
+  onSubmit: (fn: () => Promise<{ transferId: string }>, label: string) => void;
+}) {
+  const destinations = kegOptions.filter((k) => k.id !== vessel.id);
+  const [toVesselId, setToVesselId] = React.useState("");
+  const [drawL, setDrawL] = React.useState(String(vessel.totalL || ""));
+  const [landedL, setLandedL] = React.useState("");
+
+  const draw = Number(drawL);
+  const landed = landedL.trim() === "" ? null : Number(landedL);
+  const drawValid = Number.isFinite(draw) && draw > 0 && draw <= vessel.totalL + 1e-9;
+  const landedValid = landed == null || (Number.isFinite(landed) && landed >= 0 && landed <= draw + 1e-9);
+  const valid = !!toVesselId && drawValid && landedValid;
+  const lossL = landed == null ? 0 : Math.round((draw - landed) * 100) / 100;
+
+  return (
+    <FormShell>
+      <select value={toVesselId} onChange={(e) => setToVesselId(e.target.value)} style={{ ...fieldStyle, flex: "1 1 170px" }} aria-label="Destination vessel">
+        <option value="" disabled>
+          Rack into…
+        </option>
+        {destinations.map((k) => (
+          <option key={k.id} value={k.id}>
+            {k.label} ({k.totalL} L)
+          </option>
+        ))}
+      </select>
+      <input value={drawL} onChange={(e) => setDrawL(e.target.value)} inputMode="decimal" placeholder="Litres out" style={{ ...fieldStyle, width: 100 }} aria-label="Litres moved out of this vessel" title={`Out of ${vessel.code} (defaults to its full volume)`} />
+      <input value={landedL} onChange={(e) => setLandedL(e.target.value)} inputMode="decimal" placeholder="Litres in (measured)" style={{ ...fieldStyle, width: 140 }} aria-label="Measured litres into the destination" />
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={pending || !valid}
+        onClick={() => onSubmit(() => rackVesselAction({ fromVesselId: vessel.id, toVesselId, drawL: draw, lossL }), `racked ${draw} L`)}
+        style={{ minHeight: 44 }}
+      >
+        {pending ? "Saving…" : `Rack from ${vessel.code}`}
+      </Button>
+      <div aria-live="polite" style={{ width: "100%", marginTop: 8, fontSize: 13, color: !landedValid ? "var(--danger)" : "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+        {destinations.length === 0
+          ? "No other vessel to rack into."
+          : !landedValid
+            ? "Measured volume in can't exceed the volume out."
+            : landed == null
+              ? `Enter the measured volume landed to record lees loss (out − in). Leaving it blank logs no loss.`
+              : `Lees loss = ${lossL} L (out ${draw} − in ${landed}).`}
       </div>
     </FormShell>
   );

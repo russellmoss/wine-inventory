@@ -110,6 +110,15 @@ ops touched it; existing vessels show as Legacy Lots; app builds and existing te
   separate lot and appends lineage to every topped vessel.
 - **Cap management** (pump-over / punch-down) as a near-zero-data, one-tap "done"
   operation; **exceptions** ("couldn't complete / vessel empty / wrong barrel").
+- **Racking lives in the same vessel-first Actions row** (the core shipped in Phase 1/2;
+  Phase 3 gives it an on-screen home next to Add/Top/Fine/Filter/Cap/Dump). Rack records
+  the volume **out** of the source and the **measured volume landed** in the destination;
+  the **lees loss is derived (out − in)** — never entered as a separate loss event.
+- **Loss model (clarified):** the standalone op (`LOSS` type) is **"Dump" only** —
+  deliberate disposal (spoilage / emptying a vessel). **Angel's share / evaporation is
+  NOT a recorded event**; it is **derived from topping** (the volume topped back ≈ the
+  headspace evaporation since the last top-up). Cumulative top-ups per vessel yield the
+  evaporative loss for the cost model (Phase 8) with zero extra capture.
 - Correction/compensation semantics matured across these (D6, D15).
 **Exit:** each operation logs, updates state, and is correctable; a single group action
 tops 60 barrels; an addition entered as g/hL records the computed grams + basis.
@@ -231,6 +240,15 @@ cost-per-bottle. **Physical tracking first, cost second** (same records, added l
   filter media; **dry/bottling goods** (bottles, corks, capsules, labels, cases);
   **tirage/dosage materials** (Phase 7). Receive with cost; **consume via the addition
   operations** already created in Phases 3/6/7 (so adding to a lot draws down stock).
+- **Material picker becomes a real inventory dropdown (upgrades the Phase 3 catalog):**
+  the Phase 3 addition/fining form uses a light free-text `CellarMaterial` catalog
+  (datalist, upsert-on-type) as a stepping stone. Phase 8 turns it into a **dropdown of
+  stock items filtered by kind** (e.g. fining agents), with **"create new …" straight
+  from the picker** capturing cost + %active + opening stock — no more retyping names.
+  The catalog rows created in Phase 3 are the seed of this inventory.
+- **Where stock is managed:** a **Setup → winemaking expendables** surface plus the main
+  **Inventory** page under per-kind **categories** (fining agents, nutrients, …) to
+  receive/adjust stock; the addition operations draw it down automatically.
 - **Barrels as depreciating assets:** amortize cost across uses/years; allocate barrel
   carrying cost to the lots aging in them over time.
 - **Cost roll-up = traversal of the ledger DAG:** each operation carries cost lines;

@@ -47,7 +47,7 @@ const OP_LABELS: Record<OpKind, string> = {
   FINING: "Fining",
   CAP_MGMT: "Cap management",
   FILTRATION: "Filtration",
-  LOSS: "Loss",
+  LOSS: "Dump",
   TOPPING: "Topping",
 };
 

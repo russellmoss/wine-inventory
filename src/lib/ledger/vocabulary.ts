@@ -47,7 +47,8 @@ export const LINE_REASONS = [
   "adjust",
   "topping", // Phase 3: the +volume leg when topping from a keg lot
   "filtration", // Phase 3: volume lost to the filter medium
-  "evaporation", // Phase 3: angel's share / evaporative loss (a flavour of LOSS)
+  "evaporation", // Phase 3: angel's share — DERIVED from topping, not a recorded event
+  "dump", // Phase 3: deliberate disposal of wine (the standalone LOSS op)
 ] as const;
 export type LineReason = (typeof LINE_REASONS)[number];
 

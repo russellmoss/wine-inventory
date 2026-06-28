@@ -209,7 +209,7 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
       summary = `Bottled ${formatL(bottleTotal || outTotal)} L`;
       break;
     case "LOSS":
-      summary = `Lost ${formatL(outTotal)} L from ${srcLabels || "—"}`;
+      summary = `Dumped ${formatL(outTotal)} L from ${srcLabels || "—"}`;
       break;
     case "DEPLETE":
       summary = `Depleted ${formatL(outTotal)} L from ${srcLabels || "—"}`;

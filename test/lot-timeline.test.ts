@@ -94,12 +94,12 @@ describe("describeOperation — summaries", () => {
     expect(ev.summary).toBe("Bottled 0.75 L");
   });
 
-  it("LOSS reads 'Lost <vol> L from <src>'", () => {
+  it("LOSS reads 'Dumped <vol> L from <src>' (loss = dump; evaporation is derived from topping)", () => {
     const ev = describeOperation(op({ id: 8, type: "LOSS" }), [
       inVessel("14", -3, "BARREL"),
-      external(3, "loss"),
+      external(3, "dump"),
     ]);
-    expect(ev.summary).toBe("Lost 3 L from Barrel 14");
+    expect(ev.summary).toBe("Dumped 3 L from Barrel 14");
   });
 
   it("DEPLETE reads 'Depleted <vol> L from <src>'", () => {

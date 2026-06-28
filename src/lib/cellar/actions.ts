@@ -38,6 +38,13 @@ import {
   type BatchCorrectResult,
   type CorrectResult,
 } from "@/lib/cellar/correct";
+import {
+  rackWineCore,
+  revertTransferCore,
+  type TransferWineInput,
+  type TransferWineResult,
+  type RevertTransferResult,
+} from "@/lib/vessels/rack-core";
 
 // "use server" wrappers for the Phase 3 cellar operations. Each authorizes a ready user,
 // then calls the script-safe core with the audit actor and revalidates the capture
@@ -166,6 +173,26 @@ export const correctOperationAction = action(
 export const correctBatchAction = action(
   async ({ actor }, batchId: string): Promise<BatchCorrectResult> => {
     const res = await correctBatchCore(actor, { batchId });
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+// ── Racking (vessel-first home for the Phase 1/2 transfer core) ──
+
+/** Rack wine from a source vessel into a destination; lees loss is derived (out − in). */
+export const rackVesselAction = action(
+  async ({ actor }, input: TransferWineInput): Promise<TransferWineResult> => {
+    const res = await rackWineCore(actor, input);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Undo a rack via its compensating CORRECTION (the toast Undo for a rack). */
+export const revertRackAction = action(
+  async ({ actor }, transferId: string): Promise<RevertTransferResult> => {
+    const res = await revertTransferCore(actor, { transferId });
     revalidateCaptureSurfaces();
     return res;
   },

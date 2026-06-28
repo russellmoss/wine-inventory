@@ -152,12 +152,12 @@ async function main() {
   assert(filtOp.treatments[0].medium === "pad" && Number(filtOp.treatments[0].micron) === 0.45, "filtration treatment records medium=pad, micron=0.45");
   assert(await projectionMatchesFold(), "projection == fold after filtration");
 
-  // 5) LOSS — volume drops, evaporation reason
-  console.log("\n── 5. LOSS (8 L evaporation) ──");
+  // 5) DUMP — volume drops, dump reason (loss = deliberate disposal, not evaporation)
+  console.log("\n── 5. DUMP (8 L discarded) ──");
   const loss = await recordLossCore(ACTOR, { vesselId: tank, lossL: 8 });
-  assert((await vesselTotal(tank)) === 437, `TANK 445 → 437 after 8 L loss (got ${await vesselTotal(tank)})`);
+  assert((await vesselTotal(tank)) === 437, `TANK 445 → 437 after dumping 8 L (got ${await vesselTotal(tank)})`);
   const lossOp = await prisma.lotOperation.findUniqueOrThrow({ where: { id: loss.operationId }, include: { lines: true } });
-  assert(lossOp.lines.some((l) => l.reason === "evaporation"), "loss op carries an external 'evaporation' line");
+  assert(lossOp.lines.some((l) => l.reason === "dump"), "dump op carries an external 'dump' line");
 
   // 6) TOPPING — keg → B1 + lineage
   console.log("\n── 6. TOPPING (10 L keg → B1) ──");
