@@ -247,7 +247,7 @@ export function CellarActions({
         onClose={() => setAnalysesOpen(false)}
         title={`Analyses · ${vessel.code}`}
         subtitle={analyses ? `${analyses.panelCount} panel${analyses.panelCount === 1 ? "" : "s"} logged on this vessel` : "Loading…"}
-        maxWidth="min(1100px, 92vw)"
+        maxWidth="min(1200px, 94vw)"
       >
         {analysesLoading ? (
           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading…</p>
@@ -257,6 +257,7 @@ export function CellarActions({
             molecular={analyses?.molecular ?? null}
             molecularDateLabel={analyses?.molecularDateLabel ?? undefined}
             emptyHint="No analyses logged on this vessel yet — log one above."
+            singleColumn
           />
         )}
       </Modal>

@@ -56,14 +56,18 @@ export function AnalyteTrends({
   molecular,
   molecularDateLabel,
   emptyHint = "No readings yet — log a pH or SO₂ to start the trend.",
+  singleColumn = false,
 }: {
   readings: TrendReading[];
   molecular?: MolecularSO2 | null;
   molecularDateLabel?: string;
   emptyHint?: string;
+  /** Stack charts one-per-row (full width) instead of a responsive grid — bigger + readable. */
+  singleColumn?: boolean;
 }) {
   const series = React.useMemo(() => buildSeries(readings), [readings]);
   const presentKeys = series.map((s) => s.key);
+  const [showCharts, setShowCharts] = React.useState(true);
 
   // Default selection (computed once at mount): the key analytes that have data, else all
   // present. Each surface mounts fresh per dataset — the lot page has one dataset per load,
@@ -140,22 +144,39 @@ export function AnalyteTrends({
                 Clear
               </Button>
             </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCharts((v) => !v)}
+              aria-pressed={showCharts}
+              style={{ minHeight: 36, marginLeft: "auto" }}
+            >
+              {showCharts ? "Hide charts" : "Show charts"}
+            </Button>
           </div>
 
           {shown.length === 0 ? (
             <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>Pick an analyte above to see its trend.</p>
           ) : (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16 }}>
-                {shown.map((s) => (
-                  <Card key={s.key}>
-                    <AnalyteTrendChart label={s.label} unit={s.unit} points={s.points} precision={s.precision} height={260} />
-                    <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                      Latest: {s.latest.value.toFixed(s.precision)} {s.unit} · {fmtDate(s.latest.date)} ({s.points.length} reading{s.points.length === 1 ? "" : "s"})
-                    </p>
-                  </Card>
-                ))}
-              </div>
+              {showCharts ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: singleColumn ? "1fr" : "repeat(auto-fit, minmax(340px, 1fr))",
+                    gap: 16,
+                  }}
+                >
+                  {shown.map((s) => (
+                    <Card key={s.key}>
+                      <AnalyteTrendChart label={s.label} unit={s.unit} points={s.points} precision={s.precision} height={singleColumn ? 300 : 240} />
+                      <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+                        Latest: {s.latest.value.toFixed(s.precision)} {s.unit} · {fmtDate(s.latest.date)} ({s.points.length} reading{s.points.length === 1 ? "" : "s"})
+                      </p>
+                    </Card>
+                  ))}
+                </div>
+              ) : null}
               <ReadingsTable series={shown} />
             </>
           )}
