@@ -3,9 +3,10 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge } from "@/components/ui";
+import { Card, Eyebrow, Badge, Button } from "@/components/ui";
 import { formatL, type CurrentLocation } from "@/lib/lot/timeline";
-import type { LotListRow, LotListFilter } from "@/lib/lot/data";
+import type { LotListRow, LotListFilter, TastingSearchRow } from "@/lib/lot/data";
+import { searchTastingNotesAction } from "@/lib/chemistry/actions";
 
 const TABS: { key: LotListFilter; label: string }[] = [
   { key: "ACTIVE", label: "Active" },
@@ -58,6 +59,93 @@ function buildHref(status: LotListFilter, vesselId?: string): string {
   params.set("status", status.toLowerCase());
   if (vesselId) params.set("vessel", vesselId);
   return `/lots?${params.toString()}`;
+}
+
+const searchFieldStyle: React.CSSProperties = {
+  height: 44,
+  padding: "0 12px",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-raised)",
+  fontFamily: "var(--font-body)",
+  fontSize: 14,
+  color: "var(--text-primary)",
+  flex: "1 1 240px",
+};
+
+// NICE: free-text tasting-note search. Submits to a gated server action and links matches
+// back to their lot. Empty term clears; <2 chars is a no-op (matches the loader guard).
+function TastingSearch() {
+  const [q, setQ] = React.useState("");
+  const [results, setResults] = React.useState<TastingSearchRow[] | null>(null);
+  const [pending, startTransition] = React.useTransition();
+
+  function run() {
+    const term = q.trim();
+    if (term.length < 2) {
+      setResults([]);
+      return;
+    }
+    startTransition(async () => {
+      setResults(await searchTastingNotesAction(term));
+    });
+  }
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          run();
+        }}
+        style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
+      >
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search tasting notes (aroma, flavor, …)"
+          style={searchFieldStyle}
+          aria-label="Search tasting notes"
+        />
+        <Button type="submit" variant="secondary" size="sm" disabled={pending} style={{ minHeight: 44 }}>
+          {pending ? "Searching…" : "Search notes"}
+        </Button>
+        {results != null ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setQ("");
+              setResults(null);
+            }}
+            style={{ minHeight: 44 }}
+          >
+            Clear
+          </Button>
+        ) : null}
+      </form>
+      {results != null ? (
+        results.length === 0 ? (
+          <p style={{ fontSize: 13.5, color: "var(--text-muted)", marginTop: 10 }}>No tasting notes match “{q.trim()}”.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+            {results.map((r, i) => (
+              <Link
+                key={`${r.lotId}-${i}`}
+                href={`/lots/${r.lotId}`}
+                style={{ display: "block", padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-strong)", background: "var(--surface-raised)", color: "inherit" }}
+              >
+                <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{r.lotCode}</span>
+                <span style={{ color: "var(--text-muted)", fontSize: 13 }}> · {r.dateLabel}</span>
+                {r.snippet ? <div style={{ fontSize: 13.5, color: "var(--text-secondary)", marginTop: 2 }}>{r.snippet}</div> : null}
+              </Link>
+            ))}
+          </div>
+        )
+      ) : null}
+    </div>
+  );
 }
 
 function StatusTabs({ active, vesselId }: { active: LotListFilter; vesselId?: string }) {
@@ -117,6 +205,8 @@ export function LotsClient({
         Every batch of wine, vine to bottle. Open a lot to read its full history from the ledger — seeds, racks,
         bottlings, and corrections, newest first.
       </p>
+
+      <TastingSearch />
 
       <StatusTabs active={status} vesselId={vesselId} />
 

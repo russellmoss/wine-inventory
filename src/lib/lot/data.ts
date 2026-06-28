@@ -40,6 +40,33 @@ export type LotListRow = {
 
 export type LotLineageRef = { lotId: string; code: string };
 
+export type TastingSearchRow = { lotId: string; lotCode: string; snippet: string; dateLabel: string };
+
+/**
+ * NICE: free-text tasting-note search over notes/aroma/flavor/appearance (case-insensitive
+ * `contains` — no tsvector this phase, to avoid the search_vector migration gotcha). Returns
+ * the most recent matches with a short snippet linking back to the lot.
+ */
+export async function searchTastingNotes(q: string): Promise<TastingSearchRow[]> {
+  const term = q.trim();
+  if (term.length < 2) return [];
+  const match = { contains: term, mode: "insensitive" as const };
+  const notes = await prisma.lotTastingNote.findMany({
+    where: {
+      voidedAt: null,
+      OR: [{ notes: match }, { aroma: match }, { flavor: match }, { appearance: match }],
+    },
+    include: { lot: { select: { code: true } } },
+    orderBy: { observedAt: "desc" },
+    take: 25,
+  });
+  return notes.map((n) => {
+    const raw = [n.notes, n.aroma, n.flavor, n.appearance].find((s) => s && s.toLowerCase().includes(term.toLowerCase())) ?? "";
+    const snippet = raw.length > 140 ? `${raw.slice(0, 140)}…` : raw;
+    return { lotId: n.lotId, lotCode: n.lot.code, snippet, dateLabel: n.observedAt.toISOString().slice(0, 10) };
+  });
+}
+
 export type LotDetail = {
   id: string;
   code: string;

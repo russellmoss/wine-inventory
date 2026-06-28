@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { action } from "@/lib/actions";
+import { searchTastingNotes, type TastingSearchRow } from "@/lib/lot/data";
 import {
   recordMeasurementsCore,
   voidPanelCore,
@@ -98,4 +99,11 @@ export const cancelSampleAction = action(async ({ actor }, sampleId: string): Pr
   const res = await cancelSampleCore(actor, { sampleId });
   revalidateRecordSurfaces();
   return res;
+});
+
+// ── Tasting search (NICE) ──
+
+/** Free-text tasting-note search (gated read; used by the lots-list search box). */
+export const searchTastingNotesAction = action(async (_ctx, q: string): Promise<TastingSearchRow[]> => {
+  return searchTastingNotes(q);
 });
