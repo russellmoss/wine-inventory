@@ -2,11 +2,17 @@
 
 import React from "react";
 import Link from "next/link";
-import { Card, Eyebrow, Badge, Metric } from "@/components/ui";
+import { useRouter } from "next/navigation";
+import { Card, Eyebrow, Badge, Metric, Button, Modal, ConfirmButton } from "@/components/ui";
 import { formatL, type TimelineEvent, type TimelineLeg } from "@/lib/lot/timeline";
 import type { LotDetail } from "@/lib/lot/data";
+import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
+import { deleteOperationAction, editOperationAction, correctOperationAction } from "@/lib/cellar/actions";
 
 type Tone = React.ComponentProps<typeof Badge>["tone"];
+
+const NEUTRAL_OPS = new Set(["ADDITION", "FINING", "CAP_MGMT"]);
+const REVERTABLE_OPS = new Set(["TOPPING", "FILTRATION", "LOSS"]);
 
 function formLabel(form: string): string {
   const s = form.replace(/_/g, " ").toLowerCase();
@@ -87,7 +93,13 @@ function LegLine({ leg }: { leg: TimelineLeg }) {
   );
 }
 
-function TimelineItem({ event }: { event: TimelineEvent }) {
+/** Whether this event can be acted on from the timeline (edit/delete/revert). */
+function isActionable(event: TimelineEvent): boolean {
+  if (event.corrected || event.isCorrection) return false;
+  return NEUTRAL_OPS.has(event.type) || REVERTABLE_OPS.has(event.type);
+}
+
+function TimelineItem({ event, editMode, onEdit }: { event: TimelineEvent; editMode: boolean; onEdit: (e: TimelineEvent) => void }) {
   const dim = event.corrected;
   return (
     <li
@@ -122,6 +134,11 @@ function TimelineItem({ event }: { event: TimelineEvent }) {
           <Badge tone="neutral" variant="outline">
             {event.voided ? "voided" : "corrected"}
           </Badge>
+        ) : null}
+        {editMode && isActionable(event) ? (
+          <Button variant="ghost" size="sm" onClick={() => onEdit(event)} style={{ minHeight: 32, marginLeft: "auto" }}>
+            Edit
+          </Button>
         ) : null}
       </div>
       <div style={{ fontSize: 15.5, color: "var(--text-primary)", marginBottom: 4 }}>{event.summary}</div>
@@ -167,6 +184,10 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
     (x): x is string => !!x,
   );
   const empty = lot.current.locations.length === 0;
+
+  const [editMode, setEditMode] = React.useState(false);
+  const [selected, setSelected] = React.useState<TimelineEvent | null>(null);
+  const anyActionable = lot.events.some(isActionable);
 
   return (
     <div>
@@ -233,14 +254,160 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
 
       {/* Timeline rail */}
       <Eyebrow rule>History</Eyebrow>
-      <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: "10px 0 18px" }}>
-        Operation timeline
-      </h2>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", margin: "10px 0 18px" }}>
+        <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: 0 }}>Operation timeline</h2>
+        {anyActionable ? (
+          <Button variant={editMode ? "primary" : "ghost"} size="sm" onClick={() => setEditMode((v) => !v)} style={{ minHeight: 36 }}>
+            {editMode ? "Done editing" : "Edit timeline"}
+          </Button>
+        ) : null}
+      </div>
+      {editMode ? (
+        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-8px 0 14px" }}>
+          Pick an event to edit or remove. Additions, fining and cap management can be edited or deleted; topping,
+          filtration and dumps can be reverted (they stay on the timeline, marked).
+        </p>
+      ) : null}
       <ol style={{ margin: 0, padding: 0 }}>
         {lot.events.map((e) => (
-          <TimelineItem key={e.id} event={e} />
+          <TimelineItem key={e.id} event={e} editMode={editMode} onEdit={setSelected} />
         ))}
       </ol>
+
+      <TimelineEditModal event={selected} onClose={() => setSelected(null)} />
+    </div>
+  );
+}
+
+// Edit/delete/revert one timeline event. Neutral ops (Add/Fine/Cap) are editable + hard-
+// deletable; topping/filtration/dump are revertable (compensating correction). Every action
+// confirms before applying, then refreshes the page from the server.
+function TimelineEditModal({ event, onClose }: { event: TimelineEvent | null; onClose: () => void }) {
+  if (!event) return null;
+  // Key by op id so the panel remounts (fresh form state from props) per event — no effect.
+  return (
+    <Modal open onClose={onClose} title="Edit timeline event" subtitle={event.summary}>
+      <EditPanel key={event.id} event={event} onClose={onClose} />
+    </Modal>
+  );
+}
+
+function EditPanel({ event, onClose }: { event: TimelineEvent; onClose: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+
+  const tr = event.treatments[0];
+  const isDose = event.type === "ADDITION" || event.type === "FINING";
+  const isCap = event.type === "CAP_MGMT";
+  const isNeutral = NEUTRAL_OPS.has(event.type);
+  const isRevertable = REVERTABLE_OPS.has(event.type);
+
+  // Prefilled from the event's treatment via lazy initializers (no reset effect needed).
+  const [material, setMaterial] = React.useState(tr?.materialName ?? "");
+  const [rate, setRate] = React.useState(tr?.rateValue != null ? String(tr.rateValue) : "");
+  const [basis, setBasis] = React.useState<RateBasis>((tr?.rateBasis as RateBasis) ?? "G_HL");
+  const [capKind, setCapKind] = React.useState<"PUMPOVER" | "PUNCHDOWN">(tr?.kind === "PUNCHDOWN" ? "PUNCHDOWN" : "PUMPOVER");
+  const [duration, setDuration] = React.useState(tr?.durationMin != null ? String(tr.durationMin) : "");
+  const [note, setNote] = React.useState(event.note ?? "");
+
+  function act(fn: () => Promise<unknown>) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await fn();
+        onClose();
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong.");
+      }
+    });
+  }
+
+  function saveEdit() {
+    const opId = event.id;
+    if (isDose) {
+      const r = Number(rate);
+      if (!material.trim() || !(r > 0)) {
+        setError("Enter a material and a rate greater than 0.");
+        return;
+      }
+      act(() => editOperationAction({ operationId: opId, materialName: material.trim(), rateValue: r, rateBasis: basis, note }));
+    } else if (isCap) {
+      act(() => editOperationAction({ operationId: opId, capKind, durationMin: duration ? Number(duration) : null, note }));
+    }
+  }
+
+  const fieldStyle: React.CSSProperties = {
+    height: 44,
+    padding: "0 10px",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-raised)",
+    fontFamily: "var(--font-body)",
+    fontSize: 14,
+    color: "var(--text-primary)",
+  };
+
+  return (
+    <div>
+      <div>
+        {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 12 }}>{error}</p> : null}
+
+        {isDose ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+            <input value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="Material" style={fieldStyle} aria-label="Material" />
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="Rate" style={{ ...fieldStyle, width: 110 }} aria-label="Rate" />
+              <select value={basis} onChange={(e) => setBasis(e.target.value as RateBasis)} style={{ ...fieldStyle, flex: 1 }} aria-label="Basis">
+                {RATE_BASES.map((b) => (
+                  <option key={b} value={b}>
+                    {RATE_BASIS_LABELS[b]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={fieldStyle} aria-label="Note" />
+            <ConfirmButton onConfirm={saveEdit} confirmLabel="Save changes" disabled={pending}>
+              Save changes
+            </ConfirmButton>
+          </div>
+        ) : null}
+
+        {isCap ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+            <select value={capKind} onChange={(e) => setCapKind(e.target.value as "PUMPOVER" | "PUNCHDOWN")} style={fieldStyle} aria-label="Cap kind">
+              <option value="PUMPOVER">Pump-over</option>
+              <option value="PUNCHDOWN">Punch-down</option>
+            </select>
+            <input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="decimal" placeholder="Minutes (optional)" style={fieldStyle} aria-label="Duration" />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={fieldStyle} aria-label="Note" />
+            <ConfirmButton onConfirm={saveEdit} confirmLabel="Save changes" disabled={pending}>
+              Save changes
+            </ConfirmButton>
+          </div>
+        ) : null}
+
+        <div style={{ borderTop: "1px solid var(--border-strong)", paddingTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {isNeutral ? (
+            <>
+              <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Delete it" disabled={pending}>
+                Delete entirely
+              </ConfirmButton>
+              <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Removes it from the timeline (an audit record is kept).</span>
+            </>
+          ) : isRevertable ? (
+            <>
+              <ConfirmButton onConfirm={() => act(() => correctOperationAction(event.id))} confirmLabel="Revert it" disabled={pending}>
+                Revert
+              </ConfirmButton>
+              <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Moved wine — it stays on the timeline, marked as reverted.</span>
+            </>
+          ) : (
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>This operation can&rsquo;t be edited or deleted from here.</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

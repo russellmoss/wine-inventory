@@ -21,6 +21,7 @@ import { recordLossCore } from "@/lib/cellar/loss";
 import { topVesselCore } from "@/lib/cellar/topping";
 import { applyToGroup } from "@/lib/cellar/group-apply";
 import { correctOperationCore, correctBatchCore } from "@/lib/cellar/correct";
+import { deleteNeutralOperationCore, editNeutralOperationCore } from "@/lib/cellar/edit";
 import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
 
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-cellar" };
@@ -219,6 +220,26 @@ async function main() {
   console.log("\n── 11. BATCH correct the group fan-out ──");
   const batch = await correctBatchCore(ACTOR, { batchId: grp.batchId });
   assert(batch.corrected === 2, `both group ops corrected (got ${batch.corrected})`);
+
+  // 12) Timeline EDIT + DELETE of a neutral op (and reject deleting a volumetric op)
+  console.log("\n── 12. EDIT + DELETE a neutral op ──");
+  const tankNow = await vesselTotal(tank);
+  const add2 = await addAdditionCore(ACTOR, { vesselId: tank, materialName: "ZZTEST KMBS", rateValue: 20, rateBasis: "MG_L" });
+  await editNeutralOperationCore(ACTOR, { operationId: add2.operationId, rateValue: 50, rateBasis: "MG_L" });
+  const editedT = await prisma.lotTreatment.findFirstOrThrow({ where: { operationId: add2.operationId } });
+  assert(Number(editedT.rateValue) === 50, `edit updated the rate to 50 (got ${Number(editedT.rateValue)})`);
+  assert(Number(editedT.computedTotal) === r2((50 * tankNow) / 1000), `edit recomputed the total from the volume snapshot (got ${Number(editedT.computedTotal)})`);
+  await deleteNeutralOperationCore(ACTOR, { operationId: add2.operationId });
+  assert((await prisma.lotOperation.findUnique({ where: { id: add2.operationId } })) === null, "neutral op hard-deleted off the timeline");
+  assert((await prisma.lotTreatment.count({ where: { operationId: add2.operationId } })) === 0, "its treatment cascade-deleted with the op");
+  assert(await projectionMatchesFold(), "projection == fold after edit + delete (neutral delete is volume-safe)");
+  let volDeleteBlocked = false;
+  try {
+    await deleteNeutralOperationCore(ACTOR, { operationId: filt.operationId });
+  } catch {
+    volDeleteBlocked = true;
+  }
+  assert(volDeleteBlocked, "deleting a volume-changing op (filtration) is rejected — it must be reverted, not erased");
 
   assert(await projectionMatchesFold(), "projection == fold at the end of the run");
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);

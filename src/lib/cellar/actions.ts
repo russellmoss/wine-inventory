@@ -45,6 +45,11 @@ import {
   type TransferWineResult,
   type RevertTransferResult,
 } from "@/lib/vessels/rack-core";
+import {
+  deleteNeutralOperationCore,
+  editNeutralOperationCore,
+  type EditNeutralInput,
+} from "@/lib/cellar/edit";
 
 // "use server" wrappers for the Phase 3 cellar operations. Each authorizes a ready user,
 // then calls the script-safe core with the audit actor and revalidates the capture
@@ -193,6 +198,26 @@ export const rackVesselAction = action(
 export const revertRackAction = action(
   async ({ actor }, transferId: string): Promise<RevertTransferResult> => {
     const res = await revertTransferCore(actor, { transferId });
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+// ── Timeline edit/delete (volume-neutral ops only; volumetric ops use correct/revert) ──
+
+/** Hard-delete an erroneous neutral op off the timeline (audit row retained). */
+export const deleteOperationAction = action(
+  async ({ actor }, operationId: number): Promise<{ deletedOperationId: number }> => {
+    const res = await deleteNeutralOperationCore(actor, { operationId });
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Edit a neutral op's treatment(s) in place (material/rate/basis/note or cap kind/duration). */
+export const editOperationAction = action(
+  async ({ actor }, input: EditNeutralInput): Promise<{ operationId: number }> => {
+    const res = await editNeutralOperationCore(actor, input);
     revalidateCaptureSurfaces();
     return res;
   },
