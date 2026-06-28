@@ -8,7 +8,7 @@ export interface ModalProps {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   children: React.ReactNode;
-  maxWidth?: number;
+  maxWidth?: number | string;
 }
 
 export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600 }: ModalProps) {

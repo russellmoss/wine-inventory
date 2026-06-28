@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge, Metric, Button, Modal, ConfirmButton, AnalyteTrendChart } from "@/components/ui";
+import { Card, Eyebrow, Badge, Metric, Button, Modal, ConfirmButton } from "@/components/ui";
 import {
   formatL,
   type TimelineEvent,
@@ -19,7 +19,7 @@ import type { LotDetail } from "@/lib/lot/data";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { deleteOperationAction, editOperationAction, correctOperationAction } from "@/lib/cellar/actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
-import { getAnalyte, toDefaultUnit, DEFAULT_TREND_ANALYTES } from "@/lib/chemistry/analytes";
+import { AnalyteTrends, type TrendReading } from "@/components/chemistry/AnalyteTrends";
 
 type Tone = React.ComponentProps<typeof Badge>["tone"];
 
@@ -455,37 +455,7 @@ function LineageRefs({ label, refs }: { label: string; refs: { lotId: string; co
   );
 }
 
-// ── Chemistry: analyte trends + derived molecular SO₂, built from the lot's panels ──
-
-type TrendSeries = { key: string; label: string; unit: string; precision: number; points: { date: number; value: number }[] };
-
-const DEFAULT_TREND_SET = new Set<string>(DEFAULT_TREND_ANALYTES as readonly string[]);
-
-/** Group panel readings into per-analyte series (alt units converted to canonical; sorted by date). */
-function buildTrendSeries(events: TimelineItem[]): TrendSeries[] {
-  const byAnalyte = new Map<string, { date: number; value: number }[]>();
-  for (const e of events) {
-    if (e.kind !== "MEASUREMENT") continue;
-    const date = new Date(e.observedAt).getTime();
-    for (const r of e.readings) {
-      const v = toDefaultUnit(r.analyte, r.value, r.unit);
-      if (v == null) continue; // unknown/non-convertible alt unit — still shown on the timeline
-      const arr = byAnalyte.get(r.analyte) ?? [];
-      arr.push({ date, value: v });
-      byAnalyte.set(r.analyte, arr);
-    }
-  }
-  return [...byAnalyte.entries()].map(([key, pts]) => {
-    const def = getAnalyte(key);
-    return {
-      key,
-      label: def?.label ?? key,
-      unit: def?.defaultUnit ?? "",
-      precision: def?.precision ?? 2,
-      points: pts.sort((a, b) => a.date - b.date),
-    };
-  });
-}
+// ── Chemistry: filterable analyte trends + derived molecular SO₂, from the lot's panels ──
 
 /** The most recent panel that carries a derived molecular SO₂ (same-panel free SO₂ + pH). */
 function latestMolecular(events: TimelineItem[]): { mol: NonNullable<MeasurementItem["molecular"]>; dateLabel: string } | null {
@@ -499,57 +469,23 @@ function latestMolecular(events: TimelineItem[]): { mol: NonNullable<Measurement
 }
 
 function ChemistrySection({ events }: { events: TimelineItem[] }) {
-  const [showAll, setShowAll] = React.useState(false);
-  const series = buildTrendSeries(events);
+  const readings: TrendReading[] = events.flatMap((e) =>
+    e.kind === "MEASUREMENT"
+      ? e.readings.map((r) => ({ analyte: r.analyte, value: r.value, unit: r.unit, date: new Date(e.observedAt).getTime() }))
+      : [],
+  );
   const mol = latestMolecular(events);
-
-  const defaults = series.filter((s) => DEFAULT_TREND_SET.has(s.key));
-  // Show the key analytes by default; if none of those have data, show whatever exists.
-  const shown = showAll ? series : defaults.length ? defaults : series;
-  const hiddenCount = series.length - shown.length;
 
   return (
     <div style={{ margin: "8px 0 28px" }}>
       <Eyebrow rule>Chemistry</Eyebrow>
       <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: "10px 0 14px" }}>Analyte trends</h2>
-
-      {mol ? (
-        <Card style={{ marginBottom: 16 }}>
-          <Eyebrow tone="ink">Current chemistry</Eyebrow>
-          <p
-            aria-label="Derived molecular SO₂"
-            style={{ marginTop: 10, fontSize: 15, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}
-          >
-            Molecular SO₂ ≈ {mol.mol.molecularSO2.toFixed(2)} mg/L
-          </p>
-          <p style={{ marginTop: 4, fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-            derived from free {mol.mol.freeSO2} + pH {mol.mol.pH.toFixed(2)} · pKa {mol.mol.pKa} · {mol.dateLabel}
-          </p>
-        </Card>
-      ) : null}
-
-      {series.length === 0 ? (
-        <Card>
-          <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 14 }}>
-            No readings yet — log a pH or SO₂ from the vessel to start the trend.
-          </p>
-        </Card>
-      ) : (
-        <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-            {shown.map((s) => (
-              <Card key={s.key}>
-                <AnalyteTrendChart label={s.label} unit={s.unit} points={s.points} precision={s.precision} />
-              </Card>
-            ))}
-          </div>
-          {!showAll && hiddenCount > 0 ? (
-            <Button variant="ghost" size="sm" onClick={() => setShowAll(true)} style={{ marginTop: 12, minHeight: 36 }}>
-              Show all analytes ({hiddenCount} more)
-            </Button>
-          ) : null}
-        </>
-      )}
+      <AnalyteTrends
+        readings={readings}
+        molecular={mol?.mol ?? null}
+        molecularDateLabel={mol?.dateLabel}
+        emptyHint="No readings yet — log a pH or SO₂ from the vessel to start the trend."
+      />
     </div>
   );
 }

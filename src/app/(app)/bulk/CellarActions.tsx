@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Button } from "@/components/ui";
+import { Button, Modal } from "@/components/ui";
 import {
   computeAdditionTotal,
   RATE_BASES,
@@ -27,7 +27,9 @@ import {
   voidPanelAction,
   voidTastingNoteAction,
   cancelSampleAction,
+  vesselAnalysesAction,
 } from "@/lib/chemistry/actions";
+import type { VesselAnalyses } from "@/lib/chemistry/data";
 import {
   ReadingRows,
   emptyReadingRow,
@@ -35,6 +37,7 @@ import {
   readingsValid,
   type ReadingRow,
 } from "@/components/chemistry/ReadingRows";
+import { AnalyteTrends } from "@/components/chemistry/AnalyteTrends";
 
 // Vessel-first cellar-op capture (Phase 3, Unit 9). An Actions row (text buttons, not an
 // icon grid — anti-slop) swaps the panel to a focused form per op. Cap management is
@@ -95,9 +98,26 @@ export function CellarActions({
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<LoggedToast | null>(null);
+  const [analysesOpen, setAnalysesOpen] = React.useState(false);
+  const [analyses, setAnalyses] = React.useState<VesselAnalyses | null>(null);
+  const [analysesLoading, setAnalysesLoading] = React.useState(false);
 
   // Form state resets across vessels via a `key` remount in the parent (BulkClient), so no
   // reset effect is needed here.
+
+  async function openAnalyses() {
+    setAnalysesOpen(true);
+    setAnalyses(null);
+    setAnalysesLoading(true);
+    try {
+      setAnalyses(await vesselAnalysesAction(vessel.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't load analyses.");
+      setAnalysesOpen(false);
+    } finally {
+      setAnalysesLoading(false);
+    }
+  }
 
   React.useEffect(() => {
     if (!toast) return;
@@ -178,6 +198,9 @@ export function CellarActions({
             {a.label}
           </Button>
         ))}
+        <Button variant="ghost" size="sm" onClick={openAnalyses} style={{ minHeight: 44, marginLeft: "auto" }}>
+          View analyses
+        </Button>
       </div>
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13, margin: "4px 0 10px" }}>{error}</p> : null}
@@ -218,6 +241,25 @@ export function CellarActions({
           </Button>
         </div>
       ) : null}
+
+      <Modal
+        open={analysesOpen}
+        onClose={() => setAnalysesOpen(false)}
+        title={`Analyses · ${vessel.code}`}
+        subtitle={analyses ? `${analyses.panelCount} panel${analyses.panelCount === 1 ? "" : "s"} logged on this vessel` : "Loading…"}
+        maxWidth="min(1100px, 92vw)"
+      >
+        {analysesLoading ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading…</p>
+        ) : (
+          <AnalyteTrends
+            readings={analyses?.readings ?? []}
+            molecular={analyses?.molecular ?? null}
+            molecularDateLabel={analyses?.molecularDateLabel ?? undefined}
+            emptyHint="No analyses logged on this vessel yet — log one above."
+          />
+        )}
+      </Modal>
     </div>
   );
 }

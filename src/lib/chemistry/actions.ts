@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { action } from "@/lib/actions";
 import { searchTastingNotes, type TastingSearchRow } from "@/lib/lot/data";
+import { listVesselAnalyses, type VesselAnalyses } from "@/lib/chemistry/data";
 import {
   recordMeasurementsCore,
   voidPanelCore,
@@ -106,4 +107,9 @@ export const cancelSampleAction = action(async ({ actor }, sampleId: string): Pr
 /** Free-text tasting-note search (gated read; used by the lots-list search box). */
 export const searchTastingNotesAction = action(async (_ctx, q: string): Promise<TastingSearchRow[]> => {
   return searchTastingNotes(q);
+});
+
+/** A vessel's analysis history (gated read; used by the /bulk per-vessel trends modal). */
+export const vesselAnalysesAction = action(async (_ctx, vesselId: string): Promise<VesselAnalyses> => {
+  return listVesselAnalyses(vesselId);
 });
