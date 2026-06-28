@@ -7,7 +7,7 @@ import { signOut } from "@/lib/auth-client";
 import { Avatar } from "@/components/ui";
 import { BrandMark, BrandEmblem } from "@/components/BrandMark";
 
-type NavItem = { href: string; label: string; admin?: boolean };
+type NavItem = { href: string; label: string; admin?: boolean; badge?: number };
 
 const MAIN: NavItem[] = [
   { href: "/", label: "Dashboard" },
@@ -20,6 +20,7 @@ const MAIN: NavItem[] = [
 const WINERY: NavItem[] = [
   { href: "/bulk", label: "Wine in-progress" },
   { href: "/lots", label: "Lot timeline" },
+  { href: "/samples", label: "Samples" },
   { href: "/bottling", label: "Bottling" },
 ];
 
@@ -78,7 +79,32 @@ function CollapsibleNavGroup({
       </button>
       {open ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 6 }}>
-          {items.map((n) => <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(isActive(n.href))}>{n.label}</Link>)}
+          {items.map((n) => (
+            <Link key={n.href} href={n.href} onClick={onNavigate} style={{ ...linkStyle(isActive(n.href)), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>{n.label}</span>
+              {n.badge && n.badge > 0 ? (
+                <span
+                  aria-label={`${n.badge} pending`}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    minWidth: 18,
+                    height: 18,
+                    padding: "0 5px",
+                    borderRadius: "var(--radius-pill)",
+                    background: "var(--accent-soft)",
+                    color: "var(--wine-primary)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {n.badge}
+                </span>
+              ) : null}
+            </Link>
+          ))}
         </div>
       ) : null}
     </div>
@@ -97,6 +123,7 @@ function SidebarContent({
   setSetupOpen,
   onNavigate,
   onSignOut,
+  pendingSamples,
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   isActive: (href: string) => boolean;
@@ -109,8 +136,10 @@ function SidebarContent({
   setSetupOpen: (fn: (o: boolean) => boolean) => void;
   onNavigate: () => void;
   onSignOut: () => void;
+  pendingSamples: number;
 }) {
   const visibleSetup = SETUP.filter((s) => !s.admin || isAdmin);
+  const winery = WINERY.map((n) => (n.href === "/samples" ? { ...n, badge: pendingSamples } : n));
   return (
     <>
       <div style={{ padding: "20px 20px 12px" }}>
@@ -120,7 +149,7 @@ function SidebarContent({
         {MAIN.filter((n) => !n.admin || isAdmin).map((n) => (
           <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(isActive(n.href))}>{n.label}</Link>
         ))}
-        <CollapsibleNavGroup label="Winery" items={WINERY} open={wineryOpen} setOpen={setWineryOpen} isActive={isActive} onNavigate={onNavigate} />
+        <CollapsibleNavGroup label="Winery" items={winery} open={wineryOpen} setOpen={setWineryOpen} isActive={isActive} onNavigate={onNavigate} />
         <CollapsibleNavGroup label="Vineyards" items={VINEYARDS} open={vineyardsOpen} setOpen={setVineyardsOpen} isActive={isActive} onNavigate={onNavigate} />
         <CollapsibleNavGroup label="Setup" items={visibleSetup} open={setupOpen} setOpen={setSetupOpen} isActive={isActive} onNavigate={onNavigate} />
       </nav>
@@ -138,9 +167,11 @@ function SidebarContent({
 export function AppShell({
   user,
   children,
+  pendingSamples = 0,
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   children: React.ReactNode;
+  pendingSamples?: number;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -209,7 +240,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} />
       </aside>
 
       {/* Mobile drawer */}
@@ -218,7 +249,7 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} />
           </aside>
         </div>
       ) : null}

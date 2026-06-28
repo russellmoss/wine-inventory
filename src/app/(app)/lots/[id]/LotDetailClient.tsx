@@ -560,6 +560,8 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
   );
   const empty = lot.current.locations.length === 0;
 
+  const pendingSamples = lot.events.filter((e) => e.kind === "SAMPLE" && e.status !== "ATTACHED").length;
+
   const [editMode, setEditMode] = React.useState(false);
   const [selected, setSelected] = React.useState<OpItem | null>(null);
   const [selectedRecord, setSelectedRecord] = React.useState<RecordItem | null>(null);
@@ -587,6 +589,13 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
             <Badge tone="neutral" variant="soft">
               legacy
             </Badge>
+          ) : null}
+          {pendingSamples > 0 ? (
+            <Link href="/samples">
+              <Badge tone="gold" variant="soft">
+                {pendingSamples} sample{pendingSamples === 1 ? "" : "s"} pending
+              </Badge>
+            </Link>
           ) : null}
         </div>
       </div>
