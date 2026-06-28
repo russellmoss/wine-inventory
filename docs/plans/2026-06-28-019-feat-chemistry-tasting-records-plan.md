@@ -188,13 +188,138 @@ record carries provenance (who/when-observed/when-entered/how — D14).
 |----------|--------|------------------------|-----------|
 | Record storage model | **Standalone tables** (`LotMeasurement`, `LotTastingNote`, `Sample`) keyed by `lotId`/`vesselId` with inline provenance — NOT attached to a `LotOperation` | Ride a zero-line `LotOperation` like `LotTreatment` | The Phase 4 constraint + D2: measurements aren't operations and must NOT go through `writeLotOperation`. BrixLog precedent proves the standalone+inline-provenance shape works. |
 | Analyte set | **TS registry** (`src/lib/chemistry/analytes.ts`): key→{label, units, range, precision, category}. `LotMeasurement.analyte` is a **validated string** | Prisma enum per analyte; a DB `Analyte` table | "New analyte = config, not schema churn" (the explicit requirement). Validated-string precedent already exists (`rateBasis`). A DB table adds joins/seeding for zero current benefit. |
-| Measurement granularity | **One row per (analyte, value) reading**; a panel shares `observedAt` + a `panelId` (cuid) + optional `sampleId` | One "event" header + analyte detail rows | One-row-per-reading makes trends a trivial `where analyte=` filter (mirrors BrixLog) and keeps the schema flat. `panelId` groups a single submit so SO₂ derivation pairs the right free+pH. |
-| Molecular SO₂ | **Derived read-only** from same-panel/sample free SO₂ + pH; pKa=1.81 surfaced | Store molecular as its own measured analyte | Pure function of free+pH; storing it duplicates data and risks stale-pH drift. |
-| Timeline merge / sort | Merge op-derived events (sorted by `op.id`) with standalone records into **one feed sorted by `observedAt` desc**, tiebreak by a stable secondary key (op→`id`, record→`createdAt`) | Keep op.id-only ordering (can't place non-op records); separate parallel lists | Standalone records have no fold id; `observedAt` is the only shared axis. Document that backdated `observedAt` interleaves by observed time, which is correct for "when was it measured." |
-| Multi-resident vessel | If the vessel holds **exactly one** lot, auto-attach; if **>1**, the form **requires picking the lot** | Write one record per resident lot (Phase 3 cap-mgmt style) | D2: a measurement belongs to one homogeneous liquid. Duplicating a single reading across lots would fabricate readings for liquids that weren't measured. (Multi-lot-in-one-vessel is rare; the picker is cheap.) |
-| Undo | **Soft-delete** (`voidedAt` + `voidedById`) + audit row; Undo toast sets it | Hard delete; CORRECTION op | Not ledger ops → no CORRECTION semantics needed; soft-delete keeps an audit trail and a 1-tap undo without resurrecting fold math. |
-| Sample → results | `Sample` 1→many `LotMeasurement` via nullable `sampleId`; attaching results flips status to `RESULT_RETURNED`/`ATTACHED` | Separate `SampleResult` table | Results ARE measurements; reuse one table. A `sampleId` link unifies "pulled now, resulted later." |
-| Status/flag enums | `SampleStatus`, `TastingReadiness`, `TastingScoreScale` as **Prisma enums** | Validated strings | Small, stable, closed sets → real enums (matches `CaptureMethod`). No churn expected. |
+| Measurement granularity | **`AnalysisPanel` header + `AnalysisReading` children** (REVISED in eng review — see addenda). A panel owns `observedAt` + provenance + optional `sampleId` + `voidedAt`; each reading is `{analyte, value, unit}`. A single bench reading is just a 1-child panel. | Flat one-row-per-reading + shared `panelId` string (the original draft) | The header model makes panel undo atomic (void the header), SO₂ pairing unambiguous (within one panel), a returned lab result a first-class object (a panel linked to the sample → gives `RESULT_RETURNED` a home), and timeline grouping an FK not a string match. Trends stay a flat indexed query on `AnalysisReading(analyte, observedAt)`. Cost: one extra table + a join. (Codex outside-voice; accepted.) |
+| Molecular SO₂ | **Derived read-only** from **same-panel** free SO₂ + pH; pKa=1.81 surfaced | Store molecular as its own measured analyte; pair by sampleId | Pure function of free+pH; storing it duplicates data and risks stale-pH drift. Pair strictly within ONE `AnalysisPanel` (never across panels/dates) so a stale pH can't cross-pair. |
+| Timeline merge / sort | **Hybrid** (REVISED): operations keep their `op.id` order among themselves (preserves D14 + Phase 2 tests exactly); standalone records (panels/tasting/samples) are **slotted in by `observedAt`** relative to the ops. NOT a global observedAt re-sort. | Global observedAt-desc re-sort of the whole feed (original draft — contradicts D14); separate non-interleaved section | D14 locks op display order to `op.id` (observedAt collides/backdates). The hybrid keeps that contract for ops while still placing records by when they were observed. See addenda for the exact insert algorithm + required regression test. |
+| Multi-resident vessel | If the vessel holds **exactly one** lot, auto-attach; if **>1**, the form **requires picking the lot**. Resolution is at the record's **effective (observed) time**, and **sample results inherit the sample's `lotId`** (captured at pull) — never re-resolved from the current vessel. | Resolve vessel→lot at submit-"now" (wrong for backdated entries / post-transfer sample results); write one record per resident lot | D2: a measurement belongs to one homogeneous liquid (see [[measurements-attach-to-one-lot]]). Resolving at "now" misattributes backdated/late-resulted readings. (Codex outside-voice; accepted.) |
+| Undo | **Soft-delete** (`voidedAt` + `voidedById`) + audit row; the Undo toast AND the lot-timeline **Edit mode** (added this session) both set it. A panel voids **atomically** (void the header → all readings drop). | Hard delete; CORRECTION op; row-level void of individual readings | Not ledger ops → no CORRECTION semantics. Void the panel header so a panel never half-voids (which would break SO₂ derivation). Edit mode = the same affordance you use to delete an erroneous neutral op. |
+| Sample → results | `Sample` 1→many **`AnalysisPanel`** via nullable `sampleId`; a returned result is a panel with the sample link, `status` flips `RESULT_RETURNED` → `ATTACHED` | `Sample` → many flat `LotMeasurement`; separate `SampleResult` table | A returned lab result is naturally a panel (batch of readings). Sample lifecycle transitions go through **guarded core fns** that set status + the matching timestamp together (no drift); invalid states (ATTACHED w/ no panel, SENT w/o sentAt) are rejected. |
+| Status/flag enums | `SampleStatus`, `TastingReadiness`, `TastingScoreScale` as **Prisma enums** | Validated strings | Small, stable, closed sets → real enums (matches `CaptureMethod`). |
+| Audit actions | **Add deliberate `AuditAction` values** for the sample lifecycle (isolated enum-add migration); reuse `CREATE`/`DELETE` for plain panel/tasting create+void | Reuse a generic action everywhere (original eng-review suggestion) | Codex cross-model: controlled-enum ethos (D4) + cheap isolated migration (done in Phase 3) beats losing audit semantics. Eng reviewer reversed position. |
+
+## Eng Review Decisions & Addenda (2026-06-28)
+
+This section is authoritative and **supersedes** any conflicting wording in the unit bodies
+below (the draft predates the eng + Codex review). Folded in:
+
+**1. Panel model = header + children.** Replace flat `LotMeasurement`+`panelId` with:
+- `AnalysisPanel` (`id`, `lotId`, `vesselId?`, `sampleId?`, `observedAt`, `enteredAt`,
+  `enteredById?`/`enteredByEmail`, `captureMethod`, `note?`, `voidedAt?`/`voidedById?`,
+  `clientRequestId?` unique — idempotency).
+- `AnalysisReading` (`id`, `panelId` FK→cascade, `analyte` String code-validated,
+  `value Decimal(12,4)`, `unit` String). Index `@@index([panelId])` and, for trends,
+  `@@index([analyte])` (+ the parent's `observedAt` is the time axis — trend query is
+  `analysisReading.findMany({ where:{ analyte, panel:{ lotId, voidedAt:null }}, include:{panel} })`).
+- `Sample` 1→many `AnalysisPanel` (nullable `sampleId`). A returned lab result is a panel
+  with `sampleId` set; `RESULT_RETURNED` = panel exists but not yet acknowledged, `ATTACHED`
+  = acknowledged on the lot. Tasting notes stay their own table.
+
+**2. Hybrid timeline ordering (exact algorithm).** Ops form the backbone in `op.id` desc
+order (unchanged from Phase 2). Then insert each standalone item (panel / tasting / sample)
+into the backbone by `observedAt`: place it immediately before the first op whose
+`observedAt` is older (≤) than the record's `observedAt`; ties and record-vs-record order
+break by `createdAt` desc then `id`. Ops never reorder relative to each other.
+**Required tests** (extend `test/lot-timeline.test.ts`):
+- ops-only lot renders **identical** order to today (D14 regression guard);
+- a backdated panel slots between the correct ops;
+- ops keep id-order even when an op's `observedAt` is non-monotonic with its id;
+- a voided panel/tasting/sample is excluded.
+
+**3. Edit mode handles records.** The lot-timeline **Edit mode** (`LotDetailClient.tsx`
+`TimelineEditModal` / `isActionable` / "Edit timeline" toggle — added this session) is
+extended: a `kind:'MEASUREMENT'|'TASTING'|'SAMPLE'` item is actionable → its modal voids
+(soft-delete) via `voidPanelAction`/`voidTastingNoteAction`/`cancelSampleAction`. Panels
+void atomically (header). Use a **discriminated-union `TimelineItem { kind }`** rather than
+overloading the op-shaped `TimelineEvent`.
+
+**4. observedAt semantics.** `observedAt` = when the wine was sampled/measured (for a
+sample-linked panel, the sample's pull time; for a bench panel, the reading time).
+`enteredAt` = entry time. `Sample.resultedAt` = when the lab ran it (metadata, not the
+reading's observed time). Trends plot by `observedAt`.
+
+**5. Analyte registry back-compat.** Keys are **stable + append-only** — never rename/remove
+a key; mark `deprecated:true` instead. The renderer falls back gracefully for an unknown
+stored key (show the raw key + value). Test: a stored unknown key still renders.
+
+**6. Unit normalization in charts.** A trend chart plots ONE canonical unit per analyte
+(the registry `defaultUnit`); readings entered in an alternate unit are converted via a
+registry-provided converter where defined (°C↔°F; tartaric↔H₂SO₄ TA) or split into a second
+series when no conversion exists (e.g. Brix/SG/Baumé). Every value + axis shows its unit.
+
+**7. Decimal across the boundary.** All loaders convert Prisma `Decimal` → `number`
+(`Number(x)`) before returning to client components — same as `src/lib/lot/data.ts` does
+today. Never pass a `Decimal` into a Client Component or chart prop.
+
+**8. Idempotency.** Capture forms disable the submit button while pending (as `CellarActions`
+does); panel/sample create additionally carries a `clientRequestId` (cuid generated in the
+form) with a unique constraint, so a double-submit/retry is a no-op upsert.
+
+**9. Shared form extraction (sequencing).** Extract a shared reading-rows / panel sub-form
+into `src/components/chemistry/` in **Unit 7**, consumed by both `CellarActions` and the
+**Unit 8** `/samples` attach surface. Unit 8 depends on that extraction.
+
+**10. Audit.** Reuse `CREATE`/`DELETE` for panel + tasting create/void; add deliberate
+`SAMPLE_PULLED`/`SAMPLE_SENT`/`SAMPLE_ATTACHED`/`SAMPLE_CANCELLED` (or one `SAMPLE_EVENT`)
+to the `AuditAction` enum in an **isolated `ALTER TYPE … ADD VALUE` migration step**.
+
+**11. verify-chemistry.ts isolation.** Mirror `scripts/verify-cellar-ops.ts` exactly:
+create `ZZ-TEST-*` fixtures, run all asserts, **scrub in a `finally`**, assert `BrixLog`
+row count unchanged, and confirm no test rows remain.
+
+**12. Scope-criteria fix.** Tasting-note search (Unit 9) is **NICE**; the success criterion
+"tasting notes record + are searchable" is split — *record* is required (Unit 3/7),
+*searchable* is the NICE follow-up (Unit 9), so the phase definition is self-consistent.
+
+**13. Dependency graph (tightened).** Unit 4 depends on **Unit 2** (types/shapes) — its
+pure describe/merge can be built against fixtures before Unit 3 writes exist. Unit 7
+extracts the shared form; Unit 8 depends on Unit 7's extraction. Unit 6 depends on the
+Edit-mode extension (item 3).
+
+## Design Specification (design review 2026-06-28)
+
+Token-driven per `DESIGN.md` (warm editorial, light-only, sentence-case, no hardcoded
+colors/spacing, no AI-slop). Reuses the Phase 3 capture vocabulary (`fieldStyle` h44,
+`Button` minHeight 44, `inputMode="decimal"`, `aria-live="polite"`, the "Logged · Undo"
+toast, op-type-as-text-Badge). Authoritative for Units 5–8.
+
+**Samples surface (IA resolved):** a **dedicated `/samples` page** under the WINERY nav
+group **+ a "N pending" count badge** on that nav item AND on the lot detail header, so a
+returned lab result is never forgotten. The page is a table (lot · source · status · age
+"pulled 3d ago") of non-terminal samples; each row opens an attach-results modal.
+
+**Interaction states (fill for every new surface):**
+| Surface | Loading | Empty | Error | Success | Partial |
+|---|---|---|---|---|---|
+| Analysis/Tasting/Sample form | submit disabled + "Saving…" | n/a | inline red msg, inputs preserved | "Logged · Undo" toast | n/a |
+| Lot trend section | skeleton line | warm "No readings yet — log a pH or SO₂ to start the trend" + a Log-analysis affordance | inline msg | chart renders | per-analyte: analytes with ≥1 reading render, others hidden behind "show all" |
+| `/samples` table | skeleton rows | warm "No open samples — pull one from a vessel" + link to /bulk | inline msg | rows render | mixed statuses each show their own Badge |
+| Molecular SO₂ panel | — | hidden when no free+pH in a panel | — | quiet `tabular-nums` line | — |
+
+**Specific controls / treatments:**
+- **Molecular SO₂:** a **quiet one-line `tabular-nums` read** (e.g. "Molecular SO₂ ≈ 0.78
+  mg/L · derived from free 40 + pH 3.50 · pKa 1.81"), muted color, NOT a decorated callout
+  (Phase 3 anti-slop). Shown only when a panel has both free SO₂ + pH.
+- **Trend chart:** default-show pH · TA · free SO₂ · Brix (those with ≥1 reading); the rest
+  behind a "show all analytes" toggle. Degenerate states: 0 points → the empty message
+  above (no axes); 1 point → a single dot + value label, no polyline. Optional target band
+  = a shaded rect in `--accent-soft` with a muted edge label (for molecular-SO₂ / SO₂
+  targets). Axis + every value carries its unit. `niceAxisBounds` must NOT floor pH to 0.
+- **Tasting structure fields** (tannin/acidity/body/finish): labeled **1–5 segmented
+  controls** (5 ≥44px buttons), not a dropdown — faster on the floor; `readiness` as a text
+  **Badge** (tone mapped: READY_TO_BOTTLE=green, HOLD=neutral, DECLINING=red — never
+  color-only, label always shown); score + scale as a number + small scale select.
+- **Sample status:** a text **Badge** per status (PULLED/SENT/PENDING neutral, ATTACHED
+  green, CANCELLED muted), never color-only; age as relative text.
+- **Multi-resident lot picker:** when the vessel holds >1 lot, the capture form shows a
+  required lot **select** at the top (lot code + variety) before the reading rows; a 1-lot
+  vessel auto-selects and shows the lot code as static text.
+- **Analyte picker:** grouped by `category` (acidity / SO₂ / sugar / …) in the select.
+- **Edit-mode integration** (from eng review): measurement/tasting/sample timeline items are
+  actionable in the lot-detail "Edit timeline" mode → modal voids them (soft-delete); panels
+  void atomically.
+- **a11y:** `inputMode="decimal"` on every value field; ≥44px targets; `:focus-visible` →
+  `--shadow-focus`; the live molecular-SO₂ line + form errors in `aria-live="polite"`;
+  status/readiness never color-only; `/samples` table is a semantic `<table>`.
 
 ## Implementation Units
 
@@ -229,12 +354,15 @@ out-of-range; unit membership; `molecularSO2` matches known reference points (e.
 **Approach:** Follow conventions — `@id @default(cuid())`, `@@map` snake_case, camelCase
 fields, `Decimal @db.Decimal(p,s)`, inline provenance `*ById` (nullable FK) + `*ByEmail`
 (durable snapshot) pairs, `observedAt`/`enteredAt`/`captureMethod` on each.
-- `LotMeasurement`: `id`, `lotId`, `vesselId?`, `sampleId?`, `panelId?`, `analyte`
-  (String, code-validated), `value Decimal(12,4)`, `unit` (String), `observedAt`,
-  `enteredAt @default(now())`, `enteredById?`, `enteredByEmail`, `captureMethod`
-  (CaptureMethod enum), `note?`, `voidedAt?`, `voidedById?`. Indexes:
-  `@@index([lotId, analyte, observedAt])`, `@@index([vesselId])`, `@@index([sampleId])`,
-  `@@index([panelId])`.
+- **`AnalysisPanel`** (REVISED — header; see addenda item 1): `id`, `lotId`, `vesselId?`,
+  `sampleId?`, `observedAt`, `enteredAt @default(now())`, `enteredById?`, `enteredByEmail`,
+  `captureMethod` (CaptureMethod enum), `note?`, `clientRequestId? @unique` (idempotency),
+  `voidedAt?`, `voidedById?`. Indexes `@@index([lotId, observedAt])`, `@@index([vesselId])`,
+  `@@index([sampleId])`.
+- **`AnalysisReading`** (child): `id`, `panelId` (FK → `AnalysisPanel`, `onDelete: Cascade`),
+  `analyte` (String, code-validated), `value Decimal(12,4)`, `unit` (String). Indexes
+  `@@index([panelId])`, `@@index([analyte])`. (Trends: query readings by `analyte` joined to
+  the non-voided parent panel; the panel's `observedAt` is the time axis.)
 - `LotTastingNote`: `id`, `lotId`, `vesselId?`, `observedAt`, `enteredAt`, provenance,
   `appearance?`, `aroma?`, `flavor?`, `tannin?`/`acidity?`/`body?`/`finish?` (small Int
   1–5 or String — choose Int 1–5), `score Int?`, `scoreScale TastingScoreScale?`,
@@ -245,7 +373,8 @@ fields, `Decimal @db.Decimal(p,s)`, inline provenance `*ById` (nullable FK) + `*
 - `Sample`: `id`, `lotId`, `vesselId?`, `status SampleStatus @default(PULLED)`,
   `source? String` (free text e.g. "Barrel A3"), `lab? String`, `pulledAt`, `sentAt?`,
   `expectedAt?`, `resultedAt?`, provenance, `note?`, `cancelledAt?`. Relations: `Sample`
-  1→many `LotMeasurement`. Index `@@index([lotId, status])`, `@@index([status])`.
+  1→many **`AnalysisPanel`** (via nullable `sampleId`; a returned result is a panel linked
+  to the sample). Index `@@index([lotId, status])`, `@@index([status])`.
 - Enums: `SampleStatus { PULLED SENT PENDING RESULT_RETURNED ATTACHED CANCELLED }`,
   `TastingReadiness { NEEDS_MORE_TIME READY_TO_BLEND READY_TO_BOTTLE HOLD DECLINING }`,
   `TastingScoreScale { HUNDRED_POINT TWENTY_POINT }`.
@@ -384,8 +513,9 @@ sample → it shows pending on the lot timeline.
 ### Unit 8: Pending-sample attach surface
 
 **Goal:** See pending/sent samples and attach returned lab results to the lot.
-**Files:** new `src/app/(app)/samples/page.tsx` + client (or a section on the lots
-page — see decision below), reusing Unit 3 `attachSampleResultsCore`.
+**Files:** new `src/app/(app)/samples/page.tsx` + client (RESOLVED in design review:
+**dedicated page + a "N pending" count badge** on the WINERY nav item and the lot-detail
+header), reusing Unit 3 `attachSampleResultsCore` and the shared reading-rows form (Unit 7).
 **Approach:** A lightweight list of `Sample`s in non-terminal states
 (`PULLED`/`SENT`/`PENDING`) with lot + source + age; each row opens an "attach results"
 form (reuse the `AnalysisForm` reading rows) that calls `attachSampleResultsAction` and
@@ -464,3 +594,45 @@ returned result; confirm undo and the ≥44px/`aria-live`/`inputMode` patterns.
 - [ ] `BrixLog` (vineyard) is untouched.
 - [ ] All Vitest tests pass; `scripts/verify-chemistry.ts` all PASS; `npm run build`
       clean; no regressions in existing tests.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 1 | issues_found | 17 challenges; 2 became decisions (panel model, audit), rest folded as refinements |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 2 architecture decisions resolved (timeline ordering = hybrid; Edit-mode handles records); 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | clean | score 6/10 → 9/10; 1 IA decision (samples = page + count badge); state/empty/control specs folded into a Design Specification section |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**ENG REVIEW (2026-06-28):** 2 genuine architecture decisions, both resolved:
+(1) timeline ordering → **hybrid** (ops keep `op.id` order per D14, standalone records slot
+in by `observedAt`); (2) the lot-timeline **Edit mode** (added this session) is extended to
+edit/void chemistry records. Code-quality: timeline uses a discriminated-union
+`TimelineItem { kind }`. Tests: + hybrid-ordering regression/edge fixtures, voided-exclusion,
+edit-mode actionability. Performance: no issues.
+
+**CODEX (outside voice):** headline win — **`AnalysisPanel` header + `AnalysisReading`
+children** replaces flat-rows+`panelId` (atomic panel undo, unambiguous SO₂ pairing,
+returned-result-as-panel home, FK grouping). Folded refinements: explicit `observedAt`
+semantics, effective-time lot resolution (+ sample results inherit `lotId`), guarded sample
+state-machine, idempotency (`clientRequestId`), append-only analyte keys + unknown-key
+fallback, chart unit normalization, Decimal→number at the boundary, shared form extraction
+before Units 7/8, isolated `verify-chemistry.ts` fixtures+scrub, scope-criteria fix,
+tightened dependency graph.
+
+**CROSS-MODEL:** 2 tensions, both resolved in Codex's favor (panel model; deliberate audit
+enum values). Eng reviewer reversed the audit recommendation accordingly.
+
+**UNRESOLVED:** 0.
+
+**DESIGN REVIEW (2026-06-28):** 6/10 → 9/10. One IA decision resolved (samples = dedicated
+`/samples` page + "N pending" count badge). All state/empty/error specs, the molecular-SO₂
+quiet-line treatment, trend degenerate states + target band, 1–5 segmented structure fields,
+status/readiness text-Badges, the multi-lot picker, and the Edit-mode record integration are
+captured in the new **"Design Specification (design review 2026-06-28)"** section
+(authoritative for Units 5–8).
+
+**VERDICT:** ENG + DESIGN CLEARED — ready to implement on a fresh worktree branch off main.
+All decisions captured in "Eng Review Decisions & Addenda" + "Design Specification"
+(both 2026-06-28, both authoritative).
