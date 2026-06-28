@@ -124,6 +124,13 @@ enum AuditAction {
   BRIX_LOGGED
   HARVEST_ESTIMATED
   HARVEST_PICK_RECORDED
+  // Phase 4 sample lifecycle (added in a dedicated ALTER TYPE migration — a new enum
+  // VALUE can't be used in the transaction that adds it). Panel/tasting create+void
+  // reuse CREATE/DELETE.
+  SAMPLE_PULLED
+  SAMPLE_SENT
+  SAMPLE_ATTACHED
+  SAMPLE_CANCELLED
 }
 
 // ───────────────────────── Shared registries ─────────────────────────
@@ -378,6 +385,10 @@ model Vessel {
   groupMemberships VesselGroupMember[]
   operationLines   LotOperationLine[]
   treatments       LotTreatment[]
+  // Phase 4 standalone records (snapshot context; vessel delete SetNulls these).
+  analysisPanels   AnalysisPanel[]
+  tastingNotes     LotTastingNote[]
+  samples          Sample[]
 
   @@unique([type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
   @@map("vessel")
@@ -750,6 +761,10 @@ model Lot {
   childEdges      LotLineage[]       @relation("LotParent") // edges where this lot is the parent
   bottlingSources BottlingSource[]
   treatments      LotTreatment[]
+  // Phase 4 standalone chemistry/tasting/sample records (NOT ledger ops).
+  analysisPanels  AnalysisPanel[]
+  tastingNotes    LotTastingNote[]
+  samples         Sample[]
 
   @@index([status])
   @@index([originVineyardId])
@@ -922,4 +937,152 @@ model VesselGroupMember {
   @@unique([groupId, vesselId])
   @@index([vesselId])
   @@map("vessel_group_member")
+}
+
+// ───────────────────────── Chemistry / tasting / samples (Phase 4) ─────────────────────────
+// STANDALONE records (NOT ledger ops — they describe the liquid, they don't move liters, so
+// they do NOT go through writeLotOperation). They take BrixLog's standalone + inline-provenance
+// shape and LotTreatment's appears-on-the-lot-timeline behavior. Each attaches to exactly ONE
+// homogeneous lot (VISION D2). Undo is a soft-delete (voidedAt/voidedById), never a CORRECTION.
+// Surfaced on the lot timeline by UNIONing these onto the loader, slotted by observedAt. Do NOT
+// touch the vineyard BrixLog — cellar chemistry is lot/vessel-scoped and a separate domain.
+//
+// Provenance: actor ids are plain String? (no User FK relation) matching LotOperation.actorUserId
+// and BrixLog.createdById; *ByEmail is the durable snapshot.
+
+enum SampleStatus {
+  PULLED
+  SENT
+  PENDING
+  RESULT_RETURNED
+  ATTACHED
+  CANCELLED
+}
+
+enum TastingReadiness {
+  NEEDS_MORE_TIME
+  READY_TO_BLEND
+  READY_TO_BOTTLE
+  HOLD
+  DECLINING
+}
+
+enum TastingScoreScale {
+  HUNDRED_POINT
+  TWENTY_POINT
+}
+
+// A panel HEADER groups one batch of readings observed together (a bench reading is a
+// 1-child panel). The header owns observedAt + provenance + the optional sample link +
+// voidedAt (so a panel voids ATOMICALLY — void the header, all readings drop). A returned
+// lab result is a panel with `sampleId` set. SO₂ pairing happens WITHIN one panel only.
+model AnalysisPanel {
+  id              String           @id @default(cuid())
+  lotId           String
+  vesselId        String? // snapshot context (the vessel the lot sat in when measured)
+  sampleId        String? // set when this panel is a returned result for a Sample
+  observedAt      DateTime // when the wine was sampled/measured (time axis for trends)
+  enteredAt       DateTime         @default(now())
+  enteredById     String? // actor id snapshot (no FK; matches LotOperation.actorUserId)
+  enteredByEmail  String // durable provenance snapshot
+  captureMethod   CaptureMethod    @default(MANUAL)
+  note            String?
+  clientRequestId String?          @unique // idempotency: a double-submit is a no-op
+  voidedAt        DateTime?
+  voidedById      String?
+  createdAt       DateTime         @default(now())
+  lot             Lot              @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  vessel          Vessel?          @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  sample          Sample?          @relation(fields: [sampleId], references: [id], onDelete: SetNull)
+  readings        AnalysisReading[]
+
+  @@index([lotId, observedAt])
+  @@index([vesselId])
+  @@index([sampleId])
+  @@map("analysis_panel")
+}
+
+// One analyte reading inside a panel. `analyte` is a code-validated string (the TS registry
+// in src/lib/chemistry/analytes.ts — a new analyte is a config edit, not a migration). Trends
+// query readings by `analyte` joined to the non-voided parent panel; the panel's `observedAt`
+// is the time axis.
+model AnalysisReading {
+  id        String        @id @default(cuid())
+  panelId   String
+  analyte   String // registry key (PH, FREE_SO2, …) — validated in code, not a DB enum
+  value     Decimal       @db.Decimal(12, 4)
+  unit      String // the unit the value was entered in (registry-allowed)
+  createdAt DateTime      @default(now())
+  panel     AnalysisPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@index([panelId])
+  @@index([analyte])
+  @@map("analysis_reading")
+}
+
+// A structured tasting note on a lot. Free-text search (NICE) is a `contains` over
+// notes/aroma/flavor — no tsvector this phase (avoids the search_vector migration gotcha).
+model LotTastingNote {
+  id              String             @id @default(cuid())
+  lotId           String
+  vesselId        String?
+  observedAt      DateTime
+  enteredAt       DateTime           @default(now())
+  enteredById     String?
+  enteredByEmail  String
+  captureMethod   CaptureMethod      @default(MANUAL)
+  appearance      String?
+  aroma           String?
+  flavor          String?
+  tannin          Int? // 1–5 structure scores
+  acidity         Int?
+  body            Int?
+  finish          Int?
+  score           Int?
+  scoreScale      TastingScoreScale?
+  readiness       TastingReadiness?
+  notes           String?
+  clientRequestId String?            @unique
+  voidedAt        DateTime?
+  voidedById      String?
+  createdAt       DateTime           @default(now())
+  lot             Lot                @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  vessel          Vessel?            @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+
+  @@index([lotId, observedAt])
+  @@map("lot_tasting_note")
+}
+
+// A lab/bench sample with a lifecycle (PULLED → SENT → PENDING → RESULT_RETURNED → ATTACHED,
+// plus CANCELLED). 1→many AnalysisPanel: a returned result is a panel linked here. Transitions
+// go through guarded core fns that set status + the matching timestamp together. The sample's
+// `lotId` is captured AT PULL and inherited by its result panels (never re-resolved from the
+// current vessel — backdated/late-resulted readings must not be misattributed). D2.
+model Sample {
+  id              String          @id @default(cuid())
+  lotId           String
+  vesselId        String?
+  status          SampleStatus    @default(PULLED)
+  source          String? // free text, e.g. "Barrel A3"
+  lab             String? // outside lab name (e.g. "ETS")
+  pulledAt        DateTime        @default(now()) // the sample's observed time
+  sentAt          DateTime?
+  expectedAt      DateTime?
+  resultedAt      DateTime? // when the lab ran it (metadata, not the reading's observed time)
+  attachedAt      DateTime?
+  cancelledAt     DateTime?
+  enteredById     String?
+  enteredByEmail  String
+  captureMethod   CaptureMethod   @default(MANUAL)
+  note            String?
+  clientRequestId String?         @unique
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  lot             Lot             @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  vessel          Vessel?         @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  panels          AnalysisPanel[]
+
+  @@index([lotId, status])
+  @@index([status])
+  @@map("sample")
 }
