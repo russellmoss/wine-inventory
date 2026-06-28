@@ -15,6 +15,8 @@ export default async function BulkPage() {
           orderBy: { volumeL: "desc" },
           include: { variety: { select: { id: true, name: true } }, vineyard: { select: { id: true, name: true } } },
         },
+        // Ledger projection: the lots resident in each vessel, for lot-code badges in the picker.
+        vesselLots: { orderBy: { volumeL: "desc" }, include: { lot: { select: { code: true } } } },
       },
     }),
     prisma.variety.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -55,6 +57,7 @@ export default async function BulkPage() {
       cooperageYear: v.cooperageYear,
       cooperage: v.cooperage,
       toastLevel: v.toastLevel,
+      lotCodes: v.vesselLots.map((vl) => vl.lot.code),
     };
   });
 

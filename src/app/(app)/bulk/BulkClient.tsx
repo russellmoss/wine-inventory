@@ -22,6 +22,7 @@ export type VesselWithContents = {
   id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null;
   components: Comp[]; blend: BlendInfo; fill: Fill;
   oakOrigin: string | null; cooperageYear: number | null; cooperage: string | null; toastLevel: string | null;
+  lotCodes: string[];
 };
 
 const selectStyle: React.CSSProperties = {
@@ -143,7 +144,16 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
 
   // Keg sources (topping) + group multi-select rows, derived from the vessel list.
   const kegOptions: KegOption[] = vessels.map((v) => ({ id: v.id, label: vesselLabel(v.type, v.code), totalL: v.fill.filledL }));
-  const groupVessels: GroupVessel[] = vessels.map((v) => ({ id: v.id, label: vesselLabel(v.type, v.code), type: v.type, totalL: v.fill.filledL }));
+  const groupVessels: GroupVessel[] = vessels.map((v) => ({
+    id: v.id,
+    code: v.code,
+    label: vesselLabel(v.type, v.code),
+    type: v.type,
+    totalL: v.fill.filledL,
+    lotCodes: v.lotCodes,
+    varietyNames: [...new Set(v.components.map((c) => c.varietyName))],
+    vineyardNames: [...new Set(v.components.map((c) => c.vineyardName))],
+  }));
 
   function run(fn: () => Promise<void>, after?: () => void) {
     setError(null);
@@ -243,7 +253,15 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
 
-      {vessels.length > 0 ? <GroupActions groups={groups} vessels={groupVessels} materials={materials} /> : null}
+      {vessels.length > 0 ? (
+        <GroupActions
+          groups={groups}
+          vessels={groupVessels}
+          materials={materials}
+          varietyNames={varieties.map((v) => v.name)}
+          vineyardNames={vineyards.map((v) => v.name)}
+        />
+      ) : null}
 
       {!canFill ? (
         <Card style={{ marginBottom: 20 }}>

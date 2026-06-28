@@ -19,7 +19,16 @@ import {
 // exceptions; nothing aborts the batch. A small group manager (create from the current
 // selection / deactivate) sits alongside. Undo reverts the whole batch.
 
-export type GroupVessel = { id: string; label: string; type: "BARREL" | "TANK"; totalL: number };
+export type GroupVessel = {
+  id: string;
+  code: string;
+  label: string;
+  type: "BARREL" | "TANK";
+  totalL: number;
+  lotCodes: string[];
+  varietyNames: string[];
+  vineyardNames: string[];
+};
 
 const fieldStyle: React.CSSProperties = {
   height: 44,
@@ -46,10 +55,14 @@ export function GroupActions({
   groups,
   vessels,
   materials,
+  varietyNames,
+  vineyardNames,
 }: {
   groups: VesselGroupDTO[];
   vessels: GroupVessel[];
   materials: CellarMaterialDTO[];
+  varietyNames: string[];
+  vineyardNames: string[];
 }) {
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
@@ -59,6 +72,12 @@ export function GroupActions({
   // Target: a saved group, or an ad-hoc set of vessel ids.
   const [groupId, setGroupId] = React.useState<string>("");
   const [adhoc, setAdhoc] = React.useState<Set<string>>(new Set());
+
+  // Picker filters (scale to hundreds of vessels): type, fill, vineyard, variety.
+  const [typeFilter, setTypeFilter] = React.useState<"ALL" | "TANK" | "BARREL">("ALL");
+  const [fillFilter, setFillFilter] = React.useState<"ALL" | "WINE" | "EMPTY">("ALL");
+  const [vineyardFilter, setVineyardFilter] = React.useState("");
+  const [varietyFilter, setVarietyFilter] = React.useState("");
 
   // Op + params
   const [op, setOp] = React.useState<OpKind>("ADDITION");
@@ -165,6 +184,27 @@ export function GroupActions({
   const needsMaterial = op === "ADDITION" || op === "FINING";
   const needsAmount = op === "FILTRATION" || op === "LOSS" || op === "TOPPING";
 
+  // Apply the picker filters, then split into Tanks + Barrels, each in numeric code order.
+  const byCode = (a: GroupVessel, b: GroupVessel) => a.code.localeCompare(b.code, undefined, { numeric: true });
+  const filtered = vessels.filter((v) => {
+    if (typeFilter !== "ALL" && v.type !== typeFilter) return false;
+    if (fillFilter === "WINE" && !(v.totalL > 0)) return false;
+    if (fillFilter === "EMPTY" && v.totalL > 0) return false;
+    if (vineyardFilter && !v.vineyardNames.includes(vineyardFilter)) return false;
+    if (varietyFilter && !v.varietyNames.includes(varietyFilter)) return false;
+    return true;
+  });
+  const tanks = filtered.filter((v) => v.type === "TANK").sort(byCode);
+  const barrels = filtered.filter((v) => v.type === "BARREL").sort(byCode);
+  const filteredIds = filtered.map((v) => v.id);
+
+  function selectAllFiltered() {
+    setAdhoc((s) => new Set([...s, ...filteredIds]));
+  }
+  function clearSelection() {
+    setAdhoc(new Set());
+  }
+
   return (
     <Card style={{ marginBottom: 20 }}>
       <button
@@ -201,31 +241,52 @@ export function GroupActions({
           </div>
 
           {!groupId ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-              {vessels.map((v) => {
-                const on = adhoc.has(v.id);
-                return (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => toggleAdhoc(v.id)}
-                    aria-pressed={on}
-                    style={{
-                      minHeight: 36,
-                      padding: "6px 10px",
-                      borderRadius: "var(--radius-md)",
-                      border: `1px solid ${on ? "var(--accent)" : "var(--border-strong)"}`,
-                      background: on ? "var(--accent-soft)" : "var(--surface-raised)",
-                      color: "var(--text-primary)",
-                      fontSize: 13,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {v.label} · {v.totalL} L
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              {/* Filter bar — narrow the list before multi-selecting (scales to hundreds). */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+                <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)} style={{ ...fieldStyle, width: 120 }} aria-label="Filter by vessel type">
+                  <option value="ALL">All types</option>
+                  <option value="TANK">Tanks</option>
+                  <option value="BARREL">Barrels</option>
+                </select>
+                <select value={fillFilter} onChange={(e) => setFillFilter(e.target.value as typeof fillFilter)} style={{ ...fieldStyle, width: 130 }} aria-label="Filter by fill">
+                  <option value="ALL">Full or empty</option>
+                  <option value="WINE">Has wine</option>
+                  <option value="EMPTY">Empty</option>
+                </select>
+                <select value={vineyardFilter} onChange={(e) => setVineyardFilter(e.target.value)} style={{ ...fieldStyle, width: 160 }} aria-label="Filter by vineyard">
+                  <option value="">Any vineyard</option>
+                  {vineyardNames.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <select value={varietyFilter} onChange={(e) => setVarietyFilter(e.target.value)} style={{ ...fieldStyle, width: 160 }} aria-label="Filter by variety">
+                  <option value="">Any variety</option>
+                  {varietyNames.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <Button variant="ghost" size="sm" onClick={selectAllFiltered} disabled={filteredIds.length === 0} style={{ minHeight: 44 }}>
+                  Select all ({filteredIds.length})
+                </Button>
+                <Button variant="ghost" size="sm" onClick={clearSelection} disabled={adhoc.size === 0} style={{ minHeight: 44 }}>
+                  Clear
+                </Button>
+              </div>
+
+              {filtered.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px" }}>No vessels match these filters.</p>
+              ) : (
+                <div style={{ maxHeight: 320, overflowY: "auto", paddingRight: 4, marginBottom: 12 }}>
+                  <VesselSection title="Tanks" vessels={tanks} adhoc={adhoc} onToggle={toggleAdhoc} />
+                  <VesselSection title="Barrels" vessels={barrels} adhoc={adhoc} onToggle={toggleAdhoc} />
+                </div>
+              )}
+            </>
           ) : null}
 
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px" }}>
@@ -319,6 +380,76 @@ export function GroupActions({
       }
     });
   }
+}
+
+// A titled section of vessel chips (Tanks / Barrels), each chip showing fill + lot badges.
+function VesselSection({
+  title,
+  vessels,
+  adhoc,
+  onToggle,
+}: {
+  title: string;
+  vessels: GroupVessel[];
+  adhoc: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  if (vessels.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", margin: "4px 0 6px" }}>
+        {title} ({vessels.length})
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {vessels.map((v) => (
+          <VesselChip key={v.id} v={v} on={adhoc.has(v.id)} onToggle={() => onToggle(v.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VesselChip({ v, on, onToggle }: { v: GroupVessel; on: boolean; onToggle: () => void }) {
+  const empty = !(v.totalL > 0);
+  const shownLots = v.lotCodes.slice(0, 2);
+  const extra = v.lotCodes.length - shownLots.length;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={on}
+      title={v.lotCodes.length ? `Lots: ${v.lotCodes.join(", ")}` : "Empty"}
+      style={{
+        minHeight: 44,
+        display: "inline-flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        gap: 2,
+        padding: "5px 10px",
+        borderRadius: "var(--radius-md)",
+        border: `1px solid ${on ? "var(--accent)" : "var(--border-strong)"}`,
+        background: on ? "var(--accent-soft)" : "var(--surface-raised)",
+        color: "var(--text-primary)",
+        fontSize: 13,
+        cursor: "pointer",
+      }}
+    >
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontWeight: 500 }}>{v.label}</span>
+        <span style={{ color: empty ? "var(--text-muted)" : "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>· {v.totalL} L</span>
+      </span>
+      {v.lotCodes.length > 0 ? (
+        <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+          {shownLots.map((code) => (
+            <span key={code} style={{ fontSize: 10.5, padding: "1px 5px", borderRadius: 999, background: "var(--paper-200)", color: "var(--text-secondary)" }}>
+              {code}
+            </span>
+          ))}
+          {extra > 0 ? <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{extra}</span> : null}
+        </span>
+      ) : null}
+    </button>
+  );
 }
 
 function GroupResult({ result, pending, onUndo }: { result: GroupApplyResult; pending: boolean; onUndo: (batchId: string) => void }) {
