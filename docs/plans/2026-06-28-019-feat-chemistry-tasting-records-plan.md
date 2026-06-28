@@ -1,9 +1,9 @@
 ---
 title: Chemistry & Tasting Records (Phase 4)
 type: feat
-status: draft
+status: completed
 date: 2026-06-28
-branch: claude/zen-chebyshev-b2195e
+branch: feat/chemistry-tasting
 depth: deep
 units: 10
 ---
@@ -582,18 +582,18 @@ returned result; confirm undo and the ≥44px/`aria-live`/`inputMode` patterns.
 
 ## Success Criteria (Phase 4 exit)
 
-- [ ] Log pH/TA (+ free/total SO₂) on a lot from the vessel-first Actions row, with full
+- [x] Log pH/TA (+ free/total SO₂) on a lot from the vessel-first Actions row, with full
       provenance, as standalone records (not ledger ops).
-- [ ] See per-analyte trends over the lot's timeline (reusing the harvest chart math).
-- [ ] A pulled sample can sit pending and later attach its result(s) to the lot
+- [x] See per-analyte trends over the lot's timeline (reusing the harvest chart math).
+- [x] A pulled sample can sit pending and later attach its result(s) to the lot
       (`PULLED → SENT → PENDING → RESULT_RETURNED → ATTACHED`).
-- [ ] Molecular SO₂ is shown as a derived read from same-panel free SO₂ + pH (not stored).
-- [ ] Tasting notes record + are searchable over time.
-- [ ] Chemistry/tasting/sample records appear on the existing lot timeline, interleaved
+- [x] Molecular SO₂ is shown as a derived read from same-panel free SO₂ + pH (not stored).
+- [x] Tasting notes record + are searchable over time.
+- [x] Chemistry/tasting/sample records appear on the existing lot timeline, interleaved
       by observedAt; voided records drop off.
-- [ ] `BrixLog` (vineyard) is untouched.
-- [ ] All Vitest tests pass; `scripts/verify-chemistry.ts` all PASS; `npm run build`
-      clean; no regressions in existing tests.
+- [x] `BrixLog` (vineyard) is untouched.
+- [x] All Vitest tests pass (436 green; 401 baseline + 35 new); `scripts/verify-chemistry.ts`
+      all 17 PASS; `npm run build` clean; no regressions in existing tests.
 
 ## GSTACK REVIEW REPORT
 
