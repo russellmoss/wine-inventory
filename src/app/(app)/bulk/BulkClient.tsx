@@ -7,7 +7,7 @@ import type { Fill } from "@/lib/vessels/fill";
 import { addComponent, updateComponentVolume, removeComponent, setBlendName } from "@/lib/bulk/actions";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import type { VesselGroupDTO } from "@/lib/vessels/groups";
-import { CellarActions, type KegOption } from "./CellarActions";
+import { CellarActions, type KegOption, type ResidentLot } from "./CellarActions";
 import { GroupActions, type GroupVessel } from "./GroupActions";
 
 function vesselLabel(type: "BARREL" | "TANK", code: string): string {
@@ -23,6 +23,7 @@ export type VesselWithContents = {
   components: Comp[]; blend: BlendInfo; fill: Fill;
   oakOrigin: string | null; cooperageYear: number | null; cooperage: string | null; toastLevel: string | null;
   lotCodes: string[];
+  residentLots: ResidentLot[];
 };
 
 const selectStyle: React.CSSProperties = {
@@ -335,7 +336,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
 
             <CellarActions
               key={selected.id}
-              vessel={{ id: selected.id, code: selected.code, type: selected.type, capacityL: selected.capacityL, totalL: selected.fill.filledL }}
+              vessel={{ id: selected.id, code: selected.code, type: selected.type, capacityL: selected.capacityL, totalL: selected.fill.filledL, residentLots: selected.residentLots }}
               materials={materials}
               kegOptions={kegOptions}
             />

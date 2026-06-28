@@ -20,6 +20,21 @@ import {
   revertRackAction,
   topVesselAction,
 } from "@/lib/cellar/actions";
+import {
+  recordMeasurementsAction,
+  recordTastingNoteAction,
+  pullSampleAction,
+  voidPanelAction,
+  voidTastingNoteAction,
+  cancelSampleAction,
+} from "@/lib/chemistry/actions";
+import {
+  ReadingRows,
+  emptyReadingRow,
+  toReadingInputs,
+  readingsValid,
+  type ReadingRow,
+} from "@/components/chemistry/ReadingRows";
 
 // Vessel-first cellar-op capture (Phase 3, Unit 9). An Actions row (text buttons, not an
 // icon grid — anti-slop) swaps the panel to a focused form per op. Cap management is
@@ -28,7 +43,16 @@ import {
 // inputMode="decimal" + ≥44px targets + aria-live math for the floor. Revalidation on the
 // server actions refreshes the page data; this component only owns the transient form state.
 
-export type CellarActionsVessel = { id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; totalL: number };
+export type ResidentLot = { lotId: string; code: string; varietyName: string | null };
+export type CellarActionsVessel = {
+  id: string;
+  code: string;
+  type: "BARREL" | "TANK";
+  capacityL: number;
+  totalL: number;
+  /** Lots currently resident in this vessel — drives the D2 lot picker for chemistry records. */
+  residentLots: ResidentLot[];
+};
 export type KegOption = { id: string; label: string; totalL: number };
 
 const fieldStyle: React.CSSProperties = {
@@ -42,7 +66,7 @@ const fieldStyle: React.CSSProperties = {
   color: "var(--text-primary)",
 };
 
-type Mode = null | "RACK" | "ADD" | "TOP" | "FINE" | "FILTER" | "CAP" | "DUMP";
+type Mode = null | "RACK" | "ADD" | "TOP" | "FINE" | "FILTER" | "CAP" | "DUMP" | "ANALYSIS" | "TASTING" | "SAMPLE";
 const ACTIONS: { mode: Exclude<Mode, null>; label: string }[] = [
   { mode: "RACK", label: "Rack" },
   { mode: "ADD", label: "Add" },
@@ -51,6 +75,9 @@ const ACTIONS: { mode: Exclude<Mode, null>; label: string }[] = [
   { mode: "FILTER", label: "Filter" },
   { mode: "CAP", label: "Cap" },
   { mode: "DUMP", label: "Dump" },
+  { mode: "ANALYSIS", label: "Analysis" },
+  { mode: "TASTING", label: "Tasting" },
+  { mode: "SAMPLE", label: "Sample" },
 ];
 
 type LoggedToast = { label: string; undo: () => Promise<unknown> };
@@ -106,6 +133,20 @@ export function CellarActions({
     });
   }
 
+  // Standalone Phase 4 records undo via their own soft-delete/cancel path (the fn supplies it).
+  function runRecord(fn: () => Promise<{ undo: () => Promise<unknown> }>, label: string) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const { undo } = await fn();
+        setMode(null);
+        setToast({ label, undo });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong.");
+      }
+    });
+  }
+
   function undo() {
     if (!toast) return;
     const fn = toast.undo;
@@ -152,6 +193,9 @@ export function CellarActions({
       {mode === "FILTER" ? <FiltrationForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
       {mode === "DUMP" ? <DumpForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
       {mode === "CAP" ? <CapForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
+      {mode === "ANALYSIS" ? <AnalysisForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
+      {mode === "TASTING" ? <TastingForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
+      {mode === "SAMPLE" ? <SampleForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
 
       {toast ? (
         <div
@@ -472,4 +516,256 @@ function CapForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; p
 
 function FormShell({ children }: { children: React.ReactNode }) {
   return <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>{children}</div>;
+}
+
+// ── Phase 4 chemistry / tasting / sample capture ──
+
+type RecordSubmit = (fn: () => Promise<{ undo: () => Promise<unknown> }>, label: string) => void;
+
+/** A stable idempotency key per form mount (a double-submit/retry is a server no-op). */
+function useRequestId(): string {
+  return React.useState(() =>
+    typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.round(Math.random() * 1e9)}`,
+  )[0];
+}
+
+/** Column layout for the record forms (ReadingRows + fields stack vertically). */
+function ColumnShell({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>{children}</div>;
+}
+
+/** D2 lot picker: auto for 1 resident (static label), required select for >1, message when empty. */
+function LotField({ residentLots, value, onChange }: { residentLots: ResidentLot[]; value: string; onChange: (v: string) => void }) {
+  if (residentLots.length === 0) {
+    return <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>This vessel is empty — nothing to record against.</p>;
+  }
+  if (residentLots.length === 1) {
+    const l = residentLots[0];
+    return (
+      <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+        Lot: <strong style={{ color: "var(--text-primary)" }}>{l.code}</strong>
+        {l.varietyName ? ` · ${l.varietyName}` : ""}
+      </div>
+    );
+  }
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...fieldStyle, flex: "1 1 220px" }} aria-label="Lot" required>
+      <option value="" disabled>
+        This vessel holds {residentLots.length} lots — pick one…
+      </option>
+      {residentLots.map((l) => (
+        <option key={l.lotId} value={l.lotId}>
+          {l.code}
+          {l.varietyName ? ` · ${l.varietyName}` : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function useLotPick(vessel: CellarActionsVessel) {
+  const [lotId, setLotId] = React.useState(vessel.residentLots.length === 1 ? vessel.residentLots[0].lotId : "");
+  const ready = vessel.residentLots.length > 0 && (vessel.residentLots.length === 1 || !!lotId);
+  return { lotId, setLotId, ready };
+}
+
+// ── Analysis (panel of readings; live molecular SO₂) ──
+function AnalysisForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: RecordSubmit }) {
+  const reqId = useRequestId();
+  const { lotId, setLotId, ready } = useLotPick(vessel);
+  const [rows, setRows] = React.useState<ReadingRow[]>([emptyReadingRow("PH")]);
+  const [note, setNote] = React.useState("");
+  const valid = ready && readingsValid(rows);
+
+  function submit() {
+    const readings = toReadingInputs(rows);
+    onSubmit(async () => {
+      const res = await recordMeasurementsAction({
+        vesselId: vessel.id,
+        lotId: lotId || undefined,
+        readings,
+        note: note.trim() || undefined,
+        clientRequestId: reqId,
+      });
+      return { undo: () => voidPanelAction(res.panelId) };
+    }, `analysis (${readings.length} reading${readings.length === 1 ? "" : "s"})`);
+  }
+
+  return (
+    <ColumnShell>
+      <LotField residentLots={vessel.residentLots} value={lotId} onChange={setLotId} />
+      <ReadingRows rows={rows} onChange={setRows} />
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={fieldStyle} aria-label="Note" />
+      <div>
+        <Button variant="primary" size="sm" disabled={pending || !valid} onClick={submit} style={{ minHeight: 44 }}>
+          {pending ? "Saving…" : `Log analysis on ${vessel.code}`}
+        </Button>
+      </div>
+    </ColumnShell>
+  );
+}
+
+// ── Tasting (sensory + 1–5 structure segments + score/scale + readiness) ──
+const READINESS_OPTIONS: { value: string; label: string }[] = [
+  { value: "NEEDS_MORE_TIME", label: "Needs more time" },
+  { value: "READY_TO_BLEND", label: "Ready to blend" },
+  { value: "READY_TO_BOTTLE", label: "Ready to bottle" },
+  { value: "HOLD", label: "Hold" },
+  { value: "DECLINING", label: "Declining" },
+];
+
+function Segmented({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | null) => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 13, color: "var(--text-muted)", minWidth: 64 }}>{label}</span>
+      <div style={{ display: "flex", gap: 4 }}>
+        {[1, 2, 3, 4, 5].map((n) => {
+          const on = value === n;
+          return (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onChange(on ? null : n)}
+              aria-pressed={on}
+              aria-label={`${label} ${n} of 5`}
+              style={{
+                minWidth: 44,
+                minHeight: 44,
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border-strong)",
+                background: on ? "var(--accent)" : "var(--surface-raised)",
+                color: on ? "var(--accent-on)" : "var(--text-primary)",
+                cursor: "pointer",
+                fontFamily: "var(--font-body)",
+                fontSize: 14,
+              }}
+            >
+              {n}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TastingForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: RecordSubmit }) {
+  const reqId = useRequestId();
+  const { lotId, setLotId, ready } = useLotPick(vessel);
+  const [aroma, setAroma] = React.useState("");
+  const [flavor, setFlavor] = React.useState("");
+  const [tannin, setTannin] = React.useState<number | null>(null);
+  const [acidity, setAcidity] = React.useState<number | null>(null);
+  const [body, setBody] = React.useState<number | null>(null);
+  const [finish, setFinish] = React.useState<number | null>(null);
+  const [score, setScore] = React.useState("");
+  const [scale, setScale] = React.useState<"HUNDRED_POINT" | "TWENTY_POINT">("HUNDRED_POINT");
+  const [readiness, setReadiness] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+
+  const hasContent =
+    [aroma, flavor, notes].some((s) => s.trim()) ||
+    [tannin, acidity, body, finish].some((n) => n != null) ||
+    score.trim() !== "" ||
+    readiness !== "";
+  const valid = ready && hasContent;
+
+  function submit() {
+    onSubmit(async () => {
+      const res = await recordTastingNoteAction({
+        vesselId: vessel.id,
+        lotId: lotId || undefined,
+        aroma: aroma.trim() || undefined,
+        flavor: flavor.trim() || undefined,
+        tannin,
+        acidity,
+        body,
+        finish,
+        score: score.trim() !== "" ? Number(score) : undefined,
+        scoreScale: score.trim() !== "" ? scale : undefined,
+        readiness: (readiness || undefined) as never,
+        notes: notes.trim() || undefined,
+        clientRequestId: reqId,
+      });
+      return { undo: () => voidTastingNoteAction(res.tastingNoteId) };
+    }, "tasting note");
+  }
+
+  return (
+    <ColumnShell>
+      <LotField residentLots={vessel.residentLots} value={lotId} onChange={setLotId} />
+      <input value={aroma} onChange={(e) => setAroma(e.target.value)} placeholder="Aroma" style={fieldStyle} aria-label="Aroma" />
+      <input value={flavor} onChange={(e) => setFlavor(e.target.value)} placeholder="Flavor" style={fieldStyle} aria-label="Flavor" />
+      <Segmented label="Tannin" value={tannin} onChange={setTannin} />
+      <Segmented label="Acidity" value={acidity} onChange={setAcidity} />
+      <Segmented label="Body" value={body} onChange={setBody} />
+      <Segmented label="Finish" value={finish} onChange={setFinish} />
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input value={score} onChange={(e) => setScore(e.target.value)} inputMode="decimal" placeholder="Score" style={{ ...fieldStyle, width: 96 }} aria-label="Score" />
+        <select value={scale} onChange={(e) => setScale(e.target.value as "HUNDRED_POINT" | "TWENTY_POINT")} style={{ ...fieldStyle, width: 120 }} aria-label="Score scale">
+          <option value="HUNDRED_POINT">100-point</option>
+          <option value="TWENTY_POINT">20-point</option>
+        </select>
+        <select value={readiness} onChange={(e) => setReadiness(e.target.value)} style={{ ...fieldStyle, flex: "1 1 180px" }} aria-label="Readiness">
+          <option value="">Readiness (optional)</option>
+          {READINESS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (optional)" style={fieldStyle} aria-label="Notes" />
+      <div>
+        <Button variant="primary" size="sm" disabled={pending || !valid} onClick={submit} style={{ minHeight: 44 }}>
+          {pending ? "Saving…" : `Record tasting on ${vessel.code}`}
+        </Button>
+      </div>
+    </ColumnShell>
+  );
+}
+
+// ── Sample (pull; optional send-now) ──
+function SampleForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: RecordSubmit }) {
+  const reqId = useRequestId();
+  const { lotId, setLotId, ready } = useLotPick(vessel);
+  const [source, setSource] = React.useState("");
+  const [lab, setLab] = React.useState("");
+  const [sendNow, setSendNow] = React.useState(false);
+  const [note, setNote] = React.useState("");
+
+  function submit() {
+    onSubmit(async () => {
+      const res = await pullSampleAction({
+        vesselId: vessel.id,
+        lotId: lotId || undefined,
+        source: source.trim() || undefined,
+        lab: lab.trim() || undefined,
+        sendNow,
+        note: note.trim() || undefined,
+        clientRequestId: reqId,
+      });
+      return { undo: () => cancelSampleAction(res.sampleId) };
+    }, sendNow ? "sample pulled + sent" : "sample pulled");
+  }
+
+  return (
+    <ColumnShell>
+      <LotField residentLots={vessel.residentLots} value={lotId} onChange={setLotId} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source (e.g. Barrel A3)" style={{ ...fieldStyle, flex: "1 1 180px" }} aria-label="Sample source" />
+        <input value={lab} onChange={(e) => setLab(e.target.value)} placeholder="Lab (optional)" style={{ ...fieldStyle, flex: "1 1 140px" }} aria-label="Lab" />
+      </div>
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, color: "var(--text-primary)", minHeight: 44 }}>
+        <input type="checkbox" checked={sendNow} onChange={(e) => setSendNow(e.target.checked)} style={{ width: 18, height: 18 }} />
+        Mark sent to the lab now
+      </label>
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={fieldStyle} aria-label="Note" />
+      <div>
+        <Button variant="primary" size="sm" disabled={pending || !ready} onClick={submit} style={{ minHeight: 44 }}>
+          {pending ? "Saving…" : `Pull sample from ${vessel.code}`}
+        </Button>
+      </div>
+    </ColumnShell>
+  );
 }

@@ -15,8 +15,9 @@ export default async function BulkPage() {
           orderBy: { volumeL: "desc" },
           include: { variety: { select: { id: true, name: true } }, vineyard: { select: { id: true, name: true } } },
         },
-        // Ledger projection: the lots resident in each vessel, for lot-code badges in the picker.
-        vesselLots: { orderBy: { volumeL: "desc" }, include: { lot: { select: { code: true } } } },
+        // Ledger projection: the lots resident in each vessel, for lot-code badges in the picker
+        // and the Phase 4 chemistry-record lot picker (D2 single-lot resolution).
+        vesselLots: { orderBy: { volumeL: "desc" }, include: { lot: { select: { id: true, code: true, originVarietyId: true } } } },
       },
     }),
     prisma.variety.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -32,6 +33,8 @@ export default async function BulkPage() {
     listMaterials(),
     listGroups(),
   ]);
+
+  const varietyNameById = new Map(varieties.map((v) => [v.id, v.name]));
 
   const data: VesselWithContents[] = vessels.map((v) => {
     const comps = v.components.map((c) => ({
@@ -58,6 +61,11 @@ export default async function BulkPage() {
       cooperage: v.cooperage,
       toastLevel: v.toastLevel,
       lotCodes: v.vesselLots.map((vl) => vl.lot.code),
+      residentLots: v.vesselLots.map((vl) => ({
+        lotId: vl.lotId,
+        code: vl.lot.code,
+        varietyName: vl.lot.originVarietyId ? varietyNameById.get(vl.lot.originVarietyId) ?? null : null,
+      })),
     };
   });
 
