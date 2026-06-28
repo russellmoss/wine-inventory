@@ -36,6 +36,37 @@ export function scaleLinear(
   return rMin + t * (rMax - rMin);
 }
 
+function round4(x: number): number {
+  return Math.round(x * 1e4) / 1e4;
+}
+
+/** A "nice" number near x (1/2/5 × 10ⁿ), for friendly axis steps. */
+function niceNum(x: number, round: boolean): number {
+  if (!(x > 0)) return 1;
+  const exp = Math.floor(Math.log10(x));
+  const f = x / Math.pow(10, exp);
+  const nf = round ? (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) : f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+  return nf * Math.pow(10, exp);
+}
+
+/**
+ * Generalized friendly Y bounds for ANY analyte (pH, SO₂, TA, …) — unlike `brixAxisBounds`
+ * it does NOT clamp to 0 (a pH band must not floor to 0) and it picks a nice step from the
+ * data instead of hardcoding 5. Pass an explicit `step` to override. Empty → a 0–1 default;
+ * a single value (degenerate span) → a one-step band around it. Returns the step for ticks.
+ */
+export function niceAxisBounds(values: number[], step?: number): { yMin: number; yMax: number; step: number } {
+  if (values.length === 0) return { yMin: 0, yMax: 1, step: 1 };
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const span = hi - lo;
+  const s = step ?? (span > 0 ? niceNum(span / 4, true) : niceNum(Math.abs(hi) || 1, false) / 5 || 1);
+  let yMin = Math.floor(lo / s + 1e-9) * s;
+  let yMax = Math.ceil(hi / s - 1e-9) * s;
+  if (yMax - yMin < s - 1e-9) yMax = yMin + s; // single value / degenerate → a readable band
+  return { yMin: round4(yMin), yMax: round4(yMax), step: round4(s) };
+}
+
 /** Compute the x (time, ms) and y (Brix) domain from the raw values. */
 export function computeDomain(xs: number[], ys: number[]): Domain {
   const { yMin, yMax } = brixAxisBounds(ys);

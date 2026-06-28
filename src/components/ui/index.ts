@@ -26,3 +26,5 @@ export { MapLegend } from "./MapLegend";
 export type { MapLegendProps } from "./MapLegend";
 export { BrixChart } from "./BrixChart";
 export type { BrixChartProps, BrixChartSeries, BrixChartMarker } from "./BrixChart";
+export { AnalyteTrendChart } from "./AnalyteTrendChart";
+export type { AnalyteTrendChartProps, TrendPoint } from "./AnalyteTrendChart";
