@@ -3,13 +3,14 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge, Metric, Button, Modal, ConfirmButton } from "@/components/ui";
+import { Card, Eyebrow, Badge, Metric, Button, Modal, ConfirmButton, AnalyteTrendChart } from "@/components/ui";
 import {
   formatL,
   type TimelineEvent,
   type TimelineItem,
   type TimelineLeg,
   type OpItem,
+  type RecordItem,
   type MeasurementItem,
   type TastingItem,
   type SampleItem,
@@ -17,6 +18,8 @@ import {
 import type { LotDetail } from "@/lib/lot/data";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { deleteOperationAction, editOperationAction, correctOperationAction } from "@/lib/cellar/actions";
+import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
+import { getAnalyte, toDefaultUnit, DEFAULT_TREND_ANALYTES } from "@/lib/chemistry/analytes";
 
 type Tone = React.ComponentProps<typeof Badge>["tone"];
 
@@ -205,6 +208,7 @@ function RecordRail({
   enteredBy,
   captureMethod,
   note,
+  action,
   children,
 }: {
   badgeTone: Tone;
@@ -215,6 +219,7 @@ function RecordRail({
   enteredBy: string;
   captureMethod: string;
   note: string | null;
+  action?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   return (
@@ -244,6 +249,7 @@ function RecordRail({
         <Badge tone={badgeTone} variant="soft" uppercase>
           {badgeLabel}
         </Badge>
+        {action ? <span style={{ marginLeft: "auto" }}>{action}</span> : null}
       </div>
       <div style={{ fontSize: 15.5, color: "var(--text-primary)", marginBottom: 4 }}>{summary}</div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: children ? 8 : 0 }}>
@@ -260,7 +266,15 @@ function RecordRail({
   );
 }
 
-function MeasurementRow({ item }: { item: MeasurementItem }) {
+function EditRecordButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={onClick} style={{ minHeight: 32 }}>
+      Edit
+    </Button>
+  );
+}
+
+function MeasurementRow({ item, editMode, onEditRecord }: { item: MeasurementItem; editMode: boolean; onEditRecord: (i: RecordItem) => void }) {
   return (
     <RecordRail
       badgeTone="gold"
@@ -271,6 +285,7 @@ function MeasurementRow({ item }: { item: MeasurementItem }) {
       enteredBy={item.enteredBy}
       captureMethod={item.captureMethod}
       note={item.note}
+      action={editMode ? <EditRecordButton onClick={() => onEditRecord(item)} /> : null}
     >
       {item.molecular ? (
         <div
@@ -285,7 +300,7 @@ function MeasurementRow({ item }: { item: MeasurementItem }) {
   );
 }
 
-function TastingRow({ item }: { item: TastingItem }) {
+function TastingRow({ item, editMode, onEditRecord }: { item: TastingItem; editMode: boolean; onEditRecord: (i: RecordItem) => void }) {
   const struct: [string, number | null][] = [
     ["Tannin", item.structure.tannin],
     ["Acidity", item.structure.acidity],
@@ -309,6 +324,7 @@ function TastingRow({ item }: { item: TastingItem }) {
       enteredBy={item.enteredBy}
       captureMethod={item.captureMethod}
       note={item.note}
+      action={editMode ? <EditRecordButton onClick={() => onEditRecord(item)} /> : null}
     >
       {item.readiness ? (
         <div style={{ marginBottom: shownStruct.length || shownSensory.length ? 6 : 0 }}>
@@ -331,7 +347,7 @@ function TastingRow({ item }: { item: TastingItem }) {
   );
 }
 
-function SampleRow({ item }: { item: SampleItem }) {
+function SampleRow({ item, editMode, onEditRecord }: { item: SampleItem; editMode: boolean; onEditRecord: (i: RecordItem) => void }) {
   return (
     <RecordRail
       badgeTone={SAMPLE_TONE[item.status] ?? "neutral"}
@@ -342,6 +358,7 @@ function SampleRow({ item }: { item: SampleItem }) {
       enteredBy={item.enteredBy}
       captureMethod={item.captureMethod}
       note={item.note}
+      action={editMode ? <EditRecordButton onClick={() => onEditRecord(item)} /> : null}
     >
       <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
         Status: {item.status.toLowerCase().replace(/_/g, " ")}
@@ -351,17 +368,74 @@ function SampleRow({ item }: { item: SampleItem }) {
   );
 }
 
-function TimelineRow({ item, editMode, onEdit }: { item: TimelineItem; editMode: boolean; onEdit: (e: OpItem) => void }) {
+function TimelineRow({
+  item,
+  editMode,
+  onEdit,
+  onEditRecord,
+}: {
+  item: TimelineItem;
+  editMode: boolean;
+  onEdit: (e: OpItem) => void;
+  onEditRecord: (i: RecordItem) => void;
+}) {
   switch (item.kind) {
     case "OP":
       return <OpRow event={item} editMode={editMode} onEdit={onEdit} />;
     case "MEASUREMENT":
-      return <MeasurementRow item={item} />;
+      return <MeasurementRow item={item} editMode={editMode} onEditRecord={onEditRecord} />;
     case "TASTING":
-      return <TastingRow item={item} />;
+      return <TastingRow item={item} editMode={editMode} onEditRecord={onEditRecord} />;
     case "SAMPLE":
-      return <SampleRow item={item} />;
+      return <SampleRow item={item} editMode={editMode} onEditRecord={onEditRecord} />;
   }
+}
+
+// Edit-mode void/cancel for a standalone record (eng-review item 3). Panels + tasting notes
+// soft-delete; samples cancel. Confirms, then refreshes from the server.
+function RecordEditModal({ item, onClose }: { item: RecordItem | null; onClose: () => void }) {
+  if (!item) return null;
+  return (
+    <Modal open onClose={onClose} title="Edit record" subtitle={item.summary}>
+      <RecordEditPanel key={`${item.kind}-${item.id}`} item={item} onClose={onClose} />
+    </Modal>
+  );
+}
+
+function RecordEditPanel({ item, onClose }: { item: RecordItem; onClose: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+
+  const isSample = item.kind === "SAMPLE";
+  const verb = isSample ? "Cancel sample" : "Remove";
+  function run() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        if (item.kind === "MEASUREMENT") await voidPanelAction(item.id);
+        else if (item.kind === "TASTING") await voidTastingNoteAction(item.id);
+        else await cancelSampleAction(item.id);
+        onClose();
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong.");
+      }
+    });
+  }
+  return (
+    <div>
+      {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 12 }}>{error}</p> : null}
+      <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 14 }}>
+        {isSample
+          ? "Cancel this sample — it drops off the lot timeline and the open-samples list."
+          : "Remove this record from the lot timeline (an audit record is kept). Voiding a panel removes all of its readings."}
+      </p>
+      <ConfirmButton onConfirm={run} confirmLabel={verb} disabled={pending}>
+        {verb}
+      </ConfirmButton>
+    </div>
+  );
 }
 
 function LineageRefs({ label, refs }: { label: string; refs: { lotId: string; code: string }[] }) {
@@ -381,6 +455,105 @@ function LineageRefs({ label, refs }: { label: string; refs: { lotId: string; co
   );
 }
 
+// ── Chemistry: analyte trends + derived molecular SO₂, built from the lot's panels ──
+
+type TrendSeries = { key: string; label: string; unit: string; precision: number; points: { date: number; value: number }[] };
+
+const DEFAULT_TREND_SET = new Set<string>(DEFAULT_TREND_ANALYTES as readonly string[]);
+
+/** Group panel readings into per-analyte series (alt units converted to canonical; sorted by date). */
+function buildTrendSeries(events: TimelineItem[]): TrendSeries[] {
+  const byAnalyte = new Map<string, { date: number; value: number }[]>();
+  for (const e of events) {
+    if (e.kind !== "MEASUREMENT") continue;
+    const date = new Date(e.observedAt).getTime();
+    for (const r of e.readings) {
+      const v = toDefaultUnit(r.analyte, r.value, r.unit);
+      if (v == null) continue; // unknown/non-convertible alt unit — still shown on the timeline
+      const arr = byAnalyte.get(r.analyte) ?? [];
+      arr.push({ date, value: v });
+      byAnalyte.set(r.analyte, arr);
+    }
+  }
+  return [...byAnalyte.entries()].map(([key, pts]) => {
+    const def = getAnalyte(key);
+    return {
+      key,
+      label: def?.label ?? key,
+      unit: def?.defaultUnit ?? "",
+      precision: def?.precision ?? 2,
+      points: pts.sort((a, b) => a.date - b.date),
+    };
+  });
+}
+
+/** The most recent panel that carries a derived molecular SO₂ (same-panel free SO₂ + pH). */
+function latestMolecular(events: TimelineItem[]): { mol: NonNullable<MeasurementItem["molecular"]>; dateLabel: string } | null {
+  let best: { mol: NonNullable<MeasurementItem["molecular"]>; dateLabel: string; t: number } | null = null;
+  for (const e of events) {
+    if (e.kind !== "MEASUREMENT" || !e.molecular) continue;
+    const t = new Date(e.observedAt).getTime();
+    if (!best || t > best.t) best = { mol: e.molecular, dateLabel: e.dateLabel, t };
+  }
+  return best ? { mol: best.mol, dateLabel: best.dateLabel } : null;
+}
+
+function ChemistrySection({ events }: { events: TimelineItem[] }) {
+  const [showAll, setShowAll] = React.useState(false);
+  const series = buildTrendSeries(events);
+  const mol = latestMolecular(events);
+
+  const defaults = series.filter((s) => DEFAULT_TREND_SET.has(s.key));
+  // Show the key analytes by default; if none of those have data, show whatever exists.
+  const shown = showAll ? series : defaults.length ? defaults : series;
+  const hiddenCount = series.length - shown.length;
+
+  return (
+    <div style={{ margin: "8px 0 28px" }}>
+      <Eyebrow rule>Chemistry</Eyebrow>
+      <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: "10px 0 14px" }}>Analyte trends</h2>
+
+      {mol ? (
+        <Card style={{ marginBottom: 16 }}>
+          <Eyebrow tone="ink">Current chemistry</Eyebrow>
+          <p
+            aria-label="Derived molecular SO₂"
+            style={{ marginTop: 10, fontSize: 15, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}
+          >
+            Molecular SO₂ ≈ {mol.mol.molecularSO2.toFixed(2)} mg/L
+          </p>
+          <p style={{ marginTop: 4, fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+            derived from free {mol.mol.freeSO2} + pH {mol.mol.pH.toFixed(2)} · pKa {mol.mol.pKa} · {mol.dateLabel}
+          </p>
+        </Card>
+      ) : null}
+
+      {series.length === 0 ? (
+        <Card>
+          <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 14 }}>
+            No readings yet — log a pH or SO₂ from the vessel to start the trend.
+          </p>
+        </Card>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
+            {shown.map((s) => (
+              <Card key={s.key}>
+                <AnalyteTrendChart label={s.label} unit={s.unit} points={s.points} precision={s.precision} />
+              </Card>
+            ))}
+          </div>
+          {!showAll && hiddenCount > 0 ? (
+            <Button variant="ghost" size="sm" onClick={() => setShowAll(true)} style={{ marginTop: 12, minHeight: 36 }}>
+              Show all analytes ({hiddenCount} more)
+            </Button>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function LotDetailClient({ lot }: { lot: LotDetail }) {
   const origin = [lot.varietyName, lot.vineyardName, lot.vintageYear != null ? String(lot.vintageYear) : null].filter(
     (x): x is string => !!x,
@@ -389,7 +562,9 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
 
   const [editMode, setEditMode] = React.useState(false);
   const [selected, setSelected] = React.useState<OpItem | null>(null);
-  const anyActionable = lot.events.some((e) => e.kind === "OP" && isActionable(e));
+  const [selectedRecord, setSelectedRecord] = React.useState<RecordItem | null>(null);
+  // Editable in edit mode: actionable ops, plus every standalone record (void/cancel).
+  const anyActionable = lot.events.some((e) => (e.kind === "OP" ? isActionable(e) : true));
 
   return (
     <div>
@@ -454,6 +629,9 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
         </Card>
       </div>
 
+      {/* Chemistry: trends + derived molecular SO₂ */}
+      <ChemistrySection events={lot.events} />
+
       {/* Timeline rail */}
       <Eyebrow rule>History</Eyebrow>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", margin: "10px 0 18px" }}>
@@ -467,16 +645,18 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
       {editMode ? (
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-8px 0 14px" }}>
           Pick an event to edit or remove. Additions, fining and cap management can be edited or deleted; topping,
-          filtration and dumps can be reverted (they stay on the timeline, marked).
+          filtration and dumps can be reverted (they stay on the timeline, marked). Analyses and tasting notes can be
+          removed; samples can be cancelled.
         </p>
       ) : null}
       <ol style={{ margin: 0, padding: 0 }}>
         {lot.events.map((e) => (
-          <TimelineRow key={`${e.kind}-${e.id}`} item={e} editMode={editMode} onEdit={setSelected} />
+          <TimelineRow key={`${e.kind}-${e.id}`} item={e} editMode={editMode} onEdit={setSelected} onEditRecord={setSelectedRecord} />
         ))}
       </ol>
 
       <TimelineEditModal event={selected} onClose={() => setSelected(null)} />
+      <RecordEditModal item={selectedRecord} onClose={() => setSelectedRecord(null)} />
     </div>
   );
 }
