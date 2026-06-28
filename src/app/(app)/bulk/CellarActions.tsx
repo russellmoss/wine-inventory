@@ -66,11 +66,8 @@ export function CellarActions({
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<LoggedToast | null>(null);
 
-  // Reset the open form whenever the vessel changes (modal reused across vessels).
-  React.useEffect(() => {
-    setMode(null);
-    setError(null);
-  }, [vessel.id]);
+  // Form state resets across vessels via a `key` remount in the parent (BulkClient), so no
+  // reset effect is needed here.
 
   React.useEffect(() => {
     if (!toast) return;

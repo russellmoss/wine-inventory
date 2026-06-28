@@ -1,7 +1,7 @@
 ---
 title: Cellar Operations (Phase 3)
 type: feat
-status: draft
+status: completed
 date: 2026-06-27
 branch: claude/zen-chebyshev-b2195e
 depth: deep
@@ -394,24 +394,24 @@ confirm the lot timeline renders them; run a group action and a correction.
 
 ## Success Criteria
 
-- [ ] New op types added to the controlled enum (D4) + migration applied (additive, DB clean).
-- [ ] An addition entered as g/hL records the computed grams + basis + volume snapshot, with
+- [x] New op types added to the controlled enum (D4) + migration applied (additive, DB clean).
+- [x] An addition entered as g/hL records the computed grams + basis + volume snapshot, with
       no volume change, and appears on the lot timeline.
-- [ ] Fining, cap-management (volume-neutral) and filtration, loss (volume-reducing) all log,
+- [x] Fining, cap-management (volume-neutral) and filtration, loss (volume-reducing) all log,
       update state correctly, and render on the timeline.
-- [ ] Topping moves volume from a keg lot to the target and appends lineage.
-- [ ] A single group action applies across all member vessels (one op each, shared batchId),
+- [x] Topping moves volume from a keg lot to the target and appends lineage.
+- [x] A single group action applies across all member vessels (one op each, shared batchId),
       skipping/reporting exceptions without failing the batch.
-- [ ] Every op is correctable: volumetric via the D15 guard, neutral via void; corrected ops
+- [x] Every op is correctable: volumetric via the D15 guard, neutral via void; corrected ops
       stay visible, marked.
-- [ ] Capture is vessel-first (one-tap, no work order), with provenance on every op.
-- [ ] All ops route through `writeLotOperation`; projection == fold of the ledger (0 drift).
-- [ ] Capture UX matches the Design Specification: per-vessel Actions row; cap = one-tap +
+- [x] Capture is vessel-first (one-tap, no work order), with provenance on every op.
+- [x] All ops route through `writeLotOperation`; projection == fold of the ledger (0 drift).
+- [x] Capture UX matches the Design Specification: per-vessel Actions row; cap = one-tap +
       undo, others = preview + confirm; live additions-math line; group actions on `/bulk`
       with a result summary + per-member exceptions; "Logged · Undo" toast.
-- [ ] Responsive + a11y per spec (`inputMode="decimal"`, ≥44px, `:focus-visible`, `aria-live`
+- [x] Responsive + a11y per spec (`inputMode="decimal"`, ≥44px, `:focus-visible`, `aria-live`
       math/progress, op type not color-only); no AI-slop patterns.
-- [ ] `tsc` clean; full vitest green (incl. additions-math); `npm run build` clean.
+- [x] `tsc` clean; full vitest green (incl. additions-math); `npm run build` clean.
 
 ## Open Questions (resolve at /work or design review)
 

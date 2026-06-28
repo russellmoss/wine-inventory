@@ -44,7 +44,6 @@ async function vesselTotal(vesselId: string): Promise<number> {
 // ── fixtures ──
 const createdVesselIds: string[] = [];
 const createdLotIds: string[] = [];
-let groupId: string | null = null;
 
 async function makeVessel(code: string, type: "TANK" | "BARREL", capacityL: number): Promise<string> {
   const v = await prisma.vessel.create({ data: { code, type, capacityL } });
@@ -96,8 +95,8 @@ async function scrub() {
   await prisma.lotLineage.deleteMany({
     where: { OR: [{ parentLotId: { in: createdLotIds } }, { childLotId: { in: createdLotIds } }] },
   });
-  if (groupId) await prisma.vesselGroup.deleteMany({ where: { id: groupId } });
-  // Deleting the vessels cascades their vessel_lot projection rows + group memberships.
+  // The group test uses an ad-hoc vessel selection (no saved VesselGroup), so there's no
+  // group row to remove. Deleting the vessels cascades vessel_lot + any group memberships.
   await prisma.vessel.deleteMany({ where: { id: { in: createdVesselIds } } });
   await prisma.lot.deleteMany({ where: { id: { in: createdLotIds } } });
   await prisma.cellarMaterial.deleteMany({ where: { normalizedKey: normalizeMaterialKey("ZZTEST KMBS") } });
@@ -113,7 +112,7 @@ async function main() {
   const b1 = await makeVessel("ZZ-TEST-B1", "BARREL", 250);
   const b2 = await makeVessel("ZZ-TEST-B2", "BARREL", 250);
   const b3 = await makeVessel("ZZ-TEST-B3", "BARREL", 250); // left empty → group skip
-  const lotTank = await seedLot("ZZTEST-TANK", tank, 450);
+  await seedLot("ZZTEST-TANK", tank, 450);
   const lotKeg = await seedLot("ZZTEST-KEG", keg, 50);
   const lotB1 = await seedLot("ZZTEST-B1", b1, 200);
   await seedLot("ZZTEST-B2", b2, 200);

@@ -316,6 +316,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
             ) : null}
 
             <CellarActions
+              key={selected.id}
               vessel={{ id: selected.id, code: selected.code, type: selected.type, capacityL: selected.capacityL, totalL: selected.fill.filledL }}
               materials={materials}
               kegOptions={kegOptions}
