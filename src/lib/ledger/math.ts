@@ -114,6 +114,70 @@ export function planLedgerRack(
   return { drawL: round2(drawL), lossL: round2(lossL), addedL: round2(drawL - lossL), lines };
 }
 
+export type BlendComponentDraw = { vesselId: string; lotId: string; drawL: number };
+
+export type BlendPlan = {
+  lines: LedgerLine[];
+  childTotalL: number; // into the destination = Σdraw − loss
+  lossL: number;
+  // Gross INPUT share per DISTINCT parent lot (council S1, loss-independent; council C2 —
+  // the same lot drawn from two vessels collapses into ONE entry). Drives lineage fractions.
+  parentGrossByLot: { lotId: string; grossL: number }[];
+};
+
+/**
+ * Plan a BLEND (Phase 5): draw `drawL` from each component (vessel, lot) position into a
+ * single child lot in `toVesselId`, losing `lossL` to the external counter-account.
+ * Generalizes planLedgerRack from 1 source → N. Each component is a `-drawL` line (validated
+ * against the live balance — partial draws are fine, leaving the remainder); the child gets
+ * one `+(Σdraw − loss)` line; an optional `+loss` external line balances it. Gross shares are
+ * aggregated per DISTINCT parent lot so a lot drawn from two vessels is one parent. Throws on
+ * a non-positive draw, an over-draw, or a loss exceeding the total drawn.
+ */
+export function planBlend(
+  components: BlendComponentDraw[],
+  toVesselId: string,
+  childLotId: string,
+  lossL: number,
+  sourceBalances: VesselLotBalance[],
+): BlendPlan {
+  if (components.length === 0) throw new Error("A blend needs at least one source.");
+  if (lossL < 0) throw new Error("Loss can't be negative.");
+
+  const balByKey = new Map(sourceBalances.map((b) => [balanceKey(b.vesselId, b.lotId), b.volumeL]));
+  const lines: LedgerLine[] = [];
+  const grossByLot = new Map<string, number>();
+  let grossTotal = 0;
+
+  for (const c of components) {
+    if (!(c.drawL > 0)) throw new Error("Each blend draw must be greater than 0.");
+    const have = balByKey.get(balanceKey(c.vesselId, c.lotId)) ?? 0;
+    if (c.drawL > have + EPS) {
+      throw new Error(`Can't draw ${c.drawL} L — that lot holds ${round2(have)} L in that vessel.`);
+    }
+    lines.push({ lotId: c.lotId, vesselId: c.vesselId, deltaL: round2(-c.drawL) });
+    grossByLot.set(c.lotId, round2((grossByLot.get(c.lotId) ?? 0) + c.drawL));
+    grossTotal = round2(grossTotal + c.drawL);
+  }
+
+  if (lossL > grossTotal + EPS) throw new Error("Loss can't exceed the total drawn.");
+  const childTotalL = round2(grossTotal - lossL);
+  if (!(childTotalL > 0)) throw new Error("A blend must yield a positive volume.");
+
+  lines.push({ lotId: childLotId, vesselId: toVesselId, deltaL: childTotalL });
+  if (lossL > 0) {
+    lines.push({ lotId: childLotId, vesselId: null, deltaL: round2(lossL), reason: "loss" });
+  }
+
+  assertBalanced(lines);
+  return {
+    lines,
+    childTotalL,
+    lossL: round2(lossL),
+    parentGrossByLot: [...grossByLot.entries()].map(([lotId, grossL]) => ({ lotId, grossL })),
+  };
+}
+
 export type VesselLossPlan = {
   removedL: number;
   lines: LedgerLine[];
