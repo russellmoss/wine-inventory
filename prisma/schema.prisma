@@ -34,6 +34,9 @@ model User {
   assignedVineyard       Vineyard?               @relation("VineyardManagers", fields: [assignedVineyardId], references: [id], onDelete: SetNull)
   fieldNotes             FieldNote[]
   assistantConversations AssistantConversation[]
+  // Phase 5 (D9): vineyard MEMBERSHIP set — replaces assignedVineyardId (dropped in Unit 3
+  // after backfill). Dual-read for one release.
+  vineyardMemberships    UserVineyard[]
 
   @@unique([email])
   @@index([assignedVineyardId])
@@ -178,6 +181,9 @@ model Vineyard {
   fieldNotes      FieldNote[]
   brixLogs        BrixLog[]
   harvestRecords  HarvestRecord[]
+  // Phase 5.
+  lotMemberships  LotVineyard[]     // lots whose source set includes this vineyard
+  userMemberships UserVineyard[]    // users who manage this vineyard (D9 membership set)
 
   @@map("vineyard")
 }
@@ -750,8 +756,12 @@ model Lot {
   originSubblockId String?
   originVarietyId  String?
   vintageYear      Int?
-  status           String   @default("ACTIVE") // ACTIVE | DEPLETED | ARCHIVED
+  status           String   @default("ACTIVE") // ACTIVE | DEPLETED | ARCHIVED | CORRECTED
   isLegacy         Boolean  @default(false)
+  // Phase 5: false when this lot's source-vineyard set may be incomplete (a blend with a
+  // parent of unknown provenance). Contagious: a blend with any incomplete parent is itself
+  // incomplete (council C6). Drives the "admin-only-visible" NULL-source bucket.
+  provenanceComplete Boolean @default(true)
   legacySnapshot   Json?
   sublotTag        String? // optional human variant tag in the lot code (experiments / differential picks)
   note             String?
@@ -768,6 +778,10 @@ model Lot {
   analysisPanels  AnalysisPanel[]
   tastingNotes    LotTastingNote[]
   samples         Sample[]
+  // Phase 5 blends.
+  sourceVineyards      LotVineyard[]          // the lot's source-vineyard SET (union over lineage at blend)
+  blendTrialComponents BlendTrialComponent[]  // bench-trial component rows referencing this lot
+  promotedFromTrials   BlendTrial[]           @relation("TrialPromotedLot") // trials promoted into this lot
 
   @@index([status])
   @@index([originVineyardId])
@@ -857,6 +871,97 @@ model LotLineage {
   @@unique([parentLotId, childLotId])
   @@index([childLotId])
   @@map("lot_lineage")
+}
+
+// ───────────────────────── Phase 5: blends, lineage source-set & RBAC ─────────────────────────
+
+// A lot's source-vineyard SET. A single-origin lot has one row; a blend has the UNION of its
+// parents' full sets (materialized at the BLEND write, inductively transitive — council C6).
+// Populated at SEED from originVineyardId and backfilled for existing lots. The scoping/lens
+// query is "lots whose source vineyard ∈ my set" → index on vineyardId.
+model LotVineyard {
+  id         String   @id @default(cuid())
+  lotId      String
+  vineyardId String
+  createdAt  DateTime @default(now())
+  lot        Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  vineyard   Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
+
+  @@unique([lotId, vineyardId])
+  @@index([vineyardId])
+  @@map("lot_vineyard")
+}
+
+// D9 RBAC: a user's vineyard MEMBERSHIP set, replacing the single User.assignedVineyardId.
+// A manager can manage N vineyards; a blended lot spans many. Added here (dual-read);
+// assignedVineyardId is dropped in Unit 3 after the backfill is verified.
+model UserVineyard {
+  id         String   @id @default(cuid())
+  userId     String
+  vineyardId String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vineyard   Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, vineyardId])
+  @@index([vineyardId])
+  @@map("user_vineyard")
+}
+
+enum BlendTrialStatus {
+  DRAFT
+  CHOSEN
+  PROMOTED
+  DISCARDED
+}
+
+// An OFF-LEDGER bench trial — a throwaway small-scale blend experiment (component lots +
+// proportions/volumes + a tasting outcome). Zero ledger impact until PROMOTED, when the chosen
+// ratios prefill the blend builder and a real BLEND op runs (promotedToLotId links the result).
+// Reuses the Phase 4 tasting enums. CHECK (score-with-scale together-or-neither) in migration.
+model BlendTrial {
+  id              String                @id @default(cuid())
+  name            String
+  targetWine      String? // intent — what this trial aims at; groups DRAFTs (council S9)
+  note            String?
+  baseVolume      Decimal?              @db.Decimal(12, 3) // bench base size
+  baseUnit        String? // mL | L (validated in code)
+  status          BlendTrialStatus      @default(DRAFT)
+  score           Int?
+  scoreScale      TastingScoreScale?
+  readiness       TastingReadiness?
+  tastingNotes    String?
+  chosenAt        DateTime?
+  promotedToLotId String?
+  enteredAt       DateTime              @default(now())
+  enteredById     String? // actor id snapshot (no FK; matches LotOperation.actorUserId)
+  enteredByEmail  String // durable provenance snapshot
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  components      BlendTrialComponent[]
+  promotedToLot   Lot?                  @relation("TrialPromotedLot", fields: [promotedToLotId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([promotedToLotId])
+  @@map("blend_trial")
+}
+
+// One component of a bench trial: a lot + its share (proportion ∈ (0,1]) or absolute volume.
+// CHECK (proportion ∈ (0,1]) in migration.
+model BlendTrialComponent {
+  id         String     @id @default(cuid())
+  trialId    String
+  lotId      String
+  proportion Decimal?   @db.Decimal(6, 5) // share of the base, (0,1]
+  volume     Decimal?   @db.Decimal(12, 3)
+  unit       String? // mL | L
+  createdAt  DateTime   @default(now())
+  trial      BlendTrial @relation(fields: [trialId], references: [id], onDelete: Cascade)
+  lot        Lot        @relation(fields: [lotId], references: [id], onDelete: Restrict)
+
+  @@unique([trialId, lotId])
+  @@index([lotId])
+  @@map("blend_trial_component")
 }
 
 // ───────────────────────── Cellar operations (Phase 3) ─────────────────────────
