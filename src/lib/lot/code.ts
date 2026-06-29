@@ -63,6 +63,39 @@ export function buildLotCode(parts: LotCodeParts): string {
   return ordered.join("-");
 }
 
+// ─────────────────────── Phase 5: blend lot codes ───────────────────────
+
+/**
+ * A blend token: a winemaker-set 2–4 LETTER tag (uppercased, punctuation/whitespace stripped),
+ * e.g. "est" → "EST". Letters only — a blend code carries no vineyard/variety provenance, so
+ * the tag is the winemaker's free label. Throws if it can't form a 2–4 letter token.
+ */
+export function normalizeBlendToken(raw: unknown): string {
+  const t = String(raw ?? "")
+    .normalize("NFKD")
+    .replace(/[^A-Za-z]/g, "")
+    .toUpperCase();
+  if (t.length < 2 || t.length > 4) {
+    throw new Error("Blend token must be 2–4 letters.");
+  }
+  return t;
+}
+
+export type BlendLotCodeParts = { vintage?: number | null; token: string };
+
+/**
+ * Compose a BLEND lot code: `[vintage]-BL-<TOKEN>` (e.g. `2024-BL-EST`), or `NV-BL-<TOKEN>`
+ * when there is no single vintage (NV / multi-vintage — D3). Deliberately has NO vineyard or
+ * variety segment: a multi-source blend must not masquerade as single-origin. Only the NEW-LOT
+ * blend mode mints a code; GROW-EXISTING keeps the resident lot's immutable code.
+ */
+export function buildBlendLotCode(parts: BlendLotCodeParts): string {
+  const token = normalizeBlendToken(parts.token);
+  const vintageSeg =
+    parts.vintage != null && Number.isFinite(parts.vintage) ? String(parts.vintage) : "NV";
+  return `${vintageSeg}-BL-${token}`;
+}
+
 /**
  * Return `base` if it is not already taken, else the first free `base-2`, `base-3`, …
  * Pass the set/array of existing codes (e.g. those sharing the base prefix).

@@ -98,3 +98,41 @@ describe("disambiguate — auto numeric suffix on collision", () => {
     expect(disambiguate("X", ["X", "X-2"])).toBe("X-3");
   });
 });
+
+// ─────────────────────── Phase 5: blend lot codes ───────────────────────
+import { normalizeBlendToken, buildBlendLotCode } from "@/lib/lot/code";
+
+describe("normalizeBlendToken (2–4 letters, uppercased)", () => {
+  it("uppercases and trims punctuation/whitespace", () => {
+    expect(normalizeBlendToken("est")).toBe("EST");
+    expect(normalizeBlendToken(" e.s.t ")).toBe("EST");
+    expect(normalizeBlendToken("Re")).toBe("RE");
+  });
+  it("rejects too short / too long", () => {
+    expect(() => normalizeBlendToken("a")).toThrow();
+    expect(() => normalizeBlendToken("ESTAT")).toThrow(); // 5 letters
+    expect(() => normalizeBlendToken("")).toThrow();
+  });
+  it("rejects tokens with no letters", () => {
+    expect(() => normalizeBlendToken("12")).toThrow();
+    expect(() => normalizeBlendToken("--")).toThrow();
+  });
+});
+
+describe("buildBlendLotCode ([vintage]-BL-<TOKEN>, no vineyard/variety)", () => {
+  it("composes with a vintage", () => {
+    expect(buildBlendLotCode({ vintage: 2024, token: "est" })).toBe("2024-BL-EST");
+  });
+  it("uses NV when no vintage (NV/multi-vintage blends — D3)", () => {
+    expect(buildBlendLotCode({ token: "RES" })).toBe("NV-BL-RES");
+    expect(buildBlendLotCode({ vintage: null, token: "RES" })).toBe("NV-BL-RES");
+  });
+  it("never carries a vineyard/variety segment", () => {
+    const code = buildBlendLotCode({ vintage: 2023, token: "GSM" });
+    expect(code).toBe("2023-BL-GSM");
+    expect(code.split("-")).toHaveLength(3);
+  });
+  it("propagates token validation", () => {
+    expect(() => buildBlendLotCode({ vintage: 2024, token: "TOOLONG" })).toThrow();
+  });
+});

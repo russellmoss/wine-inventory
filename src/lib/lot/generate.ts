@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { buildLotCode, blockToken, normalizeToken, disambiguate } from "@/lib/lot/code";
+import { buildLotCode, buildBlendLotCode, blockToken, normalizeToken, disambiguate } from "@/lib/lot/code";
 
 // Server-side lot-code assignment: compose the base human code (pure, from code.ts) and
 // disambiguate it against existing lot codes via the DB. Takes a prisma client OR a
@@ -29,6 +29,18 @@ export async function nextLotCode(db: Db, input: GenerateLotCodeInput): Promise<
     subblockToken: normalizeToken(input.subblockCode ?? input.subblockLabel) || undefined,
     tag: input.tag ? normalizeToken(input.tag) : undefined,
   });
+  const existing = await db.lot.findMany({ where: { code: { startsWith: base } }, select: { code: true } });
+  return disambiguate(base, new Set(existing.map((e) => e.code)));
+}
+
+export type GenerateBlendLotCodeInput = { vintage?: number | null; token: string };
+
+/**
+ * Compose a blend base code (`[vintage]-BL-<TOKEN>`), then return the first free
+ * `base` / `base-2` / `base-3` … against existing lot codes. Race-safe inside a tx.
+ */
+export async function nextBlendLotCode(db: Db, input: GenerateBlendLotCodeInput): Promise<string> {
+  const base = buildBlendLotCode({ vintage: input.vintage, token: input.token });
   const existing = await db.lot.findMany({ where: { code: { startsWith: base } }, select: { code: true } });
   return disambiguate(base, new Set(existing.map((e) => e.code)));
 }
