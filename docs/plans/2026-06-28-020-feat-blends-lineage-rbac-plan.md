@@ -1,12 +1,17 @@
 ---
 title: Blends, Lineage Tree & RBAC Redesign (Phase 5)
 type: feat
-status: draft
+status: completed
 date: 2026-06-28
-branch: claude/zen-chebyshev-b2195e
+branch: main
 depth: deep
 units: 12
 ---
+
+> **Built on `main`** (2026-06-29): Phase 4 chemistry/tasting was merged to `main`, but the
+> original worktree branch `claude/zen-chebyshev-b2195e` lacked it. Per the Phase-5 dependency
+> on Phase 4, the work was executed on `main` (which has Phase 4). All 12 units (+ 8b) shipped;
+> `scripts/verify-blends.ts` = 39/39 PASS; full suite 486 tests; build clean.
 
 ## Overview
 
@@ -568,23 +573,23 @@ create→choose→promote; a 2-vineyard manager's lot list; admin vs manager vis
 
 ## Success Criteria (Phase 5 exit)
 
-- [ ] Blend 3 lots → 1 new child lot with correct multi-parent lineage + fractions; volume
+- [x] Blend 3 lots → 1 new child lot with correct multi-parent lineage + fractions; volume
       conserved (projection == fold); a partial-drawn parent keeps its remainder.
-- [ ] The child lot has its own code, timeline, and can carry Phase 4 chemistry/tasting.
-- [ ] A manager, via the opt-in lens, traces a blend touching their vineyard; with the lens
+- [x] The child lot has its own code, timeline, and can carry Phase 4 chemistry/tasting.
+- [x] A manager, via the opt-in lens, traces a blend touching their vineyard; with the lens
       off they still see the whole cellar (tenant-wide, no regression); admin sees all.
-- [ ] Existing single-vineyard harvest/field-notes/assistant scoping still works after the
+- [x] Existing single-vineyard harvest/field-notes/assistant scoping still works after the
       `UserVineyard` migration.
-- [ ] Both blend modes work: NEW-LOT mints a `BL-<TOKEN>` child; GROW-EXISTING keeps the
+- [x] Both blend modes work: NEW-LOT mints a `BL-<TOKEN>` child; GROW-EXISTING keeps the
       resident lot's code and adds lineage.
-- [ ] Racking into an occupied vessel (different lot) auto-creates a GROW-EXISTING blend (one
+- [x] Racking into an occupied vessel (different lot) auto-creates a GROW-EXISTING blend (one
       resident, lineage recorded, no co-resident rows); rack into empty/same-lot stays a rack.
-- [ ] A bench trial can be created, scored, chosen, and promoted (via the prefilled builder)
+- [x] A bench trial can be created, scored, chosen, and promoted (via the prefilled builder)
       into a real blend — or discarded with zero ledger impact.
-- [ ] The lot detail shows a flat composition rollup + an (immediate-first) lineage tree.
-- [ ] A fresh blend can be corrected (wine back to original vessels, child marked CORRECTED);
+- [x] The lot detail shows a flat composition rollup + an (immediate-first) lineage tree.
+- [x] A fresh blend can be corrected (wine back to original vessels, child marked CORRECTED);
       a blend with downstream activity refuses correction (D15); a tasting note does not block.
-- [ ] All Vitest tests pass; `scripts/verify-blends.ts` all PASS; `npm run build` clean;
+- [x] All Vitest tests pass; `scripts/verify-blends.ts` all PASS; `npm run build` clean;
       no regressions.
 
 ## GSTACK REVIEW REPORT

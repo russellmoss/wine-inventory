@@ -511,12 +511,10 @@ function RackForm({
   const destLotCodes = dest?.lotCodes ?? [];
   const occupiedDifferent = destLotCodes.length > 0 && destLotCodes.some((c) => !sourceCodes.includes(c));
   const tokenValid = /^[A-Za-z]{2,4}$/.test(token.trim());
-  const valid = !!toVesselId && drawValid && landedValid && (!useNewBlend || tokenValid);
-
-  // Reset the escape when the destination changes / is no longer occupied-different.
-  React.useEffect(() => {
-    if (!occupiedDifferent && useNewBlend) setUseNewBlend(false);
-  }, [occupiedDifferent, useNewBlend]);
+  // The "new blend" escape only applies to an occupied-different destination — derive it so it
+  // self-clears when the destination changes (no setState-in-effect cascade).
+  const newBlendActive = useNewBlend && occupiedDifferent;
+  const valid = !!toVesselId && drawValid && landedValid && (!newBlendActive || tokenValid);
 
   return (
     <FormShell>
@@ -532,7 +530,7 @@ function RackForm({
       </select>
       <input value={drawL} onChange={(e) => setDrawL(e.target.value)} inputMode="decimal" placeholder="Litres out" style={{ ...fieldStyle, width: 100 }} aria-label="Litres moved out of this vessel" title={`Out of ${vessel.code} (defaults to its full volume)`} />
       <input value={landedL} onChange={(e) => setLandedL(e.target.value)} inputMode="decimal" placeholder="Litres in (measured)" style={{ ...fieldStyle, width: 140 }} aria-label="Measured litres into the destination" />
-      {useNewBlend ? (
+      {newBlendActive ? (
         <input value={token} onChange={(e) => setToken(e.target.value.toUpperCase())} maxLength={4} placeholder="Tag (e.g. EST)" style={{ ...fieldStyle, width: 110 }} aria-label="New blend tag (2–4 letters)" />
       ) : null}
       <Button
@@ -547,14 +545,14 @@ function RackForm({
                 toVesselId,
                 drawL: draw,
                 lossL,
-                ...(useNewBlend ? { newBlend: { token: token.trim() } } : {}),
+                ...(newBlendActive ? { newBlend: { token: token.trim() } } : {}),
               }),
             `racked ${draw} L`,
           )
         }
         style={{ minHeight: 44 }}
       >
-        {pending ? "Saving…" : useNewBlend ? `Rack as new blend` : `Rack from ${vessel.code}`}
+        {pending ? "Saving…" : newBlendActive ? `Rack as new blend` : `Rack from ${vessel.code}`}
       </Button>
       <div aria-live="polite" style={{ width: "100%", marginTop: 8, fontSize: 13, color: !landedValid ? "var(--danger)" : "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
         {destinations.length === 0
@@ -569,9 +567,9 @@ function RackForm({
                     onClick={() => setUseNewBlend((v) => !v)}
                     style={{ border: "none", background: "transparent", color: "var(--text-accent)", cursor: "pointer", fontSize: 13, padding: 0 }}
                   >
-                    {useNewBlend ? "keep destination lot instead" : "make a new blend instead"}
+                    {newBlendActive ? "keep destination lot instead" : "make a new blend instead"}
                   </button>
-                  {useNewBlend && !tokenValid ? " — enter a 2–4 letter tag." : ""}
+                  {newBlendActive && !tokenValid ? " — enter a 2–4 letter tag." : ""}
                 </span>
               )
               : landed == null
