@@ -144,7 +144,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({});
 
   // Keg sources (topping) + group multi-select rows, derived from the vessel list.
-  const kegOptions: KegOption[] = vessels.map((v) => ({ id: v.id, label: vesselLabel(v.type, v.code), totalL: v.fill.filledL }));
+  const kegOptions: KegOption[] = vessels.map((v) => ({ id: v.id, label: vesselLabel(v.type, v.code), totalL: v.fill.filledL, lotCodes: v.residentLots.map((r) => r.code) }));
   const groupVessels: GroupVessel[] = vessels.map((v) => ({
     id: v.id,
     code: v.code,

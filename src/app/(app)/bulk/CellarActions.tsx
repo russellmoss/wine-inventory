@@ -20,6 +20,8 @@ import {
   revertRackAction,
   topVesselAction,
 } from "@/lib/cellar/actions";
+import { correctBlendAction } from "@/lib/blend/actions";
+import type { RackVesselResult } from "@/lib/vessels/rack-core";
 import {
   recordMeasurementsAction,
   recordTastingNoteAction,
@@ -56,7 +58,7 @@ export type CellarActionsVessel = {
   /** Lots currently resident in this vessel — drives the D2 lot picker for chemistry records. */
   residentLots: ResidentLot[];
 };
-export type KegOption = { id: string; label: string; totalL: number };
+export type KegOption = { id: string; label: string; totalL: number; lotCodes?: string[] };
 
 const fieldStyle: React.CSSProperties = {
   height: 44,
@@ -139,14 +141,19 @@ export function CellarActions({
     });
   }
 
-  // Racking undoes through its own transfer-revert path (by transferId).
-  function runRack(fn: () => Promise<{ transferId: string }>, label: string) {
+  // Racking undoes through its own transfer-revert path (by transferId) — UNLESS the rack
+  // auto-routed to a blend (into an occupied vessel), in which case undo is the blend correction.
+  function runRack(fn: () => Promise<RackVesselResult>, label: string) {
     setError(null);
     startTransition(async () => {
       try {
         const res = await fn();
         setMode(null);
-        setToast({ label, undo: () => revertRackAction(res.transferId) });
+        if (res.kind === "BLEND") {
+          setToast({ label: `blended into ${res.childCode}`, undo: () => correctBlendAction(res.operationId) });
+        } else {
+          setToast({ label, undo: () => revertRackAction(res.transferId) });
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
@@ -483,19 +490,33 @@ function RackForm({
   vessel: CellarActionsVessel;
   kegOptions: KegOption[];
   pending: boolean;
-  onSubmit: (fn: () => Promise<{ transferId: string }>, label: string) => void;
+  onSubmit: (fn: () => Promise<RackVesselResult>, label: string) => void;
 }) {
   const destinations = kegOptions.filter((k) => k.id !== vessel.id);
   const [toVesselId, setToVesselId] = React.useState("");
   const [drawL, setDrawL] = React.useState(String(vessel.totalL || ""));
   const [landedL, setLandedL] = React.useState("");
+  const [useNewBlend, setUseNewBlend] = React.useState(false);
+  const [token, setToken] = React.useState("");
 
   const draw = Number(drawL);
   const landed = landedL.trim() === "" ? null : Number(landedL);
   const drawValid = Number.isFinite(draw) && draw > 0 && draw <= vessel.totalL + 1e-9;
   const landedValid = landed == null || (Number.isFinite(landed) && landed >= 0 && landed <= draw + 1e-9);
-  const valid = !!toVesselId && drawValid && landedValid;
   const lossL = landed == null ? 0 : Math.round((draw - landed) * 100) / 100;
+
+  // Is the chosen destination occupied by a DIFFERENT lot? Then racking blends (Unit 8b).
+  const sourceCodes = vessel.residentLots.map((r) => r.code);
+  const dest = destinations.find((d) => d.id === toVesselId);
+  const destLotCodes = dest?.lotCodes ?? [];
+  const occupiedDifferent = destLotCodes.length > 0 && destLotCodes.some((c) => !sourceCodes.includes(c));
+  const tokenValid = /^[A-Za-z]{2,4}$/.test(token.trim());
+  const valid = !!toVesselId && drawValid && landedValid && (!useNewBlend || tokenValid);
+
+  // Reset the escape when the destination changes / is no longer occupied-different.
+  React.useEffect(() => {
+    if (!occupiedDifferent && useNewBlend) setUseNewBlend(false);
+  }, [occupiedDifferent, useNewBlend]);
 
   return (
     <FormShell>
@@ -511,23 +532,51 @@ function RackForm({
       </select>
       <input value={drawL} onChange={(e) => setDrawL(e.target.value)} inputMode="decimal" placeholder="Litres out" style={{ ...fieldStyle, width: 100 }} aria-label="Litres moved out of this vessel" title={`Out of ${vessel.code} (defaults to its full volume)`} />
       <input value={landedL} onChange={(e) => setLandedL(e.target.value)} inputMode="decimal" placeholder="Litres in (measured)" style={{ ...fieldStyle, width: 140 }} aria-label="Measured litres into the destination" />
+      {useNewBlend ? (
+        <input value={token} onChange={(e) => setToken(e.target.value.toUpperCase())} maxLength={4} placeholder="Tag (e.g. EST)" style={{ ...fieldStyle, width: 110 }} aria-label="New blend tag (2–4 letters)" />
+      ) : null}
       <Button
         variant="primary"
         size="sm"
         disabled={pending || !valid}
-        onClick={() => onSubmit(() => rackVesselAction({ fromVesselId: vessel.id, toVesselId, drawL: draw, lossL }), `racked ${draw} L`)}
+        onClick={() =>
+          onSubmit(
+            () =>
+              rackVesselAction({
+                fromVesselId: vessel.id,
+                toVesselId,
+                drawL: draw,
+                lossL,
+                ...(useNewBlend ? { newBlend: { token: token.trim() } } : {}),
+              }),
+            `racked ${draw} L`,
+          )
+        }
         style={{ minHeight: 44 }}
       >
-        {pending ? "Saving…" : `Rack from ${vessel.code}`}
+        {pending ? "Saving…" : useNewBlend ? `Rack as new blend` : `Rack from ${vessel.code}`}
       </Button>
       <div aria-live="polite" style={{ width: "100%", marginTop: 8, fontSize: 13, color: !landedValid ? "var(--danger)" : "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
         {destinations.length === 0
           ? "No other vessel to rack into."
           : !landedValid
             ? "Measured volume in can't exceed the volume out."
-            : landed == null
-              ? `Enter the measured volume landed to record lees loss (out − in). Leaving it blank logs no loss.`
-              : `Lees loss = ${lossL} L (out ${draw} − in ${landed}).`}
+            : occupiedDifferent ? (
+                <span>
+                  {dest?.label} holds {destLotCodes.join(", ")}. Racking here blends them — kept as {destLotCodes[0]}.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setUseNewBlend((v) => !v)}
+                    style={{ border: "none", background: "transparent", color: "var(--text-accent)", cursor: "pointer", fontSize: 13, padding: 0 }}
+                  >
+                    {useNewBlend ? "keep destination lot instead" : "make a new blend instead"}
+                  </button>
+                  {useNewBlend && !tokenValid ? " — enter a 2–4 letter tag." : ""}
+                </span>
+              )
+              : landed == null
+                ? `Enter the measured volume landed to record lees loss (out − in). Leaving it blank logs no loss.`
+                : `Lees loss = ${lossL} L (out ${draw} − in ${landed}).`}
       </div>
     </FormShell>
   );

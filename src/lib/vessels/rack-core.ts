@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
-import { round2 } from "@/lib/bottling/draw";
+import { round2, computeProportionalDraw } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import {
   balanceKey,
@@ -11,6 +11,7 @@ import {
   type LedgerLine,
   type VesselLotBalance,
 } from "@/lib/ledger/math";
+import { blendLotsCore, type BlendComponentInput, type BlendLotsResult } from "@/lib/blend/blend-core";
 
 // Script-safe core for racking + revert (no "use server", no next/cache, no server-only).
 // transfer.ts wraps these in server actions + cache revalidation; scripts/tests call the
@@ -182,6 +183,99 @@ export async function rackWineCore(actor: LedgerActor, input: TransferWineInput)
     lossL: plan.lossL,
     addedL,
   };
+}
+
+// ─────────────────────── Unit 8b: rack becomes blend-aware ───────────────────────
+
+export type RackRoute = "RACK" | "BLEND";
+
+/**
+ * Decide how a rack into a destination should route (pure, council C1 / user):
+ *   - empty destination            → RACK (plain move, unchanged);
+ *   - destination holds the SAME lot the draw carries → RACK (a merge — the (vessel,lot)
+ *     balance just grows, no lineage, NOT a blend);
+ *   - destination holds a DIFFERENT lot → BLEND (grow-existing: the resident absorbs the draw
+ *     and gains lineage), closing the Phase 4 co-residence loophole at the write path;
+ *   - destination holds >1 lot (legacy co-residence) → RACK (leave it; don't guess a child).
+ */
+export function decideRackRoute(drawnSourceLotIds: string[], destLotIds: string[]): RackRoute {
+  if (destLotIds.length !== 1) return "RACK";
+  const resident = destLotIds[0];
+  const drawsForeign = drawnSourceLotIds.some((id) => id !== resident);
+  return drawsForeign ? "BLEND" : "RACK";
+}
+
+export type RackVesselInput = TransferWineInput & {
+  // Escape hatch (user): when racking into an occupied vessel, mint a NEW blend lot instead of
+  // growing the resident — the resident is fully drawn into the new `[vintage]-BL-<TOKEN>` child.
+  newBlend?: { token: string; vintage?: number | null };
+};
+
+export type RackVesselResult =
+  | ({ kind: "RACK" } & TransferWineResult)
+  | ({ kind: "BLEND" } & BlendLotsResult & { fromCode: string; toCode: string });
+
+/**
+ * Blend-aware rack (Unit 8b). Routes a rack to a plain RACK, a same-lot merge, or a
+ * GROW-EXISTING blend depending on the destination's residents — or to a NEW-LOT blend when
+ * the caller takes the "make a new blend instead" escape. Shares blendLotsCore so lineage +
+ * source-set + provenance are recorded identically to the /blend builder.
+ */
+export async function rackVesselCore(actor: LedgerActor, input: RackVesselInput): Promise<RackVesselResult> {
+  const { fromVesselId, toVesselId } = input;
+  if (!fromVesselId || !toVesselId) throw new ActionError("A source and a destination vessel are both required.");
+  if (fromVesselId === toVesselId) throw new ActionError("Source and destination must be different vessels.");
+
+  const [srcLots, destLots] = await Promise.all([loadVesselLots(fromVesselId), loadVesselLots(toVesselId)]);
+  const sourceTotal = round2(srcLots.reduce((a, r) => a + Number(r.volumeL), 0));
+  if (sourceTotal <= 0) throw new ActionError("The source vessel is empty.");
+  const drawL = input.drawL == null ? sourceTotal : round2(input.drawL);
+  if (!(drawL > 0)) throw new ActionError("Transfer volume must be greater than 0.");
+  if (drawL > sourceTotal + EPS) throw new ActionError(`The source only holds ${sourceTotal} L; can't move ${drawL} L.`);
+  const lossL = input.lossL == null ? 0 : round2(input.lossL);
+
+  // Split the draw across the source's lots (matches planLedgerRack's proportional deduction).
+  const deductions = computeProportionalDraw(
+    srcLots.map((r) => ({ id: r.lotId, volumeL: Number(r.volumeL) })),
+    drawL,
+  );
+  const drawnComponents: BlendComponentInput[] = deductions
+    .filter((d) => d.deduct > 0)
+    .map((d) => ({ vesselId: fromVesselId, lotId: d.id, drawL: round2(d.deduct) }));
+  const drawnSourceLotIds = drawnComponents.map((c) => c.lotId);
+  const destLotIds = destLots.map((r) => r.lotId);
+
+  const route = decideRackRoute(drawnSourceLotIds, destLotIds);
+
+  // Plain rack / same-lot merge (and no explicit new-blend escape) → unchanged path.
+  if (route === "RACK" && !input.newBlend) {
+    const res = await rackWineCore(actor, input);
+    return { kind: "RACK", ...res };
+  }
+
+  // Blend path. GROW-EXISTING by default; NEW-LOT when the escape is taken (the lone resident is
+  // fully drawn into the new lot so the destination ends holding only the child — council S4).
+  const components = [...drawnComponents];
+  let mode: "NEW_LOT" | "GROW_EXISTING" = "GROW_EXISTING";
+  if (input.newBlend) {
+    mode = "NEW_LOT";
+    for (const r of destLots) {
+      components.push({ vesselId: toVesselId, lotId: r.lotId, drawL: Number(r.volumeL), deplete: true });
+    }
+  }
+
+  const blend = await blendLotsCore(actor, {
+    mode,
+    components,
+    toVesselId,
+    lossL,
+    note: input.note,
+    ...(mode === "NEW_LOT" ? { token: input.newBlend!.token, vintage: input.newBlend!.vintage ?? null } : {}),
+  });
+
+  const fromCode = srcLots[0]?.lot.code ?? fromVesselId;
+  const toCode = destLots[0]?.lot.code ?? blend.childCode;
+  return { kind: "BLEND", ...blend, fromCode, toCode };
 }
 
 /** The most recent rack still revertable (not reverted, not itself a reversal). */

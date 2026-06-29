@@ -39,10 +39,10 @@ import {
   type CorrectResult,
 } from "@/lib/cellar/correct";
 import {
-  rackWineCore,
+  rackVesselCore,
   revertTransferCore,
-  type TransferWineInput,
-  type TransferWineResult,
+  type RackVesselInput,
+  type RackVesselResult,
   type RevertTransferResult,
 } from "@/lib/vessels/rack-core";
 import {
@@ -185,10 +185,14 @@ export const correctBatchAction = action(
 
 // ── Racking (vessel-first home for the Phase 1/2 transfer core) ──
 
-/** Rack wine from a source vessel into a destination; lees loss is derived (out − in). */
+/**
+ * Rack wine from a source vessel into a destination; lees loss is derived (out − in).
+ * Blend-aware (Unit 8b): racking into a vessel holding a DIFFERENT lot auto-routes to a
+ * grow-existing blend; the optional `newBlend` escape mints a new blend lot instead.
+ */
 export const rackVesselAction = action(
-  async ({ actor }, input: TransferWineInput): Promise<TransferWineResult> => {
-    const res = await rackWineCore(actor, input);
+  async ({ actor }, input: RackVesselInput): Promise<RackVesselResult> => {
+    const res = await rackVesselCore(actor, input);
     revalidateCaptureSurfaces();
     return res;
   },
