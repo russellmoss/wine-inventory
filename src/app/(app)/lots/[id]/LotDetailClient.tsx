@@ -20,6 +20,8 @@ import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/addi
 import { deleteOperationAction, editOperationAction, correctOperationAction } from "@/lib/cellar/actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
 import { AnalyteTrends, type TrendReading } from "@/components/chemistry/AnalyteTrends";
+import { CompositionRollup } from "@/components/lot/CompositionRollup";
+import { LineageTree } from "@/components/lot/LineageTree";
 
 type Tone = React.ComponentProps<typeof Badge>["tone"];
 
@@ -573,6 +575,18 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
           ) : null}
         </Card>
       </div>
+
+      {/* Phase 5: lineage composition rollup + tree (omitted entirely when the lot has none) */}
+      {lot.lineageGraph ? (
+        <div style={{ display: "flex", gap: 28, flexWrap: "wrap", margin: "8px 0 4px" }}>
+          <Card style={{ flex: "1 1 320px" }}>
+            <CompositionRollup rollup={lot.lineageGraph.rollup} />
+          </Card>
+          <Card style={{ flex: "1 1 320px" }}>
+            <LineageTree ancestors={lot.lineageGraph.ancestors} descendants={lot.lineageGraph.descendants} />
+          </Card>
+        </div>
+      ) : null}
 
       {/* Chemistry: trends + derived molecular SO₂ */}
       <ChemistrySection events={lot.events} />

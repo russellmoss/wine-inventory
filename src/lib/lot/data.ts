@@ -16,6 +16,16 @@ import {
   type TimelineItem,
   type VesselKind,
 } from "@/lib/lot/timeline";
+import {
+  buildAncestry,
+  buildDescendants,
+  composeRollup,
+  hasLineage,
+  type LineageEdge,
+  type LineageNode,
+  type LotMeta,
+  type CompositionRollup,
+} from "@/lib/lot/lineage";
 
 // Server-side assembly of the Lot list + detail view-models, read straight from the
 // ledger (lot_operation + lot_operation_line) and the projection (vessel_lot -> lot).
@@ -39,6 +49,55 @@ export type LotListRow = {
 };
 
 export type LotLineageRef = { lotId: string; code: string };
+
+/**
+ * BFS the lot_lineage graph both directions from a root, batched level-by-level (no N+1),
+ * bounded by depth + node count. Returns the edge list + a per-lot meta map (codes + resolved
+ * origin variety/vineyard/vintage) for the pure lineage functions.
+ */
+async function loadLineageGraph(rootId: string): Promise<{ edges: LineageEdge[]; meta: Map<string, LotMeta> }> {
+  const collected = new Map<string, LineageEdge>();
+  const lotIds = new Set<string>([rootId]);
+  let frontier = [rootId];
+  const MAX_NODES = 200;
+  for (let depth = 0; depth < 12 && frontier.length > 0 && lotIds.size < MAX_NODES; depth++) {
+    const rows = await prisma.lotLineage.findMany({
+      where: { OR: [{ parentLotId: { in: frontier } }, { childLotId: { in: frontier } }] },
+      select: { parentLotId: true, childLotId: true, fraction: true, kind: true },
+    });
+    const nextFrontier: string[] = [];
+    for (const r of rows) {
+      const k = `${r.parentLotId}::${r.childLotId}`;
+      if (!collected.has(k)) {
+        collected.set(k, {
+          parentLotId: r.parentLotId,
+          childLotId: r.childLotId,
+          fraction: r.fraction == null ? null : Number(r.fraction),
+          kind: r.kind,
+        });
+      }
+      for (const id of [r.parentLotId, r.childLotId]) {
+        if (!lotIds.has(id)) {
+          lotIds.add(id);
+          nextFrontier.push(id);
+        }
+      }
+    }
+    frontier = nextFrontier;
+  }
+
+  const metaLots = await prisma.lot.findMany({
+    where: { id: { in: [...lotIds] } },
+    select: { id: true, code: true, vintageYear: true, originVarietyId: true, originVineyardId: true, legacySnapshot: true },
+  });
+  const names = await resolveOriginNames(metaLots);
+  const meta = new Map<string, LotMeta>();
+  for (const l of metaLots) {
+    const o = originFor(l, names);
+    meta.set(l.id, { id: l.id, code: l.code, vintageYear: l.vintageYear, varietyName: o.varietyName, vineyardName: o.vineyardName });
+  }
+  return { edges: [...collected.values()], meta };
+}
 
 export type TastingSearchRow = { lotId: string; lotCode: string; snippet: string; dateLabel: string };
 
@@ -80,6 +139,13 @@ export type LotDetail = {
   current: CurrentState;
   events: TimelineItem[];
   lineage: { parents: LotLineageRef[]; children: LotLineageRef[] };
+  // Phase 5: the walked lineage graph + composition rollup. null when the lot has NO lineage
+  // (the common case) so the UI omits the section entirely rather than render an empty graph.
+  lineageGraph: {
+    ancestors: LineageNode[];
+    descendants: LineageNode[];
+    rollup: CompositionRollup;
+  } | null;
 };
 
 type LegacySnapshot = { varietyName?: string | null; vineyardName?: string | null } | null;
@@ -338,6 +404,16 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
   const names = await resolveOriginNames([lot]);
   const origin = originFor(lot, names);
 
+  // Phase 5: the walked lineage graph + composition rollup (only when there's lineage at all).
+  const { edges: lineageEdges, meta: lineageMeta } = await loadLineageGraph(id);
+  const lineageGraph = hasLineage(id, lineageEdges)
+    ? {
+        ancestors: buildAncestry(id, lineageEdges, lineageMeta),
+        descendants: buildDescendants(id, lineageEdges, lineageMeta),
+        rollup: composeRollup(id, lineageEdges, lineageMeta),
+      }
+    : null;
+
   return {
     id: lot.id,
     code: lot.code,
@@ -354,5 +430,6 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
       parents: lot.parentEdges.map((e) => ({ lotId: e.parent.id, code: e.parent.code })),
       children: lot.childEdges.map((e) => ({ lotId: e.child.id, code: e.child.code })),
     },
+    lineageGraph,
   };
 }
