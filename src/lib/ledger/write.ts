@@ -32,10 +32,17 @@ export async function withWriteRetry<T>(fn: () => Promise<T>, attempts = 5): Pro
   }
 }
 
-/** Run a ledger write at SERIALIZABLE isolation with retry (mirrors bottling/run.ts). */
+/** Run a ledger write at SERIALIZABLE isolation with retry (mirrors bottling/run.ts).
+ * A blend touches many rows (N parent lines + child + lineage edges + source-set), so we lift
+ * the interactive-transaction timeout above Prisma's 5s default — remote Neon round-trips add
+ * up. The ceiling only RAISES the cap; it doesn't slow shorter ops. */
 export function runLedgerWrite<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return withWriteRetry(() =>
-    prisma.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }),
+    prisma.$transaction(fn, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      timeout: 20_000,
+      maxWait: 10_000,
+    }),
   );
 }
 

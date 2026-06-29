@@ -246,11 +246,12 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
         if (!p.provenanceComplete || p.sourceVineyards.length === 0) provenanceComplete = false;
         for (const sv of p.sourceVineyards) childVineyardIds.add(sv.vineyardId);
       }
-      for (const vineyardId of childVineyardIds) {
-        await tx.lotVineyard.upsert({
-          where: { lotId_vineyardId: { lotId: childLotId, vineyardId } },
-          create: { lotId: childLotId, vineyardId },
-          update: {},
+      if (childVineyardIds.size > 0) {
+        // One batched insert (skipDuplicates) instead of N upserts — fewer round-trips, and the
+        // @@unique([lotId,vineyardId]) makes re-runs idempotent.
+        await tx.lotVineyard.createMany({
+          data: [...childVineyardIds].map((vineyardId) => ({ lotId: childLotId, vineyardId })),
+          skipDuplicates: true,
         });
       }
       await tx.lot.update({ where: { id: childLotId }, data: { provenanceComplete } });
