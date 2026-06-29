@@ -20,6 +20,8 @@ export const OPERATION_TYPES = [
   "FINING", // a fining agent (bentonite, gelatin…) — volume-neutral (loss comes at racking)
   "FILTRATION", // filter the wine — small volume loss (~1%)
   "CAP_MGMT", // cap management (pump-over / punch-down) — volume-neutral, near-zero data
+  // ── Phase 5 blends ──
+  "BLEND", // draw from N parent lots into one child lot (new or grown) — originates lineage
 ] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 

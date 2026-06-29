@@ -725,6 +725,9 @@ enum OperationType {
   FINING
   FILTRATION
   CAP_MGMT
+  // Phase 5: blend operation (originates a new child lot OR grows an existing lot) —
+  // added in its own enum-only migration (Postgres ALTER TYPE ADD VALUE gotcha).
+  BLEND
 }
 
 enum CaptureMethod {
