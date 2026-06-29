@@ -28,18 +28,15 @@ model User {
   banExpires             DateTime?
   mustChangePassword     Boolean?                @default(false)
   passwordChangedAt      DateTime?
-  assignedVineyardId     String? // managers are scoped to one vineyard (Prisma-only; never declared to Better Auth)
   sessions               Session[]
   accounts               Account[]
-  assignedVineyard       Vineyard?               @relation("VineyardManagers", fields: [assignedVineyardId], references: [id], onDelete: SetNull)
   fieldNotes             FieldNote[]
   assistantConversations AssistantConversation[]
-  // Phase 5 (D9): vineyard MEMBERSHIP set — replaces assignedVineyardId (dropped in Unit 3
-  // after backfill). Dual-read for one release.
+  // Phase 5 (D9): vineyard MEMBERSHIP set — replaced the single assignedVineyardId column
+  // (dropped in migration 20260629000300 after the backfill was verified).
   vineyardMemberships    UserVineyard[]
 
   @@unique([email])
-  @@index([assignedVineyardId])
   @@map("user")
 }
 
@@ -177,7 +174,6 @@ model Vineyard {
   bottlingSources BottlingSource[]
   detail          VineyardDetail?
   blocks          VineyardBlock[]
-  managers        User[]            @relation("VineyardManagers")
   fieldNotes      FieldNote[]
   brixLogs        BrixLog[]
   harvestRecords  HarvestRecord[]

@@ -8,7 +8,7 @@ const base: AppUser = {
   role: "user",
   banned: false,
   mustChangePassword: false,
-  assignedVineyardId: null,
+  vineyardIds: [],
 };
 
 describe("accessDecision", () => {
@@ -43,24 +43,23 @@ describe("accessDecision", () => {
   });
 });
 
-describe("canManagerAccessVineyard", () => {
+describe("canManagerAccessVineyard (set-based alias)", () => {
   it("denies anonymous", () => {
     expect(canManagerAccessVineyard(null, "v1")).toBe(false);
   });
   it("admin reaches any vineyard", () => {
     expect(canManagerAccessVineyard({ ...base, role: "admin" }, "v1")).toBe(true);
-    expect(canManagerAccessVineyard({ ...base, role: "admin", assignedVineyardId: "v2" }, "v1")).toBe(
+    expect(canManagerAccessVineyard({ ...base, role: "admin", vineyardIds: ["v2"] }, "v1")).toBe(
       true,
     );
   });
-  it("manager reaches only their assigned vineyard", () => {
-    const mgr = { ...base, role: "user", assignedVineyardId: "v1" };
+  // PARITY (IRON RULE): a single-vineyard manager behaves EXACTLY as before the set migration.
+  it("single-vineyard manager reaches only their vineyard", () => {
+    const mgr = { ...base, role: "user", vineyardIds: ["v1"] };
     expect(canManagerAccessVineyard(mgr, "v1")).toBe(true);
     expect(canManagerAccessVineyard(mgr, "v2")).toBe(false);
   });
-  it("manager with no assignment reaches nothing", () => {
-    expect(canManagerAccessVineyard({ ...base, role: "user", assignedVineyardId: null }, "v1")).toBe(
-      false,
-    );
+  it("manager with no memberships reaches nothing", () => {
+    expect(canManagerAccessVineyard({ ...base, role: "user", vineyardIds: [] }, "v1")).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import { getLatestBrixByBlock, getVineyardHarvest } from "@/lib/harvest/actions"
 import { Card } from "@/components/ui";
 import { HarvestRouter } from "./HarvestRouter";
 import { AdminViewToggle } from "../AdminViewToggle";
+import { ManagerVineyardSwitcher } from "../ManagerVineyardSwitcher";
 
 export const dynamic = "force-dynamic";
 
@@ -86,11 +87,22 @@ export default async function HarvestPage({
     );
   }
 
-  // Manager (role "user").
-  const vineyardId = user.assignedVineyardId;
-  if (!vineyardId) {
+  // Manager (role "user"). D9: a manager may belong to N vineyards; a single-vineyard
+  // manager behaves exactly as before (the switcher renders nothing).
+  if (user.vineyardIds.length === 0) {
     return <HarvestRouter mode="manager-unassigned" />;
   }
+  const sp = await searchParams;
+  const vineyardId =
+    sp.vineyard && user.vineyardIds.includes(sp.vineyard) ? sp.vineyard : user.vineyardIds[0];
+  const myVineyards =
+    user.vineyardIds.length > 1
+      ? await prisma.vineyard.findMany({
+          where: { id: { in: user.vineyardIds } },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        })
+      : [];
 
   const [vineyard, blocks, latestBrix, harvest] = await Promise.all([
     prisma.vineyard.findUnique({
@@ -111,21 +123,25 @@ export default async function HarvestPage({
   ]);
 
   return (
-    <HarvestRouter
-      mode="manager"
-      manager={{
-        vineyardId,
-        vineyardName: vineyard?.name ?? "Your vineyard",
-        blocks: blocks.map((b) => ({
-          id: b.id,
-          label: b.blockLabel ?? b.id,
-          varietyName: b.variety?.name ?? null,
-          varietyId: b.variety?.id ?? null,
-          varietyColor: b.variety?.color ?? null,
-        })),
-        latestBrix,
-        records: harvest.records,
-      }}
-    />
+    <div>
+      <ManagerVineyardSwitcher vineyards={myVineyards} selectedId={vineyardId} />
+      <HarvestRouter
+        key={vineyardId}
+        mode="manager"
+        manager={{
+          vineyardId,
+          vineyardName: vineyard?.name ?? "Your vineyard",
+          blocks: blocks.map((b) => ({
+            id: b.id,
+            label: b.blockLabel ?? b.id,
+            varietyName: b.variety?.name ?? null,
+            varietyId: b.variety?.id ?? null,
+            varietyColor: b.variety?.color ?? null,
+          })),
+          latestBrix,
+          records: harvest.records,
+        }}
+      />
+    </div>
   );
 }

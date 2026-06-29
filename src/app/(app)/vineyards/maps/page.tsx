@@ -9,5 +9,5 @@ export default async function VineyardMapsPage() {
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });
-  return <MapsClient vineyards={vineyards} assignedVineyardId={user.assignedVineyardId} />;
+  return <MapsClient vineyards={vineyards} memberVineyardIds={user.vineyardIds} />;
 }

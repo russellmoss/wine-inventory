@@ -273,18 +273,19 @@ function MapModal({
 
 export function MapsClient({
   vineyards,
-  assignedVineyardId,
+  memberVineyardIds,
 }: {
   vineyards: Vineyard[];
-  assignedVineyardId: string | null;
+  memberVineyardIds: string[];
 }) {
-  // Pin the user's assigned vineyard to the top of the directory, if present.
+  // Pin the user's member vineyards to the top of the directory (D9 membership set).
   const sorted = React.useMemo(() => {
-    if (!assignedVineyardId) return vineyards;
-    const assigned = vineyards.filter((v) => v.id === assignedVineyardId);
-    const rest = vineyards.filter((v) => v.id !== assignedVineyardId);
+    if (memberVineyardIds.length === 0) return vineyards;
+    const mine = new Set(memberVineyardIds);
+    const assigned = vineyards.filter((v) => mine.has(v.id));
+    const rest = vineyards.filter((v) => !mine.has(v.id));
     return [...assigned, ...rest];
-  }, [vineyards, assignedVineyardId]);
+  }, [vineyards, memberVineyardIds]);
 
   const [openId, setOpenId] = React.useState<string | null>(null);
   const openRow = sorted.find((v) => v.id === openId) ?? null;

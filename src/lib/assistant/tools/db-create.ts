@@ -9,11 +9,11 @@ import { validateFields } from "../fields";
 
 type DbCreateInput = { entity?: string; values?: Record<string, unknown> };
 
-function assertScoped(entity: { vineyardScoped: boolean }, user: { role: string | null; assignedVineyardId: string | null }, data: Record<string, unknown>) {
+function assertScoped(entity: { vineyardScoped: boolean }, user: { role: string | null; vineyardIds: string[] }, data: Record<string, unknown>) {
   if (entity.vineyardScoped) {
     if (user.role !== "admin") {
       const vid = (data as { vineyardId?: string }).vineyardId;
-      if (!vid || vid !== user.assignedVineyardId) {
+      if (!vid || !user.vineyardIds.includes(vid)) {
         throw new Error("You can only create records in your assigned vineyard.");
       }
     }

@@ -11,9 +11,9 @@ import { resolveExactlyOne } from "./resolve";
 type DbUpdateInput = { entity?: string; query?: string; id?: string; values?: Record<string, unknown> };
 
 /** Managers may only touch their own vineyard's rows; global records are admin-only. */
-function assertScoped(entity: { vineyardScoped: boolean }, user: { role: string | null; assignedVineyardId: string | null }, vineyardId: string | null) {
+function assertScoped(entity: { vineyardScoped: boolean }, user: { role: string | null; vineyardIds: string[] }, vineyardId: string | null) {
   if (entity.vineyardScoped) {
-    if (user.role !== "admin" && (!vineyardId || vineyardId !== user.assignedVineyardId)) {
+    if (user.role !== "admin" && (!vineyardId || !user.vineyardIds.includes(vineyardId))) {
       throw new Error("You can only edit records in your assigned vineyard.");
     }
   } else if (user.role !== "admin") {

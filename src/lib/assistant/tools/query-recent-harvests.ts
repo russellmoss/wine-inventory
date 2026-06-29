@@ -32,13 +32,13 @@ export const queryRecentHarvestsTool: AssistantTool = {
     const input = (rawInput ?? {}) as QueryRecentHarvestsInput;
     const { user } = ctx;
 
-    // Scope: managers are pinned to their assigned vineyard; admins see all.
-    if (user.role !== "admin" && !user.assignedVineyardId) {
+    // Scope: managers are pinned to their vineyard membership set; admins see all.
+    if (user.role !== "admin" && user.vineyardIds.length === 0) {
       return { message: "You don't have a vineyard assigned, so there's nothing in scope." };
     }
 
     const recordWhere: Prisma.HarvestRecordWhereInput = {};
-    if (user.role !== "admin") recordWhere.vineyardId = user.assignedVineyardId ?? undefined;
+    if (user.role !== "admin") recordWhere.vineyardId = { in: user.vineyardIds };
     if (input.vineyard) {
       recordWhere.vineyard = { name: { contains: input.vineyard, mode: "insensitive" } };
     }

@@ -9,7 +9,7 @@ const base: AppUser = {
   role: "user",
   banned: false,
   mustChangePassword: false,
-  assignedVineyardId: null,
+  vineyardIds: [],
 };
 
 describe("scopedVineyardWhere", () => {
@@ -17,11 +17,18 @@ describe("scopedVineyardWhere", () => {
     expect(scopedVineyardWhere({ ...base, role: "admin" })).toEqual({});
   });
 
-  it("pins a manager to their assigned vineyard", () => {
-    expect(scopedVineyardWhere({ ...base, assignedVineyardId: "v9" })).toEqual({ id: "v9" });
+  // PARITY: a single-vineyard manager scopes to exactly that one vineyard (via an IN of one).
+  it("pins a single-vineyard manager to their vineyard", () => {
+    expect(scopedVineyardWhere({ ...base, vineyardIds: ["v9"] })).toEqual({ id: { in: ["v9"] } });
   });
 
-  it("returns null for a manager with no vineyard assigned", () => {
+  it("scopes a multi-vineyard manager to their whole set", () => {
+    expect(scopedVineyardWhere({ ...base, vineyardIds: ["v9", "v3"] })).toEqual({
+      id: { in: ["v9", "v3"] },
+    });
+  });
+
+  it("returns null for a manager with no vineyards", () => {
     expect(scopedVineyardWhere(base)).toBeNull();
   });
 });

@@ -7,7 +7,7 @@ export default async function UsersPage() {
   const [users, vineyards] = await Promise.all([
     prisma.user.findMany({
       orderBy: { createdAt: "asc" },
-      select: { id: true, email: true, name: true, role: true, banned: true, mustChangePassword: true, assignedVineyardId: true },
+      select: { id: true, email: true, name: true, role: true, banned: true, mustChangePassword: true, vineyardMemberships: { select: { vineyardId: true } } },
     }),
     prisma.vineyard.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
@@ -19,7 +19,7 @@ export default async function UsersPage() {
     banned: !!u.banned,
     mustChangePassword: !!u.mustChangePassword,
     isSelf: u.id === me.id,
-    assignedVineyardId: u.assignedVineyardId ?? null,
+    vineyardIds: u.vineyardMemberships.map((m) => m.vineyardId),
   }));
   return <UsersClient users={rows} vineyards={vineyards} />;
 }

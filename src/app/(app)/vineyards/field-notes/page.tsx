@@ -6,6 +6,7 @@ import { parseFieldNoteRow } from "@/lib/fieldnotes/types";
 import { Card, Eyebrow } from "@/components/ui";
 import { FieldNotesRouter } from "./FieldNotesRouter";
 import { AdminViewToggle } from "../AdminViewToggle";
+import { ManagerVineyardSwitcher } from "../ManagerVineyardSwitcher";
 import { type FormBlock } from "./manager/FieldNoteForm";
 import { type VineyardSummary } from "./admin/AdminDashboard";
 
@@ -129,8 +130,9 @@ export default async function FieldNotesPage({
     );
   }
 
-  // ── Manager (role "user") ──
-  if (!user.assignedVineyardId) {
+  // ── Manager (role "user") ── D9: a manager may belong to N vineyards; single-vineyard
+  // managers are unchanged (the switcher renders nothing).
+  if (user.vineyardIds.length === 0) {
     return (
       <div style={{ maxWidth: 560, margin: "0 auto" }}>
         <Eyebrow rule>Field report</Eyebrow>
@@ -146,7 +148,17 @@ export default async function FieldNotesPage({
     );
   }
 
-  const vineyardId = user.assignedVineyardId;
+  const mgrSp = await searchParams;
+  const vineyardId =
+    mgrSp.vineyard && user.vineyardIds.includes(mgrSp.vineyard) ? mgrSp.vineyard : user.vineyardIds[0];
+  const myVineyards =
+    user.vineyardIds.length > 1
+      ? await prisma.vineyard.findMany({
+          where: { id: { in: user.vineyardIds } },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        })
+      : [];
   const [vineyard, blockRows, latestNote, inputLists] = await Promise.all([
     prisma.vineyard.findUnique({ where: { id: vineyardId }, select: { id: true, name: true } }),
     prisma.vineyardBlock.findMany({
@@ -178,15 +190,19 @@ export default async function FieldNotesPage({
   }));
 
   return (
-    <FieldNotesRouter
-      mode="manager"
-      manager={{
-        vineyardId: vineyard.id,
-        vineyardName: vineyard.name,
-        blocks,
-        latestNote,
-        inputLists,
-      }}
-    />
+    <div>
+      <ManagerVineyardSwitcher vineyards={myVineyards} selectedId={vineyardId} />
+      <FieldNotesRouter
+        key={vineyardId}
+        mode="manager"
+        manager={{
+          vineyardId: vineyard.id,
+          vineyardName: vineyard.name,
+          blocks,
+          latestNote,
+          inputLists,
+        }}
+      />
+    </div>
   );
 }

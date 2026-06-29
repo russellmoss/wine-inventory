@@ -165,7 +165,8 @@ const vineyard: EntityConfig = {
     { label: "harvest records", kind: "restrict", count: (id) => prisma.harvestRecord.count({ where: { vineyardId: id } }) },
     { label: "vessel components", kind: "restrict", count: (id) => prisma.vesselComponent.count({ where: { vineyardId: id } }) },
     { label: "bottling sources", kind: "restrict", count: (id) => prisma.bottlingSource.count({ where: { vineyardId: id } }) },
-    { label: "assigned managers", kind: "setNull", count: (id) => prisma.user.count({ where: { assignedVineyardId: id } }) },
+    { label: "source-lot links", kind: "restrict", count: (id) => prisma.lotVineyard.count({ where: { vineyardId: id } }) },
+    { label: "assigned managers", kind: "cascade", count: (id) => prisma.userVineyard.count({ where: { vineyardId: id } }) },
   ],
   del: async (tx, id) => { await tx.vineyard.delete({ where: { id } }); },
   editable: [

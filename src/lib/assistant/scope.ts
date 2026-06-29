@@ -6,14 +6,14 @@ import { parseVesselRef } from "@/lib/vessels/ref";
 
 /**
  * Shared scoping for assistant read tools. Scoping is the handler's job, NEVER
- * trusted to the model. Managers (role !== "admin") are pinned to their one
- * assigned vineyard; admins see all. Returns null when a manager has no vineyard
- * assigned (nothing is in scope).
+ * trusted to the model. Managers (role !== "admin") are pinned to their vineyard
+ * membership SET (D9); admins see all. Returns null when a manager has no vineyards
+ * (nothing is in scope).
  */
 export function scopedVineyardWhere(user: AppUser): Prisma.VineyardWhereInput | null {
   if (user.role === "admin") return {};
-  if (!user.assignedVineyardId) return null;
-  return { id: user.assignedVineyardId };
+  if (user.vineyardIds.length === 0) return null;
+  return { id: { in: user.vineyardIds } };
 }
 
 /**
@@ -64,8 +64,8 @@ export async function findScopedBlocks(
 ): Promise<ScopedBlock[]> {
   const where: Prisma.VineyardBlockWhereInput = {};
   if (user.role !== "admin") {
-    if (!user.assignedVineyardId) return [];
-    where.vineyardId = user.assignedVineyardId;
+    if (user.vineyardIds.length === 0) return [];
+    where.vineyardId = { in: user.vineyardIds };
   }
   if (opts.vineyard) where.vineyard = { name: { contains: opts.vineyard, mode: "insensitive" } };
   if (opts.variety) where.variety = { name: { contains: opts.variety, mode: "insensitive" } };

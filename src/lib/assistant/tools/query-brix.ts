@@ -20,8 +20,8 @@ function buildBlockWhere(
 ): Prisma.VineyardBlockWhereInput | null {
   const where: Prisma.VineyardBlockWhereInput = {};
   if (ctx.user.role !== "admin") {
-    if (!ctx.user.assignedVineyardId) return null;
-    where.vineyardId = ctx.user.assignedVineyardId;
+    if (ctx.user.vineyardIds.length === 0) return null;
+    where.vineyardId = { in: ctx.user.vineyardIds };
   }
   if (input.vineyard) where.vineyard = { name: { contains: input.vineyard, mode: "insensitive" } };
   if (input.block) where.blockLabel = { contains: input.block, mode: "insensitive" };

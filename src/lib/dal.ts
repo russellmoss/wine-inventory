@@ -6,13 +6,13 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { accessDecision, type AppUser } from "@/lib/access";
 
-export { accessDecision, canManagerAccessVineyard } from "@/lib/access";
+export { accessDecision, canManagerAccessVineyard, canAccessVineyard, canAccessLot } from "@/lib/access";
 export type { AppUser, AccessDecision } from "@/lib/access";
 
 /**
  * THE canonical column set for building an AppUser. Every site that loads a user
  * into an AppUser MUST go through `userSelect` + `toAppUser`, so adding a field
- * (e.g. assignedVineyardId) can never silently skip a construction site.
+ * (e.g. the vineyard membership set) can never silently skip a construction site.
  */
 export const userSelect = {
   id: true,
@@ -21,7 +21,7 @@ export const userSelect = {
   role: true,
   banned: true,
   mustChangePassword: true,
-  assignedVineyardId: true,
+  vineyardMemberships: { select: { vineyardId: true } }, // D9 membership set
 } as const;
 
 type UserRecord = {
@@ -31,7 +31,7 @@ type UserRecord = {
   role: string | null;
   banned: boolean | null;
   mustChangePassword: boolean | null;
-  assignedVineyardId: string | null;
+  vineyardMemberships: { vineyardId: string }[];
 };
 
 /** Map a DB user record (selected via `userSelect`) into the AppUser domain shape. */
@@ -43,7 +43,7 @@ export function toAppUser(record: UserRecord): AppUser {
     role: record.role ?? null,
     banned: record.banned ?? false,
     mustChangePassword: record.mustChangePassword ?? false,
-    assignedVineyardId: record.assignedVineyardId ?? null,
+    vineyardIds: record.vineyardMemberships.map((m) => m.vineyardId),
   };
 }
 
