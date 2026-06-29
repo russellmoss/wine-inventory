@@ -19,6 +19,7 @@ const MAIN: NavItem[] = [
 
 const WINERY: NavItem[] = [
   { href: "/bulk", label: "Wine in-progress" },
+  { href: "/blend", label: "Blend" },
   { href: "/lots", label: "Lot timeline" },
   { href: "/samples", label: "Samples" },
   { href: "/bottling", label: "Bottling" },
