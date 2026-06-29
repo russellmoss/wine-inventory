@@ -66,3 +66,19 @@ describe("canAccessLot (source-set intersection — the lens predicate)", () => 
     expect(canAccessLot(mgr, [])).toBe(false); // NULL-source / admin-only bucket
   });
 });
+
+describe("'my fruit downstream' lens semantics (Unit 10)", () => {
+  // The lens (an opt-in filter, NOT a scope) keeps a lot iff canAccessLot is true for the
+  // manager. With the lens OFF, listLots is unfiltered and the manager sees every lot.
+  const mgrA = { ...base, vineyardIds: ["A"] };
+  it("the lens keeps a blend spanning the manager's vineyard and drops others", () => {
+    const lots = [
+      { code: "BLEND-AB", sources: ["A", "B"] },
+      { code: "CAB-A", sources: ["A"] },
+      { code: "SYR-C", sources: ["C"] },
+      { code: "MYSTERY", sources: [] }, // null-source bucket
+    ];
+    const lensed = lots.filter((l) => canAccessLot(mgrA, l.sources)).map((l) => l.code);
+    expect(lensed.sort()).toEqual(["BLEND-AB", "CAB-A"]);
+  });
+});

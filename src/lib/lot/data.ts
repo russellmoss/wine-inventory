@@ -190,11 +190,19 @@ function originFor(
  * ALL reach a bottled lot's full history). Optional vessel filter (NICE). Current volume +
  * locations come from the vessel_lot projection; origin names from batch lookups.
  */
-export async function listLots(opts: { status?: LotListFilter; vesselId?: string } = {}): Promise<LotListRow[]> {
+export async function listLots(
+  opts: { status?: LotListFilter; vesselId?: string; sourceVineyardIn?: string[] } = {},
+): Promise<LotListRow[]> {
   const status = opts.status ?? "ACTIVE";
   const where: Prisma.LotWhereInput = {};
   if (status !== "ALL") where.status = status;
   if (opts.vesselId) where.vesselLots = { some: { vesselId: opts.vesselId } };
+  // Phase 5 "my fruit downstream" LENS (Unit 10): an OPTIONAL filter to lots whose source
+  // set intersects the given vineyards. This is a VIEW, never an enforced scope — the cellar
+  // stays tenant-wide (council C4). Callers pass it only when the manager opts into the lens.
+  if (opts.sourceVineyardIn && opts.sourceVineyardIn.length > 0) {
+    where.sourceVineyards = { some: { vineyardId: { in: opts.sourceVineyardIn } } };
+  }
 
   const lots = await prisma.lot.findMany({
     where,

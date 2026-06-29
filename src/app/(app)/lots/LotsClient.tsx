@@ -189,10 +189,14 @@ export function LotsClient({
   lots,
   status,
   vesselId,
+  canLens = false,
+  lensOn = false,
 }: {
   lots: LotListRow[];
   status: LotListFilter;
   vesselId?: string;
+  canLens?: boolean;
+  lensOn?: boolean;
 }) {
   const router = useRouter();
   const [hovered, setHovered] = React.useState<string | null>(null);
@@ -209,6 +213,30 @@ export function LotsClient({
       <TastingSearch />
 
       <StatusTabs active={status} vesselId={vesselId} />
+
+      {canLens ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "4px 0 16px" }}>
+          <Link
+            href={lensOn ? "/lots" : "/lots?lens=mine"}
+            style={{
+              minHeight: 34,
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "5px 14px",
+              borderRadius: "var(--radius-pill)",
+              border: `1px solid ${lensOn ? "var(--accent)" : "var(--border-strong)"}`,
+              background: lensOn ? "var(--accent-soft)" : "var(--surface-raised)",
+              color: lensOn ? "var(--text-accent)" : "var(--text-primary)",
+              fontSize: 13.5,
+              textDecoration: "none",
+            }}
+            aria-pressed={lensOn}
+          >
+            {lensOn ? "Showing: my vineyards' lots" : "Lens: my vineyards' lots"}
+          </Link>
+          {lensOn ? <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Lots whose fruit touches your vineyards — including blends.</span> : null}
+        </div>
+      ) : null}
 
       {lots.length === 0 ? (
         <Card>
