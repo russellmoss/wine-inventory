@@ -15,6 +15,16 @@ export type FermentPoint = {
   temp: number | null;
 };
 
+export type FermentAddition = {
+  id: string;
+  at: string; // ISO
+  kind: string; // ADDITION | FINING (op family); the material's kind carries YEAST/MLF/TANNIN/…
+  material: string | null;
+  total: number | null; // computed grams/mL
+  unit: string | null;
+  note: string | null;
+};
+
 export type FermentSeries = {
   lotId: string;
   lotCode: string;
@@ -23,6 +33,7 @@ export type FermentSeries = {
   mlfState: MalolacticState;
   points: FermentPoint[];
   stuck: { stuck: boolean; reason: string; latestBrix: number | null };
+  additions: FermentAddition[]; // recent non-voided ADDITION/FINING treatments on this lot
 };
 
 export async function loadFermentSeries(lotId: string): Promise<FermentSeries | null> {
@@ -55,6 +66,14 @@ export async function loadFermentSeries(lotId: string): Promise<FermentSeries | 
     { afState: lot.afState as AlcoholicFermState },
   );
 
+  // Recent non-voided additions/fining on this lot (yeast, MLF culture, bentonite, tannin, …).
+  const treatments = await prisma.lotTreatment.findMany({
+    where: { lotId, kind: { in: ["ADDITION", "FINING"] }, voidedByOperationId: null },
+    select: { id: true, kind: true, materialName: true, computedTotal: true, computedUnit: true, note: true, createdAt: true, operation: { select: { observedAt: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 15,
+  });
+
   return {
     lotId: lot.id,
     lotCode: lot.code,
@@ -63,5 +82,14 @@ export async function loadFermentSeries(lotId: string): Promise<FermentSeries | 
     mlfState: lot.mlfState as MalolacticState,
     points,
     stuck: { stuck: stuckRes.stuck, reason: stuckRes.reason, latestBrix: stuckRes.latestBrix },
+    additions: treatments.map((t) => ({
+      id: t.id,
+      at: t.operation.observedAt.toISOString(),
+      kind: t.kind,
+      material: t.materialName,
+      total: t.computedTotal != null ? Number(t.computedTotal) : null,
+      unit: t.computedUnit,
+      note: t.note,
+    })),
   };
 }

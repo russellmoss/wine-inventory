@@ -6,9 +6,12 @@ import { FermentChart } from "@/components/ferment/FermentChart";
 import { getFermentSeriesAction } from "@/lib/ferment/monitor-actions";
 import { transitionStateAction } from "@/lib/ferment/actions";
 import { voidPanelAction } from "@/lib/chemistry/actions";
+import { addAdditionAction, addFiningAction } from "@/lib/cellar/actions";
 import { useSync } from "@/lib/offline/useSync";
 import type { FermentSeries, FermentPoint } from "@/lib/ferment/monitor-data";
 import { BRIX_HARD_MIN, BRIX_HARD_MAX, TEMP_HARD_MIN, TEMP_HARD_MAX, toBrix } from "@/lib/ferment/sugar";
+import { MATERIAL_KINDS, RATE_BASES, RATE_BASIS_LABELS, type MaterialKind, type RateBasis } from "@/lib/cellar/additions-math";
+import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 
 // Phase 6 (vessel-first): Fermentation monitoring. Log sugar (Brix/Baumé), pH and temperature
 // over time, MANY entries at once (backfill the logbook — each row carries its own date/time),
@@ -49,7 +52,19 @@ let rowSeq = 0;
 type Entry = { key: number; when: string; sugar: string; ph: string; temp: string; editPanelId?: string };
 const blankEntry = (when?: string): Entry => ({ key: ++rowSeq, when: when ?? toLocalInput(new Date()), sugar: "", ph: "", temp: "" });
 
-export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesselId: string; vesselCode: string; lotId: string; lotCode: string }) {
+export function FermentMonitor({
+  vesselId,
+  vesselCode,
+  lotId,
+  lotCode,
+  materials = [],
+}: {
+  vesselId: string;
+  vesselCode: string;
+  lotId: string;
+  lotCode: string;
+  materials?: CellarMaterialDTO[];
+}) {
   const { pending, attention, syncing, capture } = useSync();
   const [series, setSeries] = React.useState<FermentSeries | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -60,6 +75,13 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
   const [error, setError] = React.useState("");
   const [okMsg, setOkMsg] = React.useState("");
   const [stBusy, setStBusy] = React.useState(false);
+  // Additions (yeast, MLF culture, fining/bentonite, tannin, SO₂, …) — Phase 3 ADDITION/FINING op.
+  const [addMat, setAddMat] = React.useState("");
+  const [addKind, setAddKind] = React.useState<MaterialKind>("YEAST");
+  const [addRate, setAddRate] = React.useState("");
+  const [addBasis, setAddBasis] = React.useState<RateBasis>("G_HL");
+  const [addNote, setAddNote] = React.useState("");
+  const [addBusy, setAddBusy] = React.useState(false);
 
   const reload = React.useCallback(async () => {
     try {
@@ -200,6 +222,36 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
     }
   }
 
+  async function logAddition() {
+    setError("");
+    setOkMsg("");
+    if (!addMat.trim()) return setError("Name the product (e.g. EC-1118, Opti-White, bentonite).");
+    const rate = Number(addRate);
+    if (!Number.isFinite(rate) || rate <= 0) return setError("Enter a rate greater than 0.");
+    setAddBusy(true);
+    try {
+      const input = {
+        vesselId,
+        lotId,
+        materialName: addMat.trim(),
+        materialKind: addKind,
+        rateValue: rate,
+        rateBasis: addBasis,
+        note: addNote.trim() || undefined,
+      };
+      await (addKind === "FINING" ? addFiningAction(input) : addAdditionAction(input));
+      setAddMat("");
+      setAddRate("");
+      setAddNote("");
+      setOkMsg("Addition logged");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't log the addition.");
+    } finally {
+      setAddBusy(false);
+    }
+  }
+
   async function removePoint(panelId: string) {
     if (!window.confirm("Remove this reading? It will be voided (the trend + stuck signal recompute).")) return;
     setBusy(true);
@@ -292,6 +344,60 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
 
       {/* Chart */}
       {loading && !series ? <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>Loading…</p> : <FermentChart points={chartPoints} />}
+
+      {/* Additions — yeast / MLF culture / fining / tannin / SO₂ … (Phase 3 op; draws down stock in Phase 8) */}
+      <div style={{ border: "1px solid var(--border-subtle, #eee)", borderRadius: "var(--radius-md)", padding: 12, marginTop: 14 }}>
+        <span style={lbl}>Additions — yeast, MLF culture, fining, tannin, SO₂…</span>
+        <datalist id={`mat-${lotId}`}>
+          {materials.map((m) => (
+            <option key={m.id} value={m.name} />
+          ))}
+        </datalist>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+          <input
+            list={`mat-${lotId}`}
+            value={addMat}
+            onChange={(e) => {
+              setAddMat(e.target.value);
+              const m = materials.find((x) => x.name.toLowerCase() === e.target.value.toLowerCase());
+              if (m) {
+                setAddKind(m.kind as MaterialKind);
+                if (m.defaultBasis) setAddBasis(m.defaultBasis as RateBasis);
+              }
+            }}
+            placeholder="product (e.g. EC-1118, O. oeni, bentonite)"
+            aria-label="Product"
+            style={{ ...field, flex: "1 1 200px" }}
+          />
+          <select value={addKind} onChange={(e) => setAddKind(e.target.value as MaterialKind)} aria-label="Kind" style={{ ...field, width: 120 }}>
+            {MATERIAL_KINDS.map((k) => (
+              <option key={k} value={k}>{k.toLowerCase()}</option>
+            ))}
+          </select>
+          <input value={addRate} onChange={(e) => setAddRate(e.target.value)} inputMode="decimal" placeholder="rate" aria-label="Rate" style={{ ...field, width: 72 }} />
+          <select value={addBasis} onChange={(e) => setAddBasis(e.target.value as RateBasis)} aria-label="Rate basis" style={{ ...field, width: 110 }}>
+            {RATE_BASES.map((b) => (
+              <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>
+            ))}
+          </select>
+          <input value={addNote} onChange={(e) => setAddNote(e.target.value)} placeholder="note" aria-label="Addition note" style={{ ...field, flex: "1 1 120px" }} />
+          <Button variant="secondary" size="sm" disabled={addBusy} onClick={() => void logAddition()} style={{ minHeight: 42 }}>
+            {addBusy ? "Adding…" : "Log addition"}
+          </Button>
+        </div>
+        {series && series.additions.length > 0 ? (
+          <ul style={{ listStyle: "none", padding: 0, margin: "10px 0 0", fontSize: 12.5, color: "var(--text-secondary)" }}>
+            {series.additions.slice(0, 6).map((a) => (
+              <li key={a.id} style={{ padding: "3px 0", borderTop: "1px solid var(--border-subtle, #eee)" }}>
+                {fmtWhen(a.at)} · <strong>{a.material ?? a.kind.toLowerCase()}</strong>
+                {a.total != null ? ` · ${a.total} ${a.unit ?? "g"}` : ""}
+                {a.kind === "FINING" ? " · fining" : ""}
+                {a.note ? ` · ${a.note}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
 
       {/* History (edit / remove) */}
       {history.length > 0 ? (

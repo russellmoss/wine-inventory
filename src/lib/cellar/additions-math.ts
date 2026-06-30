@@ -22,6 +22,8 @@ export type RateBasis = (typeof RATE_BASES)[number];
 
 /** Material families for the light catalog (controlled, D4). `OTHER` is the fallback. */
 export const MATERIAL_KINDS = [
+  "YEAST", // Phase 6: yeast inoculation at AF start (e.g. a measured g/hL pitch)
+  "MLF", // Phase 6: malolactic culture (Oenococcus oeni), co-inoc or post-AF
   "SO2",
   "NUTRIENT",
   "ACID",
