@@ -3,7 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { CrushBlockOption, CrushVesselOption } from "@/lib/ferment/crush-data";
+import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import { crushAction } from "@/lib/transform/actions";
+import { StagedAdditions, applyStagedAdditions, type StagedAddition } from "@/components/ferment/StagedAdditions";
 
 // Phase 6 Unit 9: crush picks → a must lot. Single page + sticky summary (Phase 5 precedent).
 // Per-pick consumed-kg (default = full remaining; partial allowed); NEW lot OR sequential-fill
@@ -25,7 +27,7 @@ const label: React.CSSProperties = { fontSize: 12.5, textTransform: "uppercase",
 const newId = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 
-export function CrushClient({ blocks, vessels }: { blocks: CrushBlockOption[]; vessels: CrushVesselOption[] }) {
+export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlockOption[]; vessels: CrushVesselOption[]; materials: CellarMaterialDTO[] }) {
   const router = useRouter();
   const [blockId, setBlockId] = React.useState(blocks[0]?.blockId ?? "");
   const block = blocks.find((b) => b.blockId === blockId);
@@ -38,6 +40,7 @@ export function CrushClient({ blocks, vessels }: { blocks: CrushBlockOption[]; v
   const [wholeCluster, setWholeCluster] = React.useState("");
   const [mustTemp, setMustTemp] = React.useState("");
   const [note, setNote] = React.useState("");
+  const [additions, setAdditions] = React.useState<StagedAddition[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
 
@@ -77,6 +80,8 @@ export function CrushClient({ blocks, vessels }: { blocks: CrushBlockOption[]; v
         mustTempC: mustTemp ? Number(mustTemp) : null,
         note: note.trim() || null,
       });
+      // Chain any crush-pad additions (SO₂, enzyme, acid, …) onto the new lot.
+      await applyStagedAdditions(additions, destVesselId, result.lotId);
       router.push(`/lots/${result.lotId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Crush failed.");
@@ -169,6 +174,11 @@ export function CrushClient({ blocks, vessels }: { blocks: CrushBlockOption[]; v
       <div style={{ marginTop: 16 }}>
         <label style={label}>Note</label>
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" style={{ ...field, width: "100%" }} />
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <label style={label}>Crush-pad additions (optional) — yeast, SO₂, enzyme, acid…</label>
+        <StagedAdditions value={additions} onChange={setAdditions} materials={materials} idBase="crush" />
       </div>
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginTop: 12 }}>{error}</p> : null}

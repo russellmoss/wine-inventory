@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { canManagerAccessVineyard } from "@/lib/access";
 import { getActionUser } from "@/lib/actions";
+import { listMaterials, type CellarMaterialDTO } from "@/lib/cellar/materials";
 
 // Phase 6 Unit 9: data for the crush form. Picks are vineyard-scoped, so we only surface blocks
 // the user can access (admins see all). "Remaining kg" is DERIVED: weightKg − Σ already-consumed
@@ -32,7 +33,7 @@ export type CrushVesselOption = {
   mustLots: { lotId: string; code: string; volumeL: number }[];
 };
 
-export type CrushFormData = { blocks: CrushBlockOption[]; vessels: CrushVesselOption[] };
+export type CrushFormData = { blocks: CrushBlockOption[]; vessels: CrushVesselOption[]; materials: CellarMaterialDTO[] };
 
 export async function loadCrushFormData(): Promise<CrushFormData> {
   const user = await getActionUser();
@@ -99,8 +100,11 @@ export async function loadCrushFormData(): Promise<CrushFormData> {
     },
   });
 
+  const materials = await listMaterials();
+
   return {
     blocks,
+    materials,
     vessels: vessels.map((v) => ({
       id: v.id,
       code: v.code,

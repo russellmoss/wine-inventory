@@ -4,7 +4,9 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { PressablePosition, PressDestVessel } from "@/lib/ferment/press-data";
 import type { CrushBlockOption } from "@/lib/ferment/crush-data";
+import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import { pressAction, wholeClusterPressAction } from "@/lib/transform/actions";
+import { StagedAdditions, applyStagedAdditions, type StagedAddition } from "@/components/ferment/StagedAdditions";
 
 // Phase 6 press. TWO sources:
 //  • A MUST lot already in a vessel → split into free-run + press fraction lots (reds press off
@@ -31,7 +33,7 @@ const newId = (): string =>
 type Fraction = { destVesselId: string; volumeL: string; label: string; estimated: boolean; mergeIntoLotId: string };
 type Source = "LOT" | "FRUIT";
 
-export function PressClient({ positions, vessels, blocks }: { positions: PressablePosition[]; vessels: PressDestVessel[]; blocks: CrushBlockOption[] }) {
+export function PressClient({ positions, vessels, blocks, materials }: { positions: PressablePosition[]; vessels: PressDestVessel[]; blocks: CrushBlockOption[]; materials: CellarMaterialDTO[] }) {
   const router = useRouter();
   const [source, setSource] = React.useState<Source>(positions.length > 0 ? "LOT" : "FRUIT");
 
@@ -58,7 +60,7 @@ export function PressClient({ positions, vessels, blocks }: { positions: Pressab
         </button>
       </div>
 
-      {source === "LOT" ? <PressLotForm positions={positions} vessels={vessels} router={router} /> : <WholeClusterForm blocks={blocks} vessels={vessels} router={router} />}
+      {source === "LOT" ? <PressLotForm positions={positions} vessels={vessels} router={router} /> : <WholeClusterForm blocks={blocks} vessels={vessels} materials={materials} router={router} />}
     </div>
   );
 }
@@ -156,11 +158,12 @@ function PressLotForm({ positions, vessels, router }: { positions: PressablePosi
 }
 
 // ── Whole-cluster press: harvest fruit → JUICE, skipping crush ──
-function WholeClusterForm({ blocks, vessels, router }: { blocks: CrushBlockOption[]; vessels: PressDestVessel[]; router: ReturnType<typeof useRouter> }) {
+function WholeClusterForm({ blocks, vessels, materials, router }: { blocks: CrushBlockOption[]; vessels: PressDestVessel[]; materials: CellarMaterialDTO[]; router: ReturnType<typeof useRouter> }) {
   const [blockId, setBlockId] = React.useState(blocks[0]?.blockId ?? "");
   const block = blocks.find((b) => b.blockId === blockId);
   const [consumed, setConsumed] = React.useState<Record<string, string>>({});
   const [dests, setDests] = React.useState<{ key: number; vesselId: string; volumeL: string }[]>([{ key: 1, vesselId: vessels[0]?.id ?? "", volumeL: "" }]);
+  const [additions, setAdditions] = React.useState<StagedAddition[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
 
@@ -191,6 +194,8 @@ function WholeClusterForm({ blocks, vessels, router }: { blocks: CrushBlockOptio
         destinations,
         target: { mode: "NEW", varietyId: block.varietyId ?? null, vintage: block.vintageYear },
       });
+      // Chain any press-pad additions (enzyme, SO₂, bentonite for juice…) onto the new juice lot.
+      await applyStagedAdditions(additions, destinations[0].vesselId, result.lotId);
       router.push(`/lots/${result.lotId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Press failed.");
@@ -236,6 +241,11 @@ function WholeClusterForm({ blocks, vessels, router }: { blocks: CrushBlockOptio
           </div>
         ))}
         <button onClick={addDest} style={{ ...field, cursor: "pointer", background: "var(--surface-base)", paddingInline: 14 }}>+ destination vessel</button>
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <label style={label}>Press-pad additions (optional) — enzyme, SO₂, bentonite, tannin…</label>
+        <StagedAdditions value={additions} onChange={setAdditions} materials={materials} idBase="wcpress" />
       </div>
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginTop: 12 }}>{error}</p> : null}

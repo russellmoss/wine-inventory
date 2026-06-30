@@ -5,5 +5,5 @@ export const dynamic = "force-dynamic";
 
 export default async function CrushPage() {
   const data = await loadCrushFormData();
-  return <CrushClient blocks={data.blocks} vessels={data.vessels} />;
+  return <CrushClient blocks={data.blocks} vessels={data.vessels} materials={data.materials} />;
 }
