@@ -47,7 +47,7 @@ export const wholeClusterPressAction = action(
     await requirePickAccess(user, [...new Set(input.picks.map((p) => p.pickId))], "press");
     const result = await crushLotCore(actor, { ...input, outputForm: "JUICE", opType: "PRESS" });
     revalidatePath("/bulk");
-    revalidatePath("/ferment/press");
+    revalidatePath("/ferment/process");
     revalidatePath(`/lots/${result.lotId}`);
     return result;
   },

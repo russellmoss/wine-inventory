@@ -257,8 +257,8 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
           : `Topped ${formatL(outTotal)} L from ${srcLabels || "—"}`;
       break;
     case "CRUSH": {
-      // The −V leg is origination-from-harvest (reason crush_origination), not loss.
-      summary = `Crushed fruit → ${formatL(inTotal)} L must${dstLabels ? ` into ${dstLabels}` : ""}`;
+      // De-stem (crusher rollers optional) → must. The −V leg is origination-from-harvest, not loss.
+      summary = `De-stemmed fruit → ${formatL(inTotal)} L must${dstLabels ? ` into ${dstLabels}` : ""}`;
       break;
     }
     case "PRESS": {

@@ -37,7 +37,8 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
   const [mode, setMode] = React.useState<"NEW" | "ADD">("NEW");
   const [addLotId, setAddLotId] = React.useState("");
   const [outputL, setOutputL] = React.useState("");
-  const [wholeCluster, setWholeCluster] = React.useState("");
+  const [crusherOn, setCrusherOn] = React.useState(true);
+  const [crushedPct, setCrushedPct] = React.useState("100");
   const [mustTemp, setMustTemp] = React.useState("");
   const [note, setNote] = React.useState("");
   const [additions, setAdditions] = React.useState<StagedAddition[]>([]);
@@ -75,8 +76,10 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
         outputVolumeL: outL,
         target:
           effMode === "NEW"
-            ? { mode: "NEW", varietyId: block?.varietyId ?? null, vintage: block!.vintageYear, wholeClusterPct: wholeCluster ? Number(wholeCluster) : null }
+            ? { mode: "NEW", varietyId: block?.varietyId ?? null, vintage: block!.vintageYear }
             : { mode: "ADD", lotId: addLotId },
+        crusherOn,
+        crushedPct: crusherOn ? Number(crushedPct) || 100 : undefined,
         mustTempC: mustTemp ? Number(mustTemp) : null,
         note: note.trim() || null,
       });
@@ -92,7 +95,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
   if (blocks.length === 0) {
     return (
       <div style={{ maxWidth: "var(--container-md)", margin: "0 auto", padding: "var(--space-5)", color: "var(--text-muted)" }}>
-        <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300 }}>Crush</h1>
+        <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300 }}>De-stem</h1>
         <p>No harvest picks with fruit remaining. Record picks under Harvest first.</p>
       </div>
     );
@@ -100,7 +103,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
 
   return (
     <div style={{ maxWidth: "var(--container-md)", margin: "0 auto", padding: "var(--space-5)", paddingBottom: 120 }}>
-      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 26 }}>Crush</h1>
+      <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 26 }}>De-stem</h1>
 
       <label style={label}>Block (vintage)</label>
       <select value={blockId} onChange={(e) => setBlockId(e.target.value)} style={{ ...field, width: "100%" }}>
@@ -159,10 +162,21 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
           <label style={label}>Measured must (L)</label>
           <input value={outputL} onChange={(e) => setOutputL(e.target.value)} inputMode="decimal" placeholder="e.g. 2350" style={{ ...field, width: "100%" }} />
         </div>
-        {effMode === "NEW" ? (
+        <div style={{ flex: "1 1 220px" }}>
+          <label style={label}>Crusher rollers</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" onClick={() => setCrusherOn(true)} style={{ ...field, flex: 1, cursor: "pointer", background: crusherOn ? "var(--accent)" : "var(--surface-base)", color: crusherOn ? "#fff" : "var(--text-primary)", border: crusherOn ? "none" : "1px solid var(--border-strong)" }}>
+              On (crushed)
+            </button>
+            <button type="button" onClick={() => setCrusherOn(false)} style={{ ...field, flex: 1, cursor: "pointer", background: !crusherOn ? "var(--accent)" : "var(--surface-base)", color: !crusherOn ? "#fff" : "var(--text-primary)", border: !crusherOn ? "none" : "1px solid var(--border-strong)" }}>
+              Off (whole berry)
+            </button>
+          </div>
+        </div>
+        {crusherOn ? (
           <div style={{ flex: "1 1 120px" }}>
-            <label style={label}>Whole cluster %</label>
-            <input value={wholeCluster} onChange={(e) => setWholeCluster(e.target.value)} inputMode="decimal" placeholder="0" style={{ ...field, width: "100%" }} />
+            <label style={label}>% of lot crushed</label>
+            <input value={crushedPct} onChange={(e) => setCrushedPct(e.target.value)} inputMode="decimal" placeholder="100" style={{ ...field, width: "100%" }} />
           </div>
         ) : null}
         <div style={{ flex: "1 1 120px" }}>
@@ -206,7 +220,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
           {yieldLPerTonne != null ? ` → ${outL} L (${yieldLPerTonne} L/t)` : ""}
         </div>
         <button onClick={() => void submit()} disabled={busy} style={{ ...field, cursor: "pointer", background: "var(--accent)", color: "#fff", border: "none", paddingInline: 20 }}>
-          {busy ? "Crushing…" : "Crush"}
+          {busy ? "De-stemming…" : "De-stem"}
         </button>
       </div>
     </div>

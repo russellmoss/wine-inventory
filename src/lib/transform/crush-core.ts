@@ -31,6 +31,10 @@ export type CrushLotInput = {
   destinations?: { vesselId: string; volumeL: number }[];
   target: CrushTarget;
   destemmed?: boolean;
+  // De-stem capture: were the crusher rollers engaged, and over what % of the lot? (They can
+  // destem whole-berry with rollers OFF, or crush part of the lot and run the rest whole.)
+  crusherOn?: boolean;
+  crushedPct?: number; // 0–100; meaningful when crusherOn (defaults to 100 in the UI)
   mustTempC?: number | null;
   note?: string | null;
   captureMethod?: CaptureMethod;
@@ -251,13 +255,15 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
           yieldLPerKg: plan.yieldLPerKg,
           yieldLPerTonne: plan.yieldLPerTonne,
           destemmed: input.destemmed ?? null,
+          crusherOn: input.crusherOn ?? null,
+          crushedPct: input.crusherOn ? (input.crushedPct ?? 100) : null,
           mustTempC: input.mustTempC ?? null,
           wholeClusterPct: input.target.mode === "NEW" ? (input.target.wholeClusterPct ?? null) : null,
           picks: draws.map((d) => ({ pickId: d.pickId, consumedKg: d.consumedKg })),
         };
 
         const opType: OperationType = input.opType ?? "CRUSH";
-        const verb = opType === "PRESS" ? "Whole-cluster pressed" : "Crushed";
+        const verb = opType === "PRESS" ? "Whole-cluster pressed" : "De-stemmed";
         const liquid = (input.outputForm ?? "MUST").toLowerCase();
         const summary =
           mode === "NEW"
