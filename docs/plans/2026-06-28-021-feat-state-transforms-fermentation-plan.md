@@ -652,3 +652,42 @@ Success Criteria boxes.
 - `tsx` scripts need `--env-file=.env`. Tests: `npx vitest run` (all pure, under `test/*.test.ts`).
 - Supervision gates (Units 1, 2, 6/7) are CLEARED. Units 10–12 proceed straight through with tests
   + commits; stop only if a unit cannot pass.
+
+---
+
+## 🔧 POST-PLAN UX EVOLUTION (user feedback after the 12 units shipped)
+
+The 12 units landed as planned, then the surfaces were reshaped by live user feedback. The
+domain model + ledger (Units 1–5, the cores, idempotency, lineage, stuck detector) are
+UNCHANGED — only the capture/monitoring UX moved. Current truth:
+
+- **Fermentation monitoring is VESSEL-FIRST, not a standalone round grid.** The `/ferment/round`
+  page + nav entry were **removed**. Every vessel card on `/bulk` has a **"Fermentation"** modal
+  (`src/components/ferment/FermentMonitor.tsx`): log sugar (Brix/Baumé), pH, temp over time with a
+  **multi-row backfill** editor (each row its own date/time — "enter the last 48h from the
+  logbook"); a **dual-Y chart** (`FermentChart`: Brix left axis / Temp right axis, labeled, + pH
+  companion strip); **edit/remove** a reading (immutable → void + re-log, council S1); **advance
+  AF/MLF** state (Start ferment / Mark dry / Start MLF / MLF complete); and **log additions**.
+  Captures still route through the offline outbox (`useSync`) with optimistic chart points.
+
+- **Crush + Press are ONE module — `/ferment/process` ("De-stem & press").** A tab toggle picks
+  De-stem | Press (they're the same primitive; the consumed-kg ledger enforces press-then-can't-
+  destem vs destem-then-press). **"Crush" renamed → "De-stem"** everywhere (timeline reads
+  "De-stemmed fruit → X L must"). De-stem captures a **crusher-rollers On/Off** toggle + **"% of
+  lot crushed"** (default 100; for crush-part / whole-berry-rest) → `crusherOn`/`crushedPct` op
+  metadata. The separate `/ferment/crush` + `/ferment/press` routes were deleted (the
+  CrushClient/PressClient files remain, imported by `ProcessClient`).
+
+- **Whole-cluster press: fruit → JUICE, skipping crush.** New press source "Whole-cluster fruit"
+  presses harvest picks straight to a JUICE lot (op PRESS via `crushLotCore`
+  `outputForm:JUICE`/`opType:PRESS`), splittable across **multiple destination vessels** (one juice
+  lot, N tanks — `planCrushSplit`). Press now only lists **MUST** lots for the must-lot path (it was
+  wrongly listing finished WINE).
+
+- **Additions surfaced on de-stem, press, AND the monitor**, reusing the Phase 3 ADDITION/FINING op
+  (`StagedAdditions` on the transforms chains onto the new lot; a live form in the monitor). Added
+  material kinds **YEAST** + **MLF** (Oenococcus oeni). **Stock draw-down + cost remains Phase 8** —
+  these records are Phase-8-ready.
+
+All green at hand-off: `npm run build` clean, 547 Vitest tests, `scripts/verify-ferment.ts` 36/36,
+tsc + lint clean. Pushed to origin/main.
