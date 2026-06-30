@@ -730,6 +730,28 @@ enum OperationType {
   // Phase 5: blend operation (originates a new child lot OR grows an existing lot) —
   // added in its own enum-only migration (Postgres ALTER TYPE ADD VALUE gotcha).
   BLEND
+  // Phase 6: state transforms (crush/press/saignée). Added in a dedicated enum-only
+  // migration (Unit 1) so the ADD VALUEs commit before Unit 3/4 write them.
+  CRUSH // consume harvest picks → originate a MUST lot at measured liters (kg = metadata)
+  PRESS // split a must/wine lot into free-run + press fraction child lots (1 parent → N)
+  SAIGNEE // bleed juice off a MUST lot pre-ferment (the same split, form MUST→JUICE)
+}
+
+// Phase 6: fermentation is THREE orthogonal state vectors, NOT a linear phase enum
+// (council C1 — real ferment isn't linear). `afState` + `mlfState` live here; the physical
+// form is the existing `LotForm`. A white = JUICE + AF:ACTIVE; a co-inoculated red = MUST +
+// AF:ACTIVE + MLF:ACTIVE; extended maceration = MUST + AF:DRY. STUCK is DERIVED, never
+// stored (council C3) — recomputed from the Brix trend, so it isn't an enum value.
+enum AlcoholicFermState {
+  NONE
+  ACTIVE
+  DRY
+}
+
+enum MalolacticState {
+  NONE
+  ACTIVE
+  COMPLETE
 }
 
 enum CaptureMethod {

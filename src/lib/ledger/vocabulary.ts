@@ -22,8 +22,24 @@ export const OPERATION_TYPES = [
   "CAP_MGMT", // cap management (pump-over / punch-down) — volume-neutral, near-zero data
   // ── Phase 5 blends ──
   "BLEND", // draw from N parent lots into one child lot (new or grown) — originates lineage
+  // ── Phase 6 state transforms ──
+  "CRUSH", // consume harvest picks → originate a MUST lot at measured liters (kg = metadata)
+  "PRESS", // split a must/wine lot into free-run + press fraction child lots (1 parent → N)
+  "SAIGNEE", // bleed juice off a MUST lot pre-ferment (the same split, form MUST→JUICE)
 ] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
+
+/**
+ * Phase 6 fermentation state — THREE orthogonal vectors, NOT a linear phase enum
+ * (council C1). `afState` (alcoholic ferment) + `mlfState` (malolactic) live on the Lot
+ * alongside the physical `LotForm`. STUCK is DERIVED from the Brix trend (council C3),
+ * never a stored state. Mirrors the Prisma enums AlcoholicFermState / MalolacticState.
+ */
+export const ALCOHOLIC_FERM_STATES = ["NONE", "ACTIVE", "DRY"] as const;
+export type AlcoholicFermState = (typeof ALCOHOLIC_FERM_STATES)[number];
+
+export const MALOLACTIC_STATES = ["NONE", "ACTIVE", "COMPLETE"] as const;
+export type MalolacticState = (typeof MALOLACTIC_STATES)[number];
 
 /** A lot's physical form. Changeable over its life (VISION D4). */
 export const LOT_FORMS = [
