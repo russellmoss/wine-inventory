@@ -12,28 +12,42 @@ import { pressLotCore, type PressLotInput, type PressLotResult } from "@/lib/tra
 // since it consumes vineyard-scoped picks — council "crush ↔ harvest auth"; once the wine is a
 // cellar lot, Phase 5's tenant-wide cellar rules apply) and path revalidation.
 
+/** Require manager access to every vineyard the picks come from (a pick is vineyard-scoped fruit). */
+async function requirePickAccess(user: Parameters<typeof canManagerAccessVineyard>[0], pickIds: string[], verb: string) {
+  const picks = await prisma.harvestPick.findMany({
+    where: { id: { in: pickIds } },
+    select: { id: true, harvestRecord: { select: { vineyardId: true } } },
+  });
+  if (picks.length !== pickIds.length) throw new ActionError("A selected pick no longer exists.");
+  for (const vid of [...new Set(picks.map((p) => p.harvestRecord.vineyardId))]) {
+    if (!canManagerAccessVineyard(user, vid)) {
+      throw new ActionError(`You can only ${verb} fruit from your assigned vineyard.`, "FORBIDDEN");
+    }
+  }
+}
+
 /** Crush selected harvest picks into a must lot. Enforces block access on every pick's vineyard. */
 export const crushAction = action(
   async ({ user, actor }, input: CrushLotInput): Promise<CrushLotResult> => {
     if (!input.picks || input.picks.length === 0) throw new ActionError("Select at least one harvest pick.");
-
-    // Resolve each pick's source vineyard and require manager access to it (a pick is a
-    // manager's vineyard-scoped fruit; crushing it must not bypass that).
-    const pickIds = [...new Set(input.picks.map((p) => p.pickId))];
-    const picks = await prisma.harvestPick.findMany({
-      where: { id: { in: pickIds } },
-      select: { id: true, harvestRecord: { select: { vineyardId: true } } },
-    });
-    if (picks.length !== pickIds.length) throw new ActionError("A selected pick no longer exists.");
-    const vineyardIds = [...new Set(picks.map((p) => p.harvestRecord.vineyardId))];
-    for (const vid of vineyardIds) {
-      if (!canManagerAccessVineyard(user, vid)) {
-        throw new ActionError("You can only crush fruit from your assigned vineyard.", "FORBIDDEN");
-      }
-    }
-
+    await requirePickAccess(user, [...new Set(input.picks.map((p) => p.pickId))], "crush");
     const result = await crushLotCore(actor, input);
     revalidatePath("/bulk");
+    revalidatePath(`/lots/${result.lotId}`);
+    return result;
+  },
+);
+
+/** Whole-cluster press: presses harvest fruit straight to JUICE, SKIPPING crush (no destem). It
+ * consumes the picks (so they can't also be crushed — the shared LotHarvestSource ledger enforces
+ * that) and originates a JUICE lot at measured liters. Op type PRESS. Block-access gated. */
+export const wholeClusterPressAction = action(
+  async ({ user, actor }, input: CrushLotInput): Promise<CrushLotResult> => {
+    if (!input.picks || input.picks.length === 0) throw new ActionError("Select at least one harvest pick.");
+    await requirePickAccess(user, [...new Set(input.picks.map((p) => p.pickId))], "press");
+    const result = await crushLotCore(actor, { ...input, outputForm: "JUICE", opType: "PRESS" });
+    revalidatePath("/bulk");
+    revalidatePath("/ferment/press");
     revalidatePath(`/lots/${result.lotId}`);
     return result;
   },

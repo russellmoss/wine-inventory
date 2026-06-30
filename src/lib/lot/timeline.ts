@@ -263,7 +263,9 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     }
     case "PRESS": {
       const lossClause = lossTotal > 0 ? ` (${formatL(lossTotal)} L lees)` : "";
-      summary = `Pressed ${formatL(outTotal)} L${dstLabels ? ` → ${dstLabels}` : ""}${lossClause}`;
+      // Must-lot press draws the parent (outTotal); whole-cluster press originates juice from
+      // fruit (no in-vessel source — outTotal 0), so fall back to the volume that landed (inTotal).
+      summary = `Pressed ${formatL(outTotal || inTotal)} L${dstLabels ? ` → ${dstLabels}` : ""}${lossClause}`;
       break;
     }
     case "SAIGNEE":

@@ -263,44 +263,65 @@ export type CrushPlan = {
  * DERIVED from the measured output, not from kg. Guards: each consumedKg > 0 and ≤ the pick's
  * remaining (`weightKg − alreadyConsumedKg`); `outputVolumeL > 0`.
  */
+/** Validate the consumed picks and return Σ consumedKg (throws on a bad / over-consumed pick). */
+function sumCrushPicks(picks: CrushPickDraw[]): number {
+  if (picks.length === 0) throw new Error("A crush needs at least one harvest pick.");
+  let totalConsumedKg = 0;
+  for (const p of picks) {
+    if (!(p.consumedKg > 0)) throw new Error("Each pick's consumed kg must be greater than 0.");
+    const remaining = round3(p.weightKg - p.alreadyConsumedKg);
+    if (p.consumedKg > remaining + EPS) {
+      throw new Error(`Can't consume ${p.consumedKg} kg from pick ${p.pickId} — only ${remaining} kg remain of its ${p.weightKg} kg.`);
+    }
+    totalConsumedKg = round3(totalConsumedKg + p.consumedKg);
+  }
+  if (!(totalConsumedKg > 0)) throw new Error("A crush must consume a positive weight of fruit.");
+  return totalConsumedKg;
+}
+
+function crushYield(out: number, totalConsumedKg: number): Pick<CrushPlan, "yieldLPerKg" | "yieldLPerTonne"> {
+  // Both yields derive from the raw measured ratio (don't compound the rounded per-kg value).
+  const ratio = out / totalConsumedKg;
+  return { yieldLPerKg: round4(ratio), yieldLPerTonne: round2(ratio * 1000) };
+}
+
 export function planCrush(
   picks: CrushPickDraw[],
   destVesselId: string,
   mustLotId: string,
   outputVolumeL: number,
 ): CrushPlan {
-  if (picks.length === 0) throw new Error("A crush needs at least one harvest pick.");
   if (!(outputVolumeL > 0)) throw new Error("Measured output volume must be greater than 0.");
-
-  let totalConsumedKg = 0;
-  for (const p of picks) {
-    if (!(p.consumedKg > 0)) throw new Error("Each pick's consumed kg must be greater than 0.");
-    const remaining = round3(p.weightKg - p.alreadyConsumedKg);
-    if (p.consumedKg > remaining + EPS) {
-      throw new Error(
-        `Can't consume ${p.consumedKg} kg from pick ${p.pickId} — only ${remaining} kg remain of its ${p.weightKg} kg.`,
-      );
-    }
-    totalConsumedKg = round3(totalConsumedKg + p.consumedKg);
-  }
-  if (!(totalConsumedKg > 0)) throw new Error("A crush must consume a positive weight of fruit.");
-
+  const totalConsumedKg = sumCrushPicks(picks);
   const out = round2(outputVolumeL);
   const lines: LedgerLine[] = [
     { lotId: mustLotId, vesselId: destVesselId, deltaL: out },
     { lotId: mustLotId, vesselId: null, deltaL: round2(-out), reason: "crush_origination" },
   ];
   assertBalanced(lines);
+  return { lines, outputVolumeL: out, totalConsumedKg, ...crushYield(out, totalConsumedKg) };
+}
 
-  // Both yields derive from the raw measured ratio (don't compound the rounded per-kg value).
-  const ratio = out / totalConsumedKg;
-  return {
-    lines,
-    outputVolumeL: out,
-    totalConsumedKg,
-    yieldLPerKg: round4(ratio),
-    yieldLPerTonne: round2(ratio * 1000),
-  };
+/** Like planCrush, but the originated lot is distributed across MANY destination vessels (one
+ * juice/must lot, N tanks) — used by a whole-cluster press whose juice fills several vessels. */
+export function planCrushSplit(
+  picks: CrushPickDraw[],
+  destinations: { vesselId: string; volumeL: number }[],
+  mustLotId: string,
+): CrushPlan {
+  if (destinations.length === 0) throw new Error("Pick at least one destination vessel.");
+  const totalConsumedKg = sumCrushPicks(picks);
+  let out = 0;
+  const lines: LedgerLine[] = [];
+  for (const d of destinations) {
+    if (!(d.volumeL > 0)) throw new Error("Each destination volume must be greater than 0.");
+    out = round2(out + d.volumeL);
+    lines.push({ lotId: mustLotId, vesselId: d.vesselId, deltaL: round2(d.volumeL) });
+  }
+  if (!(out > 0)) throw new Error("Measured output volume must be greater than 0.");
+  lines.push({ lotId: mustLotId, vesselId: null, deltaL: round2(-out), reason: "crush_origination" });
+  assertBalanced(lines);
+  return { lines, outputVolumeL: out, totalConsumedKg, ...crushYield(out, totalConsumedKg) };
 }
 
 export type PressFractionDraw = {

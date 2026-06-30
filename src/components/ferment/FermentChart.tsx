@@ -10,7 +10,7 @@ import type { FermentPoint } from "@/lib/ferment/monitor-data";
 // chart lib — same scale math as AnalyteTrendChart.
 
 const VB_W = 820;
-const PAD = { top: 14, right: 52, bottom: 28, left: 48 };
+const PAD = { top: 14, right: 70, bottom: 28, left: 64 };
 const BRIX_COLOR = "var(--wine-primary, #722F37)";
 const TEMP_COLOR = "var(--golden-yellow, #C99A2E)";
 const PH_COLOR = "var(--text-secondary, #555)";
@@ -56,6 +56,13 @@ export function FermentChart({ points, height = 240 }: { points: FermentPoint[];
   return (
     <div style={{ width: "100%" }}>
       <svg viewBox={`0 0 ${VB_W} ${bMain}`} width="100%" height={bMain} role="img" aria-label="Brix and temperature over time" style={{ overflow: "visible" }}>
+        {/* axis titles */}
+        <text transform={`rotate(-90 16 ${(bMain - PAD.bottom + PAD.top) / 2})`} x={16} y={(bMain - PAD.bottom + PAD.top) / 2} textAnchor="middle" fontSize={12} fontWeight={600} fill={BRIX_COLOR}>
+          Brix (°Bx)
+        </text>
+        <text transform={`rotate(90 ${VB_W - 14} ${(bMain - PAD.bottom + PAD.top) / 2})`} x={VB_W - 14} y={(bMain - PAD.bottom + PAD.top) / 2} textAnchor="middle" fontSize={12} fontWeight={600} fill={TEMP_COLOR}>
+          Temp (°C)
+        </text>
         {/* left (Brix) gridlines + labels */}
         {[bBounds.yMin, (bBounds.yMin + bBounds.yMax) / 2, bBounds.yMax].map((v, i) => (
           <g key={`b${i}`}>
@@ -75,10 +82,21 @@ export function FermentChart({ points, height = 240 }: { points: FermentPoint[];
         <text x={PAD.left} y={bMain - 8} textAnchor="start" fontSize={11} fill="var(--text-muted)">{fmtDate(tMin)}</text>
         <text x={VB_W - PAD.right} y={bMain - 8} textAnchor="end" fontSize={11} fill="var(--text-muted)">{fmtDate(tMax)}</text>
       </svg>
-      <div style={{ display: "flex", gap: 16, fontSize: 12, margin: "2px 0 8px", color: "var(--text-muted)" }}>
-        <span style={{ color: BRIX_COLOR }}>■ Brix (°Bx, left)</span>
-        <span style={{ color: TEMP_COLOR }}>▬ Temp (°C, right)</span>
-        {ph.length > 0 ? <span style={{ color: PH_COLOR }}>● pH (below)</span> : null}
+      <div style={{ display: "flex", gap: 18, fontSize: 12.5, margin: "2px 0 8px", alignItems: "center" }}>
+        <span style={{ color: BRIX_COLOR, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke={BRIX_COLOR} strokeWidth={2.5} /></svg>
+          Brix — left axis
+        </span>
+        <span style={{ color: TEMP_COLOR, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke={TEMP_COLOR} strokeWidth={2.5} strokeDasharray="4 3" /></svg>
+          Temperature — right axis
+        </span>
+        {ph.length > 0 ? (
+          <span style={{ color: PH_COLOR, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke={PH_COLOR} strokeWidth={2} /></svg>
+            pH — below
+          </span>
+        ) : null}
       </div>
       {ph.length > 0 ? (
         <svg viewBox={`0 0 ${VB_W} ${phH}`} width="100%" height={phH} role="img" aria-label="pH over time" style={{ overflow: "visible" }}>

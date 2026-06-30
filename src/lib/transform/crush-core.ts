@@ -2,9 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
-import { planCrush, type CrushPickDraw } from "@/lib/ledger/math";
+import { planCrush, planCrushSplit, type CrushPickDraw } from "@/lib/ledger/math";
 import { nextLotCode, isUniqueViolation } from "@/lib/lot/generate";
-import type { CaptureMethod } from "@/lib/ledger/vocabulary";
+import type { CaptureMethod, LotForm, OperationType } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
 // Script-safe core for the CRUSH transform (Phase 6 Unit 3). Consumes harvest picks (in part
@@ -26,11 +26,18 @@ export type CrushLotInput = {
   picks: CrushPickInput[];
   destVesselId: string;
   outputVolumeL: number;
+  // Whole-cluster press can split the originated juice across SEVERAL vessels (one lot, N tanks).
+  // When present (NEW mode), these override destVesselId/outputVolumeL; outputVolumeL = Σ volumes.
+  destinations?: { vesselId: string; volumeL: number }[];
   target: CrushTarget;
   destemmed?: boolean;
   mustTempC?: number | null;
   note?: string | null;
   captureMethod?: CaptureMethod;
+  // Whole-cluster press skips crush: it presses whole fruit straight to JUICE (op PRESS), reusing
+  // this same picks→measured-liters origination. NEW mode only. Defaults: MUST originated by CRUSH.
+  outputForm?: LotForm; // the originated lot's form (MUST for a destem/crush, JUICE for whole-cluster)
+  opType?: OperationType; // CRUSH (default) or PRESS (whole-cluster)
 };
 
 export type CrushLotResult = {
@@ -62,7 +69,7 @@ async function findByCommandId(commandId: string): Promise<CrushLotResult | null
     where: { commandId },
     select: { id: true, type: true, metadata: true },
   });
-  if (!op || op.type !== "CRUSH") return null;
+  if (!op || (op.type !== "CRUSH" && op.type !== "PRESS")) return null;
   const m = (op.metadata ?? {}) as Record<string, unknown>;
   return {
     operationId: op.id,
@@ -80,7 +87,17 @@ async function findByCommandId(commandId: string): Promise<CrushLotResult | null
 
 export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Promise<CrushLotResult> {
   if (!input.picks || input.picks.length === 0) throw new ActionError("Select at least one harvest pick to crush.");
-  if (!(input.outputVolumeL > 0)) throw new ActionError("Enter the measured must volume (liters).");
+
+  // Normalize to a destination list (single dest = one entry). Multi-dest is NEW-mode only.
+  const dests =
+    input.destinations && input.destinations.length > 0
+      ? input.destinations
+      : [{ vesselId: input.destVesselId, volumeL: input.outputVolumeL }];
+  const totalOut = Math.round(dests.reduce((a, d) => a + (d.volumeL || 0), 0) * 100) / 100;
+  if (!(totalOut > 0)) throw new ActionError("Enter the measured volume (liters).");
+  if (input.destinations && input.destinations.length > 0 && input.target.mode === "ADD") {
+    throw new ActionError("Adding into an existing lot can't split across vessels.");
+  }
 
   // Idempotency: a committed command is a no-op success (council S4).
   if (input.commandId) {
@@ -88,8 +105,12 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
     if (prior) return prior;
   }
 
-  const vessel = await prisma.vessel.findUnique({ where: { id: input.destVesselId } });
-  if (!vessel || !vessel.isActive) throw new ActionError("Destination vessel not found or inactive.");
+  const destVesselIds = [...new Set(dests.map((d) => d.vesselId))];
+  const vessels = await prisma.vessel.findMany({ where: { id: { in: destVesselIds } } });
+  const vesselById = new Map(vessels.map((v) => [v.id, v]));
+  if (vesselById.size !== destVesselIds.length) throw new ActionError("A destination vessel was not found.");
+  for (const v of vessels) if (!v.isActive) throw new ActionError(`${v.code} is inactive.`);
+  const vessel = vesselById.get(dests[0].vesselId)!; // the primary dest (labels / ADD target)
 
   // Load the picks with their block/vineyard/variety + total weight, and how much of each is
   // already consumed (Σ LotHarvestSource.consumedKg) — the partial-pick guard's live denominator.
@@ -202,7 +223,7 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
           const created = await tx.lot.create({
             data: {
               code: lotCode,
-              form: "MUST",
+              form: input.outputForm ?? "MUST",
               afState: "NONE",
               mlfState: "NONE",
               originVarietyId,
@@ -219,7 +240,7 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
           lotCode = lot.code;
         }
 
-        const plan = planCrush(draws, input.destVesselId, lotId, input.outputVolumeL);
+        const plan = dests.length > 1 ? planCrushSplit(draws, dests, lotId) : planCrush(draws, dests[0].vesselId, lotId, dests[0].volumeL);
 
         const metadata = {
           mode,
@@ -235,13 +256,16 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
           picks: draws.map((d) => ({ pickId: d.pickId, consumedKg: d.consumedKg })),
         };
 
+        const opType: OperationType = input.opType ?? "CRUSH";
+        const verb = opType === "PRESS" ? "Whole-cluster pressed" : "Crushed";
+        const liquid = (input.outputForm ?? "MUST").toLowerCase();
         const summary =
           mode === "NEW"
-            ? `Crushed ${plan.totalConsumedKg} kg → ${plan.outputVolumeL} L must into ${vessel.code} (lot ${lotCode}, ${plan.yieldLPerTonne} L/t)`
-            : `Crushed ${plan.totalConsumedKg} kg → +${plan.outputVolumeL} L into must lot ${lotCode} (${vessel.code})`;
+            ? `${verb} ${plan.totalConsumedKg} kg → ${plan.outputVolumeL} L ${liquid} into ${vessel.code} (lot ${lotCode}, ${plan.yieldLPerTonne} L/t)`
+            : `${verb} ${plan.totalConsumedKg} kg → +${plan.outputVolumeL} L into ${liquid} lot ${lotCode} (${vessel.code})`;
 
         const opId = await writeLotOperation(tx, {
-          type: "CRUSH",
+          type: opType,
           lines: plan.lines,
           actorUserId: actor.actorUserId,
           enteredBy: actor.actorEmail,
@@ -249,8 +273,8 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
           note: input.note?.trim() || summary,
           commandId: input.commandId ?? null,
           lotCodes: new Map([[lotId, lotCode]]),
-          vesselCodes: new Map([[input.destVesselId, vessel.code]]),
-          capacityByVessel: new Map([[input.destVesselId, Number(vessel.capacityL)]]),
+          vesselCodes: new Map(vessels.map((v) => [v.id, v.code])),
+          capacityByVessel: new Map(vessels.map((v) => [v.id, Number(v.capacityL)])),
         });
         // Stamp the metadata (writeLotOperation doesn't take it; set it on the row we own).
         await tx.lotOperation.update({ where: { id: opId }, data: { metadata } });

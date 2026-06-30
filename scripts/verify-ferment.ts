@@ -86,11 +86,14 @@ async function main() {
   // One big 18 t pick (for partial + sequential-fill), one 5 t pick for the white/saignée path.
   const pickBig = await prisma.harvestPick.create({ data: { harvestRecordId: record.id, pickDate: new Date("2024-09-10"), weightKg: 18000, createdByEmail: ACTOR.actorEmail } });
   const pickWhite = await prisma.harvestPick.create({ data: { harvestRecordId: record.id, pickDate: new Date("2024-09-12"), weightKg: 5000, createdByEmail: ACTOR.actorEmail } });
+  const pickWC = await prisma.harvestPick.create({ data: { harvestRecordId: record.id, pickDate: new Date("2024-09-13"), weightKg: 2000, createdByEmail: ACTOR.actorEmail } }); // for whole-cluster press
 
   const tankRed = await makeVessel("ZZF-RED", 20000);
   const tankWhite = await makeVessel("ZZF-WHT", 8000);
   const tankFR = await makeVessel("ZZF-FR", 20000);
   const barrelHP = await makeVessel("ZZF-HP", 20000);
+  const tankWhole = await makeVessel("ZZF-WC", 8000);
+  const tankWhole2 = await makeVessel("ZZF-WC2", 8000);
 
   // ── 1. Crush: NEW must lot from a PARTIAL pick, measured yield ──
   console.log("\n── 1. Crush (partial pick → new MUST lot at measured yield) ──");
@@ -204,6 +207,34 @@ async function main() {
   await transitionStateCore(ACTOR, { lotId: crush1.lotId, kind: "MLF", to: "ACTIVE", commandId: uid() });
   const mlfDone = await transitionStateCore(ACTOR, { lotId: crush1.lotId, kind: "MLF", to: "COMPLETE", commandId: uid() });
   assert(mlfDone.mlfState === "COMPLETE", "MLF advances ACTIVE→COMPLETE independently of AF");
+
+  // ── 8b. Whole-cluster press: harvest fruit → JUICE, skipping crush (op PRESS) ──
+  console.log("\n── 8b. Whole-cluster press (fruit → juice, skips crush) ──");
+  const wc = await crushLotCore(ACTOR, {
+    commandId: uid(),
+    picks: [{ pickId: pickWC.id, consumedKg: 2000 }], // press the whole 2 t pick
+    destVesselId: tankWhole,
+    outputVolumeL: 1300,
+    destinations: [
+      { vesselId: tankWhole, volumeL: 800 },
+      { vesselId: tankWhole2, volumeL: 500 },
+    ],
+    target: { mode: "NEW", vintage: 2024 },
+    outputForm: "JUICE",
+    opType: "PRESS",
+  });
+  created.lots.push(wc.lotId);
+  const wcLot = await prisma.lot.findUniqueOrThrow({ where: { id: wc.lotId } });
+  assert(wcLot.form === "JUICE", "whole-cluster press originates a JUICE lot (skips MUST)");
+  assert((await lotVol(tankWhole, wc.lotId)) === 800 && (await lotVol(tankWhole2, wc.lotId)) === 500, "the juice lot split across two vessels (800 + 500 = 1300 L)");
+  const wcOp = await prisma.lotOperation.findUniqueOrThrow({ where: { id: wc.operationId }, select: { type: true } });
+  assert(wcOp.type === "PRESS", "whole-cluster press is recorded as a PRESS operation");
+  const pickFullyUsed = Number((await prisma.lotHarvestSource.aggregate({ where: { harvestPickId: pickWC.id }, _sum: { consumedKg: true } }))._sum.consumedKg ?? 0);
+  assert(pickFullyUsed === 2000, "the pressed pick is now fully consumed → it can no longer be crushed (shared ledger)");
+  await expectThrow(
+    () => crushLotCore(ACTOR, { commandId: uid(), picks: [{ pickId: pickWC.id, consumedKg: 1 }], destVesselId: tankWhole, outputVolumeL: 1, target: { mode: "NEW", vintage: 2024 } }),
+    "crushing an already whole-cluster-pressed pick is rejected (no kg remain)",
+  );
 
   // ── 9. Cold soak on a must lot at af NONE ──
   console.log("\n── 9. Cold soak ──");

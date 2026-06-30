@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planCrush, isBalanced, type CrushPickDraw } from "@/lib/ledger/math";
+import { planCrush, planCrushSplit, isBalanced, type CrushPickDraw } from "@/lib/ledger/math";
 
 // Phase 6 Unit 3: the PURE crush plan. The DB core (sequential-fill ADD, block access,
 // commandId idempotency) is exercised end-to-end in scripts/verify-ferment.ts (Unit 12).
@@ -63,5 +63,32 @@ describe("planCrush", () => {
     expect(() => planCrush([pick({ consumedKg: 0 })], "t", "l", 100)).toThrow(/greater than 0/);
     expect(() => planCrush([pick()], "t", "l", 0)).toThrow(/greater than 0/);
     expect(() => planCrush([], "t", "l", 100)).toThrow(/at least one harvest pick/);
+  });
+});
+
+describe("planCrushSplit (whole-cluster press → one juice lot across N vessels)", () => {
+  it("fans the originated lot across vessels, balanced, with a single origination leg", () => {
+    const plan = planCrushSplit(
+      [pick({ consumedKg: 2000, weightKg: 2000 })],
+      [
+        { vesselId: "tank-12", volumeL: 1000 },
+        { vesselId: "tank-14", volumeL: 300 },
+      ],
+      "juice-lot",
+    );
+    expect(isBalanced(plan.lines)).toBe(true);
+    expect(plan.outputVolumeL).toBe(1300);
+    // one +line per vessel + a single −origination leg.
+    expect(plan.lines.filter((l) => l.vesselId && l.deltaL > 0)).toHaveLength(2);
+    const origination = plan.lines.filter((l) => l.vesselId === null);
+    expect(origination).toHaveLength(1);
+    expect(origination[0].reason).toBe("crush_origination");
+    expect(origination[0].deltaL).toBe(-1300);
+    expect(plan.yieldLPerTonne).toBeCloseTo(650, 2);
+  });
+
+  it("rejects an empty destination list or a non-positive volume", () => {
+    expect(() => planCrushSplit([pick()], [], "l")).toThrow(/at least one destination/);
+    expect(() => planCrushSplit([pick()], [{ vesselId: "v", volumeL: 0 }], "l")).toThrow(/greater than 0/);
   });
 });
