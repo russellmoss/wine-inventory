@@ -67,6 +67,10 @@ export const LINE_REASONS = [
   "filtration", // Phase 3: volume lost to the filter medium
   "evaporation", // Phase 3: angel's share — DERIVED from topping, not a recorded event
   "dump", // Phase 3: deliberate disposal of wine (the standalone LOSS op)
+  // Phase 6: the −V counter-leg of a CRUSH that ORIGINATES a must lot from harvest fruit.
+  // It is origination-from-harvest (kg→L birth, D8), NOT loss — explicitly EXCLUDED from
+  // shrink/loss reports (loss totals filter reason === "loss" only). See council S8.
+  "crush_origination",
 ] as const;
 export type LineReason = (typeof LINE_REASONS)[number];
 

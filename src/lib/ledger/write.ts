@@ -55,6 +55,9 @@ export type WriteOpInput = {
   note?: string | null;
   observedAt?: Date;
   correctsOperationId?: number | null;
+  /** Phase 6: client idempotency key (crush/press/saignée). UNIQUE — a duplicate submit
+   * aborts with P2002, which the caller treats as success (council S4). */
+  commandId?: string | null;
   /** lotId -> human code, for durable line snapshots. */
   lotCodes: Map<string, string>;
   /** vesselId -> human code, for durable line snapshots. */
@@ -114,6 +117,7 @@ export async function writeLotOperation(
       captureMethod: input.captureMethod ?? "MANUAL",
       note: input.note ?? null,
       correctsOperationId: input.correctsOperationId ?? null,
+      commandId: input.commandId ?? null,
     },
     select: { id: true },
   });

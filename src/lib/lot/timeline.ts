@@ -251,6 +251,19 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
           ? `Topped ${formatL(inTotal)} L${srcLabels ? ` from ${srcLabels}` : ""}${dstLabels ? ` into ${dstLabels}` : ""}`
           : `Topped ${formatL(outTotal)} L from ${srcLabels || "—"}`;
       break;
+    case "CRUSH": {
+      // The −V leg is origination-from-harvest (reason crush_origination), not loss.
+      summary = `Crushed fruit → ${formatL(inTotal)} L must${dstLabels ? ` into ${dstLabels}` : ""}`;
+      break;
+    }
+    case "PRESS": {
+      const lossClause = lossTotal > 0 ? ` (${formatL(lossTotal)} L lees)` : "";
+      summary = `Pressed ${formatL(outTotal)} L${dstLabels ? ` → ${dstLabels}` : ""}${lossClause}`;
+      break;
+    }
+    case "SAIGNEE":
+      summary = `Bled ${formatL(inTotal || outTotal)} L juice${dstLabels ? ` → ${dstLabels}` : ""}`;
+      break;
     default:
       summary = opn.type;
   }

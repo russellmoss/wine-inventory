@@ -8,6 +8,11 @@ import { FUNCTIONAL_ZERO_L, type LineReason } from "@/lib/ledger/vocabulary";
 
 const EPS = 1e-9;
 
+/** kg is recorded at Decimal(12,3); yield ratios carry a little more precision. Volume math
+ * still goes through round2 (centiliters) so ledger lines stay exact. */
+const round3 = (n: number) => Math.round(n * 1e3) / 1e3;
+const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
+
 /**
  * A signed volumetric ledger line. `vesselId === null` is the "outside the cellar"
  * counter-account (seed-in, loss-out, bottle-out) that keeps every operation balanced.
@@ -229,6 +234,127 @@ export function planBlendSplit(
   }
   assertBalanced(lines);
   return { lines, childTotalL: s.childTotalL, lossL: s.lossL, parentGrossByLot: s.parentGrossByLot };
+}
+
+// ───────────────────────── Phase 6: crush & press (state transforms) ─────────────────────────
+
+/** One harvest pick consumed by a crush, with the data needed to guard partial consumption. */
+export type CrushPickDraw = {
+  pickId: string;
+  consumedKg: number; // kg taken from this pick into THIS crush
+  weightKg: number; // the pick's total weight
+  alreadyConsumedKg: number; // Σ consumedKg already recorded against this pick (other lots/crushes)
+};
+
+export type CrushPlan = {
+  lines: LedgerLine[];
+  outputVolumeL: number;
+  totalConsumedKg: number;
+  yieldLPerKg: number; // MEASURED yield — output liters ÷ kg consumed (D8: never arithmetic kg→L)
+  yieldLPerTonne: number; // the winemaker-facing figure (~600–750 L/t)
+};
+
+/**
+ * Plan a CRUSH (Phase 6): consume `consumedKg` from each pick and ORIGINATE `outputVolumeL`
+ * of must into `destVesselId` under `mustLotId` (a new OR an existing must lot — the caller
+ * decides identity). kg NEVER enters a ledger line (D8); it is op metadata. The only balanced
+ * lines are the measured output `+V` into the vessel and a `−V` counter-leg typed
+ * `crush_origination` (origination-from-harvest, EXCLUDED from loss — council S8). Yield is
+ * DERIVED from the measured output, not from kg. Guards: each consumedKg > 0 and ≤ the pick's
+ * remaining (`weightKg − alreadyConsumedKg`); `outputVolumeL > 0`.
+ */
+export function planCrush(
+  picks: CrushPickDraw[],
+  destVesselId: string,
+  mustLotId: string,
+  outputVolumeL: number,
+): CrushPlan {
+  if (picks.length === 0) throw new Error("A crush needs at least one harvest pick.");
+  if (!(outputVolumeL > 0)) throw new Error("Measured output volume must be greater than 0.");
+
+  let totalConsumedKg = 0;
+  for (const p of picks) {
+    if (!(p.consumedKg > 0)) throw new Error("Each pick's consumed kg must be greater than 0.");
+    const remaining = round3(p.weightKg - p.alreadyConsumedKg);
+    if (p.consumedKg > remaining + EPS) {
+      throw new Error(
+        `Can't consume ${p.consumedKg} kg from pick ${p.pickId} — only ${remaining} kg remain of its ${p.weightKg} kg.`,
+      );
+    }
+    totalConsumedKg = round3(totalConsumedKg + p.consumedKg);
+  }
+  if (!(totalConsumedKg > 0)) throw new Error("A crush must consume a positive weight of fruit.");
+
+  const out = round2(outputVolumeL);
+  const lines: LedgerLine[] = [
+    { lotId: mustLotId, vesselId: destVesselId, deltaL: out },
+    { lotId: mustLotId, vesselId: null, deltaL: round2(-out), reason: "crush_origination" },
+  ];
+  assertBalanced(lines);
+
+  // Both yields derive from the raw measured ratio (don't compound the rounded per-kg value).
+  const ratio = out / totalConsumedKg;
+  return {
+    lines,
+    outputVolumeL: out,
+    totalConsumedKg,
+    yieldLPerKg: round4(ratio),
+    yieldLPerTonne: round2(ratio * 1000),
+  };
+}
+
+export type PressFractionDraw = {
+  childLotId: string; // the destination lot (new child OR an existing lot being merged into)
+  destVesselId: string;
+  volumeL: number;
+};
+
+export type PressPlan = {
+  lines: LedgerLine[];
+  drawnL: number; // total pulled out of the parent = Σfraction + lees
+  fractionTotalL: number;
+  lossL: number; // lees / skins
+};
+
+/**
+ * Plan a PRESS (Phase 6): the inverse of a blend — ONE parent lot/vessel position drawn down
+ * into N child fraction lots (free-run, light, hard press), with lees/skins as a typed `loss`
+ * line. Each fraction lands `volumeL` in its destination vessel under its (new or merged) child
+ * lot. The parent gives up `Σfraction + lees`; balance holds per the conservation law. Guards:
+ * ≥1 fraction, each volume > 0, lees ≥ 0, and total drawn ≤ what the parent holds. SAIGNEE is
+ * the same plan run pre-ferment (a single juice fraction bled off a must lot).
+ */
+export function planPress(
+  parentLotId: string,
+  parentVesselId: string,
+  parentAvailableL: number,
+  fractions: PressFractionDraw[],
+  lossL = 0,
+): PressPlan {
+  if (fractions.length === 0) throw new Error("A press needs at least one fraction.");
+  if (lossL < 0) throw new Error("Lees/skins loss can't be negative.");
+
+  let fractionTotalL = 0;
+  const fractionLines: LedgerLine[] = [];
+  for (const f of fractions) {
+    if (!(f.volumeL > 0)) throw new Error("Each press fraction volume must be greater than 0.");
+    fractionTotalL = round2(fractionTotalL + f.volumeL);
+    fractionLines.push({ lotId: f.childLotId, vesselId: f.destVesselId, deltaL: round2(f.volumeL) });
+  }
+  const drawnL = round2(fractionTotalL + lossL);
+  if (!(drawnL > 0)) throw new Error("A press must move a positive volume.");
+  if (drawnL > round2(parentAvailableL) + EPS) {
+    throw new Error(`Can't press ${drawnL} L — the parent lot holds ${round2(parentAvailableL)} L.`);
+  }
+
+  const lines: LedgerLine[] = [
+    { lotId: parentLotId, vesselId: parentVesselId, deltaL: round2(-drawnL) },
+    ...fractionLines,
+  ];
+  if (lossL > 0) lines.push({ lotId: parentLotId, vesselId: null, deltaL: round2(lossL), reason: "loss" });
+  assertBalanced(lines);
+
+  return { lines, drawnL, fractionTotalL, lossL: round2(lossL) };
 }
 
 export type VesselLossPlan = {
