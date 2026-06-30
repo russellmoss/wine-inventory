@@ -4,14 +4,16 @@ import React from "react";
 import { Badge, Button } from "@/components/ui";
 import { FermentChart } from "@/components/ferment/FermentChart";
 import { getFermentSeriesAction } from "@/lib/ferment/monitor-actions";
-import { submitPanelAction } from "@/lib/ferment/round-actions";
-import type { FermentSeries } from "@/lib/ferment/monitor-data";
+import { useSync } from "@/lib/offline/useSync";
+import type { FermentSeries, FermentPoint } from "@/lib/ferment/monitor-data";
 import { checkBrix, checkTemp, toBrix } from "@/lib/ferment/sugar";
 
 // Phase 6 (vessel-first): the Fermentation monitoring modal body. Logs sugar (Brix or Baumé),
 // pH and temperature for the lot resident in this vessel, over time, and charts Brix+temp on a
-// dual-Y axis with a pH companion. Writes through the idempotent panel path (reuses Phase 4
-// AnalysisPanel, so it also feeds the lot's chemistry trend).
+// dual-Y axis with a pH companion. Capture goes through the OFFLINE OUTBOX (Dexie → idempotent
+// drain) so a reading survives a wifi drop on the crush pad; the row is durable on the device
+// the instant you tap Log, then syncs in the background. Optimistic points show on the chart
+// immediately; once everything syncs we reload the canonical server series.
 
 const field: React.CSSProperties = {
   height: 44,
@@ -25,38 +27,37 @@ const field: React.CSSProperties = {
 };
 const lbl: React.CSSProperties = { fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", display: "block", marginBottom: 4 };
 
-const newId = (): string =>
-  typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-
 type Tone = React.ComponentProps<typeof Badge>["tone"];
 const afTone = (s: string): Tone => (s === "ACTIVE" ? "gold" : s === "DRY" ? "maroon" : "neutral");
 const mlfTone = (s: string): Tone => (s === "ACTIVE" ? "gold" : s === "COMPLETE" ? "green" : "neutral");
 
 export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesselId: string; vesselCode: string; lotId: string; lotCode: string }) {
+  const { pending, attention, syncing, capture } = useSync();
   const [series, setSeries] = React.useState<FermentSeries | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [optimistic, setOptimistic] = React.useState<FermentPoint[]>([]); // logged this session, awaiting sync
   const [sugar, setSugar] = React.useState("");
   const [unit, setUnit] = React.useState<"BRIX" | "BAUME">("BRIX");
   const [ph, setPh] = React.useState("");
   const [temp, setTemp] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [okMsg, setOkMsg] = React.useState("");
 
   const reload = React.useCallback(async () => {
-    setLoading(true);
     try {
-      setSeries(await getFermentSeriesAction(lotId));
-    } finally {
-      setLoading(false);
+      const s = await getFermentSeriesAction(lotId);
+      setSeries(s);
+      return s;
+    } catch {
+      return null; // offline — keep showing what we have + optimistic points
     }
   }, [lotId]);
 
-  // Initial load: only set state AFTER the await (not the synchronous cascade the lint guards).
+  // Initial load (set state only after the await — not the synchronous cascade the lint guards).
   React.useEffect(() => {
     let alive = true;
     void (async () => {
-      const s = await getFermentSeriesAction(lotId);
+      const s = await getFermentSeriesAction(lotId).catch(() => null);
       if (alive) {
         setSeries(s);
         setLoading(false);
@@ -67,56 +68,57 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
     };
   }, [lotId]);
 
-  const prevBrix = series?.points.filter((p) => p.brix != null).slice(-1)[0]?.brix ?? null;
+  // When the outbox drains to empty, the server now has everything we logged — reload the
+  // canonical series and drop the optimistic placeholders (setState only after the awaits).
+  React.useEffect(() => {
+    if (!(pending === 0 && !syncing && optimistic.length > 0)) return;
+    void (async () => {
+      await reload();
+      setOptimistic([]);
+    })();
+  }, [pending, syncing, optimistic.length, reload]);
+
+  const serverPoints = series?.points ?? [];
+  const prevBrix = [...serverPoints, ...optimistic].filter((p) => p.brix != null).slice(-1)[0]?.brix ?? null;
+  const chartPoints = [...serverPoints, ...optimistic].sort((a, b) => a.observedAt.localeCompare(b.observedAt));
 
   async function logReading() {
     setError("");
     setOkMsg("");
-    const readings: { captureId: string; analyte: string; value: number; unit: string }[] = [];
+    const readings: { analyte: string; value: number; unit: string }[] = [];
+    let brixVal: number | null = null;
+    let phVal: number | null = null;
+    let tempVal: number | null = null;
     if (sugar.trim()) {
-      const brixVal = toBrix(Number(sugar), unit);
+      brixVal = toBrix(Number(sugar), unit);
       const g = checkBrix(brixVal, prevBrix);
       if (!g.ok) return setError(g.error);
       if (g.warning && !window.confirm(`${g.warning}\n\nLog it anyway?`)) return;
-      readings.push({ captureId: newId(), analyte: "BRIX", value: brixVal, unit: "°Bx" });
+      readings.push({ analyte: "BRIX", value: brixVal, unit: "°Bx" });
     }
     if (ph.trim()) {
-      const v = Number(ph);
-      if (!Number.isFinite(v) || v < 2 || v > 5) return setError("pH should be between 2 and 5.");
-      readings.push({ captureId: newId(), analyte: "PH", value: v, unit: "pH" });
+      phVal = Number(ph);
+      if (!Number.isFinite(phVal) || phVal < 2 || phVal > 5) return setError("pH should be between 2 and 5.");
+      readings.push({ analyte: "PH", value: phVal, unit: "pH" });
     }
     if (temp.trim()) {
-      const v = Number(temp);
-      const g = checkTemp(v);
+      tempVal = Number(temp);
+      const g = checkTemp(tempVal);
       if (!g.ok) return setError(g.error);
-      readings.push({ captureId: newId(), analyte: "TEMP", value: v, unit: "°C" });
+      readings.push({ analyte: "TEMP", value: tempVal, unit: "°C" });
     }
     if (readings.length === 0) return setError("Enter at least one of sugar, pH or temperature.");
 
-    setBusy(true);
+    const observedAt = new Date().toISOString();
     try {
-      const res = await submitPanelAction({
-        panelId: newId(),
-        commandId: newId(),
-        vesselId,
-        lotId,
-        occupancyToken: `${vesselId}:${lotId}`,
-        deviceObservedAt: new Date().toISOString(),
-        readings,
-      });
-      if (!res.ok) {
-        setError(res.error === "STALE_OCCUPANCY" ? "This lot is no longer in this vessel — reopen from the current vessel." : `Couldn't save (${res.error}).`);
-      } else {
-        setOkMsg("Logged.");
-        setSugar("");
-        setPh("");
-        setTemp("");
-        await reload();
-      }
+      await capture({ vesselId, lotId, occupancyToken: `${vesselId}:${lotId}`, deviceObservedAt: observedAt, readings });
+      setOptimistic((o) => [...o, { observedAt, brix: brixVal, ph: phVal, temp: tempVal }]);
+      setOkMsg("Saved on device");
+      setSugar("");
+      setPh("");
+      setTemp("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save.");
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -133,7 +135,16 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
             {series.stuck.stuck ? <Badge tone="maroon" variant="soft">⚠ stuck</Badge> : null}
           </>
         ) : null}
+        <span style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--text-muted)" }} aria-live="polite">
+          {pending > 0 ? `${pending} waiting to sync${syncing ? "…" : ""}` : "All synced"}
+        </span>
       </div>
+
+      {attention.length > 0 ? (
+        <p style={{ fontSize: 13, color: "var(--danger)", margin: "0 0 8px" }}>
+          {attention.length} reading(s) couldn&apos;t attach (the vessel changed since capture) — re-check in the cellar.
+        </p>
+      ) : null}
 
       {/* Capture row */}
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 8 }}>
@@ -155,19 +166,19 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
           <label style={lbl}>Temp °C</label>
           <input value={temp} onChange={(e) => setTemp(e.target.value)} inputMode="decimal" placeholder="°C" aria-label="Temperature" style={{ ...field, width: 80 }} />
         </div>
-        <Button variant="primary" disabled={busy} onClick={() => void logReading()} style={{ minHeight: 44 }}>
-          {busy ? "Logging…" : "Log reading"}
+        <Button variant="primary" onClick={() => void logReading()} style={{ minHeight: 44 }}>
+          Log reading
         </Button>
       </div>
       <div aria-live="polite" style={{ minHeight: 18, fontSize: 13, marginBottom: 12 }}>
-        {error ? <span style={{ color: "var(--danger)" }}>{error}</span> : okMsg ? <span style={{ color: "var(--success, #2e7d32)" }}>{okMsg}</span> : null}
+        {error ? <span style={{ color: "var(--danger)" }}>{error}</span> : okMsg ? <span style={{ color: "var(--text-muted)" }}>{okMsg} ↑</span> : null}
       </div>
 
       {/* Chart */}
       {loading && !series ? (
         <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>Loading…</p>
       ) : (
-        <FermentChart points={series?.points ?? []} />
+        <FermentChart points={chartPoints} />
       )}
     </div>
   );
