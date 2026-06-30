@@ -1,7 +1,7 @@
 ---
 title: State Transforms & Fermentation Logging (Phase 6)
 type: feat
-status: draft
+status: completed
 date: 2026-06-28
 branch: main
 depth: deep
@@ -525,17 +525,18 @@ ferment curve + phase + stuck.
 
 ## Success Criteria (Phase 6 exit)
 
-- [ ] Crush harvest picks → a MUST lot at **measured** volume, linked to its picks (partial +
+- [x] Crush harvest picks → a MUST lot at **measured** volume, linked to its picks (partial +
       sequential-fill ADD supported); over-consume rejected; yield% recorded.
-- [ ] Ferment it: daily Brix/temp via the Round grid feed a curve; `afState` ACTIVE→DRY flips
+- [x] Ferment it: daily Brix/temp via the Round grid feed a curve; `afState` ACTIVE→DRY flips
       `form=WINE`; a flat ACTIVE run (>3 °Bx) raises **stuck**, near-dryness/cold-soak don't.
-- [ ] Press splits free-run vs press into **distinct OR merged** child lots with lineage +
+- [x] Press splits free-run vs press into **distinct OR merged** child lots with lineage +
       derived loss; saignée bleeds MUST→JUICE.
-- [ ] The three state vectors (form / AF / MLF) express white (press-before-ferment) and
+- [x] The three state vectors (form / AF / MLF) express white (press-before-ferment) and
       co-inoculated red (MLF during primary); MLF tracked via malic; cold soak/maceration captured.
-- [ ] The **Round grid works fully offline** — capture with no signal, persist across reload,
+- [x] The **Round grid works fully offline** — capture with no signal, persist across reload,
       sync on reconnect, **no duplicates and no wrong-lot attachment** (idempotent + occupancy-checked).
-- [ ] All Vitest tests pass; `scripts/verify-ferment.ts` all PASS; `npm run build` clean; no
+      (Offline CAPTURE durability via the Dexie outbox; Serwist app-shell SW deferred — Turbopack, user-approved.)
+- [x] All Vitest tests pass (545); `scripts/verify-ferment.ts` all PASS (31/31); `npm run build` clean; no
       regressions.
 
 ## GSTACK REVIEW REPORT
