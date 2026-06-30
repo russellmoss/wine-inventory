@@ -355,6 +355,9 @@ model HarvestPick {
   note            String?
   createdAt       DateTime      @default(now())
   harvestRecord   HarvestRecord @relation(fields: [harvestRecordId], references: [id], onDelete: Cascade)
+  // Phase 6: lots this pick was (partially) crushed into. A pick can feed several fermenters;
+  // Σ consumedKg ≤ weightKg is enforced in the crush tx (no DB unique on harvestPickId).
+  crushSources    LotHarvestSource[]
 
   @@index([harvestRecordId, pickDate])
   @@map("harvest_pick")
@@ -391,6 +394,8 @@ model Vessel {
   analysisPanels   AnalysisPanel[]
   tastingNotes     LotTastingNote[]
   samples          Sample[]
+  // Phase 6: ferment-state transitions captured in this vessel (snapshot context).
+  stateEvents      LotStateEvent[]
 
   @@unique([type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
   @@map("vessel")
@@ -768,7 +773,15 @@ enum CaptureMethod {
 model Lot {
   id               String   @id @default(cuid())
   code             String   @unique
+  // form is MUTABLE over the lot's life (D4) but ONLY via the Phase 6 domain transitions
+  // (crush→MUST, press/saignée→JUICE, AF-dry→WINE) — direct writes are banned; every change
+  // records a LotStateEvent. origin*/code/provenance stay immutable.
   form             LotForm  @default(WINE)
+  // Phase 6: the two orthogonal fermentation vectors (council C1). The physical `form` is
+  // the third vector. A legal form×afState×mlfState matrix is validated in the domain layer
+  // (Unit 5). STUCK is DERIVED from the Brix trend (council C3), never stored here.
+  afState          AlcoholicFermState @default(NONE)
+  mlfState         MalolacticState    @default(NONE)
   originVineyardId String?
   originBlockId    String?
   originSubblockId String?
@@ -800,6 +813,11 @@ model Lot {
   sourceVineyards      LotVineyard[]          // the lot's source-vineyard SET (union over lineage at blend)
   blendTrialComponents BlendTrialComponent[]  // bench-trial component rows referencing this lot
   promotedFromTrials   BlendTrial[]           @relation("TrialPromotedLot") // trials promoted into this lot
+  // Phase 6: harvest picks consumed by the crush that originated this lot (partial picks
+  // allowed; this join is the single source of truth for "pick consumed/remaining"), and the
+  // recorded form/AF/MLF transition history.
+  harvestSources       LotHarvestSource[]
+  stateEvents          LotStateEvent[]
 
   @@index([status])
   @@index([originVineyardId])
@@ -820,6 +838,10 @@ model LotOperation {
   note                String?
   correctsOperationId Int?          @unique
   batchId             String? // Phase 3: groups the per-vessel ops of one group fan-out (D13)
+  // Phase 6: client-generated idempotency key for mutating transforms (crush/press/saignée).
+  // UNIQUE so a double-tap on a flaky crush-pad network is a no-op success, not a duplicate
+  // lot (council S4). Nullable: pre-Phase-6 ops have none; Postgres allows many NULLs.
+  commandId           String?       @unique
   metadata            Json?
   createdAt           DateTime      @default(now())
 
@@ -829,6 +851,7 @@ model LotOperation {
   vesselTransfer   VesselTransfer? // 1:1 derived read-model (FK lives on VesselTransfer)
   treatments       LotTreatment[]     @relation("TreatmentOperation") // detail rows this op created
   voidedTreatments LotTreatment[]     @relation("TreatmentVoid") // treatments this (CORRECTION) op voided
+  stateEvents      LotStateEvent[]    // form/AF/MLF transitions caused by this op (shares fold order)
 
   @@index([type, observedAt])
   @@index([batchId])
@@ -889,6 +912,57 @@ model LotLineage {
   @@unique([parentLotId, childLotId])
   @@index([childLotId])
   @@map("lot_lineage")
+}
+
+// ───────────────────────── Phase 6: state transforms & fermentation ─────────────────────────
+
+// The crush linkage: which harvest pick(s) were consumed (in part or full) into which lot.
+// SINGLE SOURCE OF TRUTH for pick consumption (council S8) — "remaining = weightKg − Σ
+// consumedKg" is DERIVED from these rows, never also stored on the pick. NO unique on
+// harvestPickId: a big pick is legitimately split across several fermenters; the crush tx
+// enforces Σ consumedKg ≤ HarvestPick.weightKg. kg never enters a ledger line (D8) — it is
+// op metadata; the measured output liters is the only balanced line.
+model LotHarvestSource {
+  id            String      @id @default(cuid())
+  lotId         String
+  harvestPickId String
+  consumedKg    Decimal     @db.Decimal(12, 3)
+  createdAt     DateTime    @default(now())
+  lot           Lot         @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  harvestPick   HarvestPick @relation(fields: [harvestPickId], references: [id], onDelete: Restrict)
+
+  @@index([lotId])
+  @@index([harvestPickId])
+  @@map("lot_harvest_source")
+}
+
+// A recorded transition of one of the three orthogonal state vectors (form / AF / MLF).
+// Form is mutable only through these (direct writes banned). Ordering (council/Codex): when a
+// transition is caused by a transform it carries the triggering `operationId` (shares the
+// ledger's monotonic fold order); standalone changes use a per-lot optimistic version check.
+// `commandId` UNIQUE makes a phase mutation idempotent (duplicate-as-success, council S4).
+model LotStateEvent {
+  id             String        @id @default(cuid())
+  lotId          String
+  vesselId       String? // snapshot context (the vessel the lot sat in at the transition)
+  kind           String // FORM | AF | MLF — which vector changed (validated in code)
+  fromValue      String // the prior enum value as text (durable across enum edits)
+  toValue        String // the new enum value as text
+  observedAt     DateTime
+  enteredAt      DateTime      @default(now())
+  enteredById    String? // actor id snapshot (no FK; matches LotOperation.actorUserId)
+  enteredByEmail String // durable provenance snapshot
+  captureMethod  CaptureMethod @default(MANUAL)
+  note           String?
+  operationId    Int? // set when a transform (crush/press/saignée/AF-dry) drove this transition
+  commandId      String?       @unique // idempotency for a standalone phase mutation (duplicate=success)
+  createdAt      DateTime      @default(now())
+  lot            Lot           @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  vessel         Vessel?       @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  operation      LotOperation? @relation(fields: [operationId], references: [id], onDelete: SetNull)
+
+  @@index([lotId, observedAt])
+  @@map("lot_state_event")
 }
 
 // ───────────────────────── Phase 5: blends, lineage source-set & RBAC ─────────────────────────
@@ -1113,7 +1187,16 @@ model AnalysisPanel {
   enteredByEmail  String // durable provenance snapshot
   captureMethod   CaptureMethod    @default(MANUAL)
   note            String?
-  clientRequestId String?          @unique // idempotency: a double-submit is a no-op
+  clientRequestId String?          @unique // idempotency: a double-submit is a no-op (= the offline "panel" command key)
+  // Phase 6 offline capture (council S2/S5/S6): a Round row's Brix+temp commit as ONE atomic
+  // panel. `deviceObservedAt` is the tablet clock at capture; `serverReceivedAt` is set on
+  // insert; the stuck detector buckets by winery-tz. `occupancyToken` is the vessel's
+  // resident-lot version at capture — validated against vessel-lot history as of observedAt so
+  // a late offline sync can't attach a reading to the wrong lot. All nullable (chemistry
+  // panels created online leave them null).
+  deviceObservedAt DateTime?
+  serverReceivedAt DateTime?
+  occupancyToken   String?
   voidedAt        DateTime?
   voidedById      String?
   createdAt       DateTime         @default(now())
@@ -1138,9 +1221,15 @@ model AnalysisReading {
   analyte   String // registry key (PH, FREE_SO2, …) — validated in code, not a DB enum
   value     Decimal       @db.Decimal(12, 4)
   unit      String // the unit the value was entered in (registry-allowed)
+  // Phase 6 offline idempotency (council S1): a client-minted UUID per analyte reading.
+  // UNIQUE + ON CONFLICT DO NOTHING on insert; a duplicate sync is treated as SUCCESS. A
+  // captured reading is immutable — an edit mints a NEW captureId, never reuses one. Nullable:
+  // online chemistry readings have none.
+  captureId String?       @unique
   createdAt DateTime      @default(now())
   panel     AnalysisPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
 
+  @@unique([panelId, analyte]) // a panel holds at most one reading per analyte (Brix+temp can't desync)
   @@index([panelId])
   @@index([analyte])
   @@map("analysis_reading")
