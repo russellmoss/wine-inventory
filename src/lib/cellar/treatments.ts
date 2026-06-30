@@ -21,7 +21,18 @@ async function residentBalances(vesselId: string) {
   return prisma.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
 }
 
-export type CapKind = "PUMPOVER" | "PUNCHDOWN";
+// Phase 6: cold soak + extended maceration are non-volumetric cap-work too (council "cap mgmt
+// reused + extended"). They reuse the CAP_MGMT op + LotTreatment row (kind is a validated string,
+// NOT a DB enum — no migration). The orthogonal vectors make both representable: cold soak =
+// MUST + afState:NONE (pre-ferment); extended maceration = MUST + afState:DRY (post-ferment, still
+// on skins) — the old linear phase enum couldn't express "dry but on skins".
+export type CapKind = "PUMPOVER" | "PUNCHDOWN" | "COLD_SOAK" | "MACERATION";
+
+export const CAP_KINDS: readonly CapKind[] = ["PUMPOVER", "PUNCHDOWN", "COLD_SOAK", "MACERATION"] as const;
+
+export function isCapKind(v: unknown): v is CapKind {
+  return typeof v === "string" && (CAP_KINDS as readonly string[]).includes(v);
+}
 
 export type CapManagementInput = {
   vesselId: string;
@@ -32,13 +43,18 @@ export type CapManagementInput = {
   batchId?: string;
 };
 
-const CAP_LABELS: Record<CapKind, string> = { PUMPOVER: "Pump-over", PUNCHDOWN: "Punch-down" };
+const CAP_LABELS: Record<CapKind, string> = {
+  PUMPOVER: "Pump-over",
+  PUNCHDOWN: "Punch-down",
+  COLD_SOAK: "Cold soak",
+  MACERATION: "Maceration",
+};
 
 /** Cap management: one-tap, volume-neutral, typed + provenance-bearing (no free-text note only). */
 export async function capManagementCore(actor: LedgerActor, input: CapManagementInput): Promise<CellarBaseResult> {
   const { vesselId, kind } = input;
   if (!vesselId) throw new ActionError("A vessel is required.");
-  if (kind !== "PUMPOVER" && kind !== "PUNCHDOWN") throw new ActionError("Pick pump-over or punch-down.");
+  if (!isCapKind(kind)) throw new ActionError("Pick a valid cap-management action.");
 
   const vessel = await prisma.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel) throw new ActionError("Vessel not found.");

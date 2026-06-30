@@ -7,7 +7,12 @@ import { molecularSO2, type MolecularSO2 } from "@/lib/chemistry/so2";
 /** Op types that are volume-neutral (a treatment, no lines) — drives the "voided" pill. */
 const NEUTRAL_OPS = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT"]);
 
-const CAP_LABEL: Record<string, string> = { PUMPOVER: "Pump-over", PUNCHDOWN: "Punch-down" };
+const CAP_LABEL: Record<string, string> = {
+  PUMPOVER: "Pump-over",
+  PUNCHDOWN: "Punch-down",
+  COLD_SOAK: "Cold soak",
+  MACERATION: "Maceration",
+};
 
 function basisLabel(basis: string | null): string {
   if (!basis) return "";

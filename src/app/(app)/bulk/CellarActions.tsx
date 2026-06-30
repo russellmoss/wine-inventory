@@ -584,22 +584,24 @@ function RackForm({
 function CapForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: (fn: () => Promise<{ operationId: number }>, label: string) => void }) {
   const [duration, setDuration] = React.useState("");
   const durNum = duration ? Number(duration) : undefined;
-  function apply(kind: "PUMPOVER" | "PUNCHDOWN") {
-    onSubmit(
-      () => capManagementAction({ vesselId: vessel.id, kind, durationMin: durNum }),
-      kind === "PUMPOVER" ? "pump-over" : "punch-down",
-    );
+  const KINDS: { kind: "PUMPOVER" | "PUNCHDOWN" | "COLD_SOAK" | "MACERATION"; label: string }[] = [
+    { kind: "PUMPOVER", label: "Pump-over" },
+    { kind: "PUNCHDOWN", label: "Punch-down" },
+    { kind: "COLD_SOAK", label: "Cold soak" },
+    { kind: "MACERATION", label: "Maceration" },
+  ];
+  function apply(kind: "PUMPOVER" | "PUNCHDOWN" | "COLD_SOAK" | "MACERATION", label: string) {
+    onSubmit(() => capManagementAction({ vesselId: vessel.id, kind, durationMin: durNum }), label.toLowerCase());
   }
   return (
     <FormShell>
       <input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="decimal" placeholder="Minutes (optional)" style={{ ...fieldStyle, width: 150 }} aria-label="Duration in minutes" />
-      <Button variant="primary" size="sm" disabled={pending} onClick={() => apply("PUMPOVER")} style={{ minHeight: 44 }}>
-        Pump-over
-      </Button>
-      <Button variant="primary" size="sm" disabled={pending} onClick={() => apply("PUNCHDOWN")} style={{ minHeight: 44 }}>
-        Punch-down
-      </Button>
-      <span style={{ width: "100%", marginTop: 8, fontSize: 13, color: "var(--text-muted)" }}>One tap logs it instantly — undo from the toast.</span>
+      {KINDS.map((k) => (
+        <Button key={k.kind} variant="primary" size="sm" disabled={pending} onClick={() => apply(k.kind, k.label)} style={{ minHeight: 44 }}>
+          {k.label}
+        </Button>
+      ))}
+      <span style={{ width: "100%", marginTop: 8, fontSize: 13, color: "var(--text-muted)" }}>One tap logs it instantly — undo from the toast. Cold soak (pre-ferment) and maceration (dry on skins) reuse this.</span>
     </FormShell>
   );
 }
