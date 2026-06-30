@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { action, ActionError } from "@/lib/actions";
 import { canManagerAccessVineyard } from "@/lib/access";
 import { crushLotCore, type CrushLotInput, type CrushLotResult } from "@/lib/transform/crush-core";
+import { pressLotCore, type PressLotInput, type PressLotResult } from "@/lib/transform/press-core";
 
 // Server-action layer for the Phase 6 transforms. The script-safe cores live in
 // crush-core.ts / press-core.ts; here we add auth (crush is gated by HARVEST block access,
@@ -38,3 +39,14 @@ export const crushAction = action(
     return result;
   },
 );
+
+/** Press a must/wine lot into fractions (or saignée a must lot). Tenant-wide cellar op — once
+ * fruit is a cellar lot, Phase 5's shared-cellar rules apply (no per-vineyard gate). */
+export const pressAction = action(async ({ actor }, input: PressLotInput): Promise<PressLotResult> => {
+  const result = await pressLotCore(actor, input);
+  revalidatePath("/bulk");
+  revalidatePath("/ferment/round");
+  revalidatePath(`/lots/${result.parentLotId}`);
+  for (const f of result.fractions) revalidatePath(`/lots/${f.lotId}`);
+  return result;
+});
