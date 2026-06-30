@@ -4,6 +4,7 @@ import React from "react";
 import { Badge, Button } from "@/components/ui";
 import { FermentChart } from "@/components/ferment/FermentChart";
 import { getFermentSeriesAction } from "@/lib/ferment/monitor-actions";
+import { transitionStateAction } from "@/lib/ferment/actions";
 import { voidPanelAction } from "@/lib/chemistry/actions";
 import { useSync } from "@/lib/offline/useSync";
 import type { FermentSeries, FermentPoint } from "@/lib/ferment/monitor-data";
@@ -31,6 +32,9 @@ type Tone = React.ComponentProps<typeof Badge>["tone"];
 const afTone = (s: string): Tone => (s === "ACTIVE" ? "gold" : s === "DRY" ? "maroon" : "neutral");
 const mlfTone = (s: string): Tone => (s === "ACTIVE" ? "gold" : s === "COMPLETE" ? "green" : "neutral");
 
+const newId = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+
 const pad2 = (n: number) => String(n).padStart(2, "0");
 /** A <input type=datetime-local> value for a Date, in LOCAL time. */
 function toLocalInput(d: Date): string {
@@ -55,6 +59,7 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [okMsg, setOkMsg] = React.useState("");
+  const [stBusy, setStBusy] = React.useState(false);
 
   const reload = React.useCallback(async () => {
     try {
@@ -182,6 +187,19 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
     setOkMsg("Editing a reading — change the values and Log to replace it.");
   }
 
+  async function advanceState(kind: "AF" | "MLF", to: string) {
+    setStBusy(true);
+    setError("");
+    try {
+      await transitionStateAction({ lotId, kind, to, commandId: newId() });
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't change state.");
+    } finally {
+      setStBusy(false);
+    }
+  }
+
   async function removePoint(panelId: string) {
     if (!window.confirm("Remove this reading? It will be voided (the trend + stuck signal recompute).")) return;
     setBusy(true);
@@ -214,6 +232,22 @@ export function FermentMonitor({ vesselId, vesselCode, lotId, lotCode }: { vesse
           {pending > 0 ? `${pending} waiting to sync${syncing ? "…" : ""}` : "All synced"}
         </span>
       </div>
+
+      {/* Advance the ferment state right here (also on the lot timeline) */}
+      {series ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          {series.afState === "NONE" ? (
+            <Button variant="secondary" size="sm" disabled={stBusy} onClick={() => void advanceState("AF", "ACTIVE")}>Start ferment</Button>
+          ) : series.afState === "ACTIVE" ? (
+            <Button variant="secondary" size="sm" disabled={stBusy} onClick={() => void advanceState("AF", "DRY")}>Mark dry</Button>
+          ) : null}
+          {series.mlfState === "NONE" ? (
+            <Button variant="secondary" size="sm" disabled={stBusy} onClick={() => void advanceState("MLF", "ACTIVE")}>Start MLF</Button>
+          ) : series.mlfState === "ACTIVE" ? (
+            <Button variant="secondary" size="sm" disabled={stBusy} onClick={() => void advanceState("MLF", "COMPLETE")}>MLF complete</Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {attention.length > 0 ? (
         <p style={{ fontSize: 13, color: "var(--danger)", margin: "0 0 8px" }}>
