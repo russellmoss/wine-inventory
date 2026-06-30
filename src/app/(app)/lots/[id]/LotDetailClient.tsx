@@ -19,6 +19,7 @@ import type { LotDetail } from "@/lib/lot/data";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { deleteOperationAction, editOperationAction, correctOperationAction } from "@/lib/cellar/actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
+import { transitionStateAction } from "@/lib/ferment/actions";
 import { AnalyteTrends, type TrendReading } from "@/components/chemistry/AnalyteTrends";
 import { CompositionRollup } from "@/components/lot/CompositionRollup";
 import { LineageTree } from "@/components/lot/LineageTree";
@@ -42,6 +43,70 @@ function statusLabel(status: string): string {
 }
 function statusTone(status: string): Tone {
   return status === "ACTIVE" ? "green" : "neutral";
+}
+
+// Phase 6: the orthogonal ferment vectors as badges (shown only when there's something to show).
+function afTone(s: string): Tone {
+  return s === "ACTIVE" ? "gold" : s === "DRY" ? "maroon" : "neutral";
+}
+function mlfTone(s: string): Tone {
+  return s === "ACTIVE" ? "gold" : s === "COMPLETE" ? "green" : "neutral";
+}
+
+const newId = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+
+// Phase 6: advance the AF / MLF vectors from the lot page. Form flips happen via crush/press or
+// automatically when a white goes dry (AF→DRY on JUICE), so there are no manual FORM buttons here.
+function FermentControls({ lot }: { lot: LotDetail }) {
+  const router = useRouter();
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  async function advance(kind: "AF" | "MLF", to: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await transitionStateAction({ lotId: lot.id, kind, to, commandId: newId() });
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't change state.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Only fermentable forms (or a lot already mid-ferment) get the controls — never a finished/
+  // seeded WINE (offering "Start ferment" there would just hit the illegal-state guard).
+  const fermentable = lot.form === "MUST" || lot.form === "JUICE" || lot.afState !== "NONE" || lot.mlfState !== "NONE";
+  const afNext = lot.afState === "NONE" ? { to: "ACTIVE", label: "Start ferment" } : lot.afState === "ACTIVE" ? { to: "DRY", label: "Mark dry" } : null;
+  const mlfNext = lot.mlfState === "NONE" ? { to: "ACTIVE", label: "Start MLF" } : lot.mlfState === "ACTIVE" ? { to: "COMPLETE", label: "MLF complete" } : null;
+  if (!fermentable || (!afNext && !mlfNext)) return null;
+
+  return (
+    <Card style={{ flex: "1 1 280px" }}>
+      <Eyebrow tone="ink">Fermentation</Eyebrow>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, fontSize: 13, color: "var(--text-secondary)" }}>
+        <span>AF: <strong>{lot.afState.toLowerCase()}</strong></span>
+        <span>·</span>
+        <span>MLF: <strong>{lot.mlfState.toLowerCase()}</strong></span>
+        {lot.stuck?.stuck ? <span style={{ color: "var(--danger)" }}>· stuck (Brix flat)</span> : null}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+        {afNext ? (
+          <Button variant="secondary" disabled={busy} onClick={() => void advance("AF", afNext.to)}>
+            {afNext.label}
+          </Button>
+        ) : null}
+        {mlfNext ? (
+          <Button variant="secondary" disabled={busy} onClick={() => void advance("MLF", mlfNext.to)}>
+            {mlfNext.label}
+          </Button>
+        ) : null}
+      </div>
+      {error ? <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{error}</p> : null}
+    </Card>
+  );
 }
 
 // Operation type -> Badge tone. Type is ALSO shown as text, so this is never color-only.
@@ -523,6 +588,21 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
           <Badge tone={statusTone(lot.status)} variant="soft">
             {statusLabel(lot.status)}
           </Badge>
+          {lot.afState !== "NONE" ? (
+            <Badge tone={afTone(lot.afState)} variant="soft">
+              AF {lot.afState.toLowerCase()}
+            </Badge>
+          ) : null}
+          {lot.mlfState !== "NONE" ? (
+            <Badge tone={mlfTone(lot.mlfState)} variant="soft">
+              MLF {lot.mlfState.toLowerCase()}
+            </Badge>
+          ) : null}
+          {lot.stuck?.stuck ? (
+            <Badge tone="maroon" variant="soft">
+              ⚠ stuck ferment
+            </Badge>
+          ) : null}
           {lot.isLegacy ? (
             <Badge tone="neutral" variant="soft">
               legacy
@@ -538,8 +618,9 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
         </div>
       </div>
 
-      {/* 2 — Where it is now + 3 — Provenance */}
+      {/* 2 — Where it is now + 3 — Provenance + Fermentation (Phase 6) */}
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "stretch", margin: "16px 0 28px" }}>
+        <FermentControls lot={lot} />
         <Card style={{ flex: "1 1 280px" }}>
           {empty ? (
             <div>

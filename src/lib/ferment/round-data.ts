@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { detectStuck, type BrixReading } from "@/lib/ferment/stuck";
 import type { AlcoholicFermState, MalolacticState, LotForm } from "@/lib/ledger/vocabulary";
 
 // Phase 6 Unit 8: load the active-fermenting positions for the Round grid. Read from `vessel_lot`
@@ -17,6 +18,7 @@ export type RoundRow = {
   mlfState: MalolacticState;
   volumeL: number;
   previousBrix: number | null; // most recent non-voided BRIX reading, for the grey "prev" hint
+  stuck: boolean; // DERIVED stuck signal (afState=ACTIVE, Brix flat above the floor)
   occupancyToken: string; // the as-of signature the tablet carries on every capture (S5)
 };
 
@@ -40,8 +42,12 @@ export async function loadRoundRows(): Promise<RoundRow[]> {
     orderBy: { panel: { observedAt: "desc" } },
   });
   const prevBrixByLot = new Map<string, number>();
+  const seriesByLot = new Map<string, BrixReading[]>();
   for (const r of brixReadings) {
     if (!prevBrixByLot.has(r.panel.lotId)) prevBrixByLot.set(r.panel.lotId, Number(r.value)); // first = latest
+    const arr = seriesByLot.get(r.panel.lotId) ?? [];
+    arr.push({ observedAt: r.panel.observedAt, brix: Number(r.value) });
+    seriesByLot.set(r.panel.lotId, arr);
   }
 
   return positions
@@ -56,6 +62,7 @@ export async function loadRoundRows(): Promise<RoundRow[]> {
       mlfState: p.lot.mlfState as MalolacticState,
       volumeL: Number(p.volumeL),
       previousBrix: prevBrixByLot.get(p.lotId) ?? null,
+      stuck: detectStuck(seriesByLot.get(p.lotId) ?? [], { afState: p.lot.afState as AlcoholicFermState }).stuck,
       occupancyToken: `${p.vesselId}:${p.lotId}`,
     }))
     .sort((a, b) => a.vesselCode.localeCompare(b.vesselCode, undefined, { numeric: true }));

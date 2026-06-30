@@ -16,6 +16,8 @@ import {
   type TimelineItem,
   type VesselKind,
 } from "@/lib/lot/timeline";
+import { detectStuck } from "@/lib/ferment/stuck";
+import type { AlcoholicFermState } from "@/lib/ledger/vocabulary";
 import {
   buildAncestry,
   buildDescendants,
@@ -130,6 +132,11 @@ export type LotDetail = {
   id: string;
   code: string;
   form: string;
+  // Phase 6: the two orthogonal ferment vectors + the DERIVED stuck signal (null when not
+  // applicable — recomputed from the Brix trend, never stored).
+  afState: string;
+  mlfState: string;
+  stuck: { stuck: boolean; reason: string; latestBrix: number | null } | null;
   status: string;
   isLegacy: boolean;
   note: string | null;
@@ -422,10 +429,23 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
       }
     : null;
 
+  // Phase 6 DERIVED stuck signal: recompute over this lot's non-voided BRIX panels.
+  const brixReadings = panels.flatMap((p) =>
+    p.readings.filter((r) => r.analyte === "BRIX").map((r) => ({ observedAt: p.observedAt, brix: Number(r.value) })),
+  );
+  const stuckRes = detectStuck(brixReadings, { afState: lot.afState as AlcoholicFermState });
+  const stuck =
+    brixReadings.length > 0
+      ? { stuck: stuckRes.stuck, reason: stuckRes.reason, latestBrix: stuckRes.latestBrix }
+      : null;
+
   return {
     id: lot.id,
     code: lot.code,
     form: lot.form as string,
+    afState: lot.afState as string,
+    mlfState: lot.mlfState as string,
+    stuck,
     status: lot.status,
     isLegacy: lot.isLegacy,
     note: lot.note,

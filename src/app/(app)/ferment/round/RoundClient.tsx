@@ -253,6 +253,7 @@ export function RoundClient({ initialRows }: { initialRows: RoundRow[] }) {
                   <span style={chip("var(--surface-raised)")}>AF {r.afState}</span>
                   <span style={chip("var(--surface-raised)")}>MLF {r.mlfState}</span>
                   <span style={chip("var(--surface-raised)")}>{r.form}</span>
+                  {r.stuck ? <span style={chip("var(--danger)", "#fff")}>⚠ stuck</span> : null}
                 </div>
                 <div style={{ textAlign: "right", minWidth: 64, fontSize: 12, color: "var(--text-muted)" }}>
                   prev

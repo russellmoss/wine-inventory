@@ -120,6 +120,27 @@ export function planStateTransition(lot: LotState, input: TransitionInput): Tran
   return { next, event: { kind: input.kind, fromValue, toValue: input.to }, formAutoFlipped };
 }
 
+/**
+ * PURE planning helper for the state-transition action: given the current state + a requested
+ * vector move, return the minimal DB update payload + the event payload (or throw on an illegal
+ * move). Keeps the "use server" action thin + lets this stay unit-testable.
+ */
+export function planLotStateUpdate(
+  current: LotState,
+  input: TransitionInput,
+): {
+  update: Partial<Pick<LotState, "form" | "afState" | "mlfState">>;
+  event: { kind: StateVector; fromValue: string; toValue: string };
+  formAutoFlipped: boolean;
+} {
+  const r = planStateTransition(current, input);
+  const update: Partial<LotState> = {};
+  if (r.next.form !== current.form) update.form = r.next.form;
+  if (r.next.afState !== current.afState) update.afState = r.next.afState;
+  if (r.next.mlfState !== current.mlfState) update.mlfState = r.next.mlfState;
+  return { update, event: r.event, formAutoFlipped: r.formAutoFlipped };
+}
+
 /** Primary ferment is "dry" at roughly −1.5 °Bx (sugar gone, density ~0.992–0.996). */
 export function isDry(brix: number, threshold = -1.5): boolean {
   return brix <= threshold;
