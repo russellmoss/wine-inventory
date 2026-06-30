@@ -8,6 +8,7 @@ import type { AlcoholicFermState, MalolacticState, LotForm } from "@/lib/ledger/
 // the DERIVED stuck signal. Script-safe (no server-only) so it can be reused/tested.
 
 export type FermentPoint = {
+  panelId: string | null; // the AnalysisPanel id (null for an optimistic, not-yet-synced point)
   observedAt: string; // ISO
   brix: number | null;
   ph: number | null;
@@ -41,7 +42,7 @@ export async function loadFermentSeries(lotId: string): Promise<FermentSeries | 
   const byPanel = new Map<string, FermentPoint>();
   for (const r of readings) {
     const key = r.panel.id;
-    const pt = byPanel.get(key) ?? { observedAt: r.panel.observedAt.toISOString(), brix: null, ph: null, temp: null };
+    const pt = byPanel.get(key) ?? { panelId: r.panel.id, observedAt: r.panel.observedAt.toISOString(), brix: null, ph: null, temp: null };
     if (r.analyte === "BRIX") pt.brix = Number(r.value);
     else if (r.analyte === "PH") pt.ph = Number(r.value);
     else if (r.analyte === "TEMP") pt.temp = Number(r.value);
