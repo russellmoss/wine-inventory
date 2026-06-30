@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { Card, Button, Badge, Eyebrow, Modal, ExportCsvButton } from "@/components/ui";
 import type { BlendInfo } from "@/lib/bulk/blend";
 import type { Fill } from "@/lib/vessels/fill";
@@ -18,9 +19,12 @@ export type Option = { id: string; name: string };
 export type BlockOption = { id: string; vineyardId: string; blockLabel: string | null; code: string | null };
 export type SubblockOption = { id: string; blockId: string; code: string; label: string | null };
 export type Comp = { id: string; varietyId: string; varietyName: string; vineyardName: string; vintage: number; volumeL: number };
+// A blend lot resident in the vessel — no single origin, so it isn't a `Comp`. Display-only here;
+// its volume changes through ledger ops (rack / draw / blend), not the component table.
+export type BlendLot = { lotId: string; code: string; volumeL: number; vintageYear: number | null };
 export type VesselWithContents = {
   id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null;
-  components: Comp[]; blend: BlendInfo; fill: Fill;
+  components: Comp[]; blendLots: BlendLot[]; blend: BlendInfo; fill: Fill;
   oakOrigin: string | null; cooperageYear: number | null; cooperage: string | null; toastLevel: string | null;
   lotCodes: string[];
   residentLots: ResidentLot[];
@@ -32,7 +36,13 @@ const selectStyle: React.CSSProperties = {
 };
 
 function StatusBadge({ v }: { v: VesselWithContents }) {
-  if (v.components.length === 0) return <Badge tone="neutral" variant="soft">empty</Badge>;
+  if (v.components.length === 0) {
+    // A vessel holding only a blend lot (no origin-backed components) is still full of wine.
+    if (v.blendLots.length > 0) {
+      return <Badge tone="maroon" variant="soft">{v.blendName || (v.blendLots.length === 1 ? v.blendLots[0].code : `Blend · ${v.blendLots.length}`)}</Badge>;
+    }
+    return <Badge tone="neutral" variant="soft">empty</Badge>;
+  }
   if (v.blend.isBlend) return <Badge tone="maroon" variant="soft">{v.blendName || `Blend · ${v.blend.varieties.length}`}</Badge>;
   return <Badge tone="green" variant="soft">{v.blendName || `100% ${v.blend.varieties[0]?.varietyName}`}</Badge>;
 }
@@ -326,9 +336,29 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
                   ))}
                 </tbody>
               </table>
-            ) : (
+            ) : null}
+
+            {/* Blend lots resident in the vessel — display-only; manage volume via the cellar actions below. */}
+            {selected.blendLots.length > 0 ? (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", marginBottom: 6 }}>
+                  Blend{selected.blendLots.length > 1 ? "s" : ""} in this vessel
+                </div>
+                {selected.blendLots.map((bl) => (
+                  <div key={bl.lotId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderTop: "1px solid var(--border-strong)", fontSize: 14 }}>
+                    <span style={{ fontWeight: 600 }}>{bl.code}</span>
+                    <Badge tone="maroon" variant="soft">blend</Badge>
+                    {bl.vintageYear != null ? <span style={{ color: "var(--text-muted)" }}>{bl.vintageYear}</span> : null}
+                    <span style={{ marginLeft: "auto" }}>{bl.volumeL} L</span>
+                    <Link href={`/lots/${bl.lotId}`} style={{ color: "var(--text-accent)", fontSize: 13 }}>view lot ›</Link>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {selected.components.length === 0 && selected.blendLots.length === 0 ? (
               <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 14 }}>This vessel is empty.</p>
-            )}
+            ) : null}
 
             {canFill ? (
               <AddWineForm vesselId={selected.id} varieties={varieties} vineyards={vineyards} blocks={blocks} subblocks={subblocks} pending={pending} run={run} />

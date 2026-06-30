@@ -3,7 +3,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
-import { planBlend, foldLines, balanceKey, type BlendComponentDraw, type VesselLotBalance } from "@/lib/ledger/math";
+import { planBlend, planBlendSplit, foldLines, balanceKey, type BlendComponentDraw, type BlendPlan, type VesselLotBalance } from "@/lib/ledger/math";
 import { nextBlendLotCode, isUniqueViolation } from "@/lib/lot/generate";
 import type { CaptureMethod, LotForm } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -32,10 +32,17 @@ export type BlendComponentInput = {
   deplete?: boolean; // pull the whole position; write the heel (balance − drawL) off as loss (council S5)
 };
 
+/** One destination of a split blend: how much of the (single) new child lot lands here. */
+export type BlendDestinationInput = { vesselId: string; volumeL: number };
+
 export type BlendLotsInput = {
   mode: BlendMode;
   components: BlendComponentInput[];
-  toVesselId: string;
+  // Single destination (new-or-grow). Used for GROW_EXISTING and the rack-into-occupied path.
+  toVesselId?: string;
+  // OR: split the new child lot across MANY destination vessels (NEW_LOT only). One wine, N
+  // vessels; volumes must sum to the net blended volume. Takes precedence over toVesselId.
+  destinations?: BlendDestinationInput[];
   lossL?: number;
   // NEW_LOT only:
   token?: string; // 2–4 letter blend tag (required for NEW_LOT)
@@ -62,21 +69,37 @@ function vesselLabel(v: { type: string; code: string }): string {
 }
 
 export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): Promise<BlendLotsResult> {
-  const { mode, toVesselId } = input;
-  if (!toVesselId) throw new ActionError("A destination vessel is required.");
+  const { mode } = input;
   if (!input.components || input.components.length === 0) {
     throw new ActionError("A blend needs at least one source.");
   }
   // A deliberate multi-source blend needs ≥2 sources; the rack-into-occupied path (Unit 8b)
   // calls with a single source, so we don't hard-require ≥2 here — the builder enforces it.
 
-  // Load every involved vessel (sources + destination) with its current lots, once.
-  const vesselIds = [...new Set([toVesselId, ...input.components.map((c) => c.vesselId)])];
+  // Destination: either ONE vessel (new-or-grow) or MANY (split a new child lot, NEW_LOT only).
+  const splitDests = (input.destinations ?? []).filter((d) => d.vesselId);
+  const useSplit = splitDests.length > 0;
+  if (useSplit && mode !== "NEW_LOT") {
+    throw new ActionError("Splitting a blend across multiple vessels is only available for a new blend lot.");
+  }
+  const destVesselIds = useSplit
+    ? [...new Set(splitDests.map((d) => d.vesselId))]
+    : input.toVesselId
+      ? [input.toVesselId]
+      : [];
+  if (destVesselIds.length === 0) throw new ActionError("A destination vessel is required.");
+  // For non-split paths a single destination drives mode + grow resolution below.
+  const toVesselId = useSplit ? "" : input.toVesselId!;
+
+  // Load every involved vessel (sources + destination(s)) with its current lots, once.
+  const vesselIds = [...new Set([...destVesselIds, ...input.components.map((c) => c.vesselId)])];
   const vessels = await prisma.vessel.findMany({ where: { id: { in: vesselIds } } });
   const vesselById = new Map(vessels.map((v) => [v.id, v]));
-  const dest = vesselById.get(toVesselId);
-  if (!dest) throw new ActionError("Destination vessel not found.");
-  if (!dest.isActive) throw new ActionError(`${vesselLabel(dest)} is inactive.`);
+  for (const dvId of destVesselIds) {
+    const dv = vesselById.get(dvId);
+    if (!dv) throw new ActionError("Destination vessel not found.");
+    if (!dv.isActive) throw new ActionError(`${vesselLabel(dv)} is inactive.`);
+  }
   for (const c of input.components) {
     const v = vesselById.get(c.vesselId);
     if (!v) throw new ActionError("A source vessel was not found.");
@@ -90,10 +113,9 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
   const balByKey = new Map(residents.map((r) => [balanceKey(r.vesselId, r.lotId), Number(r.volumeL)]));
   const lotCodeById = new Map(residents.map((r) => [r.lotId, r.lot.code]));
 
-  // Destination residents (for mode validation + grow-existing child resolution).
+  // Resolve the child lot for GROW_EXISTING (single destination; a fresh lot is minted later
+  // for NEW_LOT). Split blends are NEW_LOT-only, so grow only ever inspects one vessel.
   const destResidents = residents.filter((r) => r.vesselId === toVesselId);
-
-  // Resolve the child lot for GROW_EXISTING (a fresh lot is minted later for NEW_LOT).
   let growChildLotId: string | null = null;
   if (mode === "GROW_EXISTING") {
     if (destResidents.length !== 1) {
@@ -134,11 +156,16 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
     lotId: r.lotId,
     volumeL: Number(r.volumeL),
   }));
-  const destBalances: VesselLotBalance[] = destResidents.map((r) => ({
-    vesselId: r.vesselId,
-    lotId: r.lotId,
-    volumeL: Number(r.volumeL),
-  }));
+  // Current residents of each destination vessel, keyed by vessel — drives the per-vessel
+  // NEW_LOT post-op check (each destination must end holding only the child).
+  const destBalancesByVessel = new Map<string, VesselLotBalance[]>(
+    destVesselIds.map((dvId) => [
+      dvId,
+      residents
+        .filter((r) => r.vesselId === dvId)
+        .map((r) => ({ vesselId: r.vesselId, lotId: r.lotId, volumeL: Number(r.volumeL) })),
+    ]),
+  );
 
   // Provenance: distinct parent lots (excluding the grow-existing resident itself).
   const parentLotIds = [...new Set(effective.map((c) => c.lotId))].filter((id) => id !== growChildLotId);
@@ -180,14 +207,24 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
         childCode = lotCodeById.get(childLotId) ?? childLotId;
       }
 
-      const plan = planBlend(effective, toVesselId, childLotId, totalLoss, sourceBalances);
+      const plan: BlendPlan = useSplit
+        ? planBlendSplit(
+            effective,
+            splitDests.map((d) => ({ vesselId: d.vesselId, volumeL: round2(d.volumeL) })),
+            childLotId,
+            totalLoss,
+            sourceBalances,
+          )
+        : planBlend(effective, toVesselId, childLotId, totalLoss, sourceBalances);
 
-      // Destination post-op validation (council S4): fold ONLY the destination's lines onto the
-      // destination's current residents; NEW_LOT must end holding exactly the child.
-      const destLines = plan.lines.filter((l) => l.vesselId === toVesselId);
-      const destPostOp = foldLines(destBalances, destLines);
+      // Destination post-op validation (council S4): for EACH destination vessel, fold its lines
+      // onto its current residents; NEW_LOT must end holding exactly the child everywhere.
       if (mode === "NEW_LOT") {
-        const strangers = destPostOp.filter((b) => b.lotId !== childLotId);
+        const strangers = destVesselIds.flatMap((dvId) => {
+          const dvLines = plan.lines.filter((l) => l.vesselId === dvId);
+          const post = foldLines(destBalancesByVessel.get(dvId) ?? [], dvLines);
+          return post.filter((b) => b.lotId !== childLotId);
+        });
         if (strangers.length > 0) {
           throw new ActionError(
             "A new-lot blend must land in an empty destination (or one whose wine is fully drawn into the blend).",

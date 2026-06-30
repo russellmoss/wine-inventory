@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planBlend, isBalanced, balanceKey, type VesselLotBalance } from "@/lib/ledger/math";
+import { planBlend, planBlendSplit, isBalanced, balanceKey, type VesselLotBalance } from "@/lib/ledger/math";
 
 // Three lots, each alone in its own vessel.
 const balances: VesselLotBalance[] = [
@@ -125,5 +125,76 @@ describe("planBlend", () => {
     const plan = planBlend([{ vesselId: "T1", lotId: "A", drawL: 100 }], "T4", "CHILD", 5, balances);
     expect(plan.lines.some((l) => l.vesselId === null)).toBe(true);
     expect(balanceKey("T4", "CHILD")).toBe("T4::CHILD");
+  });
+});
+
+describe("planBlendSplit (one child lot, many destination vessels)", () => {
+  it("splits the child across vessels with one +line each, balanced", () => {
+    const plan = planBlendSplit(
+      [
+        { vesselId: "T1", lotId: "A", drawL: 600 },
+        { vesselId: "T2", lotId: "B", drawL: 300 },
+        { vesselId: "T3", lotId: "C", drawL: 100 },
+      ],
+      [
+        { vesselId: "D1", volumeL: 700 },
+        { vesselId: "D2", volumeL: 300 },
+      ],
+      "CHILD",
+      0,
+      balances,
+    );
+    expect(isBalanced(plan.lines)).toBe(true);
+    expect(plan.childTotalL).toBe(1000);
+    const destLines = plan.lines.filter((l) => l.lotId === "CHILD" && l.deltaL > 0);
+    expect(destLines).toHaveLength(2);
+    expect(destLines.map((l) => l.vesselId).sort()).toEqual(["D1", "D2"]);
+    expect(destLines.reduce((a, l) => a + l.deltaL, 0)).toBe(1000);
+  });
+
+  it("balances when a loss is taken before the split", () => {
+    const plan = planBlendSplit(
+      [
+        { vesselId: "T1", lotId: "A", drawL: 500 },
+        { vesselId: "T2", lotId: "B", drawL: 300 },
+      ],
+      [
+        { vesselId: "D1", volumeL: 400 },
+        { vesselId: "D2", volumeL: 392 },
+      ],
+      "CHILD",
+      8, // 800 drawn − 8 loss = 792 into vessels
+      balances,
+    );
+    expect(isBalanced(plan.lines)).toBe(true);
+    expect(plan.childTotalL).toBe(792);
+    expect(plan.lines.filter((l) => l.vesselId === null)).toHaveLength(1);
+  });
+
+  it("rejects a split that doesn't sum to the blended volume", () => {
+    expect(() =>
+      planBlendSplit(
+        [
+          { vesselId: "T1", lotId: "A", drawL: 600 },
+          { vesselId: "T2", lotId: "B", drawL: 300 },
+        ],
+        [
+          { vesselId: "D1", volumeL: 500 },
+          { vesselId: "D2", volumeL: 300 }, // 800 ≠ 900 drawn
+        ],
+        "CHILD",
+        0,
+        balances,
+      ),
+    ).toThrow();
+  });
+
+  it("rejects a non-positive destination volume and an empty destination list", () => {
+    expect(() =>
+      planBlendSplit([{ vesselId: "T1", lotId: "A", drawL: 100 }], [{ vesselId: "D1", volumeL: 0 }], "CHILD", 0, balances),
+    ).toThrow();
+    expect(() =>
+      planBlendSplit([{ vesselId: "T1", lotId: "A", drawL: 100 }], [], "CHILD", 0, balances),
+    ).toThrow();
   });
 });

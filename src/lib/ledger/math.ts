@@ -116,14 +116,61 @@ export function planLedgerRack(
 
 export type BlendComponentDraw = { vesselId: string; lotId: string; drawL: number };
 
+/** One destination of a split blend: how much of the (single) child lot lands in this vessel. */
+export type BlendDestination = { vesselId: string; volumeL: number };
+
 export type BlendPlan = {
   lines: LedgerLine[];
-  childTotalL: number; // into the destination = Σdraw − loss
+  childTotalL: number; // into the destination(s) = Σdraw − loss
   lossL: number;
   // Gross INPUT share per DISTINCT parent lot (council S1, loss-independent; council C2 —
   // the same lot drawn from two vessels collapses into ONE entry). Drives lineage fractions.
   parentGrossByLot: { lotId: string; grossL: number }[];
 };
+
+/**
+ * The source (draw) side of a blend, shared by `planBlend` (one destination) and
+ * `planBlendSplit` (many). Builds one `-drawL` line per component (validated against the live
+ * balance — partial draws are fine, leaving the remainder), aggregates gross shares per
+ * DISTINCT parent lot, and computes the net child volume (`Σdraw − loss`). The caller adds the
+ * destination `+` line(s) and the optional external loss line, then asserts balance.
+ */
+function planBlendSources(
+  components: BlendComponentDraw[],
+  lossL: number,
+  sourceBalances: VesselLotBalance[],
+): { sourceLines: LedgerLine[]; grossTotal: number; childTotalL: number; lossL: number; parentGrossByLot: { lotId: string; grossL: number }[] } {
+  if (components.length === 0) throw new Error("A blend needs at least one source.");
+  if (lossL < 0) throw new Error("Loss can't be negative.");
+
+  const balByKey = new Map(sourceBalances.map((b) => [balanceKey(b.vesselId, b.lotId), b.volumeL]));
+  const sourceLines: LedgerLine[] = [];
+  const grossByLot = new Map<string, number>();
+  let grossTotal = 0;
+
+  for (const c of components) {
+    if (!(c.drawL > 0)) throw new Error("Each blend draw must be greater than 0.");
+    const have = balByKey.get(balanceKey(c.vesselId, c.lotId)) ?? 0;
+    if (c.drawL > have + EPS) {
+      throw new Error(`Can't draw ${c.drawL} L — that lot holds ${round2(have)} L in that vessel.`);
+    }
+    sourceLines.push({ lotId: c.lotId, vesselId: c.vesselId, deltaL: round2(-c.drawL) });
+    grossByLot.set(c.lotId, round2((grossByLot.get(c.lotId) ?? 0) + c.drawL));
+    grossTotal = round2(grossTotal + c.drawL);
+  }
+
+  if (lossL > grossTotal + EPS) throw new Error("Loss can't exceed the total drawn.");
+  const childTotalL = round2(grossTotal - lossL);
+  if (!(childTotalL > 0)) throw new Error("A blend must yield a positive volume.");
+
+  return {
+    sourceLines,
+    grossTotal,
+    childTotalL,
+    lossL: round2(lossL),
+    parentGrossByLot: [...grossByLot.entries()].map(([lotId, grossL]) => ({ lotId, grossL })),
+  };
+}
 
 /**
  * Plan a BLEND (Phase 5): draw `drawL` from each component (vessel, lot) position into a
@@ -141,41 +188,47 @@ export function planBlend(
   lossL: number,
   sourceBalances: VesselLotBalance[],
 ): BlendPlan {
-  if (components.length === 0) throw new Error("A blend needs at least one source.");
-  if (lossL < 0) throw new Error("Loss can't be negative.");
-
-  const balByKey = new Map(sourceBalances.map((b) => [balanceKey(b.vesselId, b.lotId), b.volumeL]));
-  const lines: LedgerLine[] = [];
-  const grossByLot = new Map<string, number>();
-  let grossTotal = 0;
-
-  for (const c of components) {
-    if (!(c.drawL > 0)) throw new Error("Each blend draw must be greater than 0.");
-    const have = balByKey.get(balanceKey(c.vesselId, c.lotId)) ?? 0;
-    if (c.drawL > have + EPS) {
-      throw new Error(`Can't draw ${c.drawL} L — that lot holds ${round2(have)} L in that vessel.`);
-    }
-    lines.push({ lotId: c.lotId, vesselId: c.vesselId, deltaL: round2(-c.drawL) });
-    grossByLot.set(c.lotId, round2((grossByLot.get(c.lotId) ?? 0) + c.drawL));
-    grossTotal = round2(grossTotal + c.drawL);
+  const s = planBlendSources(components, lossL, sourceBalances);
+  const lines: LedgerLine[] = [...s.sourceLines, { lotId: childLotId, vesselId: toVesselId, deltaL: s.childTotalL }];
+  if (s.lossL > 0) {
+    lines.push({ lotId: childLotId, vesselId: null, deltaL: s.lossL, reason: "loss" });
   }
-
-  if (lossL > grossTotal + EPS) throw new Error("Loss can't exceed the total drawn.");
-  const childTotalL = round2(grossTotal - lossL);
-  if (!(childTotalL > 0)) throw new Error("A blend must yield a positive volume.");
-
-  lines.push({ lotId: childLotId, vesselId: toVesselId, deltaL: childTotalL });
-  if (lossL > 0) {
-    lines.push({ lotId: childLotId, vesselId: null, deltaL: round2(lossL), reason: "loss" });
-  }
-
   assertBalanced(lines);
-  return {
-    lines,
-    childTotalL,
-    lossL: round2(lossL),
-    parentGrossByLot: [...grossByLot.entries()].map(([lotId, grossL]) => ({ lotId, grossL })),
-  };
+  return { lines, childTotalL: s.childTotalL, lossL: s.lossL, parentGrossByLot: s.parentGrossByLot };
+}
+
+/**
+ * Plan a BLEND that lands the single child lot in MORE THAN ONE destination vessel — one wine
+ * (one lot) split across N vessels (e.g. assemble, then barrel down). Same source/draw side as
+ * `planBlend`; the child gets one `+volumeL` line per destination, and those volumes MUST sum
+ * to the net blended volume (`Σdraw − loss`). Throws on a non-positive destination volume or a
+ * split that doesn't reconcile with the drawn total.
+ */
+export function planBlendSplit(
+  components: BlendComponentDraw[],
+  destinations: BlendDestination[],
+  childLotId: string,
+  lossL: number,
+  sourceBalances: VesselLotBalance[],
+): BlendPlan {
+  if (destinations.length === 0) throw new Error("A blend needs at least one destination.");
+  const s = planBlendSources(components, lossL, sourceBalances);
+  const lines: LedgerLine[] = [...s.sourceLines];
+  let destTotal = 0;
+  for (const d of destinations) {
+    if (!(d.volumeL > 0)) throw new Error("Each destination volume must be greater than 0.");
+    destTotal = round2(destTotal + d.volumeL);
+    lines.push({ lotId: childLotId, vesselId: d.vesselId, deltaL: round2(d.volumeL) });
+  }
+  // Must reconcile EXACTLY (both sides are centiliter-rounded) or the op won't balance.
+  if (Math.abs(destTotal - s.childTotalL) > EPS) {
+    throw new Error(`Destination volumes (${destTotal} L) must sum to the blended volume (${s.childTotalL} L).`);
+  }
+  if (s.lossL > 0) {
+    lines.push({ lotId: childLotId, vesselId: null, deltaL: s.lossL, reason: "loss" });
+  }
+  assertBalanced(lines);
+  return { lines, childTotalL: s.childTotalL, lossL: s.lossL, parentGrossByLot: s.parentGrossByLot };
 }
 
 export type VesselLossPlan = {

@@ -21,6 +21,9 @@ export type BlendVessel = {
   type: string;
   capacityL: number;
   filledL: number;
+  // Optional name for the commingled blend already in this vessel (>1 resident). Lets the
+  // builder show a multi-lot vessel as ONE named source ("Bajo/East BDX") instead of its parts.
+  blendName: string | null;
   residents: BlendSourceLot[];
 };
 
@@ -76,7 +79,7 @@ export async function listBlendVessels(): Promise<BlendVessel[]> {
       };
     });
     const filledL = Math.round(residents.reduce((a, r) => a + r.volumeL, 0) * 100) / 100;
-    return { id: v.id, code: v.code, type: v.type, capacityL: Number(v.capacityL), filledL, residents };
+    return { id: v.id, code: v.code, type: v.type, capacityL: Number(v.capacityL), filledL, blendName: v.blendName, residents };
   });
 }
 

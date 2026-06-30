@@ -16,8 +16,10 @@ export default async function BulkPage() {
           include: { variety: { select: { id: true, name: true } }, vineyard: { select: { id: true, name: true } } },
         },
         // Ledger projection: the lots resident in each vessel, for lot-code badges in the picker
-        // and the Phase 4 chemistry-record lot picker (D2 single-lot resolution).
-        vesselLots: { orderBy: { volumeL: "desc" }, include: { lot: { select: { id: true, code: true, originVarietyId: true } } } },
+        // and the Phase 4 chemistry-record lot picker (D2 single-lot resolution). Also the source
+        // of truth for fill + for surfacing blend lots (null-origin) that the variety/vineyard
+        // component projection can't represent.
+        vesselLots: { orderBy: { volumeL: "desc" }, include: { lot: { select: { id: true, code: true, originVarietyId: true, vintageYear: true } } } },
       },
     }),
     prisma.variety.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -46,7 +48,13 @@ export default async function BulkPage() {
       volumeL: Number(c.volumeL),
     }));
     const blend = classifyBlend(comps.map((c) => ({ varietyId: c.varietyId, varietyName: c.varietyName, volumeL: c.volumeL })));
-    const fill = computeFill(comps.map((c) => c.volumeL), Number(v.capacityL));
+    // Blend lots have no single origin, so the component projection skips them. Surface them
+    // straight from the ledger (vessel_lot) so they show as resident wine on this page.
+    const blendLots = v.vesselLots
+      .filter((vl) => !vl.lot.originVarietyId)
+      .map((vl) => ({ lotId: vl.lotId, code: vl.lot.code, volumeL: Number(vl.volumeL), vintageYear: vl.lot.vintageYear }));
+    // Fill from the authoritative ledger total (includes blend lots), not just components.
+    const fill = computeFill(v.vesselLots.map((vl) => Number(vl.volumeL)), Number(v.capacityL));
     return {
       id: v.id,
       code: v.code,
@@ -54,6 +62,7 @@ export default async function BulkPage() {
       capacityL: Number(v.capacityL),
       blendName: v.blendName,
       components: comps,
+      blendLots,
       blend,
       fill,
       oakOrigin: v.oakOrigin,
