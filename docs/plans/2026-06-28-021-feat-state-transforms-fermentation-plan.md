@@ -564,3 +564,90 @@ SHOULD-FIX folded; the model reshaped (orthogonal ferment vectors, flexible crus
 the offline-correctness cluster + needs-attention recovery in place. Ready for `/work`.
 **Phase 4 + Phase 5 must be on main first** (Phase 6 reuses Phase 4 `LotMeasurement` + Phase 5
 split primitive) — gated at the top of /work.
+
+---
+
+## 🔌 RESUMPTION LOG — paused 2026-06-30 (Units 1–9 shipped on main)
+
+**Where we are:** Units **1–9 are built, tested, and committed straight to main** (one
+commit per unit). `npm run build` is clean, `npx tsc --noEmit` is 0 errors, lint clean on all
+new files, and **all 535 Vitest tests pass**. Both DB migrations are deployed to Neon.
+**Pick up at Unit 10.** Remaining: **Unit 10 (state/stuck/curve surfacing), Unit 11 (cold
+soak/maceration), Unit 12 (verify-ferment.ts integration proof).**
+
+### Commits landed (main)
+1. Unit 1 — `CRUSH/PRESS/SAIGNEE` optypes + `AlcoholicFermState`/`MalolacticState` enums (migration `20260630000000_crush_press_ferment_enums`).
+2. Unit 2 — `Lot.afState/mlfState`, `LotHarvestSource`, `LotStateEvent`, offline idempotency cols (migration `20260630000100_ferment_crush_offline`).
+3. Unit 3 — crush core (`planCrush` pure + `crushLotCore` + `crushAction`); `test/crush.test.ts`.
+4. Unit 4 — press core (`planPress` pure + `pressLotCore` + `pressAction`); `test/press.test.ts`.
+5. Unit 5 — ferment state machine + stuck detector (pure); `test/ferment-state.test.ts`, `test/ferment-stuck.test.ts`.
+6. Unit 6 — offline foundation: `src/lib/offline/{queue,db,useSync,storage-probe}.ts` + `src/lib/ferment/round-actions.ts`; `test/offline-queue.test.ts` (11).
+7. Unit 8 — offline Round grid (`src/app/(app)/ferment/round/*`) + `src/lib/ferment/{round-data,sugar}.ts`; `test/ferment-sugar.test.ts`.
+8. Unit 9 — crush & press UI (`src/app/(app)/ferment/{crush,press}/*` + `{crush,press}-data.ts`); nav entries added.
+   (Unit 7 = the safe pieces only: `app/manifest.ts` + `storage-probe.ts`. Serwist SW deferred — see decisions.)
+
+### Decisions made DURING the build — honor these, do NOT relitigate
+- **"Phase 4 `LotMeasurement`" does not exist by that name.** Phase 4 shipped `AnalysisPanel`
+  (panel: `clientRequestId @unique`, `lotId/vesselId/observedAt/voidedAt`) + `AnalysisReading`
+  (per-analyte, already had `panelId`). **User-approved:** we REUSE `AnalysisPanel` as the offline
+  "CaptureSet" (added `deviceObservedAt`/`serverReceivedAt`/`occupancyToken`) and added
+  `captureId @unique` + `@@unique([panelId,analyte])` to `AnalysisReading`. REQUIRED so Round
+  Brix/temp feed the SAME Phase 4 trend curve + stuck detector. Do NOT build a separate CaptureSet.
+- **Serwist SW DEFERRED (user-approved).** Next 16 = Turbopack; Serwist "requires webpack" and
+  would risk `npm run build`. Durability = the Dexie outbox (done + tested). `manifest.ts` +
+  `storage-probe.ts` ship the app-shell pieces. Do NOT add `@serwist/next` unless the user revisits.
+- **State matrix deviation (justified):** `isLegalState` keeps `WINE + af:NONE` **legal** because
+  legacy/seeded wine lots default to `af:NONE` (real data — the Unit 2 backfill). The plan's
+  parenthetical "illegal: form=WINE+af:NONE" is enforced on the **transition** instead (`FORM→WINE`
+  requires `af:DRY`). See `src/lib/ferment/state.ts` + `test/ferment-state.test.ts`.
+- **Idempotency mechanics:** `commandId` UNIQUE on `LotOperation` (crush/press/saignée) AND on
+  `LotStateEvent` (phase). Cores pre-check by commandId → run → on P2002 re-query →
+  duplicate-as-success. Offline panel uses `AnalysisPanel.clientRequestId = commandId` +
+  `AnalysisReading.captureId`, both UNIQUE, `ON CONFLICT skip`, P2002 = success.
+- **`crush_origination` LineReason** added — the crush −V counter-leg (kg→L birth, D8), EXCLUDED
+  from loss reports (`lot/timeline.ts:178` sums `reason === "loss"` only).
+- **Press is a dedicated `/ferment/press` page**, not threaded into the large `CellarActions.tsx`.
+  `expectedRevision` = `VesselLot.updatedAt` ISO (optimistic concurrency, council S7).
+- **All tests are PURE** (`test/*.test.ts`, no DB). DB cores (`crushLotCore`/`pressLotCore`/
+  `submitPanelAction`/state transitions) are proven by **Unit 12's `scripts/verify-ferment.ts`**.
+
+### What is LEFT — start here
+**Unit 10 — state/stuck/curve surfacing.** Files: `src/lib/ferment/actions.ts` (new),
+`src/app/(app)/lots/[id]/LotDetailClient.tsx` (edit), `test/ferment-actions.test.ts`.
+- `transitionStateAction({lotId, kind:FORM|AF|MLF, to, commandId})`: validate via
+  `planStateTransition` (Unit 5), write a `LotStateEvent`, update `Lot.{afState|mlfState|form}` in
+  a tx with `writeAudit` + a per-lot optimistic version check; `commandId` UNIQUE on `LotStateEvent`
+  = duplicate-as-success. AF→DRY auto-flips JUICE→WINE → persist the form too.
+- `stuckForLot(lotId)`: read non-voided BRIX (`AnalysisReading` where analyte=BRIX, panel not
+  voided) → `detectStuck` (Unit 5). DERIVED, recompute each call.
+- Lot detail: 3 badges (AF/MLF/form), Phase 4 `AnalyteTrendChart` as the ferment curve, MLF via
+  malic + `mlfState`, stuck warning when derived signal fires. Round already shows AF/MLF/form
+  chips; surface stuck there too.
+- Pure glue → `test/ferment-actions.test.ts` (matrix already covered in Unit 5).
+
+**Unit 11 — cold soak / maceration.** Extend Phase 3 `CAP_MGMT` treatment `kind` set with
+`COLD_SOAK` + `MACERATION` (validated string in `src/lib/cellar/treatments.ts` — NO migration,
+Phase 3 precedent), a maceration toggle in `CellarActions.tsx`, `src/lib/ferment/phases.ts` wiring.
+NO linear phase: cold soak = `MUST + af:NONE`; extended maceration = `MUST + af:DRY`. Test:
+treatment-kind validation. Reuse `src/lib/cellar/treatments.ts:24`.
+
+**Unit 12 — `scripts/verify-ferment.ts`** (`npx tsx --env-file=.env scripts/verify-ferment.ts`).
+THE integration proof. Pattern off `scripts/verify-cellar-ops.ts` / `verify-projection.ts`. Cover
+every exit criterion: seed picks → crush (incl. PARTIAL pick + a SECOND crush ADDing into the same
+must lot) → assert MUST lot at measured L, `LotHarvestSource` sums, over-consume rejected, yield
+derived, origination leg excluded from loss, projection==fold. Set `af:ACTIVE` → submit daily Brix
+panels via `submitPanelAction`; re-submit same commandId/captureId → assert NO duplicate; submit an
+out-of-order late reading → assert derived stuck recomputes; flat ACTIVE >3°Bx flips stuck, a drop
+clears it; AF→DRY flips `form=WINE`. Press → fractions to a new AND a merged lot, estimated volume,
+SPLIT lineage + loss balances, `expectedRevision` guard. Assert saignée (MUST→JUICE), a cold-soak
+treatment at af:NONE, `mlfState` ACTIVE→COMPLETE via malic threshold, and a stale-occupancy reading
+rejected. Print PASS/FAIL per check. Then flip this plan `status: draft → completed` + check the
+Success Criteria boxes.
+
+### Environment reminders (Windows/Neon) — see memory `prisma-neon-migrations-windows`
+- Hand-authored migrations: get URL from `DATABASE_URL_UNPOOLED`, `prisma migrate diff
+  --from-url ... --to-schema-datamodel ./prisma/schema.prisma --script | grep -v search_vector`,
+  then `prisma validate` → `migrate deploy` → STOP the dev server → `prisma generate`.
+- `tsx` scripts need `--env-file=.env`. Tests: `npx vitest run` (all pure, under `test/*.test.ts`).
+- Supervision gates (Units 1, 2, 6/7) are CLEARED. Units 10–12 proceed straight through with tests
+  + commits; stop only if a unit cannot pass.
