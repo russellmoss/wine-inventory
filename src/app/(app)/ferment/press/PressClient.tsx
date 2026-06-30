@@ -81,7 +81,7 @@ export function PressClient({ positions, vessels }: { positions: PressablePositi
     return (
       <div style={{ maxWidth: "var(--container-md)", margin: "0 auto", padding: "var(--space-5)", color: "var(--text-muted)" }}>
         <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300 }}>Press</h1>
-        <p>No must/juice/wine lots in a vessel to press.</p>
+        <p>No must lots to press. Crush fruit first — then press a white must immediately, or a red must once it&apos;s fermented dry on skins.</p>
       </div>
     );
   }

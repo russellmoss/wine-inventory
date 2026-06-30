@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
-// Phase 6 Unit 9: data for the press form. A "pressable position" is a MUST/JUICE/WINE lot sitting
-// in a vessel (you press what's in a tank). The position carries its VesselLot.updatedAt as the
-// `expectedRevision` token so a concurrent change between open + submit is caught (council S7).
+// Phase 6 Unit 9: data for the press form. A "pressable position" is a MUST lot sitting in a
+// vessel — and ONLY a MUST lot. You press what came off the crusher: whites press immediately
+// (MUST→JUICE), reds press off the skins when dry (MUST→WINE). JUICE is already off skins and
+// WINE is already pressed (and sitting in barrel), so neither is pressable — surfacing them was a
+// bug. The position carries its VesselLot.updatedAt as the `expectedRevision` token (council S7).
 
 export type PressablePosition = {
   vesselId: string;
@@ -21,7 +23,7 @@ export type PressFormData = { positions: PressablePosition[]; vessels: PressDest
 
 export async function loadPressFormData(): Promise<PressFormData> {
   const positions = await prisma.vesselLot.findMany({
-    where: { lot: { form: { in: ["MUST", "JUICE", "WINE"] }, status: "ACTIVE" } },
+    where: { lot: { form: "MUST", status: "ACTIVE" } },
     select: {
       vesselId: true,
       volumeL: true,

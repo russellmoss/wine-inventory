@@ -13,7 +13,7 @@ export const submitPanelAction = action(async ({ actor }, input: SubmitPanelInpu
   const result = await submitPanelCore(actor, input);
   if (result.ok && !result.duplicate) {
     revalidatePath(`/lots/${input.lotId}`);
-    revalidatePath("/ferment/round");
+    revalidatePath("/bulk");
   }
   return result;
 });

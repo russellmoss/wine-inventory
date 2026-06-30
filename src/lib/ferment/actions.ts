@@ -13,6 +13,6 @@ export type { TransitionInput, TransitionResult } from "@/lib/ferment/transition
 export const transitionStateAction = action(async ({ actor }, input: TransitionInput): Promise<TransitionResult> => {
   const result = await transitionStateCore(actor, input);
   revalidatePath(`/lots/${input.lotId}`);
-  revalidatePath("/ferment/round");
+  revalidatePath("/bulk");
   return result;
 });

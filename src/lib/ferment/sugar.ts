@@ -29,6 +29,17 @@ export function brixToPotentialAlcohol(brix: number): number {
   return brix * 0.59;
 }
 
+/** Baumé → Brix (≈ 1.8 °Bx per °Bé) — the inverse used when sugar is ENTERED in Baumé and stored
+ * canonically as Brix. Approximate, matching the display conversions. */
+export function baumeToBrix(baume: number): number {
+  return baume * 1.8;
+}
+
+/** Convert an ENTERED sugar value (in the chosen unit) to canonical Brix for storage. */
+export function toBrix(value: number, unit: "BRIX" | "BAUME"): number {
+  return unit === "BAUME" ? baumeToBrix(value) : value;
+}
+
 /** Display a canonical Brix value in the winery's chosen unit. Below 0 °Bx, SG is the natural
  * read (council S12: auto-prefer density past dryness), so a BRIX preference still falls back to
  * SG there. Returns a pre-rounded number + the unit label actually used. */

@@ -34,7 +34,6 @@ export const crushAction = action(
 
     const result = await crushLotCore(actor, input);
     revalidatePath("/bulk");
-    revalidatePath("/ferment/round");
     revalidatePath(`/lots/${result.lotId}`);
     return result;
   },
@@ -45,7 +44,6 @@ export const crushAction = action(
 export const pressAction = action(async ({ actor }, input: PressLotInput): Promise<PressLotResult> => {
   const result = await pressLotCore(actor, input);
   revalidatePath("/bulk");
-  revalidatePath("/ferment/round");
   revalidatePath(`/lots/${result.parentLotId}`);
   for (const f of result.fractions) revalidatePath(`/lots/${f.lotId}`);
   return result;

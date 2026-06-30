@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button, Modal } from "@/components/ui";
+import { FermentMonitor } from "@/components/ferment/FermentMonitor";
 import {
   computeAdditionTotal,
   RATE_BASES,
@@ -103,6 +104,9 @@ export function CellarActions({
   const [analysesOpen, setAnalysesOpen] = React.useState(false);
   const [analyses, setAnalyses] = React.useState<VesselAnalyses | null>(null);
   const [analysesLoading, setAnalysesLoading] = React.useState(false);
+  const [fermentOpen, setFermentOpen] = React.useState(false);
+  const [fermentLotId, setFermentLotId] = React.useState(vessel.residentLots[0]?.lotId ?? "");
+  const fermentLot = vessel.residentLots.find((l) => l.lotId === fermentLotId) ?? vessel.residentLots[0];
 
   // Form state resets across vessels via a `key` remount in the parent (BulkClient), so no
   // reset effect is needed here.
@@ -205,7 +209,16 @@ export function CellarActions({
             {a.label}
           </Button>
         ))}
-        <Button variant="ghost" size="sm" onClick={openAnalyses} style={{ minHeight: 44, marginLeft: "auto" }}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={vessel.residentLots.length === 0}
+          onClick={() => setFermentOpen(true)}
+          style={{ minHeight: 44, marginLeft: "auto" }}
+        >
+          Fermentation
+        </Button>
+        <Button variant="ghost" size="sm" onClick={openAnalyses} style={{ minHeight: 44 }}>
           View analyses
         </Button>
       </div>
@@ -266,6 +279,38 @@ export function CellarActions({
             emptyHint="No analyses logged on this vessel yet — log one above."
             singleColumn
           />
+        )}
+      </Modal>
+
+      <Modal
+        open={fermentOpen}
+        onClose={() => setFermentOpen(false)}
+        title={`Fermentation monitoring · ${vessel.code}`}
+        subtitle="Log sugar, pH and temperature over time"
+        maxWidth="min(900px, 94vw)"
+      >
+        {vessel.residentLots.length > 1 ? (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+              Lot in this vessel
+            </label>
+            <select
+              value={fermentLot?.lotId ?? ""}
+              onChange={(e) => setFermentLotId(e.target.value)}
+              style={{ height: 44, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontSize: 14 }}
+            >
+              {vessel.residentLots.map((l) => (
+                <option key={l.lotId} value={l.lotId}>
+                  {l.code}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {fermentLot ? (
+          <FermentMonitor key={fermentLot.lotId} vesselId={vessel.id} vesselCode={vessel.code} lotId={fermentLot.lotId} lotCode={fermentLot.code} />
+        ) : (
+          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>This vessel is empty — nothing to monitor.</p>
         )}
       </Modal>
     </div>
