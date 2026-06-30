@@ -17,8 +17,6 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 // pre-ferment (MUST→JUICE); reds press dry-on-skins (MUST→WINE). SAIGNEE is the same core run
 // before ferment: bleed a JUICE fraction off a MUST lot, concentrating the parent.
 
-const EPS = 1e-9;
-
 function round5(n: number): number {
   return Math.round(n * 1e5) / 1e5;
 }

@@ -20,6 +20,7 @@ export type CaptureInput = {
   occupancyToken: string; // the vessel's resident-lot signature at capture (S5 as-of check)
   deviceObservedAt: string; // ISO, the tablet clock at capture
   readings: ReadingInput[];
+  note?: string; // sticky operator/context (a shared tablet has one login, many hands)
 };
 
 export type PendingReading = {
@@ -37,6 +38,7 @@ export type PendingPanel = {
   lotId: string;
   occupancyToken: string;
   deviceObservedAt: string;
+  note: string | null;
   status: PanelStatus;
   attempts: number;
   lastError: string | null;
@@ -66,6 +68,7 @@ export function buildCapture(input: CaptureInput, idGen: IdGen, clock: Clock = d
     lotId: input.lotId,
     occupancyToken: input.occupancyToken,
     deviceObservedAt: input.deviceObservedAt,
+    note: input.note ?? null,
     status: "pending",
     attempts: 0,
     lastError: null,
@@ -95,6 +98,7 @@ export function makeEditCapture(original: Capture, newReadings: ReadingInput[], 
       occupancyToken: original.panel.occupancyToken,
       deviceObservedAt: clock(), // a re-capture observed now
       readings: newReadings,
+      note: original.panel.note ?? undefined,
     },
     idGen,
     clock,

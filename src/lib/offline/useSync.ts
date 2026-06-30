@@ -25,6 +25,7 @@ const submit: SubmitFn = async (panel, readings) => {
     lotId: panel.lotId,
     occupancyToken: panel.occupancyToken,
     deviceObservedAt: panel.deviceObservedAt,
+    note: panel.note,
     readings: readings.map((r) => ({ captureId: r.captureId, analyte: r.analyte, value: r.value, unit: r.unit })),
   });
   if (res.ok) return { ok: true, duplicate: res.duplicate };
@@ -92,8 +93,13 @@ export function useSync(): UseSync {
   );
 
   useEffect(() => {
-    void refresh();
-    void drain();
+    // Bootstrap: load the outbox + flush once on mount. refresh()/drain() only setState AFTER
+    // an await (an async microtask), so this isn't the synchronous render cascade the rule
+    // guards against — it's the intended "kick off background sync when the page opens".
+    void (async () => {
+      await refresh();
+      await drain();
+    })();
     const onOnline = () => void drain();
     window.addEventListener("online", onOnline);
     const iv = window.setInterval(() => {

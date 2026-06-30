@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
-import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planCrush, type CrushPickDraw } from "@/lib/ledger/math";
 import { nextLotCode, isUniqueViolation } from "@/lib/lot/generate";

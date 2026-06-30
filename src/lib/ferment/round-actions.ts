@@ -27,6 +27,7 @@ export type SubmitPanelInput = {
   occupancyToken: string;
   deviceObservedAt: string; // ISO
   readings: SubmitReading[];
+  note?: string | null;
 };
 
 export type SubmitPanelResult =
@@ -78,6 +79,7 @@ export const submitPanelAction = action(
             enteredById: actor.actorUserId,
             enteredByEmail: actor.actorEmail,
             captureMethod: "MANUAL",
+            note: input.note?.trim() || null,
             clientRequestId: input.commandId,
             deviceObservedAt: observedAt,
             serverReceivedAt: new Date(),
