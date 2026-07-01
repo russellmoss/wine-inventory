@@ -34,6 +34,12 @@ npm run db:generate  # regenerate Prisma client
 
 Secrets live in `.env` (gitignored). Template is `.env.example`.
 - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` — Neon Postgres (pooled / direct).
+  - **Multi-tenancy role split (Phase 12):** migrations run as the OWNER via
+    `DATABASE_URL_UNPOOLED` (owner carries `BYPASSRLS`). The runtime app connects (pooled) as the
+    dedicated non-owner **`app_rls`** role (`NOBYPASSRLS`, non-superuser) so Postgres RLS actually
+    enforces tenant isolation. `DATABASE_URL_APP` holds the app_rls pooled URL; at activation it
+    becomes `DATABASE_URL` here and in Vercel. Set/rotate the app_rls password with
+    `npx tsx --env-file=.env scripts/setup-app-rls-credential.ts` (owner-run; secret never committed).
 - `GEMINI_API_KEY` — read by `council-mcp` from this `.env` for cross-LLM review.
 - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY` — reused from the
   Dashboard project for council / research tooling.
