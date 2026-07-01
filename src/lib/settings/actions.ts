@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { adminAction } from "@/lib/actions";
-import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 
@@ -11,11 +10,11 @@ import { writeAudit } from "@/lib/audit";
 export const setSparklingEnabled = adminAction(async ({ actor }, enabled: boolean): Promise<{ sparklingEnabled: boolean }> => {
   await runInTenantTx(async (tx) => {
     await tx.appSettings.upsert({
-      where: { id: "singleton" },
+      where: { tenantId: actor.tenantId },
       update: { sparklingEnabled: enabled },
-      create: { id: "singleton", sparklingEnabled: enabled },
+      create: { sparklingEnabled: enabled }, // tenantId auto-injected; id defaults to a cuid
     });
-    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "AppSettings", entityId: "singleton", summary: `Sparkling program ${enabled ? "enabled" : "disabled"}` });
+    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "AppSettings", entityId: actor.tenantId, summary: `Sparkling program ${enabled ? "enabled" : "disabled"}` });
   });
   revalidatePath("/settings");
   revalidatePath("/", "layout");

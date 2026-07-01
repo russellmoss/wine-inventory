@@ -22,7 +22,7 @@ async function balancesFor(vesselId: string): Promise<VesselLotBalance[]> {
   return rows.map((r) => ({ vesselId: r.vesselId, lotId: r.lotId, volumeL: Number(r.volumeL) }));
 }
 async function volAt(vesselId: string, lotId: string): Promise<number> {
-  const row = await prisma.vesselLot.findUnique({ where: { vesselId_lotId: { vesselId, lotId } } });
+  const row = await prisma.vesselLot.findFirst({ where: { vesselId, lotId } });
   return row ? Number(row.volumeL) : 0;
 }
 

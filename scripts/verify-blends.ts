@@ -70,7 +70,7 @@ async function seedLot(code: string, vesselId: string, volumeL: number, vineyard
 }
 
 async function vol(vesselId: string, lotId: string): Promise<number> {
-  const row = await prisma.vesselLot.findUnique({ where: { vesselId_lotId: { vesselId, lotId } } });
+  const row = await prisma.vesselLot.findFirst({ where: { vesselId, lotId } });
   return row ? r2(Number(row.volumeL)) : 0;
 }
 async function residents(vesselId: string): Promise<string[]> {

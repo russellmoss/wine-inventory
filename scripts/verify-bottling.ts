@@ -70,7 +70,7 @@ async function main() {
   assert(Number(src.volumeConsumedL) === consumedL, "source volume == consumed");
   assert(run!.stockMovements.length === 1 && run!.stockMovements[0].deltaUnits === bottles && run!.stockMovements[0].kind === "RECEIVE", "one RECEIVE stock movement for the bottles");
 
-  const inv = await prisma.bottledInventory.findUnique({ where: { wineSkuId_locationId: { wineSkuId: sku!.id, locationId: loc.id } } });
+  const inv = await prisma.bottledInventory.findFirst({ where: { wineSkuId: sku!.id, locationId: loc.id } });
   assert(inv?.totalBottles === bottles, `inventory holds ${bottles} bottles at the destination`);
 
   // The BOTTLE ledger op: −consumed out of the vessel + a matching +consumed EXTERNAL "bottle" leg.

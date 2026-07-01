@@ -961,7 +961,9 @@ enum LedgerBucket {
 // default off) — backend enums/cores ship regardless and are inert when unused.
 model AppSettings {
   tenantId         String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id               String   @id @default("singleton")
+  // Phase 12: per-org now (K10). One row per tenant (@@unique([tenantId])); read/written by
+  // tenantId, not the old "singleton" id. id is a plain cuid so a 2nd org's row can't collide.
+  id               String   @id @default(cuid())
   sparklingEnabled Boolean  @default(false)
   updatedAt        DateTime @updatedAt
 

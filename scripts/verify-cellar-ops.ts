@@ -34,7 +34,7 @@ function assert(cond: boolean, msg: string) {
 }
 
 async function vol(vesselId: string, lotId: string): Promise<number> {
-  const row = await prisma.vesselLot.findUnique({ where: { vesselId_lotId: { vesselId, lotId } } });
+  const row = await prisma.vesselLot.findFirst({ where: { vesselId, lotId } });
   return row ? r2(Number(row.volumeL)) : 0;
 }
 async function vesselTotal(vesselId: string): Promise<number> {
@@ -166,7 +166,7 @@ async function main() {
   assert((await vol(b1, lotKeg)) === 10, "B1 now holds 10 L of the keg lot");
   assert((await vol(keg, lotKeg)) === 40, "KEG dropped 50 → 40");
   assert((await vesselTotal(b1)) === 210, "B1 total 200 → 210");
-  const edge = await prisma.lotLineage.findUnique({ where: { parentLotId_childLotId: { parentLotId: lotKeg, childLotId: lotB1 } } });
+  const edge = await prisma.lotLineage.findFirst({ where: { parentLotId: lotKeg, childLotId: lotB1 } });
   assert(!!edge && edge.kind === "TOPPING", "lineage edge keg-lot → B1-lot (kind TOPPING) appended");
   assert(top.lineageEdges === 1, "topping reported 1 lineage edge");
   assert(await projectionMatchesFold(), "projection == fold after topping");

@@ -25,7 +25,7 @@ async function main() {
   const sku = await prisma.wineSku.create({ data: { name: `${TAG} Wine`, vintage: 2025, bottleSizeMl: 750 } });
 
   const balance = async (locId: string) =>
-    (await prisma.bottledInventory.findUnique({ where: { wineSkuId_locationId: { wineSkuId: sku.id, locationId: locId } } }))?.totalBottles ?? 0;
+    (await prisma.bottledInventory.findFirst({ where: { wineSkuId: sku.id, locationId: locId } }))?.totalBottles ?? 0;
 
   const problems: string[] = [];
 
@@ -49,7 +49,7 @@ async function main() {
   const cat = await prisma.finishedGoodCategory.create({ data: { name: `${TAG}_Cat` } });
   const good = await prisma.finishedGood.create({ data: { name: `${TAG}_Shirt`, categoryId: cat.id } });
   await receiveStock("FINISHED_GOOD", good.id, locA.id, 50, actor, "merch");
-  const gq = (await prisma.finishedGoodInventory.findUnique({ where: { finishedGoodId_locationId: { finishedGoodId: good.id, locationId: locA.id } } }))?.quantity ?? 0;
+  const gq = (await prisma.finishedGoodInventory.findFirst({ where: { finishedGoodId: good.id, locationId: locA.id } }))?.quantity ?? 0;
   if (gq !== 50) problems.push(`finished good receive: expected 50, got ${gq}`);
 
   const [fa, fb] = [await balance(locA.id), await balance(locB.id)];

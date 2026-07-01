@@ -1,13 +1,14 @@
 /**
- * Idempotent seed for the spray/fertilizer master list. Upserts the default
- * FieldInput rows on [type, normalizedKey] so re-running adds nothing. Shares the
- * same sanitizers the add-on-the-fly action uses, so seeded + custom rows are
- * normalized identically. Run standalone via `npx tsx prisma/seed-field-inputs.ts`
- * or as part of `prisma/seed.ts`.
+ * Idempotent seed for the spray/fertilizer master list. Upserts the default FieldInput rows on the
+ * per-tenant (tenantId, type, normalizedKey) unique so re-running adds nothing. Shares the same
+ * sanitizers the add-on-the-fly action uses. Run standalone via `npx tsx prisma/seed-field-inputs.ts`
+ * or as part of `prisma/seed.ts`. Runs inside a tenant context (Phase 12).
  */
-import type { PrismaClient } from "@prisma/client";
 import { prisma } from "../src/lib/prisma";
+import { runAsTenant, requireTenantId } from "../src/lib/tenant/context";
 import { cleanInputName, normalizeInputKey } from "../src/lib/fieldnotes/sanitize";
+
+const BHUTAN_ORG_ID = "org_bhutan_wine_co";
 
 const DEFAULTS: { type: "SPRAY" | "FERTILIZER"; name: string }[] = [
   { type: "SPRAY", name: "Mancozeb" },
@@ -18,12 +19,14 @@ const DEFAULTS: { type: "SPRAY" | "FERTILIZER"; name: string }[] = [
   { type: "FERTILIZER", name: "Epsom Salts" },
 ];
 
-export async function seedFieldInputs(db: PrismaClient = prisma): Promise<number> {
+/** Seed the default field inputs for the ACTIVE tenant (must run inside runAsTenant). */
+export async function seedFieldInputs(db: typeof prisma = prisma): Promise<number> {
+  const tenantId = requireTenantId();
   let count = 0;
   for (const { type, name } of DEFAULTS) {
     const normalizedKey = normalizeInputKey(name);
     await db.fieldInput.upsert({
-      where: { type_normalizedKey: { type, normalizedKey } },
+      where: { tenantId_type_normalizedKey: { tenantId, type, normalizedKey } },
       update: {}, // never clobber an admin-renamed display label
       create: { type, name: cleanInputName(name), normalizedKey, isActive: true },
     });
@@ -34,7 +37,7 @@ export async function seedFieldInputs(db: PrismaClient = prisma): Promise<number
 
 // Standalone entrypoint (no-op when imported).
 if (process.argv[1] && process.argv[1].includes("seed-field-inputs")) {
-  seedFieldInputs()
+  runAsTenant(BHUTAN_ORG_ID, () => seedFieldInputs())
     .then((n) => {
       console.log(`Field inputs ready (${n} defaults upserted)`);
       return prisma.$disconnect();

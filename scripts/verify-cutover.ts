@@ -89,7 +89,7 @@ async function main() {
   if (!run) return;
   assert((await vesselTotal(src.vesselId)) === round2(bottleVesselStart - 0.75), "bottling: vessel reduced by 0.75 L");
   assert(run.sources.every((s) => s.lotId != null), "bottling: BottlingSource.lotId set on new run");
-  const inv = await prisma.bottledInventory.findUnique({ where: { wineSkuId_locationId: { wineSkuId: run.wineSkuId, locationId: loc.id } } });
+  const inv = await prisma.bottledInventory.findFirst({ where: { wineSkuId: run.wineSkuId, locationId: loc.id } });
   assert(!!inv && inv.totalBottles >= 1, "bottling: BottledInventory incremented");
   await assertComponentSync("after-bottling");
   console.log(`  BOTTLING ok: 1 bottle, lotId provenance set, inventory +1`);

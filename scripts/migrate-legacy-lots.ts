@@ -24,7 +24,7 @@ async function main() {
   let skipped = 0;
   for (const c of components) {
     const code = `LEGACY-${c.id}`;
-    if (await prisma.lot.findUnique({ where: { code }, select: { id: true } })) {
+    if (await prisma.lot.findFirst({ where: { code }, select: { id: true } })) {
       skipped++;
       continue;
     }

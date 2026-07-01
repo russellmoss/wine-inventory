@@ -64,7 +64,7 @@ async function makeVessel(code: string, capacityL: number): Promise<string> {
   return v.id;
 }
 async function lotVol(vesselId: string, lotId: string): Promise<number> {
-  const vl = await prisma.vesselLot.findUnique({ where: { vesselId_lotId: { vesselId, lotId } }, select: { volumeL: true } });
+  const vl = await prisma.vesselLot.findFirst({ where: { vesselId, lotId }, select: { volumeL: true } });
   return vl ? Number(vl.volumeL) : 0;
 }
 
@@ -248,7 +248,7 @@ async function main() {
   // A pre-existing destination lot to MERGE the hard press into.
   const mergeDest = await crushLotCore(ACTOR, { commandId: uid(), picks: [{ pickId: pickWhite.id, consumedKg: 1000 }], destVesselId: barrelHP, outputVolumeL: 700, target: { mode: "NEW", vintage: 2024 } });
   created.lots.push(mergeDest.lotId);
-  const redVl = await prisma.vesselLot.findUniqueOrThrow({ where: { vesselId_lotId: { vesselId: tankRed, lotId: crush1.lotId } }, select: { volumeL: true, updatedAt: true } });
+  const redVl = await prisma.vesselLot.findFirstOrThrow({ where: { vesselId: tankRed, lotId: crush1.lotId }, select: { volumeL: true, updatedAt: true } });
   const avail = Number(redVl.volumeL); // 13200
   // Stale-revision guard.
   await expectThrow(
