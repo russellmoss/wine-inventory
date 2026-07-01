@@ -8,7 +8,7 @@ import { riddlingCore, type RiddlingInput } from "@/lib/sparkling/riddling-core"
 import { disgorgementCore, type DisgorgementResult } from "@/lib/sparkling/disgorgement-core";
 import { dosageCore, type DosageResult } from "@/lib/sparkling/dosage-core";
 import { finalizeSparklingCore, type FinalizeResult } from "@/lib/sparkling/finalize-core";
-import { correctBottleOperationCore, reverseFinalizeCore } from "@/lib/sparkling/correct";
+import { correctBottleOperationCore, reverseFinalizeCore, reverseSparklingOperationCore } from "@/lib/sparkling/correct";
 
 // Phase 7 Unit 12: thin "use server" wrappers over the sparkling cores. EVERY action is gated
 // behind the winery sparklingEnabled setting (K14) — with it off, none of these can run even if
@@ -105,6 +105,19 @@ export const reverseFinalizeAction = action(async ({ actor }, input: { runId: st
   await gate();
   const res = await reverseFinalizeCore(actor, { runId: input.runId, note: input.note });
   revalidateLot(input.lotId);
+  revalidatePath("/bottled");
+  revalidatePath("/inventory");
+  return res;
+});
+
+/** Reverse ONE sparkling bottle-phase op (tirage/riddling/disgorge/dose/finish), routed by type.
+ * The En Tirage worklist calls this on a lot's most-recent reversible step; repeat to walk the
+ * chain back to the tank. Guards enforce LIFO — a later, un-reversed step blocks an earlier one. */
+export const reverseSparklingOperationAction = action(async ({ actor }, input: { operationId: number; lotId: string; note?: string }) => {
+  await gate();
+  const res = await reverseSparklingOperationCore(actor, { operationId: input.operationId, note: input.note });
+  revalidateLot(input.lotId);
+  if (res.lotId !== input.lotId) revalidateLot(res.lotId);
   revalidatePath("/bottled");
   revalidatePath("/inventory");
   return res;

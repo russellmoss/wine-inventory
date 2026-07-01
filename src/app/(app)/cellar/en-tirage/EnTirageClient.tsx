@@ -2,13 +2,14 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, Input, Button, Badge, Eyebrow, Modal } from "@/components/ui";
+import { Card, Input, Button, Badge, Eyebrow, Modal, ConfirmButton } from "@/components/ui";
 import { tirageAction } from "@/lib/sparkling/actions";
-import { riddlingAction, disgorgeAndFinishAction } from "@/lib/sparkling/actions";
+import { riddlingAction, disgorgeAndFinishAction, reverseSparklingOperationAction } from "@/lib/sparkling/actions";
 import { tirageSugarForPressure, dosageSugarGpl, finalRS, classifyStyle, nearStyleBandEdge } from "@/lib/sparkling/sugar";
 import type { WorklistRow, TirageCandidate } from "@/lib/sparkling/worklist-data";
 
 const num = { fontVariantNumeric: "tabular-nums" } as React.CSSProperties;
+const UNDO_LABEL: Record<string, string> = { TIRAGE: "tirage → tank", RIDDLING: "riddling", DISGORGEMENT: "disgorgement", DOSAGE: "dosage" };
 const STAGES = ["EN_TIRAGE", "RIDDLING", "DISGORGED", "DOSED"] as const;
 const STAGE_LABEL: Record<string, string> = { EN_TIRAGE: "En tirage", RIDDLING: "Riddling", DISGORGED: "Disgorged", DOSED: "Dosed" };
 
@@ -117,6 +118,20 @@ export function EnTirageClient({
                     <td style={{ padding: "10px 12px" }}>{r.afState}</td>
                     <td style={{ padding: "10px 12px", color: "var(--text-secondary)" }}>{r.locationName ?? "—"}</td>
                     <td style={{ padding: "10px 12px", whiteSpace: "nowrap", textAlign: "right" }}>
+                      {r.lastReversibleOpId != null && (
+                        <span style={{ marginRight: 8, display: "inline-block" }}>
+                          <ConfirmButton
+                            confirmLabel={`Undo ${UNDO_LABEL[r.lastReversibleOpType ?? ""] ?? "step"}`}
+                            disabled={pending}
+                            onConfirm={() => run(async () => {
+                              const res = await reverseSparklingOperationAction({ operationId: r.lastReversibleOpId!, lotId: r.lotId });
+                              return res.message ?? `Reversed last step on ${r.code}.`;
+                            })}
+                          >
+                            Undo {UNDO_LABEL[r.lastReversibleOpType ?? ""] ?? "step"}
+                          </ConfirmButton>
+                        </span>
+                      )}
                       <button
                         onClick={() => run(async () => { await riddlingAction({ lotId: r.lotId, method: "gyropalette" }); return `Riddling logged for ${r.code}.`; })}
                         disabled={pending}

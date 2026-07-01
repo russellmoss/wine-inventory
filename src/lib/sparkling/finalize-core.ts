@@ -89,6 +89,10 @@ export async function finalizeSparklingCore(actor: LedgerActor, input: FinalizeI
       actor,
     });
 
+    // Stamp the run id on the FINISH op so a later reversal can find its finished-goods run
+    // deterministically (no lot→run guessing). Additive metadata; the ledger lines are unchanged.
+    await tx.lotOperation.update({ where: { id: opId }, data: { metadata: { runId } } });
+
     // (3) form BOTTLED_IN_PROCESS → FINISHED (state machine + LotStateEvent).
     await applyStateTransitionTx(tx, actor, { lotId: input.lotId, kind: "FORM", to: "FINISHED", operationId: opId });
 

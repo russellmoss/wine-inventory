@@ -18,7 +18,7 @@ import { riddlingCore } from "@/lib/sparkling/riddling-core";
 import { disgorgementCore } from "@/lib/sparkling/disgorgement-core";
 import { dosageCore } from "@/lib/sparkling/dosage-core";
 import { finalizeSparklingCore } from "@/lib/sparkling/finalize-core";
-import { correctBottleOperationCore, reverseFinalizeCore } from "@/lib/sparkling/correct";
+import { correctBottleOperationCore, reverseFinalizeCore, reverseSparklingOperationCore } from "@/lib/sparkling/correct";
 import { transitionStateCore } from "@/lib/ferment/transition-core";
 import { addAdditionCore } from "@/lib/cellar/addition";
 import { executeBottling } from "@/lib/bottling/run";
@@ -257,7 +257,46 @@ async function main() {
   assert(cReopened != null && cReopened.bottleCount === 1000 && cLotForm?.form === "BOTTLED_IN_PROCESS", "finalize reversal reopens the bottle lot (1000 bottles, BOTTLED_IN_PROCESS)");
   assert((await prisma.bottlingRun.findUnique({ where: { id: cFin.runId } })) === null, "finalize reversal deletes the BottlingRun");
 
-  console.log(`\nALL ${passed} SPARKLING ASSERTIONS PASSED (traditional + multi-tank + tank + pét-nat + corrections)`);
+  // ── 11. Full chain reversal — un-bottle all the way back to the tank ──
+  console.log("\n── 11. Full chain reversal (back to tank) ──");
+  const rvTank = await prisma.vessel.create({ data: { code: "ZZ-SPK-RV", type: "TANK", capacityL: 3000 } });
+  created.vesselIds.push(rvTank.id);
+  const rvLot = await seedLot("ZZS-REVERSE", rvTank.id, 750, vyA.id, 2024, "WINE", "NONE");
+  await tirageCore(ACTOR, { lotId: rvLot, sources: [{ vesselId: rvTank.id, drawL: 750 }], bottleCount: 1000, method: "TRADITIONAL", locationId: loc.id });
+  await riddlingCore(ACTOR, { lotId: rvLot, method: "gyropalette" });
+  await disgorgementCore(ACTOR, { lotId: rvLot, bottlesDisgorged: 1000, perBottleLossMl: 25 });
+  await dosageCore(ACTOR, { lotId: rvLot, perBottleDoseMl: 8, liqueurGPerL: 600 });
+  const rvFin = await finalizeSparklingCore(ACTOR, { lotId: rvLot, skuName: "ZZ-TEST Reverse Cuvée", destinationLocationId: loc.id, vintage: 2024, isNonVintage: false });
+  assert((await prisma.lot.findUnique({ where: { id: rvLot }, select: { form: true } }))?.form === "FINISHED", "reverse fixture reached FINISHED before unwinding");
+
+  // Unwind LIFO via the dispatcher (the same core the UI + dev script call) until nothing remains.
+  let rvGuard = 0;
+  for (;;) {
+    if (rvGuard++ > 50) throw new Error("reversal loop runaway");
+    const next = await prisma.lotOperation.findFirst({
+      where: { type: { in: ["TIRAGE", "RIDDLING", "DISGORGEMENT", "DOSAGE", "FINISH"] }, correctedBy: { is: null }, OR: [{ lines: { some: { lotId: rvLot } } }, { treatments: { some: { lotId: rvLot } } }] },
+      orderBy: { id: "desc" },
+      select: { id: true },
+    });
+    if (!next) break;
+    await reverseSparklingOperationCore(ACTOR, { operationId: next.id });
+  }
+
+  assert((await stateOf(rvLot)) === null, "reversal: BottledLotState gone (bottles un-bottled)");
+  const rvLotAfter = await prisma.lot.findUnique({ where: { id: rvLot }, select: { form: true, afState: true } });
+  assert(rvLotAfter?.form === "WINE" && rvLotAfter.afState === "NONE", "reversal: lot back to WINE / AF NONE (as before tirage)");
+  const rvPos = await prisma.vesselLot.findFirst({ where: { vesselId: rvTank.id, lotId: rvLot } });
+  assert(rvPos != null && Number(rvPos.volumeL) === 750, "reversal: 750 L back in the source tank");
+  assert((await prisma.bottlingRun.findUnique({ where: { id: rvFin.runId } })) === null, "reversal: bottling run removed");
+  const rvInv = await prisma.bottledInventory.findFirst({ where: { wineSku: { name: "ZZ-TEST Reverse Cuvée" } } });
+  assert(rvInv == null || rvInv.totalBottles === 0, "reversal: finished-goods inventory drained to 0");
+  const rvVesselFold = await prisma.lotOperationLine.aggregate({ where: { lotId: rvLot, bucket: "VESSEL" }, _sum: { deltaL: true } });
+  const rvProj = await prisma.vesselLot.aggregate({ where: { lotId: rvLot }, _sum: { volumeL: true } });
+  assert(Number(rvVesselFold._sum.deltaL ?? 0) === 750 && Number(rvProj._sum.volumeL ?? 0) === 750, "reversal: ledger vessel-fold == projection (750 L)");
+  const rvBottleFold = await prisma.lotOperationLine.aggregate({ where: { lotId: rvLot, bucket: "BOTTLE_STORAGE" }, _sum: { deltaL: true } });
+  assert(Number(rvBottleFold._sum.deltaL ?? 0) === 0, "reversal: BOTTLE_STORAGE legs net to zero");
+
+  console.log(`\nALL ${passed} SPARKLING ASSERTIONS PASSED (traditional + multi-tank + tank + pét-nat + corrections + full reversal)`);
 }
 
 async function scrub() {
