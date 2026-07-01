@@ -14,6 +14,12 @@
 - **Space/industry:** Wine production / inventory operations, with a premium DTC brand
   sensibility carried into an internal tool.
 - **Project type:** Data-dense web app (Next.js 16 app router, React 19, Prisma/Neon).
+- **Tenancy / direction:** evolving from a single-winery internal tool (Bhutan Wine
+  Company) into a **multi-tenant SaaS** for many wineries (see VISION **D16** + ROADMAP
+  Phase 12). The visual system here is the **default brand**; **per-tenant branding/theming
+  is a future capability** — the tokens stay, their values become tenant-configurable. New
+  tenant-facing surfaces (signup, tenant admin, org switcher, per-tenant theme) get a
+  design review when they're built.
 
 ## Aesthetic Direction
 - **Direction:** Warm editorial. Paper-and-ink modernism with a single wine accent.

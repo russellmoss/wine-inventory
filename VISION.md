@@ -296,9 +296,22 @@ The design language in `DESIGN.md` carries straight through.
 | **D13** | **Vessel/barrel *groups* are first-class**; a group operation fans out to child vessels (one action tops 60 barrels) | Per-barrel logging is unusable; the schema must allow group-targeted ops |
 | **D14** | Ledger writes use **SERIALIZABLE isolation + canonical row locking + DB-level constraints** (CHECK `volumeL`>0, `deltaL`<>0, unique `correctsOperationId`, vessel capacity), never app-only assertions; every op carries a **monotonic sequence** + observed/entered/method provenance | App-side folds lose updates and overfill vessels; timestamps collide and clocks drift |
 | **D15** | A correction is **blocked if any later non-correction op touched the affected vessel/lot positions** (not merely "enough volume present") | A mathematically-valid inverse can silently rewrite a blended/topped composition |
+| **D16** | **Multi-tenant from the foundation** — an **Organization (winery) tenant**; every domain row carries `tenantId`; isolation is **enforced in Postgres (Row-Level Security), not app-only**; **uniqueness is per-tenant** (lot codes, SKUs, vessel codes, materials, locations…); the isolation boundary is laid **before a second winery's data exists**. The SaaS operational layer (signup, provisioning, billing, per-tenant branding) is deferred and built incrementally. | The product is a multi-tenant SaaS sold to many wineries; retrofitting tenancy later touches every table/query/constraint and risks cross-tenant data leaks (the worst B2B failure). DB-enforced isolation means an app bug still can't cross wineries. |
 
 **Product boundary (from D11):** full vine-to-bottle traceability **starts at
 cutover.** Pre-cutover data is explicitly labeled inferred/partial.
+
+**Product scope (2026-07): production system → wine-industry ERP.** The north star has
+widened from a single-winery production tool to a **multi-tenant, AI-native wine ERP** for
+small/medium wineries (the fundable, competitive product). The production spine (Phases 1–8)
+stays the moat; on top of it the **ERP/GTM layer** — competitor **migration/onboarding**
+(the wedge), **TTB/state compliance** (table stakes), **two-way accounting**, and **DTC
+integration** — is now first-class (ROADMAP Phases 13–16). Phase **priority follows the
+competitive + go-to-market evidence** in `docs/STRATEGY.md` and
+`docs/competitive-analysis-vintrace-innovint.md`, not the phase numbers. The durable
+architectural edge that this ERP layer rests on is the append-only ledger + compensating
+corrections (D2/D6/D15): it directly answers the #1 recurring complaint about both
+incumbents ("can't cleanly fix a mistake") and makes cost + compliance provably correct.
 
 ---
 

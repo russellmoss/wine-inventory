@@ -258,13 +258,42 @@ cost-per-bottle. **Physical tracking first, cost second** (same records, added l
   reason mutable rows were rejected.
 - Harvest/fruit cost and (optionally) labor/overhead enter the lot's cost basis at the
   appropriate operations.
+- **Accounting hand-off is a first-class requirement, not implied:** the cost basis + bottling
+  COGS must export to the winery's books. The full **two-way QuickBooks/Xero** sync is **Phase
+  15** (a documented competitive gap — InnoVint has no QuickBooks API, Vintrace's is one-way);
+  Phase 8 must produce the cost data in a shape that clean two-way sync can consume.
 
 **Exit:** receive a supply with a cost; an addition draws it down; produce an accurate
 cost-per-bottle for a bottling that traces through at least one blend and one loss.
 
-**Implementation: deferred to `/plan`.** Decisions to resolve then: costing method
-(weighted-average vs. FIFO) for supply lots; barrel amortization model; whether
-labor/overhead allocation is in scope for v1.
+**Runbook detail for `/plan` (front-loaded so the plan is well-fed):**
+- *Prerequisites:* the append-only ledger (Phases 1/3/5/6/7) + multi-tenancy (12) must be in
+  place; cost lines attach to `LotOperation`s, so this is additive to the existing chokepoint.
+- *What we'll need:* a `CostLine`/cost-basis model on operations; a supply-inventory model
+  (receive-with-cost, draw-down via the existing ADDITION ops); a `SupplyLot` for
+  weighted-avg/FIFO; barrel-asset amortization schedule. Reuse the Phase 3 `CellarMaterial`
+  catalog as the seed.
+- *Costing stance (recommended default, but configurable):* **weighted-average absorption
+  costing** — it matches wine reality (blends *mix* cost, and "roll up parent cost by volume
+  share" IS weighted-average) and GAAP-style inventory capitalization. **Absorption:** direct
+  materials + (optionally) direct labor + overhead + barrel depreciation are **capitalized into
+  the wine's cost** (WIP inventory), not expensed as incurred — and wine's multi-year aging
+  means cost sits in **WIP for years** before a sale; the ledger DAG *is* that capitalization
+  trail. **Make it configurable:** per-tenant setting for method (weighted-avg default; FIFO
+  optional) and for which cost components are capitalized (materials always; labor/overhead/
+  barrel toggle per the winery's policy). Tag every cost line by component so a winery/accountant
+  can include or exclude. We produce a **defensible, auditable cost basis**; the winery's CPA +
+  their books (Phase 15) own the GAAP/tax treatment (e.g. §263A/UNICAP) — we feed it, not compute
+  it. (Not accounting advice; the winery sets their method.)
+- *Decisions to resolve:* costing method (**weighted-average vs FIFO**) for supply lots;
+  barrel amortization model (per-use vs per-year); is labor/overhead allocation in v1
+  (ties to Phase 11 labor); how cost rolls through **blends (by volume share)**, **loss
+  (reallocate onto remaining)**, and **bottling (divide across bottles)** — the DAG traversal;
+  how partial-disgorgement SPLIT children (Phase 7) inherit cost basis.
+- *Open questions:* rounding/precision for cost-per-bottle; how corrections (D6/D15) reverse a
+  cost line; do we store computed cost snapshots or recompute-on-read from the DAG?
+- *Output contract for Phase 15:* cost basis + bottling COGS in a shape a two-way accounting
+  sync can post (per-SKU, per-run, tax-class-aware where needed).
 **Honors:** D2, D7.
 
 ---
@@ -323,11 +352,316 @@ MCP auth model.
 
 ---
 
+## Phase 11 — Labor, timeclock & payroll  ⬜
+**Goal:** Track who worked, where, doing what, for how long — across **vineyard
+(agricultural)** and **winery (manufacturing)** work — compute what they are owed under
+the right state + classification rules, and later export approved hours to QuickBooks. A
+labor system of record that plugs into cost (Phase 8) and work orders (Phase 9), not a
+bolt-on spreadsheet.
+
+**Domain requirements (durable):**
+- **Timeclock = an append-only punch log** (worker + site + timestamp + capture method),
+  same event-sourcing discipline as the operation ledger. Reuses the offline outbox
+  (Phase 6 Dexie) — vineyard/cellar wifi is unreliable and a clock-in must never fail.
+- **Capture methods are per-site, opt-in options** (mirrors the `captureMethod` pattern):
+  - **PIN on a shared tablet kiosk** (default, no special hardware),
+  - **manager enters/corrects times** (always available; needed for fixes),
+  - **worker self-report from phone**,
+  - **geofenced self-report** — self-report allowed only when GPS is within a set radius
+    of the site; **reuses the existing vineyard block polygons + map/geo stack** or a
+    site geofence,
+  - **NFC tap** — physical **NFC panels/tags at each work site**, and **each tag carries
+    its own location**. A worker taps to start time; taps to end/resume breaks and to
+    clock out. Tapping **is** the presence proof (stronger than GPS — they must be at the
+    panel), and the **clock-in / resume-from-break transitions require a fresh tap** — you
+    cannot clock back in without physically tapping another NFC. Works by tapping the
+    **worker's own phone** to the panel (see the self-service surface below), or via a
+    fixed reader at the site.
+  - **No biometric / no employer hardware cost by design:** deliberately **no face or
+    fingerprint scanners**. Everything runs on phones/tablets the employer already owns;
+    the only physical items are **cheap passive NFC tags/panels** (a few dollars each).
+    Not collecting biometrics also sidesteps BIPA-class legal exposure entirely.
+- **Worker self-service phone surface** (a distinct surface from the manager/kiosk views):
+  a worker opens the app and sees their **time accruing live**, **starts/ends breaks**,
+  and **clocks out** from their phone — with the rule that **presence-verified transitions
+  (clock-in and resume-from-break) still require an NFC tap** (or the site's chosen
+  presence method), while viewing time, starting a break, and clocking out are allowed
+  from the phone. Workers see only their own hours; they do **not** self-report piece rate.
+- **Work is classified per entry: vineyard vs winery**, and a single day **splits across
+  both** (e.g. 4 h vineyard in the morning, 8 h winery that evening = two entries, two
+  classifications). Each entry also captures **what kind of work** it was and its duration.
+- **Payroll settings are configurable per state AND per classification.** A winery
+  operates under different overtime rules for **agricultural** (vineyard) vs
+  **manufacturing** (winery) labor — e.g. **California's ag-OT phase-in** differs from
+  standard FLSA daily/weekly OT. Settings hold each state's rules and separate
+  vineyard/winery rule sets; the OT engine applies the right rule per entry's
+  classification + worker's state.
+- **Wages per worker** (hourly and/or piece rates) so the system computes amounts owed.
+- **Piece work (vineyard):** set a rate per unit (e.g. $/vine); the **manager or crew
+  foreman** records the count done per worker/crew (**not** worker self-reported), and it
+  calculates pay — with the guardrail that piece-rate pay must still reconcile against
+  minimum wage for hours worked and separate rest-break pay where the state requires it
+  (e.g. CA piece-rate law).
+- **Pay periods / paydays** are configurable (weekly / bi-weekly / semi-monthly, period
+  start day, payday offset) so timesheets roll up to the right pay run.
+- **Approval workflow:** manager approves the period → timesheets become **immutable,
+  exportable** records.
+- **QuickBooks export (later):** the app is the system of record for punches; an **export
+  adapter** maps approved hours/wages to **QuickBooks Online** (or QuickBooks Time / CSV /
+  IIF). QBO's OAuth app-review is its own milestone.
+- **Compliance is first-class:** no biometrics collected (so BIPA-class exposure is
+  avoided by design); **GPS location capture for geofencing needs employee notice/consent**
+  where the state requires it, and location should be captured only at punch moments, not
+  continuously tracked; keep an **immutable audit trail of any edits to punches**.
+
+**Exit:** a worker taps the **vineyard NFC panel** with their phone to clock in, watches
+their **time accrue live in the app**, taps to take a break, then works the winery that
+afternoon (kiosk PIN) — the two entries carry different classifications; the crew foreman
+records the morning's **piece work** (vines × rate); the system computes hours + overtime
+under the worker's state rules for each classification with the piece-rate minimum-wage
+reconciliation, rolls it into the current pay period, a manager approves it, and it exports
+cleanly to QuickBooks.
+
+**Implementation: deferred to `/plan`.** Decisions to resolve then: punch model
+(in/out events vs sessions) + rounding/break rules; how the **overtime rule engine**
+represents per-state + ag-vs-manufacturing rules (rules-as-data vs per-state modules) and
+how much of the 50-state matrix v1 covers; piece-rate ↔ minimum-wage reconciliation model;
+geofence source (block polygons vs site radius) + location notice/consent; **NFC on the
+worker's phone across platforms** (Android **Web NFC** works,
+but **iOS can't read arbitrary tags in-browser** → likely needs a native/PWA/App-Clip
+path or a fixed reader at the panel), **which state transitions require a physical tap vs.
+are allowed from the phone**, and NFC **tag provisioning + location binding + anti-cloning**;
+QuickBooks mapping + OAuth; how labor cost feeds the Phase 8 cost roll-up (allocating labor
+to lots) and how clocking ties to Phase 9 work-order tasks.
+**Honors:** D2 (append-only), D9 (worker/manager RBAC), D12/D14 (capture provenance).
+
+---
+
+## Phase 12 — Multi-tenancy & SaaS foundation  ⬜
+**Goal:** Turn the single-winery app into a **multi-tenant SaaS**: many wineries (tenants),
+many users each, with hard data isolation.
+
+**Sequencing (this is a FOUNDATION, not a finale):** the **isolation-boundary slice must
+land before a second winery's data exists** — i.e. before onboarding the first external
+design-partner winery. Do **not** defer it to "after the last feature phase"; retrofitting
+tenancy grows more expensive with every phase and every row. Its number here reflects
+grouping, not build order. (Honors **D16**.)
+
+**Domain requirements (durable):**
+- **Tenant model:** an **Organization (winery)** is the tenant. Every domain row carries a
+  `tenantId`. Users belong to an org (and to vineyards within it via the existing D9
+  membership); a session is scoped to one org.
+- **DB-enforced isolation (not app-only):** **Postgres Row-Level Security** keyed to the
+  session's tenant, so an application bug cannot leak one winery's data to another
+  (D14 spirit: enforce in the database, never app-side alone).
+- **Per-tenant uniqueness:** everything globally unique today becomes unique **per tenant**
+  — lot codes, `WineSku (name,vintage,size)`, vessel codes, material catalog, locations.
+  Highest-churn retrofit and the main reason to do it early.
+- **Tenant threading through the spine:** `writeLotOperation` + projections (`vessel_lot`,
+  `BottledLotState`, …) + lineage + RBAC predicates all carry/assert the tenant; the
+  chokepoint asserts tenant consistency on every write.
+- **Isolation tests are first-class:** an automated suite proving no query, action, or
+  projection can read/write across tenants (the failure mode that kills a B2B SaaS).
+- **Operational layer (deferred, incremental):** org signup/provisioning, per-tenant config
+  + **branding/theming** (the app is currently hardcoded "Bhutan Wine Company" — that
+  becomes tenant-configurable), user invitations, billing, tenant-admin surface. Built when
+  onboarding real paying wineries, not up front.
+- **Bhutan Wine Company becomes tenant #1** (dogfood); design-partner wineries are 2..N.
+
+**Exit:** two wineries' data coexist in one database with RLS-proven isolation (a
+verification script shows no cross-tenant read/write); lot codes + SKUs unique per tenant;
+a user logs in scoped to their org and sees only their winery.
+
+**Implementation: deferred to `/plan` — and this phase gets the full review gate:**
+`/council` + `/plan-eng-review` are **required** given the cross-tenant-leak blast radius;
+`/plan-design-review` applies to the later ops-layer / tenant-admin UI (light for the
+backend foundation). Decisions to resolve then: pooled-with-RLS vs schema-per-tenant vs
+Neon project/branch-per-tenant; how the tenant is set per request (middleware / Prisma
+client extension / session GUC); migration to backfill `tenantId` onto existing Bhutan data
++ recreate unique indexes per-tenant; how RLS interacts with SERIALIZABLE ledger writes and
+the Prisma singleton; auth/session → org mapping (existing auth vs Neon Auth org claims).
+**Honors:** D9 (RBAC within a tenant), D14 (DB-enforced), **D16**.
+
+---
+
+## Competitive / GTM layer (Phases 13–16) — the "wine ERP", not just production
+
+> These four phases turn the production system into a **fundable wine-industry ERP**, driven by
+> the competitive + go-to-market analysis in `docs/STRATEGY.md` and
+> `docs/competitive-analysis-vintrace-innovint.md`. **Build-order priority overrides phase
+> numbers**, and it is **not** 13→16:
+> - **Near-term lead: 14 Compliance → 8 Cost → 15 Accounting.** Compliance (TTB) is ledger-derived
+>   (buildable now), table stakes for any US winery, and — with the correction/undo wedge — part
+>   of what makes the product worth switching to, i.e. what *lands* the first US design partner.
+> - **13 Migration comes LATER than its wedge status implies** — it is **gated on having a real
+>   Vintrace/InnoVint export to build against**, which you only get once a design partner shares
+>   theirs. Build it against real data, not guesses. (Virtuous order: compliance + undo + polish →
+>   land a design partner → get their export → build migration.)
+> - All of the above still come **ahead of** 9 (work orders), 10 (assistant), 11 (labor).
+> - **Note:** the Bhutan dogfood tenant is not a US filer, so TTB can be *built + tested on
+>   synthetic US-shaped data now* but *validated* only with the first US design-partner winery.
+> Numbers = grouping, not sequence.
+
+## Phase 13 — Migration & onboarding (import from Vintrace / InnoVint)  ⬜  *(GTM wedge — high priority)*
+**Goal:** Get a winery **off Vintrace/InnoVint and live in days** via AI-assisted import of their
+own data. The lead wedge — attacks the incumbents' #1 pain (painful, months-long onboarding) and
+the documented churn-with-exit-friction (wineries leave Vintrace and complain it obstructs exit).
+**Domain requirements (durable):**
+- **Customer-authorized data import, never scraping:** ingest the winery's own exports (Vintrace
+  CSV — mind the ~1,000-record/file cap; InnoVint CSV/XLSX) and, where the customer provides a
+  token and ToS permits, the **Vintrace REST API**. Legal path: the winery owns its facts,
+  nominative-fair-use naming; verify each vendor's competitive-use ToS via the customer's signed
+  agreement (see `docs/competitive-analysis-vintrace-innovint.md`).
+- **AI-assisted mapping** — an LLM maps a messy source export onto our schema, reconciles units,
+  infers lineage, flags ambiguities for winemaker confirmation. This *is* the "configures your
+  winery" magic.
+- **Reuse the D11 legacy-lot pattern as the import spine** — seed lots at current state with the
+  source record as a JSON snapshot; do **not** fabricate years of fake ledger history.
+- **External identifiers** (`sourceSystem` + `sourceId`/`legacyCode`) on key entities so the
+  winery recognizes their data and re-imports are idempotent.
+- **US units:** import from **gallons / lbs·tons / °Brix** → canonical liters (D8), plus a
+  **winery display-unit setting** (gallons for US wineries) — needed for the US market *and*
+  migration comprehension. Extends the Phase 6 per-winery unit setting.
+- **Coverage gaps are explicit:** import what the model covers, snapshot the rest, track
+  unmapped source fields so nothing is silently dropped.
+**Exit:** a real Vintrace (and InnoVint) export imports cleanly under a tenant; the winery sees
+their lots/vessels/inventory in their own units + codes, live, without weeks of setup.
+**Implementation: deferred to `/plan`.**  **Honors:** D8, D11, D16.
+
+## Phase 14 — Compliance & reporting (TTB, excise, state/DTC)  ⬜  *(table stakes — high priority)*
+**Goal:** Auto-generate the compliance a US winery legally must file, from the ledger. **Table
+stakes** — both incumbents generate the 5120.17; we cannot sell to a US winery without it. Our
+version is *auto-derived from an auditable event log + AI anomaly check + per-lot backing*.
+Reference form (real, Sept-2025 rev): `docs/TTB 5120.17.pdf`.
+
+**Domain requirements (durable):**
+- **TTB F 5120.17 (Report of Wine Premises Operations)**, generated from the ledger. Structure
+  (from the real form): **units are GALLONS**; **Part I** splits **Section A — Bulk Wines** and
+  **Section B — Bottled Wines**, each a beginning→+adds→−removals→losses→ending reconciliation
+  where **"on hand end" = book inventory** carried to next period's "on hand beginning."
+  Also Parts III (distilled/wine spirits), IV (materials), VI (distilling material/vinegar),
+  VII (in-fermenters), VIII (nonbeverage), IX (special natural wines), X (remarks). v1 = Part I
+  (Sections A+B) + Part X; Parts III/IV/VI–IX as the winery needs them.
+- **Six tax classes (the columns) — every volume must carry one:** (a) ≤16% ABV · (b) 16–21% ·
+  (c) 21–24% · (d) artificially carbonated · (e) **sparkling** · (f) hard cider (statutory def:
+  ≤0.64g CO₂/100mL, apple/pear, 0.5–<8.5% ABV). **Sparkling splits BF vs BP** (bottle-fermented
+  vs bulk-process) — ties directly to Phase 7 (tirage vs tank method).
+- **Every form line is an operation type** → build an explicit **operation→line-item map**:
+  produced-by fermentation/sweetening/addition-of-spirits/blending/amelioration (A2–A6);
+  received/transferred in bond (A7/A15, B3/B9); **bottled (A13 = B2)**; **removed taxpaid**
+  (A14/B8 — the tax-determination event); used-for effervescent/testing/sweetening/spirits
+  (A18–A23); removed for distilling-material/vinegar/export/family-use (A16/A17, B12/B13);
+  losses-other-than-inventory (A29) vs inventory losses (A30); breakage (B18) / shortage (B19);
+  inventory gains (A9). Blending is reported **only when different tax classes are blended**
+  (form footnote 5).
+- **Ledger classification requirements (the schema touch — cheaper to add EARLY):** to
+  auto-derive the report, lots/operations must carry **(1) `taxClass`** (the 6-value enum, +
+  sparkling BF/BP sub-type), **(2) `bondStatus`** (in-bond vs taxpaid; model tax-determination
+  as an operation), and **(3) operation `reason` codes** that map to the form's line taxonomy.
+  The **bulk/bottled** split already exists via `LotForm`. Flag: the app does **not** capture
+  taxClass or bondStatus today — adding them before more operations pile on avoids a retrofit.
+- **Filing rules:** monthly by default, **due the 15th** after period end; quarterly/annual
+  allowed under 27 CFR 24.300(g)(2). **Original / Amended / Final** versions; amendments adjust
+  from the excise return (F 5000.24) with Part X explanation. **Physical inventory** reconciles
+  book vs actual as gains (A9) / losses (A30, bulk) / shortages (B19, bottled).
+- **Excise tax return (F 5000.24):** compute wine excise by tax class incl. **CBMA/CBMTRA
+  small-producer credits**; relate to the 5120.17 removals-taxpaid. Multi-bond for custom-crush.
+- **State + DTC compliance** (the real differentiator beyond the federal 5120.17): integrate
+  **ShipCompliant (Sovos) / Avalara** or generate state reports; the state-by-state DTC matrix
+  over time.
+- **AI/anomaly layer** — flag likely reporting errors before filing ("this month's losses are 5×
+  your usual"), "am I compliant / ready to file" queries. **Human-review-before-file** always;
+  auto-generate the numbers, never auto-submit unreviewed.
+**Exit:** a month's 5120.17 (Part I A+B, all six tax classes, gallons) generates from the ledger
+with per-lot audit backing and an anomaly check, matching the real form; a US design partner
+validates it (Bhutan cannot — it doesn't file TTB, so build/test on synthetic US data first).
+**Implementation: deferred to `/plan`.** Scope v1 to Part I + the beachhead states (NY + NE).
+Decisions to resolve: how taxClass is assigned/derived (from ABV + wine type, with override);
+whether tax-determination is a distinct op or a flag transition; report as filled TTB PDF vs
+Pay.gov e-file vs both; how corrections (D6) flow to Amended reports.
+**Honors:** D2 (ledger-derived), D8 (gallons↔liters), D14 (auditable), + Phase 7 (sparkling BF/BP).
+
+## Phase 15 — Accounting integration (QuickBooks / Xero, COGS/AP)  ⬜
+**Goal:** **Two-way** sync to the winery's accounting system — beating both incumbents (InnoVint
+has **no** QuickBooks API; Vintrace's is one-way/gated).
+**Domain requirements (durable):**
+- **Two-way QuickBooks Online / Xero** sync (COGS, AP, inventory GL) — not a one-way data dump.
+- Cost basis flows from the **Phase 8** cost roll-up; approved bottling COGS posts to accounting.
+- Purchasing / AP for dry goods + supplies (ties to Phase 8).
+**Exit:** a bottling's COGS posts to QuickBooks/Xero and reconciles; a supply PO flows to AP.
+**Runbook detail for `/plan`:**
+- *Prerequisites:* Phase 8 cost roll-up (the source of COGS); multi-tenancy (each winery links
+  its *own* accounting account — per-tenant OAuth tokens/credentials, tenant-scoped).
+- *What we'll need:* a sync-mapping layer (our accounts/items → the winery's chart of accounts);
+  an outbound poster (bottling COGS, inventory adjustments, supply AP bills) + inbound reconcile;
+  idempotency keys so re-sync doesn't double-post; a per-tenant connection + token store.
+- *Dev prerequisites (sign up when Phase 15 starts; all free to build against):* a free
+  **Intuit Developer account** (developer.intuit.com) + a QBO **sandbox company** for QuickBooks
+  Online; a free **Xero developer account** (developer.xero.com) + **demo company** for Xero.
+  Both APIs are genuinely two-way (OAuth 2.0). **Per-winery OAuth:** each tenant authorizes our
+  app against *their* books; store the token tenant-scoped (ties to Phase 12). Free to develop;
+  **production requires Intuit app-review / Xero app certification** — a lead-time milestone, not
+  a blocker. Start with **QuickBooks Online** (larger US SMB base; the gap where InnoVint has no
+  API at all).
+- *Decisions to resolve:* QuickBooks Online vs Xero first (QBO likely — larger US SMB base);
+  scope of "two-way" (do we pull AP/payments back, or push-only v1 with reconcile-read?); how to
+  map to a winery's existing chart of accounts (guided setup vs templates); handling amended
+  filings / corrections (D6) as accounting reversals.
+- *Open questions:* QBO **OAuth app-review** (its own milestone, plan lead time); rate limits;
+  how WET/other regional taxes are handled (an Australian Vintrace gap — likely out of US v1
+  scope); mapping tax classes (Phase 14) to accounting.
+- *Accounting-method stance — map to theirs, don't impose:* we do **not** pick a reporting
+  standard. QuickBooks/Xero is already configured with the winery's **basis** (cash vs accrual),
+  **chart of accounts**, and GAAP/tax setup. We **post into their books the way their setup
+  expects** and let their system do the treatment. Build it **method-agnostic + per-tenant
+  configurable**: a guided mapping of our COGS/inventory/AP entries → *their* chart of accounts;
+  **cash vs accrual changes when/whether COGS posts** (accrual: COGS at sale + inventory
+  capitalized; cash: simpler). **Do NOT rebuild the general ledger or do double-entry ourselves —
+  QuickBooks/Xero IS the GL;** we're the operational + cost system of record that feeds it. Cost
+  basis comes from Phase 8 (weighted-average absorption default, configurable per tenant).
+- *Competitive note:* two-way beats both incumbents (InnoVint has **no** QBO API; Vintrace's is
+  one-way/gated) — keep it genuinely bidirectional, that's the differentiator.
+**Honors:** D2, D7.
+
+## Phase 16 — DTC & sales integration (Commerce7 / WineDirect)  ⬜
+**Goal:** Close the fragmentation gap — finished-goods inventory + sales depletion + revenue — by
+**integrating** the DTC/club/POS layer (integrate, do not rebuild).
+**Domain requirements (durable):**
+- **Commerce7 / WineDirect integration:** finished-goods inventory sync, sales depletion drawing
+  down `BottledInventory`, revenue for per-SKU profitability. (Note InnoVint's Commerce7 link is
+  one-way + 1:1-constrained — our multi-tenancy lets us do better with multi-winery accounts.)
+- **Custom-crush client visibility** (a Vintrace gap): scoped **client read-access** via the
+  Phase 12 multi-tenancy boundary — a real edge for custom-crush facilities.
+**Exit:** a DTC sale depletes finished-goods inventory; a custom-crush client sees only their wine.
+**Implementation: deferred to `/plan`.**  **Honors:** D16 (tenant/client scoping).
+
+## In-flight — Universal timeline undo (the "correction wedge")  🔄
+`docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` (building now, tenant-aware).
+One `reverseOperationCore` + one timeline Undo affordance for every op. **This is the direct
+answer to the #1 recurring complaint about *both* incumbents** ("can't cleanly fix a mistake" —
+competitive analysis, Theme 2). Our append-only ledger makes every correction a first-class,
+auditable event — an advantage mutable-row incumbents can't match. Lead with it.
+
+---
+
 ## Dependency notes
 - Phase 1 is a hard prerequisite for everything.
+- **Multi-tenancy (Phase 12) is a foundation, not a finale:** land the isolation-boundary
+  slice **before onboarding design-partner winery #2**, ahead of its list position. Only
+  the SaaS operational layer (signup / billing / per-tenant branding) is genuinely late.
+  Every feature phase built before it lands pays a small `tenantId`-threading tax; every
+  phase built after a late retrofit pays a much larger one.
 - Phase 5 (blends) must not ship before its RBAC redesign (D9).
 - Phase 7 (sparkling) depends on the operation vocabulary (Phase 0/D4) and bottling.
 - Cost (Phase 8) depends on a complete operation ledger (Phases 1, 3, 5).
+- **GTM build-order (overrides phase numbers):** near-term lead is **14 Compliance → 8 Cost →
+  15 Accounting**, all **ahead of** 9 (work orders), 10 (assistant), 11 (labor). **13 Migration
+  is the beachhead wedge but is gated on a real Vintrace/InnoVint export** (from a design
+  partner), so it's built *after* compliance/undo have landed that partner — not first. TTB is
+  buildable now on synthetic US data but validated only with a US design partner (Bhutan doesn't
+  file TTB). See `docs/STRATEGY.md` + `docs/competitive-analysis-vintrace-innovint.md`.
+- Phase 11 (labor) has an **independent core** and does not block 7/8; it pays off most
+  after Phase 9 (clock against work-order tasks) and feeds Phase 8 (labor cost per lot).
 
 ## Cross-cutting capture requirements (apply to every phase that captures data)
 These came out of the design review and hold across phases — honor them whenever a

@@ -51,3 +51,53 @@ coordinates that render as a polygon (reusing the same `saveBlockPolygon` valida
 Decision at design review: accept the limitation for now, capture here.
 
 **Depends on / blocked by:** PR3 (interactive drawing) of the vineyard plan.
+
+## Multi-tenancy isolation foundation (do BEFORE design-partner winery #2)
+
+**What:** Lay the tenant boundary: an `Organization` (winery) tenant, `tenantId` on every
+domain row, **Postgres Row-Level Security** enforcing isolation in the DB, per-tenant
+uniqueness, and tenant threading through the ledger chokepoint + projections + RBAC. Full
+detail in ROADMAP **Phase 12** and VISION **D16**.
+
+**Why:** The product is a multi-tenant SaaS (see `STRATEGY.md`), and the beachhead
+milestone ("3–5 Northeast wineries live") is multi-tenant by definition. Multi-tenancy is
+the one thing that gets *harder* to add with every phase and every row, and a cross-tenant
+data leak is the worst possible B2B bug. This is a foundation, not a finale — it should
+land before a second winery's data ever coexists in the database.
+
+**Pros:** Unblocks design partners; enforces isolation at the DB layer so an app bug can't
+leak across wineries; cheapest possible time to do the per-tenant-uniqueness retrofit.
+
+**Cons:** Adds a small `tenantId`-threading tax to every feature built afterward; RLS +
+SERIALIZABLE ledger writes + the Prisma singleton need care; a data migration to backfill
+`tenantId` onto existing Bhutan data and recreate unique indexes per-tenant.
+
+**Context:** Landmine to fix early — current uniqueness is **global** (lot codes,
+`WineSku`, vessel codes) and must become **per-tenant**. Open model decision: pooled+RLS
+vs schema-per-tenant vs Neon project/branch-per-tenant (pooled+RLS is the boring default).
+**This phase gets the full review gate: `/council` + `/plan-eng-review` are required
+(cross-tenant-leak blast radius); `/plan-design-review` covers the later ops-layer UI.**
+
+**Depends on / blocked by:** None technically; sequence it before onboarding external
+design partners. Best done at a stable point in the current in-flight phase, not deferred.
+
+## SaaS operational layer (deferred — after the isolation foundation)
+
+**What:** Org signup/provisioning, user invitations, per-tenant config + **branding/theming**
+(app is currently hardcoded "Bhutan Wine Company"), billing, and a tenant-admin surface.
+
+**Why:** Needed to onboard real *paying* wineries self-serve, but not required for the
+isolation foundation or the first hand-held design partners.
+
+**Pros:** Turns the platform into a sellable self-serve SaaS; per-tenant branding makes it
+feel like each winery's own tool.
+
+**Cons:** Real product surface (auth flows, billing integration, admin UX) — build it when
+onboarding demand is real, not up front.
+
+**Context:** The second slice of ROADMAP Phase 12. Needs a genuine `/plan-design-review`
+(signup, tenant admin, org switcher, theming). Billing provider + plan model are open
+decisions. Per-tenant branding builds on the existing token system (DESIGN.md) — values
+become tenant-configurable, tokens stay.
+
+**Depends on / blocked by:** The multi-tenancy isolation foundation above.
