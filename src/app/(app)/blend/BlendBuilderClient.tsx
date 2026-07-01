@@ -61,6 +61,21 @@ const vesselSort = (a: BlendVessel, b: BlendVessel) =>
 const residentText = (v: BlendVessel) =>
   v.residents.length === 0 ? "empty" : v.residents.length === 1 ? `holds ${v.residents[0].code}` : `${v.residents.length} lots`;
 
+// Forgiving vessel filter: matches on the vessel label ("Barrel 12") and its resident lot codes.
+// A subsequence match (chars in order, gaps allowed) tolerates typos/omissions — "barl 12",
+// "b12", "tnk" all still hit — while a substring check keeps exact fragments ranking as matches.
+const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+function fuzzyMatch(query: string, text: string): boolean {
+  const q = norm(query);
+  if (!q) return true;
+  const t = norm(text);
+  if (t.includes(q)) return true;
+  let i = 0;
+  for (let j = 0; j < t.length && i < q.length; j++) if (t[j] === q[i]) i++;
+  return i === q.length;
+}
+const vesselHaystack = (v: BlendVessel) => `${vesselTypeLabel(v)} ${v.residents.map((r) => r.code).join(" ")}`;
+
 /** What to call a vessel's contents in the source list: its blend name, else the lone lot code, else a varieties summary. */
 function sourceLabel(v: BlendVessel): string {
   if (v.blendName) return v.blendName;
@@ -167,6 +182,7 @@ export function BlendBuilderClient({ vessels, prefill }: { vessels: BlendVessel[
   const [destIds, setDestIds] = React.useState<Set<string>>(() => new Set());
   const [destVol, setDestVol] = React.useState<Map<string, string>>(() => new Map());
   const [destFilter, setDestFilter] = React.useState<"ALL" | "TANK" | "BARREL">("ALL");
+  const [destQuery, setDestQuery] = React.useState("");
   const [token, setToken] = React.useState("");
   const [vintage, setVintage] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -242,8 +258,10 @@ export function BlendBuilderClient({ vessels, prefill }: { vessels: BlendVessel[
           ? "NEW_LOT"
           : "INVALID";
   const growCode = mode === "GROW_EXISTING" ? sourceLabel(destVessels[0]) : null;
-  const filteredDestVessels = sortedVessels.filter((v) =>
-    destFilter === "ALL" ? true : destFilter === "BARREL" ? isBarrel(v) : !isBarrel(v),
+  const filteredDestVessels = sortedVessels.filter(
+    (v) =>
+      (destFilter === "ALL" ? true : destFilter === "BARREL" ? isBarrel(v) : !isBarrel(v)) &&
+      fuzzyMatch(destQuery, vesselHaystack(v)),
   );
 
   // Split allocation: per-vessel volumes must sum to the blended total and fit each capacity.
@@ -460,6 +478,14 @@ export function BlendBuilderClient({ vessels, prefill }: { vessels: BlendVessel[
                 ))}
               </div>
             </div>
+            <input
+              type="search"
+              value={destQuery}
+              onChange={(e) => setDestQuery(e.target.value)}
+              placeholder="Search vessels (e.g. barrel 12, tank 3)…"
+              aria-label="Search destination vessels"
+              style={{ ...field, width: "100%", marginBottom: 6, boxSizing: "border-box" }}
+            />
             <div
               role="group"
               aria-label="Destination vessels"
@@ -471,6 +497,11 @@ export function BlendBuilderClient({ vessels, prefill }: { vessels: BlendVessel[
                 background: "var(--surface-raised)",
               }}
             >
+              {filteredDestVessels.length === 0 ? (
+                <div style={{ padding: "10px", fontSize: 12.5, color: "var(--text-muted)" }}>
+                  No vessels match “{destQuery}”.
+                </div>
+              ) : null}
               {filteredDestVessels.map((v) => {
                 const checked = destIds.has(v.id);
                 const isSource = selected.has(v.id);
