@@ -18,12 +18,14 @@ export function ProcessClient({
   materials,
   positions,
   pressVessels,
+  pressCycles,
 }: {
   blocks: CrushBlockOption[];
   vessels: CrushVesselOption[];
   materials: CellarMaterialDTO[];
   positions: PressablePosition[];
   pressVessels: PressDestVessel[];
+  pressCycles: string[];
 }) {
   const [mode, setMode] = React.useState<Mode>("DESTEM");
 
@@ -50,7 +52,7 @@ export function ProcessClient({
       {mode === "DESTEM" ? (
         <CrushClient blocks={blocks} vessels={vessels} materials={materials} />
       ) : (
-        <PressClient positions={positions} vessels={pressVessels} blocks={blocks} materials={materials} />
+        <PressClient positions={positions} vessels={pressVessels} blocks={blocks} materials={materials} pressCycles={pressCycles} />
       )}
     </div>
   );

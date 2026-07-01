@@ -19,7 +19,7 @@ export type PressablePosition = {
 
 export type PressDestVessel = { id: string; code: string; capacityL: number };
 
-export type PressFormData = { positions: PressablePosition[]; vessels: PressDestVessel[] };
+export type PressFormData = { positions: PressablePosition[]; vessels: PressDestVessel[]; pressCycles: string[] };
 
 export async function loadPressFormData(): Promise<PressFormData> {
   const positions = await prisma.vesselLot.findMany({
@@ -40,7 +40,10 @@ export async function loadPressFormData(): Promise<PressFormData> {
     select: { id: true, code: true, capacityL: true },
   });
 
+  const cycles = await prisma.pressCycle.findMany({ orderBy: { name: "asc" }, select: { name: true } });
+
   return {
+    pressCycles: cycles.map((c) => c.name),
     positions: positions.map((p) => ({
       vesselId: p.vesselId,
       vesselCode: p.vessel.code,

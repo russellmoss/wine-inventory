@@ -17,6 +17,7 @@ export default async function ProcessPage() {
       materials={crushData.materials}
       positions={pressData.positions}
       pressVessels={pressData.vessels}
+      pressCycles={pressData.pressCycles}
     />
   );
 }

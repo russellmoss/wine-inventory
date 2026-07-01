@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PressablePosition, PressDestVessel } from "@/lib/ferment/press-data";
 import type { CrushBlockOption } from "@/lib/ferment/crush-data";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
-import { pressAction, wholeClusterPressAction } from "@/lib/transform/actions";
+import { pressAction, wholeClusterPressAction, createPressCycleAction } from "@/lib/transform/actions";
 import { StagedAdditions, applyStagedAdditions, type StagedAddition } from "@/components/ferment/StagedAdditions";
 
 // Phase 6 press. TWO sources:
@@ -33,15 +33,22 @@ const newId = (): string =>
 type Fraction = { destVesselId: string; volumeL: string; label: string; estimated: boolean; mergeIntoLotId: string };
 type Source = "LOT" | "FRUIT";
 
-export function PressClient({ positions, vessels, blocks, materials }: { positions: PressablePosition[]; vessels: PressDestVessel[]; blocks: CrushBlockOption[]; materials: CellarMaterialDTO[] }) {
+export function PressClient({ positions, vessels, blocks, materials, pressCycles }: { positions: PressablePosition[]; vessels: PressDestVessel[]; blocks: CrushBlockOption[]; materials: CellarMaterialDTO[]; pressCycles: string[] }) {
   const router = useRouter();
   const [source, setSource] = React.useState<Source>(positions.length > 0 ? "LOT" : "FRUIT");
+  // Cycle pick-list is shared across both press forms; a cycle added in one shows up in the other.
+  const [cycles, setCycles] = React.useState<string[]>(pressCycles);
+  const createCycle = React.useCallback(async (name: string) => {
+    const { name: canonical } = await createPressCycleAction(name);
+    setCycles((cs) => (cs.includes(canonical) ? cs : [...cs, canonical].sort((a, b) => a.localeCompare(b))));
+    return canonical;
+  }, []);
 
   if (positions.length === 0 && blocks.length === 0) {
     return (
       <div style={{ maxWidth: "var(--container-md)", margin: "0 auto", padding: "var(--space-5)", color: "var(--text-muted)" }}>
         <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300 }}>Press</h1>
-        <p>Nothing to press. Record a harvest pick (whole-cluster press) or crush fruit into a must lot first.</p>
+        <p>Nothing to press. Record a harvest pick (press fruit direct from harvest) or de-stem fruit into a must lot first.</p>
       </div>
     );
   }
@@ -56,21 +63,26 @@ export function PressClient({ positions, vessels, blocks, materials }: { positio
           A must lot {positions.length ? `(${positions.length})` : ""}
         </button>
         <button onClick={() => setSource("FRUIT")} style={{ ...field, cursor: "pointer", background: source === "FRUIT" ? "var(--accent)" : "var(--surface-base)", color: source === "FRUIT" ? "#fff" : "var(--text-primary)", border: source === "FRUIT" ? "none" : "1px solid var(--border-strong)" }}>
-          Whole-cluster fruit {blocks.length ? `(${blocks.length})` : ""}
+          Fruit from harvest {blocks.length ? `(${blocks.length})` : ""}
         </button>
       </div>
 
-      {source === "LOT" ? <PressLotForm positions={positions} vessels={vessels} router={router} /> : <WholeClusterForm blocks={blocks} vessels={vessels} materials={materials} router={router} />}
+      {source === "LOT" ? (
+        <PressLotForm positions={positions} vessels={vessels} router={router} cycles={cycles} createCycle={createCycle} />
+      ) : (
+        <FruitPressForm blocks={blocks} vessels={vessels} materials={materials} router={router} cycles={cycles} createCycle={createCycle} />
+      )}
     </div>
   );
 }
 
 // ── Press a MUST lot into fractions ──
-function PressLotForm({ positions, vessels, router }: { positions: PressablePosition[]; vessels: PressDestVessel[]; router: ReturnType<typeof useRouter> }) {
+function PressLotForm({ positions, vessels, router, cycles, createCycle }: { positions: PressablePosition[]; vessels: PressDestVessel[]; router: ReturnType<typeof useRouter>; cycles: string[]; createCycle: (name: string) => Promise<string> }) {
   const [posKey, setPosKey] = React.useState(positions[0] ? `${positions[0].vesselId}:${positions[0].lotId}` : "");
   const pos = positions.find((p) => `${p.vesselId}:${p.lotId}` === posKey);
   const [op, setOp] = React.useState<"PRESS" | "SAIGNEE">("PRESS");
   const [fractions, setFractions] = React.useState<Fraction[]>([{ destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "free-run", estimated: false, mergeIntoLotId: "" }]);
+  const [pressCycle, setPressCycle] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
 
@@ -97,6 +109,7 @@ function PressLotForm({ positions, vessels, router }: { positions: PressablePosi
         expectedRevision: pos.revision,
         op,
         lossL: lees > 0 ? lees : 0,
+        pressCycle: pressCycle || null,
         fractions: fr.map((f) => ({ destVesselId: f.destVesselId, volumeL: Number(f.volumeL), label: f.label, estimated: f.estimated, mergeIntoLotId: f.mergeIntoLotId || null })),
       });
       router.push(`/lots/${pos.lotId}`);
@@ -124,6 +137,8 @@ function PressLotForm({ positions, vessels, router }: { positions: PressablePosi
           <option value="SAIGNEE">Saignée (bleed juice off must)</option>
         </select>
       </div>
+
+      <PressCycleField cycles={cycles} value={pressCycle} onChange={setPressCycle} createCycle={createCycle} />
 
       <div style={{ marginTop: 16 }}>
         <label style={label}>Fractions</label>
@@ -157,15 +172,28 @@ function PressLotForm({ positions, vessels, router }: { positions: PressablePosi
   );
 }
 
-// ── Whole-cluster press: harvest fruit → JUICE, skipping crush ──
-function WholeClusterForm({ blocks, vessels, materials, router }: { blocks: CrushBlockOption[]; vessels: PressDestVessel[]; materials: CellarMaterialDTO[]; router: ReturnType<typeof useRouter> }) {
+// ── Press fruit direct from harvest → JUICE, skipping the must-lot stage ──
+// The fruit can be whole cluster, a partial whole-cluster/destemmed mix, or fully destemmed
+// (destemmed fruit that never became a must). We record that composition on the press op.
+type Composition = "WHOLE" | "PARTIAL" | "DESTEMMED";
+
+const compositionLabel = (c: Composition, pct: number): string =>
+  c === "WHOLE" ? "whole cluster" : c === "DESTEMMED" ? "destemmed" : `${pct}% whole cluster`;
+
+function FruitPressForm({ blocks, vessels, materials, router, cycles, createCycle }: { blocks: CrushBlockOption[]; vessels: PressDestVessel[]; materials: CellarMaterialDTO[]; router: ReturnType<typeof useRouter>; cycles: string[]; createCycle: (name: string) => Promise<string> }) {
   const [blockId, setBlockId] = React.useState(blocks[0]?.blockId ?? "");
   const block = blocks.find((b) => b.blockId === blockId);
   const [consumed, setConsumed] = React.useState<Record<string, string>>({});
   const [dests, setDests] = React.useState<{ key: number; vesselId: string; volumeL: string }[]>([{ key: 1, vesselId: vessels[0]?.id ?? "", volumeL: "" }]);
   const [additions, setAdditions] = React.useState<StagedAddition[]>([]);
+  const [composition, setComposition] = React.useState<Composition>("WHOLE");
+  const [wcPct, setWcPct] = React.useState("50");
+  const [pressCycle, setPressCycle] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+
+  // Whole-cluster fraction of the pressed fruit: 100 whole cluster / 0 destemmed / N partial.
+  const wholeClusterPct = composition === "WHOLE" ? 100 : composition === "DESTEMMED" ? 0 : Math.max(0, Math.min(100, Number(wcPct) || 0));
 
   const consumedFor = (pickId: string, remainingKg: number) => consumed[pickId] ?? String(remainingKg);
   const selected = (block?.picks ?? []).map((p) => ({ pick: p, kg: Number(consumedFor(p.pickId, p.remainingKg)) })).filter((x) => x.kg > 0);
@@ -183,6 +211,9 @@ function WholeClusterForm({ blocks, vessels, materials, router }: { blocks: Crus
     if (selected.length === 0) return setError("Enter consumed kg for at least one pick.");
     const destinations = dests.filter((d) => Number(d.volumeL) > 0 && d.vesselId).map((d) => ({ vesselId: d.vesselId, volumeL: Number(d.volumeL) }));
     if (destinations.length === 0) return setError("Add at least one juice destination with a volume.");
+    if (composition === "PARTIAL" && !(wholeClusterPct > 0 && wholeClusterPct < 100)) {
+      return setError("For a partial press, enter a whole-cluster % between 1 and 99.");
+    }
     for (const { pick, kg } of selected) if (kg > pick.remainingKg + 1e-6) return setError(`Pick ${pick.pickDate}: only ${pick.remainingKg} kg remain.`);
     setBusy(true);
     try {
@@ -192,7 +223,8 @@ function WholeClusterForm({ blocks, vessels, materials, router }: { blocks: Crus
         destVesselId: destinations[0].vesselId, // primary (label/ADD) — destinations[] drives the split
         outputVolumeL: outL,
         destinations,
-        target: { mode: "NEW", varietyId: block.varietyId ?? null, vintage: block.vintageYear },
+        pressCycle: pressCycle || null,
+        target: { mode: "NEW", varietyId: block.varietyId ?? null, vintage: block.vintageYear, wholeClusterPct },
       });
       // Chain any press-pad additions (enzyme, SO₂, bentonite for juice…) onto the new juice lot.
       await applyStagedAdditions(additions, destinations[0].vesselId, result.lotId);
@@ -228,6 +260,30 @@ function WholeClusterForm({ blocks, vessels, materials, router }: { blocks: Crus
       </div>
 
       <div style={{ marginTop: 16 }}>
+        <label style={label}>Fruit going into the press</label>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {([
+            ["WHOLE", "Whole cluster"],
+            ["PARTIAL", "Partial"],
+            ["DESTEMMED", "Destemmed"],
+          ] as [Composition, string][]).map(([c, lbl]) => {
+            const on = composition === c;
+            return (
+              <button key={c} type="button" onClick={() => setComposition(c)} style={{ ...field, flex: "1 1 120px", cursor: "pointer", background: on ? "var(--accent)" : "var(--surface-base)", color: on ? "#fff" : "var(--text-primary)", border: on ? "none" : "1px solid var(--border-strong)" }}>
+                {lbl}
+              </button>
+            );
+          })}
+        </div>
+        {composition === "PARTIAL" ? (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <input value={wcPct} onChange={(e) => setWcPct(e.target.value)} inputMode="decimal" aria-label="Percent whole cluster" style={{ ...field, width: 90, textAlign: "right" }} />
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>% whole cluster (rest destemmed)</span>
+          </div>
+        ) : null}
+      </div>
+
+      <div style={{ marginTop: 16 }}>
         <label style={label}>Juice destinations — measured liters per vessel (one juice lot, split across tanks)</label>
         {dests.map((d) => (
           <div key={d.key} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
@@ -248,15 +304,85 @@ function WholeClusterForm({ blocks, vessels, materials, router }: { blocks: Crus
         <StagedAdditions value={additions} onChange={setAdditions} materials={materials} idBase="wcpress" />
       </div>
 
+      <PressCycleField cycles={cycles} value={pressCycle} onChange={setPressCycle} createCycle={createCycle} />
+
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginTop: 12 }}>{error}</p> : null}
 
       <StickyBar
-        left={`New ${block?.vintageYear ?? ""} juice lot · ${totalKg > 0 ? `${Math.round(totalKg * 1000) / 1000} kg` : "no picks"}${outL > 0 ? ` → ${outL} L across ${dests.filter((d) => Number(d.volumeL) > 0).length} vessel(s)` : ""}${yieldLPerTonne != null ? ` (${yieldLPerTonne} L/t)` : ""}`}
-        button={busy ? "Pressing…" : "Whole-cluster press"}
+        left={`New ${block?.vintageYear ?? ""} juice lot · ${compositionLabel(composition, wholeClusterPct)}${totalKg > 0 ? ` · ${Math.round(totalKg * 1000) / 1000} kg` : " · no picks"}${outL > 0 ? ` → ${outL} L across ${dests.filter((d) => Number(d.volumeL) > 0).length} vessel(s)` : ""}${yieldLPerTonne != null ? ` (${yieldLPerTonne} L/t)` : ""}`}
+        button={busy ? "Pressing…" : "Press fruit"}
         disabled={busy}
         onClick={() => void submit()}
       />
     </>
+  );
+}
+
+// Optional named press program. Pick an existing cycle, or "+ add press cycle" to name a new one
+// (persisted via createPressCycleAction so it's offered on the next pressing). Empty = no cycle.
+function PressCycleField({ cycles, value, onChange, createCycle }: { cycles: string[]; value: string; onChange: (v: string) => void; createCycle: (name: string) => Promise<string> }) {
+  const [adding, setAdding] = React.useState(false);
+  const [draft, setDraft] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  async function add() {
+    const name = draft.trim();
+    if (!name) return setAdding(false);
+    setBusy(true);
+    setErr("");
+    try {
+      const canonical = await createCycle(name);
+      onChange(canonical);
+      setDraft("");
+      setAdding(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not add cycle.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <label style={label}>Press cycle (optional)</label>
+      {adding ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); void add(); }
+              if (e.key === "Escape") { setAdding(false); setErr(""); }
+            }}
+            placeholder="e.g. Champagne cycle"
+            aria-label="New press cycle name"
+            style={{ ...field, width: 260 }}
+          />
+          <button onClick={() => void add()} disabled={busy} style={{ ...field, cursor: "pointer", background: "var(--surface-base)", paddingInline: 14 }}>
+            {busy ? "Adding…" : "Add"}
+          </button>
+          <button onClick={() => { setAdding(false); setErr(""); }} disabled={busy} style={{ ...field, cursor: "pointer", background: "var(--surface-base)", paddingInline: 14 }}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <select
+          value={value}
+          onChange={(e) => (e.target.value === "__add__" ? setAdding(true) : onChange(e.target.value))}
+          aria-label="Press cycle"
+          style={{ ...field, width: 300 }}
+        >
+          <option value="">— none —</option>
+          {cycles.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+          <option value="__add__">+ add press cycle…</option>
+        </select>
+      )}
+      {err ? <p style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 6 }}>{err}</p> : null}
+    </div>
   );
 }
 

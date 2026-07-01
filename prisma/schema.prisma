@@ -845,6 +845,17 @@ model AppSettings {
   @@map("app_settings")
 }
 
+// A reusable, named press program (e.g. "Champagne cycle", "delicate white", "hard press").
+// Optional metadata on a PRESS op — the name is stamped into LotOperation.metadata.pressCycle;
+// this table is just the pick-list the press form offers so cycles can be reused across pressings.
+model PressCycle {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("press_cycle")
+}
+
 // A batch of wine with a durable identity (VISION §1–3). Vintage is an ATTRIBUTE, not
 // part of identity (D3). Origin columns are provenance snapshots (no FK — the
 // authoritative tuple lives in legacySnapshot for legacy lots). Provenance metadata is

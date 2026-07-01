@@ -53,6 +53,23 @@ export const wholeClusterPressAction = action(
   },
 );
 
+/** Add a reusable named press cycle to the pick-list (idempotent on name). Any signed-in user —
+ * it's just a lookup entry the press form offers. Returns the canonical name so the client can
+ * select it immediately. */
+export const createPressCycleAction = action(async (_ctx, rawName: string): Promise<{ name: string }> => {
+  const name = rawName.trim();
+  if (!name) throw new ActionError("Enter a press cycle name.");
+  if (name.length > 80) throw new ActionError("Press cycle name is too long (max 80 characters).");
+  const cycle = await prisma.pressCycle.upsert({
+    where: { name },
+    create: { name },
+    update: {},
+    select: { name: true },
+  });
+  revalidatePath("/ferment/process");
+  return { name: cycle.name };
+});
+
 /** Press a must/wine lot into fractions (or saignée a must lot). Tenant-wide cellar op — once
  * fruit is a cellar lot, Phase 5's shared-cellar rules apply (no per-vineyard gate). */
 export const pressAction = action(async ({ actor }, input: PressLotInput): Promise<PressLotResult> => {

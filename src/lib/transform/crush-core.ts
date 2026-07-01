@@ -42,6 +42,7 @@ export type CrushLotInput = {
   // this same picks→measured-liters origination. NEW mode only. Defaults: MUST originated by CRUSH.
   outputForm?: LotForm; // the originated lot's form (MUST for a destem/crush, JUICE for whole-cluster)
   opType?: OperationType; // CRUSH (default) or PRESS (whole-cluster)
+  pressCycle?: string | null; // optional named press program (whole-cluster press only)
 };
 
 export type CrushLotResult = {
@@ -259,16 +260,32 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
           crushedPct: input.crusherOn ? (input.crushedPct ?? 100) : null,
           mustTempC: input.mustTempC ?? null,
           wholeClusterPct: input.target.mode === "NEW" ? (input.target.wholeClusterPct ?? null) : null,
+          pressCycle: input.pressCycle?.trim() || null,
           picks: draws.map((d) => ({ pickId: d.pickId, consumedKg: d.consumedKg })),
         };
 
         const opType: OperationType = input.opType ?? "CRUSH";
-        const verb = opType === "PRESS" ? "Whole-cluster pressed" : "De-stemmed";
+        const verb = opType === "PRESS" ? "Pressed" : "De-stemmed";
         const liquid = (input.outputForm ?? "MUST").toLowerCase();
+        // Direct fruit press records what went into the press: whole cluster (100), destemmed (0),
+        // or a partial mix. Fold that into the summary so a destemmed press doesn't read "whole-cluster".
+        const wcPct = metadata.wholeClusterPct;
+        const compo =
+          opType !== "PRESS"
+            ? null
+            : wcPct == null || wcPct >= 100
+              ? "whole-cluster"
+              : wcPct <= 0
+                ? "destemmed"
+                : `${wcPct}% whole-cluster`;
+        const compoClause = compo ? ` (${compo})` : "";
+        const cycleClause = opType === "PRESS" && metadata.pressCycle ? ` [cycle: ${metadata.pressCycle}]` : "";
         const summary =
-          mode === "NEW"
+          (mode === "NEW"
             ? `${verb} ${plan.totalConsumedKg} kg → ${plan.outputVolumeL} L ${liquid} into ${vessel.code} (lot ${lotCode}, ${plan.yieldLPerTonne} L/t)`
-            : `${verb} ${plan.totalConsumedKg} kg → +${plan.outputVolumeL} L into ${liquid} lot ${lotCode} (${vessel.code})`;
+            : `${verb} ${plan.totalConsumedKg} kg → +${plan.outputVolumeL} L into ${liquid} lot ${lotCode} (${vessel.code})`) +
+          compoClause +
+          cycleClause;
 
         const opId = await writeLotOperation(tx, {
           type: opType,

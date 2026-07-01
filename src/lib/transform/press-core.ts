@@ -38,6 +38,7 @@ export type PressLotInput = {
   fractions: PressFractionInput[];
   lossL?: number;
   op?: "PRESS" | "SAIGNEE"; // default PRESS
+  pressCycle?: string | null; // optional named press program, stamped into metadata + summary
   note?: string | null;
   captureMethod?: CaptureMethod;
 };
@@ -252,6 +253,7 @@ export async function pressLotCore(actor: LedgerActor, input: PressLotInput): Pr
         const capacityByVessel = new Map(vessels.map((v) => [v.id, Number(v.capacityL)]));
         const vesselCodes = new Map(vessels.map((v) => [v.id, v.code]));
 
+        const pressCycle = input.pressCycle?.trim() || null;
         const metadata = {
           op,
           parentLotId: input.parentLotId,
@@ -259,12 +261,15 @@ export async function pressLotCore(actor: LedgerActor, input: PressLotInput): Pr
           lossL: plan.lossL,
           childForm,
           fractions: fractionResults,
+          pressCycle,
         };
 
+        const cycleClause = pressCycle ? ` [cycle: ${pressCycle}]` : "";
         const summary =
-          op === "SAIGNEE"
+          (op === "SAIGNEE"
             ? `Bled ${plan.fractionTotalL} L juice off ${parent.code} (saignée)`
-            : `Pressed ${plan.drawnL} L from ${parent.code} into ${fractionResults.length} fraction(s)${plan.lossL > 0 ? ` (${plan.lossL} L lees)` : ""}`;
+            : `Pressed ${plan.drawnL} L from ${parent.code} into ${fractionResults.length} fraction(s)${plan.lossL > 0 ? ` (${plan.lossL} L lees)` : ""}`) +
+          cycleClause;
 
         const opId = await writeLotOperation(tx, {
           type: op,
