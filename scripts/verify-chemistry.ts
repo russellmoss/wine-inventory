@@ -10,7 +10,10 @@
  * the vineyard BrixLog is UNTOUCHED (row count unchanged). EVERYTHING created is scrubbed in a
  * finally block so the user's data stays pristine (mirrors scripts/verify-cellar-ops.ts).
  *
- * Run:  npx tsx --env-file=.env scripts/verify-chemistry.ts
+ * Run:  npm run verify:chemistry
+ * (This script imports src/lib/lot/data.ts which is `server-only`; run it with the react-server
+ *  resolution condition so `server-only` resolves to its noop build, exactly as Next does —
+ *  `tsx --conditions=react-server`. The npm script above does this.)
  */
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "../src/lib/tenant/context";
