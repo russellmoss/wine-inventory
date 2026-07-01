@@ -22,7 +22,9 @@ export type CorrectResult = {
   message: string;
 };
 
-const CORRECTABLE = new Set(["ADDITION", "FINING", "CAP_MGMT", "FILTRATION", "TOPPING", "LOSS"]);
+// Phase 14: REMOVE_TAXPAID is a volumetric vessel→external op (structurally identical to LOSS), so
+// its reversal is the same compensating-inverse path — routed here via the "cellar" reverse family.
+const CORRECTABLE = new Set(["ADDITION", "FINING", "CAP_MGMT", "FILTRATION", "TOPPING", "LOSS", "REMOVE_TAXPAID"]);
 
 /** Correct (revert volumetric / void neutral) a single Phase 3 operation. */
 export async function correctOperationCore(
@@ -48,6 +50,9 @@ export async function correctOperationCore(
         lines: [],
         actorUserId: actor.actorUserId,
         enteredBy: actor.actorEmail,
+        // C5: the compensating entry belongs to the period of the op it corrects (by observedAt),
+        // so amending a filed period drives an Amended report instead of double-counting in "now".
+        observedAt: op.observedAt,
         note: input.note?.trim() || `Voids operation ${opId}`,
         correctsOperationId: opId,
         lotCodes: new Map(),
@@ -68,7 +73,9 @@ export async function correctOperationCore(
   }
 
   // ── Volumetric op: compensating inverse, guarded by D15 ──
-  const origLines: LedgerLine[] = op.lines.map((l) => ({ lotId: l.lotId, vesselId: l.vesselId, deltaL: Number(l.deltaL) }));
+  // Preserve each leg's `reason` so the inverse legs stay self-describing (e.g. a reversed
+  // REMOVE_TAXPAID keeps "tax_removal", letting the compliance fold NET it against the original).
+  const origLines: LedgerLine[] = op.lines.map((l) => ({ lotId: l.lotId, vesselId: l.vesselId, deltaL: Number(l.deltaL), reason: (l.reason as LedgerLine["reason"]) ?? undefined }));
 
   // Shared LIFO guard: later ops that touched an affected position block the reverse — UNLESS they
   // are themselves already reversed (so a chain can unwind newest-first). See reverse-guard.ts.
@@ -107,6 +114,7 @@ export async function correctOperationCore(
       lines: corr.lines,
       actorUserId: actor.actorUserId,
       enteredBy: actor.actorEmail,
+      observedAt: op.observedAt, // C5: correction folds into the corrected op's period
       note: input.note?.trim() || `Reverts operation ${opId}`,
       correctsOperationId: opId,
       lotCodes,

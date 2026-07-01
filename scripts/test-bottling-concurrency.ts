@@ -36,6 +36,7 @@ async function main() {
     skuName: `${TAG} Reserve`,
     skuVintage: 2025,
     bottlesProduced: 1000, // 750 L each; two together = 1500 L > 1000 L available
+    abv: 13.5,
     date: new Date("2026-06-14"),
   });
 

@@ -15,6 +15,10 @@ export type BottlingInput = {
   skuVintage: number;
   bottlesProduced: number;
   date: Date;
+  // Phase 14 (Fork 1A): the finished wine's ABV (% v/v), REQUIRED at the still/tank bottling entry so
+  // the tax class can be derived. Stamped onto BottlingRun.bottledAbv + the BOTTLE op metadata. (The
+  // traditional/pét-nat sparkling path does NOT come through here — its ABV is resolved at FINISH.)
+  abv: number;
   // Phase 7: tank-method (Charmat) bottles a bulk WINE lot straight to a finished SKU tagged
   // method=TANK (+ optional style from the tank RS). Omitted ⇒ still wine (method null).
   method?: SparklingMethod;
@@ -39,9 +43,12 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
 
 /** Apply a bottling run within an existing transaction. Returns the new run id. */
 async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput, actor: Actor): Promise<string> {
-  const { vesselIds, destinationLocationId, skuName, skuVintage, bottlesProduced, date, method, dosageStyle } = input;
+  const { vesselIds, destinationLocationId, skuName, skuVintage, bottlesProduced, date, method, dosageStyle, abv } = input;
   if (bottlesProduced < 1) throw new ActionError("Bottles produced must be at least 1.");
   if (!skuName) throw new ActionError("Give the bottled wine a name.");
+  // Phase 14 (Fork 1A / OV#6): ABV is required so the wine is classifiable for TTB. Reject ≤0;
+  // >24% is allowed but the tax-class derivation flags it for review.
+  if (!(abv > 0)) throw new ActionError("Enter the wine's alcohol by volume (%). ABV is required to classify the wine for TTB reporting.");
   const ids = [...new Set(vesselIds)].filter(Boolean);
   if (ids.length === 0) throw new ActionError("Pick at least one vessel.");
 
@@ -101,6 +108,7 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
     bottleSizeMl: 750,
     bottlesProduced,
     volumeConsumedL: consumedL,
+    bottledAbv: abv,
     sources,
     destinationLocationId,
     date,
@@ -120,7 +128,7 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
   // Stamp the run id on the BOTTLE op so a later timeline reversal resolves its finished-goods
   // run deterministically (no lot→run guessing), mirroring finalize-core's FINISH stamp. Additive
   // metadata; the ledger lines are unchanged.
-  await tx.lotOperation.update({ where: { id: bottleOpId }, data: { metadata: { runId } } });
+  await tx.lotOperation.update({ where: { id: bottleOpId }, data: { metadata: { runId, abv } } });
 
   const { cases, loose } = casesAndLoose(bottlesProduced);
   const codes = vessels.map((v) => v.code).join(", ");

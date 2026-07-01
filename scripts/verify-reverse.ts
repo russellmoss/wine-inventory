@@ -156,7 +156,7 @@ async function main() {
   created.vesselIds.push(tankBot.id);
   const lot5 = await seedLot("ZZ-RV-LOT5", tankBot.id, 750, vy.id);
   const before = await vesselVol(tankBot.id, lot5);
-  await executeBottling({ vesselIds: [tankBot.id], destinationLocationId: loc.id, skuName: "ZZ-TEST Reverse Still", skuVintage: 2024, bottlesProduced: 500, date: new Date("2026-07-01") }, ACTOR);
+  await executeBottling({ vesselIds: [tankBot.id], destinationLocationId: loc.id, skuName: "ZZ-TEST Reverse Still", skuVintage: 2024, bottlesProduced: 500, abv: 13.5, date: new Date("2026-07-01") }, ACTOR);
   const afterBottle = await vesselVol(tankBot.id, lot5);
   assert(afterBottle < before, `bottling drew wine out of the tank (${before} → ${afterBottle} L)`);
   const bottleOpId = (await latestOp("BOTTLE", lot5))!;

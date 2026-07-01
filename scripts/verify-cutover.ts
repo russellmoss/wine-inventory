@@ -84,7 +84,7 @@ async function main() {
   if (!loc) return;
   const bottleVesselStart = await vesselTotal(src.vesselId);
   const skuName = "VERIFY-CUTOVER-DELETEME";
-  await executeBottling({ vesselIds: [src.vesselId], destinationLocationId: loc.id, skuName, skuVintage: 2024, bottlesProduced: 1, date: new Date() }, actor);
+  await executeBottling({ vesselIds: [src.vesselId], destinationLocationId: loc.id, skuName, skuVintage: 2024, bottlesProduced: 1, abv: 13, date: new Date() }, actor);
   const run = await prisma.bottlingRun.findFirst({ where: { wineSku: { name: skuName } }, orderBy: { createdAt: "desc" }, include: { sources: true } });
   assert(!!run, "bottling: run created");
   if (!run) return;

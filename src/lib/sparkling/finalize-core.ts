@@ -6,6 +6,7 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { applyStateTransitionTx } from "@/lib/ferment/transition-core";
 import { materializeFinishedGoods } from "@/lib/bottling/materialize";
 import { planFinishHandoff } from "@/lib/sparkling/plan";
+import { resolveSparklingBottledAbv } from "@/lib/compliance/abv";
 
 // Phase 7 Unit 9: SCRIPT-SAFE core for FINISH — turn a dosed/corked (or pét-nat sur lie)
 // in-process bottle lot into a sellable WineSku via the SHARED materialization core. A FINISH op
@@ -53,6 +54,14 @@ export async function finalizeSparklingCore(actor: LedgerActor, input: FinalizeI
   const isNonVintage = input.isNonVintage ?? state.lot.vintageYear == null;
   const vintage = isNonVintage ? null : (input.vintage ?? state.lot.vintageYear);
 
+  // Phase 14 (Fork 1A): sparkling ABV is resolved at FINISH (base ABV as-of tirage + the tirage-sugar
+  // bump), not at TIRAGE. Null when the base ABV is unknown → the report flags it for review.
+  const bottledAbv = await resolveSparklingBottledAbv(
+    input.lotId,
+    state.tirageAt,
+    state.tirageSugarAddedGpl == null ? null : Number(state.tirageSugarAddedGpl),
+  );
+
   const plan = planFinishHandoff({ lotId: input.lotId, bottleCount, volumeL });
 
   const result = await runLedgerWrite(async (tx) => {
@@ -80,6 +89,7 @@ export async function finalizeSparklingCore(actor: LedgerActor, input: FinalizeI
       bottleSizeMl: nominalFillMl,
       bottlesProduced: bottleCount,
       volumeConsumedL: volumeL,
+      bottledAbv,
       sources: [{ lotId: input.lotId, varietyId: null, vineyardId: null, vintage, volumeConsumedL: volumeL }],
       destinationLocationId: input.destinationLocationId,
       date: input.date ?? new Date(),

@@ -50,7 +50,7 @@ async function main() {
   );
 
   const bottles = 960; // 960 × 0.75 L = 720 L consumed
-  await executeBottling({ vesselIds: [vessel.id], destinationLocationId: loc.id, skuName: "ZZ-TEST Still Rosé", skuVintage: 2023, bottlesProduced: bottles, date: new Date("2026-07-01") }, ACTOR);
+  await executeBottling({ vesselIds: [vessel.id], destinationLocationId: loc.id, skuName: "ZZ-TEST Still Rosé", skuVintage: 2023, bottlesProduced: bottles, abv: 12.5, date: new Date("2026-07-01") }, ACTOR);
 
   const consumedL = consumedForBottles(bottles);
   const sku = await prisma.wineSku.findFirst({ where: { name: "ZZ-TEST Still Rosé", vintage: 2023, bottleSizeMl: 750 }, include: { category: true } });

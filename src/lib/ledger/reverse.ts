@@ -54,8 +54,9 @@ export type ReversibilityVerdict =
   | { reversible: true; family: ReverseFamily }
   | { reversible: false; code: "correction" | "origination" | "manual-adjust"; reason: string };
 
-// The cellar-6 (correctOperationCore): neutral voids + volumetric reverts.
-const CELLAR_TYPES = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS"]);
+// The cellar-6 (correctOperationCore): neutral voids + volumetric reverts. Phase 14: REMOVE_TAXPAID
+// is a volumetric vessel→external op, so it reverses through the same generic corrector.
+const CELLAR_TYPES = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS", "REMOVE_TAXPAID"]);
 // Sparkling bottle-phase (reverseSparklingOperationCore).
 const SPARKLING_TYPES = new Set<OperationType>(["TIRAGE", "RIDDLING", "DISGORGEMENT", "DOSAGE", "FINISH"]);
 // Origination / split transforms (reverseTransformCore) — 024b.

@@ -32,6 +32,8 @@ export const OPERATION_TYPES = [
   "DISGORGEMENT", // eject the lees plug — a per-bottle volume LOSS (partial = a SPLIT)
   "DOSAGE", // liqueur d'expédition — adds volume back and sets the sweetness style
   "FINISH", // close the bottled lot into a sellable WineSku (shared materialization core)
+  // ── Phase 14: tax determination + removal/used-for dispositions (TTB F 5120.17 A14–A23 / B8–B14) ──
+  "REMOVE_TAXPAID", // wine removed/used out of bond; the disposition (reason) picks the form line
 ] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 
@@ -90,6 +92,10 @@ export const LINE_REASONS = [
   // bottle lot from outside. NOT loss (loss reports filter reason === "loss"), so it needs its
   // own tag. Tirage draws vessel→bottle (no external leg) and disgorgement is a real "loss".
   "dosage",
+  // Phase 14: the external out-leg of a REMOVE_TAXPAID op (wine removed/used out of bond). The
+  // SPECIFIC disposition (TAXPAID/EXPORT/…) that picks the §A/§B form line lives in the op's
+  // metadata.disposition (authoritative); this generic tag keeps the line self-describing.
+  "tax_removal",
 ] as const;
 export type LineReason = (typeof LINE_REASONS)[number];
 

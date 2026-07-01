@@ -18,6 +18,8 @@
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
     "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",
+  "verify:ttb": "tsx --conditions=react-server --env-file=.env scripts/verify-ttb.ts",
+  "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
@@ -35,6 +37,7 @@
     "html-to-image": "^1.11.13",
     "leaflet": "^1.9.4",
     "next": "16.2.9",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "server-only": "^0.0.1"

@@ -43,6 +43,7 @@ import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
 import { dbUpdateTool } from "./tools/db-update";
 import { dbDeleteTool } from "./tools/db-delete";
+import { reportAnomaliesTool } from "./tools/report-anomalies";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -64,6 +65,7 @@ const ALL_TOOLS: AssistantTool[] = [
   dbCreateTool,
   dbUpdateTool,
   dbDeleteTool,
+  reportAnomaliesTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */

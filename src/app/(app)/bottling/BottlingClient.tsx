@@ -15,6 +15,7 @@ export type RunRow = {
   bottlesProduced: number;
   destinationLocationId: string;
   location: string;
+  bottledAbv: number | null; // Phase 14: ABV stamped at bottling (tax classification)
   vesselIds: string[];
   sources: string[];
 };
@@ -24,7 +25,7 @@ const sel: React.CSSProperties = {
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)", width: "100%",
 };
 
-type Initial = { vesselIds: string[]; skuName: string; skuVintage: number | ""; bottles: number | ""; destinationLocationId: string; date: string };
+type Initial = { vesselIds: string[]; skuName: string; skuVintage: number | ""; abv: number | ""; bottles: number | ""; destinationLocationId: string; date: string };
 
 function BottlingForm({
   vessels, locations, initial, mode, onSubmit, onCancel, pending,
@@ -73,6 +74,7 @@ function BottlingForm({
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Input label="Wine name" name="skuName" defaultValue={initial.skuName} required style={{ flex: "1 1 200px" }} />
         <Input label="Vintage" name="skuVintage" type="number" defaultValue={initial.skuVintage} required style={{ flex: "0 1 110px" }} />
+        <Input label="ABV %" name="abv" type="number" step="0.1" min="0.1" defaultValue={initial.abv} required style={{ flex: "0 1 110px" }} title="Alcohol by volume — required for TTB tax classification" />
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ flex: "0 1 170px" }}>
@@ -133,7 +135,7 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
         <Card style={{ maxWidth: 640, marginBottom: 32 }}>
           <BottlingForm
             vessels={withWine} locations={locations} mode="create" pending={pending}
-            initial={{ vesselIds: [], skuName: "", skuVintage: "", bottles: "", destinationLocationId: "", date: today }}
+            initial={{ vesselIds: [], skuName: "", skuVintage: "", abv: "", bottles: "", destinationLocationId: "", date: today }}
             onSubmit={(fd) => run(() => createBottlingRun(fd))}
           />
         </Card>
@@ -161,7 +163,7 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
                   <div style={{ marginTop: 14, borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}>
                     <BottlingForm
                       vessels={vessels} locations={locations} mode="edit" pending={pending}
-                      initial={{ vesselIds: r.vesselIds, skuName: r.skuName, skuVintage: r.skuVintage ?? "", bottles: r.bottlesProduced, destinationLocationId: r.destinationLocationId, date: r.date }}
+                      initial={{ vesselIds: r.vesselIds, skuName: r.skuName, skuVintage: r.skuVintage ?? "", abv: r.bottledAbv ?? "", bottles: r.bottlesProduced, destinationLocationId: r.destinationLocationId, date: r.date }}
                       onSubmit={(fd) => run(() => editBottlingRun(r.id, fd), () => setEditingId(null))}
                       onCancel={() => setEditingId(null)}
                     />

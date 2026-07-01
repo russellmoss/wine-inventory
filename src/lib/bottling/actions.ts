@@ -17,6 +17,12 @@ function parseVintage(raw: unknown): number {
   return y;
 }
 
+function parseAbv(raw: unknown): number {
+  const a = Number(raw);
+  if (!Number.isFinite(a) || a <= 0) throw new ActionError("Enter the wine's alcohol by volume (%) — required for TTB tax classification.");
+  return Math.round(a * 100) / 100;
+}
+
 function parseInput(formData: FormData): BottlingInput {
   const dateStr = String(formData.get("date") ?? "");
   const date = dateStr ? new Date(dateStr) : new Date();
@@ -27,6 +33,7 @@ function parseInput(formData: FormData): BottlingInput {
     skuName: String(formData.get("skuName") ?? "").trim(),
     skuVintage: parseVintage(formData.get("skuVintage")),
     bottlesProduced: parseInt10(formData.get("bottlesProduced"), "Bottles produced"),
+    abv: parseAbv(formData.get("abv")),
     date,
   };
 }

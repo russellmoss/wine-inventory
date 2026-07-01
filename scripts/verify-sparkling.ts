@@ -187,7 +187,7 @@ async function main() {
   // 2nd ferment isn't modeled as an AF vector here — the ADDITION + isobaric bottling carry it.
   await addAdditionCore(ACTOR, { vesselId: tankVessel.id, materialId: liqTirage.id, rateValue: 24, rateBasis: "G_L" });
   assert((await stateOf(tankLot)) === null, "tank lot never gets a BottledLotState (stays bulk)");
-  await executeBottling({ vesselIds: [tankVessel.id], destinationLocationId: loc.id, skuName: "ZZ-TEST Tank Frizzante", skuVintage: 2024, bottlesProduced: 1000, date: new Date("2026-07-01"), method: "TANK", dosageStyle: "EXTRA_DRY" }, ACTOR);
+  await executeBottling({ vesselIds: [tankVessel.id], destinationLocationId: loc.id, skuName: "ZZ-TEST Tank Frizzante", skuVintage: 2024, bottlesProduced: 1000, abv: 12, date: new Date("2026-07-01"), method: "TANK", dosageStyle: "EXTRA_DRY" }, ACTOR);
   const tankSku = await prisma.wineSku.findFirst({ where: { name: "ZZ-TEST Tank Frizzante" } });
   assert(tankSku?.method === "TANK" && tankSku?.dosageStyle === "EXTRA_DRY", "tank-method SKU tagged method TANK + style");
   assert((await stateOf(tankLot)) === null, "still no BottledLotState after isobaric bottling");

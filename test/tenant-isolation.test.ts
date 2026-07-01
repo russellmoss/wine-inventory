@@ -29,9 +29,14 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     const now = new Date();
     await owner.lot.upsert({ where: { id: "isov_a" }, update: {}, create: { id: "isov_a", code: "ISOV-A", tenantId: A, updatedAt: now } });
     await owner.lot.upsert({ where: { id: "isov_b" }, update: {}, create: { id: "isov_b", code: "ISOV-B", tenantId: B, updatedAt: now } });
+    // Phase 14 compliance tables (checklist item 9).
+    const period = { periodStart: now, periodEnd: now, onHandEnd: {}, computed: {}, overrides: {} };
+    await owner.complianceReport.upsert({ where: { id: "isov_rep_a" }, update: {}, create: { id: "isov_rep_a", tenantId: A, updatedAt: now, ...period } });
+    await owner.complianceReport.upsert({ where: { id: "isov_rep_b" }, update: {}, create: { id: "isov_rep_b", tenantId: B, updatedAt: now, ...period } });
   });
 
   afterAll(async () => {
+    await owner.complianceReport.deleteMany({ where: { id: { in: ["isov_rep_a", "isov_rep_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["isov_a", "isov_b"] } } });
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
@@ -62,6 +67,14 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
   it("foreign-tenant INSERT raises (WITH CHECK)", async () => {
     await expect(
       asTenant(A, (db) => db.lot.create({ data: { id: "isov_x", code: "ISOV-X", tenantId: B, updatedAt: new Date() } })),
+    ).rejects.toThrow();
+  });
+
+  it("compliance_report is tenant-isolated (Phase 14): A sees its own, not B's; foreign INSERT rejected", async () => {
+    expect(await asTenant(A, (db) => db.complianceReport.findFirst({ where: { id: "isov_rep_a" } }))).not.toBeNull();
+    expect(await asTenant(A, (db) => db.complianceReport.findFirst({ where: { id: "isov_rep_b" } }))).toBeNull();
+    await expect(
+      asTenant(A, (db) => db.complianceReport.create({ data: { id: "isov_rep_x", tenantId: B, periodStart: new Date(), periodEnd: new Date(), onHandEnd: {}, computed: {}, overrides: {}, updatedAt: new Date() } })),
     ).rejects.toThrow();
   });
 

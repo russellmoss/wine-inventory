@@ -602,6 +602,10 @@ model BottlingRun {
   // #5). One BottlingRun per finalize; multiple disgorgement tranches → multiple runs / SKU.
   disgorgedAt           DateTime?
   dosageGramsPerL       Decimal?         @db.Decimal(6, 2)
+  // Phase 14 (Fork 1A): the ABV stamped at bottling — required for still wine (validated at the
+  // action), resolved at FINISH for sparkling (base ABV + tirage bump). Nullable in the DB so
+  // historical runs backfill; the tax-ABV resolver reads it as the as-of-bottling authority.
+  bottledAbv            Decimal?         @db.Decimal(5, 2)
   wineSku               WineSku          @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
   destinationLocation   Location         @relation(fields: [destinationLocationId], references: [id], onDelete: Restrict)
   sources               BottlingSource[]
@@ -888,6 +892,10 @@ enum OperationType {
   DISGORGEMENT // eject the lees plug — a per-bottle volume LOSS (partial = a SPLIT)
   DOSAGE // liqueur d'expédition — adds volume back and sets the sweetness style
   FINISH // close out the bottled lot into a sellable WineSku via the shared materialization core
+  // Phase 14: tax determination + all removal/used-for dispositions (TTB F 5120.17 A14–A23 /
+  // B8–B14). Added in a DEDICATED enum-only migration (Postgres ALTER TYPE ADD VALUE can't be used
+  // in the tx that adds it) so the value commits before removal-core.ts writes it.
+  REMOVE_TAXPAID
 }
 
 // Phase 6: fermentation is THREE orthogonal state vectors, NOT a linear phase enum
@@ -912,6 +920,43 @@ enum CaptureMethod {
   VOICE
   SENSOR
   IMPORT
+}
+
+// ───────────────────────── Phase 14: TTB 5120.17 compliance classification (Fork 2A) ─────────────────────────
+// Tax-class DERIVATION inputs. The 6-value tax class itself (WineTaxClass) is DERIVED at report
+// time (never stored as a Lot column) and lives as a TS union in src/lib/compliance/types.ts — the
+// single authority for the pure derivation; stored values are strings in the report snapshot Json.
+// These two enums ARE stored on Lot (defaults WINE/NONE) so a/b/c/e derive fully automatically and
+// d/f are reachable via the review-screen override without a dedicated capture UI in v1.
+enum ProductType {
+  WINE
+  HARD_CIDER
+}
+
+enum CarbonationMethod {
+  NONE
+  NATURAL
+  ARTIFICIAL
+}
+
+// TTB report lifecycle (status) is SEPARATE from the form version flag (council S4).
+enum ComplianceReportStatus {
+  DRAFT
+  FILED
+}
+
+// The form's VERSION selector (Original/Amended). "Final" is a separate business-closing flag
+// (isFinalBusinessReport), NOT a per-period version state (council S4).
+enum ComplianceReportVersion {
+  ORIGINAL
+  AMENDED
+}
+
+// Operations-report filing cadence (27 CFR 24.300(g)(2)). Monthly by default.
+enum ReportCadence {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
 }
 
 // ───────────────────────── Phase 7: sparkling (bottle-as-continuable-container) ─────────────────────────
@@ -1010,6 +1055,12 @@ model Lot {
   vintageYear        Int?
   status             String             @default("ACTIVE") // ACTIVE | DEPLETED | ARCHIVED | CORRECTED
   isLegacy           Boolean            @default(false)
+  // Phase 14 (Fork 2A): TTB tax-class derivation inputs. Defaults keep grape-first behavior; d/f
+  // are reachable via the review-screen override. `taxAbvOverride` is the optional per-lot tax ABV
+  // used when no ALCOHOL AnalysisReading exists as-of the taxable event (abv resolver, Unit 2).
+  productType        ProductType        @default(WINE)
+  carbonation        CarbonationMethod  @default(NONE)
+  taxAbvOverride     Decimal?           @db.Decimal(5, 2)
   // Phase 5: false when this lot's source-vineyard set may be incomplete (a blend with a
   // parent of unknown provenance). Contagious: a blend with any incomplete parent is itself
   // incomplete (council C6). Drives the "admin-only-visible" NULL-source bucket.
@@ -1083,6 +1134,7 @@ model LotOperation {
   @@index([type, observedAt])
   @@index([batchId])
   @@index([tenantId])
+  @@index([tenantId, observedAt]) // Phase 14 (S3): period-boundary fold — lines by tenant + observedAt
   @@map("lot_operation")
 }
 
@@ -1603,4 +1655,60 @@ model Sample {
   @@index([status])
   @@index([tenantId])
   @@map("sample")
+}
+
+// ───────────────────────── Phase 14: TTB 5120.17 compliance reporting ─────────────────────────
+// Both tables are tenant-scoped + RLS-isolated per the AGENTS.md Phase-12 checklist: tenantId +
+// index + FK→organization ON DELETE RESTRICT, per-tenant uniques, RLS ENABLE+FORCE+tenant_isolation
+// (USING + WITH CHECK on current_setting('app.tenant_id', true)), app_rls DML grant, isolation test.
+
+// A generated Report of Wine Premises Operations for one period + version. FILED rows are IMMUTABLE
+// (eng-review E1): regeneration/amendment always writes a NEW row. `computed`/`overrides`/`onHandEnd`
+// are snapshots; audit backing is re-derived on demand for DRAFTs and frozen into `computed` at FILE
+// (E2). `onHandEnd` is the S3 carry-forward source for the next period's on-hand-beginning.
+model ComplianceReport {
+  tenantId              String                  @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                    String                  @id @default(cuid())
+  periodStart           DateTime // inclusive
+  periodEnd             DateTime // inclusive
+  cadence               ReportCadence           @default(MONTHLY)
+  status                ComplianceReportStatus  @default(DRAFT)
+  version               ComplianceReportVersion @default(ORIGINAL)
+  // S4: "Final" is a one-time business-closing flag, separate from status + version.
+  isFinalBusinessReport Boolean                 @default(false)
+  amendsReportId        String? // the ORIGINAL this row amends (version AMENDED)
+  onHandEnd             Json // per section/column/sub gallons — the S3 carry-forward source
+  computed              Json // full §A/§B line snapshot (frozen at FILE; re-derived for DRAFT — E2)
+  overrides             Json // saved per-lot tax-class overrides applied at generation
+  remarks               String                  @default("") // Part X
+  generatedAt           DateTime                @default(now())
+  filedAt               DateTime?
+  filedByEmail          String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  amends    ComplianceReport?  @relation("ReportAmendment", fields: [amendsReportId], references: [id], onDelete: Restrict)
+  amendedBy ComplianceReport[] @relation("ReportAmendment")
+
+  @@index([tenantId])
+  @@index([tenantId, periodStart, periodEnd])
+  @@index([amendsReportId])
+  @@map("compliance_report")
+}
+
+// Per-tenant compliance profile (like AppSettings): the filer identity that heads the form.
+model ComplianceProfile {
+  tenantId          String        @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                String        @id @default(cuid())
+  ein               String?
+  registryNumber    String?
+  operatedByName    String?
+  operatedByAddress String?
+  operatedByPhone   String?
+  defaultCadence    ReportCadence @default(MONTHLY)
+  updatedAt         DateTime      @updatedAt
+
+  @@unique([tenantId])
+  @@index([tenantId])
+  @@map("compliance_profile")
 }

@@ -22,7 +22,7 @@ async function main() {
   const problems: string[] = [];
 
   // Bottle 1000 bottles (750 L) across BOTH vessels (1000 L total).
-  await executeBottling({ vesselIds: [a.id, b.id], destinationLocationId: loc.id, skuName: SKU, skuVintage: 2025, bottlesProduced: 1000, date: new Date("2026-06-14") }, actor);
+  await executeBottling({ vesselIds: [a.id, b.id], destinationLocationId: loc.id, skuName: SKU, skuVintage: 2025, bottlesProduced: 1000, abv: 13.5, date: new Date("2026-06-14") }, actor);
   const [aL, bL, bot] = [await vL(a.id), await vL(b.id), await bottled()];
   // 750 L drawn proportionally: A 450 -> 150 left; B 300 -> 100 left
   if (aL !== 150) problems.push(`vessel A ${aL} != 150`);

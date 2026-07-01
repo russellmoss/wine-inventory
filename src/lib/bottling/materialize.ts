@@ -37,6 +37,9 @@ export type MaterializeInput = {
   // Sparkling batch facts on the BottlingRun (council CRITICAL #5 — NOT on the catalog SKU):
   disgorgedAt?: Date | null;
   dosageGramsPerL?: number | null;
+  // Phase 14 (Fork 1A): the ABV stamped on the run (still: required at the action; sparkling:
+  // resolved at FINISH). Nullable so pre-Phase-14 callers/back-compat don't break.
+  bottledAbv?: number | null;
 };
 
 export type MaterializeResult = { runId: string; skuId: string };
@@ -63,6 +66,7 @@ export async function materializeFinishedGoods(tx: Prisma.TransactionClient, inp
       createdByEmail: input.actor.actorEmail,
       disgorgedAt: input.disgorgedAt ?? null,
       dosageGramsPerL: input.dosageGramsPerL ?? null,
+      bottledAbv: input.bottledAbv ?? null,
     },
   });
 

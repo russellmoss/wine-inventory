@@ -60,6 +60,10 @@ Account/Verification/organization/member/invitation) are the ONLY globals — ne
 8. Grant app_rls DML (covered by the default privileges from migration `..._app_rls_role`).
 9. Add a case to `scripts/verify-tenant-isolation.ts` / `test/tenant-isolation.test.ts`.
 
+Recent tables built to this checklist (Phase 14 / TTB compliance): `compliance_report`, `compliance_profile`
+(migrations `..._compliance_schema` + `..._compliance_rls`). Their FKs, per-tenant uniques, RLS
+policies, and app_rls grants follow steps 1–8 verbatim; end-to-end proof is `npm run verify:ttb`.
+
 App access: reads/writes go through the extended `prisma` (tenant auto-resolved from the session or
 runAsTenant). The ledger uses `runLedgerWrite`; other tx use `runInTenantTx`; scripts wrap their
 entry point in `runAsTenant(tenantId, …)`; cross-tenant maintenance uses `runAsSystem` (owner). Never

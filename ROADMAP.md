@@ -528,7 +528,17 @@ the documented churn-with-exit-friction (wineries leave Vintrace and complain it
 their lots/vessels/inventory in their own units + codes, live, without weeks of setup.
 **Implementation: deferred to `/plan`.**  **Honors:** D8, D11, D16.
 
-## Phase 14 — Compliance & reporting (TTB, excise, state/DTC)  ⬜  *(table stakes — high priority)*
+## Phase 14 — Compliance & reporting (TTB, excise, state/DTC)  🟦 *v1 slice shipped*  *(table stakes — high priority)*
+> **v1 shipped (plan 025):** TTB F 5120.17 **Part I §A + §B**, all 6 tax classes, gallons + Part X,
+> auto-derived from the ledger — tax-class derivation (ABV + still/sparkling + carbonation + product
+> type, overridable), the reversible `REMOVE_TAXPAID` op, the period-boundary fold (carry-forward
+> begin, footing via drift→A9/A30/B19), a review-before-file screen (`/compliance`), the filled
+> AcroForm PDF (`pdf-lib` + calibrated fieldmap), an AI anomaly/readiness check, and two RLS-isolated
+> tables (`compliance_report`, `compliance_profile`). Validated end-to-end on a synthetic tenant
+> (`npm run verify:ttb`) + the pure fold against a TTB-published sample. **Deferred (documented, not
+> built):** excise F 5000.24 + CBMA credits, Pay.gov e-file, state/DTC (ShipCompliant/Avalara),
+> Parts III/IV/VI–IX computation, mid-period cross-class movement auto-posting (anomaly-flagged in v1).
+
 **Goal:** Auto-generate the compliance a US winery legally must file, from the ledger. **Table
 stakes** — both incumbents generate the 5120.17; we cannot sell to a US winery without it. Our
 version is *auto-derived from an auditable event log + AI anomaly check + per-lot backing*.
