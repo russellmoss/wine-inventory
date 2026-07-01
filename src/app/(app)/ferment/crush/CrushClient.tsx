@@ -102,7 +102,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
   }
 
   return (
-    <div style={{ maxWidth: "var(--container-md)", margin: "0 auto", padding: "var(--space-5)", paddingBottom: 120 }}>
+    <div style={{ maxWidth: "var(--container-md)", margin: "0 auto", padding: "var(--space-5)" }}>
       <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 26 }}>De-stem</h1>
 
       <label style={label}>Block (vintage)</label>
@@ -197,20 +197,17 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginTop: 12 }}>{error}</p> : null}
 
-      {/* Sticky summary bar */}
+      {/* Summary + submit — flows right under the form fields (not a full-width fixed bar) */}
       <div
         style={{
-          position: "fixed",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "var(--surface-base)",
+          marginTop: "var(--space-5)",
           borderTop: "1px solid var(--border-strong)",
-          padding: "var(--space-3) var(--space-5)",
+          paddingTop: "var(--space-4)",
           display: "flex",
           gap: 16,
           alignItems: "center",
           justifyContent: "space-between",
+          flexWrap: "wrap",
         }}
       >
         <div style={{ fontSize: 13.5, color: "var(--text-muted)" }}>

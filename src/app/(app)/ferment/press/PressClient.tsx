@@ -54,7 +54,7 @@ export function PressClient({ positions, vessels, blocks, materials, pressCycles
   }
 
   return (
-    <div style={{ maxWidth: "var(--container-md)", margin: "0 auto", padding: "var(--space-5)", paddingBottom: 120 }}>
+    <div style={{ maxWidth: "var(--container-md)", margin: "0 auto", padding: "var(--space-5)" }}>
       <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 26 }}>Press</h1>
 
       {/* Source toggle */}
@@ -388,7 +388,7 @@ function PressCycleField({ cycles, value, onChange, createCycle }: { cycles: str
 
 function StickyBar({ left, button, disabled, onClick }: { left: string; button: string; disabled: boolean; onClick: () => void }) {
   return (
-    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, background: "var(--surface-base)", borderTop: "1px solid var(--border-strong)", padding: "var(--space-3) var(--space-5)", display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
+    <div style={{ marginTop: "var(--space-5)", borderTop: "1px solid var(--border-strong)", paddingTop: "var(--space-4)", display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
       <div style={{ fontSize: 13.5, color: "var(--text-muted)" }}>{left}</div>
       <button onClick={onClick} disabled={disabled} style={{ ...field, cursor: "pointer", background: "var(--accent)", color: "#fff", border: "none", paddingInline: 20 }}>
         {button}
