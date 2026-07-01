@@ -55,7 +55,23 @@ async function stateOf(lotId: string): Promise<BottledStateProjection & { stage:
   return s ? { lotId, bottleCount: s.bottleCount, volumeL: Number(s.volumeL), stage: s.stage, nominalFillMl: s.nominalFillMl } : null;
 }
 
+// Migration smoke: the hand-authored Phase 7 DDL (CHECKs + partial unique indexes) that Prisma
+// can't express must actually be present in the DB — a clean-DB deploy would recreate exactly
+// these. Cheap catalog assertions guard against a migration that "validated" but dropped them.
+async function migrationSmoke() {
+  console.log("\n── 0. Migration smoke (Phase 7 DDL present) ──");
+  const checks = await prisma.$queryRaw<{ conname: string }[]>`
+    SELECT conname FROM pg_constraint
+    WHERE conname IN ('bottled_lot_state_bottleCount_nonneg','bottled_lot_state_volumeL_nonneg','lot_operation_line_bottle_bucket_pairing')`;
+  assert(checks.length === 3, "the 3 Phase 7 CHECK constraints exist (bottleCount>=0, volumeL>=0, bucket⇔bottleDelta)");
+  const idx = await prisma.$queryRaw<{ indexname: string; indexdef: string }[]>`
+    SELECT indexname, indexdef FROM pg_indexes
+    WHERE tablename = 'wine_sku' AND indexname IN ('wine_sku_name_vintage_bottleSizeMl_key','wine_sku_name_bottleSizeMl_nv_key')`;
+  assert(idx.length === 2 && idx.every((i) => /WHERE/i.test(i.indexdef)), "the 2 partial unique indexes on wine_sku exist (vintaged + NV)");
+}
+
 async function main() {
+  await migrationSmoke();
   const vyA = await prisma.vineyard.create({ data: { name: "ZZ-TEST Spark VY A" } });
   const vyB = await prisma.vineyard.create({ data: { name: "ZZ-TEST Spark VY B" } });
   created.vineyardIds.push(vyA.id, vyB.id);
