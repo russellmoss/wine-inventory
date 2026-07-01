@@ -44,16 +44,16 @@ model User {
 }
 
 model Session {
-  id             String   @id
-  expiresAt      DateTime
-  token          String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  ipAddress      String?
-  userAgent      String?
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  impersonatedBy String?
+  id                   String   @id
+  expiresAt            DateTime
+  token                String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy       String?
   // Multi-tenancy (K2): the tenant the session is currently acting in. Set by the Better Auth
   // organization plugin on login (see auth.ts session hook); re-validated against `member` each
   // request in getCurrentUser (K13). Plain string, no FK — matches the plugin's schema.
@@ -195,6 +195,7 @@ enum AuditAction {
 // ───────────────────────── Shared registries ─────────────────────────
 
 model Location {
+  tenantId              String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                    String                  @id @default(cuid())
   name                  String                  @unique
   isSystem              Boolean                 @default(false) // "Winery" = true
@@ -207,10 +208,12 @@ model Location {
   bottlingRuns          BottlingRun[]
   bottledLotStates      BottledLotState[] // Phase 7: en-tirage bottle lots physically stored here
 
+  @@index([tenantId])
   @@map("location")
 }
 
 model Variety {
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
   name            String            @unique
   abbreviation    String?           @unique // 2–4 uppercase code for lot codes (PN, CS). Nullable→backfilled; Postgres unique allows multiple NULLs.
@@ -221,10 +224,12 @@ model Variety {
   bottlingSources BottlingSource[]
   vineyardBlocks  VineyardBlock[]
 
+  @@index([tenantId])
   @@map("variety")
 }
 
 model Vineyard {
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
   name            String            @unique
   abbreviation    String?           @unique // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
@@ -238,9 +243,10 @@ model Vineyard {
   brixLogs        BrixLog[]
   harvestRecords  HarvestRecord[]
   // Phase 5.
-  lotMemberships  LotVineyard[]     // lots whose source set includes this vineyard
-  userMemberships UserVineyard[]    // users who manage this vineyard (D9 membership set)
+  lotMemberships  LotVineyard[] // lots whose source set includes this vineyard
+  userMemberships UserVineyard[] // users who manage this vineyard (D9 membership set)
 
+  @@index([tenantId])
   @@map("vineyard")
 }
 
@@ -249,6 +255,7 @@ model Vineyard {
 // Sparse, optional per-vineyard metadata (1:1 with Vineyard, created lazily).
 // Spacing/elevation are stored canonically in METRIC; the UI converts for display.
 model VineyardDetail {
+  tenantId    String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          String   @id @default(cuid())
   vineyardId  String   @unique
   gpsLat      Decimal? @db.Decimal(9, 6)
@@ -261,12 +268,14 @@ model VineyardDetail {
   updatedAt   DateTime @updatedAt
   vineyard    Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
 
+  @@index([tenantId])
   @@map("vineyard_detail")
 }
 
 // A planted block within a vineyard. All fields optional; nothing required to save.
 // Acreage is NOT stored — it is derived from rowSpacing * vineSpacing * vineCount.
 model VineyardBlock {
+  tenantId       String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String             @id @default(cuid())
   vineyardId     String
   blockLabel     String? // e.g. "Block 1", "A"
@@ -293,12 +302,14 @@ model VineyardBlock {
 
   @@index([vineyardId])
   @@index([varietyId])
+  @@index([tenantId])
   @@map("vineyard_block")
 }
 
 // A geographic sub-division of a block (e.g. "A"/"B") for differential picks / experiments.
 // `code` is the short token that appears in a lot code between BLOCK and VARIETY.
 model VineyardSubblock {
+  tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String        @id @default(cuid())
   blockId   String
   code      String // short uppercase token for lot codes (e.g. "A")
@@ -309,6 +320,7 @@ model VineyardSubblock {
 
   @@unique([blockId, code])
   @@index([blockId])
+  @@index([tenantId])
   @@map("vineyard_subblock")
 }
 
@@ -319,6 +331,7 @@ model VineyardSubblock {
 // manager stay real FKs for querying. `userEmail` snapshots provenance (mirror
 // BottlingRun) so deleting the manager (SetNull) never erases who logged it.
 model FieldNote {
+  tenantId           String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                 String    @id @default(cuid())
   vineyardId         String
   userId             String? // manager who logged it; SetNull so user delete doesn't cascade
@@ -340,12 +353,14 @@ model FieldNote {
 
   @@unique([vineyardId, weekOf]) // one canonical note per vineyard per week
   @@index([vineyardId, weekOf])
+  @@index([tenantId])
   @@map("field_note")
 }
 
 // Master list of sprays/fertilizers. `normalizedKey` (strip-all-non-alphanumeric
 // UPPERCASE) dedupes "NEEM OIL" / "NEEM-OIL" to one row; `name` keeps the label.
 model FieldInput {
+  tenantId      String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id            String   @id @default(cuid())
   type          String // SPRAY | FERTILIZER
   name          String // display, cleaned UPPERCASE
@@ -354,6 +369,7 @@ model FieldInput {
   createdAt     DateTime @default(now())
 
   @@unique([type, normalizedKey])
+  @@index([tenantId])
   @@map("field_input")
 }
 
@@ -363,6 +379,7 @@ model FieldInput {
 // `vineyardId` denormalized for clean aggregates; block delete is Restricted so
 // ripening history is never erased by a block edit. DB CHECK enforces 0..40.
 model BrixLog {
+  tenantId       String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String        @id @default(cuid())
   blockId        String
   vineyardId     String // denormalized FK for aggregates
@@ -376,12 +393,14 @@ model BrixLog {
 
   @@index([blockId, recordedAt])
   @@index([vineyardId])
+  @@index([tenantId])
   @@map("brix_log")
 }
 
 // One record per (block, vintage): holds the pre-harvest estimate and parents the
 // pick passes. `totalWeightKg` is NOT stored — it is the sum of `picks`.
 model HarvestRecord {
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String        @id @default(cuid())
   blockId         String
   vineyardId      String // denormalized FK for aggregates
@@ -399,33 +418,37 @@ model HarvestRecord {
 
   @@unique([blockId, vintageYear])
   @@index([vineyardId, vintageYear])
+  @@index([tenantId])
   @@map("harvest_record")
 }
 
 // Each pick pass against a HarvestRecord. Vineyards pick a block in multiple
 // passes; the total auto-rolls up from these rows.
 model HarvestPick {
-  id              String        @id @default(cuid())
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id              String             @id @default(cuid())
   harvestRecordId String
-  pickDate        DateTime      @db.Date
-  weightKg        Decimal       @db.Decimal(12, 3) // canonical kg
-  brixAtPick      Decimal?      @db.Decimal(4, 1) // optional Brix the fruit came off at
+  pickDate        DateTime           @db.Date
+  weightKg        Decimal            @db.Decimal(12, 3) // canonical kg
+  brixAtPick      Decimal?           @db.Decimal(4, 1) // optional Brix the fruit came off at
   createdById     String?
   createdByEmail  String
   note            String?
-  createdAt       DateTime      @default(now())
-  harvestRecord   HarvestRecord @relation(fields: [harvestRecordId], references: [id], onDelete: Cascade)
+  createdAt       DateTime           @default(now())
+  harvestRecord   HarvestRecord      @relation(fields: [harvestRecordId], references: [id], onDelete: Cascade)
   // Phase 6: lots this pick was (partially) crushed into. A pick can feed several fermenters;
   // Σ consumedKg ≤ weightKg is enforced in the crush tx (no DB unique on harvestPickId).
   crushSources    LotHarvestSource[]
 
   @@index([harvestRecordId, pickDate])
+  @@index([tenantId])
   @@map("harvest_pick")
 }
 
 // ───────────────────────── Bulk / in-process wine ─────────────────────────
 
 model Vessel {
+  tenantId         String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id               String              @id @default(cuid())
   code             String // barrels: "Barrel #"; tanks: code. Unique per type (see @@unique below).
   type             VesselType
@@ -458,10 +481,12 @@ model Vessel {
   stateEvents      LotStateEvent[]
 
   @@unique([type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
+  @@index([tenantId])
   @@map("vessel")
 }
 
 model VesselComponent {
+  tenantId   String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String   @id @default(cuid())
   vesselId   String
   varietyId  String
@@ -477,6 +502,7 @@ model VesselComponent {
   @@unique([vesselId, varietyId, vineyardId, vintage])
   @@index([vesselId])
   @@index([varietyId])
+  @@index([tenantId])
   @@map("vessel_component")
 }
 
@@ -487,6 +513,7 @@ model VesselComponent {
 // even for multi-lot (tank) racks and survives later vessel edits. Vessel codes
 // are snapshotted so a deleted vessel (FK SetNull) still shows in history.
 model VesselTransfer {
+  tenantId       String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String           @id @default(cuid())
   fromVesselId   String?
   toVesselId     String?
@@ -517,12 +544,14 @@ model VesselTransfer {
   @@index([toVesselId, rackedAt])
   @@index([rackedAt])
   @@index([revertsId])
+  @@index([tenantId])
   @@map("vessel_transfer")
 }
 
 // ───────────────────────── Bottling ─────────────────────────
 
 model WineSku {
+  tenantId         String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id               String                @id @default(cuid())
   name             String
   // Phase 7 (K11): NULLABLE for NV / multi-vintage sparkling; isNonVintage marks a true NV
@@ -546,10 +575,12 @@ model WineSku {
   stockMovements   StockMovement[]
 
   @@index([categoryId])
+  @@index([tenantId])
   @@map("wine_sku")
 }
 
 model BottlingRun {
+  tenantId              String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                    String           @id @default(cuid())
   date                  DateTime
   wineSkuId             String
@@ -570,10 +601,12 @@ model BottlingRun {
 
   @@index([wineSkuId])
   @@index([date])
+  @@index([tenantId])
   @@map("bottling_run")
 }
 
 model BottlingSource {
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String      @id @default(cuid())
   bottlingRunId   String
   // Phase 7 (K13, extended): origin columns are NULLABLE. A blended / multi-vintage sparkling
@@ -597,12 +630,14 @@ model BottlingSource {
   @@index([bottlingRunId])
   @@index([vesselId])
   @@index([lotId])
+  @@index([tenantId])
   @@map("bottling_source")
 }
 
 // ───────────────────────── Inventory ledger + cached balances ─────────────────────────
 
 model StockMovement {
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String        @id @default(cuid())
   createdAt       DateTime      @default(now())
   createdById     String?
@@ -626,10 +661,12 @@ model StockMovement {
   @@index([locationId])
   @@index([createdAt])
   @@index([transferGroupId])
+  @@index([tenantId])
   @@map("stock_movement")
 }
 
 model BottledInventory {
+  tenantId     String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id           String   @id @default(cuid())
   wineSkuId    String
   locationId   String
@@ -640,12 +677,14 @@ model BottledInventory {
 
   @@unique([wineSkuId, locationId])
   @@index([locationId])
+  @@index([tenantId])
   @@map("bottled_inventory")
 }
 
 // ───────────────────────── Finished goods (merch) ─────────────────────────
 
 model FinishedGoodCategory {
+  tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String         @id @default(cuid())
   name      String         @unique
   isActive  Boolean        @default(true)
@@ -653,10 +692,12 @@ model FinishedGoodCategory {
   goods     FinishedGood[]
   wineSkus  WineSku[]
 
+  @@index([tenantId])
   @@map("finished_good_category")
 }
 
 model FinishedGood {
+  tenantId       String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String                  @id @default(cuid())
   name           String
   categoryId     String
@@ -667,10 +708,12 @@ model FinishedGood {
   stockMovements StockMovement[]
 
   @@index([categoryId])
+  @@index([tenantId])
   @@map("finished_good")
 }
 
 model FinishedGoodInventory {
+  tenantId       String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String       @id @default(cuid())
   finishedGoodId String
   locationId     String
@@ -681,12 +724,14 @@ model FinishedGoodInventory {
 
   @@unique([finishedGoodId, locationId])
   @@index([locationId])
+  @@index([tenantId])
   @@map("finished_good_inventory")
 }
 
 // ───────────────────────── Audit ─────────────────────────
 
 model AuditLog {
+  tenantId    String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          String      @id @default(cuid())
   createdAt   DateTime    @default(now())
   actorUserId String?
@@ -702,6 +747,7 @@ model AuditLog {
   @@index([createdAt])
   @@index([entityType, entityId])
   @@index([actorUserId])
+  @@index([tenantId])
   @@map("audit_log")
 }
 
@@ -712,12 +758,14 @@ model AuditLog {
 // nonce here (unique) BEFORE committing, so a replayed/double-submitted confirm
 // can never double-apply a change (critical for inventory deltas).
 model AssistantConfirmation {
+  tenantId   String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String   @id @default(cuid())
   nonce      String   @unique
   tool       String
   actorEmail String
   usedAt     DateTime @default(now())
 
+  @@index([tenantId])
   @@map("assistant_confirmation")
 }
 
@@ -725,6 +773,7 @@ model AssistantConfirmation {
 // `conversation` snapshots the transcript so the feedback-fix agent has context.
 // `status` tracks the improvement loop: NEW -> TRIAGED (agent opened a PR) -> ...
 model AssistantFeedback {
+  tenantId     String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id           String   @id @default(cuid())
   createdAt    DateTime @default(now())
   rating       String // "up" | "down"
@@ -737,6 +786,7 @@ model AssistantFeedback {
   notes        String?
 
   @@index([status, createdAt])
+  @@index([tenantId])
   @@map("assistant_feedback")
 }
 
@@ -744,6 +794,7 @@ model AssistantFeedback {
 // vineyard data). `title` is auto-generated from the first user message. Messages
 // cascade-delete with the conversation.
 model AssistantConversation {
+  tenantId    String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          String             @id @default(cuid())
   ownerUserId String
   title       String
@@ -753,6 +804,7 @@ model AssistantConversation {
   messages    AssistantMessage[]
 
   @@index([ownerUserId, updatedAt])
+  @@index([tenantId])
   @@map("assistant_conversation")
 }
 
@@ -761,6 +813,7 @@ model AssistantConversation {
 // Postgres generated tsvector column (added in the migration, not managed by
 // Prisma) backing full-text search; it is intentionally absent from this model.
 model AssistantMessage {
+  tenantId       String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String                   @id @default(cuid())
   conversationId String
   role           String // "user" | "assistant"
@@ -774,6 +827,7 @@ model AssistantMessage {
 
   @@index([conversationId, createdAt])
   @@index([searchVector], type: Gin)
+  @@index([tenantId])
   @@map("assistant_message")
 }
 
@@ -897,10 +951,12 @@ enum LedgerBucket {
 // getAppSettings(). `sparklingEnabled` gates the ENTIRE traditional-method UI/nav (K14,
 // default off) — backend enums/cores ship regardless and are inert when unused.
 model AppSettings {
+  tenantId         String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id               String   @id @default("singleton")
   sparklingEnabled Boolean  @default(false)
   updatedAt        DateTime @updatedAt
 
+  @@index([tenantId])
   @@map("app_settings")
 }
 
@@ -908,10 +964,12 @@ model AppSettings {
 // Optional metadata on a PRESS op — the name is stamped into LotOperation.metadata.pressCycle;
 // this table is just the pick-list the press form offers so cycles can be reused across pressings.
 model PressCycle {
+  tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String   @id @default(cuid())
   name      String   @unique
   createdAt DateTime @default(now())
 
+  @@index([tenantId])
   @@map("press_cycle")
 }
 
@@ -920,48 +978,49 @@ model PressCycle {
 // authoritative tuple lives in legacySnapshot for legacy lots). Provenance metadata is
 // immutable after the first operation (enforced in the service layer).
 model Lot {
-  id               String   @id @default(cuid())
-  code             String   @unique
+  tenantId           String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id                 String             @id @default(cuid())
+  code               String             @unique
   // form is MUTABLE over the lot's life (D4) but ONLY via the Phase 6 domain transitions
   // (crush→MUST, press/saignée→JUICE, AF-dry→WINE) — direct writes are banned; every change
   // records a LotStateEvent. origin*/code/provenance stay immutable.
-  form             LotForm  @default(WINE)
+  form               LotForm            @default(WINE)
   // Phase 6: the two orthogonal fermentation vectors (council C1). The physical `form` is
   // the third vector. A legal form×afState×mlfState matrix is validated in the domain layer
   // (Unit 5). STUCK is DERIVED from the Brix trend (council C3), never stored here.
-  afState          AlcoholicFermState @default(NONE)
-  mlfState         MalolacticState    @default(NONE)
-  originVineyardId String?
-  originBlockId    String?
-  originSubblockId String?
-  originVarietyId  String?
-  vintageYear      Int?
-  status           String   @default("ACTIVE") // ACTIVE | DEPLETED | ARCHIVED | CORRECTED
-  isLegacy         Boolean  @default(false)
+  afState            AlcoholicFermState @default(NONE)
+  mlfState           MalolacticState    @default(NONE)
+  originVineyardId   String?
+  originBlockId      String?
+  originSubblockId   String?
+  originVarietyId    String?
+  vintageYear        Int?
+  status             String             @default("ACTIVE") // ACTIVE | DEPLETED | ARCHIVED | CORRECTED
+  isLegacy           Boolean            @default(false)
   // Phase 5: false when this lot's source-vineyard set may be incomplete (a blend with a
   // parent of unknown provenance). Contagious: a blend with any incomplete parent is itself
   // incomplete (council C6). Drives the "admin-only-visible" NULL-source bucket.
-  provenanceComplete Boolean @default(true)
-  legacySnapshot   Json?
-  sublotTag        String? // optional human variant tag in the lot code (experiments / differential picks)
-  note             String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  provenanceComplete Boolean            @default(true)
+  legacySnapshot     Json?
+  sublotTag          String? // optional human variant tag in the lot code (experiments / differential picks)
+  note               String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
-  operationLines  LotOperationLine[]
-  vesselLots      VesselLot[]
-  parentEdges     LotLineage[]       @relation("LotChild") // edges where this lot is the child
-  childEdges      LotLineage[]       @relation("LotParent") // edges where this lot is the parent
-  bottlingSources BottlingSource[]
-  treatments      LotTreatment[]
+  operationLines       LotOperationLine[]
+  vesselLots           VesselLot[]
+  parentEdges          LotLineage[]          @relation("LotChild") // edges where this lot is the child
+  childEdges           LotLineage[]          @relation("LotParent") // edges where this lot is the parent
+  bottlingSources      BottlingSource[]
+  treatments           LotTreatment[]
   // Phase 4 standalone chemistry/tasting/sample records (NOT ledger ops).
-  analysisPanels  AnalysisPanel[]
-  tastingNotes    LotTastingNote[]
-  samples         Sample[]
+  analysisPanels       AnalysisPanel[]
+  tastingNotes         LotTastingNote[]
+  samples              Sample[]
   // Phase 5 blends.
-  sourceVineyards      LotVineyard[]          // the lot's source-vineyard SET (union over lineage at blend)
-  blendTrialComponents BlendTrialComponent[]  // bench-trial component rows referencing this lot
-  promotedFromTrials   BlendTrial[]           @relation("TrialPromotedLot") // trials promoted into this lot
+  sourceVineyards      LotVineyard[] // the lot's source-vineyard SET (union over lineage at blend)
+  blendTrialComponents BlendTrialComponent[] // bench-trial component rows referencing this lot
+  promotedFromTrials   BlendTrial[]          @relation("TrialPromotedLot") // trials promoted into this lot
   // Phase 6: harvest picks consumed by the crush that originated this lot (partial picks
   // allowed; this join is the single source of truth for "pick consumed/remaining"), and the
   // recorded form/AF/MLF transition history.
@@ -972,6 +1031,7 @@ model Lot {
 
   @@index([status])
   @@index([originVineyardId])
+  @@index([tenantId])
   @@map("lot")
 }
 
@@ -979,6 +1039,7 @@ model Lot {
 // (deterministic ordering; `observedAt` can collide / drift — D14). `correctsOperationId`
 // is unique so any op can be corrected at most once (kills the double-correction race).
 model LotOperation {
+  tenantId            String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                  Int           @id @default(autoincrement())
   type                OperationType
   observedAt          DateTime      @default(now())
@@ -1002,10 +1063,11 @@ model LotOperation {
   vesselTransfer   VesselTransfer? // 1:1 derived read-model (FK lives on VesselTransfer)
   treatments       LotTreatment[]     @relation("TreatmentOperation") // detail rows this op created
   voidedTreatments LotTreatment[]     @relation("TreatmentVoid") // treatments this (CORRECTION) op voided
-  stateEvents      LotStateEvent[]    // form/AF/MLF transitions caused by this op (shares fold order)
+  stateEvents      LotStateEvent[] // form/AF/MLF transitions caused by this op (shares fold order)
 
   @@index([type, observedAt])
   @@index([batchId])
+  @@index([tenantId])
   @@map("lot_operation")
 }
 
@@ -1013,6 +1075,7 @@ model LotOperation {
 // keeps each operation balanced (seed-in, loss-out, bottle-out). `lotCode`/`vesselCode`
 // are durable snapshots so history reads survive later renames/deletes.
 model LotOperationLine {
+  tenantId    String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          Int          @id @default(autoincrement())
   operationId Int
   lotId       String
@@ -1035,6 +1098,7 @@ model LotOperationLine {
   @@index([operationId])
   @@index([lotId])
   @@index([vesselId])
+  @@index([tenantId])
   @@map("lot_operation_line")
 }
 
@@ -1042,6 +1106,7 @@ model LotOperationLine {
 // Always equals the fold of the ledger (INVARIANT #7). CHECK(volumeL > 0) in migration;
 // a row at functional zero is deleted, never stored at 0.
 model VesselLot {
+  tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String   @id @default(cuid())
   vesselId  String
   lotId     String
@@ -1052,12 +1117,14 @@ model VesselLot {
 
   @@unique([vesselId, lotId])
   @@index([lotId])
+  @@index([tenantId])
   @@map("vessel_lot")
 }
 
 // Parent→child lineage edges for splits/blends (structure-only in Phase 1; blends are
 // Phase 5). `fraction` is the parent's share of the child where meaningful.
 model LotLineage {
+  tenantId    String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          String   @id @default(cuid())
   parentLotId String
   childLotId  String
@@ -1069,6 +1136,7 @@ model LotLineage {
 
   @@unique([parentLotId, childLotId])
   @@index([childLotId])
+  @@index([tenantId])
   @@map("lot_lineage")
 }
 
@@ -1081,6 +1149,7 @@ model LotLineage {
 // enforces Σ consumedKg ≤ HarvestPick.weightKg. kg never enters a ledger line (D8) — it is
 // op metadata; the measured output liters is the only balanced line.
 model LotHarvestSource {
+  tenantId      String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id            String      @id @default(cuid())
   lotId         String
   harvestPickId String
@@ -1091,6 +1160,7 @@ model LotHarvestSource {
 
   @@index([lotId])
   @@index([harvestPickId])
+  @@index([tenantId])
   @@map("lot_harvest_source")
 }
 
@@ -1100,6 +1170,7 @@ model LotHarvestSource {
 // ledger's monotonic fold order); standalone changes use a per-lot optimistic version check.
 // `commandId` UNIQUE makes a phase mutation idempotent (duplicate-as-success, council S4).
 model LotStateEvent {
+  tenantId       String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String        @id @default(cuid())
   lotId          String
   vesselId       String? // snapshot context (the vessel the lot sat in at the transition)
@@ -1120,6 +1191,7 @@ model LotStateEvent {
   operation      LotOperation? @relation(fields: [operationId], references: [id], onDelete: SetNull)
 
   @@index([lotId, observedAt])
+  @@index([tenantId])
   @@map("lot_state_event")
 }
 
@@ -1129,6 +1201,7 @@ model LotStateEvent {
 // after it — council CRITICAL #1). Deleted at functional zero (FINISH closes both to ~0),
 // exactly like a VesselLot row. CHECK(bottleCount >= 0) and CHECK(volumeL >= 0) in migration.
 model BottledLotState {
+  tenantId            String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   lotId               String          @id
   bottleCount         Int
   nominalFillMl       Int             @default(750)
@@ -1150,6 +1223,7 @@ model BottledLotState {
   @@index([locationId])
   @@index([stage])
   @@index([disgorgementRunId])
+  @@index([tenantId])
   @@map("bottled_lot_state")
 }
 
@@ -1160,6 +1234,7 @@ model BottledLotState {
 // Populated at SEED from originVineyardId and backfilled for existing lots. The scoping/lens
 // query is "lots whose source vineyard ∈ my set" → index on vineyardId.
 model LotVineyard {
+  tenantId   String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String   @id @default(cuid())
   lotId      String
   vineyardId String
@@ -1169,6 +1244,7 @@ model LotVineyard {
 
   @@unique([lotId, vineyardId])
   @@index([vineyardId])
+  @@index([tenantId])
   @@map("lot_vineyard")
 }
 
@@ -1176,6 +1252,7 @@ model LotVineyard {
 // A manager can manage N vineyards; a blended lot spans many. Added here (dual-read);
 // assignedVineyardId is dropped in Unit 3 after the backfill is verified.
 model UserVineyard {
+  tenantId   String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String   @id @default(cuid())
   userId     String
   vineyardId String
@@ -1185,6 +1262,7 @@ model UserVineyard {
 
   @@unique([userId, vineyardId])
   @@index([vineyardId])
+  @@index([tenantId])
   @@map("user_vineyard")
 }
 
@@ -1200,6 +1278,7 @@ enum BlendTrialStatus {
 // ratios prefill the blend builder and a real BLEND op runs (promotedToLotId links the result).
 // Reuses the Phase 4 tasting enums. CHECK (score-with-scale together-or-neither) in migration.
 model BlendTrial {
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String                @id @default(cuid())
   name            String
   targetWine      String? // intent — what this trial aims at; groups DRAFTs (council S9)
@@ -1223,12 +1302,14 @@ model BlendTrial {
 
   @@index([status])
   @@index([promotedToLotId])
+  @@index([tenantId])
   @@map("blend_trial")
 }
 
 // One component of a bench trial: a lot + its share (proportion ∈ (0,1]) or absolute volume.
 // CHECK (proportion ∈ (0,1]) in migration.
 model BlendTrialComponent {
+  tenantId   String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String     @id @default(cuid())
   trialId    String
   lotId      String
@@ -1241,6 +1322,7 @@ model BlendTrialComponent {
 
   @@unique([trialId, lotId])
   @@index([lotId])
+  @@index([tenantId])
   @@map("blend_trial_component")
 }
 
@@ -1253,6 +1335,7 @@ model BlendTrialComponent {
 // ops still appear. Material/rate/total + the volume SNAPSHOT used are stored, never
 // recomputed (VISION D14). Corrected/voided via voidedByOperationId (stays visible).
 model LotTreatment {
+  tenantId            String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                  String   @id @default(cuid())
   operationId         Int
   lotId               String
@@ -1281,6 +1364,7 @@ model LotTreatment {
   @@index([lotId])
   @@index([operationId])
   @@index([vesselId])
+  @@index([tenantId])
   @@map("lot_treatment")
 }
 
@@ -1288,6 +1372,7 @@ model LotTreatment {
 // first use, deduped by normalizedKey within a kind (mirrors FieldInput). Carries a
 // default dose basis + optional %active; cost/inventory is deferred to Phase 8.
 model CellarMaterial {
+  tenantId      String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id            String         @id @default(cuid())
   name          String // display label
   normalizedKey String // dedup key (strip-non-alphanumeric, UPPERCASE)
@@ -1299,12 +1384,14 @@ model CellarMaterial {
   treatments    LotTreatment[]
 
   @@unique([kind, normalizedKey])
+  @@index([tenantId])
   @@map("cellar_material")
 }
 
 // A named set of vessels (e.g. a barrel group) so one operation can fan out to its
 // members (D13). Structure-only in Phase 1; the fan-out UI/logic lands in Phase 3.
 model VesselGroup {
+  tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String              @id @default(cuid())
   name      String              @unique
   note      String?
@@ -1312,10 +1399,12 @@ model VesselGroup {
   createdAt DateTime            @default(now())
   members   VesselGroupMember[]
 
+  @@index([tenantId])
   @@map("vessel_group")
 }
 
 model VesselGroupMember {
+  tenantId String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id       String      @id @default(cuid())
   groupId  String
   vesselId String
@@ -1324,6 +1413,7 @@ model VesselGroupMember {
 
   @@unique([groupId, vesselId])
   @@index([vesselId])
+  @@index([tenantId])
   @@map("vessel_group_member")
 }
 
@@ -1365,17 +1455,18 @@ enum TastingScoreScale {
 // voidedAt (so a panel voids ATOMICALLY — void the header, all readings drop). A returned
 // lab result is a panel with `sampleId` set. SO₂ pairing happens WITHIN one panel only.
 model AnalysisPanel {
-  id              String           @id @default(cuid())
-  lotId           String
-  vesselId        String? // snapshot context (the vessel the lot sat in when measured)
-  sampleId        String? // set when this panel is a returned result for a Sample
-  observedAt      DateTime // when the wine was sampled/measured (time axis for trends)
-  enteredAt       DateTime         @default(now())
-  enteredById     String? // actor id snapshot (no FK; matches LotOperation.actorUserId)
-  enteredByEmail  String // durable provenance snapshot
-  captureMethod   CaptureMethod    @default(MANUAL)
-  note            String?
-  clientRequestId String?          @unique // idempotency: a double-submit is a no-op (= the offline "panel" command key)
+  tenantId         String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id               String            @id @default(cuid())
+  lotId            String
+  vesselId         String? // snapshot context (the vessel the lot sat in when measured)
+  sampleId         String? // set when this panel is a returned result for a Sample
+  observedAt       DateTime // when the wine was sampled/measured (time axis for trends)
+  enteredAt        DateTime          @default(now())
+  enteredById      String? // actor id snapshot (no FK; matches LotOperation.actorUserId)
+  enteredByEmail   String // durable provenance snapshot
+  captureMethod    CaptureMethod     @default(MANUAL)
+  note             String?
+  clientRequestId  String?           @unique // idempotency: a double-submit is a no-op (= the offline "panel" command key)
   // Phase 6 offline capture (council S2/S5/S6): a Round row's Brix+temp commit as ONE atomic
   // panel. `deviceObservedAt` is the tablet clock at capture; `serverReceivedAt` is set on
   // insert; the stuck detector buckets by winery-tz. `occupancyToken` is the vessel's
@@ -1385,17 +1476,18 @@ model AnalysisPanel {
   deviceObservedAt DateTime?
   serverReceivedAt DateTime?
   occupancyToken   String?
-  voidedAt        DateTime?
-  voidedById      String?
-  createdAt       DateTime         @default(now())
-  lot             Lot              @relation(fields: [lotId], references: [id], onDelete: Restrict)
-  vessel          Vessel?          @relation(fields: [vesselId], references: [id], onDelete: SetNull)
-  sample          Sample?          @relation(fields: [sampleId], references: [id], onDelete: SetNull)
-  readings        AnalysisReading[]
+  voidedAt         DateTime?
+  voidedById       String?
+  createdAt        DateTime          @default(now())
+  lot              Lot               @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  vessel           Vessel?           @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  sample           Sample?           @relation(fields: [sampleId], references: [id], onDelete: SetNull)
+  readings         AnalysisReading[]
 
   @@index([lotId, observedAt])
   @@index([vesselId])
   @@index([sampleId])
+  @@index([tenantId])
   @@map("analysis_panel")
 }
 
@@ -1404,6 +1496,7 @@ model AnalysisPanel {
 // query readings by `analyte` joined to the non-voided parent panel; the panel's `observedAt`
 // is the time axis.
 model AnalysisReading {
+  tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String        @id @default(cuid())
   panelId   String
   analyte   String // registry key (PH, FREE_SO2, …) — validated in code, not a DB enum
@@ -1420,12 +1513,14 @@ model AnalysisReading {
   @@unique([panelId, analyte]) // a panel holds at most one reading per analyte (Brix+temp can't desync)
   @@index([panelId])
   @@index([analyte])
+  @@index([tenantId])
   @@map("analysis_reading")
 }
 
 // A structured tasting note on a lot. Free-text search (NICE) is a `contains` over
 // notes/aroma/flavor — no tsvector this phase (avoids the search_vector migration gotcha).
 model LotTastingNote {
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String             @id @default(cuid())
   lotId           String
   vesselId        String?
@@ -1453,6 +1548,7 @@ model LotTastingNote {
   vessel          Vessel?            @relation(fields: [vesselId], references: [id], onDelete: SetNull)
 
   @@index([lotId, observedAt])
+  @@index([tenantId])
   @@map("lot_tasting_note")
 }
 
@@ -1462,6 +1558,7 @@ model LotTastingNote {
 // `lotId` is captured AT PULL and inherited by its result panels (never re-resolved from the
 // current vessel — backdated/late-resulted readings must not be misattributed). D2.
 model Sample {
+  tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String          @id @default(cuid())
   lotId           String
   vesselId        String?
@@ -1487,5 +1584,6 @@ model Sample {
 
   @@index([lotId, status])
   @@index([status])
+  @@index([tenantId])
   @@map("sample")
 }
