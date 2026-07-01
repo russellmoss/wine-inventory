@@ -2,6 +2,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
+import { BOTTLED_REMOVAL_LABELS, isBottledRemovalDisposition, type BottledRemovalDisposition } from "./bottled-removal";
 
 // Unit 4 (§B complement) — remove BOTTLED wine from finished-goods inventory with a disposition, so
 // the §B removal lines (B8/B11/B12/B13/B14/B18) are accurate instead of everything reading as B8.
@@ -10,21 +11,7 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 // the vessel ledger. So this decrements the BottledInventory count AND writes a negative BOTTLED_WINE
 // StockMovement tagged with the disposition (the fold reads that tag → the right §B line). It does
 // NOT touch the bulk ledger. This is also the exact path a Commerce7 depletion webhook would call.
-
-export const BOTTLED_REMOVAL_DISPOSITIONS = ["TAXPAID", "TASTING", "EXPORT", "FAMILY_USE", "TESTING", "BREAKAGE"] as const;
-export type BottledRemovalDisposition = (typeof BOTTLED_REMOVAL_DISPOSITIONS)[number];
-
-export const BOTTLED_REMOVAL_LABELS: Record<BottledRemovalDisposition, string> = {
-  TAXPAID: "Removed taxpaid (sold)",
-  TASTING: "Used for tasting",
-  EXPORT: "Removed for export",
-  FAMILY_USE: "Removed for family use",
-  TESTING: "Used for testing",
-  BREAKAGE: "Breakage",
-};
-
-export const isBottledRemovalDisposition = (v: string): v is BottledRemovalDisposition =>
-  (BOTTLED_REMOVAL_DISPOSITIONS as readonly string[]).includes(v);
+// The disposition enum + labels live in ./bottled-removal (pure) so the client can import the labels.
 
 export type BottledRemovalInput = {
   wineSkuId: string;

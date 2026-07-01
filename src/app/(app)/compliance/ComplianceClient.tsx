@@ -12,7 +12,7 @@ import {
 } from "./actions";
 import { TAX_CLASS_COLUMNS, SECTION_A_LINES, SECTION_B_LINES } from "@/lib/compliance/form-labels";
 import { REMOVAL_DISPOSITION_LABELS } from "@/lib/compliance/removal-reasons";
-import { BOTTLED_REMOVAL_LABELS } from "@/lib/compliance/bottled-removal-core";
+import { BOTTLED_REMOVAL_LABELS } from "@/lib/compliance/bottled-removal";
 import type { AnomalyFinding } from "@/lib/compliance/anomaly";
 import type { PerLotClass } from "@/lib/compliance/generate";
 import type { WineTaxClass } from "@/lib/compliance/types";
