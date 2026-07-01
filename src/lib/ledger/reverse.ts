@@ -1,4 +1,11 @@
 import { prisma } from "@/lib/prisma";
+import { ActionError } from "@/lib/action-error";
+import { requireTenantId } from "@/lib/tenant/context";
+import type { OperationType } from "@/lib/ledger/vocabulary";
+import { correctOperationCore } from "@/lib/cellar/correct";
+import { revertTransferCore, type LedgerActor } from "@/lib/vessels/rack-core";
+import { reverseSparklingOperationCore } from "@/lib/sparkling/correct";
+import { reverseBottlingRun } from "@/lib/bottling/run";
 
 // Universal reversal layer (plan 024a). A single place that knows how to walk any reversible
 // ledger operation back, routing a bare operationId to the family core that already owns the
@@ -34,4 +41,101 @@ export async function resolveRunIdForBottleOp(operationId: number): Promise<stri
     select: { metadata: true },
   });
   return (op?.metadata as { runId?: string } | null)?.runId ?? null;
+}
+
+// ─────────────────────────── Reversibility verdict (the single source of truth) ───────────────────────────
+
+/** The family core that owns an op type's physical reversal (024a-supported types only). */
+export type ReverseFamily = "cellar" | "rack" | "sparkling" | "bottle";
+
+export type ReversibilityVerdict =
+  | { reversible: true; family: ReverseFamily }
+  | { reversible: false; code: "correction" | "origination" | "manual-adjust" | "coming-soon"; reason: string };
+
+// The cellar-6 (correctOperationCore): neutral voids + volumetric reverts.
+const CELLAR_TYPES = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS"]);
+// Sparkling bottle-phase (reverseSparklingOperationCore).
+const SPARKLING_TYPES = new Set<OperationType>(["TIRAGE", "RIDDLING", "DISGORGEMENT", "DOSAGE", "FINISH"]);
+// 024b origination/split ops — reversal cores not built yet (shown as "coming soon", never a wrong button).
+const COMING_SOON_TYPES = new Set<OperationType>(["CRUSH", "PRESS", "SAIGNEE", "BLEND"]);
+
+export const SPARKLING_REVERSIBLE_TYPES = SPARKLING_TYPES;
+
+/**
+ * The reversibility of an op BY TYPE — pure, no DB. The timeline reads this per row (so no N+1
+ * probe) to decide the affordance: a reversible type gets an "Undo" button; a non-undoable type
+ * gets a disabled control with this reason. The dispatcher calls the same function to fail-closed,
+ * so the timeline and the mutation can never disagree about what's reversible (risk table).
+ * The `corrected` (already-reversed) state is handled by the caller via the op's corrected flag —
+ * this function only judges the type.
+ */
+export function reversibilityOf(type: OperationType): ReversibilityVerdict {
+  if (CELLAR_TYPES.has(type)) return { reversible: true, family: "cellar" };
+  if (type === "RACK") return { reversible: true, family: "rack" };
+  if (SPARKLING_TYPES.has(type)) return { reversible: true, family: "sparkling" };
+  if (type === "BOTTLE") return { reversible: true, family: "bottle" };
+  if (type === "CORRECTION") return { reversible: false, code: "correction", reason: "This entry is itself a reversal." };
+  if (COMING_SOON_TYPES.has(type))
+    return { reversible: false, code: "coming-soon", reason: "Undo for crush, press and blend is coming soon." };
+  if (type === "SEED") return { reversible: false, code: "origination", reason: "Seeding is a lot's day-zero origination — it can't be undone." };
+  // ADJUST / DEPLETE
+  return { reversible: false, code: "manual-adjust", reason: "Correct this by recording a new volume adjustment." };
+}
+
+// ─────────────────────────── The dispatcher ───────────────────────────
+
+export type ReverseOperationResult = {
+  reversedOperationId: number;
+  reversedType: OperationType;
+  lotId: string;
+  correctionId: number | null;
+  message: string;
+};
+
+/**
+ * Reverse ANY reversible ledger operation, routed by type to the family core that already owns the
+ * physical reversal. This opens NO transaction of its own — it calls exactly one core, and that
+ * core owns its runLedgerWrite/runInTenantTx (which sets the tenant GUC, and re-sets it on retry).
+ * Append-only throughout: every path writes a compensating op, never deletes the original.
+ * Non-undoable types and already-reversed ops fail closed with a clear reason.
+ */
+export async function reverseOperationCore(actor: LedgerActor, input: { operationId: number; note?: string }): Promise<ReverseOperationResult> {
+  const opId = input.operationId;
+  const op = await prisma.lotOperation.findUnique({
+    where: { id: opId },
+    include: { correctedBy: { select: { id: true } }, lines: { select: { lotId: true }, take: 1 } },
+  });
+  if (!op) throw new ActionError("That operation no longer exists.");
+  // Tenant parity (belt to RLS): the op MUST belong to the active tenant. Under RLS a foreign op is
+  // already invisible; this also fails closed where the app connects as the owner (pre-activation).
+  if (op.tenantId !== requireTenantId()) throw new ActionError("Cross-winery reversal blocked.", "CONFLICT");
+  if (op.correctedBy) throw new ActionError("That operation has already been reversed.");
+
+  const verdict = reversibilityOf(op.type);
+  if (!verdict.reversible) throw new ActionError(verdict.reason, "CONFLICT");
+
+  const anyLotId = op.lines[0]?.lotId ?? "";
+
+  switch (verdict.family) {
+    case "cellar": {
+      const r = await correctOperationCore(actor, { operationId: opId, note: input.note });
+      return { reversedOperationId: opId, reversedType: op.type, lotId: anyLotId, correctionId: r.correctionId, message: r.message };
+    }
+    case "rack": {
+      const transferId = await resolveTransferIdForOp(opId);
+      if (!transferId) throw new ActionError("That rack predates the ledger link and can't be undone from the timeline.", "CONFLICT");
+      const r = await revertTransferCore(actor, { transferId });
+      return { reversedOperationId: opId, reversedType: op.type, lotId: anyLotId, correctionId: null, message: r.message };
+    }
+    case "sparkling": {
+      const r = await reverseSparklingOperationCore(actor, { operationId: opId, note: input.note });
+      return { reversedOperationId: opId, reversedType: op.type, lotId: r.lotId || anyLotId, correctionId: r.correctionId, message: r.message };
+    }
+    case "bottle": {
+      const runId = await resolveRunIdForBottleOp(opId);
+      if (!runId) throw new ActionError("This bottling predates run-tracking — reverse it from the Bottling page instead.", "CONFLICT");
+      await reverseBottlingRun(runId, actor, { correctsOperationId: opId });
+      return { reversedOperationId: opId, reversedType: op.type, lotId: anyLotId, correctionId: null, message: "Reversed the bottling — bulk wine restored to the cellar." };
+    }
+  }
 }
