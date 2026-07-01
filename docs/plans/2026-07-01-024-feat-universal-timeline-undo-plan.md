@@ -243,3 +243,61 @@ timeline newest-first; confirm the wine/positions return correctly and blocked s
 - [ ] Reversal runs under tenant context; a cross-tenant reverse is denied (post-multitenancy).
 - [ ] `scripts/verify-reverse.ts` passes; no regression in `scripts/verify-sparkling.ts`.
 - [ ] All tests pass; ledger invariant (vessel-fold == projection) holds after every reversal.
+
+## Review Findings & Revisions (2026-07-01 — council + eng + design)
+
+### Revised scope: split 024a / 024b (eng review)
+- **024a (do first — low risk, ~80% of the value):** Units 1, 2, 3, 5, 6, 7 for the ops whose reversal ALREADY exists — wire the dispatcher + unify the guard + surface Undo on the timeline for cellar/RACK/sparkling/BOTTLE. No new reversal semantics.
+- **024b (follow-up — the risky part):** Unit 4 (origination/split reversal for CRUSH/PRESS/SAIGNEE/BLEND) + its verify. Isolated so the child-lot/pick-restoration risk doesn't gate 024a. The timeline shows these as non-undoable-yet (reason: "coming soon") until 024b lands.
+
+### MUST-FIX before build (council criticals — grounded in the cores)
+1. **Guard unify must keep `planCorrection`'s shortfall/negative-fold pre-check** (`math.ts:441-464`). The shared helper is GUARD-ONLY (returns the blocking op or null); cellar/rack keep calling `planCorrection`. The only change: add `operation: { correctedBy: { is: null } }` to how `touchedKeys` is built in `cellar/correct.ts:72` + `rack-core.ts:309`. Add a characterization test: A→B→reverse-B→reverse-A across the cellar family. (Unit 2)
+2. **Don't `DELETE` lineage/state on reverse** — mark CORRECTED/voided (append-only; deleting orphans AnalysisPanel/tasting notes on child lots). Resolve the tension with the existing partial-disgorge SPLIT-edge delete. (Unit 4)
+3. **Origination guard must also block on lineage children** — a must lot drawn to zero (position gone) can still have downstream `LotLineage` children. Block if any `LotLineage.parentLotId == originatedLotId` edge exists that this op didn't create. (Unit 4)
+4. **BLEND reversal branches grow-vs-new** — stamp `metadata.mode` in `blend-core.ts` (not stamped today); GROW must NOT mark the lot CORRECTED or delete pre-existing lineage; snapshot pre-op lineage to restore, not blind-delete. (Unit 4)
+5. **Inverse legs = exact negation of the original legs**, never recomputed fractions (float-drift ghosts). (Unit 4)
+6. **Tenant parity explicit** (post-multitenancy): assert `originalOp.tenantId === currentTenant`; the dispatcher opens NO transaction — it calls exactly one core, which owns its `runLedgerWrite` tx and sets the tenant GUC inside (set + re-set on retry). (Units 3, 5)
+
+### SHOULD-FIX
+- **PRESS is ambiguous** — whole-cluster press (fruit origination, has `LotHarvestSource`) vs parent split (has SPLIT lineage). Reverse-press branches on picks-vs-lineage, not `op.type`. (Unit 4)
+- **"Rewind form/AF" is a no-op for crush/press/blend** — they set child form at `lot.create` with NO `LotStateEvent`; only TIRAGE writes one. Don't imply a symmetric rewind. (Unit 4)
+- **BOTTLE/FINISH runId fallback** picks the wrong run for multi-run lots — return "reverse from the bottling-run view" rather than guessing (same latent bug in `reverseFinalizeCore`). (Unit 1)
+- **Idempotency** — every new core sets `correctsOperationId` NON-null (finalize currently allows null → no double-reverse guard); add a `commandId` to `reverseOperationAction` so a double-tap is a no-op success. (Units 4, 5)
+- **Timeline verdict N+1** — don't call `canReverse(opId)` per op row. Either compute reversibility for all of a lot's ops in ONE loader pass, or use attempt→show-CONFLICT and only STATICALLY disable non-undoable types. (Unit 6, perf)
+- **Blocked reason names the blocker** `{id, type, date}` + link; **pick over-restore** flags when returning kg exceeds a pick's original weight. Shared guard uses the LOT-SCOPED query form (`sparkling/correct.ts:244-250`), not global-by-key.
+- **Fix Unit 4 dependency**: its verification uses the dispatcher (Unit 3), not just Unit 2.
+
+### Design: interaction-state coverage (fold into Unit 6)
+```
+UNDO CONTROL      | what the user sees
+------------------|--------------------------------------------------------------
+idle              | "Undo <step>" ghost button on the op row
+armed             | "Sure? [Undo <step>] [Cancel]" (existing ConfirmButton, >=44px)
+loading           | "Undoing…", row dimmed + disabled
+success           | toast "Reversed <step> on <lot>"; op row gets the existing
+                  |   "corrected" badge; reopened lot/tank reflects it
+blocked (LIFO)    | disabled control + reason naming the blocker op (aria-describedby)
+non-undoable      | no button; muted reason (SEED/ADJUST/DEPLETE/CORRECTION)
+error             | toast with the CONFLICT message (bottles moved/sold, race)
+```
+Reuse `ConfirmButton`/`Badge`/`Modal` per DESIGN.md tokens. a11y: 44px targets, `aria-describedby` on disabled reasons, focus returns to the row after action.
+
+### OPEN DECISIONS (resolve in /refine before /work)
+1. **Nomenclature:** "Undo" vs "Correct / Void record" (a winemaker can't un-press grapes — the action is a ledger correction, not time travel).
+2. **Blast-radius preview:** add an `analyzeReversal(opId)` probe that shows "voids child lot X, returns 450 L to Tank 4, frees 2.5 t to Pick A" before the confirm? (Strong trust win for destructive reverses; also answers the timeline-verdict question by computing reversibility server-side.)
+3. **Strict vs loose LIFO:** neutral cellar ops (ADDITION/FINING/CAP_MGMT) reverse loosely (a typo'd SO₂ addition isn't blocked by a later rack), volume/lineage/state ops stay strict LIFO. (Preserve today's guard-free zero-line void path.)
+4. **Non-undoable remedy copy:** what the reason says for SEED/ADJUST ("requires a new ADJUST to correct") and CORRECTION ("redo the original op").
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Council (cross-LLM) | `/council` | Independent 2nd opinion | 1 | issues_found | Gemini + Claude: 6 criticals (guard shortfall, no-delete, lineage-children guard, BLEND grow/new, exact-negation, tenant parity) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_open | scope split 024a/024b; timeline N+1; 3 critical failure-mode gaps (pick over-restore, wrong-run, orphan child) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | issues_open | 5/10 → 8/10; interaction-state table added; 4 open decisions |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+- **CROSS-MODEL:** Gemini + Claude independently converged on Unit 2 (guard) and Unit 4 (origination reversal) as the bug-prone units, and both flagged append-only-vs-delete + false-uniformity of the dispatcher.
+- **UNRESOLVED:** 4 open decisions (nomenclature, blast-radius preview, strict/loose LIFO, non-undoable copy).
+- **VERDICT:** Spine approved. Scope split to 024a/024b. Resolve the 4 open decisions + fold the 6 criticals into Units 2/4, then this is ready to implement — AFTER the multi-tenancy foundation (plan 023).
