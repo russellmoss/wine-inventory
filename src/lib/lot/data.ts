@@ -324,6 +324,8 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
       vesselType: l.vesselId ? typeById.get(l.vesselId) ?? null : null,
       deltaL: Number(l.deltaL),
       reason: l.reason,
+      bucket: l.bucket,
+      bottleDelta: l.bottleDelta,
     });
   }
   for (const t of treatments) {

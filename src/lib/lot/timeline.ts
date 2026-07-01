@@ -39,6 +39,9 @@ export type RawLine = {
   vesselType?: VesselKind | null;
   deltaL: number; // signed: + into the location, - out of it
   reason?: string | null;
+  // Phase 7: the account discriminator + bottle-count delta on a BOTTLE_STORAGE leg.
+  bucket?: string | null;
+  bottleDelta?: number | null;
 };
 
 /** One cellar-treatment detail row for the viewed lot (Phase 3). */
@@ -189,6 +192,11 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
   const filtrationLoss = round2(
     externals.filter((l) => l.reason === "filtration").reduce((a, l) => a + Math.abs(l.deltaL), 0),
   );
+  // Phase 7: bottle-storage legs for this lot — volume + count deltas (a BOTTLE_STORAGE leg
+  // carries both). The vessel projection ignores these; the timeline reads them for the arc.
+  const bottleLegs = lines.filter((l) => l.bucket === "BOTTLE_STORAGE");
+  const bottleVolDelta = round2(bottleLegs.reduce((a, l) => a + l.deltaL, 0));
+  const bottleCountDelta = bottleLegs.reduce((a, l) => a + (l.bottleDelta ?? 0), 0);
   // A material dose's grams (sum across this lot's treatment rows), for ADDITION/FINING.
   const dose = treatments[0];
   const doseTotal = round2(treatments.reduce((a, t) => a + (t.computedTotal ?? 0), 0));
@@ -270,6 +278,34 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     }
     case "SAIGNEE":
       summary = `Bled ${formatL(inTotal || outTotal)} L juice${dstLabels ? ` → ${dstLabels}` : ""}`;
+      break;
+    case "TIRAGE": {
+      const sugar = treatments.find((t) => t.kind === "TIRAGE")?.rateValue;
+      const sugarClause = sugar != null ? ` (+${formatL(sugar)} g/L tirage sugar)` : "";
+      summary = `Tirage: bottled ${bottleCountDelta} bottles (${formatL(bottleVolDelta)} L) en tirage${sugarClause}`;
+      break;
+    }
+    case "RIDDLING": {
+      const method = treatments.find((t) => t.kind === "RIDDLING")?.medium;
+      summary = `Riddling${method ? ` (${method})` : ""}`;
+      break;
+    }
+    case "DISGORGEMENT": {
+      const perBottle = treatments.find((t) => t.kind === "DISGORGEMENT")?.rateValue;
+      const perClause = perBottle != null ? ` (−${formatL(perBottle)} mL/bottle)` : "";
+      const countClause =
+        bottleCountDelta < 0 ? `, ${Math.abs(bottleCountDelta)} bottles peeled/removed` : bottleCountDelta > 0 ? `, ${bottleCountDelta} bottles disgorged` : "";
+      summary = `Disgorged${perClause}${lossTotal > 0 ? `: −${formatL(lossTotal)} L lees/plug` : ""}${countClause}`;
+      break;
+    }
+    case "DOSAGE": {
+      const d = treatments.find((t) => t.kind === "DOSAGE");
+      const sugarTail = d?.computedTotal != null && d.computedTotal > 0 ? ` → ${d.computedTotal} g sugar` : "";
+      summary = `Dosage: +${formatL(bottleVolDelta)} L liqueur d'expédition${sugarTail}`;
+      break;
+    }
+    case "FINISH":
+      summary = `Finalized ${Math.abs(bottleCountDelta)} bottles → finished SKU`;
       break;
     default:
       summary = opn.type;
