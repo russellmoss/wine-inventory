@@ -1,5 +1,5 @@
 import { computeProportionalDraw, round2 } from "@/lib/bottling/draw";
-import { FUNCTIONAL_ZERO_L, type LineReason } from "@/lib/ledger/vocabulary";
+import { FUNCTIONAL_ZERO_L, type LineReason, type LedgerBucket } from "@/lib/ledger/vocabulary";
 
 // Pure ledger math for the bulk-wine operation ledger (Phase 1 spine). No server
 // imports, so it's unit-tested directly. All volume math goes through the centiliter /
@@ -23,6 +23,14 @@ export type LedgerLine = {
   vesselId: string | null;
   deltaL: number;
   reason?: LineReason;
+  // Phase 7 (K3): the account this leg touches. Optional for back-compat — the chokepoint
+  // defaults it (VESSEL when vesselId is set, else EXTERNAL). A BOTTLE_STORAGE leg (wine in
+  // bottle) sets bucket explicitly and carries `bottleDelta`; the vessel projection ignores it
+  // (it folds only vesselId-bearing legs), so the bottle fold in write.ts is purely additive.
+  bucket?: LedgerBucket;
+  // Signed bottle-count change; set ONLY on BOTTLE_STORAGE legs (paired with deltaL). The DB
+  // CHECK enforces bucket = 'BOTTLE_STORAGE' ⇔ bottleDelta IS NOT NULL.
+  bottleDelta?: number;
 };
 
 /** A row of the current-state projection: how much of one lot sits in one vessel. */

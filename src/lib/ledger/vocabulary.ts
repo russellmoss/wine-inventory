@@ -62,6 +62,15 @@ export type LotForm = (typeof LOT_FORMS)[number];
 export const CAPTURE_METHODS = ["MANUAL", "VOICE", "SENSOR", "IMPORT"] as const;
 export type CaptureMethod = (typeof CAPTURE_METHODS)[number];
 
+/**
+ * Phase 7 (K3): the account a ledger line touches. Mirrors the Prisma `LedgerBucket` enum.
+ * VESSEL = wine in a tank/barrel; EXTERNAL = left the cellar (seed-in, loss-out, bottle-out);
+ * BOTTLE_STORAGE = wine-in-bottle (an en-tirage lot). The explicit discriminator lets Phase 8
+ * tell wine-in-bottle from wine-gone, rather than overloading `vesselId = null`.
+ */
+export const LEDGER_BUCKETS = ["VESSEL", "EXTERNAL", "BOTTLE_STORAGE"] as const;
+export type LedgerBucket = (typeof LEDGER_BUCKETS)[number];
+
 /** Reason tag on an external (vesselId = null) ledger line. */
 export const LINE_REASONS = [
   "seed",
@@ -77,6 +86,10 @@ export const LINE_REASONS = [
   // It is origination-from-harvest (kg→L birth, D8), NOT loss — explicitly EXCLUDED from
   // shrink/loss reports (loss totals filter reason === "loss" only). See council S8.
   "crush_origination",
+  // Phase 7 sparkling: the +volume counter-leg when liqueur d'expédition (dosage) enters a
+  // bottle lot from outside. NOT loss (loss reports filter reason === "loss"), so it needs its
+  // own tag. Tirage draws vessel→bottle (no external leg) and disgorgement is a real "loss".
+  "dosage",
 ] as const;
 export type LineReason = (typeof LINE_REASONS)[number];
 
