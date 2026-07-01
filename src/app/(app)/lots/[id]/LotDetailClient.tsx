@@ -17,7 +17,8 @@ import {
 } from "@/lib/lot/timeline";
 import type { LotDetail } from "@/lib/lot/data";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
-import { deleteOperationAction, editOperationAction, correctOperationAction } from "@/lib/cellar/actions";
+import { deleteOperationAction, editOperationAction } from "@/lib/cellar/actions";
+import { reverseOperationAction } from "@/lib/ledger/actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
 import { transitionStateAction } from "@/lib/ferment/actions";
 import { AnalyteTrends, type TrendReading } from "@/components/chemistry/AnalyteTrends";
@@ -27,7 +28,27 @@ import { LineageTree } from "@/components/lot/LineageTree";
 type Tone = React.ComponentProps<typeof Badge>["tone"];
 
 const NEUTRAL_OPS = new Set(["ADDITION", "FINING", "CAP_MGMT"]);
-const REVERTABLE_OPS = new Set(["TOPPING", "FILTRATION", "LOSS"]);
+
+// Human "Undo <step>" verb per op type (falls back to the lowercased type). Reversal itself is
+// decided server-side (event.reversible / event.reversalReason from the dispatcher's verdict).
+const UNDO_STEP_LABEL: Record<string, string> = {
+  RACK: "rack",
+  TOPPING: "topping",
+  FILTRATION: "filtration",
+  LOSS: "dump",
+  ADDITION: "addition",
+  FINING: "fining",
+  CAP_MGMT: "cap management",
+  BOTTLE: "bottling",
+  TIRAGE: "tirage",
+  RIDDLING: "riddling",
+  DISGORGEMENT: "disgorgement",
+  DOSAGE: "dosage",
+  FINISH: "finish",
+};
+function undoStepLabel(type: string): string {
+  return UNDO_STEP_LABEL[type] ?? type.toLowerCase();
+}
 
 function formLabel(form: string): string {
   const s = form.replace(/_/g, " ").toLowerCase();
@@ -172,13 +193,60 @@ function LegLine({ leg }: { leg: TimelineLeg }) {
   );
 }
 
-/** Whether this event can be acted on from the timeline (edit/delete/revert). */
-function isActionable(event: TimelineEvent): boolean {
+/** Whether this event can be EDITED/DELETED in edit mode. Only neutral ops (a dose's material/
+ * rate, or cap kind/duration) are editable, and neutral ops can be hard-deleted. Reversal of ANY
+ * op is a separate, always-visible affordance (UndoControl), driven by the dispatcher's verdict. */
+function isEditable(event: TimelineEvent): boolean {
   if (event.corrected || event.isCorrection) return false;
-  return NEUTRAL_OPS.has(event.type) || REVERTABLE_OPS.has(event.type);
+  return NEUTRAL_OPS.has(event.type);
 }
 
-function OpRow({ event, editMode, onEdit }: { event: OpItem; editMode: boolean; onEdit: (e: OpItem) => void }) {
+// The universal, always-visible reversal affordance for one op row (024a). Reads the loader's
+// verdict (event.reversible / event.reversalReason) so it never guesses: a reversible op gets a
+// two-step "Undo <step>" ConfirmButton; a non-undoable op shows a muted reason (SEED/ADJUST/
+// CORRECTION/coming-soon); a corrected op shows nothing (its badge already says "corrected"). On
+// success the page refreshes (the row re-renders corrected); a LIFO/CONFLICT block shows inline.
+function UndoControl({ event, lotId }: { event: OpItem; lotId: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+
+  if (event.corrected || event.isCorrection) return null;
+
+  if (!event.reversible) {
+    if (!event.reversalReason) return null;
+    return (
+      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>{event.reversalReason}</div>
+    );
+  }
+
+  const step = undoStepLabel(event.type);
+  function run() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await reverseOperationAction({ operationId: event.id, lotId });
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't undo that step.");
+      }
+    });
+  }
+  return (
+    <div style={{ marginTop: 10 }}>
+      <ConfirmButton onConfirm={run} confirmLabel={pending ? "Undoing…" : `Undo ${step}`} disabled={pending}>
+        {pending ? "Undoing…" : `Undo ${step}`}
+      </ConfirmButton>
+      {error ? (
+        <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", marginTop: 6 }}>
+          {error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OpRow({ event, editMode, onEdit, lotId }: { event: OpItem; editMode: boolean; onEdit: (e: OpItem) => void; lotId: string }) {
   const dim = event.corrected;
   return (
     <li
@@ -214,7 +282,7 @@ function OpRow({ event, editMode, onEdit }: { event: OpItem; editMode: boolean; 
             {event.voided ? "voided" : "corrected"}
           </Badge>
         ) : null}
-        {editMode && isActionable(event) ? (
+        {editMode && isEditable(event) ? (
           <Button variant="ghost" size="sm" onClick={() => onEdit(event)} style={{ minHeight: 32, marginLeft: "auto" }}>
             Edit
           </Button>
@@ -237,6 +305,7 @@ function OpRow({ event, editMode, onEdit }: { event: OpItem; editMode: boolean; 
       {event.note ? (
         <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6, fontStyle: "italic" }}>{event.note}</div>
       ) : null}
+      <UndoControl event={event} lotId={lotId} />
     </li>
   );
 }
@@ -440,15 +509,17 @@ function TimelineRow({
   editMode,
   onEdit,
   onEditRecord,
+  lotId,
 }: {
   item: TimelineItem;
   editMode: boolean;
   onEdit: (e: OpItem) => void;
   onEditRecord: (i: RecordItem) => void;
+  lotId: string;
 }) {
   switch (item.kind) {
     case "OP":
-      return <OpRow event={item} editMode={editMode} onEdit={onEdit} />;
+      return <OpRow event={item} editMode={editMode} onEdit={onEdit} lotId={lotId} />;
     case "MEASUREMENT":
       return <MeasurementRow item={item} editMode={editMode} onEditRecord={onEditRecord} />;
     case "TASTING":
@@ -568,8 +639,9 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
   const [editMode, setEditMode] = React.useState(false);
   const [selected, setSelected] = React.useState<OpItem | null>(null);
   const [selectedRecord, setSelectedRecord] = React.useState<RecordItem | null>(null);
-  // Editable in edit mode: actionable ops, plus every standalone record (void/cancel).
-  const anyActionable = lot.events.some((e) => (e.kind === "OP" ? isActionable(e) : true));
+  // Editable in edit mode: neutral ops (edit/delete), plus every standalone record (void/cancel).
+  // Reversal of any op is the always-visible Undo control, not gated behind edit mode.
+  const anyActionable = lot.events.some((e) => (e.kind === "OP" ? isEditable(e) : true));
 
   return (
     <div>
@@ -684,14 +756,14 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
       </div>
       {editMode ? (
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-8px 0 14px" }}>
-          Pick an event to edit or remove. Additions, fining and cap management can be edited or deleted; topping,
-          filtration and dumps can be reverted (they stay on the timeline, marked). Analyses and tasting notes can be
-          removed; samples can be cancelled.
+          Pick an event to edit or remove. Additions, fining and cap management can be edited or deleted here.
+          Analyses and tasting notes can be removed; samples can be cancelled. To reverse any operation, use its
+          <strong> Undo</strong> button on the timeline.
         </p>
       ) : null}
       <ol style={{ margin: 0, padding: 0 }}>
         {lot.events.map((e) => (
-          <TimelineRow key={`${e.kind}-${e.id}`} item={e} editMode={editMode} onEdit={setSelected} onEditRecord={setSelectedRecord} />
+          <TimelineRow key={`${e.kind}-${e.id}`} item={e} editMode={editMode} onEdit={setSelected} onEditRecord={setSelectedRecord} lotId={lot.id} />
         ))}
       </ol>
 
@@ -723,7 +795,6 @@ function EditPanel({ event, onClose }: { event: TimelineEvent; onClose: () => vo
   const isDose = event.type === "ADDITION" || event.type === "FINING";
   const isCap = event.type === "CAP_MGMT";
   const isNeutral = NEUTRAL_OPS.has(event.type);
-  const isRevertable = REVERTABLE_OPS.has(event.type);
 
   // Prefilled from the event's treatment via lazy initializers (no reset effect needed).
   const [material, setMaterial] = React.useState(tr?.materialName ?? "");
@@ -816,17 +887,10 @@ function EditPanel({ event, onClose }: { event: TimelineEvent; onClose: () => vo
               <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Delete it" disabled={pending}>
                 Delete entirely
               </ConfirmButton>
-              <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Removes it from the timeline (an audit record is kept).</span>
-            </>
-          ) : isRevertable ? (
-            <>
-              <ConfirmButton onConfirm={() => act(() => correctOperationAction(event.id))} confirmLabel="Revert it" disabled={pending}>
-                Revert
-              </ConfirmButton>
-              <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Moved wine — it stays on the timeline, marked as reverted.</span>
+              <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Removes it from the timeline (an audit record is kept). To reverse it instead, use Undo on the row.</span>
             </>
           ) : (
-            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>This operation can&rsquo;t be edited or deleted from here.</span>
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>This operation can&rsquo;t be edited or deleted from here — use Undo on the row to reverse it.</span>
           )}
         </div>
       </div>

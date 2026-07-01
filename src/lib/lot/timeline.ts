@@ -95,6 +95,11 @@ export type TimelineEvent = {
   correctsId: number | null;
   corrected: boolean; // a later CORRECTION op reverted this one (D6 — shown, never hidden)
   voided: boolean; // corrected AND volume-neutral → render a "voided" pill (vs "corrected")
+  // 024a universal undo: can this op be reversed from the timeline (by type, and not already
+  // corrected), and — when it can't — the reason to show as a disabled control. Resolved in the
+  // loader (it needs the dispatcher's reversibility verdict); describeOperation just defaults them.
+  reversible: boolean;
+  reversalReason: string | null;
 };
 
 export type VesselHolding = {
@@ -327,6 +332,8 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     correctsId: opn.correctsOperationId,
     corrected: false, // resolved across the set in buildTimeline
     voided: false, // resolved across the set in buildTimeline
+    reversible: false, // resolved in the loader (getLotDetail) via the dispatcher's verdict
+    reversalReason: null,
   };
 }
 

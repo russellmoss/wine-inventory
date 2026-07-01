@@ -17,6 +17,7 @@ import {
   type VesselKind,
 } from "@/lib/lot/timeline";
 import { detectStuck } from "@/lib/ferment/stuck";
+import { reversibilityOf } from "@/lib/ledger/reverse";
 import type { AlcoholicFermState } from "@/lib/ledger/vocabulary";
 import {
   buildAncestry,
@@ -343,12 +344,14 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
     });
   }
 
-  // A neutral void CORRECTION op has no lines/treatments, so it never appears in this lot's
-  // own ops — find which of the lot's ops were corrected and feed those ids to buildTimeline.
+  // Find which of the lot's ops were reversed. `correctsOperationId` is set ONLY by a reversal
+  // (cellar/rack write a CORRECTION; a still-wine BOTTLE reversal writes a SEED restore op that
+  // corrects the BOTTLE op), so we match on it for ANY type — not just CORRECTION — else a
+  // reversed bottling wouldn't show as corrected on the timeline (024a).
   const opIds = [...byOp.keys()];
   const corrections = opIds.length
     ? await prisma.lotOperation.findMany({
-        where: { type: "CORRECTION", correctsOperationId: { in: opIds } },
+        where: { correctsOperationId: { in: opIds } },
         select: { correctsOperationId: true },
       })
     : [];
@@ -357,6 +360,16 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
   // Newest-first by operation id (the fold order), per D14 / the plan's Key Decisions.
   const rawOps = [...byOp.values()].sort((a, b) => b.op.id - a.op.id);
   const opEvents = buildTimeline(rawOps, { legacy: lot.isLegacy, correctedIds });
+
+  // 024a: resolve each op's timeline reversibility from the SAME verdict the dispatcher enforces
+  // (pure, no per-row probe → no N+1). A corrected op shows its badge, not an Undo; a reversible
+  // type gets an Undo button; a non-undoable type carries the reason to show disabled.
+  for (const ev of opEvents) {
+    if (ev.corrected || ev.isCorrection) continue; // defaults (reversible:false, reason:null) stand
+    const verdict = reversibilityOf(ev.type);
+    if (verdict.reversible) ev.reversible = true;
+    else ev.reversalReason = verdict.reason;
+  }
 
   // Phase 4 standalone records → display items, then HYBRID-merged into the op backbone by
   // observedAt (ops keep their id order; records slot in). Decimal → number at this boundary.
