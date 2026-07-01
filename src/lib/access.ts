@@ -8,9 +8,28 @@ export type AppUser = {
   banned: boolean | null;
   mustChangePassword: boolean | null;
   vineyardIds: string[]; // D9: a manager's vineyard MEMBERSHIP set (admins reach all)
+  // Phase 12 multi-tenancy (K2/K9/K13): the user's org memberships, and the VALIDATED active org
+  // (the tenant) for this request — null when the session's active-org claim isn't a real
+  // membership (K13 revalidation) or the user belongs to no org. All tenant scoping keys off this.
+  organizationIds: string[];
+  activeOrganizationId: string | null;
 };
 
 export type AccessDecision = "ok" | "login" | "banned" | "change-password" | "forbidden";
+
+/**
+ * Resolve the VALIDATED active organization (the tenant) for a request (K9/K13). The session's
+ * claimed active org is honored only if it's a real membership; otherwise we fall back to the
+ * user's earliest membership, and a user with no membership resolves to `null` (denied by tenant
+ * scoping). Pure so it's unit-tested without a DB. Membership set is the source of truth.
+ */
+export function resolveActiveOrg(
+  organizationIds: string[],
+  claim: string | null | undefined,
+): string | null {
+  if (claim && organizationIds.includes(claim)) return claim;
+  return organizationIds[0] ?? null;
+}
 
 export function accessDecision(
   user: AppUser | null,

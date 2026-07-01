@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canAccessVineyard, canAccessLot, canManagerAccessVineyard, type AppUser } from "@/lib/access";
+import { canAccessVineyard, canAccessLot, canManagerAccessVineyard, resolveActiveOrg, type AppUser } from "@/lib/access";
 
 const base: AppUser = {
   id: "u1",
@@ -9,6 +9,8 @@ const base: AppUser = {
   banned: false,
   mustChangePassword: false,
   vineyardIds: [],
+  organizationIds: ["org_bhutan_wine_co"],
+  activeOrganizationId: "org_bhutan_wine_co",
 };
 
 describe("canAccessVineyard (D9 set membership)", () => {
@@ -80,5 +82,25 @@ describe("'my fruit downstream' lens semantics (Unit 10)", () => {
     ];
     const lensed = lots.filter((l) => canAccessLot(mgrA, l.sources)).map((l) => l.code);
     expect(lensed.sort()).toEqual(["BLEND-AB", "CAB-A"]);
+  });
+});
+
+// Phase 12 (K9/K13): the active-org (tenant) resolver re-validates the session's claim against
+// the authoritative membership set every request.
+describe("resolveActiveOrg (tenant resolution + K13 revalidation)", () => {
+  it("honors a claim that is a real membership", () => {
+    expect(resolveActiveOrg(["orgA", "orgB"], "orgB")).toBe("orgB");
+  });
+  it("rejects a stale/revoked claim and falls back to the earliest membership", () => {
+    // orgX is no longer (or never was) a membership → not honored; fall back to orgA.
+    expect(resolveActiveOrg(["orgA", "orgB"], "orgX")).toBe("orgA");
+  });
+  it("with no claim, uses the earliest membership", () => {
+    expect(resolveActiveOrg(["orgA", "orgB"], null)).toBe("orgA");
+    expect(resolveActiveOrg(["orgA"], undefined)).toBe("orgA");
+  });
+  it("a user with no membership resolves to null (denied downstream)", () => {
+    expect(resolveActiveOrg([], "orgA")).toBeNull();
+    expect(resolveActiveOrg([], null)).toBeNull();
   });
 });

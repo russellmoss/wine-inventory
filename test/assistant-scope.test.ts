@@ -10,6 +10,8 @@ const base: AppUser = {
   banned: false,
   mustChangePassword: false,
   vineyardIds: [],
+  organizationIds: ["org_bhutan_wine_co"],
+  activeOrganizationId: "org_bhutan_wine_co",
 };
 
 describe("scopedVineyardWhere", () => {

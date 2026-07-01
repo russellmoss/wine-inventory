@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { accessDecision, type AppUser } from "@/lib/access";
+import { accessDecision, resolveActiveOrg, type AppUser } from "@/lib/access";
 
 export { accessDecision, canManagerAccessVineyard, canAccessVineyard, canAccessLot } from "@/lib/access";
 export type { AppUser, AccessDecision } from "@/lib/access";
@@ -22,6 +22,7 @@ export const userSelect = {
   banned: true,
   mustChangePassword: true,
   vineyardMemberships: { select: { vineyardId: true } }, // D9 membership set
+  memberships: { select: { organizationId: true } }, // Phase 12: org (tenant) membership set
 } as const;
 
 type UserRecord = {
@@ -32,10 +33,21 @@ type UserRecord = {
   banned: boolean | null;
   mustChangePassword: boolean | null;
   vineyardMemberships: { vineyardId: string }[];
+  memberships: { organizationId: string }[];
 };
 
-/** Map a DB user record (selected via `userSelect`) into the AppUser domain shape. */
-export function toAppUser(record: UserRecord): AppUser {
+/**
+ * Map a DB user record (selected via `userSelect`) into the AppUser domain shape.
+ *
+ * `activeOrgClaim` is the session's claimed active organization. We RE-VALIDATE it against the
+ * authoritative membership set loaded from the DB (K13): the active org is honored only if the
+ * user is actually a member; a revoked/stale claim falls back to their earliest membership, and a
+ * user with no membership resolves to `null` (denied by tenant scoping downstream). Never trust
+ * the session's claim on its own — memberships are the source of truth, reloaded each request.
+ */
+export function toAppUser(record: UserRecord, activeOrgClaim?: string | null): AppUser {
+  const organizationIds = record.memberships.map((m) => m.organizationId);
+  const activeOrganizationId = resolveActiveOrg(organizationIds, activeOrgClaim);
   return {
     id: record.id,
     name: record.name ?? null,
@@ -44,6 +56,8 @@ export function toAppUser(record: UserRecord): AppUser {
     banned: record.banned ?? false,
     mustChangePassword: record.mustChangePassword ?? false,
     vineyardIds: record.vineyardMemberships.map((m) => m.vineyardId),
+    organizationIds,
+    activeOrganizationId,
   };
 }
 
@@ -61,7 +75,9 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
     select: userSelect,
   });
   if (!record) return null; // session points at a deleted user -> deny
-  return toAppUser(record);
+  // K13: re-validate the session's active-org claim against the freshly-loaded membership set.
+  const activeOrgClaim = session.session?.activeOrganizationId ?? null;
+  return toAppUser(record, activeOrgClaim);
 });
 
 /**

@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { admin } from "better-auth/plugins";
+import { admin, organization } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "./prisma";
 import { hashPassword, verifyPassword } from "./password";
@@ -50,6 +50,18 @@ export const auth = betterAuth({
   databaseHooks: {
     session: {
       create: {
+        // Multi-tenancy (K2/K13): stamp the active organization onto the session at login so
+        // the tenant is resolvable from the verified session. One active org per session for now
+        // (multi-org switcher UI is the deferred slice) — pick the user's earliest membership.
+        before: async (session) => {
+          const membership = await prisma.member.findFirst({
+            where: { userId: session.userId },
+            select: { organizationId: true },
+            orderBy: { createdAt: "asc" },
+          });
+          if (!membership) return; // no membership → no active org (denied downstream)
+          return { data: { ...session, activeOrganizationId: membership.organizationId } };
+        },
         after: async (session) => {
           // Login event ledger. Never block login on an audit failure.
           try {
@@ -77,8 +89,10 @@ export const auth = betterAuth({
     },
   },
   // admin() = admin/user roles + createUser/setRole/setPassword/ban/remove.
-  // nextCookies() MUST be last so Set-Cookie is handled in server actions.
-  plugins: [admin(), nextCookies()],
+  // organization() = tenant model (K2): organization/member/invitation tables + active-org in
+  // session. We adopt the tables now; the end-user org flows (signup/invites/switcher UI) are the
+  // deferred Phase 12 second slice. nextCookies() MUST be last so Set-Cookie is handled in actions.
+  plugins: [admin(), organization(), nextCookies()],
 });
 
 export type Session = typeof auth.$Infer.Session;
