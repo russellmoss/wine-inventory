@@ -15,6 +15,7 @@ export default async function SettingsPage() {
         operatedByName: profile?.operatedByName ?? "",
         operatedByAddress: profile?.operatedByAddress ?? "",
         operatedByPhone: profile?.operatedByPhone ?? "",
+        defaultCadence: profile?.defaultCadence ?? "MONTHLY",
       }}
     />
   );

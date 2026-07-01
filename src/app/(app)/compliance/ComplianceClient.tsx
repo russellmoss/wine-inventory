@@ -53,7 +53,7 @@ export function ComplianceClient(props: {
   view: ReportView | null;
   profile: { ein: string; registryNumber: string; operatedByName: string; operatedByAddress: string; operatedByPhone: string };
   vessels: VesselOpt[];
-  defaults: { year: number; month: number };
+  defaults: { year: number; month: number; cadence: "MONTHLY" | "QUARTERLY" | "ANNUAL" };
 }) {
   const { view } = props;
   const router = useRouter();
@@ -138,7 +138,7 @@ export function ComplianceClient(props: {
             <Input label="Month" name="month" type="number" min="1" max="12" defaultValue={props.defaults.month} style={{ width: 90 }} />
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Cadence</span>
-              <select name="cadence" defaultValue="MONTHLY" style={sel}>
+              <select name="cadence" defaultValue={props.defaults.cadence} style={sel}>
                 <option value="MONTHLY">Monthly</option>
                 <option value="QUARTERLY">Quarterly</option>
                 <option value="ANNUAL">Annual</option>

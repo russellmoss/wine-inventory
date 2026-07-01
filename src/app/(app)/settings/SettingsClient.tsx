@@ -12,6 +12,7 @@ export type ComplianceProfileFields = {
   operatedByName: string;
   operatedByAddress: string;
   operatedByPhone: string;
+  defaultCadence: "MONTHLY" | "QUARTERLY" | "ANNUAL";
 };
 
 export function SettingsClient({
@@ -133,7 +134,21 @@ export function SettingsClient({
           </div>
           <Input label="Operated by (name)" name="operatedByName" defaultValue={complianceProfile.operatedByName} />
           <Input label="Address" name="operatedByAddress" defaultValue={complianceProfile.operatedByAddress} />
-          <Input label="Phone" name="operatedByPhone" defaultValue={complianceProfile.operatedByPhone} style={{ maxWidth: 220 }} />
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <Input label="Phone" name="operatedByPhone" defaultValue={complianceProfile.operatedByPhone} style={{ maxWidth: 220 }} />
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Filing cadence</span>
+              <select
+                name="defaultCadence"
+                defaultValue={complianceProfile.defaultCadence}
+                style={{ height: 44, padding: "0 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)" }}
+              >
+                <option value="MONTHLY">Monthly</option>
+                <option value="QUARTERLY">Quarterly</option>
+                <option value="ANNUAL">Annual</option>
+              </select>
+            </label>
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <Button type="submit" variant="primary" disabled={profilePending}>{profilePending ? "Saving…" : "Save compliance profile"}</Button>
             {profileMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{profileMsg}</span>}

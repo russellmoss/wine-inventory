@@ -72,7 +72,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
         operatedByPhone: profile?.operatedByPhone ?? "",
       }}
       vessels={vesselOpts}
-      defaults={{ year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 }}
+      defaults={{ year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, cadence: profile?.defaultCadence ?? "MONTHLY" }}
     />
   );
 }

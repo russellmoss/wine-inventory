@@ -107,12 +107,15 @@ export const assessReportReadiness = adminAction(async (_ctx, reportId: string) 
 
 /** Save the per-tenant compliance profile (filer identity for the form header). */
 export const saveComplianceProfile = adminAction(async (_ctx, formData: FormData) => {
+  const cadenceRaw = String(formData.get("defaultCadence") ?? "MONTHLY");
+  const defaultCadence = (["MONTHLY", "QUARTERLY", "ANNUAL"].includes(cadenceRaw) ? cadenceRaw : "MONTHLY") as "MONTHLY" | "QUARTERLY" | "ANNUAL";
   const data = {
     ein: String(formData.get("ein") ?? "").trim() || null,
     registryNumber: String(formData.get("registryNumber") ?? "").trim() || null,
     operatedByName: String(formData.get("operatedByName") ?? "").trim() || null,
     operatedByAddress: String(formData.get("operatedByAddress") ?? "").trim() || null,
     operatedByPhone: String(formData.get("operatedByPhone") ?? "").trim() || null,
+    defaultCadence,
   };
   const existing = await prisma.complianceProfile.findFirst({ select: { id: true } });
   if (existing) await prisma.complianceProfile.update({ where: { id: existing.id }, data });
