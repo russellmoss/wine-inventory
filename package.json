@@ -17,6 +17,7 @@
     "db:seed:field-inputs": "tsx prisma/seed-field-inputs.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
+    "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
@@ -27,7 +28,7 @@
     "@geoman-io/leaflet-geoman-free": "^2.20.0",
     "@mapbox/shp-write": "^0.4.3",
     "@node-rs/argon2": "^2.0.2",
-    "@prisma/client": "^6.3.1",
+    "@prisma/client": "^6.19.3",
     "@vercel/blob": "^2.4.1",
     "better-auth": "^1.6.18",
     "dexie": "^4.4.4",
