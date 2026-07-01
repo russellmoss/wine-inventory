@@ -4,7 +4,8 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Input, Button, Badge, Eyebrow, Modal, ConfirmButton } from "@/components/ui";
 import { tirageAction } from "@/lib/sparkling/actions";
-import { riddlingAction, disgorgeAndFinishAction, reverseSparklingOperationAction } from "@/lib/sparkling/actions";
+import { riddlingAction, disgorgeAndFinishAction } from "@/lib/sparkling/actions";
+import { reverseOperationAction } from "@/lib/ledger/actions";
 import { tirageSugarForPressure, dosageSugarGpl, finalRS, classifyStyle, nearStyleBandEdge } from "@/lib/sparkling/sugar";
 import type { WorklistRow, TirageCandidate, FinishedSparklingRow } from "@/lib/sparkling/worklist-data";
 
@@ -126,7 +127,7 @@ export function EnTirageClient({
                             confirmLabel={`Undo ${UNDO_LABEL[r.lastReversibleOpType ?? ""] ?? "step"}`}
                             disabled={pending}
                             onConfirm={() => run(async () => {
-                              const res = await reverseSparklingOperationAction({ operationId: r.lastReversibleOpId!, lotId: r.lotId });
+                              const res = await reverseOperationAction({ operationId: r.lastReversibleOpId!, lotId: r.lotId });
                               return res.message ?? `Reversed last step on ${r.code}.`;
                             })}
                           >
@@ -183,7 +184,7 @@ export function EnTirageClient({
                           confirmLabel="Undo finish"
                           disabled={pending}
                           onConfirm={() => run(async () => {
-                            const res = await reverseSparklingOperationAction({ operationId: fr.finishOpId, lotId: fr.lotId });
+                            const res = await reverseOperationAction({ operationId: fr.finishOpId, lotId: fr.lotId });
                             return res.message ?? `Reopened ${fr.code} — back en tirage.`;
                           })}
                         >
