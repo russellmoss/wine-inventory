@@ -6,7 +6,7 @@ import { computeProportionalDraw, consumedForBottles, casesAndLoose, round2 } fr
 import { writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import { nextLotCode } from "@/lib/lot/generate";
-import { findOrCreateWineSku } from "@/lib/bottling/sku";
+import { materializeFinishedGoods, type MaterializeSource } from "@/lib/bottling/materialize";
 
 export type BottlingInput = {
   vesselIds: string[];
@@ -66,61 +66,56 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
   );
   const drawById = new Map(draws.map((d) => [d.id, d]));
 
-  // Default wine to a "Wine" category (upsert avoids a P2002 race on first bottling).
-  const wineCat = await tx.finishedGoodCategory.upsert({ where: { name: "Wine" }, update: {}, create: { name: "Wine" } });
-  // Find-or-create keyed on the vintaged partial unique index (K11) — the old compound upsert
-  // can't target a partial index. Still-wine bottling is always vintaged (isNonVintage: false).
-  const sku = await findOrCreateWineSku(tx, { name: skuName, vintage: skuVintage, isNonVintage: false, bottleSizeMl: 750 }, { categoryId: wineCat.id });
-
-  const run = await tx.bottlingRun.create({
-    data: { date, wineSkuId: sku.id, bottlesProduced, volumeConsumedL: consumedL, destinationLocationId, createdById: actor.actorUserId, createdByEmail: actor.actorEmail },
-  });
-
-  // Build the BOTTLE ledger op (wine out of vessels to the external account) + provenance.
+  // Build the BOTTLE ledger-op lines + the finished-goods provenance sources from the draws.
   const lines: LedgerLine[] = [];
   const lotCodes = new Map<string, string>();
+  const sources: MaterializeSource[] = [];
   for (const r of lotRows) {
     const d = drawById.get(r.id)!;
     if (d.deduct <= 0) continue;
     lotCodes.set(r.lotId, r.lot.code);
     lines.push({ lotId: r.lotId, vesselId: r.vesselId, deltaL: round2(-d.deduct) });
     lines.push({ lotId: r.lotId, vesselId: null, deltaL: round2(d.deduct), reason: "bottle" });
-    await tx.bottlingSource.create({
-      data: {
-        bottlingRunId: run.id,
-        vesselId: r.vesselId,
-        varietyId: r.lot.originVarietyId ?? "",
-        vineyardId: r.lot.originVineyardId ?? "",
-        vintage: r.lot.vintageYear ?? skuVintage,
-        volumeConsumedL: d.deduct,
-        lotId: r.lotId,
-      },
+    sources.push({
+      lotId: r.lotId,
+      vesselId: r.vesselId,
+      varietyId: r.lot.originVarietyId, // K13: null origin is honest (was `?? ""` — an invalid FK)
+      vineyardId: r.lot.originVineyardId,
+      vintage: r.lot.vintageYear ?? skuVintage,
+      volumeConsumedL: d.deduct,
     });
   }
+
+  // Finished-goods hand-off through the shared materialization core (still wine is vintaged,
+  // 750 mL, no sparkling metadata).
+  const { runId } = await materializeFinishedGoods(tx, {
+    skuName,
+    vintage: skuVintage,
+    isNonVintage: false,
+    bottleSizeMl: 750,
+    bottlesProduced,
+    volumeConsumedL: consumedL,
+    sources,
+    destinationLocationId,
+    date,
+    actor,
+  });
+
   await writeLotOperation(tx, {
     type: "BOTTLE",
     lines,
     actorUserId: actor.actorUserId,
     enteredBy: actor.actorEmail,
-    note: `Bottling run ${run.id}`,
+    note: `Bottling run ${runId}`,
     lotCodes,
     vesselCodes,
     capacityByVessel: new Map(), // removal never overfills
   });
 
-  await tx.stockMovement.create({
-    data: { itemKind: "BOTTLED_WINE", wineSkuId: sku.id, locationId: destinationLocationId, kind: "RECEIVE", deltaUnits: bottlesProduced, bottlingRunId: run.id, createdById: actor.actorUserId, createdByEmail: actor.actorEmail, reason: "Bottling run" },
-  });
-  await tx.bottledInventory.upsert({
-    where: { wineSkuId_locationId: { wineSkuId: sku.id, locationId: destinationLocationId } },
-    update: { totalBottles: { increment: bottlesProduced } },
-    create: { wineSkuId: sku.id, locationId: destinationLocationId, totalBottles: bottlesProduced },
-  });
-
   const { cases, loose } = casesAndLoose(bottlesProduced);
   const codes = vessels.map((v) => v.code).join(", ");
-  await writeAudit(tx, { ...actor, action: "BOTTLING", entityType: "BottlingRun", entityId: run.id, summary: `Bottled ${bottlesProduced} bottles (${cases}c + ${loose}) of "${skuName} ${skuVintage}" from ${codes} into ${location.name}` });
-  return run.id;
+  await writeAudit(tx, { ...actor, action: "BOTTLING", entityType: "BottlingRun", entityId: runId, summary: `Bottled ${bottlesProduced} bottles (${cases}c + ${loose}) of "${skuName} ${skuVintage}" from ${codes} into ${location.name}` });
+  return runId;
 }
 
 /** Reverse a bottling run within a transaction: restore bulk via the ledger, remove the bottles, delete the run. */
