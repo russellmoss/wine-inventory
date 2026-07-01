@@ -1703,7 +1703,14 @@ model ComplianceProfile {
   ein               String?
   registryNumber    String?
   operatedByName    String?
+  // Composed single-line address (kept in sync from the structured parts below) — the value
+  // printed on the Form 5120.17 header. The structured parts drive the settings/compliance UI.
   operatedByAddress String?
+  operatedByStreet1 String?
+  operatedByStreet2 String?
+  operatedByCity    String?
+  operatedByState   String?
+  operatedByZip     String?
   operatedByPhone   String?
   defaultCadence    ReportCadence @default(MONTHLY)
   updatedAt         DateTime      @updatedAt

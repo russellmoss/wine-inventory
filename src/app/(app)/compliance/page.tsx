@@ -78,7 +78,13 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
         ein: profile?.ein ?? "",
         registryNumber: profile?.registryNumber ?? "",
         operatedByName: profile?.operatedByName ?? "",
-        operatedByAddress: profile?.operatedByAddress ?? "",
+        address: {
+          street1: profile?.operatedByStreet1 ?? "",
+          street2: profile?.operatedByStreet2 ?? "",
+          city: profile?.operatedByCity ?? "",
+          state: profile?.operatedByState ?? "",
+          zip: profile?.operatedByZip ?? "",
+        },
         operatedByPhone: profile?.operatedByPhone ?? "",
       }}
       vessels={vesselOpts}

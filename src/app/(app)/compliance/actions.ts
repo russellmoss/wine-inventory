@@ -10,11 +10,18 @@ import { generateReport, markReportFiled } from "@/lib/compliance/generate";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { prisma } from "@/lib/prisma";
 import { isRemovalDisposition } from "@/lib/compliance/removal-reasons";
+import { composeAddress } from "@/lib/address/format";
 import type { WineTaxClass } from "@/lib/compliance/types";
 
 function revalidate() {
   revalidatePath("/compliance");
   revalidatePath("/bulk");
+}
+
+// The compliance profile shows on both /compliance and /settings; keep both fresh after a save.
+function revalidateProfile() {
+  revalidatePath("/compliance");
+  revalidatePath("/settings");
 }
 
 /** Period bounds (UTC) for a monthly / quarterly / annual report. */
@@ -123,16 +130,31 @@ export const assessReportReadiness = adminAction(async (_ctx, reportId: string) 
 export const saveComplianceProfile = adminAction(async (_ctx, formData: FormData) => {
   const cadenceRaw = String(formData.get("defaultCadence") ?? "MONTHLY");
   const defaultCadence = (["MONTHLY", "QUARTERLY", "ANNUAL"].includes(cadenceRaw) ? cadenceRaw : "MONTHLY") as "MONTHLY" | "QUARTERLY" | "ANNUAL";
+  const str = (k: string) => String(formData.get(k) ?? "").trim();
+  const parts = {
+    street1: str("operatedByStreet1"),
+    street2: str("operatedByStreet2"),
+    city: str("operatedByCity"),
+    state: str("operatedByState"),
+    zip: str("operatedByZip"),
+  };
+  const composed = composeAddress(parts);
   const data = {
-    ein: String(formData.get("ein") ?? "").trim() || null,
-    registryNumber: String(formData.get("registryNumber") ?? "").trim() || null,
-    operatedByName: String(formData.get("operatedByName") ?? "").trim() || null,
-    operatedByAddress: String(formData.get("operatedByAddress") ?? "").trim() || null,
-    operatedByPhone: String(formData.get("operatedByPhone") ?? "").trim() || null,
+    ein: str("ein") || null,
+    registryNumber: str("registryNumber") || null,
+    operatedByName: str("operatedByName") || null,
+    // Structured parts are the source of truth; the composed one-line heads Form 5120.17.
+    operatedByStreet1: parts.street1 || null,
+    operatedByStreet2: parts.street2 || null,
+    operatedByCity: parts.city || null,
+    operatedByState: parts.state || null,
+    operatedByZip: parts.zip || null,
+    operatedByAddress: composed || null,
+    operatedByPhone: str("operatedByPhone") || null,
     defaultCadence,
   };
   const existing = await prisma.complianceProfile.findFirst({ select: { id: true } });
   if (existing) await prisma.complianceProfile.update({ where: { id: existing.id }, data });
   else await prisma.complianceProfile.create({ data });
-  revalidate();
+  revalidateProfile();
 });

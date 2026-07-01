@@ -3,6 +3,8 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Input, Button } from "@/components/ui";
+import { AddressFields } from "@/components/address/AddressFields";
+import type { AddressParts } from "@/lib/address/format";
 import { setSparklingEnabled } from "@/lib/settings/actions";
 import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
 
@@ -10,7 +12,7 @@ export type ComplianceProfileFields = {
   ein: string;
   registryNumber: string;
   operatedByName: string;
-  operatedByAddress: string;
+  address: AddressParts;
   operatedByPhone: string;
   defaultCadence: "MONTHLY" | "QUARTERLY" | "ANNUAL";
 };
@@ -133,7 +135,7 @@ export function SettingsClient({
             <Input label="Registry number" name="registryNumber" defaultValue={complianceProfile.registryNumber} placeholder="BWN-XX-00000" style={{ flex: "1 1 200px" }} />
           </div>
           <Input label="Operated by (name)" name="operatedByName" defaultValue={complianceProfile.operatedByName} />
-          <Input label="Address" name="operatedByAddress" defaultValue={complianceProfile.operatedByAddress} />
+          <AddressFields initial={complianceProfile.address} />
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
             <Input label="Phone" name="operatedByPhone" defaultValue={complianceProfile.operatedByPhone} style={{ maxWidth: 220 }} />
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>

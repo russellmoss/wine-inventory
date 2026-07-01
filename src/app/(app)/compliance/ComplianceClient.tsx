@@ -3,6 +3,8 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Input, Button, Badge, Eyebrow } from "@/components/ui";
+import { AddressFields } from "@/components/address/AddressFields";
+import type { AddressParts } from "@/lib/address/format";
 import {
   generateComplianceReport,
   recordTaxpaidRemoval,
@@ -54,7 +56,7 @@ const CLASS_LABEL: Record<string, string> = {
 export function ComplianceClient(props: {
   reports: { id: string; label: string }[];
   view: ReportView | null;
-  profile: { ein: string; registryNumber: string; operatedByName: string; operatedByAddress: string; operatedByPhone: string };
+  profile: { ein: string; registryNumber: string; operatedByName: string; address: AddressParts; operatedByPhone: string };
   vessels: VesselOpt[];
   bottled: BottledOpt[];
   defaults: { year: number; month: number; cadence: "MONTHLY" | "QUARTERLY" | "ANNUAL" };
@@ -359,7 +361,7 @@ export function ComplianceClient(props: {
             <Input label="EIN" name="ein" defaultValue={props.profile.ein} style={{ width: 180 }} />
             <Input label="Registry number" name="registryNumber" defaultValue={props.profile.registryNumber} style={{ width: 200 }} />
             <Input label="Operated by (name)" name="operatedByName" defaultValue={props.profile.operatedByName} style={{ flex: "1 1 240px" }} />
-            <Input label="Address" name="operatedByAddress" defaultValue={props.profile.operatedByAddress} style={{ flex: "1 1 240px" }} />
+            <AddressFields initial={props.profile.address} />
             <Input label="Phone" name="operatedByPhone" defaultValue={props.profile.operatedByPhone} style={{ width: 160 }} />
             <div style={{ display: "flex", alignItems: "flex-end" }}><Button type="submit" variant="secondary" disabled={pending}>Save profile</Button></div>
           </form>
