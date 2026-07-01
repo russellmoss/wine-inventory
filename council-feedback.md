@@ -1,81 +1,141 @@
-# Council Feedback — Universal Timeline Undo (plan 024)
+# Council Feedback — TTB F 5120.17 Compliance & Reporting Engine (Phase 14 v1)
 **Date**: 2026-07-01
-**Plan**: docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md
-**Reviewers**: Gemini 3.1 Pro (domain/data-quality/UX + ledger) · Claude subagent (correctness, grounded in the actual cores; stood in for Codex which was unavailable)
-
-Both reviewers independently flag the same two riskiest units: **Unit 2 (guard unification)** and **Unit 4 (origination/split reversal)**. The spine — one dispatcher + inverse-legs-through-the-chokepoint — is sound.
+**Reviewers**: Gemini 3.1 Pro (TTB domain + data quality) · Claude (types + data layer + ledger correctness; Codex CLI was unavailable this run)
+**Plan**: `docs/plans/2026-07-01-025-feat-ttb-5120-17-compliance-reporting-plan.md`
 
 ## Critical Issues
 
-1. **Guard unification must NOT drop `planCorrection`'s shortfall check (Unit 2).** cellar/correct.ts and rack-core.ts call `planCorrection` (`math.ts:441-464`), which does TWO things: the later-touched-keys block AND a negative-fold "shortfall" pre-check. The plan's "extract the query into a helper" risks replacing `planCorrection` wholesale and losing the shortfall guard — turning a friendly CONFLICT into a raw chokepoint throw (or a semantically-wrong success). **Fix:** the shared helper is *guard-only* (returns the blocking op or null); each core keeps calling `planCorrection`. The only change to cellar/rack is how `touchedKeys` is built — add `operation: { correctedBy: { is: null } }` to that query. Add an A→B→reverse-B→reverse-A characterization test across the cellar family.
+**C1 — Tax class is modeled as a static per-lot property; the form is a per-class-column
+reconciliation where volume MOVES between classes.** (Gemini #1, #3; Units 3/5/6.) A lot fermented
+at 15% (class a) then fortified to 17% (class b) mid-period must show a *removal* from class a and an
+*addition* to class b on the correct lines (A19 used-for-spirits / A4 produced-by-spirits, or A18/A3
+for sweetening, A21/A6 for amelioration). Deriving one class at bottling silently drops these
+movements and unbalances the columns. **Fix:** tax class is a point-in-time state; the fold detects
+class transitions across the period and emits the paired remove-old/add-new lines. See plan revision.
 
-2. **Don't `DELETE` lineage/state on reverse — mark CORRECTED/VOIDED (Unit 4).** Deleting `LotLineage`/`BottledLotState` orphans any AnalysisPanel/tasting notes attached to child lots and dents auditability. This is in tension with the *existing* partial-disgorge code that deletes the SPLIT edge — resolve deliberately (keep a `correctedByOperationId`/status marker rather than a hard delete where downstream data can hang off the child).
+**C2 — CRUSH must NOT post to A2 "produced by fermentation."** (Gemini #2; Unit 5.) Crushed
+grapes/juice are not wine; putting them in §A inflates bulk-wine inventory and manufactures false
+shortages later. A2 fires when juice *becomes* wine (fermentation-complete / a lot transitioning
+MUST/JUICE→WINE), not at crush. Juice/must lives in Part VII (in-fermenters) / Part IV (materials).
+**Fix:** map the MUST/JUICE→WINE transition (existing `LotForm`/`afState` change) to A2, not CRUSH.
 
-3. **Origination guard is insufficient — must also block on lineage children (Unit 4, CRUSH/PRESS/SAIGNEE/BLEND).** The LIFO guard is keyed on later *ledger lines* for the lot. But an originated lot can be drawn to zero (position row deleted) while still having downstream **LotLineage children** (e.g., a press fraction later blended). A lot-scoped later-line query finds nothing and lets the reverse proceed — freeing picks / marking CORRECTED while a child still exists. **Fix:** also block if any `LotLineage.parentLotId == originatedLotId` edge exists that this op didn't create.
+**C3 — Amelioration / sweetening / spirits addition are volume-bearing production lines, not generic
+ADDITION.** (Gemini #3; Units 4/5.) The volume of sugar-water/spirits *added* is reported on
+A3/A4/A6. Generic `ADDITION` (SO₂, nutrient) is volume-neutral and non-reportable. **Fix:** the added
+volume of these specific treatments maps to A3/A4/A6; the base wine is only removed+re-added when it
+crosses a tax class (C1).
 
-4. **BLEND reversal conflates GROW vs NEW_LOT (Unit 4).** `blendLotsCore` has both. NEW_LOT: mark child CORRECTED + remove this op's edges. GROW_EXISTING: the "child" pre-existed with its own history — must NOT be marked CORRECTED and must NOT lose pre-existing lineage; only inverse the legs + remove the edges *this* blend created. `blend-core.ts` doesn't stamp `metadata.mode` today (add it, like crush/press) and should snapshot pre-op lineage so reversal restores rather than blind-deletes.
+**C4 — Required `abv` on `BottlingInput` breaks every existing bottling caller, and mis-times ABV
+for sparkling.** (Claude; Unit 2.) All construction sites of `executeBottling`/`applyBottling`
+(actions, tests, any assistant bottling tool) break at compile time; and the sparkling path bottles
+at **TIRAGE** (BOTTLED_IN_PROCESS) where final ABV isn't known (it rises with tirage sugar). **Fix:**
+enumerate + update all callers; require ABV on the still-wine bottling entry; resolve sparkling ABV at
+FINISH/disgorgement (base ABV + tirage bump); give historical `BottlingRun` rows a migration default.
 
-5. **Inverse legs = exact negation of the original legs, never recomputed fractions.** Recomputing SAIGNEE/BLEND fractions leaves float-drift ghosts (`0.0001 L`) that never drain. Make "exact negation" an explicit, non-negotiable rule in Unit 4 (the existing reverseTirageCore already does this).
+**C5 — CORRECTION-op `observedAt` semantics vs report period are undefined → double-counting.**
+(Claude; Units 4/8, R3.) `reverseOperationCore` appends a CORRECTION op. If it stamps `observedAt =
+now`, a February correction of a January op folds into February and mis-periods the reconciliation.
+**Fix:** define that a correction amending a filed period carries `observedAt` within that period (or
+the fold groups a CORRECTION with the period of the op it corrects); this is the mechanism behind
+Amended reports — nail it explicitly.
 
-6. **Tenant parity must be explicit (post-multitenancy).** `reverseOperationCore` should assert `originalOp.tenantId === currentTenant` before writing, and the dispatcher must NOT open its own transaction — it selects and calls exactly ONE core, which owns its `runLedgerWrite` tx and sets the tenant GUC inside it (set + re-set on retry). No nested transactions; no RLS bypass in the chokepoint.
+## Should-Fix
 
-## Design Questions (answer these, then /refine)
+**S1 — Gallons rounding must not break `Begin + Add − Remove = End`.** (Gemini #4; Unit 6.) Compute
+Begin/Add/Remove in exact liters, convert+round to 2dp, then **derive** `End = Begin + Add − Remove`
+in the rounded domain; post any drift vs the physically-converted end to A9 (gain) / A30 (loss). TTB
+systems reject columns that don't foot.
 
-1. **Nomenclature:** call it **"Correct / Void record"** rather than "Undo"? A winemaker can't physically un-press grapes or un-disgorge lees — the action is a ledger correction, not time travel. (Gemini)
-2. **Strict vs loose LIFO:** should neutral cellar ops (ADDITION/FINING/CAP_MGMT) reverse *loosely* (a typo'd SO₂ addition shouldn't be blocked just because a rack happened later), while volume/lineage/state ops (CRUSH/PRESS/BLEND/RACK/BOTTLE) stay strict LIFO? (Today the zero-line void path has no volumetric guard — unification must preserve that.)
-3. **Timeline verdict:** the client `OpItem` can't compute true reversibility for origination ops (needs downstream lineage). Pick one: (a) loader computes a server-side `canReverse(opId)` per op, or (b) drop the "disabled + reason" promise for LIFO-blocked ops and only statically disable SEED/ADJUST/DEPLETE/CORRECTION — everything else is "attempt → show the CONFLICT reason returned by the dispatcher." (Claude S5)
-4. **Blast-radius preview:** before the confirm, show what else the reverse touches — "voids child lot X, returns 450 L to Tank 4, frees 2.5 t to Pick A" — via an `analyzeReversal(opId)` probe? A two-step ConfirmButton alone is thin for something that destroys child lots and moves wine. (Gemini)
-5. **Non-undoable fix path:** if SEED/ADJUST are non-undoable, how does a user fix a typo'd SEED volume? State the remedy in the reason ("Requires a new ADJUST to correct"). Also: CORRECTION itself is non-undoable — say so with a reason ("redo the original op instead") so the dispatcher's default branch doesn't throw ugly. (Both)
-6. **Dispatcher shape:** keep the router *thin* — don't share leg-generation between origination and transfer reversals (false uniformity). Only the final `writeLotOperation` call is shared. (Both)
+**S2 — `null` ABV must not drop volume off the form.** (Gemini #5; Unit 3.) Dropping an
+unclassified lot unbalances inventory. Default `null` ABV to **class a (≤16%)** to keep the volume on
+the ledger, flag for follow-up, and amend later if a reading reclassifies it. Use exact boundaries:
+a ≤ 16.000%, b > 16.000%–≤ 21.000%, c > 21.000%–≤ 24.000%.
 
-## Suggested Improvements (SHOULD FIX)
+**S3 — On-hand "begin" should carry forward from the prior filed report, not full-refold every
+time.** (Claude; Units 6/8.) The form's rule *is* carry-forward (on-hand-end → next on-hand-begin).
+Full-history re-fold is O(all ops), grows unbounded, and can disagree with the last filed end after a
+backdated/correction op. Use the prior **FILED** `ComplianceReport`'s on-hand-end as begin; full-fold
+only for the first report or an explicit recompute. Add index `(tenantId, observedAt)` on LotOperation.
 
-- **PRESS is an ambiguous op type (Claude S2):** whole-cluster press (fruit origination, has `LotHarvestSource`) vs parent split (has SPLIT lineage). Reverse-press must branch on presence-of-picks vs lineage, not on `op.type`.
-- **"Rewind form/AF" is a no-op for crush/press/blend (Claude S2):** they set child form at `lot.create` with NO `LotStateEvent`; only TIRAGE records one. Don't imply a symmetric rewind that doesn't exist.
-- **BOTTLE/FINISH runId fallback can pick the wrong run for multi-run lots (Claude S3):** metadata.runId stamp fixes new ops; for old ops with >1 run, return "reverse from the bottling-run view" rather than guessing. (This bug already exists in `reverseFinalizeCore`'s fallback — don't copy it.)
-- **Idempotency (Claude S4):** every new core must set `correctsOperationId` NON-null (the finalize path currently allows null → no double-reverse protection); add a `commandId` to `reverseOperationAction` so a double-tap on the timeline is a no-op success.
-- **Blocked reason must name the specific blocking op** `{id, type, date}` with a link, not "a later step still stands." The shared guard should return it. (Both)
-- **Pick over-restore integrity flag (Gemini):** warn if returning kg to a pick would exceed its original received weight.
-- **Shared guard should use the LOT-SCOPED form** (`sparkling/correct.ts:244-250`), not the global-by-key form (`:60-71`), to avoid cross-lot false blocks. (Claude)
-- **Fix Unit 4's dependency (Claude D3):** its verification says "reverse via dispatcher" but it only depends on Unit 2 — it needs Unit 3, or test the cores directly until Unit 8.
+**S4 — "Final" is a business-closing flag, not a per-period state.** (Claude; Units 7/8/12.) The
+form's Original/Amended/Final: *Final* = last report for the whole business. Separate the report
+lifecycle (DRAFT→FILED) from the form version flag; don't offer per-period "Final."
+
+**S5 — Removal disposition → §A vs §B is chosen by bulk/bottled state, not the disposition.** (Claude;
+Unit 4/5.) `mapLineToForm` must pick the section from `bucket`; the enum doc listing "TAXPAID→A14/B8"
+should read "→ A14 if bulk, B8 if bottled."
+
+## Design Questions
+
+**Q1 (scope fork) — How much cross-class / fermentation-transition accounting is in v1?** C1/C2/C3
+reshape the model. Minimum-correct v1: (a) A2 on MUST/JUICE→WINE, (b) cross-class movement lines for
+BLEND + sweetening/spirits/amelioration, (c) carry-forward begin. Do we build all of that now, or hold
+v1 to a **grape-still-dry-wine happy path** (single class per lot, no fortification/cross-class blend)
+and explicitly defer mid-period transitions — with an anomaly flag when a lot's class changes?
+
+**Q2 — Cross-class blend fractional volumes (A5/A20).** (Gemini #6.) Does `BLEND` capture the exact
+liters contributed by each source tax class, so A5 can report "X removed from class b, added to class
+a"? If the BLEND op only records the child lot, the plan can't compute the per-class deltas.
+
+**Q3 — Bottling runs spanning a period boundary.** (Gemini #7.) A run started 01-31 and recorded
+02-01 must show the gallons physically bottled by 01-31 in January. Do we require operators to split
+the run at month-end, or accept `observedAt`-based assignment (whole run lands in the recorded period)?
+
+**Q4 — In-bond transfers / received-in-bond / taxpaid-returned-to-bond (A7/A15, B3/B9, B4).** (Claude.)
+These need a counterparty bonded premises not modeled in single-winery v1. Leave the lines at zero and
+document, or model inter-premises transfer now?
 
 ---
 ## Raw Response — Gemini (gemini-3.1-pro-preview)
 
-### CRITICAL (Ledger Safety & Data Quality)
-- **Violations of "Append-Only" (Units 4 & 7):** don't DELETE LotLineage/LotHarvestSource/BottledState; add a corrected-by marker and void via exact negative legs. Deleting orphans analysis/tasks/tasting notes on child lots.
-- **Exact Leg Negation vs Recalculation:** never recalculate fractions on reverse; fetch the original signed legs and insert inverted values, else float drift leaves undrainable dust.
-- **Multi-Tenancy Reversal Leaks:** reverseOperationCore must enforce tenantId parity explicitly and pass tenantId into the chokepoint; never bypass RLS for projections.
+### CRITICAL: Domain & Accounting Failures
+1. **Mid-Period Tax Class Transitions (Violates Part I §A Math).** Deriving one tax class per lot
+based on latest ABV / at bottling breaks the ledger math for bulk wine that changes class mid-period.
+If a lot starts January at 15.0% (Class a) and is sweetened/fortified in February to 17.0% (Class b),
+you cannot retroactively change January's ending inventory; the movement is a reportable event. Fix:
+tax class must be a time-series state; a cross-boundary op auto-generates a removal from the old class
+(e.g. A19) and an addition to the new class (e.g. A4).
+2. **CRUSH does not produce wine (Line A2 mismatch).** Crushed grapes/juice are not wine; entering
+them on §A inflates bulk-wine inventory and triggers false shortages. Juice is tracked in Part VII.
+A2 triggers when juice becomes wine (≈0.5% ABV / declared finished). Fix: disconnect CRUSH from A2;
+introduce a FERMENTATION_COMPLETE / DECLARE_WINE transition (Part VII → §A2).
+3. **Amelioration and Sweetening are Volume-Increasing Additions.** Folding them into generic ADDITION
+misses reportable volume. Adding sugar-water increases lot volume; report the volume gained on A6
+(amelioration) / A3 (sweetening) / A4 (spirits). The base wine isn't removed+re-added unless it
+crosses a tax class.
 
-### SHOULD FIX (Domain Logic & UX)
-- **Strict LIFO vs Cellar Reality:** bifurcate the guard — strict LIFO for volume/lineage/state ops; loose for non-volumetric cellar ops (ADDITION/FINING) so a typo'd addition isn't blocked by a later rack.
-- **Blind Confirmation / Blast Radius:** add analyzeReversal(opId) to show an impact summary before enabling Confirm (child lots voided, volume returned, picks freed).
-- **Vague Blocked Reasons:** guard returns the specific blocking op {opId,type,date}; UI links to it.
-- **Pick Consumption Re-use:** flag if returning tons exceeds the pick's original received weight.
+### SHOULD FIX
+4. **Gallons Rounding breaks Begin + Add − Remove = End.** Rounding each cell independently drifts by
+±0.01 gal and TTB rejects columns that don't balance. Compute Begin/Add/Remove in exact liters,
+convert/round, then calculate End in the rounded domain; post drift to A9 (gain) / A30 (shortage).
+5. **Tax Class Boundaries and Missing ABV.** Class a ≤16.000%, b strictly >16.000% and ≤21.000%.
+null ABV cannot just "flag an anomaly and drop the volume" — that breaks the balance. Default null to
+Class a to keep volume on the ledger; amend later if testing reclassifies.
 
 ### DESIGN QUESTIONS
-- Is "Undo" the right mental model? Prefer "Correct Ledger / Void Record" — a winemaker can't un-press grapes.
-- Is the universal dispatcher false uniformity? Keep the router thin; keep origination vs transfer reversal logic distinct, sharing only the chokepoint.
-- What happens to SEED/ADJUST/DEPLETE? If non-undoable, state the remedy ("requires manual ADJUST"); otherwise reconsider allowing a CORRECTION leg for ADJUST.
+6. **Cross-Class Blending Math (Line A5).** Blending 100G class a + 100G class b → 200G class a
+requires A5 to report 100G removed from b and 100G added to a. Does BLEND capture exact fractional
+volumes per source class, or just the final lot's class?
+7. **Bottling Runs Spanning Midnight.** A run started Jan 31 finishing Feb 1 may be recorded Feb 1;
+TTB wants gallons bottled by 11:59pm Jan 31 on January's form. Partial-run boundary splits, or forced
+month-end chopping?
 
-## Raw Response — Claude subagent (correctness, grounded in the cores)
+---
+## Raw Response — Claude (types + data layer + ledger correctness; Codex CLI unavailable)
 
-**CRITICAL**
-- C1. Guard unification silently drops planCorrection's shortfall check — weakening cellar+rack. Keep planCorrection; make the shared helper guard-only; only change how touchedKeys is built (add correctedBy exclusion). math.ts:441-464, cellar/correct.ts:72-97, rack-core.ts:309-331.
-- C2. The correctedBy-exclusion is not universally safe without the shortfall pass (A→B→reverse-B→reverse-A). Keep the negative-fold pre-check; add a characterization test across the cellar family.
-- C3. CRUSH/origination guard insufficient: must also block if the originated lot has LotLineage children not created by this op (a must lot drawn to zero still has downstream children). Freeing picks / marking CORRECTED while a child exists is the hazard.
-- C4. BLEND reversal conflates grow vs new-lot (blend-core.ts:120-128). Branch on metadata.mode (not currently stamped — add it, crush-core.ts:303 precedent). GROW must not mark the lot CORRECTED or delete pre-existing lineage; snapshot pre-op lineage to restore, not blind-delete.
-
-**SHOULD FIX**
-- S1. Dispatcher must key on op.type; a "rack" can be a BLEND-typed op (rack-core.ts:248,267) with no VesselTransfer — route by type, not by user intent.
-- S2. PRESS is ambiguous (whole-cluster fruit origination with picks vs parent split with lineage) — detect by picks-vs-lineage. "Rewind form/AF" is a no-op for crush/press/blend (no LotStateEvent written; only TIRAGE writes one).
-- S3. metadata.runId fallback picks the wrong run for multi-run lots; return a "reverse from bottling-run view" reason instead of guessing. Same latent bug in reverseFinalizeCore.
-- S4. correctsOperationId must be non-null in every new core (reverseFinalizeCore allows null → no double-reverse guard); add commandId to reverseOperationAction for true idempotency.
-- S5. Unit 6 timeline verdict can't be computed client-side from OpItem (needs lineage/later-lines). Either compute server-side canReverse(opId) in the loader, or only statically disable SEED/ADJUST/DEPLETE/CORRECTION and make everything else attempt→show-CONFLICT. timeline.ts:441, LotDetailClient.tsx:176-179,29-30.
-
-**DESIGN QUESTIONS**
-- D1. Enum coverage is exhaustive; but state CORRECTION as non-undoable with a reason (cellar/correct.ts:37 rejects correcting a CORRECTION) so the default branch doesn't throw ugly.
-- D2. Dispatcher must NOT open a transaction; it calls exactly one core which owns its runLedgerWrite tx (tenant GUC set inside). No nested tx.
-- D3. Unit 4's verification depends on Unit 3 (dispatcher), not just Unit 2 — fix the dependency or test cores directly until Unit 8.
-
-Bottom line: spine is right; fix C1–C4 before /work executes. Unit 2 (guard) and Unit 4 (origination reversal) are the two units most likely to ship a correctness bug.
+- **C4** Required `abv` on `BottlingInput` breaks all existing callers (actions/tests/assistant) and
+  mis-times ABV for the sparkling TIRAGE→FINISH path (final ABV unknown at tirage). Enumerate callers;
+  require ABV on still-wine bottling; resolve sparkling ABV at FINISH (base + tirage bump); migration
+  default for historical BottlingRun rows.
+- **C5** CORRECTION-op `observedAt` vs report period is undefined; a later-period correction of a
+  filed op double-counts. Define correction→period assignment explicitly (it's the Amended mechanism).
+- **S3** Carry forward on-hand-begin from the prior FILED report instead of full-history re-fold
+  (perf O(all ops) + can disagree with the last filed end); index `(tenantId, observedAt)`.
+- **S4** "Final" is a business-closing flag, not per-period; separate report lifecycle (DRAFT→FILED)
+  from the form version flag.
+- **S5** `mapLineToForm` picks §A vs §B from `bucket` (bulk/bottled), not the disposition enum.
+- **Q4** In-bond transfer lines (A7/A15, B3/B9, B4) need an unmodeled counterparty — zero + document
+  for single-winery v1, or model inter-premises transfer.
+- **Sound as-is:** the pdf-lib AcroForm position-calibration approach; the full Phase-12 RLS checklist
+  on the two new tables; reusing `foldLines()`; the operationId-order fold with an observedAt filter
+  (given C5 is resolved).
