@@ -64,12 +64,31 @@ export async function fillTtbPdf(input: FillInput): Promise<{ bytes: Uint8Array;
 
   // Header from the tenant profile + period + version.
   const y = input.periodEnd.getUTCFullYear();
+  const month = input.cadence === "MONTHLY" ? String(input.periodEnd.getUTCMonth() + 1) : "";
   setText(header.year, String(y));
-  if (input.cadence === "MONTHLY") setText(header.month, String(input.periodEnd.getUTCMonth() + 1));
+  if (month) setText(header.month, month);
   setText(header.ein, input.profile.ein ?? "");
   setText(header.registry, input.profile.registryNumber ?? "");
   setText(header.operatedBy, input.profile.operatedBy ?? "");
   setText(header.remarks, input.remarks ?? "");
+
+  // TTB SMART-FORM mirror fields (info.*): the 5120.17sm ships these with "REQUIRED!" hint text as
+  // their default value, cleared by the form's own validation SCRIPT once the real field is filled.
+  // pdf-lib can't run that script, so we set/clear the mirror fields ourselves — otherwise the
+  // scaffolding hints ("REQUIRED! # EIN 00-0000000") print on the header. Missing names are skipped.
+  const versionLabel = input.version + (input.isFinalBusinessReport ? " (FINAL)" : "");
+  const smartInfo: Record<string, string> = {
+    "info.Year": String(y),
+    "info.Month_Quaterly": month,
+    "info.Employer_ID": input.profile.ein ?? "",
+    "info.Plant_No": input.profile.registryNumber ?? "",
+    "info.Operated_By": input.profile.operatedBy ?? "",
+    "info.Version": versionLabel,
+    "info.Proprietor": "", // signed at filing time, not auto-populated
+    "info.Title": "",
+    "info.Date": "",
+  };
+  for (const [name, value] of Object.entries(smartInfo)) setText(name, value);
 
   // Grid cells (begin / flows / end) from the snapshot.
   for (const c of input.computed.cells) {

@@ -2,14 +2,31 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge } from "@/components/ui";
+import { Card, Eyebrow, Badge, Input, Button } from "@/components/ui";
 import { setSparklingEnabled } from "@/lib/settings/actions";
+import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
 
-export function SettingsClient({ sparklingEnabled }: { sparklingEnabled: boolean }) {
+export type ComplianceProfileFields = {
+  ein: string;
+  registryNumber: string;
+  operatedByName: string;
+  operatedByAddress: string;
+  operatedByPhone: string;
+};
+
+export function SettingsClient({
+  sparklingEnabled,
+  complianceProfile,
+}: {
+  sparklingEnabled: boolean;
+  complianceProfile: ComplianceProfileFields;
+}) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+  const [profileMsg, setProfileMsg] = React.useState<string | null>(null);
+  const [profilePending, startProfile] = React.useTransition();
 
   function toggle(next: boolean) {
     setError(null);
@@ -82,6 +99,46 @@ export function SettingsClient({ sparklingEnabled }: { sparklingEnabled: boolean
           </button>
         </div>
         {error && <p style={{ color: "var(--danger)", marginTop: 12, fontSize: 14 }}>{error}</p>}
+      </Card>
+
+      {/* TTB compliance profile — the filer identity that heads Form 5120.17. */}
+      <Card style={{ maxWidth: 560, marginTop: 16 }}>
+        <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>TTB compliance profile</h2>
+        <p style={{ color: "var(--text-secondary)", margin: "6px 0 16px", fontSize: 14.5, maxWidth: "48ch" }}>
+          The filer identity printed on the Report of Wine Premises Operations (Form 5120.17) header —
+          EIN, registry number, and who the premises are operated by. Set once; it auto-populates every
+          generated report.
+        </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            setProfileMsg(null);
+            setError(null);
+            startProfile(async () => {
+              try {
+                await saveComplianceProfile(fd);
+                setProfileMsg("Saved.");
+                router.refresh();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Couldn't save the profile.");
+              }
+            });
+          }}
+          style={{ display: "flex", flexDirection: "column", gap: 12 }}
+        >
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <Input label="EIN" name="ein" defaultValue={complianceProfile.ein} placeholder="00-0000000" style={{ flex: "1 1 180px" }} />
+            <Input label="Registry number" name="registryNumber" defaultValue={complianceProfile.registryNumber} placeholder="BWN-XX-00000" style={{ flex: "1 1 200px" }} />
+          </div>
+          <Input label="Operated by (name)" name="operatedByName" defaultValue={complianceProfile.operatedByName} />
+          <Input label="Address" name="operatedByAddress" defaultValue={complianceProfile.operatedByAddress} />
+          <Input label="Phone" name="operatedByPhone" defaultValue={complianceProfile.operatedByPhone} style={{ maxWidth: 220 }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Button type="submit" variant="primary" disabled={profilePending}>{profilePending ? "Saving…" : "Save compliance profile"}</Button>
+            {profileMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{profileMsg}</span>}
+          </div>
+        </form>
       </Card>
     </div>
   );
