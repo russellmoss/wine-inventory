@@ -26,6 +26,12 @@ export const OPERATION_TYPES = [
   "CRUSH", // consume harvest picks → originate a MUST lot at measured liters (kg = metadata)
   "PRESS", // split a must/wine lot into free-run + press fraction child lots (1 parent → N)
   "SAIGNEE", // bleed juice off a MUST lot pre-ferment (the same split, form MUST→JUICE)
+  // ── Phase 7 sparkling (bottle-as-continuable-container) ──
+  "TIRAGE", // bottle a bulk lot into an en-tirage bottle lot (+ liqueur de tirage)
+  "RIDDLING", // remuage — a zero-volume work step
+  "DISGORGEMENT", // eject the lees plug — a per-bottle volume LOSS (partial = a SPLIT)
+  "DOSAGE", // liqueur d'expédition — adds volume back and sets the sweetness style
+  "FINISH", // close the bottled lot into a sellable WineSku (shared materialization core)
 ] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 
