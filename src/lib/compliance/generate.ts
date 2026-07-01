@@ -154,22 +154,36 @@ async function bottledGoodsCells(asOf: Date): Promise<OnHand[]> {
   return [...acc.values()];
 }
 
-/** §B taxpaid removals of bottled wine = NEGATIVE BOTTLED_WINE StockMovements in the period → B8. */
+/**
+ * §B bottled removals = NEGATIVE BOTTLED_WINE StockMovements in the period, mapped to the right §B
+ * line by the movement's disposition `reason` (tagged by removeBottledCore / Commerce7): TAXPAID→B8,
+ * TASTING→B11, EXPORT→B12, FAMILY_USE→B13, TESTING→B14, BREAKAGE→B18. Movements with NO recognized
+ * disposition are left to the B19 reconcile (an unexplained bottled shortage — honest, ftn 4), never
+ * silently posted as a taxpaid removal.
+ */
 async function bottledGoodsRemovals(start: Date, end: Date): Promise<LineContribution[]> {
   const [runs, sales] = await Promise.all([
     prisma.bottlingRun.findMany({ orderBy: { date: "asc" }, select: { wineSkuId: true, bottledAbv: true, wineSku: { select: { bottleSizeMl: true, method: true } } } }),
-    prisma.stockMovement.findMany({ where: { itemKind: "BOTTLED_WINE", createdAt: { gte: start, lte: end }, deltaUnits: { lt: 0 } }, select: { wineSkuId: true, deltaUnits: true } }),
+    prisma.stockMovement.findMany({ where: { itemKind: "BOTTLED_WINE", createdAt: { gte: start, lte: end }, deltaUnits: { lt: 0 } }, select: { wineSkuId: true, deltaUnits: true, reason: true } }),
   ]);
   const skuInfo = new Map<string, { abv: number | null; method: SparklingMethodLike | null; sizeMl: number }>();
   for (const r of runs) if (r.wineSkuId) skuInfo.set(r.wineSkuId, { abv: r.bottledAbv == null ? null : num(r.bottledAbv), method: (r.wineSku.method as SparklingMethodLike) ?? null, sizeMl: r.wineSku.bottleSizeMl });
+
   const out: LineContribution[] = [];
   for (const m of sales) {
     if (!m.wineSkuId) continue;
     const info = skuInfo.get(m.wineSkuId);
     if (!info) continue;
-    const liters = Math.abs(m.deltaUnits) * (info.sizeMl / 1000);
+    const reason = (m.reason ?? "").toUpperCase();
     const cls = deriveTaxClass({ abv: info.abv, productType: "WINE", carbonation: "NONE", sparklingMethod: info.method });
-    out.push({ section: "B", line: 8, column: cls.taxClass, sub: cls.sparklingSub, liters }); // B8 removed taxpaid
+    const liters = Math.abs(m.deltaUnits) * (info.sizeMl / 1000);
+    // Route the disposition through the single form-map authority (E4).
+    const target =
+      reason === "BREAKAGE"
+        ? mapLineToForm({ opType: "LOSS", reason: "loss", source: "BOTTLED", deltaSign: 1, taxClass: cls.taxClass, sparklingSub: cls.sparklingSub }).target
+        : mapLineToForm({ opType: "REMOVE_TAXPAID", reason, source: "BOTTLED", deltaSign: 1, taxClass: cls.taxClass, sparklingSub: cls.sparklingSub }).target;
+    if (!target) continue; // untagged / unrecognized → falls to the B19 shortage reconcile
+    out.push({ section: target.section, line: target.line, column: cls.taxClass, sub: target.sub, liters });
   }
   return out;
 }

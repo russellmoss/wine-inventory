@@ -6,11 +6,13 @@ import { Card, Input, Button, Badge, Eyebrow } from "@/components/ui";
 import {
   generateComplianceReport,
   recordTaxpaidRemoval,
+  recordBottledRemoval,
   fileComplianceReport,
   saveComplianceProfile,
 } from "./actions";
 import { TAX_CLASS_COLUMNS, SECTION_A_LINES, SECTION_B_LINES } from "@/lib/compliance/form-labels";
 import { REMOVAL_DISPOSITION_LABELS } from "@/lib/compliance/removal-reasons";
+import { BOTTLED_REMOVAL_LABELS } from "@/lib/compliance/bottled-removal-core";
 import type { AnomalyFinding } from "@/lib/compliance/anomaly";
 import type { PerLotClass } from "@/lib/compliance/generate";
 import type { WineTaxClass } from "@/lib/compliance/types";
@@ -38,6 +40,7 @@ export type ReportView = {
 };
 
 export type VesselOpt = { id: string; code: string; availableL: number };
+export type BottledOpt = { value: string; label: string; bottles: number };
 
 const sel: React.CSSProperties = {
   height: 40, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
@@ -53,6 +56,7 @@ export function ComplianceClient(props: {
   view: ReportView | null;
   profile: { ein: string; registryNumber: string; operatedByName: string; operatedByAddress: string; operatedByPhone: string };
   vessels: VesselOpt[];
+  bottled: BottledOpt[];
   defaults: { year: number; month: number; cadence: "MONTHLY" | "QUARTERLY" | "ANNUAL" };
 }) {
   const { view } = props;
@@ -306,6 +310,40 @@ export function ComplianceClient(props: {
           <Input label="Date" name="date" type="date" style={{ width: 160 }} />
           <Button type="submit" variant="secondary" disabled={pending || props.vessels.length === 0}>Record removal</Button>
         </form>
+      </Card>
+
+      {/* Remove BOTTLED wine from finished-goods inventory (§B lines) */}
+      <Card style={{ marginBottom: 16, padding: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Remove bottled wine (from inventory)</div>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10, maxWidth: "70ch" }}>
+          Bottled wine leaves finished-goods inventory — a sale, a tasting pour, an export, family use, or breakage.
+          Pick the disposition and it lands on the right §B line (taxpaid → B8, tasting → B11, export → B12,
+          family → B13, testing → B14, breakage → B18). This is the path a Commerce7 depletion would drive automatically.
+        </p>
+        {props.bottled.length === 0 ? (
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No bottled inventory on hand yet.</p>
+        ) : (
+          <form
+            onSubmit={(e) => { e.preventDefault(); run(() => recordBottledRemoval(new FormData(e.currentTarget)), () => { (e.target as HTMLFormElement).reset(); setMsg("Bottled removal recorded."); }); }}
+            style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}
+          >
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 320px" }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Bottled wine · location</span>
+              <select name="skuLoc" required style={sel}>
+                <option value="">Choose bottled wine</option>
+                {props.bottled.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+              </select>
+            </label>
+            <Input label="Bottles" name="bottles" type="number" min="1" step="1" required style={{ width: 110 }} />
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Disposition</span>
+              <select name="disposition" defaultValue="TAXPAID" style={sel}>
+                {Object.entries(BOTTLED_REMOVAL_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+            </label>
+            <Button type="submit" variant="secondary" disabled={pending}>Remove bottles</Button>
+          </form>
+        )}
       </Card>
 
       {/* Profile */}

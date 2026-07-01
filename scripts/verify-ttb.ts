@@ -20,6 +20,7 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { executeBottling } from "@/lib/bottling/run";
 import { recordLossCore } from "@/lib/cellar/loss";
 import { removeTaxpaidCore } from "@/lib/compliance/removal-core";
+import { removeBottledCore } from "@/lib/compliance/bottled-removal-core";
 import { generateReport, markReportFiled } from "@/lib/compliance/generate";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { fillTtbPdf } from "@/lib/compliance/fill-pdf";
@@ -129,6 +130,10 @@ async function main() {
     const rmB = await removeTaxpaidCore(ACTOR, { vesselId: v2.id, volumeL: 50, disposition: "TAXPAID" }); // V2 has no later activity → cleanly reversible (LIFO)
     await recordLossCore(ACTOR, { vesselId: v1.id, lossL: 15 });
 
+    // Bottled removal: pour 12 bottles for tasting (§B line 11) out of finished goods.
+    const inv = await prisma.bottledInventory.findFirst({ where: { locationId: loc.id }, select: { wineSkuId: true, locationId: true } });
+    if (inv) await removeBottledCore(ACTOR, { wineSkuId: inv.wineSkuId, locationId: inv.locationId, bottles: 12, disposition: "TASTING" });
+
     // ── Generate + assert ──
     console.log("Generating July report…");
     const gen = await generateReport(TENANT, { periodStart: START, periodEnd: END, cadence: "MONTHLY" });
@@ -148,6 +153,8 @@ async function main() {
     assert(cell("A", 29, "A_LE16") > 0, `A29 loss present (${cell("A", 29, "A_LE16")} gal)`);
     assert(cell("B", 2, "A_LE16") > 0, `B2 bottled-in present (${cell("B", 2, "A_LE16")} gal)`);
     assert(Math.abs(cell("A", 13, "A_LE16") - cell("B", 2, "A_LE16")) < 0.01, "A13 gallons == B2 gallons (ftn 3)");
+    assert(cell("B", 11, "A_LE16") > 0, `B11 used-for-tasting present from a bottled removal (${cell("B", 11, "A_LE16")} gal)`);
+    assert(cell("B", 8, "A_LE16") === 0, "the tasting removal did NOT mis-post as B8 taxpaid");
 
     // ── PDF round-trip ──
     console.log("Filling + re-reading the TTB PDF…");

@@ -2,13 +2,13 @@ import { requireAdmin } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { deterministicAnomalies } from "@/lib/compliance/anomaly";
 import type { ComputedSnapshot } from "@/lib/compliance/generate";
-import { ComplianceClient, type ReportView, type VesselOpt } from "./ComplianceClient";
+import { ComplianceClient, type ReportView, type VesselOpt, type BottledOpt } from "./ComplianceClient";
 
 export default async function CompliancePage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
 
-  const [reports, profile, vessels] = await Promise.all([
+  const [reports, profile, vessels, bottledInv] = await Promise.all([
     prisma.complianceReport.findMany({
       orderBy: [{ periodEnd: "desc" }, { generatedAt: "desc" }],
       take: 24,
@@ -19,6 +19,10 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
       where: { isActive: true },
       orderBy: { code: "asc" },
       include: { vesselLots: { select: { volumeL: true } } },
+    }),
+    prisma.bottledInventory.findMany({
+      where: { totalBottles: { gt: 0 } },
+      include: { wineSku: { select: { name: true, vintage: true } }, location: { select: { name: true } } },
     }),
   ]);
 
@@ -55,6 +59,12 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
     .map((v) => ({ id: v.id, code: v.code, availableL: Math.round(v.vesselLots.reduce((a, r) => a + Number(r.volumeL), 0) * 100) / 100 }))
     .filter((v) => v.availableL > 0);
 
+  const bottledOpts: BottledOpt[] = bottledInv.map((b) => ({
+    value: `${b.wineSkuId}|${b.locationId}`,
+    label: `${b.wineSku.name}${b.wineSku.vintage ? ` ${b.wineSku.vintage}` : ""} @ ${b.location.name} · ${b.totalBottles} btl`,
+    bottles: b.totalBottles,
+  }));
+
   const now = new Date();
   return (
     <ComplianceClient
@@ -72,6 +82,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
         operatedByPhone: profile?.operatedByPhone ?? "",
       }}
       vessels={vesselOpts}
+      bottled={bottledOpts}
       defaults={{ year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, cadence: profile?.defaultCadence ?? "MONTHLY" }}
     />
   );

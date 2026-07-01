@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { adminAction } from "@/lib/actions";
 import { ActionError } from "@/lib/action-error";
 import { removeTaxpaidCore } from "@/lib/compliance/removal-core";
+import { removeBottledCore, isBottledRemovalDisposition } from "@/lib/compliance/bottled-removal-core";
 import { generateReport, markReportFiled } from "@/lib/compliance/generate";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { prisma } from "@/lib/prisma";
@@ -37,6 +38,18 @@ export const recordTaxpaidRemoval = adminAction(async ({ actor }, formData: Form
   const observedAt = dateStr ? new Date(dateStr) : undefined;
   if (observedAt && Number.isNaN(observedAt.getTime())) throw new ActionError("Invalid date.");
   await removeTaxpaidCore(actor, { vesselId, volumeL, disposition, observedAt });
+  revalidate();
+});
+
+/** Remove bottled wine from finished-goods inventory with a disposition → the correct §B line. */
+export const recordBottledRemoval = adminAction(async ({ actor }, formData: FormData) => {
+  const [wineSkuId, locationId] = String(formData.get("skuLoc") ?? "").split("|");
+  const bottles = Number(formData.get("bottles"));
+  const disposition = String(formData.get("disposition") ?? "TAXPAID");
+  if (!wineSkuId || !locationId) throw new ActionError("Pick a bottled wine + location.");
+  if (!isBottledRemovalDisposition(disposition)) throw new ActionError("Unknown disposition.");
+  if (!Number.isInteger(bottles) || bottles < 1) throw new ActionError("Enter a whole number of bottles.");
+  await removeBottledCore(actor, { wineSkuId, locationId, bottles, disposition });
   revalidate();
 });
 
