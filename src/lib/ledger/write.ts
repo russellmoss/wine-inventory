@@ -10,6 +10,8 @@ import {
   type VesselLotBalance,
 } from "@/lib/ledger/math";
 import { FUNCTIONAL_ZERO_L, type CaptureMethod, type OperationType } from "@/lib/ledger/vocabulary";
+import { foldBottledLot, resolveBucket, assertCountVolumeConsistent } from "@/lib/sparkling/projection";
+import type { SparklingMethod, BottleStage } from "@prisma/client";
 
 // The single transactional chokepoint for every bulk-wine operation (Phase 1 spine).
 // Not a server action (no "server-only") so the Day-Zero migration + verification
@@ -64,6 +66,17 @@ export type WriteOpInput = {
   vesselCodes: Map<string, string>;
   /** vesselId -> capacityL, for the capacity guard. */
   capacityByVessel: Map<string, number>;
+  /** Phase 7 (K2): descriptive attributes for a BottledLotState row the chokepoint FIRST-CREATES
+   * from a BOTTLE_STORAGE line (i.e. tirage). volumeL + bottleCount are FOLDED from the lines,
+   * never passed here. Required when a BOTTLE_STORAGE line creates a lot's state for the first
+   * time; ignored on updates. */
+  bottleState?: {
+    nominalFillMl: number;
+    method: SparklingMethod;
+    tirageAt: Date;
+    locationId?: string | null;
+    stage?: BottleStage; // defaults EN_TIRAGE (tirage is the only op that first-creates)
+  };
 };
 
 /**
@@ -122,17 +135,24 @@ export async function writeLotOperation(
     select: { id: true },
   });
 
-  // Append the lines (immutable), with durable code snapshots.
+  // Append the lines (immutable), with durable code snapshots + the Phase 7 bucket discriminator.
+  // A BOTTLE_STORAGE leg carries bottleDelta; every other leg leaves it null (the DB CHECK
+  // enforces the iff, so a malformed BOTTLE_STORAGE line with no bottleDelta is rejected there).
   await tx.lotOperationLine.createMany({
-    data: input.lines.map((l) => ({
-      operationId: op.id,
-      lotId: l.lotId,
-      vesselId: l.vesselId,
-      deltaL: l.deltaL,
-      reason: l.reason ?? null,
-      lotCode: input.lotCodes.get(l.lotId) ?? l.lotId,
-      vesselCode: l.vesselId ? (input.vesselCodes.get(l.vesselId) ?? null) : null,
-    })),
+    data: input.lines.map((l) => {
+      const bucket = resolveBucket(l);
+      return {
+        operationId: op.id,
+        lotId: l.lotId,
+        vesselId: l.vesselId,
+        deltaL: l.deltaL,
+        reason: l.reason ?? null,
+        bucket,
+        bottleDelta: bucket === "BOTTLE_STORAGE" ? (l.bottleDelta ?? null) : null,
+        lotCode: input.lotCodes.get(l.lotId) ?? l.lotId,
+        vesselCode: l.vesselId ? (input.vesselCodes.get(l.vesselId) ?? null) : null,
+      };
+    }),
   });
 
   // Apply the projection diff: update/create the survivors, delete those swept to zero.
@@ -153,6 +173,56 @@ export async function writeLotOperation(
       await tx.vesselLot.create({
         data: { vesselId: target.vesselId, lotId: target.lotId, volumeL: target.volumeL },
       });
+    }
+  }
+
+  // Phase 7 (K2): fold the BottledLotState projection from the BOTTLE_STORAGE legs — the SECOND
+  // deterministic projection, materialized inside the same chokepoint (D2/D14). Additive: it runs
+  // only when a BOTTLE_STORAGE leg is present and touches nothing the vessel fold saw. Plain in-tx
+  // read (same as the vessel_lot read above) — SERIALIZABLE + withWriteRetry is the concurrency
+  // guard, NO bespoke row lock (matches the house pattern).
+  const bottleLotIds = [
+    ...new Set(input.lines.filter((l) => resolveBucket(l) === "BOTTLE_STORAGE").map((l) => l.lotId)),
+  ];
+  if (bottleLotIds.length > 0) {
+    const currentStates = await tx.bottledLotState.findMany({ where: { lotId: { in: bottleLotIds } } });
+    const stateByLot = new Map(currentStates.map((s) => [s.lotId, s]));
+    for (const lotId of bottleLotIds) {
+      const existing = stateByLot.get(lotId);
+      const currentProj = existing ? { lotId, bottleCount: existing.bottleCount, volumeL: num(existing.volumeL) } : null;
+      const next = foldBottledLot(currentProj, input.lines, lotId);
+
+      if (!next) {
+        if (existing) await tx.bottledLotState.delete({ where: { lotId } });
+        continue;
+      }
+
+      if (existing) {
+        assertCountVolumeConsistent(next, existing.nominalFillMl);
+        await tx.bottledLotState.update({
+          where: { lotId },
+          data: { bottleCount: next.bottleCount, volumeL: next.volumeL },
+        });
+      } else {
+        // First create — only a BOTTLE_STORAGE line that ORIGINATES the bottle lot (tirage) gets
+        // here, and it MUST bring the descriptive attributes (method/nominalFill/tirageAt).
+        if (!input.bottleState) {
+          throw new ActionError("A bottling operation must supply bottleState to create the bottled-lot projection.");
+        }
+        assertCountVolumeConsistent(next, input.bottleState.nominalFillMl);
+        await tx.bottledLotState.create({
+          data: {
+            lotId,
+            bottleCount: next.bottleCount,
+            volumeL: next.volumeL,
+            nominalFillMl: input.bottleState.nominalFillMl,
+            method: input.bottleState.method,
+            stage: input.bottleState.stage ?? "EN_TIRAGE",
+            tirageAt: input.bottleState.tirageAt,
+            locationId: input.bottleState.locationId ?? null,
+          },
+        });
+      }
     }
   }
 
