@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireTenantId } from "@/lib/tenant/context";
 import { prisma } from "@/lib/prisma";
 import { action, ActionError } from "@/lib/actions";
 import { canManagerAccessVineyard } from "@/lib/access";
@@ -61,7 +62,7 @@ export const createPressCycleAction = action(async (_ctx, rawName: string): Prom
   if (!name) throw new ActionError("Enter a press cycle name.");
   if (name.length > 80) throw new ActionError("Press cycle name is too long (max 80 characters).");
   const cycle = await prisma.pressCycle.upsert({
-    where: { name },
+    where: { tenantId_name: { tenantId: requireTenantId(), name } },
     create: { name },
     update: {},
     select: { name: true },

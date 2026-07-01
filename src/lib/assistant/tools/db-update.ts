@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit, diff } from "@/lib/audit";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
@@ -83,7 +84,7 @@ export const commitDbUpdate: Committer = async (user, args) => {
   assertScoped(entity, user, row.vineyardId);
 
   const before = (await entity.current(id)) ?? {};
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await entity.update!(tx, id, values);
     await writeAudit(tx, {
       actorUserId: user.id,

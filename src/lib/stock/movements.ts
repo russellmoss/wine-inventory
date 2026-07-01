@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
+import { requireTenantId } from "@/lib/tenant/context";
 import { prisma } from "../prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "../audit";
 import { ActionError } from "../action-error";
 
@@ -68,13 +70,13 @@ function movementCreate(
 function increment(tx: Prisma.TransactionClient, kind: ItemKind, itemId: string, locationId: string, amount: number) {
   if (kind === "BOTTLED_WINE") {
     return tx.bottledInventory.upsert({
-      where: { wineSkuId_locationId: { wineSkuId: itemId, locationId } },
+      where: { tenantId_wineSkuId_locationId: { tenantId: requireTenantId(), wineSkuId: itemId, locationId } },
       update: { totalBottles: { increment: amount } },
       create: { wineSkuId: itemId, locationId, totalBottles: amount },
     });
   }
   return tx.finishedGoodInventory.upsert({
-    where: { finishedGoodId_locationId: { finishedGoodId: itemId, locationId } },
+    where: { tenantId_finishedGoodId_locationId: { tenantId: requireTenantId(), finishedGoodId: itemId, locationId } },
     update: { quantity: { increment: amount } },
     create: { finishedGoodId: itemId, locationId, quantity: amount },
   });
@@ -104,7 +106,7 @@ export async function receiveStock(kind: ItemKind, itemId: string, locationId: s
   assertCount(qty, "Quantity");
   const label = await itemLabel(kind, itemId);
   await withWriteRetry(() =>
-    prisma.$transaction(async (tx) => {
+    runInTenantTx(async (tx) => {
       const loc = await locationActive(tx, locationId);
       if (!loc || !loc.isActive) throw new ActionError("That location is not available.");
       await movementCreate(tx, kind, itemId, locationId, "RECEIVE", qty, ctx, reason);
@@ -125,7 +127,7 @@ export async function adjustStock(kind: ItemKind, itemId: string, locationId: st
   if (!reason.trim()) throw new ActionError("Give a reason for the adjustment.");
   const label = await itemLabel(kind, itemId);
   await withWriteRetry(() =>
-    prisma.$transaction(async (tx) => {
+    runInTenantTx(async (tx) => {
       if (delta > 0) {
         await increment(tx, kind, itemId, locationId, delta);
       } else {
@@ -151,7 +153,7 @@ export async function transferStock(kind: ItemKind, itemId: string, fromLocation
   const group = crypto.randomUUID();
 
   await withWriteRetry(() =>
-    prisma.$transaction(async (tx) => {
+    runInTenantTx(async (tx) => {
       // Validate locations inside the tx (avoids racing a concurrent deactivation).
       const [from, to] = await Promise.all([locationActive(tx, fromLocationId), locationActive(tx, toLocationId)]);
       if (!from) throw new ActionError("Source location not found.");

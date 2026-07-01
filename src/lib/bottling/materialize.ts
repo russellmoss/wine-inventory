@@ -1,4 +1,5 @@
 import type { Prisma, SparklingMethod, DosageStyle } from "@prisma/client";
+import { requireTenantId } from "@/lib/tenant/context";
 import { findOrCreateWineSku } from "@/lib/bottling/sku";
 
 // Phase 7 Unit 9 (K8): the SHARED finished-goods materialization core, extracted from the tail of
@@ -43,7 +44,7 @@ export type MaterializeResult = { runId: string; skuId: string };
 export async function materializeFinishedGoods(tx: Prisma.TransactionClient, input: MaterializeInput): Promise<MaterializeResult> {
   const categoryName = input.categoryName ?? "Wine";
   // Default the finished good to a category (upsert avoids a P2002 race on first bottling).
-  const category = await tx.finishedGoodCategory.upsert({ where: { name: categoryName }, update: {}, create: { name: categoryName } });
+  const category = await tx.finishedGoodCategory.upsert({ where: { tenantId_name: { tenantId: requireTenantId(), name: categoryName } }, update: {}, create: { name: categoryName } });
 
   const sku = await findOrCreateWineSku(
     tx,
@@ -93,7 +94,7 @@ export async function materializeFinishedGoods(tx: Prisma.TransactionClient, inp
     },
   });
   await tx.bottledInventory.upsert({
-    where: { wineSkuId_locationId: { wineSkuId: sku.id, locationId: input.destinationLocationId } },
+    where: { tenantId_wineSkuId_locationId: { tenantId: requireTenantId(), wineSkuId: sku.id, locationId: input.destinationLocationId } },
     update: { totalBottles: { increment: input.bottlesProduced } },
     create: { wineSkuId: sku.id, locationId: input.destinationLocationId, totalBottles: input.bottlesProduced },
   });

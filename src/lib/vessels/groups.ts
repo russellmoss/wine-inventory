@@ -1,5 +1,7 @@
 import { ActionError } from "@/lib/action-error";
+import { requireTenantId } from "@/lib/tenant/context";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
@@ -46,7 +48,7 @@ export async function createGroupCore(
   const name = input.name?.trim();
   if (!name) throw new ActionError("Give the group a name.");
   if (name.length > 80) throw new ActionError("Group name is too long.");
-  const existing = await prisma.vesselGroup.findUnique({ where: { name } });
+  const existing = await prisma.vesselGroup.findFirst({ where: { name } });
   if (existing) {
     if (!existing.isActive) {
       await prisma.vesselGroup.update({ where: { id: existing.id }, data: { isActive: true } });
@@ -56,7 +58,7 @@ export async function createGroupCore(
   }
   const vesselIds = [...new Set(input.vesselIds ?? [])];
 
-  const group = await prisma.$transaction(async (tx) => {
+  const group = await runInTenantTx(async (tx) => {
     const g = existing
       ? await tx.vesselGroup.update({ where: { id: existing.id }, data: { note: input.note?.trim() || null } })
       : await tx.vesselGroup.create({ data: { name, note: input.note?.trim() || null } });
@@ -86,9 +88,9 @@ export async function renameGroupCore(actor: LedgerActor, groupId: string, name:
   if (!trimmed) throw new ActionError("Give the group a name.");
   const group = await prisma.vesselGroup.findUnique({ where: { id: groupId } });
   if (!group) throw new ActionError("Group not found.");
-  const clash = await prisma.vesselGroup.findUnique({ where: { name: trimmed } });
+  const clash = await prisma.vesselGroup.findFirst({ where: { name: trimmed } });
   if (clash && clash.id !== groupId) throw new ActionError(`A group named "${trimmed}" already exists.`);
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vesselGroup.update({ where: { id: groupId }, data: { name: trimmed } });
     await writeAudit(tx, {
       ...actor,
@@ -103,7 +105,7 @@ export async function renameGroupCore(actor: LedgerActor, groupId: string, name:
 export async function deactivateGroupCore(actor: LedgerActor, groupId: string): Promise<void> {
   const group = await prisma.vesselGroup.findUnique({ where: { id: groupId } });
   if (!group) throw new ActionError("Group not found.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vesselGroup.update({ where: { id: groupId }, data: { isActive: false } });
     await writeAudit(tx, {
       ...actor,
@@ -123,7 +125,7 @@ export async function addMemberCore(actor: LedgerActor, groupId: string, vesselI
   if (!group) throw new ActionError("Group not found.");
   if (!vessel) throw new ActionError("Vessel not found.");
   await prisma.vesselGroupMember.upsert({
-    where: { groupId_vesselId: { groupId, vesselId } },
+    where: { tenantId_groupId_vesselId: { tenantId: requireTenantId(), groupId, vesselId } },
     create: { groupId, vesselId },
     update: {},
   });

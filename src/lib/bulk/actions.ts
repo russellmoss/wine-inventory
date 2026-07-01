@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, diff } from "@/lib/audit";
 import { computeProportionalDraw, round2 } from "@/lib/bottling/draw";
@@ -207,7 +208,7 @@ export const setBlendName = action(async ({ actor }, vesselId: string, formData:
   const name = raw || null;
   const vessel = await prisma.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel) throw new ActionError("Vessel not found.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vessel.update({ where: { id: vesselId }, data: { blendName: name } });
     await writeAudit(tx, {
       ...actor,

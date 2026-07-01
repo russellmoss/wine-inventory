@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, getActionUser, ActionError } from "@/lib/actions";
 import { writeAudit } from "@/lib/audit";
 import { cleanInputName, normalizeInputKey } from "@/lib/fieldnotes/sanitize";
@@ -54,8 +55,8 @@ export const addFieldInput = action(
       throw new ActionError("Enter a valid name (letters or numbers).");
     }
 
-    const existing = await prisma.fieldInput.findUnique({
-      where: { type_normalizedKey: { type, normalizedKey } },
+    const existing = await prisma.fieldInput.findFirst({
+      where: { type, normalizedKey },
       select: { id: true, type: true, name: true, isActive: true },
     });
 
@@ -68,7 +69,7 @@ export const addFieldInput = action(
       return { id: existing.id, type: existing.type as InputType, name: existing.name };
     }
 
-    const created = await prisma.$transaction(async (tx) => {
+    const created = await runInTenantTx(async (tx) => {
       const row = await tx.fieldInput.create({
         data: { type, name, normalizedKey, isActive: true },
         select: { id: true, type: true, name: true },

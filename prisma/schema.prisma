@@ -195,7 +195,7 @@ enum AuditAction {
 // ───────────────────────── Shared registries ─────────────────────────
 
 model Location {
-  tenantId              String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId              String                  @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                    String                  @id @default(cuid())
   name                  String
   isSystem              Boolean                 @default(false) // "Winery" = true
@@ -214,7 +214,7 @@ model Location {
 }
 
 model Variety {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
   name            String
   abbreviation    String? // 2–4 uppercase code for lot codes (PN, CS). Nullable→backfilled; Postgres unique allows multiple NULLs.
@@ -232,7 +232,7 @@ model Variety {
 }
 
 model Vineyard {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
   name            String
   abbreviation    String? // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
@@ -261,7 +261,7 @@ model Vineyard {
 // Sparse, optional per-vineyard metadata (1:1 with Vineyard, created lazily).
 // Spacing/elevation are stored canonically in METRIC; the UI converts for display.
 model VineyardDetail {
-  tenantId    String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId    String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          String   @id @default(cuid())
   vineyardId  String   @unique
   gpsLat      Decimal? @db.Decimal(9, 6)
@@ -281,7 +281,7 @@ model VineyardDetail {
 // A planted block within a vineyard. All fields optional; nothing required to save.
 // Acreage is NOT stored — it is derived from rowSpacing * vineSpacing * vineCount.
 model VineyardBlock {
-  tenantId       String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId       String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String             @id @default(cuid())
   vineyardId     String
   blockLabel     String? // e.g. "Block 1", "A"
@@ -315,7 +315,7 @@ model VineyardBlock {
 // A geographic sub-division of a block (e.g. "A"/"B") for differential picks / experiments.
 // `code` is the short token that appears in a lot code between BLOCK and VARIETY.
 model VineyardSubblock {
-  tenantId  String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId  String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String        @id @default(cuid())
   blockId   String
   code      String // short uppercase token for lot codes (e.g. "A")
@@ -337,7 +337,7 @@ model VineyardSubblock {
 // manager stay real FKs for querying. `userEmail` snapshots provenance (mirror
 // BottlingRun) so deleting the manager (SetNull) never erases who logged it.
 model FieldNote {
-  tenantId           String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId           String    @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                 String    @id @default(cuid())
   vineyardId         String
   userId             String? // manager who logged it; SetNull so user delete doesn't cascade
@@ -366,7 +366,7 @@ model FieldNote {
 // Master list of sprays/fertilizers. `normalizedKey` (strip-all-non-alphanumeric
 // UPPERCASE) dedupes "NEEM OIL" / "NEEM-OIL" to one row; `name` keeps the label.
 model FieldInput {
-  tenantId      String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId      String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id            String   @id @default(cuid())
   type          String // SPRAY | FERTILIZER
   name          String // display, cleaned UPPERCASE
@@ -385,7 +385,7 @@ model FieldInput {
 // `vineyardId` denormalized for clean aggregates; block delete is Restricted so
 // ripening history is never erased by a block edit. DB CHECK enforces 0..40.
 model BrixLog {
-  tenantId       String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId       String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String        @id @default(cuid())
   blockId        String
   vineyardId     String // denormalized FK for aggregates
@@ -406,7 +406,7 @@ model BrixLog {
 // One record per (block, vintage): holds the pre-harvest estimate and parents the
 // pick passes. `totalWeightKg` is NOT stored — it is the sum of `picks`.
 model HarvestRecord {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String        @id @default(cuid())
   blockId         String
   vineyardId      String // denormalized FK for aggregates
@@ -431,7 +431,7 @@ model HarvestRecord {
 // Each pick pass against a HarvestRecord. Vineyards pick a block in multiple
 // passes; the total auto-rolls up from these rows.
 model HarvestPick {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String             @id @default(cuid())
   harvestRecordId String
   pickDate        DateTime           @db.Date
@@ -455,7 +455,7 @@ model HarvestPick {
 // ───────────────────────── Bulk / in-process wine ─────────────────────────
 
 model Vessel {
-  tenantId         String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId         String              @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id               String              @id @default(cuid())
   code             String // barrels: "Barrel #"; tanks: code. Unique per type (see @@unique below).
   type             VesselType
@@ -494,7 +494,7 @@ model Vessel {
 }
 
 model VesselComponent {
-  tenantId   String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId   String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String   @id @default(cuid())
   vesselId   String
   varietyId  String
@@ -521,7 +521,7 @@ model VesselComponent {
 // even for multi-lot (tank) racks and survives later vessel edits. Vessel codes
 // are snapshotted so a deleted vessel (FK SetNull) still shows in history.
 model VesselTransfer {
-  tenantId       String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId       String           @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String           @id @default(cuid())
   fromVesselId   String?
   toVesselId     String?
@@ -559,7 +559,7 @@ model VesselTransfer {
 // ───────────────────────── Bottling ─────────────────────────
 
 model WineSku {
-  tenantId         String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId         String                @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id               String                @id @default(cuid())
   name             String
   // Phase 7 (K11): NULLABLE for NV / multi-vintage sparkling; isNonVintage marks a true NV
@@ -588,7 +588,7 @@ model WineSku {
 }
 
 model BottlingRun {
-  tenantId              String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId              String           @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                    String           @id @default(cuid())
   date                  DateTime
   wineSkuId             String
@@ -614,7 +614,7 @@ model BottlingRun {
 }
 
 model BottlingSource {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String      @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String      @id @default(cuid())
   bottlingRunId   String
   // Phase 7 (K13, extended): origin columns are NULLABLE. A blended / multi-vintage sparkling
@@ -645,7 +645,7 @@ model BottlingSource {
 // ───────────────────────── Inventory ledger + cached balances ─────────────────────────
 
 model StockMovement {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String        @id @default(cuid())
   createdAt       DateTime      @default(now())
   createdById     String?
@@ -674,7 +674,7 @@ model StockMovement {
 }
 
 model BottledInventory {
-  tenantId     String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId     String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id           String   @id @default(cuid())
   wineSkuId    String
   locationId   String
@@ -692,7 +692,7 @@ model BottledInventory {
 // ───────────────────────── Finished goods (merch) ─────────────────────────
 
 model FinishedGoodCategory {
-  tenantId  String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId  String         @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String         @id @default(cuid())
   name      String
   isActive  Boolean        @default(true)
@@ -706,7 +706,7 @@ model FinishedGoodCategory {
 }
 
 model FinishedGood {
-  tenantId       String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId       String                  @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String                  @id @default(cuid())
   name           String
   categoryId     String
@@ -722,7 +722,7 @@ model FinishedGood {
 }
 
 model FinishedGoodInventory {
-  tenantId       String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId       String       @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String       @id @default(cuid())
   finishedGoodId String
   locationId     String
@@ -740,7 +740,7 @@ model FinishedGoodInventory {
 // ───────────────────────── Audit ─────────────────────────
 
 model AuditLog {
-  tenantId    String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId    String      @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          String      @id @default(cuid())
   createdAt   DateTime    @default(now())
   actorUserId String?
@@ -767,7 +767,7 @@ model AuditLog {
 // nonce here (unique) BEFORE committing, so a replayed/double-submitted confirm
 // can never double-apply a change (critical for inventory deltas).
 model AssistantConfirmation {
-  tenantId   String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId   String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String   @id @default(cuid())
   nonce      String   @unique
   tool       String
@@ -782,7 +782,7 @@ model AssistantConfirmation {
 // `conversation` snapshots the transcript so the feedback-fix agent has context.
 // `status` tracks the improvement loop: NEW -> TRIAGED (agent opened a PR) -> ...
 model AssistantFeedback {
-  tenantId     String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId     String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id           String   @id @default(cuid())
   createdAt    DateTime @default(now())
   rating       String // "up" | "down"
@@ -803,7 +803,7 @@ model AssistantFeedback {
 // vineyard data). `title` is auto-generated from the first user message. Messages
 // cascade-delete with the conversation.
 model AssistantConversation {
-  tenantId    String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId    String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          String             @id @default(cuid())
   ownerUserId String
   title       String
@@ -822,7 +822,7 @@ model AssistantConversation {
 // Postgres generated tsvector column (added in the migration, not managed by
 // Prisma) backing full-text search; it is intentionally absent from this model.
 model AssistantMessage {
-  tenantId       String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId       String                   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String                   @id @default(cuid())
   conversationId String
   role           String // "user" | "assistant"
@@ -960,7 +960,7 @@ enum LedgerBucket {
 // getAppSettings(). `sparklingEnabled` gates the ENTIRE traditional-method UI/nav (K14,
 // default off) — backend enums/cores ship regardless and are inert when unused.
 model AppSettings {
-  tenantId         String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId         String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id               String   @id @default("singleton")
   sparklingEnabled Boolean  @default(false)
   updatedAt        DateTime @updatedAt
@@ -974,7 +974,7 @@ model AppSettings {
 // Optional metadata on a PRESS op — the name is stamped into LotOperation.metadata.pressCycle;
 // this table is just the pick-list the press form offers so cycles can be reused across pressings.
 model PressCycle {
-  tenantId  String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId  String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
@@ -989,7 +989,7 @@ model PressCycle {
 // authoritative tuple lives in legacySnapshot for legacy lots). Provenance metadata is
 // immutable after the first operation (enforced in the service layer).
 model Lot {
-  tenantId           String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId           String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                 String             @id @default(cuid())
   code               String
   // form is MUTABLE over the lot's life (D4) but ONLY via the Phase 6 domain transitions
@@ -1052,7 +1052,7 @@ model Lot {
 // (deterministic ordering; `observedAt` can collide / drift — D14). `correctsOperationId`
 // is unique so any op can be corrected at most once (kills the double-correction race).
 model LotOperation {
-  tenantId            String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId            String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                  Int           @id @default(autoincrement())
   type                OperationType
   observedAt          DateTime      @default(now())
@@ -1088,7 +1088,7 @@ model LotOperation {
 // keeps each operation balanced (seed-in, loss-out, bottle-out). `lotCode`/`vesselCode`
 // are durable snapshots so history reads survive later renames/deletes.
 model LotOperationLine {
-  tenantId    String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId    String       @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          Int          @id @default(autoincrement())
   operationId Int
   lotId       String
@@ -1119,7 +1119,7 @@ model LotOperationLine {
 // Always equals the fold of the ledger (INVARIANT #7). CHECK(volumeL > 0) in migration;
 // a row at functional zero is deleted, never stored at 0.
 model VesselLot {
-  tenantId  String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId  String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String   @id @default(cuid())
   vesselId  String
   lotId     String
@@ -1137,7 +1137,7 @@ model VesselLot {
 // Parent→child lineage edges for splits/blends (structure-only in Phase 1; blends are
 // Phase 5). `fraction` is the parent's share of the child where meaningful.
 model LotLineage {
-  tenantId    String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId    String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id          String   @id @default(cuid())
   parentLotId String
   childLotId  String
@@ -1162,7 +1162,7 @@ model LotLineage {
 // enforces Σ consumedKg ≤ HarvestPick.weightKg. kg never enters a ledger line (D8) — it is
 // op metadata; the measured output liters is the only balanced line.
 model LotHarvestSource {
-  tenantId      String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId      String      @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id            String      @id @default(cuid())
   lotId         String
   harvestPickId String
@@ -1183,7 +1183,7 @@ model LotHarvestSource {
 // ledger's monotonic fold order); standalone changes use a per-lot optimistic version check.
 // `commandId` UNIQUE makes a phase mutation idempotent (duplicate-as-success, council S4).
 model LotStateEvent {
-  tenantId       String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId       String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String        @id @default(cuid())
   lotId          String
   vesselId       String? // snapshot context (the vessel the lot sat in at the transition)
@@ -1214,7 +1214,7 @@ model LotStateEvent {
 // after it — council CRITICAL #1). Deleted at functional zero (FINISH closes both to ~0),
 // exactly like a VesselLot row. CHECK(bottleCount >= 0) and CHECK(volumeL >= 0) in migration.
 model BottledLotState {
-  tenantId            String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId            String          @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   lotId               String          @id
   bottleCount         Int
   nominalFillMl       Int             @default(750)
@@ -1247,7 +1247,7 @@ model BottledLotState {
 // Populated at SEED from originVineyardId and backfilled for existing lots. The scoping/lens
 // query is "lots whose source vineyard ∈ my set" → index on vineyardId.
 model LotVineyard {
-  tenantId   String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId   String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String   @id @default(cuid())
   lotId      String
   vineyardId String
@@ -1265,7 +1265,7 @@ model LotVineyard {
 // A manager can manage N vineyards; a blended lot spans many. Added here (dual-read);
 // assignedVineyardId is dropped in Unit 3 after the backfill is verified.
 model UserVineyard {
-  tenantId   String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId   String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String   @id @default(cuid())
   userId     String
   vineyardId String
@@ -1291,7 +1291,7 @@ enum BlendTrialStatus {
 // ratios prefill the blend builder and a real BLEND op runs (promotedToLotId links the result).
 // Reuses the Phase 4 tasting enums. CHECK (score-with-scale together-or-neither) in migration.
 model BlendTrial {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String                @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String                @id @default(cuid())
   name            String
   targetWine      String? // intent — what this trial aims at; groups DRAFTs (council S9)
@@ -1323,7 +1323,7 @@ model BlendTrial {
 // One component of a bench trial: a lot + its share (proportion ∈ (0,1]) or absolute volume.
 // CHECK (proportion ∈ (0,1]) in migration.
 model BlendTrialComponent {
-  tenantId   String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId   String     @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id         String     @id @default(cuid())
   trialId    String
   lotId      String
@@ -1349,7 +1349,7 @@ model BlendTrialComponent {
 // ops still appear. Material/rate/total + the volume SNAPSHOT used are stored, never
 // recomputed (VISION D14). Corrected/voided via voidedByOperationId (stays visible).
 model LotTreatment {
-  tenantId            String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId            String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                  String   @id @default(cuid())
   operationId         Int
   lotId               String
@@ -1386,7 +1386,7 @@ model LotTreatment {
 // first use, deduped by normalizedKey within a kind (mirrors FieldInput). Carries a
 // default dose basis + optional %active; cost/inventory is deferred to Phase 8.
 model CellarMaterial {
-  tenantId      String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId      String         @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id            String         @id @default(cuid())
   name          String // display label
   normalizedKey String // dedup key (strip-non-alphanumeric, UPPERCASE)
@@ -1405,7 +1405,7 @@ model CellarMaterial {
 // A named set of vessels (e.g. a barrel group) so one operation can fan out to its
 // members (D13). Structure-only in Phase 1; the fan-out UI/logic lands in Phase 3.
 model VesselGroup {
-  tenantId  String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId  String              @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String              @id @default(cuid())
   name      String
   note      String?
@@ -1419,7 +1419,7 @@ model VesselGroup {
 }
 
 model VesselGroupMember {
-  tenantId String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId String      @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id       String      @id @default(cuid())
   groupId  String
   vesselId String
@@ -1470,7 +1470,7 @@ enum TastingScoreScale {
 // voidedAt (so a panel voids ATOMICALLY — void the header, all readings drop). A returned
 // lab result is a panel with `sampleId` set. SO₂ pairing happens WITHIN one panel only.
 model AnalysisPanel {
-  tenantId         String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId         String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id               String            @id @default(cuid())
   lotId            String
   vesselId         String? // snapshot context (the vessel the lot sat in when measured)
@@ -1511,7 +1511,7 @@ model AnalysisPanel {
 // query readings by `analyte` joined to the non-voided parent panel; the panel's `observedAt`
 // is the time axis.
 model AnalysisReading {
-  tenantId  String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId  String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String        @id @default(cuid())
   panelId   String
   analyte   String // registry key (PH, FREE_SO2, …) — validated in code, not a DB enum
@@ -1535,7 +1535,7 @@ model AnalysisReading {
 // A structured tasting note on a lot. Free-text search (NICE) is a `contains` over
 // notes/aroma/flavor — no tsvector this phase (avoids the search_vector migration gotcha).
 model LotTastingNote {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String             @id @default(cuid())
   lotId           String
   vesselId        String?
@@ -1573,7 +1573,7 @@ model LotTastingNote {
 // `lotId` is captured AT PULL and inherited by its result panels (never re-resolved from the
 // current vessel — backdated/late-resulted readings must not be misattributed). D2.
 model Sample {
-  tenantId        String // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId        String          @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String          @id @default(cuid())
   lotId           String
   vesselId        String?

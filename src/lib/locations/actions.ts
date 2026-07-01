@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 
@@ -16,10 +17,10 @@ function cleanName(raw: unknown): string {
 
 export const createLocation = action(async ({ actor }, formData: FormData) => {
   const name = cleanName(formData.get("name"));
-  const existing = await prisma.location.findUnique({ where: { name } });
+  const existing = await prisma.location.findFirst({ where: { name } });
   if (existing) throw new ActionError("A location with that name already exists.", "CONFLICT");
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const created = await tx.location.create({ data: { name } });
     await writeAudit(tx, {
       ...actor,
@@ -39,10 +40,10 @@ export const renameLocation = action(async ({ actor }, id: string, formData: For
   if (!loc) throw new ActionError("Location not found.");
   if (loc.isSystem) throw new ActionError("The Winery location is reserved and cannot be renamed.");
   if (loc.name === name) return;
-  const clash = await prisma.location.findUnique({ where: { name } });
+  const clash = await prisma.location.findFirst({ where: { name } });
   if (clash) throw new ActionError("A location with that name already exists.", "CONFLICT");
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const updated = await tx.location.update({ where: { id }, data: { name } });
     await writeAudit(tx, {
       ...actor,
@@ -75,7 +76,7 @@ export const setLocationActive = action(async ({ actor }, id: string, isActive: 
     }
   }
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.location.update({ where: { id }, data: { isActive } });
     await writeAudit(tx, {
       ...actor,

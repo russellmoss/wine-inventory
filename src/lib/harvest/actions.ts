@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireTenantId } from "@/lib/tenant/context";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, getActionUser, ActionError } from "@/lib/actions";
 import { canManagerAccessVineyard } from "@/lib/access";
 import { writeAudit } from "@/lib/audit";
@@ -92,7 +94,7 @@ export const logBrix = action(
       throw new ActionError(`Brix must be between ${BRIX_MIN} and ${BRIX_MAX} °Bx.`);
     }
     const when = recordedAt ? parseISODateUTC(recordedAt) ?? new Date() : new Date();
-    await prisma.$transaction(async (tx) => {
+    await runInTenantTx(async (tx) => {
       const row = await tx.brixLog.create({
         data: {
           blockId,
@@ -127,7 +129,7 @@ export const deleteBrixLog = action(
     if (!canManagerAccessVineyard(user, row.vineyardId)) {
       throw new ActionError("You can only work with your assigned vineyard.", "FORBIDDEN");
     }
-    await prisma.$transaction(async (tx) => {
+    await runInTenantTx(async (tx) => {
       await tx.brixLog.delete({ where: { id: brixLogId } });
       await writeAudit(tx, {
         ...actor,
@@ -155,9 +157,9 @@ export const recordYieldEstimate = action(
     if (kg == null) throw new ActionError("Enter a valid (non-negative) estimate.");
     if (!Number.isInteger(vintageYear)) throw new ActionError("Pick a vintage year.");
     const estimateKg = new Prisma.Decimal(kg);
-    await prisma.$transaction(async (tx) => {
+    await runInTenantTx(async (tx) => {
       const record = await tx.harvestRecord.upsert({
-        where: { blockId_vintageYear: { blockId, vintageYear } },
+        where: { tenantId_blockId_vintageYear: { tenantId: requireTenantId(), blockId, vintageYear } },
         update: { yieldEstimateKg: estimateKg, updatedByEmail: actor.actorEmail },
         create: {
           blockId,
@@ -205,9 +207,9 @@ export const addHarvestPick = action(
       }
       brix = new Prisma.Decimal(brixAtPick);
     }
-    await prisma.$transaction(async (tx) => {
+    await runInTenantTx(async (tx) => {
       const record = await tx.harvestRecord.upsert({
-        where: { blockId_vintageYear: { blockId, vintageYear: vintage } },
+        where: { tenantId_blockId_vintageYear: { tenantId: requireTenantId(), blockId, vintageYear: vintage } },
         update: { updatedByEmail: actor.actorEmail },
         create: {
           blockId,
@@ -252,7 +254,7 @@ export const deleteHarvestPick = action(async ({ actor }, pickId: string): Promi
   if (!canManagerAccessVineyard(user, pick.harvestRecord.vineyardId)) {
     throw new ActionError("You can only work with your assigned vineyard.", "FORBIDDEN");
   }
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.harvestPick.delete({ where: { id: pickId } });
     await writeAudit(tx, {
       ...actor,

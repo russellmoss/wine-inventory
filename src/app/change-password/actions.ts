@@ -3,6 +3,8 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
+import { runAsTenant } from "@/lib/tenant/context";
 import { requireSession } from "@/lib/dal";
 import { writeAudit, summarize } from "@/lib/audit";
 
@@ -36,20 +38,24 @@ export async function changePasswordAction(
     return { error: "Current password is incorrect." };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: user.id },
-      data: { mustChangePassword: false, passwordChangedAt: new Date() },
-    });
-    await writeAudit(tx, {
-      actorUserId: user.id,
-      actorEmail: user.email,
-      action: "PASSWORD_CHANGE",
-      entityType: "User",
-      entityId: user.id,
-      summary: summarize("PASSWORD_CHANGE", "User"),
-    });
-  });
+  // Not an action() wrapper, so establish the tenant context here (the audit row is tenant-scoped).
+  if (!user.activeOrganizationId) return { error: "Your account isn't attached to a winery." };
+  await runAsTenant(user.activeOrganizationId, () =>
+    runInTenantTx(async (tx) => {
+      await tx.user.update({
+        where: { id: user.id },
+        data: { mustChangePassword: false, passwordChangedAt: new Date() },
+      });
+      await writeAudit(tx, {
+        actorUserId: user.id,
+        actorEmail: user.email,
+        action: "PASSWORD_CHANGE",
+        entityType: "User",
+        entityId: user.id,
+        summary: summarize("PASSWORD_CHANGE", "User"),
+      });
+    }),
+  );
 
   return { ok: true };
 }

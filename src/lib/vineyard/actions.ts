@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, ActionError, getActionUser } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
@@ -179,7 +180,7 @@ export const upsertVineyardDetail = action(
     const data = { gpsLat, gpsLng, elevationM, soilType, manager, defaultUnit: unit };
 
     const before = await prisma.vineyardDetail.findUnique({ where: { vineyardId } });
-    await prisma.$transaction(async (tx) => {
+    await runInTenantTx(async (tx) => {
       await tx.vineyardDetail.upsert({
         where: { vineyardId },
         create: { vineyardId, ...data },
@@ -234,7 +235,7 @@ export const createBlock = action(async ({ actor }, vineyardId: string, formData
   });
   const sortOrder = (last?.sortOrder ?? -1) + 1;
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const created = await tx.vineyardBlock.create({ data: { vineyardId, sortOrder, ...data } });
     await writeAudit(tx, {
       ...actor,
@@ -273,7 +274,7 @@ export const updateBlock = action(async ({ actor }, blockId: string, formData: F
     vineSpacingM: data.vineSpacingM?.toString() ?? null,
   };
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vineyardBlock.update({ where: { id: blockId }, data });
     await writeAudit(tx, {
       ...actor,
@@ -293,7 +294,7 @@ export const updateBlock = action(async ({ actor }, blockId: string, formData: F
 export const deleteBlock = action(async ({ actor }, blockId: string) => {
   const before = await prisma.vineyardBlock.findUnique({ where: { id: blockId } });
   if (!before) throw new ActionError("Block not found.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vineyardBlock.delete({ where: { id: blockId } });
     await writeAudit(tx, {
       ...actor,
@@ -316,8 +317,8 @@ export const createSubblock = action(async ({ actor }, blockId: string, formData
   if (!code) throw new ActionError("Enter a subblock code (letters or numbers).");
   if (code.length > 8) throw new ActionError("Subblock code is too long.");
   const label = String(formData.get("label") ?? "").trim() || null;
-  const exists = await prisma.vineyardSubblock.findUnique({
-    where: { blockId_code: { blockId, code } },
+  const exists = await prisma.vineyardSubblock.findFirst({
+    where: { blockId, code },
     select: { id: true },
   });
   if (exists) throw new ActionError(`Subblock "${code}" already exists on this block.`, "CONFLICT");
@@ -327,7 +328,7 @@ export const createSubblock = action(async ({ actor }, blockId: string, formData
     select: { sortOrder: true },
   });
   const sortOrder = (last?.sortOrder ?? -1) + 1;
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const created = await tx.vineyardSubblock.create({ data: { blockId, code, label, sortOrder } });
     await writeAudit(tx, {
       ...actor,
@@ -344,7 +345,7 @@ export const createSubblock = action(async ({ actor }, blockId: string, formData
 export const deleteSubblock = action(async ({ actor }, id: string) => {
   const before = await prisma.vineyardSubblock.findUnique({ where: { id } });
   if (!before) throw new ActionError("Subblock not found.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vineyardSubblock.delete({ where: { id } });
     await writeAudit(tx, {
       ...actor,
@@ -366,7 +367,7 @@ export const saveBlockPolygon = action(
     if (geojson != null) validatePolygon(geojson);
     const nextPolygon =
       geojson == null ? Prisma.DbNull : (geojson as Prisma.InputJsonValue);
-    await prisma.$transaction(async (tx) => {
+    await runInTenantTx(async (tx) => {
       await tx.vineyardBlock.update({ where: { id: blockId }, data: { polygon: nextPolygon } });
       await writeAudit(tx, {
         ...actor,
@@ -393,7 +394,7 @@ export const setBlockColor = action(async ({ actor }, blockId: string, color: st
   if (next !== null && !isValidHex(next)) throw new ActionError("That isn't a valid color.");
   const before = await prisma.vineyardBlock.findUnique({ where: { id: blockId } });
   if (!before) throw new ActionError("Block not found.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vineyardBlock.update({ where: { id: blockId }, data: { color: next } });
     await writeAudit(tx, {
       ...actor,

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { MaterialKind, RateBasis } from "@/lib/cellar/additions-math";
@@ -72,8 +73,8 @@ export async function upsertMaterialCore(
   const percentActive =
     input.percentActive == null || !Number.isFinite(input.percentActive) ? null : input.percentActive;
 
-  const existing = await prisma.cellarMaterial.findUnique({
-    where: { kind_normalizedKey: { kind, normalizedKey } },
+  const existing = await prisma.cellarMaterial.findFirst({
+    where: { kind, normalizedKey },
     select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true, isActive: true },
   });
 
@@ -92,7 +93,7 @@ export async function upsertMaterialCore(
     return toDTO(existing);
   }
 
-  const created = await prisma.$transaction(async (tx) => {
+  const created = await runInTenantTx(async (tx) => {
     const row = await tx.cellarMaterial.create({
       data: { name, normalizedKey, kind, defaultBasis, percentActive },
       select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true },

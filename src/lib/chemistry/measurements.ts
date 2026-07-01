@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -133,7 +134,7 @@ export async function recordMeasurementsCore(
 
   const observedAt = toDate(input.observedAt);
   try {
-    const res = await prisma.$transaction((tx) =>
+    const res = await runInTenantTx((tx) =>
       insertPanelTx(tx, actor, {
         lotId,
         vesselId: input.vesselId ?? null,
@@ -164,7 +165,7 @@ export async function voidPanelCore(actor: LedgerActor, input: { panelId: string
   const panel = await prisma.analysisPanel.findUnique({ where: { id: input.panelId } });
   if (!panel) throw new ActionError("That analysis panel no longer exists.");
   if (panel.voidedAt) throw new ActionError("That analysis panel was already removed.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.analysisPanel.update({
       where: { id: input.panelId },
       data: { voidedAt: new Date(), voidedById: actor.actorUserId },

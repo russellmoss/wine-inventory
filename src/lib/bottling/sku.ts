@@ -1,6 +1,11 @@
 import type { Prisma, SparklingMethod, DosageStyle } from "@prisma/client";
 import { isUniqueViolation } from "@/lib/lot/generate";
 
+// A DB handle usable for WineSku reads: an interactive tx client, or the tenant-extended top-level
+// client (callers cast the latter — its type isn't structurally a Prisma.TransactionClient, but the
+// wineSku delegate is API-compatible for these reads).
+export type WineSkuDb = Prisma.TransactionClient;
+
 // Phase 7 (K11): WineSku identity lookup that honors the TWO partial unique indexes that
 // replaced the old compound @@unique — vintaged SKUs dedupe on (name, vintage, bottleSizeMl)
 // WHERE vintage IS NOT NULL; NV SKUs on (name, bottleSizeMl) WHERE isNonVintage. Postgres
@@ -17,11 +22,12 @@ export type WineSkuKey = {
 
 /** Find a WineSku by its logical identity (mirrors the partial unique indexes). */
 export function findWineSku(
-  db: Prisma.TransactionClient,
+  db: WineSkuDb,
   key: WineSkuKey,
 ): Promise<{ id: string } | null> {
+  const wineSku = db.wineSku as Prisma.TransactionClient["wineSku"];
   if (key.isNonVintage) {
-    return db.wineSku.findFirst({
+    return wineSku.findFirst({
       where: { name: key.name, bottleSizeMl: key.bottleSizeMl, isNonVintage: true },
       select: { id: true },
     });

@@ -170,8 +170,8 @@ export async function pressLotCore(actor: LedgerActor, input: PressLotInput): Pr
     try {
       return await runLedgerWrite(async (tx) => {
         // Lock + read the parent position (SERIALIZABLE). updatedAt is the revision token.
-        const parentVl = await tx.vesselLot.findUnique({
-          where: { vesselId_lotId: { vesselId: input.sourceVesselId, lotId: input.parentLotId } },
+        const parentVl = await tx.vesselLot.findFirst({
+          where: { vesselId: input.sourceVesselId, lotId: input.parentLotId },
           select: { volumeL: true, updatedAt: true },
         });
         if (!parentVl) throw new ActionError(`Lot ${parent.code} isn't in that vessel.`, "CONFLICT");

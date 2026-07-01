@@ -1,5 +1,6 @@
 import type { SampleStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -66,7 +67,7 @@ export async function pullSampleCore(actor: LedgerActor, input: PullSampleInput)
 
   const now = new Date();
   const status: SampleStatus = input.sendNow ? "SENT" : "PULLED";
-  const created = await prisma.$transaction(async (tx) => {
+  const created = await runInTenantTx(async (tx) => {
     const row = await tx.sample.create({
       data: {
         lotId,
@@ -105,7 +106,7 @@ export async function markSampleSentCore(
   const sample = await prisma.sample.findUnique({ where: { id: input.sampleId } });
   if (!sample) throw new ActionError("That sample no longer exists.");
   assertTransition(sample.status, "SENT");
-  const updated = await prisma.$transaction(async (tx) => {
+  const updated = await runInTenantTx(async (tx) => {
     const row = await tx.sample.update({
       where: { id: input.sampleId },
       data: {
@@ -163,7 +164,7 @@ export async function attachSampleResultsCore(
   const now = new Date();
   const observedAt = input.observedAt ? (typeof input.observedAt === "string" ? new Date(input.observedAt) : input.observedAt) : sample.pulledAt;
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await runInTenantTx(async (tx) => {
     const { panelId } = await insertPanelTx(tx, actor, {
       lotId: sample.lotId, // inherited — never re-resolved from the current vessel
       vesselId: sample.vesselId,
@@ -196,7 +197,7 @@ export async function cancelSampleCore(actor: LedgerActor, input: { sampleId: st
   const sample = await prisma.sample.findUnique({ where: { id: input.sampleId } });
   if (!sample) throw new ActionError("That sample no longer exists.");
   assertTransition(sample.status, "CANCELLED");
-  const updated = await prisma.$transaction(async (tx) => {
+  const updated = await runInTenantTx(async (tx) => {
     const row = await tx.sample.update({
       where: { id: input.sampleId },
       data: { status: "CANCELLED", cancelledAt: new Date() },

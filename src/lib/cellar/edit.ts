@@ -1,5 +1,6 @@
 import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit, diff } from "@/lib/audit";
 import { computeAdditionTotal, type RateBasis } from "@/lib/cellar/additions-math";
 import { coerceRateBasis } from "@/lib/cellar/material-normalize";
@@ -64,7 +65,7 @@ export async function deleteNeutralOperationCore(
   const matName = op.treatments[0]?.materialName;
   const summary = `Deleted ${op.type.toLowerCase()} #${op.id}${matName ? ` (${matName})` : ""} — erroneous/test entry`;
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await writeAudit(tx, {
       ...actor,
       action: "DELETE",
@@ -110,7 +111,7 @@ export async function editNeutralOperationCore(
 
   const before = op.treatments.map(treatmentSnapshot);
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     for (const t of op.treatments) {
       if (isDose) {
         const rate = input.rateValue != null && Number.isFinite(input.rateValue) ? input.rateValue : Number(t.rateValue);

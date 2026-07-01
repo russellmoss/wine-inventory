@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prismaBase } from "@/lib/prisma";
+import { requireTenantId, runWithTenantContext } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 import { round2 } from "@/lib/bottling/draw";
 import {
@@ -39,12 +40,27 @@ export async function withWriteRetry<T>(fn: () => Promise<T>, attempts = 5): Pro
  * the interactive-transaction timeout above Prisma's 5s default — remote Neon round-trips add
  * up. The ceiling only RAISES the cap; it doesn't slow shorter ops. */
 export function runLedgerWrite<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  // K5: tenant comes from the ALS context (set by action()/adminAction() or a script's runAsTenant).
+  // Fail-closed if absent.
+  const tenantId = requireTenantId();
   return withWriteRetry(() =>
-    prisma.$transaction(fn, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      timeout: 20_000,
-      maxWait: 10_000,
-    }),
+    prismaBase.$transaction(
+      async (tx) => {
+        // Set the tenant as the FIRST statement of the interactive tx — BEFORE fn(tx)'s vessel_lot
+        // fold reads (which under RLS would otherwise see 0 rows). Living here means it is
+        // re-applied on every P2034 retry (withWriteRetry re-enters $transaction). is_local=true is
+        // transaction-scoped (pooling-safe); bound param, never interpolated.
+        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+        // skipWrap: cores operate on the interactive `tx` (un-extended); guard any stray extended
+        // -client call from nesting a batch tx inside this interactive one (Prisma #23583).
+        return runWithTenantContext({ tenantId, skipWrap: true }, () => fn(tx));
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        timeout: 20_000,
+        maxWait: 10_000,
+      },
+    ),
   );
 }
 
@@ -91,10 +107,33 @@ export async function writeLotOperation(
   input: WriteOpInput,
 ): Promise<number> {
   assertBalanced(input.lines);
+  const tenantId = requireTenantId();
 
   const vesselIds = [
     ...new Set(input.lines.filter((l) => l.vesselId).map((l) => l.vesselId as string)),
   ];
+  const lotIds = [...new Set(input.lines.map((l) => l.lotId))];
+
+  // Cross-tenant / visibility guard (council DQ8, K11): every referenced lot + vessel MUST be
+  // visible AND belong to this tenant. Under RLS a foreign/spoofed row is invisible, so a count
+  // shortfall means someone referenced another winery's (or a non-existent) id — FAIL loudly
+  // rather than silently fold on 0 rows. (Composite FKs also block the write at the DB; this is the
+  // app-layer belt so we never mis-compute.)
+  const [visibleLots, visibleVessels] = await Promise.all([
+    tx.lot.findMany({ where: { id: { in: lotIds } }, select: { id: true, tenantId: true } }),
+    vesselIds.length
+      ? tx.vessel.findMany({ where: { id: { in: vesselIds } }, select: { id: true, tenantId: true } })
+      : Promise.resolve([] as { id: string; tenantId: string }[]),
+  ]);
+  if (visibleLots.length !== lotIds.length) {
+    throw new ActionError("One or more lots aren't accessible in this winery.", "CONFLICT");
+  }
+  if (visibleVessels.length !== vesselIds.length) {
+    throw new ActionError("One or more vessels aren't accessible in this winery.", "CONFLICT");
+  }
+  if (visibleLots.some((l) => l.tenantId !== tenantId) || visibleVessels.some((v) => v.tenantId !== tenantId)) {
+    throw new ActionError("Cross-winery operation blocked.", "CONFLICT");
+  }
 
   // Read full current state for every affected vessel (for fold + capacity), in-tx.
   const current = await tx.vesselLot.findMany({ where: { vesselId: { in: vesselIds } } });
@@ -123,6 +162,7 @@ export async function writeLotOperation(
   // Create the immutable operation.
   const op = await tx.lotOperation.create({
     data: {
+      tenantId,
       type: input.type,
       observedAt: input.observedAt ?? undefined,
       actorUserId: input.actorUserId,
@@ -142,6 +182,7 @@ export async function writeLotOperation(
     data: input.lines.map((l) => {
       const bucket = resolveBucket(l);
       return {
+        tenantId,
         operationId: op.id,
         lotId: l.lotId,
         vesselId: l.vesselId,
@@ -171,7 +212,7 @@ export async function writeLotOperation(
       await tx.vesselLot.update({ where: { id: existing.id }, data: { volumeL: target.volumeL } });
     } else {
       await tx.vesselLot.create({
-        data: { vesselId: target.vesselId, lotId: target.lotId, volumeL: target.volumeL },
+        data: { tenantId, vesselId: target.vesselId, lotId: target.lotId, volumeL: target.volumeL },
       });
     }
   }
@@ -212,6 +253,7 @@ export async function writeLotOperation(
         assertCountVolumeConsistent(next, input.bottleState.nominalFillMl);
         await tx.bottledLotState.create({
           data: {
+            tenantId,
             lotId,
             bottleCount: next.bottleCount,
             volumeL: next.volumeL,
@@ -238,6 +280,7 @@ export async function writeLotOperation(
  * tuple (none in Phase 1) are skipped. Folds incrementally so unchanged rows keep their ids.
  */
 async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerLine[]): Promise<void> {
+  const tenantId = requireTenantId();
   const lotIds = [...new Set(lines.map((l) => l.lotId))];
   const lots = await tx.lot.findMany({
     where: { id: { in: lotIds } },
@@ -266,14 +309,12 @@ async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerL
 
   for (const c of deltas.values()) {
     if (Math.abs(c.delta) < 1e-9) continue;
-    const existing = await tx.vesselComponent.findUnique({
+    const existing = await tx.vesselComponent.findFirst({
       where: {
-        vesselId_varietyId_vineyardId_vintage: {
-          vesselId: c.vesselId,
-          varietyId: c.varietyId,
-          vineyardId: c.vineyardId,
-          vintage: c.vintage,
-        },
+        vesselId: c.vesselId,
+        varietyId: c.varietyId,
+        vineyardId: c.vineyardId,
+        vintage: c.vintage,
       },
       select: { id: true, volumeL: true },
     });
@@ -284,7 +325,7 @@ async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerL
       await tx.vesselComponent.update({ where: { id: existing.id }, data: { volumeL: next } });
     } else {
       await tx.vesselComponent.create({
-        data: { vesselId: c.vesselId, varietyId: c.varietyId, vineyardId: c.vineyardId, vintage: c.vintage, volumeL: next },
+        data: { tenantId, vesselId: c.vesselId, varietyId: c.varietyId, vineyardId: c.vineyardId, vintage: c.vintage, volumeL: next },
       });
     }
   }

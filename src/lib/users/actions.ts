@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { adminAction, ActionError } from "@/lib/actions";
 import { hashPassword } from "@/lib/password";
 import { writeAudit, summarize, diff } from "@/lib/audit";
@@ -48,7 +49,7 @@ export const createUser = adminAction(async ({ actor }, formData: FormData): Pro
   const hash = await hashPassword(temp);
   const now = new Date();
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const user = await tx.user.create({
       data: {
         id: crypto.randomUUID(),
@@ -85,7 +86,7 @@ export const resetUserPassword = adminAction(async ({ actor }, userId: string): 
   const temp = tempPassword();
   const hash = await hashPassword(temp);
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const account = await tx.account.findFirst({ where: { userId, providerId: "credential" } });
     if (account) await tx.account.update({ where: { id: account.id }, data: { password: hash, updatedAt: new Date() } });
     else await tx.account.create({ data: { id: crypto.randomUUID(), accountId: userId, providerId: "credential", userId, password: hash, createdAt: new Date(), updatedAt: new Date() } });
@@ -103,7 +104,7 @@ export const setUserRole = adminAction(async ({ actor, user: me }, userId: strin
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new ActionError("User not found.");
   if (userId === me.id && r !== "admin") throw new ActionError("You can't remove your own admin role.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.user.update({ where: { id: userId }, data: { role: r } });
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "User", entityId: userId, changes: diff({ role: user.role }, { role: r }), summary: summarize("UPDATE", "User", { label: user.email, changes: diff({ role: user.role }, { role: r }) }) });
   });
@@ -127,7 +128,7 @@ export const setUserVineyards = adminAction(async ({ actor }, userId: string, vi
   const before = user.vineyardMemberships.map((m) => m.vineyardId).sort();
   const after = [...want].sort();
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.userVineyard.deleteMany({ where: { userId } });
     if (want.length > 0) {
       await tx.userVineyard.createMany({
@@ -155,7 +156,7 @@ export const setUserBanned = adminAction(async ({ actor, user: me }, userId: str
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new ActionError("User not found.");
   if (userId === me.id && banned) throw new ActionError("You can't deactivate your own account.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.user.update({ where: { id: userId }, data: { banned, banReason: banned ? "Deactivated by admin" : null } });
     if (banned) await tx.session.deleteMany({ where: { userId } });
     await writeAudit(tx, {

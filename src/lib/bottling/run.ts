@@ -1,5 +1,6 @@
 import { Prisma, type SparklingMethod, type DosageStyle } from "@prisma/client";
 import { prisma } from "../prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "../audit";
 import { ActionError } from "../action-error";
 import { computeProportionalDraw, consumedForBottles, casesAndLoose, round2 } from "./draw";
@@ -222,16 +223,16 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
 }
 
 export async function executeBottling(input: BottlingInput, actor: Actor): Promise<void> {
-  await withRetry(() => prisma.$transaction((tx) => applyBottling(tx, input, actor), SERIAL));
+  await withRetry(() => runInTenantTx((tx) => applyBottling(tx, input, actor), SERIAL));
 }
 
 export async function deleteBottling(runId: string, actor: Actor): Promise<void> {
-  await withRetry(() => prisma.$transaction((tx) => reverseBottlingTx(tx, runId, actor), SERIAL));
+  await withRetry(() => runInTenantTx((tx) => reverseBottlingTx(tx, runId, actor), SERIAL));
 }
 
 export async function editBottling(runId: string, input: BottlingInput, actor: Actor): Promise<void> {
   await withRetry(() =>
-    prisma.$transaction(async (tx) => {
+    runInTenantTx(async (tx) => {
       await reverseBottlingTx(tx, runId, actor);
       await applyBottling(tx, input, actor);
     }, SERIAL),

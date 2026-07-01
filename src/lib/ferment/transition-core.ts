@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import { planLotStateUpdate, type LotState, type StateVector } from "@/lib/ferment/state";
@@ -109,7 +110,7 @@ export async function transitionStateCore(actor: Actor, input: TransitionInput):
     if (prior) return prior;
   }
   try {
-    return await prisma.$transaction((tx) => applyStateTransitionTx(tx, actor, input));
+    return await runInTenantTx((tx) => applyStateTransitionTx(tx, actor, input));
   } catch (e) {
     if (input.commandId && isCommandConflict(e)) {
       const prior = await findEventByCommand(input.commandId);

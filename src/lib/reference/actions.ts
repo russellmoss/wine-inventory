@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
@@ -43,8 +44,8 @@ function entityType(kind: RefKind) {
 
 async function findByName(kind: RefKind, name: string) {
   return kind === "variety"
-    ? prisma.variety.findUnique({ where: { name } })
-    : prisma.vineyard.findUnique({ where: { name } });
+    ? prisma.variety.findFirst({ where: { name } })
+    : prisma.vineyard.findFirst({ where: { name } });
 }
 
 async function findById(kind: RefKind, id: string) {
@@ -79,7 +80,7 @@ export const createRef = action(async ({ actor }, kind: RefKind, formData: FormD
   if (abbreviation && (await abbreviationTaken(kind, abbreviation, null))) {
     throw new ActionError(`Abbreviation "${abbreviation}" is already used by another ${kind}.`, "CONFLICT");
   }
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const created =
       kind === "variety"
         ? await tx.variety.create({ data: { name, abbreviation } })
@@ -104,7 +105,7 @@ export const setAbbreviation = action(async ({ actor }, kind: RefKind, id: strin
   if (next && (await abbreviationTaken(kind, next, id))) {
     throw new ActionError(`Abbreviation "${next}" is already used by another ${kind}.`, "CONFLICT");
   }
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     if (kind === "variety") await tx.variety.update({ where: { id }, data: { abbreviation: next } });
     else await tx.vineyard.update({ where: { id }, data: { abbreviation: next } });
     await writeAudit(tx, {
@@ -130,7 +131,7 @@ export const setVarietyColor = action(async ({ actor }, id: string, color: strin
   }
   const row = await prisma.variety.findUnique({ where: { id } });
   if (!row) throw new ActionError("Variety not found.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.variety.update({ where: { id }, data: { color: next } });
     await writeAudit(tx, {
       ...actor,
@@ -156,7 +157,7 @@ export const setRefActive = action(async ({ actor }, kind: RefKind, id: string, 
       "CONFLICT",
     );
   }
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     if (kind === "variety") await tx.variety.update({ where: { id }, data: { isActive } });
     else await tx.vineyard.update({ where: { id }, data: { isActive } });
     await writeAudit(tx, {

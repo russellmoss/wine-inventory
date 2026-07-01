@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -49,7 +50,7 @@ function validateComponents(components: TrialComponentInput[]): void {
 export async function createTrialCore(actor: LedgerActor, input: CreateTrialInput): Promise<{ id: string }> {
   if (!input.name?.trim()) throw new ActionError("Give the trial a name.");
   validateComponents(input.components);
-  const trial = await prisma.$transaction(async (tx) => {
+  const trial = await runInTenantTx(async (tx) => {
     const t = await tx.blendTrial.create({
       data: {
         name: input.name.trim(),
@@ -90,7 +91,7 @@ export async function updateTrialCore(
 ): Promise<{ id: string }> {
   const t = await loadEditableTrial(input.id);
   validateComponents(input.components);
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.blendTrialComponent.deleteMany({ where: { trialId: t.id } });
     await tx.blendTrial.update({
       where: { id: t.id },
@@ -115,7 +116,7 @@ export async function scoreTrialCore(actor: LedgerActor, input: ScoreTrialInput)
   if ((input.score == null) !== (input.scoreScale == null)) {
     throw new ActionError("A score needs a scale (and vice-versa).");
   }
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.blendTrial.update({
       where: { id: t.id },
       data: { score: input.score ?? null, scoreScale: input.scoreScale ?? null, readiness: input.readiness ?? null, tastingNotes: input.tastingNotes?.trim() || null },
@@ -127,7 +128,7 @@ export async function scoreTrialCore(actor: LedgerActor, input: ScoreTrialInput)
 
 export async function chooseTrialCore(actor: LedgerActor, input: { id: string }, now: Date): Promise<{ id: string }> {
   const t = await loadEditableTrial(input.id);
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.blendTrial.update({ where: { id: t.id }, data: { status: "CHOSEN", chosenAt: now } });
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "BlendTrial", entityId: t.id, summary: `Chose bench trial "${t.name}"` });
   });
@@ -138,7 +139,7 @@ export async function discardTrialCore(actor: LedgerActor, input: { id: string }
   const t = await prisma.blendTrial.findUnique({ where: { id: input.id }, select: { id: true, name: true, status: true } });
   if (!t) throw new ActionError("That trial no longer exists.");
   if (t.status === "PROMOTED") throw new ActionError("A promoted trial can't be discarded — undo the blend instead.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     // Discard is zero-ledger-impact: a trial never wrote a ledger row, so just mark it.
     await tx.blendTrial.update({ where: { id: t.id }, data: { status: "DISCARDED" } });
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "BlendTrial", entityId: t.id, summary: `Discarded bench trial "${t.name}"` });
@@ -154,7 +155,7 @@ export async function markTrialPromotedCore(
   const t = await prisma.blendTrial.findUnique({ where: { id: input.id }, select: { id: true, name: true, status: true } });
   if (!t) throw new ActionError("That trial no longer exists.");
   if (t.status === "PROMOTED") return { id: t.id }; // idempotent
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.blendTrial.update({ where: { id: t.id }, data: { status: "PROMOTED", promotedToLotId: input.childLotId } });
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "BlendTrial", entityId: t.id, summary: `Promoted bench trial "${t.name}" into a blend` });
   });

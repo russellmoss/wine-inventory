@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
@@ -78,7 +79,7 @@ export const commitDbDelete: Committer = async (user, args) => {
     );
   }
 
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await entity.del(tx, id);
     await writeAudit(tx, {
       actorUserId: user.id,

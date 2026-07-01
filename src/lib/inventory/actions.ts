@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireTenantId } from "@/lib/tenant/context";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { receiveStock, adjustStock, transferStock, type ItemKind } from "@/lib/stock/movements";
@@ -35,8 +37,8 @@ function parseKind(raw: unknown): ItemKind {
 
 export const createCategory = action(async ({ actor }, formData: FormData) => {
   const name = clean(formData.get("name"), "Category name");
-  if (await prisma.finishedGoodCategory.findUnique({ where: { name } })) throw new ActionError("That category already exists.", "CONFLICT");
-  await prisma.$transaction(async (tx) => {
+  if (await prisma.finishedGoodCategory.findFirst({ where: { name } })) throw new ActionError("That category already exists.", "CONFLICT");
+  await runInTenantTx(async (tx) => {
     const cat = await tx.finishedGoodCategory.create({ data: { name } });
     await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, changes: diff(null, { name }), summary: summarize("CREATE", "Category", { label: name }) });
   });
@@ -47,12 +49,12 @@ export const createWineSku = action(async ({ actor }, formData: FormData) => {
   const name = clean(formData.get("name"), "Wine name");
   const vintage = parseVintage(formData.get("vintage"));
   let categoryId = String(formData.get("categoryId") ?? "");
-  if (await findWineSku(prisma, { name, vintage, isNonVintage: false, bottleSizeMl: 750 })) {
+  if (await findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage: false, bottleSizeMl: 750 })) {
     throw new ActionError("That wine + vintage already exists.", "CONFLICT");
   }
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     if (!categoryId) {
-      const wine = await tx.finishedGoodCategory.upsert({ where: { name: "Wine" }, update: {}, create: { name: "Wine" } });
+      const wine = await tx.finishedGoodCategory.upsert({ where: { tenantId_name: { tenantId: requireTenantId(), name: "Wine" } }, update: {}, create: { name: "Wine" } });
       categoryId = wine.id;
     }
     const sku = await tx.wineSku.create({ data: { name, vintage, bottleSizeMl: 750, categoryId } });
@@ -65,7 +67,7 @@ export const createGood = action(async ({ actor }, formData: FormData) => {
   const name = clean(formData.get("name"), "Item name");
   const categoryId = String(formData.get("categoryId") ?? "");
   if (!(await prisma.finishedGoodCategory.findUnique({ where: { id: categoryId } }))) throw new ActionError("Pick a category.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const good = await tx.finishedGood.create({ data: { name, categoryId } });
     await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, changes: diff(null, { name }), summary: summarize("CREATE", "Item", { label: name }) });
   });
@@ -131,13 +133,13 @@ export const updateOnHand = action(async ({ actor }, input: UpdateOnHandInput) =
     const before = await prisma.wineSku.findUnique({ where: { id: itemId }, select: { name: true, vintage: true, categoryId: true } });
     if (!before) throw new ActionError("Wine not found.");
     if (before.name !== name || before.vintage !== vintage) {
-      const dup = await findWineSku(prisma, { name, vintage, isNonVintage: false, bottleSizeMl: 750 });
+      const dup = await findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage: false, bottleSizeMl: 750 });
       if (dup && dup.id !== itemId) throw new ActionError("That wine + vintage already exists.", "CONFLICT");
     }
     if (categoryId && !(await prisma.finishedGoodCategory.findUnique({ where: { id: categoryId } }))) throw new ActionError("Pick a valid category.");
     const changes = diff({ name: before.name, vintage: before.vintage, categoryId: before.categoryId }, { name, vintage, categoryId });
     if (Object.keys(changes).length > 0) {
-      await prisma.$transaction(async (tx) => {
+      await runInTenantTx(async (tx) => {
         await tx.wineSku.update({ where: { id: itemId }, data: { name, vintage, categoryId } });
         await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WineSku", entityId: itemId, changes, summary: summarize("UPDATE", "Wine SKU", { label: `${name} ${vintage}`, changes }) });
       });
@@ -149,7 +151,7 @@ export const updateOnHand = action(async ({ actor }, input: UpdateOnHandInput) =
     if (!before) throw new ActionError("Item not found.");
     const changes = diff({ name: before.name, categoryId: before.categoryId }, { name, categoryId });
     if (Object.keys(changes).length > 0) {
-      await prisma.$transaction(async (tx) => {
+      await runInTenantTx(async (tx) => {
         await tx.finishedGood.update({ where: { id: itemId }, data: { name, categoryId } });
         await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "FinishedGood", entityId: itemId, changes, summary: summarize("UPDATE", "Item", { label: name, changes }) });
       });
@@ -230,7 +232,7 @@ async function ensureCategory(actor: Actor, name: string, created: Set<string>):
   return findOrCreate(
     () => prisma.finishedGoodCategory.findFirst({ where: ciName(name), select: { id: true } }),
     () =>
-      prisma.$transaction(async (tx) => {
+      runInTenantTx(async (tx) => {
         const cat = await tx.finishedGoodCategory.create({ data: { name } });
         await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, changes: diff(null, { name }), summary: summarize("CREATE", "Category", { label: name }) });
         created.add(name);
@@ -244,7 +246,7 @@ async function ensureLocation(actor: Actor, name: string, created: Set<string>):
   return findOrCreate(
     () => prisma.location.findFirst({ where: ciName(name), select: { id: true } }),
     () =>
-      prisma.$transaction(async (tx) => {
+      runInTenantTx(async (tx) => {
         const loc = await tx.location.create({ data: { name } });
         await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Location", entityId: loc.id, changes: diff(null, { name }), summary: summarize("CREATE", "Location", { label: name }) });
         created.add(name);
@@ -256,9 +258,9 @@ async function ensureLocation(actor: Actor, name: string, created: Set<string>):
 /** Find-or-create a wine SKU (name+vintage+750ml) under the given category; audits creation. */
 async function ensureWineSku(actor: Actor, name: string, vintage: number, categoryId: string, created: Set<string>): Promise<string> {
   return findOrCreate(
-    () => findWineSku(prisma, { name, vintage, isNonVintage: false, bottleSizeMl: 750 }),
+    () => findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage: false, bottleSizeMl: 750 }),
     () =>
-      prisma.$transaction(async (tx) => {
+      runInTenantTx(async (tx) => {
         const sku = await tx.wineSku.create({ data: { name, vintage, bottleSizeMl: 750, categoryId } });
         await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, changes: diff(null, { name, vintage }), summary: summarize("CREATE", "Wine SKU", { label: `${name} ${vintage}` }) });
         created.add(`${name} ${vintage}`);
@@ -272,7 +274,7 @@ async function ensureGood(actor: Actor, name: string, categoryId: string, create
   return findOrCreate(
     () => prisma.finishedGood.findFirst({ where: { ...ciName(name), categoryId }, select: { id: true } }),
     () =>
-      prisma.$transaction(async (tx) => {
+      runInTenantTx(async (tx) => {
         const good = await tx.finishedGood.create({ data: { name, categoryId } });
         await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, changes: diff(null, { name }), summary: summarize("CREATE", "Item", { label: name }) });
         created.add(name);
@@ -340,9 +342,9 @@ export const importInventory = action(async ({ actor }, rows: ParsedInventoryRow
 
 async function currentBalance(kind: ItemKind, itemId: string, locationId: string): Promise<number> {
   if (kind === "BOTTLED_WINE") {
-    const b = await prisma.bottledInventory.findUnique({ where: { wineSkuId_locationId: { wineSkuId: itemId, locationId } } });
+    const b = await prisma.bottledInventory.findFirst({ where: { wineSkuId: itemId, locationId } });
     return b?.totalBottles ?? 0;
   }
-  const b = await prisma.finishedGoodInventory.findUnique({ where: { finishedGoodId_locationId: { finishedGoodId: itemId, locationId } } });
+  const b = await prisma.finishedGoodInventory.findFirst({ where: { finishedGoodId: itemId, locationId } });
   return b?.quantity ?? 0;
 }

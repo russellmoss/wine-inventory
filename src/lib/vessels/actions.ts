@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 
@@ -66,7 +67,7 @@ export const createVessel = action(async ({ actor }, formData: FormData) => {
   if (await prisma.vessel.findFirst({ where: { type, code } })) {
     throw new ActionError(conflictMessage(type, code), "CONFLICT");
   }
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     const v = await tx.vessel.create({ data: { code, type, capacityL, ...meta } });
     await writeAudit(tx, {
       ...actor,
@@ -94,7 +95,7 @@ export const updateVessel = action(async ({ actor }, id: string, formData: FormD
   }
   const before = { code: v.code, type: v.type, capacityL: v.capacityL, oakOrigin: v.oakOrigin, cooperageYear: v.cooperageYear, cooperage: v.cooperage, toastLevel: v.toastLevel };
   const after = { code, type, capacityL, ...meta };
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vessel.update({ where: { id }, data: after });
     await writeAudit(tx, {
       ...actor,
@@ -114,7 +115,7 @@ export const setVesselActive = action(async ({ actor }, id: string, isActive: bo
   if (!isActive && v._count.components > 0) {
     throw new ActionError("Cannot deactivate a vessel that still holds wine. Empty or bottle it first.", "CONFLICT");
   }
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.vessel.update({ where: { id }, data: { isActive } });
     await writeAudit(tx, {
       ...actor,

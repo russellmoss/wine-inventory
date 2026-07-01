@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireTenantId } from "@/lib/tenant/context";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, getActionUser, ActionError } from "@/lib/actions";
 import { canManagerAccessVineyard } from "@/lib/access";
 import { writeAudit } from "@/lib/audit";
@@ -104,15 +106,15 @@ export const createFieldNote = action(
       aiSummaryStatus: "PENDING",
     };
 
-    const note = await prisma.$transaction(async (tx) => {
+    const note = await runInTenantTx(async (tx) => {
       // Detect create-vs-edit up front so the audit trail is accurate. The
       // (vineyardId, weekOf) unique makes this race-safe under the upsert below.
-      const existing = await tx.fieldNote.findUnique({
-        where: { vineyardId_weekOf: { vineyardId, weekOf } },
+      const existing = await tx.fieldNote.findFirst({
+        where: { vineyardId, weekOf },
         select: { id: true },
       });
       const saved = await tx.fieldNote.upsert({
-        where: { vineyardId_weekOf: { vineyardId, weekOf } },
+        where: { tenantId_vineyardId_weekOf: { tenantId: requireTenantId(), vineyardId, weekOf } },
         create: { vineyardId, weekOf, ...data },
         update: data,
         select: { id: true },

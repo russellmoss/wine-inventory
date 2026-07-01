@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -83,7 +84,7 @@ export async function recordTastingNoteCore(
   if (!hasContent) throw new ActionError("Add at least one tasting field (aroma, flavor, a structure score, or notes).");
 
   const observedAt = toDate(input.observedAt);
-  const created = await prisma.$transaction(async (tx) => {
+  const created = await runInTenantTx(async (tx) => {
     const row = await tx.lotTastingNote.create({
       data: {
         lotId,
@@ -126,7 +127,7 @@ export async function voidTastingNoteCore(
   const note = await prisma.lotTastingNote.findUnique({ where: { id: input.tastingNoteId } });
   if (!note) throw new ActionError("That tasting note no longer exists.");
   if (note.voidedAt) throw new ActionError("That tasting note was already removed.");
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.lotTastingNote.update({
       where: { id: input.tastingNoteId },
       data: { voidedAt: new Date(), voidedById: actor.actorUserId },

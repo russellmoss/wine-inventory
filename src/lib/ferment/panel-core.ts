@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { ANALYTES } from "@/lib/chemistry/analytes";
 
 // Phase 6 Unit 6/12: SCRIPT-SAFE core for the idempotent offline-panel submit. No "use server" /
@@ -45,7 +46,7 @@ export async function submitPanelCore(actor: Actor, input: SubmitPanelInput): Pr
     // the vessel changed since capture — DON'T guess; route to needs-attention (STALE_OCCUPANCY).
     const [lot, residency] = await Promise.all([
       prisma.lot.findUnique({ where: { id: input.lotId }, select: { id: true, status: true } }),
-      prisma.vesselLot.findUnique({ where: { vesselId_lotId: { vesselId: input.vesselId, lotId: input.lotId } }, select: { id: true } }),
+      prisma.vesselLot.findFirst({ where: { vesselId: input.vesselId, lotId: input.lotId }, select: { id: true } }),
     ]);
     if (!lot || lot.status !== "ACTIVE") return { ok: false, retryable: false, error: "LOT_NOT_FOUND" };
     if (!residency) return { ok: false, retryable: false, error: "STALE_OCCUPANCY" };
@@ -53,7 +54,7 @@ export async function submitPanelCore(actor: Actor, input: SubmitPanelInput): Pr
     const observedAt = new Date(input.deviceObservedAt);
     if (Number.isNaN(observedAt.getTime())) return { ok: false, retryable: false, error: "VALIDATION" };
 
-    await prisma.$transaction(async (tx) => {
+    await runInTenantTx(async (tx) => {
       await tx.analysisPanel.create({
         data: {
           id: input.panelId,

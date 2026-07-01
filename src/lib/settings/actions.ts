@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { adminAction } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 
 // Phase 7 (K14): toggle the winery-level sparkling capability. Admin-only; audited. Revalidates
 // the layout so the gated nav (En Tirage) appears/disappears immediately.
 export const setSparklingEnabled = adminAction(async ({ actor }, enabled: boolean): Promise<{ sparklingEnabled: boolean }> => {
-  await prisma.$transaction(async (tx) => {
+  await runInTenantTx(async (tx) => {
     await tx.appSettings.upsert({
       where: { id: "singleton" },
       update: { sparklingEnabled: enabled },
