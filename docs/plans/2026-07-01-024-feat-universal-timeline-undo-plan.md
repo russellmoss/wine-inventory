@@ -1,7 +1,7 @@
 ---
 title: Universal timeline undo (one reversal surface for every operation)
 type: feat
-status: 024a-completed
+status: completed
 date: 2026-07-01
 branch: main
 depth: standard
@@ -238,7 +238,7 @@ timeline newest-first; confirm the wine/positions return correctly and blocked s
 
 - [x] `reverseOperationCore(operationId)` reverses every reversible op type; returns a typed reason for non-undoable ones. *(024a: cellar/RACK/sparkling/BOTTLE; CRUSH/PRESS/SAIGNEE/BLEND report "coming soon" pending 024b.)*
 - [x] The lot timeline shows Undo/Revert on every non-corrected reversible op, and a shown reason otherwise.
-- [ ] CRUSH, PRESS, SAIGNEE, BLEND are undoable (LIFO-guarded) with provenance restored. *(024b — deferred; shown non-undoable-yet with a reason.)*
+- [x] CRUSH, PRESS, SAIGNEE, BLEND are undoable (LIFO-guarded) with provenance restored. *(024b shipped: transform/reverse.ts + blend-correct GROW branch; verify-reverse-transform.ts 37/37. Merged-fraction presses are refused with guidance — see 024b log.)*
 - [x] En Tirage worklist calls the one dispatcher. *(Rack toast + bottling-run delete keep their id-typed direct calls — both already hit the exact family cores the dispatcher routes to; an opId round-trip would add queries + risk with no behavioral gain. Documented in Unit 7.)*
 - [x] Reversal runs under tenant context; a cross-tenant reverse is denied (verified in `verify-reverse.ts` §8).
 - [x] `scripts/verify-reverse.ts` passes (31/31); no regression in `scripts/verify-sparkling.ts` (53/53).
@@ -260,6 +260,39 @@ Deviations from the plan (all deliberate, low-risk):
   has since touched the same wine — undo that first" CONFLICT message; naming `{id,type,date}`
   deferred.
 - **Rack toast / bottling-run delete refactor (SHOULD)**: left as id-typed direct calls (see above).
+
+## 024b Implementation Log (2026-07-01)
+
+Built Unit 4 (origination/split reversal) on `main`, verified end-to-end.
+
+- **transform/reverse.ts** — one `reverseTransformCore` handles CRUSH, whole-cluster PRESS, split
+  PRESS and SAIGNEE, branching on metadata SHAPE (`picks` = origination-from-fruit; `parentLotId` =
+  parent split), not op type (SHOULD-FIX). Uses `planCorrection` for exact-negated inverse legs +
+  the downstream-activity guard (MUST-FIX #5). Origination reverse frees the crush's `LotHarvestSource`
+  rows (pick over-restore guard — refuses if consumption changed since); marks a NEW lot CORRECTED,
+  keeps an ADD lot (append-only). Split reverse returns volume to the parent, marks each NEW fraction
+  CORRECTED, keeps the SPLIT edge. A **merged-fraction press** is refused with guidance (rack it back
+  out) — the forward op left no lineage snapshot, so correct-or-refuse over half-restore.
+- **blend-core.ts** — stamps `metadata.mode`; for GROW_EXISTING also snapshots the resident's pre-op
+  lineage edges + provenanceComplete + source-vineyard set.
+- **blend-correct.ts** — `correctBlendCore` branches on `metadata.mode`: NEW_LOT voids the child (as
+  before, + a downstream-lineage-child guard, MUST-FIX #3); GROW_EXISTING does NOT mark the resident
+  corrected and RESTORES its snapshot (deletes edges the blend added, rolls back updated fractions,
+  restores provenance + vineyards) — MUST-FIX #4. Adopted the unwind-aware `laterTouchedKeys` (#1).
+- **reverse-guard.ts** — added `downstreamLineageChild` (#3).
+- **Dispatcher + reversibilityOf** route CRUSH/PRESS/SAIGNEE → `transform`, BLEND → `blend`; the
+  timeline's data-driven Undo affordance lights up automatically (no UI change needed).
+
+Verification: `npm run verify:reverse-transform` (37/37, incl. GROW lineage restore, downstream guard,
+pick over-restore guard, merged-refuse). No regression: verify-blends 39, verify-ferment 36,
+verify-reverse 31, 605 vitest. All DBs scrub to projection == fold.
+
+Deviation: **merged-fraction press / into-existing** reversal is refused (not implemented) — rarer
+than blend GROW and press-core snapshots nothing; blocking is correct-or-refuse. Everything else
+(crush NEW/ADD, split press, saignée, blend NEW_LOT, blend GROW_EXISTING) is fully reversible.
+
+Env note: an external tooling step bumped `@prisma/client` 6.3.1 → 6.19.3 in package.json mid-session;
+the engine-DLL regen is blocked by the running dev server (harmless — restart dev to finish it).
 
 ## Review Findings & Revisions (2026-07-01 — council + eng + design)
 
