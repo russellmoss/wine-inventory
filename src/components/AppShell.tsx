@@ -36,8 +36,12 @@ const SETUP: NavItem[] = [
   { href: "/vessels", label: "Vessels" },
   { href: "/locations", label: "Locations" },
   { href: "/reference", label: "Varieties & vineyards" },
+  { href: "/settings", label: "Settings", admin: true },
   { href: "/users", label: "Users", admin: true },
 ];
+
+// Phase 7 (K14): the En Tirage worklist only appears when the winery's sparkling program is on.
+const EN_TIRAGE_NAV: NavItem = { href: "/cellar/en-tirage", label: "En Tirage" };
 
 const linkStyle = (active: boolean): React.CSSProperties => ({
   display: "block",
@@ -126,6 +130,7 @@ function SidebarContent({
   onNavigate,
   onSignOut,
   pendingSamples,
+  sparklingEnabled,
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   isActive: (href: string) => boolean;
@@ -139,9 +144,11 @@ function SidebarContent({
   onNavigate: () => void;
   onSignOut: () => void;
   pendingSamples: number;
+  sparklingEnabled: boolean;
 }) {
   const visibleSetup = SETUP.filter((s) => !s.admin || isAdmin);
-  const winery = WINERY.map((n) => (n.href === "/samples" ? { ...n, badge: pendingSamples } : n));
+  const wineryItems = sparklingEnabled ? [...WINERY, EN_TIRAGE_NAV] : WINERY;
+  const winery = wineryItems.map((n) => (n.href === "/samples" ? { ...n, badge: pendingSamples } : n));
   return (
     <>
       <div style={{ padding: "20px 20px 12px" }}>
@@ -170,16 +177,18 @@ export function AppShell({
   user,
   children,
   pendingSamples = 0,
+  sparklingEnabled = false,
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   children: React.ReactNode;
   pendingSamples?: number;
+  sparklingEnabled?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const isAdmin = user.role === "admin";
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
-  const wineryActive = WINERY.some((s) => isActive(s.href));
+  const wineryActive = isActive(EN_TIRAGE_NAV.href) || WINERY.some((s) => isActive(s.href));
   const vineyardsActive = VINEYARDS.some((s) => isActive(s.href));
   const setupActive = SETUP.some((s) => isActive(s.href));
   const [wineryOpen, setWineryOpen] = React.useState(wineryActive);
@@ -242,7 +251,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} sparklingEnabled={sparklingEnabled} />
       </aside>
 
       {/* Mobile drawer */}
@@ -251,7 +260,7 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} sparklingEnabled={sparklingEnabled} />
           </aside>
         </div>
       ) : null}
