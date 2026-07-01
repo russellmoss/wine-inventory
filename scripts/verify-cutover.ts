@@ -10,6 +10,7 @@
  * Run:  npx tsx --env-file=.env scripts/verify-cutover.ts
  */
 import { prisma } from "@/lib/prisma";
+import { runAsTenant } from "../src/lib/tenant/context";
 import { round2 } from "@/lib/bottling/draw";
 import { rackWineCore, revertTransferCore } from "@/lib/vessels/rack-core";
 import { executeBottling, deleteBottling } from "@/lib/bottling/run";
@@ -104,7 +105,7 @@ async function main() {
   console.log("PASS: rack/revert/bottling all behave correctly; vessel_component stays identical to the ledger throughout.");
 }
 
-main().catch(async (e) => {
+runAsTenant("org_bhutan_wine_co", main).catch(async (e) => {
   console.error(e);
   await prisma.$disconnect();
   process.exit(1);

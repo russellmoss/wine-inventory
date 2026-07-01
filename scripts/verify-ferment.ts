@@ -13,6 +13,7 @@
  * Run:  npx tsx --env-file=.env scripts/verify-ferment.ts
  */
 import { prisma } from "@/lib/prisma";
+import { runAsTenant } from "../src/lib/tenant/context";
 import { foldLines, balanceKey } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { crushLotCore } from "@/lib/transform/crush-core";
@@ -320,18 +321,21 @@ async function scrub() {
   await prisma.vineyard.deleteMany({ where: { id: { in: vineyardIds } } }).catch(() => {});
 }
 
-main()
-  .then(scrub)
-  .then(async () => {
-    const ok = await projectionMatchesFold();
-    console.log(ok ? "POST-SCRUB: projection == fold (DB pristine)." : "POST-SCRUB WARNING: projection drift!");
+runAsTenant("org_bhutan_wine_co", async () => {
+  await scrub(); // clean any leftovers from an interrupted prior run
+  await main().then(scrub);
+  const ok = await projectionMatchesFold();
+  console.log(ok ? "POST-SCRUB: projection == fold (DB pristine)." : "POST-SCRUB WARNING: projection drift!");
+  return ok;
+})
+  .then(async (ok) => {
     await prisma.$disconnect();
     process.exit(ok ? 0 : 1);
   })
   .catch(async (e) => {
     console.error("\nFAILED:", e);
     try {
-      await scrub();
+      await runAsTenant("org_bhutan_wine_co", scrub);
     } catch (se) {
       console.error("scrub error:", se);
     }

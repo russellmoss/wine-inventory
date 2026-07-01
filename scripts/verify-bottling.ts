@@ -10,6 +10,7 @@
  * Run:  npx tsx --env-file=.env scripts/verify-bottling.ts
  */
 import { prisma } from "@/lib/prisma";
+import { runAsTenant } from "../src/lib/tenant/context";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import { executeBottling, type Actor } from "@/lib/bottling/run";
@@ -110,7 +111,6 @@ async function scrub() {
   await prisma.vineyard.deleteMany({ where: { id: { in: created.vineyardIds } } }).catch(() => {});
 }
 
-main()
-  .then(scrub)
+runAsTenant("org_bhutan_wine_co", async () => { await scrub(); await main().then(scrub); })
   .then(async () => { await prisma.$disconnect(); process.exit(0); })
-  .catch(async (e) => { console.error("\nFAILED:", e); try { await scrub(); } catch (se) { console.error("scrub error:", se); } await prisma.$disconnect(); process.exit(1); });
+  .catch(async (e) => { console.error("\nFAILED:", e); try { await runAsTenant("org_bhutan_wine_co", scrub); } catch (se) { console.error("scrub error:", se); } await prisma.$disconnect(); process.exit(1); });

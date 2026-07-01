@@ -9,6 +9,7 @@
  * Run:  npx tsx --env-file=.env scripts/verify-ledger-rack.ts
  */
 import { prisma } from "@/lib/prisma";
+import { runAsTenant } from "../src/lib/tenant/context";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planLedgerRack, planCorrection, balanceKey, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
 
@@ -124,7 +125,7 @@ async function main() {
   console.log("PASS: rack -> projection moves -> correct -> restored; originals immutable; double-correct blocked.");
 }
 
-main().catch(async (e) => {
+runAsTenant("org_bhutan_wine_co", main).catch(async (e) => {
   console.error(e);
   await prisma.$disconnect();
   process.exit(1);

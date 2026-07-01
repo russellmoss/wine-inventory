@@ -12,6 +12,7 @@
  * Run:  npx tsx --env-file=.env scripts/verify-cellar-ops.ts
  */
 import { prisma } from "@/lib/prisma";
+import { runAsTenant } from "../src/lib/tenant/context";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { foldLines, balanceKey, type LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -245,18 +246,21 @@ async function main() {
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }
 
-main()
-  .then(scrub)
-  .then(async () => {
-    const ok = await projectionMatchesFold();
-    console.log(ok ? "POST-SCRUB: projection == fold (DB pristine)." : "POST-SCRUB WARNING: projection drift!");
+runAsTenant("org_bhutan_wine_co", async () => {
+  await scrub();
+  await main().then(scrub);
+  const ok = await projectionMatchesFold();
+  console.log(ok ? "POST-SCRUB: projection == fold (DB pristine)." : "POST-SCRUB WARNING: projection drift!");
+  return ok;
+})
+  .then(async (ok) => {
     await prisma.$disconnect();
     process.exit(ok ? 0 : 1);
   })
   .catch(async (e) => {
     console.error("\nFAILED:", e);
     try {
-      await scrub();
+      await runAsTenant("org_bhutan_wine_co", scrub);
     } catch (se) {
       console.error("scrub error:", se);
     }

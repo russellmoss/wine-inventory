@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireTenantId } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
@@ -61,7 +62,9 @@ export async function createTrialCore(actor: LedgerActor, input: CreateTrialInpu
         enteredById: actor.actorUserId,
         enteredByEmail: actor.actorEmail,
         components: {
+          // Nested relation creates are NOT reached by the extension's auto-inject — set tenantId.
           create: input.components.map((c) => ({
+            tenantId: requireTenantId(),
             lotId: c.lotId,
             proportion: c.proportion ?? null,
             volume: c.volume ?? null,
@@ -102,7 +105,7 @@ export async function updateTrialCore(
         baseVolume: input.baseVolume ?? null,
         baseUnit: input.baseUnit ?? null,
         components: {
-          create: input.components.map((c) => ({ lotId: c.lotId, proportion: c.proportion ?? null, volume: c.volume ?? null, unit: c.unit ?? null })),
+          create: input.components.map((c) => ({ tenantId: requireTenantId(), lotId: c.lotId, proportion: c.proportion ?? null, volume: c.volume ?? null, unit: c.unit ?? null })),
         },
       },
     });

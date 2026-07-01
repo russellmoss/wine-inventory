@@ -13,6 +13,7 @@
  * Run:  npx tsx --env-file=.env scripts/verify-chemistry.ts
  */
 import { prisma } from "@/lib/prisma";
+import { runAsTenant } from "../src/lib/tenant/context";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -180,18 +181,21 @@ async function main() {
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }
 
-main()
-  .then(scrub)
-  .then(async () => {
-    const leftover = await leftoverCount();
-    console.log(leftover === 0 ? "POST-SCRUB: no test rows remain (DB pristine)." : `POST-SCRUB WARNING: ${leftover} test rows remain!`);
+runAsTenant("org_bhutan_wine_co", async () => {
+  await scrub();
+  await main().then(scrub);
+  const leftover = await leftoverCount();
+  console.log(leftover === 0 ? "POST-SCRUB: no test rows remain (DB pristine)." : `POST-SCRUB WARNING: ${leftover} test rows remain!`);
+  return leftover;
+})
+  .then(async (leftover) => {
     await prisma.$disconnect();
     process.exit(leftover === 0 ? 0 : 1);
   })
   .catch(async (e) => {
     console.error("\nFAILED:", e);
     try {
-      await scrub();
+      await runAsTenant("org_bhutan_wine_co", scrub);
     } catch (se) {
       console.error("scrub error:", se);
     }

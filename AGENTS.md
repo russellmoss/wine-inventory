@@ -40,6 +40,30 @@ Secrets live in `.env` (gitignored). Template is `.env.example`.
     enforces tenant isolation. `DATABASE_URL_APP` holds the app_rls pooled URL; at activation it
     becomes `DATABASE_URL` here and in Vercel. Set/rotate the app_rls password with
     `npx tsx --env-file=.env scripts/setup-app-rls-credential.ts` (owner-run; secret never committed).
+
+## Multi-tenancy: adding a new tenant-scoped table (Phase 12 checklist)
+
+Every domain/registry table is tenant-scoped and RLS-isolated. When you add one, ALL of these or
+you get a leak (missing RLS) or a broken table (missing context). Auth/org tables (User/Session/
+Account/Verification/organization/member/invitation) are the ONLY globals — never add tenantId to them.
+
+1. `tenantId String @default("")` + `@@index([tenantId])` on the model (the `@default("")` makes it
+   type-optional at create sites; the real value is auto-injected — never a leak, `''` fails FK/RLS).
+2. Migration: add the `tenantId` column + index + FK → `organization(id)` (ON DELETE RESTRICT).
+3. Backfill existing rows to the correct tenant, then `ALTER COLUMN "tenantId" SET NOT NULL`.
+4. Per-tenant uniques: any global unique becomes `@@unique([tenantId, ...])` (recreate the index).
+5. If other tenant tables reference this one via a cross-tenant-risk FK (lineage/ledger), add a
+   `@@unique([tenantId, id])` here and make that FK composite `(tenantId, refId) → (tenantId, id)`.
+6. RLS: `ENABLE` + `FORCE ROW LEVEL SECURITY` + a `tenant_isolation` policy with USING **and**
+   WITH CHECK on `current_setting('app.tenant_id', true)` (fail-closed). Add it to the U7 checklist.
+7. Do NOT add the model to the extension denylist (`src/lib/tenant/models.ts` GLOBAL_MODELS).
+8. Grant app_rls DML (covered by the default privileges from migration `..._app_rls_role`).
+9. Add a case to `scripts/verify-tenant-isolation.ts` / `test/tenant-isolation.test.ts`.
+
+App access: reads/writes go through the extended `prisma` (tenant auto-resolved from the session or
+runAsTenant). The ledger uses `runLedgerWrite`; other tx use `runInTenantTx`; scripts wrap their
+entry point in `runAsTenant(tenantId, …)`; cross-tenant maintenance uses `runAsSystem` (owner). Never
+read the ALS tenant inside a cached fn (K12) — pass tenantId as an explicit arg.
 - `GEMINI_API_KEY` — read by `council-mcp` from this `.env` for cross-LLM review.
 - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY` — reused from the
   Dashboard project for council / research tooling.

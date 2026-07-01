@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { prismaBase } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { requireTenantId, runWithTenantContext } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 import { round2 } from "@/lib/bottling/draw";
@@ -43,23 +43,27 @@ export function runLedgerWrite<T>(fn: (tx: Prisma.TransactionClient) => Promise<
   // K5: tenant comes from the ALS context (set by action()/adminAction() or a script's runAsTenant).
   // Fail-closed if absent.
   const tenantId = requireTenantId();
+  // Use the EXTENDED client under skipWrap: the interactive tx auto-injects tenantId on the cores'
+  // originating creates (lot/lineage/vineyard/etc.), while skipWrap stops the per-op extension from
+  // nesting a batch tx inside this interactive one (Prisma #23583). tx is exposed as
+  // Prisma.TransactionClient so the cores' typings are unchanged.
   return withWriteRetry(() =>
-    prismaBase.$transaction(
-      async (tx) => {
-        // Set the tenant as the FIRST statement of the interactive tx — BEFORE fn(tx)'s vessel_lot
-        // fold reads (which under RLS would otherwise see 0 rows). Living here means it is
-        // re-applied on every P2034 retry (withWriteRetry re-enters $transaction). is_local=true is
-        // transaction-scoped (pooling-safe); bound param, never interpolated.
-        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-        // skipWrap: cores operate on the interactive `tx` (un-extended); guard any stray extended
-        // -client call from nesting a batch tx inside this interactive one (Prisma #23583).
-        return runWithTenantContext({ tenantId, skipWrap: true }, () => fn(tx));
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        timeout: 20_000,
-        maxWait: 10_000,
-      },
+    runWithTenantContext({ tenantId, skipWrap: true }, () =>
+      prisma.$transaction(
+        async (tx) => {
+          // Set the tenant as the FIRST statement of the interactive tx — BEFORE fn(tx)'s
+          // vessel_lot fold reads (which under RLS would otherwise see 0 rows). Living here means
+          // it is re-applied on every P2034 retry (withWriteRetry re-enters $transaction).
+          // is_local=true is transaction-scoped (pooling-safe); bound param, never interpolated.
+          await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+          return fn(tx as unknown as Prisma.TransactionClient);
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 20_000,
+          maxWait: 10_000,
+        },
+      ),
     ),
   );
 }

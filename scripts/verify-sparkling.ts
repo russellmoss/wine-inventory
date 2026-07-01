@@ -9,6 +9,7 @@
  * Run:  npx tsx --env-file=.env scripts/verify-sparkling.ts
  */
 import { prisma } from "@/lib/prisma";
+import { runAsTenant } from "../src/lib/tenant/context";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -66,8 +67,8 @@ async function migrationSmoke() {
   assert(checks.length === 3, "the 3 Phase 7 CHECK constraints exist (bottleCount>=0, volumeL>=0, bucket⇔bottleDelta)");
   const idx = await prisma.$queryRaw<{ indexname: string; indexdef: string }[]>`
     SELECT indexname, indexdef FROM pg_indexes
-    WHERE tablename = 'wine_sku' AND indexname IN ('wine_sku_name_vintage_bottleSizeMl_key','wine_sku_name_bottleSizeMl_nv_key')`;
-  assert(idx.length === 2 && idx.every((i) => /WHERE/i.test(i.indexdef)), "the 2 partial unique indexes on wine_sku exist (vintaged + NV)");
+    WHERE tablename = 'wine_sku' AND indexname IN ('wine_sku_tenantId_name_vintage_bottleSizeMl_key','wine_sku_tenantId_name_bottleSizeMl_nv_key')`;
+  assert(idx.length === 2 && idx.every((i) => /WHERE/i.test(i.indexdef)), "the 2 per-tenant partial unique indexes on wine_sku exist (vintaged + NV)");
 }
 
 async function main() {
@@ -324,7 +325,6 @@ async function scrub() {
   await prisma.vineyard.deleteMany({ where: { id: { in: created.vineyardIds } } }).catch(() => {});
 }
 
-main()
-  .then(scrub)
+runAsTenant("org_bhutan_wine_co", async () => { await scrub(); await main().then(scrub); })
   .then(async () => { await prisma.$disconnect(); process.exit(0); })
-  .catch(async (e) => { console.error("\nFAILED:", e); try { await scrub(); } catch (se) { console.error("scrub error:", se); } await prisma.$disconnect(); process.exit(1); });
+  .catch(async (e) => { console.error("\nFAILED:", e); try { await runAsTenant("org_bhutan_wine_co", scrub); } catch (se) { console.error("scrub error:", se); } await prisma.$disconnect(); process.exit(1); });

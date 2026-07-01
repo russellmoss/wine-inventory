@@ -8,6 +8,7 @@
  * Run:  npx tsx --env-file=.env scripts/verify-projection.ts
  */
 import { prisma } from "@/lib/prisma";
+import { runAsTenant } from "../src/lib/tenant/context";
 import { foldLines, balanceKey, type LedgerLine } from "@/lib/ledger/math";
 
 async function main() {
@@ -50,7 +51,7 @@ async function main() {
   console.log("OK: projection == fold of the ledger.");
 }
 
-main().catch(async (e) => {
+runAsTenant("org_bhutan_wine_co", main).catch(async (e) => {
   console.error(e);
   await prisma.$disconnect();
   process.exit(1);
