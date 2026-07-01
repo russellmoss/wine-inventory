@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type SparklingMethod, type DosageStyle } from "@prisma/client";
 import { prisma } from "../prisma";
 import { writeAudit } from "../audit";
 import { ActionError } from "../action-error";
@@ -15,6 +15,10 @@ export type BottlingInput = {
   skuVintage: number;
   bottlesProduced: number;
   date: Date;
+  // Phase 7: tank-method (Charmat) bottles a bulk WINE lot straight to a finished SKU tagged
+  // method=TANK (+ optional style from the tank RS). Omitted ⇒ still wine (method null).
+  method?: SparklingMethod;
+  dosageStyle?: DosageStyle;
 };
 
 export type Actor = { actorUserId: string | null; actorEmail: string };
@@ -35,7 +39,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
 
 /** Apply a bottling run within an existing transaction. Returns the new run id. */
 async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput, actor: Actor): Promise<string> {
-  const { vesselIds, destinationLocationId, skuName, skuVintage, bottlesProduced, date } = input;
+  const { vesselIds, destinationLocationId, skuName, skuVintage, bottlesProduced, date, method, dosageStyle } = input;
   if (bottlesProduced < 1) throw new ActionError("Bottles produced must be at least 1.");
   if (!skuName) throw new ActionError("Give the bottled wine a name.");
   const ids = [...new Set(vesselIds)].filter(Boolean);
@@ -92,6 +96,8 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
     skuName,
     vintage: skuVintage,
     isNonVintage: false,
+    method: method ?? null,
+    dosageStyle: dosageStyle ?? null,
     bottleSizeMl: 750,
     bottlesProduced,
     volumeConsumedL: consumedL,

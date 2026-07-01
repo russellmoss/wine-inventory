@@ -19,8 +19,11 @@ import { disgorgementCore } from "@/lib/sparkling/disgorgement-core";
 import { dosageCore } from "@/lib/sparkling/dosage-core";
 import { finalizeSparklingCore } from "@/lib/sparkling/finalize-core";
 import { transitionStateCore } from "@/lib/ferment/transition-core";
+import { addAdditionCore } from "@/lib/cellar/addition";
+import { executeBottling } from "@/lib/bottling/run";
 import { abvBumpForSugar } from "@/lib/sparkling/sugar";
 import { isCountVolumeConsistent, type BottledStateProjection } from "@/lib/sparkling/projection";
+import type { LotForm, AlcoholicFermState } from "@/lib/ledger/vocabulary";
 
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-sparkling" };
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -33,8 +36,8 @@ function assert(cond: boolean, msg: string) {
 
 const created = { vineyardIds: [] as string[], vesselIds: [] as string[], lotIds: [] as string[], locationIds: [] as string[], materialIds: [] as string[] };
 
-async function seedLot(code: string, vesselId: string, volumeL: number, vineyardId: string, vintage: number): Promise<string> {
-  const lot = await prisma.lot.create({ data: { code, form: "WINE", afState: "DRY", originVineyardId: vineyardId, vintageYear: vintage } });
+async function seedLot(code: string, vesselId: string, volumeL: number, vineyardId: string, vintage: number, form: LotForm = "WINE", afState: AlcoholicFermState = "DRY"): Promise<string> {
+  const lot = await prisma.lot.create({ data: { code, form, afState, originVineyardId: vineyardId, vintageYear: vintage } });
   created.lotIds.push(lot.id);
   await prisma.lotVineyard.create({ data: { lotId: lot.id, vineyardId } });
   await runLedgerWrite((tx) =>
@@ -156,7 +159,39 @@ async function main() {
   const cuveeParents = await prisma.lotLineage.findMany({ where: { childLotId: blend.childLotId }, select: { parentLotId: true, kind: true } });
   assert(cuveeParents.length === 2 && cuveeParents.every((e) => e.kind === "BLEND"), "cuvée traces to two base lots via BLEND lineage");
 
-  console.log(`\nALL ${passed} SPARKLING ASSERTIONS PASSED (traditional arc)`);
+  // ── 8. Tank method (Charmat) — stays BULK, never bottled-in-process ──
+  console.log("\n── 8. Tank method (bulk) ──");
+  const tankVessel = await prisma.vessel.create({ data: { code: "ZZ-SPK-TANK", type: "TANK", capacityL: 3000 } });
+  created.vesselIds.push(tankVessel.id);
+  const tankLot = await seedLot("ZZS-TANK", tankVessel.id, 900, vyA.id, 2024, "WINE", "DRY");
+  // Tirage sugar/yeast for the in-tank 2nd ferment is a normal ADDITION to the tank (the lot
+  // stays bulk WINE). NB: the Phase 6 matrix treats WINE+AF:ACTIVE as incoherent, so the in-tank
+  // 2nd ferment isn't modeled as an AF vector here — the ADDITION + isobaric bottling carry it.
+  await addAdditionCore(ACTOR, { vesselId: tankVessel.id, materialId: liqTirage.id, rateValue: 24, rateBasis: "G_L" });
+  assert((await stateOf(tankLot)) === null, "tank lot never gets a BottledLotState (stays bulk)");
+  await executeBottling({ vesselIds: [tankVessel.id], destinationLocationId: loc.id, skuName: "ZZ-TEST Tank Frizzante", skuVintage: 2024, bottlesProduced: 1000, date: new Date("2026-07-01"), method: "TANK", dosageStyle: "EXTRA_DRY" }, ACTOR);
+  const tankSku = await prisma.wineSku.findFirst({ where: { name: "ZZ-TEST Tank Frizzante" } });
+  assert(tankSku?.method === "TANK" && tankSku?.dosageStyle === "EXTRA_DRY", "tank-method SKU tagged method TANK + style");
+  assert((await stateOf(tankLot)) === null, "still no BottledLotState after isobaric bottling");
+  const tankLotForm = await prisma.lot.findUnique({ where: { id: tankLot }, select: { form: true } });
+  assert(tankLotForm?.form === "WINE", "tank lot stays LotForm WINE (bulk, not bottled-in-process)");
+
+  // ── 9. Pét-nat — bottled mid-ferment (JUICE + AF ACTIVE), finalize sur lie (no dosage) ──
+  console.log("\n── 9. Pét-nat (finalize sur lie) ──");
+  const petVessel = await prisma.vessel.create({ data: { code: "ZZ-SPK-PET", type: "TANK", capacityL: 2000 } });
+  created.vesselIds.push(petVessel.id);
+  const petLot = await seedLot("ZZS-PETNAT", petVessel.id, 750, vyB.id, 2024, "JUICE", "ACTIVE");
+  const petTir = await tirageCore(ACTOR, { sourceVesselId: petVessel.id, lotId: petLot, drawL: 750, bottleCount: 1000, method: "PETNAT", locationId: loc.id });
+  assert(petTir.tirageSugarAddedGpl === null, "pét-nat tirage has no liqueur de tirage");
+  const petLotState = await prisma.lot.findUnique({ where: { id: petLot }, select: { form: true, afState: true } });
+  assert(petLotState?.form === "BOTTLED_IN_PROCESS" && petLotState.afState === "ACTIVE", "pét-nat: BOTTLED_IN_PROCESS with AF ACTIVE carried into the bottle");
+  const petFin = await finalizeSparklingCore(ACTOR, { lotId: petLot, skuName: "ZZ-TEST Pét-Nat", destinationLocationId: loc.id, vintage: 2024, isNonVintage: false });
+  assert((await stateOf(petLot)) === null, "pét-nat BottledLotState closed at finalize");
+  const petSku = await prisma.wineSku.findFirst({ where: { name: "ZZ-TEST Pét-Nat" } });
+  assert(petSku?.method === "PETNAT" && petSku?.dosageStyle === null, "pét-nat SKU: method PETNAT, no dosage style (sur lie)");
+  assert(petFin.bottlesProduced === 1000, "pét-nat finalized 1000 bottles with no disgorge/dosage");
+
+  console.log(`\nALL ${passed} SPARKLING ASSERTIONS PASSED (traditional + tank + pét-nat)`);
 }
 
 async function scrub() {

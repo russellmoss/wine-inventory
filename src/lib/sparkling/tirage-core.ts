@@ -57,7 +57,10 @@ export async function tirageCore(actor: LedgerActor, input: TirageInput): Promis
   const lot = await prisma.lot.findUnique({ where: { id: input.lotId }, select: { id: true, code: true, form: true, afState: true, status: true } });
   if (!lot) throw new ActionError("Lot not found.");
   if (lot.status !== "ACTIVE") throw new ActionError(`Lot is ${lot.status.toLowerCase()}.`);
-  if (lot.form !== "WINE") throw new ActionError(`Only a WINE lot can go to tirage (this lot is ${lot.form}).`);
+  // WINE = traditional (finished base). JUICE = pét-nat bottled mid-ferment (AF still ACTIVE).
+  if (lot.form !== "WINE" && !(lot.form === "JUICE" && method === "PETNAT")) {
+    throw new ActionError(`Only a WINE lot (or a JUICE pét-nat) can go to tirage (this lot is ${lot.form}).`);
+  }
 
   const residents = await prisma.vesselLot.findMany({ where: { vesselId: input.sourceVesselId }, include: { lot: { select: { code: true } } } });
   const sourceBalances: VesselLotBalance[] = residents.map((r) => ({ vesselId: r.vesselId, lotId: r.lotId, volumeL: Number(r.volumeL) }));

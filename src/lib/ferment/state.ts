@@ -100,8 +100,9 @@ export function planStateTransition(lot: LotState, input: TransitionInput): Tran
     fromValue = lot.form;
     const to = input.to as LotForm;
     const legalForm: Record<string, LotForm[]> = {
+      // JUICE → BOTTLED_IN_PROCESS is the pét-nat path (bottled mid-ferment, AF still ACTIVE).
       MUST: ["JUICE", "WINE"],
-      JUICE: ["WINE"],
+      JUICE: ["WINE", "BOTTLED_IN_PROCESS"],
       // Phase 7 sparkling: bottling is non-terminal. A finished base wine becomes a continuable
       // bottle lot (tirage), then a sellable finished good (finalize). Pét-nat rides the same
       // BOTTLED_IN_PROCESS→FINISHED edge (finalize sur lie).
