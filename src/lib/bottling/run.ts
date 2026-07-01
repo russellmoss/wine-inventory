@@ -1,5 +1,4 @@
 import { Prisma, type SparklingMethod, type DosageStyle } from "@prisma/client";
-import { prisma } from "../prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "../audit";
 import { ActionError } from "../action-error";

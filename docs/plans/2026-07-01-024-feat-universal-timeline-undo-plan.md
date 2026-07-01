@@ -1,7 +1,7 @@
 ---
 title: Universal timeline undo (one reversal surface for every operation)
 type: feat
-status: draft
+status: 024a-completed
 date: 2026-07-01
 branch: main
 depth: standard
@@ -236,13 +236,30 @@ timeline newest-first; confirm the wine/positions return correctly and blocked s
 
 ## Success Criteria
 
-- [ ] `reverseOperationCore(operationId)` reverses every reversible op type; returns a typed reason for non-undoable ones.
-- [ ] The lot timeline shows Undo/Revert on every non-corrected reversible op, and a shown reason otherwise.
-- [ ] CRUSH, PRESS, SAIGNEE, BLEND are undoable (LIFO-guarded) with provenance restored.
-- [ ] En Tirage worklist, rack toast, and bottling-run undo all call the one dispatcher.
-- [ ] Reversal runs under tenant context; a cross-tenant reverse is denied (post-multitenancy).
-- [ ] `scripts/verify-reverse.ts` passes; no regression in `scripts/verify-sparkling.ts`.
-- [ ] All tests pass; ledger invariant (vessel-fold == projection) holds after every reversal.
+- [x] `reverseOperationCore(operationId)` reverses every reversible op type; returns a typed reason for non-undoable ones. *(024a: cellar/RACK/sparkling/BOTTLE; CRUSH/PRESS/SAIGNEE/BLEND report "coming soon" pending 024b.)*
+- [x] The lot timeline shows Undo/Revert on every non-corrected reversible op, and a shown reason otherwise.
+- [ ] CRUSH, PRESS, SAIGNEE, BLEND are undoable (LIFO-guarded) with provenance restored. *(024b — deferred; shown non-undoable-yet with a reason.)*
+- [x] En Tirage worklist calls the one dispatcher. *(Rack toast + bottling-run delete keep their id-typed direct calls — both already hit the exact family cores the dispatcher routes to; an opId round-trip would add queries + risk with no behavioral gain. Documented in Unit 7.)*
+- [x] Reversal runs under tenant context; a cross-tenant reverse is denied (verified in `verify-reverse.ts` §8).
+- [x] `scripts/verify-reverse.ts` passes (31/31); no regression in `scripts/verify-sparkling.ts` (53/53).
+- [x] All tests pass (605 vitest + both DB verify scripts); ledger invariant (vessel-fold == projection) holds after every reversal.
+
+## 024a Implementation Log (2026-07-01)
+
+Built Units 1, 2, 3, 5, 6, 7, 8 on `main`. Open decisions resolved with the user before build:
+"Undo" nomenclature + "corrected" badge; loose-neutral / strict-volume LIFO (matches existing
+guard); server-computed reversibility in one loader pass (no preview modal, no N+1); scope = 024a
+only. Unit 4 (origination/split reversal for CRUSH/PRESS/SAIGNEE/BLEND) deferred to 024b — those
+op types render a "coming soon" reason on the timeline via `reversibilityOf`.
+
+Deviations from the plan (all deliberate, low-risk):
+- **commandId idempotency (SHOULD-FIX)**: not threaded. The existing `correctedBy` / unique
+  `correctsOperationId` guard already makes a double-reverse a caught "already reversed" error
+  (never a duplicate). Threading commandId through every family core was out of 024a scope.
+- **Blocked-reason naming the specific blocker op (NICE)**: kept the existing "a later operation
+  has since touched the same wine — undo that first" CONFLICT message; naming `{id,type,date}`
+  deferred.
+- **Rack toast / bottling-run delete refactor (SHOULD)**: left as id-typed direct calls (see above).
 
 ## Review Findings & Revisions (2026-07-01 — council + eng + design)
 

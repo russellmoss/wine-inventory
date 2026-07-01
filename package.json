@@ -16,6 +16,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:field-inputs": "tsx prisma/seed-field-inputs.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
+    "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
