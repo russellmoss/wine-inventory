@@ -108,7 +108,7 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
     actor,
   });
 
-  await writeLotOperation(tx, {
+  const bottleOpId = await writeLotOperation(tx, {
     type: "BOTTLE",
     lines,
     actorUserId: actor.actorUserId,
@@ -118,6 +118,10 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
     vesselCodes,
     capacityByVessel: new Map(), // removal never overfills
   });
+  // Stamp the run id on the BOTTLE op so a later timeline reversal resolves its finished-goods
+  // run deterministically (no lot→run guessing), mirroring finalize-core's FINISH stamp. Additive
+  // metadata; the ledger lines are unchanged.
+  await tx.lotOperation.update({ where: { id: bottleOpId }, data: { metadata: { runId } } });
 
   const { cases, loose } = casesAndLoose(bottlesProduced);
   const codes = vessels.map((v) => v.code).join(", ");
@@ -125,8 +129,11 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
   return runId;
 }
 
-/** Reverse a bottling run within a transaction: restore bulk via the ledger, remove the bottles, delete the run. */
-async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, actor: Actor): Promise<void> {
+/** Reverse a bottling run within a transaction: restore bulk via the ledger, remove the bottles,
+ * delete the run. When `opts.correctsOperationId` is given (the timeline-undo path), the restore
+ * SEED op is stamped as the compensating correction of that BOTTLE op, so the ledger marks it
+ * `corrected` (append-only — the BOTTLE op is never mutated) and it can't be reversed twice. */
+async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, actor: Actor, opts?: { correctsOperationId?: number }): Promise<void> {
   const run = await tx.bottlingRun.findUnique({
     where: { id: runId },
     include: { sources: true, wineSku: { select: { name: true, vintage: true } }, destinationLocation: { select: { name: true } } },
@@ -204,6 +211,7 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
       actorUserId: actor.actorUserId,
       enteredBy: actor.actorEmail,
       note: `Restored wine from reversed bottling run ${runId}`,
+      correctsOperationId: opts?.correctsOperationId ?? null,
       lotCodes,
       vesselCodes,
       capacityByVessel,
@@ -228,6 +236,16 @@ export async function executeBottling(input: BottlingInput, actor: Actor): Promi
 
 export async function deleteBottling(runId: string, actor: Actor): Promise<void> {
   await withRetry(() => runInTenantTx((tx) => reverseBottlingTx(tx, runId, actor), SERIAL));
+}
+
+/**
+ * Reverse a still-wine bottling run for the universal timeline-undo path. Same restore as
+ * `deleteBottling`, but stamps the compensating SEED op with `correctsOperationId` so the BOTTLE
+ * op is marked corrected on the timeline (and can't be reversed twice). Called by the ledger
+ * reversal dispatcher after it resolves the run id from the BOTTLE op's metadata.
+ */
+export async function reverseBottlingRun(runId: string, actor: Actor, opts: { correctsOperationId: number }): Promise<void> {
+  await withRetry(() => runInTenantTx((tx) => reverseBottlingTx(tx, runId, actor, opts), SERIAL));
 }
 
 export async function editBottling(runId: string, input: BottlingInput, actor: Actor): Promise<void> {
