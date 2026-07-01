@@ -197,7 +197,7 @@ enum AuditAction {
 model Location {
   tenantId              String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                    String                  @id @default(cuid())
-  name                  String                  @unique
+  name                  String
   isSystem              Boolean                 @default(false) // "Winery" = true
   isActive              Boolean                 @default(true)
   createdAt             DateTime                @default(now())
@@ -208,6 +208,7 @@ model Location {
   bottlingRuns          BottlingRun[]
   bottledLotStates      BottledLotState[] // Phase 7: en-tirage bottle lots physically stored here
 
+  @@unique([tenantId, name])
   @@index([tenantId])
   @@map("location")
 }
@@ -215,8 +216,8 @@ model Location {
 model Variety {
   tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
-  name            String            @unique
-  abbreviation    String?           @unique // 2–4 uppercase code for lot codes (PN, CS). Nullable→backfilled; Postgres unique allows multiple NULLs.
+  name            String
+  abbreviation    String? // 2–4 uppercase code for lot codes (PN, CS). Nullable→backfilled; Postgres unique allows multiple NULLs.
   isActive        Boolean           @default(true)
   color           String? // canonical per-variety map color (hex), consistent across vineyards
   createdAt       DateTime          @default(now())
@@ -224,6 +225,8 @@ model Variety {
   bottlingSources BottlingSource[]
   vineyardBlocks  VineyardBlock[]
 
+  @@unique([tenantId, name])
+  @@unique([tenantId, abbreviation])
   @@index([tenantId])
   @@map("variety")
 }
@@ -231,8 +234,8 @@ model Variety {
 model Vineyard {
   tenantId        String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
-  name            String            @unique
-  abbreviation    String?           @unique // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
+  name            String
+  abbreviation    String? // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
   components      VesselComponent[]
@@ -246,6 +249,9 @@ model Vineyard {
   lotMemberships  LotVineyard[] // lots whose source set includes this vineyard
   userMemberships UserVineyard[] // users who manage this vineyard (D9 membership set)
 
+  @@unique([tenantId, name])
+  @@unique([tenantId, abbreviation])
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("vineyard")
 }
@@ -318,7 +324,7 @@ model VineyardSubblock {
   createdAt DateTime      @default(now())
   block     VineyardBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
 
-  @@unique([blockId, code])
+  @@unique([tenantId, blockId, code])
   @@index([blockId])
   @@index([tenantId])
   @@map("vineyard_subblock")
@@ -351,7 +357,7 @@ model FieldNote {
   vineyard           Vineyard  @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
   user               User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  @@unique([vineyardId, weekOf]) // one canonical note per vineyard per week
+  @@unique([tenantId, vineyardId, weekOf]) // one canonical note per vineyard per week
   @@index([vineyardId, weekOf])
   @@index([tenantId])
   @@map("field_note")
@@ -368,7 +374,7 @@ model FieldInput {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
 
-  @@unique([type, normalizedKey])
+  @@unique([tenantId, type, normalizedKey])
   @@index([tenantId])
   @@map("field_input")
 }
@@ -416,7 +422,7 @@ model HarvestRecord {
   vineyard        Vineyard      @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
   picks           HarvestPick[]
 
-  @@unique([blockId, vintageYear])
+  @@unique([tenantId, blockId, vintageYear])
   @@index([vineyardId, vintageYear])
   @@index([tenantId])
   @@map("harvest_record")
@@ -440,6 +446,7 @@ model HarvestPick {
   // Σ consumedKg ≤ weightKg is enforced in the crush tx (no DB unique on harvestPickId).
   crushSources    LotHarvestSource[]
 
+  @@unique([tenantId, id])
   @@index([harvestRecordId, pickDate])
   @@index([tenantId])
   @@map("harvest_pick")
@@ -480,7 +487,8 @@ model Vessel {
   // Phase 6: ferment-state transitions captured in this vessel (snapshot context).
   stateEvents      LotStateEvent[]
 
-  @@unique([type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
+  @@unique([tenantId, type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("vessel")
 }
@@ -499,7 +507,7 @@ model VesselComponent {
   variety    Variety  @relation(fields: [varietyId], references: [id], onDelete: Restrict)
   vineyard   Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
 
-  @@unique([vesselId, varietyId, vineyardId, vintage])
+  @@unique([tenantId, vesselId, varietyId, vineyardId, vintage])
   @@index([vesselId])
   @@index([varietyId])
   @@index([tenantId])
@@ -675,7 +683,7 @@ model BottledInventory {
   wineSku      WineSku  @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
   location     Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
 
-  @@unique([wineSkuId, locationId])
+  @@unique([tenantId, wineSkuId, locationId])
   @@index([locationId])
   @@index([tenantId])
   @@map("bottled_inventory")
@@ -686,12 +694,13 @@ model BottledInventory {
 model FinishedGoodCategory {
   tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String         @id @default(cuid())
-  name      String         @unique
+  name      String
   isActive  Boolean        @default(true)
   createdAt DateTime       @default(now())
   goods     FinishedGood[]
   wineSkus  WineSku[]
 
+  @@unique([tenantId, name])
   @@index([tenantId])
   @@map("finished_good_category")
 }
@@ -722,7 +731,7 @@ model FinishedGoodInventory {
   finishedGood   FinishedGood @relation(fields: [finishedGoodId], references: [id], onDelete: Restrict)
   location       Location     @relation(fields: [locationId], references: [id], onDelete: Restrict)
 
-  @@unique([finishedGoodId, locationId])
+  @@unique([tenantId, finishedGoodId, locationId])
   @@index([locationId])
   @@index([tenantId])
   @@map("finished_good_inventory")
@@ -956,6 +965,7 @@ model AppSettings {
   sparklingEnabled Boolean  @default(false)
   updatedAt        DateTime @updatedAt
 
+  @@unique([tenantId])
   @@index([tenantId])
   @@map("app_settings")
 }
@@ -966,9 +976,10 @@ model AppSettings {
 model PressCycle {
   tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String   @id @default(cuid())
-  name      String   @unique
+  name      String
   createdAt DateTime @default(now())
 
+  @@unique([tenantId, name])
   @@index([tenantId])
   @@map("press_cycle")
 }
@@ -980,7 +991,7 @@ model PressCycle {
 model Lot {
   tenantId           String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                 String             @id @default(cuid())
-  code               String             @unique
+  code               String
   // form is MUTABLE over the lot's life (D4) but ONLY via the Phase 6 domain transitions
   // (crush→MUST, press/saignée→JUICE, AF-dry→WINE) — direct writes are banned; every change
   // records a LotStateEvent. origin*/code/provenance stay immutable.
@@ -1029,6 +1040,8 @@ model Lot {
   // Phase 7: the 1:1 continuable-bottle projection (present only while BOTTLED_IN_PROCESS).
   bottledState         BottledLotState?
 
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
   @@index([status])
   @@index([originVineyardId])
   @@index([tenantId])
@@ -1115,7 +1128,7 @@ model VesselLot {
   vessel    Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
   lot       Lot      @relation(fields: [lotId], references: [id], onDelete: Restrict)
 
-  @@unique([vesselId, lotId])
+  @@unique([tenantId, vesselId, lotId])
   @@index([lotId])
   @@index([tenantId])
   @@map("vessel_lot")
@@ -1242,7 +1255,7 @@ model LotVineyard {
   lot        Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
   vineyard   Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Restrict)
 
-  @@unique([lotId, vineyardId])
+  @@unique([tenantId, lotId, vineyardId])
   @@index([vineyardId])
   @@index([tenantId])
   @@map("lot_vineyard")
@@ -1260,7 +1273,7 @@ model UserVineyard {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   vineyard   Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, vineyardId])
+  @@unique([tenantId, userId, vineyardId])
   @@index([vineyardId])
   @@index([tenantId])
   @@map("user_vineyard")
@@ -1300,6 +1313,7 @@ model BlendTrial {
   components      BlendTrialComponent[]
   promotedToLot   Lot?                  @relation("TrialPromotedLot", fields: [promotedToLotId], references: [id], onDelete: SetNull)
 
+  @@unique([tenantId, id])
   @@index([status])
   @@index([promotedToLotId])
   @@index([tenantId])
@@ -1320,7 +1334,7 @@ model BlendTrialComponent {
   trial      BlendTrial @relation(fields: [trialId], references: [id], onDelete: Cascade)
   lot        Lot        @relation(fields: [lotId], references: [id], onDelete: Restrict)
 
-  @@unique([trialId, lotId])
+  @@unique([tenantId, trialId, lotId])
   @@index([lotId])
   @@index([tenantId])
   @@map("blend_trial_component")
@@ -1383,7 +1397,7 @@ model CellarMaterial {
   createdAt     DateTime       @default(now())
   treatments    LotTreatment[]
 
-  @@unique([kind, normalizedKey])
+  @@unique([tenantId, kind, normalizedKey])
   @@index([tenantId])
   @@map("cellar_material")
 }
@@ -1393,12 +1407,13 @@ model CellarMaterial {
 model VesselGroup {
   tenantId  String? // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String              @id @default(cuid())
-  name      String              @unique
+  name      String
   note      String?
   isActive  Boolean             @default(true)
   createdAt DateTime            @default(now())
   members   VesselGroupMember[]
 
+  @@unique([tenantId, name])
   @@index([tenantId])
   @@map("vessel_group")
 }
@@ -1411,7 +1426,7 @@ model VesselGroupMember {
   group    VesselGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   vessel   Vessel      @relation(fields: [vesselId], references: [id], onDelete: Cascade)
 
-  @@unique([groupId, vesselId])
+  @@unique([tenantId, groupId, vesselId])
   @@index([vesselId])
   @@index([tenantId])
   @@map("vessel_group_member")
@@ -1510,7 +1525,7 @@ model AnalysisReading {
   createdAt DateTime      @default(now())
   panel     AnalysisPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
 
-  @@unique([panelId, analyte]) // a panel holds at most one reading per analyte (Brix+temp can't desync)
+  @@unique([tenantId, panelId, analyte]) // a panel holds at most one reading per analyte (Brix+temp can't desync)
   @@index([panelId])
   @@index([analyte])
   @@index([tenantId])
