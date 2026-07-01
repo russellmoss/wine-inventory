@@ -11,7 +11,7 @@ export type RunRow = {
   id: string;
   date: string;
   skuName: string;
-  skuVintage: number;
+  skuVintage: number | null; // Phase 7: nullable for NV SKUs (K11)
   bottlesProduced: number;
   destinationLocationId: string;
   location: string;
@@ -148,7 +148,7 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
             return (
               <Card key={r.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                  <strong>{r.skuName} {r.skuVintage}</strong>
+                  <strong>{r.skuName} {r.skuVintage ?? "NV"}</strong>
                   <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                     <Badge tone="gold" variant="soft">{r.bottlesProduced} bottles · {s.cases}c + {s.loose}</Badge>
                     {!editing ? <Button variant="ghost" size="sm" disabled={pending} onClick={() => setEditingId(r.id)}>edit</Button> : null}
@@ -161,7 +161,7 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
                   <div style={{ marginTop: 14, borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}>
                     <BottlingForm
                       vessels={vessels} locations={locations} mode="edit" pending={pending}
-                      initial={{ vesselIds: r.vesselIds, skuName: r.skuName, skuVintage: r.skuVintage, bottles: r.bottlesProduced, destinationLocationId: r.destinationLocationId, date: r.date }}
+                      initial={{ vesselIds: r.vesselIds, skuName: r.skuName, skuVintage: r.skuVintage ?? "", bottles: r.bottlesProduced, destinationLocationId: r.destinationLocationId, date: r.date }}
                       onSubmit={(fd) => run(() => editBottlingRun(r.id, fd), () => setEditingId(null))}
                       onCancel={() => setEditingId(null)}
                     />

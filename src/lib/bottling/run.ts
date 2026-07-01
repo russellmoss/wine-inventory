@@ -6,6 +6,7 @@ import { computeProportionalDraw, consumedForBottles, casesAndLoose, round2 } fr
 import { writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import { nextLotCode } from "@/lib/lot/generate";
+import { findOrCreateWineSku } from "@/lib/bottling/sku";
 
 export type BottlingInput = {
   vesselIds: string[];
@@ -67,11 +68,9 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
 
   // Default wine to a "Wine" category (upsert avoids a P2002 race on first bottling).
   const wineCat = await tx.finishedGoodCategory.upsert({ where: { name: "Wine" }, update: {}, create: { name: "Wine" } });
-  const sku = await tx.wineSku.upsert({
-    where: { name_vintage_bottleSizeMl: { name: skuName, vintage: skuVintage, bottleSizeMl: 750 } },
-    update: {},
-    create: { name: skuName, vintage: skuVintage, bottleSizeMl: 750, categoryId: wineCat.id },
-  });
+  // Find-or-create keyed on the vintaged partial unique index (K11) — the old compound upsert
+  // can't target a partial index. Still-wine bottling is always vintaged (isNonVintage: false).
+  const sku = await findOrCreateWineSku(tx, { name: skuName, vintage: skuVintage, isNonVintage: false, bottleSizeMl: 750 }, { categoryId: wineCat.id });
 
   const run = await tx.bottlingRun.create({
     data: { date, wineSkuId: sku.id, bottlesProduced, volumeConsumedL: consumedL, destinationLocationId, createdById: actor.actorUserId, createdByEmail: actor.actorEmail },
@@ -142,8 +141,14 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
   }
 
   // Capacity guard: a vessel refilled since bottling must not overflow on restore.
+  // Phase 7: BottlingSource.vesselId is now nullable — a finalized SPARKLING run has no source
+  // vessel (its reversal reopens the bottle lot instead, Unit 11). This still-wine reverse path
+  // only restores vessel-backed sources; a null-vessel source is skipped here.
   const restoreByVessel = new Map<string, number>();
-  for (const s of run.sources) restoreByVessel.set(s.vesselId, round2((restoreByVessel.get(s.vesselId) ?? 0) + Number(s.volumeConsumedL)));
+  for (const s of run.sources) {
+    if (!s.vesselId) continue;
+    restoreByVessel.set(s.vesselId, round2((restoreByVessel.get(s.vesselId) ?? 0) + Number(s.volumeConsumedL)));
+  }
   const capacityByVessel = new Map<string, number>();
   const vesselCodes = new Map<string, string>();
   for (const [vesselId, restoreL] of restoreByVessel) {
@@ -161,6 +166,7 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
   const lines: LedgerLine[] = [];
   const lotCodes = new Map<string, string>();
   for (const s of run.sources) {
+    if (!s.vesselId) continue; // null-vessel (sparkling finalize) sources aren't restored here
     const vol = round2(Number(s.volumeConsumedL));
     if (vol <= 0) continue;
     let lotId = s.lotId;
@@ -169,13 +175,13 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
       // restore stays ledger-backed. Use a readable code when abbreviations exist; fall
       // back to a random code so this recovery path never blocks on missing reference data.
       const [variety, vineyard] = await Promise.all([
-        tx.variety.findUnique({ where: { id: s.varietyId }, select: { abbreviation: true } }),
-        tx.vineyard.findUnique({ where: { id: s.vineyardId }, select: { abbreviation: true } }),
+        s.varietyId ? tx.variety.findUnique({ where: { id: s.varietyId }, select: { abbreviation: true } }) : null,
+        s.vineyardId ? tx.vineyard.findUnique({ where: { id: s.vineyardId }, select: { abbreviation: true } }) : null,
       ]);
       const code =
-        variety?.abbreviation && vineyard?.abbreviation
+        variety?.abbreviation && vineyard?.abbreviation && s.vintage != null
           ? await nextLotCode(tx, { vintage: s.vintage, vineyardAbbr: vineyard.abbreviation, varietyAbbr: variety.abbreviation })
-          : `LOT-${s.vintage}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+          : `LOT-${s.vintage ?? "NV"}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
       const lot = await tx.lot.create({
         data: { code, form: "WINE", originVarietyId: s.varietyId, originVineyardId: s.vineyardId, vintageYear: s.vintage },
         select: { id: true, code: true },

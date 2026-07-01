@@ -7,6 +7,7 @@ import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { receiveStock, adjustStock, transferStock, type ItemKind } from "@/lib/stock/movements";
 import { MAX_IMPORT_ROWS, type ParsedInventoryRow } from "@/lib/inventory/csv";
+import { findWineSku } from "@/lib/bottling/sku";
 
 const PATH = "/inventory";
 
@@ -46,7 +47,7 @@ export const createWineSku = action(async ({ actor }, formData: FormData) => {
   const name = clean(formData.get("name"), "Wine name");
   const vintage = parseVintage(formData.get("vintage"));
   let categoryId = String(formData.get("categoryId") ?? "");
-  if (await prisma.wineSku.findUnique({ where: { name_vintage_bottleSizeMl: { name, vintage, bottleSizeMl: 750 } } })) {
+  if (await findWineSku(prisma, { name, vintage, isNonVintage: false, bottleSizeMl: 750 })) {
     throw new ActionError("That wine + vintage already exists.", "CONFLICT");
   }
   await prisma.$transaction(async (tx) => {
@@ -130,7 +131,7 @@ export const updateOnHand = action(async ({ actor }, input: UpdateOnHandInput) =
     const before = await prisma.wineSku.findUnique({ where: { id: itemId }, select: { name: true, vintage: true, categoryId: true } });
     if (!before) throw new ActionError("Wine not found.");
     if (before.name !== name || before.vintage !== vintage) {
-      const dup = await prisma.wineSku.findUnique({ where: { name_vintage_bottleSizeMl: { name, vintage, bottleSizeMl: 750 } }, select: { id: true } });
+      const dup = await findWineSku(prisma, { name, vintage, isNonVintage: false, bottleSizeMl: 750 });
       if (dup && dup.id !== itemId) throw new ActionError("That wine + vintage already exists.", "CONFLICT");
     }
     if (categoryId && !(await prisma.finishedGoodCategory.findUnique({ where: { id: categoryId } }))) throw new ActionError("Pick a valid category.");
@@ -255,7 +256,7 @@ async function ensureLocation(actor: Actor, name: string, created: Set<string>):
 /** Find-or-create a wine SKU (name+vintage+750ml) under the given category; audits creation. */
 async function ensureWineSku(actor: Actor, name: string, vintage: number, categoryId: string, created: Set<string>): Promise<string> {
   return findOrCreate(
-    () => prisma.wineSku.findUnique({ where: { name_vintage_bottleSizeMl: { name, vintage, bottleSizeMl: 750 } }, select: { id: true } }),
+    () => findWineSku(prisma, { name, vintage, isNonVintage: false, bottleSizeMl: 750 }),
     () =>
       prisma.$transaction(async (tx) => {
         const sku = await tx.wineSku.create({ data: { name, vintage, bottleSizeMl: 750, categoryId } });

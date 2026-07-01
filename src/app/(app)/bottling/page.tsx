@@ -39,8 +39,8 @@ export default async function BottlingPage() {
     bottlesProduced: r.bottlesProduced,
     destinationLocationId: r.destinationLocationId,
     location: r.destinationLocation.name,
-    vesselIds: [...new Set(r.sources.map((s) => s.vesselId))],
-    sources: r.sources.map((s) => `${s.variety.name} · ${s.vineyard.name} · ${s.vintage}: ${Number(s.volumeConsumedL)} L`),
+    vesselIds: [...new Set(r.sources.map((s) => s.vesselId).filter((v): v is string => v !== null))],
+    sources: r.sources.map((s) => `${s.variety?.name ?? "—"} · ${s.vineyard?.name ?? "—"} · ${s.vintage ?? "NV"}: ${Number(s.volumeConsumedL)} L`),
   }));
 
   return <BottlingClient vessels={vesselOpts} locations={locations} runs={runRows} />;
