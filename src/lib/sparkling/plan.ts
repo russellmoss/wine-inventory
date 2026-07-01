@@ -54,6 +54,43 @@ export function planTirageBottling(
   return { lines, drawL: draw, bottleCount, nominalFillMl };
 }
 
+export type TirageDraw = { vesselId: string; drawL: number };
+
+/**
+ * Multi-tank tirage: bottle ONE cuvée lot that sits across several vessels into a single
+ * en-tirage bottle lot. One `−drawL` VESSEL leg per source vessel + a single `+ΣdrawL`
+ * BOTTLE_STORAGE leg carrying the full bottle count. Combining *different* wines is the
+ * upstream assemblage (a BLEND) — this only aggregates one lot's own positions.
+ */
+export function planTirageBottlingMulti(
+  sourceBalances: VesselLotBalance[],
+  lotId: string,
+  draws: TirageDraw[],
+  bottleCount: number,
+  nominalFillMl: number,
+): TirageBottlingPlan {
+  if (draws.length === 0) throw new Error("Pick at least one source tank.");
+  if (!(bottleCount > 0) || !Number.isInteger(bottleCount)) throw new Error("Bottle count must be a positive whole number.");
+  if (!(nominalFillMl > 0)) throw new Error("Bottle fill (mL) must be greater than 0.");
+  if (new Set(draws.map((d) => d.vesselId)).size !== draws.length) throw new Error("Each source tank can only be listed once.");
+
+  const vesselLines: LedgerLine[] = [];
+  let total = 0;
+  for (const d of draws) {
+    if (!(d.drawL > 0)) throw new Error("Each tank draw must be greater than 0.");
+    const have = sourceBalances.find((b) => balanceKey(b.vesselId, b.lotId) === balanceKey(d.vesselId, lotId))?.volumeL ?? 0;
+    const draw = round2(d.drawL);
+    if (draw > round2(have) + EPS) throw new Error(`Can't draw ${draw} L — that lot holds ${round2(have)} L in that tank.`);
+    vesselLines.push({ lotId, vesselId: d.vesselId, deltaL: -draw, bucket: "VESSEL" });
+    total = round2(total + draw);
+  }
+  if (!(total > 0)) throw new Error("Total tirage draw must be greater than 0.");
+
+  const lines: LedgerLine[] = [...vesselLines, { lotId, vesselId: null, deltaL: total, bucket: "BOTTLE_STORAGE", bottleDelta: bottleCount }];
+  assertBalanced(lines);
+  return { lines, drawL: total, bottleCount, nominalFillMl };
+}
+
 // ───────────────────────── Disgorgement: per-bottle volume LOSS ─────────────────────────
 
 export type DisgorgementInput = {

@@ -107,7 +107,7 @@ async function main() {
   // ── 2. Tirage: 1500 L → 2000 × 750 mL, +24 g/L tirage sugar ──
   console.log("\n── 2. Tirage ──");
   const tir = await tirageCore(ACTOR, {
-    sourceVesselId: cuvee.id, lotId: blend.childLotId, drawL: 1500, bottleCount: 2000, nominalFillMl: 750,
+    lotId: blend.childLotId, sources: [{ vesselId: cuvee.id, drawL: 1500 }], bottleCount: 2000, nominalFillMl: 750,
     method: "TRADITIONAL", liqueurMaterialId: liqTirage.id, targetPressureAtm: 6, locationId: loc.id,
   });
   assert(tir.tirageSugarAddedGpl === 24, "tirage sugar 24 g/L for 6 atm");
@@ -198,7 +198,7 @@ async function main() {
   const petVessel = await prisma.vessel.create({ data: { code: "ZZ-SPK-PET", type: "TANK", capacityL: 2000 } });
   created.vesselIds.push(petVessel.id);
   const petLot = await seedLot("ZZS-PETNAT", petVessel.id, 750, vyB.id, 2024, "JUICE", "ACTIVE");
-  const petTir = await tirageCore(ACTOR, { sourceVesselId: petVessel.id, lotId: petLot, drawL: 750, bottleCount: 1000, method: "PETNAT", locationId: loc.id });
+  const petTir = await tirageCore(ACTOR, { lotId: petLot, sources: [{ vesselId: petVessel.id, drawL: 750 }], bottleCount: 1000, method: "PETNAT", locationId: loc.id });
   assert(petTir.tirageSugarAddedGpl === null, "pét-nat tirage has no liqueur de tirage");
   const petLotState = await prisma.lot.findUnique({ where: { id: petLot }, select: { form: true, afState: true } });
   assert(petLotState?.form === "BOTTLED_IN_PROCESS" && petLotState.afState === "ACTIVE", "pét-nat: BOTTLED_IN_PROCESS with AF ACTIVE carried into the bottle");
@@ -208,12 +208,38 @@ async function main() {
   assert(petSku?.method === "PETNAT" && petSku?.dosageStyle === null, "pét-nat SKU: method PETNAT, no dosage style (sur lie)");
   assert(petFin.bottlesProduced === 1000, "pét-nat finalized 1000 bottles with no disgorge/dosage");
 
+  // ── 9b. Multi-tank tirage — one cuvée drawn from two tanks in a single TIRAGE ──
+  console.log("\n── 9b. Multi-tank tirage ──");
+  const mtA = await prisma.vessel.create({ data: { code: "ZZ-SPK-MTA", type: "TANK", capacityL: 2000 } });
+  const mtB = await prisma.vessel.create({ data: { code: "ZZ-SPK-MTB", type: "TANK", capacityL: 2000 } });
+  created.vesselIds.push(mtA.id, mtB.id);
+  const mtLot = await prisma.lot.create({ data: { code: "ZZS-MULTI", form: "WINE", afState: "NONE", originVineyardId: vyA.id, vintageYear: 2024 } });
+  created.lotIds.push(mtLot.id);
+  await prisma.lotVineyard.create({ data: { lotId: mtLot.id, vineyardId: vyA.id } });
+  await runLedgerWrite((tx) =>
+    writeLotOperation(tx, {
+      type: "SEED",
+      lines: [
+        { lotId: mtLot.id, vesselId: mtA.id, deltaL: 400 }, { lotId: mtLot.id, vesselId: null, deltaL: -400, reason: "seed" },
+        { lotId: mtLot.id, vesselId: mtB.id, deltaL: 300 }, { lotId: mtLot.id, vesselId: null, deltaL: -300, reason: "seed" },
+      ] as LedgerLine[],
+      actorUserId: null, enteredBy: ACTOR.actorEmail, lotCodes: new Map([[mtLot.id, "ZZS-MULTI"]]), vesselCodes: new Map(), capacityByVessel: new Map([[mtA.id, 2000], [mtB.id, 2000]]),
+    }),
+  );
+  const mtTir = await tirageCore(ACTOR, { lotId: mtLot.id, sources: [{ vesselId: mtA.id, drawL: 400 }, { vesselId: mtB.id, drawL: 300 }], bottleCount: 933, nominalFillMl: 750, method: "TRADITIONAL", locationId: loc.id });
+  assert(mtTir.volumeL === 700, "multi-tank tirage draws 700 L total across two tanks");
+  const mtState = await stateOf(mtLot.id);
+  assert(mtState?.bottleCount === 933 && mtState?.volumeL === 700, "one bottle lot from two tanks: 933 bottles / 700 L");
+  const mtDrainedA = await prisma.vesselLot.findFirst({ where: { vesselId: mtA.id, lotId: mtLot.id } });
+  const mtDrainedB = await prisma.vesselLot.findFirst({ where: { vesselId: mtB.id, lotId: mtLot.id } });
+  assert(mtDrainedA === null && mtDrainedB === null, "both source tanks drained by the single tirage");
+
   // ── 10. Corrections (D6/D15): guard, dosage reverse, finalize reversal ──
   console.log("\n── 10. Corrections ──");
   const cTank = await prisma.vessel.create({ data: { code: "ZZ-SPK-CORR", type: "TANK", capacityL: 3000 } });
   created.vesselIds.push(cTank.id);
   const cLot = await seedLot("ZZS-CORR", cTank.id, 750, vyA.id, 2024, "WINE", "NONE");
-  await tirageCore(ACTOR, { sourceVesselId: cTank.id, lotId: cLot, drawL: 750, bottleCount: 1000, method: "TRADITIONAL", locationId: loc.id });
+  await tirageCore(ACTOR, { lotId: cLot, sources: [{ vesselId: cTank.id, drawL: 750 }], bottleCount: 1000, method: "TRADITIONAL", locationId: loc.id });
   const cDisg = await disgorgementCore(ACTOR, { lotId: cLot, bottlesDisgorged: 1000, perBottleLossMl: 25 });
   const cDose = await dosageCore(ACTOR, { lotId: cLot, perBottleDoseMl: 9, liqueurGPerL: 600 });
   let cGuardBlocked = false;
@@ -231,7 +257,7 @@ async function main() {
   assert(cReopened != null && cReopened.bottleCount === 1000 && cLotForm?.form === "BOTTLED_IN_PROCESS", "finalize reversal reopens the bottle lot (1000 bottles, BOTTLED_IN_PROCESS)");
   assert((await prisma.bottlingRun.findUnique({ where: { id: cFin.runId } })) === null, "finalize reversal deletes the BottlingRun");
 
-  console.log(`\nALL ${passed} SPARKLING ASSERTIONS PASSED (traditional + tank + pét-nat + corrections)`);
+  console.log(`\nALL ${passed} SPARKLING ASSERTIONS PASSED (traditional + multi-tank + tank + pét-nat + corrections)`);
 }
 
 async function scrub() {

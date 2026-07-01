@@ -7,7 +7,7 @@ import { balanceKey, type VesselLotBalance } from "@/lib/ledger/math";
 import type { CaptureMethod } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { applyStateTransitionTx } from "@/lib/ferment/transition-core";
-import { planTirageBottling } from "@/lib/sparkling/plan";
+import { planTirageBottlingMulti, type TirageDraw } from "@/lib/sparkling/plan";
 import { tirageSugarForPressure } from "@/lib/sparkling/sugar";
 
 // Phase 7 Unit 5: SCRIPT-SAFE core for TIRAGE — bottle a (usually assembled) bulk lot into a
@@ -19,9 +19,10 @@ import { tirageSugarForPressure } from "@/lib/sparkling/sugar";
 export type TirageMethod = "TRADITIONAL" | "PETNAT";
 
 export type TirageInput = {
-  sourceVesselId: string;
-  lotId: string; // the base (assembled) lot to bottle
-  drawL: number; // bulk volume moved into glass
+  lotId: string; // the base (assembled) cuvée lot to bottle
+  // The lot's own positions to draw from — one entry per source tank (a cuvée can span tanks).
+  // Combining DIFFERENT wines is the upstream assemblage (a BLEND), not tirage.
+  sources: TirageDraw[];
   bottleCount: number;
   nominalFillMl?: number; // default 750
   method?: TirageMethod; // default TRADITIONAL (TANK never bottles-in-process)
@@ -49,11 +50,14 @@ export async function tirageCore(actor: LedgerActor, input: TirageInput): Promis
   const nominalFillMl = input.nominalFillMl ?? 750;
   const method: TirageMethod = input.method ?? "TRADITIONAL";
   const tirageAt = input.tirageAt ?? new Date();
-  if (!(input.drawL > 0)) throw new ActionError("Enter a bottling volume greater than 0.");
+  const sources = input.sources ?? [];
+  if (sources.length === 0) throw new ActionError("Pick at least one source tank.");
   if (!(input.bottleCount > 0) || !Number.isInteger(input.bottleCount)) throw new ActionError("Bottle count must be a positive whole number.");
 
-  const vessel = await prisma.vessel.findUnique({ where: { id: input.sourceVesselId } });
-  if (!vessel) throw new ActionError("Source vessel not found.");
+  const vesselIds = [...new Set(sources.map((s) => s.vesselId))];
+  const vessels = await prisma.vessel.findMany({ where: { id: { in: vesselIds } } });
+  if (vessels.length !== vesselIds.length) throw new ActionError("A source vessel was not found.");
+  const vesselCodes = new Map(vessels.map((v) => [v.id, v.code]));
   const lot = await prisma.lot.findUnique({ where: { id: input.lotId }, select: { id: true, code: true, form: true, afState: true, status: true } });
   if (!lot) throw new ActionError("Lot not found.");
   if (lot.status !== "ACTIVE") throw new ActionError(`Lot is ${lot.status.toLowerCase()}.`);
@@ -62,10 +66,15 @@ export async function tirageCore(actor: LedgerActor, input: TirageInput): Promis
     throw new ActionError(`Only a WINE lot (or a JUICE pét-nat) can go to tirage (this lot is ${lot.form}).`);
   }
 
-  const residents = await prisma.vesselLot.findMany({ where: { vesselId: input.sourceVesselId }, include: { lot: { select: { code: true } } } });
+  const residents = await prisma.vesselLot.findMany({ where: { vesselId: { in: vesselIds }, lotId: input.lotId } });
   const sourceBalances: VesselLotBalance[] = residents.map((r) => ({ vesselId: r.vesselId, lotId: r.lotId, volumeL: Number(r.volumeL) }));
-  const have = sourceBalances.find((b) => balanceKey(b.vesselId, b.lotId) === balanceKey(input.sourceVesselId, input.lotId))?.volumeL ?? 0;
-  if (input.drawL > round2(have) + 1e-9) throw new ActionError(`That lot holds ${round2(have)} L in ${vessel.code}; can't bottle ${round2(input.drawL)} L.`, "CONFLICT");
+  for (const s of sources) {
+    const have = sourceBalances.find((b) => balanceKey(b.vesselId, b.lotId) === balanceKey(s.vesselId, input.lotId))?.volumeL ?? 0;
+    if (round2(s.drawL) > round2(have) + 1e-9) {
+      throw new ActionError(`That cuvée holds ${round2(have)} L in ${vesselCodes.get(s.vesselId) ?? "that tank"}; can't draw ${round2(s.drawL)} L.`, "CONFLICT");
+    }
+  }
+  const totalDrawL = round2(sources.reduce((a, s) => a + s.drawL, 0));
 
   const tirageSugarGpl =
     input.tirageSugarGpl != null
@@ -81,9 +90,8 @@ export async function tirageCore(actor: LedgerActor, input: TirageInput): Promis
     liqueurName = m.name;
   }
 
-  const plan = planTirageBottling(sourceBalances, input.sourceVesselId, input.lotId, input.drawL, input.bottleCount, nominalFillMl);
+  const plan = planTirageBottlingMulti(sourceBalances, input.lotId, sources, input.bottleCount, nominalFillMl);
   const lotCodes = new Map([[input.lotId, lot.code]]);
-  const vesselCodes = new Map([[input.sourceVesselId, vessel.code]]);
 
   const result = await runLedgerWrite(async (tx) => {
     // (1) Optional liqueur de tirage — a volume-neutral ADDITION carrying the material + computed
@@ -104,15 +112,15 @@ export async function tirageCore(actor: LedgerActor, input: TirageInput): Promis
         data: {
           operationId: addOpId,
           lotId: input.lotId,
-          vesselId: input.sourceVesselId,
+          vesselId: sources.length === 1 ? sources[0].vesselId : null, // lot-scoped when it spans tanks
           kind: "TIRAGE",
           materialId: input.liqueurMaterialId,
           materialName: liqueurName,
           rateValue: tirageSugarGpl,
           rateBasis: "G_L",
-          computedTotal: round2(tirageSugarGpl * input.drawL), // grams of sugar
+          computedTotal: round2(tirageSugarGpl * totalDrawL), // grams of sugar across the whole draw
           computedUnit: "g",
-          volumeLAtAddition: round2(input.drawL),
+          volumeLAtAddition: totalDrawL,
           note: input.note?.trim() || null,
         },
       });
@@ -138,25 +146,28 @@ export async function tirageCore(actor: LedgerActor, input: TirageInput): Promis
       await tx.bottledLotState.update({ where: { lotId: input.lotId }, data: { tirageSugarAddedGpl: tirageSugarGpl } });
     }
 
+    const contextVesselId = sources.length === 1 ? sources[0].vesselId : null;
+
     // (3) form WINE → BOTTLED_IN_PROCESS (state machine + LotStateEvent).
-    await applyStateTransitionTx(tx, actor, { lotId: input.lotId, kind: "FORM", to: "BOTTLED_IN_PROCESS", vesselId: input.sourceVesselId, operationId: opId });
+    await applyStateTransitionTx(tx, actor, { lotId: input.lotId, kind: "FORM", to: "BOTTLED_IN_PROCESS", vesselId: contextVesselId, operationId: opId });
 
     // (4) Start the (secondary / pét-nat) ferment: AF NONE → ACTIVE. A pét-nat bottled mid-ferment
     // is already ACTIVE (skip); a dry base that skipped a fresh assemblage stays as-is (no rewind).
     if (lot.afState === "NONE") {
-      await applyStateTransitionTx(tx, actor, { lotId: input.lotId, kind: "AF", to: "ACTIVE", vesselId: input.sourceVesselId, operationId: opId });
+      await applyStateTransitionTx(tx, actor, { lotId: input.lotId, kind: "AF", to: "ACTIVE", vesselId: contextVesselId, operationId: opId });
     }
 
+    const tankLabel = vessels.length === 1 ? vessels[0].code : `${vessels.length} tanks`;
     await writeAudit(tx, {
       ...actor,
       action: "STOCK_MOVEMENT",
       entityType: "Lot",
       entityId: input.lotId,
-      summary: `Tirage: bottled ${input.bottleCount} × ${nominalFillMl} mL (${round2(input.drawL)} L) of ${lot.code} en tirage${tirageSugarGpl != null ? ` (+${tirageSugarGpl} g/L tirage sugar)` : ""}`,
+      summary: `Tirage: bottled ${input.bottleCount} × ${nominalFillMl} mL (${totalDrawL} L from ${tankLabel}) of ${lot.code} en tirage${tirageSugarGpl != null ? ` (+${tirageSugarGpl} g/L tirage sugar)` : ""}`,
     });
 
     return opId;
   });
 
-  return { operationId: result, lotId: input.lotId, bottleCount: input.bottleCount, volumeL: round2(input.drawL), tirageSugarAddedGpl: tirageSugarGpl };
+  return { operationId: result, lotId: input.lotId, bottleCount: input.bottleCount, volumeL: totalDrawL, tirageSugarAddedGpl: tirageSugarGpl };
 }

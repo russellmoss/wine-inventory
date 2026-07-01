@@ -145,8 +145,9 @@ export function EnTirageClient({
 function TirageModal({ open, onClose, candidates, locations, materials, pending, run }: {
   open: boolean; onClose: () => void; candidates: TirageCandidate[]; locations: { id: string; name: string }[]; materials: { id: string; name: string }[]; pending: boolean; run: (fn: () => Promise<string>) => void;
 }) {
-  const [candIdx, setCandIdx] = React.useState(0);
-  const [drawL, setDrawL] = React.useState("");
+  const [lotId, setLotId] = React.useState(candidates[0]?.lotId ?? "");
+  // Per-tank selection + draw for the chosen cuvée: vesselId → { checked, draw }.
+  const [tankSel, setTankSel] = React.useState<Record<string, { checked: boolean; draw: string }>>({});
   const [bottleCount, setBottleCount] = React.useState("");
   const [nominalFillMl, setNominalFillMl] = React.useState("750");
   const [method, setMethod] = React.useState<"TRADITIONAL" | "PETNAT">("TRADITIONAL");
@@ -154,32 +155,75 @@ function TirageModal({ open, onClose, candidates, locations, materials, pending,
   const [materialId, setMaterialId] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
 
-  const cand = candidates[candIdx];
+  const cand = candidates.find((c) => c.lotId === lotId);
   const suggestedSugar = pressureAtm ? tirageSugarForPressure(Number(pressureAtm)) : null;
+  // Default: every tank of the cuvée checked, drawing its full volume.
+  const tankOf = (vesselId: string, volumeL: number) => tankSel[vesselId] ?? { checked: true, draw: String(volumeL) };
+  const chosen = (cand?.tanks ?? []).map((t) => ({ ...t, ...tankOf(t.vesselId, t.volumeL) }));
+  const totalDraw = Math.round(chosen.filter((t) => t.checked).reduce((a, t) => a + (Number(t.draw) || 0), 0) * 100) / 100;
+  const fillL = (Number(nominalFillMl) || 750) / 1000;
+  const suggestedBottles = fillL > 0 ? Math.floor(totalDraw / fillL) : 0;
+  const bottles = bottleCount ? Number(bottleCount) : suggestedBottles;
+
+  function switchLot(id: string) {
+    setLotId(id);
+    setTankSel({}); // reset selection to defaults for the new cuvée
+    setBottleCount("");
+  }
+  function setTank(vesselId: string, patch: Partial<{ checked: boolean; draw: string }>, volumeL: number) {
+    setTankSel((s) => ({ ...s, [vesselId]: { ...tankOf(vesselId, volumeL), ...patch } }));
+  }
 
   if (candidates.length === 0) {
     return (
       <Modal open={open} onClose={onClose} title="Start a tirage">
-        <p style={{ color: "var(--text-secondary)" }}>No bulk WINE lots are available to bottle. Assemble a cuvée first.</p>
+        <p style={{ color: "var(--text-secondary)" }}>
+          No bulk WINE lots are available to bottle. Assemble a cuvée in <strong>Blend</strong> first — combining
+          different wines is the assemblage, done before tirage.
+        </p>
       </Modal>
     );
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Start a tirage" subtitle="Bottle a bulk cuvée into an en-tirage bottle lot">
+    <Modal open={open} onClose={onClose} title="Start a tirage" subtitle="Bottle one assembled cuvée into an en-tirage bottle lot" maxWidth={640}>
       <div style={{ display: "grid", gap: 12 }}>
-        <label style={{ fontSize: 13, color: "var(--text-secondary)" }}>Source wine
-          <select value={candIdx} onChange={(e) => setCandIdx(Number(e.target.value))} style={selStyle}>
-            {candidates.map((c, i) => (
-              <option key={c.lotId + c.vesselId} value={i}>{c.lotCode} · {c.vesselCode} · {c.volumeL} L{c.vintage ? ` · ${c.vintage}` : " · NV"}</option>
+        <label style={{ fontSize: 13, color: "var(--text-secondary)" }}>Cuvée
+          <select value={lotId} onChange={(e) => switchLot(e.target.value)} style={selStyle}>
+            {candidates.map((c) => (
+              <option key={c.lotId} value={c.lotId}>{c.lotCode}{c.vintage ? ` · ${c.vintage}` : " · NV"} · {c.totalL} L across {c.tanks.length} tank{c.tanks.length > 1 ? "s" : ""}</option>
             ))}
           </select>
         </label>
+
+        {cand && (
+          <div>
+            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 4 }}>Draw from tank(s)</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {cand.tanks.map((t) => {
+                const row = tankOf(t.vesselId, t.volumeL);
+                return (
+                  <div key={t.vesselId} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", cursor: "pointer" }}>
+                      <input type="checkbox" checked={row.checked} onChange={(e) => setTank(t.vesselId, { checked: e.target.checked }, t.volumeL)} style={{ width: 18, height: 18 }} />
+                      <span style={{ fontWeight: 500 }}>{t.vesselCode}</span>
+                      <span style={{ ...num, color: "var(--text-muted)", fontSize: 13 }}>holds {t.volumeL} L</span>
+                    </label>
+                    <input type="number" value={row.draw} disabled={!row.checked} onChange={(e) => setTank(t.vesselId, { draw: e.target.value }, t.volumeL)}
+                      aria-label={`Draw from ${t.vesselCode}`}
+                      style={{ ...selStyle, width: 110, marginTop: 0, opacity: row.checked ? 1 : 0.5 }} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Input label="Draw (L)" type="number" value={drawL} onChange={(e) => setDrawL(e.target.value)} style={{ flex: "1 1 120px" }} />
-          <Input label="Bottles" type="number" value={bottleCount} onChange={(e) => setBottleCount(e.target.value)} style={{ flex: "1 1 120px" }} />
+          <Input label={`Bottles (suggested ${suggestedBottles})`} type="number" value={bottleCount} onChange={(e) => setBottleCount(e.target.value)} placeholder={String(suggestedBottles)} style={{ flex: "1 1 160px" }} />
           <Input label="Bottle fill (mL)" type="number" value={nominalFillMl} onChange={(e) => setNominalFillMl(e.target.value)} style={{ flex: "1 1 120px" }} />
         </div>
+
         <label style={{ fontSize: 13, color: "var(--text-secondary)" }}>Method
           <select value={method} onChange={(e) => setMethod(e.target.value as "TRADITIONAL" | "PETNAT")} style={selStyle}>
             <option value="TRADITIONAL">Traditional (méthode champenoise)</option>
@@ -208,19 +252,25 @@ function TirageModal({ open, onClose, candidates, locations, materials, pending,
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </label>
-        {cand && <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>{drawL || "?"} L from {cand.vesselCode} → {bottleCount || "?"} × {nominalFillMl} mL en tirage. Bulk leaves the vessel.</p>}
+
+        {cand && (
+          <p style={{ ...num, fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+            {totalDraw} L from {chosen.filter((t) => t.checked).length || "?"} tank{chosen.filter((t) => t.checked).length === 1 ? "" : "s"} → {bottles} × {nominalFillMl} mL en tirage. Bulk leaves the vessel(s).
+          </p>
+        )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={pending || !drawL || !bottleCount}
+            disabled={pending || !cand || totalDraw <= 0 || bottles <= 0}
             onClick={() => run(async () => {
+              const sources = chosen.filter((t) => t.checked && Number(t.draw) > 0).map((t) => ({ vesselId: t.vesselId, drawL: Number(t.draw) }));
               await tirageAction({
-                sourceVesselId: cand.vesselId, lotId: cand.lotId, drawL: Number(drawL), bottleCount: Number(bottleCount),
+                lotId: cand!.lotId, sources, bottleCount: bottles,
                 nominalFillMl: Number(nominalFillMl), method, targetPressureAtm: method === "TRADITIONAL" && pressureAtm ? Number(pressureAtm) : undefined,
                 liqueurMaterialId: materialId || undefined, locationId: locationId || undefined,
               });
-              return `Bottled ${bottleCount} × ${nominalFillMl} mL of ${cand.lotCode} en tirage.`;
+              return `Bottled ${bottles} × ${nominalFillMl} mL of ${cand!.lotCode} en tirage.`;
             })}
           >
             Bottle en tirage

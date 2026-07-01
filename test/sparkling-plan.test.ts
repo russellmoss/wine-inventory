@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { isBalanced, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
 import {
   planTirageBottling,
+  planTirageBottlingMulti,
   planDisgorgement,
   planDosage,
   planBottleSplit,
@@ -46,6 +47,30 @@ describe("planTirageBottling", () => {
   it("rejects a non-positive or fractional bottle count", () => {
     expect(() => planTirageBottling(balances, "T1", "L1", 1500, 0, 750)).toThrow(/whole number/);
     expect(() => planTirageBottling(balances, "T1", "L1", 1500, 10.5, 750)).toThrow(/whole number/);
+  });
+});
+
+describe("planTirageBottlingMulti (one cuvée across tanks)", () => {
+  const balances: VesselLotBalance[] = [
+    { vesselId: "T1", lotId: "L1", volumeL: 400 },
+    { vesselId: "T2", lotId: "L1", volumeL: 300 },
+  ];
+
+  it("draws one lot from two tanks into a single bottle lot", () => {
+    const p = planTirageBottlingMulti(balances, "L1", [{ vesselId: "T1", drawL: 400 }, { vesselId: "T2", drawL: 300 }], 933, 750);
+    assertWellFormed(p.lines);
+    expect(p.drawL).toBe(700);
+    const vesselLegs = p.lines.filter((l) => l.bucket === "VESSEL");
+    expect(vesselLegs).toHaveLength(2);
+    expect(sum(vesselLegs.map((l) => l.deltaL))).toBe(-700);
+    const bottleLeg = p.lines.find((l) => l.bucket === "BOTTLE_STORAGE")!;
+    expect(bottleLeg.deltaL).toBe(700);
+    expect(bottleLeg.bottleDelta).toBe(933);
+  });
+
+  it("rejects over-drawing a tank or a duplicate tank", () => {
+    expect(() => planTirageBottlingMulti(balances, "L1", [{ vesselId: "T1", drawL: 500 }], 600, 750)).toThrow(/holds/);
+    expect(() => planTirageBottlingMulti(balances, "L1", [{ vesselId: "T1", drawL: 100 }, { vesselId: "T1", drawL: 100 }], 200, 750)).toThrow(/once/);
   });
 });
 

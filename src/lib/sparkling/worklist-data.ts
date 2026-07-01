@@ -43,16 +43,37 @@ export async function getEnTirageWorklist(now: Date = new Date()): Promise<Workl
     }));
 }
 
-export type TirageCandidate = { vesselId: string; vesselCode: string; lotId: string; lotCode: string; volumeL: number; vintage: number | null };
+export type TirageTank = { vesselId: string; vesselCode: string; volumeL: number };
+export type TirageCandidate = {
+  lotId: string;
+  lotCode: string;
+  vintage: number | null;
+  totalL: number;
+  tanks: TirageTank[]; // the cuvée's own positions — a single lot can span multiple tanks
+};
 
-/** Bulk WINE lots (in a vessel) eligible to go to tirage. */
+/**
+ * Bulk WINE lots eligible for tirage, GROUPED BY LOT (the cuvée). A lot can occupy several
+ * tanks; tirage draws across the ones you pick. Combining *different* wines is the upstream
+ * assemblage (a BLEND), not tirage.
+ */
 export async function getTirageCandidates(): Promise<TirageCandidate[]> {
   const rows = await prisma.vesselLot.findMany({
     where: { lot: { form: "WINE", status: "ACTIVE" } },
     include: { vessel: { select: { code: true } }, lot: { select: { code: true, vintageYear: true } } },
-    orderBy: { volumeL: "desc" },
+    orderBy: [{ lotId: "asc" }, { volumeL: "desc" }],
   });
-  return rows.map((r) => ({ vesselId: r.vesselId, vesselCode: r.vessel.code, lotId: r.lotId, lotCode: r.lot.code, volumeL: Number(r.volumeL), vintage: r.lot.vintageYear }));
+  const byLot = new Map<string, TirageCandidate>();
+  for (const r of rows) {
+    let c = byLot.get(r.lotId);
+    if (!c) {
+      c = { lotId: r.lotId, lotCode: r.lot.code, vintage: r.lot.vintageYear, totalL: 0, tanks: [] };
+      byLot.set(r.lotId, c);
+    }
+    c.tanks.push({ vesselId: r.vesselId, vesselCode: r.vessel.code, volumeL: Number(r.volumeL) });
+    c.totalL = Math.round((c.totalL + Number(r.volumeL)) * 100) / 100;
+  }
+  return [...byLot.values()].sort((a, b) => b.totalL - a.totalL);
 }
 
 export async function getActiveLocations(): Promise<{ id: string; name: string }[]> {
