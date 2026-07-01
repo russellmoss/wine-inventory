@@ -6,7 +6,7 @@ import { Card, Input, Button, Badge, Eyebrow, Modal, ConfirmButton } from "@/com
 import { tirageAction } from "@/lib/sparkling/actions";
 import { riddlingAction, disgorgeAndFinishAction, reverseSparklingOperationAction } from "@/lib/sparkling/actions";
 import { tirageSugarForPressure, dosageSugarGpl, finalRS, classifyStyle, nearStyleBandEdge } from "@/lib/sparkling/sugar";
-import type { WorklistRow, TirageCandidate } from "@/lib/sparkling/worklist-data";
+import type { WorklistRow, TirageCandidate, FinishedSparklingRow } from "@/lib/sparkling/worklist-data";
 
 const num = { fontVariantNumeric: "tabular-nums" } as React.CSSProperties;
 const UNDO_LABEL: Record<string, string> = { TIRAGE: "tirage → tank", RIDDLING: "riddling", DISGORGEMENT: "disgorgement", DOSAGE: "dosage" };
@@ -49,11 +49,13 @@ export function EnTirageClient({
   candidates,
   locations,
   materials,
+  finished,
 }: {
   rows: WorklistRow[];
   candidates: TirageCandidate[];
   locations: { id: string; name: string }[];
   materials: { id: string; name: string }[];
+  finished: FinishedSparklingRow[];
 }) {
   const router = useRouter();
   const [error, setError] = React.useState<string | null>(null);
@@ -147,6 +149,54 @@ export function EnTirageClient({
             </table>
           </div>
         </Card>
+      )}
+
+      {finished.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <Eyebrow rule>Recently finished · undo</Eyebrow>
+          <p style={{ color: "var(--text-secondary)", margin: "8px 0 12px", maxWidth: "64ch", fontSize: 14 }}>
+            Finished sparkling bottlings you can still reopen. Undo the finish to pull the bottles back
+            and return the lot to the worklist en tirage — then Undo the remaining steps to send it to tank.
+            (Blocked if those bottles have since been moved or sold.)
+          </p>
+          <Card style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <thead>
+                  <tr style={{ textAlign: "left", background: "var(--surface-sunken)" }}>
+                    {["Lot", "SKU", "Bottles", "Finished", "Style", "Location", ""].map((h) => (
+                      <th key={h} style={{ padding: "10px 12px", fontFamily: "var(--font-heading)", fontSize: 13, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {finished.map((fr) => (
+                    <tr key={fr.lotId} style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                      <td style={{ padding: "10px 12px", fontWeight: 500 }}>{fr.code}</td>
+                      <td style={{ padding: "10px 12px" }}>{fr.skuName}</td>
+                      <td style={{ padding: "10px 12px", ...num }}>{fr.bottleCount.toLocaleString()}</td>
+                      <td style={{ padding: "10px 12px", ...num }}>{fr.finishedAt}</td>
+                      <td style={{ padding: "10px 12px" }}>{fr.dosageStyle ? fr.dosageStyle.replace("_", " ") : fr.method === "PETNAT" ? "sur lie" : "—"}</td>
+                      <td style={{ padding: "10px 12px", color: "var(--text-secondary)" }}>{fr.locationName ?? "—"}</td>
+                      <td style={{ padding: "10px 12px", whiteSpace: "nowrap", textAlign: "right" }}>
+                        <ConfirmButton
+                          confirmLabel="Undo finish"
+                          disabled={pending}
+                          onConfirm={() => run(async () => {
+                            const res = await reverseSparklingOperationAction({ operationId: fr.finishOpId, lotId: fr.lotId });
+                            return res.message ?? `Reopened ${fr.code} — back en tirage.`;
+                          })}
+                        >
+                          Undo finish
+                        </ConfirmButton>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
       )}
 
       <TirageModal open={tirageOpen} onClose={() => setTirageOpen(false)} candidates={candidates} locations={locations} materials={materials} pending={pending} run={run} />

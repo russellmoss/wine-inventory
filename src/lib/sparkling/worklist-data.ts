@@ -105,6 +105,68 @@ export async function getTirageCandidates(): Promise<TirageCandidate[]> {
   return [...byLot.values()].sort((a, b) => b.totalL - a.totalL);
 }
 
+export type FinishedSparklingRow = {
+  lotId: string;
+  code: string;
+  finishOpId: number; // the FINISH op to reverse (dispatcher → reverseFinalize)
+  skuName: string;
+  bottleCount: number;
+  finishedAt: string; // YYYY-MM-DD
+  method: string | null;
+  dosageStyle: string | null;
+  locationName: string | null;
+};
+
+/**
+ * Recently finalized sparkling lots that can still be un-finished (FINISH op not yet reversed and
+ * the lot is still FINISHED). A finished lot has no BottledLotState so it drops off the En Tirage
+ * worklist — this is the entry point to reopen it (after which it reappears in the worklist and the
+ * per-row Undo walks it the rest of the way back to the tank). FINISH is sparkling-only (still-wine
+ * bottling is a BOTTLE op), so this never lists a normal bottling run.
+ */
+export async function getRecentlyFinishedSparkling(limit = 25): Promise<FinishedSparklingRow[]> {
+  const finishes = await prisma.lotOperation.findMany({
+    where: { type: "FINISH", correctedBy: { is: null } },
+    orderBy: { id: "desc" },
+    take: limit,
+    select: { id: true, metadata: true, lines: { select: { lotId: true }, take: 1 } },
+  });
+  if (finishes.length === 0) return [];
+
+  const lotIds = [...new Set(finishes.map((f) => f.lines[0]?.lotId).filter(Boolean) as string[])];
+  const runIds = [...new Set(finishes.map((f) => (f.metadata as { runId?: string } | null)?.runId).filter(Boolean) as string[])];
+  const [lots, runs] = await Promise.all([
+    prisma.lot.findMany({ where: { id: { in: lotIds } }, select: { id: true, code: true, form: true, status: true } }),
+    prisma.bottlingRun.findMany({
+      where: { id: { in: runIds } },
+      select: { id: true, bottlesProduced: true, date: true, wineSku: { select: { name: true, method: true, dosageStyle: true } }, destinationLocation: { select: { name: true } } },
+    }),
+  ]);
+  const lotById = new Map(lots.map((l) => [l.id, l]));
+  const runById = new Map(runs.map((r) => [r.id, r]));
+
+  const rows: FinishedSparklingRow[] = [];
+  for (const f of finishes) {
+    const lotId = f.lines[0]?.lotId;
+    if (!lotId) continue;
+    const lot = lotById.get(lotId);
+    if (!lot || lot.form !== "FINISHED" || lot.status !== "ACTIVE") continue; // only still-undoable finishes
+    const run = (f.metadata as { runId?: string } | null)?.runId ? runById.get((f.metadata as { runId?: string }).runId!) : undefined;
+    rows.push({
+      lotId,
+      code: lot.code,
+      finishOpId: f.id,
+      skuName: run?.wineSku.name ?? "—",
+      bottleCount: run?.bottlesProduced ?? 0,
+      finishedAt: (run?.date ?? new Date()).toISOString().slice(0, 10),
+      method: run?.wineSku.method ?? null,
+      dosageStyle: run?.wineSku.dosageStyle ?? null,
+      locationName: run?.destinationLocation?.name ?? null,
+    });
+  }
+  return rows;
+}
+
 export async function getActiveLocations(): Promise<{ id: string; name: string }[]> {
   return prisma.location.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
 }
