@@ -6,6 +6,8 @@ import { correctOperationCore } from "@/lib/cellar/correct";
 import { revertTransferCore, type LedgerActor } from "@/lib/vessels/rack-core";
 import { reverseSparklingOperationCore } from "@/lib/sparkling/correct";
 import { reverseBottlingRun } from "@/lib/bottling/run";
+import { reverseTransformCore } from "@/lib/transform/reverse";
+import { correctBlendCore } from "@/lib/blend/blend-correct";
 
 // Universal reversal layer (plan 024a). A single place that knows how to walk any reversible
 // ledger operation back, routing a bare operationId to the family core that already owns the
@@ -45,19 +47,19 @@ export async function resolveRunIdForBottleOp(operationId: number): Promise<stri
 
 // ─────────────────────────── Reversibility verdict (the single source of truth) ───────────────────────────
 
-/** The family core that owns an op type's physical reversal (024a-supported types only). */
-export type ReverseFamily = "cellar" | "rack" | "sparkling" | "bottle";
+/** The family core that owns an op type's physical reversal. */
+export type ReverseFamily = "cellar" | "rack" | "sparkling" | "bottle" | "transform" | "blend";
 
 export type ReversibilityVerdict =
   | { reversible: true; family: ReverseFamily }
-  | { reversible: false; code: "correction" | "origination" | "manual-adjust" | "coming-soon"; reason: string };
+  | { reversible: false; code: "correction" | "origination" | "manual-adjust"; reason: string };
 
 // The cellar-6 (correctOperationCore): neutral voids + volumetric reverts.
 const CELLAR_TYPES = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS"]);
 // Sparkling bottle-phase (reverseSparklingOperationCore).
 const SPARKLING_TYPES = new Set<OperationType>(["TIRAGE", "RIDDLING", "DISGORGEMENT", "DOSAGE", "FINISH"]);
-// 024b origination/split ops — reversal cores not built yet (shown as "coming soon", never a wrong button).
-const COMING_SOON_TYPES = new Set<OperationType>(["CRUSH", "PRESS", "SAIGNEE", "BLEND"]);
+// Origination / split transforms (reverseTransformCore) — 024b.
+const TRANSFORM_TYPES = new Set<OperationType>(["CRUSH", "PRESS", "SAIGNEE"]);
 
 export const SPARKLING_REVERSIBLE_TYPES = SPARKLING_TYPES;
 
@@ -67,16 +69,18 @@ export const SPARKLING_REVERSIBLE_TYPES = SPARKLING_TYPES;
  * gets a disabled control with this reason. The dispatcher calls the same function to fail-closed,
  * so the timeline and the mutation can never disagree about what's reversible (risk table).
  * The `corrected` (already-reversed) state is handled by the caller via the op's corrected flag —
- * this function only judges the type.
+ * this function only judges the type. Mode-specific blocks (e.g. a press merged into an existing
+ * lot) are enforced at the core with a CONFLICT reason, not here — every transform type is undoable
+ * in the common (fresh-lot) case.
  */
 export function reversibilityOf(type: OperationType): ReversibilityVerdict {
   if (CELLAR_TYPES.has(type)) return { reversible: true, family: "cellar" };
   if (type === "RACK") return { reversible: true, family: "rack" };
   if (SPARKLING_TYPES.has(type)) return { reversible: true, family: "sparkling" };
   if (type === "BOTTLE") return { reversible: true, family: "bottle" };
+  if (TRANSFORM_TYPES.has(type)) return { reversible: true, family: "transform" };
+  if (type === "BLEND") return { reversible: true, family: "blend" };
   if (type === "CORRECTION") return { reversible: false, code: "correction", reason: "This entry is itself a reversal." };
-  if (COMING_SOON_TYPES.has(type))
-    return { reversible: false, code: "coming-soon", reason: "Undo for crush, press and blend is coming soon." };
   if (type === "SEED") return { reversible: false, code: "origination", reason: "Seeding is a lot's day-zero origination — it can't be undone." };
   // ADJUST / DEPLETE
   return { reversible: false, code: "manual-adjust", reason: "Correct this by recording a new volume adjustment." };
@@ -136,6 +140,14 @@ export async function reverseOperationCore(actor: LedgerActor, input: { operatio
       if (!runId) throw new ActionError("This bottling predates run-tracking — reverse it from the Bottling page instead.", "CONFLICT");
       await reverseBottlingRun(runId, actor, { correctsOperationId: opId });
       return { reversedOperationId: opId, reversedType: op.type, lotId: anyLotId, correctionId: null, message: "Reversed the bottling — bulk wine restored to the cellar." };
+    }
+    case "transform": {
+      const r = await reverseTransformCore(actor, { operationId: opId, note: input.note });
+      return { reversedOperationId: opId, reversedType: op.type, lotId: r.lotId || anyLotId, correctionId: r.correctionId, message: r.message };
+    }
+    case "blend": {
+      const r = await correctBlendCore(actor, { operationId: opId });
+      return { reversedOperationId: opId, reversedType: op.type, lotId: r.childLotId || anyLotId, correctionId: r.operationId, message: r.message };
     }
   }
 }

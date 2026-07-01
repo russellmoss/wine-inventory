@@ -19,12 +19,11 @@ describe("reversibilityOf", () => {
     }
   });
 
-  it("marks the 024b origination/split ops coming-soon (never a wrong button)", () => {
-    for (const t of ["CRUSH", "PRESS", "SAIGNEE", "BLEND"] as OperationType[]) {
-      const v = reversibilityOf(t);
-      expect(v.reversible).toBe(false);
-      if (!v.reversible) expect(v.code).toBe("coming-soon");
+  it("routes CRUSH/PRESS/SAIGNEE to the transform family and BLEND to blend (024b)", () => {
+    for (const t of ["CRUSH", "PRESS", "SAIGNEE"] as OperationType[]) {
+      expect(reversibilityOf(t)).toEqual({ reversible: true, family: "transform" });
     }
+    expect(reversibilityOf("BLEND")).toEqual({ reversible: true, family: "blend" });
   });
 
   it("marks SEED / ADJUST / DEPLETE / CORRECTION non-undoable with a non-empty reason", () => {

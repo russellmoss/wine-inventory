@@ -3,7 +3,8 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
-import { balanceKey, planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
+import { planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
+import { laterTouchedKeys, downstreamLineageChild } from "@/lib/ledger/reverse-guard";
 import { FUNCTIONAL_ZERO_L } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
@@ -80,11 +81,9 @@ async function gatherCorrectionContext(operationId: number) {
     reason: (l.reason as LedgerLine["reason"]) ?? undefined,
   }));
 
-  const laterLines = await prisma.lotOperationLine.findMany({
-    where: { operationId: { gt: operationId }, vesselId: { not: null }, operation: { type: { not: "CORRECTION" } } },
-    select: { vesselId: true, lotId: true },
-  });
-  const touchedKeys = new Set(laterLines.map((l) => balanceKey(l.vesselId as string, l.lotId)));
+  // Shared unwind-aware LIFO guard (024a): a later op blocks the undo only if it's not itself
+  // already reversed — so a chain can unwind newest-first (MUST-FIX #1).
+  const touchedKeys = await laterTouchedKeys(operationId);
 
   const vesselIds = [...new Set(op.lines.filter((l) => l.vesselId).map((l) => l.vesselId as string))];
   const residents = await prisma.vesselLot.findMany({
@@ -134,11 +133,38 @@ export async function previewBlendCorrection(operationId: number): Promise<Blend
 
 export type CorrectBlendResult = { operationId: number; childLotId: string; message: string };
 
-/** Execute the compensating CORRECTION: return wine to source vessels, mark the child CORRECTED. */
+type BlendReverseMeta = {
+  mode?: string;
+  lineageRestore?: { parentLotId: string; existed: boolean; priorFraction: number | null }[];
+  priorProvenanceComplete?: boolean;
+  priorVineyardIds?: string[];
+};
+
+/**
+ * Execute the compensating CORRECTION: return each parent's wine to its source vessel. Two modes,
+ * read from the blend op's metadata (024b):
+ *  - NEW_LOT: the child lot is fully drained → mark it CORRECTED (row + lineage kept for audit,
+ *    append-only). Blocked if that child has downstream lineage children (would be orphaned).
+ *  - GROW_EXISTING: a pre-existing resident absorbed the draws. It is NOT marked corrected and its
+ *    lineage/provenance is RESTORED from the pre-op snapshot (never blind-deleted — MUST-FIX #4).
+ * Un-stamped legacy blends default to NEW_LOT (their prior behaviour), so this is a safe superset.
+ */
 export async function correctBlendCore(actor: LedgerActor, input: { operationId: number }): Promise<CorrectBlendResult> {
   const { op, blendLines, touchedKeys, currentBalances, vesselIds } = await gatherCorrectionContext(input.operationId);
   const plan = planBlendCorrection(blendLines, currentBalances, touchedKeys);
   if (!plan.ok) throw new ActionError(BLOCK_MESSAGE[plan.reason], "CONFLICT");
+
+  const meta = (op.metadata as BlendReverseMeta | null) ?? null;
+  const mode = meta?.mode === "GROW_EXISTING" ? "GROW_EXISTING" : "NEW_LOT";
+
+  // A NEW_LOT child gets voided (marked CORRECTED). If it has since been pressed/blended on, voiding
+  // it would orphan those descendants — block (MUST-FIX #3). A GROW resident isn't voided, so skip.
+  if (mode === "NEW_LOT") {
+    const downstream = await downstreamLineageChild([plan.childLotId]);
+    if (downstream) {
+      throw new ActionError("Can't undo this blend — its blended lot has since been pressed or blended on. Undo that first.", "CONFLICT");
+    }
+  }
 
   const vessels = await prisma.vessel.findMany({ where: { id: { in: vesselIds } }, select: { id: true, code: true, capacityL: true } });
   const vesselCodes = new Map(vessels.map((v) => [v.id, v.code]));
@@ -146,9 +172,13 @@ export async function correctBlendCore(actor: LedgerActor, input: { operationId:
   const lotIds = [...new Set(op.lines.map((l) => l.lotId))];
   const lots = await prisma.lot.findMany({ where: { id: { in: lotIds } }, select: { id: true, code: true } });
   const lotCodes = new Map(lots.map((l) => [l.id, l.code]));
+  const childCode = lotCodes.get(plan.childLotId) ?? plan.childLotId;
 
   const totalReturned = round2(plan.returns.reduce((a, r) => a + r.volumeL, 0));
-  const summary = `Undid blend ${op.id}: returned ${totalReturned} L to source vessels, marked ${lotCodes.get(plan.childLotId) ?? plan.childLotId} corrected`;
+  const summary =
+    mode === "GROW_EXISTING"
+      ? `Undid blend ${op.id}: returned ${totalReturned} L to source vessels, restored ${childCode}'s pre-blend lineage`
+      : `Undid blend ${op.id}: returned ${totalReturned} L to source vessels, marked ${childCode} corrected`;
 
   const corrOpId = await runLedgerWrite(async (tx) => {
     const opId = await writeLotOperation(tx, {
@@ -162,8 +192,31 @@ export async function correctBlendCore(actor: LedgerActor, input: { operationId:
       vesselCodes,
       capacityByVessel,
     });
-    // Keep the child row + lineage + source set for audit; just mark it corrected (D6 append-only).
-    await tx.lot.update({ where: { id: plan.childLotId }, data: { status: "CORRECTED" } });
+
+    if (mode === "GROW_EXISTING") {
+      // Restore the resident's pre-op lineage exactly: delete edges the blend created, roll back the
+      // fraction on edges it updated. Then restore provenanceComplete + drop added source-vineyards.
+      for (const e of meta?.lineageRestore ?? []) {
+        if (e.existed) {
+          await tx.lotLineage
+            .update({ where: { parentLotId_childLotId: { parentLotId: e.parentLotId, childLotId: plan.childLotId } }, data: { fraction: e.priorFraction } })
+            .catch(() => {});
+        } else {
+          await tx.lotLineage.deleteMany({ where: { parentLotId: e.parentLotId, childLotId: plan.childLotId } });
+        }
+      }
+      if (meta?.priorProvenanceComplete != null) {
+        await tx.lot.update({ where: { id: plan.childLotId }, data: { provenanceComplete: meta.priorProvenanceComplete } });
+      }
+      // Remove any source-vineyard the blend added (keep exactly the pre-op set). Sentinel avoids an
+      // empty notIn (which Prisma treats as "match nothing" → would delete none).
+      const keep = meta?.priorVineyardIds?.length ? meta.priorVineyardIds : ["__none__"];
+      await tx.lotVineyard.deleteMany({ where: { lotId: plan.childLotId, vineyardId: { notIn: keep } } });
+    } else {
+      // Keep the child row + lineage + source set for audit; just mark it corrected (D6 append-only).
+      await tx.lot.update({ where: { id: plan.childLotId }, data: { status: "CORRECTED" } });
+    }
+
     await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "LotOperation", entityId: String(opId), summary });
     return opId;
   });

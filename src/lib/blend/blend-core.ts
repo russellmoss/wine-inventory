@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
@@ -252,6 +253,27 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
       // Fraction = gross input share over the actual parents (council S1/C2).
       const parentGross = plan.parentGrossByLot.filter((p) => p.lotId !== childLotId);
       const grossDenom = parentGross.reduce((a, p) => a + p.grossL, 0);
+
+      // (024b) GROW_EXISTING mutates a PRE-EXISTING lot's lineage + provenance in place. Snapshot
+      // exactly what we're about to change so a reversal RESTORES it (never blind-deletes — MUST-FIX
+      // #4): which parent edges already existed (+ their fraction), and the resident's prior
+      // provenanceComplete + source-vineyard set.
+      let growSelf: { provenanceComplete: boolean; vineyardIds: string[] } | null = null;
+      let priorLineage: { parentLotId: string; existed: boolean; priorFraction: number | null }[] = [];
+      if (mode === "GROW_EXISTING") {
+        const self = await tx.lot.findUnique({
+          where: { id: childLotId },
+          select: { provenanceComplete: true, sourceVineyards: { select: { vineyardId: true } } },
+        });
+        growSelf = { provenanceComplete: self?.provenanceComplete ?? true, vineyardIds: self?.sourceVineyards.map((s) => s.vineyardId) ?? [] };
+        const priors = await tx.lotLineage.findMany({
+          where: { childLotId, parentLotId: { in: parentGross.map((p) => p.lotId) } },
+          select: { parentLotId: true, fraction: true },
+        });
+        const priorByParent = new Map(priors.map((e) => [e.parentLotId, e.fraction == null ? null : Number(e.fraction)]));
+        priorLineage = parentGross.map((p) => ({ parentLotId: p.lotId, existed: priorByParent.has(p.lotId), priorFraction: priorByParent.get(p.lotId) ?? null }));
+      }
+
       let edges = 0;
       for (const p of parentGross) {
         const fraction = grossDenom > 0 ? Math.min(0.99999, round5(p.grossL / grossDenom)) : null;
@@ -268,15 +290,10 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
       // (council C6) — never silently union only the known rows.
       const childVineyardIds = new Set<string>();
       let provenanceComplete = true;
-      if (mode === "GROW_EXISTING") {
-        const self = await tx.lot.findUnique({
-          where: { id: childLotId },
-          select: { provenanceComplete: true, sourceVineyards: { select: { vineyardId: true } } },
-        });
-        if (self) {
-          if (!self.provenanceComplete) provenanceComplete = false;
-          for (const sv of self.sourceVineyards) childVineyardIds.add(sv.vineyardId);
-        }
+      if (mode === "GROW_EXISTING" && growSelf) {
+        // Reuse the snapshot read above (no second round-trip).
+        if (!growSelf.provenanceComplete) provenanceComplete = false;
+        for (const vid of growSelf.vineyardIds) childVineyardIds.add(vid);
       }
       for (const p of parents) {
         if (!p.provenanceComplete || p.sourceVineyards.length === 0) provenanceComplete = false;
@@ -291,6 +308,16 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
         });
       }
       await tx.lot.update({ where: { id: childLotId }, data: { provenanceComplete } });
+
+      // Stamp the reversal metadata (writeLotOperation doesn't take it; set it on the row we own).
+      // NEW_LOT only needs the mode + child; GROW_EXISTING carries the pre-op snapshot to restore.
+      const metadata: Record<string, unknown> = { mode, childLotId };
+      if (mode === "GROW_EXISTING") {
+        metadata.lineageRestore = priorLineage;
+        metadata.priorProvenanceComplete = growSelf?.provenanceComplete ?? true;
+        metadata.priorVineyardIds = growSelf?.vineyardIds ?? [];
+      }
+      await tx.lotOperation.update({ where: { id: opId }, data: { metadata: metadata as Prisma.InputJsonValue } });
 
       const summary =
         mode === "NEW_LOT"

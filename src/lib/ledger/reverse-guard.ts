@@ -26,3 +26,22 @@ export async function laterTouchedKeys(operationId: number): Promise<Set<string>
   });
   return new Set(laterLines.map((l) => balanceKey(l.vesselId as string, l.lotId)));
 }
+
+/**
+ * The lineage-child guard for origination/split reversal (MUST-FIX #3): an originated lot can be
+ * drawn to zero (its vessel position gone, so the position guard above can't see it) yet still have
+ * DOWNSTREAM children — it was later pressed/blended. Voiding it would orphan those descendants.
+ * Returns the first edge where one of `originatedLotIds` is the PARENT (i.e. a downstream child),
+ * or null. The reversing op's OWN edges have the originated lots as CHILDREN, never parents, so this
+ * never flags the op's own lineage — only genuinely downstream splits/blends.
+ */
+export async function downstreamLineageChild(
+  originatedLotIds: string[],
+): Promise<{ parentLotId: string; childLotId: string } | null> {
+  if (originatedLotIds.length === 0) return null;
+  const edge = await prisma.lotLineage.findFirst({
+    where: { parentLotId: { in: originatedLotIds } },
+    select: { parentLotId: true, childLotId: true },
+  });
+  return edge ?? null;
+}
