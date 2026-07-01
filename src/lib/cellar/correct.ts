@@ -2,7 +2,8 @@ import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
-import { balanceKey, planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
+import { planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
+import { laterTouchedKeys } from "@/lib/ledger/reverse-guard";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
 // Correction across the Phase 3 ops (Unit 8, D6/D15). Two shapes:
@@ -69,11 +70,9 @@ export async function correctOperationCore(
   // ── Volumetric op: compensating inverse, guarded by D15 ──
   const origLines: LedgerLine[] = op.lines.map((l) => ({ lotId: l.lotId, vesselId: l.vesselId, deltaL: Number(l.deltaL) }));
 
-  const laterLines = await prisma.lotOperationLine.findMany({
-    where: { operationId: { gt: opId }, vesselId: { not: null }, operation: { type: { not: "CORRECTION" } } },
-    select: { vesselId: true, lotId: true },
-  });
-  const touchedKeys = new Set(laterLines.map((l) => balanceKey(l.vesselId as string, l.lotId)));
+  // Shared LIFO guard: later ops that touched an affected position block the reverse — UNLESS they
+  // are themselves already reversed (so a chain can unwind newest-first). See reverse-guard.ts.
+  const touchedKeys = await laterTouchedKeys(opId);
 
   const affectedVesselIds = [...new Set(op.lines.filter((l) => l.vesselId).map((l) => l.vesselId as string))];
   const [projRows, vessels] = await Promise.all([

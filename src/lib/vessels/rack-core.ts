@@ -5,12 +5,12 @@ import { writeAudit } from "@/lib/audit";
 import { round2, computeProportionalDraw } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import {
-  balanceKey,
   planCorrection,
   planLedgerRack,
   type LedgerLine,
   type VesselLotBalance,
 } from "@/lib/ledger/math";
+import { laterTouchedKeys } from "@/lib/ledger/reverse-guard";
 import { blendLotsCore, type BlendComponentInput, type BlendLotsResult } from "@/lib/blend/blend-core";
 
 // Script-safe core for racking + revert (no "use server", no next/cache, no server-only).
@@ -306,11 +306,9 @@ export async function revertTransferCore(actor: LedgerActor, input: { transferId
   const rackOpId = original.lotOperation.id;
   const rackLines: LedgerLine[] = original.lotOperation.lines.map((l) => ({ lotId: l.lotId, vesselId: l.vesselId, deltaL: Number(l.deltaL) }));
 
-  const laterLines = await prisma.lotOperationLine.findMany({
-    where: { operationId: { gt: rackOpId }, vesselId: { not: null }, operation: { type: { not: "CORRECTION" } } },
-    select: { vesselId: true, lotId: true },
-  });
-  const touchedKeys = new Set(laterLines.map((l) => balanceKey(l.vesselId as string, l.lotId)));
+  // Shared LIFO guard (reverse-guard.ts): later ops on an affected position block the revert —
+  // unless they're themselves already reversed, so a rack chain can unwind newest-first.
+  const touchedKeys = await laterTouchedKeys(rackOpId);
 
   const [dest, src] = await Promise.all([
     prisma.vessel.findUnique({ where: { id: original.toVesselId } }),
