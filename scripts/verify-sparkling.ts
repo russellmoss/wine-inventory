@@ -18,6 +18,7 @@ import { riddlingCore } from "@/lib/sparkling/riddling-core";
 import { disgorgementCore } from "@/lib/sparkling/disgorgement-core";
 import { dosageCore } from "@/lib/sparkling/dosage-core";
 import { finalizeSparklingCore } from "@/lib/sparkling/finalize-core";
+import { correctBottleOperationCore, reverseFinalizeCore } from "@/lib/sparkling/correct";
 import { transitionStateCore } from "@/lib/ferment/transition-core";
 import { addAdditionCore } from "@/lib/cellar/addition";
 import { executeBottling } from "@/lib/bottling/run";
@@ -191,7 +192,30 @@ async function main() {
   assert(petSku?.method === "PETNAT" && petSku?.dosageStyle === null, "pét-nat SKU: method PETNAT, no dosage style (sur lie)");
   assert(petFin.bottlesProduced === 1000, "pét-nat finalized 1000 bottles with no disgorge/dosage");
 
-  console.log(`\nALL ${passed} SPARKLING ASSERTIONS PASSED (traditional + tank + pét-nat)`);
+  // ── 10. Corrections (D6/D15): guard, dosage reverse, finalize reversal ──
+  console.log("\n── 10. Corrections ──");
+  const cTank = await prisma.vessel.create({ data: { code: "ZZ-SPK-CORR", type: "TANK", capacityL: 3000 } });
+  created.vesselIds.push(cTank.id);
+  const cLot = await seedLot("ZZS-CORR", cTank.id, 750, vyA.id, 2024, "WINE", "NONE");
+  await tirageCore(ACTOR, { sourceVesselId: cTank.id, lotId: cLot, drawL: 750, bottleCount: 1000, method: "TRADITIONAL", locationId: loc.id });
+  const cDisg = await disgorgementCore(ACTOR, { lotId: cLot, bottlesDisgorged: 1000, perBottleLossMl: 25 });
+  const cDose = await dosageCore(ACTOR, { lotId: cLot, perBottleDoseMl: 9, liqueurGPerL: 600 });
+  let cGuardBlocked = false;
+  try { await correctBottleOperationCore(ACTOR, { operationId: cDisg.operationId }); } catch { cGuardBlocked = true; }
+  assert(cGuardBlocked, "D15 guard blocks correcting a disgorgement after a later dosage");
+  await correctBottleOperationCore(ACTOR, { operationId: cDose.operationId });
+  const cAfterDose = await stateOf(cLot);
+  assert(cAfterDose?.stage === "DISGORGED", "dosage reversal re-folds bottle state (stage → DISGORGED, style cleared)");
+  const cDoseState = await prisma.bottledLotState.findUnique({ where: { lotId: cLot } });
+  assert(cDoseState?.dosageStyle === null, "dosage reversal clears the style");
+  const cFin = await finalizeSparklingCore(ACTOR, { lotId: cLot, skuName: "ZZ-TEST Corr Cuvée", destinationLocationId: loc.id, vintage: 2024, isNonVintage: false });
+  await reverseFinalizeCore(ACTOR, { runId: cFin.runId });
+  const cReopened = await stateOf(cLot);
+  const cLotForm = await prisma.lot.findUnique({ where: { id: cLot }, select: { form: true } });
+  assert(cReopened != null && cReopened.bottleCount === 1000 && cLotForm?.form === "BOTTLED_IN_PROCESS", "finalize reversal reopens the bottle lot (1000 bottles, BOTTLED_IN_PROCESS)");
+  assert((await prisma.bottlingRun.findUnique({ where: { id: cFin.runId } })) === null, "finalize reversal deletes the BottlingRun");
+
+  console.log(`\nALL ${passed} SPARKLING ASSERTIONS PASSED (traditional + tank + pét-nat + corrections)`);
 }
 
 async function scrub() {
