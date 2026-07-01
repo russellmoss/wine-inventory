@@ -102,6 +102,11 @@ export function planStateTransition(lot: LotState, input: TransitionInput): Tran
     const legalForm: Record<string, LotForm[]> = {
       MUST: ["JUICE", "WINE"],
       JUICE: ["WINE"],
+      // Phase 7 sparkling: bottling is non-terminal. A finished base wine becomes a continuable
+      // bottle lot (tirage), then a sellable finished good (finalize). Pét-nat rides the same
+      // BOTTLED_IN_PROCESS→FINISHED edge (finalize sur lie).
+      WINE: ["BOTTLED_IN_PROCESS"],
+      BOTTLED_IN_PROCESS: ["FINISHED"],
     };
     if (!(legalForm[lot.form] ?? []).includes(to)) {
       throw new Error(`Can't change form ${lot.form}→${to}.`);
