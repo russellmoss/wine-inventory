@@ -658,6 +658,33 @@ has **no** QuickBooks API; Vintrace's is one-way/gated).
 **Exit:** a DTC sale depletes finished-goods inventory; a custom-crush client sees only their wine.
 **Implementation: deferred to `/plan`.**  **Honors:** D16 (tenant/client scoping).
 
+## Phase 17 — SaaS subscription billing (Stripe)  ⬜  *(commercialization — trigger-based, late)*
+**Goal:** Charge wineries to use the app. This is **platform monetization**, distinct from the
+in-app custom-crush *client* billing (that's a Phase 8 domain feature, D19 — do not conflate).
+Not a product-capability blocker: it gates nothing in the 14 → 8 → 15 sellable path. Sequenced by
+**readiness to charge real money**, not by phase number.
+**Tool choice:** **Stripe** (Stripe Billing + Stripe Tax when needed) — the default for developer-built
+US B2B SaaS: subscriptions, tiers, trials, proration, metered/usage, dunning, invoicing. Attaches to
+the **Phase-12 `organization`** model (each tenant → a Stripe Customer + Subscription; webhook-driven
+status; gate app access on `active`/`past_due`).
+- *Alternatives considered:* **Merchant-of-Record (Paddle / Lemon Squeezy)** — offloads global
+  sales-tax/VAT but takes a bigger cut (~5%+ vs Stripe ~2.9%+30¢); worth it only if we sell heavily
+  international. **Chargebee / Recurly** — billing-ops layer, only if pricing gets genuinely complex.
+  For a US winery SaaS, Stripe wins.
+**Domain requirements (durable):**
+- **Hand-invoice first, build self-serve later.** First paying customers / design partners →
+  Stripe Invoicing sent by hand (zero code). Build self-serve subscriptions + access-gating only once
+  manual invoicing hurts. Don't build ahead of paying customers.
+- **Per-tenant subscription state** on the org (plan tier, trial, seats?, status), webhook-synced;
+  app access gated on status (fail-closed on `past_due`/`canceled`, with a grace/dunning window).
+- **Never let billing state leak across tenants** (Phase-12 RLS; billing tables are org-scoped).
+**Exit:** a winery self-serve-subscribes, their access reflects subscription status, and a failed
+payment triggers dunning without data loss.
+**Open question (resolve at `/plan`):** **pricing model** — flat tier vs per-seat vs
+**production-volume-based** (cases/tons, how Vintrace & InnoVint price). This choice decides whether we
+need Stripe metered/usage billing or just fixed subscriptions.
+**Implementation: deferred to `/plan`** (stub until we're near charging). **Honors:** D16 (tenant scoping).
+
 ## In-flight — Universal timeline undo (the "correction wedge")  🔄
 `docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` (building now, tenant-aware).
 One `reverseOperationCore` + one timeline Undo affordance for every op. **This is the direct
