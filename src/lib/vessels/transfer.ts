@@ -13,10 +13,13 @@ export type { TransferWineInput, TransferWineResult, RevertTransferResult } from
 
 const PATHS = ["/bulk", "/vessels"];
 
-/** List the most recent revertable rack (read; re-exported for the assistant tool). */
-export async function findRevertableTransfer(opts: { vesselId?: string } = {}) {
-  return findRevertableTransferCore(opts);
-}
+/** List the most recent revertable rack (read; re-exported for the assistant tool). Wrapped in
+ *  action() like its siblings so a banned / must-change-password session is rejected before any DB
+ *  access and the read runs inside the tenant (RLS) scope — a top-level `"use server"` export is an
+ *  independently-callable RPC target, so it must not bypass the auth chokepoint. */
+export const findRevertableTransfer = action(async (_ctx, opts: { vesselId?: string } = {}) =>
+  findRevertableTransferCore(opts),
+);
 
 export const transferWine = action(async (ctx, input: TransferWineInput) => {
   const result = await rackWineCore(ctx.actor, input);

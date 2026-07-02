@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { PrismaClient, type Prisma } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
+import { GLOBAL_MODELS } from "@/lib/tenant/models";
 
 /**
  * Phase 12 — cross-tenant isolation, run AS THE app_rls role against a real DB. GATED: only runs
@@ -124,5 +125,28 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
         await db.lotOperationLine.create({ data: { tenantId: A, operationId: op.id, lotId: "isov_b", deltaL: 1, bucket: "EXTERNAL", lotCode: "X" } });
       }),
     ).rejects.toThrow();
+  });
+
+  // Coverage guard (checklist steps 6 + 9): EVERY non-global model must have RLS enabled + FORCED
+  // and a tenant_isolation policy. Enumerated from Prisma's datamodel so a table added without its
+  // RLS migration fails here — covers the newer Phase-8/14/reminder tables and every future one,
+  // without a per-table fixture that would itself go stale. Read-only (config assertion).
+  it("every non-global table has RLS enabled + forced + a tenant_isolation policy (steps 6/9)", async () => {
+    const expected = Prisma.dmmf.datamodel.models
+      .filter((m) => !GLOBAL_MODELS.has(m.name))
+      .map((m) => m.dbName ?? m.name);
+    const rows = await owner.$queryRaw<{ relname: string; rls: boolean; forced: boolean; has_policy: boolean }[]>`
+      SELECT c.relname,
+             c.relrowsecurity AS rls,
+             c.relforcerowsecurity AS forced,
+             EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS has_policy
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname IN (${Prisma.join(expected)})`;
+    const byName = new Map(rows.map((r) => [r.relname, r]));
+    const missing = expected.filter((t) => {
+      const r = byName.get(t);
+      return !r || !r.rls || !r.forced || !r.has_policy;
+    });
+    expect(missing, `tables missing RLS/forced/policy: ${missing.join(", ") || "(none)"}`).toEqual([]);
   });
 });

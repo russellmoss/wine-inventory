@@ -14,10 +14,15 @@
  * OWNER (BYPASSRLS) instead and the cross-tenant reads would return rows -> the script FAILS,
  * proving it actually tests the boundary (see the role-attribute check below).
  */
-import { PrismaClient, type Prisma } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const A = "org_bhutan_wine_co";
 const B = "org_isolation_test_b";
+
+// GLOBAL_MODELS (mirror of src/lib/tenant/models.ts): the Better Auth core + org-plugin tables are
+// the ONLY non-tenant tables — every other model must be RLS-isolated. Inlined so this exit-proof
+// script stays self-contained (no app-path imports).
+const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation"]);
 
 const OWNER_URL = process.env.DATABASE_URL_UNPOOLED;
 const APP_URL = process.env.DATABASE_URL_APP;
@@ -53,6 +58,27 @@ async function main() {
   const attrs = await app.$queryRaw<{ current_user: string; rolbypassrls: boolean; rolsuper: boolean }[]>`
     SELECT current_user, r.rolbypassrls, r.rolsuper FROM pg_roles r WHERE r.rolname = current_user`;
   check("app connects as a NOBYPASSRLS, non-superuser role", !!attrs[0] && !attrs[0].rolbypassrls && !attrs[0].rolsuper, `current_user=${attrs[0]?.current_user}`);
+
+  // ── Coverage guard (checklist steps 6 + 9): EVERY non-global model must have RLS ENABLED +
+  //    FORCED and a `tenant_isolation` policy. Enumerated from Prisma's datamodel (minus the auth
+  //    globals), so a table added WITHOUT its RLS migration fails here — the exact regression a
+  //    hand-maintained per-table fixture list would silently miss as the schema grows. Read-only. ──
+  const expectedTables = Prisma.dmmf.datamodel.models
+    .filter((m) => !GLOBAL_MODELS.has(m.name))
+    .map((m) => m.dbName ?? m.name);
+  const rlsRows = await owner.$queryRaw<{ relname: string; rls: boolean; forced: boolean; has_policy: boolean }[]>`
+    SELECT c.relname,
+           c.relrowsecurity AS rls,
+           c.relforcerowsecurity AS forced,
+           EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS has_policy
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname IN (${Prisma.join(expectedTables)})`;
+  const rlsByName = new Map(rlsRows.map((r) => [r.relname, r]));
+  const rlsMissing = expectedTables.filter((t) => {
+    const r = rlsByName.get(t);
+    return !r || !r.rls || !r.forced || !r.has_policy;
+  });
+  check(`all ${expectedTables.length} non-global tables have RLS enabled+forced+tenant_isolation policy (steps 6/9)`, rlsMissing.length === 0, rlsMissing.length ? `missing/incomplete: ${rlsMissing.join(", ")}` : "");
 
   // ── Setup (owner, bypasses RLS): tenant B + one lot per tenant. ──
   // Tenant A exists in a real DB; on a fresh DB (CI) create it so the FK-bound fixtures can insert.
