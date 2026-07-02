@@ -9,7 +9,7 @@ import {
   type MaterialKind,
   type RateBasis,
 } from "@/lib/cellar/additions-math";
-import { STOCK_UNITS, type CellarMaterialDTO } from "@/lib/cellar/materials";
+import { STOCK_UNITS, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import { createStockMaterialAction } from "@/lib/cellar/actions";
 
 // Phase 8 (Unit 10): the stock-aware material picker. Replaces the free-text datalist with a

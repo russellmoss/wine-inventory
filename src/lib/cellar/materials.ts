@@ -9,29 +9,19 @@ import {
   coerceRateBasis,
   normalizeMaterialKey,
 } from "@/lib/cellar/material-normalize";
+import { STOCK_UNITS, coerceStockUnit, type StockUnit, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
+
+// The client-safe DTO shape + stock-unit vocabulary live in materials-shared.ts (no server
+// imports) so 'use client' components can use them without pulling prisma into the browser
+// bundle. Re-exported here so existing server-side call sites keep importing from materials.ts.
+export { STOCK_UNITS, coerceStockUnit };
+export type { StockUnit, CellarMaterialDTO };
 
 // Script-safe core for the light CellarMaterial catalog (Phase 3). No "use server", no
 // server-only, so the addition/fining cores + verification scripts can upsert directly;
 // actions.ts wraps the mutating path as a server action for the UI datalist. Mirrors
 // fieldnotes/input-actions.ts: dedup by (kind, normalizedKey), audit only on first create.
 // Cost + inventory are deferred to Phase 8 (D-scope) — this is name + basis only.
-
-export type CellarMaterialDTO = {
-  id: string;
-  name: string;
-  kind: MaterialKind;
-  defaultBasis: RateBasis | null;
-  percentActive: number | null;
-  // Phase 8 (Unit 10): stock awareness for the picker. `isStockTracked` opts the material into
-  // draw-down; `onHand` is the summed remaining stock across its open SupplyLots (null when
-  // untracked); `stockUnit` is the unit that on-hand is held in. Optional so pre-Phase-8 consumers
-  // that don't render the picker are unaffected.
-  isStockTracked?: boolean;
-  onHand?: number | null;
-  stockUnit?: string | null;
-  /** Phase 8 (Unit 12): surfaced on the management page so an inactive supply can be reactivated. */
-  isActive?: boolean;
-};
 
 function toDTO(r: {
   id: string;
@@ -134,13 +124,6 @@ export async function upsertMaterialCore(
     return row;
   });
   return toDTO(created);
-}
-
-// Phase 8 (Unit 10): canonical stock units a material's on-hand is held/consumed in.
-export const STOCK_UNITS = ["g", "mg", "kg", "mL", "L", "unit"] as const;
-export type StockUnit = (typeof STOCK_UNITS)[number];
-export function coerceStockUnit(u: string | null | undefined): StockUnit {
-  return (STOCK_UNITS as readonly string[]).includes((u ?? "").trim()) ? ((u as string).trim() as StockUnit) : "g";
 }
 
 export type CreateStockMaterialInput = {

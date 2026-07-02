@@ -4,7 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Input, Button, Modal } from "@/components/ui";
 import { MATERIAL_KINDS, type MaterialKind } from "@/lib/cellar/additions-math";
-import { STOCK_UNITS, type CellarMaterialDTO } from "@/lib/cellar/materials";
+import { STOCK_UNITS, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import { createStockMaterialAction } from "@/lib/cellar/actions";
 import { receiveSupplyAction, setMaterialActiveAction } from "@/lib/cost/actions";
 
