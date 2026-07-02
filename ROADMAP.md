@@ -803,8 +803,13 @@ and consumables — so they roll up **per block** and feed the **fruit cost** th
 fruit" becomes real.
 **Domain requirements (durable):**
 - **Vineyard work orders on the shared Phase-9 engine:** manager issues → crew executes → completion
-  logs a **vineyard-block activity record** (the vineyard analogue of a cellar ledger op) → manager
-  approves → finalizes. Same lifecycle, same role split, same auto-log-not-rekey principle.
+  logs a **vineyard-block activity record** → manager approves → finalizes. Same lifecycle, role split,
+  and auto-log-not-rekey principle.
+- **Vineyard activities mirror the full append-only ledger (decided):** a block-activity is a
+  first-class ledger record with the same discipline as the cellar op ledger — monotonic sequence,
+  `observedAt`/`enteredAt`, who/what/capture-method provenance (D14), and **correctable/reversible via
+  the plan-024 undo system** (un-approve = reverse). Not a lighter side-log. This is what makes
+  block/farming cost auditable the same way wine cost is.
 - **Operation taxonomy (seeded, user-extensible — wineries add their own):** spraying, hand/machine
   leafing, hand/machine shoot thinning, hand fruit thinning, hedging, hand/machine suckering, herbicide
   application, mechanized weeding, wire lifting, hand shoot positioning, hand planting, irrigation
@@ -822,6 +827,13 @@ fruit" becomes real.
   (Reuse the Phase-8 `SupplyLot` receive-with-cost + draw-down pattern.)
 - **Vineyard consumables:** c-clips, grow tubes, stakes/pencil rods, gloves, pruners, loppers, etc. —
   receive-with-cost + draw-down, same Phase-8 supply pattern, so their cost lands on the block/operation.
+- **Spray & chemical records are regulatory records (decided, in scope):** a spray operation captures
+  **product/chemical (EPA reg #), rate, area treated, applicator (+ license), date/time, target pest,
+  and weather/wind** — enough to generate **pesticide-use reports (e.g. California PUR)**. Track each
+  chemical's **REI (restricted-entry interval)** and **PHI (pre-harvest interval)** so the system can
+  **flag a block as under-REI** (don't send crew in) and **block/warn on harvest before PHI elapses** —
+  the PHI check ties directly into harvest/CRUSH (Phase 8/vineyard). Chemicals are a costed consumable
+  (draw-down + cost as above). This makes compliance a by-product of logging the spray, not extra work.
 - **Per-block AND cross-block entry:** report costs/activities **block by block**, but make it one action
   to **apply a work order across many blocks** ("did this to blocks 1–10, all the same") — enter once,
   attribute to each block, no per-block re-keying.
@@ -834,10 +846,11 @@ blocks from one entry; the manager approves; each block shows its per-acre spray
 **Runbook notes for `/plan`:**
 - *Reuse:* the Phase-9 WO engine; Phase-11 labor/pay; the Phase-8 `SupplyLot` cost pattern (fuel +
   consumables); the existing vineyard/block model + map polygons; feeds Phase-8 fruit cost + Contracts.
-- *Decisions to resolve:* the vineyard-activity record model (mirror the ledger, or a lighter block-op
-  log?); machine-hours from WO duration vs a manual meter reading; spray records may carry **regulatory
-  value** (chemical/rate/REI/PHI/applicator → pesticide-use reporting, e.g. CA PUR) — decide if that's in
-  scope or a follow-on; per-acre vs per-vine vs per-block cost normalization.
+- *Resolved (2026-07-02):* vineyard activities **mirror the full append-only ledger**; spray/pesticide
+  records + PUR-style reporting + REI/PHI enforcement are **in scope**.
+- *Still open for `/plan`:* machine-hours from WO duration vs a manual meter reading; per-acre vs
+  per-vine vs per-block cost normalization; how far PUR/state-specific report formats go in v1 (CA PUR
+  first, others as follow-on); whether the PHI-blocks-harvest check is a hard gate or a warning.
 **Implementation: deferred to `/plan`.**  **Honors:** D2/D6 (append-only, correctable), D12
 (auto-log-not-rekey), D16 (tenant scoping); built on Phases 9 (engine), 11 (labor), 8 (cost/supply).
 
