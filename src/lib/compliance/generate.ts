@@ -81,7 +81,7 @@ async function fermentToWineEvents(start: Date, end: Date): Promise<{ lotId: str
   return events;
 }
 
-async function resolveClassesForLots(
+export async function resolveClassesForLots(
   lotIds: string[],
   asOf: Date,
   overrides: Record<string, WineTaxClass>,
