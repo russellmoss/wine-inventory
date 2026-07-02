@@ -6,30 +6,43 @@
  * work here — never in Bhutan Wine Co. (see ROADMAP Phase 21a + the
  * "demo-winery-testing-convention" memory).
  *
- * WHEN TO RUN: the moment Phase 8a's migrations are DEPLOYED. This script uses the
- * current Prisma schema; running it before 8a's columns exist in the DB can fail on
- * missing columns. After 8a `db:migrate`/deploy + `db:generate`, run it.
+ * WHEN TO RUN: after Phase 8a's migrations are deployed (the current schema).
  *
  * Usage:  npm run seed:demo-tenant
- *   env overrides: DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD
+ *   env overrides: DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, SEED_CONNECT_TIMEOUT (secs)
  *
  * Idempotent: re-running is safe (existing rows are reused, not duplicated).
  * Full reset: delete org "org_demo_winery" (cascades members) + the owner user, re-run.
  *
- * Mirrors the working global-vs-tenant split from prisma/seed.ts: plain `prisma` for
- * the Better-Auth global tables (organization/user/account/member), `runAsTenant` for
- * domain rows (tenantId is auto-injected by the Prisma extension — do NOT set it).
+ * Slow-link resilience: widens the DB connect/pool timeout BEFORE the Prisma client
+ * initializes (a cold Neon compute + high-latency link otherwise races the default
+ * connect timeout). `prisma` is dynamically imported so the env tweak lands first.
+ *
+ * Mirrors prisma/seed.ts: plain `prisma` for the Better-Auth global tables
+ * (organization/user/account/member), `runAsTenant` for domain rows (tenantId is
+ * auto-injected by the Prisma extension — do NOT set it).
  */
 import { randomUUID } from "crypto";
-import { prisma } from "../src/lib/prisma";
-import { hashPassword } from "../src/lib/password";
-import { runAsTenant } from "../src/lib/tenant/context";
+
+// Widen connect/pool timeout for slow links / cold Neon compute — must run BEFORE
+// src/lib/prisma is imported (it reads DATABASE_URL at init). Idempotent on the URL.
+const _timeout = process.env.SEED_CONNECT_TIMEOUT || "30";
+const _base = process.env.DATABASE_URL;
+if (_base && !/connect_timeout=/.test(_base)) {
+  const sep = _base.includes("?") ? "&" : "?";
+  process.env.DATABASE_URL = `${_base}${sep}connect_timeout=${_timeout}&pool_timeout=${_timeout}`;
+}
 
 const DEMO_ORG_ID = "org_demo_winery";
 const DEMO_ORG_NAME = "Demo Winery";
 const DEMO_ORG_SLUG = "demo-winery";
 
 async function main() {
+  // Dynamic imports so the DATABASE_URL tweak above is in effect at client init.
+  const { prisma } = await import("../src/lib/prisma");
+  const { hashPassword } = await import("../src/lib/password");
+  const { runAsTenant } = await import("../src/lib/tenant/context");
+
   const email = process.env.DEMO_OWNER_EMAIL || "owner@demowinery.test";
   const password = process.env.DEMO_OWNER_PASSWORD || "DemoWinery!2026";
   const now = new Date();
@@ -137,7 +150,29 @@ async function main() {
   console.log("   ⚠  use THIS tenant for all dev/QA — never Bhutan Wine Co.");
 }
 
-main()
+// Retry the whole (idempotent) seed on transient connection failures — airplane wifi
+// drops/latency spikes shouldn't fail the run. Attempts + backoff are env-tunable.
+async function run() {
+  const attempts = Number(process.env.SEED_ATTEMPTS || "5");
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await main();
+      return;
+    } catch (e) {
+      const msg = String(e);
+      const transient =
+        /reach database|can't reach|connection|Closed|timeout|ECONN|ETIMEDOUT|terminating|socket/i.test(msg);
+      if (i < attempts && transient) {
+        console.warn(`attempt ${i}/${attempts} hit a connection issue (airplane wifi?), retrying…`);
+        await new Promise((r) => setTimeout(r, 3000 * i));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+run()
   .then(() => process.exit(0))
   .catch((e) => {
     console.error("seed-demo-tenant failed:", e);
