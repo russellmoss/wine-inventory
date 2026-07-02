@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { withWriteRetry } from "@/lib/db/write-retry";
 import { requireTenantId, runWithTenantContext } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 import { round2 } from "@/lib/bottling/draw";
@@ -22,19 +23,6 @@ import type { SparklingMethod, BottleStage } from "@prisma/client";
 
 const CAP_EPS = 1e-9;
 const num = (d: Prisma.Decimal | number) => (typeof d === "number" ? d : Number(d));
-
-/** Retry a write on Postgres serialization/deadlock aborts (P2034). Mirrors stock/movements. */
-export async function withWriteRetry<T>(fn: () => Promise<T>, attempts = 5): Promise<T> {
-  for (let i = 1; ; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      const code = e instanceof Prisma.PrismaClientKnownRequestError ? e.code : undefined;
-      if (code === "P2034" && i < attempts) continue;
-      throw e;
-    }
-  }
-}
 
 /** Interactive-tx ceilings for the ledger write. Defaults (20s timeout / 10s maxWait) are unchanged
  * for production; both are ENV-OVERRIDABLE so a high-latency link (e.g. verifying from airplane wifi,
@@ -73,6 +61,8 @@ export function runLedgerWrite<T>(fn: (tx: Prisma.TransactionClient) => Promise<
         },
       ),
     ),
+    5,
+    "ledger",
   );
 }
 

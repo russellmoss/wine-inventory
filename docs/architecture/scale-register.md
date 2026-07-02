@@ -33,9 +33,9 @@
 - **Choice:** ledger writes use SERIALIZABLE + canonical row locking + a single-writer-style chokepoint.
 - **Fine until:** low write concurrency (human-paced cellar ops).
 - **What breaks:** SSI *aborts* conflicting txns (SQLSTATE 40001) and Postgres provides **no auto-retry** — an unhandled conflict surfaces as a user-facing error; under write-heavy bursts, rollback rates climb.
-- **Mitigation:** wrap every write path in bounded retry-on-40001 (backoff + cap); log conflicts to observe contention.
-- **Tripwire:** any 40001 reaching the user / rising serialization-failure count in logs.
-- **Status:** 🔴→🟡 (retry wrapper is the missing half of the chokepoint — H2, do now)
+- **Mitigation (DONE):** `src/lib/db/write-retry.ts` is the single canonical `withWriteRetry` — bounded retry-on-`P2034` (Prisma's code for SQLSTATE 40001 serialization + 40P01 deadlock), cap 5, **full-jitter exponential backoff** (25ms→500ms), and a per-domain `console.warn` on each retry so contention is observable. Used by the ledger chokepoint (`runLedgerWrite`), stock movements, and bottling (three copy-pasted loops consolidated into it, 2026-07).
+- **Tripwire:** any `P2034` reaching the user / rising `[write-retry]` warn volume in logs (= growing serialization contention → consider narrowing tx scope or moving reads off the write path per H3).
+- **Status:** 🟢 (bounded retry + backoff + logging shipped + consolidated; watch the tripwire as write concurrency grows)
 
 ### Projection rebuilds & event-schema evolution (D18/H4)
 - **Choice:** event-sourcing-lite — a materialized projection maintained transactionally (not full replay).
@@ -66,7 +66,7 @@
 - **What breaks:** a model/prompt/library change silently degrades parse/extraction accuracy; a misparse reaches the proposal step at scale (still caught by human approval per D10, but trust + throughput erode); domain-correct cellar-language eval data is expensive to build after the fact.
 - **Mitigation (D26/H8):** seed golden datasets with the first AI surface (do-now, single-tenant is cheapest); CI runs the evals and blocks on regression; the deterministic core stays exact/tested (D14).
 - **Tripwire:** any AI write surface shipped without an eval suite / a rise in human-corrected proposals / a model/lib bump with no eval delta recorded.
-- **Status:** 🔴→🟡 (H8 not built; seed it with the first NL/voice or Phase-25 surface)
+- **Status:** 🟡 (H8 SEEDED 2026-07 — `test/evals/` holds a golden dataset over the shipped assistant write tools + a structural eval that validates it against the REAL registry in CI, with a coverage guard that fails when a new write tool ships ungoverned; a gated LLM-in-the-loop eval runs via `npm run eval:assistant`. Grows with each new AI surface.)
 
 ### Neon Postgres cold starts
 - **Choice:** Neon serverless Postgres.

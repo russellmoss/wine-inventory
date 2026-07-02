@@ -4,6 +4,7 @@ import { writeAudit } from "../audit";
 import { ActionError } from "../action-error";
 import { computeProportionalDraw, consumedForBottles, casesAndLoose, round2 } from "./draw";
 import { writeLotOperation } from "@/lib/ledger/write";
+import { withWriteRetry } from "@/lib/db/write-retry";
 import type { LedgerLine } from "@/lib/ledger/math";
 import { nextLotCode } from "@/lib/lot/generate";
 import { materializeFinishedGoods, type MaterializeSource } from "@/lib/bottling/materialize";
@@ -41,17 +42,8 @@ const SERIAL = {
   maxWait: BOTTLING_TX_MAX_WAIT_MS,
 } as const;
 
-async function withRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
-  for (let i = 1; ; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      const code = e instanceof Prisma.PrismaClientKnownRequestError ? e.code : undefined;
-      if (code === "P2034" && i < attempts) continue;
-      throw e;
-    }
-  }
-}
+// The shared serialization-retry wrapper (D18/H2), labelled for this domain's logs.
+const withRetry = <T>(fn: () => Promise<T>) => withWriteRetry(fn, 5, "bottling");
 
 /** Apply a bottling run within an existing transaction. Returns the new run id. */
 async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput, actor: Actor): Promise<string> {

@@ -25,6 +25,7 @@
     "verify:cost": "tsx --conditions=react-server --env-file=.env scripts/verify-cost.ts",
     "verify:reminders": "tsx --conditions=react-server --env-file=.env scripts/verify-reminders.ts",
     "verify:raw-sql": "tsx scripts/check-raw-sql-tenant-safety.ts",
+    "eval:assistant": "vitest run test/evals/assistant-tools.eval.test.ts",
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate"
   },

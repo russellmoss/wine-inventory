@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { requireTenantId } from "@/lib/tenant/context";
+import { withWriteRetry as retryWrite } from "@/lib/db/write-retry";
 import { prisma } from "../prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "../audit";
@@ -11,24 +12,14 @@ export type Ctx = { actorUserId: string | null; actorEmail: string };
 const INT32_MAX = 2147483647;
 const UNIT = (k: ItemKind) => (k === "BOTTLED_WINE" ? "bottles" : "units");
 
+// The shared serialization-retry wrapper (D18/H2), labelled for this domain's logs.
+const withWriteRetry = <T>(fn: () => Promise<T>) => retryWrite(fn, 5, "stock");
+
 function assertCount(n: number, label: string): void {
   if (!Number.isInteger(n) || n <= 0 || n > INT32_MAX) throw new ActionError(`${label} must be a whole number between 1 and ${INT32_MAX}.`);
 }
 function assertDelta(n: number): void {
   if (!Number.isInteger(n) || n === 0 || Math.abs(n) > INT32_MAX) throw new ActionError("Adjustment must be a non-zero whole number within range.");
-}
-
-/** Retry a write transaction on Postgres serialization/deadlock aborts (P2034). */
-async function withWriteRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
-  for (let i = 1; ; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      const code = e instanceof Prisma.PrismaClientKnownRequestError ? e.code : undefined;
-      if (code === "P2034" && i < attempts) continue;
-      throw e;
-    }
-  }
 }
 
 async function itemLabel(kind: ItemKind, itemId: string): Promise<string> {
