@@ -13,6 +13,15 @@ const base =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    // Default interactive-tx ceilings. Prisma defaults (timeout 5000 / maxWait 2000) are preserved
+    // when the envs are unset, so production behavior is unchanged. Slow links (airplane wifi / cold
+    // Neon) can lift them (e.g. PRISMA_TX_TIMEOUT_MS=120000) so cores whose interactive tx isn't
+    // individually tunable (chemistry/ferment/materials) don't race the 5s default. Ledger + bottling
+    // set their own per-call ceilings and override this.
+    transactionOptions: {
+      timeout: Number(process.env.PRISMA_TX_TIMEOUT_MS) || 5000,
+      maxWait: Number(process.env.PRISMA_TX_MAX_WAIT_MS) || 2000,
+    },
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = base;
