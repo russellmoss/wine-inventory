@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
 
 // Phase 12 (K10): per-org winery settings — one row per tenant. findFirst is tenant-scoped by the
 // active tenant context (RLS + the Prisma extension), so it returns the calling org's row (default
@@ -15,4 +16,34 @@ export async function getAppSettings(): Promise<AppSettingsView> {
 /** The capability gate for the ENTIRE traditional-method sparkling UI/nav (default off). */
 export async function isSparklingEnabled(): Promise<boolean> {
   return (await getAppSettings()).sparklingEnabled;
+}
+
+// Phase 8 (Unit 2): the per-tenant costing policy. Falls back to COST_SETTINGS_DEFAULTS when the
+// row doesn't exist yet, so cost roll-up works before the operator ever visits the settings screen.
+export async function getCostSettings(): Promise<CostSettings> {
+  const s = await prisma.appSettings.findFirst({
+    select: {
+      currency: true,
+      costingMethod: true,
+      costingMethodEffectiveAt: true,
+      capitalizeFruit: true,
+      capitalizeBarrel: true,
+      capitalizeLabor: true,
+      capitalizeOverhead: true,
+      capitalizePackaging: true,
+      costingPolicyVersion: true,
+    },
+  });
+  if (!s) return { ...COST_SETTINGS_DEFAULTS };
+  return {
+    currency: s.currency,
+    costingMethod: s.costingMethod,
+    costingMethodEffectiveAt: s.costingMethodEffectiveAt,
+    capitalizeFruit: s.capitalizeFruit,
+    capitalizeBarrel: s.capitalizeBarrel,
+    capitalizeLabor: s.capitalizeLabor,
+    capitalizeOverhead: s.capitalizeOverhead,
+    capitalizePackaging: s.capitalizePackaging,
+    policyVersion: s.costingPolicyVersion,
+  };
 }

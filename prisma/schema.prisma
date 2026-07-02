@@ -581,9 +581,11 @@ model WineSku {
   bottlingRuns     BottlingRun[]
   bottledInventory BottledInventory[]
   stockMovements   StockMovement[]
+  costSnapshots    BottlingCostSnapshot[] // Phase 8: frozen per-SKU COGS snapshots
 
   @@index([categoryId])
   @@index([tenantId])
+  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for bottling_cost_snapshot (K11)
   @@map("wine_sku")
 }
 
@@ -610,10 +612,12 @@ model BottlingRun {
   destinationLocation   Location         @relation(fields: [destinationLocationId], references: [id], onDelete: Restrict)
   sources               BottlingSource[]
   stockMovements        StockMovement[]
+  costSnapshots         BottlingCostSnapshot[] // Phase 8: frozen per-run+line COGS snapshots
 
   @@index([wineSkuId])
   @@index([date])
   @@index([tenantId])
+  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for bottling_cost_snapshot (K11)
   @@map("bottling_run")
 }
 
@@ -1014,6 +1018,51 @@ enum LedgerBucket {
   BOTTLE_STORAGE
 }
 
+// ───────────────────────── Phase 8: cost roll-up + supply stock (enums) ─────────────────────────
+// New enum TYPES (created in their own enum-only migration 20260702000000_cost_enums, ahead of the
+// table migration — matches the repo's isolated-enum convention; CREATE TYPE is safe same-tx but we
+// keep the seam clean). None of these ADD VALUE to an existing enum, so there is no ALTER TYPE gotcha.
+
+// The kind of cost a CostLine / consumption represents (D5). MATERIAL + DOSAGE_LIQUEUR are ALWAYS
+// capitalized; FRUIT/BARREL default-on, LABOR/OVERHEAD default-off (recorded, allocation is Phase 11);
+// PACKAGING is the bottling BOM (glass/cork/…); VARIANCE is a rounding/abnormal-loss/adjustment flush.
+enum CostComponent {
+  MATERIAL
+  FRUIT
+  BARREL
+  LABOR
+  OVERHEAD
+  DOSAGE_LIQUEUR
+  PACKAGING
+  VARIANCE
+}
+
+// Per-tenant costing method (D5). Weighted-average absorption is the default (blends ARE weighted-avg
+// by volume); FIFO optional. Stamped onto each immutable SupplyConsumption row so recompute never
+// re-values history when the setting later changes (D17).
+enum CostingMethod {
+  WEIGHTED_AVG
+  FIFO
+}
+
+// Cost-basis completeness (D14): null cost is UNKNOWN, NEVER $0. PARTIAL = some inputs known, some
+// unknown. Propagates up the DAG (any unknown parent taints the child) and is frozen on the snapshot;
+// an incomplete basis is surfaced in the UI and blocked from accounting export.
+enum CostBasisCompleteness {
+  KNOWN
+  PARTIAL
+  UNKNOWN
+}
+
+// Lot ownership (D19). ESTATE = the winery owns the wine (cost capitalizes to inventory). A
+// CUSTOM_CRUSH_CLIENT lot is owned by a client — fruit/wine cost is suppressed from the winery's
+// inventory asset and supply draw-downs route to a billable-expense CostLine (billed back, not
+// capitalized). Ships as a seam in 8a; the routing logic is Unit 16.
+enum LotOwnership {
+  ESTATE
+  CUSTOM_CRUSH_CLIENT
+}
+
 // A singleton winery-level settings row (the app is single-tenant). Read/created via
 // getAppSettings(). `sparklingEnabled` gates the ENTIRE traditional-method UI/nav (K14,
 // default off) — backend enums/cores ship regardless and are inert when unused.
@@ -1023,6 +1072,22 @@ model AppSettings {
   // tenantId, not the old "singleton" id. id is a plain cuid so a 2nd org's row can't collide.
   id               String   @id @default(cuid())
   sparklingEnabled Boolean  @default(false)
+  // Phase 8 (D5, D9, D17): per-tenant costing policy. `currency` (ISO code, default USD) heads every
+  // cost row. `costingMethod` + `costingMethodEffectiveAt` set depletion order (WA default | FIFO); the
+  // method actually used is STAMPED on each SupplyConsumption at write time so recompute is stable.
+  // Capitalization toggles decide which components fold into capitalized cost — MATERIAL + DOSAGE_LIQUEUR
+  // are ALWAYS capitalized (no toggle); the rest are recorded regardless and only the toggle gates
+  // whether they roll up. `costingPolicyVersion` stamps every derived row so a toggle/method change
+  // never re-values closed history (D17).
+  currency                 String        @default("USD")
+  costingMethod            CostingMethod @default(WEIGHTED_AVG)
+  costingMethodEffectiveAt DateTime?
+  capitalizeFruit          Boolean       @default(true)
+  capitalizeBarrel         Boolean       @default(true)
+  capitalizeLabor          Boolean       @default(false)
+  capitalizeOverhead       Boolean       @default(false)
+  capitalizePackaging      Boolean       @default(true)
+  costingPolicyVersion     Int           @default(1)
   updatedAt        DateTime @updatedAt
 
   @@unique([tenantId])
@@ -1074,6 +1139,9 @@ model Lot {
   productType        ProductType        @default(WINE)
   carbonation        CarbonationMethod  @default(NONE)
   taxAbvOverride     Decimal?           @db.Decimal(5, 2)
+  // Phase 8 (D19): who owns this wine. ESTATE (default) capitalizes cost to the winery's inventory
+  // asset; CUSTOM_CRUSH_CLIENT suppresses fruit/wine cost and bills supplies back (routing = Unit 16).
+  ownership          LotOwnership       @default(ESTATE)
   // Phase 5: false when this lot's source-vineyard set may be incomplete (a blend with a
   // parent of unknown provenance). Contagious: a blend with any incomplete parent is itself
   // incomplete (council C6). Drives the "admin-only-visible" NULL-source bucket.
@@ -1105,6 +1173,12 @@ model Lot {
   stateEvents          LotStateEvent[]
   // Phase 7: the 1:1 continuable-bottle projection (present only while BOTTLED_IN_PROCESS).
   bottledState         BottledLotState?
+  // Phase 8: direct absorbed cost lines on this lot's ops, inherited-cost transfer edges, and the
+  // 1:1 lazy cost cache.
+  costLines            CostLine[]
+  costTransfersFrom    OperationCostTransfer[] @relation("CostTransferFrom")
+  costTransfersTo      OperationCostTransfer[] @relation("CostTransferTo")
+  costState            LotCostState?
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -1143,11 +1217,16 @@ model LotOperation {
   treatments       LotTreatment[]     @relation("TreatmentOperation") // detail rows this op created
   voidedTreatments LotTreatment[]     @relation("TreatmentVoid") // treatments this (CORRECTION) op voided
   stateEvents      LotStateEvent[] // form/AF/MLF transitions caused by this op (shares fold order)
+  // Phase 8: the append-only cost artifacts hung off this op (all composite-tenant-FK'd at the DB).
+  costLines        CostLine[]
+  supplyConsumptions SupplyConsumption[]
+  costTransfers    OperationCostTransfer[]
 
   @@index([type, observedAt])
   @@index([batchId])
   @@index([tenantId])
   @@index([tenantId, observedAt]) // Phase 14 (S3): period-boundary fold — lines by tenant + observedAt
+  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for cost artifacts (K11)
   @@map("lot_operation")
 }
 
@@ -1217,6 +1296,10 @@ model LotLineage {
   @@unique([parentLotId, childLotId])
   @@index([childLotId])
   @@index([tenantId])
+  // Phase 8 (Unit 2): tenant-scoped edge indexes for the cost roll-up's recursive-CTE walk (both
+  // directions — ancestry up via childLotId, descendants down via parentLotId).
+  @@index([tenantId, parentLotId])
+  @@index([tenantId, childLotId])
   @@map("lot_lineage")
 }
 
@@ -1461,10 +1544,19 @@ model CellarMaterial {
   defaultBasis  String? // G_HL | MG_L | G_L | ML_L
   percentActive Decimal?       @db.Decimal(6, 3) // %active (material property, not a dose basis)
   isActive      Boolean        @default(true)
+  // Phase 8 (Unit 1): stock + cost tracking, all additive. `stockUnit` is the canonical unit stock is
+  // held/consumed in (g | mg | kg | mL | L | unit — validated in code); `packagingSize` is how much of
+  // stockUnit one purchased package holds (informational, for receive-by-package UX). `isStockTracked`
+  // opts a material into stock draw-down; a free-text/untracked material still doses (cost unknown, D14).
+  packagingSize  Decimal?      @db.Decimal(18, 6)
+  stockUnit      String?
+  isStockTracked Boolean       @default(false)
   createdAt     DateTime       @default(now())
   treatments    LotTreatment[]
+  supplyLots    SupplyLot[]
 
   @@unique([tenantId, kind, normalizedKey])
+  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for supply_lot (K11)
   @@index([tenantId])
   @@map("cellar_material")
 }
@@ -1743,4 +1835,178 @@ model ComplianceProfile {
   @@unique([tenantId])
   @@index([tenantId])
   @@map("compliance_profile")
+}
+
+// ───────────────────────── Phase 8: supply stock + cost roll-up (D16 separated concerns) ─────────────────────────
+// All six tables are tenant-scoped + RLS-isolated per the AGENTS.md Phase-12 checklist (tenantId
+// @default("") + @@index([tenantId]) + FK→organization ON DELETE RESTRICT + RLS ENABLE+FORCE+
+// tenant_isolation, kept OUT of GLOBAL_MODELS). Cross-tenant-risk FKs to the ledger (operation/lot/
+// supplyLot/run/sku) are COMPOSITE (tenantId, refId)→(tenantId, id) at the DB level (K11) — added in
+// the migration raw SQL; Prisma relations stay single-column referencing id, matching the repo's
+// existing composite-FK convention. Money is Decimal(18,8) internally (D9); volumes stay Decimal(10,2).
+// Migrations: 20260702000000_cost_enums (enum types), 20260702000100_cost_schema (these tables +
+// extensions), 20260702000200_cost_rls (RLS). NONE deployed until the operator runs migrate deploy.
+
+// A costed receipt of a stock-tracked supply (Unit 1). One row per purchase/opening balance; the
+// current on-hand for a material is Σ qtyRemaining over its non-depleted lots. `unitCost` is per
+// stockUnit; NULL cost = UNKNOWN (D14), never $0. WA/FIFO depletion draws these down (Unit 3).
+model SupplyLot {
+  tenantId      String   @default("")
+  id            String   @id @default(cuid())
+  materialId    String
+  qtyReceived   Decimal  @db.Decimal(18, 6)
+  qtyRemaining  Decimal  @db.Decimal(18, 6)
+  stockUnit     String // snapshot of the unit these quantities are held in (g | kg | mL | L | unit …)
+  unitCost      Decimal? @db.Decimal(18, 8) // per stockUnit; NULL = unknown cost (D14)
+  currency      String   @default("USD")
+  receivedAt    DateTime @default(now())
+  lotCode       String? // supplier lot / PO reference
+  supplierNote  String?
+  policyVersion Int      @default(1) // costing-policy version at receipt (D17)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  material      CellarMaterial      @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  consumptions  SupplyConsumption[]
+
+  @@unique([tenantId, id]) // composite-tenant-FK target for supply_consumption (K11)
+  @@index([tenantId])
+  @@index([tenantId, materialId, receivedAt]) // FIFO / on-hand scan (partial WHERE qtyRemaining>0 added in SQL)
+  @@map("supply_lot")
+}
+
+// Direct absorbed cost on an op, tagged by component (D2, D16). The append-only money artifact the
+// roll-up sums. `lotId` is the lot the cost lands on (null for a run-level packaging line resolved via
+// the op). `reversalOfCostLineId` links an identity-negation row (Unit 11). Never mutated.
+model CostLine {
+  tenantId             String                @default("")
+  id                   String                @id @default(cuid())
+  operationId          Int
+  lotId                String?
+  component            CostComponent
+  amount               Decimal               @db.Decimal(18, 8)
+  currency             String                @default("USD")
+  basisCompleteness    CostBasisCompleteness @default(KNOWN)
+  policyVersion        Int                   @default(1)
+  reversalOfCostLineId String? // set on the negation row that reverses another CostLine (Unit 11)
+  note                 String?
+  createdAt            DateTime              @default(now())
+  operation            LotOperation          @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  lot                  Lot?                  @relation(fields: [lotId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, operationId, component])
+  @@index([tenantId, lotId])
+  @@map("cost_line")
+}
+
+// Physical + cost depletion of supply stock (D11). One consume op → many rows (multi-lot depletion
+// under WA/FIFO). `methodUsed` is stamped at write so recompute is stable (D17). Reversal negates by
+// identity and restores exact qty (Unit 11) via `reversalOfConsumptionId`.
+model SupplyConsumption {
+  tenantId                String                @default("")
+  id                      String                @id @default(cuid())
+  operationId             Int
+  supplyLotId             String
+  qty                     Decimal               @db.Decimal(18, 6)
+  unitCost                Decimal?              @db.Decimal(18, 8) // snapshot of the supply lot's unit cost (NULL = unknown, D14)
+  extendedCost            Decimal?              @db.Decimal(18, 8) // qty × unitCost (NULL when unitCost unknown)
+  methodUsed              CostingMethod
+  basisCompleteness       CostBasisCompleteness @default(KNOWN)
+  policyVersion           Int                   @default(1)
+  reversalOfConsumptionId String? // set on the negation row that reverses another consumption (Unit 11)
+  createdAt               DateTime              @default(now())
+  operation               LotOperation          @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  supplyLot               SupplyLot             @relation(fields: [supplyLotId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, operationId])
+  @@index([tenantId, supplyLotId])
+  @@map("supply_consumption")
+}
+
+// Immutable lot→lot inherited-cost artifact for a blend/split (D10). Cost moved =
+// parentTotalCost × transferredVolumeL / parentPreOpVolumeL — an UNAMBIGUOUS transferred-volume basis,
+// NOT the lineage `fraction` (council C2). Conservation is asserted per op. Reversal via
+// `reversalOfTransferId` (Unit 11).
+model OperationCostTransfer {
+  tenantId            String       @default("")
+  id                  String       @id @default(cuid())
+  operationId         Int
+  fromLotId           String
+  toLotId             String
+  transferredVolumeL  Decimal      @db.Decimal(10, 2)
+  parentPreOpVolumeL  Decimal      @db.Decimal(10, 2)
+  transferredCost     Decimal      @db.Decimal(18, 8)
+  currency            String       @default("USD")
+  policyVersion       Int          @default(1)
+  reversalOfTransferId String?
+  createdAt           DateTime     @default(now())
+  operation           LotOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  fromLot             Lot          @relation("CostTransferFrom", fields: [fromLotId], references: [id], onDelete: Restrict)
+  toLot               Lot          @relation("CostTransferTo", fields: [toLotId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, toLotId])
+  @@index([tenantId, fromLotId])
+  @@index([tenantId, operationId])
+  @@map("operation_cost_transfer")
+}
+
+// FROZEN, immutable COGS per bottling run + line (D15, D18). Bottling is a bill-of-materials:
+// totalRunCost = liquid + dry goods (+ labor/oh later); costPerBottle = totalRunCost / ACTUAL good
+// bottles. ALL Phase-15 export-seam columns ship here in 8a (D21) so Units 6/13/14 populate, never
+// re-migrate: postingKey (idempotency), sourceSnapshotId / reversalOfSnapshotId (lineage), postedAt,
+// externalSystemId. componentBreakdown is the {component: amount} decomposition frozen at file time.
+model BottlingCostSnapshot {
+  tenantId                 String                @default("")
+  id                       String                @id @default(cuid())
+  runId                    String
+  skuId                    String
+  taxClass                 String? // derived tax class snapshot (Phase 14 union as text)
+  bottledAt                DateTime
+  goodBottles              Int
+  totalRunCost             Decimal               @db.Decimal(18, 8)
+  costPerBottle            Decimal               @db.Decimal(18, 2) // rounded to cents at snapshot (D9)
+  currency                 String                @default("USD")
+  costBasisAsOfOperationId Int? // the max cost-affecting opId the basis reflects (D4 watermark)
+  componentBreakdown       Json // { MATERIAL: n, FRUIT: n, PACKAGING: n, … } frozen decomposition
+  basisCompleteness        CostBasisCompleteness @default(KNOWN)
+  policyVersion            Int                   @default(1)
+  // Phase 15 export seam (D18) — all shipped in 8a, populated by 8b Unit 14.
+  postingKey               String? // idempotency key for an accounting export event
+  sourceSnapshotId         String? // the snapshot this one was derived/re-stated from
+  reversalOfSnapshotId     String? // set on a snapshot that reverses another
+  postedAt                 DateTime?
+  externalSystemId         String? // id assigned by the external accounting system on post
+  createdAt                DateTime              @default(now())
+  run                      BottlingRun           @relation(fields: [runId], references: [id], onDelete: Restrict)
+  sku                      WineSku               @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, postingKey]) // per-tenant idempotency (partial WHERE postingKey IS NOT NULL in SQL)
+  @@index([tenantId])
+  @@index([tenantId, skuId, runId])
+  @@index([tenantId, taxClass, bottledAt])
+  @@map("bottling_cost_snapshot")
+}
+
+// A LAZY, VERSIONED cache of a lot's rolled-up cost (D4) — NOT an invariant projection. The DAG
+// recompute (Unit 4) is the AUTHORITY; this row is refreshed on read when the lot's max cost-affecting
+// opId exceeds `computedThroughOpId` (the watermark). NEVER eagerly fanned out from the write
+// chokepoint. 1:1 with Lot (lotId @id), deleted-at-zero like VesselLot. `basisVersion` tracks the
+// costing-policy version the cache reflects so a policy bump invalidates it.
+model LotCostState {
+  tenantId            String                @default("")
+  lotId               String                @id
+  totalCost           Decimal               @db.Decimal(18, 8)
+  volumeL             Decimal               @db.Decimal(10, 2)
+  costPerL            Decimal?              @db.Decimal(18, 8) // totalCost / volumeL; NULL at zero volume (D9)
+  basisCompleteness   CostBasisCompleteness @default(UNKNOWN)
+  computedThroughOpId Int                   @default(0) // watermark: max cost-affecting opId folded in
+  basisVersion        Int                   @default(1)
+  componentBreakdown  Json? // { MATERIAL: n, FRUIT: n, … } cached decomposition
+  updatedAt           DateTime              @updatedAt
+  lot                 Lot                   @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("lot_cost_state")
 }

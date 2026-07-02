@@ -87,6 +87,26 @@ async function main() {
     } catch { fkRaised = true; }
     check("composite-FK cross-tenant reference rejected (K11)", fkRaised);
 
+    // 5b. Phase 8: supply_lot isolation. Owner seeds a material + costed receipt in B; app-as-A must
+    // not see B's stock, and a foreign-tenant supply_lot insert while in A is rejected (WITH CHECK).
+    await owner.cellarMaterial.upsert({
+      where: { id: "iso_mat_b" },
+      update: {},
+      create: { id: "iso_mat_b", tenantId: B, name: "ISO KMBS", normalizedKey: "ISOKMBS", kind: "SO2", isStockTracked: true },
+    });
+    await owner.supplyLot.upsert({
+      where: { id: "iso_supply_b" },
+      update: {},
+      create: { id: "iso_supply_b", tenantId: B, materialId: "iso_mat_b", qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.05", updatedAt: now },
+    });
+    const aSeesSupplyB = await asTenant(A, (db) => db.supplyLot.findFirst({ where: { id: "iso_supply_b" } }));
+    check("tenant A CANNOT see tenant B's supply_lot (RLS)", aSeesSupplyB === null);
+    let supplyInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.supplyLot.create({ data: { id: "iso_supply_x", tenantId: B, materialId: "iso_mat_b", qtyReceived: 1, qtyRemaining: 1, stockUnit: "g", updatedAt: new Date() } }));
+    } catch { supplyInsertRaised = true; }
+    check("foreign-tenant supply_lot INSERT raises (WITH CHECK)", supplyInsertRaised);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -104,6 +124,8 @@ async function main() {
     // ── Teardown (owner). ──
     await owner.lotOperationLine.deleteMany({ where: { lotId: { in: ["iso_lot_a", "iso_lot_b"] } } });
     await owner.lotOperation.deleteMany({ where: { tenantId: B } });
+    await owner.supplyLot.deleteMany({ where: { id: { in: ["iso_supply_b", "iso_supply_x"] } } });
+    await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_b" } });
     await owner.lot.deleteMany({ where: { id: { in: ["iso_lot_a", "iso_lot_b", "iso_lot_x"] } } });
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
