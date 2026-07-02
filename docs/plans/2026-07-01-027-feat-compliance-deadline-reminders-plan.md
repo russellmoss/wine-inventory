@@ -1,12 +1,34 @@
 ---
 title: Compliance Filing-Deadline Reminders + Calendar Export (Phase 14 follow-on)
 type: feat
-status: draft
+status: code-complete (migration apply + e2e verify pending DB connectivity)
 date: 2026-07-01
 branch: main
 depth: deep
 units: 11
 ---
+
+## Build status (2026-07-02)
+
+All 11 units built, committed to `main`, and offline-verified: `tsc --noEmit` clean repo-wide,
+`eslint` clean on all touched files, 29 compliance unit tests green
+(holidays / deadlines / deadline-status / ics). Two commits:
+reminder backend (schema + migrations + `reminders.ts` + `reminder-sweep.ts` + cron route +
+`vercel.json` + `.env.example`) and reminder UI (dashboard widget + nav badge + `/compliance` banner +
+`/users` opt-in + Settings `.ics` button + `verify-reminders.ts`).
+
+**Pending (blocked on local Prisma→Neon connectivity, P1001 — Neon itself confirmed up via MCP,
+compute active):**
+1. Apply the two migrations: `npx prisma migrate deploy` (creates `compliance_reminder_preference` +
+   `compliance_reminder_log` + their RLS). Confirmed NOT yet applied to prod (0 tables, 0 migration
+   records). NOTE: an unrelated pre-existing rolled-back migration `20260627172023_add_lot_code_abbreviations`
+   sits in `_prisma_migrations` (June 27) — benign, `migrate deploy` skips rolled-back rows.
+2. Stop the dev server, then `npx prisma generate` (Windows query-engine DLL lock).
+3. `npm run verify:reminders` (e2e over a synthetic tenant).
+
+Until (1) runs against a given DB, the dashboard widget / nav badge / `/compliance` banner queries
+(`complianceReminderPreference`) will error there — apply the migration on every environment (local +
+Vercel prod/preview) before exercising the UI.
 
 ## Overview
 
