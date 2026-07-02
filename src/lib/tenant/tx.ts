@@ -50,8 +50,12 @@ export async function runInTenantRawTx<T>(
         "runAsTenant() context.",
     );
   }
+  // Lift the interactive-tx ceiling above Prisma's 5s default so a read that wakes a suspended Neon
+  // compute (~1s round-trips) doesn't expire mid-query with P2028. Env-overridable, caller can still
+  // pass explicit options. Mirrors the ledger/verify timeout treatment.
+  const timeout = options?.timeout ?? (Number(process.env.PRISMA_TX_TIMEOUT_MS) || 15_000);
   return prismaBase.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
     return fn(tx as unknown as Prisma.TransactionClient, tenantId);
-  }, options);
+  }, { ...options, timeout });
 }

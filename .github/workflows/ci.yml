@@ -22,4 +22,5 @@ jobs:
       - run: npx prisma generate
       - run: npm run lint
       - run: npx tsc --noEmit
+      - run: npm run verify:raw-sql
       - run: npx vitest run
