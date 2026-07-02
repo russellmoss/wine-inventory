@@ -46,7 +46,9 @@ hold the durable detail. Order within a tier is dependency-driven unless marked 
 tasting ✅ · 5 Blends/lineage/RBAC ✅ · 6 Transforms/ferment ✅ · 7 Bottle/sparkling ✅ ·
 12 Multi-tenancy ✅ · Universal timeline undo (plan 024) ✅ · 14 Compliance/TTB **v1** 🟦.
 
-**In progress:** **8 Supplies & cost roll-up** (8a cost spine underway → then 8b advanced).
+**In progress:** **8 Supplies & cost roll-up** — **8a COMPLETE** (engine U1–U7/U11 + costing settings,
+stock picker, expendables surface, cost-per-bottle trust panel, custom-crush routing, verify:cost) →
+**8b advanced** remaining (barrel amortization, post-bottling variance, accounting export seam, bulk-wine receive).
 
 **Do now (near-term hygiene, decoupled):** seed a **sandbox "Demo Winery" tenant** (a short script —
 Phase-12 tenancy is already live) and move all dev/QA there so testing stops polluting the real Bhutan
@@ -61,6 +63,15 @@ Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
 
 **Then — operational depth (retention; closes the dirt-to-bottle cost loop):**
 3. **9 Work orders** — the shared issue→execute→auto-log→approve→finalize engine for cellar **and** vineyard.
+   - ↳ **23 Granular RBAC, roles & user types** — the fine-grained, owner-scoped permission foundation
+     (extends Phase 5); prerequisite for the client portal and sharper authorization across 9/11/21a.
+     Build right after/with 9.
+   - ↳ **24 Custom crush, alternating proprietorship & client portal** — Owner model + client billing
+     (WOs × contracted rates → invoices → two-way QBO/Xero) + a scoped **read-only client portal**.
+     Competitive **parity** (both incumbents bill clients + offer a client view) *and* a differentiator.
+     Needs 9 (WOs), 8 (ownership tag + rates + billable-expense seam), 15 (invoice sync), 23 (RBAC), 14/21a
+     (AP filing). **Event-driven pull-forward: jump it earlier the moment a custom-crush/AP design partner
+     signs — like migration.**
 4. **11 Labor, timeclock & payroll** — after 9 (clock against tasks); feeds 8 cost + 20 pay.
 5. **20 Vineyard ops, equipment & farming cost** — after 9/11/8; adds state spray/PUR compliance.
 6. **18 Visual cellar floor plan** — spatial front-end to capture; differentiator/delight. *(adjustable — self-contained, could move earlier as a demo win.)*
@@ -79,7 +90,7 @@ Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
 
 ---
 
-## Phase 0 — Decision lock-in & guardrails  ⬜
+## Phase 0 — Decision lock-in & guardrails  ✅ shipped
 **Goal:** Make the §11 locked decisions executable, before any schema work.
 - Record all of VISION §11 (**D1–D15**) into the context-ledger as decisions.
 - Write the ledger invariants and say which are **DB-level constraints** vs app checks
@@ -141,7 +152,7 @@ ops touched it; existing vessels show as Legacy Lots; app builds and existing te
 
 ---
 
-## Phase 3 — Cellar operations beyond racking  ⬜
+## Phase 3 — Cellar operations beyond racking  ✅ shipped
 **Goal:** Generalize the ledger to the rest of the cellar, with floor-fast capture.
 - Additions, topping, fining, filtration, **loss/angel's share** as first-class
   ledger operations (D7). Each: confirm → write event → update projection.
@@ -169,7 +180,7 @@ tops 60 barrels; an addition entered as g/hL records the computed grams + basis.
 
 ---
 
-## Phase 4 — Chemistry & tasting records  ⬜
+## Phase 4 — Chemistry & tasting records  ✅ shipped
 **Goal:** pH, TA, SO₂, temp, etc. + tasting notes attached to the homogeneous liquid.
 - Analysis records (extensible analyte set) + tasting notes on the lot-in-vessel.
 - Trend charts (reuse the vineyard Brix charting).
@@ -182,7 +193,7 @@ sit pending and later attach its result.
 
 ---
 
-## Phase 5 — Blends, lineage tree & RBAC redesign  ⬜
+## Phase 5 — Blends, lineage tree & RBAC redesign  ✅ shipped
 **Goal:** Blends that originate new lots, the traceability DAG, and multi-vineyard auth.
 - Blend operation: draws down parents, **originates a new child Lot** with its own
   records and a parent→child lineage tree.
@@ -197,7 +208,7 @@ evaluated and discarded without touching the ledger.
 
 ---
 
-## Phase 6 — State transforms & fermentation logging  ⬜
+## Phase 6 — State transforms & fermentation logging  ✅ shipped
 **Goal:** Turn fruit into wine through measured transform operations, and capture the
 daily life of an active fermentation.
 
@@ -234,7 +245,7 @@ one-to-many split? where do cap-management/MLF events live (ledger op vs. note)?
 
 ---
 
-## Phase 7 — Bottle-as-continuable-container & sparkling  ⬜
+## Phase 7 — Bottle-as-continuable-container & sparkling  ✅ shipped
 **Goal:** Make bottling **non-terminal** (D5) so traditional-method sparkling — the
 hardest style — works end-to-end on the same spine.
 
@@ -274,7 +285,7 @@ ledger.
 
 ---
 
-## Phase 8 — Supplies inventory & cost roll-up  ⬜
+## Phase 8 — Supplies inventory & cost roll-up  🟦 *8a COMPLETE (engine U1–U7/U11 + settings/picker/stock UI U9/U10/U12/U15 + custom-crush routing U16 + verify:cost U17); 8b advanced remaining*
 **Goal:** Track the consumables that make wine, then compute true cost-per-lot and
 cost-per-bottle. **Physical tracking first, cost second** (same records, added later).
 
@@ -506,7 +517,7 @@ to lots) and how clocking ties to Phase 9 work-order tasks.
 
 ---
 
-## Phase 12 — Multi-tenancy & SaaS foundation  ⬜
+## Phase 12 — Multi-tenancy & SaaS foundation  ✅ shipped *(activated in prod)*
 **Goal:** Turn the single-winery app into a **multi-tenant SaaS**: many wineries (tenants),
 many users each, with hard data isolation.
 
@@ -597,7 +608,7 @@ the documented churn-with-exit-friction (wineries leave Vintrace and complain it
 their lots/vessels/inventory in their own units + codes, live, without weeks of setup.
 **Implementation: deferred to `/plan`.**  **Honors:** D8, D11, D16.
 
-## Phase 14 — Compliance & reporting (TTB, excise, state/DTC)  🟦 *v1 slice shipped*  *(table stakes — high priority)*
+## Phase 14 — Compliance & reporting (TTB, excise, state/DTC)  🟦 *5120.17 + 5000.24 excise + filing-deadline reminders shipped; state/DTC remaining*  *(table stakes — high priority)*
 > **v1 shipped (plan 025):** TTB F 5120.17 **Part I §A + §B**, all 6 tax classes, gallons + Part X,
 > auto-derived from the ledger — tax-class derivation (ABV + still/sparkling + carbonation + product
 > type, overridable), the reversible `REMOVE_TAXPAID` op, the period-boundary fold (carry-forward
@@ -723,13 +734,17 @@ has **no** QuickBooks API; Vintrace's is one-way/gated).
   down `BottledInventory`, revenue for per-SKU profitability. (Note InnoVint's Commerce7 link is
   one-way + 1:1-constrained — our multi-tenancy lets us do better with multi-winery accounts.)
 - **Custom-crush client visibility** (a Vintrace gap): scoped **client read-access** via the
-  Phase 12 multi-tenancy boundary — a real edge for custom-crush facilities.
+  Phase 12 multi-tenancy boundary — a real edge for custom-crush facilities. **(The full custom-crush /
+  AP / client-portal + client-billing capability is now its own Phase 24 — built on Phase 23 RBAC; this
+  Phase-16 line is only the DTC-adjacent finished-goods slice.)**
 **Exit:** a DTC sale depletes finished-goods inventory; a custom-crush client sees only their wine.
 **Implementation: deferred to `/plan`.**  **Honors:** D16 (tenant/client scoping).
 
 ## Phase 17 — SaaS subscription billing (Stripe)  ⬜  *(commercialization — trigger-based, late)*
 **Goal:** Charge wineries to use the app. This is **platform monetization**, distinct from the
-in-app custom-crush *client* billing (that's a Phase 8 domain feature, D19 — do not conflate).
+in-app custom-crush *client* billing (**Phase 24**, building on the Phase-8 billable-expense seam + the
+Phase-9 work-order engine; VISION **D21** — do not conflate; note the "D19" cost-side seam lives in the
+plan-028 local decision list, a different namespace).
 Not a product-capability blocker: it gates nothing in the 14 → 8 → 15 sellable path. Sequenced by
 **readiness to charge real money**, not by phase number.
 **Tool choice:** **Stripe** (Stripe Billing + Stripe Tax when needed) — the default for developer-built
@@ -1015,8 +1030,108 @@ redeploys with the fix — and the same issue does not re-file.
 of the shipped feedback loop; D16 (tenant scoping — errors are tenant-scoped if the Neon path);
 Phase-12 RLS checklist (Neon path only). **Built on:** the assistant-feedback→PR loop (shipped) + `ci.yml`.
 
-## In-flight — Universal timeline undo (the "correction wedge")  🔄
-`docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` (building now, tenant-aware).
+## Phase 23 — Granular RBAC, roles & user types  ⬜  *(authorization foundation; prerequisite for the client portal)*
+**Goal:** Evolve Phase-5's tenant-level RBAC into a **fine-grained, typed permission system** — distinct
+**user types** (facility staff by role, custom-crush/AP **client users**, read-only auditors/bookkeepers,
+the founder platform-admin) with **capability-level AND data-scope permissions** — so we can safely expose
+an **owner-scoped client portal** (Phase 24) and give facility managers real control over who can see and
+do what. This is the security-critical layer the client portal rests on: **an intra-tenant leak (one client
+seeing another client's wine) is as damaging as a cross-tenant leak**, so it gets the same DB-enforced,
+fail-closed discipline as tenant RLS.
+
+**Domain requirements (durable):**
+- **Typed roles + a capability matrix (not a single admin/member flag):** permissions over
+  **capability** (view / draft / execute / approve / finalize / configure / bill) × **domain area**
+  (lots, ops, chemistry, cost, compliance, work orders, inventory, settings, billing). **Cloneable
+  per-tenant role templates** on a governed vocabulary (same clone-on-customize philosophy as the
+  Phase-9 work-order templates); roles are **versioned**.
+- **Data-scope permissions (owner / vineyard scoping):** a role can be scoped to a subset of lots by
+  **Owner** (custom-crush client / AP proprietor) and/or by vineyard membership (extends the Phase-5
+  many-to-many). **Owner-scoping is enforced in the query/RLS layer, not the UI** — a fail-closed owner
+  predicate on every owner-scoped read (D14/D16 spirit, extended *intra*-tenant).
+- **Client user type (external, read-mostly):** a limited external user that logs into the facility's
+  tenant but sees only their Owner's records; cannot see other owners, cannot configure, cannot create
+  work orders. The Phase-24 portal is a view over exactly this scope.
+- **Auditability:** every permission grant/change is on the audit log (D14); god-mode (Phase 21a) stays
+  the **audited** platform-admin exception, never a silent cross-scope read path.
+
+**Exit:** a facility admin defines a "Cellar tech" role (execute ops, no cost/billing), a "Client
+(read-only)" role scoped to one Owner, and a "Bookkeeper" role (cost + billing, no cellar ops); each user
+sees exactly their capabilities and data scope, enforced at the DB layer (a scoped user cannot query
+outside their scope even via a crafted request).
+
+**Implementation: deferred to `/plan` — gets the full review gate** (`/council` + `/plan-eng-review`)
+given the intra-tenant-leak blast radius. Decisions to resolve then: permission model (RBAC capability
+matrix vs ABAC/policy engine); how owner-scope composes with tenant RLS (a second predicate vs a policy
+using a per-session owner set); role-template design + versioning; how it reconciles with the better-auth
+org/member layer. **Honors:** D9 (RBAC), D14 (DB-enforced + audited), D16 (isolation discipline extended
+intra-tenant), D21.
+
+---
+
+## Phase 24 — Custom crush, alternating proprietorship & client portal  ⬜  *(competitive parity + differentiator — event-driven pull-forward)*
+**Goal:** Support **custom-crush facilities** and **alternating-proprietorship (AP)** operations
+end-to-end: wine is **owned by clients/proprietors** (not the facility), the facility **bills clients from
+completed work orders at contracted rates**, and each client logs into a **scoped portal to see their own
+wine records, inventory, cost, compliance and invoices** — **read-only; clients do not create work
+orders.** Both incumbents already have client billing + a client-view portal, so this is **parity we must
+reach to sell to custom-crush facilities**, with a real differentiator seam (both incumbents' client
+access is view-only — our multi-tenancy + WO engine let us later offer owner-scoped *participation*).
+
+**Domain requirements (durable):**
+- **Owner/proprietor as a first-class entity** (upgrades the Phase-8 lot `ownership` tag into a real
+  **Owner** record: name, contact, portal users, contracted rate card, accounting mapping). A lot's Owner
+  drives cost treatment (client-owned fruit/wine is **not** the facility's inventory asset — Phase 8
+  already routes client supply draw-downs to a **billable-expense ledger**) and portal scope (Phase 23).
+- **Contracted rate cards in Settings:** per-Owner (or default) **service rates** — storage/barrel-per-
+  month, bench trials, bottling per case, lab work, additions/markup, labor — the basis for billing.
+  Rates are **effective-dated + versioned**; an issued invoice records the rate version it used (later
+  edits never rewrite billed history — same discipline as cost-policy versioning).
+- **Client billing from work orders (the core):** a completed/approved **work order (Phase 9)** × the
+  Owner's **rate card** → **billable line items** → a **client invoice** (create / preview / send /
+  reverse / credit), summing services + billable-expense draw-downs. Invoices **sync two-way to
+  QuickBooks/Xero (Phase 15)** — beating Vintrace's one-way client-billing-to-Xero. **Installments /
+  deposits** supported (Vintrace parity).
+- **Client portal (scoped, read-only):** an Owner's portal user logs in and sees — **only their Owner's**
+  — lots + timelines, current inventory + volumes, chemistry/analysis, cost/COGS, **their TTB/compliance
+  position**, and **their invoices** (view/download/payment status). Enforced by Phase-23 owner-scoping at
+  the DB layer. **No work-order creation** in v1; a client "request" affordance is a possible later seam.
+- **Custom crush vs AP are DIFFERENT models — we support BOTH, one mechanism each (confirmed 2026-07):**
+  - **Custom crush → owner-within-tenant:** the *facility* is the bonded winery / TTB permit holder and
+    **files the TTB reports**; clients own wine as inventory and are billed for services. A client is an
+    **Owner inside the facility tenant** with a **read-only, owner-scoped** portal — **Phase-23
+    owner-scoping is the machinery.** Compliance is the facility's.
+  - **Alternating proprietorship (AP02) → tenant-per-proprietor:** each proprietor is a **separate bonded
+    winery** alternating use of the premises and **files its OWN TTB reports on its own bond**, so an AP
+    proprietor = **its own tenant** (Phase 12/14). The proprietor is an operator working inside the
+    facility on their **own** wines: **full admin of their own lots/wines, zero access to any other
+    proprietor's** — which **Phase-12 RLS already enforces** (AP needs little of Phase-23's owner-scoping;
+    that's the custom-crush mechanism). The **facility host** operates/oversees across proprietors via
+    **audited god-mode (Phase 21a)**.
+  - **The one genuinely hard, unresolved AP decision:** the premises — **vessels, rooms, equipment — are
+    physically shared**, but wine/lots/compliance are per-proprietor tenant. How do legally-separate
+    tenants share a physical Tank 5 without a cross-tenant read? (A facility/premises layer *above* the
+    tenants? Per-tenant vessel copies + a facility occupancy view? god-mode reconciliation of who's in
+    which vessel now?) This is the **crux of AP** — resolve in `/plan` before building.
+
+**Exit:** a custom-crush facility sets a client's rate card, issues + completes a "rack + add SO₂" work
+order on that client's lots, generates an invoice summing the service rates + the SO₂ draw-down, sends it,
+and syncs it to QuickBooks; the client logs into their portal and sees only their own lots, inventory,
+cost, compliance status, and that invoice — and cannot see any other client. Separately, an AP proprietor's
+wine files under its own TTB report.
+
+**Implementation: deferred to `/plan`.** Built on Phase 9 (work orders → billing), 8 (ownership tag +
+billable-expense seam + rates), 15 (invoice sync), **23 (owner-scoped RBAC/portal — must land first)**, 14
+(per-owner/proprietor compliance), 21a (multi-org for AP). Decisions: the custom-crush-vs-AP tenancy model
+(above); invoice data model + numbering + credit/reverse; rate-card schema + versioning; portal as a scoped
+view of the main app vs a distinct surface; whether an AP proprietor is a tenant. **Honors:** D9, D14, D16
+(isolation extended to owner scope), **D21** (wine ownership is first-class), + Phases 8/9/14/15/21a.
+
+---
+
+## Universal timeline undo (the "correction wedge")  ✅ shipped
+`docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` — 024a + 024b shipped + verified
+(`verify:reverse` 31, `verify:reverse-transform` 37). Tenant-aware.
 One `reverseOperationCore` + one timeline Undo affordance for every op. **This is the direct
 answer to the #1 recurring complaint about *both* incumbents** ("can't cleanly fix a mistake" —
 competitive analysis, Theme 2). Our append-only ledger makes every correction a first-class,
@@ -1043,6 +1158,39 @@ auditable event — an advantage mutable-row incumbents can't match. Lead with i
   doesn't file TTB). See `docs/STRATEGY.md` + `docs/competitive-analysis-vintrace-innovint.md`.
 - Phase 11 (labor) has an **independent core** and does not block 7/8; it pays off most
   after Phase 9 (clock against work-order tasks) and feeds Phase 8 (labor cost per lot).
+- **Phase 24 (custom crush / AP / client portal)** depends on **Phase 23 (granular owner-scoped RBAC),
+  which must land first**, plus Phase 9 (work orders → billing), 8 (ownership tag + rate cards +
+  billable-expense seam), and 15 (two-way invoice sync); AP's per-proprietor TTB filing leans on Phase 14
+  + 21a (multi-org). It is an **event-driven pull-forward** — advance 23→24 ahead of its list position the
+  moment a custom-crush/AP design partner signs, since it unlocks a whole facility segment.
+
+## Cross-cutting architecture & hardening requirements (with build order)
+> Added 2026-07 after a cross-LLM + market-research pass (deep-research + incumbent-API analysis).
+> These are the non-negotiable engineering invariants behind a **best-in-class AI-native ERP** — the
+> failure modes that per-phase `/plan`s structurally miss because they're cross-cutting. Each honors a
+> new locked decision (**D17–D20**, VISION §11) and names **WHEN** it must land. Full detail:
+> `docs/api-strategy.md` + `docs/architecture/{scale,security}-register.md`. **The "Build WHEN" column
+> IS the authoritative ordering** for this hardening work; it interleaves with the feature phases above.
+
+| # | Requirement | Honors | Build WHEN | Status |
+|---|-------------|--------|------------|--------|
+| **H1** | **Pooled-RLS leak proof** — tenant id set via `SET LOCAL app.tenant_id` *inside* the txn; the isolation suite runs through the **Neon pooler (transaction mode)**, not just direct Postgres | D17 | **NOW** — one-day audit; catastrophic if wrong; must hold before winery #2 | ⬜ |
+| **H2** | **SERIALIZABLE bounded-retry layer** — every ledger write retries on SQLSTATE `40001` with backoff + a cap; serialization conflicts are logged/observable | D18 | **NOW / with every new write path** — the chokepoint exists; the retry half is the gap | ⬜ |
+| **H3** | **Cost + analytics OFF the write path** — DAG cost-roll-up and heavy reads run on a read replica or deferrable read-only snapshot; benchmark at realistic lineage depth | D18 | **With Phase 8 cost** (as lineage deepens; scale-register already 🟡 on this) | ⬜ |
+| **H4** | **Event-store evolution kit** — versioned/upcastable events + projection snapshots + throttled, blue-green projection rebuilds | D18 | **Before scale / before the first breaking event-schema change** — cheapest while single-tenant | ⬜ |
+| **H5** | **Crypto-shredding + PII-out-of-events** — personal data in a mutable store referenced by id; erasure = drop the key | D19 | **User-account PII: design in NOW. DTC-customer PII: before Phase 16** | ⬜ |
+| **H6** | **One tool-contract registry** — UI actions, assistant tools, MCP tools, dashboard metric catalog are all projections of one typed registry with risk-gating baked in | D20 | **Establish before Phase 10 (MCP) & 19 (AI dashboards); refactor assistant tools toward it opportunistically now** | ⬜ |
+| **H7** | **Event-driven outbound integrations + open public/partner API + webhooks** | D20 | **Tier-1 adapters per their phases (15/16/…); the public API + webhooks land with Phase 10/MCP** | ⬜ |
+
+**Sequencing summary (do-now → later):** H1 + H2 are **immediate** (cheap, and both guard catastrophic
+correctness/leak failures before a second tenant exists). H4 + H6 are **"do while single-tenant"** —
+they cost 10× more once there are many tenants and live event streams. H3 rides **Phase 8**, H5 rides
+**Phase 16** (with user-PII designed in now), and H7 rides the **Phase 10/MCP + integration phases**.
+None of this reorders the feature phases; it interleaves the load-bearing invariants so we don't ship a
+feature onto a foundation that can't carry it. See `docs/api-strategy.md` for the API/MCP/integration
+architecture these depend on.
+
+---
 
 ## Cross-cutting capture requirements (apply to every phase that captures data)
 These came out of the design review and hold across phases — honor them whenever a

@@ -61,3 +61,30 @@ state of any vessel/lot is the fold of all lines over time, materialized in `Ves
 - Full vine-to-bottle traceability **starts at cutover.** Pre-cutover wine is wrapped as
   `isLegacy` Lots seeded at current volume with the old tuple in `legacySnapshot`. No
   fabricated lineage; **`BottlingSource.lotId` is not backfilled** on historical rows.
+
+## Cost roll-up — Phase 8 (D5/D9/D10/D13/D14/D17/D19)
+The cost engine is a projection over the ledger; it never invents or loses money. Proven end-to-end by
+`npm run verify:cost` (runs in the Demo Winery tenant).
+- **Cost conservation.** Across blend/split/loss/bottle/reversal, `Σ(cost out) + stranded == cost removed
+  from parents`; nothing is created or destroyed except explicit VARIANCE lines. Zero volume ⇒ zero cost.
+- **Transferred-volume cost, not lineage fraction (D10).** A blend/split moves `parentTotalCost ×
+  transferredL / parentPreOpL` via an immutable `OperationCostTransfer`, never the ambiguous lineage %.
+- **Normal vs abnormal loss (D13).** Normal loss reallocates onto surviving volume (per-L rises); abnormal
+  loss writes an expense line and leaves per-L unchanged.
+- **Completeness contagion (D14).** Unknown unit cost is recorded as `basisCompleteness = UNKNOWN` — never
+  a silent `$0` — and any unknown parent taints the child. The trust UI shows a red "estimated" badge.
+- **Capitalization is policy, recording is not (D5/Unit 9).** MATERIAL + DOSAGE_LIQUEUR always capitalize;
+  FRUIT/BARREL/LABOR/OVERHEAD/PACKAGING fold in only when the tenant's toggle is on. A toggled-off
+  component is still recorded as a CostLine, just excluded from cost-per-bottle. `isComponentCapitalized`
+  is the single authority (consulted by the roll-up loader `cost/data.ts`).
+- **Policy versioning (D17).** Every derived cost row is stamped with the `costingPolicyVersion` at write
+  time; a later toggle/method change never re-values closed history. The method in effect for an op is
+  resolved at its `observedAt` (`resolveMethodAt`).
+- **Reversal by identity-negation (D3/Unit 11).** Undo negates the ORIGINAL `SupplyConsumption` +
+  `OperationCostTransfer` rows by identity and restores exact `SupplyLot` qty — never recomputed from
+  current ancestry — so an intervening backdated edit can't corrupt the restoration.
+- **Client-owned cost is billed, not capitalized (D19/Unit 16).** A `CUSTOM_CRUSH_CLIENT` lot's direct cost
+  lines are recorded (for billing) but suppressed from the estate capitalized roll-up; supplies still
+  deplete physical stock. Enforced at the single capitalization authority (`cost/data.ts`).
+- **The cache is a materialization, not the authority (D4).** `LotCostState` is a lazy, watermark-versioned
+  cache of `computeLotCost`; `verify:cost` asserts cache == recompute.

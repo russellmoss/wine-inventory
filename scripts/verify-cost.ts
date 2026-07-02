@@ -19,9 +19,14 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { addAdditionCore } from "@/lib/cellar/addition";
 import { correctOperationCore } from "@/lib/cellar/correct";
 import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
+import { createStockMaterialCore, receiveSupplyCore, listMaterials } from "@/lib/cellar/materials";
 import { executeBottling } from "@/lib/bottling/run";
 import { getLotCost } from "@/lib/cost/cache";
 import { round2 } from "@/lib/bottling/draw";
+
+// Phase 8: dev/QA runs in the Demo Winery sandbox tenant, never the real Bhutan Wine Co. (AGENTS.md).
+// Requires `npm run seed:demo-tenant` first so org_demo_winery exists.
+const TENANT = "org_demo_winery";
 
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-cost" };
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -39,8 +44,8 @@ const createdMaterialIds: string[] = [];
 const createdLocationIds: string[] = [];
 const KMBS_KEY = normalizeMaterialKey("ZZCOST KMBS");
 
-async function seedLot(code: string, vesselId: string, volumeL: number): Promise<string> {
-  const lot = await prisma.lot.create({ data: { code, form: "WINE" } });
+async function seedLot(code: string, vesselId: string, volumeL: number, ownership: "ESTATE" | "CUSTOM_CRUSH_CLIENT" = "ESTATE"): Promise<string> {
+  const lot = await prisma.lot.create({ data: { code, form: "WINE", ownership } });
   createdLotIds.push(lot.id);
   const vessel = await prisma.vessel.findUniqueOrThrow({ where: { id: vesselId } });
   const lines: LedgerLine[] = [
@@ -70,7 +75,8 @@ async function scrub() {
   const opIds = ops.map((o) => o.id);
   const lots = await prisma.lot.findMany({ where: { code: { startsWith: "ZZCOST" } }, select: { id: true } });
   const lotIds = lots.map((l) => l.id);
-  const mats = await prisma.cellarMaterial.findMany({ where: { normalizedKey: KMBS_KEY }, select: { id: true } });
+  // Match every ZZCOST supply (KMBS + the U10/U12/U16 fixtures), not just the KMBS key.
+  const mats = await prisma.cellarMaterial.findMany({ where: { OR: [{ normalizedKey: KMBS_KEY }, { name: { startsWith: "ZZCOST" } }] }, select: { id: true } });
   const matIds = mats.map((m) => m.id);
   const skus = await prisma.wineSku.findMany({ where: { name: { startsWith: "ZZCOST" } }, select: { id: true } });
   const skuIds = skus.map((s) => s.id);
@@ -92,7 +98,7 @@ async function scrub() {
   await prisma.lotLineage.deleteMany({ where: { OR: [{ parentLotId: { in: lotIds } }, { childLotId: { in: lotIds } }] } });
   await prisma.vessel.deleteMany({ where: { code: { startsWith: "ZZ-COST" } } });
   await prisma.lot.deleteMany({ where: { code: { startsWith: "ZZCOST" } } });
-  await prisma.cellarMaterial.deleteMany({ where: { normalizedKey: KMBS_KEY } });
+  await prisma.cellarMaterial.deleteMany({ where: { id: { in: matIds } } });
   await prisma.location.deleteMany({ where: { name: { startsWith: "ZZ-COST" } } });
   await prisma.auditLog.deleteMany({ where: { actorEmail: ACTOR.actorEmail } });
   console.log(`  removed ${opIds.length} ops + cost artifacts, ${runIds.length} runs, ${lotIds.length} lots (by pattern)`);
@@ -171,10 +177,37 @@ async function main() {
   const bd = snap!.componentBreakdown as Record<string, number>;
   assert(bd.MATERIAL != null && bd.MATERIAL > 0, "componentBreakdown includes the MATERIAL cost");
 
+  // Unit 10/12: create a stock material with opening stock via the core, receive more, assert on-hand.
+  console.log("\n── STOCK cores: create-with-opening + receive (U10/U12) ──");
+  const bent = await createStockMaterialCore(ACTOR, { name: "ZZCOST BENT", kind: "FINING", stockUnit: "g", openingQty: 500, unitCost: 0.02 });
+  createdMaterialIds.push(bent.id);
+  assert(bent.isStockTracked === true && bent.onHand === 500, `create-with-opening seeds 500 g on hand (got ${bent.onHand})`);
+  await receiveSupplyCore(ACTOR, { materialId: bent.id, qty: 250, unitCost: 0.03 });
+  const bentListed = (await listMaterials({ includeInactive: true })).find((m) => m.id === bent.id);
+  assert(!!bentListed && r2(bentListed.onHand ?? 0) === 750, `receive adds a lot → on-hand 500 → 750 g (got ${bentListed?.onHand})`);
+
+  // Unit 16: a client-owned (custom-crush) lot bills supplies back — stock still depletes + a CostLine
+  // is recorded, but the cost is NOT capitalized to the estate roll-up (totalCost 0, ownership flagged).
+  console.log("\n── CUSTOM-CRUSH ownership routing (U16) ──");
+  const ccTank = await prisma.vessel.create({ data: { code: "ZZ-COST-CCTANK", type: "TANK", capacityL: 500 } });
+  createdVesselIds.push(ccTank.id);
+  const ccLot = await seedLot("ZZCOST-CC", ccTank.id, 200, "CUSTOM_CRUSH_CLIENT");
+  const ccBefore = r2(Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: bent.id }, orderBy: { receivedAt: "asc" } })).qtyRemaining));
+  const ccAdd = await addAdditionCore(ACTOR, { vesselId: ccTank.id, materialId: bent.id, rateValue: 1, rateBasis: "G_L" }); // 1 g/L × 200 L = 200 g
+  const ccCons = await prisma.supplyConsumption.findMany({ where: { operationId: ccAdd.operationId } });
+  assert(ccCons.length >= 1, `client-owned dose still depletes stock (SupplyConsumption written; got ${ccCons.length})`);
+  const ccCostLines = await prisma.costLine.findMany({ where: { operationId: ccAdd.operationId } });
+  assert(ccCostLines.length === 1 && ccCostLines[0].component === "MATERIAL", "client-owned dose still records a MATERIAL CostLine (for billing)");
+  const ccCost = await getLotCost(ccLot, { forceRecompute: true });
+  assert(ccCost.ownership === "CUSTOM_CRUSH_CLIENT", "roll-up reports the lot as client-owned");
+  assert(near(ccCost.totalCost, 0), `client-owned cost is NOT capitalized to estate (totalCost 0; got ${ccCost.totalCost})`);
+  const ccAfter = r2(Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: bent.id }, orderBy: { receivedAt: "asc" } })).qtyRemaining));
+  assert(ccBefore > ccAfter, `physical stock still drew down for the client dose (${ccBefore} → ${ccAfter} g)`);
+
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }
 
-runAsTenant("org_bhutan_wine_co", async () => {
+runAsTenant(TENANT, async () => {
   await scrub();
   await main().then(scrub);
   return true;
