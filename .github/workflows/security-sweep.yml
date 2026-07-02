@@ -20,6 +20,7 @@ on:
 permissions:
   contents: read
   issues: write
+  id-token: write        # required by claude-code-action (OIDC)
 
 jobs:
   sweep:
