@@ -1,7 +1,12 @@
-import type { CostComponent } from "@prisma/client";
+import type { CostComponent, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { rollupCost, type CostEvent, type Completeness, type LotCost, type LotVolume } from "@/lib/cost/rollup";
 import { isComponentCapitalized, COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
+
+// A read-capable client — either the global extended client or an interactive tx. Bottling passes its
+// tx so the snapshot's liquid cost is read from the SAME transaction (pre-BOTTLE volumes), consistent.
+type CostDb = Prisma.TransactionClient;
+const asDb = (db?: CostDb): CostDb => (db ?? (prisma as unknown as CostDb));
 
 // Phase 8 (Unit 4/5 read side) — load a lot's cost DAG and run the pure roll-up (the AUTHORITY).
 // Script-safe (no "server-only"): verify:cost + the read models both call it. For a SINGLE lot we
@@ -12,11 +17,11 @@ import { isComponentCapitalized, COST_SETTINGS_DEFAULTS, type CostSettings } fro
 const MAX_NODES = 200;
 
 /** Ancestor lot ids of `rootId` (inclusive), up the lineage DAG — the lots whose cost flows into it. */
-async function loadAncestryLotIds(rootId: string): Promise<string[]> {
+async function loadAncestryLotIds(rootId: string, db: CostDb): Promise<string[]> {
   const ids = new Set<string>([rootId]);
   let frontier = [rootId];
   for (let depth = 0; depth < 12 && frontier.length > 0 && ids.size < MAX_NODES; depth++) {
-    const edges = await prisma.lotLineage.findMany({
+    const edges = await db.lotLineage.findMany({
       where: { childLotId: { in: frontier } },
       select: { parentLotId: true },
     });
@@ -28,8 +33,8 @@ async function loadAncestryLotIds(rootId: string): Promise<string[]> {
 }
 
 /** Read the tenant's costing policy straight from AppSettings (script-safe; no server-only import). */
-async function readCostSettings(): Promise<CostSettings> {
-  const s = await prisma.appSettings.findFirst({
+async function readCostSettings(db: CostDb): Promise<CostSettings> {
+  const s = await db.appSettings.findFirst({
     select: {
       currency: true, costingMethod: true, costingMethodEffectiveAt: true,
       capitalizeFruit: true, capitalizeBarrel: true, capitalizeLabor: true,
@@ -63,20 +68,21 @@ export type LotCostResult = LotCost & {
  * non-capitalized lines are recorded but excluded here (D5/Unit 9). Reading is the recompute — this
  * IS the authority; the cache (cost/cache.ts) is a materialization of exactly this.
  */
-export async function computeLotCost(rootId: string): Promise<LotCostResult> {
-  const [lotIds, settings] = await Promise.all([loadAncestryLotIds(rootId), readCostSettings()]);
+export async function computeLotCost(rootId: string, dbArg?: CostDb): Promise<LotCostResult> {
+  const db = asDb(dbArg);
+  const [lotIds, settings] = await Promise.all([loadAncestryLotIds(rootId, db), readCostSettings(db)]);
 
   const [costLines, transfers, vesselLots, bottled] = await Promise.all([
-    prisma.costLine.findMany({
+    db.costLine.findMany({
       where: { lotId: { in: lotIds } },
       select: { operationId: true, lotId: true, component: true, amount: true, basisCompleteness: true },
     }),
-    prisma.operationCostTransfer.findMany({
+    db.operationCostTransfer.findMany({
       where: { toLotId: { in: lotIds } },
       select: { operationId: true, fromLotId: true, toLotId: true, transferredVolumeL: true, parentPreOpVolumeL: true },
     }),
-    prisma.vesselLot.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
-    prisma.bottledLotState.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
+    db.vesselLot.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
+    db.bottledLotState.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
   ]);
 
   const events: CostEvent[] = [];
@@ -127,11 +133,12 @@ export async function computeLotCost(rootId: string): Promise<LotCostResult> {
  * The cheap staleness probe (D4): the max cost-affecting opId over the lot's ancestry, WITHOUT the
  * volume loads or the fold. If this exceeds the cache watermark, the cache is stale.
  */
-export async function maxCostOpIdFor(rootId: string): Promise<number> {
-  const lotIds = await loadAncestryLotIds(rootId);
+export async function maxCostOpIdFor(rootId: string, dbArg?: CostDb): Promise<number> {
+  const db = asDb(dbArg);
+  const lotIds = await loadAncestryLotIds(rootId, db);
   const [line, transfer] = await Promise.all([
-    prisma.costLine.aggregate({ where: { lotId: { in: lotIds } }, _max: { operationId: true } }),
-    prisma.operationCostTransfer.aggregate({ where: { toLotId: { in: lotIds } }, _max: { operationId: true } }),
+    db.costLine.aggregate({ where: { lotId: { in: lotIds } }, _max: { operationId: true } }),
+    db.operationCostTransfer.aggregate({ where: { toLotId: { in: lotIds } }, _max: { operationId: true } }),
   ]);
   return Math.max(0, line._max.operationId ?? 0, transfer._max.operationId ?? 0);
 }

@@ -7,6 +7,7 @@ import { writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import { nextLotCode } from "@/lib/lot/generate";
 import { materializeFinishedGoods, type MaterializeSource } from "@/lib/bottling/materialize";
+import { computeConsumedLiquid, writeBottlingCostSnapshot } from "@/lib/cost/cogs-write";
 
 export type BottlingInput = {
   vesselIds: string[];
@@ -27,7 +28,11 @@ export type BottlingInput = {
 
 export type Actor = { actorUserId: string | null; actorEmail: string };
 
-const SERIAL = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15000 } as const;
+// Env-overridable interactive-tx ceiling (default 15s unchanged for prod); a high-latency link
+// (airplane wifi / Neon cold-start) can lift it so the bottling tx — which now also folds the COGS
+// snapshot — doesn't expire mid-run. Mirrors runLedgerWrite's LEDGER_TX_TIMEOUT_MS.
+const BOTTLING_TX_TIMEOUT_MS = Number(process.env.BOTTLING_TX_TIMEOUT_MS) || 15000;
+const SERIAL = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: BOTTLING_TX_TIMEOUT_MS } as const;
 
 async function withRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
   for (let i = 1; ; i++) {
@@ -115,6 +120,14 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
     actor,
   });
 
+  // Phase 8 (Unit 6): capture the consumed wine's cost NOW — BEFORE the BOTTLE op reduces the source
+  // lots' volumes — so the frozen COGS snapshot uses the correct pre-op cost-per-L (D15). Cost is
+  // additive: a lot with no basis yields an UNKNOWN-completeness $0 snapshot, never blocks bottling.
+  const liquid = await computeConsumedLiquid(
+    tx,
+    sources.map((s) => ({ lotId: s.lotId ?? "", volumeConsumedL: s.volumeConsumedL })),
+  );
+
   const bottleOpId = await writeLotOperation(tx, {
     type: "BOTTLE",
     lines,
@@ -129,6 +142,19 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
   // run deterministically (no lot→run guessing), mirroring finalize-core's FINISH stamp. Additive
   // metadata; the ledger lines are unchanged.
   await tx.lotOperation.update({ where: { id: bottleOpId }, data: { metadata: { runId, abv } } });
+
+  // Phase 8 (Unit 6): freeze the per-run COGS snapshot (liquid + dry goods later / good bottles, D15).
+  const runRow = await tx.bottlingRun.findUnique({ where: { id: runId }, select: { wineSkuId: true } });
+  if (runRow) {
+    await writeBottlingCostSnapshot(tx, {
+      runId,
+      skuId: runRow.wineSkuId,
+      bottleOpId,
+      bottledAt: date,
+      goodBottles: bottlesProduced,
+      liquid,
+    });
+  }
 
   const { cases, loose } = casesAndLoose(bottlesProduced);
   const codes = vessels.map((v) => v.code).join(", ");
@@ -224,6 +250,14 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
       capacityByVessel,
     });
   }
+
+  // Phase 8 (Unit 6/11): a full bottling undo negates its cost artifacts — delete the frozen COGS
+  // snapshot (its FK to the run is RESTRICT, so this must precede the run delete) and the op-level
+  // VARIANCE residual line, leaving cost neutral after the reversal.
+  const snaps = await tx.bottlingCostSnapshot.findMany({ where: { runId }, select: { costBasisAsOfOperationId: true } });
+  const bottleOpIds = snaps.map((s) => s.costBasisAsOfOperationId).filter((x): x is number => x != null);
+  if (bottleOpIds.length > 0) await tx.costLine.deleteMany({ where: { operationId: { in: bottleOpIds } } });
+  await tx.bottlingCostSnapshot.deleteMany({ where: { runId } });
 
   await tx.stockMovement.deleteMany({ where: { bottlingRunId: runId } });
   await tx.bottlingRun.delete({ where: { id: runId } }); // cascades sources

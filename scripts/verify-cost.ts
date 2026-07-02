@@ -18,9 +18,13 @@ import type { LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { addAdditionCore } from "@/lib/cellar/addition";
 import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
+import { executeBottling } from "@/lib/bottling/run";
+import { getLotCost } from "@/lib/cost/cache";
+import { round2 } from "@/lib/bottling/draw";
 
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-cost" };
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const near = (a: number, b: number, eps = 0.01) => Math.abs(a - b) < eps;
 let passed = 0;
 function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error(`ASSERT FAILED: ${msg}`);
@@ -31,6 +35,7 @@ function assert(cond: boolean, msg: string) {
 const createdVesselIds: string[] = [];
 const createdLotIds: string[] = [];
 const createdMaterialIds: string[] = [];
+const createdLocationIds: string[] = [];
 const KMBS_KEY = normalizeMaterialKey("ZZCOST KMBS");
 
 async function seedLot(code: string, vesselId: string, volumeL: number): Promise<string> {
@@ -66,10 +71,20 @@ async function scrub() {
   const lotIds = lots.map((l) => l.id);
   const mats = await prisma.cellarMaterial.findMany({ where: { normalizedKey: KMBS_KEY }, select: { id: true } });
   const matIds = mats.map((m) => m.id);
-  // FK-safe: cost artifacts (RESTRICT → op/supplyLot) → supplies → treatments → ops (cascades lines) →
-  // lineage → vessels (cascades vessel_lot) → lots → material.
+  const skus = await prisma.wineSku.findMany({ where: { name: { startsWith: "ZZCOST" } }, select: { id: true } });
+  const skuIds = skus.map((s) => s.id);
+  const runs = await prisma.bottlingRun.findMany({ where: { wineSkuId: { in: skuIds } }, select: { id: true } });
+  const runIds = runs.map((r) => r.id);
+  // FK-safe: cost artifacts (RESTRICT → op/supplyLot) → COGS snapshot (RESTRICT → run/sku) → stock/
+  // inventory/run → sku → supplies → treatments → ops (cascades lines) → lineage → vessels (cascades
+  // vessel_lot) → lots → material → location (run→location RESTRICT, so after runs).
   await prisma.supplyConsumption.deleteMany({ where: { operationId: { in: opIds } } });
   await prisma.costLine.deleteMany({ where: { operationId: { in: opIds } } });
+  await prisma.bottlingCostSnapshot.deleteMany({ where: { OR: [{ runId: { in: runIds } }, { skuId: { in: skuIds } }] } });
+  await prisma.stockMovement.deleteMany({ where: { OR: [{ bottlingRunId: { in: runIds } }, { wineSkuId: { in: skuIds } }] } });
+  await prisma.bottledInventory.deleteMany({ where: { wineSkuId: { in: skuIds } } });
+  await prisma.bottlingRun.deleteMany({ where: { id: { in: runIds } } });
+  await prisma.wineSku.deleteMany({ where: { id: { in: skuIds } } });
   await prisma.supplyLot.deleteMany({ where: { materialId: { in: matIds } } });
   await prisma.lotTreatment.deleteMany({ where: { lotId: { in: lotIds } } });
   await prisma.lotOperation.deleteMany({ where: { enteredBy: ACTOR.actorEmail } });
@@ -77,8 +92,9 @@ async function scrub() {
   await prisma.vessel.deleteMany({ where: { code: { startsWith: "ZZ-COST" } } });
   await prisma.lot.deleteMany({ where: { code: { startsWith: "ZZCOST" } } });
   await prisma.cellarMaterial.deleteMany({ where: { normalizedKey: KMBS_KEY } });
+  await prisma.location.deleteMany({ where: { name: { startsWith: "ZZ-COST" } } });
   await prisma.auditLog.deleteMany({ where: { actorEmail: ACTOR.actorEmail } });
-  console.log(`  removed ${opIds.length} ops + their cost artifacts, ${lotIds.length} lots (by code pattern)`);
+  console.log(`  removed ${opIds.length} ops + cost artifacts, ${runIds.length} runs, ${lotIds.length} lots (by pattern)`);
 }
 
 async function main() {
@@ -115,6 +131,32 @@ async function main() {
   assert(costLines.length === 1 && costLines[0].component === "MATERIAL", "one MATERIAL CostLine written");
   assert(r2(Number(costLines[0].amount)) === 0.9, `CostLine amount = $0.90 (got ${Number(costLines[0].amount)})`);
   assert(costLines[0].lotId === lotId, "CostLine attached to the dosed lot");
+
+  // Unit 6: a bigger dose so the bottled cost is clearly nonzero, then bottle → freeze a COGS snapshot.
+  console.log("\n── BOTTLING freezes a COGS snapshot (U6) ──");
+  await addAdditionCore(ACTOR, { vesselId: tank.id, materialId: material.id, rateValue: 2, rateBasis: "G_L" }); // 900 g → $45.00
+  const lc = await getLotCost(lotId, { forceRecompute: true });
+  const bottles = 100;
+  const consumedL = round2(0.75 * bottles); // 75 L
+  const expectedTotal = r2((lc.costPerL ?? 0) * consumedL); // $/L × L consumed
+  const expectedPerBottle = Math.round((expectedTotal / bottles) * 100) / 100;
+  assert(near(lc.costPerL ?? 0, 45.9 / 450), `lot cost-per-L = $0.102 ($45.90 over 450 L; got ${lc.costPerL})`);
+
+  const loc = await prisma.location.create({ data: { name: "ZZ-COST-DEST" } });
+  createdLocationIds.push(loc.id);
+  await executeBottling(
+    { vesselIds: [tank.id], destinationLocationId: loc.id, skuName: "ZZCOST Wine", skuVintage: 2024, bottlesProduced: bottles, date: new Date(), abv: 13.5 },
+    ACTOR,
+  );
+  const snap = await prisma.bottlingCostSnapshot.findFirst({ where: { sku: { name: "ZZCOST Wine" } }, orderBy: { createdAt: "desc" } });
+  assert(!!snap, "a BottlingCostSnapshot was frozen for the run");
+  assert(near(Number(snap!.totalRunCost), expectedTotal), `snapshot totalRunCost ≈ consumed liquid $${expectedTotal} (got ${Number(snap!.totalRunCost)})`);
+  assert(Number(snap!.costPerBottle) === expectedPerBottle, `cost-per-bottle = $${expectedPerBottle} (got ${Number(snap!.costPerBottle)})`);
+  assert(snap!.basisCompleteness === "KNOWN", "snapshot basis is KNOWN");
+  assert(snap!.costBasisAsOfOperationId != null, "snapshot carries costBasisAsOfOperationId (D4 watermark)");
+  assert(!!snap!.postingKey, "snapshot carries a postingKey (D18 idempotency)");
+  const bd = snap!.componentBreakdown as Record<string, number>;
+  assert(bd.MATERIAL != null && bd.MATERIAL > 0, "componentBreakdown includes the MATERIAL cost");
 
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }
