@@ -56,5 +56,5 @@ jobs:
             - Do NOT modify code or docs. Read-only.
           claude_args: |
             --allowedTools "Read,Bash"
-            --max-turns 8
+            --max-turns 30
             --model claude-sonnet-5

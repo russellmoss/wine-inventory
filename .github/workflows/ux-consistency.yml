@@ -44,5 +44,5 @@ jobs:
             - This is advisory. Do NOT block, do NOT edit code.
           claude_args: |
             --allowedTools "Read,Bash"
-            --max-turns 6
+            --max-turns 20
             --model claude-sonnet-5

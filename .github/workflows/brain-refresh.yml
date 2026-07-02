@@ -56,5 +56,5 @@ jobs:
               titled the same, describing what changed and why.
           claude_args: |
             --allowedTools "Read,Edit,Bash"
-            --max-turns 12
+            --max-turns 30
             --model claude-opus-4-8
