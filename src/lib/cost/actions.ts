@@ -7,6 +7,7 @@ import {
   setMaterialActiveCore,
   type ReceiveSupplyInput,
 } from "@/lib/cellar/materials";
+import { receiveBulkWineCostCore, type ReceiveBulkWineCostInput } from "@/lib/cost/receive";
 
 // Phase 8 (Unit 12): server actions for the expendables / supply-inventory surface. Receive-with-cost
 // writes a costed SupplyLot; the active toggle is history-safe (never a hard delete). Both revalidate
@@ -33,5 +34,15 @@ export const setMaterialActiveAction = action(
   async ({ actor }, materialId: string, isActive: boolean): Promise<void> => {
     await setMaterialActiveCore(actor, materialId, isActive);
     revalidateStockSurfaces();
+  },
+);
+
+/** Phase 8b (Unit 16, D20): record the purchase cost of a bulk-wine lot (a mid-DAG MATERIAL cost node). */
+export const receiveBulkWineCostAction = action(
+  async ({ actor }, input: ReceiveBulkWineCostInput): Promise<{ costLineId: string; operationId: number }> => {
+    const res = await receiveBulkWineCostCore(actor, input);
+    revalidatePath("/lots");
+    revalidatePath(`/lots/${input.lotId}`);
+    return res;
   },
 );
