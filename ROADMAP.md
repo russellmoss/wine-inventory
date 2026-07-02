@@ -36,6 +36,44 @@ For each phase, in order:
 
 ---
 
+## Execution sequence (chronological — the authoritative build order)
+
+**Phase numbers are stable IDs, not order.** They're referenced in plan filenames, commits, and
+memory, so we don't renumber. THIS list defines what we build and when; the numbered sections below
+hold the durable detail. Order within a tier is dependency-driven unless marked *(adjustable)*.
+
+**Foundation — shipped:** 1 Lot+ledger spine ✅ · 2 Timeline ✅ · 3 Cellar ops ✅ · 4 Chemistry &
+tasting ✅ · 5 Blends/lineage/RBAC ✅ · 6 Transforms/ferment ✅ · 7 Bottle/sparkling ✅ ·
+12 Multi-tenancy ✅ · Universal timeline undo (plan 024) ✅ · 14 Compliance/TTB **v1** 🟦.
+
+**In progress:** **8 Supplies & cost roll-up** (8a cost spine underway → then 8b advanced).
+
+**Then — the sellable core (this is what lands a US design partner):**
+1. **Finish 8** (8a → 8b) — true cost-per-bottle.
+2. **15 Accounting** (QuickBooks/Xero) — needs 8's cost output; beats both incumbents.
+   - ↳ **13 Migration** is an **event-driven interrupt**, not a slot: build it the moment a design
+     partner hands over a real Vintrace/InnoVint export. It jumps the queue when unblocked.
+   - ↳ **Contracts follow-on** (fruit sourcing, per-acre/per-ton) slots right after 8 — feeds fruit cost.
+
+**Then — operational depth (retention; closes the dirt-to-bottle cost loop):**
+3. **9 Work orders** — the shared issue→execute→auto-log→approve→finalize engine for cellar **and** vineyard.
+4. **11 Labor, timeclock & payroll** — after 9 (clock against tasks); feeds 8 cost + 20 pay.
+5. **20 Vineyard ops, equipment & farming cost** — after 9/11/8; adds state spray/PUR compliance.
+6. **18 Visual cellar floor plan** — spatial front-end to capture; differentiator/delight. *(adjustable — self-contained, could move earlier as a demo win.)*
+
+**Then — intelligence & presentation layer:**
+7. **10 Assistant coverage & MCP** — most valuable once there are many surfaces to read/act on.
+8. **19 AI-native dashboards** — rides the Phase-10 assistant infra; needs rich data (8/14/20). *(19a deterministic → 19b AI builder.)*
+
+**Then — channel & commercialization (trigger-based, late):**
+9. **16 DTC & sales integration** (Commerce7/WineDirect).
+10. **17 SaaS billing** (Stripe) — build when ready to charge; hand-invoice design partners until then.
+
+**Floating / event-driven (no fixed slot):** 13 (design-partner export) · 17 (ready to charge) ·
+14's state/DTC compliance sub-phase · the Contracts follow-on. Pull each in when its trigger fires.
+
+---
+
 ## Phase 0 — Decision lock-in & guardrails  ⬜
 **Goal:** Make the §11 locked decisions executable, before any schema work.
 - Record all of VISION §11 (**D1–D15**) into the context-ledger as decisions.
@@ -337,8 +375,11 @@ behavior on the floor.
 **blast-radius guardrail (D10)** — and expose the tool set as an MCP server.
 
 **Domain requirements (durable):**
-- **Read everywhere:** the assistant can query any lot timeline, chemistry trend,
-  current cellar state, cost, and work-order status across all new records.
+- **Read everywhere (all surfaces built by then):** the assistant can query any lot timeline, chemistry
+  trend, current cellar state, **cost/cost-per-bottle (8)**, **compliance status (14)**, **work-order
+  status (9)**, **labor/hours (11)**, **vineyard block activity + equipment machine-hours + fuel +
+  farming cost + spray/REI/PHI (20)**, and **what's in each vessel/room (18)** — one read layer over the
+  whole system.
 - **Risk-based gating (D10):** auto-log **low-risk observations** (Brix/temp/pH/TA) with
   a ~5s undo toast (no mandatory tap); voice-**draft medium-risk ops** (single-vessel
   additions, top-ups) with one-tap confirm + explicit readback; **UI-only** for
@@ -349,6 +390,13 @@ behavior on the floor.
   for Rounds.
 - **MCP server** exposing the same tool set with the same read/draft-vs-gated-write
   boundary and the existing nonce-guarded confirm path; auth-scoped.
+- **Coverage extends to the new surfaces under the same D10 gating:** draft/confirm vineyard + cellar
+  **work-order actions (9/20)** and low-risk **observation logging** (Brix/pH/TA, machine-hours, a fuel
+  fill-up); keep **UI-only** the high-blast-radius ones — approving/finalizing a work order (it writes
+  many ledger ops), cost/variance edits, and spray records that carry regulatory weight.
+- **The assistant IS the Phase-19 dashboard builder:** the natural-language "build me a dashboard" flow
+  is a tool on this same loop that **emits a schema-validated dashboard spec** (never layout code),
+  reusing this phase's infra + risk boundary. (10 is a soft prerequisite for 19b.)
 
 **Exit:** ask the assistant for a lot's pH trend and get it; log a Brix reading by
 voice; attempt a blend by voice and be routed to a UI confirmation rather than an
@@ -873,12 +921,13 @@ auditable event — an advantage mutable-row incumbents can't match. Lead with i
 - Phase 5 (blends) must not ship before its RBAC redesign (D9).
 - Phase 7 (sparkling) depends on the operation vocabulary (Phase 0/D4) and bottling.
 - Cost (Phase 8) depends on a complete operation ledger (Phases 1, 3, 5).
-- **GTM build-order (overrides phase numbers):** near-term lead is **14 Compliance → 8 Cost →
-  15 Accounting**, all **ahead of** 9 (work orders), 10 (assistant), 11 (labor). **13 Migration
-  is the beachhead wedge but is gated on a real Vintrace/InnoVint export** (from a design
-  partner), so it's built *after* compliance/undo have landed that partner — not first. TTB is
-  buildable now on synthetic US data but validated only with a US design partner (Bhutan doesn't
-  file TTB). See `docs/STRATEGY.md` + `docs/competitive-analysis-vintrace-innovint.md`.
+- **Build order:** see the authoritative **"Execution sequence"** section at the top of this file —
+  it overrides phase numbers. In short: 14 Compliance (v1 shipped) + 8 Cost → 15 Accounting is the
+  sellable core that lands a design partner; then operational depth (9 → 11 → 20 → 18); then the
+  intelligence/presentation layer (10 → 19); then channel + commercialization (16, 17). **13 Migration**
+  is an event-driven interrupt (gated on a real Vintrace/InnoVint export from a design partner), not a
+  fixed slot. TTB is buildable on synthetic US data but validated only with a US design partner (Bhutan
+  doesn't file TTB). See `docs/STRATEGY.md` + `docs/competitive-analysis-vintrace-innovint.md`.
 - Phase 11 (labor) has an **independent core** and does not block 7/8; it pays off most
   after Phase 9 (clock against work-order tasks) and feeds Phase 8 (labor cost per lot).
 
