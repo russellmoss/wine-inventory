@@ -57,13 +57,14 @@ async function main() {
   // 2) Owner user + credential account + membership (global) ------------------
   const user = await prisma.user.upsert({
     where: { email },
-    update: { name: "Demo Owner", emailVerified: true, mustChangePassword: false },
+    update: { name: "Demo Owner", emailVerified: true, mustChangePassword: false, role: "admin" },
     create: {
       id: randomUUID(),
       email,
       name: "Demo Owner",
       emailVerified: true,
       mustChangePassword: false,
+      role: "admin", // app-admin so the demo owner can see admin surfaces (TTB compliance, settings, users, audit)
     },
   });
 
