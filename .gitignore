@@ -55,11 +55,18 @@ design-system/
 # Local MCP server config (machine-specific paths / credentials refs)
 .mcp.json
 
-# Obsidian: ignore machine-specific window/layout state, keep the shared config
-# (.obsidian/app.json IS committed on purpose — it holds the vault ignore filters).
+# Obsidian: commit the SHARED vault config (app.json, core-plugins.json, daily-notes.json —
+# they hold the ignore filters + note routing); ignore machine-specific state.
 .obsidian/workspace*
+.obsidian/appearance.json
+.obsidian/graph.json
 .obsidian/cache
 .obsidian/hotkeys.json
+
+# Personal Obsidian scratch (daily/new notes): keep the folder (routing target) but not its
+# contents — daily notes are personal, not app content.
+/docs/_notes/*
+!/docs/_notes/.gitkeep
 
 # Stray inventory exports (not part of the app)
 /Inventory - Sheet1.csv

@@ -1,0 +1,3 @@
+# Obsidian daily/new notes land here (see .obsidian/app.json newFileFolderPath +
+# daily-notes.json). The folder is tracked so the routing target exists on every
+# clone; the notes themselves are gitignored (personal scratch, not app content).
