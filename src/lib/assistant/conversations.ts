@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runInTenantRawTx } from "@/lib/tenant/tx";
 
 const LIST_LIMIT = 50;
 const MESSAGES_LIMIT = 200;
@@ -168,9 +169,12 @@ export async function searchConversations(args: {
   if (!q) return [];
   const likeTerm = `%${q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
 
-  const rows = await prisma.$queryRaw<
-    { id: string; title: string; updatedAt: Date; snippet: string | null; rank: number | null }[]
-  >(Prisma.sql`
+  // Raw read: the tenant extension does not intercept $queryRaw, so run it inside runInTenantRawTx
+  // (sets app.tenant_id for RLS) with an explicit tenantId predicate as a backstop. See plan 029.
+  const rows = await runInTenantRawTx((tx, tenantId) =>
+    tx.$queryRaw<
+      { id: string; title: string; updatedAt: Date; snippet: string | null; rank: number | null }[]
+    >(Prisma.sql`
     SELECT
       c."id",
       c."title",
@@ -193,10 +197,12 @@ export async function searchConversations(args: {
       LIMIT 1
     ) sub ON true
     WHERE c."ownerUserId" = ${args.ownerUserId}
+      AND c."tenantId" = ${tenantId}
       AND (sub."rank" IS NOT NULL OR c."title" ILIKE ${likeTerm})
     ORDER BY COALESCE(sub."rank", 0) DESC, c."updatedAt" DESC
     LIMIT ${SEARCH_LIMIT}
-  `);
+  `),
+  );
 
   return rows.map((r) => ({
     id: r.id,

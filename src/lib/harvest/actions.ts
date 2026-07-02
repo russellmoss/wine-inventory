@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireTenantId } from "@/lib/tenant/context";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { runInTenantTx } from "@/lib/tenant/tx";
+import { runInTenantTx, runInTenantRawTx } from "@/lib/tenant/tx";
 import { action, getActionUser, ActionError } from "@/lib/actions";
 import { canManagerAccessVineyard } from "@/lib/access";
 import { writeAudit } from "@/lib/audit";
@@ -292,14 +292,17 @@ export async function getLatestBrixByBlock(
   vineyardId: string,
 ): Promise<Record<string, { brixValue: number; recordedAt: string }>> {
   await requireVineyardScope(vineyardId);
-  const rows = await prisma.$queryRaw<
-    Array<{ blockId: string; brixValue: unknown; recordedAt: Date }>
-  >`
-    SELECT DISTINCT ON ("blockId") "blockId", "brixValue", "recordedAt"
-    FROM "brix_log"
-    WHERE "vineyardId" = ${vineyardId}
-    ORDER BY "blockId", "recordedAt" DESC, "id" DESC
-  `;
+  // Raw read: the tenant extension does not intercept $queryRaw, so run it inside runInTenantRawTx
+  // (sets app.tenant_id for RLS) with an explicit tenantId predicate as a backstop. See plan 029.
+  const rows = await runInTenantRawTx((tx, tenantId) =>
+    tx.$queryRaw<Array<{ blockId: string; brixValue: unknown; recordedAt: Date }>>`
+      SELECT DISTINCT ON ("blockId") "blockId", "brixValue", "recordedAt"
+      FROM "brix_log"
+      WHERE "vineyardId" = ${vineyardId}
+        AND "tenantId" = ${tenantId}
+      ORDER BY "blockId", "recordedAt" DESC, "id" DESC
+    `,
+  );
   const out: Record<string, { brixValue: number; recordedAt: string }> = {};
   for (const r of rows) {
     out[r.blockId] = {

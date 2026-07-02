@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { getTenantContext } from "@/lib/tenant/context";
+import { resolveTenantFromSession } from "@/lib/tenant/resolve";
 import { isGlobalModel, injectTenantId } from "@/lib/tenant/models";
 
 // Prevent multiple Prisma Client instances in dev (Next.js hot reload).
@@ -33,24 +34,6 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = base;
 export const prismaBase = base;
 
 /**
- * Resolve the tenant from the VERIFIED session when no ALS context is set (K9). Server actions,
- * the ledger, and scripts set the ALS context explicitly (fast path); RSC page reads / API routes /
- * data-loaders don't, so we lazily resolve from getCurrentUser().activeOrganizationId here.
- * Dynamic import breaks the prisma <-> dal/auth static cycle. getCurrentUser reads only global
- * (denylisted) tables, so this can't recurse. Returns undefined outside a request scope (e.g. a
- * script that forgot runAsTenant) -> the caller throws (fail-closed).
- */
-async function resolveTenantFromRequest(): Promise<string | undefined> {
-  try {
-    const { getCurrentUser } = await import("@/lib/dal");
-    const user = await getCurrentUser();
-    return user?.activeOrganizationId ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Phase 12 (K3) — the tenant-scoped client. Every tenant-scoped operation is wrapped in
  * `$transaction([ set_config('app.tenant_id', <id>, true), <query> ])` (batch form, BOUND param —
  * never string-interpolated) so RLS sees the tenant for that transaction. Global auth/org models
@@ -67,7 +50,7 @@ export const prisma = base.$extends({
         if (isGlobalModel(model)) return query(args);
 
         const ctx = getTenantContext();
-        const tenantId = ctx?.tenantId ?? (await resolveTenantFromRequest());
+        const tenantId = ctx?.tenantId ?? (await resolveTenantFromSession());
         if (!tenantId) {
           throw new Error(
             `Tenant context required for ${model}.${operation} — no active organization on the ` +
