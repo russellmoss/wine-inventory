@@ -360,7 +360,14 @@ cellar (this phase) and the vineyard (Phase 20).**
   rates** — sourced from the Phase-11 wage settings (WO *displays/attaches* it; Phase 11 owns the
   wage data + payroll math, no duplication).
 - **Execution UX is floor-first** (phone/tablet, ideally voice-assistable), offline-tolerant.
-- **Recurring/templated work orders** (weekly topping, scheduled SO₂ management).
+- **Templates = curated defaults + governed per-tenant customization (the ERP pattern):** we ship
+  **system templates** (best-practice defaults, e.g. the spray WO, a rack WO); each winery **clones +
+  customizes** them or builds their own (**clone-on-customize** so our updates never overwrite their
+  tweaks). An issued work order is an **instance** of a template. **Customization composes from a known,
+  typed field vocabulary + a validated schema — never free-form cells** — so cost roll-up (8), reporting,
+  and compliance mapping (14/20) keep working across every tenant. Templates are **versioned**; an
+  instance records the version it used (history isn't rewritten by a later template edit). Same
+  philosophy as the Phase-19 dashboard registry. Also supports **recurring** WOs (weekly topping, SO₂).
 - Reporting: scheduled vs. done, overdue, pending-approval, and (optionally) time tracking.
 
 **Exit:** a manager issues a WO to rack two tanks; a crew member checks it off; the racks appear as
@@ -908,6 +915,12 @@ fruit" becomes real.
   (Reuse the Phase-8 `SupplyLot` receive-with-cost + draw-down pattern.)
 - **Vineyard consumables:** c-clips, grow tubes, stakes/pencil rods, gloves, pruners, loppers, etc. —
   receive-with-cost + draw-down, same Phase-8 supply pattern, so their cost lands on the block/operation.
+- **Reference template:** `docs/spray orders/Spray work order template.xlsx` — a real, good spray WO to
+  model the spray operation on. Its fields (fold these in): vineyard, operator, start/finish + start/stop
+  times, **spray vol/acre, gear setting, ground speed** (rig calibration), materials + **active
+  ingredient + PHI + application method + mixing order + amount per tank**, **blocks included + acres**
+  (the cross-block application), **est.# tanks / tanks used / gal used**, tractor. Add **REI + applicator
+  license** (the template omits them) for full compliance.
 - **Spray & chemical records are regulatory records (decided, in scope):** a spray operation captures
   **product/chemical (EPA reg #), rate, area treated, applicator (+ license), date/time, target pest,
   and weather/wind** — enough to generate **pesticide-use reports (e.g. California PUR)**. Track each
