@@ -685,6 +685,44 @@ payment triggers dunning without data loss.
 need Stripe metered/usage billing or just fixed subscriptions.
 **Implementation: deferred to `/plan`** (stub until we're near charging). **Honors:** D16 (tenant scoping).
 
+## Phase 18 — Visual cellar floor plan (spatial capture UI)  ⬜  *(differentiator / delight)*
+**Goal:** A **to-scale, clickable map of the cellar** — the winemaker lays out their rooms and places
+tanks/barrels, then works the floor by clicking a vessel to see what's inside and log against it. This
+is a **spatial front-end to the existing vessel-first capture** (honors D12), not a new data model —
+the incumbents have nothing like it. The killer query: "where is lot X?" → the vessels holding it light
+up.
+**Domain requirements (durable):**
+- **Rooms + floor-plan editor:** multiple named rooms per winery; click through the rooms they've
+  created. An **editor mode** to lay out the space (place/move/resize/label vessels) vs a **daily
+  view mode** (click to inspect/log). Rooms are tenant-scoped and map to / extend the existing
+  `Location` model.
+- **Place vessels to scale:** input real dimensions — **tank radius/footprint** rendered as a circle,
+  barrels as rectangles/stacks — positioned on the room canvas (x/y + footprint on a placement record).
+  A vessel's placement follows it as it physically moves between rooms.
+- **Live state overlay on every vessel:** show the vessel **number/code** + resident **lot code(s)**,
+  and be state-aware — **during fermentation show latest Brix + temp**; otherwise show the wine's
+  **stage** (AF/MLF state, aging, bottled, etc.). Data comes from `vessel_lot` + the ferment/analysis
+  readings (Phase 6) — no new source of truth.
+- **Click-through to capture:** clicking a vessel opens the existing vessel-first surface to **log a
+  ferment reading, addition, fining, movement/rack** — reuse the Phase 3/6 cores, don't fork them.
+- **Barrels as stacks (top-down):** barrels shown from above as **stacks**; click a stack and it
+  **unfurls to the individual barrels**, each showing its lot. A stack is a placeable grouping.
+- **Filter / find-my-wine:** filter by **lot(s)**, variety, stage, etc. → matching vessels/barrels
+  highlight in place and the rest dim. "Show me every barrel of the 2025 Pinot" lights them up on the map.
+**Exit:** a winemaker builds a room, places to-scale tanks + a barrel stack, sees Brix/temp on a
+fermenting tank and stage on the rest, clicks a tank to log an addition, and filters to one lot to see
+exactly which barrels hold it.
+**Runbook notes for `/plan`:**
+- *Reuse:* `Vessel` (tanks + barrels), the `vessel_lot` projection (contents), `Location` (rooms),
+  the ferment/`AnalysisPanel` readings (Brix/temp/stage), and the existing addition/rack/ferment cores
+  (click-to-log). New tables (room, vessel-placement, barrel-stack) follow the Phase-12 RLS checklist.
+- *Decisions to resolve:* canvas tech — **reuse the Leaflet + geoman stack** already used for the
+  vineyard map (`SatelliteMap`), vs a diagramming lib (react-konva / SVG) better suited to an abstract,
+  non-geo floor plan; to-scale vs schematic layout; explicit barrel-**stack** entity vs derived; how a
+  vessel's placement updates when a movement/rack relocates it.
+**Implementation: deferred to `/plan`.**  **Honors:** D12 (vessel-first capture), D16 (tenant scoping),
++ Phase 6 (ferment readings) and Phase 5 (lot state).
+
 ## In-flight — Universal timeline undo (the "correction wedge")  🔄
 `docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` (building now, tenant-aware).
 One `reverseOperationCore` + one timeline Undo affordance for every op. **This is the direct
