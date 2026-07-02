@@ -12,6 +12,7 @@ import type { FermentSeries, FermentPoint } from "@/lib/ferment/monitor-data";
 import { BRIX_HARD_MIN, BRIX_HARD_MAX, TEMP_HARD_MIN, TEMP_HARD_MAX, toBrix } from "@/lib/ferment/sugar";
 import { MATERIAL_KINDS, RATE_BASES, RATE_BASIS_LABELS, type MaterialKind, type RateBasis } from "@/lib/cellar/additions-math";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
+import { MaterialPicker } from "@/components/cellar/MaterialPicker";
 
 // Phase 6 (vessel-first): Fermentation monitoring. Log sugar (Brix/Baumé), pH and temperature
 // over time, MANY entries at once (backfill the logbook — each row carries its own date/time),
@@ -348,26 +349,21 @@ export function FermentMonitor({
       {/* Additions — yeast / MLF culture / fining / tannin / SO₂ … (Phase 3 op; draws down stock in Phase 8) */}
       <div style={{ border: "1px solid var(--border-subtle, #eee)", borderRadius: "var(--radius-md)", padding: 12, marginTop: 14 }}>
         <span style={lbl}>Additions — yeast, MLF culture, fining, tannin, SO₂…</span>
-        <datalist id={`mat-${lotId}`}>
-          {materials.map((m) => (
-            <option key={m.id} value={m.name} />
-          ))}
-        </datalist>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
-          <input
-            list={`mat-${lotId}`}
+          <MaterialPicker
+            materials={materials}
             value={addMat}
-            onChange={(e) => {
-              setAddMat(e.target.value);
-              const m = materials.find((x) => x.name.toLowerCase() === e.target.value.toLowerCase());
+            onChange={(name, m) => {
+              setAddMat(name);
               if (m) {
                 setAddKind(m.kind as MaterialKind);
                 if (m.defaultBasis) setAddBasis(m.defaultBasis as RateBasis);
               }
             }}
+            defaultKind={addKind}
             placeholder="product (e.g. EC-1118, O. oeni, bentonite)"
-            aria-label="Product"
-            style={{ ...field, flex: "1 1 200px" }}
+            ariaLabel="Product"
+            style={{ flex: "1 1 200px" }}
           />
           <select value={addKind} onChange={(e) => setAddKind(e.target.value as MaterialKind)} aria-label="Kind" style={{ ...field, width: 120 }}>
             {MATERIAL_KINDS.map((k) => (

@@ -4,6 +4,7 @@ import React from "react";
 import { addAdditionAction, addFiningAction } from "@/lib/cellar/actions";
 import { MATERIAL_KINDS, RATE_BASES, RATE_BASIS_LABELS, type MaterialKind, type RateBasis } from "@/lib/cellar/additions-math";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
+import { MaterialPicker } from "@/components/cellar/MaterialPicker";
 
 // Phase 6: a staged "products added at this step" editor for the crush / press forms. The lot
 // doesn't exist until the transform commits, so additions are STAGED here and applied (chained)
@@ -43,12 +44,12 @@ export function StagedAdditions({
   value,
   onChange,
   materials,
-  idBase,
 }: {
   value: StagedAddition[];
   onChange: (next: StagedAddition[]) => void;
   materials: CellarMaterialDTO[];
-  idBase: string;
+  /** retained for call-site compatibility; no longer used (the datalist it keyed is gone). */
+  idBase?: string;
 }) {
   const set = (key: number, patch: Partial<StagedAddition>) => onChange(value.map((a) => (a.key === key ? { ...a, ...patch } : a)));
   const add = () => onChange([...value, blankAddition()]);
@@ -56,23 +57,18 @@ export function StagedAdditions({
 
   return (
     <div>
-      <datalist id={`${idBase}-mat`}>
-        {materials.map((m) => (
-          <option key={m.id} value={m.name} />
-        ))}
-      </datalist>
       {value.map((a) => (
         <div key={a.key} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
-          <input
-            list={`${idBase}-mat`}
+          <MaterialPicker
+            materials={materials}
             value={a.material}
-            onChange={(e) => {
-              const m = materials.find((x) => x.name.toLowerCase() === e.target.value.toLowerCase());
-              set(a.key, { material: e.target.value, ...(m ? { kind: m.kind as MaterialKind, basis: (m.defaultBasis as RateBasis) ?? a.basis } : {}) });
-            }}
+            onChange={(name, m) =>
+              set(a.key, { material: name, ...(m ? { kind: m.kind as MaterialKind, basis: (m.defaultBasis as RateBasis) ?? a.basis } : {}) })
+            }
+            defaultKind={a.kind}
             placeholder="product (yeast, O. oeni, bentonite…)"
-            aria-label="Product"
-            style={{ ...field, flex: "1 1 180px" }}
+            ariaLabel="Product"
+            style={{ flex: "1 1 200px" }}
           />
           <select value={a.kind} onChange={(e) => set(a.key, { kind: e.target.value as MaterialKind })} aria-label="Kind" style={{ ...field, width: 110 }}>
             {MATERIAL_KINDS.map((k) => (

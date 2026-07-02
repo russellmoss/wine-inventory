@@ -17,7 +17,7 @@ import {
 } from "@/lib/cellar/treatments";
 import { recordLossCore, type RecordLossInput } from "@/lib/cellar/loss";
 import { topVesselCore, type ToppingInput, type ToppingResult } from "@/lib/cellar/topping";
-import { upsertMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput } from "@/lib/cellar/materials";
+import { upsertMaterialCore, createStockMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput, type CreateStockMaterialInput } from "@/lib/cellar/materials";
 import {
   applyToGroup,
   type GroupApplyResult,
@@ -66,6 +66,17 @@ export const upsertMaterialAction = action(
   async ({ actor }, input: UpsertMaterialInput): Promise<CellarMaterialDTO> => {
     const dto = await upsertMaterialCore(actor, input);
     revalidatePath("/bulk");
+    return dto;
+  },
+);
+
+/** Phase 8 U10: create a stock-tracked material (+ optional opening SupplyLot) from the picker modal. */
+export const createStockMaterialAction = action(
+  async ({ actor }, input: CreateStockMaterialInput): Promise<CellarMaterialDTO> => {
+    const dto = await createStockMaterialCore(actor, input);
+    revalidatePath("/bulk");
+    revalidatePath("/ferment/process");
+    revalidatePath("/inventory");
     return dto;
   },
 );

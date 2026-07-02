@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button, Modal } from "@/components/ui";
+import { MaterialPicker } from "@/components/cellar/MaterialPicker";
 import { FermentMonitor } from "@/components/ferment/FermentMonitor";
 import {
   computeAdditionTotal,
@@ -337,10 +338,9 @@ function DoseForm({
   const [note, setNote] = React.useState("");
 
   // Selecting a known material prefills its default basis (still editable).
-  function onMaterialChange(v: string) {
+  function onMaterialChange(v: string, dto?: CellarMaterialDTO) {
     setMaterial(v);
-    const hit = materials.find((m) => m.name.toLowerCase() === v.trim().toLowerCase());
-    if (hit?.defaultBasis) setBasis(hit.defaultBasis);
+    if (dto?.defaultBasis) setBasis(dto.defaultBasis);
   }
 
   const rateNum = Number(rate);
@@ -356,22 +356,17 @@ function DoseForm({
     );
   }
 
-  const listId = `materials-${vessel.id}`;
   return (
     <FormShell>
-      <input
-        list={listId}
+      <MaterialPicker
+        materials={materials}
         value={material}
-        onChange={(e) => onMaterialChange(e.target.value)}
+        onChange={onMaterialChange}
+        kind={kind === "fine" ? "FINING" : undefined}
         placeholder={kind === "add" ? "Material (e.g. KMBS, DAP)" : "Fining agent (e.g. bentonite)"}
-        style={{ ...fieldStyle, flex: "1 1 180px" }}
-        aria-label="Material"
+        ariaLabel="Material"
+        style={{ flex: "1 1 200px" }}
       />
-      <datalist id={listId}>
-        {materials.map((m) => (
-          <option key={m.id} value={m.name} />
-        ))}
-      </datalist>
       <input
         value={rate}
         onChange={(e) => setRate(e.target.value)}
