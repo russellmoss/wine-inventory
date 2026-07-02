@@ -1985,6 +1985,7 @@ model BottlingCostSnapshot {
   createdAt                DateTime              @default(now())
   run                      BottlingRun           @relation(fields: [runId], references: [id], onDelete: Restrict)
   sku                      WineSku               @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  varianceEvents           CostVarianceEvent[]
 
   @@unique([tenantId, postingKey]) // per-tenant idempotency (partial WHERE postingKey IS NOT NULL in SQL)
   @@index([tenantId])
@@ -2070,6 +2071,38 @@ model BarrelFill {
   @@index([tenantId, lotId])
   @@index([tenantId, barrelAssetId, endedAt])
   @@map("barrel_fill")
+}
+
+// Phase 8b (Unit 13, D12/D17) — an explicit, auditable post-bottling cost variance. When a backdated
+// correction changes a bottled lot's cost basis after its snapshot froze, the snapshot stays immutable
+// and THIS row records the delta, split across sold (→ period COGS variance) and on-hand (→ inventory
+// value) bottles. Append-only; one event per (snapshot, triggering op) — idempotent re-detection.
+model CostVarianceEvent {
+  tenantId          String                @default("")
+  id                String                @id @default(cuid())
+  snapshotId        String // the frozen BottlingCostSnapshot this varies (never mutated)
+  triggeringOpId    Int // the correction op that changed the basis
+  runId             String
+  skuId             String
+  oldCostPerBottle  Decimal               @db.Decimal(18, 2)
+  newCostPerBottle  Decimal               @db.Decimal(18, 2)
+  goodBottles       Int
+  onHandBottles     Int
+  soldBottles       Int
+  soldDelta         Decimal               @db.Decimal(18, 8) // → period COGS variance (shipped bottles)
+  unsoldDelta       Decimal               @db.Decimal(18, 8) // → on-hand inventory-value adjustment
+  totalDelta        Decimal               @db.Decimal(18, 8)
+  currency          String                @default("USD")
+  basisCompleteness CostBasisCompleteness @default(KNOWN)
+  policyVersion     Int                   @default(1)
+  note              String?
+  createdAt         DateTime              @default(now())
+  snapshot          BottlingCostSnapshot  @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, snapshotId, triggeringOpId]) // idempotent: one variance per snapshot per trigger
+  @@index([tenantId])
+  @@index([tenantId, snapshotId])
+  @@map("cost_variance_event")
 }
 
 // ───────────────────────── plan-027: compliance filing-deadline reminders ─────────────────────────

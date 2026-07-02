@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { detectBottlingVariances } from "@/lib/cost/variance-detect";
 
 // Phase 8 (Unit 11) — identity-negation of an op's cost artifacts on reversal (D3). Runs INSIDE the
 // family reversal's tx, keyed off the ORIGINAL op id, writing compensating rows on the CORRECTION op.
@@ -13,7 +14,7 @@ export async function negateCostForReversedOp(
   tx: Prisma.TransactionClient,
   reversedOpId: number,
   correctionOpId: number,
-): Promise<{ consumptions: number; costLines: number }> {
+): Promise<{ consumptions: number; costLines: number; variances: number }> {
   // Restore stock + write a negating consumption for each original depletion row.
   const consumptions = await tx.supplyConsumption.findMany({
     where: { operationId: reversedOpId, reversalOfConsumptionId: null },
@@ -44,6 +45,7 @@ export async function negateCostForReversedOp(
     where: { operationId: reversedOpId, reversalOfCostLineId: null },
   });
   let negatedCostLines = 0;
+  const changedLotIds = new Set<string>();
   for (const cl of costLines) {
     const already = await tx.costLine.findFirst({ where: { reversalOfCostLineId: cl.id }, select: { id: true } });
     if (already) continue;
@@ -59,8 +61,16 @@ export async function negateCostForReversedOp(
         reversalOfCostLineId: cl.id,
       },
     });
+    if (cl.lotId) changedLotIds.add(cl.lotId);
     negatedCostLines++;
   }
 
-  return { consumptions: negatedConsumptions, costLines: negatedCostLines };
+  // Phase 8b (Unit 13, D12): negating an op's cost changes the basis of any lot it touched. If a
+  // changed lot (or a downstream descendant) was already bottled, emit an explicit variance event —
+  // the frozen COGS snapshot stays immutable; the delta is split sold vs on-hand. Idempotent.
+  const variances = changedLotIds.size > 0
+    ? await detectBottlingVariances(tx, { changedLotIds: [...changedLotIds], triggeringOpId: correctionOpId })
+    : 0;
+
+  return { consumptions: negatedConsumptions, costLines: negatedCostLines, variances };
 }
