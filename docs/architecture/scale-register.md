@@ -27,7 +27,7 @@
 - **What breaks:** pooled connection saturation under load; per-request `SET` overhead; a missing RLS policy on a new table = silent cross-tenant leak; **transaction-mode poolers (PgBouncer/Neon) do NOT reset session GUCs between transactions — a session-scoped `app.tenant_id` leaks to the next client (D17).**
 - **Mitigation (D17/H1):** set tenant id with `SET LOCAL` *inside* each txn (scoped, auto-cleared); the isolation suite must run **through the pooled endpoint**, not just direct Postgres — the leak only manifests through the pooler.
 - **Tripwire:** pooled connections thrash / p95 query latency climbs / any new table added without the Phase-12 checklist / **any tenant id set outside a `SET LOCAL` in a txn / isolation tests that only hit direct PG.**
-- **Status:** 🟡 (enforced + verified against direct PG; **H1 = prove it through the Neon pooler in CI — do now, pre-winery-#2**)
+- **Status:** 🟡 (enforced + verified against direct PG; **H1 now WIRED — CI runs the isolation suite through a transaction-mode PgBouncer (`pool_mode=transaction`, `default_pool_size=1`, empty `server_reset_query`) plus a SET-LOCAL no-bleed test (`test/tenant-isolation.test.ts`); flips to 🟢 on first green run**)
 
 ### SERIALIZABLE ledger writes need a retry layer, not just a chokepoint (D18/H2)
 - **Choice:** ledger writes use SERIALIZABLE + canonical row locking + a single-writer-style chokepoint.

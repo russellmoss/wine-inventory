@@ -28,6 +28,9 @@ jobs:
   # Tenant-isolation proof against a real Postgres, run AS the NOBYPASSRLS app_rls role — the live RLS
   # check the local dev loop can't run offline. Gated suite (TENANT_ISOLATION_DB=1) incl. the plan-029
   # raw-SQL cases. Migrations run as the superuser owner; app_rls gets a password post-migrate.
+  # H1/D17: the app role is proven isolated THROUGH A TRANSACTION-MODE POOLER (PgBouncer), not only
+  # against direct Postgres — a session-scoped tenant GUC leaks only through a pooler that reuses
+  # connections without resetting session state, so a direct-only proof is hollow.
   tenant-isolation:
     runs-on: ubuntu-latest
     services:
@@ -56,9 +59,49 @@ jobs:
       - run: npx prisma migrate deploy
       - name: Give app_rls a password (set out-of-band in prod; here for CI auth)
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "ALTER ROLE app_rls WITH LOGIN PASSWORD 'app_rls_ci_pw';"
-      - name: Tenant-isolation suite (as app_rls)
+      # H1/D17 — put PgBouncer (TRANSACTION pooling) in front of Postgres so the app_rls suite runs the
+      # way prod does: through a pooler that reuses a physical connection across transactions. This mirrors
+      # Neon's pooled endpoint (Neon's pooler IS PgBouncer in transaction mode). Knobs chosen to give the
+      # proof teeth: pool_mode=transaction + default_pool_size=1 force reuse of ONE server connection, and
+      # an empty server_reset_query means nothing scrubs it between transactions — so if tenant context were
+      # set session-scoped instead of SET LOCAL, tenant A's app.tenant_id would bleed into the next op and
+      # the no-bleed test would fail. Only app_rls goes through the pooler (mirrors prod DATABASE_URL); the
+      # owner path stays direct (mirrors DATABASE_URL_UNPOOLED, used for migrations). Runs unprivileged on
+      # port 6432 — only the apt install needs sudo.
+      - name: Start PgBouncer (transaction pooling) in front of Postgres
+        run: |
+          sudo apt-get update && sudo apt-get install -y pgbouncer
+          mkdir -p /tmp/pgb
+          printf '"app_rls" "app_rls_ci_pw"\n' > /tmp/pgb/userlist.txt
+          {
+            echo '[databases]'
+            echo 'wine_ci = host=localhost port=5432 dbname=wine_ci'
+            echo '[pgbouncer]'
+            echo 'listen_addr = 127.0.0.1'
+            echo 'listen_port = 6432'
+            echo 'unix_socket_dir = /tmp/pgb'
+            echo 'auth_type = plain'
+            echo 'auth_file = /tmp/pgb/userlist.txt'
+            echo 'pool_mode = transaction'
+            echo 'max_client_conn = 100'
+            echo 'default_pool_size = 1'
+            echo 'server_reset_query ='
+            echo 'ignore_startup_parameters = extra_float_digits'
+            echo 'logfile = /tmp/pgb/pgbouncer.log'
+            echo 'pidfile = /tmp/pgb/pgbouncer.pid'
+          } > /tmp/pgb/pgbouncer.ini
+          pgbouncer -d /tmp/pgb/pgbouncer.ini
+          for i in $(seq 1 30); do
+            PGPASSWORD=app_rls_ci_pw psql -h 127.0.0.1 -p 6432 -U app_rls -d wine_ci -c 'select 1' >/dev/null 2>&1 && break
+            sleep 1
+          done
+          # Fail the step loudly if the pooler never came up.
+          PGPASSWORD=app_rls_ci_pw psql -h 127.0.0.1 -p 6432 -U app_rls -d wine_ci -c 'select 1' || { echo "PgBouncer did not start:"; cat /tmp/pgb/pgbouncer.log || true; exit 1; }
+      - name: Tenant-isolation suite (as app_rls, THROUGH the pooler — H1/D17)
         env:
           TENANT_ISOLATION_DB: "1"
-          DATABASE_URL_APP: postgresql://app_rls:app_rls_ci_pw@localhost:5432/wine_ci
+          # app_rls connects via PgBouncer (127.0.0.1:6432). pgbouncer=true tells Prisma to disable
+          # prepared statements, which are unsupported under transaction pooling. THIS is the H1 proof.
+          DATABASE_URL_APP: postgresql://app_rls:app_rls_ci_pw@127.0.0.1:6432/wine_ci?pgbouncer=true
           DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/wine_ci
         run: npx vitest run test/tenant-isolation.test.ts

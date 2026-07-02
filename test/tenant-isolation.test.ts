@@ -9,6 +9,14 @@ import { GLOBAL_MODELS } from "@/lib/tenant/models";
  *
  * TEETH: point DATABASE_URL_APP at the OWNER (BYPASSRLS) and these assertions fail — proof the
  * suite actually tests the boundary. Removing FORCE / the set_config likewise breaks it.
+ *
+ * H1/D17: in CI, DATABASE_URL_APP points at a TRANSACTION-mode PgBouncer (pool_mode=transaction,
+ * default_pool_size=1, empty server_reset_query) in front of Postgres — i.e. the suite runs the way
+ * prod does, through a pooler that reuses one physical connection across transactions without scrubbing
+ * session state. That is the only configuration in which a session-scoped tenant GUC would leak; the
+ * "pooler no-bleed" test below asserts it does not. Against direct Postgres the suite still passes — it
+ * only grows the pooler teeth when DATABASE_URL_APP is a transaction pooler (Neon's pooled endpoint, or
+ * the CI PgBouncer). See .github/workflows/ci.yml.
  */
 const ENABLED = process.env.TENANT_ISOLATION_DB === "1" && !!process.env.DATABASE_URL_APP && !!process.env.DATABASE_URL_UNPOOLED;
 
@@ -116,6 +124,20 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     // As A, querying B's vineyard returns nothing (RLS invisibility on the raw read).
     const aSeesB = await asTenant(A, (tx) => tx.$queryRaw<{ blockId: string }[]>`SELECT "blockId" FROM "brix_log" WHERE "vineyardId" = 'isov_vy_b'`);
     expect(aSeesB).toHaveLength(0);
+  });
+
+  it("pooler no-bleed: SET LOCAL tenant context does not survive a committed tx on a reused connection (D17/H1)", async () => {
+    // The catastrophic multi-tenant failure a direct-Postgres proof can't catch: a transaction-mode
+    // pooler hands the SAME physical server connection to the next client without resetting session
+    // state. Because tenant context is set with SET LOCAL (set_config(app.tenant_id, ..., true)), it is
+    // scoped to the transaction and cleared on COMMIT — so a following no-context op on the reused
+    // connection must be fail-closed. If this ever regressed to a session-scoped SET, tenant A's id
+    // would persist on the pooled connection and the assertions below would see A's row.
+    // (In CI this connection is PgBouncer with default_pool_size=1, guaranteeing the reuse.)
+    expect(await asTenant(A, (db) => db.lot.findFirst({ where: { id: "isov_a" } }))).not.toBeNull(); // visible INSIDE the tx
+    expect(await app.lot.count()).toBe(0); // ...gone immediately after commit, on the reused connection
+    // The raw path (which the tenant extension does not wrap) is likewise fail-closed on that connection.
+    expect(await app.$queryRaw<{ id: string }[]>`SELECT "id" FROM "lot" WHERE "id" = 'isov_a'`).toHaveLength(0);
   });
 
   it("composite-FK cross-tenant reference rejected (K11)", async () => {

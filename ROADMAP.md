@@ -1425,7 +1425,7 @@ auditable event — an advantage mutable-row incumbents can't match. Lead with i
 
 | # | Requirement | Honors | Build WHEN | Status |
 |---|-------------|--------|------------|--------|
-| **H1** | **Pooled-RLS leak proof** — tenant id set via `SET LOCAL app.tenant_id` *inside* the txn; the isolation suite runs through the **Neon pooler (transaction mode)**, not just direct Postgres | D17 | **NOW** — one-day audit; catastrophic if wrong; must hold before winery #2 | ⬜ |
+| **H1** | **Pooled-RLS leak proof** — tenant id set via `SET LOCAL app.tenant_id` *inside* the txn; the isolation suite runs through the **Neon pooler (transaction mode)**, not just direct Postgres | D17 | **NOW** — one-day audit; catastrophic if wrong; must hold before winery #2 | 🟡 wired — CI runs the suite through a transaction-mode PgBouncer (`pool_size=1`, no reset query) + a SET-LOCAL no-bleed test; 🟢 on first green run |
 | **H2** | **SERIALIZABLE bounded-retry layer** — every ledger write retries on SQLSTATE `40001` with backoff + a cap; serialization conflicts are logged/observable | D18 | **NOW / with every new write path** — the chokepoint exists; the retry half is the gap | ⬜ |
 | **H3** | **Cost + analytics OFF the write path** — DAG cost-roll-up and heavy reads run on a read replica or deferrable read-only snapshot; benchmark at realistic lineage depth | D18 | **With Phase 8 cost** (as lineage deepens; scale-register already 🟡 on this) | ⬜ |
 | **H4** | **Event-store evolution kit** — versioned/upcastable events + projection snapshots + throttled, blue-green projection rebuilds | D18 | **Before scale / before the first breaking event-schema change** — cheapest while single-tenant | ⬜ |

@@ -36,7 +36,7 @@
   reset session GUCs between transactions, which would leak one tenant's id to the next request.
 - The isolation test suite must exercise the **pooled endpoint** (transaction mode), not only direct
   Postgres — the leak is invisible against a direct connection.
-- **Status:** 🟡 (verified against direct PG; H1 = prove through the Neon pooler in CI — do now)
+- **Status:** 🟡 (H1 WIRED: CI now runs the isolation suite through a transaction-mode PgBouncer + a SET-LOCAL no-bleed test that a direct-PG proof can't catch; 🟢 on first green CI run)
 
 ### Personal data is never embedded in immutable ledger events; erasure = crypto-shredding (D19)
 - Immutable append-only events conflict with GDPR/CCPA Art. 17 right-to-erasure. **PII (DTC customers,
