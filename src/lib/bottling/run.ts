@@ -32,7 +32,14 @@ export type Actor = { actorUserId: string | null; actorEmail: string };
 // (airplane wifi / Neon cold-start) can lift it so the bottling tx — which now also folds the COGS
 // snapshot — doesn't expire mid-run. Mirrors runLedgerWrite's LEDGER_TX_TIMEOUT_MS.
 const BOTTLING_TX_TIMEOUT_MS = Number(process.env.BOTTLING_TX_TIMEOUT_MS) || 15000;
-const SERIAL = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: BOTTLING_TX_TIMEOUT_MS } as const;
+// maxWait = time allowed to ACQUIRE a pool connection to start the tx (Prisma default 2s). Also
+// env-overridable so a high-latency link doesn't fail with "Unable to start a transaction in time".
+const BOTTLING_TX_MAX_WAIT_MS = Number(process.env.BOTTLING_TX_MAX_WAIT_MS) || 2000;
+const SERIAL = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  timeout: BOTTLING_TX_TIMEOUT_MS,
+  maxWait: BOTTLING_TX_MAX_WAIT_MS,
+} as const;
 
 async function withRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
   for (let i = 1; ; i++) {

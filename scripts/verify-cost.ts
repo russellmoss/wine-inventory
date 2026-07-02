@@ -17,6 +17,7 @@ import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { addAdditionCore } from "@/lib/cellar/addition";
+import { correctOperationCore } from "@/lib/cellar/correct";
 import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
 import { executeBottling } from "@/lib/bottling/run";
 import { getLotCost } from "@/lib/cost/cache";
@@ -132,6 +133,18 @@ async function main() {
   assert(r2(Number(costLines[0].amount)) === 0.9, `CostLine amount = $0.90 (got ${Number(costLines[0].amount)})`);
   assert(costLines[0].lotId === lotId, "CostLine attached to the dosed lot");
 
+  // Unit 11: undo the addition → restore stock + negate cost by identity, append-only.
+  console.log("\n── UNDO restores stock + negates cost (U11) ──");
+  await correctOperationCore(ACTOR, { operationId: add.operationId });
+  const supplyAfterUndo = await prisma.supplyLot.findFirstOrThrow({ where: { materialId: material.id } });
+  assert(r2(Number(supplyAfterUndo.qtyRemaining)) === 1000, `undo restored SupplyLot 982 → 1000 g (got ${Number(supplyAfterUndo.qtyRemaining)})`);
+  const negCons = await prisma.supplyConsumption.findMany({ where: { reversalOfConsumptionId: { not: null } } });
+  assert(negCons.length === 1 && r2(Number(negCons[0].qty)) === -18, `a negating SupplyConsumption (−18 g) was appended (got ${negCons.map((c) => Number(c.qty))})`);
+  const negLines = await prisma.costLine.findMany({ where: { reversalOfCostLineId: { not: null } } });
+  assert(negLines.length === 1 && r2(Number(negLines[0].amount)) === -0.9, `a negating CostLine (−$0.90) was appended (got ${negLines.map((l) => Number(l.amount))})`);
+  const lcAfterUndo = await getLotCost(lotId, { forceRecompute: true });
+  assert(near(lcAfterUndo.totalCost, 0), `lot cost nets to $0 after undo (got ${lcAfterUndo.totalCost})`);
+
   // Unit 6: a bigger dose so the bottled cost is clearly nonzero, then bottle → freeze a COGS snapshot.
   console.log("\n── BOTTLING freezes a COGS snapshot (U6) ──");
   await addAdditionCore(ACTOR, { vesselId: tank.id, materialId: material.id, rateValue: 2, rateBasis: "G_L" }); // 900 g → $45.00
@@ -140,7 +153,7 @@ async function main() {
   const consumedL = round2(0.75 * bottles); // 75 L
   const expectedTotal = r2((lc.costPerL ?? 0) * consumedL); // $/L × L consumed
   const expectedPerBottle = Math.round((expectedTotal / bottles) * 100) / 100;
-  assert(near(lc.costPerL ?? 0, 45.9 / 450), `lot cost-per-L = $0.102 ($45.90 over 450 L; got ${lc.costPerL})`);
+  assert(near(lc.costPerL ?? 0, 45 / 450), `lot cost-per-L = $0.10 ($45.00 over 450 L, first dose undone; got ${lc.costPerL})`);
 
   const loc = await prisma.location.create({ data: { name: "ZZ-COST-DEST" } });
   createdLocationIds.push(loc.id);

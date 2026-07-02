@@ -1,0 +1,66 @@
+import type { Prisma } from "@prisma/client";
+
+// Phase 8 (Unit 11) — identity-negation of an op's cost artifacts on reversal (D3). Runs INSIDE the
+// family reversal's tx, keyed off the ORIGINAL op id, writing compensating rows on the CORRECTION op.
+// Append-only: originals are never mutated/deleted; a negating SupplyConsumption (−qty) + a restored
+// SupplyLot qty + a negating CostLine (−amount) net the reversed op's cost + stock back to zero. This
+// restores the EXACT recorded amounts by identity — never recomputed from current ancestry (so a
+// later backdated edit can't change what an undo restores, council C3). Idempotent: a second call is
+// a no-op (guards on an existing reversal row). Cores don't COMPUTE cost; they just call this.
+
+/** Negate every not-yet-reversed SupplyConsumption + CostLine on `reversedOpId`, on `correctionOpId`. */
+export async function negateCostForReversedOp(
+  tx: Prisma.TransactionClient,
+  reversedOpId: number,
+  correctionOpId: number,
+): Promise<{ consumptions: number; costLines: number }> {
+  // Restore stock + write a negating consumption for each original depletion row.
+  const consumptions = await tx.supplyConsumption.findMany({
+    where: { operationId: reversedOpId, reversalOfConsumptionId: null },
+  });
+  let negatedConsumptions = 0;
+  for (const c of consumptions) {
+    const already = await tx.supplyConsumption.findFirst({ where: { reversalOfConsumptionId: c.id }, select: { id: true } });
+    if (already) continue;
+    await tx.supplyLot.update({ where: { id: c.supplyLotId }, data: { qtyRemaining: { increment: Number(c.qty) } } });
+    await tx.supplyConsumption.create({
+      data: {
+        operationId: correctionOpId,
+        supplyLotId: c.supplyLotId,
+        qty: -Number(c.qty),
+        unitCost: c.unitCost,
+        extendedCost: c.extendedCost == null ? null : -Number(c.extendedCost),
+        methodUsed: c.methodUsed,
+        basisCompleteness: c.basisCompleteness,
+        policyVersion: c.policyVersion,
+        reversalOfConsumptionId: c.id,
+      },
+    });
+    negatedConsumptions++;
+  }
+
+  // Write a negating CostLine for each original absorbed-cost row.
+  const costLines = await tx.costLine.findMany({
+    where: { operationId: reversedOpId, reversalOfCostLineId: null },
+  });
+  let negatedCostLines = 0;
+  for (const cl of costLines) {
+    const already = await tx.costLine.findFirst({ where: { reversalOfCostLineId: cl.id }, select: { id: true } });
+    if (already) continue;
+    await tx.costLine.create({
+      data: {
+        operationId: correctionOpId,
+        lotId: cl.lotId,
+        component: cl.component,
+        amount: -Number(cl.amount),
+        currency: cl.currency,
+        basisCompleteness: cl.basisCompleteness,
+        policyVersion: cl.policyVersion,
+        reversalOfCostLineId: cl.id,
+      },
+    });
+    negatedCostLines++;
+  }
+
+  return { consumptions: negatedConsumptions, costLines: negatedCostLines };
+}

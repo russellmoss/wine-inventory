@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/audit";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
 import { laterTouchedKeys } from "@/lib/ledger/reverse-guard";
+import { negateCostForReversedOp } from "@/lib/cost/reverse";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
 // Correction across the Phase 3 ops (Unit 8, D6/D15). Two shapes:
@@ -60,6 +61,8 @@ export async function correctOperationCore(
         capacityByVessel: new Map(),
       });
       await tx.lotTreatment.updateMany({ where: { operationId: opId }, data: { voidedByOperationId: corrId } });
+      // Phase 8 (Unit 11): negate this op's cost + restore drawn stock, by identity, on the correction.
+      await negateCostForReversedOp(tx, opId, corrId);
       await writeAudit(tx, {
         ...actor,
         action: "STOCK_MOVEMENT",
@@ -125,6 +128,8 @@ export async function correctOperationCore(
     if (op.treatments.length > 0) {
       await tx.lotTreatment.updateMany({ where: { operationId: opId }, data: { voidedByOperationId: corrId } });
     }
+    // Phase 8 (Unit 11): negate any cost + restore any drawn stock this op recorded (uniform contract).
+    await negateCostForReversedOp(tx, opId, corrId);
     await writeAudit(tx, {
       ...actor,
       action: "STOCK_MOVEMENT",
