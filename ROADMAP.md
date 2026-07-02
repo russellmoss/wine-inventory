@@ -736,12 +736,23 @@ HTML.** Determinism/formatting come from the registry + server-side validation; 
 composition. Pre-built widgets + pre-made templates guarantee consistency; an invalid AI spec is
 rejected and repaired, never rendered. This is the user's "as deterministic and programmatic as
 possible."
+**Resolved decisions (2026-07-02, pre-`/plan`):**
+- **Ownership:** per-user dashboard instances + tenant/role **templates** that seed everyone and can be
+  published (nobody starts blank; power users still customize their own).
+- **AI data ceiling:** **curated metric catalog only** this phase — numbers always come from pre-built,
+  validated metrics/widgets; arbitrary "ask anything" NL→query is a later guarded phase, OUT of scope here.
+- **Interactive logging (Brix/pH/TA/additions from a widget): FAST-FOLLOW, not first release** — 19a/19b
+  ship view + drill-down; log-from-widget lands after the foundation is proven.
+- **Device:** **desktop-first** (the drag-resize canvas editor) + **tablet-viewable**; phone gets a
+  simplified read view. Not full mobile editing parity.
+- **Defaults (small, not asked):** refresh = on-load + manual refresh button (live later); who-can-edit
+  = follows existing RBAC; export/share-a-dashboard = deferred fast-follow.
 **Domain requirements (durable):**
 - **Widget registry:** a fixed set of typed, pre-built widgets — **scorecard/metric, line/bar/pie
   chart, table, saved-search list, work-order list**, plus **interactive** ones: **drill-down**
-  (click → filtered list/detail) and **log-action** (launch an existing capture surface to log Brix /
-  pH / TA / additions / movements straight from the dashboard, reusing the Phase 3/6 cores — honors
-  D12). Each widget declares its data binding + config schema.
+  (click → filtered list/detail) in the first release, and **log-action** (launch an existing capture
+  surface to log Brix / pH / TA / additions / movements from the dashboard, reusing the Phase 3/6 cores —
+  honors D12) as the **fast-follow**. Each widget declares its data binding + config schema.
 - **Curated metric/data catalog:** widgets bind to a tenant-scoped catalog of queryable
   metrics/entities (volume on hand, cost per lot/bottle from Phase 8, compliance figures from Phase 14,
   ferment state/readings, counts, losses…) — reuse existing read models. Allowlisted bindings keep AI
@@ -756,17 +767,17 @@ possible."
   users; tenant/role templates can be published.
 - **Tenant + user scoped** (Phase-12 checklist): dashboard instances + widget configs are per-user;
   templates are tenant/role level.
-**Exit:** a winemaker asks the AI for a ferment dashboard, gets a valid multi-widget layout, tweaks it
-on the canvas, logs a Brix reading from a widget, sets it as default, and switches to a cost dashboard
-from the dropdown.
+**Exit (19a/19b):** a winemaker asks the AI for a ferment dashboard, gets a valid multi-widget layout,
+tweaks it on the canvas, drills into a scorecard, sets it as default, and switches to a cost dashboard
+from the dropdown. **Fast-follow exit:** logs a Brix reading from a widget without leaving the dashboard.
 **Runbook notes for `/plan`:**
 - *Reuse:* the assistant tool-use loop (`/api/assistant`); existing read models (Phase 8 cost, Phase 14
   compliance, `vessel_lot`, ferment/`AnalysisPanel`); existing capture cores (log-from-widget); the
   hand-rolled SVG chart components (`FermentChart`, `AnalyteTrendChart`) as chart primitives.
-- *Decisions to resolve:* **charting** — extend the bespoke SVG primitives vs adopt a lib
-  (recharts/visx/nivo); **canvas/grid** lib (`react-grid-layout`); the **widget-spec schema + registry**
-  design (the load-bearing piece); dashboard ownership scope (per-user instances + tenant/role
-  templates recommended); how far the metric catalog goes before arbitrary NL→query (defer the latter).
+- *Decisions still open for `/plan` (ownership/catalog/logging/device now resolved above):* **charting**
+  — extend the bespoke SVG primitives vs adopt a lib (recharts/visx/nivo); **canvas/grid** lib
+  (`react-grid-layout` candidate); the **widget-spec schema + registry** design (the load-bearing piece);
+  the initial **template set** to seed users; how the AI-edit and canvas-edit reconcile on one spec.
 - *Recommended internal phasing:* **19a** deterministic foundation (widget registry + validated spec +
   canvas + templates + multi-dashboard/default/switcher, no AI) → **19b** the natural-language AI
   builder on top. Build the deterministic system first; the AI is a spec-generator over it.
