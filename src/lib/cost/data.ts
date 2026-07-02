@@ -1,4 +1,4 @@
-import type { CostComponent, Prisma } from "@prisma/client";
+import type { CostComponent, LotOwnership, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { rollupCost, type CostEvent, type Completeness, type LotCost, type LotVolume } from "@/lib/cost/rollup";
 import { isComponentCapitalized, COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
@@ -59,6 +59,10 @@ export type LotCostResult = LotCost & {
   /** the max cost-affecting opId reflected in this result — the D4 cache watermark. */
   maxCostOpId: number;
   policyVersion: number;
+  /** Phase 8 U16 (D19): the root lot's ownership. CUSTOM_CRUSH_CLIENT lot cost is billed to the client,
+   * NOT capitalized to estate inventory — its direct cost lines are suppressed from this estate roll-up
+   * (they remain recorded for billing). Lets the cost surface label a client-owned lot. */
+  ownership: LotOwnership;
 };
 
 /**
@@ -72,7 +76,7 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb): Promise<Lo
   const db = asDb(dbArg);
   const [lotIds, settings] = await Promise.all([loadAncestryLotIds(rootId, db), readCostSettings(db)]);
 
-  const [costLines, transfers, vesselLots, bottled] = await Promise.all([
+  const [costLines, transfers, vesselLots, bottled, ownerRows] = await Promise.all([
     db.costLine.findMany({
       where: { lotId: { in: lotIds } },
       select: { operationId: true, lotId: true, component: true, amount: true, basisCompleteness: true },
@@ -83,11 +87,19 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb): Promise<Lo
     }),
     db.vesselLot.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
     db.bottledLotState.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
+    db.lot.findMany({ where: { id: { in: lotIds } }, select: { id: true, ownership: true } }),
   ]);
+
+  // Phase 8 U16 (D19): client-owned (custom-crush) lots don't capitalize to estate inventory — their
+  // direct cost lines are billed back, so suppress them from THIS estate roll-up (still recorded in the
+  // DB for billing). Enforced here at the single capitalization authority, not scattered across cores.
+  const ownershipByLot = new Map<string, LotOwnership>(ownerRows.map((l) => [l.id, l.ownership]));
+  const isBillable = (lotId: string) => ownershipByLot.get(lotId) === "CUSTOM_CRUSH_CLIENT";
 
   const events: CostEvent[] = [];
   for (const c of costLines) {
     if (!c.lotId) continue;
+    if (isBillable(c.lotId)) continue; // client-owned: billed back, not capitalized to estate inventory
     if (!isComponentCapitalized(c.component as CostComponent, settings)) continue; // recorded, not capitalized
     events.push({
       opId: c.operationId,
@@ -126,7 +138,8 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb): Promise<Lo
     stranded: 0,
   };
   const maxCostOpId = Math.max(0, ...costLines.map((c) => c.operationId), ...transfers.map((t) => t.operationId));
-  return { ...target, maxCostOpId, policyVersion: settings.policyVersion };
+  const ownership = ownershipByLot.get(rootId) ?? "ESTATE";
+  return { ...target, maxCostOpId, policyVersion: settings.policyVersion, ownership };
 }
 
 /**

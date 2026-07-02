@@ -34,6 +34,9 @@ export async function getLotCost(lotId: string, opts: { forceRecompute?: boolean
       const currentPolicyVersion = settings?.costingPolicyVersion ?? 1;
       const maxOpId = await maxCostOpIdFor(lotId);
       if (!isCacheStale(cache.computedThroughOpId, maxOpId, cache.basisVersion, currentPolicyVersion)) {
+        // ownership isn't cost-derived (not stored on LotCostState) — fetch it for the label. The
+        // cached totalCost is already correctly suppressed for a custom-crush lot (U16, at compute).
+        const lot = await prisma.lot.findUnique({ where: { id: lotId }, select: { ownership: true } });
         return {
           lotId,
           totalCost: Number(cache.totalCost),
@@ -45,6 +48,7 @@ export async function getLotCost(lotId: string, opts: { forceRecompute?: boolean
           stranded: 0,
           maxCostOpId: cache.computedThroughOpId,
           policyVersion: cache.basisVersion,
+          ownership: lot?.ownership ?? "ESTATE",
         };
       }
     }
