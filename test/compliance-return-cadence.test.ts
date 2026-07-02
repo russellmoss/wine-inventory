@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { returnPeriodsForYear, returnPeriodBounds, returnPeriodContaining } from "@/lib/compliance/return-cadence";
 
-const iso = (d: Date) => d.toISOString();
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
 describe("return-cadence — semimonthly halves (plan-026 Unit 4)", () => {

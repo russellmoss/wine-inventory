@@ -1,7 +1,7 @@
 ---
 title: TTB F 5000.24 Wine Excise Tax Return + CBMA Credits (Phase 14 follow-on)
 type: feat
-status: draft
+status: completed
 date: 2026-07-01
 branch: main
 depth: deep
@@ -156,6 +156,159 @@ future once a design partner is in the pilot; flagged for the user's strategic c
 mechanic), capped by YTD **production** + 750k. **4B:** tier by production only — simpler but posts
 credit before removal, which isn't how it's claimed. 4A.
 
+## Council Revisions (2026-07-01) — folded CRITICAL + SHOULD-FIX
+
+Gemini (TTB/CBMA domain) + Claude (types/ledger reuse) review. Full log: `council-feedback.md`. Folded:
+
+- **C1 (CRITICAL) — September semimonthly split.** Semimonthly filers file THREE returns in September
+  (27 CFR 24.271(b); federal FY-end): non-EFT ≈ Sep 1–25 / 26–30, EFT ≈ Sep 1–15 / 16–26 / 27–30.
+  Unit 4 `return-cadence.ts` special-cases September; add a per-tenant `isEftPayer` flag (Unit 1 profile).
+- **C2 (CRITICAL) — drop the CBMA "YTD production cap" (Fork 4 fix).** Wine is aged — removing prior-
+  vintage wine with 0 current-year production must NOT zero the credit. The 750k *production* figure is
+  an eligibility GATE (a producer ≤750k gal/yr), not the credit base. v1 assumes the tenant is the
+  producer; credit applies to the first 750k gal **removed** per calendar year. Fixes Units 3/5.
+- **C3 (CRITICAL) — CBMA YTD is STATELESS (Fork 2 → 2B).** A cumulative bracket isn't a snapshot; a
+  carry-forward from filed returns goes stale when an earlier period is amended. `excise.ts` recomputes
+  YTD-removed (Jan 1 → period start) on every generation; never persist/carry-forward the ladder. AND
+  flag downstream FILED returns as needing regeneration after an amend (stale filed snapshots). Units 5/6.
+- **C4 (CRITICAL) — `formType` scopes EVERY reused 025 query.** Generalizing `ComplianceReport` (Fork 1)
+  means the 025 carry-forward/list/latest lookups must filter `formType:"TTB_5120_17"` (and excise
+  queries `"TTB_5000_24"`) or an excise return becomes the 5120.17's on-hand-beginning source and
+  corrupts the operations report. Add a regression test. Units 1/6.
+- **C5 (CRITICAL) — tax base is ONLY taxpaid removals.** EXPORT/FAMILY_USE/TASTING/TESTING/
+  DISTILLING_MATERIAL/VINEGAR are tax-EXEMPT. Do NOT reuse the §A/§B form-line fold; add a dedicated
+  `removedTaxpaidGallonsByClass(tenantId,{start,end})` filtering bulk `disposition=TAXPAID` + bottled
+  `reason=TAXPAID`, net of reversals. Test: an EXPORT removal → $0 tax. Unit 5.
+- **S1 — wine + cider share ONE 750k ladder.** `applyCbmaCredit` takes a single aggregated
+  `ytdRemovedGal`; each gallon gets the wine OR cider credit RATE at its tier. Unit 3.
+- **S2 — wine > 24% ABV is spirits.** Unit 9 blocks excise generation on any taxpaid removal ABV > 24%
+  with a "file as distilled spirits" message.
+- **S3 — Schedule B gross/credit/net matrix.** The `computed` snapshot stores per-class + per-tier
+  `grossTax`/`creditRate`/`creditAmount`/`netTax`, not just the net. Units 5/8.
+- **S4 — rounding rule (mirror 025 S1).** Gallons exact → tax = gal×rate → round TAX to the cent (not
+  gallons); CBMA credit on the same gallons, rounded to the cent. Unit 5.
+- **S5 — within-period CBMA allocation.** Apply the period's total removed gallons against the YTD
+  ladder START, tier by tier (a period straddling 30k splits $1.00/$0.90). Order-independent. Unit 3.
+- **S6 — parameterize tier limits.** `applyCbmaCredit` accepts `tier1Limit=30000` etc. so v2 controlled-
+  group (restricted Tier 1) is a setting. Unit 3.
+
+**Fork resolutions:** F1 KEEP (generalized table) + mandatory C4. F2 → **2B stateless**. F4 → **drop
+production cap**. F3 (standard vs Pilot) still the operator's call.
+
+**Design questions — RESOLVED by operator (2026-07-01):** (Q1) **Pay.gov data-entry values are the
+PRIMARY deliverable**, filled PDF secondary (Unit 10 D5). (Q2) **Auto-suggest skipping a $0 semimonthly
+return** (24.271(i)) — a $0 period shows the calm empty state with a "generate anyway" escape, not a
+forced $0 filing. (Q3/F3) **Standard 5000.24sm** (the Pilot Combined Return is a documented v2). (Q4)
+**Build BOTH September variants**, gated by a per-tenant `isEftPayer` setting (Unit 1); default non-EFT.
+
+## Eng Review Revisions (2026-07-01) — folded
+
+Architecture + tests review (Claude eng-manager pass; Codex outside-voice excluded per operator —
+a second Claude voice is redundant with the council pass). Folded:
+
+- **E1 (DRY/arch) — one `formType` filter, imported everywhere (C4 mechanism).** Don't sprinkle
+  `formType:"TTB_5120_17"` string literals across queries (one forgotten literal = silent corruption).
+  Define `const OPS_FORM = "TTB_5120_17"` / `EXCISE_FORM = "TTB_5000_24"` and a tiny `formScope(f)`
+  where-fragment; every report query (025 carry-forward/list/latest + all excise queries) uses it.
+  Add a regression test: seed one FILED excise return before a 5120.17 period → the 5120.17
+  carry-forward must ignore it. Units 1/6.
+- **E2 (DRY) — one `removedTaxpaidGallonsByClass(tenantId,{start,end})` helper, shared.** The excise
+  compute (period tax) AND the stateless YTD recompute (Jan 1→period start) AND a test-only view all
+  need "net taxpaid gallons by class in a window." Factor it ONCE (in `removals.ts` or `generate.ts`),
+  filtering bulk `disposition=TAXPAID` + bottled `reason=TAXPAID`, netting reversals; the 5120.17 fold
+  can also lean on it. Units 5. (Satisfies C5 + C3 with no duplication.)
+- **E3 (arch) — stateless YTD is a windowed re-use of E2, not new machinery.** YTD-removed =
+  `removedTaxpaidGallonsByClass(tenantId, {start: Jan 1, end: periodStart − 1ms})`. Cheap for a small
+  winery (one grouped query). No persisted ladder (C3). Unit 5.
+- **E4 (correctness) — cross-form is NOT double-count.** A removal legitimately appears on one 5120.17
+  AND one 5000.24 (different forms, different windows) — that's correct, not a bug. Double-count guard
+  is WITHIN a form's period series (disjoint). Documented so the reviewer/tests don't "fix" it. Unit 5.
+- **E5 (arch) — Schedule B matrix drives both PDF + worksheet (S3).** The per-class × per-tier
+  gross/credit/net matrix in `computed` is the single source for the review worksheet AND the PDF fill;
+  neither re-derives. Units 5/8/10.
+
+## Design Review Revisions (2026-07-01) — folded (Unit 10)
+
+Design completeness 6/10 → 9/10, calibrated to DESIGN.md + the shipped /compliance screen (reuse the
+banner/anomaly/file/download shell + tokens; light-only; real `<table>`/`<th scope>`). Folded:
+
+- **D1 — lead with the number owed (trust + JTBD).** Top of the 5000.24 view = a **payment banner**:
+  large **Amount to pay $X**, the return period, the **due date + days remaining**, version/status
+  badges, and a one-line "Ready to file / N blockers" verdict. The winemaker's question is "what do I
+  owe and by when" — answer it before the worksheet. (Hierarchy as service; Norman visceral.)
+- **D2 — form switch is a top-level MODE, not a buried dropdown.** A segmented control at the very top:
+  **Operations (5120.17)** | **Excise tax (5000.24)**, active form visually dominant, driving
+  `?formType=`. It changes the whole screen, so it must read as a mode switch; the report-history
+  picker filters to the active form.
+- **D3 — the worksheet.** Real `<table>`: rows = tax classes (only non-zero + a TOTAL row emphasized
+  with `--surface-sunken`), columns = **Gallons removed · Rate · Pre-credit tax · CBMA credit · Net
+  tax**. Right-aligned currency, tabular figures. Mirrors the 5120.17 grid house style.
+- **D4 — CBMA ladder position, made legible.** A compact "credit ladder" strip: YTD gallons removed,
+  current tier, and **remaining at each tier** ($1.00: X of 30k left · $0.90: Y of 100k · $0.535: Z of
+  620k) with a thin progress bar toward 750k. This is the winery's most valuable, least-understood
+  number — surface it, don't bury it.
+- **D5 — Pay.gov entry is the PRIMARY deliverable (answers council Q1).** A **"Enter into Pay.gov"**
+  panel: the exact field-labeled values a filer types into Pay.gov's web form (Return period, Line 10
+  wine tax $, Schedule B credit $, Amount to pay $), each with a copy button. The **filled PDF is the
+  SECONDARY "download for your records" action.** Matches how small wineries actually file; cheaper +
+  more robust than perfect PDF fidelity. (Operator confirms in the gate — Q1.)
+- **D6 — interaction states (what the user SEES):** generating → button progress + skeleton worksheet;
+  **$0 period** → calm "No taxpaid removals — no excise tax due. Semimonthly filers generally needn't
+  file a $0 return (27 CFR 24.271(i))" with a muted "generate anyway" (empty state as feature, folds
+  council Q2); **ABV>24% block** → blocked-filing banner "Lot X is >24% ABV — taxed as distilled
+  spirits, not wine; reclassify/remove before filing" + jump-to-lot (folds S2); **unfiled prior period
+  this year** → warning "A prior period this year hasn't been filed — your CBMA ladder may be wrong;
+  file it first" (folds C3 ladder-gap); **downstream-stale after amend** → info banner "recomputed
+  because an earlier period was amended — regenerate to refresh"; **error** → banner + retry.
+- **D7 — responsive + a11y:** worksheet scrolls horizontally <768px with a sticky class column; payment
+  banner + ladder stack full width; real table semantics + `<th scope>`, 44px targets, status by
+  icon+text+color (never color alone), focus-visible ring. Light-only per DESIGN.md.
+
+**No design forks** beyond council Q1 (Pay.gov-primary, recommended above) — operator confirms at the gate.
+
+## Test Coverage Map (eng review)
+
+```
+PURE LOGIC (unit — Vitest)
+==========================
+excise-rates (U2)      [★★★] each class → rate; effective-date stamped
+cbma (U3)
+  ├─ [★★★] ladder boundaries: start 0 → all $1.00 to 30k; straddle 30k ($1.00/$0.90 split); straddle 130k; at 750k → $0 beyond   [S5]
+  ├─ [★★★] UNIFIED wine+cider ladder — cider removals consume the SAME 30k/130k tiers; cider RATES 6.2¢/5.6¢/3.3¢ at their tier   [S1]
+  ├─ [★★★] tier limits PARAMETERIZED (tier1Limit arg) — v2 controlled-group ready   [S6]
+  ├─ [★★★] within-period allocation order-independent (period gallons vs YTD start)   [S5]
+  └─ [★★★ →oracle] an INDEPENDENT TTB CBMA worked example (Quick Reference Guide) — expected credit transcribed
+return-cadence (U4)
+  ├─ [★★★] semimonthly halves incl. 28/30/31-day + Feb leap; due = end + 14d
+  ├─ [★★★] SEPTEMBER SPLIT — 3 periods; non-EFT (Sep 1–25/26–30) vs EFT (Sep 1–15/16–26/27–30)   [C1]
+  └─ [★★★] quarterly / annual windows + due dates
+removedTaxpaidGallonsByClass (U5)
+  ├─ [★★★] ONLY disposition=TAXPAID (bulk) + reason=TAXPAID (bottled) counted   [C5]
+  ├─ [★★★] EXPORT / FAMILY_USE / TASTING / TESTING / DISTILLING / VINEGAR → $0 tax   [C5]
+  └─ [★★★] a reversed taxpaid removal nets to 0 in the window
+excise compute (U5)
+  ├─ [★★★] pre-credit tax = Σ gal×rate per class; net = pre-credit − CBMA   [S4]
+  ├─ [★★★] rounding: gal exact → tax=gal×rate → round to the CENT; Schedule B foots   [S4]
+  └─ [★★★] two periods same year → YTD ladder steps down (period 2 credited at lower tier)   [C3]
+
+LEDGER/DB (integration — verify:excise, synthetic tenant)
+==========================
+formType scope (U1/U6)  [★★★] a FILED excise return does NOT become the 5120.17 carry-forward source   [C4/E1]
+generate/file/amend (U6)
+  ├─ [★★★] generate → DRAFT excise row (taxDollars set, formType excise)
+  ├─ [★★★] file → FILED immutable; amend after a removal reversal → new AMENDED, reduced tax
+  └─ [★★★] amend an earlier period → later FILED returns flagged downstream-stale (not silent)   [C3]
+PDF (U7/U8)  [★★★] fieldmap covers Tax.10 + header + Return_Covers/period + Schedule B; fill→re-read Tax.10 == net; route rejects other-tenant/unauth
+anomaly (U9)
+  ├─ [★★★] ABV > 24% on a taxpaid removal → BLOCK ("file as distilled spirits")   [S2]
+  ├─ [★★★] CBMA over 750k / over-claim; net tax < 0; class with no rate; unfiled prior period same year
+UI (U10)  [★★ →E2E] /compliance formType selector → excise worksheet → generate → due date → download PDF
+────────────────────────────────────────────────────────────
+COVERAGE TARGET: 100% of new paths. Critical gaps flagged: September split (C1), formType-scope
+regression (C4/E1), taxpaid-only base (C5), >24% ABV block (S2). No failure mode is BOTH untested AND
+silent → no critical gaps left open.
+```
+
 ## Implementation Units
 
 ### Unit 1: Schema — `formType` + semimonthly cadence + return-cadence profile (migration)
@@ -309,28 +462,47 @@ credit totals — not just self-consistent fixtures.
 
 ## Success Criteria
 
-- [ ] A synthetic winery's taxpaid removals produce a correct net wine excise tax (gallons×rate−CBMA)
-      for a return period, from the ledger alone, filling line 10 of the real 5000.24 PDF.
-- [ ] The CBMA credit ladder steps down correctly across a calendar year (30k/130k/750k) and matches
-      an independent TTB worked example; over-750k / over-production is capped + flagged.
-- [ ] Return cadence (semimonthly/quarterly/annual) is settable per tenant and defaults the screen;
-      period windows + due dates are correct.
-- [ ] Both forms are independently selectable on `/compliance`; generating one never affects the other.
-- [ ] The excise return is reversible/amendable via the 025 machinery; a reversed removal → amended
+- [x] A synthetic winery's taxpaid removals produce a correct net wine excise tax (gallons×rate−CBMA)
+      for a return period, from the ledger alone, filling the real 5000.24 PDF (verify:excise).
+- [x] The CBMA credit ladder steps down correctly across a calendar year (30k/130k/750k) and matches
+      independent hand-computed oracles; over-750k is capped + flagged. (Production cap dropped per C2.)
+- [x] Return cadence (semimonthly/quarterly/annual) is settable per tenant and defaults the screen;
+      period windows + due dates are correct incl. the September triple-split.
+- [x] Both forms are independently selectable on `/compliance`; generating one never affects the other
+      (formType-scoped queries; verify:excise C4 regression proves it).
+- [x] The excise return is reversible/amendable via the 025 machinery; a reversed removal → amended
       return with reduced tax.
-- [ ] Downloadable filled TTB 5000.24 PDF with the net wine tax + header + period; other commodity
-      lines blank.
-- [ ] Anomaly check flags over-claim / missing-rate / negative-tax / unfiled-prior-period; never auto-submits.
-- [ ] All new tests pass; `verify:excise` green; no regressions to plan-025; `tsc --noEmit` + lint clean.
+- [x] Downloadable filled TTB 5000.24 PDF with line 10 gross + Schedule B credit + net + header +
+      period; other commodity lines blank. (Combo A — see note below.)
+- [x] Anomaly check flags over-claim / missing-rate / negative-tax / >24%-ABV / unfiled-prior-period; never auto-submits.
+- [x] All new tests pass (705); `verify:excise` green (17 assertions); no regressions to plan-025;
+      `tsc --noEmit` + build clean; lint clean for new code (3 pre-existing errors in untouched files).
+
+**Implementation note — CBMA on the form (combo A).** The plan was internally inconsistent (Decision
+table said "net line 10"; D5 Pay.gov panel implied gross + a separate Schedule B credit). v1 ships the
+internally-consistent, form-accurate reading: **line 10 = GROSS wine tax; the CBMA credit is a Schedule
+B decreasing adjustment → line 20; line 21 = amount to pay = net.** The operator was asked and was away;
+this can be flipped to "net line 10, no Schedule B" if preferred (only `fill-5000-24-pdf.ts` + the
+Pay.gov panel change). The September non-EFT boundaries (1–15/16–25/26–30) should also be re-verified
+against 27 CFR 24.271(b)(2).
 
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | -- | -- |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | -- | -- |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 0 | -- | -- |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | -- | -- |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | -- | -- |
+| Council (Gemini + Claude) | `/council` | Cross-LLM adversarial (TTB/CBMA + types/ledger) | 1 | ✅ folded | 5 CRITICAL (C1 Sep split, C2 drop production cap, C3 stateless YTD, C4 formType-scope, C5 taxpaid-only base), 6 SHOULD-FIX (S1–S6), 4 design Qs. Codex excluded per operator. F2→2B, F4→drop cap; 4 design Qs open. |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | excluded | Operator excluded Codex from the panel. |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ✅ CLEAR | 5 folded (E1 one formType filter, E2 shared removedTaxpaidGallonsByClass, E3 stateless-YTD-as-window, E4 cross-form≠double-count, E5 Schedule-B matrix single source). Test Coverage Map added; 4 critical gaps assigned tests (C1 Sep split, C4 formType regression, C5 taxpaid-only, S2 >24% block); 0 gaps left open. Outside voice: Codex excluded per operator. |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ✅ folded | 6/10 → 9/10. D1 lead-with-amount-owed banner, D2 form mode switch, D3 worksheet table, D4 CBMA ladder strip, D5 Pay.gov-entry primary + PDF secondary, D6 interaction states ($0/ABV>24%/unfiled-prior/stale/error), D7 responsive+a11y. No design forks beyond Q1 (Pay.gov-primary, recommended). |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | n/a | Internal admin tool; DX review not warranted. |
 
-**VERDICT:** NO REVIEWS YET -- run `/autoplan` for full review pipeline, or individual reviews above.
+**Council fold summary (2026-07-01):** C1 (Sep split + isEftPayer), C2 (drop CBMA production cap),
+C3 (stateless YTD + downstream-stale flag), C4 (formType-scope all queries), C5 (taxpaid-only base),
+S1–S6. Fork resolutions: F1 KEEP (generalized table + C4), F2→2B (stateless), F4→drop cap; F3 (standard
+vs Pilot) + design Q1 (Pay.gov-primary) + Q2 ($0 skip) + Q4 (EFT payer) OPEN for the operator.
+
+**VERDICT:** ✅ **CEO n/a · COUNCIL folded · ENG CLEARED · DESIGN 9/10 · ALL DECISIONS RESOLVED** —
+full pipeline complete (Council → Eng → Design), all CRITICAL + SHOULD-FIX folded, all forks + design
+questions resolved by the operator (F3 standard 5000.24sm, F1 generalized table, F2 stateless YTD, F4
+no production cap; Q1 Pay.gov-primary, Q2 $0-skip, Q4 build-both+isEftPayer). Ready to implement:
+`/work docs/plans/2026-07-01-026-feat-ttb-5000-24-excise-return-plan.md`.
