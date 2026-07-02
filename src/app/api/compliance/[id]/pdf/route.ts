@@ -1,11 +1,14 @@
 import { getCurrentUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { fillTtbPdf, type ProfileHeader } from "@/lib/compliance/fill-pdf";
+import { fillExcisePdf } from "@/lib/compliance/fill-5000-24-pdf";
 import type { ComputedSnapshot } from "@/lib/compliance/generate";
+import type { ExciseComputed } from "@/lib/compliance/excise";
 
-// Unit 10 — auth-gated, tenant-scoped download of the filled TTB F 5120.17 PDF for a persisted report.
-// The prisma extension scopes the read to the session's tenant (RLS), so a foreign report id yields
-// no row (404) — never another winery's report.
+// Unit 10 / plan-026 U8 — auth-gated, tenant-scoped download of the filled TTB PDF for a persisted
+// report, dispatched by formType (5120.17 operations report vs 5000.24 excise return). The prisma
+// extension scopes the read to the session's tenant (RLS), so a foreign report id yields no row (404)
+// — never another winery's report.
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
@@ -31,22 +34,35 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       : null,
   };
 
-  const { bytes } = await fillTtbPdf({
-    computed: report.computed as unknown as ComputedSnapshot,
-    periodStart: report.periodStart,
-    periodEnd: report.periodEnd,
-    cadence: report.cadence,
-    version: report.version,
-    isFinalBusinessReport: report.isFinalBusinessReport,
-    remarks: report.remarks,
-    profile,
-  });
+  const isExcise = report.formType === "TTB_5000_24";
+  const bytes = isExcise
+    ? (
+        await fillExcisePdf({
+          computed: report.computed as unknown as ExciseComputed,
+          periodStart: report.periodStart,
+          periodEnd: report.periodEnd,
+          profile,
+        })
+      ).bytes
+    : (
+        await fillTtbPdf({
+          computed: report.computed as unknown as ComputedSnapshot,
+          periodStart: report.periodStart,
+          periodEnd: report.periodEnd,
+          cadence: report.cadence,
+          version: report.version,
+          isFinalBusinessReport: report.isFinalBusinessReport,
+          remarks: report.remarks,
+          profile,
+        })
+      ).bytes;
 
-  const period = report.periodEnd.toISOString().slice(0, 7);
+  const period = report.periodEnd.toISOString().slice(0, 10);
+  const formSlug = isExcise ? "TTB-5000.24" : "TTB-5120.17";
   return new Response(Buffer.from(bytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="TTB-5120.17-${period}-${report.version.toLowerCase()}.pdf"`,
+      "Content-Disposition": `attachment; filename="${formSlug}-${period}-${report.version.toLowerCase()}.pdf"`,
       "Cache-Control": "private, no-store",
     },
   });
