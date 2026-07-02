@@ -2010,3 +2010,44 @@ model LotCostState {
   @@index([tenantId])
   @@map("lot_cost_state")
 }
+
+// ───────────────────────── plan-027: compliance filing-deadline reminders ─────────────────────────
+// Two tenant-scoped, RLS-isolated tables (Phase-12 checklist). Deadlines themselves are DERIVED (a pure
+// function of cadence + filed-status), never stored; the only persisted state is the per-user opt-in +
+// the idempotent send log.
+
+// Per-user opt-in for reminder EMAILS, per tenant (admin-managed in User Management). userId is the
+// global Better-Auth user id; the pref is tenant-scoped so the same person can opt in per winery.
+model ComplianceReminderPreference {
+  tenantId         String   @default("")
+  id               String   @id @default(cuid())
+  userId           String
+  remindersEnabled Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@map("compliance_reminder_preference")
+}
+
+// Idempotent send log: at most one email per (tenant, form, period, mark, recipient). The daily cron
+// inserts PENDING → sends → marks SENT; a stale PENDING is retried (council S2). recipientEmail is a
+// durable snapshot so a later user deletion doesn't orphan the audit row (no FK on recipientUserId).
+model ComplianceReminderLog {
+  tenantId        String    @default("")
+  id              String    @id @default(cuid())
+  form            String // "5120.17" | "5000.24"
+  periodKey       String // deadlines.ts periodKey, e.g. "5120.17:2026-06-30"
+  dueDate         DateTime
+  mark            String // WEEK | TWO_DAY | DAY_OF
+  recipientUserId String
+  recipientEmail  String
+  status          String    @default("PENDING") // PENDING | SENT
+  sentAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, form, periodKey, mark, recipientUserId])
+  @@index([tenantId])
+  @@map("compliance_reminder_log")
+}
