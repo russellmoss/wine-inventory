@@ -12,6 +12,7 @@ import {
   type FoldPeriodResult,
 } from "./period-fold";
 import type { SparklingMethodLike, SparklingSub, WineTaxClass } from "./types";
+import { OPS_FORM, formScope } from "./form-type";
 
 // Unit 8 — the DB orchestration that turns the tenant ledger into the pure fold's inputs, then folds.
 // It resolves each lot's tax class (ABV as-of the event + productType/carbonation/sparkling method,
@@ -264,8 +265,9 @@ export async function foldPeriod(
   ]);
 
   // 2. Begin balances — carry forward from the prior FILED report (S3), else first-report full fold.
+  // C4/E1: scope to the 5120.17 form or an excise return would become the operations carry-forward.
   const prior = await prisma.complianceReport.findFirst({
-    where: { status: "FILED", periodEnd: { lt: start } },
+    where: { ...formScope(OPS_FORM), status: "FILED", periodEnd: { lt: start } },
     orderBy: [{ periodEnd: "desc" }, { generatedAt: "desc" }],
     select: { onHandEnd: true },
   });
@@ -441,6 +443,7 @@ export async function generateReport(tenantId: string, input: GenerateReportInpu
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
       cadence: input.cadence ?? "MONTHLY",
+      formType: OPS_FORM, // C4/E1: explicit even though it is the column default
       status: "DRAFT",
       version,
       amendsReportId: input.amendsReportId ?? null,
@@ -453,27 +456,40 @@ export async function generateReport(tenantId: string, input: GenerateReportInpu
   });
 
   // OV#7: amending a period invalidates the carried-forward begin of any later FILED report.
+  // C4/E1: only later FILED 5120.17 reports are affected by a 5120.17 amendment.
   const downstreamStale =
     version === "AMENDED"
-      ? (await prisma.complianceReport.count({ where: { status: "FILED", periodStart: { gte: input.periodEnd } } })) > 0
+      ? (await prisma.complianceReport.count({ where: { ...formScope(OPS_FORM), status: "FILED", periodStart: { gte: input.periodEnd } } })) > 0
       : false;
 
   return { reportId: created.id, fold, downstreamStale };
 }
 
 /** Mark a DRAFT report FILED — freezes the snapshot as the legal audit record (E1/E2). Blocked when
- * any lot still needs an ABV (OV#6). Returns the filed report id. */
+ * any deterministic blocker is present (5120.17: ABV/balance OV#6; excise: ABV>24, missing rate,
+ * negative tax — plan-026 U9). Returns the filed report id. */
 export async function markReportFiled(reportId: string, filedByEmail: string): Promise<{ id: string }> {
-  const report = await prisma.complianceReport.findUnique({ where: { id: reportId }, select: { status: true, computed: true } });
+  const report = await prisma.complianceReport.findUnique({ where: { id: reportId }, select: { status: true, formType: true, computed: true } });
   if (!report) throw new Error("Report not found.");
   if (report.status === "FILED") throw new Error("This report is already filed and immutable.");
-  const computed = report.computed as unknown as ComputedSnapshot;
-  if (computed?.needsAbvLotIds?.length) {
-    throw new Error(`Can't file: ${computed.needsAbvLotIds.length} lot(s) still need an ABV. Resolve them (add a reading or a tax-ABV override) and regenerate.`);
+
+  if (report.formType === "TTB_5000_24") {
+    // Excise return: gate on the excise deterministic blockers (plan-026 U9).
+    const { deterministicExciseAnomalies, hasFilingBlocker } = await import("./anomaly");
+    const snapshot = report.computed as unknown as import("./excise").ExciseComputed;
+    const findings = deterministicExciseAnomalies({ snapshot });
+    const blocker = findings.find((f) => hasFilingBlocker([f]));
+    if (blocker) throw new Error(`Can't file: ${blocker.message}`);
+  } else {
+    const computed = report.computed as unknown as ComputedSnapshot;
+    if (computed?.needsAbvLotIds?.length) {
+      throw new Error(`Can't file: ${computed.needsAbvLotIds.length} lot(s) still need an ABV. Resolve them (add a reading or a tax-ABV override) and regenerate.`);
+    }
+    if (computed && computed.balanced === false) {
+      throw new Error("Can't file: the report does not balance. Review the flagged columns first.");
+    }
   }
-  if (computed && computed.balanced === false) {
-    throw new Error("Can't file: the report does not balance. Review the flagged columns first.");
-  }
+
   await prisma.complianceReport.update({ where: { id: reportId }, data: { status: "FILED", filedAt: new Date(), filedByEmail } });
   return { id: reportId };
 }

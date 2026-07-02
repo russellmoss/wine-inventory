@@ -7,11 +7,13 @@ import { removeTaxpaidCore } from "@/lib/compliance/removal-core";
 import { removeBottledCore } from "@/lib/compliance/bottled-removal-core";
 import { isBottledRemovalDisposition } from "@/lib/compliance/bottled-removal";
 import { generateReport, markReportFiled } from "@/lib/compliance/generate";
+import { generateExciseReturn } from "@/lib/compliance/generate-excise";
+import { returnPeriodBounds } from "@/lib/compliance/return-cadence";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { prisma } from "@/lib/prisma";
 import { isRemovalDisposition } from "@/lib/compliance/removal-reasons";
 import { composeAddress } from "@/lib/address/format";
-import type { WineTaxClass } from "@/lib/compliance/types";
+import { asReturnCadence, type WineTaxClass } from "@/lib/compliance/types";
 
 function revalidate() {
   revalidatePath("/compliance");
@@ -61,12 +63,11 @@ export const recordBottledRemoval = adminAction(async ({ actor }, formData: Form
   revalidate();
 });
 
-/** Generate (or amend / regenerate with overrides) a DRAFT report for a period. */
+/** Generate (or amend / regenerate with overrides) a DRAFT report for a period. Routes by formType:
+ * TTB_5120_17 → the operations report (gallons); TTB_5000_24 → the wine excise return (dollars). */
 export const generateComplianceReport = adminAction(async ({ actor }, formData: FormData) => {
+  const formType = String(formData.get("formType") ?? "TTB_5120_17");
   const year = Number(formData.get("year"));
-  const monthRaw = formData.get("month");
-  const month = monthRaw != null && String(monthRaw) !== "" ? Number(monthRaw) : null;
-  const cadence = (String(formData.get("cadence") ?? "MONTHLY") as "MONTHLY" | "QUARTERLY" | "ANNUAL");
   const amendsReportId = String(formData.get("amendsReportId") ?? "") || null;
   const remarks = String(formData.get("remarks") ?? "");
   const overridesRaw = String(formData.get("overrides") ?? "");
@@ -79,10 +80,41 @@ export const generateComplianceReport = adminAction(async ({ actor }, formData: 
     }
   }
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new ActionError("Enter a valid year.");
+
+  // ── Wine excise return (TTB 5000.24) ──
+  if (formType === "TTB_5000_24") {
+    const cadence = asReturnCadence(String(formData.get("cadence") ?? "SEMIMONTHLY"));
+    const periodIndex = Number(formData.get("periodIndex") ?? 0);
+    const isEftPayer = String(formData.get("isEftPayer") ?? "") === "true";
+    if (!Number.isInteger(periodIndex) || periodIndex < 0) throw new ActionError("Pick a return period.");
+    const period = returnPeriodBounds(year, cadence, periodIndex, isEftPayer);
+    const res = await generateExciseReturn(actor.tenantId, {
+      periodStart: period.start,
+      periodEnd: period.end,
+      cadence,
+      isEftPayer,
+      amendsReportId,
+      overrides,
+      remarks,
+    });
+    revalidate();
+    return {
+      reportId: res.reportId,
+      formType,
+      netTax: res.netTax,
+      downstreamStale: res.downstreamStale,
+      priorUnfiledPeriodThisYear: res.priorUnfiledPeriodThisYear,
+    };
+  }
+
+  // ── Operations report (TTB 5120.17) ──
+  const monthRaw = formData.get("month");
+  const month = monthRaw != null && String(monthRaw) !== "" ? Number(monthRaw) : null;
+  const cadence = (String(formData.get("cadence") ?? "MONTHLY") as "MONTHLY" | "QUARTERLY" | "ANNUAL");
   const { start, end } = periodBounds(year, month, cadence);
   const res = await generateReport(actor.tenantId, { periodStart: start, periodEnd: end, cadence, amendsReportId, overrides, remarks });
   revalidate();
-  return { reportId: res.reportId, balanced: res.fold.balanced, needsAbv: res.fold.needsAbvLotIds.length, downstreamStale: res.downstreamStale };
+  return { reportId: res.reportId, formType, balanced: res.fold.balanced, needsAbv: res.fold.needsAbvLotIds.length, downstreamStale: res.downstreamStale };
 });
 
 /** Mark a DRAFT report FILED (immutable). Blocked when a lot still needs an ABV or it doesn't balance. */
@@ -130,6 +162,11 @@ export const assessReportReadiness = adminAction(async (_ctx, reportId: string) 
 export const saveComplianceProfile = adminAction(async (_ctx, formData: FormData) => {
   const cadenceRaw = String(formData.get("defaultCadence") ?? "MONTHLY");
   const defaultCadence = (["MONTHLY", "QUARTERLY", "ANNUAL"].includes(cadenceRaw) ? cadenceRaw : "MONTHLY") as "MONTHLY" | "QUARTERLY" | "ANNUAL";
+  // plan-026: the excise-return cadence (SEMIMONTHLY/QUARTERLY/ANNUAL) + EFT-payer flag, saved only
+  // when the form supplies them (the /settings form does; the /compliance profile form may not).
+  const hasReturnCadence = formData.has("defaultReturnCadence");
+  const defaultReturnCadence = asReturnCadence(String(formData.get("defaultReturnCadence") ?? "SEMIMONTHLY"));
+  const isEftPayer = String(formData.get("isEftPayer") ?? "") === "true" || formData.get("isEftPayer") === "on";
   const str = (k: string) => String(formData.get(k) ?? "").trim();
   const parts = {
     street1: str("operatedByStreet1"),
@@ -152,6 +189,8 @@ export const saveComplianceProfile = adminAction(async (_ctx, formData: FormData
     operatedByAddress: composed || null,
     operatedByPhone: str("operatedByPhone") || null,
     defaultCadence,
+    // Only overwrite the return-cadence settings when the submitting form carries them.
+    ...(hasReturnCadence ? { defaultReturnCadence, isEftPayer } : {}),
   };
   const existing = await prisma.complianceProfile.findFirst({ select: { id: true } });
   if (existing) await prisma.complianceProfile.update({ where: { id: existing.id }, data });

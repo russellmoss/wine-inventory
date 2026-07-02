@@ -1,4 +1,6 @@
 import type { ComputedSnapshot } from "./generate";
+import type { ExciseComputed } from "./excise";
+import { hasRate } from "./excise-rates";
 
 // Unit 11 — pre-file anomaly + readiness checks. Deterministic checks run first (cheap, testable, and
 // the ONLY thing that gates filing). An optional LLM pass writes a plain-English "ready / not ready"
@@ -99,6 +101,83 @@ export function deterministicAnomalies(input: DeterministicInput): AnomalyFindin
 /** Convenience: does anything BLOCK filing? (deterministic only). */
 export function hasFilingBlocker(findings: AnomalyFinding[]): boolean {
   return findings.some((f) => f.severity === "blocker");
+}
+
+// ─────────────────────────── plan-026 U9: excise-return anomalies ───────────────────────────
+
+export type ExciseDeterministicInput = {
+  snapshot: Pick<ExciseComputed, "classRows" | "grossTax" | "cbmaCredit" | "netTax" | "ladder" | "perLot">;
+  /** A prior return period THIS calendar year is still unfiled → the CBMA ladder may be wrong (C3). */
+  priorUnfiledPeriodThisYear?: boolean;
+  /** An earlier period was amended after this return was computed → regenerate to refresh (C3). */
+  downstreamStale?: boolean;
+};
+
+/**
+ * Deterministic excise-return findings. `blocker`s (also enforced in markReportFiled) prevent filing.
+ * The genuinely dangerous ones are BOTH tested and hard-gated: >24% ABV (S2), a class with no rate,
+ * negative net tax, and a worksheet that doesn't foot.
+ */
+export function deterministicExciseAnomalies(input: ExciseDeterministicInput): AnomalyFinding[] {
+  const { snapshot } = input;
+  const out: AnomalyFinding[] = [];
+
+  // S2 — a taxpaid-removed lot over 24% ABV is DISTILLED SPIRITS, not wine. Hard block.
+  const overAbv = snapshot.perLot.filter((l) => l.reason === "abv-over-24-review" || (l.abv != null && l.abv > 24));
+  if (overAbv.length > 0) {
+    out.push({
+      code: "abv-over-24",
+      severity: "blocker",
+      message: `${overAbv.map((l) => l.lotCode).join(", ")} is over 24% ABV — taxed as distilled spirits, not wine. Reclassify or remove it before filing this wine excise return.`,
+    });
+  }
+
+  // A removed gallon in a class with no defined wine rate (defensive — all six classes have a rate).
+  const noRate = snapshot.classRows.find((r) => !hasRate(r.taxClass));
+  if (noRate) {
+    out.push({ code: "class-no-rate", severity: "blocker", message: `Tax class ${noRate.taxClass} has no wine excise rate — it can't be taxed on this form.` });
+  }
+
+  // Net tax below zero: the CBMA credit exceeds the gross tax (a data or credit-tier error).
+  if (snapshot.netTax < 0) {
+    out.push({ code: "negative-tax", severity: "blocker", message: "Net tax is negative — the CBMA credit exceeds the gross wine tax. Review the removals and the credit before filing." });
+  }
+
+  // Worksheet integrity: line 10 gross must foot to the per-class gross sum, and net = gross − credit.
+  const sumGross = snapshot.classRows.reduce((a, r) => a + r.grossTax, 0);
+  if (Math.abs(sumGross - snapshot.grossTax) > 0.01) {
+    out.push({ code: "gross-mismatch", severity: "blocker", message: "The gross tax does not equal the sum of the per-class worksheet rows. Regenerate the return." });
+  }
+  if (Math.abs(snapshot.grossTax - snapshot.cbmaCredit - snapshot.netTax) > 0.01) {
+    out.push({ code: "net-mismatch", severity: "blocker", message: "Net tax ≠ gross − CBMA credit. Regenerate the return." });
+  }
+
+  // Over-claim risk: the year's removed gallons passed the 750k CBMA cap.
+  if (snapshot.ladder.over750k) {
+    out.push({
+      code: "cbma-over-750k",
+      severity: "warning",
+      message: `Over 750,000 wine gallons have been removed this calendar year — the CBMA credit is capped and any credit claimed on gallons beyond 750k must be repaid via Schedule A.`,
+    });
+  }
+
+  if (input.priorUnfiledPeriodThisYear) {
+    out.push({
+      code: "prior-period-unfiled",
+      severity: "warning",
+      message: "A return period earlier this calendar year hasn't been filed yet — your CBMA credit ladder position may be wrong. File the earlier period first, then regenerate.",
+    });
+  }
+
+  if (input.downstreamStale) {
+    out.push({
+      code: "downstream-stale",
+      severity: "info",
+      message: "An earlier period was amended after this return was generated — regenerate it to refresh the CBMA ladder.",
+    });
+  }
+
+  return out;
 }
 
 export const AI_DISCLAIMER = "AI note — not compliance advice, not reviewed by TTB. Always confirm the numbers yourself before filing.";
