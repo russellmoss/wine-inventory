@@ -15,6 +15,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:field-inputs": "tsx prisma/seed-field-inputs.ts",
+    "seed:demo-tenant": "tsx --env-file=.env scripts/seed-demo-tenant.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
     "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",

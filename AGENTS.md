@@ -41,6 +41,15 @@ Secrets live in `.env` (gitignored). Template is `.env.example`.
     becomes `DATABASE_URL` here and in Vercel. Set/rotate the app_rls password with
     `npx tsx --env-file=.env scripts/setup-app-rls-credential.ts` (owner-run; secret never committed).
 
+## Testing tenant: use "Demo Winery", never Bhutan Wine Co.
+
+All dev/QA/fake-data work runs in the **Demo Winery** sandbox tenant (`org_demo_winery`), NOT the real
+**Bhutan Wine Co.** (`org_bhutan_wine_co`) tenant. RLS keeps them isolated. Create/refresh the sandbox
+with `npm run seed:demo-tenant` (idempotent; owner login printed on run — default
+`owner@demowinery.test`). In scripts, wrap seeding/test writes in `runAsTenant("org_demo_winery", …)`.
+The in-app tenant *switcher* ("god mode", ROADMAP Phase 21a) is not built yet — until then, access Demo
+Winery by logging in as its own user. Do not generate test data in Bhutan Wine Co.
+
 ## Multi-tenancy: adding a new tenant-scoped table (Phase 12 checklist)
 
 Every domain/registry table is tenant-scoped and RLS-isolated. When you add one, ALL of these or
