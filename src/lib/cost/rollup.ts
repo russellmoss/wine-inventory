@@ -177,7 +177,7 @@ export function rollupCost(events: CostEvent[], volumes: LotVolume[]): RollupRes
   const lots = new Map<string, LotCost>();
   const allIds = new Set<string>([...work.keys(), ...volById.keys()]);
   for (const id of allIds) {
-    const w = work.get(id) ?? { components: new Map(), completeness: undefined, expensed: 0 };
+    const w: WorkLot = work.get(id) ?? { components: new Map<CostComponent, number>(), completeness: undefined, expensed: 0 };
     const volumeL = volById.get(id) ?? 0;
     const totalCost = totalOf(w);
     const zeroVol = volumeL <= VOL_EPS;

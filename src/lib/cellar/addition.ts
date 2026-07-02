@@ -11,6 +11,7 @@ import {
   type RateBasis,
 } from "@/lib/cellar/additions-math";
 import { upsertMaterialCore } from "@/lib/cellar/materials";
+import { consumeMaterialCore } from "@/lib/cost/consume";
 
 // Script-safe cores for volume-NEUTRAL material doses (Phase 3, Units 4–5). A neutral op
 // (ADDITION, FINING) is a LotOperation with NO volumetric lines — the chokepoint accepts a
@@ -145,6 +146,15 @@ async function recordNeutralDose(
       });
       ids.push(row.id);
     }
+    // Phase 8 (Unit 3): draw down stock + record MATERIAL cost for this dose, in the SAME tx. No
+    // parallel consumption path — the addition/fining op IS the consumption. Untracked/unknown-cost
+    // materials record an UNKNOWN-cost line (D14 contagion), so physical dosing is unaffected.
+    await consumeMaterialCore(tx, {
+      operationId: opId,
+      materialId: materialId!,
+      doseUnit: unit,
+      perLot: perLot.map((p) => ({ lotId: p.lotId, amount: p.computedTotal })),
+    });
     await writeAudit(tx, {
       ...actor,
       action: "STOCK_MOVEMENT",
