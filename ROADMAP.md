@@ -299,27 +299,36 @@ cost-per-bottle for a bottling that traces through at least one blend and one lo
 ---
 
 ## Phase 9 — Work orders  ⬜
-**Goal:** Plan the day's cellar work, and make **completing a task auto-create the
-ledger operation** — so logging is a side effect of doing the job, not a chore.
+**Goal:** A full **issue → execute → auto-log → approve → finalize** work-order lifecycle so
+**completing a task auto-creates the ledger operation** — logging is a side effect of doing the job,
+and the manager never re-keys what the crew already did. **One shared work-order engine serves both the
+cellar (this phase) and the vineyard (Phase 20).**
 
 **Domain requirements (durable):**
-- Create a work order with one or more **tasks** (templated: rack, add SO₂, top,
-  pull an analysis, punch-down, etc.); assign to crew; schedule with due dates;
-  surface **overdue / today / upcoming**.
-- **Execution UX is floor-first** (phone/tablet, ideally voice-assistable for simple
-  steps): a checklist the crew works through.
-- **Completion writes the corresponding §3 ledger operation** on the affected lot(s) —
-  the central tie-in. A planned rack, when checked off, *is* the rack.
+- **Lifecycle with a manager/worker role split** (ties to the Phase-5 RBAC): a **manager/foreman
+  issues** a work order (tasks + instructions + assignees + due dates); the **worker executes** it on
+  a floor-first checklist; **marking a task done writes the corresponding ledger operation(s)** —
+  every addition, rack, movement, filtration, etc. on the affected lots — as **prefilled actuals**;
+  the **manager then reviews and approves** ("yep, they did it") which **finalizes** the ops. Until
+  approval, completed ops are in a `pending-approval` state (visible, correctable, reversible).
+- Create a work order with one or more **tasks** (templated: rack, add SO₂, top, pull an analysis,
+  punch-down, etc.); schedule with due dates; surface **overdue / today / upcoming**.
+- **Work-order instructions carry the pay basis for the foreman** — **piece-rate vs hourly + the
+  rates** — sourced from the Phase-11 wage settings (WO *displays/attaches* it; Phase 11 owns the
+  wage data + payroll math, no duplication).
+- **Execution UX is floor-first** (phone/tablet, ideally voice-assistable), offline-tolerant.
 - **Recurring/templated work orders** (weekly topping, scheduled SO₂ management).
-- Reporting: scheduled vs. done, overdue, and (optionally) time tracking.
+- Reporting: scheduled vs. done, overdue, pending-approval, and (optionally) time tracking.
 
-**Exit:** create a WO to rack two tanks; a crew member completes it; the racks appear
-as real ledger operations on the lots with correct provenance.
+**Exit:** a manager issues a WO to rack two tanks; a crew member checks it off; the racks appear as
+**pending-approval** ledger ops with correct provenance; the manager approves and they finalize — the
+manager typed none of the rack details.
 
-**Implementation: deferred to `/plan`.** Decisions to resolve then: is a work order a
-separate planning entity, or are operations given a "planned → executed" state? how do
-templates instantiate? offline/poor-signal behavior on the cellar floor.
-**Honors:** D2, D6.
+**Implementation: deferred to `/plan`.** Decisions to resolve then: is a work order a separate planning
+entity, or are operations given a `planned → executed → approved` state? how does approval interact with
+the plan-024 reversal system (un-approve = reverse)? how do templates instantiate? offline/poor-signal
+behavior on the floor.
+**Honors:** D2, D6, D12 (prefilled-actuals, not blind logs); shared engine with Phase 20 (vineyard).
 
 ---
 
@@ -785,6 +794,52 @@ from the dropdown. **Fast-follow exit:** logs a Brix reading from a widget witho
 D14 (auditable), D16 (tenant scoping); reuses the assistant infra + Phase 8/14 read models.
 Note: Phase 18's floor plan and saved searches become widget types here — the dashboard is the
 composition layer.
+
+## Phase 20 — Vineyard operations, equipment & farming cost  ⬜  *(vineyard side of work orders)*
+**Goal:** Bring the **issue → execute → log → approve → finalize** work-order lifecycle (the Phase-9
+engine) to the **vineyard**, and capture the **farming costs** — labor, equipment/machine hours, fuel,
+and consumables — so they roll up **per block** and feed the **fruit cost** that flows into wine cost
+(Phase 8 CRUSH) and the fruit **Contracts** follow-on. This is how "what did it cost to grow this
+fruit" becomes real.
+**Domain requirements (durable):**
+- **Vineyard work orders on the shared Phase-9 engine:** manager issues → crew executes → completion
+  logs a **vineyard-block activity record** (the vineyard analogue of a cellar ledger op) → manager
+  approves → finalizes. Same lifecycle, same role split, same auto-log-not-rekey principle.
+- **Operation taxonomy (seeded, user-extensible — wineries add their own):** spraying, hand/machine
+  leafing, hand/machine shoot thinning, hand fruit thinning, hedging, hand/machine suckering, herbicide
+  application, mechanized weeding, wire lifting, hand shoot positioning, hand planting, irrigation
+  application, fertigation application, fertilizer spreading, mowing, flail mowing, trellis installation
+  (end posts / line posts / fruiting wire / catch wires), fence installation, land preparation (deep
+  ripping, disking, power tillering), pruning (spur and cane). **Add-your-own types** for any operation.
+- **Pay basis on the WO for the foreman** — **piece-rate vs hourly + rates** — from the Phase-11 wage
+  settings (display/attach; Phase 11 owns the math).
+- **Equipment registry:** tractors, sprayers, quads, trucks, implements. A WO specifies **"this tractor
+  + this sprayer + this implement,"** and executing/finalizing the WO **accrues machine-hours per unit**
+  (running hour meter per piece of equipment).
+- **Fuel tracking (both directions):** (1) **fill-ups** — every time a unit is fueled, record the unit +
+  fuel type (diesel/petrol) + volume → per-unit fuel usage + cost; (2) **fuel deliveries** — record
+  volume received + cost → an on-site fuel **inventory + weighted-avg cost** that fill-ups draw down.
+  (Reuse the Phase-8 `SupplyLot` receive-with-cost + draw-down pattern.)
+- **Vineyard consumables:** c-clips, grow tubes, stakes/pencil rods, gloves, pruners, loppers, etc. —
+  receive-with-cost + draw-down, same Phase-8 supply pattern, so their cost lands on the block/operation.
+- **Per-block AND cross-block entry:** report costs/activities **block by block**, but make it one action
+  to **apply a work order across many blocks** ("did this to blocks 1–10, all the same") — enter once,
+  attribute to each block, no per-block re-keying.
+- **Farming cost roll-up:** labor + equipment + fuel + consumables on an operation → **per-block cost**
+  → the block's contribution to **fruit cost** at harvest/CRUSH (Phase 8) and reconciled against grower
+  **Contracts** (the fruit-sourcing follow-on).
+**Exit:** a manager issues a "spray blocks 1–10" WO naming a tractor + sprayer + the chemical; the crew
+completes it; machine-hours accrue on that tractor, fuel + chemical + labor cost attribute across all ten
+blocks from one entry; the manager approves; each block shows its per-acre spray cost.
+**Runbook notes for `/plan`:**
+- *Reuse:* the Phase-9 WO engine; Phase-11 labor/pay; the Phase-8 `SupplyLot` cost pattern (fuel +
+  consumables); the existing vineyard/block model + map polygons; feeds Phase-8 fruit cost + Contracts.
+- *Decisions to resolve:* the vineyard-activity record model (mirror the ledger, or a lighter block-op
+  log?); machine-hours from WO duration vs a manual meter reading; spray records may carry **regulatory
+  value** (chemical/rate/REI/PHI/applicator → pesticide-use reporting, e.g. CA PUR) — decide if that's in
+  scope or a follow-on; per-acre vs per-vine vs per-block cost normalization.
+**Implementation: deferred to `/plan`.**  **Honors:** D2/D6 (append-only, correctable), D12
+(auto-log-not-rekey), D16 (tenant scoping); built on Phases 9 (engine), 11 (labor), 8 (cost/supply).
 
 ## In-flight — Universal timeline undo (the "correction wedge")  🔄
 `docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` (building now, tenant-aware).
