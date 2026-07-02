@@ -1,0 +1,41 @@
+{
+  "source": "TTB-5000.24-fillable.pdf",
+  "generatedNote": "committed artifact — do not hand-edit; regenerate via scripts/calibrate-ttb-5000-24-fields.ts",
+  "fields": {
+    "wineTaxLine10": "Tax.10",
+    "totalTaxLiability17": "Tax.17",
+    "adjIncreasing18": "Tax.18",
+    "grossDue19": "Tax.19",
+    "adjDecreasing20": "Tax.20",
+    "amountToPay21": "Tax.21",
+    "paymentAmount": "Payment_Amount",
+    "serialNumber": "Serial_Number",
+    "employerId": "Employer_ID",
+    "plantNo": "Plant_No",
+    "taxpayerAddress": "Taxpayer_Address",
+    "dateOnForm": "Date_On_Form",
+    "beginning": "Beginning",
+    "ending": "Ending",
+    "schedBExplanation": "Item30.a",
+    "schedBTaxCredit": "Item30.b",
+    "schedBSubtotalTax": "Item33.b",
+    "schedBTotal34": "Item34"
+  },
+  "radio": {
+    "returnCovers": "Return_Covers",
+    "returnCoversPeriodOption": "PERIOD"
+  },
+  "info": {
+    "employerId": "info.Employer_ID",
+    "plantNo": "info.Plant_No",
+    "serialNumber": "info.Serial_Number",
+    "dateOnForm": "info.Date_On_Form",
+    "title": "info.Title"
+  },
+  "reqClear": [
+    "req.Beginning",
+    "req.Ending",
+    "req.Other",
+    "req.Product_Removal_Date"
+  ]
+}
