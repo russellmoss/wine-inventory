@@ -79,7 +79,24 @@ Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
 
 **Then — intelligence & presentation layer:**
 7. **10 Assistant coverage & MCP** — most valuable once there are many surfaces to read/act on.
+   - ↳ **The NL/voice work-order wedge** (strategy §4.1 — the single highest-leverage feature) is the
+     Phase-9 engine + Phase-10 assistant, co-designed: parse an utterance → resolve vessels/quantities →
+     **compliance-validate the proposal (Phase 14)** → present a **diff for one-tap approval**. Lead the
+     demo with it; it's the propose→approve pattern (D10) applied to authoring work orders.
 8. **19 AI-native dashboards** — rides the Phase-10 assistant infra; needs rich data (8/14/20). *(19a deterministic → 19b AI builder.)*
+9. **25 Ambient capture** (photo/OCR → proposed entries) · **26 Scenario sandbox & blend solver** ·
+   **27 Institutional memory** — the AI-native **differentiation** layer (strategy §4). All ride the
+   Phase-10 assistant infra + rich data (8/14/20) and obey D10 (AI proposes, human commits). **25 is a
+   wedge that can pull-forward** once the core capture surfaces exist; 26 needs cost (8) + tax class (14);
+   27 needs longitudinal data + Phase 10.
+
+**Cross-cutting delivery/architecture table stakes (interleave, don't defer to the end):**
+- **28 Offline-first mobile & sync** — non-negotiable, hard engineering; land the real sync layer as
+  heavy field use scales (builds on the Phase-6 outbox). **H8 eval harness is do-now** with the first
+  AI-native surface.
+- **29 Sensor/telemetry** (TankNET-class) — rides the integration phases (with/after 16).
+- **30 Harvest operations depth** (maturity sampling, pick scheduling, crush-pad capacity, dip-chart
+  gauging) — slot alongside the vineyard/Contracts work (20) so it's ready before a harvest.
 
 **Then — channel & commercialization (trigger-based, late):**
 9. **16 DTC & sales integration** (Commerce7/WineDirect).
@@ -380,6 +397,15 @@ cellar (this phase) and the vineyard (Phase 20).**
   instance records the version it used (history isn't rewritten by a later template edit). Same
   philosophy as the Phase-19 dashboard registry. Also supports **recurring** WOs (weekly topping, SO₂).
 - Reporting: scheduled vs. done, overdue, pending-approval, and (optionally) time tracking.
+- **NL/voice work-order authoring is the flagship AI-native wedge (co-designed with Phase 10, strategy
+  §4.1):** a winemaker says/types *"rack T12 to T15 through the crossflow, add 30 ppm SO₂ after, top the
+  2023 Grenache barrels from keg 4, pull juice panels on everything that finished primary"* → the system
+  parses it into structured tasks, **resolves vessel IDs + computes addition totals from current
+  volumes**, **compliance-validates on the proposal** (flags a tax-class-crossing move (Phase 14),
+  insufficient keg volume), and presents a **diff for one-tap approval**. Voice matters most here (wet
+  hands, gloves, 3 a.m. harvest). The parser is **gated by the D26/H8 eval harness**; the write obeys
+  D10 (draft → confirm). This is the propose→approve pattern applied to *authoring* the work order, not
+  just executing it — the part incumbents find hardest to copy (rules engine + language layer co-designed).
 
 **Exit:** a manager issues a WO to rack two tanks; a crew member checks it off; the racks appear as
 **pending-approval** ledger ops with correct provenance; the manager approves and they finalize — the
@@ -672,6 +698,11 @@ Reference form (real, Sept-2025 rev): `docs/TTB 5120.17.pdf`.
 - **State + DTC compliance** (the real differentiator beyond the federal 5120.17): integrate
   **ShipCompliant (Sovos) / Avalara** or generate state reports; the state-by-state DTC matrix
   over time.
+- **FDA / FSMA-204 traceability & recall (table stakes):** the append-only lineage DAG already holds the
+  facts; this makes them a **deliverable** — a lot-level **recall/traceability report** that, given any
+  lot or additive lot number, reconstructs every affected downstream lot/SKU + the source evidence
+  (additive records, receipts). Ties to the audit-defense packet; cheap given the ledger, disqualifying
+  if absent.
 - **AI/anomaly layer** — flag likely reporting errors before filing ("this month's losses are 5×
   your usual"), "am I compliant / ready to file" queries. **Human-review-before-file** always;
   auto-generate the numbers, never auto-submit unreviewed.
@@ -1129,6 +1160,161 @@ view of the main app vs a distinct surface; whether an AP proprietor is a tenant
 
 ---
 
+## AI-native differentiation layer (Phases 25–27) — "the ledger writes itself"
+
+> Added 2026-07-02 from `ai-native-winery-erp-strategy.md` §4. The production spine (1–8) and the
+> compliance/accounting ERP layer (13–16) are **table stakes + fast-followable**; these three phases
+> are the strategy's actual defensibility thesis — *invert the data-entry relationship so the system
+> captures reality and the human approves.* They are **additive to the append-only ledger**, not a
+> new data model, and all obey D10 (AI proposes, human commits). Sequencing: they ride the assistant
+> infra (Phase 10) and rich data (8/14/20); **Phase 25 (ambient capture) is a wedge that can
+> pull-forward** once the core capture surfaces exist.
+
+## Phase 25 — Ambient capture (vision/OCR → proposed ledger entries)  ⬜  *(differentiator — the "kills the binder" wedge)*
+**Goal:** Make the cellar the input device. A photo or forwarded email of a physical artifact becomes a
+**proposed** ledger entry with the source document attached as evidence, queued for one-tap approval —
+never a direct write (**D22**, extends the D10 propose→approve pattern to the vision modality).
+**Domain requirements (durable):**
+- **Capture → proposal, always evidence-backed:** photograph a **weigh tag → fruit-receipt proposal**;
+  a **lab whiteboard / spectrophotometer readout → analysis-reading proposal**; an **additive/dry-goods
+  invoice → supply-receipt proposal with lot numbers + cost** (feeds Phase 8); a **bottling BOL email →
+  case-goods proposal**; **chalk marks / a dip reading on a tank → volume-update proposal**. Every
+  proposal stores the **image/document as the attached source** (the photo IS the TTB/FDA source record).
+- **Human-in-the-loop by construction:** the extraction populates a **diff against current state** for
+  review/edit/approve; low-risk observations may use the D10 undo-toast path, lineage-mutating captures
+  route to UI confirmation. A model misread can never reach the ledger unapproved.
+- **Confidence + provenance:** each extracted field carries a confidence; `captureMethod = vision` +
+  observed/entered provenance (D14). Ambiguities are flagged for winemaker confirmation, not guessed.
+- **Reuse the existing image pipeline** (Vercel Blob + client downscale from the field-notes surface) and
+  the Phase-8 receive-with-cost + draw-down models as the write targets.
+**Exit:** photograph a weigh tag and a supplier invoice; each produces an editable, evidence-attached
+proposed receipt; approving it writes the correct ledger op with the image retained as source.
+**Implementation: deferred to `/plan`.** Decisions to resolve then: vision model + structured-extraction
+approach; per-artifact schema + confidence thresholds; email-ingestion channel; how proposals queue and
+expire. **Honors:** D10, D22, D14, D16; **gated by the D26/H8 eval harness** (weigh-tag OCR is an eval target).
+
+## Phase 26 — Scenario sandbox & goal-seeking blend solver  ⬜  *(differentiator — the oversupply-era question)*
+**Goal:** Fork cellar state to plan blend/rack/bottling programs safely, see their consequences, then
+**promote a plan to real work orders** — and layer a **goal-seeking blend solver** on top. Nothing
+touches production until explicitly promoted (**D23**).
+**Domain requirements (durable):**
+- **Fork-and-simulate:** fork the current ledger projection into a scratch scenario; model a sequence of
+  blends/rackings/bottlings and see the resulting **composition (fractional parentage), tax-class
+  movement (Phase 14), COGS/case (Phase 8), and vessel utilization** — without writing to the real ledger.
+  This is exactly what the append-only ledger makes cheap and a mutable-CRUD model cannot.
+- **Promote to reality:** a scenario becomes a set of **proposed operations / a work order** (Phase 9)
+  the winemaker commits; the simulation never mutated production.
+- **Goal-seeking solver:** *"Build a ~$18-COGS GSM around the 2024 Grenache, keep it under 15% ABV, use
+  the distressed Mourvèdre first, minimize barrel count freed before harvest."* The solver **proposes
+  candidate blends from real inventory** with full constraint accounting (composition, ABV/tax class,
+  cost, volume available). Output is a **proposal** (D10), never an auto-write.
+- **This is what answers "blend it, bottle it, sell it bulk, or declassify it"** quantitatively — the
+  strategic question of an oversupply market, which no incumbent tool answers.
+- **Relation to bench trials (Phase 5):** bench trials are lab-scale tasting trials on one bench; this is
+  full cellar-state simulation with cost/compliance/utilization math. Reuse the trial-promotion pattern.
+**Exit:** fork the cellar, simulate a 3-lot blend + a racking program, see the child composition + tax
+class + COGS/case + freed vessels, then promote it to a work order; separately, ask the solver for a
+constrained blend and get ranked candidate recipes from actual inventory.
+**Implementation: deferred to `/plan`.** Decisions to resolve then: how a scenario forks the projection
+(copy-on-write scratch vs replay); solver approach (constraint/LP vs guided search); how promotion emits
+work orders; scenario persistence/sharing. **Honors:** D2 (ledger is the substrate), D10, D23; reuses
+Phase 8 cost + Phase 14 tax-class + Phase 9 work orders.
+
+## Phase 27 — Institutional memory (longitudinal retrieval + reasoning)  ⬜  *(the retention moat — worthless year 1, priceless year 5)*
+**Goal:** Let the winery ask questions of its **own accumulated history** and get cited, reasoned answers —
+turning years of ledger + analyses + notes + outcomes into an unremovable knowledge asset. **Read-only,
+cited, tenant-scoped, never a write path** (**D24**).
+**Domain requirements (durable):**
+- **Retrieval + reasoning over the tenant's OWN longitudinal data:** "How did we handle the stuck ferment
+  on this block in 2022?" · "Show me every vintage where we picked this block above 25 Brix and the
+  resulting TA adjustments." · "Draft the harvest plan for Block 7 from the last four vintages, adjusted
+  for this year's maturity curve." Answers **cite the underlying records** (ops, readings, notes).
+- **Strictly read-only + tenant-scoped:** obeys D16 isolation and the D10 no-AI-writes guardrail; it never
+  proposes a write here (that stays the assistant's job under its risk gates). Cross-tenant retrieval is
+  impossible by construction (RLS + tenant-scoped index).
+- **Rides the Phase-10 assistant infra** (tool-use loop + read layer) and the accumulated data from
+  8/14/20 — it is a retrieval/reasoning capability, not a new capture surface.
+**Exit:** ask a longitudinal question spanning multiple past vintages and get a correct, **cited** answer
+drawn only from this tenant's records; a comparable question from another tenant cannot surface this
+tenant's data.
+**Implementation: deferred to `/plan`.** Decisions to resolve then: retrieval architecture (embeddings +
+tenant-scoped vector index vs structured query synthesis vs hybrid); citation/grounding model; freshness/
+indexing cadence; how it composes with the Phase-10 read tools. **Honors:** D10, D16, D24; built on Phase 10.
+
+---
+
+## Delivery & integration table stakes (Phases 28–30) — the price of admission we hadn't slotted
+
+> Added 2026-07-02 from `ai-native-winery-erp-strategy.md` §2/§5. These are **mandatory, not
+> differentiating** — a winemaker disqualifies you in the first demo if they're missing — but they were
+> only implied (cross-cutting notes / footnotes) in earlier revisions. Promoted to real phases so they
+> get a `/plan` and an owner.
+
+## Phase 28 — Offline-first mobile & sync  ⬜  *(table stakes — non-negotiable, hard engineering)*
+**Goal:** Floor and vineyard capture that **works at zero connectivity** and reconciles cleanly — the
+real sync layer, not the Phase-6 best-effort outbox. Cellars are Faraday cages, vineyards are dead zones,
+and ~60% of the year's data is created in an 8-week harvest, often at 2 a.m. (**D25**).
+**Domain requirements (durable):**
+- **Zero-connectivity capture** for every heavy floor/field surface (Round grid, crush-pad, additions,
+  work-order execution, timeclock punches) — a Brix reading or a clock-in **must never fail** for lack
+  of signal.
+- **Operation-log / CRDT sync with deterministic conflict resolution** — not last-write-wins; queued ops
+  reconcile against the SERIALIZABLE ledger with the same idempotency (`commandId`) discipline already
+  used, plus a defined merge policy for concurrent edits and a visible sync/exception state.
+- **iOS AND Android** capture. Decide the delivery vehicle: hardened PWA vs native/Capacitor wrapper vs
+  App-Clip path (also unblocks the Phase-11 Web-NFC-on-iOS gap).
+- **Builds on** the Phase-6 Dexie outbox (`commandId`, duplicate-as-success) — this phase adds the
+  conflict-resolution + full-mirror + cross-surface sync the outbox deliberately deferred.
+**Exit:** capture a full Round, an addition, and a work-order completion with the device in airplane mode;
+reconnect; everything syncs with correct provenance, duplicates collapse, and a genuine concurrent-edit
+conflict resolves deterministically with a visible record — no lost or double-counted ops.
+**Implementation: deferred to `/plan`.** Decisions to resolve then: CRDT vs op-log-with-merge; the
+conflict-resolution policy per op family; PWA vs native shell (iOS constraints); how offline writes carry
+tenant context (D17) and pass RLS on sync. **Honors:** D14 (SERIALIZABLE + provenance), D17 (tenant on
+sync), D25; built on Phase 6.
+
+## Phase 29 — Sensor & telemetry integration (TankNET-class)  ⬜  *(table stakes — fermentation monitoring)*
+**Goal:** Ingest tank/cellar hardware telemetry (TankNET, VinWizard-class) as **auto-logged low-risk
+observations** (temp, and where available Brix/density) under the D10 sensor gate — closing the
+fermentation-monitoring table stake.
+**Domain requirements (durable):**
+- **Sensor readings as low-risk auto-logged observations (D10):** streamed temp/density map to the same
+  analysis/ferment readings a human would enter, with `captureMethod = sensor` provenance (D14) and the
+  ~5s undo affordance; they **never** write lineage-mutating ops.
+- **Event-driven inbound integration (D20):** an adapter maps each hardware vendor's feed to our reading
+  model; reuse the one tool-contract registry so a sensor reading is the same typed observation as a
+  manual or voice one.
+- **Feeds** the ferment curve (Phase 6), the floor-plan live overlay (Phase 18), and anomaly checks.
+**Exit:** a tank probe's temperature stream appears on that lot's ferment curve automatically, tagged
+sensor-sourced, without a human keying it — and cannot silently alter volumes or lineage.
+**Implementation: deferred to `/plan`.** Decisions to resolve then: which vendor feed(s) first; push vs
+poll ingestion; dedup/rate-limiting; mapping sensor identity → vessel/lot. **Honors:** D10 (sensor gate),
+D14, D20 (event-driven + one registry); see `docs/api-strategy.md` (hardware integration row).
+
+## Phase 30 — Harvest operations depth  ⬜  *(table stakes — the 8-week stress test)*
+**Goal:** Round out harvest — the period when 60% of the year's data is created — with the planning +
+measurement pieces the ledger doesn't yet carry: **maturity sampling & trend tracking, pick scheduling,
+crush-pad capacity planning, and tank dip-chart gauging.** (Weigh-tag intake capture is Phase 25;
+grower contracts are the Contracts follow-on; crush/press yield is Phase 6.)
+**Domain requirements (durable):**
+- **Maturity sampling & trend tracking:** pre-harvest Brix/pH/TA samples per block over time (reuse the
+  vineyard Brix charting + Phase-4 analysis model) → a **ripeness curve** that informs pick timing.
+- **Pick scheduling:** plan which blocks pick when, against maturity + crush-pad capacity + labor
+  (Phase 11) + equipment (Phase 20); surface a harvest calendar.
+- **Crush-pad capacity planning:** model daily intake capacity (tonnage, press/tank availability) so the
+  pick schedule doesn't overrun the pad — the harvest bottleneck.
+- **Tank dip-chart / calculated gauging:** per-vessel dip chart so a **dip/height reading yields a
+  volume** (a first-class capture path, incl. the Phase-25 photo-a-dip proposal); improves volume-
+  reconciliation accuracy (a known incumbent sore spot).
+**Exit:** track a block's ripeness curve, schedule its pick against crush-pad capacity, and read a tank's
+volume from a dip measurement via its dip chart.
+**Implementation: deferred to `/plan`.** Decisions to resolve then: dip-chart data model (per-vessel
+calibration table vs geometry formula); how pick scheduling composes with Phase-20 vineyard WOs and
+Phase-11 labor; capacity-planning granularity. **Honors:** D8 (measured volumes), D12 (vessel-first),
+D14, D16; reuses Phase 4 analysis + Phase 6 crush/press + the vineyard block/map model.
+
+---
+
 ## Universal timeline undo (the "correction wedge")  ✅ shipped
 `docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` — 024a + 024b shipped + verified
 (`verify:reverse` 31, `verify:reverse-transform` 37). Tenant-aware.
@@ -1181,11 +1367,15 @@ auditable event — an advantage mutable-row incumbents can't match. Lead with i
 | **H5** | **Crypto-shredding + PII-out-of-events** — personal data in a mutable store referenced by id; erasure = drop the key | D19 | **User-account PII: design in NOW. DTC-customer PII: before Phase 16** | ⬜ |
 | **H6** | **One tool-contract registry** — UI actions, assistant tools, MCP tools, dashboard metric catalog are all projections of one typed registry with risk-gating baked in | D20 | **Establish before Phase 10 (MCP) & 19 (AI dashboards); refactor assistant tools toward it opportunistically now** | ⬜ |
 | **H7** | **Event-driven outbound integrations + open public/partner API + webhooks** | D20 | **Tier-1 adapters per their phases (15/16/…); the public API + webhooks land with Phase 10/MCP** | ⬜ |
+| **H8** | **Eval harness for the probabilistic shell** — golden datasets + regression evals gating NL/voice work-order parsing, document/weigh-tag OCR (Phase 25), and blend-solving (Phase 26) before they're customer-facing; CI runs them and blocks on regression | D26 | **Do-now / with the first AI-native write surface** — cheap to seed early, and domain-correct cellar-language eval data is itself a moat | ⬜ |
 
 **Sequencing summary (do-now → later):** H1 + H2 are **immediate** (cheap, and both guard catastrophic
 correctness/leak failures before a second tenant exists). H4 + H6 are **"do while single-tenant"** —
 they cost 10× more once there are many tenants and live event streams. H3 rides **Phase 8**, H5 rides
 **Phase 16** (with user-PII designed in now), and H7 rides the **Phase 10/MCP + integration phases**.
+**H8 (eval harness) is do-now** — seed it with the first AI-native write surface (NL/voice WO or Phase-25
+ambient capture); the golden cellar-language datasets are cheap to start and expensive for anyone without
+wine fluency to replicate.
 None of this reorders the feature phases; it interleaves the load-bearing invariants so we don't ship a
 feature onto a foundation that can't carry it. See `docs/api-strategy.md` for the API/MCP/integration
 architecture these depend on.
