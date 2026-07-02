@@ -2105,6 +2105,58 @@ model CostVarianceEvent {
   @@map("cost_variance_event")
 }
 
+// Phase 8b (Unit 14, D18) — the per-tenant (component, tax-class) → debit/credit account map. A null
+// taxClass is the default row for that component; an exact tax-class match wins over it. This is the ONLY
+// tenant-specific knob Phase 15 needs to turn cost export events into postable journal lines.
+model AccountMapping {
+  tenantId      String        @default("")
+  id            String        @id @default(cuid())
+  component     CostComponent
+  taxClass      String? // null = default for this component; a specific class overrides
+  debitAccount  String
+  creditAccount String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([tenantId, component, taxClass])
+  @@index([tenantId])
+  @@map("account_mapping")
+}
+
+// Phase 8b (Unit 14, D18) — an immutable, idempotent, reversible accounting export LINE. One per
+// capitalized component of a COGS snapshot (or variance event). `postingKey` is unique per tenant so a
+// re-emit is a no-op; `reversalOfExportEventId` links a negated reversal line back to its original.
+// Phase 15 posts these as-is (debit/credit + amount); `postedAt` + `externalSystemId` are stamped when it
+// does. Incomplete-basis sources are never emitted (D14). Reading these IS the per-SKU/per-run export view.
+model CostExportEvent {
+  tenantId               String                @default("")
+  id                     String                @id @default(cuid())
+  postingKey             String // per-line idempotency (source postingKey : component [: rev])
+  sourceType             String // SNAPSHOT | VARIANCE
+  sourceSnapshotId       String?
+  sourceVarianceEventId  String?
+  reversalOfExportEventId String?
+  runId                  String?
+  skuId                  String?
+  taxClass               String?
+  component              CostComponent
+  amount                 Decimal               @db.Decimal(18, 8)
+  debitAccount           String
+  creditAccount          String
+  currency               String                @default("USD")
+  basisCompleteness      CostBasisCompleteness @default(KNOWN)
+  policyVersion          Int                   @default(1)
+  postedAt               DateTime?
+  externalSystemId       String?
+  createdAt              DateTime              @default(now())
+
+  @@unique([tenantId, postingKey]) // idempotent re-emit
+  @@index([tenantId])
+  @@index([tenantId, skuId, runId])
+  @@index([tenantId, sourceSnapshotId])
+  @@map("cost_export_event")
+}
+
 // ───────────────────────── plan-027: compliance filing-deadline reminders ─────────────────────────
 // Two tenant-scoped, RLS-isolated tables (Phase-12 checklist). Deadlines themselves are DERIVED (a pure
 // function of cadence + filed-status), never stored; the only persisted state is the per-user opt-in +
