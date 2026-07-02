@@ -24,6 +24,8 @@ import { transitionStateAction } from "@/lib/ferment/actions";
 import { AnalyteTrends, type TrendReading } from "@/components/chemistry/AnalyteTrends";
 import { CompositionRollup } from "@/components/lot/CompositionRollup";
 import { LineageTree } from "@/components/lot/LineageTree";
+import { CostPanel } from "@/components/cost/CostPanel";
+import type { LotCostView } from "@/lib/cost/data";
 
 type Tone = React.ComponentProps<typeof Badge>["tone"];
 
@@ -628,7 +630,7 @@ function ChemistrySection({ events }: { events: TimelineItem[] }) {
   );
 }
 
-export function LotDetailClient({ lot }: { lot: LotDetail }) {
+export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostView }) {
   const origin = [lot.varietyName, lot.vineyardName, lot.vintageYear != null ? String(lot.vintageYear) : null].filter(
     (x): x is string => !!x,
   );
@@ -740,6 +742,9 @@ export function LotDetailClient({ lot }: { lot: LotDetail }) {
           </Card>
         </div>
       ) : null}
+
+      {/* Phase 8 (Unit 15): decomposed cost-per-litre trust panel + drill-down. */}
+      {cost ? <CostPanel cost={cost} /> : null}
 
       {/* Chemistry: trends + derived molecular SO₂ */}
       <ChemistrySection events={lot.events} />
