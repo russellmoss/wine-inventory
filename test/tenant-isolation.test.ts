@@ -25,6 +25,9 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     });
 
   beforeAll(async () => {
+    // Tenant A already exists in a real DB; on a fresh DB (CI) it must be created so the FK-bound
+    // fixtures below (tenantId = A) can insert. Idempotent — a no-op update against the real tenant.
+    await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Bhutan Wine Co", slug: A } });
     await owner.organization.upsert({ where: { id: B }, update: {}, create: { id: B, name: "Iso Vitest B", slug: B } });
     const now = new Date();
     await owner.lot.upsert({ where: { id: "isov_a" }, update: {}, create: { id: "isov_a", code: "ISOV-A", tenantId: A, updatedAt: now } });

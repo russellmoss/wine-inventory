@@ -55,6 +55,9 @@ async function main() {
   check("app connects as a NOBYPASSRLS, non-superuser role", !!attrs[0] && !attrs[0].rolbypassrls && !attrs[0].rolsuper, `current_user=${attrs[0]?.current_user}`);
 
   // ── Setup (owner, bypasses RLS): tenant B + one lot per tenant. ──
+  // Tenant A exists in a real DB; on a fresh DB (CI) create it so the FK-bound fixtures can insert.
+  // Idempotent — a no-op update against the real tenant.
+  await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Bhutan Wine Co", slug: A } });
   await owner.organization.upsert({ where: { id: B }, update: {}, create: { id: B, name: "Isolation Test B", slug: B } });
   const now = new Date();
   await owner.lot.upsert({ where: { id: "iso_lot_a" }, update: {}, create: { id: "iso_lot_a", code: "ISO-A", tenantId: A, updatedAt: now } });

@@ -24,3 +24,41 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run verify:raw-sql
       - run: npx vitest run
+
+  # Tenant-isolation proof against a real Postgres, run AS the NOBYPASSRLS app_rls role — the live RLS
+  # check the local dev loop can't run offline. Gated suite (TENANT_ISOLATION_DB=1) incl. the plan-029
+  # raw-SQL cases. Migrations run as the superuser owner; app_rls gets a password post-migrate.
+  tenant-isolation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wine_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wine_ci
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/wine_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - name: Give app_rls a password (set out-of-band in prod; here for CI auth)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "ALTER ROLE app_rls WITH LOGIN PASSWORD 'app_rls_ci_pw';"
+      - name: Tenant-isolation suite (as app_rls)
+        env:
+          TENANT_ISOLATION_DB: "1"
+          DATABASE_URL_APP: postgresql://app_rls:app_rls_ci_pw@localhost:5432/wine_ci
+          DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/wine_ci
+        run: npx vitest run test/tenant-isolation.test.ts
