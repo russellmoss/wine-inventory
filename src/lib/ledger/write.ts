@@ -12,6 +12,7 @@ import {
 } from "@/lib/ledger/math";
 import { FUNCTIONAL_ZERO_L, type CaptureMethod, type OperationType } from "@/lib/ledger/vocabulary";
 import { foldBottledLot, resolveBucket, assertCountVolumeConsistent } from "@/lib/sparkling/projection";
+import { foldBarrelFills, type BarrelAffected } from "@/lib/cost/barrel-fold";
 import type { SparklingMethod, BottleStage } from "@prisma/client";
 
 // The single transactional chokepoint for every bulk-wine operation (Phase 1 spine).
@@ -214,6 +215,7 @@ export async function writeLotOperation(
     input.lines.filter((l) => l.vesselId).map((l) => balanceKey(l.vesselId as string, l.lotId)),
   );
 
+  const barrelAffected: BarrelAffected[] = [];
   for (const key of affectedKeys) {
     const target = nextByKey.get(key);
     const existing = currentByKey.get(key);
@@ -226,7 +228,25 @@ export async function writeLotOperation(
         data: { tenantId, vesselId: target.vesselId, lotId: target.lotId, volumeL: target.volumeL },
       });
     }
+    // Phase 8b (Unit 8): capture the before/after for the barrel-fill fold below (vessel-bearing keys).
+    if (target || existing) {
+      barrelAffected.push({
+        vesselId: (target?.vesselId ?? existing?.vesselId) as string,
+        lotId: (target?.lotId ?? existing?.lotId) as string,
+        beforeL: existing ? num(existing.volumeL) : 0,
+        afterL: target ? target.volumeL : 0,
+      });
+    }
   }
+
+  // Phase 8b (Unit 8, D7): the barrel-fill fold — the cost domain's fourth deterministic projection at
+  // the chokepoint. NO-OP unless an affected vessel is a barrel with a BarrelAsset. Opens a fill when
+  // wine enters an empty barrel; closes it + materializes an immutable BARREL CostLine when wine leaves.
+  await foldBarrelFills(tx, {
+    affected: barrelAffected,
+    opId: op.id,
+    observedAt: input.observedAt ?? new Date(),
+  });
 
   // Phase 7 (K2): fold the BottledLotState projection from the BOTTLE_STORAGE legs — the SECOND
   // deterministic projection, materialized inside the same chokepoint (D2/D14). Additive: it runs

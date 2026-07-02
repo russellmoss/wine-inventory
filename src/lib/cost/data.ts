@@ -2,6 +2,7 @@ import type { CostComponent, LotOwnership, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { rollupCost, round8, type CostEvent, type Completeness, type LotCost, type LotVolume } from "@/lib/cost/rollup";
 import { isComponentCapitalized, COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
+import { accruedBarrelCost, daysBetween } from "@/lib/cost/barrel";
 
 // A read-capable client — either the global extended client or an interactive tx. Bottling passes its
 // tx so the snapshot's liquid cost is read from the SAME transaction (pre-BOTTLE volumes), consistent.
@@ -72,8 +73,9 @@ export type LotCostResult = LotCost & {
  * non-capitalized lines are recorded but excluded here (D5/Unit 9). Reading is the recompute — this
  * IS the authority; the cache (cost/cache.ts) is a materialization of exactly this.
  */
-export async function computeLotCost(rootId: string, dbArg?: CostDb): Promise<LotCostResult> {
+export async function computeLotCost(rootId: string, dbArg?: CostDb, asOf?: Date): Promise<LotCostResult> {
   const db = asDb(dbArg);
+  const asOfMs = (asOf ?? new Date()).getTime();
   const [lotIds, settings] = await Promise.all([loadAncestryLotIds(rootId, db), readCostSettings(db)]);
 
   const [costLines, transfers, vesselLots, bottled, ownerRows] = await Promise.all([
@@ -89,6 +91,15 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb): Promise<Lo
     db.bottledLotState.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
     db.lot.findMany({ where: { id: { in: lotIds } }, select: { id: true, ownership: true } }),
   ]);
+
+  // Phase 8b (Unit 8, D7): accrue-to-date barrel cost for wine STILL in a barrel. A closed fill already
+  // materialized an immutable BARREL CostLine (picked up above); an OPEN fill has none yet, so derive a
+  // DIRECT BARREL event for the cost accrued so far (days from fill start to `asOf`). This is the D4
+  // recompute-is-authority read side — the cost accrues as the wine ages, not just at barrel exit.
+  const openFills = await db.barrelFill.findMany({
+    where: { lotId: { in: lotIds }, endedAt: null, materializedCostLineId: null },
+    select: { lotId: true, openOpId: true, startedAt: true, volumeL: true, capacityL: true, fillDepreciation: true },
+  });
 
   // Phase 8 U16 (D19): client-owned (custom-crush) lots don't capitalize to estate inventory — their
   // direct cost lines are billed back, so suppress them from THIS estate roll-up (still recorded in the
@@ -119,6 +130,21 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb): Promise<Lo
       transferredVolumeL: Number(t.transferredVolumeL),
       parentPreOpVolumeL: Number(t.parentPreOpVolumeL),
     });
+  }
+  // Accrue-to-date barrel cost for open fills → DIRECT BARREL events (D7). Gated by the same
+  // capitalization toggle + client-owned suppression as stored lines so the authority stays consistent.
+  if (isComponentCapitalized("BARREL", settings)) {
+    for (const f of openFills) {
+      if (isBillable(f.lotId)) continue;
+      const amount = accruedBarrelCost({
+        fillDepreciation: Number(f.fillDepreciation),
+        days: daysBetween(f.startedAt.getTime(), asOfMs),
+        residentVolumeL: Number(f.volumeL),
+        capacityL: Number(f.capacityL),
+      });
+      if (amount <= 0) continue;
+      events.push({ opId: f.openOpId, kind: "DIRECT", lotId: f.lotId, component: "BARREL", amount, completeness: "KNOWN" });
+    }
   }
 
   const volMap = new Map<string, number>();

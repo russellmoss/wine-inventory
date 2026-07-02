@@ -486,6 +486,8 @@ model Vessel {
   samples          Sample[]
   // Phase 6: ferment-state transitions captured in this vessel (snapshot context).
   stateEvents      LotStateEvent[]
+  // Phase 8b (Unit 8): the 1:1 depreciating-asset sidecar (barrels only; null for tanks).
+  barrelAsset      BarrelAsset?
 
   @@unique([tenantId, type, code]) // barrel "1" and tank "1" can coexist; numbers unique within a type
   @@unique([tenantId, id])
@@ -1179,6 +1181,8 @@ model Lot {
   costTransfersFrom    OperationCostTransfer[] @relation("CostTransferFrom")
   costTransfersTo      OperationCostTransfer[] @relation("CostTransferTo")
   costState            LotCostState?
+  // Phase 8b (Unit 8): barrel-aging residency intervals for this lot (fill-based amortization).
+  barrelFills          BarrelFill[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -2009,6 +2013,63 @@ model LotCostState {
 
   @@index([tenantId])
   @@map("lot_cost_state")
+}
+
+// Phase 8b (Unit 8, D7) — a barrel-as-depreciating-asset sidecar (1:1 with a BARREL Vessel). Barrel
+// carrying cost amortizes over its useful life measured in FILLS, accelerated by fill number (first
+// fill imparts the most oak character → the most cost). `currentFillNumber` is the running fill counter
+// bumped when wine enters an empty barrel. Optional: a barrel with no BarrelAsset simply accrues no
+// barrel cost (physical tracking unaffected). Not the tank's concern — tanks never get one.
+model BarrelAsset {
+  tenantId          String       @default("")
+  id                String       @id @default(cuid())
+  vesselId          String       @unique // the BARREL vessel this asset describes (1:1)
+  purchaseCost      Decimal      @db.Decimal(18, 8)
+  currency          String       @default("USD")
+  usefulLifeFills   Int          @default(4) // fills over which the barrel fully depreciates
+  currentFillNumber Int          @default(0) // running counter; ++ when wine enters the empty barrel
+  acquiredAt        DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  vessel            Vessel       @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  fills             BarrelFill[]
+
+  @@unique([tenantId, id]) // composite-tenant-FK target for barrel_fill (K11)
+  @@index([tenantId])
+  @@map("barrel_asset")
+}
+
+// Phase 8b (Unit 8, D7) — one barrel-residency interval: a lot occupying a barrel over [startedAt,
+// endedAt]. `fillNumber` picks the accelerated-depreciation slice; `fillDepreciation` is the $ that
+// slice allocates ($ = purchaseCost × slice-fraction). While OPEN (endedAt null) the roll-up derives
+// an accrue-to-date BARREL cost event (days-so-far); when the lot leaves the barrel the fill CLOSES and
+// an immutable BARREL CostLine is materialized on the close op (so the snapshot can freeze it and the
+// on-read derivation stops double-counting it). Volume is snapshotted at fill open (v1). Two lots in one
+// barrel each get their own fill row → cost splits by volume×time.
+model BarrelFill {
+  tenantId              String      @default("")
+  id                    String      @id @default(cuid())
+  barrelAssetId         String
+  lotId                 String
+  fillNumber            Int
+  volumeL               Decimal     @db.Decimal(10, 2) // resident volume at fill open
+  capacityL             Decimal     @db.Decimal(10, 2) // barrel capacity snapshot
+  purchaseCostSnapshot  Decimal     @db.Decimal(18, 8) // barrel purchase cost at fill open (D17-stable)
+  fillDepreciation      Decimal     @db.Decimal(18, 8) // $ this fill amortizes = purchaseCost × slice
+  startedAt             DateTime
+  endedAt               DateTime?
+  openOpId              Int // the op that opened this fill
+  closeOpId             Int? // the op that closed it (materialized the CostLine)
+  materializedCostLineId String? // the BARREL CostLine written at close (null while open)
+  policyVersion         Int         @default(1)
+  createdAt             DateTime    @default(now())
+  barrelAsset           BarrelAsset @relation(fields: [barrelAssetId], references: [id], onDelete: Cascade)
+  lot                   Lot         @relation(fields: [lotId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, lotId])
+  @@index([tenantId, barrelAssetId, endedAt])
+  @@map("barrel_fill")
 }
 
 // ───────────────────────── plan-027: compliance filing-deadline reminders ─────────────────────────
