@@ -1,141 +1,106 @@
-# Council Feedback — TTB F 5120.17 Compliance & Reporting Engine (Phase 14 v1)
+# Council Feedback — Plan 027: Compliance Filing-Deadline Reminders + Calendar Export
+
 **Date**: 2026-07-01
-**Reviewers**: Gemini 3.1 Pro (TTB domain + data quality) · Claude (types + data layer + ledger correctness; Codex CLI was unavailable this run)
-**Plan**: `docs/plans/2026-07-01-025-feat-ttb-5120-17-compliance-reporting-plan.md`
+**Reviewers**: Gemini 3.1 Pro (TTB domain + serverless), Claude (types + infra + reuse)
+**Panel**: Gemini + Claude only (Codex excluded, per operator).
+**Plan**: `docs/plans/2026-07-01-027-feat-compliance-deadline-reminders-plan.md`
+(Note: 026's council findings live in that plan's Council Revisions section; this file is per-run.)
 
-## Critical Issues
+## Critical Issues (fold before /work)
 
-**C1 — Tax class is modeled as a static per-lot property; the form is a per-class-column
-reconciliation where volume MOVES between classes.** (Gemini #1, #3; Units 3/5/6.) A lot fermented
-at 15% (class a) then fortified to 17% (class b) mid-period must show a *removal* from class a and an
-*addition* to class b on the correct lines (A19 used-for-spirits / A4 produced-by-spirits, or A18/A3
-for sweetening, A21/A6 for amelioration). Deriving one class at bottling silently drops these
-movements and unbalances the columns. **Fix:** tax class is a point-in-time state; the fold detects
-class transitions across the period and emits the paired remove-old/add-new lines. See plan revision.
+- **C1 (Gemini) — due dates roll in OPPOSITE directions by form; holidays are NOT deferrable.**
+  5120.17 rolls **FORWARD** to the next business day (27 CFR 24.300(g)); the 5000.24 excise return rolls
+  **BACKWARD** to the immediately preceding business day (24.271(c)(1)(i)) — paying late is a penalty,
+  so it's pulled earlier, never pushed later. A uniform "roll forward" would file excise LATE. Federal
+  holidays must be in v1 (a holiday-adjacent due date computed wrong = a real penalty). Fix: directional
+  roll per form + a hardcoded ~11 US federal holidays × ~5 years constant. Fixes Unit 2; removes the
+  "holiday deferred" line.
+- **C2 (Gemini) — a $0 semimonthly excise period need NOT be filed (24.271(i)); don't remind on it.**
+  Firing OVERDUE/day-of for a $0 period is a false positive that kills trust. Fix: for 5000.24
+  semimonthly, drop the deadline when the period's computed liability is $0 (the 5120.17 ops report is
+  ALWAYS due, even at zero — keep it). Fixes Unit 3. (Claude C6: this couples the excise reminder to
+  026's liability COMPUTE, not just its cadence — see build-order.)
+- **C3 (Gemini) — the full-tenant sweep will time out on Vercel.** A synchronous route awaiting Brevo
+  per recipient exceeds the function timeout at a few dozen tenants. Fix: `export const maxDuration =
+  300`, batch tenants (e.g. chunks of 5), and handle Brevo's 300/day + HTTP 429 gracefully (abort
+  cleanly without corrupting the log). Fixes Unit 5.
 
-**C2 — CRUSH must NOT post to A2 "produced by fermentation."** (Gemini #2; Unit 5.) Crushed
-grapes/juice are not wine; putting them in §A inflates bulk-wine inventory and manufactures false
-shortages later. A2 fires when juice *becomes* wine (fermentation-complete / a lot transitioning
-MUST/JUICE→WINE), not at crush. Juice/must lives in Part VII (in-fermenters) / Part IV (materials).
-**Fix:** map the MUST/JUICE→WINE transition (existing `LotForm`/`afState` change) to A2, not CRUSH.
+## Suggested Improvements (SHOULD-FIX)
 
-**C3 — Amelioration / sweetening / spirits addition are volume-bearing production lines, not generic
-ADDITION.** (Gemini #3; Units 4/5.) The volume of sugar-water/spirits *added* is reported on
-A3/A4/A6. Generic `ADDITION` (SO₂, nutrient) is volume-neutral and non-reportable. **Fix:** the added
-volume of these specific treatments maps to A3/A4/A6; the base wine is only removed+re-added when it
-crosses a tax class (C1).
+- **S1 (Gemini) — kill the "±1-day fuzz"; use date-STRING equality.** Compute due dates as `YYYY-MM-DD`
+  strings; the cron runs at 13:00 UTC (daytime across all US zones); send where `dueDateStr` minus the
+  mark offset == today's UTC date string. No JS `Date` comparison, no fuzz (a double-send factory).
+  Fixes Unit 2/5, Risk R7.
+- **S2 (Gemini) — PENDING→SENT two-phase log (send-then-confirm).** A missed compliance reminder is
+  worse than a double email. Insert a `PENDING` log row, send, update to `SENT`; a `PENDING` row older
+  than N minutes on the next run is retried. Beats "insert-then-send" (misses on send failure) and
+  "send-then-insert" (double-sends on insert failure). Add `status` to `ComplianceReminderLog`. Units 1/5.
+- **S3 (Gemini) — drop the 1-week mark for SEMIMONTHLY.** A semimonthly period is ~15 days; a 1-week-out
+  reminder fires ~1 day after the period ends = noise → opt-outs. Semimonthly gets 2-day + day-of only;
+  keep 1-week for monthly/quarterly/annual. Fixes Unit 3.
+- **S4 (Gemini) — September split explicit due dates + backward roll.** Sept 1–15 → due ~Sep 29;
+  16–25 → ~Sep 28 (non-EFT) / 29 (EFT); 26–30 → Oct 14. Pure "+14d" fails for the mid/late-Sept periods;
+  `upcomingDeadlines` needs a September override (from 026's return-cadence) with the backward roll. Unit 2.
+- **S5 (Gemini/Claude) — amended/late returns re-enter openDeadlines (derived).** Filter out periods with
+  a FILED report UNLESS it's been re-opened/amended; be explicit so an amend re-surfaces the deadline. Unit 3.
+- **S6 (Claude) — cron auth is timing-safe + at-least-once safe.** Vercel Cron can deliver twice; the
+  PENDING/SENT log + unique constraint already dedupe. Compare `CRON_SECRET` with a constant-time check;
+  reject missing/mismatched with 401. Unit 5.
 
-**C4 — Required `abv` on `BottlingInput` breaks every existing bottling caller, and mis-times ABV
-for sparkling.** (Claude; Unit 2.) All construction sites of `executeBottling`/`applyBottling`
-(actions, tests, any assistant bottling tool) break at compile time; and the sparkling path bottles
-at **TIRAGE** (BOTTLED_IN_PROCESS) where final ABV isn't known (it rises with tirage sugar). **Fix:**
-enumerate + update all callers; require ABV on the still-wine bottling entry; resolve sparkling ABV at
-FINISH/disgorgement (base ABV + tirage bump); give historical `BottlingRun` rows a migration default.
+## Design Questions (operator)
 
-**C5 — CORRECTION-op `observedAt` semantics vs report period are undefined → double-counting.**
-(Claude; Units 4/8, R3.) `reverseOperationCore` appends a CORRECTION op. If it stamps `observedAt =
-now`, a February correction of a January op folds into February and mis-periods the reconciliation.
-**Fix:** define that a correction amending a filed period carries `observedAt` within that period (or
-the fold groups a CORRECTION with the period of the op it corrects); this is the mechanism behind
-Amended reports — nail it explicitly.
+1. **Holiday source.** Hardcode US federal holidays as a checked-in constant (recommended, offline, no
+   dep) vs a holiday library/API? (Recommend hardcode + a "refresh yearly" note.)
+2. **In-app quiet hours / digest.** With semimonthly filers getting many marks, do we want a single
+   "next deadline" summary in-app rather than one banner per open deadline? (Design review will weigh in.)
 
-## Should-Fix
+## Fork/decision updates after this review
 
-**S1 — Gallons rounding must not break `Begin + Add − Remove = End`.** (Gemini #4; Unit 6.) Compute
-Begin/Add/Remove in exact liters, convert+round to 2dp, then **derive** `End = Begin + Add − Remove`
-in the rounded domain; post any drift vs the physically-converted end to A9 (gain) / A30 (loss). TTB
-systems reject columns that don't foot.
+- **Roll direction** — was uniform-forward; now **forward for 5120.17, backward for 5000.24** (C1).
+- **Holidays** — was deferred; now **in v1** as a hardcoded constant (C1).
+- **Timezone** — ±1-day fuzz **removed**, replaced by date-string equality at 13:00 UTC (S1).
+- **Idempotency** — send-log gains a **PENDING→SENT** status (S2).
+- **Marks** — **semimonthly drops the 1-week mark** (S3).
 
-**S2 — `null` ABV must not drop volume off the form.** (Gemini #5; Unit 3.) Dropping an
-unclassified lot unbalances inventory. Default `null` ABV to **class a (≤16%)** to keep the volume on
-the ledger, flag for follow-up, and amend later if a reading reclassifies it. Use exact boundaries:
-a ≤ 16.000%, b > 16.000%–≤ 21.000%, c > 21.000%–≤ 24.000%.
+## Build-order (updated)
 
-**S3 — On-hand "begin" should carry forward from the prior filed report, not full-refold every
-time.** (Claude; Units 6/8.) The form's rule *is* carry-forward (on-hand-end → next on-hand-begin).
-Full-history re-fold is O(all ops), grows unbounded, and can disagree with the last filed end after a
-backdated/correction op. Use the prior **FILED** `ComplianceReport`'s on-hand-end as begin; full-fold
-only for the first report or an explicit recompute. Add index `(tenantId, observedAt)` on LotOperation.
-
-**S4 — "Final" is a business-closing flag, not a per-period state.** (Claude; Units 7/8/12.) The
-form's Original/Amended/Final: *Final* = last report for the whole business. Separate the report
-lifecycle (DRAFT→FILED) from the form version flag; don't offer per-period "Final."
-
-**S5 — Removal disposition → §A vs §B is chosen by bulk/bottled state, not the disposition.** (Claude;
-Unit 4/5.) `mapLineToForm` must pick the section from `bucket`; the enum doc listing "TAXPAID→A14/B8"
-should read "→ A14 if bulk, B8 if bottled."
-
-## Design Questions
-
-**Q1 (scope fork) — How much cross-class / fermentation-transition accounting is in v1?** C1/C2/C3
-reshape the model. Minimum-correct v1: (a) A2 on MUST/JUICE→WINE, (b) cross-class movement lines for
-BLEND + sweetening/spirits/amelioration, (c) carry-forward begin. Do we build all of that now, or hold
-v1 to a **grape-still-dry-wine happy path** (single class per lot, no fortification/cross-class blend)
-and explicitly defer mid-period transitions — with an anomaly flag when a lot's class changes?
-
-**Q2 — Cross-class blend fractional volumes (A5/A20).** (Gemini #6.) Does `BLEND` capture the exact
-liters contributed by each source tax class, so A5 can report "X removed from class b, added to class
-a"? If the BLEND op only records the child lot, the plan can't compute the per-class deltas.
-
-**Q3 — Bottling runs spanning a period boundary.** (Gemini #7.) A run started 01-31 and recorded
-02-01 must show the gallons physically bottled by 01-31 in January. Do we require operators to split
-the run at month-end, or accept `observedAt`-based assignment (whole run lands in the recorded period)?
-
-**Q4 — In-bond transfers / received-in-bond / taxpaid-returned-to-bond (A7/A15, B3/B9, B4).** (Claude.)
-These need a counterparty bonded premises not modeled in single-winery v1. Leave the lines at zero and
-document, or model inter-premises transfer now?
+The 5120.17 reminder stream ships on 025 alone. The **5000.24 stream now depends on 026's excise
+COMPUTE** (not just its cadence) because the $0-period drop (C2) needs the period's liability. So:
+**026 must ship before 027's excise reminders.** The 5120.17 stream can ship first regardless.
 
 ---
 ## Raw Response — Gemini (gemini-3.1-pro-preview)
 
-### CRITICAL: Domain & Accounting Failures
-1. **Mid-Period Tax Class Transitions (Violates Part I §A Math).** Deriving one tax class per lot
-based on latest ABV / at bottling breaks the ledger math for bulk wine that changes class mid-period.
-If a lot starts January at 15.0% (Class a) and is sweetened/fortified in February to 17.0% (Class b),
-you cannot retroactively change January's ending inventory; the movement is a reportable event. Fix:
-tax class must be a time-series state; a cross-boundary op auto-generates a removal from the old class
-(e.g. A19) and an addition to the new class (e.g. A4).
-2. **CRUSH does not produce wine (Line A2 mismatch).** Crushed grapes/juice are not wine; entering
-them on §A inflates bulk-wine inventory and triggers false shortages. Juice is tracked in Part VII.
-A2 triggers when juice becomes wine (≈0.5% ABV / declared finished). Fix: disconnect CRUSH from A2;
-introduce a FERMENTATION_COMPLETE / DECLARE_WINE transition (Part VII → §A2).
-3. **Amelioration and Sweetening are Volume-Increasing Additions.** Folding them into generic ADDITION
-misses reportable volume. Adding sugar-water increases lot volume; report the volume gained on A6
-(amelioration) / A3 (sweetening) / A4 (spirits). The base wine isn't removed+re-added unless it
-crosses a tax class.
+### CRITICAL
+1. Weekend/holiday roll: 5120.17 rolls FORWARD (24.300(g)); 5000.24 rolls BACKWARD to the preceding
+   business day (24.271(c)(1)(i)). Uniform forward-roll files excise late. Federal holidays cannot be
+   deferred — hardcode ~11 holidays × 5 years.
+2. $0 semimonthly excise (24.271(i)) need not be filed → don't remind/OVERDUE on it (false positive
+   kills trust). Cross-reference the 5000.24 liability calc; drop if liability==0. Ops report always due.
+3. Vercel Cron timeout: a synchronous all-tenant sweep exceeds the function limit. Set maxDuration=300,
+   batch tenants, handle Brevo 429/300-day cap gracefully.
 
-### SHOULD FIX
-4. **Gallons Rounding breaks Begin + Add − Remove = End.** Rounding each cell independently drifts by
-±0.01 gal and TTB rejects columns that don't balance. Compute Begin/Add/Remove in exact liters,
-convert/round, then calculate End in the rounded domain; post drift to A9 (gain) / A30 (shortage).
-5. **Tax Class Boundaries and Missing ABV.** Class a ≤16.000%, b strictly >16.000% and ≤21.000%.
-null ABV cannot just "flag an anomaly and drop the volume" — that breaks the balance. Default null to
-Class a to keep volume on the ledger; amend later if testing reclassifies.
+### SHOULD-FIX
+4. Drop the ±1-day fuzz; compare `YYYY-MM-DD` strings; cron at 13:00 UTC is daytime US-wide.
+5. Idempotency: send-then-insert (or PENDING→SENT) — a missed deadline is a violation; a double email
+   is only annoying. Prefer PENDING→SENT with stale-retry.
+6. Semimonthly fatigue: drop the 1-week mark for semimonthly (only ~15-day periods); keep -2d + day-of.
 
 ### DESIGN QUESTIONS
-6. **Cross-Class Blending Math (Line A5).** Blending 100G class a + 100G class b → 200G class a
-requires A5 to report 100G removed from b and 100G added to a. Does BLEND capture exact fractional
-volumes per source class, or just the final lot's class?
-7. **Bottling Runs Spanning Midnight.** A run started Jan 31 finishing Feb 1 may be recorded Feb 1;
-TTB wants gallons bottled by 11:59pm Jan 31 on January's form. Partial-run boundary splits, or forced
-month-end chopping?
+7. Amended/late returns re-enter the derived openDeadlines — filter FILED unless re-opened.
+8. .ics: VALUE=DATE all-day is correct; UID = tenant+form+periodKey ONLY (not mark/dueDate) so
+   calendar updates instead of duplicating.
+9. September split explicit mapping (Sep 1–15→~29; 16–25→28/29; 26–30→Oct 14) with backward roll;
+   "+14d" fails for mid/late September.
 
 ---
-## Raw Response — Claude (types + data layer + ledger correctness; Codex CLI unavailable)
+## Raw Response — Claude (types + infra + reuse)
 
-- **C4** Required `abv` on `BottlingInput` breaks all existing callers (actions/tests/assistant) and
-  mis-times ABV for the sparkling TIRAGE→FINISH path (final ABV unknown at tirage). Enumerate callers;
-  require ABV on still-wine bottling; resolve sparkling ABV at FINISH (base + tirage bump); migration
-  default for historical BottlingRun rows.
-- **C5** CORRECTION-op `observedAt` vs report period is undefined; a later-period correction of a
-  filed op double-counts. Define correction→period assignment explicitly (it's the Amended mechanism).
-- **S3** Carry forward on-hand-begin from the prior FILED report instead of full-history re-fold
-  (perf O(all ops) + can disagree with the last filed end); index `(tenantId, observedAt)`.
-- **S4** "Final" is a business-closing flag, not per-period; separate report lifecycle (DRAFT→FILED)
-  from the form version flag.
-- **S5** `mapLineToForm` picks §A vs §B from `bucket` (bulk/bottled), not the disposition enum.
-- **Q4** In-bond transfer lines (A7/A15, B3/B9, B4) need an unmodeled counterparty — zero + document
-  for single-winery v1, or model inter-premises transfer.
-- **Sound as-is:** the pdf-lib AcroForm position-calibration approach; the full Phase-12 RLS checklist
-  on the two new tables; reusing `foldLines()`; the operationId-order fold with an observedAt filter
-  (given C5 is resolved).
+### CRITICAL
+- C6: the $0-drop (Gemini C2) couples the 5000.24 reminder to 026's excise COMPUTE (liability), not just
+  its cadence helper. Deepens the build-order dependency: 026 (compute) before 027's excise stream.
+
+### SHOULD-FIX
+- S6: `CRON_SECRET` compare must be constant-time; the route must be safe under Vercel's at-least-once
+  cron delivery (the PENDING/SENT log + unique constraint handle it).
+- Keep in-app "daysUntil" date-only to match the send logic (no Date-object drift).
