@@ -952,11 +952,24 @@ enum ComplianceReportVersion {
   AMENDED
 }
 
-// Operations-report filing cadence (27 CFR 24.300(g)(2)). Monthly by default.
+// Filing cadence. MONTHLY/QUARTERLY/ANNUAL are the operations-report cadences (27 CFR 24.300(g)(2)).
+// SEMIMONTHLY (Phase 14 plan-026) is a wine EXCISE-return cadence only (27 CFR 24.271): the 1st–15th
+// and 16th–EOM halves. It is never a valid operations-report cadence — the two cadences are separate
+// regulatory tests ($ liability vs gallons) carried on separate profile columns.
 enum ReportCadence {
   MONTHLY
   QUARTERLY
   ANNUAL
+  SEMIMONTHLY
+}
+
+// Which TTB form a compliance_report row represents (plan-026 Fork 1A). One generalized filing table,
+// two forms: TTB_5120_17 = Report of Wine Premises Operations (gallons, plan-025); TTB_5000_24 = Wine
+// Excise Tax Return (dollars, plan-026). formType scopes EVERY report query so the two forms' filing
+// chains, carry-forward, and lists never cross (council C4 / eng E1 — see src/lib/compliance/form-type.ts).
+enum ComplianceFormType {
+  TTB_5120_17
+  TTB_5000_24
 }
 
 // ───────────────────────── Phase 7: sparkling (bottle-as-continuable-container) ─────────────────────────
@@ -1672,8 +1685,14 @@ model ComplianceReport {
   periodStart           DateTime // inclusive
   periodEnd             DateTime // inclusive
   cadence               ReportCadence           @default(MONTHLY)
+  // plan-026 Fork 1A: which form this row is. Defaults to the 5120.17 so existing rows read as
+  // operations reports; the excise generator sets TTB_5000_24. formType scopes every report query.
+  formType              ComplianceFormType      @default(TTB_5120_17)
   status                ComplianceReportStatus  @default(DRAFT)
   version               ComplianceReportVersion @default(ORIGINAL)
+  // plan-026: the net wine excise tax (amount to pay) for a TTB_5000_24 row; null for 5120.17.
+  // Display/query mirror of computed.summary.amountToPay — the worksheet Json remains authoritative.
+  taxDollars            Decimal?                @db.Decimal(12, 2)
   // S4: "Final" is a one-time business-closing flag, separate from status + version.
   isFinalBusinessReport Boolean                 @default(false)
   amendsReportId        String? // the ORIGINAL this row amends (version AMENDED)
@@ -1692,6 +1711,7 @@ model ComplianceReport {
 
   @@index([tenantId])
   @@index([tenantId, periodStart, periodEnd])
+  @@index([tenantId, formType])
   @@index([amendsReportId])
   @@map("compliance_report")
 }
@@ -1713,6 +1733,11 @@ model ComplianceProfile {
   operatedByZip     String?
   operatedByPhone   String?
   defaultCadence    ReportCadence @default(MONTHLY)
+  // plan-026: the wine EXCISE-return cadence (27 CFR 24.271), separate from the ops defaultCadence.
+  // Defaults to SEMIMONTHLY (the fallback cadence when annual liability > $50k); the generate screen
+  // seeds from it. isEftPayer flips the September triple-split boundaries (council C1).
+  defaultReturnCadence ReportCadence @default(SEMIMONTHLY)
+  isEftPayer           Boolean       @default(false)
   updatedAt         DateTime      @updatedAt
 
   @@unique([tenantId])

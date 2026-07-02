@@ -34,7 +34,9 @@ export type FillInput = {
   computed: ComputedSnapshot;
   periodStart: Date;
   periodEnd: Date;
-  cadence: "MONTHLY" | "QUARTERLY" | "ANNUAL";
+  // The stored cadence; only MONTHLY prints a month. A 5120.17 row is never SEMIMONTHLY, but accept
+  // the full enum so callers pass `report.cadence` without narrowing.
+  cadence: "MONTHLY" | "QUARTERLY" | "ANNUAL" | "SEMIMONTHLY";
   version: "ORIGINAL" | "AMENDED";
   isFinalBusinessReport: boolean;
   remarks: string;

@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { deterministicAnomalies } from "@/lib/compliance/anomaly";
+import { asOpsCadence } from "@/lib/compliance/types";
 import type { ComputedSnapshot } from "@/lib/compliance/generate";
 import { ComplianceClient, type ReportView, type VesselOpt, type BottledOpt } from "./ComplianceClient";
 
@@ -40,7 +41,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
       periodStart: selected.periodStart.toISOString().slice(0, 10),
       periodEnd: selected.periodEnd.toISOString().slice(0, 10),
       periodLabel: selected.periodEnd.toISOString().slice(0, 7),
-      cadence: selected.cadence,
+      cadence: asOpsCadence(selected.cadence),
       status: selected.status,
       version: selected.version,
       isFinalBusinessReport: selected.isFinalBusinessReport,
@@ -89,7 +90,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
       }}
       vessels={vesselOpts}
       bottled={bottledOpts}
-      defaults={{ year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, cadence: profile?.defaultCadence ?? "MONTHLY" }}
+      defaults={{ year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, cadence: asOpsCadence(profile?.defaultCadence ?? "MONTHLY") }}
     />
   );
 }

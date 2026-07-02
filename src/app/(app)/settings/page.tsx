@@ -1,5 +1,6 @@
 import { getAppSettings } from "@/lib/settings/data";
 import { prisma } from "@/lib/prisma";
+import { asOpsCadence } from "@/lib/compliance/types";
 import { SettingsClient } from "./SettingsClient";
 
 export const metadata = { title: "Settings" };
@@ -21,7 +22,7 @@ export default async function SettingsPage() {
           zip: profile?.operatedByZip ?? "",
         },
         operatedByPhone: profile?.operatedByPhone ?? "",
-        defaultCadence: profile?.defaultCadence ?? "MONTHLY",
+        defaultCadence: asOpsCadence(profile?.defaultCadence ?? "MONTHLY"),
       }}
     />
   );

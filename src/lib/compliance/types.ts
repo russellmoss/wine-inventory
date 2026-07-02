@@ -84,5 +84,33 @@ export type RemovalDisposition = (typeof REMOVAL_DISPOSITIONS)[number];
 /** A form section: A = bulk wines, B = bottled wines. */
 export type FormSection = "A" | "B";
 
+/**
+ * The two TTB compliance forms (mirror of the Prisma `ComplianceFormType` enum). One generalized
+ * `compliance_report` table backs both (plan-026 Fork 1A); `formType` scopes every report query so
+ * the filing chains never cross (council C4). The where-fragment helper lives in `form-type.ts`.
+ */
+export const COMPLIANCE_FORM_TYPES = ["TTB_5120_17", "TTB_5000_24"] as const;
+export type ComplianceFormTypeValue = (typeof COMPLIANCE_FORM_TYPES)[number];
+
+/**
+ * Filing cadences, split by form. The 5120.17 operations report uses MONTHLY/QUARTERLY/ANNUAL; the
+ * 5000.24 excise RETURN uses SEMIMONTHLY/QUARTERLY/ANNUAL (27 CFR 24.271 — a $-liability test, never
+ * MONTHLY). Both are subsets of the Prisma `ReportCadence` enum (which is the union of the two).
+ */
+export const OPS_CADENCES = ["MONTHLY", "QUARTERLY", "ANNUAL"] as const;
+export type OpsCadence = (typeof OPS_CADENCES)[number];
+export const RETURN_CADENCES = ["SEMIMONTHLY", "QUARTERLY", "ANNUAL"] as const;
+export type ReturnCadence = (typeof RETURN_CADENCES)[number];
+
+/** Narrow a stored `ReportCadence` to an ops cadence (a 5120.17 row never carries SEMIMONTHLY). */
+export function asOpsCadence(c: string): OpsCadence {
+  return (OPS_CADENCES as readonly string[]).includes(c) ? (c as OpsCadence) : "MONTHLY";
+}
+
+/** Narrow a stored `ReportCadence` to a return cadence (falls back to SEMIMONTHLY, the safe default). */
+export function asReturnCadence(c: string): ReturnCadence {
+  return (RETURN_CADENCES as readonly string[]).includes(c) ? (c as ReturnCadence) : "SEMIMONTHLY";
+}
+
 /** A resolved target cell on the form: a section, a line number, and an optional BF/BP sub-row. */
 export type FormLine = { section: FormSection; line: number; sub: SparklingSub };
