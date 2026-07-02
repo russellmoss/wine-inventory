@@ -29,7 +29,10 @@ For each phase, in order:
 4. **`/ship`** — open/merge the PR.
 5. **`/decision`** — record the locked choices + learnings into the context-ledger so
    the next phase's `/plan` compounds on them. Update this ROADMAP's "Status" + refine
-   the *next* phase's detail.
+   the *next* phase's detail. **Reconcile the three ordering authorities** — the
+   **Execution sequence** (top), the **Dependency notes**, and the H-table **"Build WHEN"**
+   column — so a later `/plan` can't obey a stale one. (Execution sequence wins on conflict;
+   fix the other two to match.)
 6. **`/clear`** — reset context, then start phase N+1.
 
 **Status legend:** ⬜ not started · 🟦 planning · 🟨 in progress · ✅ done
@@ -54,6 +57,18 @@ stock picker, expendables surface, cost-per-bottle trust panel, custom-crush rou
 Phase-12 tenancy is already live) and move all dev/QA there so testing stops polluting the real Bhutan
 Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
 
+> **⏱️ The real critical path is exogenous: "US design partner signed" — and it is undated.** Three of the
+> most important workstreams below are gated on a partner *event*, not on build order: **TTB compliance
+> (14) can only be *validated* by a US winery running a real period close** (Bhutan doesn't file TTB —
+> synthetic data + one published sample is all we can prove alone); **13 Migration** is gated on a real
+> Vintrace/InnoVint export; **24 Custom crush/AP** on a custom-crush/AP partner. The **wine calendar makes
+> this urgent**: it's July 2026, harvest is ~8 weeks out, so harvest 2026 is realistically gone for a new
+> partner — the achievable path is **sign by fall → onboard over winter → validate live 5120.17/5000.24
+> filings Jan–Jun → run harvest 2027.** That only works if **partner outreach starts NOW, in parallel
+> with 8b** — not after the sellable core ships. This is a build runbook so BD isn't a phase here, but it
+> IS the gating milestone: track it in `docs/STRATEGY.md` and treat "partner signed" as the trigger the
+> gated phases wait on.
+
 **Then — the sellable core (this is what lands a US design partner):**
 1. **Finish 8** (8a → 8b) — true cost-per-bottle.
 2. **15 Accounting** (QuickBooks/Xero) — needs 8's cost output; beats both incumbents.
@@ -72,10 +87,22 @@ Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
      Needs 9 (WOs), 8 (ownership tag + rates + billable-expense seam), 15 (invoice sync), 23 (RBAC), 14/21a
      (AP filing). **Event-driven pull-forward: jump it earlier the moment a custom-crush/AP design partner
      signs — like migration.**
-4. **11 Labor, timeclock & payroll** — after 9 (clock against tasks); feeds 8 cost + 20 pay.
-5. **20 Vineyard ops, equipment & farming cost** — after 9/11/8; adds state spray/PUR compliance.
+4. **11 Labor — SLICED (2026-07): build only the thin cost/pay-basis seam on the critical path;**
+   demote the payroll-rule engine to trigger-based. **11a (on-path):** hours-against-WO-tasks → **labor
+   cost per lot** (feeds 8) + **pay-basis display on the WO** (feeds 20) — after 9. **11b (trigger-based,
+   like 17):** the full timeclock/payroll product (NFC presence panels, geofenced self-report, worker
+   self-service, per-state ag-vs-manufacturing OT phase-ins, piece-rate↔min-wage reconciliation) — real
+   retention depth for vineyard-heavy operations and a **distinct compliance-liability surface** (CA ag-OT
+   ≠ TTB), so it must NOT swallow a quarter mid-sequence. Build 11b when a partner needs payroll, not before.
+5. **20 Vineyard ops, equipment & farming cost** — after 9/11a/8; adds state spray/PUR compliance.
 6. **18 Visual cellar floor plan** — spatial front-end to capture; differentiator/delight. *(adjustable — self-contained, could move earlier as a demo win.)*
    - ↳ **21a Founder god-mode + sandbox tenants** — small (built on shipped Phase-12); pull in **soon** after the do-now sandbox seed, whenever you want to enter/support any winery + run clean demos.
+   - ↳ **Dip-chart gauging — self-contained pull-forward slice extracted from Phase 30 (2026-07):** a
+     per-vessel calibration table + a dip→volume capture path. Small, and a **US evaluator asks about it in
+     the first demo**; it's the capture-convenience side of volume accuracy (the *drift-killer* itself is
+     book-vs-physical reconciliation, already in Phase 14). Pull it forward like the sandbox-tenant slice
+     when a demo needs it; the rest of Phase 30 (maturity sampling, pick scheduling, crush-pad capacity)
+     stays with the vineyard work.
 
 **Then — intelligence & presentation layer:**
 7. **10 Assistant coverage & MCP** — most valuable once there are many surfaces to read/act on.
@@ -83,6 +110,12 @@ Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
      Phase-9 engine + Phase-10 assistant, co-designed: parse an utterance → resolve vessels/quantities →
      **compliance-validate the proposal (Phase 14)** → present a **diff for one-tap approval**. Lead the
      demo with it; it's the propose→approve pattern (D10) applied to authoring work orders.
+   - ↳ **Pull-forward wedge slice (2026-07) — don't wait for the full WO engine.** A narrow **NL →
+     proposed *ad-hoc* operations** slice (rack, add at g/hL, top) rides the **already-shipped** Phase-3
+     cores + D10 draft→confirm + the existing assistant write tools (plans 013/014). It gives H8 its golden
+     dataset now, gives you a demo winemakers lean forward at, and de-risks the parser **before** Phase 9
+     depends on it. Frame: **seed H8 evals over the existing assistant write tools immediately (near-zero
+     cost); the NL ad-hoc-ops slice is a pull-forward, not a reorder ahead of the 8b→15 sellable core.**
 8. **19 AI-native dashboards** — rides the Phase-10 assistant infra; needs rich data (8/14/20). *(19a deterministic → 19b AI builder.)*
 9. **25 Ambient capture** (photo/OCR → proposed entries) · **26 Scenario sandbox & blend solver** ·
    **27 Institutional memory** — the AI-native **differentiation** layer (strategy §4). All ride the
@@ -91,12 +124,17 @@ Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
    27 needs longitudinal data + Phase 10.
 
 **Cross-cutting delivery/architecture table stakes (interleave, don't defer to the end):**
-- **28 Offline-first mobile & sync** — non-negotiable, hard engineering; land the real sync layer as
-  heavy field use scales (builds on the Phase-6 outbox). **H8 eval harness is do-now** with the first
-  AI-native surface.
+- **28 Offline-first mobile & sync** — non-negotiable, hard engineering. **Trigger (named, not "as it
+  scales"): the real sync layer is a HARD PREREQUISITE of any design partner's first harvest.** Phase 9's
+  whole promise — crew executes on the floor, logging as a side effect — collapses the first time a cellar
+  dead zone eats a completed checklist during a partner's harvest. The Phase-6 outbox carries *dev* usage
+  until then; the conflict-resolution sync layer must land before a partner runs a live vintage on it.
+- **H8 eval harness — do-now:** seed golden datasets over the **existing** assistant write tools
+  immediately (near-zero cost), ahead of the first *new* AI-native surface (NL ad-hoc ops / Phase 25).
 - **29 Sensor/telemetry** (TankNET-class) — rides the integration phases (with/after 16).
-- **30 Harvest operations depth** (maturity sampling, pick scheduling, crush-pad capacity, dip-chart
-  gauging) — slot alongside the vineyard/Contracts work (20) so it's ready before a harvest.
+- **30 Harvest operations depth** (maturity sampling, pick scheduling, crush-pad capacity) — slot
+  alongside the vineyard/Contracts work (20) so it's ready before a harvest. **Dip-chart gauging is split
+  OUT of 30 into an early self-contained pull-forward slice** (see the operational-depth list above).
 
 **Then — channel & commercialization (trigger-based, late):**
 9. **16 DTC & sales integration** (Commerce7/WineDirect).
@@ -459,6 +497,21 @@ MCP auth model.
 ---
 
 ## Phase 11 — Labor, timeclock & payroll  ⬜
+> **⚠️ SLICED (2026-07) — split 11a (on the critical path) vs 11b (trigger-based).** As written below,
+> this phase is a standalone ag-labor product (NFC panels, geofencing, per-state ag-vs-manufacturing OT
+> phase-ins, piece-rate↔min-wage reconciliation) and would swallow a quarter mid-sequence — and **CA
+> ag-OT correctness is a distinct compliance-liability surface from TTB.** So:
+> - **11a (build on-path, after 9):** the thin seam the rest of the system actually needs —
+>   **hours-against-WO-tasks → labor cost per lot** (feeds Phase 8) and **pay-basis display on the WO**
+>   (feeds Phase 20). Minimal punch/entry model; no OT engine.
+> - **11b (trigger-based, treated like Phase 17 — build when a partner needs payroll):** everything else
+>   below — the full timeclock capture-method matrix, the per-state ag-vs-manufacturing **overtime rule
+>   engine**, piece-rate reconciliation, pay periods/approval, and QuickBooks payroll export. Real
+>   retention depth for vineyard-heavy operations, **not** on the sellable-core path.
+>
+> The durable domain detail below is **all still valid** — it just belongs to 11b unless tagged as the
+> 11a seam. Resolve the exact 11a/11b line at `/plan`.
+
 **Goal:** Track who worked, where, doing what, for how long — across **vineyard
 (agricultural)** and **winery (manufacturing)** work — compute what they are owed under
 the right state + classification rules, and later export approved hours to QuickBooks. A
@@ -1251,6 +1304,11 @@ indexing cadence; how it composes with the Phase-10 read tools. **Honors:** D10,
 > get a `/plan` and an owner.
 
 ## Phase 28 — Offline-first mobile & sync  ⬜  *(table stakes — non-negotiable, hard engineering)*
+> **🚩 Named trigger (not "as field use scales"): the real sync layer is a HARD PREREQUISITE of any design
+> partner's first harvest.** "Land it as it scales" means it lands after someone gets burned — and Phase
+> 9's whole promise (crew executes on the floor, logging as a side effect) collapses the first time a
+> cellar dead zone eats a completed checklist during a partner's live vintage. The Phase-6 outbox carries
+> *dev* usage until then; this phase must ship before a partner runs a harvest on the system.
 **Goal:** Floor and vineyard capture that **works at zero connectivity** and reconciles cleanly — the
 real sync layer, not the Phase-6 best-effort outbox. Cellars are Faraday cages, vineyards are dead zones,
 and ~60% of the year's data is created in an 8-week harvest, often at 2 a.m. (**D25**).
@@ -1292,10 +1350,15 @@ poll ingestion; dedup/rate-limiting; mapping sensor identity → vessel/lot. **H
 D14, D20 (event-driven + one registry); see `docs/api-strategy.md` (hardware integration row).
 
 ## Phase 30 — Harvest operations depth  ⬜  *(table stakes — the 8-week stress test)*
+> **Dip-chart gauging split OUT (2026-07) into an early self-contained pull-forward slice** — it's small,
+> a US evaluator asks about it in the first demo, and it need not wait for the harvest-planning work. It's
+> the **capture-convenience** side of volume accuracy; the actual reconciliation-*drift* killer is
+> book-vs-physical reconciliation (already in Phase 14, A9/A30/B19), not the dip chart itself. Its detail
+> stays documented below as the **Dip-chart slice**; the rest of Phase 30 is the harvest-planning depth.
 **Goal:** Round out harvest — the period when 60% of the year's data is created — with the planning +
 measurement pieces the ledger doesn't yet carry: **maturity sampling & trend tracking, pick scheduling,
-crush-pad capacity planning, and tank dip-chart gauging.** (Weigh-tag intake capture is Phase 25;
-grower contracts are the Contracts follow-on; crush/press yield is Phase 6.)
+and crush-pad capacity planning.** (Weigh-tag intake capture is Phase 25; grower contracts are the
+Contracts follow-on; crush/press yield is Phase 6; **dip-chart gauging is the pull-forward slice below**.)
 **Domain requirements (durable):**
 - **Maturity sampling & trend tracking:** pre-harvest Brix/pH/TA samples per block over time (reuse the
   vineyard Brix charting + Phase-4 analysis model) → a **ripeness curve** that informs pick timing.
@@ -1303,11 +1366,12 @@ grower contracts are the Contracts follow-on; crush/press yield is Phase 6.)
   (Phase 11) + equipment (Phase 20); surface a harvest calendar.
 - **Crush-pad capacity planning:** model daily intake capacity (tonnage, press/tank availability) so the
   pick schedule doesn't overrun the pad — the harvest bottleneck.
-- **Tank dip-chart / calculated gauging:** per-vessel dip chart so a **dip/height reading yields a
-  volume** (a first-class capture path, incl. the Phase-25 photo-a-dip proposal); improves volume-
-  reconciliation accuracy (a known incumbent sore spot).
-**Exit:** track a block's ripeness curve, schedule its pick against crush-pad capacity, and read a tank's
-volume from a dip measurement via its dip chart.
+- **Dip-chart slice (pull-forward, self-contained):** per-vessel dip chart so a **dip/height reading
+  yields a volume** (a first-class capture path, incl. the Phase-25 photo-a-dip proposal); improves
+  volume-entry accuracy (a known incumbent sore spot). Just a per-vessel calibration table + a capture
+  path — pull it forward like the sandbox-tenant slice when a demo needs it, ahead of the rest of Phase 30.
+**Exit:** track a block's ripeness curve, schedule its pick against crush-pad capacity; **(dip-chart
+slice)** read a tank's volume from a dip measurement via its dip chart.
 **Implementation: deferred to `/plan`.** Decisions to resolve then: dip-chart data model (per-vessel
 calibration table vs geometry formula); how pick scheduling composes with Phase-20 vineyard WOs and
 Phase-11 labor; capacity-planning granularity. **Honors:** D8 (measured volumes), D12 (vessel-first),
