@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Vendored, gitignored design-system skill export (not app source).
     "design-system/**",
+    // Temporary agent git worktrees (sibling branch checkouts) — not this branch's source.
+    ".claude/worktrees/**",
   ]),
 ]);
 

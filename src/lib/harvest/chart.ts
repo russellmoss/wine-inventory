@@ -61,7 +61,7 @@ export function niceAxisBounds(values: number[], step?: number): { yMin: number;
   const hi = Math.max(...values);
   const span = hi - lo;
   const s = step ?? (span > 0 ? niceNum(span / 4, true) : niceNum(Math.abs(hi) || 1, false) / 5 || 1);
-  let yMin = Math.floor(lo / s + 1e-9) * s;
+  const yMin = Math.floor(lo / s + 1e-9) * s;
   let yMax = Math.ceil(hi / s - 1e-9) * s;
   if (yMax - yMin < s - 1e-9) yMax = yMin + s; // single value / degenerate → a readable band
   return { yMin: round4(yMin), yMax: round4(yMax), step: round4(s) };

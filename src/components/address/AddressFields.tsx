@@ -28,12 +28,14 @@ export function AddressFields({ initial }: { initial?: Partial<AddressParts> }) 
       return;
     }
     const q = parts.street1.trim();
-    if (q.length < 3) {
-      setSuggestions([]);
-      setOpen(false);
-      return;
-    }
     const timer = setTimeout(async () => {
+      // Clear (rather than search) on a too-short query — inside the timer so no synchronous
+      // setState runs in the effect body (avoids cascading renders).
+      if (q.length < 3) {
+        setSuggestions([]);
+        setOpen(false);
+        return;
+      }
       acRef.current?.abort();
       const ac = new AbortController();
       acRef.current = ac;
