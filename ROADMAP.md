@@ -48,6 +48,10 @@ tasting ✅ · 5 Blends/lineage/RBAC ✅ · 6 Transforms/ferment ✅ · 7 Bottle
 
 **In progress:** **8 Supplies & cost roll-up** (8a cost spine underway → then 8b advanced).
 
+**Do now (near-term hygiene, decoupled):** seed a **sandbox "Demo Winery" tenant** (a short script —
+Phase-12 tenancy is already live) and move all dev/QA there so testing stops polluting the real Bhutan
+Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
+
 **Then — the sellable core (this is what lands a US design partner):**
 1. **Finish 8** (8a → 8b) — true cost-per-bottle.
 2. **15 Accounting** (QuickBooks/Xero) — needs 8's cost output; beats both incumbents.
@@ -60,6 +64,7 @@ tasting ✅ · 5 Blends/lineage/RBAC ✅ · 6 Transforms/ferment ✅ · 7 Bottle
 4. **11 Labor, timeclock & payroll** — after 9 (clock against tasks); feeds 8 cost + 20 pay.
 5. **20 Vineyard ops, equipment & farming cost** — after 9/11/8; adds state spray/PUR compliance.
 6. **18 Visual cellar floor plan** — spatial front-end to capture; differentiator/delight. *(adjustable — self-contained, could move earlier as a demo win.)*
+   - ↳ **21a Founder god-mode + sandbox tenants** — small (built on shipped Phase-12); pull in **soon** after the do-now sandbox seed, whenever you want to enter/support any winery + run clean demos.
 
 **Then — intelligence & presentation layer:**
 7. **10 Assistant coverage & MCP** — most valuable once there are many surfaces to read/act on.
@@ -67,7 +72,7 @@ tasting ✅ · 5 Blends/lineage/RBAC ✅ · 6 Transforms/ferment ✅ · 7 Bottle
 
 **Then — channel & commercialization (trigger-based, late):**
 9. **16 DTC & sales integration** (Commerce7/WineDirect).
-10. **17 SaaS billing** (Stripe) — build when ready to charge; hand-invoice design partners until then.
+10. **17 SaaS billing** (Stripe) + **21b self-serve signup / onboarding / per-tenant branding** — the SaaS operational layer, built together when ready to sell self-serve; hand-create tenants via god-mode until then.
 
 **Floating / event-driven (no fixed slot):** 13 (design-partner export) · 17 (ready to charge) ·
 14's state/DTC compliance sub-phase · the Contracts follow-on. Pull each in when its trigger fires.
@@ -842,6 +847,34 @@ from the dropdown. **Fast-follow exit:** logs a Brix reading from a widget witho
 D14 (auditable), D16 (tenant scoping); reuses the assistant infra + Phase 8/14 read models.
 Note: Phase 18's floor plan and saved searches become widget types here — the dashboard is the
 composition layer.
+
+## Phase 21 — SaaS operations: founder god-mode, sandbox tenants & onboarding  ⬜  *(operational layer on the shipped Phase-12 foundation)*
+**Goal:** The human operational/admin layer ON TOP of the already-shipped Phase-12 isolation boundary
+(RLS is live in prod). Phase 12 enforces per-tenant isolation; **this phase is how people create, enter,
+and manage tenants**. Explicitly **not** a rebuild of multi-tenancy.
+**Domain requirements (durable):**
+- **Founder "god mode" (21a):** a **platform-level super-admin role above all tenants** — list every
+  winery, and **enter any tenant's instance (act-as / impersonate)** to navigate + support, built on the
+  existing `runAsTenant`/`runAsSystem` machinery + a tenant switcher. **Every god-mode entry is audited**
+  (who entered which tenant, when); fail-closed to the founder/platform role only. Never a silent
+  cross-tenant read path in the normal app.
+- **Sandbox/demo tenants (21a):** one-command creation of a **seeded fake winery** ("Demo Winery") for
+  demos AND dev/QA, isolated from real winery data. **Going forward all testing runs in a sandbox
+  tenant, never the real Bhutan Wine Co. tenant.** A "reset sandbox to seed" affordance for repeatable demos.
+- **Self-serve signup & onboarding (21b, late):** a real winery signs up → **clean empty tenant + owner
+  login + guided setup** (locations, vessels, varieties…); invite teammates (Phase-5 RBAC + the
+  better-auth org/member layer); **per-tenant branding**. Pairs with billing (Phase 17) at commercialization.
+**Exit:** the founder lists all wineries, enters a demo tenant and resets it; a new winery self-signs-up
+into a clean instance and invites a user; no test activity ever touches real winery data.
+**Runbook notes for `/plan`:**
+- *Reuse:* `runAsTenant`/`runAsSystem`/tenant-context (Phase 12); better-auth organization/member; the
+  audit log (D14). *Near-term shortcut (do now, pre-phase):* a **seed script** that creates one demo
+  tenant + fake data is a short task given tenancy is live — pull it in immediately so Phase-8 testing
+  stops polluting the real tenant, ahead of the full phase.
+- *Decisions to resolve:* impersonation model (full act-as vs read-only cross-tenant view); god-mode
+  audit + guardrails; how sandbox seed data is defined/reset; the 21a (soon) vs 21b (late, with 17) split.
+**Implementation: deferred to `/plan`.**  **Honors:** D16 (isolation — god-mode is the *audited*
+exception via `runAsSystem`, not a hole), D14 (audit). Built on Phase 12; 21b pairs with Phase 17.
 
 ## Phase 20 — Vineyard operations, equipment & farming cost  ⬜  *(vineyard side of work orders)*
 **Goal:** Bring the **issue → execute → log → approve → finalize** work-order lifecycle (the Phase-9
