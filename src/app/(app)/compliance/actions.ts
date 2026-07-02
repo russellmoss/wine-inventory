@@ -138,9 +138,25 @@ export const assessReportReadiness = adminAction(async (_ctx, reportId: string) 
   if (!reportId) throw new ActionError("Missing report id.");
   const report = await prisma.complianceReport.findUnique({
     where: { id: reportId },
-    select: { periodEnd: true, status: true, computed: true },
+    select: { periodEnd: true, status: true, formType: true, computed: true },
   });
   if (!report) throw new ActionError("Report not found.");
+
+  if (report.formType === "TTB_5000_24") {
+    const { deterministicExciseAnomalies } = await import("@/lib/compliance/anomaly");
+    const { assessExciseReadiness } = await import("@/lib/compliance/llm");
+    const snapshot = report.computed as unknown as import("@/lib/compliance/excise").ExciseComputed;
+    const findings = deterministicExciseAnomalies({ snapshot });
+    return assessExciseReadiness({
+      periodLabel: report.periodEnd.toISOString().slice(0, 10),
+      status: report.status,
+      grossTax: snapshot.grossTax,
+      cbmaCredit: snapshot.cbmaCredit,
+      netTax: snapshot.netTax,
+      findings,
+    });
+  }
+
   const { deterministicAnomalies } = await import("@/lib/compliance/anomaly");
   const { assessReadiness } = await import("@/lib/compliance/llm");
   const snapshot = report.computed as unknown as import("@/lib/compliance/generate").ComputedSnapshot;
