@@ -64,6 +64,14 @@ Recent tables built to this checklist (Phase 14 / TTB compliance): `compliance_r
 (migrations `..._compliance_schema` + `..._compliance_rls`). Their FKs, per-tenant uniques, RLS
 policies, and app_rls grants follow steps 1–8 verbatim; end-to-end proof is `npm run verify:ttb`.
 
+Phase 14 v1.1 (plan 026, TTB F 5000.24 wine excise return) added COLUMNS only — no new tables, no RLS
+change: `ComplianceReport.formType` (a `ComplianceFormType` discriminator so ONE table backs both the
+5120.17 and the 5000.24) + `taxDollars`; `ComplianceProfile.defaultReturnCadence` + `isEftPayer`;
+`SEMIMONTHLY` added to `ReportCadence` (isolated `ALTER TYPE` migration, committed before any column
+defaults to it — the Windows enum rule). CRITICAL: every `compliance_report` query is `formType`-scoped
+via `src/lib/compliance/form-type.ts` (`OPS_FORM`/`EXCISE_FORM`/`formScope`) or the two forms' filing
+chains cross (an excise return would corrupt the 5120.17 carry-forward). End-to-end proof: `npm run verify:excise`.
+
 App access: reads/writes go through the extended `prisma` (tenant auto-resolved from the session or
 runAsTenant). The ledger uses `runLedgerWrite`; other tx use `runInTenantTx`; scripts wrap their
 entry point in `runAsTenant(tenantId, …)`; cross-tenant maintenance uses `runAsSystem` (owner). Never

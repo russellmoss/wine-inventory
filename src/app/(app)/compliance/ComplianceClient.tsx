@@ -277,7 +277,7 @@ export function ComplianceClient(props: {
           {/* Deferred parts note */}
           <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 20 }}>
             Parts III, IV, VI–IX (spirits, materials, distilling/vinegar, in-fermenters, nonbeverage) are not computed in v1.
-            Excise Form 5000.24, CBMA credits, Pay.gov e-file, and state/DTC are deferred follow-ons.
+            The wine excise tax + CBMA credit (Form 5000.24) is on the &quot;Excise tax&quot; tab above; Pay.gov e-file and state/DTC are deferred follow-ons.
           </p>
         </>
       ) : (

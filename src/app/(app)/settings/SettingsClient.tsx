@@ -15,6 +15,8 @@ export type ComplianceProfileFields = {
   address: AddressParts;
   operatedByPhone: string;
   defaultCadence: "MONTHLY" | "QUARTERLY" | "ANNUAL";
+  defaultReturnCadence: "SEMIMONTHLY" | "QUARTERLY" | "ANNUAL";
+  isEftPayer: boolean;
 };
 
 export function SettingsClient({
@@ -149,8 +151,26 @@ export function SettingsClient({
                 <option value="QUARTERLY">Quarterly</option>
                 <option value="ANNUAL">Annual</option>
               </select>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Operations report (5120.17)</span>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Excise return cadence</span>
+              <select
+                name="defaultReturnCadence"
+                defaultValue={complianceProfile.defaultReturnCadence}
+                style={{ height: 44, padding: "0 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)" }}
+              >
+                <option value="SEMIMONTHLY">Semimonthly</option>
+                <option value="QUARTERLY">Quarterly</option>
+                <option value="ANNUAL">Annual</option>
+              </select>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Excise tax return (5000.24)</span>
             </label>
           </div>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14 }}>
+            <input type="checkbox" name="isEftPayer" value="true" defaultChecked={complianceProfile.isEftPayer} />
+            Pays federal excise tax by EFT (changes the September semimonthly split — 27 CFR 24.271)
+          </label>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <Button type="submit" variant="primary" disabled={profilePending}>{profilePending ? "Saving…" : "Save compliance profile"}</Button>
             {profileMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{profileMsg}</span>}

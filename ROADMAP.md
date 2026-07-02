@@ -535,9 +535,22 @@ their lots/vessels/inventory in their own units + codes, live, without weeks of 
 > begin, footing via drift→A9/A30/B19), a review-before-file screen (`/compliance`), the filled
 > AcroForm PDF (`pdf-lib` + calibrated fieldmap), an AI anomaly/readiness check, and two RLS-isolated
 > tables (`compliance_report`, `compliance_profile`). Validated end-to-end on a synthetic tenant
-> (`npm run verify:ttb`) + the pure fold against a TTB-published sample. **Deferred (documented, not
-> built):** excise F 5000.24 + CBMA credits, Pay.gov e-file, state/DTC (ShipCompliant/Avalara),
-> Parts III/IV/VI–IX computation, mid-period cross-class movement auto-posting (anomaly-flagged in v1).
+> (`npm run verify:ttb`) + the pure fold against a TTB-published sample.
+>
+> **v1.1 shipped (plan 026):** TTB F 5000.24 **wine excise TAX return** as a second, independently-
+> selectable form on `/compliance` (a `formType` discriminator generalizes the same filing table +
+> review shell; every report query is `formType`-scoped so the two forms never cross). Computes the
+> wine line 10 = Σ(gallons taxpaid-removed by class × rate, 27 CFR 24.270) and the **CBMA small-producer
+> credit** (26 USC 5041(c)) across the stateless calendar-year 30k/130k/750k ladder (wine + cider share
+> one ladder, each at its own rate), → net line 21. Return-cadence model incl. the **semimonthly
+> September triple-split** (EFT vs non-EFT); a payment-first review screen with the CBMA ladder strip
+> + a **Pay.gov data-entry panel** (primary) + the filled 5000.24 PDF (secondary); excise anomaly/
+> readiness (>24% ABV → distilled-spirits block, over-750k, negative tax); reversible/amendable via the
+> 025 machinery. Validated end-to-end (`npm run verify:excise`) incl. the CBMA step-down, C5 taxpaid-
+> only base, PDF round-trip, file→reverse→amend, and the formType-scope regression. **Deferred
+> (documented, not built):** Pay.gov e-file/auto-submit, the TTB Pilot Combined Return, state/DTC
+> (ShipCompliant/Avalara), spirits/beer/tobacco computation, multi-entity controlled-group credit split,
+> Parts III/IV/VI–IX, mid-period cross-class movement auto-posting (anomaly-flagged).
 
 **Goal:** Auto-generate the compliance a US winery legally must file, from the ledger. **Table
 stakes** — both incumbents generate the 5120.17; we cannot sell to a US winery without it. Our
