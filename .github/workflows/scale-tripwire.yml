@@ -1,0 +1,59 @@
+name: Scale Tripwire
+
+# LOOP 3 — Scale review.
+# Weekly, re-checks the tripwires in docs/architecture/scale-register.md against the
+# current code (and, optionally, live Neon slow-query data — see the commented step).
+# Read-only: opens a GitHub ISSUE if anything is trending toward a limit.
+# See docs/AUTOMATION.md.
+
+on:
+  schedule:
+    - cron: '0 11 * * 1'  # 11:00 UTC every Monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  tripwire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # OPTIONAL — feed live production slow-query data to the analysis.
+      # Requires a DATABASE_URL_UNPOOLED secret (read-only is fine). Uncomment to enable.
+      # - name: Dump Neon slow queries
+      #   env:
+      #     PGCONN: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      #   run: |
+      #     sudo apt-get update && sudo apt-get install -y postgresql-client
+      #     psql "$PGCONN" -c "SELECT round(mean_exec_time::numeric,1) AS ms, calls, query \
+      #       FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 25;" \
+      #       > slow-queries.txt || echo "pg_stat_statements not available" > slow-queries.txt
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You watch this app for scaling risk. Read docs/architecture/scale-register.md
+            (each entry has a "tripwire" — the signal that means revisit now). For each
+            entry, inspect the current code to judge whether the design still holds or is
+            approaching its tripwire. Pay special attention to:
+            - Read-time computation over the ledger (lot state, cost rollups) as lineage
+              deepens/widens.
+            - Tenant RLS + pooled connections under load.
+            - Any NEW read-heavy path added since the register was written.
+            If a file named slow-queries.txt exists, factor that real production data in.
+
+            OUTPUT RULES:
+            - If any tripwire is being approached OR you spot a new scaling risk not yet
+              in the register, open a SINGLE GitHub issue "Scale tripwire: <summary>"
+              with the specific code location, why it will bite at scale, and the
+              suggested mitigation. Also state which register entry to update.
+            - If everything is comfortably within limits, report "green" and open NO issue.
+            - Do NOT modify code or docs. Read-only.
+          claude_args: |
+            --allowedTools "Read,Bash"
+            --max-turns 8
+            --model claude-sonnet-5

@@ -1,0 +1,24 @@
+#!/bin/sh
+# ---------------------------------------------------------------------------
+# Brain-freshness detector — deterministic, no LLM, NEVER blocks the commit.
+#
+# If this commit touched architecturally significant code, it prints a nudge
+# that the docs "brain" (system-map + registers) may be stale. It does NOT
+# edit any tracked files (no churn). The nightly GitHub Actions "brain-refresh"
+# loop is what actually updates the docs and opens a PR; this is just the
+# local heads-up so you know when a refresh is worth it.
+#
+# Installed via: git config core.hooksPath .githooks   (see docs/AUTOMATION.md)
+# ---------------------------------------------------------------------------
+
+significant='^(prisma/schema\.prisma|prisma/migrations/|src/lib/tenant/|src/lib/ledger/|src/lib/transform/|src/lib/cost/|src/lib/compliance/|src/lib/auth)'
+
+changed=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -E "$significant")
+
+if [ -n "$changed" ]; then
+  printf '\n\033[33m⚠  brain may be stale\033[0m — this commit touched architecturally significant code:\n'
+  echo "$changed" | sed 's/^/      /'
+  printf '   → the nightly refresh will update docs/architecture/*, or ask Claude now: "refresh the brain".\n\n'
+fi
+
+exit 0

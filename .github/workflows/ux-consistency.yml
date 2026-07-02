@@ -1,0 +1,47 @@
+name: UX Consistency
+
+# LOOP 4 — UX consistency.
+# On any PR that touches UI components, review the change against your interaction
+# principles (docs/architecture/ux-principles.md) and DESIGN.md, and post review
+# comments. Advisory only — it comments, it does not block the merge.
+# See docs/AUTOMATION.md.
+
+on:
+  pull_request:
+    paths:
+      - 'src/components/**'
+      - 'src/app/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review the UI changes in this pull request against this app's own standards:
+            - docs/architecture/ux-principles.md (interaction / information architecture)
+            - DESIGN.md + src/styles/tokens (visual system; no hardcoded colors/fonts/spacing)
+
+            Look at the changed components/screens and, for each principle, judge pass/fail:
+            actions live on the object they affect; no dead-ends; the common path is short;
+            state + undo are visible; domain language (not DB names); dangerous actions
+            confirmed, safe ones frictionless; tokens used consistently.
+
+            OUTPUT RULES:
+            - Post concise, specific review comments ONLY where a principle is violated,
+              each naming the file, the principle, and a concrete suggestion.
+            - If the change is clean, leave one short approving summary comment.
+            - This is advisory. Do NOT block, do NOT edit code.
+          claude_args: |
+            --allowedTools "Read,Bash"
+            --max-turns 6
+            --model claude-sonnet-5

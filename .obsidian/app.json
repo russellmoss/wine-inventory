@@ -1,0 +1,18 @@
+{
+  "userIgnoreFilters": [
+    "node_modules/",
+    ".next/",
+    ".git/",
+    ".claude/",
+    ".vercel/",
+    "dist/",
+    "build/",
+    "out/",
+    "coverage/",
+    ".turbo/"
+  ],
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "shortest",
+  "useMarkdownLinks": false,
+  "attachmentFolderPath": "docs/_attachments"
+}

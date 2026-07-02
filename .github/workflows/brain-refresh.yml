@@ -1,0 +1,59 @@
+name: Brain Refresh (docs)
+
+# LOOP 1 — Brain-freshness.
+# Nightly, checks whether architecturally significant code changed since the last
+# refresh (tracked in docs/.brain-refresh-marker). If so, updates the system map +
+# registers and opens a PR. Never edits main directly. See docs/AUTOMATION.md.
+
+on:
+  schedule:
+    - cron: '0 9 * * *'   # 09:00 UTC daily
+  workflow_dispatch:        # manual "Run workflow" button in the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # need history to diff against the marker SHA
+
+      - name: Configure Git
+        run: |
+          git config user.name "claude-brain-bot"
+          git config user.email "claude-brain-bot@users.noreply.github.com"
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You maintain this repo's living docs ("the brain") in docs/architecture/.
+
+            STEP 1 — decide if a refresh is needed:
+            - Read the SHA in docs/.brain-refresh-marker (call it LAST).
+            - Run: git diff --name-only LAST..HEAD
+            - Consider it SIGNIFICANT if any changed path matches:
+              prisma/schema.prisma, prisma/migrations/, or
+              src/lib/(tenant|ledger|transform|cost|compliance|auth).
+            - If NOTHING significant changed, STOP NOW. Do not commit, do not open a PR.
+
+            STEP 2 — if significant, refresh the docs to match the current code:
+            - Update docs/architecture/system-map.md so subsystems/paths are accurate.
+            - Append any newly-implied risks to docs/architecture/scale-register.md and
+              docs/architecture/security-register.md (do not delete existing entries).
+            - Keep the writing plain-English and concise; preserve the [[wikilinks]].
+            - Overwrite docs/.brain-refresh-marker with the current HEAD SHA
+              (git rev-parse HEAD).
+
+            STEP 3 — open a PR (do NOT merge, do NOT push to main):
+            - Create a branch bot/brain-refresh-<short-sha>, commit with message
+              "docs(brain): auto-refresh system map + registers", and open a PR to main
+              titled the same, describing what changed and why.
+          claude_args: |
+            --allowedTools "Read,Edit,Bash"
+            --max-turns 12
+            --model claude-opus-4-8

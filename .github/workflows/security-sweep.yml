@@ -1,0 +1,57 @@
+name: Security Sweep
+
+# LOOP 2 — Security posture.
+# Weekly, plus whenever sensitive code changes, scan for security/tenant-isolation
+# drift against docs/architecture/security-register.md. Read-only: opens a GitHub
+# ISSUE if it finds something; never edits code. See docs/AUTOMATION.md.
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'  # 10:00 UTC every Monday
+  push:
+    paths:
+      - 'prisma/schema.prisma'
+      - 'prisma/migrations/**'
+      - 'src/lib/tenant/**'
+      - 'src/lib/auth/**'
+      - 'src/lib/**/auth*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are a security reviewer for this multi-tenant wine ERP. Read
+            docs/architecture/security-register.md (the invariants) and the Phase-12
+            tenant checklist in CLAUDE.md. Then audit the codebase for DRIFT from
+            those invariants. Focus on the highest-risk surface:
+
+            1. TENANT ISOLATION — every model in prisma/schema.prisma that is NOT in
+               the GLOBAL_MODELS set (src/lib/tenant/models.ts) must have: a tenantId
+               field, an RLS policy in a migration (ENABLE + FORCE + tenant_isolation
+               with USING and WITH CHECK), and app_rls grants. Flag any tenant table
+               that is missing ANY of these — that is a data-leak risk.
+            2. SECRETS — no secret imported into a client component; NEXT_PUBLIC_* only
+               where intentionally public.
+            3. AUTH / authz gaps introduced since the register was last updated.
+
+            OUTPUT RULES:
+            - If you find one or more real issues, open a SINGLE GitHub issue titled
+              "Security sweep: <n> finding(s)". List each with file path, line, the
+              invariant it violates, and the concrete fix. Rank most-severe first.
+            - If you find nothing, report "clean" and do NOT open an issue.
+            - Do NOT modify any code or docs. Read-only.
+          claude_args: |
+            --allowedTools "Read,Bash"
+            --max-turns 8
+            --model claude-sonnet-5
