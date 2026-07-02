@@ -33,12 +33,19 @@ function check(name: string, pass: boolean, detail = "") {
   if (!pass) failures++;
 }
 
-/** Run fn as app_rls with the tenant GUC set for the transaction (mirrors the app extension). */
+/** Run fn as app_rls with the tenant GUC set for the transaction (mirrors the app extension). The
+ * interactive-tx timeout is lifted well above Prisma's 5s default (env-overridable) so a high-latency
+ * link — airplane wifi, or a Neon cold-start with ~1s round-trips — doesn't expire the positive-control
+ * tx mid-run (P2028). */
+const VERIFY_TX_TIMEOUT_MS = Number(process.env.VERIFY_TX_TIMEOUT_MS) || 120_000;
 function asTenant<T>(tenantId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-  return app.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-    return fn(tx);
-  });
+  return app.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      return fn(tx);
+    },
+    { timeout: VERIFY_TX_TIMEOUT_MS, maxWait: VERIFY_TX_TIMEOUT_MS },
+  );
 }
 
 async function main() {

@@ -58,19 +58,27 @@ async function seedLot(code: string, vesselId: string, volumeL: number): Promise
 
 async function scrub() {
   console.log("\n── scrubbing test data ──");
+  // Idempotent + robust to a PRIOR run whose own scrub was interrupted (high-latency P2024/P2028):
+  // match by the ZZ-COST* / ZZCOST* code patterns + the verify actor, NOT just this process's ids.
   const ops = await prisma.lotOperation.findMany({ where: { enteredBy: ACTOR.actorEmail }, select: { id: true } });
   const opIds = ops.map((o) => o.id);
-  // FK-safe: cost artifacts (RESTRICT → op/lot/supplyLot) before the ops/lots/supplies they reference.
+  const lots = await prisma.lot.findMany({ where: { code: { startsWith: "ZZCOST" } }, select: { id: true } });
+  const lotIds = lots.map((l) => l.id);
+  const mats = await prisma.cellarMaterial.findMany({ where: { normalizedKey: KMBS_KEY }, select: { id: true } });
+  const matIds = mats.map((m) => m.id);
+  // FK-safe: cost artifacts (RESTRICT → op/supplyLot) → supplies → treatments → ops (cascades lines) →
+  // lineage → vessels (cascades vessel_lot) → lots → material.
   await prisma.supplyConsumption.deleteMany({ where: { operationId: { in: opIds } } });
   await prisma.costLine.deleteMany({ where: { operationId: { in: opIds } } });
-  await prisma.supplyLot.deleteMany({ where: { materialId: { in: createdMaterialIds } } });
-  await prisma.lotTreatment.deleteMany({ where: { lotId: { in: createdLotIds } } });
+  await prisma.supplyLot.deleteMany({ where: { materialId: { in: matIds } } });
+  await prisma.lotTreatment.deleteMany({ where: { lotId: { in: lotIds } } });
   await prisma.lotOperation.deleteMany({ where: { enteredBy: ACTOR.actorEmail } });
-  await prisma.vessel.deleteMany({ where: { id: { in: createdVesselIds } } });
-  await prisma.lot.deleteMany({ where: { id: { in: createdLotIds } } });
+  await prisma.lotLineage.deleteMany({ where: { OR: [{ parentLotId: { in: lotIds } }, { childLotId: { in: lotIds } }] } });
+  await prisma.vessel.deleteMany({ where: { code: { startsWith: "ZZ-COST" } } });
+  await prisma.lot.deleteMany({ where: { code: { startsWith: "ZZCOST" } } });
   await prisma.cellarMaterial.deleteMany({ where: { normalizedKey: KMBS_KEY } });
   await prisma.auditLog.deleteMany({ where: { actorEmail: ACTOR.actorEmail } });
-  console.log(`  removed ${opIds.length} ops + their cost artifacts, ${createdVesselIds.length} vessels, ${createdLotIds.length} lots`);
+  console.log(`  removed ${opIds.length} ops + their cost artifacts, ${lotIds.length} lots (by code pattern)`);
 }
 
 async function main() {

@@ -35,6 +35,13 @@ export async function withWriteRetry<T>(fn: () => Promise<T>, attempts = 5): Pro
   }
 }
 
+/** Interactive-tx ceilings for the ledger write. Defaults (20s timeout / 10s maxWait) are unchanged
+ * for production; both are ENV-OVERRIDABLE so a high-latency link (e.g. verifying from airplane wifi,
+ * or a Neon cold-start where round-trips run ~1s each) can lift the ceiling without a code change.
+ * The ceiling only RAISES the cap; it never slows a fast op. */
+const LEDGER_TX_TIMEOUT_MS = Number(process.env.LEDGER_TX_TIMEOUT_MS) || 20_000;
+const LEDGER_TX_MAX_WAIT_MS = Number(process.env.LEDGER_TX_MAX_WAIT_MS) || 10_000;
+
 /** Run a ledger write at SERIALIZABLE isolation with retry (mirrors bottling/run.ts).
  * A blend touches many rows (N parent lines + child + lineage edges + source-set), so we lift
  * the interactive-transaction timeout above Prisma's 5s default — remote Neon round-trips add
@@ -60,8 +67,8 @@ export function runLedgerWrite<T>(fn: (tx: Prisma.TransactionClient) => Promise<
         },
         {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-          timeout: 20_000,
-          maxWait: 10_000,
+          timeout: LEDGER_TX_TIMEOUT_MS,
+          maxWait: LEDGER_TX_MAX_WAIT_MS,
         },
       ),
     ),
