@@ -151,6 +151,34 @@ export const setUserVineyards = adminAction(async ({ actor }, userId: string, vi
   revalidatePath(PATH);
 });
 
+/**
+ * plan-027 Unit 6 — opt a user in/out of TTB filing-deadline reminder emails. Admin-managed (who on
+ * the team should get the 1-week / 2-day / day-of nudges). findFirst-then-write avoids naming the
+ * composite [tenantId,userId] unique (tenantId is auto-injected on create by the tenant extension).
+ */
+export const setComplianceReminderPref = adminAction(async ({ actor }, userId: string, enabled: boolean) => {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
+  if (!user) throw new ActionError("User not found.");
+  await runInTenantTx(async (tx) => {
+    const existing = await tx.complianceReminderPreference.findFirst({ where: { userId }, select: { id: true, remindersEnabled: true } });
+    if (existing) {
+      if (existing.remindersEnabled === enabled) return; // no-op, no audit noise
+      await tx.complianceReminderPreference.update({ where: { id: existing.id }, data: { remindersEnabled: enabled } });
+    } else {
+      await tx.complianceReminderPreference.create({ data: { userId, remindersEnabled: enabled } });
+    }
+    await writeAudit(tx, {
+      ...actor,
+      action: "UPDATE",
+      entityType: "User",
+      entityId: userId,
+      changes: diff({ reminderEmails: existing?.remindersEnabled ?? false }, { reminderEmails: enabled }),
+      summary: `${enabled ? "Enabled" : "Disabled"} filing-deadline reminder emails for "${user.email}"`,
+    });
+  });
+  revalidatePath(PATH);
+});
+
 /** Soft-delete: ban (or reinstate) a user. Banning revokes their sessions. */
 export const setUserBanned = adminAction(async ({ actor, user: me }, userId: string, banned: boolean) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });

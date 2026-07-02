@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { requireReadyUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { Card, Eyebrow, Metric, Badge } from "@/components/ui";
+import { openDeadlinesForTenant } from "@/lib/compliance/reminders";
+import { deadlineWhen, deadlineBadgeTone, deadlineTitle } from "@/lib/compliance/deadline-display";
 
 export default async function DashboardPage() {
   const user = await requireReadyUser();
@@ -18,6 +21,11 @@ export default async function DashboardPage() {
   const { cases, loose } = casesAndLoose(totalBottles);
   const goodsQty = goods._sum.quantity ?? 0;
 
+  // plan-027 Unit 7 — upcoming TTB filing deadlines (admins only; compliance is admin-scoped).
+  const isAdmin = user.role === "admin";
+  const deadlines =
+    isAdmin && user.activeOrganizationId ? await openDeadlinesForTenant(user.activeOrganizationId, new Date(), { horizonDays: 45 }) : [];
+
   return (
     <div>
       <Eyebrow rule>Dashboard</Eyebrow>
@@ -32,6 +40,30 @@ export default async function DashboardPage() {
         <Card><Metric value={totalBottles.toLocaleString()} caption="Total bottles" serif /></Card>
         <Card><Metric value={goodsQty.toLocaleString()} caption="Finished goods on hand" /></Card>
       </div>
+
+      {isAdmin ? (
+        <>
+          <Eyebrow rule>Filing deadlines</Eyebrow>
+          <Card style={{ marginTop: 14, marginBottom: 32 }}>
+            {deadlines.length === 0 ? (
+              <p style={{ color: "var(--text-muted)", fontSize: 14, margin: 0 }}>No TTB filings due in the next 45 days.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {deadlines.slice(0, 5).map((d) => (
+                  <div key={d.periodKey} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 14.5 }}>{deadlineTitle(d)}</div>
+                      <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Due {d.dueDateStr}</div>
+                    </div>
+                    <Badge tone={deadlineBadgeTone(d.tone)} variant="soft">{deadlineWhen(d)}</Badge>
+                  </div>
+                ))}
+                <Link href="/compliance" style={{ fontSize: 13, color: "var(--text-accent)", textDecoration: "none" }}>Go to TTB compliance →</Link>
+              </div>
+            )}
+          </Card>
+        </>
+      ) : null}
 
       <Eyebrow rule>Recent activity</Eyebrow>
       <Card padding="0" style={{ marginTop: 14 }}>

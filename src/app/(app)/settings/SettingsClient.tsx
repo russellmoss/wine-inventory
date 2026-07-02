@@ -176,6 +176,26 @@ export function SettingsClient({
             {profileMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{profileMsg}</span>}
           </div>
         </form>
+
+        {/* plan-027 Unit 9 — export the filing calendar. Reflects the SAVED cadence above. */}
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--border-strong)" }}>
+          <div style={{ fontSize: 14.5, fontWeight: 500, marginBottom: 4 }}>Filing deadline calendar</div>
+          <p style={{ color: "var(--text-secondary)", fontSize: 13.5, margin: "0 0 10px", maxWidth: "52ch" }}>
+            Download an .ics of your upcoming 5120.17 and 5000.24 filing deadlines — each with reminders
+            one week, two days, and the day before. Import it into Google Calendar, Apple Calendar, or Outlook.
+            To also get email nudges, opt users in under Users.
+          </p>
+          <a
+            href="/api/compliance/calendar"
+            style={{
+              display: "inline-flex", alignItems: "center", height: 40, padding: "0 16px", borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border-strong)", background: "var(--surface-raised)", color: "var(--text-primary)",
+              fontFamily: "var(--font-body)", fontSize: 14.5, textDecoration: "none",
+            }}
+          >
+            Add filing deadlines to calendar
+          </a>
+        </div>
       </Card>
     </div>
   );

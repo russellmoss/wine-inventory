@@ -23,6 +23,7 @@
     "verify:ttb": "tsx --conditions=react-server --env-file=.env scripts/verify-ttb.ts",
     "verify:excise": "tsx --conditions=react-server --env-file=.env scripts/verify-excise.ts",
     "verify:cost": "tsx --conditions=react-server --env-file=.env scripts/verify-cost.ts",
+    "verify:reminders": "tsx --conditions=react-server --env-file=.env scripts/verify-reminders.ts",
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate"
   },

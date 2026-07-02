@@ -6,12 +6,14 @@ import { EXCISE_FORM, formScope } from "@/lib/compliance/form-type";
 import { returnPeriodContaining } from "@/lib/compliance/return-cadence";
 import type { ComputedSnapshot } from "@/lib/compliance/generate";
 import type { ExciseComputed } from "@/lib/compliance/excise";
+import { openDeadlinesForTenant } from "@/lib/compliance/reminders";
+import { deadlineWhen, deadlineTitle } from "@/lib/compliance/deadline-display";
 import { ComplianceClient, type ReportView, type VesselOpt, type BottledOpt } from "./ComplianceClient";
 import { ExciseClient, type ExciseView } from "./ExciseClient";
 import { FormModeSwitch } from "./FormModeSwitch";
 
 export default async function CompliancePage({ searchParams }: { searchParams: Promise<{ id?: string; formType?: string }> }) {
-  await requireAdmin();
+  const me = await requireAdmin();
   const sp = await searchParams;
   const formType: "TTB_5120_17" | "TTB_5000_24" = sp.formType === "TTB_5000_24" ? "TTB_5000_24" : "TTB_5120_17";
 
@@ -31,6 +33,26 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
   const selectedForForm = selected && selected.formType === formType ? selected : null;
 
   const now = new Date();
+
+  // plan-027 Unit 8 — the nearest open filing deadline, shown as a slim banner above both forms.
+  const openForBanner = me.activeOrganizationId ? await openDeadlinesForTenant(me.activeOrganizationId, now, { horizonDays: 45 }) : [];
+  const next = openForBanner[0];
+  const banner = next ? (
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", marginBottom: 16,
+        borderRadius: "var(--radius-md)", border: "1px solid var(--border-strong)", background: "var(--surface-sunken)", fontSize: 14,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: next.tone === "danger" ? "var(--danger)" : next.tone === "warning" ? "var(--wine-primary)" : "var(--text-accent)" }}
+      />
+      <span>
+        <strong>{deadlineTitle(next)}</strong> — {deadlineWhen(next)} (due {next.dueDateStr})
+      </span>
+    </div>
+  ) : null;
 
   // ─────────────────────────── Excise return (TTB 5000.24) ───────────────────────────
   if (formType === "TTB_5000_24") {
@@ -68,6 +90,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
 
     return (
       <div>
+        {banner}
         <FormModeSwitch active={formType} />
         <ExciseClient
           key={view?.id ?? "none"}
@@ -124,6 +147,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
 
   return (
     <div>
+      {banner}
       <FormModeSwitch active={formType} />
       <ComplianceClient
         key={view?.id ?? "none"}

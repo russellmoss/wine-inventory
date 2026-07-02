@@ -44,6 +44,13 @@ const SETUP: NavItem[] = [
 // Phase 7 (K14): the En Tirage worklist only appears when the winery's sparkling program is on.
 const EN_TIRAGE_NAV: NavItem = { href: "/cellar/en-tirage", label: "En Tirage" };
 
+// Shared badge pill (nav counts). accent-soft/wine by default; overridden for urgent/active states.
+const badgePill: React.CSSProperties = {
+  fontSize: 11, fontWeight: 600, minWidth: 18, height: 18, padding: "0 5px", borderRadius: "var(--radius-pill)",
+  background: "var(--accent-soft)", color: "var(--wine-primary)", display: "inline-flex", alignItems: "center",
+  justifyContent: "center", fontVariantNumeric: "tabular-nums",
+};
+
 const linkStyle = (active: boolean): React.CSSProperties => ({
   display: "block",
   padding: "10px 12px",
@@ -132,6 +139,7 @@ function SidebarContent({
   onSignOut,
   pendingSamples,
   sparklingEnabled,
+  complianceDeadlines,
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   isActive: (href: string) => boolean;
@@ -146,6 +154,7 @@ function SidebarContent({
   onSignOut: () => void;
   pendingSamples: number;
   sparklingEnabled: boolean;
+  complianceDeadlines: { count: number; urgent: boolean };
 }) {
   const visibleSetup = SETUP.filter((s) => !s.admin || isAdmin);
   const wineryItems = sparklingEnabled ? [...WINERY, EN_TIRAGE_NAV] : WINERY;
@@ -156,9 +165,28 @@ function SidebarContent({
         <BrandMark />
       </div>
       <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", flex: 1, overflowY: "auto" }}>
-        {MAIN.filter((n) => !n.admin || isAdmin).map((n) => (
-          <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(isActive(n.href))}>{n.label}</Link>
-        ))}
+        {MAIN.filter((n) => !n.admin || isAdmin).map((n) => {
+          const active = isActive(n.href);
+          const count = n.href === "/compliance" ? complianceDeadlines.count : 0;
+          if (count <= 0) {
+            return <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(active)}>{n.label}</Link>;
+          }
+          return (
+            <Link key={n.href} href={n.href} onClick={onNavigate} style={{ ...linkStyle(active), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>{n.label}</span>
+              <span
+                aria-label={`${count} filing deadline${count === 1 ? "" : "s"} due soon`}
+                style={{
+                  ...badgePill,
+                  background: complianceDeadlines.urgent ? "var(--danger)" : active ? "var(--accent-on)" : "var(--accent-soft)",
+                  color: complianceDeadlines.urgent ? "#fff" : "var(--wine-primary)",
+                }}
+              >
+                {count}
+              </span>
+            </Link>
+          );
+        })}
         <CollapsibleNavGroup label="Winery" items={winery} open={wineryOpen} setOpen={setWineryOpen} isActive={isActive} onNavigate={onNavigate} />
         <CollapsibleNavGroup label="Vineyards" items={VINEYARDS} open={vineyardsOpen} setOpen={setVineyardsOpen} isActive={isActive} onNavigate={onNavigate} />
         <CollapsibleNavGroup label="Setup" items={visibleSetup} open={setupOpen} setOpen={setSetupOpen} isActive={isActive} onNavigate={onNavigate} />
@@ -179,11 +207,13 @@ export function AppShell({
   children,
   pendingSamples = 0,
   sparklingEnabled = false,
+  complianceDeadlines = { count: 0, urgent: false },
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   children: React.ReactNode;
   pendingSamples?: number;
   sparklingEnabled?: boolean;
+  complianceDeadlines?: { count: number; urgent: boolean };
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -252,7 +282,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} sparklingEnabled={sparklingEnabled} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
       </aside>
 
       {/* Mobile drawer */}
@@ -261,7 +291,7 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} sparklingEnabled={sparklingEnabled} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
           </aside>
         </div>
       ) : null}
