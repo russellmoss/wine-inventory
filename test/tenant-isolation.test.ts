@@ -29,6 +29,14 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     const now = new Date();
     await owner.lot.upsert({ where: { id: "isov_a" }, update: {}, create: { id: "isov_a", code: "ISOV-A", tenantId: A, updatedAt: now } });
     await owner.lot.upsert({ where: { id: "isov_b" }, update: {}, create: { id: "isov_b", code: "ISOV-B", tenantId: B, updatedAt: now } });
+    // Raw-SQL isolation fixtures (plan 029): a vineyard+block+brix_log per tenant so the affected
+    // getLatestBrixByBlock DISTINCT-ON raw read can be exercised under RLS.
+    await owner.vineyard.upsert({ where: { id: "isov_vy_a" }, update: {}, create: { id: "isov_vy_a", name: "ISOV VY A", tenantId: A } });
+    await owner.vineyard.upsert({ where: { id: "isov_vy_b" }, update: {}, create: { id: "isov_vy_b", name: "ISOV VY B", tenantId: B } });
+    await owner.vineyardBlock.upsert({ where: { id: "isov_blk_a" }, update: {}, create: { id: "isov_blk_a", vineyardId: "isov_vy_a", tenantId: A, updatedAt: now } });
+    await owner.vineyardBlock.upsert({ where: { id: "isov_blk_b" }, update: {}, create: { id: "isov_blk_b", vineyardId: "isov_vy_b", tenantId: B, updatedAt: now } });
+    await owner.brixLog.upsert({ where: { id: "isov_brix_a" }, update: {}, create: { id: "isov_brix_a", blockId: "isov_blk_a", vineyardId: "isov_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
+    await owner.brixLog.upsert({ where: { id: "isov_brix_b" }, update: {}, create: { id: "isov_brix_b", blockId: "isov_blk_b", vineyardId: "isov_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
     // Phase 14 compliance tables (checklist item 9).
     const period = { periodStart: now, periodEnd: now, onHandEnd: {}, computed: {}, overrides: {} };
     await owner.complianceReport.upsert({ where: { id: "isov_rep_a" }, update: {}, create: { id: "isov_rep_a", tenantId: A, updatedAt: now, ...period } });
@@ -37,6 +45,9 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
 
   afterAll(async () => {
     await owner.complianceReport.deleteMany({ where: { id: { in: ["isov_rep_a", "isov_rep_b"] } } });
+    await owner.brixLog.deleteMany({ where: { id: { in: ["isov_brix_a", "isov_brix_b"] } } });
+    await owner.vineyardBlock.deleteMany({ where: { id: { in: ["isov_blk_a", "isov_blk_b"] } } });
+    await owner.vineyard.deleteMany({ where: { id: { in: ["isov_vy_a", "isov_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["isov_a", "isov_b"] } } });
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
@@ -76,6 +87,25 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await expect(
       asTenant(A, (db) => db.complianceReport.create({ data: { id: "isov_rep_x", tenantId: B, periodStart: new Date(), periodEnd: new Date(), onHandEnd: {}, computed: {}, overrides: {}, updatedAt: new Date() } })),
     ).rejects.toThrow();
+  });
+
+  it("raw $queryRaw respects app.tenant_id (plan 029 — the raw path the extension does NOT intercept)", async () => {
+    // As A, a raw select over both lots returns ONLY A's row (RLS scopes the raw read via the GUC).
+    const aRows = await asTenant(A, (tx) => tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "lot" WHERE "id" IN ('isov_a', 'isov_b')`);
+    expect(aRows.map((r) => r.id)).toEqual(["isov_a"]);
+    // With NO context, a raw read sees nothing — this is the silent-empty the unwrapped $queryRaw caused in prod.
+    const noCtx = await app.$queryRaw<{ id: string }[]>`SELECT "id" FROM "lot" WHERE "id" IN ('isov_a', 'isov_b')`;
+    expect(noCtx).toHaveLength(0);
+  });
+
+  it("brix_log raw DISTINCT-ON read is tenant-isolated (plan 029 — getLatestBrixByBlock path)", async () => {
+    // The getLatestBrixByBlock query shape, as A over A's vineyard: returns A's block only.
+    const aRows = await asTenant(A, (tx) => tx.$queryRaw<{ blockId: string }[]>`
+      SELECT DISTINCT ON ("blockId") "blockId" FROM "brix_log" WHERE "vineyardId" = 'isov_vy_a' ORDER BY "blockId", "recordedAt" DESC, "id" DESC`);
+    expect(aRows.map((r) => r.blockId)).toEqual(["isov_blk_a"]);
+    // As A, querying B's vineyard returns nothing (RLS invisibility on the raw read).
+    const aSeesB = await asTenant(A, (tx) => tx.$queryRaw<{ blockId: string }[]>`SELECT "blockId" FROM "brix_log" WHERE "vineyardId" = 'isov_vy_b'`);
+    expect(aSeesB).toHaveLength(0);
   });
 
   it("composite-FK cross-tenant reference rejected (K11)", async () => {

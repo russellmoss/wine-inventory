@@ -59,6 +59,13 @@ async function main() {
   const now = new Date();
   await owner.lot.upsert({ where: { id: "iso_lot_a" }, update: {}, create: { id: "iso_lot_a", code: "ISO-A", tenantId: A, updatedAt: now } });
   await owner.lot.upsert({ where: { id: "iso_lot_b" }, update: {}, create: { id: "iso_lot_b", code: "ISO-B", tenantId: B, updatedAt: now } });
+  // Plan 029 raw-SQL fixtures: a vineyard+block+brix_log per tenant for the getLatestBrixByBlock path.
+  await owner.vineyard.upsert({ where: { id: "iso_vy_a" }, update: {}, create: { id: "iso_vy_a", name: "ISO VY A", tenantId: A } });
+  await owner.vineyard.upsert({ where: { id: "iso_vy_b" }, update: {}, create: { id: "iso_vy_b", name: "ISO VY B", tenantId: B } });
+  await owner.vineyardBlock.upsert({ where: { id: "iso_blk_a" }, update: {}, create: { id: "iso_blk_a", vineyardId: "iso_vy_a", tenantId: A, updatedAt: now } });
+  await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
+  await owner.brixLog.upsert({ where: { id: "iso_brix_a" }, update: {}, create: { id: "iso_brix_a", blockId: "iso_blk_a", vineyardId: "iso_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
+  await owner.brixLog.upsert({ where: { id: "iso_brix_b" }, update: {}, create: { id: "iso_brix_b", blockId: "iso_blk_b", vineyardId: "iso_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
 
   try {
     // 1. Fail-closed: no tenant context -> 0 rows.
@@ -114,6 +121,18 @@ async function main() {
     } catch { supplyInsertRaised = true; }
     check("foreign-tenant supply_lot INSERT raises (WITH CHECK)", supplyInsertRaised);
 
+    // 5c. Plan 029: RAW $queryRaw respects the tenant GUC. The tenant extension only intercepts model
+    // ops, so an unwrapped raw read runs with no app.tenant_id and (under RLS) returns 0 rows. These
+    // prove the runInTenantRawTx path scopes raw reads and that a context-less raw read is fail-closed.
+    const rawA = await asTenant(A, (db) => db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "lot" WHERE "id" IN ('iso_lot_a', 'iso_lot_b')`);
+    check("raw $queryRaw as A returns only A's lot", rawA.length === 1 && rawA[0]?.id === "iso_lot_a", `saw ${rawA.map((r) => r.id).join(",")}`);
+    const rawNoCtx = await app.$queryRaw<{ id: string }[]>`SELECT "id" FROM "lot" WHERE "id" IN ('iso_lot_a', 'iso_lot_b')`;
+    check("raw $queryRaw with no context -> 0 rows (fail-closed)", rawNoCtx.length === 0, `saw ${rawNoCtx.length}`);
+    const brixA = await asTenant(A, (db) => db.$queryRaw<{ blockId: string }[]>`SELECT DISTINCT ON ("blockId") "blockId" FROM "brix_log" WHERE "vineyardId" = 'iso_vy_a' ORDER BY "blockId", "recordedAt" DESC, "id" DESC`);
+    check("brix_log raw DISTINCT-ON as A returns A's block", brixA.length === 1 && brixA[0]?.blockId === "iso_blk_a");
+    const brixASeesB = await asTenant(A, (db) => db.$queryRaw<{ blockId: string }[]>`SELECT "blockId" FROM "brix_log" WHERE "vineyardId" = 'iso_vy_b'`);
+    check("brix_log raw read as A CANNOT see B's vineyard rows", brixASeesB.length === 0, `saw ${brixASeesB.length}`);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -133,6 +152,9 @@ async function main() {
     await owner.lotOperation.deleteMany({ where: { tenantId: B } });
     await owner.supplyLot.deleteMany({ where: { id: { in: ["iso_supply_b", "iso_supply_x"] } } });
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_b" } });
+    await owner.brixLog.deleteMany({ where: { id: { in: ["iso_brix_a", "iso_brix_b"] } } });
+    await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });
+    await owner.vineyard.deleteMany({ where: { id: { in: ["iso_vy_a", "iso_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["iso_lot_a", "iso_lot_b", "iso_lot_x"] } } });
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
