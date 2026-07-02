@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/audit";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
 import { laterTouchedKeys, downstreamLineageChild } from "@/lib/ledger/reverse-guard";
+import { negateCostForReversedOp } from "@/lib/cost/reverse";
 import type { OperationType } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
@@ -132,6 +133,8 @@ async function reverseOrigination(actor: LedgerActor, op: Awaited<ReturnType<typ
     // A NEW originated lot is fully drained → mark CORRECTED (row kept, append-only). ADD keeps the
     // pre-existing lot (only the added volume was removed).
     if (mode === "NEW") await tx.lot.update({ where: { id: originatedLotId }, data: { status: "CORRECTED" } });
+    // Phase 8 (Unit 11): negate the crush's FRUIT cost (+ any transfer cost) on the correction.
+    await negateCostForReversedOp(tx, op.id, corrId);
     await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "LotOperation", entityId: String(corrId), summary });
     return corrId;
   });
@@ -176,6 +179,8 @@ async function reverseSplit(actor: LedgerActor, op: Awaited<ReturnType<typeof lo
     for (const childId of childLotIds) {
       await tx.lot.update({ where: { id: childId }, data: { status: "CORRECTED" } });
     }
+    // Phase 8 (Unit 11): negate any cost this split recorded on the correction (uniform contract).
+    await negateCostForReversedOp(tx, op.id, corrId);
     await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "LotOperation", entityId: String(corrId), summary });
     return corrId;
   });

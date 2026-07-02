@@ -43,6 +43,11 @@ export type CrushLotInput = {
   outputForm?: LotForm; // the originated lot's form (MUST for a destem/crush, JUICE for whole-cluster)
   opType?: OperationType; // CRUSH (default) or PRESS (whole-cluster)
   pressCycle?: string | null; // optional named press program (whole-cluster press only)
+  // Phase 8 (Unit 7): fruit/grape cost entering the lot's basis at origination — OPTIONAL (physical
+  // tracking is unaffected if absent; a lot with no fruit cost reads as UNKNOWN, never $0 — D14).
+  // Give a lump sum OR a per-kg rate (per-kg wins if both are set; total = rate × consumed kg).
+  fruitCostTotal?: number | null;
+  fruitCostPerKg?: number | null;
 };
 
 export type CrushLotResult = {
@@ -312,6 +317,30 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
           await tx.lotVineyard.createMany({
             data: [{ lotId, vineyardId: originVineyardId }],
             skipDuplicates: true,
+          });
+        }
+
+        // Phase 8 (Unit 7): capture fruit cost as a FRUIT CostLine on the crush op (optional). A per-kg
+        // rate multiplies the measured consumed kg; else a lump sum. Reversal negates it (transform
+        // family, Unit 11). Absent → the lot's basis stays UNKNOWN (never a phantom $0, D14).
+        const fruitCost =
+          input.fruitCostPerKg != null && input.fruitCostPerKg > 0
+            ? Math.round(input.fruitCostPerKg * plan.totalConsumedKg * 1e8) / 1e8
+            : input.fruitCostTotal != null && input.fruitCostTotal > 0
+              ? input.fruitCostTotal
+              : null;
+        if (fruitCost != null) {
+          const cs = await tx.appSettings.findFirst({ select: { currency: true, costingPolicyVersion: true } });
+          await tx.costLine.create({
+            data: {
+              operationId: opId,
+              lotId,
+              component: "FRUIT",
+              amount: fruitCost,
+              currency: cs?.currency ?? "USD",
+              basisCompleteness: "KNOWN",
+              policyVersion: cs?.costingPolicyVersion ?? 1,
+            },
           });
         }
 
