@@ -88,3 +88,25 @@ The cost engine is a projection over the ledger; it never invents or loses money
   deplete physical stock. Enforced at the single capitalization authority (`cost/data.ts`).
 - **The cache is a materialization, not the authority (D4).** `LotCostState` is a lazy, watermark-versioned
   cache of `computeLotCost`; `verify:cost` asserts cache == recompute.
+
+### Phase 8b — advanced cost (D7/D12/D18/D20)
+- **Barrel cost is fill-based accelerated + time×space (D7/U8).** A barrel amortizes over its useful life in
+  FILLS (sum-of-years-digits: first fill carries the most), allocated to resident wine by `min(1, days/365)
+  × min(1, residentVol/capacity)`. A fill OPENS when wine enters an empty barrel and CLOSES (materializing an
+  immutable BARREL CostLine) when it leaves — the cost domain's fourth fold at the `writeLotOperation`
+  chokepoint. While a fill is open the roll-up derives an accrue-to-date BARREL event; once closed the
+  materialized line takes over (never both — no double count). A barrel with no `BarrelAsset` accrues nothing.
+- **The COGS snapshot is immutable; corrections after bottling emit variance, never a restate (D12/U13).** A
+  backdated correction that changes an already-bottled lot's basis leaves the frozen `BottlingCostSnapshot`
+  untouched and appends a `CostVarianceEvent` splitting the per-bottle delta across bottles that LEFT
+  inventory (→ period COGS variance) vs still on hand (→ inventory-value adjustment; sold = good − onHand).
+  `soldDelta + unsoldDelta == totalDelta`. Immutable snapshot ⇒ closed periods are period-safe by construction
+  (D17). Detection is wired into the reversal path (one site, all families); idempotent per (snapshot, trigger).
+- **Purchased bulk wine gets a real basis (D20/U16).** `receiveBulkWineCostCore` injects a direct-material
+  MATERIAL CostLine (always capitalized) as a mid-DAG cost node on a bulk WINE lot; it rolls up + reverses
+  like any other cost. Without it, bought bulk wine would show $0.
+- **Accounting export is immutable + idempotent + reversible (D18/U14).** A COGS snapshot expands into one
+  `CostExportEvent` per capitalized component, each carrying a per-tenant (component, tax-class) → debit/credit
+  account mapping and a deterministic `postingKey` (re-emit is a no-op). Incomplete-basis or unmapped sources
+  are WITHHELD, never partially posted (D14); a reversal negates amounts and links back. Reading
+  `cost_export_event` IS the per-SKU/per-run export view (Phase 15 posts it, no reshape).

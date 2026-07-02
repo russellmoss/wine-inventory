@@ -49,9 +49,10 @@ hold the durable detail. Order within a tier is dependency-driven unless marked 
 tasting ✅ · 5 Blends/lineage/RBAC ✅ · 6 Transforms/ferment ✅ · 7 Bottle/sparkling ✅ ·
 12 Multi-tenancy ✅ · Universal timeline undo (plan 024) ✅ · 14 Compliance/TTB **v1** 🟦.
 
-**In progress:** **8 Supplies & cost roll-up** — **8a COMPLETE** (engine U1–U7/U11 + costing settings,
-stock picker, expendables surface, cost-per-bottle trust panel, custom-crush routing, verify:cost) →
-**8b advanced** remaining (barrel amortization, post-bottling variance, accounting export seam, bulk-wine receive).
+**8 Supplies & cost roll-up — COMPLETE** (8a + 8b). 8a = engine U1–U7/U11 + costing settings, stock
+picker, expendables surface, cost-per-bottle trust panel, custom-crush routing, verify:cost. **8b advanced
+DONE** (U8 barrel amortization, U13 post-bottling variance events, U14 Phase-15 accounting export seam,
+U16 bulk-wine receive) — proven end-to-end by `npm run verify:cost` (41 assertions).
 
 **Do now (near-term hygiene, decoupled):** seed a **sandbox "Demo Winery" tenant** (a short script —
 Phase-12 tenancy is already live) and move all dev/QA there so testing stops polluting the real Bhutan
@@ -340,7 +341,7 @@ ledger.
 
 ---
 
-## Phase 8 — Supplies inventory & cost roll-up  🟦 *8a COMPLETE (engine U1–U7/U11 + settings/picker/stock UI U9/U10/U12/U15 + custom-crush routing U16 + verify:cost U17); 8b advanced remaining*
+## Phase 8 — Supplies inventory & cost roll-up  ✅ *COMPLETE — 8a (engine U1–U7/U11 + settings/picker/stock UI U9/U10/U12/U15 + custom-crush routing U16 + verify:cost U17) + 8b advanced (U8 barrel amortization, U13 post-bottling variance, U14 accounting export seam, U16 bulk-wine receive); proven by `npm run verify:cost` (41 assertions)*
 **Goal:** Track the consumables that make wine, then compute true cost-per-lot and
 cost-per-bottle. **Physical tracking first, cost second** (same records, added later).
 

@@ -20,6 +20,8 @@ import { addAdditionCore } from "@/lib/cellar/addition";
 import { correctOperationCore } from "@/lib/cellar/correct";
 import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
 import { createStockMaterialCore, receiveSupplyCore, listMaterials } from "@/lib/cellar/materials";
+import { receiveBulkWineCostCore } from "@/lib/cost/receive";
+import { emitExportForSnapshot } from "@/lib/cost/export-emit";
 import { executeBottling } from "@/lib/bottling/run";
 import { getLotCost } from "@/lib/cost/cache";
 import { round2 } from "@/lib/bottling/draw";
@@ -82,9 +84,20 @@ async function scrub() {
   const skuIds = skus.map((s) => s.id);
   const runs = await prisma.bottlingRun.findMany({ where: { wineSkuId: { in: skuIds } }, select: { id: true } });
   const runIds = runs.map((r) => r.id);
+  const vessels = await prisma.vessel.findMany({ where: { code: { startsWith: "ZZ-COST" } }, select: { id: true } });
+  const vesselIds = vessels.map((v) => v.id);
+  const snaps = await prisma.bottlingCostSnapshot.findMany({ where: { OR: [{ runId: { in: runIds } }, { skuId: { in: skuIds } }] }, select: { id: true } });
+  const snapIds = snaps.map((s) => s.id);
   // FK-safe: cost artifacts (RESTRICT → op/supplyLot) → COGS snapshot (RESTRICT → run/sku) → stock/
   // inventory/run → sku → supplies → treatments → ops (cascades lines) → lineage → vessels (cascades
   // vessel_lot) → lots → material → location (run→location RESTRICT, so after runs).
+  // Phase 8b: export events + variance events reference snapshots (RESTRICT) → delete first; account
+  // mappings are matched by the ZZ- account codes the fixtures use; barrel fills reference ops (RESTRICT).
+  await prisma.costExportEvent.deleteMany({ where: { OR: [{ sourceSnapshotId: { in: snapIds } }, { runId: { in: runIds } }, { skuId: { in: skuIds } }] } });
+  await prisma.accountMapping.deleteMany({ where: { debitAccount: { startsWith: "ZZ-" } } });
+  await prisma.costVarianceEvent.deleteMany({ where: { OR: [{ snapshotId: { in: snapIds } }, { runId: { in: runIds } }] } });
+  await prisma.barrelFill.deleteMany({ where: { OR: [{ lotId: { in: lotIds } }, { barrelAsset: { vesselId: { in: vesselIds } } }] } });
+  await prisma.barrelAsset.deleteMany({ where: { vesselId: { in: vesselIds } } });
   await prisma.supplyConsumption.deleteMany({ where: { operationId: { in: opIds } } });
   await prisma.costLine.deleteMany({ where: { operationId: { in: opIds } } });
   await prisma.bottlingCostSnapshot.deleteMany({ where: { OR: [{ runId: { in: runIds } }, { skuId: { in: skuIds } }] } });
@@ -153,7 +166,7 @@ async function main() {
 
   // Unit 6: a bigger dose so the bottled cost is clearly nonzero, then bottle → freeze a COGS snapshot.
   console.log("\n── BOTTLING freezes a COGS snapshot (U6) ──");
-  await addAdditionCore(ACTOR, { vesselId: tank.id, materialId: material.id, rateValue: 2, rateBasis: "G_L" }); // 900 g → $45.00
+  const bigDose = await addAdditionCore(ACTOR, { vesselId: tank.id, materialId: material.id, rateValue: 2, rateBasis: "G_L" }); // 900 g → $45.00
   const lc = await getLotCost(lotId, { forceRecompute: true });
   const bottles = 100;
   const consumedL = round2(0.75 * bottles); // 75 L
@@ -203,6 +216,84 @@ async function main() {
   assert(near(ccCost.totalCost, 0), `client-owned cost is NOT capitalized to estate (totalCost 0; got ${ccCost.totalCost})`);
   const ccAfter = r2(Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: bent.id }, orderBy: { receivedAt: "asc" } })).qtyRemaining));
   assert(ccBefore > ccAfter, `physical stock still drew down for the client dose (${ccBefore} → ${ccAfter} g)`);
+
+  // Unit 8 (D7): a barrel is a depreciating asset. Seed a lot into a costed barrel ONE YEAR ago (past
+  // observedAt opens the fill then) → the roll-up accrues the fill's slice to-date; racking the wine out
+  // materializes an immutable BARREL CostLine for the full residency.
+  console.log("\n── BARREL amortization: accrue-to-date + materialize at exit (U8) ──");
+  const barrel = await prisma.vessel.create({ data: { code: "ZZ-COST-BARREL", type: "BARREL", capacityL: 225 } });
+  createdVesselIds.push(barrel.id);
+  await prisma.barrelAsset.create({ data: { vesselId: barrel.id, purchaseCost: "1000", usefulLifeFills: 4 } }); // fill 1 slice = $400 (SYD 0.4)
+  const yearAgo = new Date(Date.now() - 365 * 86_400_000);
+  const barrelLot = await prisma.lot.create({ data: { code: "ZZCOST-BARREL", form: "WINE" } });
+  createdLotIds.push(barrelLot.id);
+  await runLedgerWrite((tx) =>
+    writeLotOperation(tx, {
+      type: "SEED",
+      lines: [
+        { lotId: barrelLot.id, vesselId: barrel.id, deltaL: 225 },
+        { lotId: barrelLot.id, vesselId: null, deltaL: -225, reason: "seed" },
+      ],
+      actorUserId: null, enteredBy: ACTOR.actorEmail, note: "barrel seed", observedAt: yearAgo,
+      lotCodes: new Map([[barrelLot.id, "ZZCOST-BARREL"]]),
+      vesselCodes: new Map([[barrel.id, barrel.code]]),
+      capacityByVessel: new Map([[barrel.id, 225]]),
+    }),
+  );
+  const openFill = await prisma.barrelFill.findFirstOrThrow({ where: { lotId: barrelLot.id } });
+  assert(openFill.fillNumber === 1 && openFill.endedAt === null, `a fill (#1) opened for wine entering the barrel (got #${openFill.fillNumber})`);
+  const barrelCostAccrued = await getLotCost(barrelLot.id, { forceRecompute: true });
+  assert(near(barrelCostAccrued.components.BARREL ?? 0, 400, 1), `accrue-to-date ≈ full $400 slice after ~1yr full barrel (got ${barrelCostAccrued.components.BARREL})`);
+  // Rack the wine out → close the fill, materialize an immutable BARREL CostLine.
+  await runLedgerWrite((tx) =>
+    writeLotOperation(tx, {
+      type: "DEPLETE",
+      lines: [
+        { lotId: barrelLot.id, vesselId: barrel.id, deltaL: -225 },
+        { lotId: barrelLot.id, vesselId: null, deltaL: 225, reason: "deplete" },
+      ],
+      actorUserId: null, enteredBy: ACTOR.actorEmail, note: "barrel exit",
+      lotCodes: new Map([[barrelLot.id, "ZZCOST-BARREL"]]),
+      vesselCodes: new Map([[barrel.id, barrel.code]]),
+      capacityByVessel: new Map([[barrel.id, 225]]),
+    }),
+  );
+  const closedFill = await prisma.barrelFill.findFirstOrThrow({ where: { lotId: barrelLot.id } });
+  assert(closedFill.endedAt != null && closedFill.materializedCostLineId != null, "the fill closed + materialized a BARREL CostLine at exit");
+  const barrelLine = await prisma.costLine.findFirstOrThrow({ where: { id: closedFill.materializedCostLineId! } });
+  assert(barrelLine.component === "BARREL" && near(Number(barrelLine.amount), 400, 1), `materialized BARREL CostLine ≈ $400 (got ${Number(barrelLine.amount)})`);
+
+  // Unit 16 (D20): receive purchased BULK WINE with cost → a mid-DAG MATERIAL CostLine on the lot.
+  console.log("\n── BULK-WINE receive-with-cost (U16/D20) ──");
+  const bulkTank = await prisma.vessel.create({ data: { code: "ZZ-COST-BULKTANK", type: "TANK", capacityL: 500 } });
+  createdVesselIds.push(bulkTank.id);
+  const bulkLot = await seedLot("ZZCOST-BULK", bulkTank.id, 300);
+  await receiveBulkWineCostCore(ACTOR, { lotId: bulkLot, totalCost: 600, note: "purchased bulk cab" });
+  const bulkCost = await getLotCost(bulkLot, { forceRecompute: true });
+  assert(near(bulkCost.components.MATERIAL ?? 0, 600), `purchased bulk-wine cost capitalized as $600 MATERIAL (got ${bulkCost.components.MATERIAL})`);
+  assert(near(bulkCost.costPerL ?? 0, 2), `bulk-wine cost-per-L = $2.00 ($600 / 300 L; got ${bulkCost.costPerL})`);
+
+  // Unit 13 (D12): undo the pre-bottling dose AFTER bottling → the frozen snapshot is untouched, but an
+  // explicit variance event records the basis change split across sold vs on-hand bottles.
+  console.log("\n── POST-BOTTLING variance event (U13/D12) ──");
+  const snapBefore = await prisma.bottlingCostSnapshot.findFirstOrThrow({ where: { id: snap!.id } });
+  await correctOperationCore(ACTOR, { operationId: bigDose.operationId });
+  const snapAfter = await prisma.bottlingCostSnapshot.findFirstOrThrow({ where: { id: snap!.id } });
+  assert(Number(snapBefore.costPerBottle) === Number(snapAfter.costPerBottle), "the frozen COGS snapshot is UNCHANGED by the post-bottling correction (D4)");
+  const variance = await prisma.costVarianceEvent.findFirst({ where: { snapshotId: snap!.id, triggeringOpId: { gt: bigDose.operationId } }, orderBy: { createdAt: "desc" } });
+  assert(!!variance, "a CostVarianceEvent was emitted for the post-bottling basis change");
+  assert(Number(variance!.totalDelta) < 0, `variance delta is negative (cost removed; got ${Number(variance!.totalDelta)})`);
+  assert(near(Number(variance!.soldDelta) + Number(variance!.unsoldDelta), Number(variance!.totalDelta)), "sold + unsold delta conserves the total (D12 split)");
+
+  // Unit 14 (D18): map accounts + emit idempotent export lines for the frozen snapshot.
+  console.log("\n── ACCOUNTING export seam: emit + idempotency (U14/D18) ──");
+  await prisma.accountMapping.create({ data: { component: "MATERIAL", debitAccount: "ZZ-5000-COGS", creditAccount: "ZZ-1400-Inventory" } });
+  const emit1 = await emitExportForSnapshot(snap!.id);
+  assert(emit1.postable && emit1.emitted >= 1, `export emitted ${emit1.emitted} line(s) for the mapped snapshot`);
+  const emit2 = await emitExportForSnapshot(snap!.id);
+  assert(emit2.emitted === 0, `re-emit is idempotent — 0 new lines (got ${emit2.emitted})`);
+  const exportLines = await prisma.costExportEvent.findMany({ where: { sourceSnapshotId: snap!.id } });
+  assert(exportLines.every((l) => l.debitAccount === "ZZ-5000-COGS" && l.creditAccount === "ZZ-1400-Inventory"), "export lines carry the mapped debit/credit accounts");
 
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }
