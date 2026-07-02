@@ -948,6 +948,73 @@ blocks from one entry; the manager approves; each block shows its per-acre spray
 **Implementation: deferred to `/plan`.**  **Honors:** D2/D6 (append-only, correctable), D12
 (auto-log-not-rekey), D16 (tenant scoping); built on Phases 9 (engine), 11 (labor), 8 (cost/supply).
 
+## Phase 22 — Production error monitoring & self-healing bug loop  ⬜  *(reliability / dev-velocity; extends the shipped feedback→PR loop)*
+**Goal:** Catch runtime errors in production, turn each **distinct** bug into an actionable issue, and
+feed it into the **same auto-fix-PR loop we already ship for assistant feedback** — Claude investigates
+in a GitHub Action, opens a **path-fenced PR**, CI gates it, a human approves & merges, Vercel redeploys.
+This is a **capture layer bolted onto an already-proven self-healing pipeline**, not a new pipeline.
+**What we already have (reuse verbatim — do NOT rebuild):** the assistant-feedback loop (PR #5/#6,
+2026-06-25) is exactly this pattern: a *source of problems* → a **scheduled + `repository_dispatch`
+GitHub Action** (`.github/workflows/assistant-feedback.yml`) → an **agent script**
+(`scripts/assistant-feedback-agent.ts`) that investigates read-only, proposes a fix, **gates on
+typecheck, and NEVER runs untrusted/model-touched code with secrets in-job** (RCE hardening, commit
+a30dd72) → `peter-evans/create-pull-request` → `ci.yml` gates → human merge → Vercel deploy. Phase 22
+points that machine at a new source: **captured production errors.**
+**Domain requirements (durable):**
+- **Capture layer — decision leaning Sentry free tier ($0), roll-your-own as the zero-forever-cost
+  fallback (final call is a `/plan` decision).**
+  - *Primary (recommended): Sentry free tier* — `@sentry/nextjs`, 5k errors/mo at $0 (a single-winery
+    app won't approach it). Earns its place on the two things that are annoying to build well and easy
+    to build badly: **grouping/dedup** (500 identical crashes → ONE issue, so the agent fixes a bug not
+    500 duplicate reports) and **source-map symbolication** (the agent sees `costRollup.ts:42`, not
+    minified `a.b.c`). Trigger: a Sentry **alert → webhook → `repository_dispatch`** into the fix
+    workflow (mirrors how the app fires `assistant_feedback`), plus the same scheduled sweep fallback.
+    Tradeoff to accept explicitly: multi-tenant error data (possibly PII in breadcrumbs) transits a
+    third party — **scrub PII via Sentry `beforeSend`/data-scrubbing before this ships.**
+  - *Fallback: roll-your-own `ErrorEvent` table in Neon* — $0 forever, no vendor, **nothing leaves the
+    Neon/RLS tenant boundary** (fits Phase-12 isolation exactly). Next.js `instrumentation.ts`
+    `onRequestError` (server) + a client React error boundary → `POST` → tenant-scoped `ErrorEvent`
+    table (Phase-12 checklist: RLS, `tenantId`, index). The agent reads NEW errors just like it reads
+    NEW feedback. Cost of this path: you build **grouping/dedup + a fingerprint** yourself (else the
+    agent re-fixes the same crash every sweep). If chosen, follow the Phase-12 new-table checklist.
+  - *If Sentry free is ever outgrown:* **GlitchTip/Bugsink** are Sentry-SDK-compatible and self-hostable
+    (~$5–15/mo) — same webhook, no agent change. Note it as the escape hatch, don't build it in v1.
+- **Fix-agent scope & safety (extend, don't weaken, the existing hardening):** a **separate agent
+  script** (e.g. `scripts/error-fix-agent.ts`) or a generalized shared core — reads ONE distinct NEW
+  error (by fingerprint), investigates read-only, proposes a **minimal path-fenced fix**, **gates on
+  typecheck**, refuses to run eslint/vitest/app code in the secrets-holding job (defer to PR CI),
+  modify-existing-files-only + realpath fence. **The write-allowlist must widen** beyond
+  `src/lib/assistant/**` (real bugs live app-wide) — but keep it a **deny-by-default fence** that
+  **never** touches `.env`, `prisma/schema.prisma`, migrations, CI workflows, auth/authz, tenant
+  scoping (`src/lib/tenant/**`), or the confirm-before-write path. Widening the fence is the main new
+  risk surface — treat the allowlist as the security-critical artifact of this phase.
+- **Dedup / don't-refile:** one open PR (or one triaged issue) per error fingerprint; mark the error
+  `TRIAGED` with the PR URL on open (mirrors `assistant-feedback-mark.ts`). No fingerprint churn loops.
+- **Human gate is non-negotiable (D-safety):** the loop **never commits to `main`** and never
+  auto-merges. It opens a PR labelled (e.g. `auto-fix`); the human runs **`/merge-check`** before
+  merging. Vercel redeploys on merge — no separate deploy step (matches `ci.yml`: CI gates, Vercel
+  builds+migrates on merge).
+- **Manual + user-reported bugs, same rail:** a lightweight in-app "report a bug" affordance (or a
+  `workflow_dispatch` with an error/issue id) feeds the **same** agent, so both auto-captured crashes
+  and human bug reports converge on one self-healing pipeline.
+**Exit:** a real runtime error occurs in production; it surfaces as a single grouped issue; the fix
+workflow fires (webhook or sweep), Claude opens a path-fenced PR with a root-cause summary + the
+symbolicated stack it fixed; CI passes; the founder runs `/merge-check`, approves, merges; Vercel
+redeploys with the fix — and the same issue does not re-file.
+**Runbook notes for `/plan`:**
+- *Reuse:* `assistant-feedback.yml` (workflow shape: dispatch + schedule + concurrency + PR-create +
+  mark-triaged), `assistant-feedback-agent.ts` (agent loop, read-only tools, typecheck gate, fence,
+  no-untrusted-exec), `assistant-feedback-mark.ts`, `ci.yml` (PR gate), the `GH_PAT`/"Actions may
+  create PRs" repo config already set, and the Phase-12 new-table checklist if the Neon path is chosen.
+- *Still open for `/plan`:* **(1) the capture-layer decision** (Sentry-free vs roll-your-own Neon — the
+  one real fork; privacy vs zero-forever-cost vs build-effort); (2) how wide the write-allowlist opens
+  and its exact denylist; (3) PII scrubbing config if Sentry; (4) whether to generalize one shared
+  agent core over both feedback + errors or keep two scripts; (5) severity threshold that auto-triggers
+  a fix attempt vs just files an issue (don't fire the agent on every transient 500).
+**Implementation: deferred to `/plan`.**  **Honors:** the human-gate + no-untrusted-exec safety model
+of the shipped feedback loop; D16 (tenant scoping — errors are tenant-scoped if the Neon path);
+Phase-12 RLS checklist (Neon path only). **Built on:** the assistant-feedback→PR loop (shipped) + `ci.yml`.
+
 ## In-flight — Universal timeline undo (the "correction wedge")  🔄
 `docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` (building now, tenant-aware).
 One `reverseOperationCore` + one timeline Undo affordance for every op. **This is the direct
