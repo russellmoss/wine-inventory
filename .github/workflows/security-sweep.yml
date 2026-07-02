@@ -8,14 +8,10 @@ name: Security Sweep
 on:
   schedule:
     - cron: '0 10 * * 1'  # 10:00 UTC every Monday
-  push:
-    paths:
-      - 'prisma/schema.prisma'
-      - 'prisma/migrations/**'
-      - 'src/lib/tenant/**'
-      - 'src/lib/auth/**'
-      - 'src/lib/**/auth*'
   workflow_dispatch:
+  # NOTE: claude-code-action does not support the `push` event ("Unsupported
+  # event type: push"). Sensitive-path changes are covered by the weekly
+  # schedule + the local .githooks/post-commit nudge instead.
 
 permissions:
   contents: read
