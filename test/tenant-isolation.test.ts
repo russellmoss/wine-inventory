@@ -15,8 +15,12 @@ const A = "org_bhutan_wine_co";
 const B = "org_isolation_vitest_b";
 
 describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
-  const owner = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_UNPOOLED } } });
-  const app = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_APP } } });
+  // Constructed in beforeAll, NOT at describe-collection: Vitest still runs a skipped suite's body to
+  // collect it, and `new PrismaClient({ url: undefined })` throws — so building clients here would fail
+  // the whole run in any env without the DB vars set (e.g. the plain `vitest run` CI job). beforeAll
+  // only runs when the suite is NOT skipped, i.e. exactly when ENABLED and the URLs are present.
+  let owner: PrismaClient;
+  let app: PrismaClient;
 
   const asTenant = <T>(t: string, fn: (tx: Prisma.TransactionClient) => Promise<T>) =>
     app.$transaction(async (tx) => {
@@ -25,6 +29,8 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     });
 
   beforeAll(async () => {
+    owner = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_UNPOOLED } } });
+    app = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_APP } } });
     // Tenant A already exists in a real DB; on a fresh DB (CI) it must be created so the FK-bound
     // fixtures below (tenantId = A) can insert. Idempotent — a no-op update against the real tenant.
     await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Bhutan Wine Co", slug: A } });
