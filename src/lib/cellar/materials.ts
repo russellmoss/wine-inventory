@@ -29,6 +29,8 @@ export type CellarMaterialDTO = {
   isStockTracked?: boolean;
   onHand?: number | null;
   stockUnit?: string | null;
+  /** Phase 8 (Unit 12): surfaced on the management page so an inactive supply can be reactivated. */
+  isActive?: boolean;
 };
 
 function toDTO(r: {
@@ -53,11 +55,11 @@ function toDTO(r: {
  * unchanged for every existing call site (bulk/ferment/en-tirage). Tenant scoping is automatic (RLS +
  * the Prisma extension) on both queries.
  */
-export async function listMaterials(opts: { kind?: MaterialKind } = {}): Promise<CellarMaterialDTO[]> {
+export async function listMaterials(opts: { kind?: MaterialKind; includeInactive?: boolean } = {}): Promise<CellarMaterialDTO[]> {
   const rows = await prisma.cellarMaterial.findMany({
-    where: { isActive: true, ...(opts.kind ? { kind: opts.kind } : {}) },
+    where: { ...(opts.includeInactive ? {} : { isActive: true }), ...(opts.kind ? { kind: opts.kind } : {}) },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true, isStockTracked: true, stockUnit: true },
+    select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true, isStockTracked: true, stockUnit: true, isActive: true },
   });
   const onHand = await prisma.supplyLot.groupBy({
     by: ["materialId"],
@@ -69,6 +71,7 @@ export async function listMaterials(opts: { kind?: MaterialKind } = {}): Promise
     ...toDTO(r),
     isStockTracked: r.isStockTracked,
     stockUnit: r.stockUnit,
+    isActive: r.isActive,
     onHand: r.isStockTracked ? (onHandByMaterial.get(r.id) ?? 0) : null,
   }));
 }
@@ -204,5 +207,60 @@ export async function createStockMaterialCore(
     }
 
     return { ...toDTO(material), isStockTracked: true, stockUnit, onHand: openingQty };
+  });
+}
+
+export type ReceiveSupplyInput = {
+  materialId: string;
+  qty: number;
+  unitCost?: number | null;
+  lotCode?: string | null;
+  note?: string | null;
+};
+
+/**
+ * Phase 8 (Unit 12): receive a costed supply lot against an existing material — the restock path. Writes
+ * a SupplyLot (qtyReceived == qtyRemaining) in the material's stock unit, stamped with the tenant's
+ * current costing-policy version (D17). Marks the material stock-tracked if it wasn't. Null unit cost is
+ * unknown-cost (D14), not $0.
+ */
+export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupplyInput): Promise<{ supplyLotId: string }> {
+  const qty = Number(input.qty);
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error("Received quantity must be greater than zero.");
+  const unitCost = input.unitCost != null && Number.isFinite(input.unitCost) && input.unitCost >= 0 ? input.unitCost : null;
+
+  return runInTenantTx(async (tx) => {
+    const material = await tx.cellarMaterial.findUnique({ where: { id: input.materialId }, select: { id: true, name: true, stockUnit: true, isStockTracked: true } });
+    if (!material) throw new Error("Material not found.");
+    const stockUnit = coerceStockUnit(material.stockUnit);
+    if (!material.isStockTracked || !material.stockUnit) {
+      await tx.cellarMaterial.update({ where: { id: material.id }, data: { isStockTracked: true, stockUnit } });
+    }
+    const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true } });
+    const lot = await tx.supplyLot.create({
+      data: {
+        materialId: material.id,
+        qtyReceived: qty,
+        qtyRemaining: qty,
+        stockUnit,
+        unitCost,
+        policyVersion: settings?.costingPolicyVersion ?? 1,
+        lotCode: input.lotCode?.trim() || null,
+        supplierNote: input.note?.trim() || null,
+      },
+      select: { id: true },
+    });
+    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Received ${qty} ${stockUnit} of "${material.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
+    return { supplyLotId: lot.id };
+  });
+}
+
+/** Phase 8 (Unit 12): activate/deactivate a supply in the catalog (history-safe — never a hard delete). */
+export async function setMaterialActiveCore(actor: LedgerActor, materialId: string, isActive: boolean): Promise<void> {
+  await runInTenantTx(async (tx) => {
+    const m = await tx.cellarMaterial.findUnique({ where: { id: materialId }, select: { id: true, name: true } });
+    if (!m) throw new Error("Material not found.");
+    await tx.cellarMaterial.update({ where: { id: materialId }, data: { isActive } });
+    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "CellarMaterial", entityId: materialId, summary: `${isActive ? "Reactivated" : "Deactivated"} supply "${m.name}"` });
   });
 }
