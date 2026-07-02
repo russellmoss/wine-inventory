@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Input, Button } from "@/components/ui";
 import { AddressFields } from "@/components/address/AddressFields";
 import type { AddressParts } from "@/lib/address/format";
-import { setSparklingEnabled } from "@/lib/settings/actions";
+import { setSparklingEnabled, saveCostSettings } from "@/lib/settings/actions";
+import type { CostSettings } from "@/lib/cost/policy";
 import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
 
 export type ComplianceProfileFields = {
@@ -19,11 +20,23 @@ export type ComplianceProfileFields = {
   isEftPayer: boolean;
 };
 
+// Component capitalization toggles surfaced in the UI (MATERIAL + DOSAGE_LIQUEUR are always
+// capitalized and have no toggle — see isComponentCapitalized). Copy explains what "off" means.
+const CAPITALIZATION_TOGGLES: { key: keyof CostSettings; label: string; hint: string }[] = [
+  { key: "capitalizeFruit", label: "Fruit / grapes", hint: "Harvest cost captured at crush." },
+  { key: "capitalizeBarrel", label: "Barrel", hint: "Cooperage amortization (Phase 8b)." },
+  { key: "capitalizePackaging", label: "Packaging / dry goods", hint: "Glass, cork, capsule, label, case." },
+  { key: "capitalizeLabor", label: "Labor", hint: "Recorded now; allocation lands in Phase 11." },
+  { key: "capitalizeOverhead", label: "Overhead", hint: "Recorded now; allocation lands in Phase 11." },
+];
+
 export function SettingsClient({
   sparklingEnabled,
+  cost,
   complianceProfile,
 }: {
   sparklingEnabled: boolean;
+  cost: CostSettings;
   complianceProfile: ComplianceProfileFields;
 }) {
   const router = useRouter();
@@ -32,6 +45,36 @@ export function SettingsClient({
   const [pending, startTransition] = React.useTransition();
   const [profileMsg, setProfileMsg] = React.useState<string | null>(null);
   const [profilePending, startProfile] = React.useTransition();
+
+  // Phase 8 U9 — costing policy form state (method + capitalization toggles).
+  const [costForm, setCostForm] = React.useState(cost);
+  const [costMsg, setCostMsg] = React.useState<string | null>(null);
+  const [costPending, startCost] = React.useTransition();
+  const costDirty =
+    costForm.costingMethod !== cost.costingMethod ||
+    CAPITALIZATION_TOGGLES.some((t) => costForm[t.key] !== cost[t.key]);
+
+  function saveCost() {
+    setCostMsg(null);
+    setError(null);
+    startCost(async () => {
+      try {
+        const saved = await saveCostSettings({
+          costingMethod: costForm.costingMethod,
+          capitalizeFruit: costForm.capitalizeFruit,
+          capitalizeBarrel: costForm.capitalizeBarrel,
+          capitalizeLabor: costForm.capitalizeLabor,
+          capitalizeOverhead: costForm.capitalizeOverhead,
+          capitalizePackaging: costForm.capitalizePackaging,
+        });
+        setCostForm(saved);
+        setCostMsg("Saved.");
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't save the costing policy.");
+      }
+    });
+  }
 
   function toggle(next: boolean) {
     setError(null);
@@ -104,6 +147,66 @@ export function SettingsClient({
           </button>
         </div>
         {error && <p style={{ color: "var(--danger)", marginTop: 12, fontSize: 14 }}>{error}</p>}
+      </Card>
+
+      {/* Phase 8 U9 — costing policy: depletion method + which components fold into cost-per-bottle. */}
+      <Card style={{ maxWidth: 560, marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>Cost accounting</h2>
+          <Badge tone="neutral">Policy v{costForm.policyVersion}</Badge>
+        </div>
+        <p style={{ color: "var(--text-secondary)", margin: "6px 0 16px", fontSize: 14.5, maxWidth: "50ch" }}>
+          How supply cost depletes and which cost components capitalize into cost-per-bottle. Turning a
+          component off still records its cost — it just doesn&apos;t roll into the capitalized total.
+          Changing anything here bumps the policy version; already-recorded history keeps its old version
+          and is never re-valued.
+        </p>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Depletion method</span>
+          <select
+            value={costForm.costingMethod}
+            onChange={(e) => setCostForm((f) => ({ ...f, costingMethod: e.target.value as CostSettings["costingMethod"] }))}
+            style={{ height: 44, maxWidth: 260, padding: "0 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)" }}
+          >
+            <option value="WEIGHTED_AVG">Weighted average</option>
+            <option value="FIFO">FIFO (first in, first out)</option>
+          </select>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            Which supply lot a draw-down consumes first. Changing this applies going forward — past
+            consumption keeps the method it was recorded under.
+          </span>
+        </label>
+
+        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 8 }}>
+          Capitalized components
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {CAPITALIZATION_TOGGLES.map((t) => (
+            <label key={t.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14.5 }}>
+              <input
+                type="checkbox"
+                checked={costForm[t.key] as boolean}
+                onChange={(e) => setCostForm((f) => ({ ...f, [t.key]: e.target.checked }))}
+                style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }}
+              />
+              <span style={{ minWidth: 0 }}>
+                {t.label}
+                <span style={{ display: "block", fontSize: 12.5, color: "var(--text-muted)" }}>{t.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "12px 0 0", maxWidth: "50ch" }}>
+          Materials and dosage liqueur always capitalize and can&apos;t be turned off.
+        </p>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+          <Button variant="primary" disabled={costPending || !costDirty} onClick={saveCost}>
+            {costPending ? "Saving…" : "Save costing policy"}
+          </Button>
+          {costMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{costMsg}</span>}
+        </div>
       </Card>
 
       {/* TTB compliance profile — the filer identity that heads Form 5120.17. */}

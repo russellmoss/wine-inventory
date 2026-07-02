@@ -1,4 +1,4 @@
-import { getAppSettings } from "@/lib/settings/data";
+import { getAppSettings, getCostSettings } from "@/lib/settings/data";
 import { prisma } from "@/lib/prisma";
 import { asOpsCadence, asReturnCadence } from "@/lib/compliance/types";
 import { SettingsClient } from "./SettingsClient";
@@ -6,10 +6,15 @@ import { SettingsClient } from "./SettingsClient";
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const [settings, profile] = await Promise.all([getAppSettings(), prisma.complianceProfile.findFirst()]);
+  const [settings, cost, profile] = await Promise.all([
+    getAppSettings(),
+    getCostSettings(),
+    prisma.complianceProfile.findFirst(),
+  ]);
   return (
     <SettingsClient
       sparklingEnabled={settings.sparklingEnabled}
+      cost={cost}
       complianceProfile={{
         ein: profile?.ein ?? "",
         registryNumber: profile?.registryNumber ?? "",
