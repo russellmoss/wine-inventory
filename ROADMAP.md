@@ -723,6 +723,58 @@ exactly which barrels hold it.
 **Implementation: deferred to `/plan`.**  **Honors:** D12 (vessel-first capture), D16 (tenant scoping),
 + Phase 6 (ferment readings) and Phase 5 (lot state).
 
+## Phase 19 — AI-native customizable dashboards  ⬜  *(differentiator / platform)*
+**Goal:** Replace the legacy single dashboard (a leftover from the simple-inventory days that "makes
+no sense" now) with **user-built, role-appropriate dashboards composed by AI in natural language**.
+Winemakers want different views for harvest vs ferment vs cost vs compliance, at different times. They
+describe what they want, an AI assist builds it, and they fine-tune on a canvas. Match the surface
+Vintrace/InnoVint offer (scorecards, charts, tables, saved-search dashlets) but **AI-first, with minimal
+training**.
+**Core architectural principle (makes "AI-native" and "consistent" coexist):** the LLM **emits a
+schema-validated dashboard SPEC (JSON) against a curated widget registry — never layout code or free
+HTML.** Determinism/formatting come from the registry + server-side validation; freedom comes from
+composition. Pre-built widgets + pre-made templates guarantee consistency; an invalid AI spec is
+rejected and repaired, never rendered. This is the user's "as deterministic and programmatic as
+possible."
+**Domain requirements (durable):**
+- **Widget registry:** a fixed set of typed, pre-built widgets — **scorecard/metric, line/bar/pie
+  chart, table, saved-search list, work-order list**, plus **interactive** ones: **drill-down**
+  (click → filtered list/detail) and **log-action** (launch an existing capture surface to log Brix /
+  pH / TA / additions / movements straight from the dashboard, reusing the Phase 3/6 cores — honors
+  D12). Each widget declares its data binding + config schema.
+- **Curated metric/data catalog:** widgets bind to a tenant-scoped catalog of queryable
+  metrics/entities (volume on hand, cost per lot/bottle from Phase 8, compliance figures from Phase 14,
+  ferment state/readings, counts, losses…) — reuse existing read models. Allowlisted bindings keep AI
+  output safe + deterministic (no arbitrary NL→SQL in v1).
+- **AI builder:** natural-language create/edit ("give me a harvest dashboard with intake by variety and
+  a ferment watchlist") on the **existing `/api/assistant` tool-use loop**; the AI edits the SAME spec
+  the canvas edits (one source of truth).
+- **Canvas editor:** grid-based drag / move / resize / relabel / font + config panels — the manual
+  override on top of the AI. (Layer-1 candidate: `react-grid-layout`.)
+- **Many dashboards + default + switcher:** users create as many as they want, **set one as the
+  default** (what they land on at login), and switch via a **dropdown**. Pre-made templates seed new
+  users; tenant/role templates can be published.
+- **Tenant + user scoped** (Phase-12 checklist): dashboard instances + widget configs are per-user;
+  templates are tenant/role level.
+**Exit:** a winemaker asks the AI for a ferment dashboard, gets a valid multi-widget layout, tweaks it
+on the canvas, logs a Brix reading from a widget, sets it as default, and switches to a cost dashboard
+from the dropdown.
+**Runbook notes for `/plan`:**
+- *Reuse:* the assistant tool-use loop (`/api/assistant`); existing read models (Phase 8 cost, Phase 14
+  compliance, `vessel_lot`, ferment/`AnalysisPanel`); existing capture cores (log-from-widget); the
+  hand-rolled SVG chart components (`FermentChart`, `AnalyteTrendChart`) as chart primitives.
+- *Decisions to resolve:* **charting** — extend the bespoke SVG primitives vs adopt a lib
+  (recharts/visx/nivo); **canvas/grid** lib (`react-grid-layout`); the **widget-spec schema + registry**
+  design (the load-bearing piece); dashboard ownership scope (per-user instances + tenant/role
+  templates recommended); how far the metric catalog goes before arbitrary NL→query (defer the latter).
+- *Recommended internal phasing:* **19a** deterministic foundation (widget registry + validated spec +
+  canvas + templates + multi-dashboard/default/switcher, no AI) → **19b** the natural-language AI
+  builder on top. Build the deterministic system first; the AI is a spec-generator over it.
+**Implementation: deferred to `/plan`.**  **Honors:** D12 (log from anywhere / vessel-first),
+D14 (auditable), D16 (tenant scoping); reuses the assistant infra + Phase 8/14 read models.
+Note: Phase 18's floor plan and saved searches become widget types here — the dashboard is the
+composition layer.
+
 ## In-flight — Universal timeline undo (the "correction wedge")  🔄
 `docs/plans/2026-07-01-024-feat-universal-timeline-undo-plan.md` (building now, tenant-aware).
 One `reverseOperationCore` + one timeline Undo affordance for every op. **This is the direct
