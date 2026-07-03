@@ -2,50 +2,35 @@
 
 import React from "react";
 import Link from "next/link";
-import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
+import type { WorkOrderPrintView, WorkOrderPrintTask } from "@/lib/work-orders/data";
 
 // Phase 9.1 (Unit 6): the printable / Save-as-PDF work-order sheet. Token-driven (print.css), one WO per
-// sheet, page-break-inside:avoid per task box (A12). Each task shows planned values + a note area: any
-// captured completion note/deviation, THEN blank ruled lines for hand notes (D2). window.print() → native
-// Save-as-PDF; no new deps. Screen-only chrome (.wo-print-hide) drops out when printing.
+// sheet, page-break-inside:avoid per task box (A12). Values are RESOLVED to human labels server-side
+// (vessel code, lot code, material name — never raw ids) + a plain dose line with the total. window.print()
+// → native Save-as-PDF; no new deps. Screen-only chrome (.wo-print-hide) drops out when printing.
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 }
 
-const HIDE_KEYS = new Set(["note"]);
-function plannedEntries(t: WorkOrderTaskView): [string, string][] {
-  const p = (t.plannedPayload ?? {}) as Record<string, unknown>;
-  return Object.entries(p)
-    .filter(([k, v]) => !HIDE_KEYS.has(k) && v !== "" && v != null)
-    .map(([k, v]) => [k, String(v)]);
-}
-
-function typeLine(t: WorkOrderTaskView): string {
-  if (t.kind === "OPERATION") return `Operation · ${t.opType ?? ""}`;
-  if (t.kind === "MAINTENANCE") return `Maintenance · ${(t.activityType ?? "").replace(/_/g, " ").toLowerCase()}`;
-  return `Observation · ${t.observationType ?? ""}`;
-}
-
 const box: React.CSSProperties = { border: "1px solid #c9bfb4", borderRadius: 6, padding: "12px 14px", marginTop: 10 };
 const metaCell: React.CSSProperties = { fontSize: 12.5 };
 const metaLabel: React.CSSProperties = { color: "#7a6f63", textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 10.5 };
 
-function TaskBox({ t }: { t: WorkOrderTaskView }) {
-  const entries = plannedEntries(t);
+function TaskBox({ t }: { t: WorkOrderPrintTask }) {
   const captured = [t.deviationReason?.trim(), t.completionNote?.trim()].filter(Boolean).join(" — ");
   return (
     <div className="wo-print-task" style={box}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{t.seq}. {t.title}</div>
-        <div style={{ fontSize: 11.5, color: "#7a6f63" }}>{typeLine(t)}</div>
+        <div style={{ fontSize: 11.5, color: "#7a6f63" }}>{t.typeLabel}</div>
       </div>
       {t.instructions ? <div style={{ fontSize: 12.5, marginTop: 4 }}>{t.instructions}</div> : null}
-      {entries.length ? (
-        <div style={{ fontSize: 12.5, marginTop: 6, color: "#3a3129" }}>
-          {entries.map(([k, v]) => (
-            <span key={k} style={{ marginRight: 14 }}><span style={{ color: "#7a6f63" }}>{k}:</span> {v}</span>
+      {t.rows.length ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 18px", fontSize: 12.5, marginTop: 8, color: "#3a3129" }}>
+          {t.rows.map((r, i) => (
+            <div key={i}><span style={{ color: "#7a6f63" }}>{r.label}:</span> <strong style={{ fontWeight: 600 }}>{r.value}</strong></div>
           ))}
         </div>
       ) : null}
@@ -61,12 +46,12 @@ function TaskBox({ t }: { t: WorkOrderTaskView }) {
   );
 }
 
-export function PrintClient({ wo, printedAt }: { wo: WorkOrderDetail; printedAt: string }) {
+export function PrintClient({ wo, workOrderId, printedAt }: { wo: WorkOrderPrintView; workOrderId: string; printedAt: string }) {
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", padding: "16px 12px 60px" }}>
       {/* Screen-only controls — hidden when printing. */}
       <div className="wo-print-hide" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <Link href={`/work-orders/${wo.id}`} style={{ fontSize: 13, color: "var(--text-muted)", textDecoration: "none" }}>← Back to work order</Link>
+        <Link href={`/work-orders/${workOrderId}`} style={{ fontSize: 13, color: "var(--text-muted)", textDecoration: "none" }}>← Back to work order</Link>
         <button
           onClick={() => window.print()}
           style={{ padding: "9px 18px", background: "var(--wine-primary)", color: "var(--surface-raised)", border: "none", borderRadius: "var(--radius-md)", fontFamily: "var(--font-body)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}

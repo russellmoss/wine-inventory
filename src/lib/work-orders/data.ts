@@ -5,6 +5,7 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { bucketWorkOrders, type BucketedItem } from "@/lib/work-orders/buckets";
 import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/lib/work-orders/deviation";
 import { buildArchiveWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilters } from "@/lib/work-orders/archive-filters";
+import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 
 // Read-side view-models for work orders (Phase 9). K12-safe: every reader takes tenantId as an EXPLICIT
 // argument and wraps its reads in runAsTenant — never reads the ALS tenant (so these stay correct even
@@ -103,6 +104,110 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null,
       startedByEmail: wo.startedByEmail,
       tasks: wo.tasks.map(taskView),
+    };
+  });
+}
+
+// ── Printable work order (Unit 6 fix): resolve the raw IDs in a task's payload to the human names/codes a
+// cellar hand actually reads — vessel code, lot code, material name — and build a plain dose line + total. ──
+export type PrintRow = { label: string; value: string };
+export type WorkOrderPrintTask = {
+  id: string; seq: number; title: string; typeLabel: string;
+  rows: PrintRow[]; instructions: string | null; completionNote: string | null; deviationReason: string | null;
+};
+export type WorkOrderPrintView = {
+  number: number; title: string; status: string;
+  issuedByEmail: string | null; assigneeEmail: string | null; issuedAt: string | null; dueAt: string | null; instructions: string | null;
+  tasks: WorkOrderPrintTask[];
+};
+
+export async function getWorkOrderPrintView(tenantId: string, workOrderId: string): Promise<WorkOrderPrintView | null> {
+  return runAsTenant(tenantId, async () => {
+    const wo = await prisma.workOrder.findUnique({ where: { id: workOrderId }, include: { tasks: { orderBy: { seq: "asc" } } } });
+    if (!wo) return null;
+
+    // Collect every referenced id (canonical columns + payload) so we can resolve them to human labels.
+    const vIds = new Set<string>(); const lIds = new Set<string>(); const mIds = new Set<string>();
+    const add = (set: Set<string>, v: unknown) => { if (typeof v === "string" && v) set.add(v); };
+    for (const t of wo.tasks) {
+      const p = (t.plannedPayload ?? {}) as Record<string, unknown>;
+      [t.destVesselId, t.sourceVesselId, p.vesselId, p.fromVesselId, p.toVesselId].forEach((x) => add(vIds, x));
+      [t.lotId, p.lotId].forEach((x) => add(lIds, x));
+      [t.materialId, p.materialId].forEach((x) => add(mIds, x));
+    }
+    const [vessels, lots, materials, vols] = await Promise.all([
+      prisma.vessel.findMany({ where: { id: { in: [...vIds] } }, select: { id: true, code: true, type: true, capacityL: true } }),
+      prisma.lot.findMany({ where: { id: { in: [...lIds] } }, select: { id: true, code: true } }),
+      prisma.cellarMaterial.findMany({ where: { id: { in: [...mIds] } }, select: { id: true, name: true } }),
+      vIds.size ? prisma.vesselLot.groupBy({ by: ["vesselId"], where: { vesselId: { in: [...vIds] } }, _sum: { volumeL: true } }) : Promise.resolve([] as { vesselId: string; _sum: { volumeL: unknown } }[]),
+    ]);
+    const vMap = new Map(vessels.map((v) => [v.id, v]));
+    const volMap = new Map(vols.map((g) => [g.vesselId, Number(g._sum.volumeL ?? 0)]));
+    const lMap = new Map(lots.map((l) => [l.id, l.code]));
+    const mMap = new Map(materials.map((m) => [m.id, m.name]));
+    const vLabel = (id?: string | null) => { const v = id ? vMap.get(id) : null; return v ? `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}` : null; };
+    const vVolume = (id?: string | null) => { const v = id ? vMap.get(id) : null; if (!v) return 0; return v.type === "BARREL" ? Number(v.capacityL ?? volMap.get(id!) ?? 0) : Number(volMap.get(id!) ?? 0); };
+    const isBarrel = (id?: string | null) => (id ? vMap.get(id)?.type === "BARREL" : false);
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+    const tasks: WorkOrderPrintTask[] = wo.tasks.map((t) => {
+      const p = (t.plannedPayload ?? {}) as Record<string, unknown>;
+      const rows: PrintRow[] = [];
+      const typeLabel = t.kind === "OPERATION" ? `Operation · ${t.opType ?? ""}`
+        : t.kind === "MAINTENANCE" ? `Maintenance · ${(t.activityType ?? "").replace(/_/g, " ").toLowerCase()}`
+        : `Observation · ${t.observationType ?? ""}`;
+
+      // Vessel(s): rack/top read from→to; everything else a single vessel.
+      const fromV = vLabel(str(p.fromVesselId) ?? t.sourceVesselId);
+      const toV = vLabel(str(p.toVesselId) ?? t.destVesselId);
+      const singleV = vLabel(str(p.vesselId) ?? t.destVesselId ?? t.sourceVesselId);
+      if (fromV && toV) { rows.push({ label: "From", value: fromV }); rows.push({ label: "To", value: toV }); }
+      else if (singleV) rows.push({ label: "Vessel", value: singleV });
+      const lotCode = lMap.get(str(p.lotId) ?? t.lotId ?? "");
+      if (lotCode) rows.push({ label: "Lot", value: lotCode });
+      const matName = mMap.get(str(p.materialId) ?? t.materialId ?? "");
+      if (matName) rows.push({ label: "Material", value: matName });
+
+      // Dose (ADDITION/FINING): amount + doseUnit (or legacy rate) → a plain line + the computed total.
+      if (t.opType === "ADDITION" || t.opType === "FINING") {
+        const amount = num(p.amount); const doseUnit = str(p.doseUnit);
+        const rv = num(p.rateValue); const rb = str(p.rateBasis);
+        const vid = str(p.vesselId) ?? t.destVesselId ?? t.sourceVesselId;
+        const vol = vVolume(vid);
+        if (amount != null && doseUnit) {
+          rows.push({ label: "Dose", value: `${amount} ${doseUnit}` });
+          const est = computeDoseTotal(amount, doseUnit, vol);
+          if (est) rows.push({ label: "Total to weigh out", value: `≈ ${est.total.toLocaleString()} ${est.unit}${isBarrel(vid) ? " (barrel full)" : vol > 0 ? ` (at ${vol.toLocaleString()} L)` : ""}` });
+        } else if (rv != null && rb && RATE_BASIS_LABELS[rb as RateBasis]) {
+          rows.push({ label: "Rate", value: `${rv} ${RATE_BASIS_LABELS[rb as RateBasis]}` });
+          const est = resolveDoseUnit(RATE_BASIS_LABELS[rb as RateBasis]) ? computeDoseTotal(rv, RATE_BASIS_LABELS[rb as RateBasis], vol) : null;
+          if (est) rows.push({ label: "Total to weigh out", value: `≈ ${est.total.toLocaleString()} ${est.unit}${vol > 0 ? ` (at ${vol.toLocaleString()} L)` : ""}` });
+        } else if (amount != null) {
+          // Bare amount (legacy WO path, no unit chosen) — in the material's stock unit.
+          rows.push({ label: "Dose", value: String(amount) });
+        }
+      } else {
+        // Other typed fields, human-labelled (no raw ids).
+        const push = (key: string, label: string, suffix = "") => { const v = num(p[key]) ?? str(p[key]); if (v != null) rows.push({ label, value: `${v}${suffix}` }); };
+        push("amount", "Amount"); // maintenance amount (unit lives on the material)
+        push("filterType", "Filter"); push("micron", "Micron", " µm"); push("actualOutputL", "Output", " L");
+        const target = num(p.targetValue); const tu = str(p.targetUnit);
+        if (target != null) rows.push({ label: "Target", value: tu ? `${target} ${tu}` : String(target) });
+        push("achievedValue", "Achieved"); push("gasType", "Gas");
+        push("drawL", "Draw", " L"); push("lossL", "Loss", " L"); push("volumeL", "Volume", " L");
+        const rackType = str(p.rackType);
+        if (rackType) rows.push({ label: "Rack type", value: rackType });
+      }
+
+      return { id: t.id, seq: t.seq, title: t.title, typeLabel, rows, instructions: t.instructions, completionNote: t.completionNote, deviationReason: t.deviationReason };
+    });
+
+    return {
+      number: wo.number, title: wo.title, status: wo.status,
+      issuedByEmail: wo.issuedByEmail, assigneeEmail: wo.assigneeEmail,
+      issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null, dueAt: wo.dueAt ? wo.dueAt.toISOString() : null,
+      instructions: wo.instructions, tasks,
     };
   });
 }
