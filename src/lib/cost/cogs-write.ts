@@ -1,6 +1,7 @@
 import type { Prisma, CostComponent, CostBasisCompleteness } from "@prisma/client";
 import { computeLotCost } from "@/lib/cost/data";
 import { buildCogsSnapshot, type CogsSnapshotPayload } from "@/lib/cost/cogs";
+import { emitExportForSnapshot } from "@/lib/cost/export-emit";
 
 // Phase 8 (Unit 6 wiring) — write the frozen BottlingCostSnapshot inside the bottling finalize tx.
 // Script-safe. MUST be called BEFORE the BOTTLE op reduces the source lots' volumes (it reads their
@@ -85,7 +86,7 @@ export async function writeBottlingCostSnapshot(
     currency: settings?.currency ?? "USD",
   });
 
-  await tx.bottlingCostSnapshot.create({
+  const snapshot = await tx.bottlingCostSnapshot.create({
     data: {
       runId: payload.runId,
       skuId: payload.skuId,
@@ -101,7 +102,12 @@ export async function writeBottlingCostSnapshot(
       policyVersion: payload.policyVersion,
       postingKey: payload.postingKey,
     },
+    select: { id: true },
   });
+
+  // Phase 15 Unit 7 — transactional outbox: emit the accounting export lines + PENDING/WITHHELD
+  // deliveries INSIDE this same tx, so a crash between freeze and emit can never drop a posting.
+  await emitExportForSnapshot(snapshot.id, tx);
 
   if (Math.abs(payload.varianceResidual) > 0.004) {
     await tx.costLine.create({

@@ -85,3 +85,38 @@ export function buildExportLines(src: ExportSource, map: AccountMap): ExportBatc
   }
   return { lines, postable: true };
 }
+
+// ── Phase 15 Unit 7: post-bottling variance → export lines ──
+// A CostVarianceEvent splits a basis correction into a SOLD delta (already-shipped bottles → a COGS
+// adjustment) and an UNSOLD delta (on-hand bottles → an inventory-value adjustment). Both use the
+// tenant's VARIANCE account mapping. We encode DIRECTION in the base debit/credit + a SIGNED amount,
+// and the poster applies ONE uniform sign rule (amount ≥ 0 → debit/credit as given; amount < 0 → swap,
+// abs the amount) so a negative delta becomes a correct mirror-image entry with a positive QBO amount:
+//   sold   → base DR cost(=COGS)  / CR inventory   (a cost increase raises COGS)
+//   unsold → base DR inventory    / CR cost         (a cost increase raises the on-hand asset value)
+// NOTE (flag for the operator's accountant, like plan-026's CBMA placement): this is the v1
+// interpretation of "sold→COGS-variance, unsold→inventory-value"; confirm before prod GA.
+
+export type VarianceExportSource = {
+  varianceEventId: string;
+  soldDelta: number; // signed
+  unsoldDelta: number; // signed
+  currency: string;
+  basisCompleteness: Completeness;
+};
+
+export function buildVarianceExportLines(src: VarianceExportSource, map: AccountMap): ExportBatch {
+  const acct = resolveAccounts(map, "VARIANCE", null); // VARIANCE default ('*') mapping
+  const lines: ExportLine[] = [];
+  const push = (kind: "sold" | "unsold", amt: number, debit: string | null, credit: string | null) => {
+    if (!Number.isFinite(amt) || Math.abs(amt) < 1e-8) return;
+    lines.push({ postingKey: `var:${src.varianceEventId}:${kind}`, component: "VARIANCE", amount: round8(amt), debitAccount: debit, creditAccount: credit, currency: src.currency });
+  };
+  // sold → DR cost / CR inventory ; unsold → DR inventory / CR cost (direction; sign handled at post)
+  push("sold", src.soldDelta, acct?.debit ?? null, acct?.credit ?? null);
+  push("unsold", src.unsoldDelta, acct?.credit ?? null, acct?.debit ?? null);
+
+  if (src.basisCompleteness !== "KNOWN") return { lines, postable: false, reason: `basis is ${src.basisCompleteness}` };
+  if (!acct) return { lines, postable: false, reason: "the cost-variance account is not mapped" };
+  return { lines, postable: true };
+}

@@ -43,20 +43,22 @@ function liquidOfBreakdown(breakdown: unknown): number {
   return round8(sum);
 }
 
-/** Detect + emit variances for the bottled runs fed by `changedLotIds`. Returns the number emitted. */
+/** Detect + emit variances for the bottled runs fed by `changedLotIds`. Returns the created event ids
+ *  (Phase 15 U7: the caller emits an accounting export per event, in the same tx). */
 export async function detectBottlingVariances(
   tx: Prisma.TransactionClient,
   params: { changedLotIds: string[]; triggeringOpId: number },
-): Promise<number> {
+): Promise<string[]> {
+  const created: string[] = [];
   const changed = [...new Set(params.changedLotIds.filter(Boolean))];
-  if (changed.length === 0) return 0;
+  if (changed.length === 0) return created;
 
   const affected = await descendantsOf(tx, changed);
   const sources = await tx.bottlingSource.findMany({
     where: { lotId: { in: [...affected] } },
     select: { bottlingRunId: true, lotId: true },
   });
-  if (sources.length === 0) return 0;
+  if (sources.length === 0) return created;
   const runIds = [...new Set(sources.map((s) => s.bottlingRunId))];
 
   const snapshots = await tx.bottlingCostSnapshot.findMany({
@@ -66,9 +68,8 @@ export async function detectBottlingVariances(
       componentBreakdown: true, currency: true, policyVersion: true, basisCompleteness: true, reversalOfSnapshotId: true,
     },
   });
-  if (snapshots.length === 0) return 0;
+  if (snapshots.length === 0) return created;
 
-  let emitted = 0;
   for (const snap of snapshots) {
     if (snap.reversalOfSnapshotId) continue; // reversal snapshots aren't varied
 
@@ -113,7 +114,7 @@ export async function detectBottlingVariances(
     });
     if (Math.abs(v.totalDelta) <= EPS) continue; // no meaningful change (liquid basis unmoved)
 
-    await tx.costVarianceEvent.create({
+    const event = await tx.costVarianceEvent.create({
       data: {
         snapshotId: snap.id,
         triggeringOpId: params.triggeringOpId,
@@ -132,8 +133,9 @@ export async function detectBottlingVariances(
         policyVersion: snap.policyVersion,
         note: `basis changed by op ${params.triggeringOpId} (liquid ${frozenLiquid}→${newLiquid})`,
       },
+      select: { id: true },
     });
-    emitted++;
+    created.push(event.id);
   }
-  return emitted;
+  return created;
 }

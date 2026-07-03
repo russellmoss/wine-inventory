@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { detectBottlingVariances } from "@/lib/cost/variance-detect";
+import { emitExportForVariance } from "@/lib/cost/export-emit";
 
 // Phase 8 (Unit 11) — identity-negation of an op's cost artifacts on reversal (D3). Runs INSIDE the
 // family reversal's tx, keyed off the ORIGINAL op id, writing compensating rows on the CORRECTION op.
@@ -68,9 +69,11 @@ export async function negateCostForReversedOp(
   // Phase 8b (Unit 13, D12): negating an op's cost changes the basis of any lot it touched. If a
   // changed lot (or a downstream descendant) was already bottled, emit an explicit variance event —
   // the frozen COGS snapshot stays immutable; the delta is split sold vs on-hand. Idempotent.
-  const variances = changedLotIds.size > 0
+  const varianceIds = changedLotIds.size > 0
     ? await detectBottlingVariances(tx, { changedLotIds: [...changedLotIds], triggeringOpId: correctionOpId })
-    : 0;
+    : [];
+  // Phase 15 Unit 7 — emit an accounting export (+ delivery) per variance, in THIS same tx (outbox).
+  for (const id of varianceIds) await emitExportForVariance(id, tx);
 
-  return { consumptions: negatedConsumptions, costLines: negatedCostLines, variances };
+  return { consumptions: negatedConsumptions, costLines: negatedCostLines, variances: varianceIds.length };
 }

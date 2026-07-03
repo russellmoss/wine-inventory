@@ -2145,8 +2145,8 @@ model CostExportEvent {
   taxClass               String?
   component              CostComponent
   amount                 Decimal               @db.Decimal(18, 8)
-  debitAccount           String
-  creditAccount          String
+  debitAccount           String? // null = WITHHELD (component unmapped or basis not KNOWN) — never posted (U7)
+  creditAccount          String?
   currency               String                @default("USD")
   basisCompleteness      CostBasisCompleteness @default(KNOWN)
   policyVersion          Int                   @default(1)
