@@ -12,6 +12,9 @@ import {
   type CreateWorkOrderInput,
 } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore, type CompleteTaskInput } from "@/lib/work-orders/execute";
+import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
+import { shouldAutoFinalize } from "@/lib/work-orders/authority";
+import { prisma } from "@/lib/prisma";
 
 // "use server" wrappers for the work-order lifecycle (Phase 9 Unit 4). Each wraps a script-safe core in
 // action() (auth + tenant + actor injection) and revalidates the WO surfaces. Execution + approval
@@ -68,9 +71,37 @@ export const startTaskAction = action(async ({ actor }, input: { taskId: string 
 });
 
 /** Complete a task (the floor-first "check it off"). OPERATION → real ledger op + PENDING_APPROVAL
- * attempt; OBSERVATION → direct log + DONE. Idempotent on commandId (offline-drain safe). */
-export const completeTaskAction = action(async ({ actor }, input: CompleteTaskInput) => {
-  const res = await completeTaskCore(actor, input);
+ * attempt; OBSERVATION → direct log + DONE. Idempotent on commandId (offline-drain safe). Auto-finalize
+ * (decision 2) is computed server-side from the WO flag + the completer's role — never client-trusted. */
+export const completeTaskAction = action(async ({ user, actor }, input: CompleteTaskInput) => {
+  const task = await prisma.workOrderTask.findUnique({
+    where: { id: input.taskId },
+    select: { workOrder: { select: { autoFinalize: true } } },
+  });
+  const autoFinalize = task ? shouldAutoFinalize(user, { autoFinalize: task.workOrder.autoFinalize }) : false;
+  const res = await completeTaskCore(actor, { ...input, autoFinalize });
   revalidateWorkOrders(res.taskId);
+  return res;
+});
+
+/** Approve (finalize) a task. Admin-only (canApprove); no op mutation. */
+export const approveTaskAction = action(async ({ user, actor }, input: { taskId: string }) => {
+  const res = await approveTaskCore(user, actor, input);
+  revalidateWorkOrders(res.taskId);
+  return res;
+});
+
+/** Reject a task — reverses its ledger op (plan-024). Surfaces the LEDGER-11 "undo dependents first"
+ * conflict. Admin-only. */
+export const rejectTaskAction = action(async ({ user, actor }, input: { taskId: string; reason?: string }) => {
+  const res = await rejectTaskCore(user, actor, input);
+  revalidateWorkOrders(res.taskId);
+  return res;
+});
+
+/** Bulk approve exact-match tasks (D3). Returns per-item results; a partial failure doesn't abort. */
+export const bulkApproveTasksAction = action(async ({ user, actor }, input: { taskIds: string[] }) => {
+  const res = await bulkApproveTasksCore(user, actor, input);
+  revalidateWorkOrders();
   return res;
 });

@@ -27,6 +27,9 @@ export type CompleteTaskInput = {
   actualPayload?: Record<string, unknown>; // the worker's actuals; merged OVER the planned payload
   completionNote?: string;
   deviationReason?: string;
+  /** Decision 2: finalize immediately (skip the review queue) — set by the action when an admin
+   * completes their own work on an autoFinalize WO (shouldAutoFinalize). OPERATION lane only. */
+  autoFinalize?: boolean;
 };
 
 export type CompleteTaskResult = {
@@ -144,23 +147,26 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     }, cfg);
   }
 
+  const finalize = input.autoFinalize === true;
   try {
     const result = await runLedgerWrite(async (tx) => {
       const { operationId, message } = await dispatchOperationTx(tx, actor, task, payload, resolvedMaterial);
 
+      const now = new Date();
       const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
       const attempt = await tx.workOrderTaskAttempt.create({
         data: {
           taskId: task.id,
           seq,
           commandId: input.commandId,
-          status: "PENDING_APPROVAL",
+          status: finalize ? "APPROVED" : "PENDING_APPROVAL",
           actualPayload: payload as Prisma.InputJsonValue,
           operationId,
           completionNote: input.completionNote?.trim() || null,
           deviationReason: input.deviationReason?.trim() || null,
           completedById: actor.actorUserId,
           completedByEmail: actor.actorEmail,
+          ...(finalize ? { reviewedAt: now, reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail } : {}),
         },
         select: { id: true },
       });
@@ -168,7 +174,7 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
       await tx.workOrderTask.update({
         where: { id: task.id },
         data: {
-          status: "PENDING_APPROVAL",
+          status: finalize ? "APPROVED" : "PENDING_APPROVAL",
           currentAttemptId: attempt.id,
           completionNote: input.completionNote?.trim() || null,
           deviationReason: input.deviationReason?.trim() || null,
@@ -189,7 +195,7 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
       return { attemptId: attempt.id, operationId, message };
     });
 
-    return { taskId: task.id, attemptId: result.attemptId, operationId: result.operationId, status: "PENDING_APPROVAL", duplicate: false, message: result.message };
+    return { taskId: task.id, attemptId: result.attemptId, operationId: result.operationId, status: finalize ? "APPROVED" : "PENDING_APPROVAL", duplicate: false, message: result.message };
   } catch (e) {
     // A concurrent duplicate (same commandId raced past the pre-check) surfaces as a unique violation —
     // treat it as the idempotent success it is (mirrors the ferment panel-core pattern).
