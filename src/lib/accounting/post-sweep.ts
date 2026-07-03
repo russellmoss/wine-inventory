@@ -8,7 +8,11 @@ import { QboAdapter, docNumberFor } from "@/lib/accounting/qbo/client";
 import { buildJournalFromExport } from "@/lib/accounting/qbo/journal";
 import { buildBillPayload } from "@/lib/accounting/qbo/bill";
 import { emitExportForSnapshot } from "@/lib/cost/export-emit";
-import { ProviderFault, type ProviderCallContext } from "@/lib/accounting/adapter";
+import { ProviderFault, type AccountingAdapter, type ProviderCallContext } from "@/lib/accounting/adapter";
+
+// Test seams (Unit 13): inject a mock adapter + an explicit org list so the idempotency harness drives
+// the whole claim→post→verify machinery deterministically, offline. Production passes nothing.
+export type PostSweepDeps = { adapterFactory?: () => AccountingAdapter; orgIds?: string[] };
 
 // Phase 15 Unit 8 — the outbound poster. ONE sweep, ONE state machine over the UNION of pending
 // AccountingDelivery rows (COGS now; AP Bills plug in at U10 by objectType). Exactly-once + crash-safe:
@@ -57,7 +61,7 @@ async function claimBatch(): Promise<string[]> {
   const rows = await runInTenantRawTx((tx, tenantId) =>
     tx.$queryRaw<{ id: string }[]>`
       UPDATE "accounting_delivery"
-      SET status = 'IN_FLIGHT', "claimedAt" = now(), "leaseExpiresAt" = now() + make_interval(mins => ${LEASE_MIN}),
+      SET status = 'IN_FLIGHT', "claimedAt" = now(), "leaseExpiresAt" = now() + make_interval(mins => ${LEASE_MIN}::int),
           "attemptCount" = "attemptCount" + 1, "updatedAt" = now()
       WHERE id IN (
         SELECT id FROM "accounting_delivery"
@@ -78,7 +82,7 @@ async function finalize(id: string, data: Record<string, unknown>): Promise<void
 
 /** Post one COGS/inventory JournalEntry delivery. Query-before-post makes it exactly-once. */
 async function postOne(
-  adapter: QboAdapter,
+  adapter: AccountingAdapter,
   ctx: ProviderCallContext,
   d: { id: string; costExportEventId: string | null; apExportEventId: string | null; postingDate: Date | null },
   summary: PostSweepSummary,
@@ -129,7 +133,7 @@ async function postOne(
 /** Post one supply-receipt Bill delivery. Find-or-create the QBO vendor (cache externalVendorId),
  *  then the same query-before-post → post → finalize path as JournalEntries. (Unit 10) */
 async function postBill(
-  adapter: QboAdapter,
+  adapter: AccountingAdapter,
   ctx: ProviderCallContext,
   d: { id: string; apExportEventId: string | null; postingDate: Date | null },
   summary: PostSweepSummary,
@@ -182,8 +186,8 @@ async function postBill(
   }
 }
 
-export async function runAccountingPostSweep(): Promise<PostSweepSummary> {
-  const orgIds = await listAllOrgIds();
+export async function runAccountingPostSweep(deps?: PostSweepDeps): Promise<PostSweepSummary> {
+  const orgIds = deps?.orgIds ?? (await listAllOrgIds());
   const summary: PostSweepSummary = { orgs: orgIds.length, connected: 0, reEmitted: 0, claimed: 0, posted: 0, adopted: 0, verifying: 0, failed: 0, needsReauth: 0 };
 
   try {
@@ -217,7 +221,7 @@ export async function runAccountingPostSweep(): Promise<PostSweepSummary> {
           throw e;
         }
         const ctx: ProviderCallContext = { accessToken, realmId: conn.externalRealmId, environment: conn.environment as ProviderCallContext["environment"] };
-        const adapter = new QboAdapter();
+        const adapter = deps?.adapterFactory ? deps.adapterFactory() : new QboAdapter();
 
         const claimed = await prisma.accountingDelivery.findMany({
           where: { id: { in: claimedIds } },

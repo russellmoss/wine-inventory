@@ -36,6 +36,11 @@ export function _clearAccessCache(): void {
   accessCache.clear();
 }
 
+/** Test seam (Unit 13): pre-seed a valid access token so getValidAccessToken skips the live refresh. */
+export function _seedAccessCache(connectionId: string, token: string, tokenVersion = 0, ttlMs = 3_600_000): void {
+  accessCache.set(connectionId, { token, expiresAtMs: Date.now() + ttlMs, tokenVersion });
+}
+
 /**
  * Return a valid access token for the connection, refreshing (and rotating the refresh token) if the
  * cached one is missing/near-expiry. `force` skips the cache and always rotates — used by the sweep to
