@@ -447,6 +447,23 @@ cellar (this phase) and the vineyard (Phase 20).**
   balances + SERIALIZABLE canonical row-locking (LEDGER-5) physically prevent overfill / lost updates
   regardless of the reservation layer. Net: a lifecycle of increasingly hard holds —
   *issued* (soft reservation) → *completed* (real pending op, capacity-enforced) → *approved* (immutable).
+- **Supply consumption follows the same lifecycle — reserve on create, deplete on complete.** Issuing a
+  WO with an addition **allocates** the planned supply quantity (e.g. 5 kg bentonite) — it does **not**
+  decrement stock. That drives **available-to-promise = on-hand − open-WO allocations**, so a second WO
+  sees reduced availability and **warns** if there isn't enough (warn, not hard-block — more supply may
+  be inbound). Completion books the **actual** used against the reservation: real depletion (`SupplyLot`
+  qty down + `SupplyConsumption`, the Phase-8 machinery) plus the capitalized cost line onto the **wine
+  lot** (cost is lot-centric; the lot currently resides in that tank/barrel). MATERIAL/DOSAGE always
+  capitalize (D5); unknown unit cost is `UNKNOWN`, never a silent $0 (COST-2). The cost, like the op, is
+  **pending** until approval, then finalized (reject = plan-024 reversal that negates the consumption +
+  restores exact `SupplyLot` qty by identity). Planned target vs. recorded actual may differ; reconcile
+  and release the reservation on completion.
+- **Notes, instructions & structured deviation capture at three levels.** (1) **Order/task instructions**
+  (winemaker → crew: "rack gently off the lees, hold back the last 20 L"); (2) **completion notes**
+  (crew → winemaker: "tank ran dry at 180 L", "used KMBS not liquid SO₂"); (3) **attachments/photos**
+  (addition label, gauge reading). Beyond free text, tasks capture **planned vs. actual + a reason**
+  (target 30 ppm / actual 28 ppm) so approval is a real review, not a rubber stamp, and the deviation is
+  auditable (D14).
 - Create a work order with one or more **tasks** (templated: rack, add SO₂, top, pull an analysis,
   punch-down, etc.); schedule with due dates; surface **overdue / today / upcoming**.
 - **Work-order instructions carry the pay basis for the foreman** — **piece-rate vs hourly + the
@@ -481,7 +498,8 @@ entity, or are operations given a `planned → executed → approved` state? how
 the plan-024 reversal system (un-approve = reverse)? how do templates instantiate? offline/poor-signal
 behavior on the floor. **Reservation model:** a separate soft-allocation record vs. a status on the
 vessel/lot; expiry rules (complete/cancel/past-due); capacity-aware allocation math across source +
-destination; override UX when a reserved vessel is targeted. **Approval configurability:** the per
+destination; override UX when a reserved vessel is targeted; **supply available-to-promise** (on-hand −
+open allocations) + planned-vs-actual reconciliation on completion. **Approval configurability:** the per
 tenant/template/role matrix (incl. auto-finalize for self-executed work) and the bulk-approve surface.
 **Operation-vs-observation boundary:** which task types write pending ledger ops vs. direct measurements.
 **Honors:** D2, D6, D12 (prefilled-actuals, not blind logs); shared engine with Phase 20 (vineyard).
