@@ -69,18 +69,17 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     kind: "OPERATION",
     opType: "ADDITION",
     label: "Addition",
-    // Dosed by RATE (rateValue + rateBasis). The actual amount added is computed from the rate × the
-    // vessel's current volume at completion — there is no separate amount to enter (dropped the old,
-    // confusing plannedAmount/plannedUnit pair, which only fed an advisory reservation).
-    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", rateValue: "number", rateBasis: "rateBasis", note: "text" },
-    hint: "Dose by rate — the amount added is computed from the rate × the vessel's current volume when the task is completed.",
+    // Dose by a total AMOUNT (in the material's stock unit) OR by a RATE (per volume). Amount wins if both.
+    // A rate is computed from the vessel's current volume at completion (A3); a direct amount is used as-is.
+    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", amount: "number", rateValue: "number", rateBasis: "rateBasis", note: "text" },
+    hint: "Enter an Amount to add that exact total, OR a Rate (per volume) — the rate's amount is computed from the vessel's current volume at completion. Amount wins if both are set.",
   },
   FINING: {
     kind: "OPERATION",
     opType: "FINING",
     label: "Fining",
-    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", rateValue: "number", rateBasis: "rateBasis", note: "text" },
-    hint: "Dose by rate — the amount added is computed from the rate × the vessel's current volume when the task is completed.",
+    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", amount: "number", rateValue: "number", rateBasis: "rateBasis", note: "text" },
+    hint: "Enter an Amount to add that exact total, OR a Rate (per volume) — the rate's amount is computed from the vessel's current volume at completion. Amount wins if both are set.",
   },
   TOPPING: {
     kind: "OPERATION",

@@ -106,6 +106,8 @@ async function main() {
     await prisma.supplyLot.create({ data: { materialId: proxycarb.id, qtyReceived: 100, qtyRemaining: 100, stockUnit: "g", unitCost: "0.02", receivedAt: new Date("2026-02-01"), updatedAt: new Date() } });
     const paa = await prisma.cellarMaterial.create({ data: { name: "ZZWE PAA", normalizedKey: "ZZWEPAA", kind: "SANITIZER", isStockTracked: true, stockUnit: "mL" } });
     await prisma.supplyLot.create({ data: { materialId: paa.id, qtyReceived: 5, qtyRemaining: 5, stockUnit: "mL", unitCost: "0.50", updatedAt: new Date() } });
+    const tannin = await prisma.cellarMaterial.create({ data: { name: "ZZWE Tannin", normalizedKey: "ZZWETANNIN", kind: "TANNIN", isStockTracked: true, stockUnit: "g" } });
+    await prisma.supplyLot.create({ data: { materialId: tannin.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.02", updatedAt: new Date() } });
     console.log("── fixtures seeded ──");
 
     // Snapshot the wine cost DAG so WORKORDER-3 can prove maintenance never touches it.
@@ -191,6 +193,20 @@ async function main() {
     assert(dup.duplicate === true, "duplicate maintenance submit (same commandId) is a no-op");
     const eventsAfterDup = await prisma.vesselActivityEvent.count({ where: { enteredByEmail: ACTOR.actorEmail } });
     assert(eventsAfterDup === eventsBeforeDup, "no duplicate VesselActivityEvent written");
+
+    // ── 6b. ADDITION dosed by a direct AMOUNT (not a rate) depletes EXACTLY that amount + costs it. ──
+    const addWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWE addition by amount",
+      tasks: [{ seq: 1, kind: "OPERATION", title: "Add 40 g tannin", opType: "ADDITION", destVesselId: wineTank.id, lotId: wineLot, materialId: tannin.id, plannedPayload: { vesselId: wineTank.id, lotId: wineLot, materialId: tannin.id, amount: 40 } }],
+    });
+    await issueWorkOrderCore(ACTOR, { workOrderId: addWo.workOrderId });
+    const addTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: addWo.workOrderId } });
+    const addDone = await completeTaskCore(ACTOR, { taskId: addTask.id, commandId: "zzwe-add-1", actualPayload: { amount: 40 }, autoFinalize: true });
+    assert(addDone.operationId != null, "amount-dosed ADDITION wrote a ledger op");
+    const tanninLeft = num((await prisma.supplyLot.aggregate({ where: { materialId: tannin.id }, _sum: { qtyRemaining: true } }))._sum.qtyRemaining);
+    assert(near(tanninLeft, 960), `dose-by-amount depleted EXACTLY 40 g (1000 → ${tanninLeft}), independent of volume`);
+    const addCost = await prisma.costLine.findFirst({ where: { operationId: addDone.operationId!, component: "MATERIAL" } });
+    assert(!!addCost, "a MATERIAL cost line was written for the amount-dosed addition");
 
     // ── 7. The finished WOs (all tasks DONE → WO APPROVED) appear in the filterable archive. ──
     const archive = await getWorkOrderArchive(TENANT, { q: "ZZWE" }, 1);

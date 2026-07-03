@@ -29,12 +29,25 @@ export type AddAdditionInput = {
   materialId?: string; // catalog link (skips the upsert)
   materialName?: string; // free-text; upserted into the catalog on submit
   materialKind?: string; // hint for the upsert (SO2 | NUTRIENT | …)
-  rateValue: number;
-  rateBasis: RateBasis;
+  // Dose EITHER by a total amount (in the material's stock unit) OR by a rate (per volume). Amount wins if
+  // both are given. Rate is computed against each lot's current volume at open time (A3).
+  amount?: number | null;
+  rateValue?: number;
+  rateBasis?: RateBasis;
   note?: string;
   captureMethod?: CaptureMethod;
   batchId?: string; // set by the group fan-out (Unit 7)
 };
+
+/** Map a material's stock unit to the dose dimension (g/mL) + how many dose-units per 1 stock-unit. */
+function stockUnitToDose(stockUnit: string | null | undefined): { doseUnit: "g" | "mL"; perStock: number } {
+  const u = (stockUnit ?? "g").trim().toLowerCase();
+  if (u === "kg") return { doseUnit: "g", perStock: 1000 };
+  if (u === "mg") return { doseUnit: "g", perStock: 0.001 };
+  if (u === "l") return { doseUnit: "mL", perStock: 1000 };
+  if (u === "ml") return { doseUnit: "mL", perStock: 1 };
+  return { doseUnit: "g", perStock: 1 }; // g + fallback (incl. countable "unit")
+}
 
 export type CellarBaseResult = {
   operationId: number;
@@ -87,13 +100,17 @@ export async function recordNeutralDoseTx(
   cfg: NeutralDoseConfig,
   resolved: { materialId: string; materialName: string },
 ): Promise<CellarOpResult> {
-  const { vesselId, rateValue, rateBasis } = input;
+  const { vesselId } = input;
+  const rateValue = input.rateValue;
+  const rateBasis = input.rateBasis;
   // Self-guard (A2): the WO seam calls this Tx form DIRECTLY, so the validations can't live only in the
-  // standalone wrapper — a zero/absent rate would otherwise write a bogus zero-dose immutable op, and a
-  // missing basis would throw a raw Error mid-runLedgerWrite instead of a friendly ActionError.
+  // standalone wrapper. Dose by an explicit AMOUNT (total, in the material's stock unit) OR by a RATE
+  // (per volume). Amount wins if both are given. A zero/absent both would write a bogus zero-dose op.
   if (!vesselId) throw new ActionError("A vessel is required.");
-  if (!(rateValue > 0)) throw new ActionError("Enter a dose rate greater than 0.");
-  if (!RATE_BASIS_LABELS[rateBasis]) throw new ActionError("Pick a valid dose basis.");
+  const amount = input.amount != null && Number.isFinite(input.amount) && input.amount > 0 ? round2(input.amount) : null;
+  const hasRate = typeof rateValue === "number" && rateValue > 0;
+  if (!amount && !hasRate) throw new ActionError("Enter an amount or a dose rate greater than 0.");
+  if (!amount && !RATE_BASIS_LABELS[rateBasis as RateBasis]) throw new ActionError("Pick a valid dose basis.");
   const vessel = await tx.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel) throw new ActionError("Vessel not found.");
   if (!vessel.isActive) throw new ActionError(`${vesselLabel(vessel)} is inactive.`);
@@ -104,24 +121,42 @@ export async function recordNeutralDoseTx(
   const targets = input.lotId ? residents.filter((r) => r.lotId === input.lotId) : residents;
   if (input.lotId && targets.length === 0) throw new ActionError("That lot is not in this vessel.");
 
-  // A3: the amount is computed from each lot's CURRENT (open-time) volume-in-vessel — never frozen at
-  // issue — so an intervening rack can't over/under-dose. Snapshot, never recomputed after write (D14).
-  const perLot = targets.map((t) => {
-    const vol = round2(Number(t.volumeL));
-    const { total, unit } = computeAdditionTotal(rateValue, rateBasis, vol);
-    return { lotId: t.lotId, volumeLAtAddition: vol, computedTotal: total, computedUnit: unit };
-  });
+  type DoseRow = { lotId: string; volumeLAtAddition: number; computedTotal: number; computedUnit: "g" | "mL"; rateValue: number | null; rateBasis: RateBasis | null };
+  let perLot: DoseRow[];
+  let unit: "g" | "mL";
+  let summary: string;
+  if (amount) {
+    // Dose by TOTAL amount (in the material's stock unit). Convert to the dose dimension (g/mL) and split
+    // across resident lots in proportion to their current volume (single lot gets it all). No rate stored.
+    const material = await tx.cellarMaterial.findUnique({ where: { id: resolved.materialId }, select: { stockUnit: true } });
+    const { doseUnit, perStock } = stockUnitToDose(material?.stockUnit);
+    const amountInDose = round2(amount * perStock);
+    const totalVol = round2(targets.reduce((a, t) => a + Number(t.volumeL), 0));
+    perLot = targets.map((t) => {
+      const vol = round2(Number(t.volumeL));
+      const share = totalVol > 0 ? round2(amountInDose * (vol / totalVol)) : amountInDose;
+      return { lotId: t.lotId, volumeLAtAddition: vol, computedTotal: share, computedUnit: doseUnit, rateValue: null, rateBasis: null };
+    });
+    unit = doseUnit;
+    summary = `${cfg.opType === "FINING" ? "Fined" : "Added to"} ${vesselLabel(vessel)}: ${amount} ${material?.stockUnit ?? doseUnit} ${resolved.materialName}`;
+  } else {
+    // Dose by RATE — computed from each lot's CURRENT (open-time) volume (A3), never frozen at issue.
+    perLot = targets.map((t) => {
+      const vol = round2(Number(t.volumeL));
+      const { total, unit: u } = computeAdditionTotal(rateValue as number, rateBasis as RateBasis, vol);
+      return { lotId: t.lotId, volumeLAtAddition: vol, computedTotal: total, computedUnit: u, rateValue: rateValue as number, rateBasis: rateBasis as RateBasis };
+    });
+    unit = perLot[0].computedUnit;
+    summary = cfg.makeSummary({
+      rateValue: rateValue as number,
+      basisLabel: RATE_BASIS_LABELS[rateBasis as RateBasis],
+      materialName: resolved.materialName,
+      vessel: vesselLabel(vessel),
+      total: round2(perLot.reduce((a, p) => a + p.computedTotal, 0)),
+      unit,
+    });
+  }
   const totalSum = round2(perLot.reduce((a, p) => a + p.computedTotal, 0));
-  const unit = perLot[0].computedUnit;
-  const basisLabel = RATE_BASIS_LABELS[rateBasis];
-  const summary = cfg.makeSummary({
-    rateValue,
-    basisLabel,
-    materialName: resolved.materialName,
-    vessel: vesselLabel(vessel),
-    total: totalSum,
-    unit,
-  });
 
   const opId = await writeLotOperation(tx, {
     type: cfg.opType,
@@ -145,8 +180,8 @@ export async function recordNeutralDoseTx(
         kind: cfg.treatmentKind,
         materialId: resolved.materialId,
         materialName: resolved.materialName,
-        rateValue,
-        rateBasis,
+        rateValue: p.rateValue,
+        rateBasis: p.rateBasis,
         computedTotal: p.computedTotal,
         computedUnit: p.computedUnit,
         volumeLAtAddition: p.volumeLAtAddition,
@@ -194,8 +229,10 @@ export async function resolveDoseMaterial(
 async function recordNeutralDose(actor: LedgerActor, input: AddAdditionInput, cfg: NeutralDoseConfig): Promise<CellarOpResult> {
   const { vesselId, rateValue, rateBasis } = input;
   if (!vesselId) throw new ActionError("A vessel is required.");
-  if (!(rateValue > 0)) throw new ActionError("Enter a dose rate greater than 0.");
-  if (!RATE_BASIS_LABELS[rateBasis]) throw new ActionError("Pick a valid dose basis.");
+  // The standalone /cellar path doses by rate (the manual form has no amount input). The WO seam that
+  // supports dose-by-amount calls recordNeutralDoseTx directly, bypassing this rate-only guard.
+  if (!(typeof rateValue === "number" && rateValue > 0)) throw new ActionError("Enter a dose rate greater than 0.");
+  if (!RATE_BASIS_LABELS[rateBasis as RateBasis]) throw new ActionError("Pick a valid dose basis.");
   const resolved = await resolveDoseMaterial(actor, input, cfg);
   return runLedgerWrite((tx) => recordNeutralDoseTx(tx, actor, input, cfg, resolved));
 }

@@ -6,7 +6,7 @@
 // attachment references ride inside actualPayload (no schema change, per the plan).
 
 const VOLUME_FIELDS = new Set(["drawL", "lossL", "volumeL"]);
-const AMOUNT_FIELDS = new Set(["rateValue", "plannedAmount"]);
+const AMOUNT_FIELDS = new Set(["rateValue", "plannedAmount", "amount"]);
 const VOLUME_PCT_THRESHOLD = 1; // percent
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
