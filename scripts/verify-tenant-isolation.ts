@@ -101,6 +101,11 @@ async function main() {
   await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_a" }, update: {}, create: { id: "iso_acct_conn_a", tenantId: A, provider: "QBO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
   await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_b" }, update: {}, create: { id: "iso_acct_conn_b", tenantId: B, provider: "QBO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
   await owner.costExportEvent.upsert({ where: { id: "iso_cee_a" }, update: {}, create: { id: "iso_cee_a", tenantId: A, postingKey: "iso:cee:a", sourceType: "SNAPSHOT", component: "FRUIT", amount: "1.00", debitAccount: "5000", creditAccount: "1400" } });
+  // Phase 16: a commerce7_connection + a sales_export_event per/into a tenant (the DTC seam). No token
+  // columns here; the isolation risk is a cross-tenant read of a winery's sales/connection state.
+  await owner.commerce7Connection.upsert({ where: { id: "iso_c7_conn_a" }, update: {}, create: { id: "iso_c7_conn_a", tenantId: A, provider: "COMMERCE7", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
+  await owner.commerce7Connection.upsert({ where: { id: "iso_c7_conn_b" }, update: {}, create: { id: "iso_c7_conn_b", tenantId: B, provider: "COMMERCE7", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
+  await owner.salesExportEvent.upsert({ where: { id: "iso_see_b" }, update: {}, create: { id: "iso_see_b", tenantId: B, postingKey: "iso:see:b", commerce7OrderId: "iso_ord_b", deltaSeq: 1, kind: "SALE", revenueDelta: "10.00", lineDeltas: [], accountingDate: now, occurredAt: now } });
 
   try {
     // 1. Fail-closed: no tenant context -> 0 rows.
@@ -199,6 +204,17 @@ async function main() {
     } catch { dupDeliveryRaised = true; }
     check("second delivery for the same cost export event rejected (@@unique)", dupDeliveryRaised);
 
+    // 5g. Phase 16: commerce7_connection + sales_export_event tenant isolation (the DTC seam).
+    const aSeesC7ConnB = await asTenant(A, (db) => db.commerce7Connection.findFirst({ where: { id: "iso_c7_conn_b" } }));
+    check("tenant A CANNOT see tenant B's commerce7_connection (RLS)", aSeesC7ConnB === null);
+    const aSeesSeeB = await asTenant(A, (db) => db.salesExportEvent.findFirst({ where: { id: "iso_see_b" } }));
+    check("tenant A CANNOT see tenant B's sales_export_event (RLS)", aSeesSeeB === null);
+    let c7InsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.commerce7Connection.create({ data: { id: "iso_c7_conn_x", tenantId: B, provider: "COMMERCE7", status: "DISCONNECTED", environment: "sandbox", updatedAt: new Date() } }));
+    } catch { c7InsertRaised = true; }
+    check("foreign-tenant commerce7_connection INSERT raises (WITH CHECK)", c7InsertRaised);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -217,6 +233,8 @@ async function main() {
     // Phase 15 first (delivery → connection/cost_export_event FK order; all before org B is removed).
     await owner.accountingDelivery.deleteMany({ where: { id: { in: ["iso_del_1", "iso_del_2"] } } });
     await owner.accountMapping.deleteMany({ where: { id: { in: ["iso_map_1", "iso_map_2"] } } });
+    await owner.salesExportEvent.deleteMany({ where: { id: "iso_see_b" } });
+    await owner.commerce7Connection.deleteMany({ where: { id: { in: ["iso_c7_conn_a", "iso_c7_conn_b", "iso_c7_conn_x"] } } });
     await owner.costExportEvent.deleteMany({ where: { id: "iso_cee_a" } });
     await owner.accountingConnection.deleteMany({ where: { id: { in: ["iso_acct_conn_a", "iso_acct_conn_b", "iso_acct_conn_x"] } } });
     await owner.lotOperationLine.deleteMany({ where: { lotId: { in: ["iso_lot_a", "iso_lot_b"] } } });

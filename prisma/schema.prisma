@@ -164,6 +164,9 @@ enum MovementKind {
   RECEIVE
   ADJUST
   TRANSFER
+  // Phase 16 (Commerce7 DTC): a settled DTC/club/POS sale depletes finished goods. Added in an
+  // ISOLATED ALTER TYPE migration (Windows enum rule) BEFORE any column defaults to it.
+  SALE
 }
 
 enum AuditAction {
@@ -561,8 +564,8 @@ model VesselTransfer {
 // ───────────────────────── Bottling ─────────────────────────
 
 model WineSku {
-  tenantId         String                @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id               String                @id @default(cuid())
+  tenantId         String                 @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id               String                 @id @default(cuid())
   name             String
   // Phase 7 (K11): NULLABLE for NV / multi-vintage sparkling; isNonVintage marks a true NV
   // SKU (no lying sentinel). Because Postgres treats NULLs as distinct, the old compound
@@ -570,56 +573,56 @@ model WineSku {
   // Unit 2 migration: UNIQUE(name,vintage,bottleSizeMl) WHERE vintage IS NOT NULL, and
   // UNIQUE(name,bottleSizeMl) WHERE isNonVintage. Finalize uses find-or-create, not upsert.
   vintage          Int?
-  isNonVintage     Boolean               @default(false)
-  bottleSizeMl     Int                   @default(750)
+  isNonVintage     Boolean                @default(false)
+  bottleSizeMl     Int                    @default(750)
   // Phase 7: sparkling metadata on the catalog SKU (batch facts like disgorgedAt / actual
   // dosage g/L live on BottlingRun, not here — council CRITICAL #5).
   method           SparklingMethod?
   dosageStyle      DosageStyle?
-  isActive         Boolean               @default(true)
-  createdAt        DateTime              @default(now())
+  isActive         Boolean                @default(true)
+  createdAt        DateTime               @default(now())
   categoryId       String?
-  category         FinishedGoodCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category         FinishedGoodCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   bottlingRuns     BottlingRun[]
   bottledInventory BottledInventory[]
   stockMovements   StockMovement[]
   costSnapshots    BottlingCostSnapshot[] // Phase 8: frozen per-SKU COGS snapshots
 
+  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for bottling_cost_snapshot (K11)
   @@index([categoryId])
   @@index([tenantId])
-  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for bottling_cost_snapshot (K11)
   @@map("wine_sku")
 }
 
 model BottlingRun {
-  tenantId              String           @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id                    String           @id @default(cuid())
+  tenantId              String                 @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id                    String                 @id @default(cuid())
   date                  DateTime
   wineSkuId             String
   bottlesProduced       Int
-  volumeConsumedL       Decimal          @db.Decimal(10, 2)
+  volumeConsumedL       Decimal                @db.Decimal(10, 2)
   destinationLocationId String
   createdById           String? // soft-deleted users; snapshot below survives
   createdByEmail        String
-  createdAt             DateTime         @default(now())
+  createdAt             DateTime               @default(now())
   // Phase 7: sparkling BATCH facts belong on the run, not the catalog SKU (council CRITICAL
   // #5). One BottlingRun per finalize; multiple disgorgement tranches → multiple runs / SKU.
   disgorgedAt           DateTime?
-  dosageGramsPerL       Decimal?         @db.Decimal(6, 2)
+  dosageGramsPerL       Decimal?               @db.Decimal(6, 2)
   // Phase 14 (Fork 1A): the ABV stamped at bottling — required for still wine (validated at the
   // action), resolved at FINISH for sparkling (base ABV + tirage bump). Nullable in the DB so
   // historical runs backfill; the tax-ABV resolver reads it as the as-of-bottling authority.
-  bottledAbv            Decimal?         @db.Decimal(5, 2)
-  wineSku               WineSku          @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
-  destinationLocation   Location         @relation(fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  bottledAbv            Decimal?               @db.Decimal(5, 2)
+  wineSku               WineSku                @relation(fields: [wineSkuId], references: [id], onDelete: Restrict)
+  destinationLocation   Location               @relation(fields: [destinationLocationId], references: [id], onDelete: Restrict)
   sources               BottlingSource[]
   stockMovements        StockMovement[]
   costSnapshots         BottlingCostSnapshot[] // Phase 8: frozen per-run+line COGS snapshots
 
+  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for bottling_cost_snapshot (K11)
   @@index([wineSkuId])
   @@index([date])
   @@index([tenantId])
-  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for bottling_cost_snapshot (K11)
   @@map("bottling_run")
 }
 
@@ -1069,11 +1072,11 @@ enum LotOwnership {
 // getAppSettings(). `sparklingEnabled` gates the ENTIRE traditional-method UI/nav (K14,
 // default off) — backend enums/cores ship regardless and are inert when unused.
 model AppSettings {
-  tenantId         String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId                 String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   // Phase 12: per-org now (K10). One row per tenant (@@unique([tenantId])); read/written by
   // tenantId, not the old "singleton" id. id is a plain cuid so a 2nd org's row can't collide.
-  id               String   @id @default(cuid())
-  sparklingEnabled Boolean  @default(false)
+  id                       String        @id @default(cuid())
+  sparklingEnabled         Boolean       @default(false)
   // Phase 8 (D5, D9, D17): per-tenant costing policy. `currency` (ISO code, default USD) heads every
   // cost row. `costingMethod` + `costingMethodEffectiveAt` set depletion order (WA default | FIFO); the
   // method actually used is STAMPED on each SupplyConsumption at write time so recompute is stable.
@@ -1094,7 +1097,16 @@ model AppSettings {
   // posts DR inventory-asset / CR accounts-payable. Both unset → AP export is withheld (never posted).
   apInventoryAccount       String?
   apPayableAccount         String?
-  updatedAt        DateTime @updatedAt
+  // Phase 16 Unit 1 — DTC (Commerce7) sales accounts (winery-wide, like AP): a settled DTC sale posts
+  // DR undeposited-funds clearing / CR revenue + CR sales-tax-payable + CR shipping-income, with a
+  // discount contra line. Revenue + clearing unset → the sales export is WITHHELD (never posted). Both
+  // nullable + additive.
+  dtcRevenueAccount        String?
+  dtcTaxAccount            String?
+  dtcShippingAccount       String?
+  dtcClearingAccount       String?
+  dtcDiscountAccount       String?
+  updatedAt                DateTime      @updatedAt
 
   @@unique([tenantId])
   @@index([tenantId])
@@ -1160,8 +1172,8 @@ model Lot {
 
   operationLines       LotOperationLine[]
   vesselLots           VesselLot[]
-  parentEdges          LotLineage[]          @relation("LotChild") // edges where this lot is the child
-  childEdges           LotLineage[]          @relation("LotParent") // edges where this lot is the parent
+  parentEdges          LotLineage[]            @relation("LotChild") // edges where this lot is the child
+  childEdges           LotLineage[]            @relation("LotParent") // edges where this lot is the parent
   bottlingSources      BottlingSource[]
   treatments           LotTreatment[]
   // Phase 4 standalone chemistry/tasting/sample records (NOT ledger ops).
@@ -1171,7 +1183,7 @@ model Lot {
   // Phase 5 blends.
   sourceVineyards      LotVineyard[] // the lot's source-vineyard SET (union over lineage at blend)
   blendTrialComponents BlendTrialComponent[] // bench-trial component rows referencing this lot
-  promotedFromTrials   BlendTrial[]          @relation("TrialPromotedLot") // trials promoted into this lot
+  promotedFromTrials   BlendTrial[]            @relation("TrialPromotedLot") // trials promoted into this lot
   // Phase 6: harvest picks consumed by the crush that originated this lot (partial picks
   // allowed; this join is the single source of truth for "pick consumed/remaining"), and the
   // recorded form/AF/MLF transition history.
@@ -1218,23 +1230,23 @@ model LotOperation {
   metadata            Json?
   createdAt           DateTime      @default(now())
 
-  corrects         LotOperation?      @relation("OpCorrection", fields: [correctsOperationId], references: [id], onDelete: Restrict)
-  correctedBy      LotOperation?      @relation("OpCorrection")
-  lines            LotOperationLine[]
-  vesselTransfer   VesselTransfer? // 1:1 derived read-model (FK lives on VesselTransfer)
-  treatments       LotTreatment[]     @relation("TreatmentOperation") // detail rows this op created
-  voidedTreatments LotTreatment[]     @relation("TreatmentVoid") // treatments this (CORRECTION) op voided
-  stateEvents      LotStateEvent[] // form/AF/MLF transitions caused by this op (shares fold order)
+  corrects           LotOperation?           @relation("OpCorrection", fields: [correctsOperationId], references: [id], onDelete: Restrict)
+  correctedBy        LotOperation?           @relation("OpCorrection")
+  lines              LotOperationLine[]
+  vesselTransfer     VesselTransfer? // 1:1 derived read-model (FK lives on VesselTransfer)
+  treatments         LotTreatment[]          @relation("TreatmentOperation") // detail rows this op created
+  voidedTreatments   LotTreatment[]          @relation("TreatmentVoid") // treatments this (CORRECTION) op voided
+  stateEvents        LotStateEvent[] // form/AF/MLF transitions caused by this op (shares fold order)
   // Phase 8: the append-only cost artifacts hung off this op (all composite-tenant-FK'd at the DB).
-  costLines        CostLine[]
+  costLines          CostLine[]
   supplyConsumptions SupplyConsumption[]
-  costTransfers    OperationCostTransfer[]
+  costTransfers      OperationCostTransfer[]
 
+  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for cost artifacts (K11)
   @@index([type, observedAt])
   @@index([batchId])
   @@index([tenantId])
   @@index([tenantId, observedAt]) // Phase 14 (S3): period-boundary fold — lines by tenant + observedAt
-  @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for cost artifacts (K11)
   @@map("lot_operation")
 }
 
@@ -1544,24 +1556,24 @@ model LotTreatment {
 // first use, deduped by normalizedKey within a kind (mirrors FieldInput). Carries a
 // default dose basis + optional %active; cost/inventory is deferred to Phase 8.
 model CellarMaterial {
-  tenantId      String         @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id            String         @id @default(cuid())
-  name          String // display label
-  normalizedKey String // dedup key (strip-non-alphanumeric, UPPERCASE)
-  kind          String // SO2 | NUTRIENT | ACID | TANNIN | FINING | ENZYME | OTHER
-  defaultBasis  String? // G_HL | MG_L | G_L | ML_L
-  percentActive Decimal?       @db.Decimal(6, 3) // %active (material property, not a dose basis)
-  isActive      Boolean        @default(true)
+  tenantId       String         @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id             String         @id @default(cuid())
+  name           String // display label
+  normalizedKey  String // dedup key (strip-non-alphanumeric, UPPERCASE)
+  kind           String // SO2 | NUTRIENT | ACID | TANNIN | FINING | ENZYME | OTHER
+  defaultBasis   String? // G_HL | MG_L | G_L | ML_L
+  percentActive  Decimal?       @db.Decimal(6, 3) // %active (material property, not a dose basis)
+  isActive       Boolean        @default(true)
   // Phase 8 (Unit 1): stock + cost tracking, all additive. `stockUnit` is the canonical unit stock is
   // held/consumed in (g | mg | kg | mL | L | unit — validated in code); `packagingSize` is how much of
   // stockUnit one purchased package holds (informational, for receive-by-package UX). `isStockTracked`
   // opts a material into stock draw-down; a free-text/untracked material still doses (cost unknown, D14).
-  packagingSize  Decimal?      @db.Decimal(18, 6)
+  packagingSize  Decimal?       @db.Decimal(18, 6)
   stockUnit      String?
-  isStockTracked Boolean       @default(false)
-  createdAt     DateTime       @default(now())
-  treatments    LotTreatment[]
-  supplyLots    SupplyLot[]
+  isStockTracked Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  treatments     LotTreatment[]
+  supplyLots     SupplyLot[]
 
   @@unique([tenantId, kind, normalizedKey])
   @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for supply_lot (K11)
@@ -1818,27 +1830,27 @@ model ComplianceReport {
 
 // Per-tenant compliance profile (like AppSettings): the filer identity that heads the form.
 model ComplianceProfile {
-  tenantId          String        @default("") // Phase 12 tenant scope; FK+RLS at DB level
-  id                String        @id @default(cuid())
-  ein               String?
-  registryNumber    String?
-  operatedByName    String?
+  tenantId             String        @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                   String        @id @default(cuid())
+  ein                  String?
+  registryNumber       String?
+  operatedByName       String?
   // Composed single-line address (kept in sync from the structured parts below) — the value
   // printed on the Form 5120.17 header. The structured parts drive the settings/compliance UI.
-  operatedByAddress String?
-  operatedByStreet1 String?
-  operatedByStreet2 String?
-  operatedByCity    String?
-  operatedByState   String?
-  operatedByZip     String?
-  operatedByPhone   String?
-  defaultCadence    ReportCadence @default(MONTHLY)
+  operatedByAddress    String?
+  operatedByStreet1    String?
+  operatedByStreet2    String?
+  operatedByCity       String?
+  operatedByState      String?
+  operatedByZip        String?
+  operatedByPhone      String?
+  defaultCadence       ReportCadence @default(MONTHLY)
   // plan-026: the wine EXCISE-return cadence (27 CFR 24.271), separate from the ops defaultCadence.
   // Defaults to SEMIMONTHLY (the fallback cadence when annual liability > $50k); the generate screen
   // seeds from it. isEftPayer flips the September triple-split boundaries (council C1).
   defaultReturnCadence ReportCadence @default(SEMIMONTHLY)
   isEftPayer           Boolean       @default(false)
-  updatedAt         DateTime      @updatedAt
+  updatedAt            DateTime      @updatedAt
 
   @@unique([tenantId])
   @@index([tenantId])
@@ -1859,20 +1871,20 @@ model ComplianceProfile {
 // current on-hand for a material is Σ qtyRemaining over its non-depleted lots. `unitCost` is per
 // stockUnit; NULL cost = UNKNOWN (D14), never $0. WA/FIFO depletion draws these down (Unit 3).
 model SupplyLot {
-  tenantId      String   @default("")
-  id            String   @id @default(cuid())
+  tenantId      String              @default("")
+  id            String              @id @default(cuid())
   materialId    String
-  qtyReceived   Decimal  @db.Decimal(18, 6)
-  qtyRemaining  Decimal  @db.Decimal(18, 6)
+  qtyReceived   Decimal             @db.Decimal(18, 6)
+  qtyRemaining  Decimal             @db.Decimal(18, 6)
   stockUnit     String // snapshot of the unit these quantities are held in (g | kg | mL | L | unit …)
-  unitCost      Decimal? @db.Decimal(18, 8) // per stockUnit; NULL = unknown cost (D14)
-  currency      String   @default("USD")
-  receivedAt    DateTime @default(now())
+  unitCost      Decimal?            @db.Decimal(18, 8) // per stockUnit; NULL = unknown cost (D14)
+  currency      String              @default("USD")
+  receivedAt    DateTime            @default(now())
   lotCode       String? // supplier lot / PO reference
   supplierNote  String?
-  policyVersion Int      @default(1) // costing-policy version at receipt (D17)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  policyVersion Int                 @default(1) // costing-policy version at receipt (D17)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
   material      CellarMaterial      @relation(fields: [materialId], references: [id], onDelete: Restrict)
   consumptions  SupplyConsumption[]
 
@@ -1937,21 +1949,21 @@ model SupplyConsumption {
 // NOT the lineage `fraction` (council C2). Conservation is asserted per op. Reversal via
 // `reversalOfTransferId` (Unit 11).
 model OperationCostTransfer {
-  tenantId            String       @default("")
-  id                  String       @id @default(cuid())
-  operationId         Int
-  fromLotId           String
-  toLotId             String
-  transferredVolumeL  Decimal      @db.Decimal(10, 2)
-  parentPreOpVolumeL  Decimal      @db.Decimal(10, 2)
-  transferredCost     Decimal      @db.Decimal(18, 8)
-  currency            String       @default("USD")
-  policyVersion       Int          @default(1)
+  tenantId             String       @default("")
+  id                   String       @id @default(cuid())
+  operationId          Int
+  fromLotId            String
+  toLotId              String
+  transferredVolumeL   Decimal      @db.Decimal(10, 2)
+  parentPreOpVolumeL   Decimal      @db.Decimal(10, 2)
+  transferredCost      Decimal      @db.Decimal(18, 8)
+  currency             String       @default("USD")
+  policyVersion        Int          @default(1)
   reversalOfTransferId String?
-  createdAt           DateTime     @default(now())
-  operation           LotOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
-  fromLot             Lot          @relation("CostTransferFrom", fields: [fromLotId], references: [id], onDelete: Restrict)
-  toLot               Lot          @relation("CostTransferTo", fields: [toLotId], references: [id], onDelete: Restrict)
+  createdAt            DateTime     @default(now())
+  operation            LotOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  fromLot              Lot          @relation("CostTransferFrom", fields: [fromLotId], references: [id], onDelete: Restrict)
+  toLot                Lot          @relation("CostTransferTo", fields: [toLotId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, toLotId])
@@ -2052,24 +2064,24 @@ model BarrelAsset {
 // on-read derivation stops double-counting it). Volume is snapshotted at fill open (v1). Two lots in one
 // barrel each get their own fill row → cost splits by volume×time.
 model BarrelFill {
-  tenantId              String      @default("")
-  id                    String      @id @default(cuid())
-  barrelAssetId         String
-  lotId                 String
-  fillNumber            Int
-  volumeL               Decimal     @db.Decimal(10, 2) // resident volume at fill open
-  capacityL             Decimal     @db.Decimal(10, 2) // barrel capacity snapshot
-  purchaseCostSnapshot  Decimal     @db.Decimal(18, 8) // barrel purchase cost at fill open (D17-stable)
-  fillDepreciation      Decimal     @db.Decimal(18, 8) // $ this fill amortizes = purchaseCost × slice
-  startedAt             DateTime
-  endedAt               DateTime?
-  openOpId              Int // the op that opened this fill
-  closeOpId             Int? // the op that closed it (materialized the CostLine)
+  tenantId               String      @default("")
+  id                     String      @id @default(cuid())
+  barrelAssetId          String
+  lotId                  String
+  fillNumber             Int
+  volumeL                Decimal     @db.Decimal(10, 2) // resident volume at fill open
+  capacityL              Decimal     @db.Decimal(10, 2) // barrel capacity snapshot
+  purchaseCostSnapshot   Decimal     @db.Decimal(18, 8) // barrel purchase cost at fill open (D17-stable)
+  fillDepreciation       Decimal     @db.Decimal(18, 8) // $ this fill amortizes = purchaseCost × slice
+  startedAt              DateTime
+  endedAt                DateTime?
+  openOpId               Int // the op that opened this fill
+  closeOpId              Int? // the op that closed it (materialized the CostLine)
   materializedCostLineId String? // the BARREL CostLine written at close (null while open)
-  policyVersion         Int         @default(1)
-  createdAt             DateTime    @default(now())
-  barrelAsset           BarrelAsset @relation(fields: [barrelAssetId], references: [id], onDelete: Cascade)
-  lot                   Lot         @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  policyVersion          Int         @default(1)
+  createdAt              DateTime    @default(now())
+  barrelAsset            BarrelAsset @relation(fields: [barrelAssetId], references: [id], onDelete: Cascade)
+  lot                    Lot         @relation(fields: [lotId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, lotId])
@@ -2137,26 +2149,26 @@ model AccountMapping {
 // Phase 15 posts these as-is (debit/credit + amount); `postedAt` + `externalSystemId` are stamped when it
 // does. Incomplete-basis sources are never emitted (D14). Reading these IS the per-SKU/per-run export view.
 model CostExportEvent {
-  tenantId               String                @default("")
-  id                     String                @id @default(cuid())
-  postingKey             String // per-line idempotency (source postingKey : component [: rev])
-  sourceType             String // SNAPSHOT | VARIANCE
-  sourceSnapshotId       String?
-  sourceVarianceEventId  String?
+  tenantId                String                @default("")
+  id                      String                @id @default(cuid())
+  postingKey              String // per-line idempotency (source postingKey : component [: rev])
+  sourceType              String // SNAPSHOT | VARIANCE
+  sourceSnapshotId        String?
+  sourceVarianceEventId   String?
   reversalOfExportEventId String?
-  runId                  String?
-  skuId                  String?
-  taxClass               String?
-  component              CostComponent
-  amount                 Decimal               @db.Decimal(18, 8)
-  debitAccount           String? // null = WITHHELD (component unmapped or basis not KNOWN) — never posted (U7)
-  creditAccount          String?
-  currency               String                @default("USD")
-  basisCompleteness      CostBasisCompleteness @default(KNOWN)
-  policyVersion          Int                   @default(1)
-  postedAt               DateTime?
-  externalSystemId       String?
-  createdAt              DateTime              @default(now())
+  runId                   String?
+  skuId                   String?
+  taxClass                String?
+  component               CostComponent
+  amount                  Decimal               @db.Decimal(18, 8)
+  debitAccount            String? // null = WITHHELD (component unmapped or basis not KNOWN) — never posted (U7)
+  creditAccount           String?
+  currency                String                @default("USD")
+  basisCompleteness       CostBasisCompleteness @default(KNOWN)
+  policyVersion           Int                   @default(1)
+  postedAt                DateTime?
+  externalSystemId        String?
+  createdAt               DateTime              @default(now())
 
   @@unique([tenantId, postingKey]) // idempotent re-emit
   @@unique([tenantId, id]) // Phase 15: composite-tenant-FK target for accounting_delivery (K11)
@@ -2184,6 +2196,10 @@ enum ConnectionStatus {
   CONNECTED
   DISCONNECTED
   NEEDS_REAUTH
+  // Phase 16 (Commerce7): a nonce-verified install that is staged but not yet admin-confirmed. Only
+  // used by commerce7_connection; accounting connections never enter this state. Added by an ISOLATED
+  // ALTER TYPE migration (Windows enum rule).
+  PENDING_CONFIRM
 }
 
 enum DeliveryStatus {
@@ -2277,30 +2293,196 @@ model ApExportEvent {
 }
 
 model AccountingDelivery {
-  tenantId          String         @default("")
-  id                String         @id @default(cuid())
-  connectionId      String // composite-tenant FK -> accounting_connection (raw SQL)
-  costExportEventId String? // composite-tenant FK -> cost_export_event (XOR apExportEventId — CHECK in SQL)
-  apExportEventId   String? // composite-tenant FK -> ap_export_event
-  status            DeliveryStatus @default(PENDING)
-  objectType        String? // "JournalEntry" | "Bill" (A2 — ONE poster, typed by object)
-  attemptCount      Int            @default(0)
-  requestId         String? // deterministic QBO RequestId (idempotency)
-  externalId        String? // QBO object Id once posted
-  postingDate       DateTime? // GL posting date (current open period for reversals — U11)
-  withheldReason    String?
-  lastError         String?
-  claimedAt         DateTime?
-  leaseExpiresAt    DateTime?
-  verifiedAt        DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  tenantId           String         @default("")
+  id                 String         @id @default(cuid())
+  connectionId       String // composite-tenant FK -> accounting_connection (raw SQL)
+  costExportEventId  String? // composite-tenant FK -> cost_export_event (exactly-one-of-three — CHECK in SQL)
+  apExportEventId    String? // composite-tenant FK -> ap_export_event
+  salesExportEventId String? // Phase 16: composite-tenant FK -> sales_export_event (DTC revenue delta)
+  status             DeliveryStatus @default(PENDING)
+  objectType         String? // "JournalEntry" | "Bill" (A2 — ONE poster, typed by object)
+  attemptCount       Int            @default(0)
+  requestId          String? // deterministic QBO RequestId (idempotency)
+  externalId         String? // QBO object Id once posted
+  postingDate        DateTime? // GL posting date (current open period for reversals — U11)
+  withheldReason     String?
+  lastError          String?
+  claimedAt          DateTime?
+  leaseExpiresAt     DateTime?
+  verifiedAt         DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   @@unique([tenantId, costExportEventId]) // <=1 delivery per cost export event
   @@unique([tenantId, apExportEventId]) // <=1 delivery per AP export event
+  @@unique([tenantId, salesExportEventId]) // Phase 16: <=1 delivery per sales export delta
   @@index([tenantId])
   @@index([tenantId, connectionId])
   @@map("accounting_delivery")
+}
+
+// ───────────────────────── Phase 16: Commerce7 DTC/sales integration ─────────────────────────
+// Tenant-scoped, RLS-isolated (Phase-12 checklist). The revenue side of the money loop: pull settled
+// Commerce7 DTC/club/POS orders in, deplete finished goods (SALE StockMovement), post DTC revenue
+// through the SAME AccountingDelivery outbox/poster as Phase 15, and mirror finished-goods INCREASES
+// back to Commerce7 (additive, watermark-idempotent). ERP is authoritative; Commerce7 is a replica.
+//
+// Commerce7 has NO OAuth — App ID + Secret Key over HTTP Basic Auth + a `tenant:` header (env-resident,
+// never a DB column). So there is no token table here; the "install" is nonce-bound (commerce7_install_state
+// reuses the OAuthState single-use-nonce pattern) and the connection carries no secret. PII is
+// data-minimized (D19): the order projection + delta events + dirty markers hold only opaque ids +
+// amounts + SKU refs — NEVER a customer name/email (a schema test asserts this).
+
+enum CommerceProvider {
+  COMMERCE7
+  WINEDIRECT // v1 unused — the provider-neutral seam is WineDirect-ready
+}
+
+// The kind of economic delta a normalize→diff pass emits for a mutable order (append-only, D2/D6):
+// the first settled snapshot is a SALE; a later edit is an ADJUSTMENT of the difference; a cancel is a
+// REVERSAL; a (full/partial) refund is a REFUND. Each posts the DIFFERENCE, never a re-book.
+enum SalesDeltaKind {
+  SALE
+  ADJUSTMENT
+  REVERSAL
+  REFUND
+}
+
+// Per-tenant Commerce7 link. NO token columns (the app Secret Key is env-global). status uses the
+// shared ConnectionStatus incl. PENDING_CONFIRM (nonce-verified but awaiting admin confirm). The poll
+// watermark (updatedAt, id) lives here so the reconciler advances only past a fully-drained page.
+model Commerce7Connection {
+  tenantId            String           @default("")
+  id                  String           @id @default(cuid())
+  provider            CommerceProvider @default(COMMERCE7)
+  status              ConnectionStatus @default(DISCONNECTED)
+  environment         String // "sandbox" | "production"
+  externalTenantId    String? // the Commerce7 tenant slug (naming the winery in the `tenant:` header)
+  scopes              String[]
+  installedByUserId   String?
+  webhookId           String? // the registered Commerce7 webhook id (for delete/recreate — U8)
+  webhookConfiguredAt DateTime?
+  lastWebhookAt       DateTime? // last inbound webhook hint (webhook-health chip; stale → recreate)
+  lastPolledAt        DateTime?
+  pollCursorUpdatedAt DateTime? // (updatedAt, id) composite poll watermark with overlap
+  pollCursorId        String?
+  companyName         String? // display only ("Connected to <winery>") — non-secret
+  connectedAt         DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([tenantId, provider]) // one commerce connection per tenant per provider
+  @@unique([tenantId, id]) // composite-tenant-FK target (K11)
+  @@index([tenantId])
+  @@map("commerce7_connection")
+}
+
+// Short-lived, single-use install nonce (reuses the OAuthState shape). Bound to the initiating admin +
+// workspace so an unauthenticated install callback cannot link a victim's Commerce7 tenant (P0 fix).
+model Commerce7InstallState {
+  tenantId  String   @default("")
+  id        String   @id @default(cuid())
+  nonceHash String // SHA-256 of the random nonce; the raw nonce is never stored
+  userId    String // the admin who initiated; re-checked at confirm time
+  sessionId String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, nonceHash]) // consumed with DELETE … RETURNING (single-use)
+  @@index([tenantId])
+  @@index([expiresAt])
+  @@map("commerce7_install_state")
+}
+
+// SKU mapping: a Commerce7 (variant, inventory-location) ↔ our (WineSku, Location). Match, never
+// silently create (respect the NV partial-unique split). `lastPushedMovementAt`/`lastPushedMovementId`
+// is the OUTBOUND (createdAt, id) watermark for additive inventory push (StockMovement has no numeric
+// seq, so the watermark is the same composite cursor shape the poller uses). wineSkuId is a
+// composite-tenant FK (SQL); locationId is a plain ref (resolved at runtime).
+model Commerce7SkuMap {
+  tenantId                    String    @default("")
+  id                          String    @id @default(cuid())
+  externalProductId           String
+  externalVariantId           String
+  externalSku                 String
+  externalInventoryLocationId String
+  wineSkuId                   String? // composite-tenant FK -> wine_sku (raw SQL)
+  locationId                  String? // our finished-goods Location (plain ref)
+  lastPushedMovementAt        DateTime? // outbound watermark (createdAt of the last pushed movement)
+  lastPushedMovementId        String? // …with id as the tiebreak, so the push is idempotent
+  active                      Boolean   @default(true)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@unique([tenantId, externalVariantId, externalInventoryLocationId])
+  @@index([tenantId])
+  @@index([tenantId, wineSkuId])
+  @@map("commerce7_sku_map")
+}
+
+// The MUTABLE order projection (NO PII). Keyed by the stable Commerce7 order id. `normalizedSnapshot`
+// is the last-known economic snapshot (sku+qty+cents+tax+discount, no PII) we diff against; `dirty`
+// is the webhook hint. `lastSeenUpdatedAt` + id back the poll watermark. `withheldReason` records a
+// still-un-emitted order (unmapped SKU/account) so the dashboard can surface it.
+model Commerce7Order {
+  tenantId             String    @default("")
+  id                   String    @id @default(cuid())
+  commerce7OrderId     String // stable Commerce7 order UUID
+  commerce7OrderNumber String?
+  commerce7CustomerId  String? // opaque Commerce7 id ONLY — never a name/email (D19)
+  channel              String? // DTC / club / POS (kept allocation-ready)
+  paymentStatus        String? // Paid | Authorized | Cancelled | …
+  fulfillmentStatus    String?
+  normalizedSnapshot   Json? // last-known PII-free economic snapshot (the diff base)
+  lastDeltaSeq         Int       @default(0)
+  dirty                Boolean   @default(false)
+  withheldReason       String?
+  lastSeenUpdatedAt    DateTime?
+  occurredAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([tenantId, commerce7OrderId])
+  @@unique([tenantId, id]) // composite-tenant-FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, dirty])
+  @@index([tenantId, lastSeenUpdatedAt, commerce7OrderId]) // poll watermark
+  @@map("commerce7_order")
+}
+
+// IMMUTABLE append-only revenue DELTA (NO PII), mirroring cost_export_event/ap_export_event. Each is
+// the DIFFERENCE for one order edit; `postingKey = sale:${orderId}:v${deltaSeq}` is per-tenant unique
+// so a replay is a no-op. Accounts are resolved + frozen at emit (null → withheld, never posted).
+// `reversalOfSalesExportEventId` links a REFUND/REVERSAL back to what it reverses.
+model SalesExportEvent {
+  tenantId                     String         @default("")
+  id                           String         @id @default(cuid())
+  postingKey                   String // sale:${orderId}:v${deltaSeq}
+  commerce7OrderId             String
+  deltaSeq                     Int
+  kind                         SalesDeltaKind
+  currency                     String         @default("USD")
+  channel                      String? // carried from the order projection (allocation-ready margin)
+  revenueDelta                 Decimal        @db.Decimal(18, 8)
+  salesTaxDelta                Decimal        @default(0) @db.Decimal(18, 8)
+  shippingDelta                Decimal        @default(0) @db.Decimal(18, 8)
+  discountDelta                Decimal        @default(0) @db.Decimal(18, 8)
+  lineDeltas                   Json // [{ skuRef, qtyDelta }] — no PII
+  revenueAccount               String?
+  clearingAccount              String?
+  taxAccount                   String?
+  shippingAccount              String?
+  discountAccount              String?
+  reversalOfSalesExportEventId String?
+  accountingDate               DateTime // the sale's winery-local business date (period matching)
+  occurredAt                   DateTime
+  createdAt                    DateTime       @default(now())
+
+  @@unique([tenantId, postingKey]) // idempotent re-emit / exactly-once
+  @@unique([tenantId, id]) // composite-tenant-FK target for accounting_delivery (K11)
+  @@index([tenantId])
+  @@index([tenantId, commerce7OrderId])
+  @@map("sales_export_event")
 }
 
 // ───────────────────────── plan-027: compliance filing-deadline reminders ─────────────────────────
