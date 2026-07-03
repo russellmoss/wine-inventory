@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { bucketWorkOrders, type BucketedItem } from "@/lib/work-orders/buckets";
 import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/lib/work-orders/deviation";
-import { buildArchiveWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilters } from "@/lib/work-orders/archive-filters";
+import { buildArchiveWhere, buildOpenWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilters, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
 import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 
 // Read-side view-models for work orders (Phase 9). K12-safe: every reader takes tenantId as an EXPLICIT
@@ -300,10 +300,11 @@ const toSummary = (r: WorkOrderListRow): WorkOrderSummary => ({ ...r, dueAt: r.d
 export async function getWorkOrderDashboard(
   tenantId: string,
   now: Date,
+  filters: WorkOrderFilters = {},
 ): Promise<{ buckets: BucketedItem<WorkOrderSummary>; pendingApproval: WorkOrderSummary[]; counts: Record<string, number> }> {
   return runAsTenant(tenantId, async () => {
     const rows = await prisma.workOrder.findMany({
-      where: { status: { in: ["ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] } },
+      where: buildOpenWhere(filters) as Prisma.WorkOrderWhereInput,
       orderBy: [{ dueAt: "asc" }, { number: "asc" }],
       select: {
         id: true, number: true, title: true, status: true, dueAt: true, assigneeEmail: true, startedByEmail: true,
