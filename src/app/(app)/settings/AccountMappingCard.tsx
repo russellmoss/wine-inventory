@@ -81,9 +81,11 @@ export function AccountMappingCard({
   const [pending, startTransition] = React.useTransition();
 
   const fetchCoa = React.useCallback(() => {
-    setLoading(true);
-    setLoadError(null);
     startTransition(async () => {
+      // setState inside the transition (not synchronously) — this fn runs from an effect, and a
+      // synchronous setState in an effect trips react-hooks' cascading-render rule.
+      setLoading(true);
+      setLoadError(null);
       try {
         const { cost, inventory, payable } = await loadChartOfAccounts();
         setCost(cost);

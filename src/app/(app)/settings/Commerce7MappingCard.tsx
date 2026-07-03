@@ -56,9 +56,11 @@ export function Commerce7MappingCard({ connected }: { connected: boolean }) {
   const [pending, startTransition] = React.useTransition();
 
   const fetchData = React.useCallback(() => {
-    setLoading(true);
-    setLoadError(null);
     startTransition(async () => {
+      // setState inside the transition (not synchronously) — this fn runs from an effect, and a
+      // synchronous setState in an effect trips react-hooks' cascading-render rule.
+      setLoading(true);
+      setLoadError(null);
       try {
         const d = await loadCommerce7Mapping();
         setData(d);
