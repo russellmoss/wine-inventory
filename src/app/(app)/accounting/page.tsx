@@ -169,14 +169,14 @@ export default async function AccountingPage() {
       {/* DTC per-channel margin (Unit 10b) — read-only revenue × Phase-8 COGS. */}
       <Card style={{ maxWidth: 720, marginTop: 16 }}>
         <h3 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: "0 0 4px" }}>DTC margin by wine &amp; channel</h3>
-        <p style={{ color: "var(--gold-deep, var(--text-secondary))", fontSize: 12.5, margin: "0 0 12px", fontWeight: 500 }}>
+        <p style={{ color: "var(--text-secondary)", fontSize: 12.5, margin: "0 0 12px", fontWeight: 500 }}>
           {margin.caveat}
         </p>
         {margin.rows.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No DTC sales yet — margin appears once paid orders come in.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
               <thead>
                 <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 12.5 }}>
                   <th style={{ padding: "6px 8px" }}>Wine</th>
