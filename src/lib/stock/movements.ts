@@ -36,7 +36,7 @@ function movementCreate(
   kind: ItemKind,
   itemId: string,
   locationId: string,
-  movementKind: "RECEIVE" | "ADJUST" | "TRANSFER",
+  movementKind: "RECEIVE" | "ADJUST" | "TRANSFER" | "SALE",
   deltaUnits: number,
   ctx: Ctx,
   reason?: string,
@@ -135,6 +135,41 @@ export async function adjustStock(kind: ItemKind, itemId: string, locationId: st
       });
     }),
   );
+}
+
+// Phase 16 (Commerce7 DTC) — deplete/restore finished goods for a settled sale, INSIDE the caller's
+// ingest transaction (the SERIALIZABLE runLedgerWrite tx). Bottled wine only. Race-safe via the same
+// conditional decrement; a SALE StockMovement makes the depletion first-class + auditable (feeds the
+// Phase-8b sold/unsold variance seam). These take a tx so the delta event + inventory move + delivery
+// commit or roll back together (exactly-once atomicity).
+
+/** Deplete `qty` bottles of a WineSku at a location for a DTC sale. Throws CONFLICT if short. */
+export async function depleteForSale(tx: Prisma.TransactionClient, wineSkuId: string, locationId: string, qty: number, ctx: Ctx, reason?: string): Promise<void> {
+  assertCount(qty, "Sale quantity");
+  const ok = await decrement(tx, "BOTTLED_WINE", wineSkuId, locationId, qty);
+  if (!ok) throw new ActionError("Not enough finished-goods stock to fulfill this sale.", "CONFLICT");
+  await movementCreate(tx, "BOTTLED_WINE", wineSkuId, locationId, "SALE", -qty, ctx, reason ?? "Commerce7 DTC sale");
+  await writeAudit(tx, {
+    ...ctx,
+    action: "STOCK_MOVEMENT",
+    entityType: "BottledInventory",
+    entityId: wineSkuId,
+    summary: `DTC sale depleted ${qty} bottles${reason ? ` (${reason})` : ""}`,
+  });
+}
+
+/** Restore `qty` bottles of a WineSku at a location for a refund/cancel (a positive SALE-kind move). */
+export async function restoreForRefund(tx: Prisma.TransactionClient, wineSkuId: string, locationId: string, qty: number, ctx: Ctx, reason?: string): Promise<void> {
+  assertCount(qty, "Refund quantity");
+  await increment(tx, "BOTTLED_WINE", wineSkuId, locationId, qty);
+  await movementCreate(tx, "BOTTLED_WINE", wineSkuId, locationId, "SALE", qty, ctx, reason ?? "Commerce7 DTC refund/cancel");
+  await writeAudit(tx, {
+    ...ctx,
+    action: "STOCK_MOVEMENT",
+    entityType: "BottledInventory",
+    entityId: wineSkuId,
+    summary: `DTC refund/cancel restored ${qty} bottles${reason ? ` (${reason})` : ""}`,
+  });
 }
 
 export async function transferStock(kind: ItemKind, itemId: string, fromLocationId: string, toLocationId: string, qty: number, ctx: Ctx, reason?: string) {
