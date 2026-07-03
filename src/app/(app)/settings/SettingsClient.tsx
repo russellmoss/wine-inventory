@@ -10,6 +10,7 @@ import type { CostSettings } from "@/lib/cost/policy";
 import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
 import { AccountingConnectionCard, type ConnectionSummary } from "./AccountingConnectionCard";
 import { AccountMappingCard } from "./AccountMappingCard";
+import { Commerce7ConnectionCard, type Commerce7ConnectionSummary } from "./Commerce7ConnectionCard";
 
 type AccountingMapping = { component: string; costAccount: string | null; inventoryAccount: string | null };
 
@@ -41,6 +42,7 @@ export function SettingsClient({
   accounting,
   accountingMappings,
   accountingAp,
+  commerce7,
 }: {
   sparklingEnabled: boolean;
   cost: CostSettings;
@@ -48,6 +50,7 @@ export function SettingsClient({
   accounting: ConnectionSummary | null;
   accountingMappings: AccountingMapping[];
   accountingAp: { apInventoryAccount: string | null; apPayableAccount: string | null };
+  commerce7: Commerce7ConnectionSummary | null;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
@@ -227,6 +230,9 @@ export function SettingsClient({
         initialMappings={accountingMappings}
         initialAp={accountingAp}
       />
+
+      {/* Phase 16 — Commerce7 DTC/sales connection (+ mapping card added in U4). */}
+      <Commerce7ConnectionCard commerce7={commerce7} />
 
       {/* TTB compliance profile — the filer identity that heads Form 5120.17. */}
       <Card style={{ maxWidth: 560, marginTop: 16 }}>

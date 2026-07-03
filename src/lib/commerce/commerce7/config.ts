@@ -7,6 +7,7 @@
 // AUTH: Commerce7 is NOT OAuth2 — App ID + App Secret Key over HTTP Basic Auth + a `tenant:` header
 // naming the winery. No per-tenant tokens, no rotation. (developer.commerce7.com/docs/create-an-app)
 
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { CommerceEnvironment } from "@/lib/commerce/adapter";
 
 /** The ONE Commerce7 REST origin these modules ever talk to (locked egress). REST only, no GraphQL. */
@@ -39,9 +40,32 @@ export function loadWebhookSecret(): string {
   return s;
 }
 
-/** The public base URL the Commerce7 webhook posts to (for registering/self-healing the webhook). */
-export function webhookDeliveryUrl(): string {
+/** The public app base URL (no trailing slash) the Commerce7 webhook posts to. */
+export function webhookBaseUrl(): string {
   const base = process.env.COMMERCE7_WEBHOOK_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "";
   if (!base) throw new Error("COMMERCE7_WEBHOOK_BASE_URL (or NEXT_PUBLIC_APP_URL) is not set.");
-  return `${base.replace(/\/$/, "")}/api/commerce7/webhook`;
+  return base.replace(/\/$/, "");
+}
+
+// The webhook delivery URL embeds OUR tenant id + an HMAC of it (keyed on the inbound webhook secret).
+// This routes a session-less C7 POST to the right tenant WITHOUT a cross-tenant DB read (the commerce
+// tables are RLS-forced and the app is a NOBYPASSRLS role), and the HMAC makes the URL unguessable +
+// authentic (no HMAC on C7 payloads, so we self-sign the path). Constant-time verified on receipt.
+
+/** Deterministic HMAC of our tenant id, keyed on the inbound webhook secret (hex). */
+export function webhookPathSig(tenantId: string): string {
+  return createHmac("sha256", loadWebhookSecret()).update(tenantId).digest("hex");
+}
+
+/** Constant-time verify a (tenantId, sig) webhook path segment. */
+export function verifyWebhookPath(tenantId: string, sig: string): boolean {
+  const expected = webhookPathSig(tenantId);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** The full per-tenant webhook delivery URL registered with Commerce7. */
+export function fullWebhookUrl(tenantId: string): string {
+  return `${webhookBaseUrl()}/api/commerce7/webhook/${encodeURIComponent(tenantId)}/${webhookPathSig(tenantId)}`;
 }
