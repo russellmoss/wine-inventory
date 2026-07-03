@@ -2659,6 +2659,7 @@ model WorkOrder {
   @@unique([tenantId, id])
   @@index([tenantId])
   @@index([tenantId, status, dueAt]) // A7: dashboard bucketing (scheduled/today/overdue/pending)
+  @@index([tenantId, status, updatedAt]) // E2: archive recency sort (finalized WOs by most-recent)
   @@map("work_order")
 }
 
