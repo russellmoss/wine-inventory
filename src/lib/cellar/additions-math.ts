@@ -29,7 +29,11 @@ export const MATERIAL_KINDS = [
   "ACID",
   "TANNIN",
   "FINING",
+  "BENTONITE", // Phase 9.1: protein-stability fining clay (a rate against volume, like FINING)
+  "CHITOSAN", // Phase 9.1: fungal/shellfish clarifier + Brett reduction (a dosing material)
   "ENZYME",
+  "CLEANING", // Phase 9.1: cleaning chemical (proxycarb, caustic) — overhead, consumed by maintenance, never a wine COGS
+  "SANITIZER", // Phase 9.1: sanitizer (PAA, ozone) — overhead, consumed by maintenance, never a wine COGS
   "OTHER",
 ] as const;
 export type MaterialKind = (typeof MATERIAL_KINDS)[number];

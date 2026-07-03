@@ -19,6 +19,7 @@
     "seed:demo-scenario": "tsx --conditions=react-server --env-file=.env scripts/seed-demo-scenario.ts",
     "seed:demo-accounting": "tsx --conditions=react-server --env-file=.env scripts/seed-demo-accounting.ts",
     "seed:work-order-templates": "tsx --conditions=react-server --env-file=.env scripts/seed-work-order-templates.ts",
+    "seed:starter-materials": "tsx --conditions=react-server --env-file=.env scripts/seed-starter-materials.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
     "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",
