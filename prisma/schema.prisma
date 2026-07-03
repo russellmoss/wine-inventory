@@ -1090,6 +1090,10 @@ model AppSettings {
   capitalizeOverhead       Boolean       @default(false)
   capitalizePackaging      Boolean       @default(true)
   costingPolicyVersion     Int           @default(1)
+  // Phase 15 Unit 10 — supply-receipt A/P Bill accounts (winery-wide, not per-component): a receipt
+  // posts DR inventory-asset / CR accounts-payable. Both unset → AP export is withheld (never posted).
+  apInventoryAccount       String?
+  apPayableAccount         String?
   updatedAt        DateTime @updatedAt
 
   @@unique([tenantId])

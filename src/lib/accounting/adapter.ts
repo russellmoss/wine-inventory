@@ -130,4 +130,7 @@ export interface AccountingAdapter {
   /** Reconcile read-back: fetch a posted object by its external Id. Null if it was deleted in the GL. */
   getById(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", externalId: string): Promise<PostResult | null>;
   postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string): Promise<PostResult>;
+  /** AP (Unit 10): find-or-create a vendor by name, then post a Bill (payload built provider-side). */
+  findOrCreateVendor(ctx: ProviderCallContext, name: string): Promise<string>;
+  postBill(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string): Promise<PostResult>;
 }

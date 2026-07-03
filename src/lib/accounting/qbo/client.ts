@@ -224,6 +224,24 @@ export class QboClient {
     if (!je?.Id) throw new ProviderFault("unknown", "QBO accepted the JournalEntry but returned no Id.");
     return { externalId: je.Id, version: je.SyncToken, docNumber: je.DocNumber };
   }
+
+  /** Find a QBO Vendor by exact display name, else create it. Returns the QBO Vendor.Id. (Unit 10) */
+  async findOrCreateVendor(ctx: ProviderCallContext, name: string): Promise<string> {
+    const safe = name.replace(/'/g, "''");
+    const found = await this.query<{ Vendor?: Array<{ Id: string }> }>(ctx, `SELECT Id FROM Vendor WHERE DisplayName = '${safe}'`);
+    const hit = found.Vendor?.[0]?.Id;
+    if (hit) return hit;
+    const created = await this.request<{ Vendor?: { Id: string } }>(ctx, "POST", "vendor", { body: { DisplayName: name } });
+    if (!created.Vendor?.Id) throw new ProviderFault("unknown", "QBO created a Vendor but returned no Id.");
+    return created.Vendor.Id;
+  }
+
+  async postBill(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string): Promise<PostResult> {
+    const r = await this.request<{ Bill?: { Id: string; SyncToken: string; DocNumber?: string } }>(ctx, "POST", "bill", { params: { requestid: requestId }, body: payload });
+    const bill = r.Bill;
+    if (!bill?.Id) throw new ProviderFault("unknown", "QBO accepted the Bill but returned no Id.");
+    return { externalId: bill.Id, version: bill.SyncToken, docNumber: bill.DocNumber };
+  }
 }
 
 /**
@@ -271,5 +289,11 @@ export class QboAdapter implements AccountingAdapter {
   }
   postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string) {
     return this.client.postJournalEntry(ctx, input, requestId);
+  }
+  findOrCreateVendor(ctx: ProviderCallContext, name: string) {
+    return this.client.findOrCreateVendor(ctx, name);
+  }
+  postBill(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string) {
+    return this.client.postBill(ctx, payload, requestId);
   }
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
+import { emitApExportForReceipt } from "@/lib/accounting/ap-emit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { MaterialKind, RateBasis } from "@/lib/cellar/additions-math";
 import {
@@ -199,6 +200,9 @@ export type ReceiveSupplyInput = {
   unitCost?: number | null;
   lotCode?: string | null;
   note?: string | null;
+  // Phase 15 Unit 10 — optional A/P: a purchase-on-credit under a vendor becomes a QBO Bill.
+  vendorName?: string | null;
+  terms?: string | null; // e.g. "Net 30" — drives the Bill DueDate
 };
 
 /**
@@ -234,6 +238,9 @@ export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupply
       select: { id: true },
     });
     await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Received ${qty} ${stockUnit} of "${material.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
+    // Phase 15 Unit 10 — transactional outbox: a purchase-on-credit emits an A/P Bill export + delivery
+    // in THIS tx. No-op unless a vendor + A/P accounts + a known cost are all present.
+    await emitApExportForReceipt(lot.id, { vendorName: input.vendorName, terms: input.terms }, tx);
     return { supplyLotId: lot.id };
   });
 }

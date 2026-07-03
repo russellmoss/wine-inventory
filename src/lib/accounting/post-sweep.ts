@@ -6,6 +6,7 @@ import { listAllOrgIds, disconnectEnumerator } from "@/lib/accounting/enumerator
 import { getValidAccessToken, NeedsReauthError } from "@/lib/accounting/token";
 import { QboAdapter, docNumberFor } from "@/lib/accounting/qbo/client";
 import { buildJournalFromExport } from "@/lib/accounting/qbo/journal";
+import { buildBillPayload } from "@/lib/accounting/qbo/bill";
 import { emitExportForSnapshot } from "@/lib/cost/export-emit";
 import { ProviderFault, type ProviderCallContext } from "@/lib/accounting/adapter";
 
@@ -79,10 +80,11 @@ async function finalize(id: string, data: Record<string, unknown>): Promise<void
 async function postOne(
   adapter: QboAdapter,
   ctx: ProviderCallContext,
-  d: { id: string; costExportEventId: string | null; postingDate: Date | null },
+  d: { id: string; costExportEventId: string | null; apExportEventId: string | null; postingDate: Date | null },
   summary: PostSweepSummary,
 ): Promise<void> {
-  if (!d.costExportEventId) return; // AP (apExportEventId) is handled by the U10 path
+  if (d.apExportEventId) return postBill(adapter, ctx, d, summary);
+  if (!d.costExportEventId) return;
   const ev = await prisma.costExportEvent.findUnique({
     where: { id: d.costExportEventId },
     select: { postingKey: true, amount: true, debitAccount: true, creditAccount: true, currency: true },
@@ -121,6 +123,62 @@ async function postOne(
       return;
     }
     throw e; // non-provider error bubbles to the tenant handler
+  }
+}
+
+/** Post one supply-receipt Bill delivery. Find-or-create the QBO vendor (cache externalVendorId),
+ *  then the same query-before-post → post → finalize path as JournalEntries. (Unit 10) */
+async function postBill(
+  adapter: QboAdapter,
+  ctx: ProviderCallContext,
+  d: { id: string; apExportEventId: string | null; postingDate: Date | null },
+  summary: PostSweepSummary,
+): Promise<void> {
+  const ev = await prisma.apExportEvent.findUnique({
+    where: { id: d.apExportEventId as string },
+    select: { postingKey: true, amount: true, debitAccount: true, receivedAt: true, dueDate: true, vendorId: true },
+  });
+  if (!ev || !ev.vendorId || !ev.debitAccount) {
+    await finalize(d.id, { status: "FAILED", lastError: "AP export missing vendor or account" });
+    summary.failed++;
+    return;
+  }
+  const docNumber = docNumberFor(ev.postingKey);
+  try {
+    const existing = await adapter.findByDocNumber(ctx, "Bill", docNumber);
+    if (existing) {
+      await finalize(d.id, { status: "POSTED", externalId: existing.externalId, requestId: docNumber, verifiedAt: new Date(), lastError: null });
+      summary.adopted++;
+      return;
+    }
+    // Resolve the QBO vendor, caching its external id on the Vendor row.
+    const vendor = await prisma.vendor.findUnique({ where: { id: ev.vendorId }, select: { name: true, externalVendorId: true } });
+    if (!vendor) {
+      await finalize(d.id, { status: "FAILED", lastError: "vendor row missing" });
+      summary.failed++;
+      return;
+    }
+    let externalVendorId = vendor.externalVendorId;
+    if (!externalVendorId) {
+      externalVendorId = await adapter.findOrCreateVendor(ctx, vendor.name);
+      await runInTenantTx((tx) => tx.vendor.update({ where: { id: ev.vendorId as string }, data: { externalVendorId } }));
+    }
+    const payload = buildBillPayload({ postingKey: ev.postingKey, amount: Number(ev.amount), debitAccount: ev.debitAccount, receivedAt: ev.receivedAt, dueDate: ev.dueDate }, externalVendorId);
+    const result = await adapter.postBill(ctx, payload, docNumber);
+    await finalize(d.id, { status: "POSTED", externalId: result.externalId, requestId: docNumber, verifiedAt: new Date(), lastError: null });
+    summary.posted++;
+  } catch (e) {
+    if (e instanceof ProviderFault) {
+      if (e.kind === "period_closed" || e.kind === "validation") {
+        await finalize(d.id, { status: "FAILED", lastError: `${e.kind}: ${e.message}` });
+        summary.failed++;
+        return;
+      }
+      await finalize(d.id, { status: "VERIFYING", lastError: `${e.kind}: ${e.message}` });
+      summary.verifying++;
+      return;
+    }
+    throw e;
   }
 }
 
@@ -163,7 +221,7 @@ export async function runAccountingPostSweep(): Promise<PostSweepSummary> {
 
         const claimed = await prisma.accountingDelivery.findMany({
           where: { id: { in: claimedIds } },
-          select: { id: true, costExportEventId: true, postingDate: true },
+          select: { id: true, costExportEventId: true, apExportEventId: true, postingDate: true },
         });
         for (const d of claimed) {
           try {
