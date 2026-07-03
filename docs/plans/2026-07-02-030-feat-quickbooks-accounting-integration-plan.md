@@ -9,6 +9,18 @@ units: 15
 revision: v2 (post-council)
 ---
 
+## Build Progress
+
+- **CONNECT SLICE (Units 0–6) — BUILT on main (2026-07-02).** U0 app-review checklist finalized; U1
+  AEAD envelope crypto (`src/lib/crypto/envelope.ts`, 15 tests); U2 schema + 4 migrations + RLS +
+  enumerator role (verify:tenant-isolation 69 tables + new cases green); U3 provider adapter + QBO
+  client (`src/lib/accounting/{adapter,qbo/*}`, 16 tests); U4 OAuth connect/callback/disconnect +
+  Settings card + Sentry scrubber; U5 `getValidAccessToken` serialized refresh + cron + enumerator
+  credential script; U6 CoA read + guided mapping UI. Full suite 850 pass / 0 fail; typecheck + prod
+  build clean. **Posting units 7–15 NOT started** (paused for operator check-in per the /work scope).
+  Live sandbox Connect click + `verify:accounting-refresh` are operator steps (need dev server up +
+  the enumerator credential set).
+
 ## Revision Log
 
 - **v2 (2026-07-02, post-/council):** Reworked the delivery model after Codex + Gemini review.
