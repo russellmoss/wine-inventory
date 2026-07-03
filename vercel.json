@@ -12,19 +12,19 @@
     },
     {
       "path": "/api/cron/accounting-post",
-      "schedule": "*/15 * * * *"
+      "schedule": "30 13 * * *"
     },
     {
       "path": "/api/cron/accounting-reconcile",
-      "schedule": "0 * * * *"
+      "schedule": "45 13 * * *"
     },
     {
       "path": "/api/cron/commerce7-poll",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 14 * * *"
     },
     {
       "path": "/api/cron/commerce7-inventory",
-      "schedule": "0 * * * *"
+      "schedule": "15 14 * * *"
     }
   ]
 }
