@@ -81,7 +81,10 @@ export async function createWorkOrderCore(actor: LedgerActor, input: CreateWorkO
         autoFinalize: input.autoFinalize ?? false,
         templateVersionId: input.templateVersionId ?? null,
         tasks: {
+          // tenantId is set EXPLICITLY on nested creates — the tenant extension only auto-injects it on
+          // the TOP-LEVEL create's data, so a nested row would otherwise land with '' and fail RLS.
           create: input.tasks.map((t) => ({
+            tenantId,
             seq: t.seq,
             kind: t.kind,
             title: t.title.trim(),
