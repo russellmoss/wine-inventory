@@ -11,6 +11,7 @@
  * Idempotent guard: exits if already seeded (FORCE=1 to re-run against a fresh tenant).
  * Slow-link hardening (airplane wifi / cold Neon): widened connect timeout + retry (as seed:demo-tenant).
  */
+export {}; // module scope (tsc isolation)
 const _t = process.env.SEED_CONNECT_TIMEOUT || "30";
 const _b = process.env.DATABASE_URL;
 if (_b && !/connect_timeout=/.test(_b)) {

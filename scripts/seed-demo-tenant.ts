@@ -22,6 +22,7 @@
  * (organization/user/account/member), `runAsTenant` for domain rows (tenantId is
  * auto-injected by the Prisma extension — do NOT set it).
  */
+export {}; // module scope (tsc isolation)
 import { randomUUID } from "crypto";
 
 // Widen connect/pool timeout for slow links / cold Neon compute — must run BEFORE
