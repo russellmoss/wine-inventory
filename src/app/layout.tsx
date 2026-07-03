@@ -4,13 +4,17 @@ import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BWC Operating System",
-  description: "The Bhutan Wine Company operating system — inventory, production, records, financials, and scouting.",
+  title: "Cellarhand",
+  description: "Cellarhand — the winery operating system: inventory, production, records, financials, and scouting.",
+  icons: {
+    other: [{ rel: "mask-icon", url: "/safari-pinned-tab.svg", color: "#662D10" }],
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#662D10",
 };
 
 export default function RootLayout({

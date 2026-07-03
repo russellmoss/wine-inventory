@@ -28,7 +28,7 @@ export function buildIcs(deadlines: Deadline[], opts: IcsOptions = {}): string {
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    `PRODID:-//Bhutan Wine Company//Compliance//EN`,
+    `PRODID:-//Cellarhand//Compliance//EN`,
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${esc(calName)}`,

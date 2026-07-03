@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-// @ts-expect-error — plain-Node ESM helper script, no type declarations.
 import { computeDrift, isTriggerPrefix, parseFrontmatter } from "../scripts/check-invariant-drift.mjs";
 
 const note = (id: string, appliesTo: string[], verify = "npm run verify:x") => ({
@@ -68,7 +67,7 @@ describe("parseFrontmatter — reads the register note shape", () => {
       "---",
       "body",
     ].join("\n");
-    const fm = parseFrontmatter(md);
+    const fm = parseFrontmatter(md) as unknown as { id: string; verify: string; appliesTo: string[] };
     expect(fm.id).toBe("COST-1");
     expect(fm.verify).toBe("npm run verify:cost");
     expect(fm.appliesTo).toEqual(["src/lib/cost/"]);

@@ -74,7 +74,7 @@ export const createUser = adminAction(async ({ actor }, formData: FormData): Pro
       summary: summarize("USER_CREATED", "User", { label: email }),
     });
   });
-  const emailed = await trySend(email, "Welcome to BWC Operating System", welcomeEmailHtml({ name, email, tempPassword: temp }));
+  const emailed = await trySend(email, "Welcome to Cellarhand", welcomeEmailHtml({ name, email, tempPassword: temp }));
   revalidatePath(PATH);
   return { email, tempPassword: temp, emailed };
 });
@@ -94,7 +94,7 @@ export const resetUserPassword = adminAction(async ({ actor }, userId: string): 
     await tx.session.deleteMany({ where: { userId } }); // revoke active sessions
     await writeAudit(tx, { ...actor, action: "PASSWORD_RESET", entityType: "User", entityId: userId, summary: summarize("PASSWORD_RESET", "User", { label: user.email }) });
   });
-  const emailed = await trySend(user.email, "Your BWC Operating System password was reset", passwordResetByAdminEmailHtml({ name: user.name, email: user.email, tempPassword: temp }));
+  const emailed = await trySend(user.email, "Your Cellarhand password was reset", passwordResetByAdminEmailHtml({ name: user.name, email: user.email, tempPassword: temp }));
   revalidatePath(PATH);
   return { email: user.email, tempPassword: temp, emailed };
 });

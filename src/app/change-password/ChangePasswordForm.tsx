@@ -30,7 +30,7 @@ export function ChangePasswordForm() {
       }}
     >
       <Card padding="var(--space-7)" style={{ width: "100%", maxWidth: 420 }}>
-        <Eyebrow rule>Bhutan Wine Company</Eyebrow>
+        <Eyebrow rule>Cellarhand</Eyebrow>
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: 30, margin: "10px 0 6px" }}>
           Set a new password
         </h1>

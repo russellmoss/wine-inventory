@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth-client";
 import { Avatar } from "@/components/ui";
-import { BrandMark, BrandEmblem } from "@/components/BrandMark";
+import { BrandMark } from "@/components/BrandMark";
 
 type NavItem = { href: string; label: string; admin?: boolean; badge?: number };
 
@@ -276,8 +276,7 @@ export function AppShell({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <BrandEmblem size={24} />
-          <div style={{ fontFamily: "var(--font-display)", fontSize: 18, letterSpacing: "0.01em" }}>BWC</div>
+          <BrandMark />
         </div>
         <button onClick={() => setDrawer(true)} aria-label="Open menu" style={{ background: "none", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", padding: "6px 10px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>☰</button>
       </header>

@@ -31,7 +31,7 @@ export default function StyleguidePage() {
     <div style={{ maxWidth: "var(--container-lg)", margin: "0 auto", padding: "48px 40px" }}>
       <Eyebrow rule>Design system</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 52, margin: "12px 0 8px" }}>
-        Bhutan Wine Company
+        Cellarhand
       </h1>
       <p style={{ color: "var(--text-secondary)", maxWidth: "60ch", marginBottom: 40 }}>
         Component and token preview. Warm paper, ink text, a single wine-burgundy accent.
@@ -102,7 +102,7 @@ export default function StyleguidePage() {
 
       <Section title="Quote">
         <Card padding="var(--space-7)">
-          <Quote name="Cellar notes" role="Bhutan Wine Company">
+          <Quote name="Cellar notes" role="Cellarhand">
             Every bottle is traceable to the barrel it came from.
           </Quote>
         </Card>

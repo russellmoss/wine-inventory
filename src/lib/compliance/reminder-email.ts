@@ -30,7 +30,7 @@ export function reminderEmail(input: ReminderEmailInput): { subject: string; htm
   const danger = input.daysUntil <= 2;
   const html = `
   <div style="font-family:Georgia,'Times New Roman',serif;max-width:520px;margin:0 auto;padding:24px;color:#2b2b2b">
-    <p style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#7a2e2e;margin:0 0 4px">Bhutan Wine Company · Compliance</p>
+    <p style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#7a2e2e;margin:0 0 4px">Cellarhand · Compliance</p>
     <h1 style="font-size:23px;font-weight:400;margin:0 0 8px">Filing reminder</h1>
     <p style="font-size:16px;line-height:1.5;margin:0 0 4px"><strong>${FORM_LABEL[input.form]}</strong></p>
     <p style="font-size:15px;line-height:1.5;margin:0 0 16px">Period <strong>${input.label}</strong> is

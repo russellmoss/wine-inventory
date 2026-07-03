@@ -45,7 +45,7 @@ function ResetForm() {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <Card padding="var(--space-7)" style={{ width: "100%", maxWidth: 400 }}>
-        <Eyebrow rule>Bhutan Wine Company</Eyebrow>
+        <Eyebrow rule>Cellarhand</Eyebrow>
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: "10px 0 16px" }}>Choose a new password</h1>
 
         {done ? (

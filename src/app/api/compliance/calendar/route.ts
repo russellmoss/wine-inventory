@@ -16,7 +16,7 @@ export async function GET() {
   const now = new Date();
   // A rolling year ahead; skip already-past deadlines so the calendar isn't cluttered with history.
   const deadlines = await openDeadlinesForTenant(tenantId, now, { horizonDays: 400, overdueDays: 0 });
-  const ics = buildIcs(deadlines, { tenantId, calName: "BWC — TTB filing deadlines", dtStampIso: now.toISOString() });
+  const ics = buildIcs(deadlines, { tenantId, calName: "Cellarhand — TTB filing deadlines", dtStampIso: now.toISOString() });
 
   return new Response(ics, {
     status: 200,

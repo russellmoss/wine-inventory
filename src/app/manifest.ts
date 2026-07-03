@@ -1,19 +1,22 @@
 import type { MetadataRoute } from "next";
 
-// Phase 6 Unit 7: web app manifest (Next 16 App Router built-in). Lets the cellar tablet install
-// the app to its home screen. Icons reuse the existing app icons (src/app/icon.svg + apple-icon.png).
+// Web app manifest (Next 16 App Router built-in). Lets the cellar tablet install
+// Cellarhand to its home screen. Icons live in /public/icons (see
+// design-system/assets/logos/pwa). The mark favicon is src/app/icon.svg.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Wine Inventory — Cellar",
-    short_name: "Cellar",
-    description: "Vineyard & cellar inventory, including the offline fermentation Round.",
+    name: "Cellarhand",
+    short_name: "Cellarhand",
+    description: "The winery operating system — inventory, production, records, and the offline fermentation Round.",
     start_url: "/bulk",
     display: "standalone",
-    background_color: "#ffffff",
-    theme_color: "#7c1d3f",
+    background_color: "#F9F1E4",
+    theme_color: "#662D10",
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml" },
-      { src: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+      { src: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { src: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
+      { src: "/icons/icon-maskable-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }
