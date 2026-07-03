@@ -98,7 +98,10 @@ async function main() {
   // Phase 15: an accounting_connection (the token table) per tenant, plus a cost_export_event in A
   // (composite-FK target for the delivery-uniqueness check). DISCONNECTED + null tokens satisfies the
   // SEC-S5 CHECK; null realmId keeps the one-realm partial-unique out of the way.
-  await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_a" }, update: {}, create: { id: "iso_acct_conn_a", tenantId: A, provider: "QBO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
+  // Tenant A (Bhutan) may already have a real CONNECTED QBO connection in a live DB — use XERO for the
+  // fixture so the (tenantId, provider) unique never collides with it. Provider is irrelevant to the
+  // isolation assertions; this row is a token-table stand-in + a delivery-FK target.
+  await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_a" }, update: {}, create: { id: "iso_acct_conn_a", tenantId: A, provider: "XERO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
   await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_b" }, update: {}, create: { id: "iso_acct_conn_b", tenantId: B, provider: "QBO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
   await owner.costExportEvent.upsert({ where: { id: "iso_cee_a" }, update: {}, create: { id: "iso_cee_a", tenantId: A, postingKey: "iso:cee:a", sourceType: "SNAPSHOT", component: "FRUIT", amount: "1.00", debitAccount: "5000", creditAccount: "1400" } });
   // Phase 16: a commerce7_connection + a sales_export_event per/into a tenant (the DTC seam). No token

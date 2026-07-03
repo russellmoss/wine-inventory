@@ -811,7 +811,23 @@ has **no** QuickBooks API; Vintrace's is one-way/gated).
   one-way/gated) — keep it genuinely bidirectional, that's the differentiator.
 **Honors:** D2, D7.
 
-## Phase 16 — DTC & sales integration (Commerce7 / WineDirect)  ⬜
+## Phase 16 — DTC & sales integration (Commerce7 / WineDirect)  🟨 BUILT — pending live sandbox verification
+**Status (2026-07-03):** The Commerce7 DTC integration is **CODE-COMPLETE on `main`** (plan
+`docs/plans/2026-07-03-031-feat-commerce7-dtc-sales-integration-plan.md`, Units 1–11). What's built and
+proven offline against the Demo Winery DB: schema + RLS (5 tenant-scoped tables, 3-way delivery seam),
+provider-neutral commerce adapter + Commerce7 REST client + mock + rate budget, nonce-bound install /
+confirm / disconnect + HMAC-routed webhook, SKU + DTC sales-account mapping (withhold-when-unmapped),
+inbound sync (mutable order projection → append-only diff→delta ingest, Paid-only, SALE depletion, one
+SERIALIZABLE tx), additive-on-increase outbound inventory + read-only drift, the DTC revenue-delta poster
+(reuses the Phase-15 exactly-once sweep), refund/cancel reversal (D6), webhook self-heal, the sync-status
+dashboard, and the read-only per-channel DTC margin view. Green: `npm run verify:commerce7` (11 e2e
+assertions) + `npm run verify:commerce7-idempotency` (20 assertions) + the full unit suite + `npm run build`.
+**REMAINING before this ships to a real winery:** the **live Commerce7 sandbox verification** (Unit 0 —
+waiting on the Commerce7 developer-account sandbox: App ID + Secret Key, and confirmation of the five
+unconfirmed API surfaces — inventory adjust endpoint, 429 body, refund/partial-refund + `upsert` churn,
+install/uninstall payloads, webhook source IPs). Also: the fee/payout reconciliation gap + revenue JE
+DR/CR direction need an accountant sign-off (see the go-live runbook), and SEC-C4 KEK→KMS before GA.
+See `docs/plans/phase-16-go-live-runbook.md`.
 **Goal:** Close the fragmentation gap — finished-goods inventory + sales depletion + revenue — by
 **integrating** the DTC/club/POS layer (integrate, do not rebuild).
 **Domain requirements (durable):**
@@ -823,7 +839,10 @@ has **no** QuickBooks API; Vintrace's is one-way/gated).
   AP / client-portal + client-billing capability is now its own Phase 24 — built on Phase 23 RBAC; this
   Phase-16 line is only the DTC-adjacent finished-goods slice.)**
 **Exit:** a DTC sale depletes finished-goods inventory; a custom-crush client sees only their wine.
-**Implementation: deferred to `/plan`.**  **Honors:** D16 (tenant/client scoping).
+**Implementation:** the DTC/Commerce7 slice is **built** (plan 031, Units 1–11 on `main`; verified offline,
+pending the live sandbox smoke). The **custom-crush client-visibility** slice remains deferred to Phase 24.
+**Honors:** D16 (tenant/client scoping), D19 (DTC-customer PII data-minimized — no PII in events/projection/logs),
+D20 (event-driven adapter off our ledger; ERP authoritative, Commerce7 a downstream replica).
 
 ## Phase 17 — SaaS subscription billing (Stripe)  ⬜  *(commercialization — trigger-based, late)*
 **Goal:** Charge wineries to use the app. This is **platform monetization**, distinct from the

@@ -84,6 +84,20 @@ lists org ids on the cron path (never the owner). `adapter.ts` is provider-neutr
 `qbo/{oauth,client,journal,bill}.ts` is the only QBO-specific code. UI: Settings connect + mapping
 cards, `/accounting` dashboard. See [[security-register]] + [[scale-register]].
 
+### 9. Commerce7 DTC/sales integration (Phase 16) — `src/lib/commerce/`
+The revenue side of the money loop (built, live-sandbox-pending). An event-driven adapter off our ledger:
+Commerce7 DTC/club/POS **sales** in → a MUTABLE `Commerce7Order` projection → normalize → **diff** →
+append-only `SalesExportEvent` DELTAs, Paid-only, in ONE SERIALIZABLE ingest tx that also depletes
+finished goods (a `SALE` `StockMovement`) and emits a PENDING revenue delivery. The webhook is a HINT
+(HMAC-routed, bounded dirty marker); the **poll cron is the single ingest path** + `(updatedAt,id)` cursor
+backstop. Revenue posts through the SAME Phase-15 poster (a `salesExportEventId` branch → `buildSalesDeltaJournal`),
+so the delivery source is now **exactly-one-of-three** (cost | ap | sales). Outbound inventory is
+additive-on-increase only (watermark-idempotent); drift is read-only. `adapter.ts` is provider-neutral
+(WineDirect-ready); `commerce7/{config,client}.ts` is the only C7-specific code (Basic Auth, no OAuth,
+env-resident secret). PII is data-minimized (D19). Install is nonce-bound. UI: Settings connect + mapping
+cards, `/accounting` Commerce7 section + a read-only per-channel margin view. See [[security-register]] +
+[[scale-register]] + `docs/plans/phase-16-go-live-runbook.md`.
+
 ## How a typical write flows
 1. UI (or the assistant) calls a **server action**.
 2. The action runs inside the **tenant context** → Prisma auto-injects `tenantId`; **RLS** enforces it at Postgres.

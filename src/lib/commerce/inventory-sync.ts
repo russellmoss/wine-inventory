@@ -53,7 +53,7 @@ export async function runCommerce7InventorySync(deps?: Commerce7InventoryDeps): 
             ? { OR: [{ createdAt: { gt: at } }, { createdAt: at, id: { gt: id ?? "" } }] }
             : {};
           const movements = await prisma.stockMovement.findMany({
-            where: { itemKind: "BOTTLED_WINE", wineSkuId: m.wineSkuId, locationId: m.locationId, kind: { in: ["RECEIVE", "ADJUST"] }, deltaUnits: { gt: 0 }, ...cursorWhere },
+            where: { itemKind: "BOTTLED_WINE", wineSkuId: m.wineSkuId as string, locationId: m.locationId as string, kind: { in: ["RECEIVE", "ADJUST"] }, deltaUnits: { gt: 0 }, ...cursorWhere },
             select: { id: true, createdAt: true, deltaUnits: true },
             orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             take: MOVE_BATCH,

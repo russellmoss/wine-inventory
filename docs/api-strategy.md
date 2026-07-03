@@ -73,7 +73,7 @@ excise. This is the architectural edge over the incumbents' one-way data dumps.
 | **Pay.gov e-file (TTB)** | outbound | Auto-submit the 5120.17 / 5000.24 we already generate. | 14 (deferred — correct) |
 | **Lab inbound** (ETS, FOSS, Anton Paar, WineLab) | inbound | Results auto-attach to lots → feeds D10 auto-log. Table stakes (InnoVint has these). | ~4/6 follow-on |
 | **Tank / cellar hardware** (TankNET, VinWizard) | inbound | Sensor data → auto-logged low-risk observations (D10). | ~6 follow-on |
-| **Commerce7 / WineDirect** (DTC/POS) | two-way | Finished-goods depletion + per-SKU revenue. Our multi-tenancy beats InnoVint's 1:1-constrained link. | **16** |
+| **Commerce7** (DTC/POS) | two-way | Finished-goods depletion + per-SKU revenue. Our multi-tenancy beats InnoVint's 1:1-constrained link. **BUILT (Phase 16, plan 031) — pending live sandbox verify.** WineDirect drops in behind the same `CommerceAdapter` seam. | **16 ✅ (sandbox-pending)** |
 | **Payroll** (QuickBooks Time / Gusto / ADP) | outbound | Export approved hours. | **11** |
 
 **Per-tenant OAuth/token store** (tenant-scoped, RLS-protected) for every connected account.

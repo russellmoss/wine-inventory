@@ -131,6 +131,37 @@ in the chat (`src/app/(app)/assistant/AssistantChat.tsx`) into a full-screen ove
   Write actions still require explicit confirmation (signed-token / single-use nonce
   path is unchanged) — voice can confirm by tap or by saying "confirm".
 
+## Commerce7 DTC/sales integration (Phase 16)
+
+The revenue side of the money loop: pull settled Commerce7 DTC/club/POS **sales** in, deplete
+finished-goods inventory (a `SALE` `StockMovement`), post **DTC revenue** through the SAME Phase-15
+`AccountingDelivery` outbox/poster, and mirror finished-goods **increases** back to Commerce7. ERP is
+authoritative; Commerce7 is a downstream **replica** (D20). Built (plan 031, `src/lib/commerce/`) and
+proven offline; **live sandbox verification is pending** (see `docs/plans/phase-16-go-live-runbook.md`).
+
+- **Auth: NOT OAuth.** App ID + Secret Key (Basic Auth) + a `tenant:` header, all **env-resident**
+  (`COMMERCE7_APP_ID`/`COMMERCE7_SECRET_KEY`/`COMMERCE7_WEBHOOK_SECRET`/`COMMERCE7_INSTALL_URL`). No token
+  table. Install is **nonce-bound** (reuses `OAuthState`); the callback's `tenantId` is the C7 slug ONLY.
+- **Order model:** a MUTABLE `Commerce7Order` projection (PII-free) → normalize → **diff** → append-only
+  `SalesExportEvent` **DELTAs** (`postingKey = sale:${orderId}:v${seq}`). Orders are mutable — never a
+  single immutable snapshot. Paid-only economics (`diff.ts` recognizes settled states); a cart/unpaid
+  order posts/depletes nothing; refund/cancel = a signed reversal delta (D6).
+- **Ingest is one SERIALIZABLE `runLedgerWrite` tx** (delta + `SALE` depletion + PENDING delivery) →
+  exactly-once + atomic. The webhook is a HINT (bounded dirty marker); the **poll cron is the single
+  ingest path** + the `(updatedAt,id)` cursor backstop. Unmapped SKU/account → **withhold** (re-emits
+  after mapping via the poll's withheld sweep).
+- **Outbound inventory** is additive-on-**increase** only (RECEIVE / positive ADJUST), claim-first
+  watermark idempotency; NEVER pushes a `SALE`/negative (C7 already decremented). Drift is **detected +
+  surfaced, never auto-written**.
+- **Revenue posting** reuses the Phase-15 poster (a `salesExportEventId` branch → `buildSalesDeltaJournal`:
+  DR undeposited-funds clearing / CR revenue+tax+shipping / DR discount contra; each delta posts the
+  difference). The delivery source CHECK is now **exactly-one-of-three** (cost | ap | sales).
+- **PII (D19):** the projection + deltas + markers + logs carry only opaque ids + amounts + SKU refs —
+  a schema test (`test/commerce7-schema.test.ts`) fails if a PII column is ever added.
+- Proof: `npm run verify:commerce7` (e2e loop) + `npm run verify:commerce7-idempotency` (exactly-once).
+  Known accounting gaps (processor-fee/payout tie-out, DR/CR direction, A/R) are in the go-live runbook —
+  **confirm with an accountant** before relying on the DTC cash tie-out.
+
 ## rstack toolchain
 
 Skills (`/plan`, `/work`, `/lfg`, `/review`, `/ship`, `/qa`, `/investigate`,

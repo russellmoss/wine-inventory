@@ -226,7 +226,9 @@ export async function getConnectionSummary(): Promise<ConnectionSummary | null> 
   });
   if (!c) return null;
   return {
-    status: c.status,
+    // Accounting connections never enter PENDING_CONFIRM (Phase-16 added that value to the shared enum
+    // for commerce7 only); narrow it back to the accounting states.
+    status: c.status as ConnectionSummary["status"],
     companyName: c.companyName,
     environment: c.environment,
     homeCurrency: c.homeCurrency,

@@ -94,6 +94,31 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟡 (built + envelope/refresh/isolation proven by unit + `verify:tenant-isolation` +
   `verify:accounting-idempotency`; SEC-C4 KEK is env-resident — move to a cloud KMS before prod GA)
 
+### Commerce7 DTC integration — no OAuth, app-global secret, weak-auth webhook, PII-min (Phase 16)
+- Commerce7 has **no OAuth/tokens**: an app-global **App ID + Secret Key** over Basic Auth + a `tenant:`
+  header. The Secret Key + the **separate inbound webhook secret** are **env-only** (never a DB column,
+  scrubbed from logs). No secret is stored per-tenant — the commerce tables hold none.
+- **Install is nonce-bound** (reuses the `OAuthState` single-use-nonce pattern tied to the initiating
+  admin + workspace + an explicit admin confirm); the callback's `tenantId` is the C7 slug ONLY, never
+  trusted to pick our tenant (tenant-hijack fix). One-install guard = a partial unique on
+  `(provider, externalTenantId) WHERE status='CONNECTED'`.
+- **Webhook authenticity despite no HMAC on C7 payloads:** the delivery URL embeds our tenant id + an
+  **HMAC of it keyed on the inbound webhook secret**, constant-time verified — it both ROUTES a
+  session-less POST to the right tenant (no cross-tenant read; the app is a NOBYPASSRLS role, and
+  `runAsSystem`/owner is never reached from an HTTP path) and gates it (unforgeable). Payload slug must
+  match the CONNECTED record; the dirty-marker upsert is bounded (dedup by order id + a backlog cap); a
+  fake id that 404s on re-fetch is dropped. The webhook is re-fetch-before-act (a hint only).
+- **DTC-customer PII (D19):** the order projection + immutable deltas + dirty markers + logs carry ONLY
+  opaque ids + amounts + SKU refs — never a name/email. A schema test (`commerce7-schema.test.ts`)
+  fails if a PII-shaped column is ever added; nothing is stored, so there's nothing to shred.
+- **Uninstall:** the app-global C7 uninstall POST can't cross-tenant-resolve (RLS-forced tables), so it
+  authenticates + acks; the per-tenant poll/reconcile marks the connection when C7 rejects the creds.
+- **Tripwire:** a secret in a commerce DB column; a PII-shaped column on `commerce7_order`/
+  `sales_export_event`; a webhook route that trusts the payload without the HMAC path; a cross-tenant
+  read on the webhook/uninstall path; `runAsSystem` imported into the web app.
+- **Status:** 🟡 (built + proven offline by `verify:commerce7` + `verify:commerce7-idempotency` +
+  `verify:tenant-isolation`; **live sandbox smoke pending** (Unit 0); Secret-Key KMS posture rides SEC-C4)
+
 ---
 
 ## Open items the security loop is watching

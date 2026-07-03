@@ -101,5 +101,26 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟢 (bounded batch + partial index shipped; drain-over-ticks proven by
   `verify:accounting-idempotency`)
 
+## Commerce7 DTC — poller + inventory sync + per-tenant rate budget (Phase 16)
+- **Choice:** an event-driven adapter off our ledger. Inbound = webhook HINT (bounded dirty marker) +
+  a poll cron as the single ingest path; outbound = additive-on-increase inventory push; a read-only
+  drift check; a revenue-delta poster riding the Phase-15 exactly-once sweep.
+- **Fine until:** order/product volume per tenant grows past the bounded per-run batches, or the number
+  of connected tenants makes the per-tick org enumeration wasteful.
+- **What breaks at scale:** (a) Commerce7's **100 req/min/tenant** cap — mitigated by a per-tenant
+  **token-bucket rate budget** shared across poll + refetch + UI fetch, cursor paging, and bounded
+  batches (`COMMERCE7_POLL_MAX_PAGES`, `COMMERCE7_DIRTY_BATCH`, `COMMERCE7_MOVE_BATCH`); (b) a
+  same-timestamp order on a page boundary — the `(updatedAt, id)` cursor with a 5-min **overlap** re-scans
+  the boundary (an already-ingested order diffs to null → no-op); (c) a webhook flood — the dirty-marker
+  upsert dedups by order id + a backlog cap sheds load, the cursor sweep still catches everything; (d)
+  a scan of `commerce7_order` for dirty rows as history grows — a **partial index** on `(tenantId) WHERE
+  dirty = true` keeps it a bounded seek; (e) the outbound push is at-least-once with a claim-first
+  watermark (a lost push under-counts C7 → surfaced by the read-only drift check, never double-counts).
+- **Tripwire:** poll/inventory run time approaching `maxDuration`; 429s from Commerce7 in logs; the
+  dirty-order partial index dropped; drift counts climbing without operator review; a `PUT /order/upsert`
+  ever used (id churn — forbidden).
+- **Status:** 🟡 (built + proven offline by `verify:commerce7-idempotency`; live-load behavior validated
+  in the **Unit-0 sandbox smoke** once keys land)
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*
