@@ -183,7 +183,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     for (const vid of vesselIds) { const e = est(volOf.get(vid) ?? 0); if (e) { grand += e.total; unit = e.unit; ok = true; } }
     return (
       <div key="est" style={wrap}>
-        {ok ? <span>≈ <strong>{grand.toLocaleString()} {unit}</strong> total across {vesselIds.length} vessels <span style={{ color: "var(--text-muted)" }}>(each vessel's current volume)</span></span> : <span style={{ color: "var(--text-muted)" }}>Selected vessels are empty — no volume to compute against.</span>}
+        {ok ? <span>≈ <strong>{grand.toLocaleString()} {unit}</strong> total across {vesselIds.length} vessels <span style={{ color: "var(--text-muted)" }}>{"(each vessel's current volume)"}</span></span> : <span style={{ color: "var(--text-muted)" }}>Selected vessels are empty — no volume to compute against.</span>}
       </div>
     );
   }
