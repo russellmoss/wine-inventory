@@ -30,7 +30,7 @@ const SYSTEM_TEMPLATES: SystemTemplate[] = [
     description: "Add sulfur dioxide to a lot at a target rate.",
     category: "Cellar",
     recurringCadence: "MONTHLY",
-    spec: { tasks: [{ taskType: "ADDITION", title: "Add SO₂", defaults: { rateBasis: "MG_PER_L" }, instructions: "Dose to the target free-SO₂ rate; stir gently." }] },
+    spec: { tasks: [{ taskType: "ADDITION", title: "Add SO₂", defaults: { rateBasis: "MG_L" }, instructions: "Dose to the target free-SO₂ rate; stir gently." }] },
   },
   {
     code: "SYS-TOP",
