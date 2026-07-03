@@ -1,6 +1,6 @@
 import { requireReadyUser } from "@/lib/dal";
 import { getWorkOrderDashboard, getWorkOrderArchive, getWorkOrderPickers, listTemplatesWithSpec } from "@/lib/work-orders/data";
-import { parseArchiveFilters } from "@/lib/work-orders/archive-filters";
+import { parseArchiveFilters, parseOpenFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersClient } from "./WorkOrdersClient";
 import { ArchiveClient } from "./ArchiveClient";
 
@@ -41,6 +41,20 @@ export default async function WorkOrdersPage({
   }
 
   if (!tenantId) return <WorkOrdersClient dashboard={{ buckets: { overdue: [], today: [], upcoming: [], unscheduled: [] }, pendingApproval: [], counts: {} }} isAdmin={false} />;
-  const dashboard = await getWorkOrderDashboard(tenantId, new Date());
-  return <WorkOrdersClient dashboard={dashboard} isAdmin={user.role === "admin"} />;
+  // Open view — same filters as the archive (status/date/assignee/template/vessel/search).
+  const openFilters = parseOpenFilters(sp);
+  const [dashboard, pickers, templates] = await Promise.all([
+    getWorkOrderDashboard(tenantId, new Date(), openFilters),
+    getWorkOrderPickers(tenantId),
+    listTemplatesWithSpec(tenantId),
+  ]);
+  return (
+    <WorkOrdersClient
+      dashboard={dashboard}
+      isAdmin={user.role === "admin"}
+      filters={openFilters}
+      vessels={pickers.vessels}
+      templates={templates.map((t) => ({ id: t.id, name: t.name }))}
+    />
+  );
 }
