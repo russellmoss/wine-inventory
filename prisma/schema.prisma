@@ -2529,3 +2529,71 @@ model ComplianceReminderLog {
   @@index([tenantId])
   @@map("compliance_reminder_log")
 }
+
+// ───────────────────────── Phase 9: Work Orders (issue → execute → auto-log → approve → finalize) ─────────────────────────
+// Enums land FIRST in their own isolated migration (20260703010000_work_order_enums), committed before
+// any table references them (the Windows enum rule). The tables + RLS follow in the sibling
+// _work_order_schema / _work_order_rls migrations. See docs/plans/2026-07-03-032-feat-work-orders-plan.md.
+
+// The work-order shell lifecycle. A guarded status machine (mirrors SampleStatus): DRAFT is the
+// pre-issue editable state; ISSUED assigns + schedules + reserves; IN_PROGRESS = a crew tapped Start
+// (D5 live claim); PENDING_APPROVAL = every task is done and at least one awaits review; APPROVED is
+// terminal (all tasks finalized); CANCELLED is terminal.
+enum WorkOrderStatus {
+  DRAFT
+  ISSUED
+  IN_PROGRESS
+  PENDING_APPROVAL
+  APPROVED
+  CANCELLED
+}
+
+// A single task's lifecycle. PENDING (issued, not started) → IN_PROGRESS (claimed, D5) →
+// PENDING_APPROVAL (an OPERATION task completed; a real immutable op exists, awaiting review) →
+// APPROVED (finalized) | REJECTED (op reversed; resubmit allowed → back to PENDING per decision 1).
+// DONE is the OBSERVATION-lane terminal (no approval gate). SKIPPED = intentionally not done.
+// A5: the status enum IS the approval state — there is no separate approvalStatus column.
+enum WorkOrderTaskStatus {
+  PENDING
+  IN_PROGRESS
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  DONE
+  SKIPPED
+}
+
+// OPERATION tasks write a real ledger op on completion (approval-gated). OBSERVATION tasks write
+// directly to the measurement store (chem/ferment/tasting), no approval gate, no reservation.
+enum WorkOrderTaskKind {
+  OPERATION
+  OBSERVATION
+}
+
+// A1 (council + eng P0): a task can't be a one-shot wrapper around an immutable op. Each execution
+// is an append-only ATTEMPT that owns the commandId (idempotency on the immutable event, not the
+// mutable task) and links to its operation. A rejected attempt is reversed; a resubmit is a NEW
+// attempt. PENDING_APPROVAL → APPROVED | REJECTED.
+enum WorkOrderTaskAttemptStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+// Soft, advisory, expiring holds (warn-not-block). ACTIVE holds count against available-to-promise;
+// RELEASED (completed/cancelled/reconciled) and EXPIRED (past validUntil) do not. Hard capacity +
+// SupplyLot decrements at commit remain the real guarantee (WORKORDER-2).
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+}
+
+// What a reservation holds. LOT_VOLUME = source-lot liters; VESSEL_CAPACITY = destination headroom;
+// MATERIAL_QTY = supply on-hand at the MATERIAL level (A9 — never a specific SupplyLot, so it doesn't
+// fight the FIFO/WA costing engine).
+enum ReservationKind {
+  LOT_VOLUME
+  VESSEL_CAPACITY
+  MATERIAL_QTY
+}
