@@ -20,7 +20,11 @@ const KIND_LABELS: Record<MaterialKind, string> = {
   ACID: "Acid",
   TANNIN: "Tannin",
   FINING: "Fining",
+  BENTONITE: "Bentonite",
+  CHITOSAN: "Chitosan",
   ENZYME: "Enzyme",
+  CLEANING: "Cleaning agent",
+  SANITIZER: "Sanitizer",
   OTHER: "Other",
 };
 

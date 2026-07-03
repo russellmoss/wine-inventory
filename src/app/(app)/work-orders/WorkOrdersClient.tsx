@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderSummary } from "@/lib/work-orders/data";
+import { WorkOrdersTabs } from "./WorkOrdersTabs";
 
 type Dashboard = {
   buckets: { overdue: WorkOrderSummary[]; today: WorkOrderSummary[]; upcoming: WorkOrderSummary[]; unscheduled: WorkOrderSummary[] };
@@ -67,6 +68,8 @@ export function WorkOrdersClient({ dashboard, isAdmin }: { dashboard: Dashboard;
           <Link href="/work-orders/new"><Button>New work order</Button></Link>
         </div>
       </div>
+
+      <div style={{ marginTop: 14 }}><WorkOrdersTabs active="open" /></div>
 
       {isEmpty ? (
         <Card style={{ marginTop: 24, textAlign: "center", padding: "48px 24px" }}>

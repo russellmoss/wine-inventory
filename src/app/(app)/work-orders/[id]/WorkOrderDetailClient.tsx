@@ -54,6 +54,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
           <Link href={`/work-orders/${wo.id}/execute`}><Button variant="secondary">Open execution view</Button></Link>
         ) : null}
         {isAdmin && wo.status === "PENDING_APPROVAL" ? <Link href="/work-orders/review"><Button variant="secondary">Go to review queue</Button></Link> : null}
+        <Link href={`/work-orders/${wo.id}/print`}><Button variant="secondary">Print / PDF</Button></Link>
         {wo.status !== "APPROVED" && wo.status !== "CANCELLED" ? (
           <Button variant="ghost" disabled={pending} onClick={() => act(() => cancelWorkOrderAction({ workOrderId: wo.id }))}>Cancel WO</Button>
         ) : null}

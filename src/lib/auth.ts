@@ -92,7 +92,26 @@ export const auth = betterAuth({
   // organization() = tenant model (K2): organization/member/invitation tables + active-org in
   // session. We adopt the tables now; the end-user org flows (signup/invites/switcher UI) are the
   // deferred Phase 12 second slice. nextCookies() MUST be last so Set-Cookie is handled in actions.
-  plugins: [admin(), organization(), nextCookies()],
+  plugins: [
+    admin(),
+    organization({
+      organizationHooks: {
+        // Phase 9.1 (Unit 1): when a new tenant/org is created, seed its starter material catalog so
+        // the work-order picker resolves from day one. The org id IS the tenantId; seedStarterMaterials
+        // wraps its own runAsTenant. Idempotent, so a retried creation is safe. Never block org creation
+        // on a seed failure (mirror the session.after audit swallow) — the seed path/script backstops it.
+        afterCreateOrganization: async ({ organization: org }) => {
+          try {
+            const { seedStarterMaterials } = await import("./onboarding/seed-starter-materials");
+            await seedStarterMaterials(org.id);
+          } catch (e) {
+            console.error("afterCreateOrganization: starter-material seed failed (non-fatal)", e);
+          }
+        },
+      },
+    }),
+    nextCookies(),
+  ],
 });
 
 export type Session = typeof auth.$Infer.Session;

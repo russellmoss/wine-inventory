@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, Textarea } from "@/components/ui";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY } from "@/lib/work-orders/template-vocabulary";
 import { RATE_BASES, RATE_BASIS_LABELS } from "@/lib/cellar/additions-math";
@@ -14,14 +14,17 @@ import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 // Dexie outbox uses). Not harvest-grade offline yet (Phase 28); online status is pinned via aria-live.
 
 type Picker = { id: string; label: string };
-const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING" };
+const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION" };
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 
 function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; onDone: () => void }) {
   const commandId = React.useMemo(() => crypto.randomUUID(), []);
   const planned = (task.plannedPayload ?? {}) as Record<string, unknown>;
-  const vocabKey = task.kind === "OPERATION" ? TASK_TYPE_BY_OP[task.opType ?? ""] : task.observationType === "PANEL" ? "PANEL" : "BRIX";
+  const vocabKey =
+    task.kind === "OPERATION" ? TASK_TYPE_BY_OP[task.opType ?? ""]
+    : task.kind === "MAINTENANCE" ? (task.activityType ?? "")
+    : task.observationType === "PANEL" ? "PANEL" : "BRIX";
   const def = TASK_VOCABULARY[vocabKey ?? ""];
   const [fields, setFields] = React.useState<Record<string, unknown>>({ ...planned });
   const [readingValue, setReadingValue] = React.useState<string>("");
@@ -49,6 +52,18 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
         <label key={key} style={lbl}>{key}
           <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
             {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
+          </select>
+        </label>
+      );
+    }
+    if (type === "select") {
+      // A7: options come from the vocabulary's fieldOptions (controlled list, never free-form).
+      const options = def?.fieldOptions?.[key] ?? [];
+      return (
+        <label key={key} style={lbl}>{key}
+          <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
+            <option value="">— pick —</option>
+            {options.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         </label>
       );
@@ -91,7 +106,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
           <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
         ) : null}
       </div>
-      <label style={{ ...lbl, marginTop: 12 }}>Note (optional)<input type="text" style={big} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. actual differed because…" /></label>
+      <Textarea label="Note (optional)" minRows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. actual differed because…" style={{ marginTop: 12 }} />
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>

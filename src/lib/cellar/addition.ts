@@ -45,6 +45,8 @@ export type CellarBaseResult = {
 export type CellarOpResult = CellarBaseResult & {
   computedTotal: number;
   computedUnit: "g" | "mL";
+  /** E1: stock that couldn't be sourced (drawn-to-zero, never negative). > 0 → surface a soft warning. */
+  shortfall?: number;
 };
 
 export function vesselLabel(v: { type: string; code: string }): string {
@@ -157,7 +159,7 @@ export async function recordNeutralDoseTx(
   // Phase 8 (Unit 3): draw down stock + record MATERIAL cost for this dose, in the SAME tx. No parallel
   // consumption path — the addition/fining op IS the consumption. Untracked/unknown-cost materials
   // record an UNKNOWN-cost line (D14 contagion), so physical dosing is unaffected.
-  await consumeMaterialCore(tx, {
+  const consume = await consumeMaterialCore(tx, {
     operationId: opId,
     materialId: resolved.materialId,
     doseUnit: unit,
@@ -165,7 +167,7 @@ export async function recordNeutralDoseTx(
   });
   await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "LotOperation", entityId: String(opId), summary });
 
-  return { operationId: opId, message: `${summary}.`, treatmentIds: ids, computedTotal: totalSum, computedUnit: unit };
+  return { operationId: opId, message: `${summary}.`, treatmentIds: ids, computedTotal: totalSum, computedUnit: unit, shortfall: consume.shortfall };
 }
 
 /** Resolve a dose's material to a catalog id (Phase 9: the WO seam resolves it pre-tx too, since the

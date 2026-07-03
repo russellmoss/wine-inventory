@@ -1,8 +1,10 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { bucketWorkOrders, type BucketedItem } from "@/lib/work-orders/buckets";
 import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/lib/work-orders/deviation";
+import { buildArchiveWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilters } from "@/lib/work-orders/archive-filters";
 
 // Read-side view-models for work orders (Phase 9). K12-safe: every reader takes tenantId as an EXPLICIT
 // argument and wraps its reads in runAsTenant — never reads the ALS tenant (so these stay correct even
@@ -12,11 +14,12 @@ import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/li
 export type WorkOrderTaskView = {
   id: string;
   seq: number;
-  kind: "OPERATION" | "OBSERVATION";
+  kind: "OPERATION" | "OBSERVATION" | "MAINTENANCE";
   status: string;
   title: string;
   opType: string | null;
   observationType: string | null;
+  activityType: string | null;
   instructions: string | null;
   sourceVesselId: string | null;
   destVesselId: string | null;
@@ -49,7 +52,7 @@ export type WorkOrderDetail = {
 
 function taskView(t: {
   id: string; seq: number; kind: string; status: string; title: string; opType: string | null;
-  observationType: string | null; instructions: string | null; sourceVesselId: string | null;
+  observationType: string | null; activityType: string | null; instructions: string | null; sourceVesselId: string | null;
   destVesselId: string | null; lotId: string | null; materialId: string | null; assigneeEmail: string | null;
   dueAt: Date | null; plannedPayload: unknown; currentAttemptId: string | null; completionNote: string | null;
   deviationReason: string | null; startedByEmail: string | null;
@@ -57,11 +60,12 @@ function taskView(t: {
   return {
     id: t.id,
     seq: t.seq,
-    kind: t.kind as "OPERATION" | "OBSERVATION",
+    kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE",
     status: t.status,
     title: t.title,
     opType: t.opType,
     observationType: t.observationType,
+    activityType: t.activityType,
     instructions: t.instructions,
     sourceVesselId: t.sourceVesselId,
     destVesselId: t.destVesselId,
@@ -106,6 +110,67 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
 /** Count of work orders awaiting review (PENDING_APPROVAL) — the nav badge source. */
 export async function countPendingApprovalWorkOrders(tenantId: string): Promise<number> {
   return runAsTenant(tenantId, () => prisma.workOrder.count({ where: { status: "PENDING_APPROVAL" } }));
+}
+
+export type ArchiveRow = {
+  id: string;
+  number: number;
+  title: string;
+  status: string;
+  finalizedAt: string | null; // approvedAt/cancelledAt/updatedAt, ISO
+  assigneeEmail: string | null;
+  taskCount: number;
+  doneCount: number;
+  noteSnippet: string | null; // D4: a completed note/deviation surfaced on the row
+};
+
+export type WorkOrderArchivePage = { rows: ArchiveRow[]; total: number; page: number; pageSize: number };
+
+/**
+ * The filterable archive of FINALIZED work orders (APPROVED/CANCELLED), newest-first, paginated (A10).
+ * K12-safe (explicit tenantId, runAsTenant). Uses the E2 (tenantId, status, updatedAt) index. Surfaces a
+ * completed-note/deviation snippet per row (D4) so the winemaker sees what was logged without drilling in.
+ */
+export async function getWorkOrderArchive(
+  tenantId: string,
+  filters: ArchiveFilters,
+  page = 1,
+): Promise<WorkOrderArchivePage> {
+  return runAsTenant(tenantId, async () => {
+    const where = buildArchiveWhere(filters) as Prisma.WorkOrderWhereInput;
+    const pageSize = ARCHIVE_PAGE_SIZE;
+    const safePage = Number.isInteger(page) && page > 0 ? page : 1;
+    const [total, rows] = await Promise.all([
+      prisma.workOrder.count({ where }),
+      prisma.workOrder.findMany({
+        where,
+        orderBy: [{ updatedAt: "desc" }, { number: "desc" }],
+        skip: (safePage - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true, number: true, title: true, status: true, updatedAt: true,
+          approvedAt: true, cancelledAt: true, assigneeEmail: true,
+          tasks: { select: { status: true, completionNote: true, deviationReason: true, seq: true }, orderBy: { seq: "asc" } },
+        },
+      }),
+    ]);
+    const list: ArchiveRow[] = rows.map((r) => {
+      const noteTask = r.tasks.find((t) => (t.completionNote && t.completionNote.trim()) || (t.deviationReason && t.deviationReason.trim()));
+      const note = noteTask ? (noteTask.deviationReason?.trim() || noteTask.completionNote?.trim() || null) : null;
+      return {
+        id: r.id,
+        number: r.number,
+        title: r.title,
+        status: r.status,
+        finalizedAt: (r.approvedAt ?? r.cancelledAt ?? r.updatedAt)?.toISOString() ?? null,
+        assigneeEmail: r.assigneeEmail,
+        taskCount: r.tasks.length,
+        doneCount: r.tasks.filter((t) => t.status === "APPROVED" || t.status === "DONE").length,
+        noteSnippet: note ? (note.length > 120 ? `${note.slice(0, 117)}…` : note) : null,
+      };
+    });
+    return { rows: list, total, page: safePage, pageSize };
+  });
 }
 
 export type WorkOrderListRow = {

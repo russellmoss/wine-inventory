@@ -144,11 +144,16 @@ async function main() {
     await ensureLot("DW-25-CH-001", { vintageYear: 2025, originVarietyId: ch.id, form: "WINE" });
   });
 
+  // Phase 9.1 (Unit 1): starter material catalog so the work-order picker resolves out of the box.
+  // Idempotent; wraps its own runAsTenant.
+  const { seedStarterMaterials } = await import("../src/lib/onboarding/seed-starter-materials");
+  const { seeded } = await seedStarterMaterials(org.id);
+
   console.log("✅ Demo Winery tenant ready.");
   console.log(`   org:   ${org.id} (${DEMO_ORG_NAME})`);
   console.log(`   login: ${email}`);
   console.log(`   pass:  ${password}   (override via DEMO_OWNER_PASSWORD)`);
-  console.log("   seeded: 3 locations, 3 varieties, 5 vessels, 2 lots");
+  console.log(`   seeded: 3 locations, 3 varieties, 5 vessels, 2 lots, ${seeded} starter materials`);
   console.log("   ⚠  use THIS tenant for all dev/QA — never Bhutan Wine Co.");
 }
 

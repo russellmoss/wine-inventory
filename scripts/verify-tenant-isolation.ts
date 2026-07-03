@@ -114,6 +114,10 @@ async function main() {
   await owner.workOrder.upsert({ where: { id: "iso_wo_a" }, update: {}, create: { id: "iso_wo_a", tenantId: A, number: 90001, title: "ISO WO A", updatedAt: now } });
   await owner.workOrder.upsert({ where: { id: "iso_wo_b" }, update: {}, create: { id: "iso_wo_b", tenantId: B, number: 90002, title: "ISO WO B", updatedAt: now } });
   await owner.workOrderTask.upsert({ where: { id: "iso_wot_b" }, update: {}, create: { id: "iso_wot_b", tenantId: B, workOrderId: "iso_wo_b", seq: 1, kind: "OBSERVATION", title: "ISO task B", plannedPayload: {}, updatedAt: now } });
+  // Phase 9.1: a vessel + a vessel_activity_event per/into a tenant (the maintenance lane). Isolation risk
+  // is a cross-tenant read of a winery's cleaning/setpoint activity + its overhead depletion ledger.
+  await owner.vessel.upsert({ where: { id: "iso_vessel_b" }, update: {}, create: { id: "iso_vessel_b", tenantId: B, code: "ISO-TANK-B", type: "TANK", capacityL: "1000", updatedAt: now } });
+  await owner.vesselActivityEvent.upsert({ where: { id: "iso_vae_b" }, update: {}, create: { id: "iso_vae_b", tenantId: B, vesselId: "iso_vessel_b", kind: "SANITIZE", enteredByEmail: "iso@test", commandId: "iso-vae-cmd-b" } });
 
   try {
     // 1. Fail-closed: no tenant context -> 0 rows.
@@ -243,6 +247,21 @@ async function main() {
     } catch { woFkRaised = true; }
     check("WO task cross-tenant lot reference rejected (composite FK, K11)", woFkRaised);
 
+    // 5i. Phase 9.1: vessel_activity_event + vessel_activity_supply_use tenant isolation (maintenance lane).
+    const aSeesVaeB = await asTenant(A, (db) => db.vesselActivityEvent.findFirst({ where: { id: "iso_vae_b" } }));
+    check("tenant A CANNOT see tenant B's vessel_activity_event (RLS)", aSeesVaeB === null);
+    let vaeInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.vesselActivityEvent.create({ data: { id: "iso_vae_x", tenantId: B, vesselId: "iso_vessel_b", kind: "CLEAN", enteredByEmail: "iso@test", commandId: "iso-vae-cmd-x" } }));
+    } catch { vaeInsertRaised = true; }
+    check("foreign-tenant vessel_activity_event INSERT raises (WITH CHECK)", vaeInsertRaised);
+    // A supply-use in A referencing B's event must be rejected by the composite (tenantId, eventId) FK (K11).
+    let vaeFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.vesselActivitySupplyUse.create({ data: { id: "iso_vasu_fk", tenantId: A, vesselActivityEventId: "iso_vae_b", supplyLotId: "iso_supply_b", materialId: "iso_mat_b", qty: "1", unit: "g" } }));
+    } catch { vaeFkRaised = true; }
+    check("supply-use cross-tenant event reference rejected (composite FK, K11)", vaeFkRaised);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -262,6 +281,10 @@ async function main() {
     await owner.accountingDelivery.deleteMany({ where: { id: { in: ["iso_del_1", "iso_del_2"] } } });
     await owner.accountMapping.deleteMany({ where: { id: { in: ["iso_map_1", "iso_map_2"] } } });
     await owner.salesExportEvent.deleteMany({ where: { id: "iso_see_b" } });
+    // Phase 9.1: supply-uses cascade with their event; delete events then the iso vessel (before org B).
+    await owner.vesselActivitySupplyUse.deleteMany({ where: { id: { in: ["iso_vasu_fk"] } } });
+    await owner.vesselActivityEvent.deleteMany({ where: { id: { in: ["iso_vae_b", "iso_vae_x"] } } });
+    await owner.vessel.deleteMany({ where: { id: "iso_vessel_b" } });
     // Phase 9: tasks cascade with their work_order; delete WOs (both tenants + the negative-control rows).
     await owner.workOrder.deleteMany({ where: { id: { in: ["iso_wo_a", "iso_wo_b", "iso_wo_x", "iso_wo_fk_a"] } } });
     await owner.commerce7Connection.deleteMany({ where: { id: { in: ["iso_c7_conn_a", "iso_c7_conn_b", "iso_c7_conn_x"] } } });

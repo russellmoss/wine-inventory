@@ -31,10 +31,22 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     setOverrides((prev) => ({ ...prev, [taskIdx]: { ...(prev[taskIdx] ?? {}), [key]: value } }));
   }
 
-  function renderField(taskIdx: number, key: string, type: string, def: unknown) {
+  function renderField(taskIdx: number, key: string, type: string, def: unknown, options?: readonly string[]) {
     const current = overrides[taskIdx]?.[key] ?? def ?? "";
     // key is passed DIRECTLY (never spread — React warns on a spread key prop).
     const common = { style: labelStyle } as const;
+    if (type === "select") {
+      // A7: controlled options from the vocabulary's fieldOptions.
+      return (
+        <label key={key} {...common}>
+          {key}
+          <select style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)}>
+            <option value="">— pick —</option>
+            {(options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </label>
+      );
+    }
     if (type === "vessel" || type === "lot" || type === "material") {
       const opts = type === "vessel" ? pickers.vessels : type === "lot" ? pickers.lots : pickers.materials;
       return (
@@ -62,6 +74,15 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
         <label key={key} {...common}>
           {key}
           <input type="number" inputMode="decimal" step="any" style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value === "" ? "" : Number(e.target.value))} />
+        </label>
+      );
+    }
+    if (key === "note" || key === "instructions") {
+      // Bigger, resizable note area (Unit 4) — planning notes are often multi-line.
+      return (
+        <label key={key} {...common}>
+          {key}
+          <textarea rows={2} style={{ ...field, minHeight: 60, resize: "vertical", lineHeight: 1.5, padding: "8px 10px" }} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)} />
         </label>
       );
     }
@@ -127,7 +148,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
               <div key={i} style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                 <Eyebrow>{i + 1}. {t.title} · {def.label}</Eyebrow>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
-                  {Object.entries(def.fields).map(([key, type]) => renderField(i, key, type, t.defaults?.[key]))}
+                  {Object.entries(def.fields).map(([key, type]) => renderField(i, key, type, t.defaults?.[key], def.fieldOptions?.[key]))}
                 </div>
               </div>
             );

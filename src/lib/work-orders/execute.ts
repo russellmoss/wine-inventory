@@ -6,12 +6,14 @@ import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { rackWineTx } from "@/lib/vessels/rack-core";
 import { topVesselTx } from "@/lib/cellar/topping";
+import { filterVesselTx } from "@/lib/cellar/treatments";
 import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFIG, type AddAdditionInput } from "@/lib/cellar/addition";
 import type { RateBasis } from "@/lib/cellar/additions-math";
 import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 import { releaseReservationsForTaskTx } from "@/lib/work-orders/reservations";
 import { completeObservationTaskCore } from "@/lib/work-orders/observations";
+import { completeMaintenanceTaskCore } from "@/lib/work-orders/maintenance";
 
 // The heart of Phase 9 (Unit 6): completing an OPERATION task writes the REAL ledger op immediately —
 // through the existing family cores' tx-forms (rackWineTx / recordNeutralDoseTx / topVesselTx) — and the
@@ -61,18 +63,32 @@ async function dispatchOperationTx(
   task: TaskRow,
   payload: Record<string, unknown>,
   resolvedMaterial: { materialId: string; materialName: string } | null,
-): Promise<{ operationId: number; message: string }> {
+): Promise<{ operationId: number; message: string; shortfall?: number }> {
   const note = asStr(payload.note) ?? null;
   switch (task.opType) {
     case "RACK": {
+      // dec 4a: an optional rack descriptor rides the op note (off gross/fine lees, clean-to-clean, délestage).
+      const rackType = asStr(payload.rackType);
+      const rackNote = [rackType ? `Rack: ${rackType}` : null, note].filter(Boolean).join(" — ") || undefined;
       const r = await rackWineTx(tx, actor, {
         fromVesselId: (asStr(payload.fromVesselId) ?? task.sourceVesselId) as string,
         toVesselId: (asStr(payload.toVesselId) ?? task.destVesselId) as string,
         drawL: asNum(payload.drawL),
         lossL: asNum(payload.lossL),
-        note: note ?? undefined,
+        note: rackNote,
       });
       return { operationId: r.operationId, message: r.message };
+    }
+    case "FILTRATION": {
+      const r = await filterVesselTx(tx, actor, {
+        vesselId: (asStr(payload.vesselId) ?? task.destVesselId ?? task.sourceVesselId) as string,
+        lossL: asNum(payload.lossL) ?? 0,
+        actualOutputL: asNum(payload.actualOutputL), // A5: loss = pre − actual (computed in the tx)
+        medium: asStr(payload.filterType), // dec 1: controlled filter media → LotTreatment.medium
+        micron: asNum(payload.micron) ?? null,
+        note: note ?? undefined,
+      });
+      return { operationId: r.operationId, message: `${r.summary}.` };
     }
     case "TOPPING": {
       const r = await topVesselTx(tx, actor, {
@@ -96,11 +112,11 @@ async function dispatchOperationTx(
         note: note ?? undefined,
       };
       const r = await recordNeutralDoseTx(tx, actor, additionInput, cfg, resolvedMaterial);
-      return { operationId: r.operationId, message: r.message };
+      return { operationId: r.operationId, message: r.message, shortfall: r.shortfall }; // E1: draw-to-zero shortfall
     }
     default:
       throw new ActionError(
-        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. v1 supports rack, addition, fining, and topping.`,
+        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. v1 supports rack, addition, fining, topping, and filtration.`,
         "CONFLICT",
       );
   }
@@ -125,8 +141,28 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     };
   }
 
-  if (task.kind === "OBSERVATION") {
-    return completeObservationTaskCore(actor, { task, ...input });
+  // A NEW commandId against an already-settled task is a genuine re-submit, not the offline-drain replay
+  // the commandId pre-check above handles — it must not double-write (a maintenance re-complete would
+  // double-deplete overhead stock). REJECTED is resubmittable (→ PENDING); terminal states are not.
+  if (task.status === "DONE" || task.status === "APPROVED" || task.status === "SKIPPED") {
+    throw new ActionError("That task is already completed.", "CONFLICT");
+  }
+
+  // OBSERVATION + MAINTENANCE lanes: direct-log, straight to DONE. Wrap in the same P2002→idempotent-success
+  // handling the OPERATION lane uses, so a same-commandId race that slips past the pre-check returns the
+  // committed result instead of a raw unique violation (A1 offline-drain contract, uniform across lanes).
+  if (task.kind === "OBSERVATION" || task.kind === "MAINTENANCE") {
+    try {
+      return task.kind === "OBSERVATION"
+        ? await completeObservationTaskCore(actor, { task, ...input })
+        : await completeMaintenanceTaskCore(actor, { task, ...input });
+    } catch (e) {
+      if (e && typeof e === "object" && (e as { code?: string }).code === "P2002") {
+        const dup = await prisma.workOrderTaskAttempt.findUnique({ where: { commandId: input.commandId }, include: { task: { select: { status: true } } } });
+        if (dup) return { taskId: task.id, attemptId: dup.id, operationId: dup.operationId, status: dup.task.status, duplicate: true, message: "Already recorded." };
+      }
+      throw e;
+    }
   }
 
   // OPERATION lane.
@@ -150,7 +186,9 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
   const finalize = input.autoFinalize === true;
   try {
     const result = await runLedgerWrite(async (tx) => {
-      const { operationId, message } = await dispatchOperationTx(tx, actor, task, payload, resolvedMaterial);
+      const { operationId, message, shortfall } = await dispatchOperationTx(tx, actor, task, payload, resolvedMaterial);
+      // E1/D4: a below-stock dose draws to zero (never negative) and surfaces a soft warning — never blocks.
+      const warnedMessage = shortfall && shortfall > 0 ? `${message} (used ${shortfall} more than on record)` : message;
 
       const now = new Date();
       const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
@@ -201,7 +239,7 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
         entityId: task.id,
         summary: `Completed WO task (pending review): ${message}`,
       });
-      return { attemptId: attempt.id, operationId, message };
+      return { attemptId: attempt.id, operationId, message: warnedMessage };
     });
 
     return { taskId: task.id, attemptId: result.attemptId, operationId: result.operationId, status: finalize ? "APPROVED" : "PENDING_APPROVAL", duplicate: false, message: result.message };

@@ -1,0 +1,50 @@
+/* Phase 9.1 (Unit 6) — print styles for the work-order sheet. On screen the print route looks like a
+ * normal page (app chrome visible + a "Print / PDF" button); when actually printing, everything is hidden
+ * except the .wo-print-sheet, which becomes the whole page. DESIGN.md tokens drive color/type; Inter is a
+ * remote font so we fall back to a system sans in print for reliability. */
+
+@media print {
+  /* Hide the app chrome; show only the sheet. */
+  body * {
+    visibility: hidden;
+  }
+  .wo-print-sheet,
+  .wo-print-sheet * {
+    visibility: visible;
+  }
+  .wo-print-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  /* Screen-only chrome inside the print route (the Print button, the back link). */
+  .wo-print-hide {
+    display: none !important;
+  }
+  /* Keep each task box intact across page breaks (A12). */
+  .wo-print-task {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  @page {
+    margin: 16mm;
+  }
+}
+
+/* Shared (screen + print) sheet typography. Inter is remote; the fallback keeps print faithful. */
+.wo-print-sheet {
+  font-family: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  color: #1a1412;
+  background: #fff;
+}
+.wo-print-sheet .wo-print-title {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+}
+/* Ruled blank note lines beneath any captured note (D2) — room for hand-written floor notes. */
+.wo-print-rule {
+  border-bottom: 1px solid #c9bfb4;
+  height: 22px;
+}
