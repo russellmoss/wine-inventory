@@ -24,7 +24,8 @@ describe("buildArchiveWhere", () => {
   it("filters assignee (case-insensitive contains), template, and vessel (either end)", () => {
     expect(buildArchiveWhere({ assigneeEmail: "sam" }).assigneeEmail).toEqual({ contains: "sam", mode: "insensitive" });
     expect(buildArchiveWhere({ templateId: "tpl_1" }).templateVersion).toEqual({ templateId: "tpl_1" });
-    expect(buildArchiveWhere({ vesselId: "v_1" }).tasks).toEqual({ some: { OR: [{ destVesselId: "v_1" }, { sourceVesselId: "v_1" }] } });
+    expect(buildArchiveWhere({ vesselIds: ["v_1", "v_2"] }).tasks).toEqual({ some: { OR: [{ destVesselId: { in: ["v_1", "v_2"] } }, { sourceVesselId: { in: ["v_1", "v_2"] } }] } });
+    expect(buildArchiveWhere({ vesselIds: [] }).tasks).toBeUndefined();
   });
 
   it("q matches title (contains) and, when numeric, an exact WO number", () => {
@@ -50,9 +51,15 @@ describe("parse/serialize archive filters", () => {
   });
 
   it("parse(serialize(x)) is stable for the supported keys", () => {
-    const f = { status: "CANCELLED" as const, from: "2026-06-01", to: "2026-06-30", assigneeEmail: "a@b.co", vesselId: "v9", q: "top" };
+    const f = { status: "CANCELLED" as const, from: "2026-06-01", to: "2026-06-30", assigneeEmail: "a@b.co", vesselIds: ["v9", "v10"], q: "top" };
     const qs = serializeArchiveFilters(f).replace(/^\?/, "");
     const params = Object.fromEntries(new URLSearchParams(qs));
     expect(parseArchiveFilters(params)).toEqual(f);
+  });
+
+  it("parses a comma-joined vesselId into an array (and an old single value still works)", () => {
+    expect(parseArchiveFilters({ vesselId: "v1,v2" }).vesselIds).toEqual(["v1", "v2"]);
+    expect(parseArchiveFilters({ vesselId: "v1" }).vesselIds).toEqual(["v1"]);
+    expect(parseArchiveFilters({ vesselId: "" }).vesselIds).toBeUndefined();
   });
 });

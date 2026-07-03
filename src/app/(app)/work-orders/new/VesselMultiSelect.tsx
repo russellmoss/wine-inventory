@@ -6,13 +6,26 @@ import React from "react";
 // several vessels fans out to one task per vessel at submit. Pure client component (fuzzy substring search
 // + a kind filter + checkboxes); no new deps.
 
-export type VesselOption = { id: string; label: string; kind?: string | null };
+export type VesselOption = { id: string; label: string; kind?: string | null; volumeL?: number | null };
+
+const fmtVol = (v?: number | null) => (v && v > 0 ? `${Number(v).toLocaleString()} L` : "empty");
 
 const box: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "var(--surface)" };
 const chip: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, padding: "2px 8px", borderRadius: 999, background: "var(--wine-primary)", color: "var(--surface-raised)" };
 const filterBtn = (active: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: "1px solid var(--border)", background: active ? "var(--wine-primary)" : "transparent", color: active ? "var(--surface-raised)" : "var(--text-secondary)" });
 
-export function VesselMultiSelect({ options, value, onChange }: { options: VesselOption[]; value: string[]; onChange: (ids: string[]) => void }) {
+export function VesselMultiSelect({
+  options,
+  value,
+  onChange,
+  // Shown under the list when >1 is selected. Defaults to the new-WO fan-out note; pass null in filter contexts.
+  multiHint = "one task will be created per vessel.",
+}: {
+  options: VesselOption[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+  multiHint?: string | null;
+}) {
   const [q, setQ] = React.useState("");
   const [kind, setKind] = React.useState<"ALL" | "TANK" | "BARREL">("ALL");
 
@@ -62,13 +75,14 @@ export function VesselMultiSelect({ options, value, onChange }: { options: Vesse
           filtered.map((o) => (
             <label key={o.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, padding: "5px 4px", cursor: "pointer", minHeight: 32 }}>
               <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggle(o.id)} style={{ width: 16, height: 16 }} />
-              {o.label}
+              <span>{o.label}</span>
+              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{fmtVol(o.volumeL)}</span>
             </label>
           ))
         )}
       </div>
-      {value.length > 1 ? (
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{value.length} vessels — one task will be created per vessel.</div>
+      {value.length > 1 && multiHint ? (
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{value.length} vessels — {multiHint}</div>
       ) : null}
     </div>
   );

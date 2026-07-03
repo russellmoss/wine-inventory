@@ -7,13 +7,14 @@ import { Card, Button, Badge } from "@/components/ui";
 import type { ArchiveRow } from "@/lib/work-orders/data";
 import { ARCHIVE_STATUSES, type ArchiveFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersTabs } from "./WorkOrdersTabs";
+import { VesselMultiSelect, type VesselOption } from "./new/VesselMultiSelect";
 
 // Phase 9.1 (Unit 5): the filterable archive view (D1 — a toggle on /work-orders, not a separate nav item).
 // Filter by status / date range / assignee / template / vessel; rows reuse the dashboard list-row and
 // surface a completed-note snippet (D4). Filters + pagination live in the URL so the view is shareable and
 // server-rendered. No card grid, DESIGN.md tokens throughout.
 
-type Picker = { id: string; label: string };
+type Picker = VesselOption;
 type Template = { id: string; name: string };
 
 const STATUS_TONE: Record<string, "neutral" | "green"> = { APPROVED: "green", CANCELLED: "neutral" };
@@ -39,7 +40,12 @@ export function ArchiveClient({
   const navigate = (f: ArchiveFilters, p = 1) => {
     const params = new URLSearchParams();
     params.set("view", "archive");
-    for (const [k, v] of Object.entries(f)) if (v) params.set(k, String(v));
+    for (const [k, v] of Object.entries(f)) {
+      if (!v) continue;
+      // vesselIds is an array → serialize to the comma-joined `vesselId` param the parser reads.
+      if (Array.isArray(v)) { if (v.length) params.set("vesselId", v.join(",")); }
+      else params.set(k, String(v));
+    }
     if (p > 1) params.set("page", String(p));
     router.push(`/work-orders?${params.toString()}`);
   };
@@ -67,12 +73,6 @@ export function ArchiveClient({
           </label>
           <label style={lbl}>From<input type="date" style={fld} value={draft.from ?? ""} onChange={(e) => set("from", e.target.value)} /></label>
           <label style={lbl}>To<input type="date" style={fld} value={draft.to ?? ""} onChange={(e) => set("to", e.target.value)} /></label>
-          <label style={lbl}>Vessel
-            <select style={fld} value={draft.vesselId ?? ""} onChange={(e) => set("vesselId", e.target.value)}>
-              <option value="">Any vessel</option>
-              {vessels.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-            </select>
-          </label>
           <label style={lbl}>Template
             <select style={fld} value={draft.templateId ?? ""} onChange={(e) => set("templateId", e.target.value)}>
               <option value="">Any template</option>
@@ -81,6 +81,15 @@ export function ArchiveClient({
           </label>
           <label style={lbl}>Assignee<input type="text" style={fld} placeholder="email…" value={draft.assigneeEmail ?? ""} onChange={(e) => set("assigneeEmail", e.target.value)} /></label>
           <label style={lbl}>Search<input type="text" style={fld} placeholder="title or #number" value={draft.q ?? ""} onChange={(e) => set("q", e.target.value)} /></label>
+        </div>
+        {/* Vessel filter — searchable, tank/barrel-filterable multi-select (mirrors the new-WO picker). */}
+        <div style={{ ...lbl, marginTop: 10 }}>Vessels
+          <VesselMultiSelect
+            options={vessels}
+            value={draft.vesselIds ?? []}
+            onChange={(ids) => setDraft((p) => ({ ...p, vesselIds: ids.length ? ids : undefined }))}
+            multiHint={null}
+          />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <Button size="sm" onClick={() => navigate(draft, 1)}>Apply filters</Button>

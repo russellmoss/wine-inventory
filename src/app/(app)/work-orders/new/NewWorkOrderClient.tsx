@@ -4,11 +4,11 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Checkbox, Eyebrow } from "@/components/ui";
 import { TASK_VOCABULARY, fieldLabel, type TemplateSpec, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
-import { RATE_BASES, RATE_BASIS_LABELS } from "@/lib/cellar/additions-math";
+import { RATE_BASES, RATE_BASIS_LABELS, computeAdditionTotal } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
 import { VesselMultiSelect } from "./VesselMultiSelect";
 
-type Picker = { id: string; label: string; unit?: string | null };
+type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; volumeL?: number | null };
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
@@ -32,6 +32,8 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
   // offset so it never collides with the template's task indices.
   const [extraKeys, setExtraKeys] = React.useState<number[]>([]);
   const nextExtraKey = React.useRef(1000);
+  // Per-row volume override for the dose calculator (client-only; defaults to the vessel's current volume).
+  const [volOverride, setVolOverride] = React.useState<Record<number, number | "">>({});
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
 
@@ -149,6 +151,43 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
       .map(([key, type]) => (key === "rateValue" ? renderRate(taskIdx, defaults) : renderField(taskIdx, key, type, defaults?.[key], def.fieldOptions?.[key])));
   }
 
+  // Live dose calculator: given a rate + basis + selected vessel(s), show the total it works out to using
+  // each vessel's current volume (single-vessel volume is overridable). Volume-aware; informational — the
+  // actual dose is recomputed from the vessel's real volume at completion (A3). Returns null when N/A.
+  function renderEstimate(taskIdx: number, defaults?: Record<string, unknown>) {
+    const rate = Number(overrides[taskIdx]?.rateValue ?? defaults?.rateValue ?? "");
+    const basis = String(overrides[taskIdx]?.rateBasis ?? defaults?.rateBasis ?? "G_HL");
+    const sel = overrides[taskIdx]?.vesselId;
+    const vesselIds = Array.isArray(sel) ? (sel as string[]) : sel ? [String(sel)] : [];
+    if (!(rate > 0) || vesselIds.length === 0) return null;
+    const volOf = new Map(pickers.vessels.map((v) => [v.id, v.volumeL ?? 0]));
+    const est = (vol: number) => { try { return computeAdditionTotal(rate, basis as never, vol); } catch { return null; } };
+    const wrap: React.CSSProperties = { gridColumn: "1 / -1", fontSize: 13, background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px" };
+
+    if (vesselIds.length === 1) {
+      const base = volOf.get(vesselIds[0]) ?? 0;
+      const ov = volOverride[taskIdx];
+      const vol = ov === "" || ov == null ? base : Number(ov);
+      const e = est(vol);
+      return (
+        <div key="est" style={wrap}>
+          <span style={{ color: "var(--text-muted)" }}>Volume </span>
+          <input type="number" inputMode="decimal" step="any" value={String(ov ?? base)} onChange={(ev) => setVolOverride((o) => ({ ...o, [taskIdx]: ev.target.value === "" ? "" : Number(ev.target.value) }))} style={{ width: 90, padding: "2px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)" }} /> L
+          {e ? <span> → ≈ <strong>{e.total.toLocaleString()} {e.unit}</strong> total</span> : <span style={{ color: "var(--text-muted)" }}> — enter a positive volume</span>}
+          {ov !== "" && ov != null && Number(ov) !== base ? <span style={{ color: "var(--text-muted)" }}> (vessel currently {base.toLocaleString()} L)</span> : null}
+        </div>
+      );
+    }
+    // Multiple vessels: total across all, using each vessel's own current volume.
+    let grand = 0; let unit = "g"; let ok = false;
+    for (const vid of vesselIds) { const e = est(volOf.get(vid) ?? 0); if (e) { grand += e.total; unit = e.unit; ok = true; } }
+    return (
+      <div key="est" style={wrap}>
+        {ok ? <span>≈ <strong>{grand.toLocaleString()} {unit}</strong> total across {vesselIds.length} vessels <span style={{ color: "var(--text-muted)" }}>(each vessel's current volume)</span></span> : <span style={{ color: "var(--text-muted)" }}>Selected vessels are empty — no volume to compute against.</span>}
+      </div>
+    );
+  }
+
   // Clean a value map for submit: drop empty strings/undefined + empty vessel arrays.
   function cleanValues(raw: Record<string, unknown>): Record<string, unknown> {
     return Object.fromEntries(
@@ -224,6 +263,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
                 {def.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 6 }}>{def.hint}</div> : null}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
                   {renderTaskFields(i, def, t.defaults)}
+                  {renderEstimate(i, t.defaults)}
                 </div>
               </div>
             );
@@ -241,6 +281,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
                 {def.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 6 }}>{def.hint}</div> : null}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
                   {renderTaskFields(k, def)}
+                  {renderEstimate(k)}
                 </div>
               </div>
             );

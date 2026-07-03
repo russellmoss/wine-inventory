@@ -11,7 +11,7 @@ export type ArchiveFilters = {
   to?: string; // ISO date (updatedAt <= end-of-day)
   assigneeEmail?: string;
   templateId?: string;
-  vesselId?: string;
+  vesselIds?: string[]; // match tasks touching ANY of these vessels (source or dest)
   q?: string; // matches title (contains) or exact WO number
 };
 
@@ -28,13 +28,16 @@ export function parseArchiveFilters(params: Record<string, string | string[] | u
     return s && s.trim() ? s.trim() : undefined;
   };
   const status = one(params.status);
+  // vesselId may arrive as a comma-joined string (our serialization) or a repeated param (array). Both → string[].
+  const raw = params.vesselId ?? params.vesselIds;
+  const vesselList = (Array.isArray(raw) ? raw : raw ? raw.split(",") : []).map((s) => s.trim()).filter(Boolean);
   return {
     status: isArchiveStatus(status) ? status : undefined,
     from: one(params.from),
     to: one(params.to),
     assigneeEmail: one(params.assigneeEmail),
     templateId: one(params.templateId),
-    vesselId: one(params.vesselId),
+    vesselIds: vesselList.length ? vesselList : undefined,
     q: one(params.q),
   };
 }
@@ -42,10 +45,11 @@ export function parseArchiveFilters(params: Record<string, string | string[] | u
 /** Serialize filters back to a querystring (stable key order; blanks omitted). */
 export function serializeArchiveFilters(f: ArchiveFilters): string {
   const sp = new URLSearchParams();
-  for (const key of ["status", "from", "to", "assigneeEmail", "templateId", "vesselId", "q"] as const) {
+  for (const key of ["status", "from", "to", "assigneeEmail", "templateId", "q"] as const) {
     const v = f[key];
     if (v) sp.set(key, v);
   }
+  if (f.vesselIds?.length) sp.set("vesselId", f.vesselIds.join(","));
   const s = sp.toString();
   return s ? `?${s}` : "";
 }
@@ -79,7 +83,7 @@ export function buildArchiveWhere(f: ArchiveFilters): ArchiveWhere {
 
   if (f.assigneeEmail) where.assigneeEmail = { contains: f.assigneeEmail, mode: "insensitive" };
   if (f.templateId) where.templateVersion = { templateId: f.templateId };
-  if (f.vesselId) where.tasks = { some: { OR: [{ destVesselId: f.vesselId }, { sourceVesselId: f.vesselId }] } };
+  if (f.vesselIds?.length) where.tasks = { some: { OR: [{ destVesselId: { in: f.vesselIds } }, { sourceVesselId: { in: f.vesselIds } }] } };
 
   if (f.q) {
     const num = Number(f.q);
