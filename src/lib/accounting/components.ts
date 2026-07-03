@@ -6,13 +6,29 @@ import type { NormalizedAccount } from "@/lib/accounting/adapter";
 // mapping card, and unit tests so the list, copy, and ranking never drift. Type-only Prisma import
 // (erased at runtime), safe in the client bundle.
 
-export type AccountRole = "cost" | "inventory" | "payable";
+// Phase 16 adds the DTC (Commerce7) sales roles used by the Commerce7 mapping card.
+export type AccountRole =
+  | "cost"
+  | "inventory"
+  | "payable"
+  | "revenue"
+  | "salesTax"
+  | "shipping"
+  | "clearing"
+  | "discount";
 
 /** Which QBO AccountTypes best fit each role — used to RANK the picker, never to restrict it. */
 const SUGGESTED_TYPES: Record<AccountRole, string[]> = {
   cost: ["Cost of Goods Sold", "Expense", "Other Expense"],
   inventory: ["Other Current Asset", "Fixed Asset", "Other Asset"],
   payable: ["Accounts Payable", "Other Current Liability", "Credit Card"],
+  // Phase 16 DTC roles: a settled sale posts DR undeposited-funds clearing / CR revenue + CR
+  // sales-tax-payable + CR shipping-income, with a discount contra line.
+  revenue: ["Income", "Other Income"],
+  salesTax: ["Other Current Liability", "Accounts Payable"],
+  shipping: ["Income", "Other Income"],
+  clearing: ["Other Current Asset", "Bank", "Other Current Liability"],
+  discount: ["Income", "Expense", "Other Income"],
 };
 
 /** PURE: sort so the role's suggested account types come first, then by name. Never hides an account. */

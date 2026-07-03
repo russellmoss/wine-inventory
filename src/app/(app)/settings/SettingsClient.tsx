@@ -11,6 +11,7 @@ import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
 import { AccountingConnectionCard, type ConnectionSummary } from "./AccountingConnectionCard";
 import { AccountMappingCard } from "./AccountMappingCard";
 import { Commerce7ConnectionCard, type Commerce7ConnectionSummary } from "./Commerce7ConnectionCard";
+import { Commerce7MappingCard } from "./Commerce7MappingCard";
 
 type AccountingMapping = { component: string; costAccount: string | null; inventoryAccount: string | null };
 
@@ -231,8 +232,9 @@ export function SettingsClient({
         initialAp={accountingAp}
       />
 
-      {/* Phase 16 — Commerce7 DTC/sales connection (+ mapping card added in U4). */}
+      {/* Phase 16 — Commerce7 DTC/sales connection + catalog/account mapping. */}
       <Commerce7ConnectionCard commerce7={commerce7} />
+      <Commerce7MappingCard connected={commerce7?.status === "CONNECTED"} />
 
       {/* TTB compliance profile — the filer identity that heads Form 5120.17. */}
       <Card style={{ maxWidth: 560, marginTop: 16 }}>
