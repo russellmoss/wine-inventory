@@ -2112,13 +2112,17 @@ model AccountMapping {
   tenantId      String        @default("")
   id            String        @id @default(cuid())
   component     CostComponent
-  taxClass      String? // null = default for this component; a specific class overrides
+  // Phase 15 (council C7): the DEFAULT row uses the sentinel '*' (never NULL). Postgres treats
+  // NULLs as distinct, so a NULL default could not be uniquely enforced (two "defaults" per
+  // component). '*' matches the pure seam's accountKey(component, null) => `${component}|*`, so
+  // resolveAccounts' fallback still finds it. An exact tax-class row (e.g. 'WINE_UNDER_16') wins.
+  taxClass      String        @default("*")
   debitAccount  String
   creditAccount String
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  @@unique([tenantId, component, taxClass])
+  @@unique([tenantId, component, taxClass]) // single default enforced (no NULLs — sentinel '*')
   @@index([tenantId])
   @@map("account_mapping")
 }
@@ -2151,10 +2155,146 @@ model CostExportEvent {
   createdAt              DateTime              @default(now())
 
   @@unique([tenantId, postingKey]) // idempotent re-emit
+  @@unique([tenantId, id]) // Phase 15: composite-tenant-FK target for accounting_delivery (K11)
   @@index([tenantId])
   @@index([tenantId, skuId, runId])
   @@index([tenantId, sourceSnapshotId])
   @@map("cost_export_event")
+}
+
+// ───────────────────────── Phase 15: QuickBooks / accounting integration ─────────────────────────
+// Tenant-scoped, RLS-isolated (Phase-12 checklist). OAuth tokens are AEAD-envelope-encrypted
+// (src/lib/crypto/envelope.ts, Unit 1): ONLY the encrypted refresh token + its wrapped per-record DEK
+// are persisted; the access token is cached in memory, never a column (SEC-N2). AccountingDelivery is
+// the MUTABLE state machine over the IMMUTABLE export seam (CostExportEvent / ApExportEvent). Composite
+// tenant FKs, the DB CHECK that non-CONNECTED rows hold no tokens (SEC-S5), the global
+// one-realmId-per-provider guard (SEC-C2), the delivery source XOR CHECK + partial index, and the
+// least-privilege cron enumerator role (SEC-C3) all live in the migration SQL, mirroring Phase 12.
+
+enum AccountingProvider {
+  QBO
+  XERO
+}
+
+enum ConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  NEEDS_REAUTH
+}
+
+enum DeliveryStatus {
+  PENDING
+  IN_FLIGHT
+  VERIFYING
+  POSTED
+  FAILED
+  WITHHELD
+  DELETED_IN_GL
+}
+
+model AccountingConnection {
+  tenantId              String             @default("")
+  id                    String             @id @default(cuid())
+  provider              AccountingProvider
+  status                ConnectionStatus   @default(DISCONNECTED)
+  environment           String // "sandbox" | "production" — keys + realm are env-split
+  externalRealmId       String? // canonical company id derived from Intuit, NOT the callback param (SEC-C2)
+  refreshTokenCt        String? // AEAD ciphertext — present only when CONNECTED (SEC-S5 DB CHECK)
+  dekWrapped            String? // the wrapped per-record DEK (SEC-C4) — present only when CONNECTED
+  refreshTokenExpiresAt DateTime? // Nov-2025 refresh-token absolute expiry
+  scope                 String?
+  tokenVersion          Int                @default(0) // CAS guard for serialized refresh (SEC-N4)
+  homeCurrency          String? // QBO company home currency (multi-currency withhold — U6/U7)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@unique([tenantId, provider]) // one company per tenant per provider
+  @@unique([tenantId, id]) // composite-tenant-FK target for accounting_delivery (K11)
+  @@index([tenantId])
+  @@map("accounting_connection")
+}
+
+model OAuthState {
+  tenantId     String             @default("")
+  id           String             @id @default(cuid())
+  nonceHash    String // SHA-256 of the random state nonce — the raw nonce is never stored (SEC-C1)
+  userId       String // the admin who initiated; admin is re-checked at consume time (SEC-C1)
+  sessionId    String
+  provider     AccountingProvider
+  redirectUri  String
+  pkceVerifier String // PKCE code_verifier (SEC-S1)
+  expiresAt    DateTime
+  createdAt    DateTime           @default(now())
+
+  @@unique([tenantId, nonceHash]) // consumed with DELETE … RETURNING (single-use)
+  @@index([tenantId])
+  @@index([expiresAt])
+  @@map("oauth_state")
+}
+
+model Vendor {
+  tenantId         String   @default("")
+  id               String   @id @default(cuid())
+  name             String
+  terms            String? // payment terms, e.g. "Net 30" (drives Bill DueDate — U10)
+  externalVendorId String? // QBO Vendor.Id cache (find-or-create — U10). PII stays here, never in events (D19)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId, name]) // find-or-create by name, no dupes per tenant
+  @@unique([tenantId, id]) // composite-tenant-FK target for ap_export_event (K11)
+  @@index([tenantId])
+  @@map("vendor")
+}
+
+model ApExportEvent {
+  tenantId                  String                @default("")
+  id                        String                @id @default(cuid())
+  postingKey                String // `ap:${supplyLotId}` (:rev) — per-tenant idempotent
+  supplyLotId               String? // the receipt this AP event came from (traceability; no hard FK)
+  vendorId                  String? // composite-tenant FK -> vendor (raw SQL)
+  amount                    Decimal               @db.Decimal(18, 8)
+  debitAccount              String? // Inventory Asset (resolved at emit; null => withheld)
+  creditAccount             String? // Accounts Payable
+  currency                  String                @default("USD")
+  receivedAt                DateTime
+  dueDate                   DateTime?
+  reversalOfApExportEventId String?
+  basisCompleteness         CostBasisCompleteness @default(KNOWN)
+  createdAt                 DateTime              @default(now())
+
+  @@unique([tenantId, postingKey]) // idempotent re-emit
+  @@unique([tenantId, id]) // composite-tenant-FK target for accounting_delivery (K11)
+  @@index([tenantId])
+  @@index([tenantId, supplyLotId])
+  @@map("ap_export_event")
+}
+
+model AccountingDelivery {
+  tenantId          String         @default("")
+  id                String         @id @default(cuid())
+  connectionId      String // composite-tenant FK -> accounting_connection (raw SQL)
+  costExportEventId String? // composite-tenant FK -> cost_export_event (XOR apExportEventId — CHECK in SQL)
+  apExportEventId   String? // composite-tenant FK -> ap_export_event
+  status            DeliveryStatus @default(PENDING)
+  objectType        String? // "JournalEntry" | "Bill" (A2 — ONE poster, typed by object)
+  attemptCount      Int            @default(0)
+  requestId         String? // deterministic QBO RequestId (idempotency)
+  externalId        String? // QBO object Id once posted
+  postingDate       DateTime? // GL posting date (current open period for reversals — U11)
+  withheldReason    String?
+  lastError         String?
+  claimedAt         DateTime?
+  leaseExpiresAt    DateTime?
+  verifiedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([tenantId, costExportEventId]) // <=1 delivery per cost export event
+  @@unique([tenantId, apExportEventId]) // <=1 delivery per AP export event
+  @@index([tenantId])
+  @@index([tenantId, connectionId])
+  @@map("accounting_delivery")
 }
 
 // ───────────────────────── plan-027: compliance filing-deadline reminders ─────────────────────────

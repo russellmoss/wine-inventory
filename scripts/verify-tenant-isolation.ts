@@ -95,6 +95,12 @@ async function main() {
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_a" }, update: {}, create: { id: "iso_brix_a", blockId: "iso_blk_a", vineyardId: "iso_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_b" }, update: {}, create: { id: "iso_brix_b", blockId: "iso_blk_b", vineyardId: "iso_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
+  // Phase 15: an accounting_connection (the token table) per tenant, plus a cost_export_event in A
+  // (composite-FK target for the delivery-uniqueness check). DISCONNECTED + null tokens satisfies the
+  // SEC-S5 CHECK; null realmId keeps the one-realm partial-unique out of the way.
+  await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_a" }, update: {}, create: { id: "iso_acct_conn_a", tenantId: A, provider: "QBO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
+  await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_b" }, update: {}, create: { id: "iso_acct_conn_b", tenantId: B, provider: "QBO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
+  await owner.costExportEvent.upsert({ where: { id: "iso_cee_a" }, update: {}, create: { id: "iso_cee_a", tenantId: A, postingKey: "iso:cee:a", sourceType: "SNAPSHOT", component: "FRUIT", amount: "1.00", debitAccount: "5000", creditAccount: "1400" } });
 
   try {
     // 1. Fail-closed: no tenant context -> 0 rows.
@@ -162,6 +168,37 @@ async function main() {
     const brixASeesB = await asTenant(A, (db) => db.$queryRaw<{ blockId: string }[]>`SELECT "blockId" FROM "brix_log" WHERE "vineyardId" = 'iso_vy_b'`);
     check("brix_log raw read as A CANNOT see B's vineyard rows", brixASeesB.length === 0, `saw ${brixASeesB.length}`);
 
+    // 5d. Phase 15: accounting_connection (the ENCRYPTED-TOKEN table) is tenant-isolated through the
+    // pooled endpoint. This is the one that matters most — a leak here is a cross-tenant token read.
+    const aSeesConnB = await asTenant(A, (db) => db.accountingConnection.findFirst({ where: { id: "iso_acct_conn_b" } }));
+    check("tenant A CANNOT see tenant B's accounting_connection (RLS)", aSeesConnB === null);
+    let connInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.accountingConnection.create({ data: { id: "iso_acct_conn_x", tenantId: B, provider: "QBO", status: "DISCONNECTED", environment: "sandbox", updatedAt: new Date() } }));
+    } catch { connInsertRaised = true; }
+    check("foreign-tenant accounting_connection INSERT raises (WITH CHECK)", connInsertRaised);
+
+    // 5e. council C7: a component has at most ONE default mapping row (sentinel taxClass='*'). The old
+    // NULL default could not be uniquely enforced; the second insert must now be rejected.
+    let dupDefaultRaised = false;
+    try {
+      await asTenant(A, async (db) => {
+        await db.accountMapping.create({ data: { id: "iso_map_1", tenantId: A, component: "FRUIT", taxClass: "*", debitAccount: "5000", creditAccount: "1400" } });
+        await db.accountMapping.create({ data: { id: "iso_map_2", tenantId: A, component: "FRUIT", taxClass: "*", debitAccount: "5001", creditAccount: "1401" } });
+      });
+    } catch { dupDefaultRaised = true; }
+    check("duplicate default account_mapping row rejected (single default — council C7)", dupDefaultRaised);
+
+    // 5f. exactly one AccountingDelivery per cost export event (@@unique([tenantId, costExportEventId])).
+    let dupDeliveryRaised = false;
+    try {
+      await asTenant(A, async (db) => {
+        await db.accountingDelivery.create({ data: { id: "iso_del_1", tenantId: A, connectionId: "iso_acct_conn_a", costExportEventId: "iso_cee_a", objectType: "JournalEntry", updatedAt: new Date() } });
+        await db.accountingDelivery.create({ data: { id: "iso_del_2", tenantId: A, connectionId: "iso_acct_conn_a", costExportEventId: "iso_cee_a", objectType: "JournalEntry", updatedAt: new Date() } });
+      });
+    } catch { dupDeliveryRaised = true; }
+    check("second delivery for the same cost export event rejected (@@unique)", dupDeliveryRaised);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -177,6 +214,11 @@ async function main() {
     check("same-tenant op line succeeds (positive control)", sameTenantOk);
   } finally {
     // ── Teardown (owner). ──
+    // Phase 15 first (delivery → connection/cost_export_event FK order; all before org B is removed).
+    await owner.accountingDelivery.deleteMany({ where: { id: { in: ["iso_del_1", "iso_del_2"] } } });
+    await owner.accountMapping.deleteMany({ where: { id: { in: ["iso_map_1", "iso_map_2"] } } });
+    await owner.costExportEvent.deleteMany({ where: { id: "iso_cee_a" } });
+    await owner.accountingConnection.deleteMany({ where: { id: { in: ["iso_acct_conn_a", "iso_acct_conn_b", "iso_acct_conn_x"] } } });
     await owner.lotOperationLine.deleteMany({ where: { lotId: { in: ["iso_lot_a", "iso_lot_b"] } } });
     await owner.lotOperation.deleteMany({ where: { tenantId: B } });
     await owner.supplyLot.deleteMany({ where: { id: { in: ["iso_supply_b", "iso_supply_x"] } } });
