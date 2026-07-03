@@ -85,5 +85,21 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟢 / 🟡 / 🔴
 -->
 
+## Accounting poster — bounded work + partial index (Phase 15)
+- **What:** the QBO post/reconcile/refresh crons enumerate all org ids and sweep pending
+  `AccountingDelivery` rows. Each poster run **claims a BOUNDED batch per tenant**
+  (`POST_BATCH_PER_TENANT`, default 50) with `FOR UPDATE SKIP LOCKED` + a lease, and drains the rest
+  over subsequent ticks — never an unbounded backlog in one invocation (Vercel ~300s cap + QBO
+  500/min per realm).
+- **What breaks at scale:** (a) a full-table scan of `accounting_delivery` as POSTED history grows —
+  mitigated by the **partial index** on `(tenantId, status) WHERE status IN
+  ('PENDING','VERIFYING','FAILED')` so sweeps only ever seek the OPEN work; (b) enumerating every org
+  each tick when few are connected (fine now; revisit with a connected-org index/materialized list);
+  (c) QBO rate limits (429) — the client has its own full-jitter backoff separate from the DB retry.
+- **Tripwire:** poster run time approaching `maxDuration`; backlog depth climbing tick-over-tick (the
+  dashboard shows queue-by-status); 429s in logs; the partial index dropped.
+- **Status:** 🟢 (bounded batch + partial index shipped; drain-over-ticks proven by
+  `verify:accounting-idempotency`)
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

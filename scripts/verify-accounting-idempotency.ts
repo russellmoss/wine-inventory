@@ -92,22 +92,20 @@ async function main() {
     await prisma.accountingDelivery.deleteMany({ where: { costExportEventId: { in: stale.map((e) => e.id) } } });
     await prisma.costExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
 
-    // Reuse the operator's connection if present + connected; else stand up a throwaway CONNECTED row
-    // (the DB CHECK allows CONNECTED with null tokens; the mock adapter never uses a real token).
-    let conn = await prisma.accountingConnection.findFirst({ where: { provider: "QBO" }, select: { id: true, status: true } });
-    let createdConn = false;
-    if (!conn) {
-      conn = await prisma.accountingConnection.create({
-        data: { tenantId: TENANT, provider: "QBO", status: "CONNECTED", environment: "sandbox", externalRealmId: "IDEMPOTENCY-TEST-REALM" },
-        select: { id: true, status: true },
-      });
-      createdConn = true;
-    } else if (conn.status !== "CONNECTED") {
-      await prisma.accountingConnection.update({ where: { id: conn.id }, data: { status: "CONNECTED", externalRealmId: "IDEMPOTENCY-TEST-REALM" } });
-    }
-    const connectionId = conn.id;
+    // Reuse a CONNECTED connection READ-ONLY if one exists (never modify it); else stand up a throwaway
+    // CONNECTED row (the DB CHECK allows CONNECTED with null tokens; the mock adapter never uses a real
+    // token). A created test row is ALWAYS deleted in the finally below, even if an assertion throws.
+    const existing = await prisma.accountingConnection.findFirst({ where: { provider: "QBO", status: "CONNECTED" }, select: { id: true } });
+    const createdConn = !existing;
+    const connectionId = existing
+      ? existing.id
+      : (await prisma.accountingConnection.create({
+          data: { tenantId: TENANT, provider: "QBO", status: "CONNECTED", environment: "sandbox", externalRealmId: "IDEMPOTENCY-TEST-REALM" },
+          select: { id: true },
+        })).id;
     _seedAccessCache(connectionId, "fake-access-token");
 
+    try {
     console.log("── 1. transactional outbox atomicity: a rolled-back emit leaves NO rows ──");
     let threw = false;
     try {
@@ -158,15 +156,20 @@ async function main() {
     assert(statuses.every((s) => s === "POSTED"), `all 7 drained to POSTED over 3 ticks (${statuses.join(",")})`);
     assert(bState.posted.size === 7, `exactly 7 objects posted, none twice (got ${bState.posted.size})`);
 
-    // ── cleanup (deliveries first — FK to cost_export_event is RESTRICT) ──
-    const evs = await prisma.costExportEvent.findMany({ where: { postingKey: { startsWith: "idem:" } }, select: { id: true } });
-    await prisma.accountingDelivery.deleteMany({ where: { costExportEventId: { in: evs.map((e) => e.id) } } });
-    await prisma.costExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
-    if (createdConn) await prisma.accountingConnection.delete({ where: { id: connectionId } });
-    _clearAccessCache();
+      console.log(`\nALL ${passed} IDEMPOTENCY ASSERTIONS PASSED`);
+    } finally {
+      // ── cleanup ALWAYS (deliveries first — FK to cost_export_event is RESTRICT) ──
+      const evs = await prisma.costExportEvent.findMany({ where: { postingKey: { startsWith: "idem:" } }, select: { id: true } });
+      await prisma.accountingDelivery.deleteMany({ where: { costExportEventId: { in: evs.map((e) => e.id) } } });
+      await prisma.costExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
+      if (createdConn) {
+        await prisma.accountingDelivery.deleteMany({ where: { connectionId } });
+        await prisma.accountingConnection.delete({ where: { id: connectionId } }).catch(() => {});
+      }
+      _clearAccessCache();
+    }
   });
 
-  console.log(`\nALL ${passed} IDEMPOTENCY ASSERTIONS PASSED`);
   await prismaBase.$disconnect();
   process.exit(0);
 }

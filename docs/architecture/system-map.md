@@ -71,6 +71,19 @@ A natural-language assistant over the whole app, powered by `@anthropic-ai/sdk`.
 Satellite basemap (Esri keyless, or Google Map Tiles if keyed) with drawable blocks (`leaflet` +
 geoman), export to PNG or WGS84 shapefile.
 
+### 8. Accounting integration (Phase 15) — `src/lib/accounting/` + `src/lib/crypto/`
+Two-way QuickBooks Online off the Phase-8b cost export seam (does NOT rebuild the GL). A
+**transactional outbox**: freezing a COGS snapshot / writing a variance / receiving a supply emits an
+immutable export event **+** a PENDING `AccountingDelivery` in the SAME tx (no dual-write). Crons then
+**claim → post → verify**: the poster claims a bounded batch (`FOR UPDATE SKIP LOCKED` + lease),
+builds a balanced JournalEntry (or AP Bill), and **queries-before-post by DocNumber** for exactly-once
+under crashes/concurrency; reconcile reads back (`DELETED_IN_GL`); reversals post mirror-image to the
+current open period (D6). Per-tenant OAuth with the **refresh token AEAD-envelope-encrypted**
+(`crypto/envelope.ts`); access token in memory only. A least-privilege `accounting_enumerator` role
+lists org ids on the cron path (never the owner). `adapter.ts` is provider-neutral (Xero-ready);
+`qbo/{oauth,client,journal,bill}.ts` is the only QBO-specific code. UI: Settings connect + mapping
+cards, `/accounting` dashboard. See [[security-register]] + [[scale-register]].
+
 ## How a typical write flows
 1. UI (or the assistant) calls a **server action**.
 2. The action runs inside the **tenant context** → Prisma auto-injects `tenantId`; **RLS** enforces it at Postgres.

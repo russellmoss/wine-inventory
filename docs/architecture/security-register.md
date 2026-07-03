@@ -75,6 +75,25 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 / 🟡 / 🔴
 -->
 
+### Third-party OAuth tokens are encrypted at rest, and the system path can't read them (Phase 15)
+- QuickBooks tokens: ONLY the **refresh token** is persisted, AEAD-envelope-encrypted (per-record DEK
+  wrapped by an env KEK; AAD binds `table|provider|environment|tenantId|connectionId|fieldName|kid` so
+  a ciphertext can't be transplanted). The **access token is cached in memory, never a DB column**
+  (SEC-N2). A non-CONNECTED connection holds NO token material (DB CHECK, SEC-S5).
+- The accounting cron enumerates org ids as a dedicated **least-privilege `accounting_enumerator`**
+  role with SELECT on `organization` ONLY and **no grant on any token table** (SEC-C3); per-tenant
+  token reads happen under `app_rls`. `runAsSystem` (owner) is migrations-only — never used to read a
+  tenant row on the cron path.
+- Token **refresh is serialized per connection** (`SELECT … FOR UPDATE` + a `tokenVersion` CAS inside
+  the tenant tx); the rotating refresh token is never lost/duplicated, and NEEDS_REAUTH is set only
+  after the locked read confirms no newer token (SEC-N4). OAuth `state` is a server-stored single-use
+  PKCE nonce; the canonical realmId is derived from a trusted Intuit call, not the callback (SEC-C1/C2).
+- OAuth payloads (code/tokens/Authorization/ciphertext) are scrubbed from Sentry + logs (SEC-S4).
+- **Tripwire:** a token column read on any cron/system path; a WITHHELD/posted delivery that leaks a
+  token; `accounting_enumerator` gaining a grant on a token table; a non-CONNECTED row with a ciphertext.
+- **Status:** 🟡 (built + envelope/refresh/isolation proven by unit + `verify:tenant-isolation` +
+  `verify:accounting-idempotency`; SEC-C4 KEK is env-resident — move to a cloud KMS before prod GA)
+
 ---
 
 ## Open items the security loop is watching

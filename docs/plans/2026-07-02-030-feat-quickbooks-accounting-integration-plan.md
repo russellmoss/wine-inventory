@@ -1,7 +1,7 @@
 ---
 title: Phase 15 — Two-way QuickBooks Online Accounting Integration
 type: feat
-status: draft
+status: completed
 date: 2026-07-02
 branch: main
 depth: deep
@@ -11,15 +11,24 @@ revision: v2 (post-council)
 
 ## Build Progress
 
-- **CONNECT SLICE (Units 0–6) — BUILT on main (2026-07-02).** U0 app-review checklist finalized; U1
-  AEAD envelope crypto (`src/lib/crypto/envelope.ts`, 15 tests); U2 schema + 4 migrations + RLS +
-  enumerator role (verify:tenant-isolation 69 tables + new cases green); U3 provider adapter + QBO
-  client (`src/lib/accounting/{adapter,qbo/*}`, 16 tests); U4 OAuth connect/callback/disconnect +
-  Settings card + Sentry scrubber; U5 `getValidAccessToken` serialized refresh + cron + enumerator
-  credential script; U6 CoA read + guided mapping UI. Full suite 850 pass / 0 fail; typecheck + prod
-  build clean. **Posting units 7–15 NOT started** (paused for operator check-in per the /work scope).
-  Live sandbox Connect click + `verify:accounting-refresh` are operator steps (need dev server up +
-  the enumerator credential set).
+- **ALL 15 UNITS BUILT on main (2026-07-02).** Connect slice U0–U6 (app-review, AEAD envelope crypto,
+  schema+4 migrations+RLS+enumerator role, provider adapter+QBO client, OAuth connect/callback/
+  disconnect+Settings, serialized token refresh+cron, CoA+guided mapping UI) — confirmed LIVE against
+  the sandbox by the operator. Posting units U7–U14: U7 transactional outbox (emit inside the write tx
+  + variance emitter); U8 exactly-once poster (claim `FOR UPDATE SKIP LOCKED` → post → verify, query-
+  before-post); U9 reconcile read-back (DELETED_IN_GL); U10 supply receipt → AP Bill (immutable
+  ApExportEvent, vendor find-or-create); U11 D6 current-period reversing journal (mirror-image, net
+  zero); U12 sync-status dashboard (`/accounting` nav); U13 crash-recovery/idempotency harness
+  (`verify:accounting-idempotency` — 11 assertions, exactly-once PROVEN offline); U14 e2e capstone
+  (`verify:accounting`) + register/system-map/api-strategy updates. Full suite 861 pass; typecheck +
+  prod build clean; verify:cost 41, verify:tenant-isolation, verify:accounting-reversal 7,
+  verify:accounting-idempotency 11 all green.
+- **Deferred/flagged follow-ons (small):** the receive-form vendor picker + AP-account-config UI
+  (backend + AppSettings config done, proven programmatically); the count-badge near bottling/cost
+  views; the Period-Closed date-prompt (FAILED + dashboard surfacing today). SEC-C4 KEK is env-resident
+  — move to a cloud KMS before prod GA. The variance sold/unsold debit/credit direction is the v1 read
+  — confirm with the operator's accountant. `verify:accounting` (live) + the token-refresh cron need a
+  CONNECTED sandbox + the enumerator credential (`scripts/setup-accounting-enumerator-credential.ts`).
 
 ## Revision Log
 

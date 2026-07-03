@@ -17,8 +17,8 @@ const BATCH = Number(process.env.RECONCILE_BATCH_PER_TENANT) || 100;
 
 export type ReconcileSummary = { orgs: number; connected: number; checked: number; stillPresent: number; deletedInGl: number; needsReauth: number };
 
-export async function runAccountingReconcileSweep(): Promise<ReconcileSummary> {
-  const orgIds = await listAllOrgIds();
+export async function runAccountingReconcileSweep(deps?: { orgIds?: string[] }): Promise<ReconcileSummary> {
+  const orgIds = deps?.orgIds ?? (await listAllOrgIds());
   const summary: ReconcileSummary = { orgs: orgIds.length, connected: 0, checked: 0, stillPresent: 0, deletedInGl: 0, needsReauth: 0 };
 
   try {
