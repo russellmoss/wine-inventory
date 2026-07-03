@@ -55,6 +55,7 @@ export const createWorkOrderFromTemplateAction = action(
       dueAt?: Date | null;
       autoFinalize?: boolean;
       perTaskOverrides?: Record<string, unknown>[];
+      taskBuilds?: { taskType: string; title?: string; values: Record<string, unknown> }[];
     },
   ) => {
     const res = await createWorkOrderFromTemplateCore(actor, input);

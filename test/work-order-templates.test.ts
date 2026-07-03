@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateTemplateSpec, instantiateTasksFromSpec, TASK_VOCABULARY, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { validateTemplateSpec, instantiateTasksFromSpec, instantiateTaskBuilds, TASK_VOCABULARY, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { SYSTEM_TEMPLATES } from "@/lib/work-orders/system-templates";
 
 describe("validateTemplateSpec", () => {
@@ -118,6 +118,24 @@ describe("maintenance task types (Unit 3) + instantiation", () => {
       const [task] = instantiateTasksFromSpec({ tasks: [{ taskType: at, title: at }] }, [{ vesselId: "v1" }]);
       expect(task).toMatchObject({ kind: "MAINTENANCE", activityType: at, destVesselId: "v1" });
     }
+  });
+});
+
+describe("instantiateTaskBuilds (multi-vessel fan-out target)", () => {
+  it("builds one task per build, deriving kind/opType + canonical columns", () => {
+    const tasks = instantiateTaskBuilds([
+      { taskType: "ADDITION", title: "Add tannin", values: { vesselId: "v-a", materialId: "m1", amount: 40 } },
+      { taskType: "ADDITION", title: "Add tannin", values: { vesselId: "v-b", materialId: "m1", amount: 40 } },
+    ]);
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]).toMatchObject({ seq: 1, kind: "OPERATION", opType: "ADDITION", destVesselId: "v-a", materialId: "m1" });
+    expect(tasks[1]).toMatchObject({ seq: 2, destVesselId: "v-b" });
+    expect(tasks[0].plannedPayload).toMatchObject({ amount: 40 });
+  });
+
+  it("falls back to the vocabulary label when no title is given, and rejects unknown types", () => {
+    expect(instantiateTaskBuilds([{ taskType: "SANITIZE", values: { vesselId: "v1" } }])[0].title).toBe("Sanitize");
+    expect(() => instantiateTaskBuilds([{ taskType: "NOPE", values: {} }])).toThrow(/unknown task type/i);
   });
 });
 
