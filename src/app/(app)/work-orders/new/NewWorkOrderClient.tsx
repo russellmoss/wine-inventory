@@ -13,11 +13,17 @@ type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 
+/** Today in the browser's local timezone as yyyy-mm-dd (for the date input default). */
+function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function NewWorkOrderClient({ templates, pickers }: { templates: Template[]; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] } }) {
   const router = useRouter();
   const [templateId, setTemplateId] = React.useState<string>(templates[0]?.id ?? "");
   const [title, setTitle] = React.useState("");
-  const [dueAt, setDueAt] = React.useState("");
+  const [dueAt, setDueAt] = React.useState(todayLocal()); // default to today (editable)
   const [assigneeEmail, setAssigneeEmail] = React.useState("");
   const [autoFinalize, setAutoFinalize] = React.useState(false);
   const [overrides, setOverrides] = React.useState<Record<number, Record<string, unknown>>>({});
@@ -95,8 +101,26 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     }
     return (
       <label key={key} {...common}>
-        {key}
+        {fieldLabel(key)}
         <input type="text" style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)} />
+      </label>
+    );
+  }
+
+  // Rate is ONE concept: a value + its basis (e.g. 30 g/hL). Render them together under a single "Rate"
+  // label so it doesn't read as two separate fields ("Rate" + "Rate basis").
+  function renderRate(taskIdx: number, defaults?: Record<string, unknown>) {
+    const rv = overrides[taskIdx]?.rateValue ?? defaults?.rateValue ?? "";
+    const rb = overrides[taskIdx]?.rateBasis ?? defaults?.rateBasis ?? "G_HL";
+    return (
+      <label key="rate" style={labelStyle}>
+        Rate <span style={{ color: "var(--text-muted)" }}>(optional if you set an amount)</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input type="number" inputMode="decimal" step="any" placeholder="e.g. 30" style={{ ...field, flex: "3 1 0" }} value={String(rv)} onChange={(e) => setField(taskIdx, "rateValue", e.target.value === "" ? "" : Number(e.target.value))} />
+          <select style={{ ...field, flex: "2 1 0" }} value={String(rb)} onChange={(e) => setField(taskIdx, "rateBasis", e.target.value)}>
+            {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
+          </select>
+        </div>
       </label>
     );
   }
@@ -156,7 +180,11 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
                 <Eyebrow>{i + 1}. {t.title} · {def.label}</Eyebrow>
                 {def.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 6 }}>{def.hint}</div> : null}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
-                  {Object.entries(def.fields).map(([key, type]) => renderField(i, key, type, t.defaults?.[key], def.fieldOptions?.[key]))}
+                  {Object.entries(def.fields)
+                    .filter(([key]) => key !== "rateBasis") /* rendered inside the combined Rate control */
+                    .map(([key, type]) => key === "rateValue"
+                      ? renderRate(i, t.defaults)
+                      : renderField(i, key, type, t.defaults?.[key], def.fieldOptions?.[key]))}
                 </div>
               </div>
             );
