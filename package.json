@@ -26,6 +26,7 @@
     "verify:reminders": "tsx --conditions=react-server --env-file=.env scripts/verify-reminders.ts",
     "verify:raw-sql": "tsx scripts/check-raw-sql-tenant-safety.ts",
     "verify:tenant-isolation": "tsx --env-file=.env scripts/verify-tenant-isolation.ts",
+    "verify:accounting-refresh": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting-refresh.ts",
     "eval:assistant": "vitest run test/evals/assistant-tools.eval.test.ts",
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate"
