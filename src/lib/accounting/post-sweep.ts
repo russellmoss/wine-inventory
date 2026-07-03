@@ -1,11 +1,11 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { runAsTenant } from "@/lib/tenant/context";
+import { runAsTenant, requireTenantId } from "@/lib/tenant/context";
 import { runInTenantTx, runInTenantRawTx } from "@/lib/tenant/tx";
 import { listAllOrgIds, disconnectEnumerator } from "@/lib/accounting/enumerator";
 import { getValidAccessToken, NeedsReauthError } from "@/lib/accounting/token";
 import { QboAdapter, docNumberFor } from "@/lib/accounting/qbo/client";
-import { buildJournalFromExport } from "@/lib/accounting/qbo/journal";
+import { buildJournalFromExport, buildSalesDeltaJournal } from "@/lib/accounting/qbo/journal";
 import { buildBillPayload } from "@/lib/accounting/qbo/bill";
 import { emitExportForSnapshot } from "@/lib/cost/export-emit";
 import { ProviderFault, type AccountingAdapter, type ProviderCallContext } from "@/lib/accounting/adapter";
@@ -84,9 +84,10 @@ async function finalize(id: string, data: Record<string, unknown>): Promise<void
 async function postOne(
   adapter: AccountingAdapter,
   ctx: ProviderCallContext,
-  d: { id: string; costExportEventId: string | null; apExportEventId: string | null; postingDate: Date | null },
+  d: { id: string; costExportEventId: string | null; apExportEventId: string | null; salesExportEventId: string | null; postingDate: Date | null },
   summary: PostSweepSummary,
 ): Promise<void> {
+  if (d.salesExportEventId) return postSale(adapter, ctx, d, summary);
   if (d.apExportEventId) return postBill(adapter, ctx, d, summary);
   if (!d.costExportEventId) return;
   const ev = await prisma.costExportEvent.findUnique({
@@ -186,6 +187,99 @@ async function postBill(
   }
 }
 
+/** Post one DTC revenue DELTA (Phase 16). Query-before-post by the versioned DocNumber makes it
+ *  exactly-once; because each delta is the DIFFERENCE with its own DocNumber, an order edit posts only
+ *  the incremental entry (no double-book). Same fault mapping as JournalEntries. */
+async function postSale(
+  adapter: AccountingAdapter,
+  ctx: ProviderCallContext,
+  d: { id: string; salesExportEventId: string | null; postingDate: Date | null },
+  summary: PostSweepSummary,
+): Promise<void> {
+  const ev = await prisma.salesExportEvent.findUnique({
+    where: { id: d.salesExportEventId as string },
+    select: {
+      postingKey: true, currency: true, accountingDate: true,
+      revenueDelta: true, salesTaxDelta: true, shippingDelta: true, discountDelta: true,
+      revenueAccount: true, clearingAccount: true, taxAccount: true, shippingAccount: true, discountAccount: true,
+    },
+  });
+  if (!ev) {
+    await finalize(d.id, { status: "FAILED", lastError: "source sales export event missing" });
+    summary.failed++;
+    return;
+  }
+  const postingDate = d.postingDate ?? ev.accountingDate ?? new Date();
+  const docNumber = docNumberFor(ev.postingKey);
+  try {
+    const existing = await adapter.findByDocNumber(ctx, "JournalEntry", docNumber);
+    if (existing) {
+      await finalize(d.id, { status: "POSTED", externalId: existing.externalId, requestId: docNumber, postingDate, verifiedAt: new Date(), lastError: null });
+      summary.adopted++;
+      return;
+    }
+    const je = buildSalesDeltaJournal(
+      {
+        postingKey: ev.postingKey,
+        currency: ev.currency,
+        revenueDelta: Number(ev.revenueDelta),
+        salesTaxDelta: Number(ev.salesTaxDelta),
+        shippingDelta: Number(ev.shippingDelta),
+        discountDelta: Number(ev.discountDelta),
+        revenueAccount: ev.revenueAccount,
+        clearingAccount: ev.clearingAccount,
+        taxAccount: ev.taxAccount,
+        shippingAccount: ev.shippingAccount,
+        discountAccount: ev.discountAccount,
+      },
+      postingDate,
+    );
+    const result = await adapter.postJournalEntry(ctx, je, docNumber);
+    await finalize(d.id, { status: "POSTED", externalId: result.externalId, requestId: docNumber, postingDate, verifiedAt: new Date(), lastError: null });
+    summary.posted++;
+  } catch (e) {
+    if (e instanceof ProviderFault) {
+      if (e.kind === "period_closed" || e.kind === "validation") {
+        await finalize(d.id, { status: "FAILED", lastError: `${e.kind}: ${e.message}` });
+        summary.failed++;
+        return;
+      }
+      await finalize(d.id, { status: "VERIFYING", lastError: `${e.kind}: ${e.message}` });
+      summary.verifying++;
+      return;
+    }
+    throw e;
+  }
+}
+
+/** Backfill PENDING deliveries for sales deltas that have none (emitted before QBO was connected). The
+ *  ingest-time withhold (unmapped SKU/account) is re-emitted by the poll, not here — this only covers
+ *  the "delta exists, delivery missing" case. Bounded anti-join. */
+async function reEmitPostableSales(): Promise<number> {
+  const rows = await runInTenantRawTx((tx, tenantId) =>
+    tx.$queryRaw<{ id: string }[]>`
+      SELECT s.id FROM "sales_export_event" s
+      LEFT JOIN "accounting_delivery" d ON d."salesExportEventId" = s.id AND d."tenantId" = s."tenantId"
+      WHERE s."tenantId" = ${tenantId} AND d.id IS NULL
+      LIMIT ${REEMIT_BATCH}`,
+  );
+  if (rows.length === 0) return 0;
+  const conn = await prisma.accountingConnection.findFirst({ where: { provider: "QBO", status: "CONNECTED" }, select: { id: true } });
+  if (!conn) return 0;
+  let n = 0;
+  for (const r of rows) {
+    await runInTenantTx((tx) =>
+      tx.accountingDelivery.upsert({
+        where: { tenantId_salesExportEventId: { tenantId: requireTenantId(), salesExportEventId: r.id } },
+        create: { salesExportEventId: r.id, connectionId: conn.id, objectType: "JournalEntry", status: "PENDING" },
+        update: {},
+      }),
+    );
+    n++;
+  }
+  return n;
+}
+
 export async function runAccountingPostSweep(deps?: PostSweepDeps): Promise<PostSweepSummary> {
   const orgIds = deps?.orgIds ?? (await listAllOrgIds());
   const summary: PostSweepSummary = { orgs: orgIds.length, connected: 0, reEmitted: 0, claimed: 0, posted: 0, adopted: 0, verifying: 0, failed: 0, needsReauth: 0 };
@@ -201,6 +295,7 @@ export async function runAccountingPostSweep(deps?: PostSweepDeps): Promise<Post
         summary.connected++;
 
         summary.reEmitted += await reEmitPostable();
+        summary.reEmitted += await reEmitPostableSales();
 
         const claimedIds = await claimBatch();
         summary.claimed += claimedIds.length;
@@ -225,7 +320,7 @@ export async function runAccountingPostSweep(deps?: PostSweepDeps): Promise<Post
 
         const claimed = await prisma.accountingDelivery.findMany({
           where: { id: { in: claimedIds } },
-          select: { id: true, costExportEventId: true, apExportEventId: true, postingDate: true },
+          select: { id: true, costExportEventId: true, apExportEventId: true, salesExportEventId: true, postingDate: true },
         });
         for (const d of claimed) {
           try {
