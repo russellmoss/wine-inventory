@@ -21,4 +21,15 @@ if [ -n "$changed" ]; then
   printf '   → the nightly refresh will update docs/architecture/*, or ask Claude now: "refresh the brain".\n\n'
 fi
 
+# Invariant-guard check — warn (never block) if any invariant lost its guard.
+# (An invariant whose verify: script was renamed/deleted = a live safety hole.)
+if command -v node >/dev/null 2>&1 && [ -f scripts/verify-invariant-guards.mjs ]; then
+  inv_out=$(node scripts/verify-invariant-guards.mjs 2>&1)
+  if [ $? -ne 0 ]; then
+    printf '\033[31m✗  invariant guard gap\033[0m — an invariant has no working guard:\n'
+    echo "$inv_out" | grep -E 'MISSING|✗' | sed 's/^/      /'
+    printf '   → run: npm run verify:invariants\n\n'
+  fi
+fi
+
 exit 0

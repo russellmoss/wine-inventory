@@ -1,0 +1,69 @@
+filters:
+  and:
+    - file.hasTag("invariant")
+    - 'file.ext == "md"'
+
+formulas:
+  sev_icon: 'if(severity == "critical", "🔴", if(severity == "high", "🟠", "🟡"))'
+  guarded_icon: 'if(status == "guarded", "✅", "❌ UNGUARDED")'
+
+properties:
+  id:
+    displayName: "ID"
+  formula.sev_icon:
+    displayName: "Sev"
+  severity:
+    displayName: "Severity"
+  enforcedBy:
+    displayName: "Enforced by"
+  verify:
+    displayName: "Guard"
+  formula.guarded_icon:
+    displayName: "Status"
+  decision:
+    displayName: "Decision"
+
+views:
+  - type: table
+    name: "All invariants"
+    groupBy:
+      property: group
+      direction: ASC
+    order:
+      - id
+      - formula.sev_icon
+      - enforcedBy
+      - verify
+      - formula.guarded_icon
+      - decision
+
+  - type: table
+    name: "⚠ Unguarded"
+    filters:
+      and:
+        - 'status != "guarded"'
+    order:
+      - id
+      - severity
+      - enforcedBy
+      - verify
+      - decision
+
+  - type: table
+    name: "By severity"
+    groupBy:
+      property: severity
+      direction: ASC
+    order:
+      - id
+      - group
+      - verify
+      - formula.guarded_icon
+
+  - type: cards
+    name: "Gallery"
+    order:
+      - id
+      - formula.sev_icon
+      - enforcedBy
+      - verify

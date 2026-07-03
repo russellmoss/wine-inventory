@@ -5,6 +5,14 @@
 > the locked decisions D2/D6/D14/D15. Tests live in `test/ledger-math.test.ts` (pure)
 > and `test/ledger-projection.test.ts` + `test/ledger-concurrency.test.ts` (DB).
 
+> [!info] Machine-readable mirror + auto-enforcement
+> This file is the **narrative**. Each invariant also has a typed note in
+> [[docs/architecture/invariants/README|docs/architecture/invariants/]] (severity, `enforcedBy`,
+> `verify`, `appliesTo`) that powers a live dashboard, a guard checker
+> (`npm run verify:invariants` — fails if any invariant's guard is missing), and a PreToolUse
+> hook that injects the relevant rules before an agent edits governed code. Add an invariant?
+> Add a note there too, then run the checker.
+
 ## The model in one paragraph
 
 A `LotOperation` is an immutable event with a set of signed `LotOperationLine`s. Each

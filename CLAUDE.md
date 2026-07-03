@@ -44,5 +44,16 @@ system-map plus three registers that must stay true. Keep them honest:
   `src/lib/{tenant,ledger,transform,cost,compliance,auth}`), refresh
   `docs/architecture/system-map.md` + the registers, then write the new HEAD SHA to the marker.
 
+- **Invariant register + auto-enforcement** — `docs/architecture/invariants/` holds one typed note
+  per invariant (mirror of `INVARIANTS.md`; fields `severity`/`enforcedBy`/`verify`/`appliesTo`).
+  Three background mechanisms use it: (1) `npm run verify:invariants` fails if any invariant's
+  `verify:` guard doesn't exist (also run by the local `post-commit` hook, non-blocking); (2) the
+  `invariants.base` dashboard; (3) a **PreToolUse hook** (`.claude/hooks/inject-brain-context.mjs`,
+  registered in `.claude/settings.json`) that injects the matching invariants into context before any
+  edit to governed code (`src/lib/{ledger,tenant,cost,compliance,transform,accounting,commerce,auth}`,
+  `prisma/schema.prisma|migrations/`). **When you add an invariant, add a note there too**, then run
+  the checker. Obsidian usage (writing `.md`/`.base`/`.canvas`, driving the vault) is covered by the
+  `obsidian-*` skills in `.claude/skills/`.
+
 CI runs these same loops autonomously on a schedule (see `docs/AUTOMATION.md`). Every loop opens a
 PR or issue for review — loops NEVER auto-merge `main`.

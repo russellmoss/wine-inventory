@@ -1,0 +1,61 @@
+filters:
+  and:
+    - file.inFolder("docs/plans")
+    - 'file.ext == "md"'
+    - 'type != null'
+
+formulas:
+  status_icon: 'if(status == "shipped", "🚢", if(status == "refined", "✅", if(status == "draft", "✏️", "•")))'
+  age_days: '(now() - date(date)).days'
+
+properties:
+  title:
+    displayName: "Plan"
+  formula.status_icon:
+    displayName: ""
+  status:
+    displayName: "Status"
+  type:
+    displayName: "Type"
+  units:
+    displayName: "Units"
+  date:
+    displayName: "Dated"
+  formula.age_days:
+    displayName: "Age (d)"
+
+views:
+  - type: table
+    name: "All plans"
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - formula.status_icon
+      - title
+      - type
+      - units
+      - date
+      - formula.age_days
+
+  - type: table
+    name: "In flight"
+    filters:
+      and:
+        - 'status != "shipped"'
+    order:
+      - title
+      - status
+      - type
+      - units
+      - date
+
+  - type: cards
+    name: "Board"
+    groupBy:
+      property: type
+      direction: ASC
+    order:
+      - title
+      - status
+      - date
