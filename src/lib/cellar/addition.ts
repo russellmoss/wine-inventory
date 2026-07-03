@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
@@ -57,44 +58,46 @@ type NeutralDoseConfig = {
   makeSummary: (ctx: { rateValue: number; basisLabel: string; materialName: string; vessel: string; total: number; unit: string }) => string;
 };
 
-/** Shared engine for a neutral material dose; ADDITION and FINING differ only in copy/kind. */
-async function recordNeutralDose(
+// The ADDITION / FINING dose configs, exported so the Phase-9 WO completion seam can dispatch by op type.
+export const ADDITION_CONFIG: NeutralDoseConfig = {
+  opType: "ADDITION",
+  treatmentKind: "ADDITION",
+  defaultMaterialKind: "OTHER",
+  makeSummary: (c) => `Added ${c.rateValue} ${c.basisLabel} ${c.materialName} to ${c.vessel} → ${c.total} ${c.unit}`,
+};
+export const FINING_CONFIG: NeutralDoseConfig = {
+  opType: "FINING",
+  treatmentKind: "FINING",
+  defaultMaterialKind: "FINING",
+  makeSummary: (c) => `Fined ${c.vessel}: ${c.rateValue} ${c.basisLabel} ${c.materialName} → ${c.total} ${c.unit}`,
+};
+
+/**
+ * Record a neutral material dose WITHIN the caller's tx (Phase 9 A2). The material MUST already be
+ * resolved (materialId + materialName) — the free-text upsert opens its own tx and stays in the
+ * standalone wrapper. Reads vessel + residents through `tx`, writes the zero-line op + treatments +
+ * consumption + audit. WO completion composes this with the attempt row in ONE runLedgerWrite.
+ */
+export async function recordNeutralDoseTx(
+  tx: Prisma.TransactionClient,
   actor: LedgerActor,
   input: AddAdditionInput,
   cfg: NeutralDoseConfig,
+  resolved: { materialId: string; materialName: string },
 ): Promise<CellarOpResult> {
   const { vesselId, rateValue, rateBasis } = input;
-  if (!vesselId) throw new ActionError("A vessel is required.");
-  if (!(rateValue > 0)) throw new ActionError("Enter a dose rate greater than 0.");
-  if (!RATE_BASIS_LABELS[rateBasis]) throw new ActionError("Pick a valid dose basis.");
-
-  const vessel = await prisma.vessel.findUnique({ where: { id: vesselId } });
+  const vessel = await tx.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel) throw new ActionError("Vessel not found.");
   if (!vessel.isActive) throw new ActionError(`${vesselLabel(vessel)} is inactive.`);
 
-  const residents = await prisma.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
+  const residents = await tx.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
   if (residents.length === 0) throw new ActionError(`${vesselLabel(vessel)} is empty — nothing to dose.`);
 
   const targets = input.lotId ? residents.filter((r) => r.lotId === input.lotId) : residents;
   if (input.lotId && targets.length === 0) throw new ActionError("That lot is not in this vessel.");
 
-  // Resolve the material: an explicit catalog id, or upsert the free-text name.
-  let materialId: string | null = null;
-  let materialName: string | null = null;
-  if (input.materialId) {
-    const m = await prisma.cellarMaterial.findUnique({ where: { id: input.materialId } });
-    if (!m) throw new ActionError("That material no longer exists.");
-    materialId = m.id;
-    materialName = m.name;
-  } else if (input.materialName?.trim()) {
-    const m = await upsertMaterialCore(actor, { name: input.materialName, kind: input.materialKind ?? cfg.defaultMaterialKind });
-    materialId = m.id;
-    materialName = m.name;
-  } else {
-    throw new ActionError("Pick or name a material to add.");
-  }
-
-  // Per-lot computed totals from each lot's volume-in-vessel (snapshot, never recomputed).
+  // A3: the amount is computed from each lot's CURRENT (open-time) volume-in-vessel — never frozen at
+  // issue — so an intervening rack can't over/under-dose. Snapshot, never recomputed after write (D14).
   const perLot = targets.map((t) => {
     const vol = round2(Number(t.volumeL));
     const { total, unit } = computeAdditionTotal(rateValue, rateBasis, vol);
@@ -106,66 +109,87 @@ async function recordNeutralDose(
   const summary = cfg.makeSummary({
     rateValue,
     basisLabel,
-    materialName: materialName!,
+    materialName: resolved.materialName,
     vessel: vesselLabel(vessel),
     total: totalSum,
     unit,
   });
 
-  const { operationId, treatmentIds } = await runLedgerWrite(async (tx) => {
-    const opId = await writeLotOperation(tx, {
-      type: cfg.opType,
-      lines: [], // volume-neutral: no projection change
-      actorUserId: actor.actorUserId,
-      enteredBy: actor.actorEmail,
-      captureMethod: input.captureMethod,
-      note: input.note?.trim() || null,
-      lotCodes: new Map(),
-      vesselCodes: new Map(),
-      capacityByVessel: new Map(),
-    });
-    if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
-    const ids: string[] = [];
-    for (const p of perLot) {
-      const row = await tx.lotTreatment.create({
-        data: {
-          operationId: opId,
-          lotId: p.lotId,
-          vesselId,
-          kind: cfg.treatmentKind,
-          materialId,
-          materialName,
-          rateValue,
-          rateBasis,
-          computedTotal: p.computedTotal,
-          computedUnit: p.computedUnit,
-          volumeLAtAddition: p.volumeLAtAddition,
-          note: input.note?.trim() || null,
-        },
-        select: { id: true },
-      });
-      ids.push(row.id);
-    }
-    // Phase 8 (Unit 3): draw down stock + record MATERIAL cost for this dose, in the SAME tx. No
-    // parallel consumption path — the addition/fining op IS the consumption. Untracked/unknown-cost
-    // materials record an UNKNOWN-cost line (D14 contagion), so physical dosing is unaffected.
-    await consumeMaterialCore(tx, {
-      operationId: opId,
-      materialId: materialId!,
-      doseUnit: unit,
-      perLot: perLot.map((p) => ({ lotId: p.lotId, amount: p.computedTotal })),
-    });
-    await writeAudit(tx, {
-      ...actor,
-      action: "STOCK_MOVEMENT",
-      entityType: "LotOperation",
-      entityId: String(opId),
-      summary,
-    });
-    return { operationId: opId, treatmentIds: ids };
+  const opId = await writeLotOperation(tx, {
+    type: cfg.opType,
+    lines: [], // volume-neutral: no projection change
+    actorUserId: actor.actorUserId,
+    enteredBy: actor.actorEmail,
+    captureMethod: input.captureMethod,
+    note: input.note?.trim() || null,
+    lotCodes: new Map(),
+    vesselCodes: new Map(),
+    capacityByVessel: new Map(),
   });
+  if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
+  const ids: string[] = [];
+  for (const p of perLot) {
+    const row = await tx.lotTreatment.create({
+      data: {
+        operationId: opId,
+        lotId: p.lotId,
+        vesselId,
+        kind: cfg.treatmentKind,
+        materialId: resolved.materialId,
+        materialName: resolved.materialName,
+        rateValue,
+        rateBasis,
+        computedTotal: p.computedTotal,
+        computedUnit: p.computedUnit,
+        volumeLAtAddition: p.volumeLAtAddition,
+        note: input.note?.trim() || null,
+      },
+      select: { id: true },
+    });
+    ids.push(row.id);
+  }
+  // Phase 8 (Unit 3): draw down stock + record MATERIAL cost for this dose, in the SAME tx. No parallel
+  // consumption path — the addition/fining op IS the consumption. Untracked/unknown-cost materials
+  // record an UNKNOWN-cost line (D14 contagion), so physical dosing is unaffected.
+  await consumeMaterialCore(tx, {
+    operationId: opId,
+    materialId: resolved.materialId,
+    doseUnit: unit,
+    perLot: perLot.map((p) => ({ lotId: p.lotId, amount: p.computedTotal })),
+  });
+  await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "LotOperation", entityId: String(opId), summary });
 
-  return { operationId, message: `${summary}.`, treatmentIds, computedTotal: totalSum, computedUnit: unit };
+  return { operationId: opId, message: `${summary}.`, treatmentIds: ids, computedTotal: totalSum, computedUnit: unit };
+}
+
+/** Resolve a dose's material to a catalog id (Phase 9: the WO seam resolves it pre-tx too, since the
+ * free-text upsert opens its own tx). Explicit materialId, or upsert the free-text name. */
+export async function resolveDoseMaterial(
+  actor: LedgerActor,
+  input: AddAdditionInput,
+  cfg: NeutralDoseConfig,
+): Promise<{ materialId: string; materialName: string }> {
+  if (input.materialId) {
+    const m = await prisma.cellarMaterial.findUnique({ where: { id: input.materialId } });
+    if (!m) throw new ActionError("That material no longer exists.");
+    return { materialId: m.id, materialName: m.name };
+  }
+  if (input.materialName?.trim()) {
+    const m = await upsertMaterialCore(actor, { name: input.materialName, kind: input.materialKind ?? cfg.defaultMaterialKind });
+    return { materialId: m.id, materialName: m.name };
+  }
+  throw new ActionError("Pick or name a material to add.");
+}
+
+/** Shared engine for a neutral material dose; ADDITION and FINING differ only in copy/kind. Standalone
+ * wrapper — resolves the material (may upsert, own tx) then owns the SERIALIZABLE ledger tx. */
+async function recordNeutralDose(actor: LedgerActor, input: AddAdditionInput, cfg: NeutralDoseConfig): Promise<CellarOpResult> {
+  const { vesselId, rateValue, rateBasis } = input;
+  if (!vesselId) throw new ActionError("A vessel is required.");
+  if (!(rateValue > 0)) throw new ActionError("Enter a dose rate greater than 0.");
+  if (!RATE_BASIS_LABELS[rateBasis]) throw new ActionError("Pick a valid dose basis.");
+  const resolved = await resolveDoseMaterial(actor, input, cfg);
+  return runLedgerWrite((tx) => recordNeutralDoseTx(tx, actor, input, cfg, resolved));
 }
 
 /** Record an addition (volume-neutral material dose) against a vessel's lot(s). */

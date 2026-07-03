@@ -11,6 +11,7 @@ import {
   startTaskCore,
   type CreateWorkOrderInput,
 } from "@/lib/work-orders/lifecycle";
+import { completeTaskCore, type CompleteTaskInput } from "@/lib/work-orders/execute";
 
 // "use server" wrappers for the work-order lifecycle (Phase 9 Unit 4). Each wraps a script-safe core in
 // action() (auth + tenant + actor injection) and revalidates the WO surfaces. Execution + approval
@@ -63,5 +64,13 @@ export const cancelWorkOrderAction = action(async ({ actor }, input: { workOrder
 export const startTaskAction = action(async ({ actor }, input: { taskId: string }) => {
   const res = await startTaskCore(actor, input);
   revalidateWorkOrders();
+  return res;
+});
+
+/** Complete a task (the floor-first "check it off"). OPERATION → real ledger op + PENDING_APPROVAL
+ * attempt; OBSERVATION → direct log + DONE. Idempotent on commandId (offline-drain safe). */
+export const completeTaskAction = action(async ({ actor }, input: CompleteTaskInput) => {
+  const res = await completeTaskCore(actor, input);
+  revalidateWorkOrders(res.taskId);
   return res;
 });
