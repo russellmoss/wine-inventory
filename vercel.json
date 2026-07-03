@@ -17,6 +17,14 @@
     {
       "path": "/api/cron/accounting-reconcile",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/commerce7-poll",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/commerce7-inventory",
+      "schedule": "0 * * * *"
     }
   ]
 }
