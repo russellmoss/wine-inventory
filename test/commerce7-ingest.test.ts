@@ -19,7 +19,7 @@ function snap(over: Partial<EconomicSnapshot> = {}): EconomicSnapshot {
     tax: 7.2,
     shipping: 15,
     discount: 5,
-    lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2 }],
+    lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2, revenue: 90 }],
     ...over,
   };
 }
@@ -40,7 +40,7 @@ describe("diffSnapshots", () => {
     expect(d?.kind).toBe("SALE");
     expect(d?.revenueDelta).toBe(90);
     expect(d?.salesTaxDelta).toBe(7.2);
-    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: 2 }]);
+    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: 2, revenueDelta: 90 }]);
   });
 
   it("a cart / unpaid order emits NOTHING (never depletes phantom stock)", () => {
@@ -54,28 +54,28 @@ describe("diffSnapshots", () => {
 
   it("an edit that raises qty → ADJUSTMENT of the difference", () => {
     const prev = snap();
-    const next = snap({ revenue: 135, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 3 }] });
+    const next = snap({ revenue: 135, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 3, revenue: 135 }] });
     const d = diffSnapshots(prev, next);
     expect(d?.kind).toBe("ADJUSTMENT");
     expect(d?.revenueDelta).toBe(45);
-    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: 1 }]);
+    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: 1, revenueDelta: 45 }]);
   });
 
   it("an edit that lowers qty while still Paid → ADJUSTMENT (negative), not a refund", () => {
     const prev = snap();
-    const next = snap({ revenue: 45, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 1 }] });
+    const next = snap({ revenue: 45, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 1, revenue: 45 }] });
     const d = diffSnapshots(prev, next);
     expect(d?.kind).toBe("ADJUSTMENT");
     expect(d?.revenueDelta).toBe(-45);
-    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: -1 }]);
+    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: -1, revenueDelta: -45 }]);
   });
 
   it("an added line → ADJUSTMENT with a new line delta", () => {
     const prev = snap();
-    const next = snap({ revenue: 130, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2 }, { skuRef: "var_2", inventoryLocationId: "loc_1", qty: 1 }] });
+    const next = snap({ revenue: 130, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2, revenue: 90 }, { skuRef: "var_2", inventoryLocationId: "loc_1", qty: 1, revenue: 40 }] });
     const d = diffSnapshots(prev, next);
     expect(d?.kind).toBe("ADJUSTMENT");
-    expect(d?.lineDeltas).toContainEqual({ skuRef: "var_2", inventoryLocationId: "loc_1", qtyDelta: 1 });
+    expect(d?.lineDeltas).toContainEqual({ skuRef: "var_2", inventoryLocationId: "loc_1", qtyDelta: 1, revenueDelta: 40 });
   });
 
   it("a tax-only edit → ADJUSTMENT with only a tax delta, no line move", () => {
@@ -93,22 +93,22 @@ describe("diffSnapshots", () => {
     const d = diffSnapshots(prev, next);
     expect(d?.kind).toBe("REVERSAL");
     expect(d?.revenueDelta).toBe(-90);
-    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: -2 }]);
+    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: -2, revenueDelta: -90 }]);
   });
 
   it("a partial refund (status carries 'refund', revenue down) → REFUND of the difference", () => {
     const prev = snap();
-    const next = snap({ paymentStatus: "Partially Refunded", revenue: 45, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 1 }] });
+    const next = snap({ paymentStatus: "Partially Refunded", revenue: 45, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 1, revenue: 45 }] });
     const d = diffSnapshots(prev, next);
     expect(d?.kind).toBe("REFUND");
     expect(d?.revenueDelta).toBe(-45);
-    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: -1 }]);
+    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: -1, revenueDelta: -45 }]);
   });
 
   it("merges duplicate (variant, location) lines by summing qty", () => {
-    const next = snap({ lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2 }, { skuRef: "var_1", inventoryLocationId: "loc_1", qty: 1 }] });
+    const next = snap({ lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2, revenue: 60 }, { skuRef: "var_1", inventoryLocationId: "loc_1", qty: 1, revenue: 30 }] });
     const d = diffSnapshots(null, next);
-    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: 3 }]);
+    expect(d?.lineDeltas).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qtyDelta: 3, revenueDelta: 90 }]);
   });
 });
 
@@ -133,7 +133,7 @@ describe("normalizeSnapshot", () => {
     const s = normalizeSnapshot(order);
     expect(s.revenue).toBe(90);
     expect(s.channel).toBe("Club");
-    expect(s.lines).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2 }]);
+    expect(s.lines).toEqual([{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2, revenue: 90 }]);
     expect(accountingDateOf(s).toISOString()).toBe("2026-07-01T09:00:00.000Z");
     expect(s).not.toHaveProperty("customerName");
   });

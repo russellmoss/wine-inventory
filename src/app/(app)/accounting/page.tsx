@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/dal";
 import { Card, Badge, Eyebrow } from "@/components/ui";
 import { getAccountingDashboard } from "@/lib/accounting/dashboard";
 import { getCommerce7Dashboard } from "@/lib/commerce/dashboard";
+import { getDtcMargin } from "@/lib/commerce/margin";
 
 export const metadata = { title: "Accounting" };
 export const dynamic = "force-dynamic";
@@ -26,7 +27,8 @@ const ORDER = ["POSTED", "PENDING", "IN_FLIGHT", "VERIFYING", "FAILED", "DELETED
 
 export default async function AccountingPage() {
   await requireAdmin();
-  const [{ connection, counts, attention, needsAttention }, c7] = await Promise.all([getAccountingDashboard(), getCommerce7Dashboard()]);
+  const [{ connection, counts, attention, needsAttention }, c7, margin] = await Promise.all([getAccountingDashboard(), getCommerce7Dashboard(), getDtcMargin()]);
+  const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const connected = connection?.status === "CONNECTED";
   const c7Connected = c7.connection?.status === "CONNECTED";
   const C7_ORDER = ["POSTED", "PENDING", "IN_FLIGHT", "VERIFYING", "FAILED", "DELETED_IN_GL"];
@@ -161,6 +163,46 @@ export default async function AccountingPage() {
           <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 12 }}>
             Inventory drift last checked {new Date(c7.drift.checkedAt).toLocaleString()} — {c7.drift.drifting} difference(s) to review.
           </p>
+        )}
+      </Card>
+
+      {/* DTC per-channel margin (Unit 10b) — read-only revenue × Phase-8 COGS. */}
+      <Card style={{ maxWidth: 720, marginTop: 16 }}>
+        <h3 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: "0 0 4px" }}>DTC margin by wine &amp; channel</h3>
+        <p style={{ color: "var(--gold-deep, var(--text-secondary))", fontSize: 12.5, margin: "0 0 12px", fontWeight: 500 }}>
+          {margin.caveat}
+        </p>
+        {margin.rows.length === 0 ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No DTC sales yet — margin appears once paid orders come in.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 12.5 }}>
+                  <th style={{ padding: "6px 8px" }}>Wine</th>
+                  <th style={{ padding: "6px 8px" }}>Channel</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Units</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Revenue</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>COGS</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Margin</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Margin %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {margin.rows.map((r) => (
+                  <tr key={`${r.skuId}:${r.channel}`} style={{ borderTop: "1px solid var(--border)" }}>
+                    <td style={{ padding: "8px" }}>{r.skuLabel}</td>
+                    <td style={{ padding: "8px" }}>{r.channel}</td>
+                    <td style={{ padding: "8px", textAlign: "right" }}>{r.unitsSold}</td>
+                    <td style={{ padding: "8px", textAlign: "right" }}>{money(r.netRevenue)}</td>
+                    <td style={{ padding: "8px", textAlign: "right" }}>{money(r.cogs)}</td>
+                    <td style={{ padding: "8px", textAlign: "right", color: r.margin >= 0 ? "var(--positive)" : "var(--danger)" }}>{money(r.margin)}</td>
+                    <td style={{ padding: "8px", textAlign: "right" }}>{r.marginPct == null ? "—" : `${r.marginPct}%`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>

@@ -99,7 +99,7 @@ export async function syncOrder(commerce7OrderId: string, deps?: IngestDeps): Pr
         salesTaxDelta: delta.salesTaxDelta,
         shippingDelta: delta.shippingDelta,
         discountDelta: delta.discountDelta,
-        lineDeltas: delta.lineDeltas.map((l) => ({ skuRef: l.skuRef, qtyDelta: l.qtyDelta })) as unknown as Prisma.InputJsonValue,
+        lineDeltas: delta.lineDeltas.map((l) => ({ skuRef: l.skuRef, qtyDelta: l.qtyDelta, revenueDelta: l.revenueDelta })) as unknown as Prisma.InputJsonValue,
         revenueAccount: acc.accounts.revenueAccount,
         clearingAccount: acc.accounts.clearingAccount,
         taxAccount: acc.accounts.taxAccount,

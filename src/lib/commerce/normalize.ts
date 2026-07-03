@@ -4,7 +4,7 @@ import type { ProviderOrder } from "@/lib/commerce/adapter";
 // order projection and diff against. Only opaque ids + amounts + SKU refs; never a customer name/email
 // (D19). Money is already in major units (the client did cents→dollars). Pure + unit-tested.
 
-export type SnapshotLine = { skuRef: string; inventoryLocationId: string | null; qty: number };
+export type SnapshotLine = { skuRef: string; inventoryLocationId: string | null; qty: number; revenue: number };
 
 export type EconomicSnapshot = {
   paymentStatus: string;
@@ -33,7 +33,7 @@ export function normalizeSnapshot(order: ProviderOrder): EconomicSnapshot {
     tax: order.tax,
     shipping: order.shipping,
     discount: order.discount,
-    lines: order.lines.map((l) => ({ skuRef: l.skuRef, inventoryLocationId: l.inventoryLocationId ?? null, qty: l.quantity })),
+    lines: order.lines.map((l) => ({ skuRef: l.skuRef, inventoryLocationId: l.inventoryLocationId ?? null, qty: l.quantity, revenue: l.lineSubtotal })),
   };
 }
 

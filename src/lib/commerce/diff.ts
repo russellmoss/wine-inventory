@@ -16,7 +16,7 @@ export function isSettled(paymentStatus: string): boolean {
   return SETTLED.has(paymentStatus.trim().toLowerCase());
 }
 
-export type LineDelta = { skuRef: string; inventoryLocationId: string | null; qtyDelta: number };
+export type LineDelta = { skuRef: string; inventoryLocationId: string | null; qtyDelta: number; revenueDelta: number };
 
 export type SalesDelta = {
   kind: SalesDeltaKind;
@@ -41,8 +41,8 @@ function effective(s: EconomicSnapshot | null): Effective {
   for (const l of s.lines) {
     const k = lineKey(l);
     const prev = lines.get(k);
-    // Merge duplicate (variant, location) lines by summing qty.
-    lines.set(k, { skuRef: l.skuRef, inventoryLocationId: l.inventoryLocationId, qtyDelta: (prev?.qtyDelta ?? 0) + l.qty });
+    // Merge duplicate (variant, location) lines by summing qty + revenue.
+    lines.set(k, { skuRef: l.skuRef, inventoryLocationId: l.inventoryLocationId, qtyDelta: (prev?.qtyDelta ?? 0) + l.qty, revenueDelta: (prev?.revenueDelta ?? 0) + l.revenue });
   }
   return { revenue: s.revenue, tax: s.tax, shipping: s.shipping, discount: s.discount, lines };
 }
@@ -70,9 +70,10 @@ export function diffSnapshots(prev: EconomicSnapshot | null, next: EconomicSnaps
     const a = p.lines.get(k);
     const b = n.lines.get(k);
     const qtyDelta = (b?.qtyDelta ?? 0) - (a?.qtyDelta ?? 0);
-    if (qtyDelta !== 0) {
+    const lineRevenueDelta = round2((b?.revenueDelta ?? 0) - (a?.revenueDelta ?? 0));
+    if (qtyDelta !== 0 || lineRevenueDelta !== 0) {
       const ref = b ?? a!;
-      lineDeltas.push({ skuRef: ref.skuRef, inventoryLocationId: ref.inventoryLocationId, qtyDelta });
+      lineDeltas.push({ skuRef: ref.skuRef, inventoryLocationId: ref.inventoryLocationId, qtyDelta, revenueDelta: lineRevenueDelta });
     }
   }
 
