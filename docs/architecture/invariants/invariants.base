@@ -2,6 +2,7 @@ filters:
   and:
     - file.hasTag("invariant")
     - 'file.ext == "md"'
+    - 'file.folder != "docs/_templates"'
 
 formulas:
   sev_icon: 'if(severity == "critical", "🔴", if(severity == "high", "🟠", "🟡"))'

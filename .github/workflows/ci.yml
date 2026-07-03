@@ -23,6 +23,10 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run verify:raw-sql
+      # Deterministic tripwire gate (pure Node, no DB): every tripwire in
+      # docs/architecture/tripwires/ must have a live guard, and no `static`
+      # tripwire's forbidden pattern (e.g. runAsSystem in src/app) may appear.
+      - run: npm run verify:tripwires
       - run: npx vitest run
 
   # Tenant-isolation proof against a real Postgres, run AS the NOBYPASSRLS app_rls role — the live RLS
