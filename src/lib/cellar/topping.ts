@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
@@ -26,12 +27,15 @@ export type ToppingInput = {
 
 export type ToppingResult = CellarBaseResult & { addedL: number; lineageEdges: number };
 
-async function loadVesselLots(vesselId: string) {
-  return prisma.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
+type DbClient = Prisma.TransactionClient | typeof prisma;
+
+async function loadVesselLots(vesselId: string, client: DbClient = prisma) {
+  return client.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
 }
 
-/** Top the target vessel from a source keg lot, moving volume + appending lineage. */
-export async function topVesselCore(actor: LedgerActor, input: ToppingInput): Promise<ToppingResult> {
+/** Top the target vessel from a source keg lot WITHIN the caller's tx (Phase 9 A2) — reads + writes
+ * through `tx` so WO completion composes it with the attempt row in one runLedgerWrite. */
+export async function topVesselTx(tx: Prisma.TransactionClient, actor: LedgerActor, input: ToppingInput): Promise<ToppingResult> {
   const { toVesselId, fromVesselId } = input;
   if (!toVesselId || !fromVesselId) throw new ActionError("A source keg and a target vessel are both required.");
   if (toVesselId === fromVesselId) throw new ActionError("Source and target must be different vessels.");
@@ -39,15 +43,15 @@ export async function topVesselCore(actor: LedgerActor, input: ToppingInput): Pr
   if (!(volumeL > 0)) throw new ActionError("Enter a topping volume greater than 0.");
 
   const [from, to] = await Promise.all([
-    prisma.vessel.findUnique({ where: { id: fromVesselId } }),
-    prisma.vessel.findUnique({ where: { id: toVesselId } }),
+    tx.vessel.findUnique({ where: { id: fromVesselId } }),
+    tx.vessel.findUnique({ where: { id: toVesselId } }),
   ]);
   if (!from) throw new ActionError("Source keg not found.");
   if (!to) throw new ActionError("Target vessel not found.");
   if (!from.isActive) throw new ActionError(`${vesselLabel(from)} is inactive.`);
   if (!to.isActive) throw new ActionError(`${vesselLabel(to)} is inactive.`);
 
-  const [srcLots, dstLots] = await Promise.all([loadVesselLots(fromVesselId), loadVesselLots(toVesselId)]);
+  const [srcLots, dstLots] = await Promise.all([loadVesselLots(fromVesselId, tx), loadVesselLots(toVesselId, tx)]);
   const srcTotal = round2(srcLots.reduce((a, r) => a + Number(r.volumeL), 0));
   if (srcTotal <= 0) throw new ActionError(`${vesselLabel(from)} is empty — nothing to top from.`);
   if (volumeL > srcTotal + 1e-9) throw new ActionError(`${vesselLabel(from)} only holds ${srcTotal} L; can't top ${volumeL} L.`);
@@ -87,45 +91,41 @@ export async function topVesselCore(actor: LedgerActor, input: ToppingInput): Pr
   ]);
   const summary = `Topped ${addedL} L from ${vesselLabel(from)} into ${vesselLabel(to)}`;
 
-  const { operationId, lineageEdges } = await runLedgerWrite(async (tx) => {
-    const opId = await writeLotOperation(tx, {
-      type: "TOPPING",
-      lines: plan.lines,
-      actorUserId: actor.actorUserId,
-      enteredBy: actor.actorEmail,
-      captureMethod: input.captureMethod,
-      note: input.note?.trim() || null,
-      lotCodes,
-      vesselCodes,
-      capacityByVessel,
-    });
-    if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
-
-    // Append lineage: each keg lot → each pre-existing target lot (micro-merge, no new lot).
-    let edges = 0;
-    for (const [srcLotId, contributed] of contributedBySrc) {
-      const fraction = dstTotalAfter > 0 ? Math.min(0.99999, round5(contributed / dstTotalAfter)) : null;
-      for (const childLotId of childLots) {
-        if (srcLotId === childLotId) continue;
-        await tx.lotLineage.upsert({
-          where: { parentLotId_childLotId: { parentLotId: srcLotId, childLotId } },
-          create: { parentLotId: srcLotId, childLotId, kind: "TOPPING", fraction },
-          update: { fraction, kind: "TOPPING" },
-        });
-        edges++;
-      }
-    }
-    await writeAudit(tx, {
-      ...actor,
-      action: "STOCK_MOVEMENT",
-      entityType: "LotOperation",
-      entityId: String(opId),
-      summary,
-    });
-    return { operationId: opId, lineageEdges: edges };
+  const opId = await writeLotOperation(tx, {
+    type: "TOPPING",
+    lines: plan.lines,
+    actorUserId: actor.actorUserId,
+    enteredBy: actor.actorEmail,
+    captureMethod: input.captureMethod,
+    note: input.note?.trim() || null,
+    lotCodes,
+    vesselCodes,
+    capacityByVessel,
   });
+  if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
 
-  return { operationId, message: `${summary}.`, treatmentIds: [], addedL, lineageEdges };
+  // Append lineage: each keg lot → each pre-existing target lot (micro-merge, no new lot).
+  let lineageEdges = 0;
+  for (const [srcLotId, contributed] of contributedBySrc) {
+    const fraction = dstTotalAfter > 0 ? Math.min(0.99999, round5(contributed / dstTotalAfter)) : null;
+    for (const childLotId of childLots) {
+      if (srcLotId === childLotId) continue;
+      await tx.lotLineage.upsert({
+        where: { parentLotId_childLotId: { parentLotId: srcLotId, childLotId } },
+        create: { parentLotId: srcLotId, childLotId, kind: "TOPPING", fraction },
+        update: { fraction, kind: "TOPPING" },
+      });
+      lineageEdges++;
+    }
+  }
+  await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "LotOperation", entityId: String(opId), summary });
+
+  return { operationId: opId, message: `${summary}.`, treatmentIds: [], addedL, lineageEdges };
+}
+
+/** Top the target vessel from a source keg lot. Standalone wrapper — owns the SERIALIZABLE tx. */
+export async function topVesselCore(actor: LedgerActor, input: ToppingInput): Promise<ToppingResult> {
+  return runLedgerWrite((tx) => topVesselTx(tx, actor, input));
 }
 
 function round5(n: number): number {

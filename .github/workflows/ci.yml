@@ -71,6 +71,13 @@ jobs:
       - name: Start PgBouncer (transaction pooling) in front of Postgres
         run: |
           sudo apt-get update && sudo apt-get install -y pgbouncer
+          # The apt package auto-starts a default pgbouncer.service on :6432 with its own
+          # /etc/pgbouncer userlist (which has no app_rls). That squats our port — our `pgbouncer -d`
+          # below then "failed to listen on :6432", and psql hit the default instance → auth failure.
+          # Stop + disable it so our transaction-pooling instance owns 6432.
+          sudo systemctl stop pgbouncer 2>/dev/null || true
+          sudo systemctl disable pgbouncer 2>/dev/null || true
+          sudo pkill -x pgbouncer 2>/dev/null || true
           mkdir -p /tmp/pgb
           printf '"app_rls" "app_rls_ci_pw"\n' > /tmp/pgb/userlist.txt
           {

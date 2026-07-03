@@ -21,6 +21,10 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    # Advisory loop (see header): it POSTS review comments, it never gates the merge. The
+    # claude-code-action can error on its own tooling (bun/tsconfig discovery); continue-on-error keeps
+    # a tooling hiccup from red-flagging every PR while still running the review when it works.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 

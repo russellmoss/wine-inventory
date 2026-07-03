@@ -33,6 +33,7 @@ export type TransferWineResult = {
   volumeL: number;
   lossL: number;
   addedL: number;
+  operationId: number; // the RACK ledger op this transfer wrote (Phase 9: WO completion links it)
 };
 
 export type RevertTransferResult = { transferId: string; message: string };
@@ -53,14 +54,19 @@ type SnapshotEntry = {
   volumeL: number;
 };
 
-async function loadVesselLots(vesselId: string) {
-  return prisma.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
+// The read helpers accept an optional client so they can run inside a caller's tx (Phase 9 A2: the WO
+// completion runs the whole rack in ONE runLedgerWrite). Default to the module prisma for the standalone
+// callers (rackVesselCore, revertTransferCore).
+type DbClient = Prisma.TransactionClient | typeof prisma;
+
+async function loadVesselLots(vesselId: string, client: DbClient = prisma) {
+  return client.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
 }
 
-async function resolveNames(varietyIds: string[], vineyardIds: string[]) {
+async function resolveNames(varietyIds: string[], vineyardIds: string[], client: DbClient = prisma) {
   const [vars, vys] = await Promise.all([
-    prisma.variety.findMany({ where: { id: { in: [...new Set(varietyIds)] } }, select: { id: true, name: true } }),
-    prisma.vineyard.findMany({ where: { id: { in: [...new Set(vineyardIds)] } }, select: { id: true, name: true } }),
+    client.variety.findMany({ where: { id: { in: [...new Set(varietyIds)] } }, select: { id: true, name: true } }),
+    client.vineyard.findMany({ where: { id: { in: [...new Set(vineyardIds)] } }, select: { id: true, name: true } }),
   ]);
   return {
     varietyName: new Map(vars.map((v) => [v.id, v.name])),
@@ -68,22 +74,31 @@ async function resolveNames(varietyIds: string[], vineyardIds: string[]) {
   };
 }
 
-/** Rack wine from one vessel to another via a RACK ledger op + a VesselTransfer read-model. */
-export async function rackWineCore(actor: LedgerActor, input: TransferWineInput): Promise<TransferWineResult> {
+/**
+ * Rack wine from one vessel to another WITHIN the caller's tx (Phase 9 A2). Does every read + write
+ * through `tx` so a WO completion can compose it with the attempt row + reservation release + audit in
+ * ONE runLedgerWrite (no split-brain / dangling reservation). All reads move inside the tx — this also
+ * closes the TOCTOU window the old read-then-write had. `rackWineCore` is the standalone wrapper.
+ */
+export async function rackWineTx(
+  tx: Prisma.TransactionClient,
+  actor: LedgerActor,
+  input: TransferWineInput,
+): Promise<TransferWineResult> {
   const { fromVesselId, toVesselId } = input;
   if (!fromVesselId || !toVesselId) throw new ActionError("A source and a destination vessel are both required.");
   if (fromVesselId === toVesselId) throw new ActionError("Source and destination must be different vessels.");
 
   const [from, to] = await Promise.all([
-    prisma.vessel.findUnique({ where: { id: fromVesselId } }),
-    prisma.vessel.findUnique({ where: { id: toVesselId } }),
+    tx.vessel.findUnique({ where: { id: fromVesselId } }),
+    tx.vessel.findUnique({ where: { id: toVesselId } }),
   ]);
   if (!from) throw new ActionError("Source vessel not found.");
   if (!to) throw new ActionError("Destination vessel not found.");
   if (!from.isActive) throw new ActionError(`${vesselLabel(from)} is inactive.`);
   if (!to.isActive) throw new ActionError(`${vesselLabel(to)} is inactive.`);
 
-  const srcLots = await loadVesselLots(fromVesselId);
+  const srcLots = await loadVesselLots(fromVesselId, tx);
   const sourceTotal = round2(srcLots.reduce((a, r) => a + Number(r.volumeL), 0));
   if (sourceTotal <= 0) throw new ActionError(`${vesselLabel(from)} is empty.`);
 
@@ -97,7 +112,7 @@ export async function rackWineCore(actor: LedgerActor, input: TransferWineInput)
 
   const addedL = round2(drawL - lossL);
   const toCapacity = Number(to.capacityL);
-  const toCurrent = round2((await loadVesselLots(toVesselId)).reduce((a, r) => a + Number(r.volumeL), 0));
+  const toCurrent = round2((await loadVesselLots(toVesselId, tx)).reduce((a, r) => a + Number(r.volumeL), 0));
   if (toCurrent + addedL > toCapacity + EPS) {
     throw new ActionError(
       `That would exceed ${vesselLabel(to)}'s ${toCapacity} L capacity (it holds ${toCurrent} L, adding ${addedL} L).`,
@@ -112,6 +127,7 @@ export async function rackWineCore(actor: LedgerActor, input: TransferWineInput)
   const names = await resolveNames(
     srcLots.map((r) => r.lot.originVarietyId ?? "").filter(Boolean),
     srcLots.map((r) => r.lot.originVineyardId ?? "").filter(Boolean),
+    tx,
   );
   const snapshot: SnapshotEntry[] = plan.lines
     .filter((l) => l.vesselId === toVesselId && l.deltaL > 0)
@@ -142,47 +158,51 @@ export async function rackWineCore(actor: LedgerActor, input: TransferWineInput)
   const lossNote = plan.lossL > 0 ? `, ${plan.lossL} L lost to lees` : "";
   const summary = `Racked ${addedL} L from ${fromLabel} to ${toLabel}${lossNote}`;
 
-  const transferId = await runLedgerWrite(async (tx) => {
-    const opId = await writeLotOperation(tx, {
-      type: "RACK",
-      lines: plan.lines,
-      actorUserId: actor.actorUserId,
-      enteredBy: actor.actorEmail,
-      note: input.note?.trim() || null,
-      lotCodes,
-      vesselCodes,
-      capacityByVessel,
-    });
-    const transfer = await tx.vesselTransfer.create({
-      data: {
-        fromVesselId: from.id,
-        toVesselId: to.id,
-        fromVesselCode: from.code,
-        toVesselCode: to.code,
-        volumeL: plan.drawL,
-        lossL: plan.lossL,
-        components: snapshot as unknown as Prisma.InputJsonValue,
-        note: input.note?.trim() || null,
-        actorUserId: actor.actorUserId,
-        actorEmail: actor.actorEmail,
-        lotOperationId: opId,
-      },
-      select: { id: true },
-    });
-    await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "VesselTransfer", entityId: transfer.id, summary });
-    return transfer.id;
+  const opId = await writeLotOperation(tx, {
+    type: "RACK",
+    lines: plan.lines,
+    actorUserId: actor.actorUserId,
+    enteredBy: actor.actorEmail,
+    note: input.note?.trim() || null,
+    lotCodes,
+    vesselCodes,
+    capacityByVessel,
   });
+  const transfer = await tx.vesselTransfer.create({
+    data: {
+      fromVesselId: from.id,
+      toVesselId: to.id,
+      fromVesselCode: from.code,
+      toVesselCode: to.code,
+      volumeL: plan.drawL,
+      lossL: plan.lossL,
+      components: snapshot as unknown as Prisma.InputJsonValue,
+      note: input.note?.trim() || null,
+      actorUserId: actor.actorUserId,
+      actorEmail: actor.actorEmail,
+      lotOperationId: opId,
+    },
+    select: { id: true },
+  });
+  await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "VesselTransfer", entityId: transfer.id, summary });
 
   const lossClause = lossL > 0 ? ` (${lossL} L lost to lees)` : "";
   return {
-    transferId,
+    transferId: transfer.id,
     message: `Racked ${addedL} L from ${fromLabel} to ${toLabel}${lossClause}.`,
     fromCode: from.code,
     toCode: to.code,
     volumeL: plan.drawL,
     lossL: plan.lossL,
     addedL,
+    operationId: opId,
   };
+}
+
+/** Rack wine from one vessel to another via a RACK ledger op + a VesselTransfer read-model. Standalone
+ * wrapper — owns the SERIALIZABLE tx. WO completion uses rackWineTx directly inside its own tx (A2). */
+export async function rackWineCore(actor: LedgerActor, input: TransferWineInput): Promise<TransferWineResult> {
+  return runLedgerWrite((tx) => rackWineTx(tx, actor, input));
 }
 
 // ─────────────────────── Unit 8b: rack becomes blend-aware ───────────────────────
