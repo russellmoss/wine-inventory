@@ -133,3 +133,12 @@ The cost engine is a projection over the ledger; it never invents or loses money
   `consumeMaterialCore`. Holds reserve supply at the MATERIAL level (not a specific `SupplyLot`, so the costing
   engine is unaffected); `validUntil` is separate from `dueAt` and a past-due WO does NOT auto-expire its holds.
   Guard: `npm run verify:work-orders`.
+
+- **Vessel-activity (maintenance) supply use is OVERHEAD, never wine COGS (WORKORDER-3, Phase 9.1).**
+  A maintenance task (cleaning, sanitizing, steaming, gas, temperature setpoint) that consumes a supply
+  decrements the `SupplyLot` and records an append-only `VesselActivitySupplyUse` per depleted lot — but writes
+  NO `SupplyConsumption`, NO `CostLine`, and NO `LotOperation`, and never enters the Phase-8 wine cost roll-up.
+  A sanitizer/cleaner is overhead, not a cost of any specific wine; routing it through the wine cost DAG would
+  corrupt cost conservation (COST-1/COST-2). Overhead depletion draws stock to zero and reports a shortfall — it
+  never drives `qtyRemaining` negative — and a reversal (`reverseVesselActivityTx`) restores each lot by identity.
+  Guard: `npm run verify:work-orders-enhancements`.
