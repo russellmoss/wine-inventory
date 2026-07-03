@@ -28,7 +28,7 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
     name: "Addition (any material)",
     description: "Dose any cellar material (yeast, nutrient, acid, tannin, bentonite, chitosan, MLF, KHT…) at a target rate.",
     category: "Cellar",
-    spec: { tasks: [{ taskType: "ADDITION", title: "Add material", defaults: { rateBasis: "G_HL" }, instructions: "Pick the material; dose to the target rate against current volume." }] },
+    spec: { tasks: [{ taskType: "ADDITION", title: "Add material", defaults: { doseUnit: "g/hL" }, instructions: "Pick the material; dose to the target rate against current volume." }] },
   },
   {
     code: "SYS-ADD-SO2",
@@ -36,14 +36,14 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
     description: "Add sulfur dioxide to a lot at a target rate.",
     category: "Cellar",
     recurringCadence: "MONTHLY",
-    spec: { tasks: [{ taskType: "ADDITION", title: "Add SO₂", defaults: { rateBasis: "MG_L" }, instructions: "Dose to the target free-SO₂ rate; stir gently." }] },
+    spec: { tasks: [{ taskType: "ADDITION", title: "Add SO₂", defaults: { doseUnit: "mg/L" }, instructions: "Dose to the target free-SO₂ rate; stir gently." }] },
   },
   {
     code: "SYS-FINING",
     name: "Fining",
     description: "Add a fining agent (gelatin, bentonite, chitosan, isinglass…) at a target rate.",
     category: "Cellar",
-    spec: { tasks: [{ taskType: "FINING", title: "Fine the wine", defaults: { rateBasis: "G_HL" }, instructions: "Pick the fining agent; dose to the trial rate." }] },
+    spec: { tasks: [{ taskType: "FINING", title: "Fine the wine", defaults: { doseUnit: "g/hL" }, instructions: "Pick the fining agent; dose to the trial rate." }] },
   },
   {
     code: "SYS-FILTRATION",

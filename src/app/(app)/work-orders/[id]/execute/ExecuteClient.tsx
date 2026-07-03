@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow, Textarea } from "@/components/ui";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabulary";
-import { RATE_BASES, RATE_BASIS_LABELS } from "@/lib/cellar/additions-math";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
@@ -34,22 +33,6 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
   function set(key: string, v: unknown) { setFields((p) => ({ ...p, [key]: v })); }
 
-  // Rate is ONE concept: value + basis (e.g. 30 g/hL) under a single "Rate" label, not two fields.
-  function renderRate() {
-    const rv = fields.rateValue ?? "";
-    const rb = fields.rateBasis ?? "G_HL";
-    return (
-      <label key="rate" style={lbl}>Rate <span style={{ color: "var(--text-muted)" }}>(optional if amount set)</span>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input type="number" inputMode="decimal" step="any" placeholder="e.g. 30" style={{ ...big, flex: "3 1 0" }} value={String(rv)} onChange={(e) => set("rateValue", e.target.value === "" ? "" : Number(e.target.value))} />
-          <select style={{ ...big, flex: "2 1 0" }} value={String(rb)} onChange={(e) => set("rateBasis", e.target.value)}>
-            {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
-          </select>
-        </div>
-      </label>
-    );
-  }
-
   function renderField(key: string, type: string) {
     const cur = fields[key] ?? "";
     if (type === "vessel" || type === "lot" || type === "material") {
@@ -59,15 +42,6 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
           <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
             <option value="">— pick —</option>
             {opts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-        </label>
-      );
-    }
-    if (type === "rateBasis") {
-      return (
-        <label key={key} style={lbl}>{fieldLabel(key)}
-          <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
-            {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
           </select>
         </label>
       );
@@ -85,12 +59,16 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
       );
     }
     if (type === "number") {
-      // The "amount" field is denominated in the SELECTED material's stock unit — surface it so a bare
-      // number isn't ambiguous. Falls back to "pick a material" until one is chosen.
       let label: string = fieldLabel(key);
       if (key === "amount") {
-        const unit = pickers.materials.find((m) => m.id === fields.materialId)?.unit;
-        label = unit ? `Amount (${unit})` : "Amount — pick a material first";
+        // Additions pair Amount with the Units dropdown → plain "Amount"; maintenance amounts are in the
+        // material's stock unit → show it.
+        if (def?.fields.doseUnit) {
+          label = "Amount";
+        } else {
+          const unit = pickers.materials.find((m) => m.id === fields.materialId)?.unit;
+          label = unit ? `Amount (${unit})` : "Amount — pick a material first";
+        }
       }
       return <label key={key} style={lbl}>{label}<input type="number" inputMode="decimal" step="any" style={big} value={String(cur)} onChange={(e) => set(key, e.target.value === "" ? "" : Number(e.target.value))} /></label>;
     }
@@ -126,9 +104,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
       {def?.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 12 }}>{def.hint}</div> : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        {def ? Object.entries(def.fields)
-          .filter(([k]) => k !== "note" && k !== "rateBasis") /* rateBasis rides inside the combined Rate control */
-          .map(([k, t]) => (k === "rateValue" ? renderRate() : renderField(k, t))) : null}
+        {def ? Object.entries(def.fields).filter(([k]) => k !== "note").map(([k, t]) => renderField(k, t)) : null}
         {task.kind === "OBSERVATION" ? (
           <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
         ) : null}
