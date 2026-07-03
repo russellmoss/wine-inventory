@@ -70,10 +70,15 @@ export async function completeObservationTaskCore(
       select: { id: true },
     });
 
-    await tx.workOrderTask.update({
-      where: { id: task.id },
+    // Compare-and-swap (same guard as the operation lane): a concurrent observation completion with a
+    // different commandId would otherwise write a second panel. count===0 → throw → tx rolls back.
+    const claimed = await tx.workOrderTask.updateMany({
+      where: { id: task.id, status: task.status, currentAttemptId: task.currentAttemptId },
       data: { status: "DONE", currentAttemptId: attempt.id, completionNote: input.completionNote?.trim() || null },
     });
+    if (claimed.count === 0) {
+      throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
+    }
     await bumpWorkOrderRollupTx(tx, task.workOrderId);
     await writeAudit(tx, {
       ...actor,

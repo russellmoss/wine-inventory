@@ -86,6 +86,12 @@ export async function recordNeutralDoseTx(
   resolved: { materialId: string; materialName: string },
 ): Promise<CellarOpResult> {
   const { vesselId, rateValue, rateBasis } = input;
+  // Self-guard (A2): the WO seam calls this Tx form DIRECTLY, so the validations can't live only in the
+  // standalone wrapper — a zero/absent rate would otherwise write a bogus zero-dose immutable op, and a
+  // missing basis would throw a raw Error mid-runLedgerWrite instead of a friendly ActionError.
+  if (!vesselId) throw new ActionError("A vessel is required.");
+  if (!(rateValue > 0)) throw new ActionError("Enter a dose rate greater than 0.");
+  if (!RATE_BASIS_LABELS[rateBasis]) throw new ActionError("Pick a valid dose basis.");
   const vessel = await tx.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel) throw new ActionError("Vessel not found.");
   if (!vessel.isActive) throw new ActionError(`${vesselLabel(vessel)} is inactive.`);

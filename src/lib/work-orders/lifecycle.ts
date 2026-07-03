@@ -65,6 +65,24 @@ export async function createWorkOrderCore(actor: LedgerActor, input: CreateWorkO
     if (t.kind === "OBSERVATION" && !t.observationType) throw new ActionError(`Task "${t.title}" is an observation but has no observation type.`);
   }
 
+  // The per-tenant WO number is max+1 computed in-tx (not SERIALIZABLE), so two concurrent creates can
+  // collide on @@unique([tenantId, number]) → P2002. withWriteRetry only retries P2034, so retry P2002
+  // here (recomputes max+1 on the next attempt). Bounded; the unique is the real guard against dupes.
+  return withWorkOrderNumberRetry(() => createWorkOrderTx(actor, input));
+}
+
+async function withWorkOrderNumberRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const isNumberCollision = e && typeof e === "object" && (e as { code?: string }).code === "P2002" && attempt < 5;
+      if (!isNumberCollision) throw e;
+    }
+  }
+}
+
+async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput): Promise<WorkOrderResult> {
   const created = await runInTenantTx(async (tx) => {
     const tenantId = requireTenantId();
     const number = await nextWorkOrderNumber(tx, tenantId);
@@ -124,7 +142,9 @@ export async function issueWorkOrderCore(
 ): Promise<WorkOrderResult & { reservationWarnings: string[] }> {
   const wo = await prisma.workOrder.findUnique({ where: { id: input.workOrderId }, select: { id: true, number: true, status: true } });
   if (!wo) throw new ActionError("That work order no longer exists.");
-  assertWorkOrderTransition(wo.status, "ISSUED");
+  // Issue is DRAFT-only. assertWorkOrderTransition treats from===to as legal, so it would let an
+  // already-ISSUED WO re-issue and double its reservations — guard on DRAFT explicitly.
+  if (wo.status !== "DRAFT") throw new ActionError("Only a draft work order can be issued.", "CONFLICT");
 
   const result = await runInTenantTx(async (tx) => {
     const now = new Date();

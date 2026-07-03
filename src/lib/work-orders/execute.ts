@@ -171,8 +171,14 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
         select: { id: true },
       });
 
-      await tx.workOrderTask.update({
-        where: { id: task.id },
+      // Compare-and-swap on the task (mirrors approve/reject): claim it guarded on the status +
+      // currentAttemptId we READ at the top. If another device completed this task concurrently (with a
+      // DIFFERENT commandId — so the commandId idempotency check above didn't catch it), count===0 and we
+      // throw → the whole runLedgerWrite tx rolls back, discarding the duplicate op + attempt. Without
+      // this, two concurrent completions each write a real immutable op (the vessel drained twice; for a
+      // volume-neutral ADDITION, SERIALIZABLE wouldn't even conflict) — silent ledger corruption.
+      const claimed = await tx.workOrderTask.updateMany({
+        where: { id: task.id, status: task.status, currentAttemptId: task.currentAttemptId },
         data: {
           status: finalize ? "APPROVED" : "PENDING_APPROVAL",
           currentAttemptId: attempt.id,
@@ -180,6 +186,9 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
           deviationReason: input.deviationReason?.trim() || null,
         },
       });
+      if (claimed.count === 0) {
+        throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
+      }
 
       // The advisory hold is discharged — the real op committed the actual (reconciliation is
       // planned-vs-actual on the op/attempt). WORKORDER-2: the reservation was never the guarantee.
@@ -200,9 +209,10 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     // A concurrent duplicate (same commandId raced past the pre-check) surfaces as a unique violation —
     // treat it as the idempotent success it is (mirrors the ferment panel-core pattern).
     if (e && typeof e === "object" && (e as { code?: string }).code === "P2002") {
-      const dup = await prisma.workOrderTaskAttempt.findUnique({ where: { commandId: input.commandId } });
+      const dup = await prisma.workOrderTaskAttempt.findUnique({ where: { commandId: input.commandId }, include: { task: { select: { status: true } } } });
       if (dup) {
-        return { taskId: task.id, attemptId: dup.id, operationId: dup.operationId, status: "PENDING_APPROVAL", duplicate: true, message: "Already recorded." };
+        // Report the committed task status (an auto-finalized attempt is APPROVED, not PENDING_APPROVAL).
+        return { taskId: task.id, attemptId: dup.id, operationId: dup.operationId, status: dup.task.status, duplicate: true, message: "Already recorded." };
       }
     }
     throw e;

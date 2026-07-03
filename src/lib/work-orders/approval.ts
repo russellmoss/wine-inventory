@@ -27,6 +27,16 @@ export async function approveTaskCore(user: ApproverUser, actor: LedgerActor, in
   if (task.status !== "PENDING_APPROVAL") throw new ActionError("That task isn't awaiting approval.", "CONFLICT");
   if (!task.currentAttemptId) throw new ActionError("That task has no attempt to approve.", "CONFLICT");
 
+  // Guard against finalizing an op that was already reversed elsewhere (e.g. the timeline Undo). Without
+  // this, the WO would show APPROVED while the underlying stock movement was negated — silent divergence.
+  const currentAttempt = await prisma.workOrderTaskAttempt.findUnique({ where: { id: task.currentAttemptId }, select: { operationId: true } });
+  if (currentAttempt?.operationId) {
+    const op = await prisma.lotOperation.findUnique({ where: { id: currentAttempt.operationId }, select: { correctedBy: { select: { id: true } } } });
+    if (op?.correctedBy) {
+      throw new ActionError("That task's ledger operation was already reversed. Reject it (to resubmit) instead of approving.", "CONFLICT");
+    }
+  }
+
   return runInTenantTx(async (tx) => {
     const now = new Date();
     // A4 compare-and-swap: only the reviewer who sees PENDING_APPROVAL + this exact attempt wins.
@@ -77,19 +87,27 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
   let correctionId: number | null = null;
   try {
     const rev = await reverseOperationCore(actor, { operationId, note: input.reason });
-    correctionId = rev.correctionId;
+    // reverseOperationCore returns correctionId=null for the rack/bottle families (their compensation is
+    // a VesselTransfer/run, not a CORRECTION op). Recover the compensating op id from the corrected-by
+    // link so the rejected attempt is always traceable to its reversal (audit-trace completeness).
+    correctionId = rev.correctionId ?? (await prisma.lotOperation.findUnique({ where: { id: operationId }, select: { correctedBy: { select: { id: true } } } }))?.correctedBy?.id ?? null;
   } catch (e) {
-    // Compensate: restore PENDING_APPROVAL so the task is reviewable again. Surface LEDGER-11 clearly.
-    await runInTenantTx(async (tx) => {
-      await tx.workOrderTask.updateMany({ where: { id: task.id, status: "REJECTED" }, data: { status: "PENDING_APPROVAL" } });
-    });
-    if (e instanceof ActionError && e.code === "CONFLICT") {
-      throw new ActionError(
-        `Can't reject this task yet: ${e.message} Undo the later operation first, then reject.`,
-        "CONFLICT",
-      );
+    // If the op was ALREADY reversed (e.g. via the timeline Undo before this reject), the reversal goal
+    // is already met — finalize the rejection and link the existing correction, rather than re-arm an
+    // approvable task pointing at a negated op (which a reviewer could then wrongly Approve). Otherwise
+    // (LEDGER-11 block, or a real error) compensate — restore PENDING_APPROVAL — and surface it.
+    const already = await prisma.lotOperation.findUnique({ where: { id: operationId }, select: { correctedBy: { select: { id: true } } } });
+    if (already?.correctedBy) {
+      correctionId = already.correctedBy.id; // fall through to step 3, recording REJECTED
+    } else {
+      await runInTenantTx(async (tx) => {
+        await tx.workOrderTask.updateMany({ where: { id: task.id, status: "REJECTED" }, data: { status: "PENDING_APPROVAL" } });
+      });
+      if (e instanceof ActionError && e.code === "CONFLICT") {
+        throw new ActionError(`Can't reject this task yet: ${e.message} Undo the later operation first, then reject.`, "CONFLICT");
+      }
+      throw e;
     }
-    throw e;
   }
 
   // 3. Record the rejection on the attempt + roll up the shell.
