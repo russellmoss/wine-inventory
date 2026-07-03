@@ -13,6 +13,7 @@ import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 import { releaseReservationsForTaskTx } from "@/lib/work-orders/reservations";
 import { completeObservationTaskCore } from "@/lib/work-orders/observations";
+import { completeMaintenanceTaskCore } from "@/lib/work-orders/maintenance";
 
 // The heart of Phase 9 (Unit 6): completing an OPERATION task writes the REAL ledger op immediately —
 // through the existing family cores' tx-forms (rackWineTx / recordNeutralDoseTx / topVesselTx) — and the
@@ -142,6 +143,9 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
 
   if (task.kind === "OBSERVATION") {
     return completeObservationTaskCore(actor, { task, ...input });
+  }
+  if (task.kind === "MAINTENANCE") {
+    return completeMaintenanceTaskCore(actor, { task, ...input });
   }
 
   // OPERATION lane.

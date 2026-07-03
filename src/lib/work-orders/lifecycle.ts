@@ -19,6 +19,7 @@ export type CreateTaskInput = {
   title: string;
   opType?: OperationType | null;
   observationType?: string | null;
+  activityType?: string | null; // A3: set for MAINTENANCE tasks (TEMP_SETPOINT/CLEAN/SANITIZE/STEAM/GAS)
   instructions?: string | null;
   sourceVesselId?: string | null;
   destVesselId?: string | null;
@@ -63,6 +64,7 @@ export async function createWorkOrderCore(actor: LedgerActor, input: CreateWorkO
   for (const t of input.tasks) {
     if (t.kind === "OPERATION" && !t.opType) throw new ActionError(`Task "${t.title}" is an operation but has no operation type.`);
     if (t.kind === "OBSERVATION" && !t.observationType) throw new ActionError(`Task "${t.title}" is an observation but has no observation type.`);
+    if (t.kind === "MAINTENANCE" && !t.activityType) throw new ActionError(`Task "${t.title}" is a maintenance task but has no activity type.`);
   }
 
   // The per-tenant WO number is max+1 computed in-tx (not SERIALIZABLE), so two concurrent creates can
@@ -108,6 +110,7 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
             title: t.title.trim(),
             opType: t.opType ?? null,
             observationType: t.observationType ?? null,
+            activityType: t.activityType ?? null,
             instructions: t.instructions?.trim() || null,
             sourceVesselId: t.sourceVesselId ?? null,
             destVesselId: t.destVesselId ?? null,

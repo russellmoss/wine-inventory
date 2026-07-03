@@ -21,7 +21,10 @@ const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", dis
 function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; onDone: () => void }) {
   const commandId = React.useMemo(() => crypto.randomUUID(), []);
   const planned = (task.plannedPayload ?? {}) as Record<string, unknown>;
-  const vocabKey = task.kind === "OPERATION" ? TASK_TYPE_BY_OP[task.opType ?? ""] : task.observationType === "PANEL" ? "PANEL" : "BRIX";
+  const vocabKey =
+    task.kind === "OPERATION" ? TASK_TYPE_BY_OP[task.opType ?? ""]
+    : task.kind === "MAINTENANCE" ? (task.activityType ?? "")
+    : task.observationType === "PANEL" ? "PANEL" : "BRIX";
   const def = TASK_VOCABULARY[vocabKey ?? ""];
   const [fields, setFields] = React.useState<Record<string, unknown>>({ ...planned });
   const [readingValue, setReadingValue] = React.useState<string>("");

@@ -2568,6 +2568,20 @@ enum WorkOrderTaskStatus {
 enum WorkOrderTaskKind {
   OPERATION
   OBSERVATION
+  MAINTENANCE // Phase 9.1: vessel-activity lane (temp setpoints + cleaning/sanitizing/steaming/gas) — lotless, no ledger op, no approval gate
+}
+
+// Phase 9.1 (Unit 3): the vessel-scoped, lotless activity subtypes. A setpoint/maintenance task is NOT
+// a wine operation (no lot, no ledger op) — it records intent + optional overhead supply use on a vessel
+// that may be empty, partial, or full. Stored on VesselActivityEvent.kind AND mirrored onto
+// WorkOrderTask.activityType (A3, a validated String) so archive/print/detail can render + filter it.
+enum VesselActivityKind {
+  TEMP_SETPOINT // cold-settle / warm-to-start / cool-to-arrest — a target temperature hold
+  CLEAN // tank/barrel cleaning (proxycarb, caustic) — consumes a CLEANING supply as overhead
+  SANITIZE // sanitization (PAA, ozone) — consumes a SANITIZER supply as overhead
+  STEAM // barrel/tank steaming — typically no supply
+  GAS // inert gas / sparging (Ar / N₂ / CO₂ / dry ice) headspace blanket (dec 2)
+  OTHER
 }
 
 // A1 (council + eng P0): a task can't be a one-shot wrapper around an immutable op. Each execution
@@ -2664,6 +2678,7 @@ model WorkOrderTask {
   title           String
   opType          OperationType? // set for OPERATION tasks (RACK/ADDITION/TOPPING/…); null for OBSERVATION
   observationType String? // set for OBSERVATION tasks (e.g. "BRIX", "TASTING"); null for OPERATION
+  activityType    String? // A3: set for MAINTENANCE tasks (TEMP_SETPOINT/CLEAN/SANITIZE/STEAM/GAS); validated String mirror of VesselActivityKind
   instructions    String? // task-level notes (Unit 9)
   // Canonical query columns (A6) extracted from plannedPayload; composite-FK'd in raw SQL.
   sourceVesselId  String?
@@ -2725,6 +2740,69 @@ model WorkOrderTaskAttempt {
   @@index([tenantId])
   @@index([tenantId, taskId])
   @@map("work_order_task_attempt")
+}
+
+// Phase 9.1 (Unit 3) — the VESSEL-ACTIVITY lane. A lotless, vessel-scoped event for temperature setpoints
+// and maintenance (cleaning / sanitizing / steaming / gas). NOT a wine operation: it writes NO LotOperation,
+// no CostLine, no SupplyConsumption, and never enters the Phase-8 wine cost roll-up (WORKORDER-3). It works
+// on an EMPTY, PARTIAL, or FULL vessel (A6). Any overhead supply it consumes is recorded as an append-only
+// VesselActivitySupplyUse child (A1) — the physical depletion record, outside the wine cost DAG. Built to the
+// Phase-12 checklist; migrations 20260703020000_vessel_activity_enums + _schema + _rls. External refs
+// (vesselId / materialId) + the cluster edge (taskId) are COMPOSITE (tenantId, refId)→(tenantId, id) in raw SQL.
+model VesselActivityEvent {
+  tenantId       String             @default("")
+  id             String             @id @default(cuid())
+  vesselId       String // the vessel the activity is on (composite-FK'd to vessel)
+  kind           VesselActivityKind
+  taskId         String? // the WO task that recorded it (composite-FK'd; null if recorded outside a WO)
+  attemptId      String? // the attempt that recorded it (plain scalar, mirrors WorkOrderTask.currentAttemptId)
+  targetValue    Decimal?           @db.Decimal(18, 6) // TEMP_SETPOINT target (e.g. 4.0)
+  targetUnit     String? // °C | °F for TEMP_SETPOINT; the gas (Ar/N₂/CO₂/dry ice) for GAS
+  achievedValue  Decimal?           @db.Decimal(18, 6) // dec 4b: the actual reading captured at completion (e.g. current tank temp)
+  achievedUnit   String?
+  materialId     String? // the cleaning/sanitizer/gas supply consumed, if any (composite-FK'd)
+  note           String?
+  observedAt     DateTime           @default(now())
+  enteredById    String?
+  enteredByEmail String
+  commandId      String             @unique // idempotency on the immutable event (mirrors the attempt)
+  voidedAt       DateTime? // A2: set when the activity is reversed/undone (its supply uses are restored)
+  createdAt      DateTime           @default(now())
+
+  supplyUses VesselActivitySupplyUse[]
+
+  @@unique([tenantId, id]) // composite-tenant-FK target for vessel_activity_supply_use (K11)
+  @@index([tenantId])
+  @@index([tenantId, vesselId])
+  @@index([tenantId, taskId])
+  @@map("vessel_activity_event")
+}
+
+// Phase 9.1 (Unit 3, A1) — the append-only overhead depletion ledger: one row per SupplyLot drawn down by a
+// vessel activity (FIFO across N lots). This is the PHYSICAL depletion record for cleaning/sanitizer/gas use;
+// it is deliberately OUTSIDE SupplyConsumption / CostLine / the wine cost roll-up (WORKORDER-3) because a
+// sanitizer isn't a cost of any specific wine — it's overhead. A reversal (A2) increments the SupplyLot back
+// and appends a negating row (reversalOfSupplyUseId → the original). Never mutated.
+model VesselActivitySupplyUse {
+  tenantId              String   @default("")
+  id                    String   @id @default(cuid())
+  vesselActivityEventId String // parent event (composite-FK'd to vessel_activity_event)
+  supplyLotId           String // the depleted lot (composite-FK'd to supply_lot)
+  materialId            String // the material (composite-FK'd to cellar_material)
+  qty                   Decimal  @db.Decimal(18, 6) // qty drawn from this lot (stock unit); negative on a reversal row
+  unit                  String
+  unitCost              Decimal? @db.Decimal(18, 8) // per stock unit; NULL = unknown cost (D14)
+  extendedCost          Decimal? @db.Decimal(18, 8) // qty × unitCost; NULL when the rate is unknown
+  reversalOfSupplyUseId String? // set on a negating row that restores another use (A2 identity reversal)
+  createdAt             DateTime @default(now())
+
+  event VesselActivityEvent @relation(fields: [vesselActivityEventId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, vesselActivityEventId])
+  @@index([tenantId, supplyLotId])
+  @@map("vessel_activity_supply_use")
 }
 
 // A reusable template. System defaults ship seeded (isSystem); a tenant clones-on-customize

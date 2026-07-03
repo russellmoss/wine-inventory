@@ -1,6 +1,7 @@
 import type { OperationType, WorkOrderTaskKind } from "@prisma/client";
 import type { CreateTaskInput } from "@/lib/work-orders/lifecycle";
 import { FILTER_MEDIA, RACK_TYPES } from "@/lib/cellar/filtration-vocab";
+import { TEMP_UNITS, GAS_TYPES } from "@/lib/cellar/vessel-activity-vocab";
 
 // Typed field vocabulary for work-order templates (Phase 9 Unit 10). Templates are NEVER free-form: a
 // template's spec is a list of tasks, each of a known task TYPE with a fixed set of allowed fields.
@@ -68,6 +69,41 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     observationType: "PANEL",
     label: "Chem panel",
     fields: { vesselId: "vessel", lotId: "lot", note: "text" },
+  },
+  // ── MAINTENANCE lane (Phase 9.1): lotless, vessel-scoped, no ledger op, no approval gate. ──
+  TEMP_SETPOINT: {
+    kind: "MAINTENANCE",
+    activityType: "TEMP_SETPOINT",
+    label: "Temperature setpoint",
+    // cold-settle / warm-to-start / cool-to-arrest; achievedValue captures the actual temp at completion (dec 4b).
+    fields: { vesselId: "vessel", targetValue: "number", targetUnit: "select", achievedValue: "number", note: "text" },
+    fieldOptions: { targetUnit: TEMP_UNITS },
+  },
+  CLEAN: {
+    kind: "MAINTENANCE",
+    activityType: "CLEAN",
+    label: "Tank / barrel cleaning",
+    fields: { vesselId: "vessel", materialId: "material", amount: "number", note: "text" },
+  },
+  SANITIZE: {
+    kind: "MAINTENANCE",
+    activityType: "SANITIZE",
+    label: "Sanitize",
+    fields: { vesselId: "vessel", materialId: "material", amount: "number", note: "text" },
+  },
+  STEAM: {
+    kind: "MAINTENANCE",
+    activityType: "STEAM",
+    label: "Barrel / tank steaming",
+    fields: { vesselId: "vessel", note: "text" },
+  },
+  GAS: {
+    kind: "MAINTENANCE",
+    activityType: "GAS",
+    label: "Gas / blanket",
+    // gasType → event.targetUnit; an optional supply (e.g. dry ice) can be depleted as overhead.
+    fields: { vesselId: "vessel", gasType: "select", materialId: "material", amount: "number", note: "text" },
+    fieldOptions: { gasType: GAS_TYPES },
   },
 };
 
@@ -140,6 +176,7 @@ export function instantiateTasksFromSpec(spec: TemplateSpec, perTaskOverrides?: 
       title: t.title,
       opType: def.opType ?? null,
       observationType: def.observationType ?? null,
+      activityType: def.activityType ?? null,
       instructions: t.instructions ?? null,
       sourceVesselId: canon.sourceVesselId,
       destVesselId: canon.destVesselId,

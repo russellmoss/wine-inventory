@@ -62,9 +62,14 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     // Phase 9 Work Order tables (checklist item 9).
     await owner.workOrder.upsert({ where: { id: "isov_wo_a" }, update: {}, create: { id: "isov_wo_a", tenantId: A, number: 91001, title: "ISOV WO A", updatedAt: now } });
     await owner.workOrder.upsert({ where: { id: "isov_wo_b" }, update: {}, create: { id: "isov_wo_b", tenantId: B, number: 91002, title: "ISOV WO B", updatedAt: now } });
+    // Phase 9.1 vessel-activity tables (checklist item 9).
+    await owner.vessel.upsert({ where: { id: "isov_vessel_b" }, update: {}, create: { id: "isov_vessel_b", tenantId: B, code: "ISOV-TANK-B", type: "TANK", capacityL: "1000", updatedAt: now } });
+    await owner.vesselActivityEvent.upsert({ where: { id: "isov_vae_b" }, update: {}, create: { id: "isov_vae_b", tenantId: B, vesselId: "isov_vessel_b", kind: "SANITIZE", enteredByEmail: "iso@test", commandId: "isov-vae-cmd-b" } });
   });
 
   afterAll(async () => {
+    await owner.vesselActivityEvent.deleteMany({ where: { id: { in: ["isov_vae_b", "isov_vae_x"] } } });
+    await owner.vessel.deleteMany({ where: { id: "isov_vessel_b" } });
     await owner.workOrder.deleteMany({ where: { id: { in: ["isov_wo_a", "isov_wo_b", "isov_wo_x"] } } });
     await owner.complianceReport.deleteMany({ where: { id: { in: ["isov_rep_a", "isov_rep_b"] } } });
     await owner.brixLog.deleteMany({ where: { id: { in: ["isov_brix_a", "isov_brix_b"] } } });
@@ -158,6 +163,13 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     expect(await asTenant(A, (db) => db.workOrder.findFirst({ where: { id: "isov_wo_b" } }))).toBeNull();
     await expect(
       asTenant(A, (db) => db.workOrder.create({ data: { id: "isov_wo_x", tenantId: B, number: 91003, title: "ISOV WO X", updatedAt: new Date() } })),
+    ).rejects.toThrow();
+  });
+
+  it("vessel_activity_event is tenant-isolated (Phase 9.1): A cannot see B's; foreign INSERT rejected", async () => {
+    expect(await asTenant(A, (db) => db.vesselActivityEvent.findFirst({ where: { id: "isov_vae_b" } }))).toBeNull();
+    await expect(
+      asTenant(A, (db) => db.vesselActivityEvent.create({ data: { id: "isov_vae_x", tenantId: B, vesselId: "isov_vessel_b", kind: "CLEAN", enteredByEmail: "iso@test", commandId: "isov-vae-cmd-x" } })),
     ).rejects.toThrow();
   });
 

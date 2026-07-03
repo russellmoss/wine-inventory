@@ -12,11 +12,12 @@ import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/li
 export type WorkOrderTaskView = {
   id: string;
   seq: number;
-  kind: "OPERATION" | "OBSERVATION";
+  kind: "OPERATION" | "OBSERVATION" | "MAINTENANCE";
   status: string;
   title: string;
   opType: string | null;
   observationType: string | null;
+  activityType: string | null;
   instructions: string | null;
   sourceVesselId: string | null;
   destVesselId: string | null;
@@ -49,7 +50,7 @@ export type WorkOrderDetail = {
 
 function taskView(t: {
   id: string; seq: number; kind: string; status: string; title: string; opType: string | null;
-  observationType: string | null; instructions: string | null; sourceVesselId: string | null;
+  observationType: string | null; activityType: string | null; instructions: string | null; sourceVesselId: string | null;
   destVesselId: string | null; lotId: string | null; materialId: string | null; assigneeEmail: string | null;
   dueAt: Date | null; plannedPayload: unknown; currentAttemptId: string | null; completionNote: string | null;
   deviationReason: string | null; startedByEmail: string | null;
@@ -57,11 +58,12 @@ function taskView(t: {
   return {
     id: t.id,
     seq: t.seq,
-    kind: t.kind as "OPERATION" | "OBSERVATION",
+    kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE",
     status: t.status,
     title: t.title,
     opType: t.opType,
     observationType: t.observationType,
+    activityType: t.activityType,
     instructions: t.instructions,
     sourceVesselId: t.sourceVesselId,
     destVesselId: t.destVesselId,
