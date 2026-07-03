@@ -33,11 +33,12 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
 
   function renderField(taskIdx: number, key: string, type: string, def: unknown) {
     const current = overrides[taskIdx]?.[key] ?? def ?? "";
-    const common = { key, style: labelStyle } as const;
+    // key is passed DIRECTLY (never spread — React warns on a spread key prop).
+    const common = { style: labelStyle } as const;
     if (type === "vessel" || type === "lot" || type === "material") {
       const opts = type === "vessel" ? pickers.vessels : type === "lot" ? pickers.lots : pickers.materials;
       return (
-        <label {...common}>
+        <label key={key} {...common}>
           {key}
           <select style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)}>
             <option value="">— pick —</option>
@@ -48,7 +49,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     }
     if (type === "rateBasis") {
       return (
-        <label {...common}>
+        <label key={key} {...common}>
           {key}
           <select style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)}>
             {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
@@ -58,14 +59,14 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     }
     if (type === "number") {
       return (
-        <label {...common}>
+        <label key={key} {...common}>
           {key}
           <input type="number" inputMode="decimal" step="any" style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value === "" ? "" : Number(e.target.value))} />
         </label>
       );
     }
     return (
-      <label {...common}>
+      <label key={key} {...common}>
         {key}
         <input type="text" style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)} />
       </label>
