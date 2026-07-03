@@ -107,8 +107,10 @@ async function dispatchOperationTx(
         vesselId: (asStr(payload.vesselId) ?? task.destVesselId ?? task.sourceVesselId) as string,
         lotId: asStr(payload.lotId) ?? task.lotId ?? undefined,
         materialId: resolvedMaterial.materialId,
-        amount: asNum(payload.amount), // dose by total (wins if set); else fall back to rate
-        rateValue: asNum(payload.rateValue) ?? 0,
+        // Unified Amount + Units. A per-volume unit → rate; an absolute unit → exact total (barrels full).
+        amount: asNum(payload.amount),
+        doseUnit: asStr(payload.doseUnit),
+        rateValue: asNum(payload.rateValue) ?? 0, // legacy fallback (standalone /cellar path)
         rateBasis: payload.rateBasis as RateBasis,
         note: note ?? undefined,
       };

@@ -8,6 +8,8 @@ import type { CaptureMethod, OperationType } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import {
   computeAdditionTotal,
+  computeDoseTotal,
+  resolveDoseUnit,
   RATE_BASIS_LABELS,
   type RateBasis,
 } from "@/lib/cellar/additions-math";
@@ -29,9 +31,11 @@ export type AddAdditionInput = {
   materialId?: string; // catalog link (skips the upsert)
   materialName?: string; // free-text; upserted into the catalog on submit
   materialKind?: string; // hint for the upsert (SO2 | NUTRIENT | …)
-  // Dose EITHER by a total amount (in the material's stock unit) OR by a rate (per volume). Amount wins if
-  // both are given. Rate is computed against each lot's current volume at open time (A3).
+  // Unified dose (Phase 9.1 UX): `amount` (the number) + `doseUnit` (g/hL | g/L | mg/L | mL/L | g | kg |
+  // mL | L). A rate unit → total = amount × volume; an absolute unit → total = amount. `doseUnit` is
+  // preferred; `rateValue`+`rateBasis` remain the legacy path for the standalone /cellar addition form.
   amount?: number | null;
+  doseUnit?: string | null;
   rateValue?: number;
   rateBasis?: RateBasis;
   note?: string;
@@ -101,62 +105,69 @@ export async function recordNeutralDoseTx(
   resolved: { materialId: string; materialName: string },
 ): Promise<CellarOpResult> {
   const { vesselId } = input;
+  if (!vesselId) throw new ActionError("A vessel is required.");
+  // Unified dose input: `amount` (the number) + `doseUnit` (g/hL | g/L | mg/L | mL/L | g | kg | mL | L).
+  // Legacy fallbacks: rateValue+rateBasis (standalone /cellar form), or a bare amount in the stock unit.
+  const amount = input.amount != null && Number.isFinite(input.amount) && input.amount > 0 ? round2(input.amount) : null;
+  const doseUnit = typeof input.doseUnit === "string" && input.doseUnit.trim() ? input.doseUnit.trim() : null;
+  const resolvedUnit = doseUnit ? resolveDoseUnit(doseUnit) : null;
+  if (doseUnit && !resolvedUnit) throw new ActionError(`"${doseUnit}" is not a valid unit.`);
   const rateValue = input.rateValue;
   const rateBasis = input.rateBasis;
-  // Self-guard (A2): the WO seam calls this Tx form DIRECTLY, so the validations can't live only in the
-  // standalone wrapper. Dose by an explicit AMOUNT (total, in the material's stock unit) OR by a RATE
-  // (per volume). Amount wins if both are given. A zero/absent both would write a bogus zero-dose op.
-  if (!vesselId) throw new ActionError("A vessel is required.");
-  const amount = input.amount != null && Number.isFinite(input.amount) && input.amount > 0 ? round2(input.amount) : null;
-  const hasRate = typeof rateValue === "number" && rateValue > 0;
-  if (!amount && !hasRate) throw new ActionError("Enter an amount or a dose rate greater than 0.");
-  if (!amount && !RATE_BASIS_LABELS[rateBasis as RateBasis]) throw new ActionError("Pick a valid dose basis.");
+  const hasLegacyRate = typeof rateValue === "number" && rateValue > 0;
+  if (!amount && !hasLegacyRate) throw new ActionError("Enter an amount and a unit.");
+
   const vessel = await tx.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel) throw new ActionError("Vessel not found.");
   if (!vessel.isActive) throw new ActionError(`${vesselLabel(vessel)} is inactive.`);
 
   const residents = await tx.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
   if (residents.length === 0) throw new ActionError(`${vesselLabel(vessel)} is empty — nothing to dose.`);
-
   const targets = input.lotId ? residents.filter((r) => r.lotId === input.lotId) : residents;
   if (input.lotId && targets.length === 0) throw new ActionError("That lot is not in this vessel.");
 
-  type DoseRow = { lotId: string; volumeLAtAddition: number; computedTotal: number; computedUnit: "g" | "mL"; rateValue: number | null; rateBasis: RateBasis | null };
-  let perLot: DoseRow[];
+  const residentVol = round2(targets.reduce((a, t) => a + Number(t.volumeL), 0));
+  // Barrels are assumed FULL: a rate doses against capacity, not the (often-untracked) resident volume.
+  const rateVolume = vessel.type === "BARREL" && vessel.capacityL ? round2(Number(vessel.capacityL)) : residentVol;
+
+  // Resolve the total dose (g/mL) + whether a rate is stored on the treatment.
+  let totalDose: number;
   let unit: "g" | "mL";
-  let summary: string;
-  if (amount) {
-    // Dose by TOTAL amount (in the material's stock unit). Convert to the dose dimension (g/mL) and split
-    // across resident lots in proportion to their current volume (single lot gets it all). No rate stored.
-    const material = await tx.cellarMaterial.findUnique({ where: { id: resolved.materialId }, select: { stockUnit: true } });
-    const { doseUnit, perStock } = stockUnitToDose(material?.stockUnit);
-    const amountInDose = round2(amount * perStock);
-    const totalVol = round2(targets.reduce((a, t) => a + Number(t.volumeL), 0));
-    perLot = targets.map((t) => {
-      const vol = round2(Number(t.volumeL));
-      const share = totalVol > 0 ? round2(amountInDose * (vol / totalVol)) : amountInDose;
-      return { lotId: t.lotId, volumeLAtAddition: vol, computedTotal: share, computedUnit: doseUnit, rateValue: null, rateBasis: null };
-    });
-    unit = doseUnit;
-    summary = `${cfg.opType === "FINING" ? "Fined" : "Added to"} ${vesselLabel(vessel)}: ${amount} ${material?.stockUnit ?? doseUnit} ${resolved.materialName}`;
+  let rowRate: { value: number; basis: RateBasis } | null = null;
+  let entered: string; // for the summary
+  if (resolvedUnit && amount) {
+    if (resolvedUnit.kind === "rate") {
+      const e = computeAdditionTotal(amount, resolvedUnit.basis, rateVolume);
+      totalDose = e.total; unit = e.unit; rowRate = { value: amount, basis: resolvedUnit.basis };
+      entered = `${amount} ${doseUnit}`;
+    } else {
+      totalDose = round2(amount * resolvedUnit.perUnit); unit = resolvedUnit.doseUnit;
+      entered = `${amount} ${doseUnit}`;
+    }
+  } else if (hasLegacyRate) {
+    if (!RATE_BASIS_LABELS[rateBasis as RateBasis]) throw new ActionError("Pick a valid dose basis.");
+    const e = computeAdditionTotal(rateValue as number, rateBasis as RateBasis, rateVolume);
+    totalDose = e.total; unit = e.unit; rowRate = { value: rateValue as number, basis: rateBasis as RateBasis };
+    entered = `${rateValue} ${RATE_BASIS_LABELS[rateBasis as RateBasis]}`;
   } else {
-    // Dose by RATE — computed from each lot's CURRENT (open-time) volume (A3), never frozen at issue.
-    perLot = targets.map((t) => {
-      const vol = round2(Number(t.volumeL));
-      const { total, unit: u } = computeAdditionTotal(rateValue as number, rateBasis as RateBasis, vol);
-      return { lotId: t.lotId, volumeLAtAddition: vol, computedTotal: total, computedUnit: u, rateValue: rateValue as number, rateBasis: rateBasis as RateBasis };
-    });
-    unit = perLot[0].computedUnit;
-    summary = cfg.makeSummary({
-      rateValue: rateValue as number,
-      basisLabel: RATE_BASIS_LABELS[rateBasis as RateBasis],
-      materialName: resolved.materialName,
-      vessel: vesselLabel(vessel),
-      total: round2(perLot.reduce((a, p) => a + p.computedTotal, 0)),
-      unit,
-    });
+    // Bare amount in the material's stock unit (legacy WO amount path).
+    const material = await tx.cellarMaterial.findUnique({ where: { id: resolved.materialId }, select: { stockUnit: true } });
+    const { doseUnit: du, perStock } = stockUnitToDose(material?.stockUnit);
+    totalDose = round2((amount as number) * perStock); unit = du;
+    entered = `${amount} ${material?.stockUnit ?? du}`;
   }
+
+  type DoseRow = { lotId: string; volumeLAtAddition: number; computedTotal: number; computedUnit: "g" | "mL"; rateValue: number | null; rateBasis: RateBasis | null };
+  // Distribute the total across target lots by resident-volume proportion (single lot gets it all).
+  const perLot: DoseRow[] = targets.map((t) => {
+    const vol = round2(Number(t.volumeL));
+    const share = residentVol > 0 ? round2(totalDose * (vol / residentVol)) : round2(totalDose / targets.length);
+    return { lotId: t.lotId, volumeLAtAddition: vol, computedTotal: share, computedUnit: unit, rateValue: rowRate?.value ?? null, rateBasis: rowRate?.basis ?? null };
+  });
   const totalSum = round2(perLot.reduce((a, p) => a + p.computedTotal, 0));
+  const summary = rowRate
+    ? cfg.makeSummary({ rateValue: rowRate.value, basisLabel: RATE_BASIS_LABELS[rowRate.basis], materialName: resolved.materialName, vessel: vesselLabel(vessel), total: totalSum, unit })
+    : `${cfg.opType === "FINING" ? "Fined" : "Added to"} ${vesselLabel(vessel)}: ${entered} ${resolved.materialName}`;
 
   const opId = await writeLotOperation(tx, {
     type: cfg.opType,

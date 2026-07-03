@@ -48,6 +48,44 @@ export const RATE_BASIS_LABELS: Record<RateBasis, string> = {
 
 export type AdditionTotal = { total: number; unit: "g" | "mL" };
 
+// Phase 9.1 (dose UX): ONE unified "Units" dropdown covering BOTH per-volume rates AND absolute totals.
+// The unit tells the engine which: a rate unit (g/hL…) multiplies by the vessel volume to get the total;
+// an absolute unit (g, kg…) IS the total. So the form is just "Amount" + "Units" — no separate rate field.
+export const DOSE_UNIT_LABELS = ["g/hL", "mg/L", "g/L", "mL/L", "g", "kg", "mL", "L"] as const;
+export type DoseUnitLabel = (typeof DOSE_UNIT_LABELS)[number];
+
+export type ResolvedDoseUnit =
+  | { kind: "rate"; basis: RateBasis }
+  | { kind: "abs"; doseUnit: "g" | "mL"; perUnit: number }; // perUnit = doseUnits per 1 chosen unit
+
+/** Classify a dose unit: a per-volume rate (needs volume) or an absolute total (used as-is). null = unknown. */
+export function resolveDoseUnit(u: string | null | undefined): ResolvedDoseUnit | null {
+  switch ((u ?? "").trim()) {
+    case "g/hL": return { kind: "rate", basis: "G_HL" };
+    case "mg/L": case "ppm": return { kind: "rate", basis: "MG_L" };
+    case "g/L": return { kind: "rate", basis: "G_L" };
+    case "mL/L": return { kind: "rate", basis: "ML_L" };
+    case "g": return { kind: "abs", doseUnit: "g", perUnit: 1 };
+    case "kg": return { kind: "abs", doseUnit: "g", perUnit: 1000 };
+    case "mL": return { kind: "abs", doseUnit: "mL", perUnit: 1 };
+    case "L": return { kind: "abs", doseUnit: "mL", perUnit: 1000 };
+    default: return null;
+  }
+}
+
+export function isRateUnit(u: string | null | undefined): boolean {
+  return resolveDoseUnit(u)?.kind === "rate";
+}
+
+/** The total (g/mL) a given Amount + Units resolves to against a volume. Rate → amount×volume; abs → amount. */
+export function computeDoseTotal(amount: number, unit: string, volumeL: number): AdditionTotal | null {
+  const r = resolveDoseUnit(unit);
+  if (!r || !Number.isFinite(amount) || amount < 0) return null;
+  if (r.kind === "abs") return { total: round2(amount * r.perUnit), unit: r.doseUnit };
+  if (!(volumeL > 0)) return null;
+  return computeAdditionTotal(amount, r.basis, volumeL);
+}
+
 /**
  * Turn a dictated rate into a computed total from the vessel's current volume.
  * Mass bases (G_HL, MG_L, G_L) yield grams; ML_L yields millilitres. Throws on a

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeDoseTotal,
+  resolveDoseUnit,
+  isRateUnit,
   computeAdditionTotal,
   RATE_BASES,
   RATE_BASIS_LABELS,
@@ -74,5 +77,33 @@ describe("VOLUME_EFFECT classification", () => {
     expect(VOLUME_EFFECT.TOPPING).toBe("adds");
     expect(VOLUME_EFFECT.FILTRATION).toBe("removes");
     expect(VOLUME_EFFECT.LOSS).toBe("removes");
+  });
+});
+
+describe("unified dose units (Amount + Units)", () => {
+  it("classifies per-volume units as rate and absolute units as abs", () => {
+    expect(isRateUnit("g/hL")).toBe(true);
+    expect(isRateUnit("g/L")).toBe(true);
+    expect(isRateUnit("g")).toBe(false);
+    expect(isRateUnit("kg")).toBe(false);
+    expect(resolveDoseUnit("g/hL")).toEqual({ kind: "rate", basis: "G_HL" });
+    expect(resolveDoseUnit("kg")).toEqual({ kind: "abs", doseUnit: "g", perUnit: 1000 });
+    expect(resolveDoseUnit("banana")).toBeNull();
+  });
+
+  it("computes a rate against volume (the operator's 200 g/L × 1000 L = 200,000 g example)", () => {
+    expect(computeDoseTotal(200, "g/L", 1000)).toEqual({ total: 200000, unit: "g" });
+    expect(computeDoseTotal(30, "g/hL", 1000)).toEqual({ total: 300, unit: "g" }); // 30 g/hL × 1000 L
+  });
+
+  it("treats an absolute unit as the total, converting kg→g and L→mL", () => {
+    expect(computeDoseTotal(500, "g", 0)).toEqual({ total: 500, unit: "g" }); // volume irrelevant for abs
+    expect(computeDoseTotal(0.5, "kg", 0)).toEqual({ total: 500, unit: "g" });
+    expect(computeDoseTotal(2, "L", 0)).toEqual({ total: 2000, unit: "mL" });
+  });
+
+  it("returns null for a rate with no volume, or an unknown unit", () => {
+    expect(computeDoseTotal(30, "g/hL", 0)).toBeNull();
+    expect(computeDoseTotal(30, "banana", 1000)).toBeNull();
   });
 });

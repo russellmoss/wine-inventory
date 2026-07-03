@@ -2,6 +2,7 @@ import type { OperationType, WorkOrderTaskKind } from "@prisma/client";
 import type { CreateTaskInput } from "@/lib/work-orders/lifecycle";
 import { FILTER_MEDIA, RACK_TYPES } from "@/lib/cellar/filtration-vocab";
 import { TEMP_UNITS, GAS_TYPES } from "@/lib/cellar/vessel-activity-vocab";
+import { DOSE_UNIT_LABELS } from "@/lib/cellar/additions-math";
 
 // Typed field vocabulary for work-order templates (Phase 9 Unit 10). Templates are NEVER free-form: a
 // template's spec is a list of tasks, each of a known task TYPE with a fixed set of allowed fields.
@@ -69,17 +70,19 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     kind: "OPERATION",
     opType: "ADDITION",
     label: "Addition",
-    // Dose by a total AMOUNT (in the material's stock unit) OR by a RATE (per volume). Amount wins if both.
-    // A rate is computed from the vessel's current volume at completion (A3); a direct amount is used as-is.
-    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", amount: "number", rateValue: "number", rateBasis: "rateBasis", note: "text" },
-    hint: "Enter an Amount to add that exact total, OR a Rate (per volume) — the rate's amount is computed from the vessel's current volume at completion. Amount wins if both are set.",
+    // One number (Amount) + one Units dropdown. A per-volume unit (g/hL…) is a rate — the total is computed
+    // from the vessel volume (barrels assumed full); an absolute unit (g, kg…) IS the total.
+    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", amount: "number", doseUnit: "select", note: "text" },
+    fieldOptions: { doseUnit: DOSE_UNIT_LABELS },
+    hint: "Amount + Units: a per-volume unit (g/hL, g/L…) doses by rate against the vessel's volume; an absolute unit (g, kg…) adds that exact total.",
   },
   FINING: {
     kind: "OPERATION",
     opType: "FINING",
     label: "Fining",
-    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", amount: "number", rateValue: "number", rateBasis: "rateBasis", note: "text" },
-    hint: "Enter an Amount to add that exact total, OR a Rate (per volume) — the rate's amount is computed from the vessel's current volume at completion. Amount wins if both are set.",
+    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", amount: "number", doseUnit: "select", note: "text" },
+    fieldOptions: { doseUnit: DOSE_UNIT_LABELS },
+    hint: "Amount + Units: a per-volume unit (g/hL, g/L…) doses by rate against the vessel's volume; an absolute unit (g, kg…) adds that exact total.",
   },
   TOPPING: {
     kind: "OPERATION",

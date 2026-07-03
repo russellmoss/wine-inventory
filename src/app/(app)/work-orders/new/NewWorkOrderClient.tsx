@@ -4,11 +4,11 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Checkbox, Eyebrow } from "@/components/ui";
 import { TASK_VOCABULARY, fieldLabel, type TemplateSpec, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
-import { RATE_BASES, RATE_BASIS_LABELS, computeAdditionTotal } from "@/lib/cellar/additions-math";
+import { computeDoseTotal, isRateUnit } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
 import { VesselMultiSelect } from "./VesselMultiSelect";
 
-type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; volumeL?: number | null };
+type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; volumeL?: number | null; capacityL?: number | null };
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
@@ -44,7 +44,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     setOverrides((prev) => ({ ...prev, [taskIdx]: { ...(prev[taskIdx] ?? {}), [key]: value } }));
   }
 
-  function renderField(taskIdx: number, key: string, type: string, def: unknown, options?: readonly string[]) {
+  function renderField(taskIdx: number, key: string, type: string, def: unknown, options?: readonly string[], hasDoseUnit?: boolean) {
     const current = overrides[taskIdx]?.[key] ?? def ?? "";
     // key is passed DIRECTLY (never spread — React warns on a spread key prop).
     const common = { style: labelStyle } as const;
@@ -84,23 +84,17 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
         </label>
       );
     }
-    if (type === "rateBasis") {
-      return (
-        <label key={key} {...common}>
-          {fieldLabel(key)}
-          <select style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)}>
-            {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
-          </select>
-        </label>
-      );
-    }
     if (type === "number") {
-      // "amount" is denominated in the selected material's stock unit — show it so the number isn't ambiguous.
       let label: string = fieldLabel(key);
       if (key === "amount") {
-        const selectedMaterialId = overrides[taskIdx]?.materialId;
-        const unit = pickers.materials.find((m) => m.id === selectedMaterialId)?.unit;
-        label = unit ? `Amount (${unit})` : "Amount — pick a material first";
+        // Additions pair Amount with the Units dropdown → just "Amount". Maintenance amounts are in the
+        // material's stock unit → show it ("Amount (g)").
+        if (hasDoseUnit) {
+          label = "Amount";
+        } else {
+          const unit = pickers.materials.find((m) => m.id === overrides[taskIdx]?.materialId)?.unit;
+          label = unit ? `Amount (${unit})` : "Amount — pick a material first";
+        }
       }
       return (
         <label key={key} {...common}>
@@ -126,61 +120,50 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     );
   }
 
-  // Rate is ONE concept: a value + its basis (e.g. 30 g/hL). Render them together under a single "Rate"
-  // label so it doesn't read as two separate fields ("Rate" + "Rate basis").
-  function renderRate(taskIdx: number, defaults?: Record<string, unknown>) {
-    const rv = overrides[taskIdx]?.rateValue ?? defaults?.rateValue ?? "";
-    const rb = overrides[taskIdx]?.rateBasis ?? defaults?.rateBasis ?? "G_HL";
-    return (
-      <label key="rate" style={labelStyle}>
-        Rate <span style={{ color: "var(--text-muted)" }}>(optional if you set an amount)</span>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input type="number" inputMode="decimal" step="any" placeholder="e.g. 30" style={{ ...field, flex: "3 1 0" }} value={String(rv)} onChange={(e) => setField(taskIdx, "rateValue", e.target.value === "" ? "" : Number(e.target.value))} />
-          <select style={{ ...field, flex: "2 1 0" }} value={String(rb)} onChange={(e) => setField(taskIdx, "rateBasis", e.target.value)}>
-            {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
-          </select>
-        </div>
-      </label>
-    );
-  }
-
-  // Render a task's fields (shared by template tasks + appended additions): Amount before the combined Rate.
+  // Render a task's fields (shared by template tasks + appended additions). Additions render Amount + the
+  // Units dropdown (doseUnit); the live total estimate is appended by renderEstimate below.
   function renderTaskFields(taskIdx: number, def: (typeof TASK_VOCABULARY)[string], defaults?: Record<string, unknown>) {
-    return Object.entries(def.fields)
-      .filter(([key]) => key !== "rateBasis")
-      .map(([key, type]) => (key === "rateValue" ? renderRate(taskIdx, defaults) : renderField(taskIdx, key, type, defaults?.[key], def.fieldOptions?.[key])));
+    const hasDoseUnit = "doseUnit" in def.fields;
+    return Object.entries(def.fields).map(([key, type]) => renderField(taskIdx, key, type, defaults?.[key], def.fieldOptions?.[key], hasDoseUnit));
   }
 
-  // Live dose calculator: given a rate + basis + selected vessel(s), show the total it works out to using
-  // each vessel's current volume (single-vessel volume is overridable). Volume-aware; informational — the
-  // actual dose is recomputed from the vessel's real volume at completion (A3). Returns null when N/A.
+  // The effective volume for the dose calc: a BARREL is assumed FULL (use capacity); a tank uses its current
+  // wine volume. Single-vessel volume is overridable.
+  function vesselVolume(vid: string): number {
+    const v = pickers.vessels.find((x) => x.id === vid);
+    if (!v) return 0;
+    return v.kind === "BARREL" ? Number(v.capacityL ?? v.volumeL ?? 0) : Number(v.volumeL ?? 0);
+  }
+
+  // Live dose calculator: for a rate unit (g/hL…) show the total it works out to against the vessel volume
+  // (barrels full). Absolute units (g, kg…) are already a total → no estimate. Informational; the actual
+  // dose is recomputed from the vessel's real volume at completion (A3). Returns null when N/A.
   function renderEstimate(taskIdx: number, defaults?: Record<string, unknown>) {
-    const rate = Number(overrides[taskIdx]?.rateValue ?? defaults?.rateValue ?? "");
-    const basis = String(overrides[taskIdx]?.rateBasis ?? defaults?.rateBasis ?? "G_HL");
+    const amount = Number(overrides[taskIdx]?.amount ?? defaults?.amount ?? "");
+    const unitSel = String(overrides[taskIdx]?.doseUnit ?? defaults?.doseUnit ?? "");
     const sel = overrides[taskIdx]?.vesselId;
     const vesselIds = Array.isArray(sel) ? (sel as string[]) : sel ? [String(sel)] : [];
-    if (!(rate > 0) || vesselIds.length === 0) return null;
-    const volOf = new Map(pickers.vessels.map((v) => [v.id, v.volumeL ?? 0]));
-    const est = (vol: number) => { try { return computeAdditionTotal(rate, basis as never, vol); } catch { return null; } };
+    if (!(amount > 0) || !isRateUnit(unitSel) || vesselIds.length === 0) return null;
     const wrap: React.CSSProperties = { gridColumn: "1 / -1", fontSize: 13, background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px" };
 
     if (vesselIds.length === 1) {
-      const base = volOf.get(vesselIds[0]) ?? 0;
+      const base = vesselVolume(vesselIds[0]);
+      const isBarrel = pickers.vessels.find((v) => v.id === vesselIds[0])?.kind === "BARREL";
       const ov = volOverride[taskIdx];
       const vol = ov === "" || ov == null ? base : Number(ov);
-      const e = est(vol);
+      const e = computeDoseTotal(amount, unitSel, vol);
       return (
         <div key="est" style={wrap}>
           <span style={{ color: "var(--text-muted)" }}>Volume </span>
           <input type="number" inputMode="decimal" step="any" value={String(ov ?? base)} onChange={(ev) => setVolOverride((o) => ({ ...o, [taskIdx]: ev.target.value === "" ? "" : Number(ev.target.value) }))} style={{ width: 90, padding: "2px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)" }} /> L
-          {e ? <span> → ≈ <strong>{e.total.toLocaleString()} {e.unit}</strong> total</span> : <span style={{ color: "var(--text-muted)" }}> — enter a positive volume</span>}
-          {ov !== "" && ov != null && Number(ov) !== base ? <span style={{ color: "var(--text-muted)" }}> (vessel currently {base.toLocaleString()} L)</span> : null}
+          {isBarrel ? <span style={{ color: "var(--text-muted)" }}> (barrel assumed full)</span> : null}
+          {e ? <span> → ≈ <strong>{e.total.toLocaleString()} {e.unit}</strong> total to weigh out</span> : <span style={{ color: "var(--text-muted)" }}> — enter a positive volume</span>}
         </div>
       );
     }
-    // Multiple vessels: total across all, using each vessel's own current volume.
+    // Multiple vessels: total across all, using each vessel's effective volume (barrels full).
     let grand = 0; let unit = "g"; let ok = false;
-    for (const vid of vesselIds) { const e = est(volOf.get(vid) ?? 0); if (e) { grand += e.total; unit = e.unit; ok = true; } }
+    for (const vid of vesselIds) { const e = computeDoseTotal(amount, unitSel, vesselVolume(vid)); if (e) { grand += e.total; unit = e.unit; ok = true; } }
     return (
       <div key="est" style={wrap}>
         {ok ? <span>≈ <strong>{grand.toLocaleString()} {unit}</strong> total across {vesselIds.length} vessels <span style={{ color: "var(--text-muted)" }}>{"(each vessel's current volume)"}</span></span> : <span style={{ color: "var(--text-muted)" }}>Selected vessels are empty — no volume to compute against.</span>}
