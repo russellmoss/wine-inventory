@@ -5,7 +5,7 @@ import { requireTenantId } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
-import { validateTemplateSpec, instantiateTasksFromSpec, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { validateTemplateSpec, instantiateTasksFromSpec, instantiateTaskBuilds, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { createWorkOrderCore, type WorkOrderResult } from "@/lib/work-orders/lifecycle";
 
 // Versioned, clone-on-customize work-order templates (Phase 9 Unit 10). Typed-field spec (validated
@@ -114,6 +114,9 @@ export async function createWorkOrderFromTemplateCore(
     scheduledFor?: Date | null;
     autoFinalize?: boolean;
     perTaskOverrides?: Record<string, unknown>[];
+    // Explicit flat task list (new-WO form: multi-vessel fan-out + appended additions). Wins over
+    // perTaskOverrides when present. The template version is still snapped for lineage.
+    taskBuilds?: { taskType: string; title?: string; values: Record<string, unknown> }[];
   },
 ): Promise<WorkOrderResult & { templateVersionId: string }> {
   const tpl = await prisma.workOrderTemplate.findUnique({ where: { id: input.templateId }, select: { id: true, name: true, currentVersion: true } });
@@ -125,7 +128,10 @@ export async function createWorkOrderFromTemplateCore(
   if (!version) throw new ActionError("That template has no current version.");
 
   const spec = version.spec as unknown as TemplateSpec;
-  const tasks = instantiateTasksFromSpec(spec, input.perTaskOverrides);
+  const tasks = input.taskBuilds && input.taskBuilds.length > 0
+    ? instantiateTaskBuilds(input.taskBuilds)
+    : instantiateTasksFromSpec(spec, input.perTaskOverrides);
+  if (tasks.length === 0) throw new ActionError("A work order needs at least one task.");
   const wo = await createWorkOrderCore(actor, {
     title: input.title?.trim() || tpl.name,
     instructions: input.instructions,

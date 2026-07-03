@@ -203,6 +203,35 @@ function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
  * task's defaults (the manager fills in vessels/lots/rates at issue). Canonical columns are derived from
  * the merged payload so reservations + the dashboard can query without parsing JSON.
  */
+/** A single explicit task to build (used by the new-WO form when it fans out multi-vessel selections +
+ * appends extra additions — the flat list the form sends instead of index-keyed spec overrides). */
+export type TaskBuild = { taskType: string; title?: string; values: Record<string, unknown> };
+
+/** Instantiate an explicit flat list of task builds into CreateTaskInput[] (validates each taskType +
+ * derives canonical columns). Mirrors instantiateTasksFromSpec's per-task logic. */
+export function instantiateTaskBuilds(builds: TaskBuild[]): CreateTaskInput[] {
+  return builds.map((b, i) => {
+    const def = TASK_VOCABULARY[b.taskType];
+    if (!def) throw new Error(`Unknown task type "${b.taskType}".`);
+    const payload = { ...b.values };
+    const canon = canonicalColumns(b.taskType, payload);
+    return {
+      seq: i + 1,
+      kind: def.kind,
+      title: b.title?.trim() || def.label,
+      opType: def.opType ?? null,
+      observationType: def.observationType ?? null,
+      activityType: def.activityType ?? null,
+      instructions: null,
+      sourceVesselId: canon.sourceVesselId,
+      destVesselId: canon.destVesselId,
+      lotId: canon.lotId,
+      materialId: canon.materialId,
+      plannedPayload: payload as CreateTaskInput["plannedPayload"],
+    };
+  });
+}
+
 export function instantiateTasksFromSpec(spec: TemplateSpec, perTaskOverrides?: Record<string, unknown>[]): CreateTaskInput[] {
   return spec.tasks.map((t, i) => {
     const def = TASK_VOCABULARY[t.taskType];

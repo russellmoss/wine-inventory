@@ -3,9 +3,10 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Checkbox, Eyebrow } from "@/components/ui";
-import { TASK_VOCABULARY, fieldLabel, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { TASK_VOCABULARY, fieldLabel, type TemplateSpec, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { RATE_BASES, RATE_BASIS_LABELS } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
+import { VesselMultiSelect } from "./VesselMultiSelect";
 
 type Picker = { id: string; label: string; unit?: string | null };
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
@@ -27,6 +28,10 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
   const [assigneeEmail, setAssigneeEmail] = React.useState("");
   const [autoFinalize, setAutoFinalize] = React.useState(false);
   const [overrides, setOverrides] = React.useState<Record<number, Record<string, unknown>>>({});
+  // Appended ad-hoc ADDITION rows ("+ Add another addition"). Each key indexes into `overrides` at a high
+  // offset so it never collides with the template's task indices.
+  const [extraKeys, setExtraKeys] = React.useState<number[]>([]);
+  const nextExtraKey = React.useRef(1000);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
 
@@ -41,6 +46,18 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     const current = overrides[taskIdx]?.[key] ?? def ?? "";
     // key is passed DIRECTLY (never spread — React warns on a spread key prop).
     const common = { style: labelStyle } as const;
+    if (key === "vesselId") {
+      // Single-vessel ops (additions/fining/filtration/maintenance) get a searchable, tank/barrel-filterable
+      // MULTI-select — selecting several vessels fans out to one task per vessel at submit. (RACK/TOPPING
+      // use fromVesselId/toVesselId, which stay single selects below.)
+      const sel = Array.isArray(overrides[taskIdx]?.vesselId) ? (overrides[taskIdx]!.vesselId as string[]) : [];
+      return (
+        <div key={key} style={{ gridColumn: "1 / -1" }}>
+          <div style={labelStyle}>Vessels</div>
+          <VesselMultiSelect options={pickers.vessels} value={sel} onChange={(ids) => setField(taskIdx, "vesselId", ids)} />
+        </div>
+      );
+    }
     if (type === "select") {
       // A7: controlled options from the vocabulary's fieldOptions.
       return (
@@ -125,14 +142,40 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     );
   }
 
+  // Render a task's fields (shared by template tasks + appended additions): Amount before the combined Rate.
+  function renderTaskFields(taskIdx: number, def: (typeof TASK_VOCABULARY)[string], defaults?: Record<string, unknown>) {
+    return Object.entries(def.fields)
+      .filter(([key]) => key !== "rateBasis")
+      .map(([key, type]) => (key === "rateValue" ? renderRate(taskIdx, defaults) : renderField(taskIdx, key, type, defaults?.[key], def.fieldOptions?.[key])));
+  }
+
+  // Clean a value map for submit: drop empty strings/undefined + empty vessel arrays.
+  function cleanValues(raw: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(raw).filter(([, v]) => v !== "" && v !== undefined && !(Array.isArray(v) && v.length === 0)),
+    );
+  }
+
+  // One task → one build, UNLESS its vesselId is a multi-select array → fan out to one build per vessel.
+  function buildsForTask(taskType: string, taskTitle: string, values: Record<string, unknown>): TaskBuild[] {
+    const vessels = Array.isArray(values.vesselId) ? (values.vesselId as string[]) : values.vesselId ? [values.vesselId as string] : [];
+    if (vessels.length > 1) return vessels.map((vid) => ({ taskType, title: taskTitle, values: { ...values, vesselId: vid } }));
+    if (vessels.length === 1) return [{ taskType, title: taskTitle, values: { ...values, vesselId: vessels[0] } }];
+    return [{ taskType, title: taskTitle, values }];
+  }
+
   function submit() {
     setError(null);
     if (!templateId) { setError("Pick a template."); return; }
-    const perTaskOverrides = spec.tasks.map((_, i) => {
-      const raw = overrides[i] ?? {};
-      // Drop empty strings so template defaults win where the manager left a field blank.
-      return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== "" && v !== undefined));
+    const builds: TaskBuild[] = [];
+    spec.tasks.forEach((t, i) => {
+      builds.push(...buildsForTask(t.taskType, t.title, cleanValues({ ...(t.defaults ?? {}), ...(overrides[i] ?? {}) })));
     });
+    extraKeys.forEach((k) => {
+      const values = cleanValues(overrides[k] ?? {});
+      if (Object.keys(values).length > 0) builds.push(...buildsForTask("ADDITION", "Add material", values));
+    });
+    if (builds.length === 0) { setError("Add at least one task."); return; }
     startTransition(async () => {
       try {
         const res = await createWorkOrderFromTemplateAction({
@@ -141,7 +184,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
           assigneeEmail: assigneeEmail.trim() || null,
           dueAt: dueAt ? new Date(dueAt) : null,
           autoFinalize,
-          perTaskOverrides,
+          taskBuilds: builds,
         });
         router.push(`/work-orders/${res.workOrderId}`);
       } catch (e) {
@@ -160,7 +203,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
         <Card style={{ display: "flex", flexDirection: "column", gap: 14, padding: 20 }}>
           <label style={labelStyle}>
             Template
-            <select style={field} value={templateId} onChange={(e) => { setTemplateId(e.target.value); setOverrides({}); }}>
+            <select style={field} value={templateId} onChange={(e) => { setTemplateId(e.target.value); setOverrides({}); setExtraKeys([]); }}>
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.isSystem ? " (system)" : ""}</option>)}
             </select>
           </label>
@@ -180,15 +223,32 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
                 <Eyebrow>{i + 1}. {t.title} · {def.label}</Eyebrow>
                 {def.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 6 }}>{def.hint}</div> : null}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
-                  {Object.entries(def.fields)
-                    .filter(([key]) => key !== "rateBasis") /* rendered inside the combined Rate control */
-                    .map(([key, type]) => key === "rateValue"
-                      ? renderRate(i, t.defaults)
-                      : renderField(i, key, type, t.defaults?.[key], def.fieldOptions?.[key]))}
+                  {renderTaskFields(i, def, t.defaults)}
                 </div>
               </div>
             );
           })}
+
+          {/* Appended ad-hoc additions ("+ Add another addition"). */}
+          {extraKeys.map((k, n) => {
+            const def = TASK_VOCABULARY.ADDITION;
+            return (
+              <div key={k} style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Eyebrow>+ Addition {n + 1}</Eyebrow>
+                  <button type="button" onClick={() => { setExtraKeys((keys) => keys.filter((x) => x !== k)); setOverrides((o) => { const c = { ...o }; delete c[k]; return c; }); }} style={{ border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 13 }}>Remove</button>
+                </div>
+                {def.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 6 }}>{def.hint}</div> : null}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+                  {renderTaskFields(k, def)}
+                </div>
+              </div>
+            );
+          })}
+
+          <div>
+            <Button variant="secondary" size="sm" onClick={() => setExtraKeys((keys) => [...keys, nextExtraKey.current++])}>+ Add another addition</Button>
+          </div>
 
           {error ? <div style={{ color: "var(--danger)", fontSize: 14 }}>{error}</div> : null}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
