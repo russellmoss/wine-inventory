@@ -20,7 +20,40 @@ export type TaskTypeDef = {
   fields: Record<string, FieldType>;
   /** Phase 9.1 (A7): the allowed option list for each `select` field — validated, never free-form. */
   fieldOptions?: Record<string, readonly string[]>;
+  /** Optional one-line explainer shown above the fields on the form (e.g. how a dose rate is applied). */
+  hint?: string;
 };
+
+// Human-readable labels for the (otherwise camelCase) field keys — so the form reads "Rate", "Vessel",
+// "Material" instead of "rateValue", "vesselId", "materialId". Any key without an entry falls back to a
+// spaced/capitalized version of the key.
+export const FIELD_LABELS: Record<string, string> = {
+  fromVesselId: "From vessel",
+  toVesselId: "To vessel",
+  vesselId: "Vessel",
+  lotId: "Lot",
+  materialId: "Material",
+  rateValue: "Rate",
+  rateBasis: "Rate basis",
+  drawL: "Draw (L)",
+  lossL: "Loss (L)",
+  volumeL: "Volume (L)",
+  rackType: "Rack type",
+  filterType: "Filter type",
+  micron: "Micron (µm)",
+  actualOutputL: "Output volume (L)",
+  targetValue: "Target",
+  targetUnit: "Target unit",
+  achievedValue: "Achieved reading",
+  gasType: "Gas",
+  amount: "Amount",
+  note: "Note",
+};
+
+/** Human label for a field key (falls back to a spaced, capitalized form of the raw key). */
+export function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+}
 
 // The allowed task types + their fields. v1 covers the cellar core loop (rack/addition/fining/top) plus
 // two observation types. Phase 20 (vineyard) reuses the same engine by extending this vocabulary.
@@ -36,13 +69,18 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     kind: "OPERATION",
     opType: "ADDITION",
     label: "Addition",
-    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", rateValue: "number", rateBasis: "rateBasis", plannedAmount: "number", plannedUnit: "text", note: "text" },
+    // Dosed by RATE (rateValue + rateBasis). The actual amount added is computed from the rate × the
+    // vessel's current volume at completion — there is no separate amount to enter (dropped the old,
+    // confusing plannedAmount/plannedUnit pair, which only fed an advisory reservation).
+    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", rateValue: "number", rateBasis: "rateBasis", note: "text" },
+    hint: "Dose by rate — the amount added is computed from the rate × the vessel's current volume when the task is completed.",
   },
   FINING: {
     kind: "OPERATION",
     opType: "FINING",
     label: "Fining",
-    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", rateValue: "number", rateBasis: "rateBasis", plannedAmount: "number", plannedUnit: "text", note: "text" },
+    fields: { vesselId: "vessel", lotId: "lot", materialId: "material", rateValue: "number", rateBasis: "rateBasis", note: "text" },
+    hint: "Dose by rate — the amount added is computed from the rate × the vessel's current volume when the task is completed.",
   },
   TOPPING: {
     kind: "OPERATION",
