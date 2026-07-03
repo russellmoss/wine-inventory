@@ -17,6 +17,10 @@ export type ExportEventForJournal = {
   debitAccount: string | null;
   creditAccount: string | null;
   currency: string;
+  // Optional human-readable memo + line description (what this entry IS, so a bookkeeper can trace it).
+  // The postingKey stays the idempotency root (DocNumber); it is NOT the memo. Falls back to postingKey.
+  memo?: string;
+  lineDescription?: string;
 };
 
 /**
@@ -31,11 +35,12 @@ export function buildJournalFromExport(ev: ExportEventForJournal, postingDate: D
   const positive = Math.abs(amt);
   const debit = amt >= 0 ? ev.debitAccount : ev.creditAccount;
   const credit = amt >= 0 ? ev.creditAccount : ev.debitAccount;
+  const desc = ev.lineDescription;
   const lines: JournalLineInput[] = [
-    { amount: positive, posting: "Debit", accountKey: debit },
-    { amount: positive, posting: "Credit", accountKey: credit },
+    { amount: positive, posting: "Debit", accountKey: debit, ...(desc ? { description: desc } : {}) },
+    { amount: positive, posting: "Credit", accountKey: credit, ...(desc ? { description: desc } : {}) },
   ];
-  return { postingKey: ev.postingKey, txnDate: toTxnDate(postingDate), currency: ev.currency, privateNote: ev.postingKey, lines };
+  return { postingKey: ev.postingKey, txnDate: toTxnDate(postingDate), currency: ev.currency, privateNote: ev.memo ?? ev.postingKey, lines };
 }
 
 // Phase 16 Unit 7 — build a balanced JournalEntry for ONE DTC revenue DELTA (the difference for an order
@@ -57,6 +62,7 @@ export type SalesDeltaForJournal = {
   taxAccount: string | null;
   shippingAccount: string | null;
   discountAccount: string | null;
+  memo?: string; // human-readable ("Cellarhand · DTC sale · order 1042"); falls back to postingKey
 };
 
 const flip = (p: Posting): Posting => (p === "Debit" ? "Credit" : "Debit");
@@ -85,5 +91,5 @@ export function buildSalesDeltaJournal(d: SalesDeltaForJournal, postingDate: Dat
     lines.push({ amount: Math.abs(leg.amount), posting: leg.amount > 0 ? leg.natural : flip(leg.natural), accountKey: leg.account });
   }
   assertBalanced(lines);
-  return { postingKey: d.postingKey, txnDate: toTxnDate(postingDate), currency: d.currency, privateNote: d.postingKey, lines };
+  return { postingKey: d.postingKey, txnDate: toTxnDate(postingDate), currency: d.currency, privateNote: d.memo ?? d.postingKey, lines };
 }

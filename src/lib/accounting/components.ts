@@ -41,6 +41,12 @@ export function rankAccountsForRole(accounts: NormalizedAccount[], role: Account
   return [...accounts].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
+/** PURE: a plain-English label for a cost component (for QuickBooks memos, reports). Falls back to the
+ *  raw code for anything not in the list. */
+export function componentLabel(component: CostComponent | string): string {
+  return MAPPABLE_COMPONENTS.find((m) => m.component === component)?.label ?? String(component);
+}
+
 export const MAPPABLE_COMPONENTS: { component: CostComponent; label: string; hint: string }[] = [
   { component: "FRUIT", label: "Fruit / grapes", hint: "Harvest cost captured at crush." },
   { component: "MATERIAL", label: "Materials / additives", hint: "SO₂, nutrients, fining agents." },

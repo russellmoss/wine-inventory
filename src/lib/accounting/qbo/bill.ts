@@ -12,6 +12,8 @@ export type ApEventForBill = {
   debitAccount: string | null; // inventory-asset account the bill hits
   receivedAt: Date;
   dueDate: Date | null;
+  memo?: string; // human-readable ("Cellarhand · Supply · <vendor>"); falls back to postingKey
+  lineDescription?: string;
 };
 
 export function buildBillPayload(ev: ApEventForBill, vendorExternalId: string): Record<string, unknown> {
@@ -22,11 +24,12 @@ export function buildBillPayload(ev: ApEventForBill, vendorExternalId: string): 
     VendorRef: { value: vendorExternalId },
     TxnDate: toTxnDate(ev.receivedAt),
     ...(ev.dueDate ? { DueDate: toTxnDate(ev.dueDate) } : {}),
-    PrivateNote: ev.postingKey,
+    PrivateNote: ev.memo ?? ev.postingKey,
     Line: [
       {
         DetailType: "AccountBasedExpenseLineDetail",
         Amount: amount,
+        ...(ev.lineDescription ? { Description: ev.lineDescription } : {}),
         AccountBasedExpenseLineDetail: { AccountRef: { value: ev.debitAccount } },
       },
     ],

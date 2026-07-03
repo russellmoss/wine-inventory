@@ -6,6 +6,7 @@ import { listAllOrgIds, disconnectEnumerator } from "@/lib/accounting/enumerator
 import { getValidAccessToken, NeedsReauthError } from "@/lib/accounting/token";
 import { QboAdapter, docNumberFor } from "@/lib/accounting/qbo/client";
 import { buildJournalFromExport, buildSalesDeltaJournal } from "@/lib/accounting/qbo/journal";
+import { componentLabel } from "@/lib/accounting/components";
 import { buildBillPayload } from "@/lib/accounting/qbo/bill";
 import { emitExportForSnapshot } from "@/lib/cost/export-emit";
 import { ProviderFault, type AccountingAdapter, type ProviderCallContext } from "@/lib/accounting/adapter";
@@ -92,7 +93,7 @@ async function postOne(
   if (!d.costExportEventId) return;
   const ev = await prisma.costExportEvent.findUnique({
     where: { id: d.costExportEventId },
-    select: { postingKey: true, amount: true, debitAccount: true, creditAccount: true, currency: true },
+    select: { postingKey: true, amount: true, debitAccount: true, creditAccount: true, currency: true, component: true, skuId: true },
   });
   if (!ev) {
     await finalize(d.id, { status: "FAILED", lastError: "source export event missing" });
@@ -101,6 +102,10 @@ async function postOne(
   }
   const postingDate = d.postingDate ?? new Date();
   const docNumber = docNumberFor(ev.postingKey);
+  // Human-readable memo so a bookkeeper can trace the entry (the postingKey stays the DocNumber id).
+  const wine = ev.skuId ? await prisma.wineSku.findUnique({ where: { id: ev.skuId }, select: { name: true, vintage: true } }) : null;
+  const wineLabel = wine ? `${wine.name}${wine.vintage ? ` ${wine.vintage}` : ""}` : null;
+  const memo = `Cellarhand · ${componentLabel(ev.component)}${wineLabel ? ` · ${wineLabel}` : ""}`;
 
   try {
     // Query-before-post: did a prior (possibly crashed) attempt already land this DocNumber?
@@ -110,7 +115,10 @@ async function postOne(
       summary.adopted++;
       return;
     }
-    const je = buildJournalFromExport({ ...ev, amount: Number(ev.amount) }, postingDate);
+    const je = buildJournalFromExport(
+      { postingKey: ev.postingKey, amount: Number(ev.amount), debitAccount: ev.debitAccount, creditAccount: ev.creditAccount, currency: ev.currency, memo, lineDescription: memo },
+      postingDate,
+    );
     const result = await adapter.postJournalEntry(ctx, je, docNumber);
     await finalize(d.id, { status: "POSTED", externalId: result.externalId, requestId: docNumber, postingDate, verifiedAt: new Date(), lastError: null });
     summary.posted++;
@@ -168,7 +176,8 @@ async function postBill(
       externalVendorId = await adapter.findOrCreateVendor(ctx, vendor.name);
       await runInTenantTx((tx) => tx.vendor.update({ where: { id: ev.vendorId as string }, data: { externalVendorId } }));
     }
-    const payload = buildBillPayload({ postingKey: ev.postingKey, amount: Number(ev.amount), debitAccount: ev.debitAccount, receivedAt: ev.receivedAt, dueDate: ev.dueDate }, externalVendorId);
+    const memo = `Cellarhand · Supply bill · ${vendor.name}`;
+    const payload = buildBillPayload({ postingKey: ev.postingKey, amount: Number(ev.amount), debitAccount: ev.debitAccount, receivedAt: ev.receivedAt, dueDate: ev.dueDate, memo, lineDescription: memo }, externalVendorId);
     const result = await adapter.postBill(ctx, payload, docNumber);
     await finalize(d.id, { status: "POSTED", externalId: result.externalId, requestId: docNumber, verifiedAt: new Date(), lastError: null });
     summary.posted++;
@@ -199,7 +208,7 @@ async function postSale(
   const ev = await prisma.salesExportEvent.findUnique({
     where: { id: d.salesExportEventId as string },
     select: {
-      postingKey: true, currency: true, accountingDate: true,
+      postingKey: true, currency: true, accountingDate: true, kind: true, channel: true, commerce7OrderId: true,
       revenueDelta: true, salesTaxDelta: true, shippingDelta: true, discountDelta: true,
       revenueAccount: true, clearingAccount: true, taxAccount: true, shippingAccount: true, discountAccount: true,
     },
@@ -231,6 +240,7 @@ async function postSale(
         taxAccount: ev.taxAccount,
         shippingAccount: ev.shippingAccount,
         discountAccount: ev.discountAccount,
+        memo: `Cellarhand · DTC ${ev.kind}${ev.channel ? ` · ${ev.channel}` : ""} · order ${ev.commerce7OrderId}`,
       },
       postingDate,
     );
