@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "leaflet/dist/leaflet.css";
 import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 import "./globals.css";
+import "../styles/print.css";
 
 export const metadata: Metadata = {
   title: "Cellarhand",
