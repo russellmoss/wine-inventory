@@ -34,6 +34,22 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
   function set(key: string, v: unknown) { setFields((p) => ({ ...p, [key]: v })); }
 
+  // Rate is ONE concept: value + basis (e.g. 30 g/hL) under a single "Rate" label, not two fields.
+  function renderRate() {
+    const rv = fields.rateValue ?? "";
+    const rb = fields.rateBasis ?? "G_HL";
+    return (
+      <label key="rate" style={lbl}>Rate <span style={{ color: "var(--text-muted)" }}>(optional if amount set)</span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="number" inputMode="decimal" step="any" placeholder="e.g. 30" style={{ ...big, flex: "3 1 0" }} value={String(rv)} onChange={(e) => set("rateValue", e.target.value === "" ? "" : Number(e.target.value))} />
+          <select style={{ ...big, flex: "2 1 0" }} value={String(rb)} onChange={(e) => set("rateBasis", e.target.value)}>
+            {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
+          </select>
+        </div>
+      </label>
+    );
+  }
+
   function renderField(key: string, type: string) {
     const cur = fields[key] ?? "";
     if (type === "vessel" || type === "lot" || type === "material") {
@@ -110,7 +126,9 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
       {def?.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 12 }}>{def.hint}</div> : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        {def ? Object.entries(def.fields).filter(([k]) => k !== "note").map(([k, t]) => renderField(k, t)) : null}
+        {def ? Object.entries(def.fields)
+          .filter(([k]) => k !== "note" && k !== "rateBasis") /* rateBasis rides inside the combined Rate control */
+          .map(([k, t]) => (k === "rateValue" ? renderRate() : renderField(k, t))) : null}
         {task.kind === "OBSERVATION" ? (
           <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
         ) : null}
