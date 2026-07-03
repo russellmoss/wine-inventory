@@ -74,3 +74,16 @@ jobs:
             --allowedTools "Read,Edit,Write,Bash"
             --max-turns 30
             --model claude-opus-4-8
+
+      # Deterministic gate on the brain edits: after the loop runs (STEP 2 may add
+      # or edit invariant notes), every invariant's verify: guard must still exist —
+      # the checker can't be skipped the way the in-prompt instruction can. Runs even
+      # if the loop errored, so a fabricated/renamed guard fails the workflow loudly.
+      # Pure Node, no install/DB needed. The PR the loop opens also hits this in ci.yml.
+      - uses: actions/setup-node@v4
+        if: always()
+        with:
+          node-version: 20
+      - name: Verify invariant guards intact
+        if: always()
+        run: npm run verify:invariants
