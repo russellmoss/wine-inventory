@@ -769,7 +769,7 @@ whether tax-determination is a distinct op or a flag transition; report as fille
 Pay.gov e-file vs both; how corrections (D6) flow to Amended reports.
 **Honors:** D2 (ledger-derived), D8 (gallons↔liters), D14 (auditable), + Phase 7 (sparkling BF/BP).
 
-## Phase 15 — Accounting integration (QuickBooks / Xero, COGS/AP)  ⬜
+## Phase 15 — Accounting integration (QuickBooks / Xero, COGS/AP)  ✅ *COMPLETE — all 15 units on main (plan 030): per-tenant OAuth + AEAD-encrypted tokens, guided CoA mapping (business roles), transactional outbox, exactly-once poster (claim→post→verify, query-before-post by DocNumber), reconcile read-back, supply receipt → AP Bill (immutable ApExportEvent), D6 current-period reversing journal, /accounting dashboard. QBO sandbox-verified live; proven by `npm run verify:accounting-idempotency` (11), `verify:accounting-reversal` (7), `verify:tenant-isolation`. Xero drops in behind the adapter. Prod GA gated on Intuit production app-review + SEC-C4 KEK→cloud-KMS (see docs/phase-15-go-live-runbook.md).*
 **Goal:** **Two-way** sync to the winery's accounting system — beating both incumbents (InnoVint
 has **no** QuickBooks API; Vintrace's is one-way/gated).
 **Domain requirements (durable):**
