@@ -74,6 +74,20 @@
 - **Tripwire:** intermittent connection/timeout errors after idle periods.
 - **Status:** 🟡 (known; keep an eye during low-traffic → burst transitions)
 
+### Barrel-fill fold on the ledger write path (Phase 8b, D7)
+- **Choice:** `writeLotOperation` runs a fourth deterministic fold (`cost/barrel-fold.ts`) once per op to open/close barrel fills; every op pays at least one indexed lookup to check if an affected vessel is a barrel with a `BarrelAsset`.
+- **Fine until:** the common (tank) path — the lookup returns nothing and the fold is a no-op.
+- **What breaks:** at very high op throughput the per-op lookup + fill open/close adds fixed latency to *every* write, barrel or not; a many-barrel cellar closing many fills in one op does more work inline.
+- **Tripwire:** ledger write latency creeps up with no functional change / the barrel-fold lookup shows in write-path profiles.
+- **Status:** 🟢 (no-op fast path; watch if write volume grows sharply)
+
+### Post-bottling variance recompute walks lineage per correction (Phase 8b, D12/D17)
+- **Choice:** a backdated cost correction never restates a frozen COGS snapshot; `cost/variance-detect.ts` walks DOWN the lineage to every bottled run the corrected lots fed and recomputes each run's liquid cost in the correction's tx.
+- **Fine until:** shallow lineage and few affected runs per correction.
+- **What breaks:** a correction on an early, widely-blended lot fans out to many downstream runs → a heavy synchronous recompute (each calling `computeLotCost`) inside the correction transaction.
+- **Tripwire:** a backdated correction on a deep/wide lot runs slow or times out; rising tx duration on the cost-reversal path.
+- **Status:** 🟡 (bounded by real lineage depth today; shares the rollup-on-read scale risk above)
+
 <!--
 TEMPLATE — copy this block for each new decision:
 
@@ -86,4 +100,4 @@ TEMPLATE — copy this block for each new decision:
 -->
 
 ---
-*Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*
+*Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase. Last refreshed 2026-07-03 (Phase 8b cost).*

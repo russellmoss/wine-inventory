@@ -67,6 +67,21 @@
 - `better-auth` + `@node-rs/argon2` password hashing. Password reset / change flows exist.
 - **Status:** 🟡 (baseline solid; the loop should watch for authz gaps as roles/RBAC grow)
 
+### Raw SQL bypasses the tenant extension — must run through `runInTenantRawTx` (plan 029)
+- The tenant invariant is a Prisma client extension hooked on **model** operations only; `$queryRaw`/
+  `$executeRaw` are NOT model ops, so a raw call on a top-level client runs with no `app.tenant_id`
+  GUC. Under the activated `NOBYPASSRLS` `app_rls` role, RLS then matches **zero rows** (silent-empty in
+  prod — the worst failure: looks like an empty feature, not an error) and would **leak cross-tenant**
+  if RLS were ever relaxed.
+- **Rule:** every raw read runs inside `runInTenantRawTx()` (sets the GUC as the first statement; hands
+  back the resolved `tenantId` for an explicit `"tenantId" = …` predicate — defense-in-depth on top of
+  RLS). Raw writes use `runInTenantTx`/`runLedgerWrite`. The only allowlisted raw calls on a top-level
+  client are the three `set_config` GUC-setters (`prisma.ts`, `ledger/write.ts`, `tenant/tx.ts`).
+- **Enforced by:** `scripts/check-raw-sql-tenant-safety.ts` (`npm run verify:raw-sql`, wired into CI) —
+  a static scan that fails on any unscoped raw call. Known limit: destructuring/aliasing evades it
+  (tripwire, not a proof). Regression coverage in both isolation harnesses.
+- **Status:** 🟢 (both known sites fixed; guard + tests in CI)
+
 <!--
 TEMPLATE — copy for each new invariant / finding:
 
