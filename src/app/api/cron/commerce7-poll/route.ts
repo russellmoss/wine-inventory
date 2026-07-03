@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { runCommerce7PollSweep } from "@/lib/commerce/poll";
+import { runCommerce7WebhookHealth } from "@/lib/commerce/webhook-health";
 
 // Phase 16 Unit 5 — the Commerce7 inbound poll cron. Vercel Cron hits this with `Authorization: Bearer
 // $CRON_SECRET`. Constant-time gate, ignores any caller-supplied tenant (enumerates internally). Drains
@@ -21,7 +22,8 @@ async function handle(req: Request) {
   if (!authorized(req)) return Response.json({ error: "Unauthorized." }, { status: 401 });
   try {
     const summary = await runCommerce7PollSweep();
-    return Response.json({ ok: true, ...summary });
+    const webhooks = await runCommerce7WebhookHealth(); // self-heal a stale/disabled webhook (48h auto-disable)
+    return Response.json({ ok: true, ...summary, webhooks });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : "Commerce7 poll failed." }, { status: 500 });
   }
