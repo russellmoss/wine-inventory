@@ -13,7 +13,7 @@ import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
 // Dexie outbox uses). Not harvest-grade offline yet (Phase 28); online status is pinned via aria-live.
 
-type Picker = { id: string; label: string };
+type Picker = { id: string; label: string; unit?: string | null };
 const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION" };
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
@@ -69,7 +69,14 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
       );
     }
     if (type === "number") {
-      return <label key={key} style={lbl}>{key}<input type="number" inputMode="decimal" step="any" style={big} value={String(cur)} onChange={(e) => set(key, e.target.value === "" ? "" : Number(e.target.value))} /></label>;
+      // The "amount" field is denominated in the SELECTED material's stock unit — surface it so a bare
+      // number isn't ambiguous. Falls back to "pick a material" until one is chosen.
+      let label: string = key;
+      if (key === "amount") {
+        const unit = pickers.materials.find((m) => m.id === fields.materialId)?.unit;
+        label = unit ? `amount (${unit})` : "amount — pick a material first";
+      }
+      return <label key={key} style={lbl}>{label}<input type="number" inputMode="decimal" step="any" style={big} value={String(cur)} onChange={(e) => set(key, e.target.value === "" ? "" : Number(e.target.value))} /></label>;
     }
     return <label key={key} style={lbl}>{key}<input type="text" style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)} /></label>;
   }

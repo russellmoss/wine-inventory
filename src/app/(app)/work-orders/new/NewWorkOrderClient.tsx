@@ -7,7 +7,7 @@ import { TASK_VOCABULARY, type TemplateSpec } from "@/lib/work-orders/template-v
 import { RATE_BASES, RATE_BASIS_LABELS } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
 
-type Picker = { id: string; label: string };
+type Picker = { id: string; label: string; unit?: string | null };
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
@@ -70,9 +70,16 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
       );
     }
     if (type === "number") {
+      // "amount" is denominated in the selected material's stock unit — show it so the number isn't ambiguous.
+      let label: string = key;
+      if (key === "amount") {
+        const selectedMaterialId = overrides[taskIdx]?.materialId;
+        const unit = pickers.materials.find((m) => m.id === selectedMaterialId)?.unit;
+        label = unit ? `amount (${unit})` : "amount — pick a material first";
+      }
       return (
         <label key={key} {...common}>
-          {key}
+          {label}
           <input type="number" inputMode="decimal" step="any" style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value === "" ? "" : Number(e.target.value))} />
         </label>
       );
