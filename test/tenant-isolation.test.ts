@@ -59,9 +59,13 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     const period = { periodStart: now, periodEnd: now, onHandEnd: {}, computed: {}, overrides: {} };
     await owner.complianceReport.upsert({ where: { id: "isov_rep_a" }, update: {}, create: { id: "isov_rep_a", tenantId: A, updatedAt: now, ...period } });
     await owner.complianceReport.upsert({ where: { id: "isov_rep_b" }, update: {}, create: { id: "isov_rep_b", tenantId: B, updatedAt: now, ...period } });
+    // Phase 9 Work Order tables (checklist item 9).
+    await owner.workOrder.upsert({ where: { id: "isov_wo_a" }, update: {}, create: { id: "isov_wo_a", tenantId: A, number: 91001, title: "ISOV WO A", updatedAt: now } });
+    await owner.workOrder.upsert({ where: { id: "isov_wo_b" }, update: {}, create: { id: "isov_wo_b", tenantId: B, number: 91002, title: "ISOV WO B", updatedAt: now } });
   });
 
   afterAll(async () => {
+    await owner.workOrder.deleteMany({ where: { id: { in: ["isov_wo_a", "isov_wo_b", "isov_wo_x"] } } });
     await owner.complianceReport.deleteMany({ where: { id: { in: ["isov_rep_a", "isov_rep_b"] } } });
     await owner.brixLog.deleteMany({ where: { id: { in: ["isov_brix_a", "isov_brix_b"] } } });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["isov_blk_a", "isov_blk_b"] } } });
@@ -146,6 +150,14 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
         const op = await db.lotOperation.create({ data: { type: "SEED", enteredBy: "iso@test", tenantId: A }, select: { id: true } });
         await db.lotOperationLine.create({ data: { tenantId: A, operationId: op.id, lotId: "isov_b", deltaL: 1, bucket: "EXTERNAL", lotCode: "X" } });
       }),
+    ).rejects.toThrow();
+  });
+
+  it("work_order is tenant-isolated (Phase 9): A sees its own, not B's; foreign INSERT rejected", async () => {
+    expect(await asTenant(A, (db) => db.workOrder.findFirst({ where: { id: "isov_wo_a" } }))).not.toBeNull();
+    expect(await asTenant(A, (db) => db.workOrder.findFirst({ where: { id: "isov_wo_b" } }))).toBeNull();
+    await expect(
+      asTenant(A, (db) => db.workOrder.create({ data: { id: "isov_wo_x", tenantId: B, number: 91003, title: "ISOV WO X", updatedAt: new Date() } })),
     ).rejects.toThrow();
   });
 
