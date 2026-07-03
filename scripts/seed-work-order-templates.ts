@@ -9,46 +9,11 @@
  */
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "../src/lib/tenant/context";
-import { validateTemplateSpec, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { validateTemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { SYSTEM_TEMPLATES } from "@/lib/work-orders/system-templates";
 import { disconnectSystem } from "../src/lib/tenant/system";
 
 const DEMO_ORG_ID = "org_demo_winery";
-
-type SystemTemplate = { code: string; name: string; description: string; category: string; recurringCadence?: string | null; spec: TemplateSpec };
-
-const SYSTEM_TEMPLATES: SystemTemplate[] = [
-  {
-    code: "SYS-RACK",
-    name: "Rack a tank",
-    description: "Move wine from one vessel to another (off the lees).",
-    category: "Cellar",
-    spec: { tasks: [{ taskType: "RACK", title: "Rack tank to destination", defaults: { lossL: 0 }, instructions: "Rack cleanly off the gross lees." }] },
-  },
-  {
-    code: "SYS-ADD-SO2",
-    name: "SO₂ addition",
-    description: "Add sulfur dioxide to a lot at a target rate.",
-    category: "Cellar",
-    recurringCadence: "MONTHLY",
-    spec: { tasks: [{ taskType: "ADDITION", title: "Add SO₂", defaults: { rateBasis: "MG_L" }, instructions: "Dose to the target free-SO₂ rate; stir gently." }] },
-  },
-  {
-    code: "SYS-TOP",
-    name: "Top the barrels",
-    description: "Top a vessel from a keg to eliminate headspace.",
-    category: "Cellar",
-    recurringCadence: "WEEKLY",
-    spec: { tasks: [{ taskType: "TOPPING", title: "Top vessel from keg", instructions: "Top to the bung; log the volume added." }] },
-  },
-  {
-    code: "SYS-FERMENT-MONITOR",
-    name: "Ferment monitor",
-    description: "Log a Brix reading during active fermentation.",
-    category: "Ferment",
-    recurringCadence: "WEEKLY",
-    spec: { tasks: [{ taskType: "BRIX", title: "Log Brix", instructions: "Read Brix at cap; note temperature." }] },
-  },
-];
 
 async function main() {
   await runAsTenant(DEMO_ORG_ID, async () => {
