@@ -76,3 +76,23 @@ export async function saveAccountMappings(
     }
   });
 }
+
+export type ApAccounts = { apInventoryAccount: string | null; apPayableAccount: string | null };
+
+/** Read the winery-wide A/P Bill accounts (a supply receipt posts DR inventory / CR A/P). */
+export async function getApAccounts(): Promise<ApAccounts> {
+  const s = await prisma.appSettings.findFirst({ select: { apInventoryAccount: true, apPayableAccount: true } });
+  return { apInventoryAccount: s?.apInventoryAccount ?? null, apPayableAccount: s?.apPayableAccount ?? null };
+}
+
+/** Persist the A/P Bill accounts (both set together, or both cleared, to enable/disable AP posting). */
+export async function saveApAccounts(input: ApAccounts): Promise<void> {
+  await runInTenantTx(async (tx) => {
+    const existing = await tx.appSettings.findFirst({ select: { id: true } });
+    if (existing) {
+      await tx.appSettings.update({ where: { id: existing.id }, data: { apInventoryAccount: input.apInventoryAccount, apPayableAccount: input.apPayableAccount } });
+    } else {
+      await tx.appSettings.create({ data: { apInventoryAccount: input.apInventoryAccount, apPayableAccount: input.apPayableAccount } });
+    }
+  });
+}

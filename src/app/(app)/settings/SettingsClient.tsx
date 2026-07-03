@@ -40,12 +40,14 @@ export function SettingsClient({
   complianceProfile,
   accounting,
   accountingMappings,
+  accountingAp,
 }: {
   sparklingEnabled: boolean;
   cost: CostSettings;
   complianceProfile: ComplianceProfileFields;
   accounting: ConnectionSummary | null;
   accountingMappings: AccountingMapping[];
+  accountingAp: { apInventoryAccount: string | null; apPayableAccount: string | null };
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
@@ -223,6 +225,7 @@ export function SettingsClient({
         connected={accounting?.status === "CONNECTED"}
         homeCurrency={accounting?.homeCurrency ?? null}
         initialMappings={accountingMappings}
+        initialAp={accountingAp}
       />
 
       {/* TTB compliance profile — the filer identity that heads Form 5120.17. */}

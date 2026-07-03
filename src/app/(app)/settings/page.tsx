@@ -2,18 +2,19 @@ import { getAppSettings, getCostSettings } from "@/lib/settings/data";
 import { prisma } from "@/lib/prisma";
 import { asOpsCadence, asReturnCadence } from "@/lib/compliance/types";
 import { getConnectionSummary } from "@/lib/accounting/connection";
-import { getAccountMappings } from "@/lib/accounting/coa";
+import { getAccountMappings, getApAccounts } from "@/lib/accounting/coa";
 import { SettingsClient } from "./SettingsClient";
 
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const [settings, cost, profile, accounting, accountingMappings] = await Promise.all([
+  const [settings, cost, profile, accounting, accountingMappings, accountingAp] = await Promise.all([
     getAppSettings(),
     getCostSettings(),
     prisma.complianceProfile.findFirst(),
     getConnectionSummary(),
     getAccountMappings(),
+    getApAccounts(),
   ]);
   return (
     <SettingsClient
@@ -21,6 +22,7 @@ export default async function SettingsPage() {
       cost={cost}
       accounting={accounting}
       accountingMappings={accountingMappings}
+      accountingAp={accountingAp}
       complianceProfile={{
         ein: profile?.ein ?? "",
         registryNumber: profile?.registryNumber ?? "",

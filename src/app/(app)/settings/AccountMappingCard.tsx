@@ -4,7 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Badge, Button } from "@/components/ui";
 import { MAPPABLE_COMPONENTS } from "@/lib/accounting/components";
-import { loadChartOfAccounts, saveComponentMappings } from "@/lib/accounting/actions";
+import { loadChartOfAccounts, saveComponentMappings, saveApBillAccounts } from "@/lib/accounting/actions";
 import type { NormalizedAccount } from "@/lib/accounting/adapter";
 
 // Phase 15 Unit 6 — guided account mapping. Business roles, never Debit/Credit (Gemini). Gated on a
@@ -60,15 +60,20 @@ export function AccountMappingCard({
   connected,
   homeCurrency,
   initialMappings,
+  initialAp,
 }: {
   connected: boolean;
   homeCurrency: string | null;
   initialMappings: Mapping[];
+  initialAp: { apInventoryAccount: string | null; apPayableAccount: string | null };
 }) {
   const router = useRouter();
   const [mappings, setMappings] = React.useState<Mapping[]>(initialMappings);
   const [cost, setCost] = React.useState<NormalizedAccount[] | null>(null);
   const [inventory, setInventory] = React.useState<NormalizedAccount[] | null>(null);
+  const [payable, setPayable] = React.useState<NormalizedAccount[] | null>(null);
+  const [ap, setAp] = React.useState(initialAp);
+  const [apMsg, setApMsg] = React.useState<string | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [saveMsg, setSaveMsg] = React.useState<string | null>(null);
@@ -80,9 +85,10 @@ export function AccountMappingCard({
     setLoadError(null);
     startTransition(async () => {
       try {
-        const { cost, inventory } = await loadChartOfAccounts();
+        const { cost, inventory, payable } = await loadChartOfAccounts();
         setCost(cost);
         setInventory(inventory);
+        setPayable(payable);
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : "Couldn't load your chart of accounts.");
       } finally {
@@ -90,6 +96,21 @@ export function AccountMappingCard({
       }
     });
   }, []);
+
+  function saveAp() {
+    setApMsg(null);
+    setSaveErr(null);
+    startTransition(async () => {
+      try {
+        await saveApBillAccounts(ap);
+        setApMsg("Saved.");
+        router.refresh();
+      } catch (e) {
+        setSaveErr(e instanceof Error ? e.message : "Couldn't save the A/P accounts.");
+      }
+    });
+  }
+  const apHalf = Boolean(ap.apInventoryAccount) !== Boolean(ap.apPayableAccount);
 
   React.useEffect(() => {
     if (connected) fetchCoa();
@@ -199,6 +220,38 @@ export function AccountMappingCard({
             )}
             {saveMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{saveMsg}</span>}
             {saveErr && <span style={{ color: "var(--danger)", fontSize: 14 }}>{saveErr}</span>}
+          </div>
+
+          {/* Phase 15 — supply bills (A/P): winery-wide, DR inventory / CR accounts-payable. */}
+          <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 500, marginBottom: 4 }}>Supply bills (Accounts Payable)</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 10, maxWidth: "52ch" }}>
+              When you receive a supply from a vendor with a cost, it posts as a QuickBooks bill: money owed
+              (Accounts Payable) against the inventory it added. Set both accounts to turn supply bills on.
+            </div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <AccountSelect
+                id="ap-inventory"
+                label="Inventory asset account"
+                value={ap.apInventoryAccount}
+                accounts={inventory ?? []}
+                onChange={(v) => { setAp((a) => ({ ...a, apInventoryAccount: v })); setApMsg(null); }}
+              />
+              <AccountSelect
+                id="ap-payable"
+                label="Accounts payable account"
+                value={ap.apPayableAccount}
+                accounts={payable ?? []}
+                onChange={(v) => { setAp((a) => ({ ...a, apPayableAccount: v })); setApMsg(null); }}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+              <Button variant="secondary" onClick={saveAp} disabled={pending || apHalf}>
+                {pending ? "Saving…" : "Save A/P accounts"}
+              </Button>
+              {apHalf && <span style={{ color: "var(--danger)", fontSize: 13 }}>Set both accounts (or clear both).</span>}
+              {apMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{apMsg}</span>}
+            </div>
           </div>
         </>
       )}

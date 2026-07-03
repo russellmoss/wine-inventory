@@ -256,6 +256,8 @@ function ReceiveModal({
   const [unitCost, setUnitCost] = React.useState("");
   const [lotCode, setLotCode] = React.useState("");
   const [note, setNote] = React.useState("");
+  const [vendorName, setVendorName] = React.useState("");
+  const [terms, setTerms] = React.useState("");
   const unit = material?.stockUnit ?? "g";
   const qtyValid = qty.trim() !== "" && Number(qty) > 0;
 
@@ -269,6 +271,8 @@ function ReceiveModal({
           unitCost: unitCost.trim() !== "" ? Number(unitCost) : undefined,
           lotCode: lotCode.trim() || undefined,
           note: note.trim() || undefined,
+          vendorName: vendorName.trim() || undefined,
+          terms: terms.trim() || undefined,
         }),
       onClose,
     );
@@ -285,8 +289,14 @@ function ReceiveModal({
           <Input label="Lot / PO code (optional)" value={lotCode} onChange={(e) => setLotCode(e.target.value)} placeholder="supplier lot ref" style={{ flex: "1 1 140px" }} />
           <Input label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} placeholder="supplier, etc." style={{ flex: "1 1 140px" }} />
         </div>
+        {/* Phase 15 — a vendor turns this receipt into a QuickBooks A/P bill (needs a cost + A/P accounts mapped). */}
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <Input label="Vendor (optional)" value={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="e.g. Scott Labs" style={{ flex: "1 1 140px" }} />
+          <Input label="Terms (optional)" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="e.g. Net 30" style={{ flex: "1 1 140px" }} />
+        </div>
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
-          Leaving cost blank records the stock as unknown-cost until you receive a priced lot.
+          Leaving cost blank records the stock as unknown-cost until you receive a priced lot. Add a
+          vendor (with a cost) to send this as a bill to QuickBooks Accounts Payable.
         </p>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>

@@ -4,7 +4,7 @@ import type { CostComponent } from "@prisma/client";
 import { adminAction } from "@/lib/actions";
 import { disconnect } from "@/lib/accounting/connection";
 import { loadQboConfig } from "@/lib/accounting/qbo/config";
-import { listChartOfAccounts, saveAccountMappings, rankAccountsForRole, type AccountRole } from "@/lib/accounting/coa";
+import { listChartOfAccounts, saveAccountMappings, saveApAccounts, rankAccountsForRole, type AccountRole, type ApAccounts } from "@/lib/accounting/coa";
 import type { NormalizedAccount } from "@/lib/accounting/adapter";
 
 // Phase 15 Unit 4 — mutating accounting actions. Disconnect is a SERVER ACTION (not a raw POST route)
@@ -21,14 +21,21 @@ export const disconnectQuickBooks = adminAction(async (ctx) => {
 
 /** Load the connected company's chart of accounts, pre-ranked per role for the mapping pickers. */
 export const loadChartOfAccounts = adminAction(
-  async (): Promise<{ cost: NormalizedAccount[]; inventory: NormalizedAccount[] }> => {
+  async (): Promise<{ cost: NormalizedAccount[]; inventory: NormalizedAccount[]; payable: NormalizedAccount[] }> => {
     const accounts = await listChartOfAccounts();
     return {
       cost: rankAccountsForRole(accounts, "cost" satisfies AccountRole),
       inventory: rankAccountsForRole(accounts, "inventory" satisfies AccountRole),
+      payable: rankAccountsForRole(accounts, "payable" satisfies AccountRole),
     };
   },
 );
+
+/** Persist the winery-wide A/P Bill accounts (supply receipts → QBO Bill: DR inventory / CR A/P). */
+export const saveApBillAccounts = adminAction(async (_ctx, input: ApAccounts) => {
+  await saveApAccounts(input);
+  return { ok: true as const };
+});
 
 /** Persist the per-component account mappings (business roles → debit=cost, credit=inventory). The
  * client sends component as a plain string; cast to the enum at this trusted boundary. */

@@ -6,12 +6,13 @@ import type { NormalizedAccount } from "@/lib/accounting/adapter";
 // mapping card, and unit tests so the list, copy, and ranking never drift. Type-only Prisma import
 // (erased at runtime), safe in the client bundle.
 
-export type AccountRole = "cost" | "inventory";
+export type AccountRole = "cost" | "inventory" | "payable";
 
 /** Which QBO AccountTypes best fit each role — used to RANK the picker, never to restrict it. */
 const SUGGESTED_TYPES: Record<AccountRole, string[]> = {
   cost: ["Cost of Goods Sold", "Expense", "Other Expense"],
   inventory: ["Other Current Asset", "Fixed Asset", "Other Asset"],
+  payable: ["Accounts Payable", "Other Current Liability", "Credit Card"],
 };
 
 /** PURE: sort so the role's suggested account types come first, then by name. Never hides an account. */
