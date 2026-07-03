@@ -27,6 +27,7 @@
     "verify:reminders": "tsx --conditions=react-server --env-file=.env scripts/verify-reminders.ts",
     "verify:raw-sql": "tsx scripts/check-raw-sql-tenant-safety.ts",
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",
+    "check:invariant-drift": "node scripts/check-invariant-drift.mjs",
     "verify:tenant-isolation": "tsx --env-file=.env scripts/verify-tenant-isolation.ts",
     "verify:accounting-refresh": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting-refresh.ts",
     "verify:accounting-reversal": "tsx --conditions=react-server scripts/verify-accounting-reversal.ts",

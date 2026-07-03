@@ -42,7 +42,22 @@ jobs:
               src/lib/(tenant|ledger|transform|cost|compliance|auth).
             - If NOTHING significant changed, STOP NOW. Do not commit, do not open a PR.
 
-            STEP 2 — if significant, refresh the docs to match the current code:
+            STEP 2 — check for INVARIANT DRIFT (stale safety rules):
+            - Run: node scripts/check-invariant-drift.mjs
+              (deterministic; it diffs the marker..HEAD and flags invariants in
+              docs/architecture/invariants/ whose GOVERNED code changed but whose NOTE did not
+              — the case verify:invariants can't catch, because a guard still *exists* while the
+              written statement may have gone stale, which would make the auto-context hook inject
+              a WRONG rule).
+            - For EACH flagged invariant: read the changed governed files, and decide if the note's
+              statement / verify: guard / appliesTo still matches reality. If it drifted, UPDATE the
+              note in docs/architecture/invariants/ AND the matching line in INVARIANTS.md. If the
+              code change implies a genuinely NEW invariant, add a note (with a real verify: guard
+              that exists). If the note is still accurate, leave it (the review itself clears it).
+            - Do NOT fabricate guards. After edits, run: npm run verify:invariants — it must be green.
+            - If the drift check reported nothing AND nothing significant changed, STOP (see STEP 1).
+
+            STEP 3 — if significant, refresh the docs to match the current code:
             - Update docs/architecture/system-map.md so subsystems/paths are accurate.
             - Append any newly-implied risks to docs/architecture/scale-register.md and
               docs/architecture/security-register.md (do not delete existing entries).
@@ -50,11 +65,12 @@ jobs:
             - Overwrite docs/.brain-refresh-marker with the current HEAD SHA
               (git rev-parse HEAD).
 
-            STEP 3 — open a PR (do NOT merge, do NOT push to main):
+            STEP 4 — open a PR (do NOT merge, do NOT push to main):
             - Create a branch bot/brain-refresh-<short-sha>, commit with message
-              "docs(brain): auto-refresh system map + registers", and open a PR to main
-              titled the same, describing what changed and why.
+              "docs(brain): auto-refresh system map + registers + invariants", and open a PR to
+              main titled the same, describing what changed and why (call out any invariant notes
+              you updated for drift).
           claude_args: |
-            --allowedTools "Read,Edit,Bash"
+            --allowedTools "Read,Edit,Write,Bash"
             --max-turns 30
             --model claude-opus-4-8

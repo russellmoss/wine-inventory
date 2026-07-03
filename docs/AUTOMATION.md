@@ -16,7 +16,7 @@ You stay in control; the loops just make sure the work *starts itself*.
 | # | Loop | Runs | Trigger | Output |
 |---|------|------|---------|--------|
 | — | **Local detector** | your machine | every `git commit` | terminal nudge if significant code changed (no file writes) |
-| 1 | **Brain refresh** | GitHub Actions | nightly + manual | PR updating `system-map` + registers, if code drifted |
+| 1 | **Brain refresh** | GitHub Actions | nightly + manual | PR updating `system-map` + registers + drifted invariant notes, if code drifted |
 | 2 | **Security sweep** | GitHub Actions | weekly + on sensitive-path push + manual | GitHub **issue** if tenant/RLS/auth/secret drift found |
 | 3 | **Scale tripwire** | GitHub Actions | weekly + manual | GitHub **issue** if a `scale-register` tripwire is approaching |
 | 4 | **UX consistency** | GitHub Actions | on PRs touching UI + manual | PR review comments vs `ux-principles.md` |
@@ -29,6 +29,15 @@ Workflow files live in `.github/workflows/`. The local hook is `.githooks/post-c
 `src/lib/{tenant,ledger,transform,cost,compliance,auth}` changed, it refreshes and advances the marker.
 The `/ship` flow does the same thing locally (see the brain section in `CLAUDE.md`), so the marker
 stays current whether the refresh happened in CI or during a ship.
+
+### Invariant-drift review (part of the brain-refresh loop)
+The loop also runs `node scripts/check-invariant-drift.mjs` (deterministic, no LLM): it flags
+invariants in `docs/architecture/invariants/` whose **governed code changed but whose note did not**
+over `marker..HEAD`. That's the gap `npm run verify:invariants` can't catch — the guard still *exists*
+(green) while the written rule may have gone stale, which would make the auto-context hook inject a
+wrong rule. For each flagged invariant the loop reviews the note against the changed code and updates
+it (and the `INVARIANTS.md` line) in the same PR. Pure core is unit-tested (`test/invariant-drift.test.ts`);
+run it anytime with `npm run check:invariant-drift`.
 
 ---
 
