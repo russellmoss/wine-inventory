@@ -2797,7 +2797,7 @@ model Reservation {
   updatedAt   DateTime          @updatedAt
 
   workOrder WorkOrder      @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  task      WorkOrderTask? @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  task      WorkOrderTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, id])
   @@index([tenantId])
