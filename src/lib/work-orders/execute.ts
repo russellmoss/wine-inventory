@@ -63,7 +63,7 @@ async function dispatchOperationTx(
   task: TaskRow,
   payload: Record<string, unknown>,
   resolvedMaterial: { materialId: string; materialName: string } | null,
-): Promise<{ operationId: number; message: string }> {
+): Promise<{ operationId: number; message: string; shortfall?: number }> {
   const note = asStr(payload.note) ?? null;
   switch (task.opType) {
     case "RACK": {
@@ -112,7 +112,7 @@ async function dispatchOperationTx(
         note: note ?? undefined,
       };
       const r = await recordNeutralDoseTx(tx, actor, additionInput, cfg, resolvedMaterial);
-      return { operationId: r.operationId, message: r.message };
+      return { operationId: r.operationId, message: r.message, shortfall: r.shortfall }; // E1: draw-to-zero shortfall
     }
     default:
       throw new ActionError(
@@ -169,7 +169,9 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
   const finalize = input.autoFinalize === true;
   try {
     const result = await runLedgerWrite(async (tx) => {
-      const { operationId, message } = await dispatchOperationTx(tx, actor, task, payload, resolvedMaterial);
+      const { operationId, message, shortfall } = await dispatchOperationTx(tx, actor, task, payload, resolvedMaterial);
+      // E1/D4: a below-stock dose draws to zero (never negative) and surfaces a soft warning — never blocks.
+      const warnedMessage = shortfall && shortfall > 0 ? `${message} (used ${shortfall} more than on record)` : message;
 
       const now = new Date();
       const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
@@ -220,7 +222,7 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
         entityId: task.id,
         summary: `Completed WO task (pending review): ${message}`,
       });
-      return { attemptId: attempt.id, operationId, message };
+      return { attemptId: attempt.id, operationId, message: warnedMessage };
     });
 
     return { taskId: task.id, attemptId: result.attemptId, operationId: result.operationId, status: finalize ? "APPROVED" : "PENDING_APPROVAL", duplicate: false, message: result.message };
