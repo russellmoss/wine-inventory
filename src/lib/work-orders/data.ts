@@ -232,3 +232,45 @@ export async function listWorkOrderTemplates(tenantId: string): Promise<{ id: st
     }),
   );
 }
+
+export type TemplateWithSpec = { id: string; name: string; currentVersion: number; spec: unknown };
+
+/** A template + its current spec (the new-WO form renders one field group per spec task). */
+export async function getTemplateWithCurrentSpec(tenantId: string, templateId: string): Promise<TemplateWithSpec | null> {
+  return runAsTenant(tenantId, async () => {
+    const tpl = await prisma.workOrderTemplate.findUnique({ where: { id: templateId }, select: { id: true, name: true, currentVersion: true } });
+    if (!tpl) return null;
+    const version = await prisma.workOrderTemplateVersion.findFirst({ where: { templateId: tpl.id, version: tpl.currentVersion }, select: { spec: true } });
+    return { id: tpl.id, name: tpl.name, currentVersion: tpl.currentVersion, spec: version?.spec ?? { tasks: [] } };
+  });
+}
+
+/** Every non-archived template with its current spec — the new-WO form renders field groups from these. */
+export async function listTemplatesWithSpec(tenantId: string): Promise<{ id: string; name: string; isSystem: boolean; spec: unknown }[]> {
+  return runAsTenant(tenantId, async () => {
+    const tpls = await prisma.workOrderTemplate.findMany({
+      where: { archivedAt: null },
+      orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, isSystem: true, currentVersion: true, versions: { select: { version: true, spec: true } } },
+    });
+    return tpls.map((t) => ({ id: t.id, name: t.name, isSystem: t.isSystem, spec: t.versions.find((v) => v.version === t.currentVersion)?.spec ?? { tasks: [] } }));
+  });
+}
+
+export type PickerOption = { id: string; label: string };
+
+/** Option lists for the new-WO field pickers (active vessels, stock materials, active lots). */
+export async function getWorkOrderPickers(tenantId: string): Promise<{ vessels: PickerOption[]; materials: PickerOption[]; lots: PickerOption[] }> {
+  return runAsTenant(tenantId, async () => {
+    const [vessels, materials, lots] = await Promise.all([
+      prisma.vessel.findMany({ where: { isActive: true }, orderBy: [{ type: "asc" }, { code: "asc" }], select: { id: true, code: true, type: true } }),
+      prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+      prisma.lot.findMany({ where: { status: "ACTIVE" }, orderBy: { code: "asc" }, take: 500, select: { id: true, code: true } }),
+    ]);
+    return {
+      vessels: vessels.map((v) => ({ id: v.id, label: `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}` })),
+      materials: materials.map((m) => ({ id: m.id, label: m.name })),
+      lots: lots.map((l) => ({ id: l.id, label: l.code })),
+    };
+  });
+}

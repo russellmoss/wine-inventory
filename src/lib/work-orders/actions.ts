@@ -12,6 +12,7 @@ import {
   type CreateWorkOrderInput,
 } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore, type CompleteTaskInput } from "@/lib/work-orders/execute";
+import { createWorkOrderFromTemplateCore } from "@/lib/work-orders/templates";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { prisma } from "@/lib/prisma";
@@ -41,6 +42,26 @@ export const issueWorkOrderAction = action(async ({ actor }, input: { workOrderI
   revalidateWorkOrders(res.workOrderId);
   return res;
 });
+
+/** Create a DRAFT work order from a template (snaps the current version), with per-task field overrides. */
+export const createWorkOrderFromTemplateAction = action(
+  async (
+    { actor },
+    input: {
+      templateId: string;
+      title?: string;
+      instructions?: string;
+      assigneeEmail?: string | null;
+      dueAt?: Date | null;
+      autoFinalize?: boolean;
+      perTaskOverrides?: Record<string, unknown>[];
+    },
+  ) => {
+    const res = await createWorkOrderFromTemplateCore(actor, input);
+    revalidateWorkOrders(res.workOrderId);
+    return res;
+  },
+);
 
 export const assignWorkOrderAction = action(
   async ({ actor }, input: { workOrderId: string; assigneeId: string | null; assigneeEmail: string | null }) => {

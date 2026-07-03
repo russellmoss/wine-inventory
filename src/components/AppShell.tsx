@@ -20,6 +20,7 @@ const MAIN: NavItem[] = [
 ];
 
 const WINERY: NavItem[] = [
+  { href: "/work-orders", label: "Work orders" },
   { href: "/bulk", label: "Wine in-progress" },
   { href: "/ferment/process", label: "De-stem & press" },
   { href: "/blend", label: "Blend" },
@@ -140,6 +141,7 @@ function SidebarContent({
   onNavigate,
   onSignOut,
   pendingSamples,
+  pendingWorkOrders,
   sparklingEnabled,
   complianceDeadlines,
 }: {
@@ -155,12 +157,15 @@ function SidebarContent({
   onNavigate: () => void;
   onSignOut: () => void;
   pendingSamples: number;
+  pendingWorkOrders: number;
   sparklingEnabled: boolean;
   complianceDeadlines: { count: number; urgent: boolean };
 }) {
   const visibleSetup = SETUP.filter((s) => !s.admin || isAdmin);
   const wineryItems = sparklingEnabled ? [...WINERY, EN_TIRAGE_NAV] : WINERY;
-  const winery = wineryItems.map((n) => (n.href === "/samples" ? { ...n, badge: pendingSamples } : n));
+  const winery = wineryItems.map((n) =>
+    n.href === "/samples" ? { ...n, badge: pendingSamples } : n.href === "/work-orders" ? { ...n, badge: pendingWorkOrders } : n,
+  );
   return (
     <>
       <div style={{ padding: "20px 20px 12px" }}>
@@ -208,12 +213,14 @@ export function AppShell({
   user,
   children,
   pendingSamples = 0,
+  pendingWorkOrders = 0,
   sparklingEnabled = false,
   complianceDeadlines = { count: 0, urgent: false },
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   children: React.ReactNode;
   pendingSamples?: number;
+  pendingWorkOrders?: number;
   sparklingEnabled?: boolean;
   complianceDeadlines?: { count: number; urgent: boolean };
 }) {
@@ -283,7 +290,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
       </aside>
 
       {/* Mobile drawer */}
@@ -292,7 +299,7 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
           </aside>
         </div>
       ) : null}
