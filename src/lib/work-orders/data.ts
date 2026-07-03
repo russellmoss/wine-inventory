@@ -322,19 +322,20 @@ export async function listTemplatesWithSpec(tenantId: string): Promise<{ id: str
   });
 }
 
-export type PickerOption = { id: string; label: string };
+export type PickerOption = { id: string; label: string; unit?: string | null };
 
 /** Option lists for the new-WO field pickers (active vessels, stock materials, active lots). */
 export async function getWorkOrderPickers(tenantId: string): Promise<{ vessels: PickerOption[]; materials: PickerOption[]; lots: PickerOption[] }> {
   return runAsTenant(tenantId, async () => {
     const [vessels, materials, lots] = await Promise.all([
       prisma.vessel.findMany({ where: { isActive: true }, orderBy: [{ type: "asc" }, { code: "asc" }], select: { id: true, code: true, type: true } }),
-      prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+      prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, stockUnit: true } }),
       prisma.lot.findMany({ where: { status: "ACTIVE" }, orderBy: { code: "asc" }, take: 500, select: { id: true, code: true } }),
     ]);
     return {
       vessels: vessels.map((v) => ({ id: v.id, label: `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}` })),
-      materials: materials.map((m) => ({ id: m.id, label: m.name })),
+      // unit = the material's stock unit (g/mL/…); the maintenance/addition "amount" is denominated in it.
+      materials: materials.map((m) => ({ id: m.id, label: m.name, unit: m.stockUnit })),
       lots: lots.map((l) => ({ id: l.id, label: l.code })),
     };
   });
