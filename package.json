@@ -30,6 +30,8 @@
     "verify:accounting-reversal": "tsx --conditions=react-server scripts/verify-accounting-reversal.ts",
     "verify:accounting-idempotency": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting-idempotency.ts",
     "verify:accounting": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting.ts",
+    "qa:e2e": "playwright test",
+    "qa:e2e:report": "playwright show-report",
     "eval:assistant": "vitest run test/evals/assistant-tools.eval.test.ts",
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate"
@@ -56,6 +58,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^20",
