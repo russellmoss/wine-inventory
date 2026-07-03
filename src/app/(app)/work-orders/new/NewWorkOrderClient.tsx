@@ -77,6 +77,15 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
         </label>
       );
     }
+    if (key === "note" || key === "instructions") {
+      // Bigger, resizable note area (Unit 4) — planning notes are often multi-line.
+      return (
+        <label key={key} {...common}>
+          {key}
+          <textarea rows={2} style={{ ...field, minHeight: 60, resize: "vertical", lineHeight: 1.5, padding: "8px 10px" }} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)} />
+        </label>
+      );
+    }
     return (
       <label key={key} {...common}>
         {key}

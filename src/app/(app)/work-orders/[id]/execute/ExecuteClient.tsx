@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, Textarea } from "@/components/ui";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY } from "@/lib/work-orders/template-vocabulary";
 import { RATE_BASES, RATE_BASIS_LABELS } from "@/lib/cellar/additions-math";
@@ -106,7 +106,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
           <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
         ) : null}
       </div>
-      <label style={{ ...lbl, marginTop: 12 }}>Note (optional)<input type="text" style={big} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. actual differed because…" /></label>
+      <Textarea label="Note (optional)" minRows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. actual differed because…" style={{ marginTop: 12 }} />
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
