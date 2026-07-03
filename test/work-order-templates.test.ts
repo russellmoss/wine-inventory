@@ -66,3 +66,35 @@ describe("instantiateTasksFromSpec", () => {
     }
   });
 });
+
+describe("select field validation (A7) + filtration (Unit 2)", () => {
+  it("accepts a FILTRATION spec with a valid filter medium", () => {
+    const v = validateTemplateSpec({ tasks: [{ taskType: "FILTRATION", title: "Filter", defaults: { filterType: "Cross-flow", micron: 0.45 } }] });
+    expect(v.ok).toBe(true);
+  });
+
+  it("rejects an out-of-vocabulary select value (never free-form)", () => {
+    const v = validateTemplateSpec({ tasks: [{ taskType: "FILTRATION", title: "Filter", defaults: { filterType: "Coffee filter" } }] });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("not a valid filterType");
+  });
+
+  it("rejects an out-of-vocabulary rack type but accepts a valid one (dec 4a)", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "RACK", title: "Rack", defaults: { rackType: "off gross lees" } }] }).ok).toBe(true);
+    const bad = validateTemplateSpec({ tasks: [{ taskType: "RACK", title: "Rack", defaults: { rackType: "sideways" } }] });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors.join(" ")).toContain("not a valid rackType");
+  });
+
+  it("allows an empty/absent select value (the field is optional)", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "FILTRATION", title: "Filter", defaults: { filterType: "" } }] }).ok).toBe(true);
+    expect(validateTemplateSpec({ tasks: [{ taskType: "FILTRATION", title: "Filter" }] }).ok).toBe(true);
+  });
+
+  it("instantiates a FILTRATION task carrying filterType + derives destVesselId from vesselId", () => {
+    const spec: TemplateSpec = { tasks: [{ taskType: "FILTRATION", title: "Filter to bottling tank", defaults: { filterType: "Membrane" } }] };
+    const tasks = instantiateTasksFromSpec(spec, [{ vesselId: "v-tank", micron: 0.45, actualOutputL: 480 }]);
+    expect(tasks[0]).toMatchObject({ seq: 1, kind: "OPERATION", opType: "FILTRATION", destVesselId: "v-tank" });
+    expect(tasks[0].plannedPayload).toMatchObject({ filterType: "Membrane", micron: 0.45, actualOutputL: 480 });
+  });
+});

@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
@@ -114,6 +115,12 @@ export async function capManagementCore(actor: LedgerActor, input: CapManagement
 export type FiltrationInput = {
   vesselId: string;
   lossL: number;
+  /**
+   * A5: the measured output volume after filtering (a completion input; default = pre-filtration). When
+   * given, the loss = pre-filtration total − actualOutputL (filtration loss varies wildly by media —
+   * cross-flow ~0.1%, pad ~3%, lees ~20% — so it must NOT be a hardcoded rate). Takes precedence over lossL.
+   */
+  actualOutputL?: number | null;
   medium?: string;
   micron?: number | null;
   note?: string;
@@ -121,24 +128,44 @@ export type FiltrationInput = {
   batchId?: string;
 };
 
-/** Filtration: a measured/estimated volume loss (reason "filtration") + a medium/micron treatment. */
-export async function filterVesselCore(actor: LedgerActor, input: FiltrationInput): Promise<CellarBaseResult> {
+/**
+ * A2 tx-form: filtration inside a caller-provided ledger tx (composed by the work-order execute seam). ALL
+ * guards live here (the WO seam calls this directly — the Phase-9 lesson). Allows a ZERO loss (a filtration
+ * whose volume loss is negligible/unmeasured still records the FILTRATION op + medium/micron treatment, like
+ * a lines-empty CAP_MGMT). Reads resident balances via the tx so it shares the tenant-scoped snapshot.
+ */
+export async function filterVesselTx(
+  tx: Prisma.TransactionClient,
+  actor: LedgerActor,
+  input: FiltrationInput,
+): Promise<{ operationId: number; treatmentIds: string[]; summary: string; removedL: number }> {
   const { vesselId } = input;
   if (!vesselId) throw new ActionError("A vessel is required.");
-  const lossL = round2(input.lossL);
-  if (!(lossL > 0)) throw new ActionError("Enter the volume lost to the filter (greater than 0).");
 
-  const vessel = await prisma.vessel.findUnique({ where: { id: vesselId } });
+  const vessel = await tx.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel) throw new ActionError("Vessel not found.");
   if (!vessel.isActive) throw new ActionError(`${vesselLabel(vessel)} is inactive.`);
 
-  const residents = await residentBalances(vesselId);
+  const residents = await tx.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
   const total = round2(residents.reduce((a, r) => a + Number(r.volumeL), 0));
   if (total <= 0) throw new ActionError(`${vesselLabel(vessel)} is empty.`);
+
+  // A5: prefer the measured output volume (loss = pre − actual); fall back to a directly-entered loss.
+  let lossL: number;
+  if (input.actualOutputL != null && Number.isFinite(input.actualOutputL)) {
+    const out = round2(input.actualOutputL);
+    if (out < 0) throw new ActionError("Output volume can't be negative.");
+    if (out > total + 1e-9) throw new ActionError(`${vesselLabel(vessel)} holds ${total} L; output can't exceed that.`);
+    lossL = round2(total - out);
+  } else {
+    lossL = round2(input.lossL);
+  }
+  if (!(lossL >= 0)) throw new ActionError("Filtration loss can't be negative.");
   if (lossL > total + 1e-9) throw new ActionError(`${vesselLabel(vessel)} only holds ${total} L; can't lose ${lossL} L.`);
 
   const balances: VesselLotBalance[] = residents.map((r) => ({ vesselId, lotId: r.lotId, volumeL: Number(r.volumeL) }));
-  const plan = planVesselLoss(balances, lossL, "filtration");
+  // Zero loss → no volume lines (a lines-empty FILTRATION op, like CAP_MGMT); >0 → proportional loss.
+  const plan = lossL > 0 ? planVesselLoss(balances, lossL, "filtration") : { removedL: 0, lines: [], perLot: [] };
 
   const micron = input.micron != null && Number.isFinite(input.micron) && input.micron > 0 ? round2(input.micron) : null;
   const medium = input.medium?.trim() || null;
@@ -148,47 +175,53 @@ export async function filterVesselCore(actor: LedgerActor, input: FiltrationInpu
   const detail = [medium, micron ? `${micron} µm` : null].filter(Boolean).join(", ");
   const summary = `Filtered ${vesselLabel(vessel)}${detail ? ` (${detail})` : ""} — ${plan.removedL} L loss`;
 
-  const { operationId, treatmentIds } = await runLedgerWrite(async (tx) => {
-    const opId = await writeLotOperation(tx, {
-      type: "FILTRATION",
-      lines: plan.lines,
-      actorUserId: actor.actorUserId,
-      enteredBy: actor.actorEmail,
-      captureMethod: input.captureMethod,
-      note: input.note?.trim() || null,
-      lotCodes,
-      vesselCodes,
-      capacityByVessel,
-    });
-    if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
-    // One treatment per affected lot, carrying the medium/micron detail + a volume snapshot.
-    const balByLot = new Map(balances.map((b) => [b.lotId, b.volumeL]));
-    const ids: string[] = [];
-    for (const p of plan.perLot) {
-      const row = await tx.lotTreatment.create({
-        data: {
-          operationId: opId,
-          lotId: p.lotId,
-          vesselId,
-          kind: "FILTRATION",
-          medium,
-          micron,
-          volumeLAtAddition: round2(balByLot.get(p.lotId) ?? 0),
-          note: input.note?.trim() || null,
-        },
-        select: { id: true },
-      });
-      ids.push(row.id);
-    }
-    await writeAudit(tx, {
-      ...actor,
-      action: "STOCK_MOVEMENT",
-      entityType: "LotOperation",
-      entityId: String(opId),
-      summary,
-    });
-    return { operationId: opId, treatmentIds: ids };
+  const opId = await writeLotOperation(tx, {
+    type: "FILTRATION",
+    lines: plan.lines,
+    actorUserId: actor.actorUserId,
+    enteredBy: actor.actorEmail,
+    captureMethod: input.captureMethod,
+    note: input.note?.trim() || null,
+    lotCodes,
+    vesselCodes,
+    capacityByVessel,
   });
+  if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
+  // One treatment per affected lot when loss occurred; if zero-loss, one per resident lot (records the medium).
+  const balByLot = new Map(balances.map((b) => [b.lotId, b.volumeL]));
+  const affected = plan.perLot.length > 0 ? plan.perLot.map((p) => p.lotId) : residents.map((r) => r.lotId);
+  const ids: string[] = [];
+  for (const lotId of affected) {
+    const row = await tx.lotTreatment.create({
+      data: {
+        operationId: opId,
+        lotId,
+        vesselId,
+        kind: "FILTRATION",
+        medium,
+        micron,
+        volumeLAtAddition: round2(balByLot.get(lotId) ?? 0),
+        note: input.note?.trim() || null,
+      },
+      select: { id: true },
+    });
+    ids.push(row.id);
+  }
+  await writeAudit(tx, {
+    ...actor,
+    action: "STOCK_MOVEMENT",
+    entityType: "LotOperation",
+    entityId: String(opId),
+    summary,
+  });
+  return { operationId: opId, treatmentIds: ids, summary, removedL: plan.removedL };
+}
 
+/** Filtration: a measured/estimated volume loss (reason "filtration") + a medium/micron treatment. */
+export async function filterVesselCore(actor: LedgerActor, input: FiltrationInput): Promise<CellarBaseResult> {
+  if (!input.vesselId) throw new ActionError("A vessel is required.");
+  // Manual /cellar path requires a measured loss (the form is loss-first); the WO path allows zero.
+  if (!(round2(input.lossL) > 0)) throw new ActionError("Enter the volume lost to the filter (greater than 0).");
+  const { operationId, treatmentIds, summary } = await runLedgerWrite((tx) => filterVesselTx(tx, actor, input));
   return { operationId, message: `${summary}.`, treatmentIds };
 }

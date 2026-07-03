@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { rackWineTx } from "@/lib/vessels/rack-core";
 import { topVesselTx } from "@/lib/cellar/topping";
+import { filterVesselTx } from "@/lib/cellar/treatments";
 import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFIG, type AddAdditionInput } from "@/lib/cellar/addition";
 import type { RateBasis } from "@/lib/cellar/additions-math";
 import { assertTaskTransition } from "@/lib/work-orders/status";
@@ -65,14 +66,28 @@ async function dispatchOperationTx(
   const note = asStr(payload.note) ?? null;
   switch (task.opType) {
     case "RACK": {
+      // dec 4a: an optional rack descriptor rides the op note (off gross/fine lees, clean-to-clean, délestage).
+      const rackType = asStr(payload.rackType);
+      const rackNote = [rackType ? `Rack: ${rackType}` : null, note].filter(Boolean).join(" — ") || undefined;
       const r = await rackWineTx(tx, actor, {
         fromVesselId: (asStr(payload.fromVesselId) ?? task.sourceVesselId) as string,
         toVesselId: (asStr(payload.toVesselId) ?? task.destVesselId) as string,
         drawL: asNum(payload.drawL),
         lossL: asNum(payload.lossL),
-        note: note ?? undefined,
+        note: rackNote,
       });
       return { operationId: r.operationId, message: r.message };
+    }
+    case "FILTRATION": {
+      const r = await filterVesselTx(tx, actor, {
+        vesselId: (asStr(payload.vesselId) ?? task.destVesselId ?? task.sourceVesselId) as string,
+        lossL: asNum(payload.lossL) ?? 0,
+        actualOutputL: asNum(payload.actualOutputL), // A5: loss = pre − actual (computed in the tx)
+        medium: asStr(payload.filterType), // dec 1: controlled filter media → LotTreatment.medium
+        micron: asNum(payload.micron) ?? null,
+        note: note ?? undefined,
+      });
+      return { operationId: r.operationId, message: `${r.summary}.` };
     }
     case "TOPPING": {
       const r = await topVesselTx(tx, actor, {
@@ -100,7 +115,7 @@ async function dispatchOperationTx(
     }
     default:
       throw new ActionError(
-        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. v1 supports rack, addition, fining, and topping.`,
+        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. v1 supports rack, addition, fining, topping, and filtration.`,
         "CONFLICT",
       );
   }

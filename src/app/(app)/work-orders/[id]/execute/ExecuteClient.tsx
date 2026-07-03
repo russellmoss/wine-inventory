@@ -14,7 +14,7 @@ import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 // Dexie outbox uses). Not harvest-grade offline yet (Phase 28); online status is pinned via aria-live.
 
 type Picker = { id: string; label: string };
-const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING" };
+const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION" };
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 
@@ -49,6 +49,18 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
         <label key={key} style={lbl}>{key}
           <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
             {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
+          </select>
+        </label>
+      );
+    }
+    if (type === "select") {
+      // A7: options come from the vocabulary's fieldOptions (controlled list, never free-form).
+      const options = def?.fieldOptions?.[key] ?? [];
+      return (
+        <label key={key} style={lbl}>{key}
+          <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
+            <option value="">— pick —</option>
+            {options.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         </label>
       );

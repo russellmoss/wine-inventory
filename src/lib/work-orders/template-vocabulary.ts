@@ -1,19 +1,24 @@
 import type { OperationType, WorkOrderTaskKind } from "@prisma/client";
 import type { CreateTaskInput } from "@/lib/work-orders/lifecycle";
+import { FILTER_MEDIA, RACK_TYPES } from "@/lib/cellar/filtration-vocab";
 
 // Typed field vocabulary for work-order templates (Phase 9 Unit 10). Templates are NEVER free-form: a
 // template's spec is a list of tasks, each of a known task TYPE with a fixed set of allowed fields.
 // Free-form cells would break the cost/compliance mapping (the roadmap-locked ERP pattern). Validation +
 // instantiation are pure (unit-tested); templates.ts persists versioned, clone-on-customize templates.
 
-export type FieldType = "vessel" | "lot" | "material" | "number" | "text" | "rateBasis";
+export type FieldType = "vessel" | "lot" | "material" | "number" | "text" | "rateBasis" | "select";
 
 export type TaskTypeDef = {
   kind: WorkOrderTaskKind;
   opType?: OperationType;
   observationType?: string;
+  /** Phase 9.1: canonical maintenance subtype (A3) for kind === "MAINTENANCE" task types. */
+  activityType?: string;
   label: string;
   fields: Record<string, FieldType>;
+  /** Phase 9.1 (A7): the allowed option list for each `select` field — validated, never free-form. */
+  fieldOptions?: Record<string, readonly string[]>;
 };
 
 // The allowed task types + their fields. v1 covers the cellar core loop (rack/addition/fining/top) plus
@@ -23,7 +28,8 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     kind: "OPERATION",
     opType: "RACK",
     label: "Rack / transfer",
-    fields: { fromVesselId: "vessel", toVesselId: "vessel", drawL: "number", lossL: "number", note: "text" },
+    fields: { fromVesselId: "vessel", toVesselId: "vessel", drawL: "number", lossL: "number", rackType: "select", note: "text" },
+    fieldOptions: { rackType: RACK_TYPES },
   },
   ADDITION: {
     kind: "OPERATION",
@@ -42,6 +48,14 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     opType: "TOPPING",
     label: "Topping",
     fields: { fromVesselId: "vessel", toVesselId: "vessel", volumeL: "number", note: "text" },
+  },
+  FILTRATION: {
+    kind: "OPERATION",
+    opType: "FILTRATION",
+    label: "Filtration",
+    // filterType → LotTreatment.medium (controlled, dec 1); actualOutputL → loss = pre − actual (A5).
+    fields: { vesselId: "vessel", lotId: "lot", filterType: "select", micron: "number", actualOutputL: "number", note: "text" },
+    fieldOptions: { filterType: FILTER_MEDIA },
   },
   BRIX: {
     kind: "OBSERVATION",
@@ -81,8 +95,18 @@ export function validateTemplateSpec(spec: TemplateSpec): SpecValidation {
       return;
     }
     if (!t.title?.trim()) errors.push(`Task ${i + 1}: a title is required.`);
-    for (const key of Object.keys(t.defaults ?? {})) {
-      if (!(key in def.fields)) errors.push(`Task ${i + 1} (${t.taskType}): unknown field "${key}".`);
+    for (const [key, value] of Object.entries(t.defaults ?? {})) {
+      if (!(key in def.fields)) {
+        errors.push(`Task ${i + 1} (${t.taskType}): unknown field "${key}".`);
+        continue;
+      }
+      // A7: a `select` field's value is validated against its options — never free-form.
+      if (def.fields[key] === "select" && value != null && value !== "") {
+        const options = def.fieldOptions?.[key] ?? [];
+        if (!(options as readonly unknown[]).includes(value)) {
+          errors.push(`Task ${i + 1} (${t.taskType}): "${String(value)}" is not a valid ${key} (allowed: ${options.join(", ")}).`);
+        }
+      }
     }
   });
   return { ok: errors.length === 0, errors };
