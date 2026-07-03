@@ -31,8 +31,11 @@ const SCRIPTS = PKG.scripts || {};
 
 const RED = "\x1b[31m", GRN = "\x1b[32m", YEL = "\x1b[33m", CYN = "\x1b[36m", DIM = "\x1b[2m", RST = "\x1b[0m";
 
-// Minimal scalar frontmatter reader (the fields this register controls are all scalars).
+// Minimal scalar frontmatter reader (the fields this register controls are all scalars). Normalize CRLF →
+// LF first: notes edited on Windows carry \r, which would break the `^---\n` match and leave a trailing \r
+// on every value (so e.g. `enforce: guard` would read as "guard\r" and never match).
 function frontmatter(md) {
+  md = md.replace(/\r\n?/g, "\n");
   const m = md.match(/^---\n([\s\S]*?)\n---/);
   if (!m) return {};
   const out = {};
