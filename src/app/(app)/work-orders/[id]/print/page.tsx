@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireReadyUser } from "@/lib/dal";
-import { getWorkOrderDetail } from "@/lib/work-orders/data";
+import { getWorkOrderPrintView } from "@/lib/work-orders/data";
 import { PrintClient } from "./PrintClient";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +10,7 @@ export default async function WorkOrderPrintPage({ params }: { params: Promise<{
   const user = await requireReadyUser();
   const tenantId = user.activeOrganizationId;
   if (!tenantId) notFound();
-  const wo = await getWorkOrderDetail(tenantId, id);
+  const wo = await getWorkOrderPrintView(tenantId, id);
   if (!wo) notFound();
-  // The "printed on" stamp is computed on the server (client Date is fine too, but keep it deterministic).
-  return <PrintClient wo={wo} printedAt={new Date().toISOString()} />;
+  return <PrintClient wo={wo} workOrderId={id} printedAt={new Date().toISOString()} />;
 }

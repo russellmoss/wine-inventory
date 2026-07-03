@@ -25,7 +25,7 @@ import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifec
 import { completeTaskCore } from "@/lib/work-orders/execute";
 import { reverseVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { seedStarterMaterials } from "@/lib/onboarding/seed-starter-materials";
-import { getWorkOrderArchive } from "@/lib/work-orders/data";
+import { getWorkOrderArchive, getWorkOrderPrintView } from "@/lib/work-orders/data";
 import { disconnectSystem } from "../src/lib/tenant/system";
 
 const TENANT = "org_demo_winery";
@@ -197,16 +197,27 @@ async function main() {
     // ── 6b. ADDITION dosed by a direct AMOUNT (not a rate) depletes EXACTLY that amount + costs it. ──
     const addWo = await createWorkOrderCore(ACTOR, {
       title: "ZZWE addition by amount",
-      tasks: [{ seq: 1, kind: "OPERATION", title: "Add 40 g tannin", opType: "ADDITION", destVesselId: wineTank.id, lotId: wineLot, materialId: tannin.id, plannedPayload: { vesselId: wineTank.id, lotId: wineLot, materialId: tannin.id, amount: 40 } }],
+      tasks: [{ seq: 1, kind: "OPERATION", title: "Add 40 g tannin", opType: "ADDITION", destVesselId: wineTank.id, lotId: wineLot, materialId: tannin.id, plannedPayload: { vesselId: wineTank.id, lotId: wineLot, materialId: tannin.id, amount: 40, doseUnit: "g" } }],
     });
     await issueWorkOrderCore(ACTOR, { workOrderId: addWo.workOrderId });
     const addTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: addWo.workOrderId } });
-    const addDone = await completeTaskCore(ACTOR, { taskId: addTask.id, commandId: "zzwe-add-1", actualPayload: { amount: 40 }, autoFinalize: true });
+    const addDone = await completeTaskCore(ACTOR, { taskId: addTask.id, commandId: "zzwe-add-1", actualPayload: { amount: 40, doseUnit: "g" }, autoFinalize: true });
     assert(addDone.operationId != null, "amount-dosed ADDITION wrote a ledger op");
     const tanninLeft = num((await prisma.supplyLot.aggregate({ where: { materialId: tannin.id }, _sum: { qtyRemaining: true } }))._sum.qtyRemaining);
     assert(near(tanninLeft, 960), `dose-by-amount depleted EXACTLY 40 g (1000 → ${tanninLeft}), independent of volume`);
     const addCost = await prisma.costLine.findFirst({ where: { operationId: addDone.operationId!, component: "MATERIAL" } });
     assert(!!addCost, "a MATERIAL cost line was written for the amount-dosed addition");
+
+    // ── 6c. The PRINT view resolves raw ids to human labels (vessel code, lot code, material name) — no cuids. ──
+    const printView = await getWorkOrderPrintView(TENANT, addWo.workOrderId);
+    const printTask = printView?.tasks[0];
+    const rowMap = new Map((printTask?.rows ?? []).map((r) => [r.label, r.value]));
+    assert(rowMap.get("Vessel") === "Tank ZZWE-WINE", `print resolves the vessel code (got "${rowMap.get("Vessel")}")`);
+    assert(rowMap.get("Material") === "ZZWE Tannin", `print resolves the material name (got "${rowMap.get("Material")}")`);
+    assert(rowMap.get("Lot") === "ZZWE-LOT-1", `print resolves the lot code (got "${rowMap.get("Lot")}")`);
+    const cuidRe = /^c[a-z0-9]{20,}$/;
+    assert(![...rowMap.values()].some((v) => cuidRe.test(v)), "no raw cuid appears in the printed rows");
+    assert(rowMap.get("Dose") === "40 g", `print shows a human dose line (got "${rowMap.get("Dose")}")`);
 
     // ── 7. The finished WOs (all tasks DONE → WO APPROVED) appear in the filterable archive. ──
     const archive = await getWorkOrderArchive(TENANT, { q: "ZZWE" }, 1);
