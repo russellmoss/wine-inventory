@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Checkbox, Eyebrow } from "@/components/ui";
-import { TASK_VOCABULARY, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { TASK_VOCABULARY, fieldLabel, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { RATE_BASES, RATE_BASIS_LABELS } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
 
@@ -39,7 +39,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
       // A7: controlled options from the vocabulary's fieldOptions.
       return (
         <label key={key} {...common}>
-          {key}
+          {fieldLabel(key)}
           <select style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)}>
             <option value="">— pick —</option>
             {(options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
@@ -51,7 +51,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
       const opts = type === "vessel" ? pickers.vessels : type === "lot" ? pickers.lots : pickers.materials;
       return (
         <label key={key} {...common}>
-          {key}
+          {fieldLabel(key)}
           <select style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)}>
             <option value="">— pick —</option>
             {opts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
@@ -62,7 +62,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     if (type === "rateBasis") {
       return (
         <label key={key} {...common}>
-          {key}
+          {fieldLabel(key)}
           <select style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)}>
             {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
           </select>
@@ -71,11 +71,11 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
     }
     if (type === "number") {
       // "amount" is denominated in the selected material's stock unit — show it so the number isn't ambiguous.
-      let label: string = key;
+      let label: string = fieldLabel(key);
       if (key === "amount") {
         const selectedMaterialId = overrides[taskIdx]?.materialId;
         const unit = pickers.materials.find((m) => m.id === selectedMaterialId)?.unit;
-        label = unit ? `amount (${unit})` : "amount — pick a material first";
+        label = unit ? `Amount (${unit})` : "Amount — pick a material first";
       }
       return (
         <label key={key} {...common}>
@@ -88,7 +88,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
       // Bigger, resizable note area (Unit 4) — planning notes are often multi-line.
       return (
         <label key={key} {...common}>
-          {key}
+          {fieldLabel(key)}
           <textarea rows={2} style={{ ...field, minHeight: 60, resize: "vertical", lineHeight: 1.5, padding: "8px 10px" }} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)} />
         </label>
       );
@@ -154,6 +154,7 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
             return (
               <div key={i} style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                 <Eyebrow>{i + 1}. {t.title} · {def.label}</Eyebrow>
+                {def.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 6 }}>{def.hint}</div> : null}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
                   {Object.entries(def.fields).map(([key, type]) => renderField(i, key, type, t.defaults?.[key], def.fieldOptions?.[key]))}
                 </div>

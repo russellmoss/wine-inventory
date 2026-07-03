@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow, Textarea } from "@/components/ui";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
-import { TASK_VOCABULARY } from "@/lib/work-orders/template-vocabulary";
+import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabulary";
 import { RATE_BASES, RATE_BASIS_LABELS } from "@/lib/cellar/additions-math";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 
@@ -39,7 +39,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     if (type === "vessel" || type === "lot" || type === "material") {
       const opts = type === "vessel" ? pickers.vessels : type === "lot" ? pickers.lots : pickers.materials;
       return (
-        <label key={key} style={lbl}>{key}
+        <label key={key} style={lbl}>{fieldLabel(key)}
           <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
             <option value="">— pick —</option>
             {opts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
@@ -49,7 +49,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     }
     if (type === "rateBasis") {
       return (
-        <label key={key} style={lbl}>{key}
+        <label key={key} style={lbl}>{fieldLabel(key)}
           <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
             {RATE_BASES.map((b) => <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>)}
           </select>
@@ -60,7 +60,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
       // A7: options come from the vocabulary's fieldOptions (controlled list, never free-form).
       const options = def?.fieldOptions?.[key] ?? [];
       return (
-        <label key={key} style={lbl}>{key}
+        <label key={key} style={lbl}>{fieldLabel(key)}
           <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>
             <option value="">— pick —</option>
             {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -71,14 +71,14 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     if (type === "number") {
       // The "amount" field is denominated in the SELECTED material's stock unit — surface it so a bare
       // number isn't ambiguous. Falls back to "pick a material" until one is chosen.
-      let label: string = key;
+      let label: string = fieldLabel(key);
       if (key === "amount") {
         const unit = pickers.materials.find((m) => m.id === fields.materialId)?.unit;
-        label = unit ? `amount (${unit})` : "amount — pick a material first";
+        label = unit ? `Amount (${unit})` : "Amount — pick a material first";
       }
       return <label key={key} style={lbl}>{label}<input type="number" inputMode="decimal" step="any" style={big} value={String(cur)} onChange={(e) => set(key, e.target.value === "" ? "" : Number(e.target.value))} /></label>;
     }
-    return <label key={key} style={lbl}>{key}<input type="text" style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)} /></label>;
+    return <label key={key} style={lbl}>{fieldLabel(key)}<input type="text" style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)} /></label>;
   }
 
   function complete() {
@@ -106,6 +106,8 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
         <Badge tone="gold">{task.status.replace(/_/g, " ").toLowerCase()}</Badge>
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 14px" }}>{task.kind === "OPERATION" ? task.opType : `observation · ${task.observationType}`}{def ? ` · ${def.label}` : ""}</div>
+
+      {def?.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 12 }}>{def.hint}</div> : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {def ? Object.entries(def.fields).filter(([k]) => k !== "note").map(([k, t]) => renderField(k, t)) : null}
