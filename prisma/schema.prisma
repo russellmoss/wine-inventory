@@ -2366,6 +2366,10 @@ model Commerce7Connection {
   lastPolledAt        DateTime?
   pollCursorUpdatedAt DateTime? // (updatedAt, id) composite poll watermark with overlap
   pollCursorId        String?
+  // Phase 16 U6 — the inventory cron writes a read-only DRIFT SUMMARY here (ERP on-hand vs C7 available
+  // per mapped variant). Surfaced in the dashboard for human review; NEVER auto-corrects C7 inventory.
+  driftSummary        Json?
+  driftCheckedAt      DateTime?
   companyName         String? // display only ("Connected to <winery>") — non-secret
   connectedAt         DateTime?
   createdAt           DateTime         @default(now())
