@@ -151,7 +151,6 @@ async function main() {
     assert(rejected.status === "REJECTED", "addition task rejected");
     const supplyRestored = num((await prisma.supplyLot.aggregate({ where: { materialId: material.id }, _sum: { qtyRemaining: true } }))._sum.qtyRemaining);
     assert(near(supplyRestored, 1000), `stock restored on reject (${supplyRestored} → 1000)`);
-    const negating = await prisma.costLine.findFirst({ where: { operationId: addDone.operationId!, reversalOfCostLineId: null }, select: { id: true } });
     const negatedSum = num((await prisma.costLine.aggregate({ where: { lotId, component: "MATERIAL" }, _sum: { amount: true } }))._sum.amount);
     assert(near(negatedSum, 0), `MATERIAL cost nets to zero after reversal (${negatedSum})`);
 

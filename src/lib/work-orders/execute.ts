@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, WorkOrderTask } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runLedgerWrite } from "@/lib/ledger/write";
 import { ActionError } from "@/lib/action-error";
@@ -41,7 +41,7 @@ export type CompleteTaskResult = {
   message: string;
 };
 
-type TaskRow = Prisma.WorkOrderTaskGetPayload<{}>;
+type TaskRow = WorkOrderTask;
 
 const asNum = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 const asStr = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);

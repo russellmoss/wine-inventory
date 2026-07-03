@@ -104,10 +104,9 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
 export function ExecuteClient({ wo, pickers }: { wo: WorkOrderDetail; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] } }) {
   const router = useRouter();
-  const [online, setOnline] = React.useState(true);
+  const [online, setOnline] = React.useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
   React.useEffect(() => {
     const on = () => setOnline(true), off = () => setOnline(false);
-    setOnline(navigator.onLine);
     window.addEventListener("online", on); window.addEventListener("offline", off);
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
