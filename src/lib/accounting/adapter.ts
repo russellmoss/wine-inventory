@@ -127,5 +127,7 @@ export interface AccountingAdapter {
   listAccounts(ctx: ProviderCallContext): Promise<NormalizedAccount[]>;
   /** Query-before-post: find an already-posted object by our idempotency DocNumber. Null if none. */
   findByDocNumber(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", docNumber: string): Promise<PostResult | null>;
+  /** Reconcile read-back: fetch a posted object by its external Id. Null if it was deleted in the GL. */
+  getById(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", externalId: string): Promise<PostResult | null>;
   postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string): Promise<PostResult>;
 }

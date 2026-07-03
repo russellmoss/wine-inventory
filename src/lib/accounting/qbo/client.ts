@@ -198,6 +198,20 @@ export class QboClient {
     return row ? { externalId: row.Id, version: row.SyncToken, docNumber: row.DocNumber } : null;
   }
 
+  async getById(
+    ctx: ProviderCallContext,
+    objectType: "JournalEntry" | "Bill",
+    externalId: string,
+  ): Promise<PostResult | null> {
+    const safe = externalId.replace(/'/g, "''");
+    const r = await this.query<Record<string, Array<{ Id: string; SyncToken: string; DocNumber?: string }>>>(
+      ctx,
+      `SELECT Id, SyncToken, DocNumber FROM ${objectType} WHERE Id = '${safe}'`,
+    );
+    const row = r[objectType]?.[0];
+    return row ? { externalId: row.Id, version: row.SyncToken, docNumber: row.DocNumber } : null;
+  }
+
   async postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string): Promise<PostResult> {
     const payload = buildJournalEntryPayload(input);
     const r = await this.request<{ JournalEntry?: { Id: string; SyncToken: string; DocNumber?: string } }>(
@@ -251,6 +265,9 @@ export class QboAdapter implements AccountingAdapter {
   }
   findByDocNumber(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", docNumber: string) {
     return this.client.findByDocNumber(ctx, objectType, docNumber);
+  }
+  getById(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", externalId: string) {
+    return this.client.getById(ctx, objectType, externalId);
   }
   postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string) {
     return this.client.postJournalEntry(ctx, input, requestId);
