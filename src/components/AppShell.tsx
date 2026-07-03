@@ -15,6 +15,7 @@ const MAIN: NavItem[] = [
   { href: "/inventory", label: "Inventory" },
   { href: "/reports", label: "Reports" },
   { href: "/compliance", label: "TTB compliance", admin: true },
+  { href: "/accounting", label: "Accounting", admin: true },
   { href: "/audit", label: "Audit log", admin: true },
 ];
 
