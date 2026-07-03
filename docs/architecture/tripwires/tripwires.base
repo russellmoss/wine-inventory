@@ -1,0 +1,67 @@
+filters:
+  and:
+    - file.hasTag("tripwire")
+    - 'file.ext == "md"'
+    - 'file.folder != "docs/_templates"'
+
+formulas:
+  enforce_icon: 'if(enforce == "guard", "✅ guarded", if(enforce == "static", "🔒 static", "◐ watch"))'
+  sev_icon: 'if(severity == "critical", "🔴", if(severity == "high", "🟠", "🟡"))'
+  guard: 'if(enforce == "static", "forbid /" + forbid + "/ in " + this["in"], if(enforce == "observe", signal, verify))'
+
+properties:
+  id:
+    displayName: "ID"
+  formula.sev_icon:
+    displayName: "Sev"
+  group:
+    displayName: "Register"
+  formula.enforce_icon:
+    displayName: "Enforcement"
+  formula.guard:
+    displayName: "Caught by / watch"
+  decision:
+    displayName: "Source"
+
+views:
+  - type: table
+    name: "All tripwires"
+    groupBy:
+      property: group
+      direction: ASC
+    order:
+      - id
+      - formula.sev_icon
+      - formula.enforce_icon
+      - formula.guard
+      - decision
+
+  - type: table
+    name: "⚠ Manual-watch only"
+    filters:
+      and:
+        - 'enforce == "observe"'
+    order:
+      - id
+      - formula.sev_icon
+      - group
+      - signal
+
+  - type: table
+    name: "Enforced (guard + static)"
+    filters:
+      or:
+        - 'enforce == "guard"'
+        - 'enforce == "static"'
+    order:
+      - id
+      - formula.enforce_icon
+      - formula.guard
+      - decision
+
+  - type: cards
+    name: "Gallery"
+    order:
+      - id
+      - formula.sev_icon
+      - formula.enforce_icon

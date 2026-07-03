@@ -32,4 +32,15 @@ if command -v node >/dev/null 2>&1 && [ -f scripts/verify-invariant-guards.mjs ]
   fi
 fi
 
+# Tripwire check — warn (never block) if a tripwire lost its guard OR a `static`
+# tripwire FIRED (a forbidden pattern like runAsSystem in src/app now appears).
+if command -v node >/dev/null 2>&1 && [ -f scripts/verify-tripwire-guards.mjs ]; then
+  trip_out=$(node scripts/verify-tripwire-guards.mjs 2>&1)
+  if [ $? -ne 0 ]; then
+    printf '\033[31m✗  tripwire gap / fired\033[0m — a tripwire is unguarded or its forbidden pattern appeared:\n'
+    echo "$trip_out" | grep -E 'MISSING|FIRED|✗|•' | sed 's/^/      /'
+    printf '   → run: npm run verify:tripwires\n\n'
+  fi
+fi
+
 exit 0

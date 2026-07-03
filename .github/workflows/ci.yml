@@ -23,6 +23,12 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run verify:raw-sql
+      # Deterministic brain gates (pure Node, no DB): every invariant in
+      # docs/architecture/invariants/ must have a live guard, and every tripwire
+      # in docs/architecture/tripwires/ must have a live guard with no `static`
+      # tripwire's forbidden pattern (e.g. runAsSystem in src/app) present.
+      - run: npm run verify:invariants
+      - run: npm run verify:tripwires
       - run: npx vitest run
 
   # Tenant-isolation proof against a real Postgres, run AS the NOBYPASSRLS app_rls role — the live RLS
