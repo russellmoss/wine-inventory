@@ -13,7 +13,15 @@ const globalForPrisma = globalThis as unknown as {
 const base =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    // Dev logs default to warn+error (readable). Per-query SQL logging is opt-in via
+    // PRISMA_LOG_QUERIES=1 — it's invaluable when debugging a query but drowns the dev console
+    // otherwise (every RLS set_config + BEGIN/COMMIT prints). Production stays error-only.
+    log:
+      process.env.NODE_ENV === "development"
+        ? process.env.PRISMA_LOG_QUERIES === "1"
+          ? ["query", "error", "warn"]
+          : ["error", "warn"]
+        : ["error"],
     // Default interactive-tx ceilings. Prisma defaults (timeout 5000 / maxWait 2000) are preserved
     // when the envs are unset, so production behavior is unchanged. Slow links (airplane wifi / cold
     // Neon) can lift them (e.g. PRISMA_TX_TIMEOUT_MS=120000) so cores whose interactive tx isn't

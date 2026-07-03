@@ -9,7 +9,7 @@ import type { EconomicSnapshot } from "@/lib/commerce/normalize";
 // sweep. Both are exercised in the Unit-9 / Unit-11 harnesses.
 
 function snap(over: Partial<EconomicSnapshot> = {}): EconomicSnapshot {
-  return { paymentStatus: "Paid", channel: "DTC", currency: "USD", occurredAt: "2026-07-01T10:00:00.000Z", paidAt: "2026-07-01T10:05:00.000Z", updatedAt: "2026-07-01T12:00:00.000Z", revenue: 90, tax: 7.2, shipping: 15, discount: 5, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2 }], ...over };
+  return { paymentStatus: "Paid", channel: "DTC", currency: "USD", occurredAt: "2026-07-01T10:00:00.000Z", paidAt: "2026-07-01T10:05:00.000Z", updatedAt: "2026-07-01T12:00:00.000Z", revenue: 90, tax: 7.2, shipping: 15, discount: 5, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 2, revenue: 90 }], ...over };
 }
 
 describe("webhookNeedsRecreate", () => {
@@ -34,7 +34,7 @@ describe("refund/cancel netting (D6)", () => {
 
   it("a paid sale then a partial refund nets to the retained amount, not zero", () => {
     const sale = diffSnapshots(null, snap());
-    const refund = diffSnapshots(snap(), snap({ paymentStatus: "Partially Refunded", revenue: 45, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 1 }] }));
+    const refund = diffSnapshots(snap(), snap({ paymentStatus: "Partially Refunded", revenue: 45, lines: [{ skuRef: "var_1", inventoryLocationId: "loc_1", qty: 1, revenue: 45 }] }));
     expect(refund?.kind).toBe("REFUND");
     const revenue = (sale?.revenueDelta ?? 0) + (refund?.revenueDelta ?? 0);
     const qty = (sale?.lineDeltas[0]?.qtyDelta ?? 0) + (refund?.lineDeltas[0]?.qtyDelta ?? 0);
