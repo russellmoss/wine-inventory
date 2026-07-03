@@ -26,6 +26,7 @@
     "verify:excise": "tsx --conditions=react-server --env-file=.env scripts/verify-excise.ts",
     "verify:cost": "tsx --conditions=react-server --env-file=.env scripts/verify-cost.ts",
     "verify:reminders": "tsx --conditions=react-server --env-file=.env scripts/verify-reminders.ts",
+    "verify:work-orders": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders.ts",
     "verify:raw-sql": "tsx scripts/check-raw-sql-tenant-safety.ts",
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",
     "check:invariant-drift": "node scripts/check-invariant-drift.mjs",

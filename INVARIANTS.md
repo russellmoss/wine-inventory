@@ -118,3 +118,18 @@ The cost engine is a projection over the ledger; it never invents or loses money
   account mapping and a deterministic `postingKey` (re-emit is a no-op). Incomplete-basis or unmapped sources
   are WITHHELD, never partially posted (D14); a reversal negates amounts and links back. Reading
   `cost_export_event` IS the per-SKU/per-run export view (Phase 15 posts it, no reshape).
+- **A completed work-order task's op is an ordinary immutable ledger op; approval is task metadata (WORKORDER-1, Phase 9).**
+  Completing an OPERATION task writes a REAL, immutable ledger op immediately through the existing family cores
+  (`rackWineTx`/`recordNeutralDoseTx`/`topVesselTx`), owned by an append-only `WorkOrderTaskAttempt` in
+  PENDING_APPROVAL. "Pending approval" is task/attempt state, never op state — the projection is truthful the
+  moment the crew checks the task off. Approval flips task state (no op mutation); rejection is a
+  `reverseOperationCore` CORRECTION (honors LEDGER-10) that negates cost + restores stock, blocked by LEDGER-11
+  if a later op touched the same wine. The commandId (idempotency) lives on the attempt, so an offline-drain
+  double-tap is a no-op. Guard: `npm run verify:work-orders`.
+- **Work-order reservations are advisory; capacity + stock are enforced only at commit (WORKORDER-2, Phase 9).**
+  Reservations are soft, expiring holds: available-to-promise = on-hand/capacity − Σ(active holds); a shortfall
+  WARNS, never blocks (a cellar's plans change constantly; hard locks grid-lock harvest). The real guarantee stays
+  at commit — vessel capacity in `writeLotOperation` (LEDGER-4) + the `SupplyLot` decrement in
+  `consumeMaterialCore`. Holds reserve supply at the MATERIAL level (not a specific `SupplyLot`, so the costing
+  engine is unaffected); `validUntil` is separate from `dueAt` and a past-due WO does NOT auto-expire its holds.
+  Guard: `npm run verify:work-orders`.
