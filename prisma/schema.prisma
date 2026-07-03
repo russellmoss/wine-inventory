@@ -2205,6 +2205,8 @@ model AccountingConnection {
   scope                 String?
   tokenVersion          Int                @default(0) // CAS guard for serialized refresh (SEC-N4)
   homeCurrency          String? // QBO company home currency (multi-currency withhold — U6/U7)
+  companyName           String? // display only ("Connected to <company>") — non-secret, from CompanyInfo
+  connectedAt           DateTime? // when the current CONNECTED link was established (display)
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 

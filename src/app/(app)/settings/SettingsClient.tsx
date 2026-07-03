@@ -8,6 +8,7 @@ import type { AddressParts } from "@/lib/address/format";
 import { setSparklingEnabled, saveCostSettings } from "@/lib/settings/actions";
 import type { CostSettings } from "@/lib/cost/policy";
 import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
+import { AccountingConnectionCard, type ConnectionSummary } from "./AccountingConnectionCard";
 
 export type ComplianceProfileFields = {
   ein: string;
@@ -34,10 +35,12 @@ export function SettingsClient({
   sparklingEnabled,
   cost,
   complianceProfile,
+  accounting,
 }: {
   sparklingEnabled: boolean;
   cost: CostSettings;
   complianceProfile: ComplianceProfileFields;
+  accounting: ConnectionSummary | null;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
@@ -208,6 +211,9 @@ export function SettingsClient({
           {costMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{costMsg}</span>}
         </div>
       </Card>
+
+      {/* Phase 15 — QuickBooks / accounting connection, beside the cost card (IA decision). */}
+      <AccountingConnectionCard accounting={accounting} />
 
       {/* TTB compliance profile — the filer identity that heads Form 5120.17. */}
       <Card style={{ maxWidth: 560, marginTop: 16 }}>
