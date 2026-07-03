@@ -38,6 +38,10 @@ export async function completeMaintenanceTaskCore(
   const materialId = task.materialId ?? asStr(merged.materialId) ?? null;
   const amount = asNum(merged.amount) ?? null;
 
+  // SERIALIZABLE (matching the wine ledger path): the overhead depletion does read-then-decrement on
+  // SupplyLot, so two concurrent maintenance completions drawing the SAME lot must serialize or one could
+  // drive qtyRemaining negative — which WORKORDER-3 / E1 forbid. A rare serialization conflict surfaces as
+  // a retryable error (the crew taps again), never corrupt stock.
   const result = await runInTenantTx(async (tx) => {
     const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
     const attempt = await tx.workOrderTaskAttempt.create({
@@ -96,7 +100,7 @@ export async function completeMaintenanceTaskCore(
       summary: `Recorded ${kind.toLowerCase().replace(/_/g, " ")} on vessel${shortMsg}`,
     });
     return { attemptId: attempt.id, shortfall };
-  });
+  }, { isolationLevel: "Serializable" });
 
   const warn = result.shortfall > 0 ? ` Warning: used ${result.shortfall} more than on record.` : "";
   return { taskId: task.id, attemptId: result.attemptId, operationId: null, status: "DONE", duplicate: false, message: `Maintenance recorded.${warn}` };

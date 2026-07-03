@@ -155,6 +155,11 @@ export async function reverseVesselActivityTx(
   if (!event) throw new ActionError("That activity no longer exists.");
   if (event.voidedAt) throw new ActionError("That activity was already reversed.");
 
+  // Claim the void FIRST, guarded on voidedAt still being null — the claim (not the read above) is the
+  // concurrency guard, so two racing reversals can't both restore stock (the loser matches 0 rows → throws).
+  const claimed = await tx.vesselActivityEvent.updateMany({ where: { id: eventId, voidedAt: null }, data: { voidedAt: new Date() } });
+  if (claimed.count === 0) throw new ActionError("That activity was already reversed.");
+
   // Only the original draws (positive qty, not themselves reversal rows, not already reversed).
   const uses = await tx.vesselActivitySupplyUse.findMany({
     where: { vesselActivityEventId: eventId, reversalOfSupplyUseId: null },
@@ -185,6 +190,6 @@ export async function reverseVesselActivityTx(
     restoredUses += 1;
   }
 
-  await tx.vesselActivityEvent.update({ where: { id: eventId }, data: { voidedAt: new Date() } });
-  return { restoredUses };
+  return { restoredUses }; // the event was already voided (claimed) above
+
 }

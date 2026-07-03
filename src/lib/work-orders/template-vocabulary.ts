@@ -55,7 +55,9 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     opType: "FILTRATION",
     label: "Filtration",
     // filterType → LotTreatment.medium (controlled, dec 1); actualOutputL → loss = pre − actual (A5).
-    fields: { vesselId: "vessel", lotId: "lot", filterType: "select", micron: "number", actualOutputL: "number", note: "text" },
+    // No lotId: filtration is whole-vessel — the loss is proportional across ALL resident lots (filterVesselTx),
+    // so a per-lot picker would mislead. The vessel's residents are filtered together.
+    fields: { vesselId: "vessel", filterType: "select", micron: "number", actualOutputL: "number", note: "text" },
     fieldOptions: { filterType: FILTER_MEDIA },
   },
   BRIX: {

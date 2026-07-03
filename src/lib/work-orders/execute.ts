@@ -141,11 +141,28 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     };
   }
 
-  if (task.kind === "OBSERVATION") {
-    return completeObservationTaskCore(actor, { task, ...input });
+  // A NEW commandId against an already-settled task is a genuine re-submit, not the offline-drain replay
+  // the commandId pre-check above handles — it must not double-write (a maintenance re-complete would
+  // double-deplete overhead stock). REJECTED is resubmittable (→ PENDING); terminal states are not.
+  if (task.status === "DONE" || task.status === "APPROVED" || task.status === "SKIPPED") {
+    throw new ActionError("That task is already completed.", "CONFLICT");
   }
-  if (task.kind === "MAINTENANCE") {
-    return completeMaintenanceTaskCore(actor, { task, ...input });
+
+  // OBSERVATION + MAINTENANCE lanes: direct-log, straight to DONE. Wrap in the same P2002→idempotent-success
+  // handling the OPERATION lane uses, so a same-commandId race that slips past the pre-check returns the
+  // committed result instead of a raw unique violation (A1 offline-drain contract, uniform across lanes).
+  if (task.kind === "OBSERVATION" || task.kind === "MAINTENANCE") {
+    try {
+      return task.kind === "OBSERVATION"
+        ? await completeObservationTaskCore(actor, { task, ...input })
+        : await completeMaintenanceTaskCore(actor, { task, ...input });
+    } catch (e) {
+      if (e && typeof e === "object" && (e as { code?: string }).code === "P2002") {
+        const dup = await prisma.workOrderTaskAttempt.findUnique({ where: { commandId: input.commandId }, include: { task: { select: { status: true } } } });
+        if (dup) return { taskId: task.id, attemptId: dup.id, operationId: dup.operationId, status: dup.task.status, duplicate: true, message: "Already recorded." };
+      }
+      throw e;
+    }
   }
 
   // OPERATION lane.

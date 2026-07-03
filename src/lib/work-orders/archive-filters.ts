@@ -84,7 +84,8 @@ export function buildArchiveWhere(f: ArchiveFilters): ArchiveWhere {
   if (f.q) {
     const num = Number(f.q);
     const or: ArchiveWhere[] = [{ title: { contains: f.q, mode: "insensitive" } }];
-    if (Number.isInteger(num) && num > 0) or.push({ number: num });
+    // WorkOrder.number is a Postgres int4 — cap at 2^31-1 so a huge numeric search doesn't overflow and 500.
+    if (Number.isInteger(num) && num > 0 && num <= 2147483647) or.push({ number: num });
     where.OR = or;
   }
   return where;
