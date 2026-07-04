@@ -54,6 +54,11 @@ picker, expendables surface, cost-per-bottle trust panel, custom-crush routing, 
 DONE** (U8 barrel amortization, U13 post-bottling variance events, U14 Phase-15 accounting export seam,
 U16 bulk-wine receive) — proven end-to-end by `npm run verify:cost` (41 assertions).
 
+**9 Work orders — IN PROGRESS** 🟨. Shipped to prod: the core issue→execute→auto-log→approve→finalize
+engine (plan 032), the enhancements lane (plan 9.1, PR #16), the template builder + NOTE checklist (plan
+034, PRs #28/#29), and **de-stem/crush + press/saignée as work-order blocks** (plan 035, PR #30 — 2026-07-04).
+Remaining: the NL/voice work-order authoring wedge (co-designed with Phase 10) + shared vineyard reuse (Phase 20).
+
 **Do now (near-term hygiene, decoupled):** seed a **sandbox "Demo Winery" tenant** (a short script —
 Phase-12 tenancy is already live) and move all dev/QA there so testing stops polluting the real Bhutan
 Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
@@ -408,11 +413,25 @@ cost-per-bottle for a bottling that traces through at least one blend and one lo
 
 ---
 
-## Phase 9 — Work orders  ⬜
+## Phase 9 — Work orders  🟨 *core lifecycle + enhancements + template builder + crush/press transform blocks shipped to prod; NL/voice authoring (flagship AI wedge, co-designed with Phase 10) + shared vineyard reuse (Phase 20) remain*
 **Goal:** A full **issue → execute → auto-log → approve → finalize** work-order lifecycle so
 **completing a task auto-creates the ledger operation** — logging is a side effect of doing the job,
 and the manager never re-keys what the crew already did. **One shared work-order engine serves both the
 cellar (this phase) and the vineyard (Phase 20).**
+
+**Shipped so far:**
+- **Core engine (plan 032):** issue → execute → auto-log → approve → finalize; prefilled actuals; soft-hold
+  reservations; the operation-vs-observation lane split; batch review/approve + auto-finalize for
+  self-executed work; reject = plan-024 ledger reversal.
+- **Enhancements (plan 9.1, PR #16):** vessel-activity/maintenance lane (WORKORDER-3 overhead never enters the
+  wine cost roll-up), generic ADDITION + starter materials, FILTRATION op, Open|Archive toggle, printable sheet.
+- **Template builder (plan 034, PRs #28/#29):** clone-on-customize template CRUD from the typed field
+  vocabulary + a NOTE checklist block; Open-dashboard/archive filter parity.
+- **De-stem/crush + press/saignée transform blocks (plan 035, PR #30 — ✅ live in prod 2026-07-04):** crush and
+  press are selectable work-order blocks with native run-time sub-forms; completing one runs `crushLotTx`/
+  `pressLotTx` inside the work order's single ledger tx (real must lot + yield / fraction child lots + lineage);
+  rejecting reverses via `reverseTransformCore`; detail + print render human-labelled rows. Proven by
+  `npm run verify:work-orders-transform` (26 assertions).
 
 **Domain requirements (durable):**
 - **Lifecycle with a manager/worker role split** (ties to the Phase-5 RBAC): a **manager/foreman
