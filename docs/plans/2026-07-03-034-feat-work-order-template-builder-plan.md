@@ -534,9 +534,14 @@ catalog available automatically, including the transform blocks:
 - **`NOTE` checklist block** — a title-carrying to-do that writes nothing (Phase 1).
 - **Material defaults** on `ADDITION`/`FINING` blocks: resolve `materialId` through a **taxonomy-aware
   read** (main category derived from `kind` + the customizable `subcategory` + fuzzy match, mirroring
-  `MaterialFilterPicker`), and know the new `SUGAR`/`PACKAGING` kinds — so the assistant picks a real,
-  correctly-scoped material instead of guessing off a flat list. Prefer reusing the existing material
-  read behind the picker; only add a small `find_material` read tool if the model needs lookup-by-name.
+  `MaterialFilterPicker`) so the assistant picks a real, correctly-scoped material instead of guessing off
+  a flat list. **CRITICAL — scope to the additive family only:** an addition/fining dose material must be
+  an additive (the taxonomy plan is explicit that the picker defaults to the additive family, and
+  **PACKAGING and Cleaning & Sanitizing materials are NEVER dosed** — cleaning/sanitizing is OVERHEAD per
+  WORKORDER-3, packaging isn't dosed at all). `SUGAR` IS additive-family (e.g. chaptalization) → allowed;
+  `PACKAGING`/cleaning kinds → excluded from the material lookup for these blocks. Prefer reusing the
+  existing additive-scoped material read behind the picker; only add a small `find_material` read tool
+  (additive-family-scoped) if the model needs lookup-by-name.
 **Tests:** Unit 12 test file (see Unit 13).
 **Depends on:** Units 4, 5 (cores/helpers) — can run in parallel with the UI units.
 **Patterns to follow:** `log_brix` / `save_field_report` write-tool + committer pattern
@@ -558,8 +563,9 @@ rejected with an `ActionError` message.
 `CRUSH`, `PRESS`, and `NOTE`** (guards against a hardcoded snapshot regressing); (b) a `create_template`
 with a well-formed **CRUSH block carrying only "what" defaults succeeds**, while a spec that tries to bake
 in `picks`/`fractions`/`destVesselId`/`outputVolumeL` is **rejected or stripped** (those keys aren't in the
-block's vocabulary `fields`); (c) a material default resolves through the taxonomy-aware read (by
-`subcategory`/`kind`, incl. a `SUGAR` or `PACKAGING` material).
+block's vocabulary `fields`); (c) an addition/fining material default resolves through the additive-scoped
+taxonomy read — a `SUGAR` material resolves, while a `PACKAGING` (or Cleaning & Sanitizing) material is
+**NOT offered / rejected** as a dose (packaging/cleaning are never dosed — WORKORDER-3).
 **Tests:** this unit is the tests.
 **Depends on:** Unit 12
 **Patterns to follow:** tenant-scoped harness in
