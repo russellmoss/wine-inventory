@@ -53,7 +53,9 @@ export type AdditionTotal = { total: number; unit: "g" | "mL" };
 // Phase 9.1 (dose UX): ONE unified "Units" dropdown covering BOTH per-volume rates AND absolute totals.
 // The unit tells the engine which: a rate unit (g/hL…) multiplies by the vessel volume to get the total;
 // an absolute unit (g, kg…) IS the total. So the form is just "Amount" + "Units" — no separate rate field.
-export const DOSE_UNIT_LABELS = ["g/hL", "mg/L", "g/L", "mL/L", "g", "kg", "mL", "L"] as const;
+// Phase 036: absolute imperial units (oz/lb → grams, fl oz/gal → millilitres) join the metric absolutes so
+// a work-order dose can be entered as e.g. "2 oz" and still resolves to a canonical g/mL total.
+export const DOSE_UNIT_LABELS = ["g/hL", "mg/L", "g/L", "mL/L", "g", "kg", "mL", "L", "oz", "lb", "fl oz", "gal"] as const;
 export type DoseUnitLabel = (typeof DOSE_UNIT_LABELS)[number];
 
 export type ResolvedDoseUnit =
@@ -69,8 +71,12 @@ export function resolveDoseUnit(u: string | null | undefined): ResolvedDoseUnit 
     case "mL/L": return { kind: "rate", basis: "ML_L" };
     case "g": return { kind: "abs", doseUnit: "g", perUnit: 1 };
     case "kg": return { kind: "abs", doseUnit: "g", perUnit: 1000 };
+    case "oz": return { kind: "abs", doseUnit: "g", perUnit: 28.349523125 }; // avoirdupois ounce (mass)
+    case "lb": return { kind: "abs", doseUnit: "g", perUnit: 453.59237 };
     case "mL": return { kind: "abs", doseUnit: "mL", perUnit: 1 };
     case "L": return { kind: "abs", doseUnit: "mL", perUnit: 1000 };
+    case "fl oz": return { kind: "abs", doseUnit: "mL", perUnit: 29.5735295625 }; // US fluid ounce (volume)
+    case "gal": return { kind: "abs", doseUnit: "mL", perUnit: 3785.411784 }; // US gallon
     default: return null;
   }
 }

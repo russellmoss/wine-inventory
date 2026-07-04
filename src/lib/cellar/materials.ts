@@ -6,12 +6,91 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { MaterialKind, RateBasis } from "@/lib/cellar/additions-math";
 import {
   cleanMaterialName,
-  coerceMaterialKind,
   coerceRateBasis,
   normalizeMaterialKey,
 } from "@/lib/cellar/material-normalize";
-import { STOCK_UNITS, coerceStockUnit, type StockUnit, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
-import { kindsForCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { STOCK_UNITS, coerceStockUnit, materialDisplayName, type StockUnit, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
+import { coerceFamily, categoryOf, coerceMaterialCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { deriveOpeningLot } from "@/lib/cost/intake-cost";
+
+export { materialDisplayName };
+
+// Phase 036: the columns every DTO read needs. One place so create/upsert/list stay in sync.
+const MATERIAL_DTO_SELECT = {
+  id: true, name: true, kind: true, subcategory: true, category: true,
+  genericName: true, brand: true, brandName: true, preferGeneric: true,
+  vendor: true, vendorUrl: true, packageAmount: true, packageUnit: true,
+  defaultBasis: true, percentActive: true,
+} as const;
+
+/** Fields common to the intake inputs (upsert + create-stock). All optional; the display/purchase metadata. */
+export type MaterialIntakeInput = {
+  name?: string;
+  genericName?: string | null;
+  brand?: string | null;
+  brandName?: string | null;
+  preferGeneric?: boolean | null;
+  kind?: string; // family
+  category?: string | null; // stored main category; falls back to categoryOf(kind)
+  subcategory?: string | null;
+  defaultBasis?: string | null;
+  percentActive?: number | null;
+  vendor?: string | null;
+  vendorUrl?: string | null;
+  packageAmount?: number | null;
+  packageUnit?: string | null;
+};
+
+// Trim + length-cap a free-text field server-side (never trust the client). 200 chars is generous for a
+// product/brand/vendor label; capping matters because a runaway value would bloat rows (family feeds the
+// unique index). Blank → null.
+const trimOrNull = (v: unknown, max = 200): string | null => {
+  const s = String(v ?? "").trim().slice(0, max);
+  return s.length > 0 ? s : null;
+};
+
+/** Keep a vendor URL only if it's http(s); a bare domain gets https://; any other scheme (javascript:,
+ * data:, …) is dropped — defense-in-depth in case it's ever rendered as an href. */
+function normalizeVendorUrl(v: unknown): string | null {
+  const s = trimOrNull(v, 300);
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return null; // some other scheme → reject
+  return `https://${s}`.slice(0, 300); // bare domain → assume https
+}
+
+/** Resolve the persisted CellarMaterial fields from an intake input. `name` (identity/snapshot) derives from
+ * brand name → generic name → the explicit `name`. Family + category are normalized (category stored, falling
+ * back to the family's category). */
+function deriveMaterialFields(input: MaterialIntakeInput) {
+  const genericName = trimOrNull(input.genericName);
+  const brand = trimOrNull(input.brand);
+  const brandName = trimOrNull(input.brandName);
+  const rawName = brandName ?? genericName ?? input.name ?? "";
+  const name = cleanMaterialName(rawName); // throws on empty
+  const normalizedKey = normalizeMaterialKey(rawName);
+  const kind = coerceFamily(input.kind);
+  const category = input.category != null ? coerceMaterialCategory(input.category) : categoryOf(kind);
+  const packageAmount =
+    input.packageAmount != null && Number.isFinite(input.packageAmount) && input.packageAmount > 0 ? input.packageAmount : null;
+  return {
+    name,
+    normalizedKey,
+    kind,
+    category,
+    genericName,
+    brand,
+    brandName,
+    preferGeneric: !!input.preferGeneric,
+    vendor: trimOrNull(input.vendor),
+    vendorUrl: normalizeVendorUrl(input.vendorUrl),
+    packageAmount,
+    packageUnit: packageAmount != null ? trimOrNull(input.packageUnit) : null,
+    subcategory: normalizeSubcategory(input.subcategory),
+    defaultBasis: coerceRateBasis(input.defaultBasis),
+    percentActive: input.percentActive == null || !Number.isFinite(input.percentActive) ? null : input.percentActive,
+  };
+}
 
 // The client-safe DTO shape + stock-unit vocabulary live in materials-shared.ts (no server
 // imports) so 'use client' components can use them without pulling prisma into the browser
@@ -30,6 +109,15 @@ function toDTO(r: {
   name: string;
   kind: string;
   subcategory?: string | null;
+  category?: string | null;
+  genericName?: string | null;
+  brand?: string | null;
+  brandName?: string | null;
+  preferGeneric?: boolean | null;
+  vendor?: string | null;
+  vendorUrl?: string | null;
+  packageAmount?: unknown;
+  packageUnit?: string | null;
   defaultBasis: string | null;
   percentActive: unknown;
 }): CellarMaterialDTO {
@@ -38,6 +126,15 @@ function toDTO(r: {
     name: r.name,
     kind: r.kind as MaterialKind,
     subcategory: r.subcategory ?? null,
+    category: r.category ?? categoryOf(r.kind), // fallback for legacy rows
+    genericName: r.genericName ?? null,
+    brand: r.brand ?? null,
+    brandName: r.brandName ?? null,
+    preferGeneric: !!r.preferGeneric,
+    vendor: r.vendor ?? null,
+    vendorUrl: r.vendorUrl ?? null,
+    packageAmount: r.packageAmount == null ? null : Number(r.packageAmount),
+    packageUnit: r.packageUnit ?? null,
     defaultBasis: (r.defaultBasis as RateBasis | null) ?? null,
     percentActive: r.percentActive == null ? null : Number(r.percentActive),
   };
@@ -58,22 +155,16 @@ function normalizeSubcategory(raw: unknown): string | null {
  * the Prisma extension) on both queries.
  */
 export async function listMaterials(opts: { kind?: MaterialKind; category?: MaterialCategory; includeInactive?: boolean } = {}): Promise<CellarMaterialDTO[]> {
-  // `category` filters to the set of kinds that make up that main category (derived, see material-taxonomy);
-  // `kind` (if also given) narrows further. Compose them into ONE `kind` clause — two object-spread `kind`
-  // keys would clobber (last wins). Explicit kind wins; with both, intersect (kind must be in the category).
-  const categoryKinds = opts.category ? kindsForCategory(opts.category) : null;
-  const kindWhere =
-    opts.kind && categoryKinds ? { kind: categoryKinds.includes(opts.kind) ? opts.kind : { in: [] as MaterialKind[] } }
-    : opts.kind ? { kind: opts.kind }
-    : categoryKinds ? { kind: { in: categoryKinds } }
-    : {};
+  // Phase 036: `category` is now a STORED column (covers user-invented families), `kind` filters the family.
+  // They compose on different columns, so no clobber.
   const rows = await prisma.cellarMaterial.findMany({
     where: {
       ...(opts.includeInactive ? {} : { isActive: true }),
-      ...kindWhere,
+      ...(opts.kind ? { kind: opts.kind } : {}),
+      ...(opts.category ? { category: opts.category } : {}),
     },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true, isStockTracked: true, stockUnit: true, isActive: true },
+    select: { ...MATERIAL_DTO_SELECT, isStockTracked: true, stockUnit: true, isActive: true },
   });
   const onHand = await prisma.supplyLot.groupBy({
     by: ["materialId"],
@@ -90,13 +181,7 @@ export async function listMaterials(opts: { kind?: MaterialKind; category?: Mate
   }));
 }
 
-export type UpsertMaterialInput = {
-  name: string;
-  kind?: string;
-  subcategory?: string | null;
-  defaultBasis?: string | null;
-  percentActive?: number | null;
-};
+export type UpsertMaterialInput = MaterialIntakeInput;
 
 /**
  * Upsert-on-first-use. Sanitizes to a display name + dedup key, then finds-or-creates on
@@ -107,29 +192,24 @@ export async function upsertMaterialCore(
   actor: LedgerActor,
   input: UpsertMaterialInput,
 ): Promise<CellarMaterialDTO> {
-  const name = cleanMaterialName(input.name); // throws on empty
-  const normalizedKey = normalizeMaterialKey(input.name);
-  const kind = coerceMaterialKind(input.kind);
-  const subcategory = normalizeSubcategory(input.subcategory);
-  const defaultBasis = coerceRateBasis(input.defaultBasis);
-  const percentActive =
-    input.percentActive == null || !Number.isFinite(input.percentActive) ? null : input.percentActive;
+  const f = deriveMaterialFields(input);
 
   const existing = await prisma.cellarMaterial.findFirst({
-    where: { kind, normalizedKey },
-    select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true, isActive: true },
+    where: { kind: f.kind, normalizedKey: f.normalizedKey },
+    select: { ...MATERIAL_DTO_SELECT, isActive: true },
   });
 
   if (existing) {
-    const patch: { isActive?: boolean; defaultBasis?: string; subcategory?: string } = {};
+    const patch: { isActive?: boolean; defaultBasis?: string; subcategory?: string; category?: string } = {};
     if (!existing.isActive) patch.isActive = true;
-    if (!existing.defaultBasis && defaultBasis) patch.defaultBasis = defaultBasis; // backfill a missing basis
-    if (!existing.subcategory && subcategory) patch.subcategory = subcategory; // backfill a missing subcategory
+    if (!existing.defaultBasis && f.defaultBasis) patch.defaultBasis = f.defaultBasis; // backfill a missing basis
+    if (!existing.subcategory && f.subcategory) patch.subcategory = f.subcategory; // backfill a missing subcategory
+    if (!existing.category) patch.category = f.category; // backfill a missing stored category
     if (Object.keys(patch).length > 0) {
       const updated = await prisma.cellarMaterial.update({
         where: { id: existing.id },
         data: patch,
-        select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true },
+        select: MATERIAL_DTO_SELECT,
       });
       return toDTO(updated);
     }
@@ -138,32 +218,35 @@ export async function upsertMaterialCore(
 
   const created = await runInTenantTx(async (tx) => {
     const row = await tx.cellarMaterial.create({
-      data: { name, normalizedKey, kind, subcategory, defaultBasis, percentActive },
-      select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true },
+      data: {
+        name: f.name, normalizedKey: f.normalizedKey, kind: f.kind, category: f.category,
+        subcategory: f.subcategory, defaultBasis: f.defaultBasis, percentActive: f.percentActive,
+        genericName: f.genericName, brand: f.brand, brandName: f.brandName, preferGeneric: f.preferGeneric,
+        vendor: f.vendor, vendorUrl: f.vendorUrl, packageAmount: f.packageAmount, packageUnit: f.packageUnit,
+      },
+      select: MATERIAL_DTO_SELECT,
     });
     await writeAudit(tx, {
       ...actor,
       action: "CREATE",
       entityType: "CellarMaterial",
       entityId: row.id,
-      summary: `Added cellar material "${name}" (${kind.toLowerCase()})`,
+      summary: `Added cellar material "${f.name}" (${f.kind.toLowerCase()})`,
     });
     return row;
   });
   return toDTO(created);
 }
 
-export type CreateStockMaterialInput = {
-  name: string;
-  kind?: string;
-  subcategory?: string | null;
-  defaultBasis?: string | null;
-  percentActive?: number | null;
+export type CreateStockMaterialInput = MaterialIntakeInput & {
   stockUnit?: string | null;
   /** opening on-hand quantity in stockUnit; > 0 seeds a SupplyLot. Optional — physical tracking works without it. */
   openingQty?: number | null;
   /** per-stockUnit cost of the opening stock; null = unknown cost (D14). */
   unitCost?: number | null;
+  /** Phase 036 intake: total price paid for the package. With packageAmount+packageUnit it derives the
+   * opening lot (qty in stockUnit + per-stockUnit unitCost) via deriveOpeningLot — overrides openingQty/unitCost. */
+  totalCost?: number | null;
 };
 
 /**
@@ -176,37 +259,49 @@ export async function createStockMaterialCore(
   actor: LedgerActor,
   input: CreateStockMaterialInput,
 ): Promise<CellarMaterialDTO> {
-  const name = cleanMaterialName(input.name); // throws on empty
-  const normalizedKey = normalizeMaterialKey(input.name);
-  const kind = coerceMaterialKind(input.kind);
-  const subcategory = normalizeSubcategory(input.subcategory);
-  const defaultBasis = coerceRateBasis(input.defaultBasis);
-  const percentActive =
-    input.percentActive == null || !Number.isFinite(input.percentActive) ? null : input.percentActive;
+  const f = deriveMaterialFields(input);
   const stockUnit = coerceStockUnit(input.stockUnit);
-  const openingQty =
+  let openingQty =
     input.openingQty != null && Number.isFinite(input.openingQty) && input.openingQty > 0 ? input.openingQty : 0;
-  const unitCost =
+  let unitCost =
     input.unitCost != null && Number.isFinite(input.unitCost) && input.unitCost >= 0 ? input.unitCost : null;
+  // Phase 036: a package (amount+unit) seeds the opening lot in the canonical stock unit; total cost (when
+  // given) sets the per-stock-unit cost, else the lot is UNKNOWN-cost (D14) — never $0, and never a package
+  // with no on-hand. Overrides the raw openingQty/unitCost when it resolves.
+  if (f.packageAmount != null && f.packageUnit) {
+    const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost ?? null, stockUnit });
+    if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
+      openingQty = derived.qtyInStockUnit;
+      unitCost = derived.unitCost; // null when no cost given → UNKNOWN (D14), which is correct
+    }
+  }
 
   return runInTenantTx(async (tx) => {
     const existing = await tx.cellarMaterial.findFirst({
-      where: { kind, normalizedKey },
+      where: { kind: f.kind, normalizedKey: f.normalizedKey },
       select: { id: true },
     });
+    // The rich-intake path sets the display/purchase metadata on both create and reactivate-update.
+    const richData = {
+      category: f.category, genericName: f.genericName, brand: f.brand, brandName: f.brandName,
+      preferGeneric: f.preferGeneric, vendor: f.vendor, vendorUrl: f.vendorUrl,
+      packageAmount: f.packageAmount, packageUnit: f.packageUnit, subcategory: f.subcategory,
+      ...(f.defaultBasis ? { defaultBasis: f.defaultBasis } : {}),
+      ...(f.percentActive != null ? { percentActive: f.percentActive } : {}),
+    };
     const material = existing
       ? await tx.cellarMaterial.update({
           where: { id: existing.id },
-          data: { isActive: true, isStockTracked: true, stockUnit, ...(defaultBasis ? { defaultBasis } : {}), ...(percentActive != null ? { percentActive } : {}), ...(subcategory ? { subcategory } : {}) },
-          select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true },
+          data: { isActive: true, isStockTracked: true, stockUnit, ...richData },
+          select: MATERIAL_DTO_SELECT,
         })
       : await tx.cellarMaterial.create({
-          data: { name, normalizedKey, kind, subcategory, defaultBasis, percentActive, isStockTracked: true, stockUnit },
-          select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true },
+          data: { name: f.name, normalizedKey: f.normalizedKey, kind: f.kind, isStockTracked: true, stockUnit, ...richData },
+          select: MATERIAL_DTO_SELECT,
         });
 
     if (!existing) {
-      await writeAudit(tx, { ...actor, action: "CREATE", entityType: "CellarMaterial", entityId: material.id, summary: `Added stock material "${name}" (${kind.toLowerCase()})` });
+      await writeAudit(tx, { ...actor, action: "CREATE", entityType: "CellarMaterial", entityId: material.id, summary: `Added stock material "${f.name}" (${f.kind.toLowerCase()})` });
     }
 
     if (openingQty > 0) {
@@ -215,7 +310,7 @@ export async function createStockMaterialCore(
         data: { materialId: material.id, qtyReceived: openingQty, qtyRemaining: openingQty, stockUnit, unitCost, policyVersion: settings?.costingPolicyVersion ?? 1, supplierNote: "Opening stock" },
         select: { id: true },
       });
-      await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Opening stock ${openingQty} ${stockUnit} of "${name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
+      await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Opening stock ${openingQty} ${stockUnit} of "${f.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
     }
 
     return { ...toDTO(material), isStockTracked: true, stockUnit, onHand: openingQty };

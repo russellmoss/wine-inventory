@@ -14,6 +14,7 @@ import {
   type RateBasis,
 } from "@/lib/cellar/additions-math";
 import { upsertMaterialCore } from "@/lib/cellar/materials";
+import { materialDisplayName } from "@/lib/cellar/materials-shared";
 import { consumeMaterialCore } from "@/lib/cost/consume";
 
 // Script-safe cores for volume-NEUTRAL material doses (Phase 3, Units 4–5). A neutral op
@@ -226,11 +227,12 @@ export async function resolveDoseMaterial(
   if (input.materialId) {
     const m = await prisma.cellarMaterial.findUnique({ where: { id: input.materialId } });
     if (!m) throw new ActionError("That material no longer exists.");
-    return { materialId: m.id, materialName: m.name };
+    // Snapshot the DISPLAY name (brand/generic per preference) so the timeline reads what the operator saw.
+    return { materialId: m.id, materialName: materialDisplayName(m) };
   }
   if (input.materialName?.trim()) {
     const m = await upsertMaterialCore(actor, { name: input.materialName, kind: input.materialKind ?? cfg.defaultMaterialKind });
-    return { materialId: m.id, materialName: m.name };
+    return { materialId: m.id, materialName: materialDisplayName(m) };
   }
   throw new ActionError("Pick or name a material to add.");
 }

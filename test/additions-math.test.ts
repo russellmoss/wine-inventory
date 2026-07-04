@@ -106,4 +106,15 @@ describe("unified dose units (Amount + Units)", () => {
     expect(computeDoseTotal(30, "g/hL", 0)).toBeNull();
     expect(computeDoseTotal(30, "banana", 1000)).toBeNull();
   });
+
+  it("Phase 036: imperial absolute units resolve to canonical g/mL", () => {
+    expect(resolveDoseUnit("oz")).toEqual({ kind: "abs", doseUnit: "g", perUnit: 28.349523125 });
+    expect(resolveDoseUnit("lb")).toEqual({ kind: "abs", doseUnit: "g", perUnit: 453.59237 });
+    expect(resolveDoseUnit("fl oz")).toEqual({ kind: "abs", doseUnit: "mL", perUnit: 29.5735295625 });
+    expect(resolveDoseUnit("gal")).toEqual({ kind: "abs", doseUnit: "mL", perUnit: 3785.411784 });
+    // "use 2 oz" → 56.7 g (round2); "use 2 fl oz" → 59.15 mL
+    expect(computeDoseTotal(2, "oz", 0)).toEqual({ total: 56.7, unit: "g" });
+    expect(computeDoseTotal(2, "fl oz", 0)).toEqual({ total: 59.15, unit: "mL" });
+    expect(isRateUnit("oz")).toBe(false);
+  });
 });

@@ -125,16 +125,21 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
 - **Templates** (`templates.ts`, `template-vocabulary.ts`, `system-templates.ts`): typed-field vocabulary
   (never free-form), versioned clone-on-customize; an issued WO snaps the version it used; recurring +
   pay-basis stub (`recurring.ts`). Seeded via `npm run seed:work-order-templates`.
-- **Material picker + taxonomy (Phase 034):** the `material` field renders `MaterialFilterPicker`
-  (subcategory filter chips + fuzzy search via `src/lib/inventory/material-search.ts`, reusing the
-  `similarity` engine — no new deps), scoped by task type via `materialScopeForTask` (additions/fining →
-  Additive+Other, clean/sanitize → Cleaning+Other, else all). A material keeps its controlled, load-bearing
-  `kind` (cost/dosing/identity); its **main category** (Additive / Cleaning & Sanitizing / Packaging /
-  Other) is DERIVED from `kind` in `src/lib/cellar/material-taxonomy.ts` (never stored), and it carries an
-  optional user-defined `subcategory` (organizational only, overrides the built-in kind label for
-  grouping/filtering). Managed at `/setup/expendables` (Category → Kind → Subcategory, datalist +
-  dupe-suggest). Adding `kind` values (Phase 034 added `SUGAR`, `PACKAGING`) is a `MATERIAL_KINDS` const
-  edit — no migration; only `subcategory` is a column.
+- **Material picker + taxonomy (Phase 034 → 036):** the `material` field renders `MaterialFilterPicker`
+  (family filter chips + fuzzy search via `src/lib/inventory/material-search.ts`, reusing the `similarity`
+  engine — no new deps), scoped by task type via `materialScopeForTask`. Phase 036 makes the **main category
+  STORED** (`CellarMaterial.category`) — it is the cost-safety authority (`isDoseableCategory`, the server
+  WORKORDER-3 guard at the execute seam), so a user-invented family routes correctly; `categoryOf(kind)` is a
+  backfill fallback. The **family** (the `kind` column, chips via `familyLabel`) is now user-extensible
+  ("+ add family"); the fine-grained `subcategory` level is retired from the UI (column dormant). Materials
+  carry brand/generic display metadata + `preferGeneric` — `materialDisplayName` (used at every render site
+  + the dose snapshot `LotTreatment.materialName`) shows the preferred name. Intake is the **Add-expendable
+  modal** (`/setup/expendables`): generic/brand, vendor+URL, Category, family, and a purchase (package
+  amount + unit + total cost) that `deriveOpeningLot` (`src/lib/cost/intake-cost.ts`) converts into the
+  canonical per-stock-unit cost. **Units** live in `src/lib/units/measure.ts` (mass g/mg/kg/oz/lb, volume
+  mL/L/fl oz/gal, count) — imperial converts to the metric canonical at intake AND in the dose path
+  (`DOSE_UNIT_LABELS`, `stockConversionFactor`); cross-dimension → UNKNOWN cost (D14), never $0. Adding a
+  `MATERIAL_KIND` built-in is still a const edit; the Phase-036 fields are one columns-only migration.
 - **Surfaces** (`src/app/(app)/work-orders/`): manager issue (`/new`), floor-first execution checklist
   (`/[id]/execute`, offline-tolerant via the Dexie outbox), review/approval queue (`/review`), printable WO
   (`/[id]/print` + `print.css`), Open|Archive dashboard with a pending-count nav badge. Proven by

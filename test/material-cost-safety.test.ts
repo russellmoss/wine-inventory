@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MATERIAL_KINDS } from "@/lib/cellar/additions-math";
-import { categoryOf, kindsForCategory, materialScopeForTask, isDoseableKind } from "@/lib/cellar/material-taxonomy";
+import { categoryOf, kindsForCategory, materialScopeForTask, isDoseableKind, isDoseableCategory, coerceFamily, familyLabel, BUILTIN_FAMILIES } from "@/lib/cellar/material-taxonomy";
 
 // Cost-safety guards for Phase 034. The design keeps new material kinds cost-inert:
 //  - consumeMaterialCore ALWAYS writes a MATERIAL cost line (never branches on kind), so a dosed SUGAR
@@ -55,6 +55,48 @@ describe("new kinds are cost-inert", () => {
     expect(isDoseableKind("PACKAGING")).toBe(false);
     expect(isDoseableKind("SUGAR")).toBe(true); // chaptalization is a real additive dose
     expect(isDoseableKind(null)).toBe(true); // unknown → OTHER → doseable (matches picker's OTHER-in-scope)
+  });
+
+  it("isDoseableCategory: the stored-category authority (Phase 036)", () => {
+    expect(isDoseableCategory("ADDITIVE")).toBe(true);
+    expect(isDoseableCategory("OTHER")).toBe(true);
+    expect(isDoseableCategory("CLEANING_SANITIZING")).toBe(false);
+    expect(isDoseableCategory("PACKAGING")).toBe(false);
+  });
+
+  it("a CUSTOM cleaning family must use the STORED category, not kind-derived (WORKORDER-3 regression)", () => {
+    // A user-invented family "DRUM WASH" filed under Cleaning: categoryOf(kind) is OTHER (doseable) — the
+    // old bug — but the STORED category is CLEANING_SANITIZING (NOT doseable). The guard + picker must read
+    // the stored category. This locks why isDoseableKind alone was insufficient.
+    const customCleaningKind = coerceFamily("Drum Wash"); // "DRUM WASH"
+    expect(categoryOf(customCleaningKind)).toBe("OTHER"); // kind-derived (wrong for cost-safety)
+    expect(isDoseableKind(customCleaningKind)).toBe(true); // the trap the old guard fell into
+    expect(isDoseableCategory("CLEANING_SANITIZING")).toBe(false); // the correct answer via stored category
+  });
+
+  it("coerceFamily: built-ins normalize to their code, customs uppercase, empty → OTHER", () => {
+    expect(coerceFamily("Yeast")).toBe("YEAST"); // by label
+    expect(coerceFamily("yeast")).toBe("YEAST");
+    expect(coerceFamily("FINING")).toBe("FINING"); // by code
+    expect(coerceFamily("Bacteria (MLF)")).toBe("MLF"); // by label
+    expect(coerceFamily("SO₂")).toBe("SO2"); // subscript label → code
+    expect(coerceFamily("Sur Lie")).toBe("SUR LIE"); // custom → uppercased key
+    expect(coerceFamily("sur lie")).toBe("SUR LIE"); // same custom collapses
+    expect(coerceFamily("")).toBe("OTHER");
+    expect(coerceFamily(null)).toBe("OTHER");
+  });
+
+  it("familyLabel: built-in label, custom title-cased (not 'Other')", () => {
+    expect(familyLabel("YEAST")).toBe("Yeast");
+    expect(familyLabel("MLF")).toBe("Bacteria (MLF)");
+    expect(familyLabel("SUR LIE")).toBe("Sur Lie"); // custom keeps its name
+    expect(familyLabel("")).toBe("Other");
+  });
+
+  it("BUILTIN_FAMILIES seeds the dropdown (excludes OTHER, carries category)", () => {
+    expect(BUILTIN_FAMILIES.some((f) => f.value === "YEAST" && f.category === "ADDITIVE")).toBe(true);
+    expect(BUILTIN_FAMILIES.some((f) => f.value === "CLEANING" && f.category === "CLEANING_SANITIZING")).toBe(true);
+    expect(BUILTIN_FAMILIES.some((f) => f.value === "OTHER")).toBe(false);
   });
 
   it("SUGAR + PACKAGING are the only kinds added beyond the pre-034 set", () => {
