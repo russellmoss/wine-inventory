@@ -62,11 +62,17 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
   const [editId, setEditId] = React.useState<string | null>(null);
   const [receiveId, setReceiveId] = React.useState<string | null>(null);
 
-  // Toolbar: fuzzy search + category filter + inactive toggle + which categories are unfurled.
+  // Toolbar: fuzzy search + category filter + (when a category is active) a sub-category multi-select +
+  // inactive toggle + which categories are unfurled.
   const [query, setQuery] = React.useState("");
   const [catFilter, setCatFilter] = React.useState<MaterialCategory | "ALL">("ALL");
+  const [famFilter, setFamFilter] = React.useState<Set<string>>(() => new Set()); // family labels within the active category
   const [showInactive, setShowInactive] = React.useState(true);
   const [openCats, setOpenCats] = React.useState<Set<MaterialCategory>>(() => new Set());
+
+  // Picking a category resets the sub-category selection (a family only makes sense within its category).
+  const selectCat = (c: MaterialCategory | "ALL") => { setCatFilter(c); setFamFilter(new Set()); };
+  const toggleFam = (fam: string) => setFamFilter((prev) => { const next = new Set(prev); next.has(fam) ? next.delete(fam) : next.add(fam); return next; });
 
   // Resolve the open modals from the LIVE list each render, so a Deactivate/Edit reflects immediately.
   const byId = React.useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
@@ -85,13 +91,23 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
     return m;
   }, [materials]);
 
-  // Apply inactive filter → category filter → fuzzy search (empty query keeps the server's name-asc order).
+  // The sub-categories (families) present in the active category — feeds the sub-category multi-select.
+  const familiesInCat = React.useMemo(() => {
+    if (catFilter === "ALL") return [];
+    const set = new Set<string>();
+    for (const m of materials) if (catOf(m) === catFilter) set.add(familyLabel(m.kind));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [materials, catFilter]);
+
+  // Apply inactive → category → sub-category → fuzzy search (name + category + family). Empty query keeps
+  // the server's name-asc order.
   const visible = React.useMemo(() => {
     let list = materials;
     if (!showInactive) list = list.filter((m) => m.isActive !== false);
     if (catFilter !== "ALL") list = list.filter((m) => catOf(m) === catFilter);
-    return rankMaterials(query, list, (m) => materialDisplayName(m));
-  }, [materials, showInactive, catFilter, query]);
+    if (famFilter.size) list = list.filter((m) => famFilter.has(familyLabel(m.kind)));
+    return rankMaterials(query, list, (m) => [materialDisplayName(m), familyLabel(m.kind), CATEGORY_LABELS[catOf(m)]]);
+  }, [materials, showInactive, catFilter, famFilter, query]);
 
   // Group the visible set by stored Category → family.
   const byCategory = React.useMemo(() => {
@@ -156,9 +172,9 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
               aria-label="Search expendables"
             />
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" aria-pressed={catFilter === "ALL"} style={chipStyle(catFilter === "ALL")} onClick={() => setCatFilter("ALL")}>All</button>
+              <button type="button" aria-pressed={catFilter === "ALL"} style={chipStyle(catFilter === "ALL")} onClick={() => selectCat("ALL")}>All</button>
               {MATERIAL_CATEGORIES.map((c) => (
-                <button key={c} type="button" aria-pressed={catFilter === c} style={chipStyle(catFilter === c)} onClick={() => setCatFilter(c)}>
+                <button key={c} type="button" aria-pressed={catFilter === c} style={chipStyle(catFilter === c)} onClick={() => selectCat(c)}>
                   {CATEGORY_LABELS[c]}
                 </button>
               ))}
@@ -168,6 +184,21 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
                 <Button variant="ghost" size="sm" onClick={() => setOpenCats(new Set())} disabled={searching}>Collapse all</Button>
               </span>
             </div>
+
+            {/* Sub-category multi-select — appears once a category is picked; narrows to specific families. */}
+            {catFilter !== "ALL" && familiesInCat.length > 1 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{CATEGORY_LABELS[catFilter]} →</span>
+                {familiesInCat.map((fam) => (
+                  <button key={fam} type="button" aria-pressed={famFilter.has(fam)} style={chipStyle(famFilter.has(fam))} onClick={() => toggleFam(fam)}>
+                    {fam}
+                  </button>
+                ))}
+                {famFilter.size > 0 ? (
+                  <button type="button" style={{ ...chipStyle(false), border: "none" }} onClick={() => setFamFilter(new Set())}>Clear</button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           {categories.length === 0 ? (

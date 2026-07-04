@@ -56,4 +56,18 @@ describe("rankMaterials", () => {
     expect(idxDap).toBeGreaterThanOrEqual(0);
     expect(idxTartaric).toBeLessThan(idxDap);
   });
+
+  it("matches on ANY of several texts (name + category + sub-category)", () => {
+    // Each item carries a name, a family, and a category — score is the best match across them.
+    const items = [
+      { name: "Egg White", family: "Fining", category: "Additives" },
+      { name: "KMBS", family: "SO₂", category: "Additives" },
+      { name: "Proxycarb", family: "Cleaning", category: "Cleaning & Sanitizing" },
+    ];
+    const byFields = (q: string) => rankMaterials(q, items, (m) => [m.name, m.family, m.category]).map((m) => m.name);
+    expect(byFields("fining")).toContain("Egg White"); // matched by family, not name
+    expect(byFields("cleaning")).toContain("Proxycarb"); // matched by family AND category
+    expect(byFields("additives")).toEqual(expect.arrayContaining(["Egg White", "KMBS"])); // matched by category
+    expect(byFields("additives")).not.toContain("Proxycarb"); // different category
+  });
 });
