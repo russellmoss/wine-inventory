@@ -1560,7 +1560,8 @@ model CellarMaterial {
   id             String         @id @default(cuid())
   name           String // display label
   normalizedKey  String // dedup key (strip-non-alphanumeric, UPPERCASE)
-  kind           String // SO2 | NUTRIENT | ACID | TANNIN | FINING | ENZYME | OTHER
+  kind           String // load-bearing family (cost/dosing/identity): YEAST | MLF | SO2 | NUTRIENT | ACID | SUGAR | TANNIN | FINING | BENTONITE | CHITOSAN | ENZYME | CLEANING | SANITIZER | PACKAGING | OTHER
+  subcategory    String? // Phase 034: optional user-defined subcategory (organizational only); overrides the built-in kind label for grouping/filtering. NOT part of identity.
   defaultBasis   String? // G_HL | MG_L | G_L | ML_L
   percentActive  Decimal?       @db.Decimal(6, 3) // %active (material property, not a dose basis)
   isActive       Boolean        @default(true)
