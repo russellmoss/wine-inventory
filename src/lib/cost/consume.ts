@@ -1,6 +1,7 @@
 import type { Prisma, CostBasisCompleteness, CostingMethod } from "@prisma/client";
 import { planDepletion, type SupplyLotView } from "@/lib/cost/deplete";
 import { round8 } from "@/lib/cost/rollup";
+import { convert } from "@/lib/units/measure";
 
 // Phase 8 (Unit 3) — the in-tx adapter that turns an ADDITION/FINING material dose into supply
 // draw-down + cost. Called from inside recordNeutralDose's runLedgerWrite tx AFTER the op + treatment
@@ -13,19 +14,10 @@ import { round8 } from "@/lib/cost/rollup";
 // contagion (D14) still fires — never a silent $0.
 
 /** Dose unit → stock unit conversion factor (multiply the dose amount by this). null = incompatible
- * (mass↔volume, or a counted "unit" stock). g/mg/kg are one dimension; mL/L another. */
+ * (mass↔volume, or a counted "unit" stock). Routed through the shared measure engine so the dose (always
+ * g or mL) and the material's canonical metric stock unit (g/mg/kg/mL/L) convert by one source of truth. */
 export function stockConversionFactor(doseUnit: "g" | "mL", stockUnit: string): number | null {
-  const u = stockUnit.trim().toLowerCase();
-  if (doseUnit === "g") {
-    if (u === "g") return 1;
-    if (u === "kg") return 0.001;
-    if (u === "mg") return 1000;
-    return null;
-  }
-  // doseUnit === "mL"
-  if (u === "ml") return 1;
-  if (u === "l") return 0.001;
-  return null;
+  return convert(1, doseUnit, stockUnit);
 }
 
 export type ConsumePerLot = { lotId: string; amount: number };
