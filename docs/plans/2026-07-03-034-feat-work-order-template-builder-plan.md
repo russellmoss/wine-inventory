@@ -83,6 +83,17 @@ tools turns "compose a template" into a conversation, and lays the tool-boundary
   when planning Phase 2 (affects Unit 12 tool design and the "shared history across two mounted
   `AssistantChat` instances" behavior).
 
+> **Phase-2 refresh (2026-07-04) — account for drift before building.** Since Phase 1 shipped, the
+> world under Unit 12 changed and the assistant MUST reflect it or it will author invalid/stale
+> templates: (1) **the block vocabulary grew** — plan 035 added `CRUSH` (de-stem/crush) and `PRESS`
+> (press/saignée) to `TASK_VOCABULARY` (alongside `NOTE`); (2) **the material model changed** — the
+> material-taxonomy work made the main category *derive from `kind`* and added a customizable
+> `subcategory` column + new `SUGAR`/`PACKAGING` kinds + the `MaterialFilterPicker`. The durable fix is
+> the new Key Decision below: **the assistant's block + material knowledge DERIVES from the live model at
+> tool-registration time, never a hardcoded snapshot** — so future vocabulary (e.g. Phase-20 vineyard
+> blocks) flows in without another re-plan. Units 12 + 13 are revised accordingly; Units 10–11 (dock UI)
+> are unaffected.
+
 **In scope:**
 - Template builder UI (list / detail / editor), thin server actions over the existing cores, one new
   read helper, an archive core, the new checklist block type (enum + vocabulary + execution + guard +
@@ -184,6 +195,7 @@ reuse existing infra.
 | Template authoring roles | **Winemaker/admin only** (REVISED by council 2026-07-03); all users still issue/run WOs | All users author (original) | Cellar hands editing shared SOPs → fragmented/corrupted procedures (Gemini). Add an RBAC gate on the authoring actions. |
 | Versioning on edit | Reuse `updateTemplateSpecCore` (new immutable version each save) | In-place spec mutation | Decision 6 + existing invariant: issued work orders snap a `templateVersionId` and must stay as-run. |
 | Assistant tool granularity | Coarse tools: `list_templates`, `get_template` (read); `create_template`, `clone_template`, `update_template_spec`, `archive_template` (write). Block add/remove/reorder is the model composing a full new spec and calling `update_template_spec`. | Fine-grained `add_block`/`remove_block`/`reorder_blocks` write tools | Each persisted edit is a new immutable version + one confirm-nonce prompt. Fine-grained writes would spawn a version + a confirmation per block (version spam, confirmation fatigue). Coarse tools = one version, one confirm per user intent. |
+| Assistant block + material knowledge (refresh 2026-07-04) | **DERIVE from the live model at tool-registration time**: the block catalog the assistant sees is generated from `TASK_VOCABULARY` (block key → label + typed `fields` + `fieldOptions` + `hint`), and material lookup goes through a taxonomy-aware read (kind-derived category + `subcategory` + fuzzy, mirroring `MaterialFilterPicker`). | Hardcode the block list + a flat material list in the tool schema/description (a snapshot of the vocabulary at authoring time) | A snapshot silently rots the moment the vocabulary or material model changes (exactly what plan 035 + the taxonomy work just did). Deriving means CRUSH/PRESS/NOTE — and every future block (Phase-20 vineyard) — appear automatically, and material defaults resolve against the real catalog. One source of truth, no re-plan per addition. |
 | Template writes via assistant | Keep on the confirm-nonce gate, `adminOnly: false` | Skip confirmation (not destructive) | All users may author (decision 5), but confirmation shows a preview of the block list and matches the existing write-tool pattern + UX rule 6 (confirm the consequential). |
 | Dock mount | Inside `AppShell`, hidden on the `/assistant` route | Portal to `document.body`; render everywhere | Mounting in AppShell inherits the shell's client context and layout; hiding on `/assistant` avoids a chat-inside-a-chat. |
 | MCP | Design the tool boundary to be MCP-portable; do not build the server | Build MCP now | Out of scope; the typed tool + committer split is already the right seam. |
@@ -507,6 +519,24 @@ decision). Keep each tool file a clean typed unit (MCP-portable seam; add a one-
 MCP intent, do not build MCP). **DRY (eng review):** the six write tools share the
 preview+`signProposal`+committer shape — factor a small `templateWriteTool()` helper so they don't
 copy the confirm boilerplate.
+
+**Vocabulary + material knowledge is DERIVED, not hardcoded (refresh 2026-07-04 — see the Key Decision).**
+The `create_template`/`update_template_spec` input schema + the block guidance the model sees are
+**generated from `TASK_VOCABULARY`** (one entry per block key with its `label`, typed `fields`,
+`fieldOptions`, and `hint`) — do NOT enumerate a fixed block list in prose. This makes the current
+catalog available automatically, including the transform blocks:
+- **`CRUSH` (de-stem/crush) + `PRESS` (press/saignée)** — plan 035. CRITICAL: templates may set only the
+  process **"what" defaults** these blocks expose (`destemmed`/`crusherOn`/`crushedPct`/`mustTempC`/
+  `pressCycle` for crush; `op`/`pressCycle` for press). The assistant must **never bake in picks,
+  fractions, vessels, or measured volumes** — those are captured at run time on the execute screen. The
+  vocabulary already omits them from the block's `fields`, so deriving the schema enforces this
+  structurally; add an explicit line in the tool description so the model doesn't invent them.
+- **`NOTE` checklist block** — a title-carrying to-do that writes nothing (Phase 1).
+- **Material defaults** on `ADDITION`/`FINING` blocks: resolve `materialId` through a **taxonomy-aware
+  read** (main category derived from `kind` + the customizable `subcategory` + fuzzy match, mirroring
+  `MaterialFilterPicker`), and know the new `SUGAR`/`PACKAGING` kinds — so the assistant picks a real,
+  correctly-scoped material instead of guessing off a flat list. Prefer reusing the existing material
+  read behind the picker; only add a small `find_material` read tool if the model needs lookup-by-name.
 **Tests:** Unit 12 test file (see Unit 13).
 **Depends on:** Units 4, 5 (cores/helpers) — can run in parallel with the UI units.
 **Patterns to follow:** `log_brix` / `save_field_report` write-tool + committer pattern
@@ -524,6 +554,12 @@ proposal card; confirming creates the template; declining does nothing.
 persists exactly one template; replaying the same nonce is rejected (exactly-once); `update_template_spec`
 bumps the version; `list_templates`/`get_template` are tenant-scoped. Validate that an invalid spec is
 rejected with an `ActionError` message.
+**Drift-coverage (refresh 2026-07-04):** (a) the derived block catalog the tool exposes **contains
+`CRUSH`, `PRESS`, and `NOTE`** (guards against a hardcoded snapshot regressing); (b) a `create_template`
+with a well-formed **CRUSH block carrying only "what" defaults succeeds**, while a spec that tries to bake
+in `picks`/`fractions`/`destVesselId`/`outputVolumeL` is **rejected or stripped** (those keys aren't in the
+block's vocabulary `fields`); (c) a material default resolves through the taxonomy-aware read (by
+`subcategory`/`kind`, incl. a `SUGAR` or `PACKAGING` material).
 **Tests:** this unit is the tests.
 **Depends on:** Unit 12
 **Patterns to follow:** tenant-scoped harness in
