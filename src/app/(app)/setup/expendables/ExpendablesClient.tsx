@@ -18,6 +18,7 @@ const KIND_LABELS: Record<MaterialKind, string> = {
   SO2: "SO₂",
   NUTRIENT: "Nutrient",
   ACID: "Acid",
+  SUGAR: "Sugar",
   TANNIN: "Tannin",
   FINING: "Fining",
   BENTONITE: "Bentonite",
@@ -25,6 +26,7 @@ const KIND_LABELS: Record<MaterialKind, string> = {
   ENZYME: "Enzyme",
   CLEANING: "Cleaning agent",
   SANITIZER: "Sanitizer",
+  PACKAGING: "Packaging",
   OTHER: "Other",
 };
 

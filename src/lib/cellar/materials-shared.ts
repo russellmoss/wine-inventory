@@ -10,6 +10,9 @@ export type CellarMaterialDTO = {
   id: string;
   name: string;
   kind: MaterialKind;
+  /** Phase 034: optional user-defined subcategory (organizational). Derive main category + the
+   * effective grouping label from `kind`/`subcategory` via @/lib/cellar/material-taxonomy. */
+  subcategory: string | null;
   defaultBasis: RateBasis | null;
   percentActive: number | null;
   // Phase 8 (Unit 10): stock awareness for the picker. `isStockTracked` opts the material into
