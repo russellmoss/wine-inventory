@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
@@ -14,6 +15,10 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 // is LotHarvestSource (picks aren't lots, so there's no LotLineage edge); it is the single
 // source of truth for pick consumption (council S8). No "use server": actions.ts wraps it with
 // block-access auth; scripts/tests call it directly.
+//
+// Plan 035: split into a tx-form (crushLotTx, runs inside a caller's transaction — used by the
+// work-order execution lane) + the crushLotCore wrapper (owns the runLedgerWrite tx, the commandId
+// idempotency pre-check, and the lot-code-collision retry) for the standalone /ferment path.
 
 export type CrushPickInput = { pickId: string; consumedKg: number };
 
@@ -95,7 +100,14 @@ async function findByCommandId(commandId: string): Promise<CrushLotResult | null
   };
 }
 
-export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Promise<CrushLotResult> {
+/**
+ * The CRUSH transform as a tx-form (plan 035): runs the full crush inside a caller-provided
+ * transaction, so it composes into the work-order execution lane's single ledger tx. Every read uses
+ * `tx`. It does NOT do the commandId idempotency pre-check or lot-code retry — those live in
+ * crushLotCore (the standalone wrapper). A lot-code collision inside a caller's tx surfaces as a
+ * unique violation for the caller to handle (the WO lane leans on the rarity + the worker re-tap).
+ */
+export async function crushLotTx(tx: Prisma.TransactionClient, actor: LedgerActor, input: CrushLotInput): Promise<CrushLotResult> {
   if (!input.picks || input.picks.length === 0) throw new ActionError("Select at least one harvest pick to crush.");
 
   // Normalize to a destination list (single dest = one entry). Multi-dest is NEW-mode only.
@@ -109,14 +121,8 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
     throw new ActionError("Adding into an existing lot can't split across vessels.");
   }
 
-  // Idempotency: a committed command is a no-op success (council S4).
-  if (input.commandId) {
-    const prior = await findByCommandId(input.commandId);
-    if (prior) return prior;
-  }
-
   const destVesselIds = [...new Set(dests.map((d) => d.vesselId))];
-  const vessels = await prisma.vessel.findMany({ where: { id: { in: destVesselIds } } });
+  const vessels = await tx.vessel.findMany({ where: { id: { in: destVesselIds } } });
   const vesselById = new Map(vessels.map((v) => [v.id, v]));
   if (vesselById.size !== destVesselIds.length) throw new ActionError("A destination vessel was not found.");
   for (const v of vessels) if (!v.isActive) throw new ActionError(`${v.code} is inactive.`);
@@ -126,7 +132,7 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
   // already consumed (Σ LotHarvestSource.consumedKg) — the partial-pick guard's live denominator.
   const pickIds = [...new Set(input.picks.map((p) => p.pickId))];
   if (pickIds.length !== input.picks.length) throw new ActionError("A pick was listed twice.");
-  const picks = await prisma.harvestPick.findMany({
+  const picks = await tx.harvestPick.findMany({
     where: { id: { in: pickIds } },
     select: {
       id: true,
@@ -143,7 +149,7 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
   if (picks.length !== pickIds.length) throw new ActionError("A selected pick no longer exists.");
   const pickById = new Map(picks.map((p) => [p.id, p]));
 
-  const consumedAgg = await prisma.lotHarvestSource.groupBy({
+  const consumedAgg = await tx.lotHarvestSource.groupBy({
     by: ["harvestPickId"],
     where: { harvestPickId: { in: pickIds } },
     _sum: { consumedKg: true },
@@ -170,7 +176,7 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
 
   if (input.target.mode === "ADD") {
     mode = "ADD";
-    const lot = await prisma.lot.findUnique({
+    const lot = await tx.lot.findUnique({
       where: { id: input.target.lotId },
       select: { id: true, code: true, form: true, status: true },
     });
@@ -201,9 +207,9 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
   let codeParts: { vineyardAbbr: string; varietyAbbr: string; blockCode?: string; blockLabel?: string } | null = null;
   if (mode === "NEW") {
     const [variety, vineyard, block] = await Promise.all([
-      prisma.variety.findUnique({ where: { id: originVarietyId! }, select: { name: true, abbreviation: true } }),
-      prisma.vineyard.findUnique({ where: { id: originVineyardId! }, select: { name: true, abbreviation: true } }),
-      prisma.vineyardBlock.findUnique({ where: { id: originBlockId! }, select: { code: true, blockLabel: true } }),
+      tx.variety.findUnique({ where: { id: originVarietyId! }, select: { name: true, abbreviation: true } }),
+      tx.vineyard.findUnique({ where: { id: originVineyardId! }, select: { name: true, abbreviation: true } }),
+      tx.vineyardBlock.findUnique({ where: { id: originBlockId! }, select: { code: true, blockLabel: true } }),
     ]);
     if (!variety?.abbreviation) throw new ActionError(`Set an abbreviation for variety "${variety?.name ?? originVarietyId}".`);
     if (!vineyard?.abbreviation) throw new ActionError(`Set an abbreviation for vineyard "${vineyard?.name ?? originVineyardId}".`);
@@ -215,156 +221,166 @@ export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Pr
     };
   }
 
+  // Resolve / mint the must lot.
+  let lotId: string;
+  let lotCode: string;
+  if (mode === "NEW") {
+    lotCode = await nextLotCode(tx, {
+      vintage: vintage!,
+      vineyardAbbr: codeParts!.vineyardAbbr,
+      varietyAbbr: codeParts!.varietyAbbr,
+      blockCode: codeParts!.blockCode,
+      blockLabel: codeParts!.blockLabel,
+    });
+    const created = await tx.lot.create({
+      data: {
+        code: lotCode,
+        form: input.outputForm ?? "MUST",
+        afState: "NONE",
+        mlfState: "NONE",
+        originVarietyId,
+        originVineyardId,
+        originBlockId,
+        vintageYear: vintage,
+      },
+      select: { id: true, code: true },
+    });
+    lotId = created.id;
+  } else {
+    const lot = await tx.lot.findUniqueOrThrow({ where: { id: existingLotId! }, select: { id: true, code: true } });
+    lotId = lot.id;
+    lotCode = lot.code;
+  }
+
+  const plan = dests.length > 1 ? planCrushSplit(draws, dests, lotId) : planCrush(draws, dests[0].vesselId, lotId, dests[0].volumeL);
+
+  const metadata = {
+    mode,
+    lotId,
+    lotCode,
+    outputVolumeL: plan.outputVolumeL,
+    totalConsumedKg: plan.totalConsumedKg,
+    yieldLPerKg: plan.yieldLPerKg,
+    yieldLPerTonne: plan.yieldLPerTonne,
+    destemmed: input.destemmed ?? null,
+    crusherOn: input.crusherOn ?? null,
+    crushedPct: input.crusherOn ? (input.crushedPct ?? 100) : null,
+    mustTempC: input.mustTempC ?? null,
+    wholeClusterPct: input.target.mode === "NEW" ? (input.target.wholeClusterPct ?? null) : null,
+    pressCycle: input.pressCycle?.trim() || null,
+    picks: draws.map((d) => ({ pickId: d.pickId, consumedKg: d.consumedKg })),
+  };
+
+  const opType: OperationType = input.opType ?? "CRUSH";
+  const verb = opType === "PRESS" ? "Pressed" : "De-stemmed";
+  const liquid = (input.outputForm ?? "MUST").toLowerCase();
+  // Direct fruit press records what went into the press: whole cluster (100), destemmed (0),
+  // or a partial mix. Fold that into the summary so a destemmed press doesn't read "whole-cluster".
+  const wcPct = metadata.wholeClusterPct;
+  const compo =
+    opType !== "PRESS"
+      ? null
+      : wcPct == null || wcPct >= 100
+        ? "whole-cluster"
+        : wcPct <= 0
+          ? "destemmed"
+          : `${wcPct}% whole-cluster`;
+  const compoClause = compo ? ` (${compo})` : "";
+  const cycleClause = opType === "PRESS" && metadata.pressCycle ? ` [cycle: ${metadata.pressCycle}]` : "";
+  const summary =
+    (mode === "NEW"
+      ? `${verb} ${plan.totalConsumedKg} kg → ${plan.outputVolumeL} L ${liquid} into ${vessel.code} (lot ${lotCode}, ${plan.yieldLPerTonne} L/t)`
+      : `${verb} ${plan.totalConsumedKg} kg → +${plan.outputVolumeL} L into ${liquid} lot ${lotCode} (${vessel.code})`) +
+    compoClause +
+    cycleClause;
+
+  const opId = await writeLotOperation(tx, {
+    type: opType,
+    lines: plan.lines,
+    actorUserId: actor.actorUserId,
+    enteredBy: actor.actorEmail,
+    captureMethod: input.captureMethod,
+    note: input.note?.trim() || summary,
+    commandId: input.commandId ?? null,
+    lotCodes: new Map([[lotId, lotCode]]),
+    vesselCodes: new Map(vessels.map((v) => [v.id, v.code])),
+    capacityByVessel: new Map(vessels.map((v) => [v.id, Number(v.capacityL)])),
+  });
+  // Stamp the metadata (writeLotOperation doesn't take it; set it on the row we own).
+  await tx.lotOperation.update({ where: { id: opId }, data: { metadata } });
+
+  // The pick→lot link (single source of truth for consumption). One row per pick.
+  await tx.lotHarvestSource.createMany({
+    data: draws.map((d) => ({ lotId, harvestPickId: d.pickId, consumedKg: d.consumedKg })),
+  });
+
+  // A NEW single-origin lot carries its source-vineyard set (Phase 5 scoping) + complete provenance.
+  if (mode === "NEW" && originVineyardId) {
+    await tx.lotVineyard.createMany({
+      data: [{ lotId, vineyardId: originVineyardId }],
+      skipDuplicates: true,
+    });
+  }
+
+  // Phase 8 (Unit 7): capture fruit cost as a FRUIT CostLine on the crush op (optional). A per-kg
+  // rate multiplies the measured consumed kg; else a lump sum. Reversal negates it (transform
+  // family, Unit 11). Absent → the lot's basis stays UNKNOWN (never a phantom $0, D14).
+  const fruitCost =
+    input.fruitCostPerKg != null && input.fruitCostPerKg > 0
+      ? Math.round(input.fruitCostPerKg * plan.totalConsumedKg * 1e8) / 1e8
+      : input.fruitCostTotal != null && input.fruitCostTotal > 0
+        ? input.fruitCostTotal
+        : null;
+  if (fruitCost != null) {
+    const cs = await tx.appSettings.findFirst({ select: { currency: true, costingPolicyVersion: true } });
+    await tx.costLine.create({
+      data: {
+        operationId: opId,
+        lotId,
+        component: "FRUIT",
+        amount: fruitCost,
+        currency: cs?.currency ?? "USD",
+        basisCompleteness: "KNOWN",
+        policyVersion: cs?.costingPolicyVersion ?? 1,
+      },
+    });
+  }
+
+  await writeAudit(tx, {
+    ...actor,
+    action: "STOCK_MOVEMENT",
+    entityType: "LotOperation",
+    entityId: String(opId),
+    summary,
+  });
+
+  return {
+    operationId: opId,
+    lotId,
+    lotCode,
+    mode,
+    outputVolumeL: plan.outputVolumeL,
+    totalConsumedKg: plan.totalConsumedKg,
+    yieldLPerKg: plan.yieldLPerKg,
+    yieldLPerTonne: plan.yieldLPerTonne,
+    duplicate: false,
+    message: `${summary}.`,
+  } satisfies CrushLotResult;
+}
+
+/** Standalone crush (the /ferment path): owns the ledger tx + the commandId idempotency pre-check +
+ * the lot-code-collision retry, delegating the actual work to crushLotTx. */
+export async function crushLotCore(actor: LedgerActor, input: CrushLotInput): Promise<CrushLotResult> {
+  // Idempotency: a committed command is a no-op success (council S4).
+  if (input.commandId) {
+    const prior = await findByCommandId(input.commandId);
+    if (prior) return prior;
+  }
+
   const MAX_CODE_RETRIES = 5;
   for (let attempt = 1; ; attempt++) {
     try {
-      return await runLedgerWrite(async (tx) => {
-        // Resolve / mint the must lot.
-        let lotId: string;
-        let lotCode: string;
-        if (mode === "NEW") {
-          lotCode = await nextLotCode(tx, {
-            vintage: vintage!,
-            vineyardAbbr: codeParts!.vineyardAbbr,
-            varietyAbbr: codeParts!.varietyAbbr,
-            blockCode: codeParts!.blockCode,
-            blockLabel: codeParts!.blockLabel,
-          });
-          const created = await tx.lot.create({
-            data: {
-              code: lotCode,
-              form: input.outputForm ?? "MUST",
-              afState: "NONE",
-              mlfState: "NONE",
-              originVarietyId,
-              originVineyardId,
-              originBlockId,
-              vintageYear: vintage,
-            },
-            select: { id: true, code: true },
-          });
-          lotId = created.id;
-        } else {
-          const lot = await tx.lot.findUniqueOrThrow({ where: { id: existingLotId! }, select: { id: true, code: true } });
-          lotId = lot.id;
-          lotCode = lot.code;
-        }
-
-        const plan = dests.length > 1 ? planCrushSplit(draws, dests, lotId) : planCrush(draws, dests[0].vesselId, lotId, dests[0].volumeL);
-
-        const metadata = {
-          mode,
-          lotId,
-          lotCode,
-          outputVolumeL: plan.outputVolumeL,
-          totalConsumedKg: plan.totalConsumedKg,
-          yieldLPerKg: plan.yieldLPerKg,
-          yieldLPerTonne: plan.yieldLPerTonne,
-          destemmed: input.destemmed ?? null,
-          crusherOn: input.crusherOn ?? null,
-          crushedPct: input.crusherOn ? (input.crushedPct ?? 100) : null,
-          mustTempC: input.mustTempC ?? null,
-          wholeClusterPct: input.target.mode === "NEW" ? (input.target.wholeClusterPct ?? null) : null,
-          pressCycle: input.pressCycle?.trim() || null,
-          picks: draws.map((d) => ({ pickId: d.pickId, consumedKg: d.consumedKg })),
-        };
-
-        const opType: OperationType = input.opType ?? "CRUSH";
-        const verb = opType === "PRESS" ? "Pressed" : "De-stemmed";
-        const liquid = (input.outputForm ?? "MUST").toLowerCase();
-        // Direct fruit press records what went into the press: whole cluster (100), destemmed (0),
-        // or a partial mix. Fold that into the summary so a destemmed press doesn't read "whole-cluster".
-        const wcPct = metadata.wholeClusterPct;
-        const compo =
-          opType !== "PRESS"
-            ? null
-            : wcPct == null || wcPct >= 100
-              ? "whole-cluster"
-              : wcPct <= 0
-                ? "destemmed"
-                : `${wcPct}% whole-cluster`;
-        const compoClause = compo ? ` (${compo})` : "";
-        const cycleClause = opType === "PRESS" && metadata.pressCycle ? ` [cycle: ${metadata.pressCycle}]` : "";
-        const summary =
-          (mode === "NEW"
-            ? `${verb} ${plan.totalConsumedKg} kg → ${plan.outputVolumeL} L ${liquid} into ${vessel.code} (lot ${lotCode}, ${plan.yieldLPerTonne} L/t)`
-            : `${verb} ${plan.totalConsumedKg} kg → +${plan.outputVolumeL} L into ${liquid} lot ${lotCode} (${vessel.code})`) +
-          compoClause +
-          cycleClause;
-
-        const opId = await writeLotOperation(tx, {
-          type: opType,
-          lines: plan.lines,
-          actorUserId: actor.actorUserId,
-          enteredBy: actor.actorEmail,
-          captureMethod: input.captureMethod,
-          note: input.note?.trim() || summary,
-          commandId: input.commandId ?? null,
-          lotCodes: new Map([[lotId, lotCode]]),
-          vesselCodes: new Map(vessels.map((v) => [v.id, v.code])),
-          capacityByVessel: new Map(vessels.map((v) => [v.id, Number(v.capacityL)])),
-        });
-        // Stamp the metadata (writeLotOperation doesn't take it; set it on the row we own).
-        await tx.lotOperation.update({ where: { id: opId }, data: { metadata } });
-
-        // The pick→lot link (single source of truth for consumption). One row per pick.
-        await tx.lotHarvestSource.createMany({
-          data: draws.map((d) => ({ lotId, harvestPickId: d.pickId, consumedKg: d.consumedKg })),
-        });
-
-        // A NEW single-origin lot carries its source-vineyard set (Phase 5 scoping) + complete provenance.
-        if (mode === "NEW" && originVineyardId) {
-          await tx.lotVineyard.createMany({
-            data: [{ lotId, vineyardId: originVineyardId }],
-            skipDuplicates: true,
-          });
-        }
-
-        // Phase 8 (Unit 7): capture fruit cost as a FRUIT CostLine on the crush op (optional). A per-kg
-        // rate multiplies the measured consumed kg; else a lump sum. Reversal negates it (transform
-        // family, Unit 11). Absent → the lot's basis stays UNKNOWN (never a phantom $0, D14).
-        const fruitCost =
-          input.fruitCostPerKg != null && input.fruitCostPerKg > 0
-            ? Math.round(input.fruitCostPerKg * plan.totalConsumedKg * 1e8) / 1e8
-            : input.fruitCostTotal != null && input.fruitCostTotal > 0
-              ? input.fruitCostTotal
-              : null;
-        if (fruitCost != null) {
-          const cs = await tx.appSettings.findFirst({ select: { currency: true, costingPolicyVersion: true } });
-          await tx.costLine.create({
-            data: {
-              operationId: opId,
-              lotId,
-              component: "FRUIT",
-              amount: fruitCost,
-              currency: cs?.currency ?? "USD",
-              basisCompleteness: "KNOWN",
-              policyVersion: cs?.costingPolicyVersion ?? 1,
-            },
-          });
-        }
-
-        await writeAudit(tx, {
-          ...actor,
-          action: "STOCK_MOVEMENT",
-          entityType: "LotOperation",
-          entityId: String(opId),
-          summary,
-        });
-
-        return {
-          operationId: opId,
-          lotId,
-          lotCode,
-          mode,
-          outputVolumeL: plan.outputVolumeL,
-          totalConsumedKg: plan.totalConsumedKg,
-          yieldLPerKg: plan.yieldLPerKg,
-          yieldLPerTonne: plan.yieldLPerTonne,
-          duplicate: false,
-          message: `${summary}.`,
-        } satisfies CrushLotResult;
-      });
+      return await runLedgerWrite((tx) => crushLotTx(tx, actor, input));
     } catch (e) {
       // A racing duplicate command committed first → treat as success (idempotency).
       if (input.commandId && isCommandConflict(e)) {

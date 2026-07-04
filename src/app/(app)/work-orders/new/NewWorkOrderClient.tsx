@@ -246,10 +246,15 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
           {spec.tasks.map((t, i) => {
             const def = TASK_VOCABULARY[t.taskType];
             if (!def) return null;
+            // Plan 035: a de-stem/crush or press/saignée block only sets its "what" process defaults here;
+            // the picks/fractions/vessels/measured volumes are entered when the crew RUNS the work order
+            // (the native sub-forms on the execute screen). No vessel/material field → no multi-vessel fan-out.
+            const isTransform = def.opType === "CRUSH" || def.opType === "PRESS";
             return (
               <div key={i} style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                 <Eyebrow>{i + 1}. {t.title} · {def.label}</Eyebrow>
                 {def.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 6 }}>{def.hint}</div> : null}
+                {isTransform ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginTop: 8 }}>{def.opType === "CRUSH" ? "Picks (with kg), destination and measured output volume" : "Must lot, source vessel and the press fractions"} are entered when the crew runs this — set only the process defaults below.</div> : null}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
                   {renderTaskFields(i, def, t.defaults)}
                   {renderEstimate(i, t.defaults)}

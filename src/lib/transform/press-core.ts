@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
@@ -16,6 +17,10 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 // lees/skins as a typed loss line, and a SPLIT lineage edge per distinct child. Whites press
 // pre-ferment (MUST→JUICE); reds press dry-on-skins (MUST→WINE). SAIGNEE is the same core run
 // before ferment: bleed a JUICE fraction off a MUST lot, concentrating the parent.
+//
+// Plan 035: split into a tx-form (pressLotTx, runs inside a caller's transaction — used by the
+// work-order execution lane) + the pressLotCore wrapper (owns runLedgerWrite, the commandId
+// idempotency pre-check, and the lot-code-collision retry) for the standalone /ferment path.
 
 function round5(n: number): number {
   return Math.round(n * 1e5) / 1e5;
@@ -99,17 +104,18 @@ function deriveChildForm(op: "PRESS" | "SAIGNEE", parentForm: LotForm, parentAf:
   return parentForm; // WINE → WINE
 }
 
-export async function pressLotCore(actor: LedgerActor, input: PressLotInput): Promise<PressLotResult> {
+/**
+ * The PRESS / SAIGNEE transform as a tx-form (plan 035): runs the full split inside a caller-provided
+ * transaction, so it composes into the work-order execution lane's single ledger tx. Every read uses
+ * `tx` (including the SERIALIZABLE parent-position lock + expectedRevision guard). Idempotency +
+ * lot-code retry live in pressLotCore.
+ */
+export async function pressLotTx(tx: Prisma.TransactionClient, actor: LedgerActor, input: PressLotInput): Promise<PressLotResult> {
   const op = input.op ?? "PRESS";
   if (!input.fractions || input.fractions.length === 0) throw new ActionError("Add at least one press fraction.");
 
-  if (input.commandId) {
-    const prior = await findByCommandId(input.commandId);
-    if (prior) return prior;
-  }
-
-  // Parent lot + its position in the source vessel (the revision token + available volume).
-  const parent = await prisma.lot.findUnique({
+  // Parent lot metadata (identity + origin for child codes + provenance carry-over).
+  const parent = await tx.lot.findUnique({
     where: { id: input.parentLotId },
     select: {
       id: true,
@@ -136,7 +142,7 @@ export async function pressLotCore(actor: LedgerActor, input: PressLotInput): Pr
   // Source vessel + every destination vessel, with capacities and codes.
   const destVesselIds = [...new Set(input.fractions.map((f) => f.destVesselId))];
   const vesselIds = [...new Set([input.sourceVesselId, ...destVesselIds])];
-  const vessels = await prisma.vessel.findMany({ where: { id: { in: vesselIds } } });
+  const vessels = await tx.vessel.findMany({ where: { id: { in: vesselIds } } });
   const vesselById = new Map(vessels.map((v) => [v.id, v]));
   if (!vesselById.has(input.sourceVesselId)) throw new ActionError("Source vessel not found.");
   for (const dv of destVesselIds) {
@@ -149,10 +155,10 @@ export async function pressLotCore(actor: LedgerActor, input: PressLotInput): Pr
   let originAbbrs: { vineyardAbbr: string; varietyAbbr: string; blockCode?: string; blockLabel?: string } | null = null;
   if (parent.originVineyardId && parent.originVarietyId) {
     const [vy, vt, bl] = await Promise.all([
-      prisma.vineyard.findUnique({ where: { id: parent.originVineyardId }, select: { abbreviation: true } }),
-      prisma.variety.findUnique({ where: { id: parent.originVarietyId }, select: { abbreviation: true } }),
+      tx.vineyard.findUnique({ where: { id: parent.originVineyardId }, select: { abbreviation: true } }),
+      tx.variety.findUnique({ where: { id: parent.originVarietyId }, select: { abbreviation: true } }),
       parent.originBlockId
-        ? prisma.vineyardBlock.findUnique({ where: { id: parent.originBlockId }, select: { code: true, blockLabel: true } })
+        ? tx.vineyardBlock.findUnique({ where: { id: parent.originBlockId }, select: { code: true, blockLabel: true } })
         : Promise.resolve(null),
     ]);
     if (vy?.abbreviation && vt?.abbreviation) {
@@ -165,167 +171,176 @@ export async function pressLotCore(actor: LedgerActor, input: PressLotInput): Pr
     }
   }
 
+  // Lock + read the parent position (SERIALIZABLE). updatedAt is the revision token.
+  const parentVl = await tx.vesselLot.findFirst({
+    where: { vesselId: input.sourceVesselId, lotId: input.parentLotId },
+    select: { volumeL: true, updatedAt: true },
+  });
+  if (!parentVl) throw new ActionError(`Lot ${parent.code} isn't in that vessel.`, "CONFLICT");
+  const available = Number(parentVl.volumeL);
+  const currentRevision = parentVl.updatedAt.toISOString();
+  if (input.expectedRevision != null && input.expectedRevision !== currentRevision) {
+    throw new ActionError(
+      "The lot changed since you opened this press — reload and re-enter the fractions.",
+      "CONFLICT",
+    );
+  }
+
+  // Resolve each fraction's child lot: merge into an existing lot, or mint a new one.
+  const lotCodes = new Map<string, string>([[input.parentLotId, parent.code]]);
+  const fractionDraws: PressFractionDraw[] = [];
+  const fractionResults: PressFractionResult[] = [];
+  const newChildIds: string[] = [];
+
+  for (const f of input.fractions) {
+    if (!(f.volumeL > 0)) throw new ActionError("Each fraction volume must be greater than 0.");
+    let childLotId: string;
+    let childCode: string;
+    let merged = false;
+
+    if (f.mergeIntoLotId) {
+      const dest = await tx.lot.findUnique({
+        where: { id: f.mergeIntoLotId },
+        select: { id: true, code: true, status: true },
+      });
+      if (!dest) throw new ActionError("The destination lot to merge into was not found.");
+      if (dest.status !== "ACTIVE") throw new ActionError(`Can't merge into inactive lot ${dest.code}.`);
+      childLotId = dest.id;
+      childCode = dest.code;
+      merged = true;
+    } else {
+      const tag = normalizeToken(f.label) || "PR";
+      childCode = originAbbrs
+        ? await nextLotCode(tx, {
+            vintage: parent.vintageYear ?? new Date(0).getFullYear(),
+            vineyardAbbr: originAbbrs.vineyardAbbr,
+            varietyAbbr: originAbbrs.varietyAbbr,
+            blockCode: originAbbrs.blockCode,
+            blockLabel: originAbbrs.blockLabel,
+            tag,
+          })
+        : await nextBlendLotCode(tx, { vintage: parent.vintageYear ?? null, token: tag });
+      const created = await tx.lot.create({
+        data: {
+          code: childCode,
+          form: (f.form ?? childForm) as LotForm,
+          afState: "NONE",
+          mlfState: "NONE",
+          originVineyardId: parent.originVineyardId,
+          originVarietyId: parent.originVarietyId,
+          originBlockId: parent.originBlockId,
+          vintageYear: parent.vintageYear,
+          provenanceComplete: parent.provenanceComplete,
+        },
+        select: { id: true, code: true },
+      });
+      childLotId = created.id;
+      newChildIds.push(childLotId);
+    }
+
+    lotCodes.set(childLotId, childCode);
+    fractionDraws.push({ childLotId, destVesselId: f.destVesselId, volumeL: round2(f.volumeL) });
+    fractionResults.push({
+      lotId: childLotId,
+      code: childCode,
+      label: f.label,
+      volumeL: round2(f.volumeL),
+      estimated: !!f.estimated,
+      merged,
+    });
+  }
+
+  const plan = planPress(input.parentLotId, input.sourceVesselId, available, fractionDraws, input.lossL ?? 0);
+
+  const capacityByVessel = new Map(vessels.map((v) => [v.id, Number(v.capacityL)]));
+  const vesselCodes = new Map(vessels.map((v) => [v.id, v.code]));
+
+  const pressCycle = input.pressCycle?.trim() || null;
+  const metadata = {
+    op,
+    parentLotId: input.parentLotId,
+    drawnL: plan.drawnL,
+    lossL: plan.lossL,
+    childForm,
+    fractions: fractionResults,
+    pressCycle,
+  };
+
+  const cycleClause = pressCycle ? ` [cycle: ${pressCycle}]` : "";
+  const summary =
+    (op === "SAIGNEE"
+      ? `Bled ${plan.fractionTotalL} L juice off ${parent.code} (saignée)`
+      : `Pressed ${plan.drawnL} L from ${parent.code} into ${fractionResults.length} fraction(s)${plan.lossL > 0 ? ` (${plan.lossL} L lees)` : ""}`) +
+    cycleClause;
+
+  const opId = await writeLotOperation(tx, {
+    type: op,
+    lines: plan.lines,
+    actorUserId: actor.actorUserId,
+    enteredBy: actor.actorEmail,
+    captureMethod: input.captureMethod,
+    note: input.note?.trim() || summary,
+    commandId: input.commandId ?? null,
+    lotCodes,
+    vesselCodes,
+    capacityByVessel,
+  });
+  await tx.lotOperation.update({ where: { id: opId }, data: { metadata } });
+
+  // SPLIT lineage edge per DISTINCT child (fraction = child's share of the moved volume),
+  // and copy the parent's source-vineyard set onto each NEW child (provenance carries over).
+  const grossByChild = new Map<string, number>();
+  for (const f of fractionDraws) grossByChild.set(f.childLotId, round2((grossByChild.get(f.childLotId) ?? 0) + f.volumeL));
+  const denom = [...grossByChild.values()].reduce((a, v) => a + v, 0);
+  for (const [childLotId, gross] of grossByChild) {
+    const fraction = denom > 0 ? Math.min(0.99999, round5(gross / denom)) : null;
+    await tx.lotLineage.upsert({
+      where: { parentLotId_childLotId: { parentLotId: input.parentLotId, childLotId } },
+      create: { parentLotId: input.parentLotId, childLotId, kind: "SPLIT", fraction },
+      update: { fraction, kind: "SPLIT" },
+    });
+  }
+  if (parent.sourceVineyards.length > 0 && newChildIds.length > 0) {
+    await tx.lotVineyard.createMany({
+      data: newChildIds.flatMap((lotId) =>
+        parent.sourceVineyards.map((sv) => ({ lotId, vineyardId: sv.vineyardId })),
+      ),
+      skipDuplicates: true,
+    });
+  }
+
+  await writeAudit(tx, {
+    ...actor,
+    action: "STOCK_MOVEMENT",
+    entityType: "LotOperation",
+    entityId: String(opId),
+    summary,
+  });
+
+  return {
+    operationId: opId,
+    op,
+    parentLotId: input.parentLotId,
+    drawnL: plan.drawnL,
+    lossL: plan.lossL,
+    fractions: fractionResults,
+    duplicate: false,
+    message: `${summary}.`,
+  } satisfies PressLotResult;
+}
+
+/** Standalone press/saignée (the /ferment path): owns the ledger tx + commandId idempotency pre-check +
+ * lot-code-collision retry, delegating the actual work to pressLotTx. */
+export async function pressLotCore(actor: LedgerActor, input: PressLotInput): Promise<PressLotResult> {
+  if (input.commandId) {
+    const prior = await findByCommandId(input.commandId);
+    if (prior) return prior;
+  }
+
   const MAX_CODE_RETRIES = 5;
   for (let attempt = 1; ; attempt++) {
     try {
-      return await runLedgerWrite(async (tx) => {
-        // Lock + read the parent position (SERIALIZABLE). updatedAt is the revision token.
-        const parentVl = await tx.vesselLot.findFirst({
-          where: { vesselId: input.sourceVesselId, lotId: input.parentLotId },
-          select: { volumeL: true, updatedAt: true },
-        });
-        if (!parentVl) throw new ActionError(`Lot ${parent.code} isn't in that vessel.`, "CONFLICT");
-        const available = Number(parentVl.volumeL);
-        const currentRevision = parentVl.updatedAt.toISOString();
-        if (input.expectedRevision != null && input.expectedRevision !== currentRevision) {
-          throw new ActionError(
-            "The lot changed since you opened this press — reload and re-enter the fractions.",
-            "CONFLICT",
-          );
-        }
-
-        // Resolve each fraction's child lot: merge into an existing lot, or mint a new one.
-        const lotCodes = new Map<string, string>([[input.parentLotId, parent.code]]);
-        const fractionDraws: PressFractionDraw[] = [];
-        const fractionResults: PressFractionResult[] = [];
-        const newChildIds: string[] = [];
-
-        for (const f of input.fractions) {
-          if (!(f.volumeL > 0)) throw new ActionError("Each fraction volume must be greater than 0.");
-          let childLotId: string;
-          let childCode: string;
-          let merged = false;
-
-          if (f.mergeIntoLotId) {
-            const dest = await tx.lot.findUnique({
-              where: { id: f.mergeIntoLotId },
-              select: { id: true, code: true, status: true },
-            });
-            if (!dest) throw new ActionError("The destination lot to merge into was not found.");
-            if (dest.status !== "ACTIVE") throw new ActionError(`Can't merge into inactive lot ${dest.code}.`);
-            childLotId = dest.id;
-            childCode = dest.code;
-            merged = true;
-          } else {
-            const tag = normalizeToken(f.label) || "PR";
-            childCode = originAbbrs
-              ? await nextLotCode(tx, {
-                  vintage: parent.vintageYear ?? new Date(0).getFullYear(),
-                  vineyardAbbr: originAbbrs.vineyardAbbr,
-                  varietyAbbr: originAbbrs.varietyAbbr,
-                  blockCode: originAbbrs.blockCode,
-                  blockLabel: originAbbrs.blockLabel,
-                  tag,
-                })
-              : await nextBlendLotCode(tx, { vintage: parent.vintageYear ?? null, token: tag });
-            const created = await tx.lot.create({
-              data: {
-                code: childCode,
-                form: (f.form ?? childForm) as LotForm,
-                afState: "NONE",
-                mlfState: "NONE",
-                originVineyardId: parent.originVineyardId,
-                originVarietyId: parent.originVarietyId,
-                originBlockId: parent.originBlockId,
-                vintageYear: parent.vintageYear,
-                provenanceComplete: parent.provenanceComplete,
-              },
-              select: { id: true, code: true },
-            });
-            childLotId = created.id;
-            newChildIds.push(childLotId);
-          }
-
-          lotCodes.set(childLotId, childCode);
-          fractionDraws.push({ childLotId, destVesselId: f.destVesselId, volumeL: round2(f.volumeL) });
-          fractionResults.push({
-            lotId: childLotId,
-            code: childCode,
-            label: f.label,
-            volumeL: round2(f.volumeL),
-            estimated: !!f.estimated,
-            merged,
-          });
-        }
-
-        const plan = planPress(input.parentLotId, input.sourceVesselId, available, fractionDraws, input.lossL ?? 0);
-
-        const capacityByVessel = new Map(vessels.map((v) => [v.id, Number(v.capacityL)]));
-        const vesselCodes = new Map(vessels.map((v) => [v.id, v.code]));
-
-        const pressCycle = input.pressCycle?.trim() || null;
-        const metadata = {
-          op,
-          parentLotId: input.parentLotId,
-          drawnL: plan.drawnL,
-          lossL: plan.lossL,
-          childForm,
-          fractions: fractionResults,
-          pressCycle,
-        };
-
-        const cycleClause = pressCycle ? ` [cycle: ${pressCycle}]` : "";
-        const summary =
-          (op === "SAIGNEE"
-            ? `Bled ${plan.fractionTotalL} L juice off ${parent.code} (saignée)`
-            : `Pressed ${plan.drawnL} L from ${parent.code} into ${fractionResults.length} fraction(s)${plan.lossL > 0 ? ` (${plan.lossL} L lees)` : ""}`) +
-          cycleClause;
-
-        const opId = await writeLotOperation(tx, {
-          type: op,
-          lines: plan.lines,
-          actorUserId: actor.actorUserId,
-          enteredBy: actor.actorEmail,
-          captureMethod: input.captureMethod,
-          note: input.note?.trim() || summary,
-          commandId: input.commandId ?? null,
-          lotCodes,
-          vesselCodes,
-          capacityByVessel,
-        });
-        await tx.lotOperation.update({ where: { id: opId }, data: { metadata } });
-
-        // SPLIT lineage edge per DISTINCT child (fraction = child's share of the moved volume),
-        // and copy the parent's source-vineyard set onto each NEW child (provenance carries over).
-        const grossByChild = new Map<string, number>();
-        for (const f of fractionDraws) grossByChild.set(f.childLotId, round2((grossByChild.get(f.childLotId) ?? 0) + f.volumeL));
-        const denom = [...grossByChild.values()].reduce((a, v) => a + v, 0);
-        for (const [childLotId, gross] of grossByChild) {
-          const fraction = denom > 0 ? Math.min(0.99999, round5(gross / denom)) : null;
-          await tx.lotLineage.upsert({
-            where: { parentLotId_childLotId: { parentLotId: input.parentLotId, childLotId } },
-            create: { parentLotId: input.parentLotId, childLotId, kind: "SPLIT", fraction },
-            update: { fraction, kind: "SPLIT" },
-          });
-        }
-        if (parent.sourceVineyards.length > 0 && newChildIds.length > 0) {
-          await tx.lotVineyard.createMany({
-            data: newChildIds.flatMap((lotId) =>
-              parent.sourceVineyards.map((sv) => ({ lotId, vineyardId: sv.vineyardId })),
-            ),
-            skipDuplicates: true,
-          });
-        }
-
-        await writeAudit(tx, {
-          ...actor,
-          action: "STOCK_MOVEMENT",
-          entityType: "LotOperation",
-          entityId: String(opId),
-          summary,
-        });
-
-        return {
-          operationId: opId,
-          op,
-          parentLotId: input.parentLotId,
-          drawnL: plan.drawnL,
-          lossL: plan.lossL,
-          fractions: fractionResults,
-          duplicate: false,
-          message: `${summary}.`,
-        } satisfies PressLotResult;
-      });
+      return await runLedgerWrite((tx) => pressLotTx(tx, actor, input));
     } catch (e) {
       if (input.commandId && isCommandConflict(e)) {
         const prior = await findByCommandId(input.commandId);

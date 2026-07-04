@@ -29,6 +29,7 @@
     "verify:reminders": "tsx --conditions=react-server --env-file=.env scripts/verify-reminders.ts",
     "verify:work-orders": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders.ts",
     "verify:work-orders-enhancements": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders-enhancements.ts",
+    "verify:work-orders-transform": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders-transform.ts",
     "verify:raw-sql": "tsx scripts/check-raw-sql-tenant-safety.ts",
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",
     "verify:tripwires": "node scripts/verify-tripwire-guards.mjs",

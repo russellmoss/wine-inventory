@@ -8,6 +8,8 @@ import { rackWineTx } from "@/lib/vessels/rack-core";
 import { topVesselTx } from "@/lib/cellar/topping";
 import { filterVesselTx } from "@/lib/cellar/treatments";
 import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFIG, type AddAdditionInput } from "@/lib/cellar/addition";
+import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
+import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
 import type { RateBasis } from "@/lib/cellar/additions-math";
 import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
@@ -64,8 +66,10 @@ async function dispatchOperationTx(
   task: TaskRow,
   payload: Record<string, unknown>,
   resolvedMaterial: { materialId: string; materialName: string } | null,
+  commandId: string, // plan 035: threaded to the transform tx-forms for op-level idempotency
 ): Promise<{ operationId: number; message: string; shortfall?: number }> {
   const note = asStr(payload.note) ?? null;
+  const asBool = (v: unknown): boolean => v === true || v === "true";
   switch (task.opType) {
     case "RACK": {
       // dec 4a: an optional rack descriptor rides the op note (off gross/fine lees, clean-to-clean, délestage).
@@ -118,9 +122,72 @@ async function dispatchOperationTx(
       const r = await recordNeutralDoseTx(tx, actor, additionInput, cfg, resolvedMaterial);
       return { operationId: r.operationId, message: r.message, shortfall: r.shortfall }; // E1: draw-to-zero shortfall
     }
+    case "CRUSH": {
+      // Run-time inputs entered on the execute screen's crush sub-form (plan 035). Picks + measured
+      // output volume are required; NEW mint (vintage) vs ADD into an existing must lot.
+      const picks = Array.isArray(payload.picks) ? (payload.picks as CrushPickInput[]).filter((p) => p && p.pickId && Number(p.consumedKg) > 0) : [];
+      if (picks.length === 0) throw new ActionError("Select at least one harvest pick to crush.");
+      const destVesselId = asStr(payload.destVesselId) ?? task.destVesselId;
+      if (!destVesselId) throw new ActionError("Pick a destination vessel for the crush.");
+      const outputVolumeL = asNum(payload.outputVolumeL);
+      if (!(outputVolumeL != null && outputVolumeL > 0)) throw new ActionError("Enter the measured output volume (L).");
+      const addLotId = asStr(payload.addLotId) ?? asStr(payload.lotId) ?? task.lotId ?? undefined;
+      const target = addLotId
+        ? ({ mode: "ADD", lotId: addLotId } as const)
+        : ({ mode: "NEW", vintage: asNum(payload.vintage) ?? new Date().getFullYear(), varietyId: asStr(payload.varietyId) ?? null } as const);
+      const r = await crushLotTx(tx, actor, {
+        commandId,
+        picks: picks.map((p) => ({ pickId: p.pickId, consumedKg: Number(p.consumedKg) })),
+        destVesselId,
+        outputVolumeL,
+        target,
+        destemmed: asBool(payload.destemmed),
+        crusherOn: asBool(payload.crusherOn),
+        crushedPct: asNum(payload.crushedPct),
+        mustTempC: asNum(payload.mustTempC) ?? null,
+        pressCycle: asStr(payload.pressCycle) ?? null,
+        note: note ?? undefined,
+      });
+      return { operationId: r.operationId, message: r.message };
+    }
+    case "PRESS": {
+      const parentLotId = asStr(payload.parentLotId) ?? task.lotId;
+      if (!parentLotId) throw new ActionError("Pick the must lot to press.");
+      const sourceVesselId = asStr(payload.sourceVesselId) ?? task.sourceVesselId;
+      if (!sourceVesselId) throw new ActionError("Pick the source vessel.");
+      // Trust boundary: rebuild each fraction from an explicit allowlist of the plan-contract fields —
+      // coerce the volume + estimated flag and DROP any client-supplied child `form` override (not part of
+      // the WO contract; only the standalone cores set it). mergeIntoLotId is kept (it's in the contract).
+      const fractions: PressFractionInput[] = Array.isArray(payload.fractions)
+        ? (payload.fractions as Record<string, unknown>[])
+            .filter((f) => f && typeof f.destVesselId === "string" && Number(f.volumeL) > 0)
+            .map((f) => ({
+              destVesselId: f.destVesselId as string,
+              volumeL: Number(f.volumeL),
+              label: typeof f.label === "string" ? f.label : "",
+              estimated: f.estimated === true || f.estimated === "true",
+              mergeIntoLotId: typeof f.mergeIntoLotId === "string" && f.mergeIntoLotId ? f.mergeIntoLotId : null,
+            }))
+        : [];
+      if (fractions.length === 0) throw new ActionError("Add at least one press fraction (a cut with a vessel + volume).");
+      const lossL = asNum(payload.lossL);
+      if (lossL != null && lossL < 0) throw new ActionError("Lees loss can't be negative."); // fail with a clean 400 at the boundary, not a raw planPress Error inside the tx
+      const opSel = asStr(payload.op);
+      const r = await pressLotTx(tx, actor, {
+        commandId,
+        parentLotId,
+        sourceVesselId,
+        fractions,
+        lossL,
+        op: opSel === "SAIGNEE" ? "SAIGNEE" : "PRESS",
+        pressCycle: asStr(payload.pressCycle) ?? null,
+        note: note ?? undefined,
+      });
+      return { operationId: r.operationId, message: r.message };
+    }
     default:
       throw new ActionError(
-        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. v1 supports rack, addition, fining, topping, and filtration.`,
+        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. Supported: rack, addition, fining, topping, filtration, de-stem/crush, press/saignée.`,
         "CONFLICT",
       );
   }
@@ -191,7 +258,7 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
   const finalize = input.autoFinalize === true;
   try {
     const result = await runLedgerWrite(async (tx) => {
-      const { operationId, message, shortfall } = await dispatchOperationTx(tx, actor, task, payload, resolvedMaterial);
+      const { operationId, message, shortfall } = await dispatchOperationTx(tx, actor, task, payload, resolvedMaterial, input.commandId);
       // E1/D4: a below-stock dose draws to zero (never negative) and surfaces a soft warning — never blocks.
       const warnedMessage = shortfall && shortfall > 0 ? `${message} (used ${shortfall} more than on record)` : message;
 
