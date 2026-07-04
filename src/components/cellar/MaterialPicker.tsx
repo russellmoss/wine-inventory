@@ -192,6 +192,7 @@ function CreateStockMaterialModal({
 }) {
   const [name, setName] = React.useState("");
   const [kind, setKind] = React.useState<MaterialKind>(defaultKind);
+  const [subcategory, setSubcategory] = React.useState("");
   const [basis, setBasis] = React.useState<RateBasis | "">("");
   const [percentActive, setPercentActive] = React.useState("");
   const [stockUnit, setStockUnit] = React.useState<string>("g");
@@ -210,6 +211,7 @@ function CreateStockMaterialModal({
         const dto = await createStockMaterialAction({
           name: name.trim(),
           kind,
+          subcategory: subcategory.trim() || undefined,
           defaultBasis: basis || undefined,
           percentActive: percentActive.trim() !== "" ? Number(percentActive) : undefined,
           stockUnit,
@@ -249,6 +251,7 @@ function CreateStockMaterialModal({
               ))}
             </select>
           </label>
+          <Input label="Subcategory (optional)" value={subcategory} onChange={(e) => setSubcategory(e.target.value)} placeholder="e.g. Egg white" style={{ flex: "1 1 160px" }} />
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 120px" }}>
