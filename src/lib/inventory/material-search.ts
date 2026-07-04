@@ -30,7 +30,8 @@ function scoreText(nq: string, text: string): number {
  * desc then by their original order (stable) to keep ties deterministic.
  */
 export function rankMaterials<T>(query: string, items: readonly T[], getText: (item: T) => string, opts: RankOptions = {}): T[] {
-  const nq = normalize(query ?? "");
+  // Cap the query before the O(query×name) edit-distance rank so a huge paste can't spike work per keystroke.
+  const nq = normalize((query ?? "").slice(0, 64));
   if (!nq) return [...items];
   const threshold = opts.threshold ?? DEFAULT_THRESHOLD;
 

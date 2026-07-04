@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MATERIAL_KINDS } from "@/lib/cellar/additions-math";
-import { categoryOf, kindsForCategory, materialScopeForTask } from "@/lib/cellar/material-taxonomy";
+import { categoryOf, kindsForCategory, materialScopeForTask, isDoseableKind } from "@/lib/cellar/material-taxonomy";
 
 // Cost-safety guards for Phase 034. The design keeps new material kinds cost-inert:
 //  - consumeMaterialCore ALWAYS writes a MATERIAL cost line (never branches on kind), so a dosed SUGAR
@@ -45,6 +45,16 @@ describe("new kinds are cost-inert", () => {
 
   it("CLEANING/SANITIZER remain the ONLY overhead-category kinds", () => {
     expect([...kindsForCategory("CLEANING_SANITIZING")].sort()).toEqual(["CLEANING", "SANITIZER"]);
+  });
+
+  it("isDoseableKind: additives dose, cleaning/sanitizing + packaging do NOT (server WORKORDER-3 guard)", () => {
+    for (const k of kindsForCategory("ADDITIVE")) expect(isDoseableKind(k)).toBe(true);
+    expect(isDoseableKind("OTHER")).toBe(true);
+    expect(isDoseableKind("CLEANING")).toBe(false);
+    expect(isDoseableKind("SANITIZER")).toBe(false);
+    expect(isDoseableKind("PACKAGING")).toBe(false);
+    expect(isDoseableKind("SUGAR")).toBe(true); // chaptalization is a real additive dose
+    expect(isDoseableKind(null)).toBe(true); // unknown → OTHER → doseable (matches picker's OTHER-in-scope)
   });
 
   it("SUGAR + PACKAGING are the only kinds added beyond the pre-034 set", () => {

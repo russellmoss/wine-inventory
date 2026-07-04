@@ -84,6 +84,16 @@ export function effectiveSubcategory(material: { kind?: string | null; subcatego
   return custom.length > 0 ? custom : builtinSubLabel(material.kind);
 }
 
+/**
+ * May a material of this kind be DOSED into wine (an ADDITION/FINING op)? False for cleaning/sanitizing
+ * and packaging — dosing those would wrongly capitalize a non-additive into wine COGS (WORKORDER-3). This
+ * is the server-side counterpart to the picker's `materialScopeForTask` scoping.
+ */
+export function isDoseableKind(kind: string | null | undefined): boolean {
+  const cat = categoryOf(kind);
+  return cat !== "CLEANING_SANITIZING" && cat !== "PACKAGING";
+}
+
 /** The kinds that make up a category — used to filter material queries by category. */
 export function kindsForCategory(category: MaterialCategory): MaterialKind[] {
   return (MATERIAL_KINDS as readonly MaterialKind[]).filter((k) => KIND_TO_CATEGORY[k] === category);
@@ -98,9 +108,12 @@ export function coerceMaterialCategory(raw: unknown): MaterialCategory {
 /**
  * Which main categories the material picker shows for a given work-order task (single source of truth,
  * used by both the plan + execute flows). Additions dose additives (+ generic OTHER); cleaning/sanitizing
- * tasks draw cleaning supplies (+ OTHER); anything else (e.g. GAS) shows all. Keeping cleaning/packaging
- * OUT of the additions picker is what stops a non-additive from being dosed into wine as a MATERIAL cost
- * line (cost-safety guard, WORKORDER-3 is the overhead counterpart on the maintenance path).
+ * tasks draw cleaning supplies (+ OTHER); anything else (e.g. GAS) shows all.
+ *
+ * NOTE: this is a UI CONVENIENCE / first line of defense, NOT a server-enforced guard. The dose path
+ * (resolveDoseMaterial → consumeMaterialCore) does not inspect kind, so a crafted request could still pass
+ * a cleaning/packaging materialId into an ADDITION. If server-side enforcement of WORKORDER-3 for the
+ * addition path is wanted, add a `categoryOf(kind)` check at the execute seam (see plan 034 follow-up).
  */
 export function materialScopeForTask(def: { opType?: string | null; activityType?: string | null }): MaterialCategory[] | undefined {
   if (def.opType === "ADDITION" || def.opType === "FINING") return ["ADDITIVE", "OTHER"];

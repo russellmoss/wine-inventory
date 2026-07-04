@@ -43,9 +43,11 @@ function toDTO(r: {
   };
 }
 
-/** Trim a free-text subcategory to a stored value; blank → null (falls back to the built-in kind label). */
+/** Trim + length-cap a free-text subcategory to a stored value; blank → null (falls back to the built-in
+ * kind label). The 80-char cap is server-side (not just the client input) so a huge paste can't bloat the
+ * TEXT column or degrade the picker's chip render. */
 function normalizeSubcategory(raw: unknown): string | null {
-  const s = String(raw ?? "").trim();
+  const s = String(raw ?? "").trim().slice(0, 80).trimEnd();
   return s.length > 0 ? s : null;
 }
 
@@ -57,13 +59,18 @@ function normalizeSubcategory(raw: unknown): string | null {
  */
 export async function listMaterials(opts: { kind?: MaterialKind; category?: MaterialCategory; includeInactive?: boolean } = {}): Promise<CellarMaterialDTO[]> {
   // `category` filters to the set of kinds that make up that main category (derived, see material-taxonomy);
-  // `kind` (if also given) narrows further. Both compose with the isActive filter.
+  // `kind` (if also given) narrows further. Compose them into ONE `kind` clause — two object-spread `kind`
+  // keys would clobber (last wins). Explicit kind wins; with both, intersect (kind must be in the category).
   const categoryKinds = opts.category ? kindsForCategory(opts.category) : null;
+  const kindWhere =
+    opts.kind && categoryKinds ? { kind: categoryKinds.includes(opts.kind) ? opts.kind : { in: [] as MaterialKind[] } }
+    : opts.kind ? { kind: opts.kind }
+    : categoryKinds ? { kind: { in: categoryKinds } }
+    : {};
   const rows = await prisma.cellarMaterial.findMany({
     where: {
       ...(opts.includeInactive ? {} : { isActive: true }),
-      ...(opts.kind ? { kind: opts.kind } : {}),
-      ...(categoryKinds ? { kind: { in: categoryKinds } } : {}),
+      ...kindWhere,
     },
     orderBy: { name: "asc" },
     select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true, isStockTracked: true, stockUnit: true, isActive: true },
