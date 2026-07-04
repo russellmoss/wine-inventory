@@ -179,6 +179,31 @@ describe("NOTE / checklist block (plan 034)", () => {
   });
 });
 
+describe("transform blocks — CRUSH + PRESS (plan 035)", () => {
+  it("accepts a CRUSH block with its process defaults; rejects a run-time-only field as a default", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "CRUSH", title: "Crush block 12", defaults: { destemmed: "true", crusherOn: "true", crushedPct: 80 } }] }).ok).toBe(true);
+    // picks/destVesselId/outputVolumeL are run-time only — not template defaults.
+    const v = validateTemplateSpec({ tasks: [{ taskType: "CRUSH", title: "x", defaults: { destVesselId: "v1" } }] });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain('unknown field "destVesselId"');
+  });
+
+  it("accepts a PRESS block; validates the op select (PRESS|SAIGNEE)", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "PRESS", title: "Press lot X", defaults: { op: "SAIGNEE" } }] }).ok).toBe(true);
+    const bad = validateTemplateSpec({ tasks: [{ taskType: "PRESS", title: "x", defaults: { op: "SQUEEZE" } }] });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors.join(" ")).toContain("not a valid op");
+  });
+
+  it("instantiates CRUSH/PRESS as OPERATION tasks with the right opType, carrying run-time payload", () => {
+    const [crush] = instantiateTaskBuilds([{ taskType: "CRUSH", title: "Crush", values: { destVesselId: "v-tank", outputVolumeL: 480, destemmed: "true" } }]);
+    expect(crush).toMatchObject({ kind: "OPERATION", opType: "CRUSH", destVesselId: "v-tank" });
+    expect(crush.plannedPayload).toMatchObject({ outputVolumeL: 480, destemmed: "true" });
+    const [press] = instantiateTaskBuilds([{ taskType: "PRESS", title: "Press", values: { parentLotId: "lot-1", sourceVesselId: "v-src", op: "PRESS" } }]);
+    expect(press).toMatchObject({ kind: "OPERATION", opType: "PRESS", lotId: "lot-1", sourceVesselId: "v-src" });
+  });
+});
+
 describe("shipped system templates", () => {
   it("every system template spec is valid against the vocabulary", () => {
     for (const t of SYSTEM_TEMPLATES) {

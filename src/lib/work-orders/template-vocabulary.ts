@@ -147,6 +147,30 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     fields: { vesselId: "vessel", gasType: "select", materialId: "material", amount: "number", note: "text" },
     fieldOptions: { gasType: GAS_TYPES },
   },
+  // ── TRANSFORM lane (plan 035): fruit intake + press. These create/split lots, so their run-time
+  // inputs (picks for crush; fractions for press) are lists entered on the execute screen via custom
+  // sub-forms — NOT template defaults. The vocabulary `fields` below are the "what" a template can bake
+  // in; the picks/fractions/vessels/volumes are captured when the work order is run. ──
+  CRUSH: {
+    kind: "OPERATION",
+    opType: "CRUSH",
+    label: "De-stem / crush",
+    // Template-settable process defaults only. Harvest picks, destination vessel + measured output
+    // volume are entered at run time (crush sub-form on the execute screen).
+    fields: { destemmed: "select", crusherOn: "select", crushedPct: "number", mustTempC: "number", pressCycle: "text", note: "text" },
+    fieldOptions: { destemmed: ["true", "false"], crusherOn: ["true", "false"] },
+    hint: "Harvest picks (with kg), destination and measured output volume are entered when the work order is run.",
+  },
+  PRESS: {
+    kind: "OPERATION",
+    opType: "PRESS",
+    label: "Press / saignée",
+    // op = PRESS | SAIGNEE. The parent lot, source vessel and the fraction cuts are entered at run time
+    // (press sub-form on the execute screen).
+    fields: { op: "select", pressCycle: "text", note: "text" },
+    fieldOptions: { op: ["PRESS", "SAIGNEE"] },
+    hint: "The must lot, source vessel and the press fractions (cuts) are entered when the work order is run.",
+  },
   // ── CHECKLIST lane (plan 034): a free-text, checkable line that does NO inventory work. ──
   NOTE: {
     kind: "NOTE",
@@ -224,9 +248,11 @@ export function canonicalizeTemplateSpec(spec: TemplateSpec): TemplateSpec {
 function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
   const s = (v: unknown) => (typeof v === "string" && v ? v : null);
   return {
-    sourceVesselId: s(payload.fromVesselId),
-    destVesselId: s(payload.toVesselId) ?? s(payload.vesselId),
-    lotId: s(payload.lotId),
+    // Transform ops (plan 035): CRUSH mirrors its destVesselId; PRESS mirrors sourceVesselId + the
+    // parent lot (parentLotId). Null at issue time — the real vessels/lot are captured at run time.
+    sourceVesselId: s(payload.fromVesselId) ?? s(payload.sourceVesselId),
+    destVesselId: s(payload.toVesselId) ?? s(payload.vesselId) ?? s(payload.destVesselId),
+    lotId: s(payload.lotId) ?? s(payload.parentLotId),
     materialId: s(payload.materialId),
   };
 }
