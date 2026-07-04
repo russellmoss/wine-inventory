@@ -1,7 +1,7 @@
 ---
 title: Work-Order Template Builder + Global AI Assistant Dock
 type: feat
-status: draft
+status: phase-1-complete
 date: 2026-07-03
 branch: feat/work-order-template-builder
 depth: deep
