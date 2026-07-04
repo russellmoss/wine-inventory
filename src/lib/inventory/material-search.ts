@@ -29,14 +29,21 @@ function scoreText(nq: string, text: string): number {
  * returns only items scoring at/above threshold (substring hits always included), sorted by score
  * desc then by their original order (stable) to keep ties deterministic.
  */
-export function rankMaterials<T>(query: string, items: readonly T[], getText: (item: T) => string, opts: RankOptions = {}): T[] {
+export function rankMaterials<T>(query: string, items: readonly T[], getText: (item: T) => string | string[], opts: RankOptions = {}): T[] {
   // Cap the query before the O(query×name) edit-distance rank so a huge paste can't spike work per keystroke.
   const nq = normalize((query ?? "").slice(0, 64));
   if (!nq) return [...items];
   const threshold = opts.threshold ?? DEFAULT_THRESHOLD;
 
+  // getText may return several texts (name + category + sub-category) — the item's score is the BEST match
+  // across them, so searching "yeast" or "additive" finds materials by their family/category, not just name.
   const scored = items
-    .map((item, index) => ({ item, index, score: scoreText(nq, getText(item)) }))
+    .map((item, index) => {
+      const t = getText(item);
+      const texts = Array.isArray(t) ? t : [t];
+      const score = texts.reduce((best, x) => Math.max(best, scoreText(nq, x)), 0);
+      return { item, index, score };
+    })
     .filter((s) => s.score >= threshold);
 
   scored.sort((a, b) => (b.score - a.score) || (a.index - b.index));
