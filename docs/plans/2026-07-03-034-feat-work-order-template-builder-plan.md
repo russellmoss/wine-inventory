@@ -96,6 +96,15 @@ tools turns "compose a template" into a conversation, and lays the tool-boundary
 > tool-registration time, never a hardcoded snapshot** — so future vocabulary (e.g. Phase-20 vineyard
 > blocks) flows in without another re-plan. Units 12 + 13 are revised accordingly; Units 10–11 (dock UI)
 > are unaffected.
+>
+> **Still current as of plan 037 (2026-07-04).** Since this note, plans 037 (material view/edit + `updateMaterialCore`)
+> and 037.1 (correct the cost of unused opening stock) and the tenant-currency PR (#38) shipped. None require a
+> re-plan here: the "derive from the live model" decision already absorbs the edit path, editable families, and
+> `materialDisplayName`; and **templates are the WHAT only — no vessels/lots/cost** — so `avgUnitCost`, the
+> opening-lot cost correction, and currency are out of scope for template authoring. GUARDRAIL for Units 12–13:
+> resolve additions to a real `CellarMaterial` via `materialDisplayName` (brand + generic) scoped to
+> `isDoseableCategory` (WORKORDER-3); never invent a material or a family. If the assistant ever surfaces a cost
+> (it shouldn't for templates), render it through the money layer (`useCurrency`/`formatMoney`), never a hardcoded `$`.
 
 **In scope:**
 - Template builder UI (list / detail / editor), thin server actions over the existing cores, one new
