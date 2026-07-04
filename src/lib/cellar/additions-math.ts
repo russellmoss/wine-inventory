@@ -27,6 +27,7 @@ export const MATERIAL_KINDS = [
   "SO2",
   "NUTRIENT",
   "ACID",
+  "SUGAR", // Phase 034: chaptalization / RCGJ sugar addition — an additive dose, capitalizes like other additions
   "TANNIN",
   "FINING",
   "BENTONITE", // Phase 9.1: protein-stability fining clay (a rate against volume, like FINING)
@@ -34,6 +35,7 @@ export const MATERIAL_KINDS = [
   "ENZYME",
   "CLEANING", // Phase 9.1: cleaning chemical (proxycarb, caustic) — overhead, consumed by maintenance, never a wine COGS
   "SANITIZER", // Phase 9.1: sanitizer (PAA, ozone) — overhead, consumed by maintenance, never a wine COGS
+  "PACKAGING", // Phase 034: dry goods (corks, capsules, bottles, labels) — organized in the catalog, NEVER dosed into wine
   "OTHER",
 ] as const;
 export type MaterialKind = (typeof MATERIAL_KINDS)[number];
