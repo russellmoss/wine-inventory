@@ -1,120 +1,104 @@
-# Council Feedback — Phase 8: Supplies Inventory & Cost Roll-up (plan 028)
-**Date**: 2026-07-02
-**Reviewers**: Codex `gpt-5.4` (correctness + data layer), Gemini `gemini-3.1-pro-preview` (domain + accounting + UX)
+# Council Feedback — Work-Order Template Builder (Plan 034, Phase 1)
+**Date**: 2026-07-03
+**Reviewers**: Codex (types + data layer; ran on gpt-5.4-mini fallback — primary failed), Gemini 3.1 Pro (product logic + UX)
+**Plan**: docs/plans/2026-07-03-034-feat-work-order-template-builder-plan.md
 
-The two reviewers converged hard. Net verdict (Codex): the arithmetic isn't the flaw — the flaw is
-trying to have **four things at once** that don't compose: recompute-on-read, a strict projection
-invariant, frozen bottle snapshots, and cost-agnostic reversal. Net verdict (Gemini): the DAG fold is
-elegant but decoupled from physical + GAAP reality; as written it produces "silent, compounding
-financial lies." Both are right. Almost every finding is being folded into the plan.
+## Critical Issues
 
-## Critical Issues (folded unless noted)
+### Product (Gemini)
+1. **"No baked-in defaults" defeats the purpose of an SOP template (Decision #4, Unit 8).** The point of a
+   work-order template in an ERP is to *prevent cellar errors* by encoding the standard: material = KMBS,
+   rate = 30, unit = ppm. Forcing the operator to re-enter material + rate every run means the template
+   prevents nothing. Gemini's fix: allow baking in **material, rate, unit** (the "what") while leaving
+   vessels/lots to run time (the "where"). The data model already supports this (`defaults`), so excluding
+   it is *more* work for a *worse* product. → **Reverses a locked decision — user call.**
+2. **Multi-vessel multiplicity is muddled (Decision #1, Unit 8).** A structure-only builder has no vessel
+   inputs, so "a template targets multiple vessels" can't mean the template names vessels. The existing
+   run-time already handles this: the new-WO form's `VesselMultiSelect` fans one block out to N vessels at
+   submit. Fix: template = a single ordered flow of blocks; at run time pick N vessels and multiplex.
+   (Wording/clarity fix — already matches existing behavior. Folding.)
+3. **Frozen versioning vs. in-flight drafts (Decision #6, Unit 5).** Confirm `templateVersionId` is snapped
+   at WO *creation* (including DRAFT), not only at issue, so editing a template never mutates an open draft.
+   (`createWorkOrderFromTemplateCore` snaps `version.id` at creation → already handled; add a verification.)
 
-1. **Projection vs recompute can't both be authoritative** (Codex). An ancestor cost correction
-   stales every descendant's `LotCostState`. → **DAG recompute is the authority; `LotCostState` is a
-   versioned cache**, not an invariant-bound projection. (FOLDED, D4 rewritten.)
-2. **Blend `fraction` is ambiguous** (Codex). "share of parent depleted" ≠ "share of child
-   composition"; they give different cost. → Store **`transferredVolumeL` + `parentPreOpVolumeL`** on
-   the cost-transfer artifact; cost transfer = `parentTotalCost × transferredL / parentPreOpL`;
-   add a conservation invariant. (FOLDED, D10.)
-3. **Reversal lacks info to negate BLEND/BOTTLE/SPLIT after later history** (Codex). Deriving the
-   negation from *current* ancestry negates the wrong amount. → **Persist immutable per-op cost
-   artifacts; reverse by identity, never by recompute.** (FOLDED, D3 rewritten.)
-4. **Supply stock can't be restored from a `CostLine`** (Codex); one consume op depletes multiple
-   lots. → Add a **`SupplyConsumption`** ledger `(op, supplyLot, qty, unitCost, method)`; CORRECTION
-   negates those rows. (FOLDED, D11.)
-5. **Frozen COGS vs upstream recompute diverge on backdated edits** (Codex). → Snapshot carries an
-   immutable `costBasisAsOfOperationId`; post-bottling upstream changes become **explicit variance
-   events split sold/unsold — never silent recompute.** (FOLDED, D12.)
-6. **Rounding leaks + zero-volume lot keeps ghost cost** (Codex + Gemini). → **Decimal(18,8)**
-   internal; **zero volume ⇒ zero cost** invariant; residual flushed to a **COGS variance** line.
-   (FOLDED, D9 rewritten.)
-7. **Normal vs abnormal loss** (Gemini). Reallocating *all* loss to survivors is wrong; a dumped
-   tank must be **expensed**, not capitalized into remaining wine. → Split **NORMAL loss**
-   (reallocate) vs **ABNORMAL loss** (write-off to expense; per-liter cost unchanged). (FOLDED, D13.)
-8. **Barrel straight-line-by-time is domain-wrong** (Gemini). First-fill oak imparts most value;
-   time alone ignores volume-in-barrel. → **Fill-based accelerated + allocate by (days/365 ×
-   residentVol/capacity).** ⚠️ **This revises D7, a decision the user made — surfaced as a fork, not
-   silently folded.**
-9. **Cost contagion from partial data** (both). `null` cost treated as `$0` silently under-costs a
-   blend and spreads down the DAG. → Propagate **`basisCompleteness: known|partial|unknown`**; block
-   / hard-warn accounting export when incomplete. (FOLDED, D14.)
-10. **Bottling is a Bill-of-Materials, not liquid÷bottles** (Gemini). Glass/cork/capsule/label/case
-    often cost more than the wine; breakage means cost ÷ **actual yielded good bottles**. → Bottling
-    consumes packaging `SupplyLot`s + liquid (+ labor/oh later); `costPerBottle = totalRunCost /
-    goodBottles`. (FOLDED, D15 + Unit 6 rewritten.)
+### Engineering (Codex)
+1. **Client-shaped `spec` is not a trust boundary (Units 5, 8).** Accept `unknown` at the action boundary;
+   validate + **canonicalize** on the server (reject/strip unknown keys), persist only the sanitized object.
+   `validateTemplateSpec` currently reports errors but doesn't strip extra keys or return a normalized spec.
+   (The cores DO call `validateTemplateSpec` server-side, so malformed specs are rejected — but canonicalize.)
+2. **Auto-generated `code` retry loop is race/livelock-prone (Unit 5).** Bounded retry, fresh candidate each
+   attempt, typed conflict after the cap. Never reuse the same candidate after a P2002.
 
-## Design Questions → Forks for the user
+## Design Questions
+1. **Baked-in defaults** — allow optional material/rate/unit defaults in templates, or keep structure-only?
+2. **Who can author templates** — all users (current Decision #5) or restrict to winemaker/admin?
+3. **`NOTE` as an enum kind vs. a separate checklist store** — enum anti-pattern vs. one interleaved list.
+4. **All-checklist work orders** — allow (completes when all boxes checked) or require ≥1 real operation?
 
-- **Q1 (barrel model):** adopt the council's fill-based accelerated + volume×time barrel cost
-  (revises your "by time held" pick)?
-- **Q2 (custom crush / client-owned wine):** model lot ownership in v1 (client-owned ⇒ fruit cost
-  $0, supplies → billable, not inventory asset), or defer?
-- **Q3 (bulk wine trading):** let "receive with cost" inject a direct-material cost node onto a BULK
-  WINE lot mid-DAG (buy/sell bulk), or defer to a follow-on?
-- Post-bottling upstream-correction accounting policy: folded as **immutable snapshot + variance
-  events, never silent restate** (the defensible default) — flagged for confirmation.
+## Suggested Improvements (folding into the plan)
+- **Exhaustiveness (Codex):** `assertNever` on every `WorkOrderTaskKind` switch incl. the
+  TemplateSpec→WorkOrderTask instantiation path (not just UI renderers) + a totality test.
+- **Explicit tenantId in `where` (Codex):** keep the tenant filter in Prisma queries even with RLS (repo K12).
+- **`updateTemplateSpecCore` reads `currentVersion` outside the tx (Codex):** move inside `runInTenantTx`
+  (or retry once) so the version read and the insert share one snapshot.
+- **Revalidation under-scoped (Codex):** also revalidate the detail path, version history, and the
+  `/work-orders/new` picker.
+- **Builder constraints (Gemini):** max blocks cap, name required, duplicate-name handling, min ≥1 task.
+- **Empty state (Gemini):** custom-tab CTA "Clone a system template or build from scratch."
+- **System-clone lineage (Gemini):** document that clones don't get future system-template updates (Phase-1
+  limitation); clear system-vs-custom separation.
+- **Migration gate (Codex):** enum migration live before Unit 2 code merges.
 
-## Suggested Improvements (folded)
-
-- Split the overloaded `CostLine` into **`SupplyConsumption` / `OperationCostTransfer` /
-  `CostLine` (direct absorbed) / `BottlingCostSnapshot`** + a reporting view (Codex).
-- **Stamp policy version** (costing method + capitalization toggles) on every derived row; method is
-  **effective-dated + period-locked** — toggles never rewrite closed history (both).
-- Concrete **indexes** + **batched recursive CTE** for DAG walks / per-SKU-per-run reporting (Codex).
-- **Phase 15 accounting seam now:** `postingKey`, `sourceSnapshotId`, `reversalOfSnapshotId`,
-  `postedAt`, `externalSystemId`, component/tax-class → debit/credit account mapping; export query is
-  a **view over immutable export events** (Codex).
-- Stable **run identity + per-line (SKU/pack/tax-class)** identity in the snapshot (Codex).
-- `verify:cost` proves **cost conservation** (nothing created/destroyed except explicit variance;
-  exact stock restoration on reversal; every snapshot traces to immutable artifacts) (Codex).
-- **Trust UX:** decomposed cost stack (`$X total = FRUIT + BARREL + PACKAGING + MATERIAL`),
-  as-of date, incomplete-basis warning, drill-down to cost lines (Gemini).
+## Recommendations (my synthesis)
+- **Q1 defaults:** ADOPT Gemini — allow *optional* defaults for the "what" (material/rate/unit/medium/gas),
+  vessels/lots stay run-time. Strongest finding; reverses Decision #4.
+- **Q2 permissions:** restrict *template authoring* to winemaker/admin; *all users* still issue/run WOs.
+- **Q3 NOTE store:** KEEP `NOTE` as a task kind — ledger/cost/compliance read ledger tables, not
+  `WorkOrderTask.kind`, so no query tax; interleaving needs one ordered list. Guard only approval queue + undo.
+- **Q4 all-checklist WO:** ALLOW; ensure the WO lifecycle can complete a WO whose tasks are all `NOTE`.
 
 ---
-## Raw Response — Codex (gpt-5.4)
+## Raw Response — Codex (gpt-5.4-mini fallback)
 
-CRITICAL: (1) LotCostState cannot equal DAG recompute without descendant propagation — ancestor
-correction stales descendants; pick one authority (DAG recompute authoritative; LotCostState = cache
-with version/hash). (2) Blend math under-specified: fraction = "share of parent depleted" vs "share of
-child composition" differ; store transferredVolumeL, cost transfer = parent_pre_op_total_cost ×
-transferredL / parent_pre_op_volumeL; conservation invariant. (3) Reversal lacks info to reverse
-BLEND/BOTTLE/SPLIT exactly after later history; persist immutable per-op allocation artifacts, reverse
-by identity. (4) Supply restoration can't come from CostLine (one op depletes multiple lots); add
-SupplyConsumption(op, supplyLot, seq, qty, unitCost, extendedCost, methodUsed, reversalOf). (5) Frozen
-bottling COGS + upstream recompute inconsistent on backdated edits; snapshot carries
-cost_basis_as_of_operation_id; define policy: restate sold vs adjust unsold vs variance — never silent
-recompute. (6) Rounding leaks; Decimal(12,4) too weak for deep DAG; use Decimal(18,8)+; zero-volume ⇒
-zero-cost with residual to a named variance line.
-SHOULD FIX: method switch unsafe mid-stream (effective-dated, immutable per depletion row, cutover or
-forbid while open lots exist); current settings must not rewrite history (stamp policy version on rows);
-"cost empty" needs unknown not implicit zero (known/partial/unknown; block export); missing indexes +
-recursive CTE (LotLineage(tenantId,parentLotId)/(childLotId), SupplyLot partial remainingQty>0,
-CostLine(tenantId,operationId,component), snapshot (tenantId,skuId,runId)/(tenantId,taxClass,bottledAt));
-Phase 15 output not sync-ready (postingKey, sourceSnapshotId, reversalOfSnapshotId, postedAt,
-externalSystemId, account mapping; query as a view over immutable events); CostLine overloaded — split
-into SupplyConsumption / OperationCostTransfer / BottlingCostSnapshot + reporting view.
-DESIGN Qs: accounting treatment for post-bottling upstream corrections? unit of a "run" (multi SKU/pack/
-tax class)? prove cost conservation end-to-end (not just recompute==fold). Net: recompute-on-read + strict
-projection invariant + frozen snapshots + cost-agnostic reversal do not compose as written.
+CRITICAL
+- Units 5 & 8: server-action boundary trusts a client-shaped `spec: TemplateSpec`. Not a trust boundary.
+  Accept `unknown`, validate + canonicalize on the server, persist sanitized only.
+- Unit 5 + @@unique([tenantId, code]): auto-generated `code` retry loop race-prone unless bounded and
+  regenerates a fresh candidate each retry. Cap attempts, typed conflict, never reuse candidate after P2002.
 
-## Raw Response — Gemini (gemini-3.1-pro-preview)
+SHOULD FIX
+- Unit 2: NOTE is not just a type-union change. TS won't catch default branches, lookup maps, or
+  stringly-typed dispatchers routing NOTE through a fallback — incl. TemplateSpec→WorkOrderTask instantiation.
+  Add assertNever + a totality test.
+- Unit 4: getTemplateDetail/listWorkOrderTemplates need explicit tenant predicates, not only ambient RLS.
+- Unit 5: updateTemplateSpecCore reads currentVersion outside the tx then inserts version+1 inside. Brittle
+  stale-read window. Read/lock inside the tx or retry once.
+- Unit 5: revalidation under-scoped — won't refresh detail, version history, or the pickers.
 
-CRITICAL: (1) Normal vs abnormal loss — reallocating ALL loss to survivors violates accounting; normal
-(evap/lees/filtration) concentrates cost, abnormal (spill/dump) must be expensed immediately; split the
-Loss op. (2) Barrel amortization fallacy — straight-line time is disastrous; new French oak (~$1,200)
-imparts most value on fill 1, neutral by fill 4; also time-only ignores volume (5L topping in a 225L
-barrel shouldn't absorb 100% daily depreciation). Use fill-based/accelerated (50/25/15/10) allocated by
-(days/365)×(residentVol/capacity). (3) Cost contagion — null/empty cost = $0 averages a blend down
-silently and spreads down the DAG; propagate hasIncompleteBasis, block/warn at bottling. (4) Bottling
-BOM & yield — "cost/bottleCount" ignores dry goods (glass/cork/capsule/label/case, often > wine cost)
-and breakage; Total Run Cost = liquid + dry goods + labor/oh; CostPerBottle = TotalRunCost / ACTUAL
-yielded good bottles.
-SHOULD FIX: (5) historical mutability of the method toggle — switching WA→FIFO must not re-evaluate
-closed years; lock by financial year / as-of lock date. (6) rounding residual trapped in a zero-volume
-lot = ghost value; flush to COGS variance. (7) trust UX — show decomposed cost stack ($15 = $8 FRUIT +
-$2.50 BARREL + $4 PACKAGING + $0.50 MATERIAL); without drill-down it generates support tickets.
-DESIGN Qs: (8) custom crush / client-owned wine — fruit cost $0 but supplies billed back; add an
-Ownership tag; client-owned ⇒ supplies → billable expenses, not inventory asset. (9) bulk wine trading —
-buying/selling bulk wine injects a direct-material cost node mid-DAG, not at CRUSH; ensure Receive-with-
-cost applies to BULK WINE lots too.
+DESIGN QUESTIONS
+- Unit 1: define the gate proving the migration is live before any NOTE-bearing seed/fixture/client hits it.
+- Unit 8: define the canonical server-side shape of `spec`; make validateTemplateSpec return a normalized spec.
+
+---
+## Raw Response — Gemini 3.1 Pro
+
+CRITICAL
+1. "No baked-in defaults" fallacy (Decision #4, Unit 8): templates must enforce SOPs — pre-select material
+   (KMBS), rate (30), unit (ppm). Fix: bake material/rate/unit/gas, leave source/dest tanks to run time.
+2. Multi-vessel multiplicity confusion (Decision #1, Unit 8): winemakers build ONE block and batch-apply to
+   N vessels at run time. Fix: template = single linear flow; run time selects N vessels and multiplexes.
+3. Versioning mutates in-flight drafts (Decision #6, Unit 5): need template_version_id snapped at draft
+   creation; warn if a newer version exists.
+
+SHOULD FIX
+1. NOTE enum is a reporting nightmare (Units 1-3): every reporting/compliance/cost query needs
+   WHERE kind != 'NOTE'. Fix: checklist_items JSONB column or a separate WorkOrderChecklist table.
+2. All-Note template state machine trap (Units 3, 8): how does a checklist-only WO reach Completed if state
+   relies on ledger postings? Require ≥1 operation, or treat pure checklists as a different feature.
+3. Missing builder constraints (Unit 8): duplicate names, max blocks, empty. Add unique (tenant, name,
+   not-archived), max block limit (~15), min 1 operation.
+
+DESIGN QUESTIONS
+1. "All users can author" (Decision #5): cellar hands should rarely edit SOPs. Restrict to Winemaker/Admin.
+2. System vs custom clone lineage: clones orphan from future system updates. Document; separate in UI.
+3. Empty state (Unit 6): custom tab empty initially — CTA "Clone a System Template or Build from Scratch."
