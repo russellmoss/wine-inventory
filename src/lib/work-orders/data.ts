@@ -522,23 +522,27 @@ export async function getTemplateDetail(tenantId: string, templateId: string): P
   });
 }
 
-export type PickerOption = { id: string; label: string; unit?: string | null; kind?: string | null; volumeL?: number | null; capacityL?: number | null };
+export type PickerOption = { id: string; label: string; unit?: string | null; kind?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 
 /** Option lists for the new-WO field pickers (active vessels, stock materials, active lots). */
 export async function getWorkOrderPickers(tenantId: string): Promise<{ vessels: PickerOption[]; materials: PickerOption[]; lots: PickerOption[] }> {
   return runAsTenant(tenantId, async () => {
-    const [vessels, materials, lots, vol] = await Promise.all([
+    const [vessels, materials, lots, vol, onHand] = await Promise.all([
       prisma.vessel.findMany({ where: { isActive: true }, orderBy: [{ type: "asc" }, { code: "asc" }], select: { id: true, code: true, type: true, capacityL: true } }),
-      prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, stockUnit: true } }),
+      // Phase 034: kind drives the picker's main-category scope; subcategory drives its filter chips.
+      prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, stockUnit: true, kind: true, subcategory: true, isStockTracked: true } }),
       prisma.lot.findMany({ where: { status: "ACTIVE" }, orderBy: { code: "asc" }, take: 500, select: { id: true, code: true } }),
       // Current wine volume per vessel (the fold of the ledger, VesselLot) — drives the dose calculator.
       prisma.vesselLot.groupBy({ by: ["vesselId"], _sum: { volumeL: true } }),
+      // Per-material on-hand (summed open SupplyLots) — surfaced next to each option in the picker.
+      prisma.supplyLot.groupBy({ by: ["materialId"], where: { qtyRemaining: { gt: 0 } }, _sum: { qtyRemaining: true } }),
     ]);
     const volByVessel = new Map(vol.map((g) => [g.vesselId, Number(g._sum.volumeL ?? 0)]));
+    const onHandByMaterial = new Map(onHand.map((g) => [g.materialId, Number(g._sum.qtyRemaining ?? 0)]));
     return {
       vessels: vessels.map((v) => ({ id: v.id, label: `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}`, kind: v.type, volumeL: volByVessel.get(v.id) ?? 0, capacityL: v.capacityL == null ? null : Number(v.capacityL) })),
       // unit = the material's stock unit (g/mL/…); the maintenance/addition "amount" is denominated in it.
-      materials: materials.map((m) => ({ id: m.id, label: m.name, unit: m.stockUnit })),
+      materials: materials.map((m) => ({ id: m.id, label: m.name, unit: m.stockUnit, kind: m.kind, subcategory: m.subcategory, onHand: m.isStockTracked ? (onHandByMaterial.get(m.id) ?? 0) : null })),
       lots: lots.map((l) => ({ id: l.id, label: l.code })),
     };
   });
