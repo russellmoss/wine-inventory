@@ -206,7 +206,7 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
         const m = { ...p, ...actualOf(t) };
         const picks = Array.isArray(m.picks) ? (m.picks as { consumedKg?: unknown }[]) : [];
         if (picks.length) {
-          const totalKg = picks.reduce((s, pk) => s + (num(pk?.consumedKg) ?? 0), 0);
+          const totalKg = Math.round(picks.reduce((s, pk) => s + (num(pk?.consumedKg) ?? 0), 0) * 1000) / 1000;
           rows.push({ label: "Picks", value: `${picks.length} pick${picks.length === 1 ? "" : "s"} · ${totalKg} kg` });
         }
         const destV = vLabel(str(m.destVesselId));

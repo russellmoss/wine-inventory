@@ -19,7 +19,8 @@ import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 
-type Fraction = { destVesselId: string; volumeL: string; label: string; estimated: boolean };
+type Fraction = { id: string; destVesselId: string; volumeL: string; label: string; estimated: boolean };
+const newFid = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
 export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView; data: PressFormData | null; onDone: () => void }) {
   const commandId = React.useMemo(() => crypto.randomUUID(), []);
@@ -36,7 +37,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const [posKey, setPosKey] = React.useState(initialKey);
   const pos = positions.find((p) => `${p.vesselId}:${p.lotId}` === posKey);
   const [op, setOp] = React.useState<"PRESS" | "SAIGNEE">(String(planned.op) === "SAIGNEE" ? "SAIGNEE" : "PRESS");
-  const [fractions, setFractions] = React.useState<Fraction[]>([{ destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "free-run", estimated: false }]);
+  const [fractions, setFractions] = React.useState<Fraction[]>([{ id: newFid(), destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "free-run", estimated: false }]);
   const [pressCycle, setPressCycle] = React.useState(planned.pressCycle != null ? String(planned.pressCycle) : "");
   const [note, setNote] = React.useState("");
   const [pending, startTransition] = React.useTransition();
@@ -47,7 +48,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const lees = Math.round((available - fractionTotal) * 100) / 100;
 
   const setFraction = (i: number, patch: Partial<Fraction>) => setFractions((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
-  const addFraction = () => setFractions((fs) => [...fs, { destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "press", estimated: false }]);
+  const addFraction = () => setFractions((fs) => [...fs, { id: newFid(), destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "press", estimated: false }]);
   const removeFraction = (i: number) => setFractions((fs) => fs.filter((_, j) => j !== i));
 
   function complete() {
@@ -124,7 +125,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
       <div style={{ marginTop: 12 }}>
         <div style={lbl}>Fractions</div>
         {fractions.map((f, i) => (
-          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+          <div key={f.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
             <input value={f.label} onChange={(e) => setFraction(i, { label: e.target.value })} placeholder="label" aria-label="Fraction label" style={{ ...big, width: 120 }} />
             <select value={f.destVesselId} onChange={(e) => setFraction(i, { destVesselId: e.target.value })} aria-label="Destination vessel" style={{ ...big, width: 150 }}>
               {vessels.map((v) => <option key={v.id} value={v.id}>{v.code}</option>)}

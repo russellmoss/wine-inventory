@@ -155,17 +155,30 @@ async function dispatchOperationTx(
       if (!parentLotId) throw new ActionError("Pick the must lot to press.");
       const sourceVesselId = asStr(payload.sourceVesselId) ?? task.sourceVesselId;
       if (!sourceVesselId) throw new ActionError("Pick the source vessel.");
-      const fractions = Array.isArray(payload.fractions)
-        ? (payload.fractions as PressFractionInput[]).filter((f) => f && f.destVesselId && Number(f.volumeL) > 0)
+      // Trust boundary: rebuild each fraction from an explicit allowlist of the plan-contract fields —
+      // coerce the volume + estimated flag and DROP any client-supplied child `form` override (not part of
+      // the WO contract; only the standalone cores set it). mergeIntoLotId is kept (it's in the contract).
+      const fractions: PressFractionInput[] = Array.isArray(payload.fractions)
+        ? (payload.fractions as Record<string, unknown>[])
+            .filter((f) => f && typeof f.destVesselId === "string" && Number(f.volumeL) > 0)
+            .map((f) => ({
+              destVesselId: f.destVesselId as string,
+              volumeL: Number(f.volumeL),
+              label: typeof f.label === "string" ? f.label : "",
+              estimated: f.estimated === true || f.estimated === "true",
+              mergeIntoLotId: typeof f.mergeIntoLotId === "string" && f.mergeIntoLotId ? f.mergeIntoLotId : null,
+            }))
         : [];
       if (fractions.length === 0) throw new ActionError("Add at least one press fraction (a cut with a vessel + volume).");
+      const lossL = asNum(payload.lossL);
+      if (lossL != null && lossL < 0) throw new ActionError("Lees loss can't be negative."); // fail with a clean 400 at the boundary, not a raw planPress Error inside the tx
       const opSel = asStr(payload.op);
       const r = await pressLotTx(tx, actor, {
         commandId,
         parentLotId,
         sourceVesselId,
         fractions,
-        lossL: asNum(payload.lossL),
+        lossL,
         op: opSel === "SAIGNEE" ? "SAIGNEE" : "PRESS",
         pressCycle: asStr(payload.pressCycle) ?? null,
         note: note ?? undefined,
