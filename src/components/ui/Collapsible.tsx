@@ -51,6 +51,7 @@ export function Collapsible({
   headerStyle,
 }: CollapsibleProps) {
   const reduced = usePrefersReducedMotion();
+  const bodyId = React.useId();
   const isControlled = open !== undefined;
   const [internal, setInternal] = React.useState(defaultOpen);
   const isOpen = isControlled ? open : internal;
@@ -69,6 +70,7 @@ export function Collapsible({
         type="button"
         onClick={toggle}
         aria-expanded={isOpen}
+        aria-controls={bodyId}
         style={{
           display: "flex",
           alignItems: "center",
@@ -106,7 +108,7 @@ export function Collapsible({
         )}
         {right != null ? <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>{right}</span> : null}
       </button>
-      {isOpen ? <div>{children}</div> : null}
+      {isOpen ? <div id={bodyId} role="region">{children}</div> : null}
     </div>
   );
 }

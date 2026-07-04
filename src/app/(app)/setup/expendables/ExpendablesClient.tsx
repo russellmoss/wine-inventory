@@ -110,11 +110,11 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
   const searching = query.trim() !== "";
   const countFor = (c: MaterialCategory) => [...byCategory.get(c)!.values()].reduce((n, arr) => n + arr.length, 0);
 
-  const toggleCat = (c: MaterialCategory) =>
+  const setCatOpen = (c: MaterialCategory, open: boolean) =>
     setOpenCats((prev) => {
       const next = new Set(prev);
-      if (next.has(c)) next.delete(c);
-      else next.add(c);
+      if (open) next.add(c);
+      else next.delete(c);
       return next;
     });
 
@@ -155,15 +155,15 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
               aria-label="Search expendables"
             />
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" style={chipStyle(catFilter === "ALL")} onClick={() => setCatFilter("ALL")}>All</button>
+              <button type="button" aria-pressed={catFilter === "ALL"} style={chipStyle(catFilter === "ALL")} onClick={() => setCatFilter("ALL")}>All</button>
               {MATERIAL_CATEGORIES.map((c) => (
-                <button key={c} type="button" style={chipStyle(catFilter === c)} onClick={() => setCatFilter(c)}>
+                <button key={c} type="button" aria-pressed={catFilter === c} style={chipStyle(catFilter === c)} onClick={() => setCatFilter(c)}>
                   {CATEGORY_LABELS[c]}
                 </button>
               ))}
               <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <Checkbox checked={showInactive} onChange={(v) => setShowInactive(v)} label="Show inactive" />
-                <Button variant="ghost" size="sm" onClick={() => setOpenCats(new Set(categories))} disabled={searching}>Expand all</Button>
+                <Button variant="ghost" size="sm" onClick={() => setOpenCats(new Set(MATERIAL_CATEGORIES))} disabled={searching}>Expand all</Button>
                 <Button variant="ghost" size="sm" onClick={() => setOpenCats(new Set())} disabled={searching}>Collapse all</Button>
               </span>
             </div>
@@ -184,7 +184,7 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
                     <Collapsible
                       level="section"
                       open={open}
-                      onOpenChange={() => toggleCat(c)}
+                      onOpenChange={searching ? undefined : (next) => setCatOpen(c, next)}
                       title={CATEGORY_LABELS[c]}
                       right={<span style={{ ...num, fontSize: 13, color: "var(--text-muted)" }}>{countFor(c)}</span>}
                     >

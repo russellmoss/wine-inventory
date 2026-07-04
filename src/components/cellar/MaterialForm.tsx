@@ -108,6 +108,7 @@ export function MaterialForm({
   hasStock?: boolean;
 }) {
   const stockUnit = stockUnitFor(value.packageUnit);
+  const familyListId = React.useId(); // unique per instance so Add + Edit datalists never collide
 
   // Family suggestions: the built-ins for the chosen category + any existing families in it.
   const familyOptions = React.useMemo(() => {
@@ -146,8 +147,8 @@ export function MaterialForm({
         </label>
         <label style={{ ...col, flex: "1 1 200px" }}>
           <span style={fieldLabelStyle}>Family (pick or type to add)</span>
-          <input value={value.family} onChange={(e) => onChange({ family: e.target.value })} list="expendable-families" placeholder="e.g. Yeast, Fining, Sur Lie" style={controlStyle} />
-          <datalist id="expendable-families">
+          <input value={value.family} onChange={(e) => onChange({ family: e.target.value })} list={familyListId} placeholder="e.g. Yeast, Fining, Sur Lie" style={controlStyle} />
+          <datalist id={familyListId}>
             {familyOptions.map((f) => <option key={f} value={f} />)}
           </datalist>
         </label>

@@ -96,7 +96,7 @@ export async function listMaterials(opts: { kind?: MaterialKind; category?: Mate
   // weighted-average unit cost (Phase 037 — surfaced read-only in the detail modal). Cost-unknown lots
   // (unitCost null, D14) are excluded from the average, never counted as $0.
   const openLots = await prisma.supplyLot.findMany({
-    where: { qtyRemaining: { gt: 0 } },
+    where: { qtyRemaining: { gt: 0 }, materialId: { in: rows.map((r) => r.id) } },
     select: { materialId: true, qtyRemaining: true, unitCost: true },
   });
   const lotsByMaterial = new Map<string, { qtyRemaining: number; unitCost: number | null }[]>();
@@ -292,11 +292,23 @@ export async function updateMaterialCore(
       }
     }
 
-    const updated = await tx.cellarMaterial.update({
-      where: { id },
-      data: plan.fields,
-      select: { ...MATERIAL_DTO_SELECT, isStockTracked: true, stockUnit: true, isActive: true },
-    });
+    const updated = await tx.cellarMaterial
+      .update({
+        where: { id },
+        data: plan.fields,
+        select: { ...MATERIAL_DTO_SELECT, isStockTracked: true, stockUnit: true, isActive: true },
+      })
+      .catch((e: unknown) => {
+        // A concurrent edit that raced past the collision findFirst above loses at the DB unique
+        // (@@unique tenantId,kind,normalizedKey) with P2002 — surface the same friendly CONFLICT, not a raw error.
+        if ((e as { code?: string })?.code === "P2002") {
+          throw new ActionError(
+            "Another item with that name already exists in this family. Rename one, or keep them separate.",
+            "CONFLICT",
+          );
+        }
+        throw e;
+      });
     await writeAudit(tx, {
       ...actor,
       action: "UPDATE",
