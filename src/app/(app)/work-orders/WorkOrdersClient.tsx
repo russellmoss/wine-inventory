@@ -69,6 +69,7 @@ export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [
           {isAdmin && pendingApproval.length > 0 ? (
             <Link href="/work-orders/review"><Button variant="secondary">Review queue ({pendingApproval.length})</Button></Link>
           ) : null}
+          <Link href="/work-orders/templates"><Button variant="secondary">Templates</Button></Link>
           <Link href="/work-orders/new"><Button>New work order</Button></Link>
         </div>
       </div>

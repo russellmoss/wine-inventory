@@ -219,6 +219,33 @@ async function main() {
     assert(![...rowMap.values()].some((v) => cuidRe.test(v)), "no raw cuid appears in the printed rows");
     assert(rowMap.get("Dose") === "40 g", `print shows a human dose line (got "${rowMap.get("Dose")}")`);
 
+    // ── 6d. NOTE (checklist) writes NOTHING (plan 034): no ledger op, no measurement, no activity event,
+    //        no supply consumption, no cost. An all-NOTE WO auto-completes to APPROVED once every item is DONE. ──
+    const opsBeforeNote = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
+    const eventsBeforeNote = await prisma.vesselActivityEvent.count({ where: { enteredByEmail: ACTOR.actorEmail } });
+    const consBeforeNote = await prisma.supplyConsumption.count();
+    const costBeforeNote = await prisma.costLine.count();
+    const panelsBeforeNote = await prisma.analysisPanel.count();
+    const noteWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWE checklist",
+      tasks: [
+        { seq: 1, kind: "NOTE", title: "Sweep the crush pad", plannedPayload: {} },
+        { seq: 2, kind: "NOTE", title: "Check the glycol", plannedPayload: {} },
+      ],
+    });
+    await issueWorkOrderCore(ACTOR, { workOrderId: noteWo.workOrderId });
+    const noteTasks = await prisma.workOrderTask.findMany({ where: { workOrderId: noteWo.workOrderId }, orderBy: { seq: "asc" } });
+    const noteDone1 = await completeTaskCore(ACTOR, { taskId: noteTasks[0].id, commandId: "zzwe-note-1" });
+    assert(noteDone1.status === "DONE" && noteDone1.operationId === null, "NOTE task went straight to DONE, no ledger op");
+    await completeTaskCore(ACTOR, { taskId: noteTasks[1].id, commandId: "zzwe-note-2" });
+    assert((await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } })) === opsBeforeNote, "NOTE wrote NO LotOperation");
+    assert((await prisma.vesselActivityEvent.count({ where: { enteredByEmail: ACTOR.actorEmail } })) === eventsBeforeNote, "NOTE wrote NO VesselActivityEvent");
+    assert((await prisma.supplyConsumption.count()) === consBeforeNote, "NOTE wrote NO SupplyConsumption");
+    assert((await prisma.costLine.count()) === costBeforeNote, "NOTE wrote NO CostLine");
+    assert((await prisma.analysisPanel.count()) === panelsBeforeNote, "NOTE wrote NO measurement panel");
+    const noteWoRow = await prisma.workOrder.findUniqueOrThrow({ where: { id: noteWo.workOrderId }, select: { status: true } });
+    assert(noteWoRow.status === "APPROVED", `all-checklist WO auto-completed to APPROVED once every item was checked (got ${noteWoRow.status})`);
+
     // ── 7. The finished WOs (all tasks DONE → WO APPROVED) appear in the filterable archive. ──
     const archive = await getWorkOrderArchive(TENANT, { q: "ZZWE" }, 1);
     assert(archive.rows.length >= 3, `archive lists the finalized ZZWE work orders (${archive.rows.length} found)`);

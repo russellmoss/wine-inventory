@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Checkbox, Eyebrow } from "@/components/ui";
 import { TASK_VOCABULARY, fieldLabel, type TemplateSpec, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
@@ -20,9 +21,11 @@ function todayLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function NewWorkOrderClient({ templates, pickers }: { templates: Template[]; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] } }) {
+export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { templates: Template[]; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; initialTemplateId?: string }) {
   const router = useRouter();
-  const [templateId, setTemplateId] = React.useState<string>(templates[0]?.id ?? "");
+  const [templateId, setTemplateId] = React.useState<string>(
+    initialTemplateId && templates.some((t) => t.id === initialTemplateId) ? initialTemplateId : templates[0]?.id ?? "",
+  );
   const [title, setTitle] = React.useState("");
   const [dueAt, setDueAt] = React.useState(todayLocal()); // default to today (editable)
   const [assigneeEmail, setAssigneeEmail] = React.useState("");
@@ -229,6 +232,9 @@ export function NewWorkOrderClient({ templates, pickers }: { templates: Template
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.isSystem ? " (system)" : ""}</option>)}
             </select>
           </label>
+          <div style={{ fontSize: 12.5, marginTop: -6 }}>
+            Don&apos;t see what you need? <Link href="/work-orders/templates" style={{ color: "var(--wine-primary)" }}>Manage templates</Link>.
+          </div>
 
           <Input label="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={template?.name} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

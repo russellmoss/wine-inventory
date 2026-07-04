@@ -14,6 +14,7 @@ import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 import { releaseReservationsForTaskTx } from "@/lib/work-orders/reservations";
 import { completeObservationTaskCore } from "@/lib/work-orders/observations";
 import { completeMaintenanceTaskCore } from "@/lib/work-orders/maintenance";
+import { completeNoteTaskCore } from "@/lib/work-orders/note";
 
 // The heart of Phase 9 (Unit 6): completing an OPERATION task writes the REAL ledger op immediately —
 // through the existing family cores' tx-forms (rackWineTx / recordNeutralDoseTx / topVesselTx) — and the
@@ -151,14 +152,15 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     throw new ActionError("That task is already completed.", "CONFLICT");
   }
 
-  // OBSERVATION + MAINTENANCE lanes: direct-log, straight to DONE. Wrap in the same P2002→idempotent-success
-  // handling the OPERATION lane uses, so a same-commandId race that slips past the pre-check returns the
-  // committed result instead of a raw unique violation (A1 offline-drain contract, uniform across lanes).
-  if (task.kind === "OBSERVATION" || task.kind === "MAINTENANCE") {
+  // Non-OPERATION lanes: direct-log, straight to DONE (no ledger op, no approval gate). OBSERVATION writes
+  // a measurement; MAINTENANCE writes a vessel-activity event; NOTE (checklist) writes NOTHING. Wrap in the
+  // same P2002→idempotent-success handling the OPERATION lane uses, so a same-commandId race that slips past
+  // the pre-check returns the committed result instead of a raw unique violation (A1 offline-drain contract).
+  if (task.kind === "OBSERVATION" || task.kind === "MAINTENANCE" || task.kind === "NOTE") {
     try {
-      return task.kind === "OBSERVATION"
-        ? await completeObservationTaskCore(actor, { task, ...input })
-        : await completeMaintenanceTaskCore(actor, { task, ...input });
+      if (task.kind === "OBSERVATION") return await completeObservationTaskCore(actor, { task, ...input });
+      if (task.kind === "MAINTENANCE") return await completeMaintenanceTaskCore(actor, { task, ...input });
+      return await completeNoteTaskCore(actor, { task, ...input });
     } catch (e) {
       if (e && typeof e === "object" && (e as { code?: string }).code === "P2002") {
         const dup = await prisma.workOrderTaskAttempt.findUnique({ where: { commandId: input.commandId }, include: { task: { select: { status: true } } } });

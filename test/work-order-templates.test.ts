@@ -139,6 +139,46 @@ describe("instantiateTaskBuilds (multi-vessel fan-out target)", () => {
   });
 });
 
+describe("NOTE / checklist block (plan 034)", () => {
+  it("accepts a NOTE task with no fields and with an optional note default", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "NOTE", title: "Sweep the crush pad" }] }).ok).toBe(true);
+    expect(validateTemplateSpec({ tasks: [{ taskType: "NOTE", title: "Check glycol", defaults: { note: "look for leaks" } }] }).ok).toBe(true);
+  });
+
+  it("rejects an unknown field on a NOTE (still never free-form)", () => {
+    const v = validateTemplateSpec({ tasks: [{ taskType: "NOTE", title: "x", defaults: { vesselId: "v1" } }] });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain('unknown field "vesselId"');
+  });
+
+  it("instantiates NOTE as kind NOTE with null op/observation/activity + null canonical columns", () => {
+    const [task] = instantiateTasksFromSpec({ tasks: [{ taskType: "NOTE", title: "Rinse hoses" }] });
+    expect(task).toMatchObject({ seq: 1, kind: "NOTE", opType: null, observationType: null, activityType: null });
+    expect(task.sourceVesselId).toBeNull();
+    expect(task.destVesselId).toBeNull();
+    expect(task.lotId).toBeNull();
+    expect(task.materialId).toBeNull();
+  });
+
+  it("instantiateTaskBuilds maps NOTE to kind NOTE (falls back to the vocabulary label)", () => {
+    const [task] = instantiateTaskBuilds([{ taskType: "NOTE", values: {} }]);
+    expect(task).toMatchObject({ kind: "NOTE", title: "Checklist item / note" });
+  });
+
+  it("validates + instantiates a builder-shaped mixed spec (rack + addition + checklist) on one sheet", () => {
+    const spec: TemplateSpec = {
+      tasks: [
+        { taskType: "RACK", title: "Rack off the lees" },
+        { taskType: "ADDITION", title: "Add SO2", defaults: { doseUnit: "g/hL" } },
+        { taskType: "NOTE", title: "Log the tasting note in the binder" },
+      ],
+    };
+    expect(validateTemplateSpec(spec).ok).toBe(true);
+    const tasks = instantiateTasksFromSpec(spec);
+    expect(tasks.map((t) => t.kind)).toEqual(["OPERATION", "OPERATION", "NOTE"]);
+  });
+});
+
 describe("shipped system templates", () => {
   it("every system template spec is valid against the vocabulary", () => {
     for (const t of SYSTEM_TEMPLATES) {

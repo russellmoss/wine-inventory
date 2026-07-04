@@ -78,7 +78,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
                 <Badge tone={STATUS_TONE[t.status] ?? "neutral"}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 3 }}>
-                {t.kind === "OPERATION" ? t.opType : `observation · ${t.observationType}`}
+                {t.kind === "OPERATION" ? t.opType : t.kind === "NOTE" ? "checklist" : t.kind === "MAINTENANCE" ? `maintenance · ${t.activityType}` : `observation · ${t.observationType}`}
               </div>
               {t.deviationReason ? <div style={{ fontSize: 13, color: "var(--warning, #b8860b)", marginTop: 6 }}>Deviation: {t.deviationReason}</div> : null}
               {t.completionNote ? <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Note: {t.completionNote}</div> : null}

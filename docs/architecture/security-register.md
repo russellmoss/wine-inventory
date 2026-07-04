@@ -58,6 +58,21 @@
   confirm.ts` + `commit.ts`). Voice can confirm by tap or spoken "confirm" — the token path is unchanged.
 - **Status:** 🟢
 
+### Work-order template authoring is admin-gated; the client spec is canonicalized server-side (plan 034)
+- Creating / editing / cloning / archiving a work-order template is **admin-only** (`adminAction` in
+  `src/lib/work-orders/actions.ts`); issuing + running work orders stays open to all roles. A cellar hand
+  can't rewrite shared SOPs.
+- The client-supplied template `spec` is **untrusted**: the cores (`createTemplateCore` /
+  `updateTemplateSpecCore`) run `validateTemplateSpec` **then** `canonicalizeTemplateSpec` (drops unknown
+  task types + any `defaults` key not in the vocabulary) and persist ONLY the canonical object — never the
+  raw input. Client-side validation is convenience only.
+- Reads (`getTemplateDetail` / `listTemplatesForBuilder`) filter by `tenantId` in the query (K12) on top
+  of RLS; a cross-tenant template id resolves to null.
+- The new `NOTE` (checklist) task kind writes NOTHING (no ledger op / measurement / vessel-activity /
+  cost) — guarded by `npm run verify:work-orders-enhancements`.
+- **Status:** 🟢 (admin gate + server-side canonicalization + tenant scoping verified by the /review
+  security specialist + the write-nothing guard)
+
 ### Secrets never enter the repo or the client
 - Secrets live in `.env` (gitignored) / Vercel env / GitHub Actions secrets. Client-exposed keys are
   `NEXT_PUBLIC_*` **by design only** (e.g. Google Map Tiles, restricted by referrer).

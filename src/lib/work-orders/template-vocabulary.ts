@@ -147,6 +147,15 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     fields: { vesselId: "vessel", gasType: "select", materialId: "material", amount: "number", note: "text" },
     fieldOptions: { gasType: GAS_TYPES },
   },
+  // ── CHECKLIST lane (plan 034): a free-text, checkable line that does NO inventory work. ──
+  NOTE: {
+    kind: "NOTE",
+    label: "Checklist item / note",
+    // The block's TITLE carries the checklist text ("Sweep the crush pad"); `note` is optional detail.
+    // No vessel/lot/material — a NOTE never touches the ledger, measurement store, or cost roll-up.
+    fields: { note: "text" },
+    hint: "A checkable to-do on the work order. It records nothing to inventory, the ledger, or cost.",
+  },
 };
 
 export type TemplateTaskSpec = {
@@ -188,6 +197,27 @@ export function validateTemplateSpec(spec: TemplateSpec): SpecValidation {
     }
   });
   return { ok: errors.length === 0, errors };
+}
+
+/** Canonicalize a spec to ONLY the known shape (Codex/council: the client `spec` is untrusted). Keeps
+ * `{ taskType, title, instructions?, defaults }` per task and, within `defaults`, ONLY keys that are in
+ * the task type's vocabulary — every other key is stripped. Unknown task types are dropped. Pure; call
+ * AFTER validateTemplateSpec so the caller has already surfaced errors, then persist ONLY this object. */
+export function canonicalizeTemplateSpec(spec: TemplateSpec): TemplateSpec {
+  const tasks: TemplateTaskSpec[] = (spec?.tasks ?? [])
+    .filter((t) => t && TASK_VOCABULARY[t.taskType])
+    .map((t) => {
+      const def = TASK_VOCABULARY[t.taskType];
+      const cleanDefaults: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(t.defaults ?? {})) {
+        if (key in def.fields && value !== undefined) cleanDefaults[key] = value;
+      }
+      const out: TemplateTaskSpec = { taskType: t.taskType, title: String(t.title ?? "").trim() };
+      if (t.instructions != null && String(t.instructions).trim()) out.instructions = String(t.instructions).trim();
+      if (Object.keys(cleanDefaults).length > 0) out.defaults = cleanDefaults;
+      return out;
+    });
+  return { tasks };
 }
 
 /** Canonical columns (A6) extracted from a task's payload — mirror the JSON for querying + composite FKs. */
