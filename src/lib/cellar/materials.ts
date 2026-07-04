@@ -10,8 +10,12 @@ import { categoryOf, type MaterialCategory } from "@/lib/cellar/material-taxonom
 import {
   deriveMaterialFields,
   planMaterialUpdate,
+  findCorrectableOpeningLot,
+  openingLotTotalCost,
+  resolveOpeningCostCorrection,
   type MaterialIntakeInput,
   type UpdateMaterialInput,
+  type SupplyLotForCost,
 } from "@/lib/cellar/material-fields";
 import { deriveOpeningLot, weightedAvgUnitCost } from "@/lib/cost/intake-cost";
 import { coerceCurrency } from "@/lib/money/currency";
@@ -98,17 +102,24 @@ export async function listMaterials(opts: { kind?: MaterialKind; category?: Mate
   // (unitCost null, D14) are excluded from the average, never counted as $0.
   const openLots = await prisma.supplyLot.findMany({
     where: { qtyRemaining: { gt: 0 }, materialId: { in: rows.map((r) => r.id) } },
-    select: { materialId: true, qtyRemaining: true, unitCost: true },
+    select: { materialId: true, qtyReceived: true, qtyRemaining: true, unitCost: true },
   });
-  const lotsByMaterial = new Map<string, { qtyRemaining: number; unitCost: number | null }[]>();
+  const lotsByMaterial = new Map<string, SupplyLotForCost[]>();
   for (const l of openLots) {
     const arr = lotsByMaterial.get(l.materialId) ?? [];
-    arr.push({ qtyRemaining: Number(l.qtyRemaining), unitCost: l.unitCost == null ? null : Number(l.unitCost) });
+    arr.push({
+      id: "", // id not needed for display aggregation
+      qtyReceived: Number(l.qtyReceived),
+      qtyRemaining: Number(l.qtyRemaining),
+      unitCost: l.unitCost == null ? null : Number(l.unitCost),
+    });
     lotsByMaterial.set(l.materialId, arr);
   }
   return rows.map((r) => {
     const lots = lotsByMaterial.get(r.id) ?? [];
     const onHand = lots.reduce((sum, l) => sum + (Number.isFinite(l.qtyRemaining) ? l.qtyRemaining : 0), 0);
+    // Phase 037.1: the cost is correctable in-place only when there's exactly one fully-unused opening lot.
+    const correctable = findCorrectableOpeningLot(lots);
     return {
       ...toDTO(r),
       isStockTracked: r.isStockTracked,
@@ -116,6 +127,8 @@ export async function listMaterials(opts: { kind?: MaterialKind; category?: Mate
       isActive: r.isActive,
       onHand: r.isStockTracked ? onHand : null,
       avgUnitCost: weightedAvgUnitCost(lots),
+      costCorrectable: correctable != null,
+      openingLotCost: openingLotTotalCost(correctable),
     };
   });
 }
@@ -317,6 +330,40 @@ export async function updateMaterialCore(
       entityId: id,
       summary: `Edited supply "${updated.name}"`,
     });
+
+    // Phase 037.1: correct the cost of un-used opening stock (cost-safe: an unconsumed lot has no dose that
+    // captured its cost, so D17 conservation is untouched). Only a single fully-unconsumed lot is correctable;
+    // anything received/split/partly-used → CONFLICT (rolls back this tx) and the user is pointed at Receive.
+    if (input.totalCost !== undefined) {
+      const lots = await tx.supplyLot.findMany({
+        where: { materialId: id, qtyRemaining: { gt: 0 } },
+        select: { id: true, qtyReceived: true, qtyRemaining: true, unitCost: true },
+      });
+      const mapped: SupplyLotForCost[] = lots.map((l) => ({
+        id: l.id,
+        qtyReceived: Number(l.qtyReceived),
+        qtyRemaining: Number(l.qtyRemaining),
+        unitCost: l.unitCost == null ? null : Number(l.unitCost),
+      }));
+      const correction = resolveOpeningCostCorrection(mapped, input.totalCost);
+      if (correction.action === "conflict") {
+        throw new ActionError(
+          "Can't set the price here — this item's stock has been received or partly used. Receive a new priced lot to record its cost.",
+          "CONFLICT",
+        );
+      }
+      if (correction.action === "set") {
+        await tx.supplyLot.update({ where: { id: correction.lotId }, data: { unitCost: correction.unitCost } });
+        await writeAudit(tx, {
+          ...actor,
+          action: "UPDATE",
+          entityType: "SupplyLot",
+          entityId: correction.lotId,
+          summary: `Corrected opening cost of "${updated.name}"${correction.unitCost != null ? ` to ${correction.unitCost}/${updated.stockUnit ?? "unit"}` : " (cleared to unknown)"}`,
+        });
+      }
+    }
+
     return {
       ...toDTO(updated),
       isStockTracked: updated.isStockTracked,

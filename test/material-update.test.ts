@@ -3,7 +3,11 @@ import {
   planMaterialUpdate,
   resolveUpdateStockUnit,
   deriveMaterialFields,
+  findCorrectableOpeningLot,
+  openingLotTotalCost,
+  resolveOpeningCostCorrection,
   type ExistingMaterialForUpdate,
+  type SupplyLotForCost,
 } from "@/lib/cellar/material-fields";
 import { weightedAvgUnitCost } from "@/lib/cost/intake-cost";
 import { ActionError } from "@/lib/action-error";
@@ -161,6 +165,64 @@ describe("weightedAvgUnitCost — cost display (D14: unknown, never $0)", () => 
   it("returns null when no priced stock remains", () => {
     expect(weightedAvgUnitCost([{ qtyRemaining: 100, unitCost: null }])).toBeNull();
     expect(weightedAvgUnitCost([])).toBeNull();
+  });
+});
+
+describe("opening-lot cost correction (Phase 037.1)", () => {
+  const lot = (o: Partial<SupplyLotForCost> & { id: string }): SupplyLotForCost => ({
+    qtyReceived: 500, qtyRemaining: 500, unitCost: null, ...o,
+  });
+
+  describe("findCorrectableOpeningLot", () => {
+    it("returns the single fully-unused lot", () => {
+      const l = lot({ id: "a" });
+      expect(findCorrectableOpeningLot([l])).toBe(l);
+    });
+    it("null when the lot has been partly consumed", () => {
+      expect(findCorrectableOpeningLot([lot({ id: "a", qtyReceived: 500, qtyRemaining: 300 })])).toBeNull();
+    });
+    it("null when two lots are unused (ambiguous)", () => {
+      expect(findCorrectableOpeningLot([lot({ id: "a" }), lot({ id: "b" })])).toBeNull();
+    });
+    it("null for no lots", () => {
+      expect(findCorrectableOpeningLot([])).toBeNull();
+    });
+  });
+
+  describe("openingLotTotalCost", () => {
+    it("is unitCost × qtyReceived", () => {
+      expect(openingLotTotalCost(lot({ id: "a", unitCost: 0.12, qtyReceived: 500 }))).toBe(60);
+    });
+    it("null when cost unknown or no lot", () => {
+      expect(openingLotTotalCost(lot({ id: "a", unitCost: null }))).toBeNull();
+      expect(openingLotTotalCost(null)).toBeNull();
+    });
+  });
+
+  describe("resolveOpeningCostCorrection", () => {
+    it("undefined desired → no action (cost field not submitted)", () => {
+      expect(resolveOpeningCostCorrection([lot({ id: "a" })], undefined)).toEqual({ action: "none" });
+    });
+    it("sets the per-unit cost from the package total on a single unused lot", () => {
+      // $60 for a 500g unused bag → 0.12/g
+      expect(resolveOpeningCostCorrection([lot({ id: "a", qtyReceived: 500 })], 60)).toEqual({
+        action: "set", lotId: "a", unitCost: 0.12,
+      });
+    });
+    it("no action when the desired total equals the current total", () => {
+      expect(resolveOpeningCostCorrection([lot({ id: "a", unitCost: 0.12, qtyReceived: 500 })], 60)).toEqual({ action: "none" });
+    });
+    it("clears the cost to unknown when desired is null and a cost was set", () => {
+      expect(resolveOpeningCostCorrection([lot({ id: "a", unitCost: 0.12, qtyReceived: 500 })], null)).toEqual({
+        action: "set", lotId: "a", unitCost: null,
+      });
+    });
+    it("CONFLICT when the stock has been used and the price would change", () => {
+      expect(resolveOpeningCostCorrection([lot({ id: "a", qtyReceived: 500, qtyRemaining: 300 })], 60)).toEqual({ action: "conflict" });
+    });
+    it("CONFLICT when multiple lots exist and the price would change", () => {
+      expect(resolveOpeningCostCorrection([lot({ id: "a" }), lot({ id: "b" })], 60)).toEqual({ action: "conflict" });
+    });
   });
 });
 
