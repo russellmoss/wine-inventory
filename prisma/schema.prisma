@@ -2569,6 +2569,7 @@ enum WorkOrderTaskKind {
   OPERATION
   OBSERVATION
   MAINTENANCE // Phase 9.1: vessel-activity lane (temp setpoints + cleaning/sanitizing/steaming/gas) — lotless, no ledger op, no approval gate
+  NOTE // Plan 034: free-text checklist item — a checkable line, completes straight to DONE, writes NOTHING (no ledger op, no measurement, no vessel-activity, no cost). No approval gate, no reservation.
 }
 
 // Phase 9.1 (Unit 3): the vessel-scoped, lotless activity subtypes. A setpoint/maintenance task is NOT
