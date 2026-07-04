@@ -11,6 +11,7 @@ import {
   normalizeMaterialKey,
 } from "@/lib/cellar/material-normalize";
 import { STOCK_UNITS, coerceStockUnit, type StockUnit, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
+import { kindsForCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 
 // The client-safe DTO shape + stock-unit vocabulary live in materials-shared.ts (no server
 // imports) so 'use client' components can use them without pulling prisma into the browser
@@ -28,6 +29,7 @@ function toDTO(r: {
   id: string;
   name: string;
   kind: string;
+  subcategory?: string | null;
   defaultBasis: string | null;
   percentActive: unknown;
 }): CellarMaterialDTO {
@@ -35,9 +37,18 @@ function toDTO(r: {
     id: r.id,
     name: r.name,
     kind: r.kind as MaterialKind,
+    subcategory: r.subcategory ?? null,
     defaultBasis: (r.defaultBasis as RateBasis | null) ?? null,
     percentActive: r.percentActive == null ? null : Number(r.percentActive),
   };
+}
+
+/** Trim + length-cap a free-text subcategory to a stored value; blank → null (falls back to the built-in
+ * kind label). The 80-char cap is server-side (not just the client input) so a huge paste can't bloat the
+ * TEXT column or degrade the picker's chip render. */
+function normalizeSubcategory(raw: unknown): string | null {
+  const s = String(raw ?? "").trim().slice(0, 80).trimEnd();
+  return s.length > 0 ? s : null;
 }
 
 /**
@@ -46,11 +57,23 @@ function toDTO(r: {
  * unchanged for every existing call site (bulk/ferment/en-tirage). Tenant scoping is automatic (RLS +
  * the Prisma extension) on both queries.
  */
-export async function listMaterials(opts: { kind?: MaterialKind; includeInactive?: boolean } = {}): Promise<CellarMaterialDTO[]> {
+export async function listMaterials(opts: { kind?: MaterialKind; category?: MaterialCategory; includeInactive?: boolean } = {}): Promise<CellarMaterialDTO[]> {
+  // `category` filters to the set of kinds that make up that main category (derived, see material-taxonomy);
+  // `kind` (if also given) narrows further. Compose them into ONE `kind` clause — two object-spread `kind`
+  // keys would clobber (last wins). Explicit kind wins; with both, intersect (kind must be in the category).
+  const categoryKinds = opts.category ? kindsForCategory(opts.category) : null;
+  const kindWhere =
+    opts.kind && categoryKinds ? { kind: categoryKinds.includes(opts.kind) ? opts.kind : { in: [] as MaterialKind[] } }
+    : opts.kind ? { kind: opts.kind }
+    : categoryKinds ? { kind: { in: categoryKinds } }
+    : {};
   const rows = await prisma.cellarMaterial.findMany({
-    where: { ...(opts.includeInactive ? {} : { isActive: true }), ...(opts.kind ? { kind: opts.kind } : {}) },
+    where: {
+      ...(opts.includeInactive ? {} : { isActive: true }),
+      ...kindWhere,
+    },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true, isStockTracked: true, stockUnit: true, isActive: true },
+    select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true, isStockTracked: true, stockUnit: true, isActive: true },
   });
   const onHand = await prisma.supplyLot.groupBy({
     by: ["materialId"],
@@ -70,6 +93,7 @@ export async function listMaterials(opts: { kind?: MaterialKind; includeInactive
 export type UpsertMaterialInput = {
   name: string;
   kind?: string;
+  subcategory?: string | null;
   defaultBasis?: string | null;
   percentActive?: number | null;
 };
@@ -86,24 +110,26 @@ export async function upsertMaterialCore(
   const name = cleanMaterialName(input.name); // throws on empty
   const normalizedKey = normalizeMaterialKey(input.name);
   const kind = coerceMaterialKind(input.kind);
+  const subcategory = normalizeSubcategory(input.subcategory);
   const defaultBasis = coerceRateBasis(input.defaultBasis);
   const percentActive =
     input.percentActive == null || !Number.isFinite(input.percentActive) ? null : input.percentActive;
 
   const existing = await prisma.cellarMaterial.findFirst({
     where: { kind, normalizedKey },
-    select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true, isActive: true },
+    select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true, isActive: true },
   });
 
   if (existing) {
-    const patch: { isActive?: boolean; defaultBasis?: string } = {};
+    const patch: { isActive?: boolean; defaultBasis?: string; subcategory?: string } = {};
     if (!existing.isActive) patch.isActive = true;
     if (!existing.defaultBasis && defaultBasis) patch.defaultBasis = defaultBasis; // backfill a missing basis
+    if (!existing.subcategory && subcategory) patch.subcategory = subcategory; // backfill a missing subcategory
     if (Object.keys(patch).length > 0) {
       const updated = await prisma.cellarMaterial.update({
         where: { id: existing.id },
         data: patch,
-        select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true },
+        select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true },
       });
       return toDTO(updated);
     }
@@ -112,8 +138,8 @@ export async function upsertMaterialCore(
 
   const created = await runInTenantTx(async (tx) => {
     const row = await tx.cellarMaterial.create({
-      data: { name, normalizedKey, kind, defaultBasis, percentActive },
-      select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true },
+      data: { name, normalizedKey, kind, subcategory, defaultBasis, percentActive },
+      select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true },
     });
     await writeAudit(tx, {
       ...actor,
@@ -130,6 +156,7 @@ export async function upsertMaterialCore(
 export type CreateStockMaterialInput = {
   name: string;
   kind?: string;
+  subcategory?: string | null;
   defaultBasis?: string | null;
   percentActive?: number | null;
   stockUnit?: string | null;
@@ -152,6 +179,7 @@ export async function createStockMaterialCore(
   const name = cleanMaterialName(input.name); // throws on empty
   const normalizedKey = normalizeMaterialKey(input.name);
   const kind = coerceMaterialKind(input.kind);
+  const subcategory = normalizeSubcategory(input.subcategory);
   const defaultBasis = coerceRateBasis(input.defaultBasis);
   const percentActive =
     input.percentActive == null || !Number.isFinite(input.percentActive) ? null : input.percentActive;
@@ -169,12 +197,12 @@ export async function createStockMaterialCore(
     const material = existing
       ? await tx.cellarMaterial.update({
           where: { id: existing.id },
-          data: { isActive: true, isStockTracked: true, stockUnit, ...(defaultBasis ? { defaultBasis } : {}), ...(percentActive != null ? { percentActive } : {}) },
-          select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true },
+          data: { isActive: true, isStockTracked: true, stockUnit, ...(defaultBasis ? { defaultBasis } : {}), ...(percentActive != null ? { percentActive } : {}), ...(subcategory ? { subcategory } : {}) },
+          select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true },
         })
       : await tx.cellarMaterial.create({
-          data: { name, normalizedKey, kind, defaultBasis, percentActive, isStockTracked: true, stockUnit },
-          select: { id: true, name: true, kind: true, defaultBasis: true, percentActive: true },
+          data: { name, normalizedKey, kind, subcategory, defaultBasis, percentActive, isStockTracked: true, stockUnit },
+          select: { id: true, name: true, kind: true, subcategory: true, defaultBasis: true, percentActive: true },
         });
 
     if (!existing) {

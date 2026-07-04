@@ -6,16 +6,17 @@
 
 ## The stack (one line each)
 
+- **Cellarhand** — the product's brand (renamed from "BWC Operating System"; assets in `design-system/assets/logos`, wired via `src/components/BrandMark.tsx` + `src/app/{icon.svg,apple-icon.png,manifest.ts}`).
 - **Next.js 16.2** (app router) + **React 19** + **TypeScript** — `src/app/…`
-- **Tailwind v4** — styling via design tokens (see [[DESIGN]]).
-- **Prisma ORM → Neon serverless Postgres** — ~80 models in `prisma/schema.prisma` (2k+ lines).
+- **Tailwind v4** — styling via design tokens (see [[DESIGN]]); `src/styles/print.css` for printable work orders.
+- **Prisma ORM → Neon serverless Postgres** — **89 models** in `prisma/schema.prisma` (~2.9k lines).
 - **better-auth** — authentication (`@node-rs/argon2` for password hashing).
 - **Vercel** — hosting. `npm run build` runs `prisma migrate deploy` first, so **deploys apply migrations automatically**.
 - **Sentry** — error monitoring (`instrumentation.ts`, `sentry.*.config.ts`) → auto-opens GitHub issues.
 
 ## How the code is organized
 - `src/app/` — pages + API routes. Everything real lives under the **`(app)`** route group (inventory, lots, vessels, blend, bottling, compliance, samples, reports, assistant, settings, users, audit…). Auth pages (login, reset-password) sit outside it.
-- `src/lib/<domain>/` — the brains. One folder per domain: `tenant`, `ledger`, `transform`, `cost`, `compliance`, `assistant`, `voice`, `blend`, `bottling`, `sparkling`, `cellar`, `ferment`, `harvest`, `vineyard`, `chemistry`, `inventory`, `stock`, `map`, etc.
+- `src/lib/<domain>/` — the brains. One folder per domain: `tenant`, `ledger`, `transform`, `cost`, `compliance`, `accounting`, `commerce`, `work-orders`, `assistant`, `voice`, `blend`, `bottling`, `sparkling`, `cellar`, `ferment`, `harvest`, `vineyard`, `chemistry`, `inventory`, `stock`, `offline`, `onboarding`, `map`, etc.
 - `src/components/` — UI. `src/styles/` — tokens.
 - `scripts/` — verification + seeding (`verify:ttb`, `verify:cost`, `verify:reverse`, `seed:demo-tenant`, …).
 
@@ -98,11 +99,52 @@ env-resident secret). PII is data-minimized (D19). Install is nonce-bound. UI: S
 cards, `/accounting` Commerce7 section + a read-only per-channel margin view. See [[security-register]] +
 [[scale-register]] + `docs/plans/phase-16-go-live-runbook.md`.
 
+### 10. Work orders (Phase 9 + 9.1) — `src/lib/work-orders/`
+The **issue → execute → auto-log → approve → finalize** engine, so completing a task IS the record —
+the manager never re-keys what the crew did. 8 tables (`WorkOrder`, `WorkOrderTask`, `WorkOrderTaskAttempt`,
+`WorkOrderTemplate` + `…Version`, `Reservation`, `VesselActivityEvent` + `…SupplyUse`). One engine, typed
+task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
+- **State changes on completion, not approval.** Marking a task done writes the **real, immutable** ledger
+  op immediately (via the existing cores' new `…Tx` forms — `rackWineTx`, `topVesselTx`, `filterVesselTx`,
+  `recordNeutralDoseTx` — all in ONE `runLedgerWrite`, `execute.ts`). "Pending-approval" is a state on the
+  **task/attempt**, never on the op (invariant **WORKORDER-1**). Each execution is an append-only
+  `WorkOrderTaskAttempt` (`commandId`-idempotent), so redo-after-reject keeps history.
+- **Approve = finalize; reject = `reverseOperationCore`** (the plan-024 universal Undo — a new CORRECTION,
+  never a row edit). Approve/reject use compare-and-swap on `PENDING_APPROVAL`; a reject blocked by a later
+  op (LEDGER-11) surfaces as a conflict. Authority is a minimal `authority.ts` (`canApprove`,
+  admin + auto-finalize-self-executed; Phase-23-replaceable). Bulk approve segregates deviations.
+- **Two other lanes:** OBSERVATION tasks (`observations.ts`) write chem/tasting/ferment readings directly,
+  no gate. MAINTENANCE tasks (`vessel-activity.ts`, `maintenance.ts`) are LOTLESS — a `VesselActivityEvent`
+  (cleaning, temp-setpoint, gas/blanket, filtration), and any sanitizer/gas consumed drains as **OVERHEAD**
+  via append-only `VesselActivitySupplyUse` — never a wine `CostLine`/`SupplyConsumption`, kept out of the
+  cost DAG (invariant **WORKORDER-3**; preserves COST-1/2 conservation).
+- **Reservation = advisory soft holds** (`reservations.ts`, `atp.ts`): issuing a WO allocates source volume /
+  destination capacity / supply qty; `available-to-promise = on-hand − open allocations` **warns, never
+  blocks**; the hard guarantee stays the ledger capacity/stock invariants at commit (**WORKORDER-2**).
+  Supply reserve-on-issue → deplete-on-complete (draw-to-zero reports a shortfall, never goes negative).
+- **Templates** (`templates.ts`, `template-vocabulary.ts`, `system-templates.ts`): typed-field vocabulary
+  (never free-form), versioned clone-on-customize; an issued WO snaps the version it used; recurring +
+  pay-basis stub (`recurring.ts`). Seeded via `npm run seed:work-order-templates`.
+- **Material picker + taxonomy (Phase 034):** the `material` field renders `MaterialFilterPicker`
+  (subcategory filter chips + fuzzy search via `src/lib/inventory/material-search.ts`, reusing the
+  `similarity` engine — no new deps), scoped by task type via `materialScopeForTask` (additions/fining →
+  Additive+Other, clean/sanitize → Cleaning+Other, else all). A material keeps its controlled, load-bearing
+  `kind` (cost/dosing/identity); its **main category** (Additive / Cleaning & Sanitizing / Packaging /
+  Other) is DERIVED from `kind` in `src/lib/cellar/material-taxonomy.ts` (never stored), and it carries an
+  optional user-defined `subcategory` (organizational only, overrides the built-in kind label for
+  grouping/filtering). Managed at `/setup/expendables` (Category → Kind → Subcategory, datalist +
+  dupe-suggest). Adding `kind` values (Phase 034 added `SUGAR`, `PACKAGING`) is a `MATERIAL_KINDS` const
+  edit — no migration; only `subcategory` is a column.
+- **Surfaces** (`src/app/(app)/work-orders/`): manager issue (`/new`), floor-first execution checklist
+  (`/[id]/execute`, offline-tolerant via the Dexie outbox), review/approval queue (`/review`), printable WO
+  (`/[id]/print` + `print.css`), Open|Archive dashboard with a pending-count nav badge. Proven by
+  `npm run verify:work-orders` (+ `verify:work-orders-enhancements`); invariants WORKORDER-1/2/3.
+
 ## How a typical write flows
-1. UI (or the assistant) calls a **server action**.
+1. UI (or the assistant) calls a **server action** — or a **work-order task is completed**, which builds the same core input.
 2. The action runs inside the **tenant context** → Prisma auto-injects `tenantId`; **RLS** enforces it at Postgres.
-3. Ledger writes go through **`runLedgerWrite`**; the **cost engine** updates alongside.
-4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`).
+3. Ledger writes go through **`runLedgerWrite`**; the **cost engine** updates alongside. WO completion wraps the ledger op + its `WorkOrderTaskAttempt` + reservation release + audit in that **one** tx.
+4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-02 from the live codebase (Next 16.2, ~80 Prisma models). Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-03 from the live codebase (Next 16.2, 89 Prisma models). Adds Phase 9/9.1 Work orders + the Cellarhand rebrand. Ask Claude to refresh after each phase.*

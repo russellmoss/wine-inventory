@@ -58,7 +58,7 @@ function levenshtein(a: string, b: string): number {
  * (and long enough to be meaningful), treat it as a strong match so "merch" lines up
  * with "merchandise" even though their raw edit distance is large.
  */
-function similarity(a: string, b: string): number {
+export function similarity(a: string, b: string): number {
   const lev = 1 - levenshtein(a, b) / Math.max(a.length, b.length);
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short.length >= PREFIX_MIN_LEN && long.startsWith(short)) {

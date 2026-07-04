@@ -11,6 +11,7 @@ import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFI
 import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
 import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
 import type { RateBasis } from "@/lib/cellar/additions-math";
+import { categoryOf, isDoseableKind } from "@/lib/cellar/material-taxonomy";
 import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 import { releaseReservationsForTaskTx } from "@/lib/work-orders/reservations";
@@ -253,6 +254,20 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
       rateValue: asNum(payload.rateValue) ?? 0,
       rateBasis: payload.rateBasis as RateBasis,
     }, cfg);
+
+    // WORKORDER-3 server-side guard: a dose must be an additive, never a cleaning/sanitizing or packaging
+    // supply (those would wrongly capitalize into wine COGS). The picker scopes this in the UI; enforce it
+    // here too so a crafted payload / a re-categorized material can't bypass it.
+    if (resolvedMaterial) {
+      const m = await prisma.cellarMaterial.findUnique({ where: { id: resolvedMaterial.materialId }, select: { kind: true } });
+      if (!isDoseableKind(m?.kind)) {
+        const cat = categoryOf(m?.kind);
+        throw new ActionError(
+          `A ${cat === "PACKAGING" ? "packaging" : "cleaning/sanitizing"} material can't be dosed into wine as ${task.opType === "FINING" ? "a fining" : "an addition"} (WORKORDER-3).`,
+          "CONFLICT",
+        );
+      }
+    }
   }
 
   const finalize = input.autoFinalize === true;

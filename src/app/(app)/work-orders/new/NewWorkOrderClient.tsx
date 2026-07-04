@@ -8,8 +8,10 @@ import { TASK_VOCABULARY, fieldLabel, type TemplateSpec, type TaskBuild } from "
 import { computeDoseTotal, isRateUnit } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
 import { VesselMultiSelect } from "./VesselMultiSelect";
+import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
+import { materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 
-type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; volumeL?: number | null; capacityL?: number | null };
+type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
@@ -47,7 +49,7 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
     setOverrides((prev) => ({ ...prev, [taskIdx]: { ...(prev[taskIdx] ?? {}), [key]: value } }));
   }
 
-  function renderField(taskIdx: number, key: string, type: string, def: unknown, options?: readonly string[], hasDoseUnit?: boolean) {
+  function renderField(taskIdx: number, key: string, type: string, def: unknown, options?: readonly string[], hasDoseUnit?: boolean, materialScope?: MaterialCategory[]) {
     const current = overrides[taskIdx]?.[key] ?? def ?? "";
     // key is passed DIRECTLY (never spread — React warns on a spread key prop).
     const common = { style: labelStyle } as const;
@@ -75,8 +77,17 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
         </label>
       );
     }
-    if (type === "vessel" || type === "lot" || type === "material") {
-      const opts = type === "vessel" ? pickers.vessels : type === "lot" ? pickers.lots : pickers.materials;
+    if (type === "material") {
+      // Phase 034: category-filtered + fuzzy picker (replaces the flat <select>).
+      return (
+        <div key={key} style={{ gridColumn: "1 / -1" }}>
+          <div style={labelStyle}>{fieldLabel(key)}</div>
+          <MaterialFilterPicker options={pickers.materials} value={String(current)} onChange={(id) => setField(taskIdx, key, id)} categoryScope={materialScope} />
+        </div>
+      );
+    }
+    if (type === "vessel" || type === "lot") {
+      const opts = type === "vessel" ? pickers.vessels : pickers.lots;
       return (
         <label key={key} {...common}>
           {fieldLabel(key)}
@@ -127,7 +138,8 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
   // Units dropdown (doseUnit); the live total estimate is appended by renderEstimate below.
   function renderTaskFields(taskIdx: number, def: (typeof TASK_VOCABULARY)[string], defaults?: Record<string, unknown>) {
     const hasDoseUnit = "doseUnit" in def.fields;
-    return Object.entries(def.fields).map(([key, type]) => renderField(taskIdx, key, type, defaults?.[key], def.fieldOptions?.[key], hasDoseUnit));
+    const materialScope = materialScopeForTask(def);
+    return Object.entries(def.fields).map(([key, type]) => renderField(taskIdx, key, type, defaults?.[key], def.fieldOptions?.[key], hasDoseUnit, materialScope));
   }
 
   // The effective volume for the dose calc: a BARREL is assumed FULL (use capacity); a tank uses its current

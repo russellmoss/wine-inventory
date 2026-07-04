@@ -11,12 +11,14 @@ import type { CrushFormData } from "@/lib/ferment/crush-data";
 import type { PressFormData } from "@/lib/ferment/press-data";
 import { CrushTaskForm } from "./CrushTaskForm";
 import { PressTaskForm } from "./PressTaskForm";
+import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
+import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
 // Dexie outbox uses). Not harvest-grade offline yet (Phase 28); online status is pinned via aria-live.
 
-type Picker = { id: string; label: string; unit?: string | null };
+type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; subcategory?: string | null; onHand?: number | null };
 const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION" };
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
@@ -40,8 +42,21 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
   function renderField(key: string, type: string) {
     const cur = fields[key] ?? "";
-    if (type === "vessel" || type === "lot" || type === "material") {
-      const opts = type === "vessel" ? pickers.vessels : type === "lot" ? pickers.lots : pickers.materials;
+    if (type === "material") {
+      // Phase 034: category-filtered + fuzzy picker (replaces the flat <select>). Scope depends on the task.
+      return (
+        <label key={key} style={lbl}>{fieldLabel(key)}
+          <MaterialFilterPicker
+            options={pickers.materials}
+            value={String(cur)}
+            onChange={(id) => set(key, id)}
+            categoryScope={def ? materialScopeForTask(def) : undefined}
+          />
+        </label>
+      );
+    }
+    if (type === "vessel" || type === "lot") {
+      const opts = type === "vessel" ? pickers.vessels : pickers.lots;
       return (
         <label key={key} style={lbl}>{fieldLabel(key)}
           <select style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)}>

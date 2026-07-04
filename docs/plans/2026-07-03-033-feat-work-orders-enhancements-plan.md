@@ -8,6 +8,13 @@ depth: deep
 units: 8
 ---
 
+> **Extended / partially superseded by [plan #034](2026-07-03-034-feat-material-taxonomy-additions-picker-plan.md) (material taxonomy + filtered/fuzzy additions picker).**
+> This plan shipped as-built (below). #034 later evolved three things it delivered, without changing what #033 shipped:
+> - **Material kinds** — #033 Unit 1 added `BENTONITE/CHITOSAN/CLEANING/SANITIZER`; #034 adds `SUGAR/PACKAGING` (same String-vocab, no migration).
+> - **Additions material picker** — #033 left the `material` field a flat `<select>` (`ExecuteClient.tsx` / `NewWorkOrderClient.tsx`); #034 replaces it with a category-filtered + fuzzy `MaterialFilterPicker` (defaults to additives).
+> - **Expendables management UI** — #033 seeded starter materials; #034 adds a main-category → customizable-subcategory taxonomy and regroups the catalog.
+> For the current material-catalog/picker design, read #034; this file is the historical record of the Phase-9.1 build.
+
 ## Overview
 
 Phase 9 shipped the work-order engine (issue → execute → auto-log → approve → finalize). It only knows
