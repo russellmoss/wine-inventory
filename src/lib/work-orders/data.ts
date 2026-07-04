@@ -123,8 +123,14 @@ export type WorkOrderPrintView = {
 
 export async function getWorkOrderPrintView(tenantId: string, workOrderId: string): Promise<WorkOrderPrintView | null> {
   return runAsTenant(tenantId, async () => {
-    const wo = await prisma.workOrder.findUnique({ where: { id: workOrderId }, include: { tasks: { orderBy: { seq: "asc" } } } });
+    const wo = await prisma.workOrder.findUnique({
+      where: { id: workOrderId },
+      // Plan 035: a de-stem/crush or press task's run-time inputs (picks, output, fractions) live on the
+      // completing ATTEMPT's actualPayload, not the planned payload — pull the latest attempt to render them.
+      include: { tasks: { orderBy: { seq: "asc" }, include: { attempts: { orderBy: { seq: "desc" }, take: 1, select: { actualPayload: true } } } } },
+    });
     if (!wo) return null;
+    const actualOf = (t: (typeof wo.tasks)[number]) => (t.attempts[0]?.actualPayload ?? {}) as Record<string, unknown>;
 
     // Collect every referenced id (canonical columns + payload) so we can resolve them to human labels.
     const vIds = new Set<string>(); const lIds = new Set<string>(); const mIds = new Set<string>();
@@ -134,6 +140,13 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
       [t.destVesselId, t.sourceVesselId, p.vesselId, p.fromVesselId, p.toVesselId].forEach((x) => add(vIds, x));
       [t.lotId, p.lotId].forEach((x) => add(lIds, x));
       [t.materialId, p.materialId].forEach((x) => add(mIds, x));
+      // Transform run-time ids (dest/source vessels, parent/add lots, fraction vessels) come off the attempt.
+      if (t.opType === "CRUSH" || t.opType === "PRESS") {
+        const a = actualOf(t);
+        [a.destVesselId, a.sourceVesselId].forEach((x) => add(vIds, x));
+        [a.parentLotId, a.addLotId, a.lotId].forEach((x) => add(lIds, x));
+        if (Array.isArray(a.fractions)) for (const f of a.fractions as Record<string, unknown>[]) add(vIds, f?.destVesselId);
+      }
     }
     const [vessels, lots, materials, vols] = await Promise.all([
       prisma.vessel.findMany({ where: { id: { in: [...vIds] } }, select: { id: true, code: true, type: true, capacityL: true } }),
@@ -188,6 +201,36 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
           // Bare amount (legacy WO path, no unit chosen) — in the material's stock unit.
           rows.push({ label: "Dose", value: String(amount) });
         }
+      } else if (t.opType === "CRUSH") {
+        // Plan 035: picks + measured output are run-time (attempt) values; merge planned "what" ⊕ actual.
+        const m = { ...p, ...actualOf(t) };
+        const picks = Array.isArray(m.picks) ? (m.picks as { consumedKg?: unknown }[]) : [];
+        if (picks.length) {
+          const totalKg = picks.reduce((s, pk) => s + (num(pk?.consumedKg) ?? 0), 0);
+          rows.push({ label: "Picks", value: `${picks.length} pick${picks.length === 1 ? "" : "s"} · ${totalKg} kg` });
+        }
+        const destV = vLabel(str(m.destVesselId));
+        if (destV) rows.push({ label: "Destination", value: destV });
+        const addLot = lMap.get(str(m.addLotId) ?? "");
+        if (addLot) rows.push({ label: "Add into lot", value: addLot });
+        const out = num(m.outputVolumeL);
+        if (out != null) rows.push({ label: "Output", value: `${out} L` });
+        if (m.crusherOn != null) rows.push({ label: "Crusher", value: m.crusherOn === true || m.crusherOn === "true" ? "on" : "off" });
+        const pct = num(m.crushedPct); if (pct != null) rows.push({ label: "% crushed", value: String(pct) });
+        const temp = num(m.mustTempC); if (temp != null) rows.push({ label: "Must temp", value: `${temp} °C` });
+        const cycle = str(m.pressCycle); if (cycle) rows.push({ label: "Press cycle", value: cycle });
+      } else if (t.opType === "PRESS") {
+        const m = { ...p, ...actualOf(t) };
+        const opSel = str(m.op); if (opSel) rows.push({ label: "Operation", value: opSel === "SAIGNEE" ? "Saignée" : "Press" });
+        const parent = lMap.get(str(m.parentLotId) ?? ""); if (parent) rows.push({ label: "Lot", value: parent });
+        const src = vLabel(str(m.sourceVesselId)); if (src) rows.push({ label: "Source", value: src });
+        const fractions = Array.isArray(m.fractions) ? (m.fractions as Record<string, unknown>[]) : [];
+        fractions.forEach((f) => {
+          const v = vLabel(str(f?.destVesselId)); const vol = num(f?.volumeL); const flabel = str(f?.label) ?? "fraction";
+          rows.push({ label: `Fraction · ${flabel}`, value: `${v ?? "?"}${vol != null ? ` · ${vol} L` : ""}` });
+        });
+        const loss = num(m.lossL); if (loss != null && loss > 0) rows.push({ label: "Lees loss", value: `${loss} L` });
+        const cycle = str(m.pressCycle); if (cycle) rows.push({ label: "Press cycle", value: cycle });
       } else {
         // Other typed fields, human-labelled (no raw ids).
         const push = (key: string, label: string, suffix = "") => { const v = num(p[key]) ?? str(p[key]); if (v != null) rows.push({ label, value: `${v}${suffix}` }); };
