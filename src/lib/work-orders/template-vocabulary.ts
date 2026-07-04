@@ -147,6 +147,15 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     fields: { vesselId: "vessel", gasType: "select", materialId: "material", amount: "number", note: "text" },
     fieldOptions: { gasType: GAS_TYPES },
   },
+  // ── CHECKLIST lane (plan 034): a free-text, checkable line that does NO inventory work. ──
+  NOTE: {
+    kind: "NOTE",
+    label: "Checklist item / note",
+    // The block's TITLE carries the checklist text ("Sweep the crush pad"); `note` is optional detail.
+    // No vessel/lot/material — a NOTE never touches the ledger, measurement store, or cost roll-up.
+    fields: { note: "text" },
+    hint: "A checkable to-do on the work order. It records nothing to inventory, the ledger, or cost.",
+  },
 };
 
 export type TemplateTaskSpec = {

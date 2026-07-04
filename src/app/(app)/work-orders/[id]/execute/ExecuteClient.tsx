@@ -23,6 +23,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
   const vocabKey =
     task.kind === "OPERATION" ? TASK_TYPE_BY_OP[task.opType ?? ""]
     : task.kind === "MAINTENANCE" ? (task.activityType ?? "")
+    : task.kind === "NOTE" ? "NOTE"
     : task.observationType === "PANEL" ? "PANEL" : "BRIX";
   const def = TASK_VOCABULARY[vocabKey ?? ""];
   const [fields, setFields] = React.useState<Record<string, unknown>>({ ...planned });
@@ -99,7 +100,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
         <div style={{ fontWeight: 700, fontSize: 18 }}>{task.seq}. {task.title}</div>
         <Badge tone="gold">{task.status.replace(/_/g, " ").toLowerCase()}</Badge>
       </div>
-      <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 14px" }}>{task.kind === "OPERATION" ? task.opType : `observation · ${task.observationType}`}{def ? ` · ${def.label}` : ""}</div>
+      <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 14px" }}>{task.kind === "OPERATION" ? task.opType : task.kind === "NOTE" ? "checklist" : task.kind === "MAINTENANCE" ? `maintenance · ${task.activityType}` : `observation · ${task.observationType}`}{def ? ` · ${def.label}` : ""}</div>
 
       {def?.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 12 }}>{def.hint}</div> : null}
 

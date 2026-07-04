@@ -156,6 +156,7 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
       const rows: PrintRow[] = [];
       const typeLabel = t.kind === "OPERATION" ? `Operation · ${t.opType ?? ""}`
         : t.kind === "MAINTENANCE" ? `Maintenance · ${(t.activityType ?? "").replace(/_/g, " ").toLowerCase()}`
+        : t.kind === "NOTE" ? "Checklist"
         : `Observation · ${t.observationType ?? ""}`;
 
       // Vessel(s): rack/top read from→to; everything else a single vessel.
