@@ -507,6 +507,19 @@ cellar (this phase) and the vineyard (Phase 20).**
   hands, gloves, 3 a.m. harvest). The parser is **gated by the D26/H8 eval harness**; the write obeys
   D10 (draft → confirm). This is the propose→approve pattern applied to *authoring* the work order, not
   just executing it — the part incumbents find hardest to copy (rules engine + language layer co-designed).
+  - **Material resolution must obey the post-034/036 taxonomy (durable, added 2026-07-04):** when the parser
+    resolves an addition ("add 30 ppm SO₂", "add Opti-Red", "add a tannin"), it resolves against a real
+    `CellarMaterial` — never a free-form string — matching by **generic AND brand name** (`materialDisplayName`;
+    the winemaker says the brand or the family, not the DB name) and the user-extensible **family** vocabulary.
+    It MUST scope candidates to **doseable categories** (`isDoseableCategory`/`materialScopeForTask`), exactly
+    like `MaterialFilterPicker`, so the AtoZ authoring path can never dose a cleaning/sanitizing or packaging
+    material into wine (WORKORDER-3). Unresolved → flag on the proposal, never invent. Estimated cost in the
+    diff derives from **weighted-avg `SupplyLot` cost** (Material carries no price column — plans 036/037-view-edit),
+    UNKNOWN never a silent $0 (D14/COST-2).
+  - **Cost in the proposal diff uses the tenant currency (durable, added 2026-07-04 — plan 037):** any cost the
+    diff shows (dosing/supply cost, cost-per-L) renders through the shared money layer (`useCurrency`/`formatMoney`,
+    symbol via `Input iconLeft` on any editable cost field) — never a hardcoded `$`. Currency is a display label
+    only (no FX; orthogonal to `costingPolicyVersion`, D17); the parse/compliance logic is currency-agnostic.
 
 **Exit:** a manager issues a WO to rack two tanks; a crew member checks it off; the racks appear as
 **pending-approval** ledger ops with correct provenance; the manager approves and they finalize — the
