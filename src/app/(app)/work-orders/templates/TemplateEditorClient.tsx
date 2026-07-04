@@ -38,11 +38,12 @@ export function TemplateEditorClient({
   materials: Material[];
 }) {
   const router = useRouter();
-  const keyRef = React.useRef(1);
+  // Seed the key counter above the initial blocks' keys (computed from props, not read during render).
+  const keyRef = React.useRef((initial?.tasks?.length ?? 0) + 1);
   const [name, setName] = React.useState(initial?.name ?? "");
   const [description, setDescription] = React.useState(initial?.description ?? "");
   const [category, setCategory] = React.useState(initial?.category ?? "");
-  const [blocks, setBlocks] = React.useState<Block[]>(() => (initial?.tasks ?? []).map((t) => ({ ...t, _key: keyRef.current++ })));
+  const [blocks, setBlocks] = React.useState<Block[]>(() => (initial?.tasks ?? []).map((t, i) => ({ ...t, _key: i + 1 })));
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
