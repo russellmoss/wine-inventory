@@ -183,7 +183,7 @@ export function TemplateEditorClient({
                           );
                         }
                         if (ftype === "number") {
-                          return <label key={fkey} style={lbl}>{fieldLabel(fkey)} (optional)<input type="number" inputMode="decimal" step="any" style={field} placeholder="Ask at run time" value={cur === "" ? "" : String(cur)} onChange={(e) => setDefault(b._key, fkey, e.target.value === "" ? "" : Number(e.target.value))} /></label>;
+                          return <label key={fkey} style={lbl}>{fieldLabel(fkey)} (optional)<input type="number" inputMode="decimal" step="any" style={field} placeholder="Ask at run time" value={cur === "" ? "" : String(cur)} onChange={(e) => { const n = Number(e.target.value); setDefault(b._key, fkey, e.target.value === "" || Number.isNaN(n) ? "" : n); }} /></label>;
                         }
                         return <label key={fkey} style={lbl}>{fieldLabel(fkey)} (optional)<input type="text" style={field} placeholder="Ask at run time" value={String(cur)} onChange={(e) => setDefault(b._key, fkey, e.target.value)} /></label>;
                       })}

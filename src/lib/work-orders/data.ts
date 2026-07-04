@@ -61,7 +61,7 @@ function taskView(t: {
   return {
     id: t.id,
     seq: t.seq,
-    kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE",
+    kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE",
     status: t.status,
     title: t.title,
     opType: t.opType,
