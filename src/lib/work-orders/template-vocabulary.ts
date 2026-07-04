@@ -199,6 +199,27 @@ export function validateTemplateSpec(spec: TemplateSpec): SpecValidation {
   return { ok: errors.length === 0, errors };
 }
 
+/** Canonicalize a spec to ONLY the known shape (Codex/council: the client `spec` is untrusted). Keeps
+ * `{ taskType, title, instructions?, defaults }` per task and, within `defaults`, ONLY keys that are in
+ * the task type's vocabulary — every other key is stripped. Unknown task types are dropped. Pure; call
+ * AFTER validateTemplateSpec so the caller has already surfaced errors, then persist ONLY this object. */
+export function canonicalizeTemplateSpec(spec: TemplateSpec): TemplateSpec {
+  const tasks: TemplateTaskSpec[] = (spec?.tasks ?? [])
+    .filter((t) => t && TASK_VOCABULARY[t.taskType])
+    .map((t) => {
+      const def = TASK_VOCABULARY[t.taskType];
+      const cleanDefaults: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(t.defaults ?? {})) {
+        if (key in def.fields && value !== undefined) cleanDefaults[key] = value;
+      }
+      const out: TemplateTaskSpec = { taskType: t.taskType, title: String(t.title ?? "").trim() };
+      if (t.instructions != null && String(t.instructions).trim()) out.instructions = String(t.instructions).trim();
+      if (Object.keys(cleanDefaults).length > 0) out.defaults = cleanDefaults;
+      return out;
+    });
+  return { tasks };
+}
+
 /** Canonical columns (A6) extracted from a task's payload — mirror the JSON for querying + composite FKs. */
 function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
   const s = (v: unknown) => (typeof v === "string" && v ? v : null);

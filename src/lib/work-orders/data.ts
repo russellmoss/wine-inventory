@@ -15,7 +15,7 @@ import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } 
 export type WorkOrderTaskView = {
   id: string;
   seq: number;
-  kind: "OPERATION" | "OBSERVATION" | "MAINTENANCE";
+  kind: "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE";
   status: string;
   title: string;
   opType: string | null;
@@ -425,6 +425,56 @@ export async function listTemplatesWithSpec(tenantId: string): Promise<{ id: str
       select: { id: true, name: true, isSystem: true, currentVersion: true, versions: { select: { version: true, spec: true } } },
     });
     return tpls.map((t) => ({ id: t.id, name: t.name, isSystem: t.isSystem, spec: t.versions.find((v) => v.version === t.currentVersion)?.spec ?? { tasks: [] } }));
+  });
+}
+
+export type TemplateListRow = { id: string; code: string; name: string; category: string | null; isSystem: boolean; archivedAt: string | null; blockCount: number };
+
+/** The builder's template list (plan 034). System + custom, block count derived from the current
+ * version's spec. `view` toggles active vs archived (Open|Archive). tenantId is explicit (K12). */
+export async function listTemplatesForBuilder(tenantId: string, opts?: { archived?: boolean }): Promise<TemplateListRow[]> {
+  return runAsTenant(tenantId, async () => {
+    const tpls = await prisma.workOrderTemplate.findMany({
+      where: { tenantId, archivedAt: opts?.archived ? { not: null } : null },
+      orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+      select: { id: true, code: true, name: true, category: true, isSystem: true, archivedAt: true, currentVersion: true, versions: { select: { version: true, spec: true } } },
+    });
+    return tpls.map((t) => {
+      const spec = t.versions.find((v) => v.version === t.currentVersion)?.spec as { tasks?: unknown[] } | undefined;
+      return { id: t.id, code: t.code, name: t.name, category: t.category, isSystem: t.isSystem, archivedAt: t.archivedAt ? t.archivedAt.toISOString() : null, blockCount: Array.isArray(spec?.tasks) ? spec!.tasks.length : 0 };
+    });
+  });
+}
+
+export type TemplateVersionRow = { version: number; spec: unknown; createdAt: string; createdByEmail: string | null };
+export type TemplateDetail = {
+  id: string; code: string; name: string; description: string | null; category: string | null;
+  isSystem: boolean; clonedFromId: string | null; recurringCadence: string | null;
+  currentVersion: number; archivedAt: string | null; spec: unknown; versions: TemplateVersionRow[];
+};
+
+/** A template with its current spec + full version lineage — the builder's detail + editor read (plan
+ * 034). Composes on the same shape as getTemplateWithCurrentSpec (eng review: don't duplicate). K12:
+ * tenantId is explicit in the where. */
+export async function getTemplateDetail(tenantId: string, templateId: string): Promise<TemplateDetail | null> {
+  return runAsTenant(tenantId, async () => {
+    const tpl = await prisma.workOrderTemplate.findFirst({
+      where: { id: templateId, tenantId },
+      select: {
+        id: true, code: true, name: true, description: true, category: true, isSystem: true,
+        clonedFromId: true, recurringCadence: true, currentVersion: true, archivedAt: true,
+        versions: { orderBy: { version: "desc" }, select: { version: true, spec: true, createdAt: true, createdByEmail: true } },
+      },
+    });
+    if (!tpl) return null;
+    const current = tpl.versions.find((v) => v.version === tpl.currentVersion);
+    return {
+      id: tpl.id, code: tpl.code, name: tpl.name, description: tpl.description, category: tpl.category,
+      isSystem: tpl.isSystem, clonedFromId: tpl.clonedFromId, recurringCadence: tpl.recurringCadence,
+      currentVersion: tpl.currentVersion, archivedAt: tpl.archivedAt ? tpl.archivedAt.toISOString() : null,
+      spec: current?.spec ?? { tasks: [] },
+      versions: tpl.versions.map((v) => ({ version: v.version, spec: v.spec, createdAt: v.createdAt.toISOString(), createdByEmail: v.createdByEmail })),
+    };
   });
 }
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { action } from "@/lib/actions";
+import { action, adminAction } from "@/lib/actions";
 import {
   createWorkOrderCore,
   issueWorkOrderCore,
@@ -12,7 +12,15 @@ import {
   type CreateWorkOrderInput,
 } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore, type CompleteTaskInput } from "@/lib/work-orders/execute";
-import { createWorkOrderFromTemplateCore } from "@/lib/work-orders/templates";
+import {
+  createWorkOrderFromTemplateCore,
+  createTemplateCore,
+  updateTemplateSpecCore,
+  cloneTemplateCore,
+  archiveTemplateCore,
+  unarchiveTemplateCore,
+} from "@/lib/work-orders/templates";
+import type { TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { prisma } from "@/lib/prisma";
@@ -30,6 +38,47 @@ function revalidateWorkOrders(workOrderId?: string) {
     revalidatePath(`/work-orders/${workOrderId}/execute`);
   }
 }
+
+// ── Template authoring (plan 034). Admin-gated (council: cellar hands must not edit shared SOPs; the
+// role model is admin-vs-manager, so authoring = admin). Issuing/running WOs stays open to all via
+// action(). Revalidate the builder surfaces + the issue-from-template picker. ──
+function revalidateTemplates(templateId?: string) {
+  revalidatePath("/work-orders/templates");
+  if (templateId) revalidatePath(`/work-orders/templates/${templateId}`);
+  revalidatePath("/work-orders/new"); // the issue-from-template picker reads the template list
+}
+
+export const createTemplateAction = adminAction(
+  async ({ actor }, input: { name: string; description?: string; category?: string; spec: TemplateSpec }) => {
+    const res = await createTemplateCore(actor, input);
+    revalidateTemplates(res.templateId);
+    return res;
+  },
+);
+
+export const updateTemplateSpecAction = adminAction(async ({ actor }, input: { templateId: string; spec: TemplateSpec }) => {
+  const res = await updateTemplateSpecCore(actor, input);
+  revalidateTemplates(res.templateId);
+  return res;
+});
+
+export const cloneTemplateAction = adminAction(async ({ actor }, input: { templateId: string; name?: string }) => {
+  const res = await cloneTemplateCore(actor, input);
+  revalidateTemplates(res.templateId);
+  return res;
+});
+
+export const archiveTemplateAction = adminAction(async ({ actor }, input: { templateId: string }) => {
+  const res = await archiveTemplateCore(actor, input);
+  revalidateTemplates(res.templateId);
+  return res;
+});
+
+export const unarchiveTemplateAction = adminAction(async ({ actor }, input: { templateId: string }) => {
+  const res = await unarchiveTemplateCore(actor, input);
+  revalidateTemplates(res.templateId);
+  return res;
+});
 
 export const createWorkOrderAction = action(async ({ actor }, input: CreateWorkOrderInput) => {
   const res = await createWorkOrderCore(actor, input);
