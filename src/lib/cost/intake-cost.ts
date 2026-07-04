@@ -33,6 +33,24 @@ export function deriveOpeningLot(input: {
   return { qtyInStockUnit: qty, unitCost };
 }
 
+/**
+ * Weighted-average cost per stock unit across a material's open lots (Phase 037 — the "cost" shown read-only
+ * in the expendables detail modal). Lots with unknown cost (unitCost null, D14) or non-positive remaining
+ * qty are skipped — never counted as $0. Null when no priced stock remains.
+ */
+export function weightedAvgUnitCost(lots: readonly { qtyRemaining: number; unitCost: number | null }[]): number | null {
+  let qty = 0;
+  let cost = 0;
+  for (const l of lots) {
+    if (l.unitCost == null || !Number.isFinite(l.unitCost) || l.unitCost < 0) continue;
+    const q = Number(l.qtyRemaining);
+    if (!Number.isFinite(q) || q <= 0) continue;
+    qty += q;
+    cost += q * l.unitCost;
+  }
+  return qty > 0 ? round8(cost / qty) : null;
+}
+
 /** Per-package-unit cost (display convenience): total cost ÷ package amount. Null if either is missing/invalid. */
 export function costPerPackageUnit(totalCost: number | null | undefined, packageAmount: number | null | undefined): number | null {
   const c = totalCost == null ? NaN : Number(totalCost); // Number(null) is 0; nullish cost is unknown, not $0

@@ -22,6 +22,8 @@ export { ConfirmButton } from "./ConfirmButton";
 export type { ConfirmButtonProps } from "./ConfirmButton";
 export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
+export { Collapsible } from "./Collapsible";
+export type { CollapsibleProps } from "./Collapsible";
 export { ExportCsvButton } from "./ExportCsvButton";
 export type { ExportCsvButtonProps, CsvColumn } from "./ExportCsvButton";
 export { MapLegend } from "./MapLegend";

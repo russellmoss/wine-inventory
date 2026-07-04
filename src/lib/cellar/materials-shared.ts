@@ -34,6 +34,9 @@ export type CellarMaterialDTO = {
   stockUnit?: string | null;
   /** Phase 8 (Unit 12): surfaced on the management page so an inactive supply can be reactivated. */
   isActive?: boolean;
+  /** Phase 037: weighted-average cost per stock unit across open lots (D14: null when unknown, never $0).
+   * Read-only display in the expendables detail modal — costs are corrected via Receive, never re-written. */
+  avgUnitCost?: number | null;
 };
 
 /**

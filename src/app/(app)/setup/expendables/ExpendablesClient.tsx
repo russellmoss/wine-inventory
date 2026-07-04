@@ -2,35 +2,33 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal } from "@/components/ui";
+import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal, Collapsible } from "@/components/ui";
 import { type CellarMaterialDTO, materialDisplayName } from "@/lib/cellar/materials-shared";
 import {
-  MATERIAL_CATEGORIES, CATEGORY_LABELS, categoryOf, familyLabel, BUILTIN_FAMILIES,
+  MATERIAL_CATEGORIES, CATEGORY_LABELS, categoryOf, familyLabel,
   type MaterialCategory,
 } from "@/lib/cellar/material-taxonomy";
-import { MEASURE_UNITS, dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
-import { costPerPackageUnit, deriveOpeningLot } from "@/lib/cost/intake-cost";
-import { closestMatch } from "@/lib/inventory/similarity";
-import { createStockMaterialAction } from "@/lib/cellar/actions";
+import { rankMaterials } from "@/lib/inventory/material-search";
+import {
+  MaterialForm, emptyMaterialForm, materialFormToInput, materialFormHasIdentity, materialToForm,
+  type MaterialFormValue,
+} from "@/components/cellar/MaterialForm";
+import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
 import { receiveSupplyAction, setMaterialActiveAction } from "@/lib/cost/actions";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 
-// Phase 8/12 → 036: manage the supply catalog. Add via the "Add expendable" MODAL (full purchase record +
-// derived cost-per-measure); Receive costed lots via the (unchanged) Receive modal. Grouped by the stored
-// main Category → family. All spacing/color via design tokens.
+// Phase 8/12 → 036 → 037: manage the supply catalog. Categories are collapsible + searchable; clicking a
+// card opens a detail modal where you View the base setup data and then Edit / Receive / Deactivate it. Add
+// via the "Add expendable" MODAL (full purchase record + derived cost-per-measure). All spacing/color via tokens.
 
-const controlStyle: React.CSSProperties = {
-  height: 44,
-  padding: "0 10px",
-  border: "1px solid var(--border-strong)",
-  borderRadius: "var(--radius-md)",
-  background: "var(--surface-raised)",
-  fontFamily: "var(--font-body)",
-  fontSize: 14,
-  color: "var(--text-primary)",
-};
-const fieldLabelStyle: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" };
 const num = { fontVariantNumeric: "tabular-nums" } as const;
+
+const chipStyle = (active: boolean): React.CSSProperties => ({
+  fontSize: 13, padding: "5px 12px", borderRadius: 999, cursor: "pointer",
+  border: "1px solid var(--border-strong)",
+  background: active ? "var(--wine-primary)" : "transparent",
+  color: active ? "var(--surface-raised)" : "var(--text-secondary)",
+});
 
 function useRunner() {
   const router = useRouter();
@@ -59,26 +57,24 @@ const catOf = (m: CellarMaterialDTO): MaterialCategory => (m.category as Materia
 
 export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[] }) {
   const { error, pending, run } = useRunner();
-  const [receiveFor, setReceiveFor] = React.useState<CellarMaterialDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
+  const [detailId, setDetailId] = React.useState<string | null>(null);
+  const [editId, setEditId] = React.useState<string | null>(null);
+  const [receiveId, setReceiveId] = React.useState<string | null>(null);
 
-  // Group by stored main Category → family (familyLabel(kind)).
-  const byCategory = React.useMemo(() => {
-    const m = new Map<MaterialCategory, Map<string, CellarMaterialDTO[]>>();
-    for (const mat of materials) {
-      const cat = catOf(mat);
-      const fam = familyLabel(mat.kind);
-      if (!m.has(cat)) m.set(cat, new Map());
-      const famMap = m.get(cat)!;
-      if (!famMap.has(fam)) famMap.set(fam, []);
-      famMap.get(fam)!.push(mat);
-    }
-    return m;
-  }, [materials]);
+  // Toolbar: fuzzy search + category filter + inactive toggle + which categories are unfurled.
+  const [query, setQuery] = React.useState("");
+  const [catFilter, setCatFilter] = React.useState<MaterialCategory | "ALL">("ALL");
+  const [showInactive, setShowInactive] = React.useState(true);
+  const [openCats, setOpenCats] = React.useState<Set<MaterialCategory>>(() => new Set());
 
-  const categories = MATERIAL_CATEGORIES.filter((c) => byCategory.has(c));
+  // Resolve the open modals from the LIVE list each render, so a Deactivate/Edit reflects immediately.
+  const byId = React.useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
+  const detail = detailId ? byId.get(detailId) ?? null : null;
+  const editMat = editId ? byId.get(editId) ?? null : null;
+  const receiveMat = receiveId ? byId.get(receiveId) ?? null : null;
 
-  // Existing family labels per category — seed the modal's family picker alongside the built-ins.
+  // Existing family labels per category — seed the form's family picker alongside the built-ins.
   const familiesByCategory = React.useMemo(() => {
     const m = new Map<MaterialCategory, Set<string>>();
     for (const mat of materials) {
@@ -89,6 +85,40 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
     return m;
   }, [materials]);
 
+  // Apply inactive filter → category filter → fuzzy search (empty query keeps the server's name-asc order).
+  const visible = React.useMemo(() => {
+    let list = materials;
+    if (!showInactive) list = list.filter((m) => m.isActive !== false);
+    if (catFilter !== "ALL") list = list.filter((m) => catOf(m) === catFilter);
+    return rankMaterials(query, list, (m) => materialDisplayName(m));
+  }, [materials, showInactive, catFilter, query]);
+
+  // Group the visible set by stored Category → family.
+  const byCategory = React.useMemo(() => {
+    const m = new Map<MaterialCategory, Map<string, CellarMaterialDTO[]>>();
+    for (const mat of visible) {
+      const cat = catOf(mat);
+      const fam = familyLabel(mat.kind);
+      if (!m.has(cat)) m.set(cat, new Map());
+      const famMap = m.get(cat)!;
+      if (!famMap.has(fam)) famMap.set(fam, []);
+      famMap.get(fam)!.push(mat);
+    }
+    return m;
+  }, [visible]);
+
+  const categories = MATERIAL_CATEGORIES.filter((c) => byCategory.has(c));
+  const searching = query.trim() !== "";
+  const countFor = (c: MaterialCategory) => [...byCategory.get(c)!.values()].reduce((n, arr) => n + arr.length, 0);
+
+  const setCatOpen = (c: MaterialCategory, open: boolean) =>
+    setOpenCats((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(c);
+      else next.delete(c);
+      return next;
+    });
+
   return (
     <div>
       <Eyebrow rule>Setup</Eyebrow>
@@ -97,8 +127,8 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Expendables</h1>
           <p style={{ color: "var(--text-secondary)", marginBottom: 20, maxWidth: "60ch" }}>
             Winemaking supplies — yeast, nutrients, SO₂, fining agents, acids, tannins, enzymes, cleaning &amp;
-            sanitizing, packaging. Track stock on hand and receive costed lots so additions draw down and
-            cost-per-bottle stays accurate. Items in use can&rsquo;t be deleted, only deactivated.
+            sanitizing, packaging. Click an item to view its details, then edit its setup, receive a costed lot,
+            or deactivate it. Items in use can&rsquo;t be deleted, only deactivated.
           </p>
         </div>
         <Button variant="primary" onClick={() => setAddOpen(true)} style={{ minHeight: 44, marginTop: 10 }}>
@@ -116,31 +146,67 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
           <Button variant="primary" onClick={() => setAddOpen(true)}>+ Add expendable</Button>
         </Card>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
-          {categories.map((c) => {
-            const famMap = byCategory.get(c)!;
-            const fams = [...famMap.keys()].sort((a, b) => a.localeCompare(b));
-            return (
-              <Card key={c} padding="var(--space-5)">
-                <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 20, marginBottom: 10 }}>
+        <>
+          {/* Toolbar */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search expendables by name…"
+              aria-label="Search expendables"
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" aria-pressed={catFilter === "ALL"} style={chipStyle(catFilter === "ALL")} onClick={() => setCatFilter("ALL")}>All</button>
+              {MATERIAL_CATEGORIES.map((c) => (
+                <button key={c} type="button" aria-pressed={catFilter === c} style={chipStyle(catFilter === c)} onClick={() => setCatFilter(c)}>
                   {CATEGORY_LABELS[c]}
-                </h2>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {fams.map((fam) => (
-                    <div key={fam}>
-                      <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)", margin: "6px 0 2px" }}>{fam}</h3>
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        {famMap.get(fam)!.map((mat) => (
-                          <SupplyRow key={mat.id} mat={mat} pending={pending} run={run} onReceive={() => setReceiveFor(mat)} />
+                </button>
+              ))}
+              <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Checkbox checked={showInactive} onChange={(v) => setShowInactive(v)} label="Show inactive" />
+                <Button variant="ghost" size="sm" onClick={() => setOpenCats(new Set(MATERIAL_CATEGORIES))} disabled={searching}>Expand all</Button>
+                <Button variant="ghost" size="sm" onClick={() => setOpenCats(new Set())} disabled={searching}>Collapse all</Button>
+              </span>
+            </div>
+          </div>
+
+          {categories.length === 0 ? (
+            <Card padding="var(--space-5)" style={{ textAlign: "center" }}>
+              <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: "6px 0" }}>No expendables match your search.</p>
+            </Card>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {categories.map((c) => {
+                const famMap = byCategory.get(c)!;
+                const fams = [...famMap.keys()].sort((a, b) => a.localeCompare(b));
+                const open = searching || openCats.has(c);
+                return (
+                  <Card key={c} padding="var(--space-5)">
+                    <Collapsible
+                      level="section"
+                      open={open}
+                      onOpenChange={searching ? undefined : (next) => setCatOpen(c, next)}
+                      title={CATEGORY_LABELS[c]}
+                      right={<span style={{ ...num, fontSize: 13, color: "var(--text-muted)" }}>{countFor(c)}</span>}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                        {fams.map((fam) => (
+                          <Collapsible key={fam} level="sub" defaultOpen title={fam}>
+                            <div style={{ display: "flex", flexDirection: "column" }}>
+                              {famMap.get(fam)!.map((mat) => (
+                                <SupplyRow key={mat.id} mat={mat} onOpen={() => setDetailId(mat.id)} />
+                              ))}
+                            </div>
+                          </Collapsible>
                         ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+                    </Collapsible>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       <AddExpendableModal
@@ -152,52 +218,66 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
         onClose={() => setAddOpen(false)}
       />
 
-      <ReceiveModal
-        key={receiveFor?.id ?? "none"}
-        material={receiveFor}
+      <MaterialDetailModal
+        material={detail}
         pending={pending}
         run={run}
-        onClose={() => setReceiveFor(null)}
+        onEdit={() => { if (detail) { setEditId(detail.id); setDetailId(null); } }}
+        onReceive={() => { if (detail) { setReceiveId(detail.id); setDetailId(null); } }}
+        onClose={() => setDetailId(null)}
+      />
+
+      <EditMaterialModal
+        key={editMat?.id ?? "edit-none"}
+        material={editMat}
+        pending={pending}
+        run={run}
+        familiesByCategory={familiesByCategory}
+        onClose={() => setEditId(null)}
+      />
+
+      <ReceiveModal
+        key={receiveMat?.id ?? "receive-none"}
+        material={receiveMat}
+        pending={pending}
+        run={run}
+        onClose={() => setReceiveId(null)}
       />
     </div>
   );
 }
 
-function SupplyRow({
-  mat,
-  pending,
-  run,
-  onReceive,
-}: {
-  mat: CellarMaterialDTO;
-  pending: boolean;
-  run: (fn: () => Promise<unknown>, after?: () => void) => void;
-  onReceive: () => void;
-}) {
+function SupplyRow({ mat, onOpen }: { mat: CellarMaterialDTO; onOpen: () => void }) {
   const tracked = !!mat.isStockTracked;
   const out = tracked && (mat.onHand ?? 0) <= 0;
   const display = materialDisplayName(mat);
-  // Secondary line: the "other" name (generic when showing brand, or brand when showing generic) + vendor.
   const secondary = [
     mat.preferGeneric ? (mat.brandName ?? null) : (mat.genericName ?? null),
     mat.vendor ?? null,
   ].filter((s) => s && s.trim() && s.trim() !== display).join(" · ");
   return (
-    <div
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`View ${display}`}
       style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         gap: 12,
-        padding: "10px 0",
+        padding: "10px 4px",
         borderTop: "1px solid var(--border-strong)",
+        borderLeft: "none", borderRight: "none", borderBottom: "none",
+        background: "transparent",
+        cursor: "pointer",
+        textAlign: "left",
+        width: "100%",
         opacity: mat.isActive === false ? 0.55 : 1,
-        flexWrap: "wrap",
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
         <span style={{ display: "inline-flex", flexDirection: "column", minWidth: 0 }}>
-          <span style={{ fontSize: 15 }}>{display}</span>
+          <span style={{ fontSize: 15, color: "var(--text-primary)" }}>{display}</span>
           {secondary ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{secondary}</span> : null}
         </span>
         {tracked ? (
@@ -210,21 +290,84 @@ function SupplyRow({
         {out ? <Badge tone="red">out of stock</Badge> : null}
         {mat.isActive === false ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
       </span>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <Button variant="secondary" size="sm" disabled={pending} onClick={onReceive} style={{ minHeight: 40 }}>
-          Receive
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          onClick={() => run(() => setMaterialActiveAction(mat.id, mat.isActive === false))}
-          style={{ minHeight: 40 }}
-        >
-          {mat.isActive === false ? "Reactivate" : "Deactivate"}
-        </Button>
-      </span>
+      <span aria-hidden="true" style={{ color: "var(--text-muted)", fontSize: 18, flex: "none" }}>›</span>
+    </button>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: 12, padding: "7px 0", borderTop: "1px solid var(--border-strong)" }}>
+      <span style={{ flex: "0 0 140px", fontSize: 13, color: "var(--text-muted)" }}>{label}</span>
+      <span style={{ flex: 1, fontSize: 14, color: "var(--text-primary)", minWidth: 0, wordBreak: "break-word" }}>{children}</span>
     </div>
+  );
+}
+
+function MaterialDetailModal({
+  material,
+  pending,
+  run,
+  onEdit,
+  onReceive,
+  onClose,
+}: {
+  material: CellarMaterialDTO | null;
+  pending: boolean;
+  run: (fn: () => Promise<unknown>, after?: () => void) => void;
+  onEdit: () => void;
+  onReceive: () => void;
+  onClose: () => void;
+}) {
+  const { format } = useCurrency();
+  if (!material) return <Modal open={false} onClose={onClose} title="">{null}</Modal>;
+
+  const m = material;
+  const display = materialDisplayName(m);
+  const unit = m.stockUnit ?? "g";
+  const tracked = !!m.isStockTracked;
+  const inactive = m.isActive === false;
+
+  return (
+    <Modal open onClose={onClose} title={display} subtitle="Item details" maxWidth="min(560px, 96vw)">
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <DetailRow label="Category">{CATEGORY_LABELS[catOf(m)]}</DetailRow>
+        <DetailRow label="Family">{familyLabel(m.kind)}</DetailRow>
+        {m.genericName ? <DetailRow label="Generic name">{m.genericName}</DetailRow> : null}
+        {m.brand ? <DetailRow label="Brand">{m.brand}</DetailRow> : null}
+        {m.brandName ? <DetailRow label="Product name">{m.brandName}</DetailRow> : null}
+        <DetailRow label="Shown in lists as">{m.preferGeneric ? "Generic name" : "Brand / product name"}</DetailRow>
+        {m.vendor ? <DetailRow label="Vendor">{m.vendor}</DetailRow> : null}
+        {m.vendorUrl ? (
+          <DetailRow label="Vendor URL">
+            <a href={m.vendorUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--wine-primary)", textDecoration: "underline" }}>
+              {m.vendorUrl}
+            </a>
+          </DetailRow>
+        ) : null}
+        {m.packageAmount != null ? (
+          <DetailRow label="Package size">{m.packageAmount} {m.packageUnit ?? ""}</DetailRow>
+        ) : null}
+        <DetailRow label="Tracked in">{tracked ? unit : "Not stock-tracked"}</DetailRow>
+        {tracked ? (
+          <DetailRow label="On hand"><span style={num}>{m.onHand ?? 0}</span> {unit}</DetailRow>
+        ) : null}
+        <DetailRow label="Cost">
+          {m.avgUnitCost != null ? <span style={num}>≈ {format(m.avgUnitCost, { per: unit })}</span> : "Unknown (no priced stock)"}
+        </DetailRow>
+        <DetailRow label="Status">
+          {inactive ? <Badge tone="neutral" variant="soft">inactive</Badge> : <Badge tone="green" variant="soft">active</Badge>}
+        </DetailRow>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 16 }}>
+          <Button type="button" variant="ghost" disabled={pending} onClick={() => run(() => setMaterialActiveAction(m.id, inactive))}>
+            {inactive ? "Reactivate" : "Deactivate"}
+          </Button>
+          <Button type="button" variant="secondary" disabled={pending} onClick={onReceive}>Receive</Button>
+          <Button type="button" variant="primary" disabled={pending} onClick={onEdit}>Edit</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -241,132 +384,62 @@ function AddExpendableModal({
   familiesByCategory: Map<MaterialCategory, Set<string>>;
   onClose: () => void;
 }) {
-  const [genericName, setGenericName] = React.useState("");
-  const [brand, setBrand] = React.useState("");
-  const [brandName, setBrandName] = React.useState("");
-  const [preferGeneric, setPreferGeneric] = React.useState(true);
-  const [vendor, setVendor] = React.useState("");
-  const [vendorUrl, setVendorUrl] = React.useState("");
-  const [category, setCategory] = React.useState<MaterialCategory>("ADDITIVE");
-  const [family, setFamily] = React.useState("");
-  const [packageAmount, setPackageAmount] = React.useState("");
-  const [packageUnit, setPackageUnit] = React.useState("g");
-  const [totalCost, setTotalCost] = React.useState("");
-  const { symbol } = useCurrency();
-
-  // The canonical stock unit is derived from the package unit's dimension (gal→mL, lb→g, unit→unit).
-  const stockUnit = React.useMemo(() => {
-    const dim = dimensionOf(packageUnit);
-    return dim ? canonicalUnitFor(dim) : "g";
-  }, [packageUnit]);
-
-  // Family suggestions: the built-ins for the chosen category + any existing families in it.
-  const familyOptions = React.useMemo(() => {
-    const opts = new Set<string>(BUILTIN_FAMILIES.filter((f) => f.category === category).map((f) => f.label));
-    for (const fam of familiesByCategory.get(category) ?? []) opts.add(fam);
-    return [...opts].sort((a, b) => a.localeCompare(b));
-  }, [category, familiesByCategory]);
-
-  // Live cost preview from the purchase.
-  const amt = packageAmount.trim() !== "" ? Number(packageAmount) : null;
-  const cost = totalCost.trim() !== "" ? Number(totalCost) : null;
-  const perPackageUnit = costPerPackageUnit(cost, amt);
-  const opening = deriveOpeningLot({ packageAmount: amt, packageUnit, totalCost: cost, stockUnit });
-
-  // A near-duplicate family hint so "Fining"/"Finings" don't fragment.
-  const famDupe = family.trim() && !familyOptions.some((f) => f.toLowerCase() === family.trim().toLowerCase())
-    ? closestMatch(family, familyOptions)
-    : null;
-
-  const canSubmit = (genericName.trim() !== "" || brandName.trim() !== "") && !pending;
+  const [form, setForm] = React.useState<MaterialFormValue>(emptyMaterialForm);
+  const patch = (p: Partial<MaterialFormValue>) => setForm((f) => ({ ...f, ...p }));
+  const canSubmit = materialFormHasIdentity(form) && !pending;
 
   function submit() {
     if (!canSubmit) return;
-    run(
-      () =>
-        createStockMaterialAction({
-          genericName: genericName.trim() || undefined,
-          brand: brand.trim() || undefined,
-          brandName: brandName.trim() || undefined,
-          preferGeneric,
-          vendor: vendor.trim() || undefined,
-          vendorUrl: vendorUrl.trim() || undefined,
-          category,
-          kind: family.trim() || undefined, // family; server coerces built-in vs custom
-          stockUnit,
-          packageAmount: amt ?? undefined,
-          packageUnit: amt != null ? packageUnit : undefined,
-          totalCost: cost ?? undefined,
-        }),
-      onClose,
-    );
+    const cost = form.totalCost.trim() !== "" ? Number(form.totalCost) : undefined;
+    run(() => createStockMaterialAction({ ...materialFormToInput(form), totalCost: cost }), onClose);
   }
-
-  const col = { display: "flex", flexDirection: "column", gap: 6 } as const;
 
   return (
     <Modal open={open} onClose={onClose} title="Add expendable" subtitle="Product, purchase, and how it's tracked" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Product */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Input label="Generic name" value={genericName} onChange={(e) => setGenericName(e.target.value)} placeholder="e.g. Bentonite" style={{ flex: "1 1 200px" }} />
-          <Input label="Brand (optional)" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="e.g. Lallemand" style={{ flex: "1 1 160px" }} />
-          <Input label="Brand / product name (optional)" value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="e.g. EC-1118" style={{ flex: "1 1 200px" }} />
-        </div>
-        <Checkbox checked={preferGeneric} onChange={(c) => setPreferGeneric(c)} label="Show the generic name in lists (off = show the brand name)" />
-
-        {/* Taxonomy */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <label style={{ ...col, flex: "1 1 180px" }}>
-            <span style={fieldLabelStyle}>Category</span>
-            <select value={category} onChange={(e) => setCategory(e.target.value as MaterialCategory)} style={controlStyle}>
-              {MATERIAL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-            </select>
-          </label>
-          <label style={{ ...col, flex: "1 1 200px" }}>
-            <span style={fieldLabelStyle}>Family (pick or type to add)</span>
-            <input value={family} onChange={(e) => setFamily(e.target.value)} list="expendable-families" placeholder="e.g. Yeast, Fining, Sur Lie" style={controlStyle} />
-            <datalist id="expendable-families">
-              {familyOptions.map((f) => <option key={f} value={f} />)}
-            </datalist>
-          </label>
-        </div>
-        {famDupe ? (
-          <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
-            Did you mean{" "}
-            <button type="button" onClick={() => setFamily(famDupe.match)} style={{ border: "none", background: "transparent", color: "var(--wine-primary)", cursor: "pointer", padding: 0, font: "inherit", textDecoration: "underline" }}>{famDupe.match}</button>
-            ? Reusing a family keeps the filters tidy.
-          </p>
-        ) : null}
-
-        {/* Purchase */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <Input label="Package size" value={packageAmount} onChange={(e) => setPackageAmount(e.target.value)} inputMode="decimal" placeholder="e.g. 100" style={{ flex: "0 1 120px" }} />
-          <label style={{ ...col, flex: "0 1 120px" }}>
-            <span style={fieldLabelStyle}>Unit</span>
-            <select value={packageUnit} onChange={(e) => setPackageUnit(e.target.value)} style={controlStyle}>
-              {MEASURE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </label>
-          <Input label="Total cost paid (optional)" value={totalCost} onChange={(e) => setTotalCost(e.target.value)} inputMode="decimal" placeholder="e.g. 500" iconLeft={symbol} style={{ flex: "1 1 160px" }} />
-        </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Input label="Vendor (optional)" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Scott Labs" style={{ flex: "1 1 180px" }} />
-          <Input label="Vendor URL (optional)" value={vendorUrl} onChange={(e) => setVendorUrl(e.target.value)} placeholder="https://…" style={{ flex: "1 1 220px" }} />
-        </div>
-
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
-          Tracked in <strong>{stockUnit}</strong>.{" "}
-          {perPackageUnit != null ? `≈ ${symbol}${perPackageUnit}/${packageUnit}. ` : ""}
-          {opening.qtyInStockUnit != null && opening.unitCost != null
-            ? `Opening stock ${opening.qtyInStockUnit} ${stockUnit} at ~${symbol}${opening.unitCost}/${stockUnit}.`
-            : `Leave cost blank to record unknown-cost stock (never ${symbol}0).`}
-        </p>
-
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
             {pending ? "Adding…" : "Add expendable"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function EditMaterialModal({
+  material,
+  pending,
+  run,
+  familiesByCategory,
+  onClose,
+}: {
+  material: CellarMaterialDTO | null;
+  pending: boolean;
+  run: (fn: () => Promise<unknown>, after?: () => void) => void;
+  familiesByCategory: Map<MaterialCategory, Set<string>>;
+  onClose: () => void;
+}) {
+  const [form, setForm] = React.useState<MaterialFormValue>(() => (material ? materialToForm(material) : emptyMaterialForm));
+  const patch = (p: Partial<MaterialFormValue>) => setForm((f) => ({ ...f, ...p }));
+  const hasStock = (material?.onHand ?? 0) > 0;
+  const canSubmit = !!material && materialFormHasIdentity(form) && !pending;
+
+  function submit() {
+    if (!material || !canSubmit) return;
+    run(() => updateMaterialAction(material.id, materialFormToInput(form)), onClose);
+  }
+
+  return (
+    <Modal open={!!material} onClose={onClose} title={material ? `Edit · ${materialDisplayName(material)}` : "Edit"} subtitle="Correct the item's setup details" maxWidth="min(620px, 96vw)">
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} />
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
+          <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
+            {pending ? "Saving…" : "Save changes"}
           </Button>
         </div>
       </div>

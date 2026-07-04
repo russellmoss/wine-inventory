@@ -17,7 +17,7 @@ import {
 } from "@/lib/cellar/treatments";
 import { recordLossCore, type RecordLossInput } from "@/lib/cellar/loss";
 import { topVesselCore, type ToppingInput, type ToppingResult } from "@/lib/cellar/topping";
-import { upsertMaterialCore, createStockMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput, type CreateStockMaterialInput } from "@/lib/cellar/materials";
+import { upsertMaterialCore, createStockMaterialCore, updateMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput, type CreateStockMaterialInput, type UpdateMaterialInput } from "@/lib/cellar/materials";
 import {
   applyToGroup,
   type GroupApplyResult,
@@ -74,6 +74,18 @@ export const upsertMaterialAction = action(
 export const createStockMaterialAction = action(
   async ({ actor }, input: CreateStockMaterialInput): Promise<CellarMaterialDTO> => {
     const dto = await createStockMaterialCore(actor, input);
+    revalidatePath("/setup/expendables");
+    revalidatePath("/bulk");
+    revalidatePath("/ferment/process");
+    revalidatePath("/inventory");
+    return dto;
+  },
+);
+
+/** Phase 037: edit an existing material's base setup data (the expendables detail-modal "Edit" action). */
+export const updateMaterialAction = action(
+  async ({ actor }, id: string, input: UpdateMaterialInput): Promise<CellarMaterialDTO> => {
+    const dto = await updateMaterialCore(actor, id, input);
     revalidatePath("/setup/expendables");
     revalidatePath("/bulk");
     revalidatePath("/ferment/process");
