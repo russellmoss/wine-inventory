@@ -30,23 +30,27 @@ export function MaterialFilterPicker({
   options,
   value,
   onChange,
-  categoryScope = "ADDITIVE",
+  categoryScope,
   placeholder = "Search materials…",
 }: {
   options: MaterialPickerOption[];
   value: string;
   onChange: (id: string) => void;
-  categoryScope?: MaterialCategory;
+  /** Allowed main categories (derived from kind). Omit to show all. Additions pass Additive+Other;
+   * cleaning tasks pass Cleaning+Other — this keeps cleaning/packaging noise out of the dose picker
+   * without hiding a generic/uncategorized additive. */
+  categoryScope?: MaterialCategory | MaterialCategory[];
   placeholder?: string;
 }) {
   const [q, setQ] = React.useState("");
   const [sub, setSub] = React.useState<string>(ALL);
 
-  // Restrict to the scoped main category (derived from kind). Materials without a kind fall to OTHER.
-  const scoped = React.useMemo(
-    () => options.filter((o) => categoryOf(o.kind) === categoryScope),
-    [options, categoryScope],
-  );
+  // Restrict to the scoped main categories (derived from kind). Materials without a kind fall to OTHER.
+  const scoped = React.useMemo(() => {
+    if (!categoryScope) return options;
+    const allowed = new Set(Array.isArray(categoryScope) ? categoryScope : [categoryScope]);
+    return options.filter((o) => allowed.has(categoryOf(o.kind)));
+  }, [options, categoryScope]);
 
   // Distinct effective subcategories present in scope → the filter chips.
   const subcategories = React.useMemo(() => {
@@ -55,12 +59,11 @@ export function MaterialFilterPicker({
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [scoped]);
 
-  // Reset the subcategory filter if the current one is no longer present (e.g. options changed).
-  React.useEffect(() => {
-    if (sub !== ALL && !subcategories.includes(sub)) setSub(ALL);
-  }, [subcategories, sub]);
+  // If the selected subcategory is no longer present (options changed), fall back to ALL — derived at
+  // render time so no effect/setState is needed (avoids cascading renders).
+  const activeSub = sub !== ALL && subcategories.includes(sub) ? sub : ALL;
 
-  const bySub = sub === ALL ? scoped : scoped.filter((o) => effectiveSubcategory(o) === sub);
+  const bySub = activeSub === ALL ? scoped : scoped.filter((o) => effectiveSubcategory(o) === activeSub);
   const filtered = rankMaterials(q, bySub, (o) => o.label);
   const selected = options.find((o) => o.id === value) ?? null;
 
@@ -85,9 +88,9 @@ export function MaterialFilterPicker({
 
       {subcategories.length > 1 ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
-          <button type="button" style={filterBtn(sub === ALL)} onClick={() => setSub(ALL)}>All</button>
+          <button type="button" style={filterBtn(activeSub === ALL)} onClick={() => setSub(ALL)}>All</button>
           {subcategories.map((s) => (
-            <button key={s} type="button" style={filterBtn(sub === s)} onClick={() => setSub(s)}>{s}</button>
+            <button key={s} type="button" style={filterBtn(activeSub === s)} onClick={() => setSub(s)}>{s}</button>
           ))}
         </div>
       ) : null}
@@ -99,7 +102,7 @@ export function MaterialFilterPicker({
           filtered.map((o) => (
             <button key={o.id} type="button" style={rowStyle(o.id === value)} onClick={() => onChange(o.id)}>
               <span>{o.label}</span>
-              {sub === ALL ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {effectiveSubcategory(o)}</span> : null}
+              {activeSub === ALL ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {effectiveSubcategory(o)}</span> : null}
               <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{fmtOnHand(o)}</span>
             </button>
           ))

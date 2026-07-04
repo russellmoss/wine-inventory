@@ -223,16 +223,15 @@ function AddSupplyForm({
   // optional custom SUBCATEGORY. Kind stays the load-bearing field (cost/dosing).
   const [category, setCategory] = React.useState<MaterialCategory>("ADDITIVE");
   const kindsInCategory = React.useMemo(() => kindsForCategory(category), [category]);
-  const [kind, setKind] = React.useState<MaterialKind>(kindsInCategory[0] ?? "OTHER");
+  const [kind, setKind] = React.useState<MaterialKind>("YEAST");
   const [subcategory, setSubcategory] = React.useState("");
   const [stockUnit, setStockUnit] = React.useState("g");
   const [openingQty, setOpeningQty] = React.useState("");
   const [unitCost, setUnitCost] = React.useState("");
 
-  // Keep kind valid when the category changes (snap to the first kind of the new category).
-  React.useEffect(() => {
-    setKind((k) => (kindsInCategory.includes(k) ? k : (kindsInCategory[0] ?? "OTHER")));
-  }, [kindsInCategory]);
+  // Effective kind: keep the chosen one while it's valid for the category, else snap to the category's
+  // first kind. Derived at render (no effect/setState → no cascading renders).
+  const activeKind = kindsInCategory.includes(kind) ? kind : (kindsInCategory[0] ?? "OTHER");
 
   // Suggest an existing near-match so "Fining agent" / "Fining agents" don't fragment into two chips.
   const dupe = subcategory.trim() ? closestMatch(subcategory, existingSubcategories) : null;
@@ -243,7 +242,7 @@ function AddSupplyForm({
       () =>
         createStockMaterialAction({
           name: name.trim(),
-          kind,
+          kind: activeKind,
           subcategory: subcategory.trim() || undefined,
           stockUnit,
           openingQty: openingQty.trim() !== "" ? Number(openingQty) : undefined,
@@ -273,7 +272,7 @@ function AddSupplyForm({
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 140px" }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Kind</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value as MaterialKind)} style={controlStyle}>
+          <select value={activeKind} onChange={(e) => setKind(e.target.value as MaterialKind)} style={controlStyle}>
             {kindsInCategory.map((k) => (
               <option key={k} value={k}>{KIND_LABELS[k]}</option>
             ))}

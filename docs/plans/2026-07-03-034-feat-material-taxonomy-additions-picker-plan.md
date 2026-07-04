@@ -1,7 +1,7 @@
 ---
 title: Material taxonomy (main category + customizable subcategory) and a filtered/fuzzy additions picker
 type: feat
-status: approved
+status: completed
 date: 2026-07-03
 branch: feat/material-taxonomy-additions-picker
 depth: standard
@@ -298,3 +298,12 @@ complete the task and confirm the ledger op + cost line are identical to pre-cha
 - [ ] Dosing math, ledger writes, and cost roll-up are unchanged (verify:work-orders*, verify:cost green).
 - [ ] Tenant isolation intact (tenant-isolation test + verify:invariants + verify:tripwires green).
 - [ ] All tests pass; `npm run build` clean; no regressions.
+
+## Build Status: COMPLETE (2026-07-04)
+
+All 9 units built on `feat/material-taxonomy-additions-picker`, one commit per unit.
+- **Schema:** one columns-only migration (`20260703040000_material_subcategory`, `cellar_material.subcategory TEXT`) applied to the dev DB via `migrate deploy` (renamed off a colliding timestamp). `MATERIAL_KINDS` gained `SUGAR` + `PACKAGING` (no migration).
+- **Design:** main category DERIVED from `kind` (no stored column); `kind` untouched (still cost/dosing/identity). `subcategory` is the only new column (customizable, organizational). `materialScopeForTask` is the single source for picker scope (used by both flows).
+- **Verify:** full suite **1038 passed / 23 skipped** (+47 new: taxonomy 12, search 8, cost-safety 9, +others); `npm run build` clean; lint 0 errors; `verify:invariants` 18/18; `verify:tripwires` 14/14; `verify:work-orders` 20 + `verify:work-orders-enhancements` 31 (dose flow + MATERIAL-cost-nets-to-zero unchanged).
+- **KNOWN CONCERN:** `verify:cost` could not run — it dies in its OWN initial test-data scrub on a pre-existing `accounting_delivery → costExportEvent` FK (orphaned Demo Winery data from a prior run), before any assertion. Orthogonal to this change (touches neither table); cost-inertness is proven instead by the MATERIAL-cost-nets-to-zero assertion in verify:work-orders, the `material-cost-safety` unit test, and `consumeMaterialCore` always writing a MATERIAL component regardless of kind.
+- **Env gotcha:** the `@prisma/client` wrapper reverts + tsc's incremental `.tsbuildinfo` caches stale Prisma types after a schema change → phantom "subcategory does not exist" errors. Fix: `prisma generate` then `tsc --noEmit --incremental false` / delete the tsbuildinfo. (Matches the project's known "Prisma client clobber" gotcha.)
