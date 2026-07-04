@@ -1,0 +1,22 @@
+import Link from "next/link";
+import { requireReadyUser } from "@/lib/dal";
+import { getWorkOrderPickers } from "@/lib/work-orders/data";
+import { TemplateEditorClient } from "../TemplateEditorClient";
+
+export const dynamic = "force-dynamic";
+
+export default async function NewTemplatePage() {
+  const user = await requireReadyUser();
+  const tenantId = user.activeOrganizationId;
+  if (!tenantId) return <div style={{ padding: 24 }}>Your account isn&apos;t attached to a winery.</div>;
+  if (user.role !== "admin") {
+    return (
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: 24 }}>
+        <Link href="/work-orders/templates" style={{ fontSize: 13, color: "var(--text-muted)" }}>← Templates</Link>
+        <div style={{ marginTop: 12 }}>Only an admin can create or edit templates. You can still create work orders from existing templates.</div>
+      </div>
+    );
+  }
+  const pickers = await getWorkOrderPickers(tenantId);
+  return <TemplateEditorClient mode="create" materials={pickers.materials.map((m) => ({ id: m.id, label: m.label, unit: m.unit }))} />;
+}
