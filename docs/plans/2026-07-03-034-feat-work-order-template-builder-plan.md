@@ -86,9 +86,12 @@ tools turns "compose a template" into a conversation, and lays the tool-boundary
 > **Phase-2 refresh (2026-07-04) — account for drift before building.** Since Phase 1 shipped, the
 > world under Unit 12 changed and the assistant MUST reflect it or it will author invalid/stale
 > templates: (1) **the block vocabulary grew** — plan 035 added `CRUSH` (de-stem/crush) and `PRESS`
-> (press/saignée) to `TASK_VOCABULARY` (alongside `NOTE`); (2) **the material model changed** — the
-> material-taxonomy work made the main category *derive from `kind`* and added a customizable
-> `subcategory` column + new `SUGAR`/`PACKAGING` kinds + the `MaterialFilterPicker`. The durable fix is
+> (press/saignée) to `TASK_VOCABULARY` (alongside `NOTE`); (2) **the material model changed** (taxonomy +
+> plan 036 intake) — the main **category is now a stored controlled column and the cost-safety authority**
+> (`isDoseableCategory`, excludes `CLEANING_SANITIZING`/`PACKAGING`); **families/"kinds" are a stored,
+> editable list** (`BUILTIN_FAMILIES` + user-added; the old free-text `subcategory` chips are retired from
+> the UI); materials carry **brand/generic display** (render via `materialDisplayName`, incl. the dose
+> snapshot); and dose units gained **imperial** members (gallon/fl oz/oz/lb in `DOSE_UNIT_LABELS`). The durable fix is
 > the new Key Decision below: **the assistant's block + material knowledge DERIVES from the live model at
 > tool-registration time, never a hardcoded snapshot** — so future vocabulary (e.g. Phase-20 vineyard
 > blocks) flows in without another re-plan. Units 12 + 13 are revised accordingly; Units 10–11 (dock UI)
@@ -195,7 +198,7 @@ reuse existing infra.
 | Template authoring roles | **Winemaker/admin only** (REVISED by council 2026-07-03); all users still issue/run WOs | All users author (original) | Cellar hands editing shared SOPs → fragmented/corrupted procedures (Gemini). Add an RBAC gate on the authoring actions. |
 | Versioning on edit | Reuse `updateTemplateSpecCore` (new immutable version each save) | In-place spec mutation | Decision 6 + existing invariant: issued work orders snap a `templateVersionId` and must stay as-run. |
 | Assistant tool granularity | Coarse tools: `list_templates`, `get_template` (read); `create_template`, `clone_template`, `update_template_spec`, `archive_template` (write). Block add/remove/reorder is the model composing a full new spec and calling `update_template_spec`. | Fine-grained `add_block`/`remove_block`/`reorder_blocks` write tools | Each persisted edit is a new immutable version + one confirm-nonce prompt. Fine-grained writes would spawn a version + a confirmation per block (version spam, confirmation fatigue). Coarse tools = one version, one confirm per user intent. |
-| Assistant block + material knowledge (refresh 2026-07-04) | **DERIVE from the live model at tool-registration time**: the block catalog the assistant sees is generated from `TASK_VOCABULARY` (block key → label + typed `fields` + `fieldOptions` + `hint`), and material lookup goes through a taxonomy-aware read (kind-derived category + `subcategory` + fuzzy, mirroring `MaterialFilterPicker`). | Hardcode the block list + a flat material list in the tool schema/description (a snapshot of the vocabulary at authoring time) | A snapshot silently rots the moment the vocabulary or material model changes (exactly what plan 035 + the taxonomy work just did). Deriving means CRUSH/PRESS/NOTE — and every future block (Phase-20 vineyard) — appear automatically, and material defaults resolve against the real catalog. One source of truth, no re-plan per addition. |
+| Assistant block + material knowledge (refresh 2026-07-04, incl. plan 036) | **DERIVE from the live model + REUSE its helpers at tool-registration time**: the block catalog is generated from `TASK_VOCABULARY` (block key → label + typed `fields` + `fieldOptions` + `hint`); material lookup reuses the shared cellar helpers — the additive scope from `isDoseableCategory` (stored-category authority), the stored family list (`BUILTIN_FAMILIES` + custom), and `materialDisplayName` for how a material is named in the proposal — the same read the additions picker uses. Do NOT restate the mechanism in the tool (call the helpers). | Hardcode the block list + a flat material list in the tool schema/description (a snapshot of the vocabulary/material model at authoring time) | A snapshot silently rots the moment the vocabulary or material model changes — it already changed 3× (plan 035 blocks, the taxonomy, plan 036 intake). Deriving + calling the shared helpers means CRUSH/PRESS/NOTE, every future block (Phase-20 vineyard), the stored category/family model, brand/generic display, and imperial dose units all flow in automatically. One source of truth, no re-plan per change. |
 | Template writes via assistant | Keep on the confirm-nonce gate, `adminOnly: false` | Skip confirmation (not destructive) | All users may author (decision 5), but confirmation shows a preview of the block list and matches the existing write-tool pattern + UX rule 6 (confirm the consequential). |
 | Dock mount | Inside `AppShell`, hidden on the `/assistant` route | Portal to `document.body`; render everywhere | Mounting in AppShell inherits the shell's client context and layout; hiding on `/assistant` avoids a chat-inside-a-chat. |
 | MCP | Design the tool boundary to be MCP-portable; do not build the server | Build MCP now | Out of scope; the typed tool + committer split is already the right seam. |
@@ -532,16 +535,19 @@ catalog available automatically, including the transform blocks:
   vocabulary already omits them from the block's `fields`, so deriving the schema enforces this
   structurally; add an explicit line in the tool description so the model doesn't invent them.
 - **`NOTE` checklist block** — a title-carrying to-do that writes nothing (Phase 1).
-- **Material defaults** on `ADDITION`/`FINING` blocks: resolve `materialId` through a **taxonomy-aware
-  read** (main category derived from `kind` + the customizable `subcategory` + fuzzy match, mirroring
-  `MaterialFilterPicker`) so the assistant picks a real, correctly-scoped material instead of guessing off
-  a flat list. **CRITICAL — scope to the additive family only:** an addition/fining dose material must be
-  an additive (the taxonomy plan is explicit that the picker defaults to the additive family, and
-  **PACKAGING and Cleaning & Sanitizing materials are NEVER dosed** — cleaning/sanitizing is OVERHEAD per
-  WORKORDER-3, packaging isn't dosed at all). `SUGAR` IS additive-family (e.g. chaptalization) → allowed;
-  `PACKAGING`/cleaning kinds → excluded from the material lookup for these blocks. Prefer reusing the
-  existing additive-scoped material read behind the picker; only add a small `find_material` read tool
-  (additive-family-scoped) if the model needs lookup-by-name.
+- **Material defaults** on `ADDITION`/`FINING` blocks: resolve `materialId` by **reusing the shared cellar
+  helpers, not re-deriving the taxonomy** (they changed 3× already — plan 035, taxonomy, plan 036). Query
+  the same read the additions picker uses and:
+  - **Scope to doseable materials via `isDoseableCategory(m.category)`** — the stored-category cost-safety
+    authority. **CRITICAL:** a dose material must be an additive; `CLEANING_SANITIZING` (OVERHEAD, WORKORDER-3)
+    and `PACKAGING` (never dosed) are **excluded**. `SUGAR` is additive-family (chaptalization) → allowed.
+    Don't reinvent this test — call the helper so a user-invented family routes correctly by its stored category.
+  - **Filter/group by the stored family list** (`BUILTIN_FAMILIES` + custom), not the retired free-text
+    `subcategory` chips.
+  - **Name the material in the proposal via `materialDisplayName(m)`** (brand/generic preference), so the
+    confirm card matches what the operator sees elsewhere.
+  Only add a small `find_material` read tool (doseable-scoped) if the model needs lookup-by-name; otherwise
+  reuse the picker's read.
 **Tests:** Unit 12 test file (see Unit 13).
 **Depends on:** Units 4, 5 (cores/helpers) — can run in parallel with the UI units.
 **Patterns to follow:** `log_brix` / `save_field_report` write-tool + committer pattern
@@ -563,9 +569,10 @@ rejected with an `ActionError` message.
 `CRUSH`, `PRESS`, and `NOTE`** (guards against a hardcoded snapshot regressing); (b) a `create_template`
 with a well-formed **CRUSH block carrying only "what" defaults succeeds**, while a spec that tries to bake
 in `picks`/`fractions`/`destVesselId`/`outputVolumeL` is **rejected or stripped** (those keys aren't in the
-block's vocabulary `fields`); (c) an addition/fining material default resolves through the additive-scoped
-taxonomy read — a `SUGAR` material resolves, while a `PACKAGING` (or Cleaning & Sanitizing) material is
-**NOT offered / rejected** as a dose (packaging/cleaning are never dosed — WORKORDER-3).
+block's vocabulary `fields`); (c) an addition/fining material default is scoped by `isDoseableCategory` —
+a `SUGAR` material resolves, while a `PACKAGING` (or `CLEANING_SANITIZING`) material is **NOT offered /
+rejected** as a dose (never dosed — WORKORDER-3) — and the proposal names it via `materialDisplayName`
+(brand/generic), matching the picker.
 **Tests:** this unit is the tests.
 **Depends on:** Unit 12
 **Patterns to follow:** tenant-scoped harness in
