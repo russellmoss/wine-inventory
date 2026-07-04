@@ -79,7 +79,7 @@ export function builtinSubLabel(kind: string | null | undefined): string {
  * Effective subcategory (grouping key) for a material: its custom free-text `subcategory` when set,
  * otherwise the built-in label for its kind. This is what the filter chips + management grouping use.
  */
-export function effectiveSubcategory(material: { kind: string | null | undefined; subcategory?: string | null }): string {
+export function effectiveSubcategory(material: { kind?: string | null; subcategory?: string | null }): string {
   const custom = (material.subcategory ?? "").trim();
   return custom.length > 0 ? custom : builtinSubLabel(material.kind);
 }
