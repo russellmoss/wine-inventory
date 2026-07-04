@@ -4,6 +4,7 @@ import React from "react";
 import { Card, Badge, Metric } from "@/components/ui";
 import type { CostComponent } from "@prisma/client";
 import type { LotCostView } from "@/lib/cost/data";
+import { useCurrency } from "@/components/money/CurrencyProvider";
 
 // Phase 8 (Unit 15): the cost-per-bottle/L TRUST surface (D14, G7). A decomposed capitalized stack with
 // $/L and % of total, an as-of date, an incomplete-basis warning (red, never a silent number), the
@@ -23,14 +24,12 @@ const COMPONENT_LABELS: Record<CostComponent, string> = {
 
 const num = { fontVariantNumeric: "tabular-nums" } as const;
 
-function money(n: number): string {
-  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-function perL(n: number | null): string {
-  return n == null ? "—" : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}/L`;
-}
-
 export function CostPanel({ cost }: { cost: LotCostView }) {
+  const { symbol } = useCurrency();
+  // Currency-aware money/perL (Phase 037): the tenant symbol prefixes every amount. perL keeps 4 max
+  // fraction digits (a per-litre unit cost is small) — formatMoney's fixed 2 is for whole amounts.
+  const money = (n: number): string => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const perL = (n: number | null): string => (n == null ? "—" : `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}/L`);
   const [open, setOpen] = React.useState(false);
   const complete = cost.completeness === "KNOWN";
   const billable = cost.ownership === "CUSTOM_CRUSH_CLIENT";

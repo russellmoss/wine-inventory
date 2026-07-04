@@ -13,6 +13,7 @@ import { costPerPackageUnit, deriveOpeningLot } from "@/lib/cost/intake-cost";
 import { closestMatch } from "@/lib/inventory/similarity";
 import { createStockMaterialAction } from "@/lib/cellar/actions";
 import { receiveSupplyAction, setMaterialActiveAction } from "@/lib/cost/actions";
+import { useCurrency } from "@/components/money/CurrencyProvider";
 
 // Phase 8/12 → 036: manage the supply catalog. Add via the "Add expendable" MODAL (full purchase record +
 // derived cost-per-measure); Receive costed lots via the (unchanged) Receive modal. Grouped by the stored
@@ -251,6 +252,7 @@ function AddExpendableModal({
   const [packageAmount, setPackageAmount] = React.useState("");
   const [packageUnit, setPackageUnit] = React.useState("g");
   const [totalCost, setTotalCost] = React.useState("");
+  const { symbol } = useCurrency();
 
   // The canonical stock unit is derived from the package unit's dimension (gal→mL, lb→g, unit→unit).
   const stockUnit = React.useMemo(() => {
@@ -346,7 +348,7 @@ function AddExpendableModal({
               {MEASURE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           </label>
-          <Input label="Total cost paid (optional)" value={totalCost} onChange={(e) => setTotalCost(e.target.value)} inputMode="decimal" placeholder="e.g. 500" style={{ flex: "1 1 160px" }} />
+          <Input label="Total cost paid (optional)" value={totalCost} onChange={(e) => setTotalCost(e.target.value)} inputMode="decimal" placeholder="e.g. 500" iconLeft={symbol} style={{ flex: "1 1 160px" }} />
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Input label="Vendor (optional)" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Scott Labs" style={{ flex: "1 1 180px" }} />
@@ -355,10 +357,10 @@ function AddExpendableModal({
 
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
           Tracked in <strong>{stockUnit}</strong>.{" "}
-          {perPackageUnit != null ? `≈ $${perPackageUnit}/${packageUnit}. ` : ""}
+          {perPackageUnit != null ? `≈ ${symbol}${perPackageUnit}/${packageUnit}. ` : ""}
           {opening.qtyInStockUnit != null && opening.unitCost != null
-            ? `Opening stock ${opening.qtyInStockUnit} ${stockUnit} at ~$${opening.unitCost}/${stockUnit}.`
-            : "Leave cost blank to record unknown-cost stock (never $0)."}
+            ? `Opening stock ${opening.qtyInStockUnit} ${stockUnit} at ~${symbol}${opening.unitCost}/${stockUnit}.`
+            : `Leave cost blank to record unknown-cost stock (never ${symbol}0).`}
         </p>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -389,6 +391,7 @@ function ReceiveModal({
   const [note, setNote] = React.useState("");
   const [vendorName, setVendorName] = React.useState("");
   const [terms, setTerms] = React.useState("");
+  const { symbol } = useCurrency();
   const unit = material?.stockUnit ?? "g";
   const qtyValid = qty.trim() !== "" && Number(qty) > 0;
 
@@ -414,7 +417,7 @@ function ReceiveModal({
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Input label={`Quantity (${unit})`} value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" placeholder="qty received" autoFocus style={{ flex: "1 1 140px" }} />
-          <Input label={`Cost per ${unit} (optional)`} value={unitCost} onChange={(e) => setUnitCost(e.target.value)} inputMode="decimal" placeholder="unit cost" style={{ flex: "1 1 140px" }} />
+          <Input label={`Cost per ${unit} (optional)`} value={unitCost} onChange={(e) => setUnitCost(e.target.value)} inputMode="decimal" placeholder="unit cost" iconLeft={symbol} style={{ flex: "1 1 140px" }} />
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Input label="Lot / PO code (optional)" value={lotCode} onChange={(e) => setLotCode(e.target.value)} placeholder="supplier lot ref" style={{ flex: "1 1 140px" }} />

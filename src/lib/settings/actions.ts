@@ -6,6 +6,7 @@ import { adminAction } from "@/lib/actions";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import { COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
+import { coerceCurrency } from "@/lib/money/currency";
 
 // Phase 7 (K14): toggle the winery-level sparkling capability. Admin-only; audited. Revalidates
 // the layout so the gated nav (En Tirage) appears/disappears immediately.
@@ -31,6 +32,7 @@ export const setSparklingEnabled = adminAction(async ({ actor }, enabled: boolea
 // their old version and closed history never re-values. Stamp `costingMethodEffectiveAt = now` only when
 // the METHOD changes, so ops before the switch keep the historical method (resolveMethodAt contract).
 type CostSettingsInput = {
+  currency: string; // Phase 037: tenant currency (coerced to the supported set); NOT a policy-version input
   costingMethod: CostingMethod;
   capitalizeFruit: boolean;
   capitalizeBarrel: boolean;
@@ -87,7 +89,10 @@ export const saveCostSettings = adminAction(
       // Preserve the existing effective date unless the method actually changed this save.
       const effectiveAt = methodChanged ? new Date() : (current?.costingMethodEffectiveAt ?? null);
 
+      // Currency is a label, not a costing policy input — persisted here but excluded from policyChanged (D17).
+      const currency = coerceCurrency(input.currency);
       const data = {
+        currency,
         costingMethod: input.costingMethod,
         costingMethodEffectiveAt: effectiveAt,
         capitalizeFruit: input.capitalizeFruit,
@@ -110,7 +115,7 @@ export const saveCostSettings = adminAction(
         summary: policyChanged ? `Costing policy updated (v${nextVersion})` : "Costing policy saved (no change)",
       });
       result = {
-        currency: COST_SETTINGS_DEFAULTS.currency,
+        currency,
         costingMethod: input.costingMethod,
         costingMethodEffectiveAt: effectiveAt,
         capitalizeFruit: input.capitalizeFruit,
