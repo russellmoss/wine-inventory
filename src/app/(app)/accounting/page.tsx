@@ -4,6 +4,8 @@ import { Card, Badge, Eyebrow } from "@/components/ui";
 import { getAccountingDashboard } from "@/lib/accounting/dashboard";
 import { getCommerce7Dashboard } from "@/lib/commerce/dashboard";
 import { getDtcMargin } from "@/lib/commerce/margin";
+import { getTenantCurrency } from "@/lib/settings/data";
+import { formatMoney } from "@/lib/money/currency";
 
 export const metadata = { title: "Accounting" };
 export const dynamic = "force-dynamic";
@@ -27,8 +29,8 @@ const ORDER = ["POSTED", "PENDING", "IN_FLIGHT", "VERIFYING", "FAILED", "DELETED
 
 export default async function AccountingPage() {
   await requireAdmin();
-  const [{ connection, counts, attention, needsAttention }, c7, margin] = await Promise.all([getAccountingDashboard(), getCommerce7Dashboard(), getDtcMargin()]);
-  const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const [{ connection, counts, attention, needsAttention }, c7, margin, currency] = await Promise.all([getAccountingDashboard(), getCommerce7Dashboard(), getDtcMargin(), getTenantCurrency()]);
+  const money = (n: number) => formatMoney(n, currency);
   const connected = connection?.status === "CONNECTED";
   const c7Connected = c7.connection?.status === "CONNECTED";
   const C7_ORDER = ["POSTED", "PENDING", "IN_FLIGHT", "VERIFYING", "FAILED", "DELETED_IN_GL"];

@@ -11,6 +11,7 @@ import {
 } from "@/lib/cellar/additions-math";
 import { STOCK_UNITS, materialDisplayName, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import { createStockMaterialAction } from "@/lib/cellar/actions";
+import { useCurrency } from "@/components/money/CurrencyProvider";
 
 // Phase 8 (Unit 10): the stock-aware material picker. Replaces the free-text datalist with a
 // kind-filtered dropdown that shows on-hand next to each item, a "Create new…" modal that seeds a
@@ -201,6 +202,7 @@ function CreateStockMaterialModal({
   const [unitCost, setUnitCost] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+  const { symbol } = useCurrency();
 
   // Form state resets on open via a `key` remount in the parent — no reset effect needed.
   const nameValid = name.trim().length > 0;
@@ -269,7 +271,7 @@ function CreateStockMaterialModal({
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Input label="Opening stock (optional)" value={openingQty} onChange={(e) => setOpeningQty(e.target.value)} inputMode="decimal" placeholder={`qty in ${stockUnit}`} style={{ flex: "1 1 140px" }} />
-          <Input label={`Cost per ${stockUnit} (optional)`} value={unitCost} onChange={(e) => setUnitCost(e.target.value)} inputMode="decimal" placeholder="unit cost" style={{ flex: "1 1 140px" }} />
+          <Input label={`Cost per ${stockUnit} (optional)`} value={unitCost} onChange={(e) => setUnitCost(e.target.value)} inputMode="decimal" placeholder="unit cost" iconLeft={symbol} style={{ flex: "1 1 140px" }} />
         </div>
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
           Opening stock and cost are optional — physical tracking works without them. Leaving cost blank

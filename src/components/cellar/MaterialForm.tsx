@@ -9,6 +9,7 @@ import {
 import { MEASURE_UNITS, dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
 import { costPerPackageUnit, deriveOpeningLot } from "@/lib/cost/intake-cost";
 import { closestMatch } from "@/lib/inventory/similarity";
+import { useCurrency } from "@/components/money/CurrencyProvider";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 
 // Phase 037: the base-data field block shared by the "Add expendable" and "Edit" modals — one definition so
@@ -109,6 +110,7 @@ export function MaterialForm({
 }) {
   const stockUnit = stockUnitFor(value.packageUnit);
   const familyListId = React.useId(); // unique per instance so Add + Edit datalists never collide
+  const { symbol } = useCurrency();
 
   // Family suggestions: the built-ins for the chosen category + any existing families in it.
   const familyOptions = React.useMemo(() => {
@@ -171,7 +173,7 @@ export function MaterialForm({
           </select>
         </label>
         {mode === "create" ? (
-          <Input label="Total cost paid (optional)" value={value.totalCost} onChange={(e) => onChange({ totalCost: e.target.value })} inputMode="decimal" placeholder="e.g. 500" style={{ flex: "1 1 160px" }} />
+          <Input label="Total cost paid (optional)" value={value.totalCost} onChange={(e) => onChange({ totalCost: e.target.value })} inputMode="decimal" placeholder="e.g. 500" iconLeft={symbol} style={{ flex: "1 1 160px" }} />
         ) : null}
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -182,10 +184,10 @@ export function MaterialForm({
       {mode === "create" ? (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
           Tracked in <strong>{stockUnit}</strong>.{" "}
-          {perPackageUnit != null ? `≈ $${perPackageUnit}/${value.packageUnit}. ` : ""}
+          {perPackageUnit != null ? `≈ ${symbol}${perPackageUnit}/${value.packageUnit}. ` : ""}
           {opening.qtyInStockUnit != null && opening.unitCost != null
-            ? `Opening stock ${opening.qtyInStockUnit} ${stockUnit} at ~$${opening.unitCost}/${stockUnit}.`
-            : "Leave cost blank to record unknown-cost stock (never $0)."}
+            ? `Opening stock ${opening.qtyInStockUnit} ${stockUnit} at ~${symbol}${opening.unitCost}/${stockUnit}.`
+            : `Leave cost blank to record unknown-cost stock (never ${symbol}0).`}
         </p>
       ) : (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>

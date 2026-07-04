@@ -15,6 +15,7 @@ import {
 } from "@/components/cellar/MaterialForm";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
 import { receiveSupplyAction, setMaterialActiveAction } from "@/lib/cost/actions";
+import { useCurrency } from "@/components/money/CurrencyProvider";
 
 // Phase 8/12 → 036 → 037: manage the supply catalog. Categories are collapsible + searchable; clicking a
 // card opens a detail modal where you View the base setup data and then Edit / Receive / Deactivate it. Add
@@ -318,6 +319,7 @@ function MaterialDetailModal({
   onReceive: () => void;
   onClose: () => void;
 }) {
+  const { format } = useCurrency();
   if (!material) return <Modal open={false} onClose={onClose} title="">{null}</Modal>;
 
   const m = material;
@@ -351,7 +353,7 @@ function MaterialDetailModal({
           <DetailRow label="On hand"><span style={num}>{m.onHand ?? 0}</span> {unit}</DetailRow>
         ) : null}
         <DetailRow label="Cost">
-          {m.avgUnitCost != null ? <span style={num}>≈ ${m.avgUnitCost} / {unit}</span> : "Unknown (no priced stock)"}
+          {m.avgUnitCost != null ? <span style={num}>≈ {format(m.avgUnitCost, { per: unit })}</span> : "Unknown (no priced stock)"}
         </DetailRow>
         <DetailRow label="Status">
           {inactive ? <Badge tone="neutral" variant="soft">inactive</Badge> : <Badge tone="green" variant="soft">active</Badge>}
@@ -462,6 +464,7 @@ function ReceiveModal({
   const [note, setNote] = React.useState("");
   const [vendorName, setVendorName] = React.useState("");
   const [terms, setTerms] = React.useState("");
+  const { symbol } = useCurrency();
   const unit = material?.stockUnit ?? "g";
   const qtyValid = qty.trim() !== "" && Number(qty) > 0;
 
@@ -487,7 +490,7 @@ function ReceiveModal({
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Input label={`Quantity (${unit})`} value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" placeholder="qty received" autoFocus style={{ flex: "1 1 140px" }} />
-          <Input label={`Cost per ${unit} (optional)`} value={unitCost} onChange={(e) => setUnitCost(e.target.value)} inputMode="decimal" placeholder="unit cost" style={{ flex: "1 1 140px" }} />
+          <Input label={`Cost per ${unit} (optional)`} value={unitCost} onChange={(e) => setUnitCost(e.target.value)} inputMode="decimal" placeholder="unit cost" iconLeft={symbol} style={{ flex: "1 1 140px" }} />
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Input label="Lot / PO code (optional)" value={lotCode} onChange={(e) => setLotCode(e.target.value)} placeholder="supplier lot ref" style={{ flex: "1 1 140px" }} />
