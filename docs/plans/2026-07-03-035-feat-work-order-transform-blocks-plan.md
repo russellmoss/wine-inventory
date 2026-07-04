@@ -1,7 +1,7 @@
 ---
 title: De-stem/Crush + Press/Saignée as Work-Order Blocks
 type: feat
-status: draft
+status: complete
 date: 2026-07-03
 branch: feat/work-order-transform-blocks
 depth: deep
@@ -286,12 +286,13 @@ merged-fraction refusal + print resolution.
 
 ## Success Criteria
 
-- [ ] A template can include De-stem/crush and Press/saignée blocks (builder, Operations group).
-- [ ] The crew completes a crush on the work order (picks + kg + output) → real must lot + yield.
-- [ ] The crew completes a press on the work order (fractions) → child lots + lineage.
-- [ ] Rejecting a crush/press task reverses it; a merged-fraction press refuses undo with a clear message.
-- [ ] Template "what" defaults prefill; picks/fractions are run-time only.
-- [ ] Detail + print render crush/press with human labels, no raw ids.
-- [ ] `verify:work-orders-transform` green; `verify:reverse-transform` / `verify:work-orders` /
-      `verify:work-orders-enhancements` still green; standalone `/ferment/crush` + `/ferment/press`
-      unchanged; `npm run build` + full suite green; no schema migration.
+- [x] A template can include De-stem/crush and Press/saignée blocks (builder, Operations group).
+- [x] The crew completes a crush on the work order (picks + kg + output) → real must lot + yield.
+- [x] The crew completes a press on the work order (fractions) → child lots + lineage.
+- [x] Rejecting a crush/press task reverses it; a merged-fraction press refuses undo with a clear message.
+- [x] Template "what" defaults prefill; picks/fractions are run-time only.
+- [x] Detail + print render crush/press with human labels, no raw ids.
+- [x] `verify:work-orders-transform` green (26 assertions); `verify:reverse-transform` still green (37);
+      standalone `/ferment/crush` + `/ferment/press` unchanged (behavior-preserving tx-form extraction);
+      `npx next build` + full suite green (1011 pass; only the pre-existing invariant-drift suite fails);
+      no schema migration.
