@@ -11,6 +11,7 @@ import {
 } from "@/lib/cellar/material-normalize";
 import { STOCK_UNITS, coerceStockUnit, materialDisplayName, type StockUnit, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import { coerceFamily, categoryOf, coerceMaterialCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { deriveOpeningLot } from "@/lib/cost/intake-cost";
 
 export { materialDisplayName };
 
@@ -230,6 +231,9 @@ export type CreateStockMaterialInput = MaterialIntakeInput & {
   openingQty?: number | null;
   /** per-stockUnit cost of the opening stock; null = unknown cost (D14). */
   unitCost?: number | null;
+  /** Phase 036 intake: total price paid for the package. With packageAmount+packageUnit it derives the
+   * opening lot (qty in stockUnit + per-stockUnit unitCost) via deriveOpeningLot — overrides openingQty/unitCost. */
+  totalCost?: number | null;
 };
 
 /**
@@ -244,10 +248,19 @@ export async function createStockMaterialCore(
 ): Promise<CellarMaterialDTO> {
   const f = deriveMaterialFields(input);
   const stockUnit = coerceStockUnit(input.stockUnit);
-  const openingQty =
+  let openingQty =
     input.openingQty != null && Number.isFinite(input.openingQty) && input.openingQty > 0 ? input.openingQty : 0;
-  const unitCost =
+  let unitCost =
     input.unitCost != null && Number.isFinite(input.unitCost) && input.unitCost >= 0 ? input.unitCost : null;
+  // Phase 036: a purchase (package amount+unit + total cost) derives the opening lot in the canonical stock
+  // unit + its per-stock-unit cost (deriveOpeningLot). Overrides the raw openingQty/unitCost when it resolves.
+  if (input.totalCost != null && f.packageAmount != null && f.packageUnit) {
+    const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost, stockUnit });
+    if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
+      openingQty = derived.qtyInStockUnit;
+      unitCost = derived.unitCost; // may be null → UNKNOWN cost (D14), which is correct
+    }
+  }
 
   return runInTenantTx(async (tx) => {
     const existing = await tx.cellarMaterial.findFirst({
