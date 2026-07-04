@@ -94,3 +94,16 @@ export function coerceMaterialCategory(raw: unknown): MaterialCategory {
   const up = String(raw ?? "").trim().toUpperCase();
   return (MATERIAL_CATEGORIES as readonly string[]).includes(up) ? (up as MaterialCategory) : "OTHER";
 }
+
+/**
+ * Which main categories the material picker shows for a given work-order task (single source of truth,
+ * used by both the plan + execute flows). Additions dose additives (+ generic OTHER); cleaning/sanitizing
+ * tasks draw cleaning supplies (+ OTHER); anything else (e.g. GAS) shows all. Keeping cleaning/packaging
+ * OUT of the additions picker is what stops a non-additive from being dosed into wine as a MATERIAL cost
+ * line (cost-safety guard, WORKORDER-3 is the overhead counterpart on the maintenance path).
+ */
+export function materialScopeForTask(def: { opType?: string | null; activityType?: string | null }): MaterialCategory[] | undefined {
+  if (def.opType === "ADDITION" || def.opType === "FINING") return ["ADDITIVE", "OTHER"];
+  if (def.activityType === "CLEAN" || def.activityType === "SANITIZE") return ["CLEANING_SANITIZING", "OTHER"];
+  return undefined;
+}

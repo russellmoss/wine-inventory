@@ -9,17 +9,9 @@ import { computeDoseTotal, isRateUnit } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
 import { VesselMultiSelect } from "./VesselMultiSelect";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
-import type { MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
-
-// The material picker's main-category scope per task: additions dose additives (+ generic OTHER);
-// cleaning/sanitizing tasks draw cleaning supplies (+ OTHER); anything else shows all materials.
-function materialScopeForDef(def: { opType?: string; activityType?: string }): MaterialCategory[] | undefined {
-  if (def.opType === "ADDITION" || def.opType === "FINING") return ["ADDITIVE", "OTHER"];
-  if (def.activityType === "CLEAN" || def.activityType === "SANITIZE") return ["CLEANING_SANITIZING", "OTHER"];
-  return undefined;
-}
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
@@ -146,7 +138,7 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
   // Units dropdown (doseUnit); the live total estimate is appended by renderEstimate below.
   function renderTaskFields(taskIdx: number, def: (typeof TASK_VOCABULARY)[string], defaults?: Record<string, unknown>) {
     const hasDoseUnit = "doseUnit" in def.fields;
-    const materialScope = materialScopeForDef(def);
+    const materialScope = materialScopeForTask(def);
     return Object.entries(def.fields).map(([key, type]) => renderField(taskIdx, key, type, defaults?.[key], def.fieldOptions?.[key], hasDoseUnit, materialScope));
   }
 

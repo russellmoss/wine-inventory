@@ -12,16 +12,7 @@ import type { PressFormData } from "@/lib/ferment/press-data";
 import { CrushTaskForm } from "./CrushTaskForm";
 import { PressTaskForm } from "./PressTaskForm";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
-import type { MaterialCategory } from "@/lib/cellar/material-taxonomy";
-
-// Which main categories the material picker shows per task type: additions dose additives (+ generic
-// OTHER); cleaning/sanitizing tasks draw cleaning supplies (+ OTHER); anything else (e.g. GAS) shows all.
-const MATERIAL_SCOPE_BY_VOCAB: Record<string, MaterialCategory[] | undefined> = {
-  ADDITION: ["ADDITIVE", "OTHER"],
-  FINING: ["ADDITIVE", "OTHER"],
-  CLEAN: ["CLEANING_SANITIZING", "OTHER"],
-  SANITIZE: ["CLEANING_SANITIZING", "OTHER"],
-};
+import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
@@ -59,7 +50,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
             options={pickers.materials}
             value={String(cur)}
             onChange={(id) => set(key, id)}
-            categoryScope={MATERIAL_SCOPE_BY_VOCAB[vocabKey ?? ""]}
+            categoryScope={def ? materialScopeForTask(def) : undefined}
           />
         </label>
       );
