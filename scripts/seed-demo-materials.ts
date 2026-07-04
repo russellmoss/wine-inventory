@@ -16,9 +16,9 @@
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { createStockMaterialCore } from "@/lib/cellar/materials";
-import { categoryOf, effectiveSubcategory, CATEGORY_LABELS } from "@/lib/cellar/material-taxonomy";
+import { categoryOf, familyLabel, CATEGORY_LABELS } from "@/lib/cellar/material-taxonomy";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
-import type { MaterialKind, RateBasis } from "@/lib/cellar/additions-math";
+import type { RateBasis } from "@/lib/cellar/additions-math";
 import type { StockUnit } from "@/lib/cellar/materials-shared";
 import { disconnectSystem } from "../src/lib/tenant/system";
 
@@ -26,21 +26,32 @@ const DEMO_ORG_ID = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@seed-demo-materials" };
 
 type Row = {
-  name: string;
-  kind: MaterialKind;
-  subcategory?: string; // custom subcategory; omit to fall back to the built-in kind label
+  name?: string; // legacy: identity/display when no generic/brand given
+  kind: string; // family (built-in code or a custom family name)
+  subcategory?: string; // dormant (Phase 036 retired the fine-grained level; grouping is by family)
+  category?: string; // stored main category; omit for built-in kinds (falls back to categoryOf)
   stockUnit: StockUnit;
   defaultBasis?: RateBasis | null;
   openingQty?: number; // seeds a costed SupplyLot so on-hand shows in the picker
   unitCost?: number;
+  // Phase 036 intake fields
+  genericName?: string;
+  brand?: string;
+  brandName?: string;
+  preferGeneric?: boolean;
+  vendor?: string;
+  vendorUrl?: string;
+  packageAmount?: number; // with packageUnit + totalCost → derives the opening lot (imperial ok)
+  packageUnit?: string;
+  totalCost?: number;
 };
 
 const CATALOG: Row[] = [
   // ── ADDITIVES ─────────────────────────────────────────────────────────────
-  // Yeast — custom subcategories by ferment style (shows custom grouping within one kind)
-  { name: "Lalvin EC-1118", kind: "YEAST", subcategory: "Sparkling / Neutral", stockUnit: "g", defaultBasis: "G_HL", openingQty: 500, unitCost: 0.12 },
-  { name: "Lalvin RC-212", kind: "YEAST", subcategory: "Red", stockUnit: "g", defaultBasis: "G_HL", openingQty: 500, unitCost: 0.14 },
-  { name: "Lalvin QA23", kind: "YEAST", subcategory: "White / Aromatic", stockUnit: "g", defaultBasis: "G_HL", openingQty: 500, unitCost: 0.13 },
+  // Yeast — brand names shown (preferGeneric:false); a purchase in lb shows imperial cost-per-measure.
+  { kind: "YEAST", genericName: "Wine Yeast", brand: "Lallemand", brandName: "Lalvin EC-1118", preferGeneric: false, vendor: "Scott Labs", vendorUrl: "https://scottlab.com", stockUnit: "g", defaultBasis: "G_HL", packageAmount: 1, packageUnit: "lb", totalCost: 54 },
+  { kind: "YEAST", genericName: "Wine Yeast", brand: "Lallemand", brandName: "Lalvin RC-212", preferGeneric: false, vendor: "Scott Labs", stockUnit: "g", defaultBasis: "G_HL", openingQty: 500, unitCost: 0.14 },
+  { kind: "YEAST", genericName: "Wine Yeast", brand: "Lallemand", brandName: "Lalvin QA23", preferGeneric: false, vendor: "Scott Labs", stockUnit: "g", defaultBasis: "G_HL", openingQty: 500, unitCost: 0.13 },
   // Bacteria — no custom subcategory → falls back to the built-in "Bacteria (MLF)" chip
   { name: "Viniflora Oenos (MLF)", kind: "MLF", stockUnit: "g", defaultBasis: "G_HL", openingQty: 250, unitCost: 0.30 },
   // SO2
@@ -62,8 +73,10 @@ const CATALOG: Row[] = [
   { name: "Isinglass", kind: "FINING", subcategory: "Isinglass", stockUnit: "g", defaultBasis: "G_HL", openingQty: 200, unitCost: 0.40 },
   { name: "Gelatin (fining)", kind: "FINING", subcategory: "Gelatin", stockUnit: "g", defaultBasis: "G_HL", openingQty: 300, unitCost: 0.15 },
   { name: "Pea Protein (vegan)", kind: "FINING", subcategory: "Vegan", stockUnit: "g", defaultBasis: "G_HL", openingQty: 300, unitCost: 0.25 },
-  // Bentonite / Chitosan
-  { name: "Sodium Bentonite", kind: "BENTONITE", stockUnit: "g", defaultBasis: "G_HL", openingQty: 4000, unitCost: 0.01 },
+  // Bentonite — generic name shown (preferGeneric:true); a 50 lb bag shows imperial → g cost-per-measure.
+  { kind: "BENTONITE", genericName: "Bentonite", brand: "Scott", brandName: "KWK Granular", preferGeneric: true, vendor: "Scott Labs", stockUnit: "g", defaultBasis: "G_HL", packageAmount: 50, packageUnit: "lb", totalCost: 120 },
+  // A CUSTOM family (not a built-in): shows "+ add family" in action, grouped under its own chip.
+  { kind: "Sur Lie Aid", category: "ADDITIVE", genericName: "Mannoprotein", stockUnit: "g", defaultBasis: "G_HL", openingQty: 300, unitCost: 0.55 },
   { name: "Chitosan (fungal)", kind: "CHITOSAN", subcategory: "Anti-Brett", stockUnit: "g", defaultBasis: "G_HL", openingQty: 500, unitCost: 0.35 },
   // Enzymes
   { name: "Pectinase (Lallzyme EX)", kind: "ENZYME", subcategory: "Pectic", stockUnit: "g", defaultBasis: "G_HL", openingQty: 500, unitCost: 0.28 },
@@ -72,7 +85,8 @@ const CATALOG: Row[] = [
   // ── CLEANING & SANITIZING (overhead — never wine COGS) ────────────────────
   { name: "Proxycarb (sodium percarbonate)", kind: "CLEANING", subcategory: "Alkaline", stockUnit: "g", defaultBasis: null, openingQty: 10000, unitCost: 0.006 },
   { name: "Citric Acid Cleaner", kind: "CLEANING", subcategory: "Acid Wash", stockUnit: "g", defaultBasis: null, openingQty: 5000, unitCost: 0.008 },
-  { name: "Peracetic Acid (PAA)", kind: "SANITIZER", subcategory: "PAA", stockUnit: "mL", defaultBasis: null, openingQty: 4000, unitCost: 0.01 },
+  // A gallon drum — imperial volume → mL cost-per-measure.
+  { name: "Peracetic Acid (PAA)", kind: "SANITIZER", stockUnit: "mL", defaultBasis: null, vendor: "BevChem", packageAmount: 5, packageUnit: "gal", totalCost: 95 },
   { name: "Star San", kind: "SANITIZER", subcategory: "Acid Anionic", stockUnit: "mL", defaultBasis: null, openingQty: 2000, unitCost: 0.02 },
 
   // ── PACKAGING (the new category — never dosed into wine) ──────────────────
@@ -91,30 +105,41 @@ async function main() {
       await createStockMaterialCore(ACTOR, {
         name: r.name,
         kind: r.kind,
+        category: r.category,
         subcategory: r.subcategory,
+        genericName: r.genericName,
+        brand: r.brand,
+        brandName: r.brandName,
+        preferGeneric: r.preferGeneric,
+        vendor: r.vendor,
+        vendorUrl: r.vendorUrl,
         stockUnit: r.stockUnit,
         defaultBasis: r.defaultBasis ?? undefined,
         openingQty: r.openingQty ?? null,
         unitCost: r.unitCost ?? null,
+        packageAmount: r.packageAmount,
+        packageUnit: r.packageUnit,
+        totalCost: r.totalCost,
       });
     }
   });
 
-  // Summarize what a user will now see: grouped by main category → effective subcategory.
+  // Summarize what a user will now see: grouped by main category → family (the filter-chip dimension).
   const grouped = new Map<string, Map<string, string[]>>();
   for (const r of CATALOG) {
-    const cat = CATEGORY_LABELS[categoryOf(r.kind)];
-    const sub = effectiveSubcategory(r);
+    const cat = CATEGORY_LABELS[(r.category as keyof typeof CATEGORY_LABELS) ?? categoryOf(r.kind)];
+    const fam = familyLabel(r.kind);
+    const shown = r.preferGeneric ? (r.genericName ?? r.brandName ?? r.name ?? "") : (r.brandName ?? r.genericName ?? r.name ?? "");
     if (!grouped.has(cat)) grouped.set(cat, new Map());
-    const subs = grouped.get(cat)!;
-    if (!subs.has(sub)) subs.set(sub, []);
-    subs.get(sub)!.push(r.name);
+    const fams = grouped.get(cat)!;
+    if (!fams.has(fam)) fams.set(fam, []);
+    fams.get(fam)!.push(shown);
   }
-  for (const [cat, subs] of grouped) {
+  for (const [cat, fams] of grouped) {
     console.log(`\n${cat}`);
-    for (const [sub, names] of subs) console.log(`  • ${sub}: ${names.join(", ")}`);
+    for (const [fam, names] of fams) console.log(`  • ${fam}: ${names.join(", ")}`);
   }
-  console.log(`\nDemo material catalog seeded ✓ (${CATALOG.length} items). Open /setup/expendables or issue an Addition work order to see the categories, subcategory filter chips, and fuzzy search.`);
+  console.log(`\nDemo material catalog seeded ✓ (${CATALOG.length} items). Open /setup/expendables (Add expendable) or issue an Addition work order to see categories, family chips, fuzzy search, brand/generic display, and imperial cost-per-measure.`);
 }
 
 main()
