@@ -1,13 +1,15 @@
 "use client";
 
 import React from "react";
-import { categoryOf, effectiveSubcategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { categoryOf, builtinSubLabel, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { rankMaterials } from "@/lib/inventory/material-search";
 
 // Phase 034: single-select material picker for the work-order additions flow. Replaces a flat <select>
-// with (1) subcategory FILTER BUTTONS (built-in kinds + custom subcategories, same pill UX as the vessel
-// Tanks/Barrels filter) and (2) FUZZY search. Scoped to one main category (default ADDITIVE) so the dose
-// picker only shows additives, not cleaning/packaging. Pure client, design-token styled, no new deps.
+// with (1) FAMILY FILTER BUTTONS (the material KIND family — Yeast, Fining, Nutrient, Acid, Tannin… —
+// same pill UX as the vessel Tanks/Barrels filter) and (2) FUZZY search. Chips are the kind FAMILY, not the
+// per-material custom subcategory (Egg White / Isinglass / Gelatin are all one "Fining" chip; find the
+// specific product via search). Scoped to one main category (default ADDITIVE) so the dose picker only
+// shows additives, not cleaning/packaging. Pure client, design-token styled, no new deps.
 
 export type MaterialPickerOption = {
   id: string;
@@ -43,7 +45,7 @@ export function MaterialFilterPicker({
   placeholder?: string;
 }) {
   const [q, setQ] = React.useState("");
-  const [sub, setSub] = React.useState<string>(ALL);
+  const [family, setFamily] = React.useState<string>(ALL);
 
   // Restrict to the scoped main categories (derived from kind). Materials without a kind fall to OTHER.
   const scoped = React.useMemo(() => {
@@ -52,19 +54,20 @@ export function MaterialFilterPicker({
     return options.filter((o) => allowed.has(categoryOf(o.kind)));
   }, [options, categoryScope]);
 
-  // Distinct effective subcategories present in scope → the filter chips.
-  const subcategories = React.useMemo(() => {
+  // Distinct KIND families present in scope → the filter chips (Yeast, Fining, Nutrient…). The custom
+  // per-material subcategory is intentionally NOT a chip (too granular); the fuzzy search finds specifics.
+  const families = React.useMemo(() => {
     const set = new Set<string>();
-    for (const o of scoped) set.add(effectiveSubcategory(o));
+    for (const o of scoped) set.add(builtinSubLabel(o.kind));
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [scoped]);
 
-  // If the selected subcategory is no longer present (options changed), fall back to ALL — derived at
-  // render time so no effect/setState is needed (avoids cascading renders).
-  const activeSub = sub !== ALL && subcategories.includes(sub) ? sub : ALL;
+  // If the selected family is no longer present (options changed), fall back to ALL — derived at render
+  // time so no effect/setState is needed (avoids cascading renders).
+  const activeFamily = family !== ALL && families.includes(family) ? family : ALL;
 
-  const bySub = activeSub === ALL ? scoped : scoped.filter((o) => effectiveSubcategory(o) === activeSub);
-  const filtered = rankMaterials(q, bySub, (o) => o.label);
+  const byFamily = activeFamily === ALL ? scoped : scoped.filter((o) => builtinSubLabel(o.kind) === activeFamily);
+  const filtered = rankMaterials(q, byFamily, (o) => o.label);
   const selected = options.find((o) => o.id === value) ?? null;
 
   return (
@@ -73,7 +76,7 @@ export function MaterialFilterPicker({
       {selected ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14 }}>
           <span style={{ fontWeight: 600 }}>{selected.label}</span>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{effectiveSubcategory(selected)}</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{builtinSubLabel(selected.kind)}</span>
           <button type="button" aria-label="Clear selection" onClick={() => onChange("")} style={{ marginLeft: "auto", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 12, borderRadius: 999, padding: "2px 10px" }}>Change</button>
         </div>
       ) : null}
@@ -86,11 +89,11 @@ export function MaterialFilterPicker({
         style={{ width: "100%", fontSize: 14, padding: "6px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface-raised)", marginBottom: 8 }}
       />
 
-      {subcategories.length > 1 ? (
+      {families.length > 1 ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
-          <button type="button" style={filterBtn(activeSub === ALL)} onClick={() => setSub(ALL)}>All</button>
-          {subcategories.map((s) => (
-            <button key={s} type="button" style={filterBtn(activeSub === s)} onClick={() => setSub(s)}>{s}</button>
+          <button type="button" style={filterBtn(activeFamily === ALL)} onClick={() => setFamily(ALL)}>All</button>
+          {families.map((f) => (
+            <button key={f} type="button" style={filterBtn(activeFamily === f)} onClick={() => setFamily(f)}>{f}</button>
           ))}
         </div>
       ) : null}
@@ -102,7 +105,7 @@ export function MaterialFilterPicker({
           filtered.map((o) => (
             <button key={o.id} type="button" style={rowStyle(o.id === value)} onClick={() => onChange(o.id)}>
               <span>{o.label}</span>
-              {activeSub === ALL ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {effectiveSubcategory(o)}</span> : null}
+              {activeFamily === ALL ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {builtinSubLabel(o.kind)}</span> : null}
               <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{fmtOnHand(o)}</span>
             </button>
           ))
