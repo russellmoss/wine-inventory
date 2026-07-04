@@ -9,7 +9,7 @@ import {
   type MaterialKind,
   type RateBasis,
 } from "@/lib/cellar/additions-math";
-import { STOCK_UNITS, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
+import { STOCK_UNITS, materialDisplayName, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import { createStockMaterialAction } from "@/lib/cellar/actions";
 
 // Phase 8 (Unit 10): the stock-aware material picker. Replaces the free-text datalist with a
@@ -51,9 +51,10 @@ const controlStyle: React.CSSProperties = {
 };
 
 function stockLabel(m: CellarMaterialDTO): string {
-  if (!m.isStockTracked) return m.name;
+  const shown = materialDisplayName(m);
+  if (!m.isStockTracked) return shown;
   const qty = m.onHand ?? 0;
-  return `${m.name} · ${qty} ${m.stockUnit ?? ""} on hand`.trimEnd();
+  return `${shown} · ${qty} ${m.stockUnit ?? ""} on hand`.trimEnd();
 }
 
 export function MaterialPicker({
