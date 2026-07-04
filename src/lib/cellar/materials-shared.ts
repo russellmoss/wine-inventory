@@ -34,9 +34,13 @@ export type CellarMaterialDTO = {
   stockUnit?: string | null;
   /** Phase 8 (Unit 12): surfaced on the management page so an inactive supply can be reactivated. */
   isActive?: boolean;
-  /** Phase 037: weighted-average cost per stock unit across open lots (D14: null when unknown, never $0).
-   * Read-only display in the expendables detail modal — costs are corrected via Receive, never re-written. */
+  /** Phase 037: weighted-average cost per stock unit across open lots (D14: null when unknown, never $0). */
   avgUnitCost?: number | null;
+  /** Phase 037.1: true when the item has exactly one fully-unused opening lot, so its cost can be set/corrected
+   * in the Edit modal (cost-safe). False once stock is received/split/partly-used — then correct via Receive. */
+  costCorrectable?: boolean;
+  /** Phase 037.1: total price of that correctable opening lot (for the Edit modal prefill); null if unknown/N-A. */
+  openingLotCost?: number | null;
 };
 
 /**

@@ -67,7 +67,7 @@ export function materialToForm(m: CellarMaterialDTO): MaterialFormValue {
     family: familyLabel(m.kind),
     packageAmount: m.packageAmount != null ? String(m.packageAmount) : "",
     packageUnit: m.packageUnit ?? m.stockUnit ?? "g",
-    totalCost: "",
+    totalCost: m.openingLotCost != null ? String(m.openingLotCost) : "", // prefill the correctable opening-lot cost
   };
 }
 
@@ -100,6 +100,7 @@ export function MaterialForm({
   familiesByCategory,
   mode,
   hasStock = false,
+  allowCostEdit = false,
 }: {
   value: MaterialFormValue;
   onChange: (patch: Partial<MaterialFormValue>) => void;
@@ -107,7 +108,10 @@ export function MaterialForm({
   mode: "create" | "edit";
   /** Edit mode: whether the material has stock on hand (drives the unit-change caution). */
   hasStock?: boolean;
+  /** Edit mode: whether the opening-lot cost can be corrected here (single fully-unused lot). Shows the cost field. */
+  allowCostEdit?: boolean;
 }) {
+  const showCost = mode === "create" || allowCostEdit;
   const stockUnit = stockUnitFor(value.packageUnit);
   const familyListId = React.useId(); // unique per instance so Add + Edit datalists never collide
   const { symbol } = useCurrency();
@@ -172,8 +176,8 @@ export function MaterialForm({
             {MEASURE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
         </label>
-        {mode === "create" ? (
-          <Input label="Total cost paid (optional)" value={value.totalCost} onChange={(e) => onChange({ totalCost: e.target.value })} inputMode="decimal" placeholder="e.g. 500" iconLeft={symbol} style={{ flex: "1 1 160px" }} />
+        {showCost ? (
+          <Input label={mode === "create" ? "Total cost paid (optional)" : "Total cost paid"} value={value.totalCost} onChange={(e) => onChange({ totalCost: e.target.value })} inputMode="decimal" placeholder="e.g. 500" iconLeft={symbol} style={{ flex: "1 1 160px" }} />
         ) : null}
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -192,9 +196,10 @@ export function MaterialForm({
       ) : (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
           Tracked in <strong>{stockUnit}</strong>.{" "}
-          {hasStock
-            ? "This item has stock on hand — you can't switch its unit to a different kind (mass ↔ volume ↔ count). To correct a recorded price, use Receive to add a corrected lot (recorded costs are immutable)."
-            : "Editing here changes the item's base record only; it doesn't re-cost stock you've already received."}
+          {allowCostEdit
+            ? "Total cost paid sets the price of your current unused stock. Leave it blank for unknown cost."
+            : "This item's stock has been received or used, so its price is locked here — correct a price by receiving a new lot (recorded costs are immutable)."}
+          {hasStock ? " You can't switch its unit to a different kind (mass ↔ volume ↔ count) while it has stock." : ""}
         </p>
       )}
     </div>

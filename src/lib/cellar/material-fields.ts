@@ -2,6 +2,7 @@ import { cleanMaterialName, coerceRateBasis, normalizeMaterialKey } from "@/lib/
 import { coerceFamily, categoryOf, coerceMaterialCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { coerceStockUnit, type StockUnit } from "@/lib/cellar/materials-shared";
 import { dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
+import { round8 } from "@/lib/cost/rollup";
 import { ActionError } from "@/lib/action-error";
 
 // Phase 037: PURE, client-safe material field derivation + update planning. NO prisma / server imports
@@ -88,7 +89,13 @@ export function deriveMaterialFields(input: MaterialIntakeInput) {
 
 // ── Phase 037: editing the base data of an EXISTING material ──
 
-export type UpdateMaterialInput = MaterialIntakeInput & { stockUnit?: string | null };
+export type UpdateMaterialInput = MaterialIntakeInput & {
+  stockUnit?: string | null;
+  /** Phase 037.1: total price paid for the current unused opening stock. When provided AND the material has a
+   * single fully-unconsumed lot, the core corrects that lot's per-unit cost. `undefined` = don't touch cost;
+   * `null` = clear the cost to unknown. Rejected (CONFLICT) if the stock has been received/used (correct via Receive). */
+  totalCost?: number | null;
+};
 
 /** The existing row's identity + stock-unit — the minimum the update planner needs to decide safety. */
 export type ExistingMaterialForUpdate = { kind: string; normalizedKey: string; stockUnit: string | null };
@@ -183,4 +190,55 @@ export function planMaterialUpdate(
     },
     identityChanged,
   };
+}
+
+// ── Phase 037.1: correcting the cost of un-used opening stock ──
+//
+// A material has NO price column; cost lives on its SupplyLots. Editing a lot's cost normally violates D17
+// (recorded cost is immutable) — BUT a fully-UNCONSUMED opening lot has no downstream cost captured from it
+// (a dose only snapshots cost when it draws the lot down), so correcting its per-unit cost is cost-safe. We
+// only allow it when there is exactly ONE such lot; anything received/split/partly-used routes to Receive.
+
+export type SupplyLotForCost = { id: string; qtyReceived: number; qtyRemaining: number; unitCost: number | null };
+
+const EPS = 1e-6;
+
+/** The single fully-unconsumed lot whose cost may be corrected in place, or null (0 or 2+ → ambiguous/unsafe). */
+export function findCorrectableOpeningLot(lots: readonly SupplyLotForCost[]): SupplyLotForCost | null {
+  const unconsumed = lots.filter(
+    (l) => l.qtyReceived > 0 && l.qtyRemaining > 0 && Math.abs(l.qtyRemaining - l.qtyReceived) < EPS,
+  );
+  return unconsumed.length === 1 ? unconsumed[0] : null;
+}
+
+/** Total price of a correctable opening lot (unitCost × qtyReceived), for display/prefill. Null if unknown or N/A. */
+export function openingLotTotalCost(lot: SupplyLotForCost | null): number | null {
+  if (!lot || lot.unitCost == null || !Number.isFinite(lot.unitCost)) return null;
+  return round8(lot.unitCost * lot.qtyReceived);
+}
+
+export type CostCorrection =
+  | { action: "none" }
+  | { action: "set"; lotId: string; unitCost: number | null }
+  | { action: "conflict" };
+
+/**
+ * Decide how to apply a desired package total-cost against a material's open lots. `undefined` desired (field
+ * not submitted) or a value equal to the current total → "none". A real change with a single unconsumed lot →
+ * "set" that lot's per-unit cost (total ÷ received qty; null clears to unknown). A real change with no single
+ * correctable lot → "conflict" (received/used stock; correct via Receive). Pure — the core does the write.
+ */
+export function resolveOpeningCostCorrection(
+  lots: readonly SupplyLotForCost[],
+  desiredTotal: number | null | undefined,
+): CostCorrection {
+  if (desiredTotal === undefined) return { action: "none" };
+  const desired = desiredTotal == null || !Number.isFinite(desiredTotal) || desiredTotal < 0 ? null : desiredTotal;
+  const target = findCorrectableOpeningLot(lots);
+  const currentTotal = openingLotTotalCost(target);
+  const unchanged = desired == null ? currentTotal == null : currentTotal != null && Math.abs(currentTotal - desired) < EPS;
+  if (unchanged) return { action: "none" };
+  if (!target) return { action: "conflict" };
+  const unitCost = desired == null ? null : round8(desired / target.qtyReceived);
+  return { action: "set", lotId: target.id, unitCost };
 }

@@ -456,17 +456,20 @@ function EditMaterialModal({
   const [form, setForm] = React.useState<MaterialFormValue>(() => (material ? materialToForm(material) : emptyMaterialForm));
   const patch = (p: Partial<MaterialFormValue>) => setForm((f) => ({ ...f, ...p }));
   const hasStock = (material?.onHand ?? 0) > 0;
+  const allowCostEdit = !!material?.costCorrectable;
   const canSubmit = !!material && materialFormHasIdentity(form) && !pending;
 
   function submit() {
     if (!material || !canSubmit) return;
-    run(() => updateMaterialAction(material.id, materialFormToInput(form)), onClose);
+    // Only send totalCost when the cost is correctable here; blank → null (clear to unknown), else undefined (leave cost alone).
+    const totalCost = allowCostEdit ? (form.totalCost.trim() !== "" ? Number(form.totalCost) : null) : undefined;
+    run(() => updateMaterialAction(material.id, { ...materialFormToInput(form), totalCost }), onClose);
   }
 
   return (
     <Modal open={!!material} onClose={onClose} title={material ? `Edit · ${materialDisplayName(material)}` : "Edit"} subtitle="Correct the item's setup details" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} />
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
