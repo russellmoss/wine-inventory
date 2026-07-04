@@ -16,6 +16,9 @@ export type MaterialPickerOption = {
   label: string;
   unit?: string | null;
   kind?: string | null;
+  /** STORED main category — the scope authority (matches the server WORKORDER-3 guard). Falls back to
+   * categoryOf(kind) so a custom cleaning/packaging family is scoped out, not just built-in kinds. */
+  category?: string | null;
   subcategory?: string | null;
   onHand?: number | null;
 };
@@ -47,11 +50,12 @@ export function MaterialFilterPicker({
   const [q, setQ] = React.useState("");
   const [family, setFamily] = React.useState<string>(ALL);
 
-  // Restrict to the scoped main categories (derived from kind). Materials without a kind fall to OTHER.
+  // Restrict to the scoped main categories, reading the STORED category (fallback categoryOf(kind)) so a
+  // custom cleaning/packaging family is scoped out here exactly as the server guard blocks it.
   const scoped = React.useMemo(() => {
     if (!categoryScope) return options;
     const allowed = new Set(Array.isArray(categoryScope) ? categoryScope : [categoryScope]);
-    return options.filter((o) => allowed.has(categoryOf(o.kind)));
+    return options.filter((o) => allowed.has((o.category as MaterialCategory) ?? categoryOf(o.kind)));
   }, [options, categoryScope]);
 
   // Distinct KIND families present in scope → the filter chips (Yeast, Fining, Nutrient…). The custom

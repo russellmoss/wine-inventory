@@ -41,10 +41,23 @@ export type MaterialIntakeInput = {
   packageUnit?: string | null;
 };
 
-const trimOrNull = (v: unknown): string | null => {
-  const s = String(v ?? "").trim();
+// Trim + length-cap a free-text field server-side (never trust the client). 200 chars is generous for a
+// product/brand/vendor label; capping matters because a runaway value would bloat rows (family feeds the
+// unique index). Blank → null.
+const trimOrNull = (v: unknown, max = 200): string | null => {
+  const s = String(v ?? "").trim().slice(0, max);
   return s.length > 0 ? s : null;
 };
+
+/** Keep a vendor URL only if it's http(s); a bare domain gets https://; any other scheme (javascript:,
+ * data:, …) is dropped — defense-in-depth in case it's ever rendered as an href. */
+function normalizeVendorUrl(v: unknown): string | null {
+  const s = trimOrNull(v, 300);
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return null; // some other scheme → reject
+  return `https://${s}`.slice(0, 300); // bare domain → assume https
+}
 
 /** Resolve the persisted CellarMaterial fields from an intake input. `name` (identity/snapshot) derives from
  * brand name → generic name → the explicit `name`. Family + category are normalized (category stored, falling
@@ -70,7 +83,7 @@ function deriveMaterialFields(input: MaterialIntakeInput) {
     brandName,
     preferGeneric: !!input.preferGeneric,
     vendor: trimOrNull(input.vendor),
-    vendorUrl: trimOrNull(input.vendorUrl),
+    vendorUrl: normalizeVendorUrl(input.vendorUrl),
     packageAmount,
     packageUnit: packageAmount != null ? trimOrNull(input.packageUnit) : null,
     subcategory: normalizeSubcategory(input.subcategory),
@@ -252,13 +265,14 @@ export async function createStockMaterialCore(
     input.openingQty != null && Number.isFinite(input.openingQty) && input.openingQty > 0 ? input.openingQty : 0;
   let unitCost =
     input.unitCost != null && Number.isFinite(input.unitCost) && input.unitCost >= 0 ? input.unitCost : null;
-  // Phase 036: a purchase (package amount+unit + total cost) derives the opening lot in the canonical stock
-  // unit + its per-stock-unit cost (deriveOpeningLot). Overrides the raw openingQty/unitCost when it resolves.
-  if (input.totalCost != null && f.packageAmount != null && f.packageUnit) {
-    const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost, stockUnit });
+  // Phase 036: a package (amount+unit) seeds the opening lot in the canonical stock unit; total cost (when
+  // given) sets the per-stock-unit cost, else the lot is UNKNOWN-cost (D14) — never $0, and never a package
+  // with no on-hand. Overrides the raw openingQty/unitCost when it resolves.
+  if (f.packageAmount != null && f.packageUnit) {
+    const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost ?? null, stockUnit });
     if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
       openingQty = derived.qtyInStockUnit;
-      unitCost = derived.unitCost; // may be null → UNKNOWN cost (D14), which is correct
+      unitCost = derived.unitCost; // null when no cost given → UNKNOWN (D14), which is correct
     }
   }
 

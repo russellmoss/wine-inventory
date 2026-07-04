@@ -64,6 +64,16 @@ describe("new kinds are cost-inert", () => {
     expect(isDoseableCategory("PACKAGING")).toBe(false);
   });
 
+  it("a CUSTOM cleaning family must use the STORED category, not kind-derived (WORKORDER-3 regression)", () => {
+    // A user-invented family "DRUM WASH" filed under Cleaning: categoryOf(kind) is OTHER (doseable) — the
+    // old bug — but the STORED category is CLEANING_SANITIZING (NOT doseable). The guard + picker must read
+    // the stored category. This locks why isDoseableKind alone was insufficient.
+    const customCleaningKind = coerceFamily("Drum Wash"); // "DRUM WASH"
+    expect(categoryOf(customCleaningKind)).toBe("OTHER"); // kind-derived (wrong for cost-safety)
+    expect(isDoseableKind(customCleaningKind)).toBe(true); // the trap the old guard fell into
+    expect(isDoseableCategory("CLEANING_SANITIZING")).toBe(false); // the correct answer via stored category
+  });
+
   it("coerceFamily: built-ins normalize to their code, customs uppercase, empty → OTHER", () => {
     expect(coerceFamily("Yeast")).toBe("YEAST"); // by label
     expect(coerceFamily("yeast")).toBe("YEAST");

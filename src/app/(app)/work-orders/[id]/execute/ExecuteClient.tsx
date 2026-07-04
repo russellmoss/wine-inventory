@@ -18,7 +18,7 @@ import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
 // Dexie outbox uses). Not harvest-grade offline yet (Phase 28); online status is pinned via aria-live.
 
-type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; subcategory?: string | null; onHand?: number | null };
+type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null };
 const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION" };
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };

@@ -104,7 +104,8 @@ export const BUILTIN_FAMILIES: { value: MaterialKind; label: string; category: M
  * is stored as its uppercased trimmed key so "Sur Lie" and "sur lie" collapse to one family. Empty → OTHER.
  */
 export function coerceFamily(raw: unknown): string {
-  const s = String(raw ?? "").trim();
+  // Cap length: a custom family is stored in `kind`, which is part of @@unique([tenantId, kind, normalizedKey]).
+  const s = String(raw ?? "").trim().slice(0, 60);
   if (!s) return "OTHER";
   const up = s.toUpperCase();
   if ((MATERIAL_KINDS as readonly string[]).includes(up)) return up;

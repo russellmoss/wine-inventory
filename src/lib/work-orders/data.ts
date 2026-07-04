@@ -523,15 +523,15 @@ export async function getTemplateDetail(tenantId: string, templateId: string): P
   });
 }
 
-export type PickerOption = { id: string; label: string; unit?: string | null; kind?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
+export type PickerOption = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 
 /** Option lists for the new-WO field pickers (active vessels, stock materials, active lots). */
 export async function getWorkOrderPickers(tenantId: string): Promise<{ vessels: PickerOption[]; materials: PickerOption[]; lots: PickerOption[] }> {
   return runAsTenant(tenantId, async () => {
     const [vessels, materials, lots, vol, onHand] = await Promise.all([
       prisma.vessel.findMany({ where: { isActive: true }, orderBy: [{ type: "asc" }, { code: "asc" }], select: { id: true, code: true, type: true, capacityL: true } }),
-      // Phase 034/036: kind is the family (picker chips); brand/generic drive the displayed label.
-      prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, stockUnit: true, kind: true, subcategory: true, isStockTracked: true, genericName: true, brandName: true, preferGeneric: true } }),
+      // Phase 034/036: kind is the family (picker chips); category scopes the picker (cost-safety); brand/generic drive the label.
+      prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, stockUnit: true, kind: true, category: true, subcategory: true, isStockTracked: true, genericName: true, brandName: true, preferGeneric: true } }),
       prisma.lot.findMany({ where: { status: "ACTIVE" }, orderBy: { code: "asc" }, take: 500, select: { id: true, code: true } }),
       // Current wine volume per vessel (the fold of the ledger, VesselLot) — drives the dose calculator.
       prisma.vesselLot.groupBy({ by: ["vesselId"], _sum: { volumeL: true } }),
@@ -543,7 +543,7 @@ export async function getWorkOrderPickers(tenantId: string): Promise<{ vessels: 
     return {
       vessels: vessels.map((v) => ({ id: v.id, label: `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}`, kind: v.type, volumeL: volByVessel.get(v.id) ?? 0, capacityL: v.capacityL == null ? null : Number(v.capacityL) })),
       // label = the display name (brand/generic per preference); unit = the material's stock unit.
-      materials: materials.map((m) => ({ id: m.id, label: materialDisplayName(m), unit: m.stockUnit, kind: m.kind, subcategory: m.subcategory, onHand: m.isStockTracked ? (onHandByMaterial.get(m.id) ?? 0) : null })),
+      materials: materials.map((m) => ({ id: m.id, label: materialDisplayName(m), unit: m.stockUnit, kind: m.kind, category: m.category, subcategory: m.subcategory, onHand: m.isStockTracked ? (onHandByMaterial.get(m.id) ?? 0) : null })),
       lots: lots.map((l) => ({ id: l.id, label: l.code })),
     };
   });
