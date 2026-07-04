@@ -7,6 +7,7 @@ import { AddressFields } from "@/components/address/AddressFields";
 import type { AddressParts } from "@/lib/address/format";
 import { setSparklingEnabled, saveCostSettings } from "@/lib/settings/actions";
 import type { CostSettings } from "@/lib/cost/policy";
+import { SUPPORTED_CURRENCIES, CURRENCY_LABELS } from "@/lib/money/currency";
 import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
 import { AccountingConnectionCard, type ConnectionSummary } from "./AccountingConnectionCard";
 import { AccountMappingCard } from "./AccountMappingCard";
@@ -65,6 +66,7 @@ export function SettingsClient({
   const [costMsg, setCostMsg] = React.useState<string | null>(null);
   const [costPending, startCost] = React.useTransition();
   const costDirty =
+    costForm.currency !== cost.currency ||
     costForm.costingMethod !== cost.costingMethod ||
     CAPITALIZATION_TOGGLES.some((t) => costForm[t.key] !== cost[t.key]);
 
@@ -74,6 +76,7 @@ export function SettingsClient({
     startCost(async () => {
       try {
         const saved = await saveCostSettings({
+          currency: costForm.currency,
           costingMethod: costForm.costingMethod,
           capitalizeFruit: costForm.capitalizeFruit,
           capitalizeBarrel: costForm.capitalizeBarrel,
@@ -172,9 +175,26 @@ export function SettingsClient({
         <p style={{ color: "var(--text-secondary)", margin: "6px 0 16px", fontSize: 14.5, maxWidth: "50ch" }}>
           How supply cost depletes and which cost components capitalize into cost-per-bottle. Turning a
           component off still records its cost — it just doesn&apos;t roll into the capitalized total.
-          Changing anything here bumps the policy version; already-recorded history keeps its old version
-          and is never re-valued.
+          Changing the method or a capitalization toggle bumps the policy version; already-recorded history
+          keeps its old version and is never re-valued. (Currency is a display label — it never bumps the version.)
         </p>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Currency</span>
+          <select
+            value={costForm.currency}
+            onChange={(e) => setCostForm((f) => ({ ...f, currency: e.target.value as CostSettings["currency"] }))}
+            style={{ height: 44, maxWidth: 260, padding: "0 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)" }}
+          >
+            {SUPPORTED_CURRENCIES.map((c) => (
+              <option key={c} value={c}>{CURRENCY_LABELS[c]}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            The single currency shown across every cost field in the app. This is a display label only —
+            it doesn&apos;t convert amounts or bump the policy version, so existing cost history is untouched.
+          </span>
+        </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Depletion method</span>

@@ -12,6 +12,7 @@ import {
 import { STOCK_UNITS, coerceStockUnit, materialDisplayName, type StockUnit, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import { coerceFamily, categoryOf, coerceMaterialCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { deriveOpeningLot } from "@/lib/cost/intake-cost";
+import { coerceCurrency } from "@/lib/money/currency";
 
 export { materialDisplayName };
 
@@ -305,9 +306,9 @@ export async function createStockMaterialCore(
     }
 
     if (openingQty > 0) {
-      const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true } });
+      const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true, currency: true } });
       const lot = await tx.supplyLot.create({
-        data: { materialId: material.id, qtyReceived: openingQty, qtyRemaining: openingQty, stockUnit, unitCost, policyVersion: settings?.costingPolicyVersion ?? 1, supplierNote: "Opening stock" },
+        data: { materialId: material.id, qtyReceived: openingQty, qtyRemaining: openingQty, stockUnit, unitCost, currency: coerceCurrency(settings?.currency), policyVersion: settings?.costingPolicyVersion ?? 1, supplierNote: "Opening stock" },
         select: { id: true },
       });
       await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Opening stock ${openingQty} ${stockUnit} of "${f.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
@@ -346,7 +347,7 @@ export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupply
     if (!material.isStockTracked || !material.stockUnit) {
       await tx.cellarMaterial.update({ where: { id: material.id }, data: { isStockTracked: true, stockUnit } });
     }
-    const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true } });
+    const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true, currency: true } });
     const lot = await tx.supplyLot.create({
       data: {
         materialId: material.id,
@@ -354,6 +355,7 @@ export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupply
         qtyRemaining: qty,
         stockUnit,
         unitCost,
+        currency: coerceCurrency(settings?.currency),
         policyVersion: settings?.costingPolicyVersion ?? 1,
         lotCode: input.lotCode?.trim() || null,
         supplierNote: input.note?.trim() || null,

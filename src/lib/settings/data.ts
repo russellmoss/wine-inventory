@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
+import { coerceCurrency, type CurrencyCode } from "@/lib/money/currency";
 
 // Phase 12 (K10): per-org winery settings — one row per tenant. findFirst is tenant-scoped by the
 // active tenant context (RLS + the Prisma extension), so it returns the calling org's row (default
@@ -16,6 +17,15 @@ export async function getAppSettings(): Promise<AppSettingsView> {
 /** The capability gate for the ENTIRE traditional-method sparkling UI/nav (default off). */
 export async function isSparklingEnabled(): Promise<boolean> {
   return (await getAppSettings()).sparklingEnabled;
+}
+
+/**
+ * Phase 037: the one currency the whole tenant displays cost in. Coerced to the supported set (default
+ * USD when the row is absent). Feeds the client CurrencyProvider so every cost field prefixes one symbol.
+ */
+export async function getTenantCurrency(): Promise<CurrencyCode> {
+  const s = await prisma.appSettings.findFirst({ select: { currency: true } });
+  return coerceCurrency(s?.currency);
 }
 
 // Phase 8 (Unit 2): the per-tenant costing policy. Falls back to COST_SETTINGS_DEFAULTS when the
