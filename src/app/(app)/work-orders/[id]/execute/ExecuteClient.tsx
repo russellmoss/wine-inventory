@@ -7,6 +7,10 @@ import { Card, Button, Badge, Eyebrow, Textarea } from "@/components/ui";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabulary";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
+import type { CrushFormData } from "@/lib/ferment/crush-data";
+import type { PressFormData } from "@/lib/ferment/press-data";
+import { CrushTaskForm } from "./CrushTaskForm";
+import { PressTaskForm } from "./PressTaskForm";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
@@ -121,7 +125,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
   );
 }
 
-export function ExecuteClient({ wo, pickers }: { wo: WorkOrderDetail; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] } }) {
+export function ExecuteClient({ wo, pickers, crushData, pressData }: { wo: WorkOrderDetail; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; crushData: CrushFormData | null; pressData: PressFormData | null }) {
   const router = useRouter();
   const [online, setOnline] = React.useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
   React.useEffect(() => {
@@ -145,7 +149,13 @@ export function ExecuteClient({ wo, pickers }: { wo: WorkOrderDetail; pickers: {
         <Card style={{ marginTop: 20, textAlign: "center", padding: 36 }}>All tasks recorded ✓</Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-          {open.map((t) => <TaskExecutor key={t.id} task={t} pickers={pickers} onDone={() => router.refresh()} />)}
+          {open.map((t) => {
+            // Plan 035: transform ops (de-stem/crush, press/saignée) take list-shaped run-time inputs
+            // (picks, fractions) that don't fit the flat generic renderer — they get their own sub-forms.
+            if (t.kind === "OPERATION" && t.opType === "CRUSH") return <CrushTaskForm key={t.id} task={t} data={crushData} onDone={() => router.refresh()} />;
+            if (t.kind === "OPERATION" && t.opType === "PRESS") return <PressTaskForm key={t.id} task={t} data={pressData} onDone={() => router.refresh()} />;
+            return <TaskExecutor key={t.id} task={t} pickers={pickers} onDone={() => router.refresh()} />;
+          })}
         </div>
       )}
 
