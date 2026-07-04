@@ -4,7 +4,10 @@ import React from "react";
 import Link from "next/link";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderSummary } from "@/lib/work-orders/data";
+import { OPEN_STATUSES, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersTabs } from "./WorkOrdersTabs";
+import { WorkOrderFilterBar } from "./WorkOrderFilterBar";
+import type { VesselOption } from "./new/VesselMultiSelect";
 
 type Dashboard = {
   buckets: { overdue: WorkOrderSummary[]; today: WorkOrderSummary[]; upcoming: WorkOrderSummary[]; unscheduled: WorkOrderSummary[] };
@@ -52,10 +55,11 @@ function Section({ title, items, tone }: { title: string; items: WorkOrderSummar
   );
 }
 
-export function WorkOrdersClient({ dashboard, isAdmin }: { dashboard: Dashboard; isAdmin: boolean }) {
+export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [], templates = [] }: { dashboard: Dashboard; isAdmin: boolean; filters?: WorkOrderFilters; vessels?: VesselOption[]; templates?: { id: string; name: string }[] }) {
   const { buckets, pendingApproval } = dashboard;
-  const isEmpty =
-    buckets.overdue.length + buckets.today.length + buckets.upcoming.length + buckets.unscheduled.length + pendingApproval.length === 0;
+  const openCount = buckets.overdue.length + buckets.today.length + buckets.upcoming.length + buckets.unscheduled.length + pendingApproval.length;
+  const isEmpty = openCount === 0;
+  const filtered = Object.values(filters).some((v) => (Array.isArray(v) ? v.length : v));
 
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", padding: "8px 4px 60px" }}>
@@ -72,10 +76,12 @@ export function WorkOrdersClient({ dashboard, isAdmin }: { dashboard: Dashboard;
 
       <div style={{ marginTop: 14 }}><WorkOrdersTabs active="open" /></div>
 
+      <WorkOrderFilterBar view="open" filters={filters} vessels={vessels} templates={templates} statuses={OPEN_STATUSES} allLabel="All open" resultCount={openCount} />
+
       {isEmpty ? (
         <Card style={{ marginTop: 24, textAlign: "center", padding: "48px 24px" }}>
-          <div style={{ fontSize: 17, fontWeight: 600 }}>No open work orders</div>
-          <div style={{ color: "var(--text-muted)", marginTop: 6, marginBottom: 18 }}>Issue your first work order to tell the crew what to do — completing a task logs the operation for you.</div>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>{filtered ? "No matching open work orders" : "No open work orders"}</div>
+          <div style={{ color: "var(--text-muted)", marginTop: 6, marginBottom: 18 }}>{filtered ? "Try clearing the filters, or check the archive for finalized orders." : "Issue your first work order to tell the crew what to do — completing a task logs the operation for you."}</div>
           <Link href="/work-orders/new"><Button>Issue your first work order</Button></Link>
         </Card>
       ) : (

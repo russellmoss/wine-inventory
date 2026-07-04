@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { buildArchiveWhere, parseArchiveFilters, serializeArchiveFilters } from "@/lib/work-orders/archive-filters";
+import { buildArchiveWhere, buildOpenWhere, parseArchiveFilters, parseOpenFilters, serializeArchiveFilters } from "@/lib/work-orders/archive-filters";
+
+describe("buildOpenWhere (open dashboard filters)", () => {
+  it("defaults to the open status set and applies the date range to dueAt", () => {
+    const w = buildOpenWhere({ from: "2026-07-01" }) as { status: unknown; dueAt: { gte: Date } };
+    expect(w.status).toEqual({ in: ["ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] });
+    expect(w.dueAt.gte).toBeInstanceOf(Date);
+  });
+  it("narrows to a single open status and shares the common filters (vessel/assignee/q)", () => {
+    expect(buildOpenWhere({ status: "IN_PROGRESS" }).status).toBe("IN_PROGRESS");
+    expect(buildOpenWhere({ vesselIds: ["v1"] }).tasks).toEqual({ some: { OR: [{ destVesselId: { in: ["v1"] } }, { sourceVesselId: { in: ["v1"] } }] } });
+  });
+  it("parseOpenFilters accepts open statuses and rejects finalized ones", () => {
+    expect(parseOpenFilters({ status: "IN_PROGRESS" }).status).toBe("IN_PROGRESS");
+    expect(parseOpenFilters({ status: "APPROVED" }).status).toBeUndefined(); // not an open status
+  });
+});
 
 describe("buildArchiveWhere", () => {
   it("constrains to the finalized set by default (APPROVED | CANCELLED)", () => {
