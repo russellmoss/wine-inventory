@@ -74,6 +74,7 @@ export const upsertMaterialAction = action(
 export const createStockMaterialAction = action(
   async ({ actor }, input: CreateStockMaterialInput): Promise<CellarMaterialDTO> => {
     const dto = await createStockMaterialCore(actor, input);
+    revalidatePath("/setup/expendables");
     revalidatePath("/bulk");
     revalidatePath("/ferment/process");
     revalidatePath("/inventory");
