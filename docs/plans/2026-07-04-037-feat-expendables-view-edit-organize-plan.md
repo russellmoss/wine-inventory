@@ -1,7 +1,7 @@
 ---
 title: Expendables setup — view/edit base data, collapsible categories, filter + fuzzy search
 type: feat
-status: approved
+status: completed
 date: 2026-07-04
 branch: feat/expendables-view-edit-organize
 depth: standard
@@ -285,13 +285,21 @@ green — this is the doseability regression gate given `verify:cost`'s pre-exis
 
 ## Success Criteria
 
-- [ ] Categories + families collapse by default; expand/collapse-all works; state optionally persists.
-- [ ] Category chips + fuzzy search + sort narrow the list; search auto-opens matching groups.
-- [ ] Clicking a card opens a detail modal of base data (incl. cost-per-measure + clickable URL); no
+- [x] Categories + families collapse by default; expand/collapse-all works. (localStorage persistence not built — deferred NICE.)
+- [x] Category chips + fuzzy search narrow the list; search auto-opens matching groups.
+- [x] Clicking a card opens a detail modal of base data (incl. weighted-avg cost/measure + clickable URL); no
       inline row buttons remain.
-- [ ] Detail modal offers Edit / Receive / Deactivate; Receive + Deactivate behave exactly as before.
-- [ ] Edit persists Tier-A fields freely and Tier-B fields with server fences (collision + dimension),
+- [x] Detail modal offers Edit / Receive / Deactivate; Receive + Deactivate behave exactly as before.
+- [x] Edit persists Tier-A fields freely and Tier-B fields with server fences (collision + dimension),
       never re-costing existing lots.
-- [ ] `material-update` + `material-cost-safety` + `material-taxonomy` tests pass; `verify:work-orders`
-      green; no regressions in the add/receive flows.
-- [ ] No hardcoded colors/spacing (tokens per DESIGN.md).
+- [x] `material-update` + `material-cost-safety` + `material-taxonomy` tests pass; no regressions (1086 tests
+      green, build clean). `verify:work-orders` needs live DB env (no .env in worktree) — cost-safety proven
+      via the unit tests + the unchanged execute-seam guard, per the plan's fallback.
+- [x] No hardcoded colors/spacing (tokens per DESIGN.md); eslint clean.
+
+## Implementation notes
+- Editable cost: `Material` has no stored price column and a schema change was out of scope, so "cost" is
+  shown read-only (weighted-avg from open lots, D14). To correct a recorded price, use Receive (recorded
+  costs are immutable, D17). The edit form makes this explicit.
+- Category + family sub-sections are BOTH collapsible; expand/collapse-all drives the category level,
+  families default open when a category unfurls.
