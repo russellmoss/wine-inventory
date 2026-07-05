@@ -226,11 +226,14 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     };
   }
 
-  // A NEW commandId against an already-settled task is a genuine re-submit, not the offline-drain replay
-  // the commandId pre-check above handles — it must not double-write (a maintenance re-complete would
-  // double-deplete overhead stock). REJECTED is resubmittable (→ PENDING); terminal states are not.
-  if (task.status === "DONE" || task.status === "APPROVED" || task.status === "SKIPPED") {
-    throw new ActionError("That task is already completed.", "CONFLICT");
+  // A NEW commandId against an already-completed task is a genuine re-submit, not the offline-drain replay
+  // the commandId pre-check above handles — it must not double-write (a re-complete would write a SECOND
+  // immutable op: double-drain a rack, double-dose an addition, double-deplete overhead stock). A task in
+  // PENDING_APPROVAL is completed-and-awaiting-review — it must be APPROVED or REJECTED, never re-completed
+  // (the from===to transition shortcut would otherwise let it through). REJECTED is the only resubmittable
+  // completed state (→ PENDING → complete). Terminal + pending-review states are not.
+  if (task.status === "DONE" || task.status === "APPROVED" || task.status === "SKIPPED" || task.status === "PENDING_APPROVAL") {
+    throw new ActionError("That task is already completed (awaiting review).", "CONFLICT");
   }
 
   // Non-OPERATION lanes: direct-log, straight to DONE (no ledger op, no approval gate). OBSERVATION writes

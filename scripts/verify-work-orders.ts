@@ -234,6 +234,19 @@ async function main() {
     const capOpsAfterDup = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail, type: "CAP_MGMT" } });
     assert(capOpsAfterDup === 3, "duplicate batch wrote no new CAP_MGMT ops (idempotent)");
 
+    // Regression (review P1): re-completing a PENDING_APPROVAL task with a FRESH commandId must be REJECTED —
+    // it must never write a second immutable op. (The same-commandId path above is the idempotent no-op;
+    // this is the different-commandId double-write the completeTaskCore guard now closes.)
+    let doubleWriteBlocked = false;
+    try {
+      await completeTaskCore(ACTOR, { taskId: capTasks[1].id, commandId: "zzwo-cap-fresh-2", actualPayload: { technique: "PUNCHDOWN" } });
+    } catch {
+      doubleWriteBlocked = true;
+    }
+    assert(doubleWriteBlocked, "re-completing a PENDING_APPROVAL task (fresh commandId) is rejected");
+    const capOpsAfterFresh = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail, type: "CAP_MGMT" } });
+    assert(capOpsAfterFresh === 3, "no second CAP_MGMT op written by the fresh-commandId re-completion");
+
     // Reject one cap task → reverseOperationCore voids the neutral op (WORKORDER-1 reject path).
     const capRejected = await rejectTaskCore(ADMIN, ACTOR, { taskId: capTasks[0].id, reason: "wrong technique" });
     assert(capRejected.status === "REJECTED", "a cap-management task can be rejected (op reversed)");

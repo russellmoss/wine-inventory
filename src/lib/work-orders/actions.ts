@@ -180,9 +180,16 @@ export const completeTaskAction = action(async ({ user, actor }, input: Complete
 /** Batch-complete N tasks at once (plan 043): punch down tanks 3, 4, 5 and mark them all done. Each item
  * carries its OWN commandId (idempotency is per-attempt). Per-item pre-flight + autoFinalize; a partial
  * failure never aborts the rest (per-item pass/fail in the result). Revalidates once at the end. */
+const MAX_BATCH_COMPLETE = 100; // defense-in-depth: bound the per-request work (N sequential ledger txs)
 export const completeTasksBatchAction = action(async ({ user, actor }, input: { items: CompleteTaskInput[] }) => {
   if (!Array.isArray(input.items) || input.items.length === 0) throw new ActionError("No tasks to complete.");
-  const items = await Promise.all(input.items.map((i) => prepareCompleteInput(user, i)));
+  // Dedup by taskId: a task must be completed at most once per batch. Without this, a duplicated taskId
+  // would complete on the first item then re-complete on the second (fresh commandId) — the completeTaskCore
+  // guard now rejects that, but dropping the dup gives a clean result instead of a spurious per-item failure.
+  const seen = new Set<string>();
+  const unique = input.items.filter((i) => (i.taskId && !seen.has(i.taskId) ? (seen.add(i.taskId), true) : false));
+  if (unique.length > MAX_BATCH_COMPLETE) throw new ActionError(`Too many tasks in one batch (max ${MAX_BATCH_COMPLETE}).`);
+  const items = await Promise.all(unique.map((i) => prepareCompleteInput(user, i)));
   const res = await completeTasksBatchCore(actor, { items });
   revalidateWorkOrders();
   return res;

@@ -15,6 +15,7 @@ import { PressTaskForm } from "./PressTaskForm";
 import { HarvestWeighInTaskForm } from "./HarvestWeighInTaskForm";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
+import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
@@ -210,7 +211,7 @@ function BatchCapExecutor({ tasks, vessels, onDone }: { tasks: WorkOrderTaskView
         <label style={lbl}>Technique
           <select style={big} value={technique} onChange={(e) => setTechnique(e.target.value)}>
             <option value="">— use each task&apos;s plan —</option>
-            {techniqueOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+            {techniqueOptions.map((o) => <option key={o} value={o}>{CAP_LABELS[o as keyof typeof CAP_LABELS] ?? o}</option>)}
           </select>
         </label>
         <label style={lbl}>Duration (min)<input type="number" inputMode="decimal" step="any" style={big} value={durationMin} onChange={(e) => setDurationMin(e.target.value)} /></label>
