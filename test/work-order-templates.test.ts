@@ -242,4 +242,18 @@ describe("shipped system templates", () => {
     const codes = SYSTEM_TEMPLATES.map((t) => t.code);
     expect(new Set(codes).size).toBe(codes.length);
   });
+
+  it("ships a délestage (rack & return) template as two RACK legs (plan 043)", () => {
+    const del = SYSTEM_TEMPLATES.find((t) => t.code === "SYS-DELESTAGE");
+    expect(del, "SYS-DELESTAGE missing").toBeTruthy();
+    expect(del!.spec.tasks.map((t) => t.taskType)).toEqual(["RACK", "RACK"]);
+    expect(del!.spec.tasks.every((t) => t.defaults?.rackType === "délestage")).toBe(true);
+    // Instantiating with origin+holding on the two legs yields out (origin→holding) then back (holding→origin).
+    const tasks = instantiateTasksFromSpec(del!.spec, [
+      { fromVesselId: "v-origin", toVesselId: "v-holding" },
+      { fromVesselId: "v-holding", toVesselId: "v-origin" },
+    ]);
+    expect(tasks[0]).toMatchObject({ opType: "RACK", sourceVesselId: "v-origin", destVesselId: "v-holding" });
+    expect(tasks[1]).toMatchObject({ opType: "RACK", sourceVesselId: "v-holding", destVesselId: "v-origin" });
+  });
 });

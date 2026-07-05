@@ -53,6 +53,18 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
     spec: { tasks: [{ taskType: "FILTRATION", title: "Filter the wine", instructions: "Select the filter type + micron; record the actual output volume (loss = starting − output)." }] },
   },
   {
+    code: "SYS-DELESTAGE",
+    name: "Délestage (rack & return)",
+    description: "Drain a red ferment into a holding vessel, then return it over the cap. Two racks: out (origin → holding) and back (holding → origin). Pick the origin + holding vessel at issue.",
+    category: "Ferment",
+    spec: {
+      tasks: [
+        { taskType: "RACK", title: "Rack out (origin → holding)", defaults: { rackType: "délestage", lossL: 0 }, instructions: "Drain the fermenting tank into the empty holding vessel, leaving the heavy seeds/solids behind." },
+        { taskType: "RACK", title: "Return (holding → origin)", defaults: { rackType: "délestage", lossL: 0 }, instructions: "Pump the wine back over the cap into the origin tank. Complete this AFTER the rack-out." },
+      ],
+    },
+  },
+  {
     code: "SYS-TOP",
     name: "Top the barrels",
     description: "Top a vessel from a source to eliminate headspace.",
