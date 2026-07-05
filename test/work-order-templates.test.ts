@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { validateTemplateSpec, instantiateTasksFromSpec, instantiateTaskBuilds, TASK_VOCABULARY, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { SYSTEM_TEMPLATES } from "@/lib/work-orders/system-templates";
+import { coerceVesselActivityKind, isVesselActivityKind } from "@/lib/cellar/vessel-activity-vocab";
+import { isCapKind, CAP_LABELS } from "@/lib/cellar/cap-vocab";
+import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 
 describe("validateTemplateSpec", () => {
   it("accepts a spec whose fields are all in the vocabulary", () => {
@@ -140,6 +143,67 @@ describe("maintenance task types (Unit 3) + instantiation", () => {
   });
 });
 
+describe("barrel-maintenance blocks (plan 044)", () => {
+  it("OZONE/SO2/WET_STORAGE instantiate as MAINTENANCE with their activityType", () => {
+    for (const at of ["OZONE", "SO2", "WET_STORAGE"] as const) {
+      const [task] = instantiateTasksFromSpec({ tasks: [{ taskType: at, title: at }] }, [{ vesselId: "v1" }]);
+      expect(task).toMatchObject({ kind: "MAINTENANCE", activityType: at, destVesselId: "v1" });
+    }
+  });
+
+  it("SO2 validates its method select (never free-form) and carries it on the payload", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "SO2", title: "SO2", defaults: { so2Method: "Burned sulfur strip" } }] }).ok).toBe(true);
+    const bad = validateTemplateSpec({ tasks: [{ taskType: "SO2", title: "x", defaults: { so2Method: "Firecracker" } }] });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors.join(" ")).toContain("not a valid so2Method");
+    const [task] = instantiateTasksFromSpec({ tasks: [{ taskType: "SO2", title: "SO2" }] }, [{ vesselId: "v1", so2Method: "SO₂ gas (cylinder)", materialId: "m-strips", amount: 2 }]);
+    expect(task).toMatchObject({ kind: "MAINTENANCE", activityType: "SO2", materialId: "m-strips" });
+    expect(task.plannedPayload).toMatchObject({ so2Method: "SO₂ gas (cylinder)", amount: 2 });
+  });
+
+  it("OZONE carries durationMin; WET_STORAGE carries material + amount for overhead depletion", () => {
+    const [oz] = instantiateTasksFromSpec({ tasks: [{ taskType: "OZONE", title: "Ozone" }] }, [{ vesselId: "v1", durationMin: 20 }]);
+    expect(oz.plannedPayload).toMatchObject({ durationMin: 20 });
+    const [ws] = instantiateTasksFromSpec({ tasks: [{ taskType: "WET_STORAGE", title: "KMBS" }] }, [{ vesselId: "v1", materialId: "m-kmbs", amount: 50 }]);
+    expect(ws).toMatchObject({ kind: "MAINTENANCE", activityType: "WET_STORAGE", materialId: "m-kmbs" });
+    expect(ws.plannedPayload).toMatchObject({ amount: 50 });
+  });
+
+  it("rejects an unknown field on a barrel block (still never free-form)", () => {
+    const v = validateTemplateSpec({ tasks: [{ taskType: "OZONE", title: "x", defaults: { gasType: "Argon" } }] });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain('unknown field "gasType"');
+  });
+
+  it("BATONNAGE is a valid CAP_MGMT technique (rides the per-lot treatment op)", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "CAP_MGMT", title: "Stir", defaults: { technique: "BATONNAGE" } }] }).ok).toBe(true);
+    const [task] = instantiateTaskBuilds([{ taskType: "CAP_MGMT", title: "Stir lees", values: { vesselId: "v-bbl", technique: "BATONNAGE" } }]);
+    expect(task).toMatchObject({ kind: "OPERATION", opType: "CAP_MGMT", destVesselId: "v-bbl" });
+    expect(task.plannedPayload).toMatchObject({ technique: "BATONNAGE" });
+  });
+});
+
+describe("barrel-maintenance vocab + material scope (plan 044)", () => {
+  it("coerceVesselActivityKind accepts the new first-class kinds (not collapsed to OTHER)", () => {
+    for (const k of ["OZONE", "SO2", "WET_STORAGE"] as const) {
+      expect(isVesselActivityKind(k)).toBe(true);
+      expect(coerceVesselActivityKind(k)).toBe(k);
+    }
+    expect(coerceVesselActivityKind("NONSENSE")).toBe("OTHER");
+  });
+
+  it("BATONNAGE is a valid CapKind with a label", () => {
+    expect(isCapKind("BATONNAGE")).toBe(true);
+    expect(CAP_LABELS.BATONNAGE).toBeTruthy();
+  });
+
+  it("scopes the SO2/WET_STORAGE material picker; ozone consumes nothing", () => {
+    expect(materialScopeForTask({ activityType: "SO2" })).toEqual(["ADDITIVE", "CLEANING_SANITIZING", "OTHER"]);
+    expect(materialScopeForTask({ activityType: "WET_STORAGE" })).toEqual(["ADDITIVE", "CLEANING_SANITIZING", "OTHER"]);
+    expect(materialScopeForTask({ activityType: "OZONE" })).toBeUndefined();
+  });
+});
+
 describe("instantiateTaskBuilds (multi-vessel fan-out target)", () => {
   it("builds one task per build, deriving kind/opType + canonical columns", () => {
     const tasks = instantiateTaskBuilds([
@@ -255,5 +319,18 @@ describe("shipped system templates", () => {
     ]);
     expect(tasks[0]).toMatchObject({ opType: "RACK", sourceVesselId: "v-origin", destVesselId: "v-holding" });
     expect(tasks[1]).toMatchObject({ opType: "RACK", sourceVesselId: "v-holding", destVesselId: "v-origin" });
+  });
+
+  it("ships the six barrel-maintenance templates (plan 044)", () => {
+    const byCode = new Map(SYSTEM_TEMPLATES.map((t) => [t.code, t]));
+    for (const code of ["SYS-BARREL-WASH", "SYS-OZONE", "SYS-SO2-BARREL", "SYS-BARREL-STORAGE", "SYS-BARREL-PREP", "SYS-BATONNAGE"]) {
+      expect(byCode.has(code), `missing ${code}`).toBe(true);
+    }
+    // wet-storage change is a two-reagent (KMBS + citric) two-block template
+    expect(byCode.get("SYS-BARREL-STORAGE")!.spec.tasks.map((t) => t.taskType)).toEqual(["WET_STORAGE", "WET_STORAGE"]);
+    // barrel prep is wash → steam → SO₂ in order
+    expect(byCode.get("SYS-BARREL-PREP")!.spec.tasks.map((t) => t.taskType)).toEqual(["CLEAN", "STEAM", "SO2"]);
+    // bâtonnage rides CAP_MGMT with the BATONNAGE technique default
+    expect(byCode.get("SYS-BATONNAGE")!.spec.tasks[0]).toMatchObject({ taskType: "CAP_MGMT", defaults: { technique: "BATONNAGE" } });
   });
 });

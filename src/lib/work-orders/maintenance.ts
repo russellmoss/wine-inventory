@@ -33,8 +33,17 @@ export async function completeMaintenanceTaskCore(
   const vesselId = task.destVesselId ?? task.sourceVesselId ?? asStr(merged.vesselId) ?? null;
   if (!vesselId) throw new ActionError("This maintenance task has no vessel.");
 
-  // GAS carries its gas identity in `gasType` → event.targetUnit; TEMP_SETPOINT carries °C/°F in targetUnit.
-  const targetUnit = kind === "GAS" ? asStr(merged.gasType) ?? null : asStr(merged.targetUnit) ?? null;
+  // GAS carries its gas identity in `gasType` → event.targetUnit; SO2 carries its method (strip/ring/gas) in
+  // `so2Method` → targetUnit; OZONE records contact time (min) → targetValue; TEMP_SETPOINT carries °C/°F.
+  const targetUnit =
+    kind === "GAS"
+      ? asStr(merged.gasType) ?? null
+      : kind === "SO2"
+        ? asStr(merged.so2Method) ?? null
+        : kind === "OZONE"
+          ? "min"
+          : asStr(merged.targetUnit) ?? null;
+  const targetValue = kind === "OZONE" ? asNum(merged.durationMin) ?? null : asNum(merged.targetValue) ?? null;
   const materialId = task.materialId ?? asStr(merged.materialId) ?? null;
   const amount = asNum(merged.amount) ?? null;
 
@@ -68,7 +77,7 @@ export async function completeMaintenanceTaskCore(
       kind,
       taskId: task.id,
       attemptId: attempt.id,
-      targetValue: asNum(merged.targetValue) ?? null,
+      targetValue,
       targetUnit,
       achievedValue: asNum(merged.achievedValue) ?? null, // dec 4b
       achievedUnit: kind === "TEMP_SETPOINT" ? targetUnit : null,

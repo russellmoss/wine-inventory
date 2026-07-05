@@ -20,6 +20,7 @@ const CAP_LABELS: Record<CapKind, string> = {
   COLD_SOAK: "cold soak",
   MACERATION: "maceration",
   PULSE_AIR: "pulse-air",
+  BATONNAGE: "bâtonnage",
 };
 
 function label(v: Pick<ResolvedVessel, "type" | "code">): string {

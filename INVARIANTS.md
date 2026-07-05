@@ -135,7 +135,8 @@ The cost engine is a projection over the ledger; it never invents or loses money
   Guard: `npm run verify:work-orders`.
 
 - **Vessel-activity (maintenance) supply use is OVERHEAD, never wine COGS (WORKORDER-3, Phase 9.1).**
-  A maintenance task (cleaning, sanitizing, steaming, gas, temperature setpoint) that consumes a supply
+  A maintenance task (cleaning, sanitizing, steaming, gas, ozone, SO₂ treatment, wet-storage solution change,
+  temperature setpoint) that consumes a supply
   decrements the `SupplyLot` and records an append-only `VesselActivitySupplyUse` per depleted lot — but writes
   NO `SupplyConsumption`, NO `CostLine`, and NO `LotOperation`, and never enters the Phase-8 wine cost roll-up.
   A sanitizer/cleaner is overhead, not a cost of any specific wine; routing it through the wine cost DAG would

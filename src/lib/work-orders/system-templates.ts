@@ -122,6 +122,61 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
     category: "Maintenance",
     spec: { tasks: [{ taskType: "GAS", title: "Gas the headspace", defaults: { gasType: "Argon" }, instructions: "Pick the gas; optionally record a depletable supply (e.g. dry ice)." }] },
   },
+  // ── Barrel maintenance (plan 044): the barrel-shed jobs. All lotless MAINTENANCE except bâtonnage,
+  // which stirs the wine's lees and rides CAP_MGMT for a per-lot record. Supplies drain as overhead. ──
+  {
+    code: "SYS-BARREL-WASH",
+    name: "Hot-water wash (barrel)",
+    description: "Rinse a barrel with hot water. Leave the agent blank for a plain hot-water wash, or record a cleaning agent + amount (drains as overhead).",
+    category: "Maintenance",
+    spec: { tasks: [{ taskType: "CLEAN", title: "Hot-water wash the barrel", instructions: "Hot-water rinse. For a plain wash leave the cleaning agent blank; otherwise pick the agent + amount used." }] },
+  },
+  {
+    code: "SYS-OZONE",
+    name: "Ozone treatment (barrel)",
+    description: "Sanitize a barrel with ozonated water or ozone gas; record the contact time.",
+    category: "Maintenance",
+    spec: { tasks: [{ taskType: "OZONE", title: "Ozone the barrel", instructions: "Sanitize with ozonated water / ozone gas; record the contact time (min) in Duration." }] },
+  },
+  {
+    code: "SYS-SO2-BARREL",
+    name: "SO₂ treatment (strip / ring / gas)",
+    description: "SO₂ a barrel — burn a sulfur strip/ring or gas it. Optionally record strips/discs used (drains as overhead).",
+    category: "Maintenance",
+    spec: { tasks: [{ taskType: "SO2", title: "SO₂ the barrel", defaults: { so2Method: "Burned sulfur strip" }, instructions: "Pick the method (burned strip/ring or SO₂ gas). If you burned strips/discs, record the material + count used." }] },
+  },
+  {
+    code: "SYS-BARREL-STORAGE",
+    name: "Wet-storage solution change (citric + SO₂)",
+    description: "Drain and replace the citric+SO₂ storage solution in a wet-stored empty barrel. Records each reagent (KMBS + citric) drawn as overhead.",
+    category: "Maintenance",
+    spec: {
+      tasks: [
+        { taskType: "WET_STORAGE", title: "Add KMBS (potassium metabisulfite)", instructions: "After draining the old solution, refill with fresh water; record the KMBS material + amount added (overhead)." },
+        { taskType: "WET_STORAGE", title: "Add citric acid", instructions: "Record the citric acid material + amount added to the storage solution (overhead)." },
+      ],
+    },
+  },
+  {
+    code: "SYS-BARREL-PREP",
+    name: "Barrel prep (wash → steam → SO₂)",
+    description: "Full barrel prep in order: hot-water wash, steam, then SO₂. Three blocks, completed in sequence.",
+    category: "Maintenance",
+    spec: {
+      tasks: [
+        { taskType: "CLEAN", title: "Hot-water wash", instructions: "Hot-water rinse the barrel. Leave the agent blank for a plain wash, or record an agent + amount." },
+        { taskType: "STEAM", title: "Steam", instructions: "Steam the clean barrel; note the duration." },
+        { taskType: "SO2", title: "SO₂ the barrel", defaults: { so2Method: "Burned sulfur strip" }, instructions: "SO₂ the prepped barrel — burned strip/ring or gas. Record strips/discs used if any." },
+      ],
+    },
+  },
+  {
+    code: "SYS-BATONNAGE",
+    name: "Stir the lees (bâtonnage)",
+    description: "Stir the lees in a barrel. Volume-neutral treatment recorded against every lot in the vessel; no volume change.",
+    category: "Cellar",
+    spec: { tasks: [{ taskType: "CAP_MGMT", title: "Stir the lees", defaults: { technique: "BATONNAGE" }, instructions: "Stir the barrel's lees. Records a bâtonnage treatment on every lot in the vessel; complete barrel-by-barrel or in a batch." }] },
+  },
   // ── Vineyard (plan 039): the "weigh the fruit" stage. The weigh-in logs a HarvestPick to the block's
   // current-vintage record; the NOTE block prompts for fruit condition + MOG. Block + weight + Brix/pH/TA
   // are run-time inputs (entered on the execute sub-form), not template defaults. ──

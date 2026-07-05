@@ -1,7 +1,7 @@
 import type { OperationType, WorkOrderTaskKind } from "@prisma/client";
 import type { CreateTaskInput } from "@/lib/work-orders/lifecycle";
 import { FILTER_MEDIA, RACK_TYPES } from "@/lib/cellar/filtration-vocab";
-import { TEMP_UNITS, GAS_TYPES } from "@/lib/cellar/vessel-activity-vocab";
+import { TEMP_UNITS, GAS_TYPES, SO2_METHODS } from "@/lib/cellar/vessel-activity-vocab";
 import { DOSE_UNIT_LABELS } from "@/lib/cellar/additions-math";
 import { CAP_KINDS } from "@/lib/cellar/cap-vocab";
 
@@ -55,6 +55,7 @@ export const FIELD_LABELS: Record<string, string> = {
   targetUnit: "Target unit",
   achievedValue: "Achieved reading",
   gasType: "Gas",
+  so2Method: "SO₂ method",
   amount: "Amount",
   note: "Note",
 };
@@ -165,6 +166,33 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     // gasType → event.targetUnit; an optional supply (e.g. dry ice) can be depleted as overhead.
     fields: { vesselId: "vessel", gasType: "select", materialId: "material", amount: "number", note: "text" },
     fieldOptions: { gasType: GAS_TYPES },
+  },
+  // ── Barrel-maintenance kinds (plan 044): first-class MAINTENANCE categories. Lotless, vessel-scoped,
+  // any supply consumed drains as OVERHEAD (WORKORDER-3). ──
+  OZONE: {
+    kind: "MAINTENANCE",
+    activityType: "OZONE",
+    label: "Ozone treatment",
+    // durationMin → event.targetValue (min); no supply consumed by default (ozone is generated on-site).
+    fields: { vesselId: "vessel", durationMin: "number", note: "text" },
+    hint: "Sanitize a barrel with ozonated water / ozone gas. Record the contact time (min).",
+  },
+  SO2: {
+    kind: "MAINTENANCE",
+    activityType: "SO2",
+    label: "SO₂ treatment",
+    // so2Method → event.targetUnit; strips/discs consumed can be depleted as overhead (materialId + amount).
+    fields: { vesselId: "vessel", so2Method: "select", materialId: "material", amount: "number", note: "text" },
+    fieldOptions: { so2Method: SO2_METHODS },
+    hint: "Burn a sulfur strip/ring in the barrel, or gas it with SO₂. Optionally record strips/discs used (drains as overhead).",
+  },
+  WET_STORAGE: {
+    kind: "MAINTENANCE",
+    activityType: "WET_STORAGE",
+    label: "Wet-storage solution change",
+    // One reagent per block (materialId + amount → overhead). The default template uses two blocks (KMBS + citric).
+    fields: { vesselId: "vessel", materialId: "material", amount: "number", note: "text" },
+    hint: "Change/replenish the citric+SO₂ storage solution in a wet-stored empty barrel. Record each reagent drawn (overhead).",
   },
   // ── TRANSFORM lane (plan 035): fruit intake + press. These create/split lots, so their run-time
   // inputs (picks for crush; fractions for press) are lists entered on the execute screen via custom
