@@ -213,4 +213,10 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     tool: "log_cap_management",
     args: { vessel: "T5", kind: "PUNCHDOWN", durationMin: 15 },
   },
+  {
+    utterance: "Blend 300 L of the Cab from tank 1 and 300 L of the Merlot from tank 2 into tank 3, tag RES",
+    tool: "blend_lots",
+    args: { components: [{ vessel: "tank 1", drawL: 300 }, { vessel: "tank 2", drawL: 300 }], toVessel: "tank 3", tag: "RES" },
+    note: "new blend lot in an empty destination; blended/complex sources deep-link the /blend builder",
+  },
 ];
