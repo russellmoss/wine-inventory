@@ -4,6 +4,7 @@ import { countOpenSamples } from "@/lib/chemistry/data";
 import { isSparklingEnabled, getTenantCurrency } from "@/lib/settings/data";
 import { openDeadlineBadge } from "@/lib/compliance/reminders";
 import { countPendingApprovalWorkOrders } from "@/lib/work-orders/data";
+import { voiceEnabled } from "@/lib/voice/config";
 import { CurrencyProvider } from "@/components/money/CurrencyProvider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
   return (
     <CurrencyProvider code={currency}>
-      <AppShell user={user} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines}>
+      <AppShell user={user} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} voiceEnabled={voiceEnabled()}>
         {children}
       </AppShell>
     </CurrencyProvider>

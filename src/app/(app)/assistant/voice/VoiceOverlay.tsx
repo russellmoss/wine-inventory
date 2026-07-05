@@ -35,6 +35,7 @@ const STATE_LABEL: Record<VoiceState, string> = {
 export function VoiceOverlay({ initialHistory, conversationId, onConversationId, onTurn, onClose }: Props) {
   const session = useVoiceSession({ initialHistory, conversationId, onConversationId, onTurn });
   const captionsRef = React.useRef<HTMLDivElement>(null);
+  const dialogRef = React.useRef<HTMLDivElement>(null);
 
   // Keep a live handle to the session so the mount-once effect always calls the
   // latest start/stop without taking them as deps (which would retrigger it).
@@ -58,10 +59,44 @@ export function VoiceOverlay({ initialHistory, conversationId, onConversationId,
     onClose();
   }
 
-  // Esc closes voice mode.
+  // This is a real modal (aria-modal): move focus into it on mount and restore it to whatever was
+  // focused before (the "Talk" button) on unmount, so keyboard/SR users aren't left focused behind it.
+  React.useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => prev?.focus?.();
+  }, []);
+
+  // Esc closes voice mode; Tab is trapped within the dialog so focus can't walk the chat behind it.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") {
+        close();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        root.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (activeEl === first || activeEl === root || !root.contains(activeEl))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (activeEl === last || !root.contains(activeEl))) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -70,13 +105,16 @@ export function VoiceOverlay({ initialHistory, conversationId, onConversationId,
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label="Voice mode"
+      tabIndex={-1}
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 1000,
+        outline: "none",
         background: "var(--surface-page)",
         display: "flex",
         flexDirection: "column",
