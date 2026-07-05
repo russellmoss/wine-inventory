@@ -15,6 +15,7 @@ export type Committer = (user: AppUser, args: Record<string, unknown>) => Promis
 import { commitLogBrix } from "./tools/log-brix";
 import { commitDeleteBrix } from "./tools/delete-brix";
 import { commitSetYieldEstimate } from "./tools/set-yield-estimate";
+import { commitLogHarvestPick } from "./tools/log-harvest-pick";
 import { commitAdjustInventory } from "./tools/adjust-inventory";
 import { commitRackWine } from "./tools/rack-wine";
 import { commitRevertTransfer } from "./tools/revert-transfer";
@@ -30,6 +31,7 @@ const COMMITTERS: Record<string, Committer> = {
   log_brix: commitLogBrix,
   delete_brix: commitDeleteBrix,
   set_yield_estimate: commitSetYieldEstimate,
+  log_harvest_pick: commitLogHarvestPick,
   adjust_inventory: commitAdjustInventory,
   rack_wine: commitRackWine,
   revert_transfer: commitRevertTransfer,

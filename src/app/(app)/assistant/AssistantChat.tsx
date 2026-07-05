@@ -54,6 +54,7 @@ const TOOL_LABELS: Record<string, string> = {
   log_brix: "Preparing Brix entry",
   delete_brix: "Finding the reading to delete",
   set_yield_estimate: "Preparing yield estimate",
+  log_harvest_pick: "Preparing the weigh-in",
   adjust_inventory: "Preparing inventory adjustment",
   rack_wine: "Preparing the transfer",
   revert_transfer: "Reverting the rack",
