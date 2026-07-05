@@ -3,7 +3,8 @@
 > Living matrix of **what a winemaker can do in the app** vs. **what the AI assistant can do for them**.
 > This is a *coverage matrix derived from the code*, not a parallel roadmap — regenerate it by auditing
 > the tool registry against the domain cores; do not hand-maintain a wishlist that drifts.
-> Last audited: 2026-07-05 (28 tools on main).
+> Last audited: 2026-07-05. Base cellar/ledger surface = 28 tools; plan 040 added a **winemaking
+> calculator** (7 read/compute tools, see below); plan 042 added navigation/deep-link tools.
 
 ## Why this exists
 
@@ -145,6 +146,29 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 ### Reads (query tools present)
 `query_brix`, `query_yield`, `query_recent_harvests`, `query_transfers`, `query_vineyard_status`,
 `query_field_reports`, `query_audit`, `report_anomalies`, `get_field_report_form`, plus the template reads.
+
+### Winemaking calculator — read/compute (plan 040, ✅ shipped)
+Pure-compute tools over `src/lib/winemaking-calc/*`; `kind: "read"`, **no ledger write, no confirm gate**,
+each run logged to `calculation_log` for traceability. They correctly don't trip the *write*-coverage
+guard, and `test/winemaking-calc-tools.test.ts` covers their compute behavior (read-only schema, defaults
+run, the SO₂ motivating case, `DomainError` instead of a silent NaN).
+
+| Capability | Engine | Tool |
+|---|---|---|
+| SO₂ (free / molecular / addition to target) | `winemaking-calc/so2` | ✅ `calc_so2` |
+| Sugar / chaptalization | `.../sugar` | ✅ `calc_sugar` |
+| Additions (generic rate ↔ volume) | `.../additions` | ✅ `calc_additions` |
+| Blending (Pearson square, target blends) | `.../blending` | ✅ `calc_blending` |
+| Fortification | `.../fortification` | ✅ `calc_fortification` |
+| Unit conversions | `.../conversions`, `units` | ✅ `calc_convert` |
+| Calculation history | `.../log` | ✅ `query_calculation_history` (read) |
+
+> **Fleet coverage owed.** These shipped in parallel, before the fleet-eval axis existed, so they have no
+> selection/economy case yet. They're the ideal FIRST fleet-suite entries — read/compute, low-risk — so
+> **scaffold the fleet suite on them** (e.g. an SO₂ question → `calc_so2`, one call, never a write; a
+> conversion → `calc_convert`) as part of the first Wave-1 build. Calculator = **compute**, not a ledger
+> write: it never doses; a winemaker who says "add" (not "calculate") should route to the future
+> `add_addition` write tool, not the calculator. That read-vs-write boundary is itself a fleet assertion.
 
 ## Prioritized retrofit backlog
 
