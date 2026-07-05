@@ -58,6 +58,10 @@ the user tightens them.** Read the drafted conditions back and get an explicit y
 2. **Golden case(s)** — add to `test/evals/assistant-write-tools.golden.ts`: every happy-path utterance
    from step 1.1, plus (as a `note`) the expected clarify/refuse behavior for the step 1.3/1.4 cases the
    golden format can express. This is what makes the coverage guard pass — without it, CI reds.
+   Also add a **fleet case** (full-toolset selection + a call-count budget, and a read/write-discipline
+   check where relevant) so the tool is proven selectable *and economical* among all tools, not just in
+   isolation — see the "Fleet / efficiency evals" section of the coverage doc. Scaffold the fleet suite
+   if it doesn't exist yet (do it with the first tool).
 3. **Persist the judgment durably** so later loops aren't amnesiac: record the refuse/stop rules as an
    architecture decision (`/decision` or the decision ledger) and, if it's a hard invariant, a note under
    `docs/architecture/invariants/`. The golden `note` fields carry the lighter cases.
@@ -70,7 +74,8 @@ Write an explicit, machine-checkable "done" the loop can't fake:
 - the capability's own `verify:*` script green (the core's domain proof — unchanged by the tool);
 - `npx vitest run test/evals/assistant-tools.eval.test.ts` green — i.e. the **structural coverage guard
   passes** (the new tool has its golden case) and every golden arg matches the real `inputSchema`;
-- optionally `npm run eval:assistant` (gated LLM eval) green before merge;
+- optionally `npm run eval:assistant` (gated LLM eval) green before merge — and the **fleet scorecard**
+  (selection accuracy + avg tool-calls) shows no regression vs. the prior run;
 - the tool calls `<Core>` and imports **no** `db_*` generic write.
 
 ## 4. Hand off
