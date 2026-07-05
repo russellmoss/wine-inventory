@@ -1,7 +1,7 @@
 import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
-import { signProposal } from "../confirm";
+import { signProposal, signResume } from "../confirm";
 import { resolveVessel, resolveVesselContents, type ResolvedVessel } from "../scope";
 import { resolveOneOrChoice } from "./resolve";
 import { round2 } from "@/lib/bottling/draw";
@@ -118,7 +118,8 @@ export const addAdditionTool: AssistantTool = {
         prompt: `Which "${input.material}" do you mean?`,
         describe: (m) => materialDisplayName(m),
         detail: (m) => [m.kind, m.subcategory].filter(Boolean).join(" · ") + ` · ref ${m.id.replace(/-/g, "").slice(0, 6)}`,
-        send: (m) => `${fining ? "Fine" : "Add"} ${input.amount} ${unit} #${m.id} to ${label(v)}${input.note ? ` — ${input.note}` : ""}`,
+        // Deterministic: tapping re-runs THIS tool with the material pinned by id (no model round-trip).
+        resume: (m) => signResume("add_addition", { ...input, material: `#${m.id}`, unit }),
         noneMsg: `No additive matches "${input.material}". Add it to the expendables catalog first, or check the name.`,
       });
       if (res.kind === "choice") return res.choice;

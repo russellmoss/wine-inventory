@@ -42,8 +42,12 @@ export function isSafeInternalPath(path: unknown): path is string {
   return true;
 }
 
-/** One clickable disambiguation option. `send` is the message the tap posts (id-pinned). */
-export type ChoiceOption = { label: string; sublabel?: string; send: string };
+/**
+ * One clickable disambiguation option. `resume` is a signed token the tap POSTs to re-run the tool with
+ * the record pinned by id (DETERMINISTIC — never routes back through the model). `send` is a legacy
+ * fallback (a chat message the tap sends). At least one must be present.
+ */
+export type ChoiceOption = { label: string; sublabel?: string; resume?: string; send?: string };
 
 /** Parse one NDJSON line into an AssistantEvent, or null if unparseable/invalid. */
 export function parseEvent(line: string): AssistantEvent | null {
@@ -93,11 +97,19 @@ export function asChoice(out: unknown): ChoiceRequest | null {
   for (const o of options) {
     if (!o || typeof o !== "object") return null;
     const label = (o as { label?: unknown }).label;
+    const resume = (o as { resume?: unknown }).resume;
     const send = (o as { send?: unknown }).send;
     if (typeof label !== "string" || !label) return null;
-    if (typeof send !== "string" || !send) return null;
+    const hasResume = typeof resume === "string" && resume.length > 0;
+    const hasSend = typeof send === "string" && send.length > 0;
+    if (!hasResume && !hasSend) return null; // an option must do SOMETHING when tapped
     const sublabel = (o as { sublabel?: unknown }).sublabel;
-    clean.push({ label, send, ...(typeof sublabel === "string" && sublabel ? { sublabel } : {}) });
+    clean.push({
+      label,
+      ...(hasResume ? { resume: resume as string } : {}),
+      ...(hasSend ? { send: send as string } : {}),
+      ...(typeof sublabel === "string" && sublabel ? { sublabel } : {}),
+    });
   }
   return { needsChoice: true, prompt, options: clean.slice(0, 25) }; // cap: a picker isn't a data dump
 }

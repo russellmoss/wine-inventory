@@ -13,6 +13,10 @@ export type ProposalPayload = {
   args: Record<string, unknown>;
   exp: number; // epoch ms
   nonce: string;
+  // "commit" = a pending write (nonce burned once on confirm). "resume" = a picker selection that
+  // re-runs the tool to PRODUCE a proposal (idempotent, no mutation → not nonce-burned). Absent = commit
+  // (back-compat). Kept distinct so a resume token can never be POSTed to the commit path and vice-versa.
+  kind?: "commit" | "resume";
 };
 
 function secret(): string {
@@ -31,7 +35,19 @@ export function signProposal(
   args: Record<string, unknown>,
   ttlMs: number = TTL_MS,
 ): string {
-  const payload: ProposalPayload = { tool, args, exp: Date.now() + ttlMs, nonce: randomUUID() };
+  const payload: ProposalPayload = { tool, args, exp: Date.now() + ttlMs, nonce: randomUUID(), kind: "commit" };
+  const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  return `${body}.${sign(body)}`;
+}
+
+/**
+ * Build a signed RESUME token: a picker option that, when tapped, re-runs the tool with `input` (the
+ * original tool input plus the chosen record pinned by id) to produce a fresh proposal. No mutation, so
+ * no nonce is burned — the resulting proposal carries its own single-use commit token. This is what makes
+ * a picker tap DETERMINISTIC: the pinned id reaches the tool directly, never routed back through the model.
+ */
+export function signResume(tool: string, input: Record<string, unknown>, ttlMs: number = TTL_MS): string {
+  const payload: ProposalPayload = { tool, args: input, exp: Date.now() + ttlMs, nonce: randomUUID(), kind: "resume" };
   const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   return `${body}.${sign(body)}`;
 }
