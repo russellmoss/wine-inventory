@@ -100,6 +100,25 @@ describe("select field validation (A7) + filtration (Unit 2)", () => {
   });
 });
 
+describe("cap management task type (plan 043)", () => {
+  it("accepts a CAP_MGMT spec with a valid technique", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "CAP_MGMT", title: "Punch down", defaults: { technique: "PUNCHDOWN", durationMin: 5 } }] }).ok).toBe(true);
+    expect(validateTemplateSpec({ tasks: [{ taskType: "CAP_MGMT", title: "Pump over", defaults: { technique: "PUMPOVER" } }] }).ok).toBe(true);
+  });
+
+  it("rejects an out-of-vocabulary technique (never free-form)", () => {
+    const v = validateTemplateSpec({ tasks: [{ taskType: "CAP_MGMT", title: "x", defaults: { technique: "STIR" } }] });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("not a valid technique");
+  });
+
+  it("instantiates a CAP_MGMT task as an OPERATION carrying technique + durationMin, deriving destVesselId from vesselId", () => {
+    const [task] = instantiateTaskBuilds([{ taskType: "CAP_MGMT", title: "Punch down T3", values: { vesselId: "v-tank", technique: "PUNCHDOWN", durationMin: 3 } }]);
+    expect(task).toMatchObject({ seq: 1, kind: "OPERATION", opType: "CAP_MGMT", destVesselId: "v-tank" });
+    expect(task.plannedPayload).toMatchObject({ technique: "PUNCHDOWN", durationMin: 3 });
+  });
+});
+
 describe("maintenance task types (Unit 3) + instantiation", () => {
   it("instantiates a TEMP_SETPOINT with activityType + carries target fields", () => {
     const tasks = instantiateTasksFromSpec({ tasks: [{ taskType: "TEMP_SETPOINT", title: "Cold settle", defaults: { targetUnit: "°C" } }] }, [{ vesselId: "v1", targetValue: 4, achievedValue: 5 }]);

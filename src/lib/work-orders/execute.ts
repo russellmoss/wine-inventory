@@ -6,7 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { rackWineTx } from "@/lib/vessels/rack-core";
 import { topVesselTx } from "@/lib/cellar/topping";
-import { filterVesselTx } from "@/lib/cellar/treatments";
+import { filterVesselTx, capManagementTx, type CapKind } from "@/lib/cellar/treatments";
 import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFIG, type AddAdditionInput } from "@/lib/cellar/addition";
 import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
 import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
@@ -92,6 +92,19 @@ async function dispatchOperationTx(
         actualOutputL: asNum(payload.actualOutputL), // A5: loss = pre − actual (computed in the tx)
         medium: asStr(payload.filterType), // dec 1: controlled filter media → LotTreatment.medium
         micron: asNum(payload.micron) ?? null,
+        note: note ?? undefined,
+      });
+      return { operationId: r.operationId, message: `${r.summary}.` };
+    }
+    case "CAP_MGMT": {
+      // Volume-neutral cap work (pumpover / punchdown / cold-soak / maceration / pulse-air). The technique
+      // rides `technique` (a CapKind); capManagementTx validates it + guards the vessel. Whole-vessel op.
+      const technique = asStr(payload.technique) ?? asStr(payload.kind);
+      if (!technique) throw new ActionError("Pick a cap-management technique (pumpover, punchdown, …).");
+      const r = await capManagementTx(tx, actor, {
+        vesselId: (asStr(payload.vesselId) ?? task.destVesselId ?? task.sourceVesselId) as string,
+        kind: technique as CapKind,
+        durationMin: asNum(payload.durationMin) ?? null,
         note: note ?? undefined,
       });
       return { operationId: r.operationId, message: `${r.summary}.` };
@@ -188,7 +201,7 @@ async function dispatchOperationTx(
     }
     default:
       throw new ActionError(
-        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. Supported: rack, addition, fining, topping, filtration, de-stem/crush, press/saignée.`,
+        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. Supported: rack, addition, fining, topping, filtration, cap management, de-stem/crush, press/saignée.`,
         "CONFLICT",
       );
   }
