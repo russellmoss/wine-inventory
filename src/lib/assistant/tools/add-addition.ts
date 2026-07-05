@@ -7,7 +7,7 @@ import { resolveOneOrChoice } from "./resolve";
 import { round2 } from "@/lib/bottling/draw";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { isDoseableCategory, categoryOf, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
-import { computeDoseTotal, isRateUnit, resolveDoseUnit, type RateBasis } from "@/lib/cellar/additions-math";
+import { computeDoseTotal, resolveDoseUnit } from "@/lib/cellar/additions-math";
 import { addAdditionAction, addFiningAction } from "@/lib/cellar/actions";
 import type { AddAdditionInput } from "@/lib/cellar/addition";
 
@@ -42,15 +42,15 @@ const normUnit = (u: string): string => (/^ppm$/i.test(u.trim()) ? "mg/L" : u.tr
 export const addAdditionTool: AssistantTool = {
   name: "add_addition",
   description:
-    "Record an ADDITION or FINING — a material dose (SO₂/KMBS, nutrients, acid, tannin, bentonite, etc.) into a vessel. Use when the user says they ADDED / DOSED / are adding a concrete amount of a product to a tank or barrel. The dose goes into ALL wine in the vessel. Set fining:true for a fining agent. This is NOT a calculator: a 'how much do I add to hit X' question is compute — use calc_so2 for SO₂ targets. Does NOT save immediately — returns a preview the user must confirm.",
+    "Record an ADDITION or FINING — a material dose into a vessel. Covers ANY doseable additive: SO₂/KMBS, nutrients (Fermaid/DAP), YEAST (e.g. EC-1118), MLF culture, acid, tannin, SUGAR (chaptalization), enzyme, bentonite/fining, etc. Use when the user ADDED / DOSED / pitched / inoculated a product into a tank or barrel. Accepts EITHER a rate (g/hL, mg/L, g/L, mL/L) OR an absolute total (g, kg, mL, L) — e.g. '200 g of tannin' and '25 g/hL yeast' both work. The dose goes into ALL wine in the vessel. Set fining:true for a fining agent. This is NOT a calculator: a 'how much do I add to hit X' question is compute — use calc_so2 for SO₂ targets and calc_sugar for chaptalization (sugar to raise Brix) or a yeast/nutrient dose. Does NOT save immediately — returns a preview the user must confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       vessel: { type: "string", description: "Vessel to dose, e.g. 'tank 5' or 'barrel 12'. The addition goes into all wine in it." },
-      material: { type: "string", description: "The additive by name/brand, e.g. 'KMBS', 'Fermaid-O', 'tartaric', 'bentonite'. Must be an additive — packaging or cleaning/sanitizing materials are refused." },
+      material: { type: "string", description: "The product by name/brand — any additive: 'KMBS', 'Fermaid-O', 'EC-1118' (yeast), 'tartaric', 'cane sugar', 'tannin', 'bentonite', etc. Only packaging or cleaning/sanitizing materials are refused (those are never dosed into wine)." },
       amount: { type: "number", description: "How much to add (the number)." },
-      unit: { type: "string", enum: DOSE_UNITS, description: "Dose unit. A per-volume unit (g/hL, g/L, mg/L, mL/L) is a RATE against the vessel's volume; an absolute unit (g, kg, mL, L) is the exact total. 'ppm' is treated as mg/L." },
+      unit: { type: "string", enum: DOSE_UNITS, description: "Dose unit. A per-volume unit (g/hL, g/L, mg/L, mL/L) is a RATE against the vessel's volume; an absolute unit (g, kg, mL, L) is the exact total (e.g. '200 g'). 'ppm' is treated as mg/L." },
       fining: { type: "boolean", description: "Set true for a fining agent (bentonite, etc.) — records a fining (its loss realizes at the next racking). Default false = a plain addition." },
       note: { type: "string", description: "Optional note about the addition." },
     },
@@ -64,15 +64,9 @@ export const addAdditionTool: AssistantTool = {
     const unit = normUnit(String(input.unit ?? ""));
     if (!(DOSE_UNITS as readonly string[]).includes(unit)) throw new Error(`Unit must be one of: ${DOSE_UNITS.join(", ")} (or ppm).`);
     const fining = input.fining === true;
-    // The standalone addition action doses by RATE (rateValue + rateBasis). Absolute totals (g/kg/mL/L)
-    // have no standalone path yet — only the WO tx seam takes an amount — so reject them with guidance
-    // rather than silently no-op'ing (which is the "dose rate > 0" failure this whole fix chases down).
+    // Rate OR absolute — both are recorded via the same core (recordNeutralDoseTx does the unit math).
     const dose = resolveDoseUnit(unit);
-    if (!dose || dose.kind !== "rate") {
-      throw new Error(
-        `I can log a dose RATE — g/hL, ppm (mg/L), g/L, or mL/L. For an exact total like "${input.amount} ${unit}", enter it on the cellar addition form for now.`,
-      );
-    }
+    if (!dose) throw new Error(`Unit must be one of: ${DOSE_UNITS.join(", ")} (or ppm).`);
 
     // Resolve the vessel (refuse inactive / empty — no-vessel throws a clear message from resolveVessel).
     const v = await resolveVessel(input.vessel);
@@ -126,10 +120,14 @@ export const addAdditionTool: AssistantTool = {
       material = res.row;
     }
 
-    // Preview: the computed total to weigh out (rate → amount × volume; absolute → the amount), + the
-    // resident lots being dosed (transparency on a multi-lot tank — the dose hits all of them).
-    const est = isRateUnit(unit) ? computeDoseTotal(input.amount, unit, vol) : null;
-    const totalClause = est ? `≈ ${est.total.toLocaleString()} ${est.unit} to weigh out (at ${vol} L)` : `${input.amount} ${unit}`;
+    // Preview: the canonical total (rate → amount × volume; absolute → the amount itself), + the resident
+    // lots being dosed (transparency on a multi-lot tank — the dose hits all of them).
+    const est = computeDoseTotal(input.amount, unit, vol); // handles rate AND absolute
+    const totalClause = est
+      ? dose.kind === "rate"
+        ? `≈ ${est.total.toLocaleString()} ${est.unit} to weigh out (at ${vol} L)`
+        : `${est.total.toLocaleString()} ${est.unit} total`
+      : `${input.amount} ${unit}`;
     const contents = await resolveVesselContents(input.vessel);
     const lotClause =
       contents.kind === "blend" ? ` — all ${contents.lots.length} resident lots (${contents.lots.map((l) => l.code).join(", ")})`
@@ -140,8 +138,8 @@ export const addAdditionTool: AssistantTool = {
     const token = signProposal("add_addition", {
       vesselId: v.id,
       materialId: material.id,
-      rateValue: input.amount,
-      rateBasis: dose.basis,
+      amount: input.amount,
+      doseUnit: unit,
       fining,
       ...(input.note ? { note: input.note } : {}),
       materialLabel: materialDisplayName(material),
@@ -155,8 +153,8 @@ export const commitAddAddition: Committer = async (_user, args) => {
   const input: AddAdditionInput = {
     vesselId: String(args.vesselId),
     materialId: String(args.materialId),
-    rateValue: Number(args.rateValue),
-    rateBasis: args.rateBasis as RateBasis,
+    amount: Number(args.amount),
+    doseUnit: String(args.doseUnit),
     note: args.note == null ? undefined : String(args.note),
   };
   const res = args.fining === true ? await addFiningAction(input) : await addAdditionAction(input);

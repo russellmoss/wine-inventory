@@ -240,12 +240,15 @@ export async function resolveDoseMaterial(
 /** Shared engine for a neutral material dose; ADDITION and FINING differ only in copy/kind. Standalone
  * wrapper — resolves the material (may upsert, own tx) then owns the SERIALIZABLE ledger tx. */
 async function recordNeutralDose(actor: LedgerActor, input: AddAdditionInput, cfg: NeutralDoseConfig): Promise<CellarOpResult> {
-  const { vesselId, rateValue, rateBasis } = input;
+  const { vesselId, rateValue } = input;
   if (!vesselId) throw new ActionError("A vessel is required.");
-  // The standalone /cellar path doses by rate (the manual form has no amount input). The WO seam that
-  // supports dose-by-amount calls recordNeutralDoseTx directly, bypassing this rate-only guard.
-  if (!(typeof rateValue === "number" && rateValue > 0)) throw new ActionError("Enter a dose rate greater than 0.");
-  if (!RATE_BASIS_LABELS[rateBasis as RateBasis]) throw new ActionError("Pick a valid dose basis.");
+  // Accept the unified Amount + Units — a RATE (g/hL, mg/L, …) OR an ABSOLUTE total (g, kg, mL, L) — the
+  // same shape the WO seam already uses, as well as the legacy rateValue+rateBasis (the /cellar rate form).
+  // recordNeutralDoseTx does the unit math + basis/unit validation for every case; here we only require ONE
+  // valid form so an empty dose can't slip through.
+  const hasRate = typeof rateValue === "number" && rateValue > 0;
+  const hasAmount = typeof input.amount === "number" && input.amount > 0 && typeof input.doseUnit === "string" && input.doseUnit.trim().length > 0;
+  if (!hasRate && !hasAmount) throw new ActionError("Enter a dose amount and unit.");
   const resolved = await resolveDoseMaterial(actor, input, cfg);
   return runLedgerWrite((tx) => recordNeutralDoseTx(tx, actor, input, cfg, resolved));
 }
