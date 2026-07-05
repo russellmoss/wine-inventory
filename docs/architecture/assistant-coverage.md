@@ -141,9 +141,9 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | Sparkling: tirage / riddling / disgorgement (+ reverses) | `tirageCore` + 8 | ✅ `sparkling_tirage` · `log_riddling` · `sparkling_disgorge` (Wave 3 slice D; gated on sparklingEnabled) · dose+finish deep-links En Tirage · reverses via `undo_operation` |
 | Bottling / taxpaid & bottled removal | `removeTaxpaidCore`, `removeBottledCore` | ✅ `remove_bulk_wine` · `remove_bottled_wine` (Wave 3 slice C; admin-only) |
 | Materials: create / receive / activate | `createStockMaterialCore`, `receiveSupplyCore`, `setMaterialActiveCore` | ✅ `create_material` · `receive_supply` · `set_material_active` (Wave 3 slice A) |
-| Cost: receive bulk-wine cost, consume | `receiveBulkWineCostCore`, `consumeMaterialCore` | ❌ |
-| Blend trials | `createTrialCore` + 5 | ❌ |
-| Vessel groups | `createGroupCore` + 4 | ❌ |
+| Cost: receive bulk-wine cost | `receiveBulkWineCostCore` | ✅ `record_bulk_wine_cost` (Wave 3 slice E). `consumeMaterialCore` is internal (the op/dosing consumption side, never a standalone user op) |
+| Blend trials | `createTrialCore` + 5 | 🟨 **deferred to UI** — an interactive bench workflow (iterate components → taste → promote); `calc_blending` already covers the blend math. Not chat-shaped. |
+| Vessel groups | `createGroupCore` + 4 | 🟨 **deferred to UI** — a batch-op convenience; the value is applying ops across a group, not creating an empty group by chat. |
 
 ### Reads (query tools present)
 `query_brix`, `query_yield`, `query_recent_harvests`, `query_transfers`, `query_vineyard_status`,
@@ -234,7 +234,13 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
     when off). Reverses ride the universal `undo_operation` (→ `reverseSparklingOperationCore`). Fleet guards
     tirage-vs-bottling and riddling-vs-cap-management. **Partial:** the full DISGORGE→DOSAGE→FINISH (liqueur/
     target RS + SKU + destination) stays on the En Tirage screen by design (deep-linked).
-    Remaining Wave 3: cost · trials / groups / recurring.
+11. ~~**Cost + trials/groups/recurring**~~ ✅ **DONE (slice E) — Wave 3 COMPLETE.** Built
+    `record_bulk_wine_cost` (wraps `receiveBulkWineCostCore` — the D20 bulk-wine cost node; resolves the
+    lot, KNOWN-cost). Deliberately **NOT built as chat tools** (fleet economy — we're at ~40 tools, and the
+    doc's own tool-count-cliff warning applies): blend **trials** (interactive bench workflow; `calc_blending`
+    covers the math), vessel **groups** (batch-op UI convenience), **recurring** WO generation (automation/
+    cron, not conversational), and `consumeMaterialCore` (internal consumption side of ops). These stay in
+    the UI/automation; revisit only if real usage shows a chat demand.
 
 ## Workflow
 

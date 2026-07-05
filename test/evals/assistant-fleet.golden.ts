@@ -300,4 +300,12 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "eject the lees plug; dose/finish is a deep-link, not a guess",
   },
+  // ── Cost (Wave 3): bulk-wine cost node vs material/supply receipt ──
+  {
+    utterance: "The bulk Cab in tank 4 cost $5,000",
+    tool: "record_bulk_wine_cost",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "a bulk-WINE cost node (D20) — NOT receive_supply (a material/expendable receipt) and NOT a calc",
+  },
 ];

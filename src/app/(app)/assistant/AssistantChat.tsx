@@ -85,6 +85,7 @@ const TOOL_LABELS: Record<string, string> = {
   sparkling_tirage: "Preparing the tirage",
   log_riddling: "Preparing the riddling log",
   sparkling_disgorge: "Preparing the disgorgement",
+  record_bulk_wine_cost: "Preparing the cost entry",
   rack_wine: "Preparing the transfer",
   add_addition: "Preparing the addition",
   record_measurement: "Preparing the lab panel",
