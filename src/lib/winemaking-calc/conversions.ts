@@ -54,6 +54,7 @@ export function convert(dimension: ConvertibleDimension, value: number, from: st
 
 /** Convert a value to EVERY unit in the dimension at once (the reference "fill all fields" behavior). */
 export function convertAll(dimension: ConvertibleDimension, value: number, from: string): Record<string, number> {
+  requireFinite(value, "value");
   const table = CONVERSION_FACTORS[dimension];
   const base = value * table[requireOneOf(from, Object.keys(table), "from unit")];
   const out: Record<string, number> = {};

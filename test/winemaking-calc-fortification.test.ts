@@ -32,4 +32,8 @@ describe("sweet-spot ladder", () => {
     // At 15% between 10 and 20: half high, half low.
     expect(rows[0].highComponent).toBeCloseTo(50, 6);
   });
+  it("rejects equal high/low alcohol (division) and non-positive batch volume", () => {
+    expect(() => sweetSpotLadder({ highAlc: 15, lowAlc: 15, startAlc: 15, targetAlc: 14, batchVolume: 100 })).toThrow(DomainError);
+    expect(() => sweetSpotLadder({ highAlc: 20, lowAlc: 10, startAlc: 15, targetAlc: 14, batchVolume: 0 })).toThrow(DomainError);
+  });
 });

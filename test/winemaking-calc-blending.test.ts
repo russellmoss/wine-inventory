@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { blendWeightedAverage, blendPH, wineCost, totalVolume, GALLONS_PER_CASE } from "@/lib/winemaking-calc/blending";
+import { DomainError } from "@/lib/winemaking-calc/validate";
 
 describe("volume-weighted average", () => {
   it("100 L @ 13% + 300 L @ 14% → 13.75%", () => {
@@ -20,6 +21,11 @@ describe("pH blending in H⁺ space (the standout formula)", () => {
   it("identical pH components return that pH", () => {
     expect(blendPH([{ volume: 100, pH: 3.5 }, { volume: 200, pH: 3.5 }]).blendPH).toBeCloseTo(3.5, 6);
   });
+  it("rejects empty components, NaN pH, and negative component volume (no silent NaN)", () => {
+    expect(() => blendPH([])).toThrow(DomainError);
+    expect(() => blendPH([{ volume: 100, pH: NaN }, { volume: 100, pH: 3.5 }])).toThrow(DomainError);
+    expect(() => blendPH([{ volume: -100, pH: 3.2 }, { volume: 100, pH: 3.5 }])).toThrow(DomainError);
+  });
 });
 
 describe("wine cost", () => {
@@ -28,5 +34,8 @@ describe("wine cost", () => {
     expect(r.totalCostPerGal).toBe(21);
     expect(r.totalCases).toBeCloseTo(21 / GALLONS_PER_CASE, 6);
     expect(r.percentByCategory[0]).toBeCloseTo((1 / 21) * 100, 4);
+  });
+  it("rejects all-zero cost buckets", () => {
+    expect(() => wineCost([0, 0, 0, 0, 0, 0])).toThrow(DomainError);
   });
 });

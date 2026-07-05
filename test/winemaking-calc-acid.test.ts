@@ -27,4 +27,9 @@ describe("deacidification (advisory — revised 0.67/0.673/0.62 trio)", () => {
     });
     expect(r.khco3 / r.caco3).toBeCloseTo(0.673 / 0.67, 4);
   });
+  it("rejects non-positive volume", () => {
+    expect(() =>
+      deacidification({ volume: 0, volumeUnit: "L", currentTA: 8, currentTAUnit: "g_L", targetTA: 6, targetTAUnit: "g_L", outUnit: "g" }),
+    ).toThrow(DomainError);
+  });
 });

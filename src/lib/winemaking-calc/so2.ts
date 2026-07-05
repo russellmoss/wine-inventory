@@ -2,14 +2,14 @@
 // Reuses SO2_PKA (1.81) from the existing chemistry lib so the constant lives once.
 // Pure — tested in test/winemaking-calc-so2.test.ts.
 
-import { SO2_PKA, molecularSO2 } from "@/lib/chemistry/so2";
+import { SO2_PKA } from "@/lib/chemistry/so2";
 import {
   VOLUME_TO_LITERS, VolumeUnit, RATE_UNITS, RateUnitId, MassUnit, MASS_OUTPUT_FACTORS,
   LiquidUnit, LIQUID_OUTPUT_FACTORS,
 } from "./units";
 import { requirePositive, requireNonNegative } from "./validate";
 
-export { SO2_PKA, molecularSO2 };
+export { SO2_PKA };
 
 /** SO₂ mass fraction in potassium metabisulfite (KMBS, K₂S₂O₅) — 57.6%. */
 export const KMBS_SO2_FRACTION = 0.576;

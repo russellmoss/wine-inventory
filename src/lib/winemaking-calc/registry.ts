@@ -8,7 +8,7 @@
 
 import {
   VOLUME_UNITS, VOLUME_UNIT_LABEL, RATE_UNITS, RateUnitId, MASS_UNITS, MASS_UNIT_LABEL,
-  LIQUID_UNITS, LIQUID_UNIT_LABEL, VolumeUnit, MassUnit, LiquidUnit,
+  LIQUID_UNITS, LIQUID_UNIT_LABEL, VolumeUnit, MassUnit, LiquidUnit, round,
 } from "./units";
 import { convertAll, convertTemp, unitsFor, ConvertibleDimension } from "./conversions";
 import { so2AsKmbs, so2AsLiquidSolution, freeSO2ForMolecularTarget, so2Reduction } from "./so2";
@@ -20,7 +20,6 @@ import { acidAddition, deacidification } from "./acid";
 import { finingDose, oakDose, copperAsSulfate, copperAsSulfateSolution } from "./additions";
 import { fortificationPearson, sweetSpotLadder } from "./fortification";
 import { blendWeightedAverage, blendPH, wineCost } from "./blending";
-import { round } from "./units";
 
 export type CalcSection =
   | "Conversions" | "SO₂ Additions" | "Fermentation & Sugar" | "Chaptalization & Dilution"
@@ -407,8 +406,12 @@ export const CALCULATORS: Descriptor[] = [
   },
 ];
 
+/** Type guard: is this descriptor a computational calculator (vs a static reference)? */
+export function isCalc(d: Descriptor): d is CalcDescriptor {
+  return d.kind === "calc";
+}
 /** All calculator descriptors (the computational ones). */
-export const CALC_DESCRIPTORS = CALCULATORS.filter((d): d is CalcDescriptor => d.kind === "calc");
+export const CALC_DESCRIPTORS = CALCULATORS.filter(isCalc);
 /** Default input record for a descriptor (field name → default value). */
 export function defaultInput(d: CalcDescriptor): Record<string, string | number> {
   return Object.fromEntries(d.fields.map((f) => [f.name, f.default]));

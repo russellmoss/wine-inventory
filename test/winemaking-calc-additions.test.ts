@@ -29,4 +29,8 @@ describe("copper (danger + TTB limit)", () => {
     expect(r.mass).toBeGreaterThan(0);
     expect(r.danger).toBe(true);
   });
+  it("copper solution flags a target above the TTB limit", () => {
+    const r = copperAsSulfateSolution({ volume: 1000, volumeUnit: "L", rate: 0.6, rateUnit: "mg_L", concentrationPct: 1, outUnit: "mL" });
+    expect(r.ttbWarning).toMatch(/TTB/);
+  });
 });

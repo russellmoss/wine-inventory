@@ -20,6 +20,10 @@ describe("Brix ↔ SG (261.3 model — differs from ferment/sugar.ts cubic by de
   it("sugar g/L from Brix", () => {
     expect(brixToSugarGL(24)).toBeCloseTo(24 * brixToSG(24) * 10, 6);
   });
+  it("rejects NaN Brix and Brix at/above the 261.3 pole (no NaN/Infinity)", () => {
+    expect(() => brixToSG(NaN)).toThrow(DomainError);
+    expect(() => brixToSG(261.3)).toThrow(DomainError);
+  });
 });
 
 describe("Brix → alcohol (user factor)", () => {

@@ -5,7 +5,7 @@
 
 import { VOLUME_TO_LITERS, VolumeUnit, RATE_UNITS, RateUnitId, MassUnit, MASS_OUTPUT_FACTORS, dose } from "./units";
 import { convertTemp } from "./conversions";
-import { requireFinite, requirePositive, requireNonNegative, requireOneOf } from "./validate";
+import { DomainError, requireFinite, requirePositive, requireNonNegative, requireOneOf } from "./validate";
 
 /** Refractometric Brix↔SG constant. */
 export const BRIX_SG_CONSTANT = 261.3;
@@ -19,6 +19,8 @@ export function brixToAlcohol(brix: number, factor: number): number {
 
 /** Brix → specific gravity (261.3 model). */
 export function brixToSG(brix: number): number {
+  requireFinite(brix, "Brix");
+  if (brix >= BRIX_SG_CONSTANT) throw new DomainError(`Brix must be below ${BRIX_SG_CONSTANT}.`);
   return BRIX_SG_CONSTANT / (BRIX_SG_CONSTANT - brix);
 }
 

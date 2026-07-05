@@ -43,6 +43,10 @@ describe("free SO₂ for a molecular target", () => {
     const r = freeSO2ForMolecularTarget({ molecularTarget: 0.08, pH: 3.4 });
     expect(r.warning).toMatch(/0\.8/);
   });
+  it("rejects a negative molecular target and a non-positive pH", () => {
+    expect(() => freeSO2ForMolecularTarget({ molecularTarget: -1, pH: 3.4 })).toThrow(DomainError);
+    expect(() => freeSO2ForMolecularTarget({ molecularTarget: 0.8, pH: 0 })).toThrow(DomainError);
+  });
 });
 
 describe("SO₂ reduction (advisory)", () => {
@@ -52,5 +56,10 @@ describe("SO₂ reduction (advisory)", () => {
     });
     expect(Number.isFinite(r)).toBe(true);
     expect(r).toBeGreaterThanOrEqual(0);
+  });
+  it("rejects zero peroxide concentration", () => {
+    expect(() =>
+      so2Reduction({ actual: 60, actualUnit: "ppm", target: 30, targetUnit: "ppm", concentration: 0, concentrationUnit: "ppm" }),
+    ).toThrow(DomainError);
   });
 });

@@ -40,8 +40,10 @@ export function copperAsSulfate(input: {
 }
 
 /**
- * Copper as copper sulfate SOLUTION (dosing from a % stock). Mirrors the SO₂-liquid-solution
- * structure with the elemental-Cu → salt factor 3.93 applied. Returns the solution volume.
+ * Copper as copper sulfate SOLUTION (dosing from a % stock). The reference doc's LITERAL formula
+ * line for this calc is garbled (`(vol×rate)/volumec …`); we use the doc's PROSE intent —
+ * "arranged like the SO₂-liquid-solution formula" — i.e. the SO₂-liquid-solution structure with
+ * the elemental-Cu → salt factor 3.93 applied. Returns the solution volume.
  */
 export function copperAsSulfateSolution(input: {
   volume: number; volumeUnit: VolumeUnit; rate: number; rateUnit: RateUnitId;

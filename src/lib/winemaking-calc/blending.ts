@@ -8,19 +8,19 @@
 //
 // Pure — tested in test/winemaking-calc-blending.test.ts.
 
-import { requirePositive } from "./validate";
+import { requireFinite, requireNonNegative, requirePositive } from "./validate";
 
 export type BlendComponent = { volume: number; value: number };
 
-/** Total volume across components. */
+/** Total volume across validated components (each volume ≥ 0, finite). */
 export function totalVolume(components: { volume: number }[]): number {
-  return components.reduce((s, c) => s + c.volume, 0);
+  return components.reduce((s, c) => s + requireNonNegative(c.volume, "Component volume"), 0);
 }
 
 /** Simple volume-weighted average — correct for alcohol, TA, ppm SO₂, etc. */
 export function blendWeightedAverage(components: BlendComponent[]): number {
   const total = requirePositive(totalVolume(components), "Total volume");
-  return components.reduce((s, c) => s + c.volume * c.value, 0) / total;
+  return components.reduce((s, c) => s + c.volume * requireFinite(c.value, "Component value"), 0) / total;
 }
 
 export type BlendPHResult = { blendPH: number; phIsEstimate: true };
@@ -31,7 +31,7 @@ export type BlendPHResult = { blendPH: number; phIsEstimate: true };
  */
 export function blendPH(components: { volume: number; pH: number }[]): BlendPHResult {
   const total = requirePositive(totalVolume(components), "Total volume");
-  const hTotal = components.reduce((s, c) => s + Math.pow(10, -c.pH) * c.volume, 0);
+  const hTotal = components.reduce((s, c) => s + Math.pow(10, -requireFinite(c.pH, "Component pH")) * c.volume, 0);
   const hAvg = (hTotal / total) * 10000;
   return { blendPH: -Math.log10(hAvg * 1e-4), phIsEstimate: true };
 }

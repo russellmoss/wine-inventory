@@ -28,6 +28,9 @@ describe("factor-based conversions", () => {
   it("throws on unknown units", () => {
     expect(() => convert("volume", 1, "furlong", "L")).toThrow(DomainError);
   });
+  it("convertAll rejects a non-finite value (no silent NaN)", () => {
+    expect(() => convertAll("volume", NaN, "L")).toThrow(DomainError);
+  });
 });
 
 describe("temperature", () => {
@@ -39,5 +42,9 @@ describe("temperature", () => {
   });
   it("identity when from === to", () => {
     expect(convertTemp(15, "C", "C")).toBe(15);
+  });
+  it("rejects an invalid temperature unit", () => {
+    // @ts-expect-error — exercising the runtime guard with a bad unit
+    expect(() => convertTemp(20, "K", "C")).toThrow(DomainError);
   });
 });

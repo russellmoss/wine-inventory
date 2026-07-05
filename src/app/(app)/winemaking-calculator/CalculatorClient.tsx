@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Badge, Button, Card, Eyebrow, Input } from "@/components/ui";
 import {
-  CALCULATORS, SECTIONS, defaultInput, DomainError,
+  CALCULATORS, SECTIONS, defaultInput, DomainError, isCalc,
   type CalcDescriptor, type CalcResult, type Descriptor, type FieldSpec,
 } from "@/lib/winemaking-calc";
 
@@ -19,10 +19,6 @@ const STATIC_CONTENT: Record<string, string> = {
   "fining-summary":
     "Recommended fining dose ranges vary by agent (bentonite, PVPP, gelatin, isinglass, egg white, activated carbon, etc.). Always bench-trial a fining before a cellar-scale addition — over-fining strips aroma and color.",
 };
-
-function isCalc(d: Descriptor): d is CalcDescriptor {
-  return d.kind === "calc";
-}
 
 export default function CalculatorClient() {
   const [query, setQuery] = useState("");
