@@ -66,6 +66,18 @@ export const REVERSIBLE_SPARKLING_TYPES = [
 ] as const satisfies readonly OperationType[];
 
 /**
+ * Volume-neutral op types (a treatment, no volumetric ledger lines): ADDITION / FINING /
+ * CAP_MGMT. Single source of truth shared by the timeline "voided" verdict (`lot/timeline.ts`)
+ * and the edit/hard-delete gate (`cellar/edit.ts`) so the two can never drift — deleting an op
+ * the timeline treats as volumetric (or vice versa) would corrupt the projection==fold invariant.
+ */
+export const NEUTRAL_OP_TYPES = [
+  "ADDITION",
+  "FINING",
+  "CAP_MGMT",
+] as const satisfies readonly OperationType[];
+
+/**
  * Phase 6 fermentation state — THREE orthogonal vectors, NOT a linear phase enum
  * (council C1). `afState` (alcoholic ferment) + `mlfState` (malolactic) live on the Lot
  * alongside the physical `LotForm`. STUCK is DERIVED from the Brix trend (council C3),

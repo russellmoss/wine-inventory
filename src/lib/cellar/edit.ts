@@ -6,6 +6,7 @@ import { computeAdditionTotal, type RateBasis } from "@/lib/cellar/additions-mat
 import { coerceRateBasis } from "@/lib/cellar/material-normalize";
 import { upsertMaterialCore } from "@/lib/cellar/materials";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
+import { NEUTRAL_OP_TYPES } from "@/lib/ledger/vocabulary";
 
 // Timeline edit/delete for VOLUME-NEUTRAL ops only (Phase 3 follow-up). Append-only (D6)
 // still governs volume: Seed/Rack/Top/Filter/Dump carry ledger lines and can never be
@@ -15,7 +16,7 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 // removed (off the timeline) while the AuditLog retains who/what/when — and a wrong value
 // can be edited in place with an audit diff. Volumetric ops are rejected here.
 
-const NEUTRAL = new Set(["ADDITION", "FINING", "CAP_MGMT"]);
+const NEUTRAL = new Set<string>(NEUTRAL_OP_TYPES);
 
 function treatmentSnapshot(t: {
   kind: string;

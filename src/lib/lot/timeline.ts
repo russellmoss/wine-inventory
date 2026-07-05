@@ -1,11 +1,11 @@
 import { round2 } from "@/lib/bottling/draw";
-import type { OperationType } from "@/lib/ledger/vocabulary";
+import { NEUTRAL_OP_TYPES, type OperationType } from "@/lib/ledger/vocabulary";
 import { RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { getAnalyte } from "@/lib/chemistry/analytes";
 import { molecularSO2, type MolecularSO2 } from "@/lib/chemistry/so2";
 
 /** Op types that are volume-neutral (a treatment, no lines) — drives the "voided" pill. */
-const NEUTRAL_OPS = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT"]);
+const NEUTRAL_OPS = new Set<OperationType>(NEUTRAL_OP_TYPES);
 
 const CAP_LABEL: Record<string, string> = {
   PUMPOVER: "Pump-over",
