@@ -2,6 +2,7 @@ import "server-only";
 import type { AssistantTool, ToolContext } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
+import { entityPath } from "../routes";
 import { resolveTemplateRef } from "./templates-read";
 import { resolveSpecMaterials, previewSpec } from "../template-context";
 import { validateTemplateSpec, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
@@ -116,7 +117,11 @@ export const commitCreateTemplate: Committer = async (_user, args) => {
     category: args.category == null ? undefined : String(args.category),
     spec: args.spec as unknown as TemplateSpec,
   });
-  return { message: `Created template "${String(args.name)}" (version ${res.version}).` };
+  const name = String(args.name);
+  return {
+    message: `Created template "${name}" (version ${res.version}).`,
+    navigate: { path: entityPath("template", res.templateId), label: name },
+  };
 };
 
 export const updateTemplateSpecTool: AssistantTool = {
@@ -175,8 +180,12 @@ export const cloneTemplateTool: AssistantTool = {
 };
 
 export const commitCloneTemplate: Committer = async (_user, args) => {
-  await cloneTemplateAction({ templateId: String(args.templateId), name: args.name == null ? undefined : String(args.name) });
-  return { message: `Cloned "${String(args.sourceName)}" into an editable copy.` };
+  const res = await cloneTemplateAction({ templateId: String(args.templateId), name: args.name == null ? undefined : String(args.name) });
+  const label = args.name == null ? `${String(args.sourceName)} (copy)` : String(args.name);
+  return {
+    message: `Cloned "${String(args.sourceName)}" into an editable copy.`,
+    navigate: { path: entityPath("template", res.templateId), label },
+  };
 };
 
 export const archiveTemplateTool: AssistantTool = {

@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 import { Markdown } from "./Markdown";
+import { type AssistantEvent, parseEvent, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import {
   ConversationSidebar,
   type ConversationSummary,
@@ -26,18 +28,23 @@ type ProposalItem = {
   token: string;
   status: "pending" | "applying" | "done" | "error";
   result?: string;
+  // A "View X →" link surfaced after a create/confirm succeeds (Unit 5).
+  navigate?: { path: string; label: string };
 };
 type Item = TextItem | ProposalItem;
 
 type FeedbackState = { mode: "idle" | "form" | "sent"; rating?: "up" | "down" };
 
-type AssistantEvent =
-  | { type: "text"; text: string }
-  | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
-  | { type: "proposal"; tool: string; preview: string; token: string }
-  | { type: "conversation"; id: string; title?: string }
-  | { type: "error"; message: string }
-  | { type: "done" };
+// A pending auto-navigation showing a short cancellable countdown before push.
+type NavPending = { path: string; label: string };
+
+// Dirty-form guard: a form with unsaved edits opts in by setting
+// [data-unsaved="true"] on any element; we then downgrade auto-nav to a link
+// so we never yank the user out of unsaved work.
+function pageHasUnsavedChanges(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.querySelector('[data-unsaved="true"]') !== null;
+}
 
 // Readable conversation column width (Claude-native centered column).
 const CONTENT_MAX = 1040;
@@ -59,6 +66,7 @@ const TOOL_LABELS: Record<string, string> = {
   rack_wine: "Preparing the transfer",
   revert_transfer: "Reverting the rack",
   query_transfers: "Checking recent rackings",
+  navigate: "Finding the page",
   list_templates: "Listing templates",
   get_template: "Reading the template",
   create_template: "Drafting the template",
@@ -75,7 +83,46 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<Record<number, FeedbackState>>({});
+  const [navPending, setNavPending] = React.useState<NavPending | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  // Append a clickable in-app link as its own assistant line (used when we
+  // choose NOT to auto-navigate: incidental mention, unsaved-work downgrade, or
+  // the server judged the ask non-explicit).
+  const appendLink = React.useCallback((label: string, path: string) => {
+    setItems((prev) => [...prev, { kind: "text", role: "assistant", content: `[${label}](${path})` }]);
+  }, []);
+
+  // Decide how to act on a navigate event: explicit + safe + no unsaved work =>
+  // show the cancellable countdown, then push. Otherwise degrade to a link.
+  const requestNavigation = React.useCallback(
+    (path: string, label: string, auto: boolean) => {
+      if (!isSafeInternalPath(path)) return;
+      if (auto && !pageHasUnsavedChanges()) {
+        setNavPending({ path, label });
+      } else if (auto) {
+        appendLink(`You have unsaved changes — open ${label} when ready`, path);
+      } else {
+        appendLink(label, path);
+      }
+    },
+    [appendLink],
+  );
+
+  // Countdown → push. Focus the destination heading for screen-reader users.
+  React.useEffect(() => {
+    if (!navPending) return;
+    const target = navPending.path;
+    const handle = setTimeout(() => {
+      setNavPending(null);
+      router.push(target);
+      setTimeout(() => {
+        (document.querySelector("main h1, main h2") as HTMLElement | null)?.focus?.();
+      }, 150);
+    }, 3000);
+    return () => clearTimeout(handle);
+  }, [navPending, router]);
 
   // Conversation persistence: the active conversation, the sidebar list, and
   // cross-conversation search state.
@@ -271,6 +318,9 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         } else if (evt.type === "proposal") {
           setStatus(null);
           setItems((prev) => [...prev, { kind: "proposal", preview: evt.preview, token: evt.token, status: "pending" }]);
+        } else if (evt.type === "navigate") {
+          setStatus(null);
+          requestNavigation(evt.path, evt.label, evt.auto);
         } else if (evt.type === "conversation") {
           setConversationId(evt.id);
         } else if (evt.type === "error") {
@@ -284,15 +334,10 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         buffer += decoder.decode(value, { stream: true });
         let nl: number;
         while ((nl = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, nl).trim();
+          const line = buffer.slice(0, nl);
           buffer = buffer.slice(nl + 1);
-          if (line) {
-            try {
-              handle(JSON.parse(line) as AssistantEvent);
-            } catch {
-              /* ignore a partial/garbled line */
-            }
-          }
+          const evt = parseEvent(line);
+          if (evt) handle(evt);
         }
       }
     } catch (e) {
@@ -317,7 +362,11 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.ok) {
-        setItems((prev) => updateProposal(prev, index, { status: "done", result: data.message }));
+        const nav =
+          data.navigate && isSafeInternalPath(data.navigate.path) && typeof data.navigate.label === "string"
+            ? { path: data.navigate.path as string, label: data.navigate.label as string }
+            : undefined;
+        setItems((prev) => updateProposal(prev, index, { status: "done", result: data.message, navigate: nav }));
       } else {
         setItems((prev) => updateProposal(prev, index, { status: "error", result: data?.error ?? "Could not apply." }));
       }
@@ -412,6 +461,12 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         </div>
       </div>
 
+      {navPending ? (
+        <div style={{ ...column, paddingBottom: "var(--space-2)" }}>
+          <NavToast label={navPending.label} onCancel={() => setNavPending(null)} />
+        </div>
+      ) : null}
+
       <div style={{ borderTop: "1px solid var(--border-strong)", paddingTop: "var(--space-3)", background: "var(--surface-page)" }}>
         {error ? (
           <div style={{ ...column, color: "var(--danger)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", paddingBottom: "var(--space-2)" }}>{error}</div>
@@ -469,6 +524,37 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           />
         </React.Suspense>
       ) : null}
+    </div>
+  );
+}
+
+// Cancellable auto-navigation countdown. aria-live=assertive announces the
+// impending move before it happens (screen-reader users aren't teleported
+// silently); the Cancel button is the safety valve for a misread intent.
+function NavToast({ label, onCancel }: { label: string; onCancel: () => void }) {
+  return (
+    <div
+      role="status"
+      aria-live="assertive"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "var(--space-3)",
+        padding: "10px 14px",
+        borderRadius: "var(--radius-md)",
+        border: "1px solid var(--accent)",
+        background: "var(--surface-raised)",
+        fontFamily: "var(--font-body)",
+        fontSize: "var(--text-body-sm)",
+        color: "var(--text-primary)",
+        transition: "opacity var(--duration-normal, 220ms) var(--ease-standard, ease)",
+      }}
+    >
+      <span>Taking you to {label}…</span>
+      <Button size="sm" variant="secondary" onClick={onCancel}>
+        Cancel
+      </Button>
     </div>
   );
 }
@@ -613,6 +699,11 @@ function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onCon
       ) : (
         <div style={{ fontSize: "var(--text-body-sm)", color: done ? "var(--positive)" : "var(--danger)" }}>
           {done ? `✓ ${item.result ?? "Applied."}` : item.result ?? "Not applied."}
+          {done && item.navigate ? (
+            <div style={{ marginTop: 8 }}>
+              <Markdown text={`[View ${item.navigate.label} →](${item.navigate.path})`} />
+            </div>
+          ) : null}
         </div>
       )}
     </div>

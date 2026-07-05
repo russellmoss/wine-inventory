@@ -27,7 +27,7 @@ export async function POST(req: Request) {
 
   try {
     const result = await commitProposal(user, token);
-    return Response.json({ ok: true, message: result.message });
+    return Response.json({ ok: true, message: result.message, navigate: result.navigate });
   } catch (e) {
     return Response.json(
       { ok: false, error: e instanceof Error ? e.message : "Could not apply the change." },

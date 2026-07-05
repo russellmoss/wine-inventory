@@ -10,7 +10,15 @@ import { verifyProposal } from "./confirm";
  * register their committer here in Unit 4. The args are the resolved values that
  * were signed into the proposal token.
  */
-export type Committer = (user: AppUser, args: Record<string, unknown>) => Promise<{ message: string }>;
+export type CommitResult = {
+  message: string;
+  // Optional deep link to the record the write just created/touched, surfaced
+  // as a "View X →" affordance in the UI (plan 042). Built from the freshly
+  // created id, which only exists post-commit.
+  navigate?: { path: string; label: string };
+};
+
+export type Committer = (user: AppUser, args: Record<string, unknown>) => Promise<CommitResult>;
 
 import { commitLogBrix } from "./tools/log-brix";
 import { commitDeleteBrix } from "./tools/delete-brix";
@@ -49,7 +57,7 @@ const COMMITTERS: Record<string, Committer> = {
  * Verify a confirmation token, burn its nonce (single-use, BEFORE committing so a
  * replay/double-submit can't double-apply), then run the tool's committer.
  */
-export async function commitProposal(user: AppUser, token: string): Promise<{ message: string }> {
+export async function commitProposal(user: AppUser, token: string): Promise<CommitResult> {
   const payload = verifyProposal(token);
   const committer = COMMITTERS[payload.tool];
   if (!committer) throw new Error("That action can no longer be applied.");

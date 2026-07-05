@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { SentenceChunker } from "@/lib/voice/sentence-chunker";
 import { toSpeakable } from "@/lib/voice/speech";
+import { type AssistantEvent, parseEvent, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
 
@@ -32,14 +34,6 @@ export type PendingProposal = {
   status: "pending" | "applying" | "done" | "error";
   result?: string;
 };
-
-type AssistantEvent =
-  | { type: "text"; text: string }
-  | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
-  | { type: "proposal"; tool: string; preview: string; token: string }
-  | { type: "conversation"; id: string; title?: string }
-  | { type: "error"; message: string }
-  | { type: "done" };
 
 const MAX_HISTORY = 40;
 const CONFIRM_RE = /\b(confirm|yes|yep|do it|go ahead|approve|apply)\b/i;
@@ -80,6 +74,7 @@ type Impl = {
 
 export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   const mic = useMicCapture();
+  const router = useRouter();
   const implRef = React.useRef<Impl>({
     startListening: () => {},
     handleUtterance: async () => {},
@@ -227,6 +222,14 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
             for (const s of chunker.push(evt.text)) speak(s);
           } else if (evt.type === "proposal") {
             setProp({ preview: evt.preview, token: evt.token, status: "pending" });
+          } else if (evt.type === "navigate") {
+            // Hands-free: navigate the page BEHIND the overlay and keep the
+            // session alive so the user can issue a follow-up. We don't stop() /
+            // close — the overlay stays up and speaks a short confirmation.
+            if (evt.auto && isSafeInternalPath(evt.path)) {
+              speak(`Showing ${evt.label}.`);
+              router.push(evt.path);
+            }
           } else if (evt.type === "conversation") {
             conversationIdRef.current = evt.id;
             optsRef.current.onConversationId?.(evt.id);
@@ -245,15 +248,10 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
           buffer += decoder.decode(value, { stream: true });
           let nl: number;
           while ((nl = buffer.indexOf("\n")) >= 0) {
-            const line = buffer.slice(0, nl).trim();
+            const line = buffer.slice(0, nl);
             buffer = buffer.slice(nl + 1);
-            if (line) {
-              try {
-                handle(JSON.parse(line) as AssistantEvent);
-              } catch {
-                /* ignore a partial/garbled line */
-              }
-            }
+            const evt = parseEvent(line);
+            if (evt) handle(evt);
           }
         }
 
