@@ -91,4 +91,25 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     kind: "write",
     maxToolCalls: 1,
   },
+  // ── Issue an instance vs author a template (a real confusable) ──
+  {
+    utterance: "Issue the weekly barrel-care work order for tomorrow",
+    tool: "create_work_order",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "create+issue a work-order INSTANCE from a template",
+  },
+  {
+    utterance: "Make a weekly barrel-care template: rack off the lees then add 30 g/hL KMBS",
+    tool: "create_template",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "authoring a TEMPLATE — not issuing an instance (the confusable this guards)",
+  },
+  {
+    utterance: "Mark the SO₂ addition on WO 142 done",
+    tool: "complete_task",
+    kind: "write",
+    maxToolCalls: 1,
+  },
 ];

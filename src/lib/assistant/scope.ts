@@ -196,3 +196,50 @@ export async function resolveLotTarget(opts: { lot?: string; vessel?: string }):
   }
   throw new Error("Which lot (or vessel) is this for?");
 }
+
+export type ResolvedTask = { workOrderId: string; number: number; taskId: string; seq: number; title: string; opType: string | null; observationType: string | null; kind: string; status: string };
+
+/** Pull a work-order number out of "WO 142", "work order 142", "#142", or "142". */
+function parseWoNumber(text: string): number | null {
+  const m = text.match(/\d+/);
+  return m ? Number(m[0]) : null;
+}
+
+/**
+ * Resolve a work order by its human number + (optionally) a task within it by seq number or a fuzzy
+ * title match. When the WO has exactly one still-open task and none was named, that task is used; when
+ * it's ambiguous, we throw a message listing the open tasks so the model can ask. Tenant-scoped via the
+ * prisma extension (RLS). Used by the assistant WO-execution tools (complete/approve/…).
+ */
+export async function resolveWorkOrderTask(opts: { wo?: string | number; task?: string | number }): Promise<ResolvedTask> {
+  const num = typeof opts.wo === "number" ? opts.wo : opts.wo ? parseWoNumber(String(opts.wo)) : null;
+  if (num == null) throw new Error("Which work order? Give its number, e.g. 'WO 142'.");
+  const wo = await prisma.workOrder.findFirst({
+    where: { number: num },
+    select: { id: true, number: true, tasks: { orderBy: { seq: "asc" }, select: { id: true, seq: true, title: true, opType: true, observationType: true, kind: true, status: true } } },
+  });
+  if (!wo) throw new Error(`No work order #${num} exists.`);
+  if (wo.tasks.length === 0) throw new Error(`Work order #${num} has no tasks.`);
+
+  const OPEN = new Set(["PENDING", "IN_PROGRESS", "REJECTED"]);
+  const pick = (t: (typeof wo.tasks)[number]): ResolvedTask => ({ workOrderId: wo.id, number: wo.number, taskId: t.id, seq: t.seq, title: t.title, opType: t.opType, observationType: t.observationType, kind: t.kind, status: t.status });
+  const describe = (t: (typeof wo.tasks)[number]) => `#${t.seq} ${t.title} (${t.status.toLowerCase()})`;
+
+  const ref = opts.task;
+  if (ref != null && String(ref).trim() !== "") {
+    const asSeq = typeof ref === "number" ? ref : /^\d+$/.test(String(ref).trim()) ? Number(String(ref).trim()) : null;
+    let matches = asSeq != null ? wo.tasks.filter((t) => t.seq === asSeq) : [];
+    if (matches.length === 0) {
+      const needle = norm(String(ref));
+      matches = wo.tasks.filter((t) => needle && norm(t.title).includes(needle));
+    }
+    if (matches.length === 0) throw new Error(`No task "${ref}" on WO #${num}. Tasks: ${wo.tasks.map(describe).join("; ")}.`);
+    if (matches.length > 1) throw new Error(`Several tasks match "${ref}" on WO #${num}: ${matches.map(describe).join("; ")}. Which one?`);
+    return pick(matches[0]);
+  }
+
+  const open = wo.tasks.filter((t) => OPEN.has(t.status));
+  if (open.length === 1) return pick(open[0]);
+  if (open.length === 0) throw new Error(`WO #${num} has no open tasks (all done). Tasks: ${wo.tasks.map(describe).join("; ")}.`);
+  throw new Error(`WO #${num} has several open tasks — which one? ${open.map(describe).join("; ")}.`);
+}

@@ -120,10 +120,11 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | Capability | Core | Tool |
 |---|---|---|
 | Template CRUD | `createTemplateCore` + 5 | ✅ 6 tools |
-| Create / issue a WO from a template | `createWorkOrderFromTemplateCore`, `issueWorkOrderCore` | ❌ |
-| Assign / schedule / cancel a WO | `assignWorkOrderCore`, `scheduleWorkOrderCore`, `cancelWorkOrderCore` | ❌ |
-| Start / complete a task | `startTaskCore`, `completeTaskCore` (+ maintenance/note/observation) | ❌ |
-| Approve / reject / bulk-approve | `approveTaskCore`, `rejectTaskCore`, `bulkApproveTasksCore` | ❌ |
+| Create / issue a WO from a template | `createWorkOrderFromTemplateCore`, `issueWorkOrderCore` | ✅ `create_work_order` (create + issue) |
+| Assign / schedule / cancel a WO | `assignWorkOrderCore`, `scheduleWorkOrderCore`, `cancelWorkOrderCore` | ❌ (Slice C) |
+| Complete a task (rack/add/top/filt/obs/note/maint) | `completeTaskCore` | ✅ `complete_task` |
+| Complete a crush/press task | `completeTaskCore` (transform) | ❌ (Slice B — needs picks/fractions) |
+| Approve / reject / bulk-approve | `approveTaskCore`, `rejectTaskCore`, `bulkApproveTasksCore` | ❌ (Slice C, admin) |
 | Recurring WO generation | `generateRecurringInstanceCore` | ❌ |
 
 ### Harvest — best covered
@@ -185,8 +186,12 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
 2. ~~**Chem panels beyond Brix (pH/TA/full)** + **tasting notes**~~ ✅ **DONE** — `record_measurement`
    (pH/TA/SO₂/VA/RS/malic/alcohol + free-form) and `record_tasting_note`, both per-lot (blend → ask which
    lot), values accepted-as-typed. Fleet case guards the block-Brix (`log_brix`) vs lot-chem confusable.
-3. **Work-order execution** — create-from-template + `completeTaskCore` (+ approve/reject); closes the
-   author→run loop.
+3. **Work-order execution** — closes the author→run loop. Sliced:
+   - **Slice A ✅ DONE** — `create_work_order` (create + issue from a template) + `complete_task`
+     (rack/addition/topping/filtration/observation/note/maintenance; defaults to planned, crew states
+     diffs). Fleet guards issue-instance (`create_work_order`) vs author-template (`create_template`).
+   - **Slice B** — extend `complete_task` to crush/press (conversational picks/fractions + strong confirm).
+   - **Slice C** — `approve`/`reject` (admin, plan-024 reject warning) + start/assign/schedule/cancel.
 
 **Wave 2 — frequent cellar + transforms:**
 4. Transforms: **crush / press / blend** (`crushLotCore` / `pressLotCore` / `blendLotsCore`).
