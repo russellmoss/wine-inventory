@@ -1,6 +1,5 @@
 import type { Prisma } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
-import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
@@ -17,10 +16,6 @@ import { vesselLabel, type CellarBaseResult } from "@/lib/cellar/addition";
 //    (medium / micron) per affected lot.
 // (Fining lives in addition.ts — it shares the neutral-dose engine. Loss is in loss.ts.)
 // Everything routes through the chokepoint; nothing recomputes on read (VISION D14).
-
-async function residentBalances(vesselId: string) {
-  return prisma.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
-}
 
 // Phase 6: cold soak + extended maceration are non-volumetric cap-work too (council "cap mgmt
 // reused + extended"). They reuse the CAP_MGMT op + LotTreatment row (kind is a validated string,
@@ -51,17 +46,26 @@ const CAP_LABELS: Record<CapKind, string> = {
   MACERATION: "Maceration",
 };
 
-/** Cap management: one-tap, volume-neutral, typed + provenance-bearing (no free-text note only). */
-export async function capManagementCore(actor: LedgerActor, input: CapManagementInput): Promise<CellarBaseResult> {
+/**
+ * Tx-form: cap management inside a caller-provided ledger tx (composed by the work-order execute seam,
+ * mirroring `filterVesselTx`). ALL guards live here so the WO seam calls this directly. Volume-NEUTRAL:
+ * a lines-empty CAP_MGMT op + one minimal LotTreatment per resident lot. Reads residents via the tx so it
+ * shares the tenant-scoped snapshot.
+ */
+export async function capManagementTx(
+  tx: Prisma.TransactionClient,
+  actor: LedgerActor,
+  input: CapManagementInput,
+): Promise<{ operationId: number; treatmentIds: string[]; summary: string }> {
   const { vesselId, kind } = input;
   if (!vesselId) throw new ActionError("A vessel is required.");
   if (!isCapKind(kind)) throw new ActionError("Pick a valid cap-management action.");
 
-  const vessel = await prisma.vessel.findUnique({ where: { id: vesselId } });
+  const vessel = await tx.vessel.findUnique({ where: { id: vesselId } });
   if (!vessel) throw new ActionError("Vessel not found.");
   if (!vessel.isActive) throw new ActionError(`${vesselLabel(vessel)} is inactive.`);
 
-  const residents = await residentBalances(vesselId);
+  const residents = await tx.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
   if (residents.length === 0) throw new ActionError(`${vesselLabel(vessel)} is empty.`);
 
   const durationMin =
@@ -71,44 +75,46 @@ export async function capManagementCore(actor: LedgerActor, input: CapManagement
   const durClause = durationMin ? ` (${durationMin} min)` : "";
   const summary = `${CAP_LABELS[kind]} on ${vesselLabel(vessel)}${durClause}`;
 
-  const { operationId, treatmentIds } = await runLedgerWrite(async (tx) => {
-    const opId = await writeLotOperation(tx, {
-      type: "CAP_MGMT",
-      lines: [],
-      actorUserId: actor.actorUserId,
-      enteredBy: actor.actorEmail,
-      captureMethod: input.captureMethod,
-      note: input.note?.trim() || null,
-      lotCodes: new Map(),
-      vesselCodes: new Map(),
-      capacityByVessel: new Map(),
-    });
-    if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
-    const ids: string[] = [];
-    for (const r of residents) {
-      const row = await tx.lotTreatment.create({
-        data: {
-          operationId: opId,
-          lotId: r.lotId,
-          vesselId,
-          kind,
-          durationMin,
-          note: input.note?.trim() || null,
-        },
-        select: { id: true },
-      });
-      ids.push(row.id);
-    }
-    await writeAudit(tx, {
-      ...actor,
-      action: "STOCK_MOVEMENT",
-      entityType: "LotOperation",
-      entityId: String(opId),
-      summary,
-    });
-    return { operationId: opId, treatmentIds: ids };
+  const opId = await writeLotOperation(tx, {
+    type: "CAP_MGMT",
+    lines: [],
+    actorUserId: actor.actorUserId,
+    enteredBy: actor.actorEmail,
+    captureMethod: input.captureMethod,
+    note: input.note?.trim() || null,
+    lotCodes: new Map(),
+    vesselCodes: new Map(),
+    capacityByVessel: new Map(),
   });
+  if (input.batchId) await tx.lotOperation.update({ where: { id: opId }, data: { batchId: input.batchId } });
+  const ids: string[] = [];
+  for (const r of residents) {
+    const row = await tx.lotTreatment.create({
+      data: {
+        operationId: opId,
+        lotId: r.lotId,
+        vesselId,
+        kind,
+        durationMin,
+        note: input.note?.trim() || null,
+      },
+      select: { id: true },
+    });
+    ids.push(row.id);
+  }
+  await writeAudit(tx, {
+    ...actor,
+    action: "STOCK_MOVEMENT",
+    entityType: "LotOperation",
+    entityId: String(opId),
+    summary,
+  });
+  return { operationId: opId, treatmentIds: ids, summary };
+}
 
+/** Cap management: one-tap, volume-neutral, typed + provenance-bearing (no free-text note only). */
+export async function capManagementCore(actor: LedgerActor, input: CapManagementInput): Promise<CellarBaseResult> {
+  const { operationId, treatmentIds, summary } = await runLedgerWrite((tx) => capManagementTx(tx, actor, input));
   return { operationId, message: `${summary}.`, treatmentIds };
 }
 
