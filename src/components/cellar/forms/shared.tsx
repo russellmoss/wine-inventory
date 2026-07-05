@@ -17,7 +17,7 @@ export type CellarActionsVessel = {
   /** Lots currently resident in this vessel — drives the D2 lot picker for chemistry records. */
   residentLots: ResidentLot[];
 };
-export type KegOption = { id: string; label: string; totalL: number; lotCodes?: string[] };
+export type KegOption = { id: string; label: string; type: "BARREL" | "TANK"; totalL: number; lotCodes?: string[] };
 
 export const fieldStyle: React.CSSProperties = {
   height: 44,

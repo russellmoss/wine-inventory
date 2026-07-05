@@ -5,6 +5,7 @@ import { Button } from "@/components/ui";
 import { rackVesselAction } from "@/lib/cellar/actions";
 import type { RackVesselResult } from "@/lib/vessels/rack-core";
 import { FormShell, fieldStyle, type CellarActionsVessel, type KegOption } from "./shared";
+import { VesselFilterPicker } from "@/components/cellar/VesselFilterPicker";
 
 // ── Rack (move wine to another vessel; lees loss = out − measured-in) ──
 export function RackForm({
@@ -44,16 +45,14 @@ export function RackForm({
 
   return (
     <FormShell>
-      <select value={toVesselId} onChange={(e) => setToVesselId(e.target.value)} style={{ ...fieldStyle, flex: "1 1 170px" }} aria-label="Destination vessel">
-        <option value="" disabled>
-          Rack into…
-        </option>
-        {destinations.map((k) => (
-          <option key={k.id} value={k.id}>
-            {k.label} ({k.totalL} L)
-          </option>
-        ))}
-      </select>
+      <VesselFilterPicker
+        options={destinations}
+        value={toVesselId}
+        onChange={setToVesselId}
+        placeholder="Rack into…"
+        ariaLabel="Destination vessel"
+        emptyHint="No other vessel to rack into."
+      />
       <input value={drawL} onChange={(e) => setDrawL(e.target.value)} inputMode="decimal" placeholder="Litres out" style={{ ...fieldStyle, width: 100 }} aria-label="Litres moved out of this vessel" title={`Out of ${vessel.code} (defaults to its full volume)`} />
       <input value={landedL} onChange={(e) => setLandedL(e.target.value)} inputMode="decimal" placeholder="Litres in (measured)" style={{ ...fieldStyle, width: 140 }} aria-label="Measured litres into the destination" />
       {newBlendActive ? (
