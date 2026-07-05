@@ -141,9 +141,9 @@ export async function resolveVessel(text: string): Promise<ResolvedVessel> {
  * vessels are cellar equipment and are not vineyard-bound.
  */
 export type VesselContents =
-  | { kind: "empty"; vesselLabel: string }
-  | { kind: "single"; vesselLabel: string; lot: { id: string; code: string } }
-  | { kind: "blend"; vesselLabel: string; lots: { id: string; code: string }[] };
+  | { kind: "empty"; vesselId: string; vesselLabel: string }
+  | { kind: "single"; vesselId: string; vesselLabel: string; lot: { id: string; code: string } }
+  | { kind: "blend"; vesselId: string; vesselLabel: string; lots: { id: string; code: string }[] };
 
 export async function resolveVesselContents(text: string): Promise<VesselContents> {
   const ref = parseVesselRef(text);
@@ -153,6 +153,7 @@ export async function resolveVesselContents(text: string): Promise<VesselContent
   const vessel = await prisma.vessel.findFirst({
     where: { type: ref.type, code: ref.code },
     select: {
+      id: true,
       code: true,
       type: true,
       vesselLots: { include: { lot: { select: { id: true, code: true } } } },
@@ -163,9 +164,9 @@ export async function resolveVesselContents(text: string): Promise<VesselContent
   }
   const label = `${ref.type === "BARREL" ? "Barrel" : "Tank"} ${vessel.code}`;
   const lots = vessel.vesselLots.map((vl) => ({ id: vl.lot.id, code: vl.lot.code }));
-  if (lots.length === 0) return { kind: "empty", vesselLabel: label };
-  if (lots.length === 1) return { kind: "single", vesselLabel: label, lot: lots[0] };
-  return { kind: "blend", vesselLabel: label, lots };
+  if (lots.length === 0) return { kind: "empty", vesselId: vessel.id, vesselLabel: label };
+  if (lots.length === 1) return { kind: "single", vesselId: vessel.id, vesselLabel: label, lot: lots[0] };
+  return { kind: "blend", vesselId: vessel.id, vesselLabel: label, lots };
 }
 
 /**

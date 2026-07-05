@@ -160,4 +160,11 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     kind: "write",
     maxToolCalls: 1,
   },
+  {
+    utterance: "Blend 300 L of the Cab from tank 1 and 300 L of the Merlot from tank 2 into tank 3, tag RES",
+    tool: "blend_lots",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "multi-source blend — distinct from a two-vessel rack",
+  },
 ];

@@ -80,6 +80,7 @@ const TOOL_LABELS: Record<string, string> = {
   top_up: "Preparing the top-up",
   filter_vessel: "Preparing the filtration",
   log_cap_management: "Preparing the cap-management log",
+  blend_lots: "Preparing the blend",
   revert_transfer: "Reverting the rack",
   query_transfers: "Checking recent rackings",
   navigate: "Finding the page",

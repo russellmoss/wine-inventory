@@ -57,6 +57,7 @@ import { manageWorkOrderTool } from "./tools/manage-work-order";
 import { topUpTool } from "./tools/top-up";
 import { filterVesselTool } from "./tools/filter-vessel";
 import { logCapManagementTool } from "./tools/log-cap-management";
+import { blendLotsTool } from "./tools/blend-lots";
 import { revertTransferTool } from "./tools/revert-transfer";
 import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
@@ -100,6 +101,7 @@ const ALL_TOOLS: AssistantTool[] = [
   topUpTool,
   filterVesselTool,
   logCapManagementTool,
+  blendLotsTool,
   revertTransferTool,
   dbFindTool,
   dbCreateTool,

@@ -113,7 +113,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 |---|---|---|
 | De-stem / crush | `crushLotCore` | ❌ |
 | Press / saignée | `pressLotCore` | ❌ |
-| Blend | `blendLotsCore` | ❌ |
+| Blend | `blendLotsCore` | ✅ `blend_lots` (simple by chat; complex → deep-links /blend) |
 | Universal undo ("undo that last op") | `reverseOperationCore` | 🟨 `revert_transfer` = rack only |
 
 ### Work orders — author, run, review, and manage by chat (Wave 1 #3 complete)
@@ -201,9 +201,10 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
 **Wave 2 — frequent cellar + transforms** (reordered: simple ops first):
 5. ~~**Topping, filtration, cap management**~~ ✅ **DONE** — `top_up`, `filter_vessel`,
    `log_cap_management` (one tool each). Loss deferred (user trimmed it this pass).
-4. **Blend** (`blendLotsCore`) — the one genuinely-new transform; standalone crush/press largely
-   duplicate the WO-lane completion, so slot them after blend if wanted.
-6. **Lot state transitions** (`transitionStateCore`) + **universal undo** (`reverseOperationCore`).
+4. ~~**Blend**~~ ✅ **DONE** — `blend_lots` (simple multi-source by chat; empty dest → new tagged lot,
+   resident dest → grow; complex → deep-links `/blend`). Standalone crush/press left to the WO lane +
+   /ferment screens (largely duplicate the WO-lane completion).
+6. **Lot state transitions** (`transitionStateCore`) + **universal undo** (`reverseOperationCore`) — last.
 
 **Wave 3 — specialized:**
 7. Materials (create/receive) · lab samples · bottling + compliance removals · sparkling family · cost ·
