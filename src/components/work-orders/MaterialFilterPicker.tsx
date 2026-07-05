@@ -37,6 +37,7 @@ export function MaterialFilterPicker({
   onChange,
   categoryScope,
   placeholder = "Search materials…",
+  autoFocus = false,
 }: {
   options: MaterialPickerOption[];
   value: string;
@@ -46,6 +47,9 @@ export function MaterialFilterPicker({
    * without hiding a generic/uncategorized additive. */
   categoryScope?: MaterialCategory | MaterialCategory[];
   placeholder?: string;
+  /** Focus the search box on mount (single-picker contexts like the /bulk dose form). Off by default
+   * so multi-field forms (the WO builder) don't fight over focus. */
+  autoFocus?: boolean;
 }) {
   const [q, setQ] = React.useState("");
   const [family, setFamily] = React.useState<string>(ALL);
@@ -87,9 +91,16 @@ export function MaterialFilterPicker({
 
       <input
         type="text"
+        autoFocus={autoFocus}
         placeholder={placeholder}
         value={q}
         onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && filtered.length > 0) {
+            e.preventDefault();
+            onChange(filtered[0].id); // Enter selects the top match
+          }
+        }}
         style={{ width: "100%", fontSize: 14, padding: "6px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface-raised)", marginBottom: 8 }}
       />
 
@@ -102,7 +113,7 @@ export function MaterialFilterPicker({
         </div>
       ) : null}
 
-      <div style={{ maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+      <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
         {filtered.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 4px" }}>No matching materials.</div>
         ) : (
