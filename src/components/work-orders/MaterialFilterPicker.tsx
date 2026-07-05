@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { categoryOf, builtinSubLabel, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { categoryOf, familyLabel, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { rankMaterials } from "@/lib/inventory/material-search";
 
 // Phase 034: single-select material picker for the work-order additions flow. Replaces a flat <select>
@@ -62,7 +62,7 @@ export function MaterialFilterPicker({
   // per-material subcategory is intentionally NOT a chip (too granular); the fuzzy search finds specifics.
   const families = React.useMemo(() => {
     const set = new Set<string>();
-    for (const o of scoped) set.add(builtinSubLabel(o.kind));
+    for (const o of scoped) set.add(familyLabel(o.kind));
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [scoped]);
 
@@ -70,7 +70,7 @@ export function MaterialFilterPicker({
   // time so no effect/setState is needed (avoids cascading renders).
   const activeFamily = family !== ALL && families.includes(family) ? family : ALL;
 
-  const byFamily = activeFamily === ALL ? scoped : scoped.filter((o) => builtinSubLabel(o.kind) === activeFamily);
+  const byFamily = activeFamily === ALL ? scoped : scoped.filter((o) => familyLabel(o.kind) === activeFamily);
   const filtered = rankMaterials(q, byFamily, (o) => o.label);
   const selected = options.find((o) => o.id === value) ?? null;
 
@@ -80,7 +80,7 @@ export function MaterialFilterPicker({
       {selected ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14 }}>
           <span style={{ fontWeight: 600 }}>{selected.label}</span>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{builtinSubLabel(selected.kind)}</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{familyLabel(selected.kind)}</span>
           <button type="button" aria-label="Clear selection" onClick={() => onChange("")} style={{ marginLeft: "auto", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 12, borderRadius: 999, padding: "2px 10px" }}>Change</button>
         </div>
       ) : null}
@@ -109,7 +109,7 @@ export function MaterialFilterPicker({
           filtered.map((o) => (
             <button key={o.id} type="button" style={rowStyle(o.id === value)} onClick={() => onChange(o.id)}>
               <span>{o.label}</span>
-              {activeFamily === ALL ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {builtinSubLabel(o.kind)}</span> : null}
+              {activeFamily === ALL ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {familyLabel(o.kind)}</span> : null}
               <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{fmtOnHand(o)}</span>
             </button>
           ))

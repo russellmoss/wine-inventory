@@ -4,7 +4,7 @@ import {
   MATERIAL_CATEGORIES,
   CATEGORY_LABELS,
   categoryOf,
-  builtinSubLabel,
+  familyLabel,
   effectiveSubcategory,
   kindsForCategory,
   coerceMaterialCategory,
@@ -40,7 +40,7 @@ describe("exhaustiveness", () => {
   it("every MATERIAL_KIND resolves to a known category and a non-empty built-in label", () => {
     for (const k of MATERIAL_KINDS) {
       expect(MATERIAL_CATEGORIES).toContain(categoryOf(k));
-      expect(builtinSubLabel(k).length).toBeGreaterThan(0);
+      expect(familyLabel(k).length).toBeGreaterThan(0);
     }
   });
 

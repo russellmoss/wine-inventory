@@ -89,9 +89,6 @@ export function familyLabel(kind: string | null | undefined): string {
   return titleCase(raw);
 }
 
-/** @deprecated Phase 036 renamed this to `familyLabel` (custom families now display their own name). */
-export const builtinSubLabel = familyLabel;
-
 /** Built-in families for the "family" dropdown: the seed list a winery starts from before adding custom ones. */
 export const BUILTIN_FAMILIES: { value: MaterialKind; label: string; category: MaterialCategory }[] =
   (MATERIAL_KINDS as readonly MaterialKind[])
@@ -122,7 +119,7 @@ export function coerceFamily(raw: unknown): string {
  */
 export function effectiveSubcategory(material: { kind?: string | null; subcategory?: string | null }): string {
   const custom = (material.subcategory ?? "").trim();
-  return custom.length > 0 ? custom : builtinSubLabel(material.kind);
+  return custom.length > 0 ? custom : familyLabel(material.kind);
 }
 
 /**
