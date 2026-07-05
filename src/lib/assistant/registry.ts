@@ -62,6 +62,7 @@ import { calcAdditionsTool } from "./tools/calc-additions";
 import { calcBlendingTool } from "./tools/calc-blending";
 import { calcFortificationTool } from "./tools/calc-fortification";
 import { calcConvertTool } from "./tools/calc-convert";
+import { queryCalculationHistoryTool } from "./tools/query-calculation-history";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -98,6 +99,7 @@ const ALL_TOOLS: AssistantTool[] = [
   calcBlendingTool,
   calcFortificationTool,
   calcConvertTool,
+  queryCalculationHistoryTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */
