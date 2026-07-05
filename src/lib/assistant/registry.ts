@@ -69,6 +69,7 @@ import { reportAnomaliesTool } from "./tools/report-anomalies";
 import { navigateTool } from "./tools/navigate";
 import { listTemplatesTool, getTemplateTool } from "./tools/templates-read";
 import { createTemplateTool, updateTemplateSpecTool, cloneTemplateTool, archiveTemplateTool } from "./tools/templates-write";
+import { issueCapManagementWoTool } from "./tools/work-orders-write";
 import { calcSo2Tool } from "./tools/calc-so2";
 import { calcSugarTool } from "./tools/calc-sugar";
 import { calcAdditionsTool } from "./tools/calc-additions";
@@ -119,6 +120,7 @@ const ALL_TOOLS: AssistantTool[] = [
   updateTemplateSpecTool,
   cloneTemplateTool,
   archiveTemplateTool,
+  issueCapManagementWoTool,
   calcSo2Tool,
   calcSugarTool,
   calcAdditionsTool,

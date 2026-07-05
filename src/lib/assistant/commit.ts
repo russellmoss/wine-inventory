@@ -45,6 +45,7 @@ import { commitDbUpdate } from "./tools/db-update";
 import { commitDbDelete } from "./tools/db-delete";
 import { commitSaveFieldReport } from "./tools/save-field-report";
 import { commitCreateTemplate, commitUpdateTemplateSpec, commitCloneTemplate, commitArchiveTemplate } from "./tools/templates-write";
+import { commitIssueCapManagementWo } from "./tools/work-orders-write";
 
 // Static map of tool name -> committer. No side-effect registration, no import
 // cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
@@ -77,6 +78,7 @@ const COMMITTERS: Record<string, Committer> = {
   update_template_spec: commitUpdateTemplateSpec,
   clone_template: commitCloneTemplate,
   archive_template: commitArchiveTemplate,
+  issue_cap_management_wo: commitIssueCapManagementWo,
 };
 
 /**

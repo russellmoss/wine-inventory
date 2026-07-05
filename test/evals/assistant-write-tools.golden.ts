@@ -235,4 +235,16 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { vessel: "tank 5" },
     note: "resolves the most recent reversible op; the core fails closed if downstream/already-reversed",
   },
+  {
+    utterance: "Punch down tanks 3, 4, and 5 this afternoon",
+    tool: "issue_cap_management_wo",
+    args: { technique: "PUNCHDOWN", vessels: ["tank 3", "tank 4", "tank 5"] },
+    note: "plan 043: ISSUE a cap-management WO across many tanks (one task per tank) — not a single logged op",
+  },
+  {
+    utterance: "Issue a pumpover work order for tank 11, 20 minutes",
+    tool: "issue_cap_management_wo",
+    args: { technique: "PUMPOVER", vessels: ["tank 11"], durationMin: 20 },
+    note: "single tank + duration; technique is the CapKind enum",
+  },
 ];

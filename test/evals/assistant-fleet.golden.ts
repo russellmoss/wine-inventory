@@ -181,4 +181,12 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "general reversal — revert_transfer is rack-specific; undo_operation covers the rest",
   },
+  // ── Issue-a-WO vs. a single logged op (plan 043) ──
+  {
+    utterance: "Punch down tanks 3, 4, and 5 this afternoon",
+    tool: "issue_cap_management_wo",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "ASSIGNING cap work to the crew is issuing a WORK ORDER — not logging one op, not the calculator",
+  },
 ];
