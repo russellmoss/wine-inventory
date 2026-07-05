@@ -93,7 +93,13 @@ async function scrub() {
   // vessel_lot) → lots → material → location (run→location RESTRICT, so after runs).
   // Phase 8b: export events + variance events reference snapshots (RESTRICT) → delete first; account
   // mappings are matched by the ZZ- account codes the fixtures use; barrel fills reference ops (RESTRICT).
-  await prisma.costExportEvent.deleteMany({ where: { OR: [{ sourceSnapshotId: { in: snapIds } }, { runId: { in: runIds } }, { skuId: { in: skuIds } }] } });
+  const exportEvents = await prisma.costExportEvent.findMany({ where: { OR: [{ sourceSnapshotId: { in: snapIds } }, { runId: { in: runIds } }, { skuId: { in: skuIds } }] }, select: { id: true } });
+  const exportEventIds = exportEvents.map((e) => e.id);
+  // Phase 15/16: the accounting outbox references cost export events (composite-tenant FK, RESTRICT) —
+  // delete any PENDING/settled delivery BEFORE its export event or the scrub hits P2003 on a prior
+  // run's orphan (accounting_delivery_tenantId_costExportEventId_fkey).
+  await prisma.accountingDelivery.deleteMany({ where: { costExportEventId: { in: exportEventIds } } });
+  await prisma.costExportEvent.deleteMany({ where: { id: { in: exportEventIds } } });
   await prisma.accountMapping.deleteMany({ where: { debitAccount: { startsWith: "ZZ-" } } });
   await prisma.costVarianceEvent.deleteMany({ where: { OR: [{ snapshotId: { in: snapIds } }, { runId: { in: runIds } }] } });
   await prisma.barrelFill.deleteMany({ where: { OR: [{ lotId: { in: lotIds } }, { barrelAsset: { vesselId: { in: vesselIds } } }] } });
@@ -157,9 +163,9 @@ async function main() {
   await correctOperationCore(ACTOR, { operationId: add.operationId });
   const supplyAfterUndo = await prisma.supplyLot.findFirstOrThrow({ where: { materialId: material.id } });
   assert(r2(Number(supplyAfterUndo.qtyRemaining)) === 1000, `undo restored SupplyLot 982 → 1000 g (got ${Number(supplyAfterUndo.qtyRemaining)})`);
-  const negCons = await prisma.supplyConsumption.findMany({ where: { reversalOfConsumptionId: { not: null } } });
+  const negCons = await prisma.supplyConsumption.findMany({ where: { reversalOfConsumptionId: { not: null }, supplyLot: { materialId: material.id } } });
   assert(negCons.length === 1 && r2(Number(negCons[0].qty)) === -18, `a negating SupplyConsumption (−18 g) was appended (got ${negCons.map((c) => Number(c.qty))})`);
-  const negLines = await prisma.costLine.findMany({ where: { reversalOfCostLineId: { not: null } } });
+  const negLines = await prisma.costLine.findMany({ where: { reversalOfCostLineId: { not: null }, lotId } });
   assert(negLines.length === 1 && r2(Number(negLines[0].amount)) === -0.9, `a negating CostLine (−$0.90) was appended (got ${negLines.map((l) => Number(l.amount))})`);
   const lcAfterUndo = await getLotCost(lotId, { forceRecompute: true });
   assert(near(lcAfterUndo.totalCost, 0), `lot cost nets to $0 after undo (got ${lcAfterUndo.totalCost})`);
@@ -285,15 +291,27 @@ async function main() {
   assert(Number(variance!.totalDelta) < 0, `variance delta is negative (cost removed; got ${Number(variance!.totalDelta)})`);
   assert(near(Number(variance!.soldDelta) + Number(variance!.unsoldDelta), Number(variance!.totalDelta)), "sold + unsold delta conserves the total (D12 split)");
 
-  // Unit 14 (D18): map accounts + emit idempotent export lines for the frozen snapshot.
-  console.log("\n── ACCOUNTING export seam: emit + idempotency (U14/D18) ──");
-  await prisma.accountMapping.create({ data: { component: "MATERIAL", debitAccount: "ZZ-5000-COGS", creditAccount: "ZZ-1400-Inventory" } });
-  const emit1 = await emitExportForSnapshot(snap!.id);
-  assert(emit1.postable && emit1.emitted >= 1, `export emitted ${emit1.emitted} line(s) for the mapped snapshot`);
-  const emit2 = await emitExportForSnapshot(snap!.id);
-  assert(emit2.emitted === 0, `re-emit is idempotent — 0 new lines (got ${emit2.emitted})`);
+  // Unit 14 (D18): the accounting export is a TRANSACTIONAL OUTBOX — since Phase 15 the export lines are
+  // emitted INSIDE the bottling tx whenever the tenant is mapped. The demo tenant carries a full
+  // component→account mapping set, so the lines already exist post-bottling; we assert they carry each
+  // component's mapped debit/credit accounts and that a re-emit is an idempotent no-op. (The old Phase-8b
+  // form created a fixture MATERIAL mapping and expected the manual emit to produce the lines — that only
+  // held on an UNMAPPED tenant where bottling withheld; it collides on the (tenant, component, taxClass)
+  // unique now, and mutating real config wouldn't be abort-safe.)
+  console.log("\n── ACCOUNTING export seam: emitted at bottling + idempotent re-emit (U14/D18) ──");
+  const mappings = await prisma.accountMapping.findMany({ where: { taxClass: "*" } });
+  const byComponent = new Map(mappings.map((m) => [m.component, m]));
   const exportLines = await prisma.costExportEvent.findMany({ where: { sourceSnapshotId: snap!.id } });
-  assert(exportLines.every((l) => l.debitAccount === "ZZ-5000-COGS" && l.creditAccount === "ZZ-1400-Inventory"), "export lines carry the mapped debit/credit accounts");
+  assert(exportLines.length >= 1, `export lines were emitted for the snapshot at bottling (got ${exportLines.length})`);
+  assert(
+    exportLines.every((l) => {
+      const m = byComponent.get(l.component);
+      return !!m && l.debitAccount === m.debitAccount && l.creditAccount === m.creditAccount;
+    }),
+    "export lines carry each component's mapped debit/credit accounts",
+  );
+  const reemit = await emitExportForSnapshot(snap!.id);
+  assert(reemit.emitted === 0, `re-emit is idempotent — 0 new lines (got ${reemit.emitted})`);
 
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }
@@ -310,7 +328,7 @@ runAsTenant(TENANT, async () => {
   .catch(async (e) => {
     console.error("\nFAILED:", e);
     try {
-      await runAsTenant("org_bhutan_wine_co", scrub);
+      await runAsTenant(TENANT, scrub); // scrub under the SAME tenant the fixtures live in (org_demo_winery)
     } catch (se) {
       console.error("scrub error:", se);
     }

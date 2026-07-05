@@ -207,16 +207,44 @@ async function main() {
 }
 
 async function scrub() {
-  const ids = created.lotIds;
+  // Orphan-robust: match by the ZZ-RV*/ZZ-TEST* fixture namespaces + the verify actor, NOT just this
+  // process's in-memory ids — so a PRIOR run whose own scrub was interrupted (P2024/P2028) is cleaned
+  // on the next pre-run scrub instead of colliding (P2002 on Lot.code) forever.
+  const opRows = await prisma.lotOperation.findMany({ where: { enteredBy: ACTOR.actorEmail }, select: { id: true } }).catch(() => [] as { id: number }[]);
+  const opIds = opRows.map((o) => o.id);
+  const lotRows = await prisma.lot.findMany({ where: { code: { startsWith: "ZZ-RV" } }, select: { id: true } }).catch(() => [] as { id: string }[]);
+  const ids = lotRows.map((l) => l.id);
+  const matRows = await prisma.cellarMaterial.findMany({ where: { OR: [{ normalizedKey: "ZZREVSO2" }, { name: { startsWith: "ZZ Reverse" } }] }, select: { id: true } }).catch(() => [] as { id: string }[]);
+  const matIds = matRows.map((m) => m.id);
+  const vesselRows = await prisma.vessel.findMany({ where: { code: { startsWith: "ZZ-RV" } }, select: { id: true } }).catch(() => [] as { id: string }[]);
+  const vesselIds = vesselRows.map((v) => v.id);
+  const runs = await prisma.bottlingRun.findMany({ where: { wineSku: { name: { startsWith: "ZZ-TEST" } } }, select: { id: true } }).catch(() => [] as { id: string }[]);
+  const runIds = runs.map((r) => r.id);
+  const skus = await prisma.wineSku.findMany({ where: { name: { startsWith: "ZZ-TEST" } }, select: { id: true } }).catch(() => [] as { id: string }[]);
+  const skuIds = skus.map((s) => s.id);
+  const snaps = await prisma.bottlingCostSnapshot.findMany({ where: { OR: [{ runId: { in: runIds } }, { skuId: { in: skuIds } }] }, select: { id: true } }).catch(() => [] as { id: string }[]);
+  const snapIds = snaps.map((s) => s.id);
+  const exportEvents = await prisma.costExportEvent.findMany({ where: { OR: [{ sourceSnapshotId: { in: snapIds } }, { runId: { in: runIds } }, { skuId: { in: skuIds } }] }, select: { id: true } }).catch(() => [] as { id: string }[]);
+  const exportEventIds = exportEvents.map((e) => e.id);
+
   // Break the correctsOperationId Restrict FK among our ops before deleting them.
   await prisma.lotOperation.updateMany({ where: { enteredBy: ACTOR.actorEmail }, data: { correctsOperationId: null } }).catch(() => {});
-  await prisma.bottlingSource.deleteMany({ where: { OR: [{ lotId: { in: ids } }, { bottlingRun: { wineSku: { name: { startsWith: "ZZ-TEST" } } } }] } }).catch(() => {});
-  const runs = await prisma.bottlingRun.findMany({ where: { wineSku: { name: { startsWith: "ZZ-TEST" } } }, select: { id: true } }).catch(() => [] as { id: string }[]);
-  await prisma.stockMovement.deleteMany({ where: { bottlingRunId: { in: runs.map((r) => r.id) } } }).catch(() => {});
-  await prisma.bottlingRun.deleteMany({ where: { id: { in: runs.map((r) => r.id) } } }).catch(() => {});
-  await prisma.bottledInventory.deleteMany({ where: { wineSku: { name: { startsWith: "ZZ-TEST" } } } }).catch(() => {});
-  await prisma.wineSku.deleteMany({ where: { name: { startsWith: "ZZ-TEST" } } }).catch(() => {});
-  await prisma.vesselTransfer.deleteMany({ where: { OR: [{ fromVesselId: { in: created.vesselIds } }, { toVesselId: { in: created.vesselIds } }, { lotOperation: { enteredBy: ACTOR.actorEmail } }] } }).catch(() => {});
+  // FK-safe order: accounting outbox → cost artifacts → COGS snapshot → stock/inventory/run → sku →
+  // supplies → transfers → treatments/state → ops (cascades lines) → lineage → lots → material →
+  // vessels (cascades vessel_lot) → location → vineyard.
+  await prisma.accountingDelivery.deleteMany({ where: { costExportEventId: { in: exportEventIds } } }).catch(() => {});
+  await prisma.costExportEvent.deleteMany({ where: { id: { in: exportEventIds } } }).catch(() => {});
+  await prisma.costVarianceEvent.deleteMany({ where: { OR: [{ snapshotId: { in: snapIds } }, { runId: { in: runIds } }] } }).catch(() => {});
+  await prisma.supplyConsumption.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
+  await prisma.costLine.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
+  await prisma.bottlingCostSnapshot.deleteMany({ where: { id: { in: snapIds } } }).catch(() => {});
+  await prisma.bottlingSource.deleteMany({ where: { OR: [{ lotId: { in: ids } }, { bottlingRunId: { in: runIds } }] } }).catch(() => {});
+  await prisma.stockMovement.deleteMany({ where: { OR: [{ bottlingRunId: { in: runIds } }, { wineSkuId: { in: skuIds } }] } }).catch(() => {});
+  await prisma.bottlingRun.deleteMany({ where: { id: { in: runIds } } }).catch(() => {});
+  await prisma.bottledInventory.deleteMany({ where: { wineSkuId: { in: skuIds } } }).catch(() => {});
+  await prisma.wineSku.deleteMany({ where: { id: { in: skuIds } } }).catch(() => {});
+  await prisma.supplyLot.deleteMany({ where: { materialId: { in: matIds } } }).catch(() => {});
+  await prisma.vesselTransfer.deleteMany({ where: { OR: [{ fromVesselId: { in: vesselIds } }, { toVesselId: { in: vesselIds } }, { lotOperationId: { in: opIds } }] } }).catch(() => {});
   await prisma.lotStateEvent.deleteMany({ where: { lotId: { in: ids } } }).catch(() => {});
   await prisma.lotTreatment.deleteMany({ where: { lotId: { in: ids } } }).catch(() => {});
   await prisma.bottledLotState.deleteMany({ where: { lotId: { in: ids } } }).catch(() => {});
@@ -225,10 +253,10 @@ async function scrub() {
   await prisma.vesselLot.deleteMany({ where: { lotId: { in: ids } } }).catch(() => {});
   await prisma.lotVineyard.deleteMany({ where: { lotId: { in: ids } } }).catch(() => {});
   await prisma.lot.deleteMany({ where: { id: { in: ids } } }).catch(() => {});
-  await prisma.cellarMaterial.deleteMany({ where: { id: { in: created.materialIds } } }).catch(() => {});
-  await prisma.vessel.deleteMany({ where: { id: { in: created.vesselIds } } }).catch(() => {});
-  await prisma.location.deleteMany({ where: { id: { in: created.locationIds } } }).catch(() => {});
-  await prisma.vineyard.deleteMany({ where: { id: { in: created.vineyardIds } } }).catch(() => {});
+  await prisma.cellarMaterial.deleteMany({ where: { id: { in: matIds } } }).catch(() => {});
+  await prisma.vessel.deleteMany({ where: { id: { in: vesselIds } } }).catch(() => {});
+  await prisma.location.deleteMany({ where: { name: { startsWith: "ZZ-TEST Reverse" } } }).catch(() => {});
+  await prisma.vineyard.deleteMany({ where: { name: { startsWith: "ZZ-TEST Reverse" } } }).catch(() => {});
 }
 
 runAsTenant(TENANT, async () => { await scrub(); await main().then(scrub); })
