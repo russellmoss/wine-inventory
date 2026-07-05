@@ -45,8 +45,16 @@ export async function completeHarvestWeighInTaskCore(
   const ph = coercePh(merged.phAtPick);
   const ta = coerceTa(merged.taAtPick);
 
-  const pickDate =
-    (typeof merged.pickDate === "string" && parseISODateUTC(merged.pickDate)) || new Date();
+  // Match addHarvestPick: a present-but-unparseable date is an error (don't silently write the pick
+  // against today's vintage); only fall back to today when no date was given.
+  let pickDate: Date;
+  if (typeof merged.pickDate === "string" && merged.pickDate.trim() !== "") {
+    const parsed = parseISODateUTC(merged.pickDate);
+    if (!parsed) throw new ActionError("Enter a valid pick date.");
+    pickDate = parsed;
+  } else {
+    pickDate = new Date();
+  }
   const vintageYear = pickDate.getUTCFullYear();
 
   const result = await runInTenantTx(async (tx) => {

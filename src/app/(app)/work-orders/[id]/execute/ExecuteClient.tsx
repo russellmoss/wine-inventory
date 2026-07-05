@@ -44,6 +44,9 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
   function renderField(key: string, type: string) {
     const cur = fields[key] ?? "";
+    // A vineyard-block field only appears on HARVEST_WEIGH_IN, which is dispatched to its own sub-form
+    // before this generic renderer. Guard anyway so a block field can never become a raw text input.
+    if (type === "block") return null;
     if (type === "material") {
       // Phase 034: category-filtered + fuzzy picker (replaces the flat <select>). Scope depends on the task.
       return (
