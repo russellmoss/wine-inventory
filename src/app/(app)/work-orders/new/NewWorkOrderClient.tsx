@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Input, Checkbox, Eyebrow } from "@/components/ui";
+import { Card, Button, Input, Checkbox, Eyebrow, Badge } from "@/components/ui";
 import { TASK_VOCABULARY, fieldLabel, type TemplateSpec, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { computeDoseTotal, isRateUnit } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
@@ -23,7 +23,28 @@ function todayLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { templates: Template[]; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; initialTemplateId?: string }) {
+/** Result of a locked-vessel create+issue (mirrors createAndIssueWorkOrderAction's return). */
+export type NewWorkOrderIssued = { workOrderId: string; number: number; status: string; reservationWarnings: string[] };
+
+export function NewWorkOrderClient({
+  templates,
+  pickers,
+  initialTemplateId,
+  // Plan 045 Unit 9 — LOCKED-VESSEL mode (default undefined ⇒ standalone /work-orders/new, byte-identical).
+  // When set: every single-vessel task field is pre-filled to [lockedVessel.id] and rendered as a read-only
+  // Badge; transform SOURCE-vessel selects default to it but stay selectable; submit routes through
+  // onCreateAndIssue (create → issue) instead of the standalone create-then-navigate.
+  lockedVessel,
+  onCreateAndIssue,
+  onCancel,
+}: {
+  templates: Template[];
+  pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] };
+  initialTemplateId?: string;
+  lockedVessel?: { id: string; label: string };
+  onCreateAndIssue?: (input: Parameters<typeof createWorkOrderFromTemplateAction>[0]) => Promise<NewWorkOrderIssued>;
+  onCancel?: () => void;
+}) {
   const router = useRouter();
   const [templateId, setTemplateId] = React.useState<string>(
     initialTemplateId && templates.some((t) => t.id === initialTemplateId) ? initialTemplateId : templates[0]?.id ?? "",
@@ -60,6 +81,16 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
       // Single-vessel ops (additions/fining/filtration/maintenance) get a searchable, tank/barrel-filterable
       // MULTI-select — selecting several vessels fans out to one task per vessel at submit. (RACK/TOPPING
       // use fromVesselId/toVesselId, which stay single selects below.)
+      // Plan 045: in locked-vessel mode this field is pinned to the vessel the modal was opened from —
+      // render a read-only Badge instead of the multi-select (the effective value is the locked id).
+      if (lockedVessel) {
+        return (
+          <div key={key} style={{ gridColumn: "1 / -1" }}>
+            <div style={labelStyle}>Vessel</div>
+            <Badge tone="gold" variant="soft">{lockedVessel.label}</Badge>
+          </div>
+        );
+      }
       const sel = Array.isArray(overrides[taskIdx]?.vesselId) ? (overrides[taskIdx]!.vesselId as string[]) : [];
       return (
         <div key={key} style={{ gridColumn: "1 / -1" }}>
@@ -91,10 +122,16 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
     }
     if (type === "vessel" || type === "lot") {
       const opts = type === "vessel" ? pickers.vessels : pickers.lots;
+      // Plan 045: in locked-vessel mode, default a transform SOURCE-vessel select (fromVesselId /
+      // sourceVesselId) to the locked vessel — but keep it selectable so the crew can override, and leave
+      // destination selects (toVesselId) untouched.
+      const isSourceVessel = type === "vessel" && (key === "fromVesselId" || key === "sourceVesselId");
+      const selectValue =
+        lockedVessel && isSourceVessel && current === "" ? lockedVessel.id : String(current);
       return (
         <label key={key} {...common}>
           {fieldLabel(key)}
-          <select style={field} value={String(current)} onChange={(e) => setField(taskIdx, key, e.target.value)}>
+          <select style={field} value={selectValue} onChange={(e) => setField(taskIdx, key, e.target.value)}>
             <option value="">— pick —</option>
             {opts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
@@ -159,7 +196,8 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
   function renderEstimate(taskIdx: number, defaults?: Record<string, unknown>) {
     const amount = Number(overrides[taskIdx]?.amount ?? defaults?.amount ?? "");
     const unitSel = String(overrides[taskIdx]?.doseUnit ?? defaults?.doseUnit ?? "");
-    const sel = overrides[taskIdx]?.vesselId;
+    // Locked-vessel mode pins the single-vessel field to the locked id (no override is written).
+    const sel = overrides[taskIdx]?.vesselId ?? (lockedVessel ? [lockedVessel.id] : undefined);
     const vesselIds = Array.isArray(sel) ? (sel as string[]) : sel ? [String(sel)] : [];
     if (!(amount > 0) || !isRateUnit(unitSel) || vesselIds.length === 0) return null;
     const wrap: React.CSSProperties = { gridColumn: "1 / -1", fontSize: 13, background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px" };
@@ -204,28 +242,51 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
     return [{ taskType, title: taskTitle, values }];
   }
 
+  // Plan 045: in locked-vessel mode, fold the locked vessel into a task's values before it's built — pin a
+  // single-vessel field (vesselId), and default a transform SOURCE-vessel field (fromVesselId /
+  // sourceVesselId) where the crew hasn't already picked one. A no-op when unlocked.
+  function withLockedVessel(taskType: string, values: Record<string, unknown>): Record<string, unknown> {
+    if (!lockedVessel) return values;
+    const def = TASK_VOCABULARY[taskType];
+    if (!def) return values;
+    const out = { ...values };
+    if ("vesselId" in def.fields && (out.vesselId === undefined || (Array.isArray(out.vesselId) && out.vesselId.length === 0))) {
+      out.vesselId = [lockedVessel.id];
+    }
+    for (const srcKey of ["fromVesselId", "sourceVesselId"] as const) {
+      if (srcKey in def.fields && (out[srcKey] === undefined || out[srcKey] === "")) out[srcKey] = lockedVessel.id;
+    }
+    return out;
+  }
+
   function submit() {
     setError(null);
     if (!templateId) { setError("Pick a template."); return; }
     const builds: TaskBuild[] = [];
     spec.tasks.forEach((t, i) => {
-      builds.push(...buildsForTask(t.taskType, t.title, cleanValues({ ...(t.defaults ?? {}), ...(overrides[i] ?? {}) })));
+      builds.push(...buildsForTask(t.taskType, t.title, cleanValues(withLockedVessel(t.taskType, { ...(t.defaults ?? {}), ...(overrides[i] ?? {}) }))));
     });
     extraKeys.forEach((k) => {
-      const values = cleanValues(overrides[k] ?? {});
+      const values = cleanValues(withLockedVessel("ADDITION", overrides[k] ?? {}));
       if (Object.keys(values).length > 0) builds.push(...buildsForTask("ADDITION", "Add material", values));
     });
     if (builds.length === 0) { setError("Add at least one task."); return; }
+    const payload = {
+      templateId,
+      title: title.trim() || undefined,
+      assigneeEmail: assigneeEmail.trim() || null,
+      dueAt: dueAt ? new Date(dueAt) : null,
+      autoFinalize,
+      taskBuilds: builds,
+    };
     startTransition(async () => {
       try {
-        const res = await createWorkOrderFromTemplateAction({
-          templateId,
-          title: title.trim() || undefined,
-          assigneeEmail: assigneeEmail.trim() || null,
-          dueAt: dueAt ? new Date(dueAt) : null,
-          autoFinalize,
-          taskBuilds: builds,
-        });
+        if (lockedVessel && onCreateAndIssue) {
+          // Locked-vessel mode: create + issue in one step; the parent panel handles success (warnings, close).
+          await onCreateAndIssue(payload);
+          return;
+        }
+        const res = await createWorkOrderFromTemplateAction(payload);
         router.push(`/work-orders/${res.workOrderId}`);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't create the work order.");
@@ -234,13 +295,14 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: "8px 4px 60px" }}>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: "0 0 16px" }}>New work order</h1>
+    <div style={lockedVessel ? { padding: 0 } : { maxWidth: 720, margin: "0 auto", padding: "8px 4px 60px" }}>
+      {/* Standalone page keeps its own <h1>; embedded (locked) mode gets its title from the host Modal. */}
+      {lockedVessel ? null : <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: "0 0 16px" }}>New work order</h1>}
 
       {templates.length === 0 ? (
         <Card style={{ padding: 24 }}>No templates yet. Seed the system templates with <code>npm run seed:work-order-templates</code>.</Card>
       ) : (
-        <Card style={{ display: "flex", flexDirection: "column", gap: 14, padding: 20 }}>
+        <Card style={lockedVessel ? { display: "flex", flexDirection: "column", gap: 14, padding: 0, border: "none", boxShadow: "none", background: "transparent" } : { display: "flex", flexDirection: "column", gap: 14, padding: 20 }}>
           <label style={labelStyle}>
             Template
             <select style={field} value={templateId} onChange={(e) => { setTemplateId(e.target.value); setOverrides({}); setExtraKeys([]); }}>
@@ -306,8 +368,8 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
 
           {error ? <div style={{ color: "var(--danger)", fontSize: 14 }}>{error}</div> : null}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <Button variant="ghost" onClick={() => router.push("/work-orders")}>Cancel</Button>
-            <Button disabled={pending} onClick={submit}>{pending ? "Creating…" : "Create draft"}</Button>
+            <Button variant="ghost" onClick={() => (lockedVessel ? onCancel?.() : router.push("/work-orders"))}>Cancel</Button>
+            <Button disabled={pending} onClick={submit}>{pending ? (lockedVessel ? "Issuing…" : "Creating…") : lockedVessel ? "Create & issue" : "Create draft"}</Button>
           </div>
         </Card>
       )}

@@ -3,17 +3,11 @@ import type { OperationType } from "@/lib/ledger/vocabulary";
 import { RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { getAnalyte } from "@/lib/chemistry/analytes";
 import { molecularSO2, type MolecularSO2 } from "@/lib/chemistry/so2";
+import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
+import { statusTone, statusLabel, type BadgeTone } from "@/lib/work-orders/status-badge";
 
 /** Op types that are volume-neutral (a treatment, no lines) — drives the "voided" pill. */
 const NEUTRAL_OPS = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT"]);
-
-const CAP_LABEL: Record<string, string> = {
-  PUMPOVER: "Pump-over",
-  PUNCHDOWN: "Punch-down",
-  COLD_SOAK: "Cold soak",
-  MACERATION: "Maceration",
-  PULSE_AIR: "Pulse-air",
-};
 
 function basisLabel(basis: string | null): string {
   if (!basis) return "";
@@ -81,11 +75,32 @@ export type TimelineLeg = {
   direction: "in" | "out";
 };
 
+/**
+ * WO provenance stamped on a WO-sourced op event by the vessel-timeline loader (plan 045): who
+ * issued the WO + when, who completed the task + when, assignee, and the live task/WO status →
+ * tone/label. Optional — only set for ops written by completing a work-order task. Prisma-free.
+ */
+export type OpWorkOrderProvenance = {
+  workOrderId: string;
+  number: number;
+  title: string;
+  taskStatus: string;
+  woStatus: string;
+  tone: BadgeTone;
+  statusLabel: string;
+  issuedByEmail: string | null;
+  issuedAt: string | null; // ISO
+  completedByEmail: string | null;
+  completedAt: string | null; // ISO
+  assigneeEmail: string | null;
+};
+
 export type TimelineEvent = {
   id: number;
   type: OperationType;
   observedAt: string; // ISO
   dateLabel: string; // YYYY-MM-DD
+  timeLabel: string; // HH:MM (24h) — date AND time on the feed
   enteredBy: string;
   captureMethod: string;
   note: string | null;
@@ -101,6 +116,10 @@ export type TimelineEvent = {
   // loader (it needs the dispatcher's reversibility verdict); describeOperation just defaults them.
   reversible: boolean;
   reversalReason: string | null;
+  // Plan 045 vessel timeline: optional WO provenance (populated by getVesselTimeline for ops
+  // written by completing a WO task) + a generic provenance slot. describeOperation defaults both.
+  workOrder?: OpWorkOrderProvenance | null;
+  provenance?: { issuedByEmail: string | null; issuedAt: string | null; completedByEmail: string | null; completedAt: string | null } | null;
 };
 
 export type VesselHolding = {
@@ -138,6 +157,14 @@ export function formatL(n: number): string {
 
 function toISO(d: Date | string): string {
   return typeof d === "string" ? new Date(d).toISOString() : d.toISOString();
+}
+
+/**
+ * HH:MM time-of-day label for a timeline entry (locale-safe, 24-hour). Derived from the ISO
+ * `observedAt`; used alongside `dateLabel` so History shows date AND time. Pure.
+ */
+export function timeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function isExternal(l: RawLine): boolean {
@@ -253,7 +280,7 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
       break;
     case "CAP_MGMT": {
       const t = treatments[0];
-      const lbl = t ? (CAP_LABEL[t.kind] ?? "Cap management") : "Cap management";
+      const lbl = t ? ((CAP_LABELS as Record<string, string>)[t.kind] ?? "Cap management") : "Cap management";
       summary = t?.durationMin ? `${lbl} (${t.durationMin} min)` : lbl;
       break;
     }
@@ -323,6 +350,7 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     type: opn.type,
     observedAt: observedISO,
     dateLabel: observedISO.slice(0, 10),
+    timeLabel: timeLabel(observedISO),
     enteredBy: opn.enteredBy,
     captureMethod: opn.captureMethod,
     note: opn.note,
@@ -335,6 +363,8 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     voided: false, // resolved across the set in buildTimeline
     reversible: false, // resolved in the loader (getLotDetail) via the dispatcher's verdict
     reversalReason: null,
+    workOrder: null, // populated by getVesselTimeline for WO-sourced ops
+    provenance: null,
   };
 }
 
@@ -409,6 +439,7 @@ function readingToken(v: ReadingView): string {
 export type TimelineMeta = {
   observedAt: string; // ISO
   dateLabel: string; // YYYY-MM-DD
+  timeLabel: string; // HH:MM (24h)
   enteredBy: string;
   captureMethod: string;
   note: string | null;
@@ -446,9 +477,39 @@ export type SampleItem = TimelineMeta & {
   lab: string | null;
 };
 
+/**
+ * A vessel-maintenance event (VesselActivityEvent) as a timeline item (plan 045). Not a ledger op
+ * and not lot-scoped — it belongs to the vessel. `describeVesselActivity` labels every current
+ * VESSEL_ACTIVITY_KINDS value.
+ */
+export type VesselActivityItem = TimelineMeta & {
+  kind: "VESSEL_ACTIVITY";
+  id: string;
+  summary: string;
+};
+
+/**
+ * A work order issued against the vessel as a timeline item (plan 045), slotted at `issuedAt`.
+ * Carries the per-vessel task status → tone/label so History renders a colored status badge.
+ */
+export type WorkOrderItem = TimelineMeta & {
+  kind: "WORK_ORDER";
+  id: string; // stable feed key (workOrderId)
+  workOrderId: string;
+  number: number;
+  title: string;
+  summary: string;
+  taskStatus: string;
+  woStatus: string;
+  tone: BadgeTone;
+  statusLabel: string;
+  issuedByEmail: string | null;
+  issuedAt: string | null; // ISO
+};
+
 export type OpItem = TimelineEvent & { kind: "OP" };
 export type RecordItem = MeasurementItem | TastingItem | SampleItem;
-export type TimelineItem = OpItem | RecordItem;
+export type TimelineItem = OpItem | RecordItem | VesselActivityItem | WorkOrderItem;
 
 export type RawPanel = {
   id: string;
@@ -497,6 +558,7 @@ function baseMeta(observed: Date | string, created: Date | string, enteredBy: st
   return {
     observedAt: observedISO,
     dateLabel: observedISO.slice(0, 10),
+    timeLabel: timeLabel(observedISO),
     enteredBy,
     captureMethod,
     note,
@@ -568,12 +630,134 @@ export function describeSample(sample: RawSample): SampleItem {
   };
 }
 
+// ───────────────────────── Plan 045: vessel-maintenance + work-order items ─────────────────────────
+
+/**
+ * One VesselActivityEvent row (the maintenance lane). `targetValue`/`targetUnit` carry the subtype
+ * detail: a setpoint (value + °C/°F), the gas type (GAS_TYPES on targetUnit), or the SO₂ delivery
+ * method (SO2_METHODS on targetUnit). Prisma-free — the loader maps the DB row to this shape.
+ */
+export type RawVesselActivity = {
+  id: string;
+  kind: string; // VesselActivityKind — see VESSEL_ACTIVITY_KINDS
+  observedAt: Date | string;
+  enteredByEmail: string;
+  captureMethod: string;
+  note: string | null;
+  createdAt: Date | string;
+  targetValue: number | null;
+  targetUnit: string | null;
+};
+
+/**
+ * Label a vessel-maintenance event for the timeline. Covers every current VESSEL_ACTIVITY_KINDS
+ * value (post-#73), reading the delivery method / gas / setpoint off targetValue/targetUnit.
+ * Unknown kinds fall through to a titled version of the raw kind.
+ */
+export function describeVesselActivity(raw: RawVesselActivity): VesselActivityItem {
+  let summary: string;
+  switch (raw.kind) {
+    case "TEMP_SETPOINT":
+      summary =
+        raw.targetValue != null
+          ? `Temp setpoint → ${formatL(raw.targetValue)} ${raw.targetUnit ?? "°C"}`
+          : "Temperature setpoint";
+      break;
+    case "CLEAN":
+      summary = "Cleaned";
+      break;
+    case "SANITIZE":
+      summary = "Sanitized";
+      break;
+    case "STEAM":
+      summary = "Steamed";
+      break;
+    case "GAS":
+      summary = raw.targetUnit ? `Gas: ${raw.targetUnit} blanket` : "Gas blanket";
+      break;
+    case "OZONE":
+      summary = "Ozone treatment";
+      break;
+    case "SO2":
+      summary = raw.targetUnit ? `SO₂ — ${raw.targetUnit.toLowerCase()}` : "SO₂ treatment";
+      break;
+    case "WET_STORAGE":
+      summary = "Wet storage";
+      break;
+    case "OTHER":
+      summary = raw.note ? `Maintenance: ${raw.note}` : "Maintenance";
+      break;
+    default: {
+      const words = raw.kind.replace(/_/g, " ").toLowerCase();
+      summary = words.charAt(0).toUpperCase() + words.slice(1);
+    }
+  }
+  return {
+    kind: "VESSEL_ACTIVITY",
+    id: raw.id,
+    summary,
+    ...baseMeta(raw.observedAt, raw.createdAt, raw.enteredByEmail, raw.captureMethod, raw.note),
+  };
+}
+
+/**
+ * One work order (its task for THIS vessel) as raw input. `taskStatus` is the per-vessel task's
+ * status (the precise truth for a multi-vessel WO); `woStatus` is the whole-WO fallback. The item's
+ * `observedAt` is `issuedAt` (when it hit the vessel's timeline); `createdAt` tiebreaks.
+ */
+export type RawWorkOrder = {
+  workOrderId: string;
+  number: number;
+  title: string;
+  taskStatus: string;
+  woStatus: string;
+  issuedByEmail: string | null;
+  issuedAt: Date | string | null;
+  createdAt: Date | string;
+  enteredByEmail: string; // the issuer (or a system fallback), for the meta line
+  captureMethod: string;
+  note: string | null;
+};
+
+/**
+ * Build a WORK_ORDER timeline item. Summary reads "Work order #N — {title}"; tone/label resolve from
+ * the per-vessel task status via the shared status-badge helper (falling back to the WO status).
+ * `observedAt` is `issuedAt` when known (else createdAt) so it slots at issuance on the feed.
+ */
+export function describeWorkOrder(raw: RawWorkOrder): WorkOrderItem {
+  const statusForBadge = raw.taskStatus || raw.woStatus;
+  const issuedISO = raw.issuedAt != null ? toISO(raw.issuedAt) : null;
+  const observed = issuedISO ?? toISO(raw.createdAt);
+  return {
+    kind: "WORK_ORDER",
+    id: raw.workOrderId,
+    workOrderId: raw.workOrderId,
+    number: raw.number,
+    title: raw.title,
+    summary: `Work order #${raw.number} — ${raw.title}`,
+    taskStatus: raw.taskStatus,
+    woStatus: raw.woStatus,
+    tone: statusTone(statusForBadge),
+    statusLabel: statusLabel(statusForBadge),
+    issuedByEmail: raw.issuedByEmail,
+    issuedAt: issuedISO,
+    ...baseMeta(observed, raw.createdAt, raw.enteredByEmail, raw.captureMethod, raw.note),
+  };
+}
+
 function ms(iso: string): number {
   return new Date(iso).getTime();
 }
 
+/**
+ * The non-op timeline items that slot into the op backbone by observedAt: standalone records
+ * (MEASUREMENT/TASTING/SAMPLE) plus (plan 045) vessel-maintenance events and work orders. They all
+ * share TimelineMeta (observedAt/createdAt) + a string `id`, so they interleave and sort the same way.
+ */
+export type NonOpItem = RecordItem | VesselActivityItem | WorkOrderItem;
+
 /** Sort records that share a slot: observedAt desc, then createdAt desc, then id desc. */
-function recordOrder(a: RecordItem, b: RecordItem): number {
+function recordOrder(a: NonOpItem, b: NonOpItem): number {
   const byObserved = ms(b.observedAt) - ms(a.observedAt);
   if (byObserved !== 0) return byObserved;
   const byCreated = ms(b.createdAt) - ms(a.createdAt);
@@ -588,14 +772,15 @@ function recordOrder(a: RecordItem, b: RecordItem): number {
  * (≤) to the record's observedAt; records sharing a slot order by observedAt/createdAt/id.
  * A record newer than every op lands at the top; older than every op lands at the bottom.
  * With no records this returns the ops verbatim (the D14 ops-only regression guard).
+ * Plan 045: `records` also accepts VESSEL_ACTIVITY + WORK_ORDER items (all NonOpItem).
  */
-export function mergeTimeline(ops: TimelineEvent[], records: RecordItem[]): TimelineItem[] {
+export function mergeTimeline(ops: TimelineEvent[], records: NonOpItem[]): TimelineItem[] {
   const opItems: OpItem[] = ops.map((ev) => ({ kind: "OP", ...ev }));
   if (records.length === 0) return opItems;
 
   const opMs = opItems.map((o) => ms(o.observedAt));
   // Anchor each record to the index of the first op that is older-or-equal (its insertion slot).
-  const byAnchor = new Map<number, RecordItem[]>();
+  const byAnchor = new Map<number, NonOpItem[]>();
   for (const rec of records) {
     const t = ms(rec.observedAt);
     let anchor = opItems.length;

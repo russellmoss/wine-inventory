@@ -6,11 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderDetail } from "@/lib/work-orders/data";
 import { issueWorkOrderAction, cancelWorkOrderAction } from "@/lib/work-orders/actions";
-
-const STATUS_TONE: Record<string, "neutral" | "gold" | "green" | "blue" | "maroon" | "red"> = {
-  DRAFT: "neutral", ISSUED: "blue", IN_PROGRESS: "gold", PENDING_APPROVAL: "maroon", APPROVED: "green", CANCELLED: "neutral",
-  PENDING: "neutral", REJECTED: "red", DONE: "green", SKIPPED: "neutral",
-};
+import { statusTone } from "@/lib/work-orders/status-badge";
 
 export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; isAdmin: boolean }) {
   const router = useRouter();
@@ -43,7 +39,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}
           </div>
         </div>
-        <Badge tone={STATUS_TONE[wo.status] ?? "neutral"}>{wo.status.replace(/_/g, " ").toLowerCase()}</Badge>
+        <Badge tone={statusTone(wo.status)}>{wo.status.replace(/_/g, " ").toLowerCase()}</Badge>
       </div>
 
       {wo.instructions ? <Card style={{ marginTop: 14, padding: 14, fontSize: 14 }}>{wo.instructions}</Card> : null}
@@ -75,7 +71,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
             <Card key={t.id} padding="12px 14px">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ fontWeight: 600 }}>{t.seq}. {t.title}</div>
-                <Badge tone={STATUS_TONE[t.status] ?? "neutral"}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
+                <Badge tone={statusTone(t.status)}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 3 }}>
                 {t.kind === "OPERATION" ? t.opType : t.kind === "NOTE" ? "checklist" : t.kind === "MAINTENANCE" ? `maintenance · ${t.activityType}` : t.observationType === "HARVEST_WEIGH_IN" ? "fruit weigh-in" : `observation · ${t.observationType}`}

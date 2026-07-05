@@ -2,17 +2,23 @@ import { describe, it, expect } from "vitest";
 import {
   vesselLabel,
   formatL,
+  timeLabel,
   describeOperation,
   buildTimeline,
   currentState,
   describeMeasurementPanel,
   describeTastingNote,
   describeSample,
+  describeVesselActivity,
+  describeWorkOrder,
   mergeTimeline,
   type RawLine,
   type RawOperation,
   type RawPanel,
+  type RawVesselActivity,
+  type RawWorkOrder,
 } from "@/lib/lot/timeline";
+import { VESSEL_ACTIVITY_KINDS } from "@/lib/cellar/vessel-activity-vocab";
 
 // A minimal operation stub; tests override `type`/`correctsOperationId` as needed.
 function op(over: Partial<RawOperation> = {}): RawOperation {
@@ -161,6 +167,22 @@ describe("describeOperation — summaries", () => {
       [],
     );
     expect(ev.summary).toBe("Pump-over (20 min)");
+  });
+
+  it("CAP_MGMT uses the canonical CAP_LABELS incl. BATONNAGE (drift fix)", () => {
+    const ev = describeOperation(
+      op({ id: 35, type: "CAP_MGMT", treatments: [{ kind: "BATONNAGE", materialName: null, rateValue: null, rateBasis: null, computedTotal: null, computedUnit: null, durationMin: null, medium: null, micron: null }] }),
+      [],
+    );
+    expect(ev.summary).toBe("Bâtonnage (lees stir)");
+  });
+
+  it("CAP_MGMT labels PULSE_AIR from the canonical map", () => {
+    const ev = describeOperation(
+      op({ id: 36, type: "CAP_MGMT", treatments: [{ kind: "PULSE_AIR", materialName: null, rateValue: null, rateBasis: null, computedTotal: null, computedUnit: null, durationMin: 5, medium: null, micron: null }] }),
+      [],
+    );
+    expect(ev.summary).toBe("Pulse-air (5 min)");
   });
 
   it("FILTRATION reads medium/micron + the loss", () => {
@@ -382,6 +404,127 @@ describe("mergeTimeline — hybrid ordering", () => {
     const merged = mergeTimeline(ops, [older, newer]);
     // Both newer than op2(Mar05), older than op3(Mar10) → same slot, newer observedAt first.
     expect(merged.map((e) => (e.kind === "OP" ? `op${e.id}` : e.id))).toEqual(["op3", "newer", "older", "op2", "op1"]);
+  });
+});
+
+describe("timeLabel", () => {
+  it("renders HH:MM 24-hour from an ISO instant", () => {
+    // Assert the shape (HH:MM); exact hour is TZ-dependent, so don't pin it.
+    expect(timeLabel("2026-03-01T14:05:00.000Z")).toMatch(/^\d{2}:\d{2}$/);
+  });
+});
+
+describe("describeVesselActivity", () => {
+  function va(over: Partial<RawVesselActivity> = {}): RawVesselActivity {
+    return {
+      id: "va-1",
+      kind: "OTHER",
+      observedAt: new Date("2026-03-01T10:00:00.000Z"),
+      enteredByEmail: "cellar@bwc.bt",
+      captureMethod: "MANUAL",
+      note: null,
+      createdAt: new Date("2026-03-01T10:00:00.000Z"),
+      targetValue: null,
+      targetUnit: null,
+      ...over,
+    };
+  }
+
+  it("labels every VESSEL_ACTIVITY_KINDS value (no raw enum leaks into the summary)", () => {
+    for (const kind of VESSEL_ACTIVITY_KINDS) {
+      const item = describeVesselActivity(va({ kind }));
+      expect(item.kind).toBe("VESSEL_ACTIVITY");
+      expect(item.summary.length).toBeGreaterThan(0);
+      // A raw enum token (all-caps with underscores) must never survive into the label.
+      expect(item.summary).not.toMatch(/[A-Z]{2,}_[A-Z]/);
+    }
+  });
+
+  it("reads the setpoint value + unit for TEMP_SETPOINT", () => {
+    expect(describeVesselActivity(va({ kind: "TEMP_SETPOINT", targetValue: 4, targetUnit: "°C" })).summary).toBe("Temp setpoint → 4 °C");
+  });
+
+  it("reads the gas type off targetUnit for GAS", () => {
+    expect(describeVesselActivity(va({ kind: "GAS", targetUnit: "Argon" })).summary).toBe("Gas: Argon blanket");
+  });
+
+  it("reads the SO₂ delivery method off targetUnit for SO2", () => {
+    expect(describeVesselActivity(va({ kind: "SO2", targetUnit: "Burned sulfur strip" })).summary).toBe("SO₂ — burned sulfur strip");
+  });
+
+  it("labels the barrel-maintenance kinds (post-#73)", () => {
+    expect(describeVesselActivity(va({ kind: "OZONE" })).summary).toBe("Ozone treatment");
+    expect(describeVesselActivity(va({ kind: "WET_STORAGE" })).summary).toBe("Wet storage");
+    expect(describeVesselActivity(va({ kind: "CLEAN" })).summary).toBe("Cleaned");
+    expect(describeVesselActivity(va({ kind: "SANITIZE" })).summary).toBe("Sanitized");
+    expect(describeVesselActivity(va({ kind: "STEAM" })).summary).toBe("Steamed");
+  });
+});
+
+describe("describeWorkOrder", () => {
+  function wo(over: Partial<RawWorkOrder> = {}): RawWorkOrder {
+    return {
+      workOrderId: "wo-1",
+      number: 12,
+      title: "Cap management",
+      taskStatus: "ISSUED",
+      woStatus: "ISSUED",
+      issuedByEmail: "chef@bwc.bt",
+      issuedAt: new Date("2026-03-02T08:00:00.000Z"),
+      createdAt: new Date("2026-03-02T08:00:00.000Z"),
+      enteredByEmail: "chef@bwc.bt",
+      captureMethod: "MANUAL",
+      note: null,
+      ...over,
+    };
+  }
+
+  it("summarizes as 'Work order #N — {title}' and resolves tone/label from the task status", () => {
+    const item = describeWorkOrder(wo());
+    expect(item.kind).toBe("WORK_ORDER");
+    expect(item.summary).toBe("Work order #12 — Cap management");
+    expect(item.tone).toBe("blue");
+    expect(item.statusLabel).toBe("Issued");
+    expect(item.observedAt).toBe("2026-03-02T08:00:00.000Z");
+    expect(item.workOrderId).toBe("wo-1");
+  });
+
+  it("prefers the per-vessel task status over the WO status for the badge", () => {
+    const item = describeWorkOrder(wo({ taskStatus: "DONE", woStatus: "IN_PROGRESS" }));
+    expect(item.tone).toBe("green");
+    expect(item.statusLabel).toBe("Done");
+  });
+
+  it("falls back to createdAt when issuedAt is null", () => {
+    const item = describeWorkOrder(wo({ issuedAt: null, createdAt: new Date("2026-03-01T00:00:00.000Z") }));
+    expect(item.issuedAt).toBeNull();
+    expect(item.observedAt).toBe("2026-03-01T00:00:00.000Z");
+  });
+});
+
+describe("mergeTimeline — interleaves VESSEL_ACTIVITY + WORK_ORDER items", () => {
+  const ops = buildTimeline([
+    { op: op({ id: 3, type: "ADDITION", observedAt: new Date("2026-03-10T00:00:00Z"), treatments: [{ kind: "ADDITION", materialName: "DAP", rateValue: 1, rateBasis: "G_HL", computedTotal: 1, computedUnit: "g", durationMin: null, medium: null, micron: null }] }), lines: [] },
+    { op: op({ id: 2, type: "SEED", observedAt: new Date("2026-03-05T00:00:00Z") }), lines: [inVessel("1", 100, "TANK"), external(-100, "seed")] },
+    { op: op({ id: 1, type: "SEED", observedAt: new Date("2026-03-01T00:00:00Z") }), lines: [inVessel("1", 50, "TANK"), external(-50, "seed")] },
+  ]);
+
+  it("slots a maintenance event and a work order by observedAt alongside ops", () => {
+    const setpoint = describeVesselActivity({
+      id: "va-1", kind: "TEMP_SETPOINT", observedAt: new Date("2026-03-07T00:00:00Z"),
+      enteredByEmail: "c@bwc.bt", captureMethod: "MANUAL", note: null,
+      createdAt: new Date("2026-03-07T00:00:00Z"), targetValue: 12, targetUnit: "°C",
+    });
+    const workOrder = describeWorkOrder({
+      workOrderId: "wo-1", number: 7, title: "Pump-over", taskStatus: "ISSUED", woStatus: "ISSUED",
+      issuedByEmail: "chef@bwc.bt", issuedAt: new Date("2026-03-08T00:00:00Z"),
+      createdAt: new Date("2026-03-08T00:00:00Z"), enteredByEmail: "chef@bwc.bt", captureMethod: "MANUAL", note: null,
+    });
+    const merged = mergeTimeline(ops, [setpoint, workOrder]);
+    // wo(Mar08) + setpoint(Mar07) both between op3(Mar10) and op2(Mar05); newer first.
+    expect(merged.map((e) => (e.kind === "OP" ? `op${e.id}` : e.id))).toEqual(["op3", "wo-1", "va-1", "op2", "op1"]);
+    const woItem = merged.find((e) => e.id === "wo-1");
+    expect(woItem?.kind).toBe("WORK_ORDER");
   });
 });
 
