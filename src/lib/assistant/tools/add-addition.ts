@@ -3,11 +3,11 @@ import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { resolveVessel, resolveVesselContents, type ResolvedVessel } from "../scope";
-import { resolveExactlyOne } from "./resolve";
+import { resolveOneOrChoice } from "./resolve";
 import { round2 } from "@/lib/bottling/draw";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { isDoseableCategory, categoryOf, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
-import { computeDoseTotal, isRateUnit } from "@/lib/cellar/additions-math";
+import { computeDoseTotal, isRateUnit, resolveDoseUnit, type RateBasis } from "@/lib/cellar/additions-math";
 import { addAdditionAction, addFiningAction } from "@/lib/cellar/actions";
 import type { AddAdditionInput } from "@/lib/cellar/addition";
 
@@ -64,6 +64,15 @@ export const addAdditionTool: AssistantTool = {
     const unit = normUnit(String(input.unit ?? ""));
     if (!(DOSE_UNITS as readonly string[]).includes(unit)) throw new Error(`Unit must be one of: ${DOSE_UNITS.join(", ")} (or ppm).`);
     const fining = input.fining === true;
+    // The standalone addition action doses by RATE (rateValue + rateBasis). Absolute totals (g/kg/mL/L)
+    // have no standalone path yet — only the WO tx seam takes an amount — so reject them with guidance
+    // rather than silently no-op'ing (which is the "dose rate > 0" failure this whole fix chases down).
+    const dose = resolveDoseUnit(unit);
+    if (!dose || dose.kind !== "rate") {
+      throw new Error(
+        `I can log a dose RATE — g/hL, ppm (mg/L), g/L, or mL/L. For an exact total like "${input.amount} ${unit}", enter it on the cellar addition form for now.`,
+      );
+    }
 
     // Resolve the vessel (refuse inactive / empty — no-vessel throws a clear message from resolveVessel).
     const v = await resolveVessel(input.vessel);
@@ -74,21 +83,47 @@ export const addAdditionTool: AssistantTool = {
     // Resolve the material ADDITIVE-SCOPED. A name that matches ONLY a non-additive (packaging/cleaning)
     // is a hard refusal, not a "no match" — the winemaker named a real product that simply can't be dosed.
     const all = await listMaterials(); // active catalog
-    const needle = norm(input.material);
-    const matches = all.filter((m) => {
-      const hay = [materialDisplayName(m), m.name, m.genericName, m.brandName, m.brand].filter(Boolean).map((x) => norm(String(x)));
-      return hay.some((h) => h !== "" && (h === needle || h.includes(needle) || needle.includes(h)));
-    });
-    const doseable = matches.filter((m) => isDoseableCategory(catOf(m)));
-    if (matches.length > 0 && doseable.length === 0) {
-      const m = matches[0];
-      throw new Error(`"${materialDisplayName(m)}" is a ${CAT_LABEL[catOf(m)] ?? "non-additive"} material — it can't be dosed as an addition (cleaning/sanitizing is overhead; packaging is never dosed).`);
+
+    // A picker tap re-sends the command with the material pinned by id ("#<uuid>"). Resolve that exactly,
+    // bypassing name matching — the whole point is that identical names pick cleanly by identity.
+    const rawMat = input.material.trim();
+    const idToken = rawMat.match(/#\s*([0-9a-z-]{8,})/i)?.[1] ?? rawMat;
+    const byId = idToken.replace(/-/g, "").toLowerCase();
+    let material = all.find((m) => m.id.replace(/-/g, "").toLowerCase() === byId);
+    if (rawMat.startsWith("#") && !material) {
+      throw new Error("That product isn't in the active catalog anymore — pick it again.");
     }
-    const material = resolveExactlyOne(doseable, {
-      describe: (m) => `${materialDisplayName(m)} (${m.kind})`,
-      noneMsg: `No additive matches "${input.material}". Add it to the expendables catalog first, or check the name.`,
-      manyMsg: `Several additives match "${input.material}"`,
-    });
+    if (material) {
+      if (!isDoseableCategory(catOf(material))) {
+        throw new Error(`"${materialDisplayName(material)}" is a ${CAT_LABEL[catOf(material)] ?? "non-additive"} material — it can't be dosed as an addition.`);
+      }
+    } else {
+      const needle = norm(input.material);
+      const nameNorms = (m: (typeof all)[number]) => [materialDisplayName(m), m.name, m.genericName, m.brandName, m.brand].filter(Boolean).map((x) => norm(String(x)));
+      // Prefer an EXACT normalized-name match: a fully-specified name must win, even though shorter
+      // near-duplicate names ("Potassium Metabisulfite" vs "…KMBS (SO2)") also fuzzy-match. Fuzzy contains
+      // is the fallback for a partial name like "KMBS".
+      const exact = all.filter((m) => nameNorms(m).includes(needle));
+      const fuzzy = all.filter((m) => nameNorms(m).some((h) => h !== "" && (h.includes(needle) || needle.includes(h))));
+      const matches = exact.length > 0 ? exact : fuzzy;
+      const doseable = matches.filter((m) => isDoseableCategory(catOf(m)));
+      if (matches.length > 0 && doseable.length === 0) {
+        const m = matches[0];
+        throw new Error(`"${materialDisplayName(m)}" is a ${CAT_LABEL[catOf(m)] ?? "non-additive"} material — it can't be dosed as an addition (cleaning/sanitizing is overhead; packaging is never dosed).`);
+      }
+      // Ambiguous (a partial name, or true name-duplicates) → hand back a clickable PICKER instead of a
+      // text question that dead-loops when names collide. Each option pins the product by id, and the
+      // sublabel carries a distinguishing field (+ a short ref) so even identical names are tell-apart-able.
+      const res = resolveOneOrChoice(doseable, {
+        prompt: `Which "${input.material}" do you mean?`,
+        describe: (m) => materialDisplayName(m),
+        detail: (m) => [m.kind, m.subcategory].filter(Boolean).join(" · ") + ` · ref ${m.id.replace(/-/g, "").slice(0, 6)}`,
+        send: (m) => `${fining ? "Fine" : "Add"} ${input.amount} ${unit} #${m.id} to ${label(v)}${input.note ? ` — ${input.note}` : ""}`,
+        noneMsg: `No additive matches "${input.material}". Add it to the expendables catalog first, or check the name.`,
+      });
+      if (res.kind === "choice") return res.choice;
+      material = res.row;
+    }
 
     // Preview: the computed total to weigh out (rate → amount × volume; absolute → the amount), + the
     // resident lots being dosed (transparency on a multi-lot tank — the dose hits all of them).
@@ -104,8 +139,8 @@ export const addAdditionTool: AssistantTool = {
     const token = signProposal("add_addition", {
       vesselId: v.id,
       materialId: material.id,
-      amount: input.amount,
-      doseUnit: unit,
+      rateValue: input.amount,
+      rateBasis: dose.basis,
       fining,
       ...(input.note ? { note: input.note } : {}),
       materialLabel: materialDisplayName(material),
@@ -119,8 +154,8 @@ export const commitAddAddition: Committer = async (_user, args) => {
   const input: AddAdditionInput = {
     vesselId: String(args.vesselId),
     materialId: String(args.materialId),
-    amount: Number(args.amount),
-    doseUnit: String(args.doseUnit),
+    rateValue: Number(args.rateValue),
+    rateBasis: args.rateBasis as RateBasis,
     note: args.note == null ? undefined : String(args.note),
   };
   const res = args.fining === true ? await addFiningAction(input) : await addAdditionAction(input);

@@ -12,7 +12,7 @@ import { reverseOperationAction } from "@/lib/ledger/actions";
 // (explicit id, or the most recent not-yet-corrected op on a vessel/lot), show its summary in a STRONG
 // confirm, and let the core reject anything unsafe. Nothing resolvable → deep-link the lot/vessel timeline.
 
-type UndoRawInput = { operationId?: number; vessel?: string; lot?: string; note?: string };
+type UndoRawInput = { operationId?: number; vessel?: string; lot?: string; opType?: string; note?: string };
 
 export const undoOperationTool: AssistantTool = {
   name: "undo_operation",
@@ -25,6 +25,7 @@ export const undoOperationTool: AssistantTool = {
       operationId: { type: "number", description: "The operation number to reverse, if known." },
       vessel: { type: "string", description: "Undo the most recent operation on this vessel, e.g. 'tank 5'." },
       lot: { type: "string", description: "Undo the most recent operation on this lot, e.g. '24-CS-A'." },
+      opType: { type: "string", description: "Restrict to a kind of operation, e.g. 'addition', 'fining', 'crush', 'press', 'blend', 'rack', 'topping', 'filtration'. Set it from the request — 'undo the last ADDITION on tank 5' → 'addition' — so undo can't target a different op type." },
       note: { type: "string", description: "Reason for the reversal (optional)." },
     },
     required: [],
@@ -32,7 +33,7 @@ export const undoOperationTool: AssistantTool = {
   async run(_ctx, rawInput) {
     const input = (rawInput ?? {}) as UndoRawInput;
     const opId = typeof input.operationId === "number" ? input.operationId : undefined;
-    const found = await resolveRecentOperation({ operationId: opId, vessel: input.vessel, lot: input.lot });
+    const found = await resolveRecentOperation({ operationId: opId, vessel: input.vessel, lot: input.lot, opType: input.opType });
     if (!found) {
       const where = input.lot ? `lot ${input.lot}` : input.vessel ? input.vessel : "there";
       return {

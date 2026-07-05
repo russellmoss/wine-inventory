@@ -9,6 +9,11 @@ export type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
   | { type: "proposal"; tool: string; preview: string; token: string }
+  // A disambiguation picker: the tool couldn't resolve a name to ONE record, so
+  // instead of asking in text (which dead-loops when names collide), it hands the
+  // client clickable options. Each option's `send` is a follow-up message that
+  // pins the choice by id, so the tap resolves uniquely with no name round-trip.
+  | { type: "choice"; tool: string; prompt: string; options: ChoiceOption[] }
   // A navigation action the client router executes. `auto` = the server judged
   // this an explicit "take me there" (auto-navigate, subject to the client's
   // dirty-form/countdown guards); `auto:false` = render as a link only.
@@ -36,6 +41,9 @@ export function isSafeInternalPath(path: unknown): path is string {
   if (p.split("").some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) return false;
   return true;
 }
+
+/** One clickable disambiguation option. `send` is the message the tap posts (id-pinned). */
+export type ChoiceOption = { label: string; sublabel?: string; send: string };
 
 /** Parse one NDJSON line into an AssistantEvent, or null if unparseable/invalid. */
 export function parseEvent(line: string): AssistantEvent | null {
@@ -69,6 +77,29 @@ export function asProposal(out: unknown): WriteProposal | null {
     return out as WriteProposal;
   }
   return null;
+}
+
+/** A tool's disambiguation request (never mutates; the client shows clickable options). */
+export type ChoiceRequest = { needsChoice: true; prompt: string; options: ChoiceOption[] };
+
+export function asChoice(out: unknown): ChoiceRequest | null {
+  if (!out || typeof out !== "object") return null;
+  if ((out as { needsChoice?: unknown }).needsChoice !== true) return null;
+  const prompt = (out as { prompt?: unknown }).prompt;
+  const options = (out as { options?: unknown }).options;
+  if (typeof prompt !== "string" || !prompt) return null;
+  if (!Array.isArray(options) || options.length === 0) return null;
+  const clean: ChoiceOption[] = [];
+  for (const o of options) {
+    if (!o || typeof o !== "object") return null;
+    const label = (o as { label?: unknown }).label;
+    const send = (o as { send?: unknown }).send;
+    if (typeof label !== "string" || !label) return null;
+    if (typeof send !== "string" || !send) return null;
+    const sublabel = (o as { sublabel?: unknown }).sublabel;
+    clean.push({ label, send, ...(typeof sublabel === "string" && sublabel ? { sublabel } : {}) });
+  }
+  return { needsChoice: true, prompt, options: clean.slice(0, 25) }; // cap: a picker isn't a data dump
 }
 
 /** A navigate tool's payload. `auto` defaults to false (link) unless the tool set it. */

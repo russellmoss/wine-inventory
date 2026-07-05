@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
-import { type AssistantEvent, asProposal, asNavigation } from "./assistant-events";
+import { type AssistantEvent, asProposal, asChoice, asNavigation } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
 
@@ -97,6 +97,23 @@ export async function runAssistant(opts: {
                 type: "tool_result",
                 tool_use_id: tu.id,
                 content: `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
+              });
+              emit({ type: "tool", name: tu.name, phase: "end", ok: true });
+              continue;
+            }
+
+            // Disambiguation picker (any tool kind): the tool couldn't resolve a
+            // name to ONE record, so it handed back clickable options. Surface them
+            // and stop the model — the user's tap re-drives the tool, id-pinned.
+            const choice = asChoice(out);
+            if (choice) {
+              emit({ type: "choice", tool: tu.name, prompt: choice.prompt, options: choice.options });
+              results.push({
+                type: "tool_result",
+                tool_use_id: tu.id,
+                content: `A picker was shown to the user with these options: ${choice.options
+                  .map((o) => o.label)
+                  .join("; ")}. Do not call this tool again; ask them to tap the one they mean.`,
               });
               emit({ type: "tool", name: tu.name, phase: "end", ok: true });
               continue;
