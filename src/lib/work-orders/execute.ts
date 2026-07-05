@@ -358,3 +358,34 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     throw e;
   }
 }
+
+export type BatchCompleteResult = { completed: number; failed: number; results: (CompleteTaskResult & { ok: boolean; error?: string })[] };
+
+/**
+ * Complete N tasks in one call (plan 043): the cellar hand punches down tanks 3, 4, 5 and marks them all
+ * done at once. Loops completeTaskCore, each in its OWN runLedgerWrite (completeTaskCore owns its tx and has
+ * no tx-form) — so batch = N independent txs with per-item pass/fail, and one tank's failure never rolls
+ * back the rest. Mirrors bulkApproveTasksCore (D3). Each item MUST carry its own commandId (idempotency is
+ * per-attempt; a shared id would dedupe to a single write). autoFinalize is set per item by the action.
+ */
+export async function completeTasksBatchCore(actor: LedgerActor, input: { items: CompleteTaskInput[] }): Promise<BatchCompleteResult> {
+  const results: (CompleteTaskResult & { ok: boolean; error?: string })[] = [];
+  for (const item of input.items) {
+    try {
+      const r = await completeTaskCore(actor, item);
+      results.push({ ...r, ok: true });
+    } catch (e) {
+      results.push({
+        taskId: item.taskId,
+        attemptId: "",
+        operationId: null,
+        status: "FAILED",
+        duplicate: false,
+        message: "",
+        ok: false,
+        error: e instanceof Error ? e.message : "Failed to complete.",
+      });
+    }
+  }
+  return { completed: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
+}

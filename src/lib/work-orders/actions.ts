@@ -11,7 +11,7 @@ import {
   startTaskCore,
   type CreateWorkOrderInput,
 } from "@/lib/work-orders/lifecycle";
-import { completeTaskCore, type CompleteTaskInput } from "@/lib/work-orders/execute";
+import { completeTaskCore, completeTasksBatchCore, type CompleteTaskInput } from "@/lib/work-orders/execute";
 import {
   createWorkOrderFromTemplateCore,
   createTemplateCore,
@@ -24,7 +24,7 @@ import type { TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { prisma } from "@/lib/prisma";
-import { canManagerAccessVineyard } from "@/lib/access";
+import { canManagerAccessVineyard, type AppUser } from "@/lib/access";
 import { ActionError } from "@/lib/action-error";
 
 // "use server" wrappers for the work-order lifecycle (Phase 9 Unit 4). Each wraps a script-safe core in
@@ -143,10 +143,10 @@ export const startTaskAction = action(async ({ actor }, input: { taskId: string 
   return res;
 });
 
-/** Complete a task (the floor-first "check it off"). OPERATION → real ledger op + PENDING_APPROVAL
- * attempt; OBSERVATION → direct log + DONE. Idempotent on commandId (offline-drain safe). Auto-finalize
- * (decision 2) is computed server-side from the WO flag + the completer's role — never client-trusted. */
-export const completeTaskAction = action(async ({ user, actor }, input: CompleteTaskInput) => {
+/** Per-task completion pre-flight (shared by single + batch completion): enforce the D9 vineyard-access
+ * guard for a HARVEST_WEIGH_IN and compute autoFinalize server-side (never client-trusted). Returns the
+ * input enriched with the resolved autoFinalize. */
+async function prepareCompleteInput(user: AppUser, input: CompleteTaskInput): Promise<CompleteTaskInput> {
   const task = await prisma.workOrderTask.findUnique({
     where: { id: input.taskId },
     select: { observationType: true, blockId: true, workOrder: { select: { autoFinalize: true } } },
@@ -165,8 +165,26 @@ export const completeTaskAction = action(async ({ user, actor }, input: Complete
     }
   }
   const autoFinalize = task ? shouldAutoFinalize(user, { autoFinalize: task.workOrder.autoFinalize }) : false;
-  const res = await completeTaskCore(actor, { ...input, autoFinalize });
+  return { ...input, autoFinalize };
+}
+
+/** Complete a task (the floor-first "check it off"). OPERATION → real ledger op + PENDING_APPROVAL
+ * attempt; OBSERVATION → direct log + DONE. Idempotent on commandId (offline-drain safe). Auto-finalize
+ * (decision 2) is computed server-side from the WO flag + the completer's role — never client-trusted. */
+export const completeTaskAction = action(async ({ user, actor }, input: CompleteTaskInput) => {
+  const res = await completeTaskCore(actor, await prepareCompleteInput(user, input));
   revalidateWorkOrders(res.taskId);
+  return res;
+});
+
+/** Batch-complete N tasks at once (plan 043): punch down tanks 3, 4, 5 and mark them all done. Each item
+ * carries its OWN commandId (idempotency is per-attempt). Per-item pre-flight + autoFinalize; a partial
+ * failure never aborts the rest (per-item pass/fail in the result). Revalidates once at the end. */
+export const completeTasksBatchAction = action(async ({ user, actor }, input: { items: CompleteTaskInput[] }) => {
+  if (!Array.isArray(input.items) || input.items.length === 0) throw new ActionError("No tasks to complete.");
+  const items = await Promise.all(input.items.map((i) => prepareCompleteInput(user, i)));
+  const res = await completeTasksBatchCore(actor, { items });
+  revalidateWorkOrders();
   return res;
 });
 
