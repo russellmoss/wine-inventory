@@ -44,6 +44,8 @@ import { dbCreateTool } from "./tools/db-create";
 import { dbUpdateTool } from "./tools/db-update";
 import { dbDeleteTool } from "./tools/db-delete";
 import { reportAnomaliesTool } from "./tools/report-anomalies";
+import { listTemplatesTool, getTemplateTool } from "./tools/templates-read";
+import { createTemplateTool, updateTemplateSpecTool, cloneTemplateTool, archiveTemplateTool } from "./tools/templates-write";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -66,6 +68,12 @@ const ALL_TOOLS: AssistantTool[] = [
   dbUpdateTool,
   dbDeleteTool,
   reportAnomaliesTool,
+  listTemplatesTool,
+  getTemplateTool,
+  createTemplateTool,
+  updateTemplateSpecTool,
+  cloneTemplateTool,
+  archiveTemplateTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */

@@ -58,6 +58,12 @@ const TOOL_LABELS: Record<string, string> = {
   rack_wine: "Preparing the transfer",
   revert_transfer: "Reverting the rack",
   query_transfers: "Checking recent rackings",
+  list_templates: "Listing templates",
+  get_template: "Reading the template",
+  create_template: "Drafting the template",
+  update_template_spec: "Preparing template changes",
+  clone_template: "Cloning the template",
+  archive_template: "Preparing to archive",
 };
 
 export function AssistantChat({ userLabel, voiceEnabled = false }: { userLabel: string; voiceEnabled?: boolean }) {
