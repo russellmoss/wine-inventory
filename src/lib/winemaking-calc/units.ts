@@ -14,7 +14,7 @@
 
 /** Bump on ANY formula/constant change. Stamped into every CalculationLog row (PR2) so a
  * shipped-then-fixed formula bug is provable, not mistaken for user error. */
-export const CALC_ENGINE_VERSION = "1.0.0";
+export const CALC_ENGINE_VERSION = "1.1.0"; // 1.1.0: added the composed SO₂ addition planner
 
 // ── Volume → liters (multiply an input volume by this to get liters) ──
 export const VOLUME_UNITS = ["L", "GAL_US", "HL", "GAL_UK"] as const;
