@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth-client";
 import { Avatar } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
+import { AssistantDock } from "@/components/assistant/AssistantDock";
 
 type NavItem = { href: string; label: string; admin?: boolean; badge?: number };
 
@@ -216,6 +217,7 @@ export function AppShell({
   pendingWorkOrders = 0,
   sparklingEnabled = false,
   complianceDeadlines = { count: 0, urgent: false },
+  voiceEnabled = false,
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   children: React.ReactNode;
@@ -223,6 +225,7 @@ export function AppShell({
   pendingWorkOrders?: number;
   sparklingEnabled?: boolean;
   complianceDeadlines?: { count: number; urgent: boolean };
+  voiceEnabled?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -312,6 +315,9 @@ export function AppShell({
           <div className="mx-auto px-4 py-5 md:px-10 md:py-8" style={{ maxWidth: "var(--container-xl)" }}>{children}</div>
         )}
       </main>
+
+      {/* Global assistant dock — hides itself on /assistant (the full-page chat). */}
+      <AssistantDock userLabel={user.name || user.email} voiceEnabled={voiceEnabled} />
     </div>
   );
 }

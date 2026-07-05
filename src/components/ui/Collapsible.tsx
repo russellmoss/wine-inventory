@@ -21,8 +21,9 @@ export interface CollapsibleProps {
 }
 
 /** True when the user asked the OS to minimize motion — we then skip the chevron rotation transition.
- * useSyncExternalStore reads matchMedia without an effect-setState (SSR snapshot = false). */
-function usePrefersReducedMotion(): boolean {
+ * useSyncExternalStore reads matchMedia without an effect-setState (SSR snapshot = false). Exported so
+ * other motion-aware surfaces (e.g. the assistant dock) reuse one hook. */
+export function usePrefersReducedMotion(): boolean {
   return React.useSyncExternalStore(
     (cb) => {
       const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
