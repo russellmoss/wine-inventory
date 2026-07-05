@@ -241,4 +241,26 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "catalog activate/deactivate — not a delete, not a dose",
   },
+  // ── Lab samples (Wave 3): pull vs attach-returned-results vs the record_measurement confusable ──
+  {
+    utterance: "Pull a sample from tank 5 and send it to ETS",
+    tool: "pull_sample",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "start the sample lifecycle — not a chem panel, not a calc",
+  },
+  {
+    utterance: "The lab results for tank 5 came back — free SO₂ 28, TA 6.1",
+    tool: "record_sample_results",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "results RETURNED → attach to the pending sample (record_sample_results), NOT a fresh bench panel (record_measurement)",
+  },
+  {
+    utterance: "Cancel the sample on lot 24-CS-A",
+    tool: "manage_sample",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "sample lifecycle admin — distinct from pulling or recording results",
+  },
 ];

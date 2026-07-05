@@ -283,4 +283,22 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { material: "ZZCOST KMBS", active: false },
     note: "catalog toggle, history-safe (never a hard delete); reactivate = active:true",
   },
+  {
+    utterance: "Pull a sample from tank 5 and send it to ETS",
+    tool: "pull_sample",
+    args: { vessel: "tank 5", lab: "ETS" },
+    note: "pull + send in one step; a blend vessel asks which lot",
+  },
+  {
+    utterance: "The ETS results for tank 5 came back — free SO₂ 28 and TA 6.1",
+    tool: "record_sample_results",
+    args: { vessel: "tank 5", freeSO2: 28, ta: 6.1 },
+    note: "attach RETURNED lab results to the open sample (inherits its captured lot) — not a fresh bench panel",
+  },
+  {
+    utterance: "Cancel the sample on lot 24-CS-A",
+    tool: "manage_sample",
+    args: { action: "cancel", lot: "24-CS-A" },
+    note: "void a lost/mislabeled sample; 'send' is the other action",
+  },
 ];

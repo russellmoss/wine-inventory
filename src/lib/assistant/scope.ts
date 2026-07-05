@@ -293,6 +293,33 @@ export async function resolveRecentOperation(opts: { operationId?: number; vesse
   return op ? { operationId: op.id, lotId: lotOf(op), summary: summarize(op) } : null;
 }
 
+/** Statuses a lab sample can still be acted on (send / attach results / cancel). Mirror of
+ *  samples.ts NON_TERMINAL_STATUSES — inlined so scope.ts doesn't pull the sample cores. */
+const OPEN_SAMPLE_STATUSES = ["PULLED", "SENT", "PENDING", "RESULT_RETURNED"] as const;
+
+/**
+ * Resolve the lab sample to act on: an explicit id, or the most-recent STILL-OPEN sample on a lot/vessel
+ * (a blend vessel asks which lot via resolveLotTarget). Terminal samples (attached/cancelled) are ignored.
+ * Nothing open → a clear error telling the operator to pull one first.
+ */
+export async function resolveOpenSample(opts: { sampleId?: string; vessel?: string; lot?: string }): Promise<{ sampleId: string; lotId: string; lotCode: string; status: string; source: string | null }> {
+  const shape = { id: true, lotId: true, status: true, source: true, lot: { select: { code: true } } } as const;
+  if (opts.sampleId) {
+    const s = await prisma.sample.findUnique({ where: { id: opts.sampleId }, select: shape });
+    if (!s) throw new Error(`No sample "${opts.sampleId}" exists.`);
+    return { sampleId: s.id, lotId: s.lotId, lotCode: s.lot.code, status: s.status, source: s.source };
+  }
+  if (!opts.lot && !opts.vessel) throw new Error("Which sample? Give a vessel, a lot, or a sample id.");
+  const { lotId, lotCode } = await resolveLotTarget({ lot: opts.lot, vessel: opts.vessel });
+  const s = await prisma.sample.findFirst({
+    where: { lotId, status: { in: [...OPEN_SAMPLE_STATUSES] } },
+    orderBy: { pulledAt: "desc" },
+    select: shape,
+  });
+  if (!s) throw new Error(`No open sample on lot ${lotCode} — pull one first.`);
+  return { sampleId: s.id, lotId: s.lotId, lotCode: s.lot.code, status: s.status, source: s.source };
+}
+
 /** Resolve a work order by its human number (for WO-level lifecycle actions that don't need a task). */
 export async function resolveWorkOrder(ref: string | number): Promise<{ workOrderId: string; number: number; status: string }> {
   const num = typeof ref === "number" ? ref : ref ? Number((String(ref).match(/\d+/) ?? [])[0]) : NaN;
