@@ -7,6 +7,7 @@ import { insertPanelTx, type ReadingInput } from "@/lib/chemistry/measurements";
 import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 import type { CompleteTaskInput, CompleteTaskResult } from "@/lib/work-orders/execute";
+import { completeHarvestWeighInTaskCore } from "@/lib/work-orders/harvest-observations";
 
 // The observation lane (Phase 9 Unit 8): OBSERVATION tasks write DIRECTLY to the measurement store
 // (AnalysisPanel/readings — soft-deletable, non-ledger) and go straight to DONE. No approval gate, no
@@ -21,6 +22,11 @@ export async function completeObservationTaskCore(
 ): Promise<CompleteTaskResult> {
   const { task } = input;
   if (task.kind !== "OBSERVATION") throw new ActionError("Not an observation task.");
+  // Plan 039: a fruit weigh-in is a block-targeted observation — it writes a HarvestPick, not an
+  // AnalysisPanel. Route it to its own core before the lot/reading path below.
+  if (task.observationType === "HARVEST_WEIGH_IN") {
+    return completeHarvestWeighInTaskCore(actor, input);
+  }
   assertTaskTransition(task.status, "DONE");
 
   const planned = (task.plannedPayload ?? {}) as Record<string, unknown>;

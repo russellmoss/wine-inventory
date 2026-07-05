@@ -25,6 +25,7 @@ export type CreateTaskInput = {
   destVesselId?: string | null;
   lotId?: string | null;
   materialId?: string | null;
+  blockId?: string | null; // plan 039: vineyard-block target (HARVEST_WEIGH_IN)
   assigneeId?: string | null;
   assigneeEmail?: string | null;
   dueAt?: Date | null;
@@ -116,6 +117,7 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
             destVesselId: t.destVesselId ?? null,
             lotId: t.lotId ?? null,
             materialId: t.materialId ?? null,
+            blockId: t.blockId ?? null,
             assigneeId: t.assigneeId ?? null,
             assigneeEmail: t.assigneeEmail ?? null,
             dueAt: t.dueAt ?? null,

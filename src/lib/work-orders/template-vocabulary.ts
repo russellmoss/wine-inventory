@@ -9,7 +9,7 @@ import { DOSE_UNIT_LABELS } from "@/lib/cellar/additions-math";
 // Free-form cells would break the cost/compliance mapping (the roadmap-locked ERP pattern). Validation +
 // instantiation are pure (unit-tested); templates.ts persists versioned, clone-on-customize templates.
 
-export type FieldType = "vessel" | "lot" | "material" | "number" | "text" | "rateBasis" | "select";
+export type FieldType = "vessel" | "lot" | "material" | "block" | "number" | "text" | "rateBasis" | "select";
 
 export type TaskTypeDef = {
   kind: WorkOrderTaskKind;
@@ -34,6 +34,11 @@ export const FIELD_LABELS: Record<string, string> = {
   vesselId: "Vessel",
   lotId: "Lot",
   materialId: "Material",
+  blockId: "Block",
+  weightKg: "Weight (kg)",
+  brixAtPick: "Brix",
+  phAtPick: "pH",
+  taAtPick: "TA (g/L tartaric)",
   rateValue: "Rate",
   rateBasis: "Rate basis",
   drawL: "Draw (L)",
@@ -171,6 +176,18 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     fieldOptions: { op: ["PRESS", "SAIGNEE"] },
     hint: "The must lot, source vessel and the press fractions (cuts) are entered when the work order is run.",
   },
+  // ── VINEYARD lane (plan 039): the "weigh the fruit" stage. A block-targeted observation that writes a
+  // HarvestPick (weight + optional Brix/pH/TA) to the block's current-vintage harvest record — NO cellar
+  // ledger op, straight to DONE. The target BLOCK + the weigh-in readings are entered at run time via the
+  // execute sub-form (like a vessel is for cellar ops), NOT template defaults. This is the minimal Phase-20
+  // vineyard-block target seam; Phase 20 extends it to the general block-activity model. ──
+  HARVEST_WEIGH_IN: {
+    kind: "OBSERVATION",
+    observationType: "HARVEST_WEIGH_IN",
+    label: "Fruit intake / weigh-in",
+    fields: { blockId: "block", weightKg: "number", brixAtPick: "number", phAtPick: "number", taAtPick: "number", note: "text" },
+    hint: "The vineyard block and the fruit weight (with optional Brix, pH, TA) are entered when the work order is run. It logs a harvest pick — no cellar ledger op.",
+  },
   // ── CHECKLIST lane (plan 034): a free-text, checkable line that does NO inventory work. ──
   NOTE: {
     kind: "NOTE",
@@ -254,6 +271,9 @@ function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
     destVesselId: s(payload.toVesselId) ?? s(payload.vesselId) ?? s(payload.destVesselId),
     lotId: s(payload.lotId) ?? s(payload.parentLotId),
     materialId: s(payload.materialId),
+    // Plan 039: the HARVEST_WEIGH_IN block target (a vineyard block). Null at issue; the block is chosen
+    // at run time on the execute sub-form, then mirrored here for querying + the composite FK.
+    blockId: s(payload.blockId),
   };
 }
 
@@ -286,6 +306,7 @@ export function instantiateTaskBuilds(builds: TaskBuild[]): CreateTaskInput[] {
       destVesselId: canon.destVesselId,
       lotId: canon.lotId,
       materialId: canon.materialId,
+      blockId: canon.blockId,
       plannedPayload: payload as CreateTaskInput["plannedPayload"],
     };
   });
@@ -309,6 +330,7 @@ export function instantiateTasksFromSpec(spec: TemplateSpec, perTaskOverrides?: 
       destVesselId: canon.destVesselId,
       lotId: canon.lotId,
       materialId: canon.materialId,
+      blockId: canon.blockId,
       plannedPayload: payload as CreateTaskInput["plannedPayload"],
     };
   });
