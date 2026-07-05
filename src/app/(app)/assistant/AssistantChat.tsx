@@ -34,7 +34,10 @@ type ProposalItem = {
   // A "View X →" link surfaced after a create/confirm succeeds (Unit 5).
   navigate?: { path: string; label: string };
 };
-type Item = TextItem | ProposalItem;
+// A clickable disambiguation picker (tool couldn't resolve a name to one record).
+type ChoiceOpt = { label: string; sublabel?: string; send: string };
+type ChoiceItem = { kind: "choice"; prompt: string; options: ChoiceOpt[]; chosen?: string };
+type Item = TextItem | ProposalItem | ChoiceItem;
 
 type FeedbackState = { mode: "idle" | "form" | "sent"; rating?: "up" | "down" };
 
@@ -340,11 +343,11 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     setItems((prev) => [...prev, { kind: "text", role: turn.role, content: turn.content }]);
   }, []);
 
-  async function send() {
-    const text = input.trim();
+  async function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text || busy) return;
     setError(null);
-    setInput("");
+    if (override === undefined) setInput("");
     setNavPending(null); // a new turn cancels any in-flight auto-nav countdown
 
     // Conversation history for the API = prior text turns + this user turn.
@@ -380,6 +383,9 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         } else if (evt.type === "proposal") {
           setStatus(null);
           setItems((prev) => [...prev, { kind: "proposal", preview: evt.preview, token: evt.token, status: "pending" }]);
+        } else if (evt.type === "choice") {
+          setStatus(null);
+          setItems((prev) => [...prev, { kind: "choice", prompt: evt.prompt, options: evt.options }]);
         } else if (evt.type === "navigate") {
           setStatus(null);
           requestNavigation(evt.path, evt.label, evt.auto);
@@ -441,6 +447,20 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     setItems((prev) => updateProposal(prev, index, { status: "error", result: "Cancelled." }));
   }
 
+  // Tap a disambiguation option → mark it chosen (locks the card) and re-drive the tool with the
+  // id-pinned message, which comes back as a normal confirm card. No name round-trip.
+  function chooseOption(index: number, opt: ChoiceOpt) {
+    const target = items[index];
+    if (!target || target.kind !== "choice" || target.chosen || busy) return;
+    setItems((prev) => {
+      const next = [...prev];
+      const t = next[index];
+      if (t && t.kind === "choice") next[index] = { ...t, chosen: opt.label };
+      return next;
+    });
+    void send(opt.send);
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -496,6 +516,9 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
                     onCancel={() => cancelProposal(i)}
                   />
                 );
+              }
+              if (it.kind === "choice") {
+                return <ChoiceCard key={i} item={it} disabled={busy} onPick={(opt) => chooseOption(i, opt)} />;
               }
               if (it.role === "user") return <Bubble key={i} role="user" content={it.content} />;
               const streaming = busy && i === items.length - 1;
@@ -787,6 +810,59 @@ function Bubble({ role, content }: { role: Role; content: string }) {
       }}
     >
       <Markdown text={content} />
+    </div>
+  );
+}
+
+function ChoiceCard({ item, disabled, onPick }: { item: ChoiceItem; disabled: boolean; onPick: (opt: ChoiceOpt) => void }) {
+  const locked = Boolean(item.chosen);
+  return (
+    <div
+      style={{
+        alignSelf: "stretch",
+        padding: "var(--space-3) var(--space-4)",
+        borderRadius: "var(--radius-lg)",
+        background: "var(--surface-raised)",
+        border: `1px solid ${locked ? "var(--positive)" : "var(--accent)"}`,
+        fontFamily: "var(--font-body)",
+      }}
+    >
+      <div style={{ fontSize: "var(--text-body-sm)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", marginBottom: 6 }}>
+        Which one?
+      </div>
+      <div style={{ fontSize: "var(--text-body)", color: "var(--text-primary)", marginBottom: 12 }}>{item.prompt}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+        {item.options.map((opt, k) => {
+          const isChosen = item.chosen === opt.label;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => onPick(opt)}
+              disabled={disabled || locked}
+              style={{
+                textAlign: "left",
+                padding: "var(--space-2) var(--space-3)",
+                borderRadius: "var(--radius-md)",
+                border: `1px solid ${isChosen ? "var(--positive)" : "var(--border)"}`,
+                background: isChosen ? "var(--positive-soft, var(--surface-sunken))" : "var(--surface)",
+                color: "var(--text-primary)",
+                cursor: disabled || locked ? "default" : "pointer",
+                opacity: locked && !isChosen ? 0.5 : 1,
+                fontFamily: "var(--font-body)",
+              }}
+            >
+              <div style={{ fontSize: "var(--text-body)", fontWeight: 500 }}>
+                {isChosen ? "✓ " : ""}
+                {opt.label}
+              </div>
+              {opt.sublabel ? (
+                <div style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)", marginTop: 2 }}>{opt.sublabel}</div>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

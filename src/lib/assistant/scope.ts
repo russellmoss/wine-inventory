@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AppUser } from "@/lib/access";
 import { parseVesselRef } from "@/lib/vessels/ref";
+import type { OperationType } from "@/lib/ledger/vocabulary";
 
 /**
  * Shared scoping for assistant read tools. Scoping is the handler's job, NEVER
@@ -116,18 +117,46 @@ export type ResolvedVessel = Prisma.VesselGetPayload<{
  * NOT vineyard-scoped, so this is available to any ready user. Throws a clear,
  * model-relayable message when the reference is unparseable or unknown.
  */
-export async function resolveVessel(text: string): Promise<ResolvedVessel> {
+/** Normalize a vessel code for tolerant matching: lowercase, strip non-alphanumerics. */
+export const normVesselCode = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * The normalized code candidates a free-text vessel reference should match, plus the parsed type. Winery
+ * codes are "T3", "B1", "QBO-T1", "ZZ-COST-TANK"; a winemaker says "tank 3", "T3", "tank T3", "barrel 1".
+ * So a reference matches on the NORMALIZED code, trying both the bare token ("3") and the type-lettered
+ * form ("t3" for a tank, "b3" for a barrel) — that's what makes "tank 3" resolve to code "T3". A bare
+ * "T3" (no type word) matches across all vessels by its normalized code. Pure (unit-testable).
+ */
+export function vesselCodeCandidates(text: string): { type: "TANK" | "BARREL" | null; wanted: string[] } {
   const ref = parseVesselRef(text);
-  if (!ref) {
-    throw new Error(`I couldn't tell which vessel "${text}" is. Try e.g. "barrel 14" or "tank 1".`);
-  }
-  const vessel = await prisma.vessel.findFirst({
-    where: { type: ref.type, code: ref.code },
+  const raw = (ref?.code ?? text ?? "").trim();
+  const wanted = new Set<string>([normVesselCode(raw)]);
+  if (ref) wanted.add(normVesselCode(`${ref.type === "BARREL" ? "b" : "t"}${raw}`)); // "tank 3" → "t3"
+  return { type: ref?.type ?? null, wanted: [...wanted].filter(Boolean) };
+}
+
+/** Resolve a free-text vessel reference to exactly one vessel id (flexible code match). */
+async function matchVesselByText(text: string): Promise<{ id: string; type: string; code: string }> {
+  const { type, wanted } = vesselCodeCandidates(text);
+  const want = new Set(wanted);
+  if (want.size === 0) throw new Error(`I couldn't tell which vessel "${text}" is. Use a code like "T3" or "barrel 14".`);
+  const vessels = await prisma.vessel.findMany({
+    where: type ? { type } : {},
+    select: { id: true, type: true, code: true },
+  });
+  const hits = vessels.filter((v) => want.has(normVesselCode(v.code)));
+  if (hits.length === 1) return hits[0];
+  if (hits.length === 0) throw new Error(`No vessel matches "${text}". Use its code, e.g. "T3", "barrel 14", or "QBO-T1".`);
+  throw new Error(`Several vessels match "${text}": ${hits.map((h) => h.code).join(", ")}. Which one?`);
+}
+
+export async function resolveVessel(text: string): Promise<ResolvedVessel> {
+  const m = await matchVesselByText(text);
+  const vessel = await prisma.vessel.findUnique({
+    where: { id: m.id },
     include: { components: { include: { variety: true, vineyard: true } } },
   });
-  if (!vessel) {
-    throw new Error(`No ${ref.type === "BARREL" ? "barrel" : "tank"} "${ref.code}" exists.`);
-  }
+  if (!vessel) throw new Error(`No ${m.type === "BARREL" ? "barrel" : "tank"} "${m.code}" exists.`);
   return vessel;
 }
 
@@ -146,12 +175,9 @@ export type VesselContents =
   | { kind: "blend"; vesselId: string; vesselLabel: string; lots: { id: string; code: string }[] };
 
 export async function resolveVesselContents(text: string): Promise<VesselContents> {
-  const ref = parseVesselRef(text);
-  if (!ref) {
-    throw new Error(`I couldn't tell which vessel "${text}" is. Try e.g. "barrel 14" or "tank 1".`);
-  }
-  const vessel = await prisma.vessel.findFirst({
-    where: { type: ref.type, code: ref.code },
+  const m = await matchVesselByText(text);
+  const vessel = await prisma.vessel.findUnique({
+    where: { id: m.id },
     select: {
       id: true,
       code: true,
@@ -160,9 +186,9 @@ export async function resolveVesselContents(text: string): Promise<VesselContent
     },
   });
   if (!vessel) {
-    throw new Error(`No ${ref.type === "BARREL" ? "barrel" : "tank"} "${ref.code}" exists.`);
+    throw new Error(`No ${m.type === "BARREL" ? "barrel" : "tank"} "${m.code}" exists.`);
   }
-  const label = `${ref.type === "BARREL" ? "Barrel" : "Tank"} ${vessel.code}`;
+  const label = `${vessel.type === "BARREL" ? "Barrel" : "Tank"} ${vessel.code}`;
   const lots = vessel.vesselLots.map((vl) => ({ id: vl.lot.id, code: vl.lot.code }));
   if (lots.length === 0) return { kind: "empty", vesselId: vessel.id, vesselLabel: label };
   if (lots.length === 1) return { kind: "single", vesselId: vessel.id, vesselLabel: label, lot: lots[0] };
@@ -206,25 +232,63 @@ export type ResolvedTask = { workOrderId: string; number: number; taskId: string
  * instead of guessing. reverseOperationCore still fails closed (non-reversible type / downstream op), so
  * this only needs to surface a candidate + its summary for the confirm card.
  */
-export async function resolveRecentOperation(opts: { operationId?: number; vessel?: string; lot?: string }): Promise<{ operationId: number; lotId: string; summary: string } | null> {
+/** Map a free-text op word ("addition", "crush", "rack"…) to the ledger types it should scope undo to.
+ *  Unknown/absent → undefined = no type filter (fall back to the single most-recent op). Scoping by type
+ *  is a hard safety guard: "undo the last addition" must NEVER be able to resolve to a crush. */
+export function opTypeFilter(word?: string): OperationType[] | undefined {
+  const w = (word ?? "").trim().toLowerCase();
+  if (!w) return undefined;
+  const map: Record<string, OperationType[]> = {
+    addition: ["ADDITION"], add: ["ADDITION"], dose: ["ADDITION", "FINING"], dosing: ["ADDITION", "FINING"],
+    fining: ["FINING"], fine: ["FINING"],
+    crush: ["CRUSH"], destem: ["CRUSH"], crushing: ["CRUSH"],
+    press: ["PRESS"], pressing: ["PRESS"], saignee: ["SAIGNEE"],
+    blend: ["BLEND"], blending: ["BLEND"],
+    rack: ["RACK"], racking: ["RACK"], transfer: ["RACK"],
+    bottling: ["BOTTLE"], bottle: ["BOTTLE"],
+    topping: ["TOPPING"], top: ["TOPPING"],
+    filtration: ["FILTRATION"], filter: ["FILTRATION"],
+    cap: ["CAP_MGMT"], punchdown: ["CAP_MGMT"], pumpover: ["CAP_MGMT"],
+  };
+  return map[w];
+}
+
+export async function resolveRecentOperation(opts: { operationId?: number; vessel?: string; lot?: string; opType?: string }): Promise<{ operationId: number; lotId: string; summary: string } | null> {
   const summarize = (op: { id: number; type: string; note: string | null; createdAt: Date }) =>
     `#${op.id} ${op.type}${op.note ? ` — ${op.note}` : ""} (${op.createdAt.toISOString().slice(0, 10)})`;
-  const lotOf = (op: { lines: { lotId: string }[] }) => op.lines[0]?.lotId ?? "";
+  const lotOf = (op: { lines: { lotId: string }[]; treatments: { lotId: string }[] }) => op.lines[0]?.lotId ?? op.treatments[0]?.lotId ?? "";
+  // Neutral ops (ADDITION/FINING/CAP_MGMT) carry NO volumetric lines — they attach to the resident lot
+  // via `treatments`. Selecting BOTH is what makes a dose visible to undo (keying on lines alone made undo
+  // silently target the crush instead of the addition).
+  const opSelect = { id: true, type: true, note: true, createdAt: true, lines: { select: { lotId: true }, take: 1 }, treatments: { select: { lotId: true }, take: 1 } } as const;
+
   if (opts.operationId != null) {
-    const op = await prisma.lotOperation.findUnique({ where: { id: opts.operationId }, select: { id: true, type: true, note: true, createdAt: true, correctedBy: { select: { id: true } }, lines: { select: { lotId: true }, take: 1 } } });
+    const op = await prisma.lotOperation.findUnique({ where: { id: opts.operationId }, select: { ...opSelect, correctedBy: { select: { id: true } } } });
     if (!op) throw new Error(`No operation #${opts.operationId} exists.`);
     if (op.correctedBy) throw new Error(`Operation #${op.id} was already reversed.`);
     return { operationId: op.id, lotId: lotOf(op), summary: summarize(op) };
   }
-  let vesselId: string | null = null;
-  let lotId: string | null = null;
-  if (opts.lot) lotId = (await resolveLotTarget({ lot: opts.lot })).lotId;
-  else if (opts.vessel) vesselId = (await resolveVesselContents(opts.vessel)).vesselId;
-  else throw new Error("Undo which operation? Give a vessel, a lot, or an operation number.");
+
+  // Scope to the resident lot(s), then match ops through EITHER lines OR treatments so neutral doses count.
+  let lotIds: string[] = [];
+  if (opts.lot) lotIds = [(await resolveLotTarget({ lot: opts.lot })).lotId];
+  else if (opts.vessel) {
+    const c = await resolveVesselContents(opts.vessel);
+    lotIds = c.kind === "single" ? [c.lot.id] : c.kind === "blend" ? c.lots.map((l) => l.id) : [];
+  } else throw new Error("Undo which operation? Give a vessel, a lot, or an operation number.");
+  if (lotIds.length === 0) return null; // empty vessel → nothing to undo (tool deep-links the timeline)
+
+  const types = opTypeFilter(opts.opType);
   const op = await prisma.lotOperation.findFirst({
-    where: { correctedBy: null, lines: { some: lotId ? { lotId } : { vesselId } } },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, type: true, note: true, createdAt: true, lines: { select: { lotId: true }, take: 1 } },
+    where: {
+      correctedBy: null,
+      // With a type word, scope to it; without, never auto-surface a CORRECTION (it's a reversal — the
+      // core refuses to reverse it anyway, so offering it would just dead-end the confirm).
+      type: types ? { in: types } : { not: "CORRECTION" },
+      OR: [{ lines: { some: { lotId: { in: lotIds } } } }, { treatments: { some: { lotId: { in: lotIds } } } }],
+    },
+    orderBy: [{ observedAt: "desc" }, { id: "desc" }],
+    select: opSelect,
   });
   return op ? { operationId: op.id, lotId: lotOf(op), summary: summarize(op) } : null;
 }
