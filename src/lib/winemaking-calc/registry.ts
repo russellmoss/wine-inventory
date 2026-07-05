@@ -191,7 +191,7 @@ export const CALCULATORS: Descriptor[] = [
     fields: [
       { name: "volume", label: "Wine volume", kind: "number", default: 1000 }, volField("GAL_US"),
       { name: "rate", label: "SO₂ addition", kind: "number", default: 50 }, rateField("rateUnit", "SO₂ unit"),
-      { name: "concentrationPct", label: "Solution strength (% w/v)", kind: "number", default: 6 },
+      { name: "concentrationPct", label: "Solution strength (% w/v)", kind: "number", default: 10 },
       { name: "outUnit", label: "Output unit", kind: "select", options: liqOpts, default: "mL" },
     ],
     compute: (input) => ({
