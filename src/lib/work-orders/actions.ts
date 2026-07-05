@@ -24,6 +24,8 @@ import type { TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { prisma } from "@/lib/prisma";
+import { canManagerAccessVineyard } from "@/lib/access";
+import { ActionError } from "@/lib/action-error";
 
 // "use server" wrappers for the work-order lifecycle (Phase 9 Unit 4). Each wraps a script-safe core in
 // action() (auth + tenant + actor injection) and revalidates the WO surfaces. Execution + approval
@@ -147,8 +149,21 @@ export const startTaskAction = action(async ({ actor }, input: { taskId: string 
 export const completeTaskAction = action(async ({ user, actor }, input: CompleteTaskInput) => {
   const task = await prisma.workOrderTask.findUnique({
     where: { id: input.taskId },
-    select: { workOrder: { select: { autoFinalize: true } } },
+    select: { observationType: true, blockId: true, workOrder: { select: { autoFinalize: true } } },
   });
+  // Plan 039: a fruit weigh-in writes a HarvestPick to a vineyard block. Enforce the same D9 vineyard
+  // membership the harvest form (requireBlockAccess) + assistant tool (findScopedBlocks) require — the
+  // block picker already scopes the UI, so this closes the crafted-payload gap on the server.
+  if (task?.observationType === "HARVEST_WEIGH_IN") {
+    const actualBlockId = typeof input.actualPayload?.blockId === "string" ? input.actualPayload.blockId : null;
+    const blockId = actualBlockId ?? task.blockId;
+    if (!blockId) throw new ActionError("This weigh-in has no vineyard block to record against.");
+    const block = await prisma.vineyardBlock.findUnique({ where: { id: blockId }, select: { vineyardId: true } });
+    if (!block) throw new ActionError("That vineyard block was not found.");
+    if (!canManagerAccessVineyard(user, block.vineyardId)) {
+      throw new ActionError("You can only weigh in fruit for your assigned vineyard.", "FORBIDDEN");
+    }
+  }
   const autoFinalize = task ? shouldAutoFinalize(user, { autoFinalize: task.workOrder.autoFinalize }) : false;
   const res = await completeTaskCore(actor, { ...input, autoFinalize });
   revalidateWorkOrders(res.taskId);

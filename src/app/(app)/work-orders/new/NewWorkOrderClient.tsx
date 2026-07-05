@@ -53,6 +53,9 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
     const current = overrides[taskIdx]?.[key] ?? def ?? "";
     // key is passed DIRECTLY (never spread — React warns on a spread key prop).
     const common = { style: labelStyle } as const;
+    // Plan 039: a vineyard-block target is always chosen at run time (on the execute sub-form), never a
+    // template/new-WO default — mirror the vessel/lot rule.
+    if (type === "block") return null;
     if (key === "vesselId") {
       // Single-vessel ops (additions/fining/filtration/maintenance) get a searchable, tank/barrel-filterable
       // MULTI-select — selecting several vessels fans out to one task per vessel at submit. (RACK/TOPPING
@@ -262,15 +265,19 @@ export function NewWorkOrderClient({ templates, pickers, initialTemplateId }: { 
             // the picks/fractions/vessels/measured volumes are entered when the crew RUNS the work order
             // (the native sub-forms on the execute screen). No vessel/material field → no multi-vessel fan-out.
             const isTransform = def.opType === "CRUSH" || def.opType === "PRESS";
+            const isWeighIn = def.observationType === "HARVEST_WEIGH_IN";
             return (
               <div key={i} style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                 <Eyebrow>{i + 1}. {t.title} · {def.label}</Eyebrow>
                 {def.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 6 }}>{def.hint}</div> : null}
                 {isTransform ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginTop: 8 }}>{def.opType === "CRUSH" ? "Picks (with kg), destination and measured output volume" : "Must lot, source vessel and the press fractions"} are entered when the crew runs this — set only the process defaults below.</div> : null}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
-                  {renderTaskFields(i, def, t.defaults)}
-                  {renderEstimate(i, t.defaults)}
-                </div>
+                {isWeighIn ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginTop: 8 }}>The vineyard block, fruit weight and Brix/pH/TA are entered when the crew runs this weigh-in.</div> : null}
+                {isWeighIn ? null : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+                    {renderTaskFields(i, def, t.defaults)}
+                    {renderEstimate(i, t.defaults)}
+                  </div>
+                )}
               </div>
             );
           })}

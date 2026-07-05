@@ -61,6 +61,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { estimate: 3000, vintageYear: 2024, block: "Block 2", unit: "kg" },
   },
   {
+    utterance: "Weigh in 1200 kg from Block 1, 24 brix, pH 3.4, TA 6.2",
+    tool: "log_harvest_pick",
+    args: { weight: 1200, block: "Block 1", brix: 24, ph: 3.4, ta: 6.2 },
+    note: "the fruit weigh-in stage; only weight is required, Brix/pH/TA are optional",
+  },
+  {
     utterance: "Delete the 24.5 brix reading on Block 3 from 2024-09-15",
     tool: "delete_brix",
     args: { block: "Block 3", brixValue: 24.5, recordedAt: "2024-09-15" },

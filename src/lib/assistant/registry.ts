@@ -36,6 +36,7 @@ import { queryAuditTool } from "./tools/query-audit";
 import { logBrixTool } from "./tools/log-brix";
 import { deleteBrixTool } from "./tools/delete-brix";
 import { setYieldEstimateTool } from "./tools/set-yield-estimate";
+import { logHarvestPickTool } from "./tools/log-harvest-pick";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
 import { rackWineTool } from "./tools/rack-wine";
 import { revertTransferTool } from "./tools/revert-transfer";
@@ -60,6 +61,7 @@ const ALL_TOOLS: AssistantTool[] = [
   logBrixTool,
   deleteBrixTool,
   setYieldEstimateTool,
+  logHarvestPickTool,
   adjustInventoryTool,
   rackWineTool,
   revertTransferTool,

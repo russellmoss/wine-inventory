@@ -9,8 +9,10 @@ import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabula
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 import type { CrushFormData } from "@/lib/ferment/crush-data";
 import type { PressFormData } from "@/lib/ferment/press-data";
+import type { HarvestWeighInFormData } from "@/lib/work-orders/harvest-weigh-in-data";
 import { CrushTaskForm } from "./CrushTaskForm";
 import { PressTaskForm } from "./PressTaskForm";
+import { HarvestWeighInTaskForm } from "./HarvestWeighInTaskForm";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 
@@ -42,6 +44,9 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
   function renderField(key: string, type: string) {
     const cur = fields[key] ?? "";
+    // A vineyard-block field only appears on HARVEST_WEIGH_IN, which is dispatched to its own sub-form
+    // before this generic renderer. Guard anyway so a block field can never become a raw text input.
+    if (type === "block") return null;
     if (type === "material") {
       // Phase 034: category-filtered + fuzzy picker (replaces the flat <select>). Scope depends on the task.
       return (
@@ -140,7 +145,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
   );
 }
 
-export function ExecuteClient({ wo, pickers, crushData, pressData }: { wo: WorkOrderDetail; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; crushData: CrushFormData | null; pressData: PressFormData | null }) {
+export function ExecuteClient({ wo, pickers, crushData, pressData, weighInData }: { wo: WorkOrderDetail; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; crushData: CrushFormData | null; pressData: PressFormData | null; weighInData: HarvestWeighInFormData | null }) {
   const router = useRouter();
   const [online, setOnline] = React.useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
   React.useEffect(() => {
@@ -169,6 +174,8 @@ export function ExecuteClient({ wo, pickers, crushData, pressData }: { wo: WorkO
             // (picks, fractions) that don't fit the flat generic renderer — they get their own sub-forms.
             if (t.kind === "OPERATION" && t.opType === "CRUSH") return <CrushTaskForm key={t.id} task={t} data={crushData} onDone={() => router.refresh()} />;
             if (t.kind === "OPERATION" && t.opType === "PRESS") return <PressTaskForm key={t.id} task={t} data={pressData} onDone={() => router.refresh()} />;
+            // Plan 039: a fruit weigh-in captures a block + readings that don't fit the flat renderer — its own sub-form.
+            if (t.kind === "OBSERVATION" && t.observationType === "HARVEST_WEIGH_IN") return <HarvestWeighInTaskForm key={t.id} task={t} data={weighInData} onDone={() => router.refresh()} />;
             return <TaskExecutor key={t.id} task={t} pickers={pickers} onDone={() => router.refresh()} />;
           })}
         </div>
