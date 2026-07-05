@@ -48,6 +48,8 @@ import { logHarvestPickTool } from "./tools/log-harvest-pick";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
 import { rackWineTool } from "./tools/rack-wine";
 import { addAdditionTool } from "./tools/add-addition";
+import { recordMeasurementTool } from "./tools/record-measurement";
+import { recordTastingNoteTool } from "./tools/record-tasting-note";
 import { revertTransferTool } from "./tools/revert-transfer";
 import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
@@ -82,6 +84,8 @@ const ALL_TOOLS: AssistantTool[] = [
   adjustInventoryTool,
   rackWineTool,
   addAdditionTool,
+  recordMeasurementTool,
+  recordTastingNoteTool,
   revertTransferTool,
   dbFindTool,
   dbCreateTool,

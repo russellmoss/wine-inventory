@@ -167,3 +167,32 @@ export async function resolveVesselContents(text: string): Promise<VesselContent
   if (lots.length === 1) return { kind: "single", vesselLabel: label, lot: lots[0] };
   return { kind: "blend", vesselLabel: label, lots };
 }
+
+/**
+ * Resolve the ONE lot a per-lot record (chem panel, tasting note) attaches to — from a lot code OR a
+ * vessel reference. Measurements/tasting attach to exactly one lot (never whole-vessel), so a blend
+ * vessel is genuinely ambiguous: we list its lots and ask, rather than guessing (the one-lot invariant).
+ * A lot code resolves exact-first, then a unique fuzzy contains; ambiguous/none throw a clear message.
+ */
+export async function resolveLotTarget(opts: { lot?: string; vessel?: string }): Promise<{ lotId: string; lotCode: string }> {
+  const lotRef = opts.lot?.trim();
+  if (lotRef) {
+    const rows = await prisma.lot.findMany({
+      where: { status: "ACTIVE", code: { contains: lotRef, mode: "insensitive" } },
+      take: 10,
+      select: { id: true, code: true },
+    });
+    const exact = rows.find((r) => r.code.toLowerCase() === lotRef.toLowerCase());
+    if (exact) return { lotId: exact.id, lotCode: exact.code };
+    if (rows.length === 1) return { lotId: rows[0].id, lotCode: rows[0].code };
+    if (rows.length === 0) throw new Error(`No active lot matches "${opts.lot}". Check the lot code, or name the vessel.`);
+    throw new Error(`Several lots match "${opts.lot}": ${rows.map((r) => r.code).join(", ")}. Which one?`);
+  }
+  if (opts.vessel) {
+    const c = await resolveVesselContents(opts.vessel);
+    if (c.kind === "empty") throw new Error(`${c.vesselLabel} is empty — there's no lot to attach this to.`);
+    if (c.kind === "single") return { lotId: c.lot.id, lotCode: c.lot.code };
+    throw new Error(`${c.vesselLabel} holds a blend (${c.lots.map((l) => l.code).join(", ")}) — which lot is this for?`);
+  }
+  throw new Error("Which lot (or vessel) is this for?");
+}

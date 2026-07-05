@@ -101,9 +101,9 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 ### Chemistry & tasting — high frequency
 | Capability | Core | Tool |
 |---|---|---|
-| Brix reading | `recordMeasurementsCore` | 🟨 `log_brix` / `delete_brix` (Brix only) |
-| pH / TA / full chem panel | `recordMeasurementsCore` | ❌ |
-| Tasting notes | `recordTastingNoteCore`, `voidTastingNoteCore` | ❌ |
+| Brix reading (block ripeness, harvest) | harvest | ✅ `log_brix` / `delete_brix` |
+| pH / TA / full chem panel (lot) | `recordMeasurementsCore` | ✅ `record_measurement` |
+| Tasting notes | `recordTastingNoteCore`, `voidTastingNoteCore` | ✅ `record_tasting_note` (void = ❌) |
 | Lab samples (pull / send / attach results) | `pullSampleCore` + 3 | ❌ |
 | Ferment panel submit | `submitPanelCore` | 🟨 overlaps Brix |
 | Lot state transitions (AF/MLF done, dry) | `transitionStateCore` | ❌ |
@@ -182,8 +182,9 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
 1. ~~**Additions + fining**~~ ✅ **DONE** — `add_addition` (one tool, `fining` flag) wraps
    `addAdditionCore`/`addFiningCore`; additive-scoped material resolve (`isDoseableCategory` refuses
    packaging/cleaning), whole-vessel dose, confirm-nonce; golden + fleet cases landed.
-2. **Chem panels beyond Brix (pH/TA/full)** + **tasting notes** (`recordMeasurementsCore`,
-   `recordTastingNoteCore`).
+2. ~~**Chem panels beyond Brix (pH/TA/full)** + **tasting notes**~~ ✅ **DONE** — `record_measurement`
+   (pH/TA/SO₂/VA/RS/malic/alcohol + free-form) and `record_tasting_note`, both per-lot (blend → ask which
+   lot), values accepted-as-typed. Fleet case guards the block-Brix (`log_brix`) vs lot-chem confusable.
 3. **Work-order execution** — create-from-template + `completeTaskCore` (+ approve/reject); closes the
    author→run loop.
 

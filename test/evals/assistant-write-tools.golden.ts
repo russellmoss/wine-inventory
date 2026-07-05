@@ -126,4 +126,21 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { vessel: "tank 7", material: "bentonite", amount: 48, unit: "g/hL", fining: true },
     note: "fining=true routes to addFiningCore; still the write dose tool, not a calculator",
   },
+  {
+    utterance: "Log pH 3.4 and TA 6.2 g/L on lot 24-CS-A",
+    tool: "record_measurement",
+    args: { lot: "24-CS-A", pH: 3.4, ta: 6.2 },
+    note: "lot chem panel — per-lot, attaches to exactly one lot",
+  },
+  {
+    utterance: "Free SO₂ came in at 28 and total 95 on tank 5",
+    tool: "record_measurement",
+    args: { vessel: "tank 5", freeSO2: 28, totalSO2: 95 },
+    note: "vessel → its lot; a blend would ask which",
+  },
+  {
+    utterance: "Tasting note on lot 24-CS-A: bright cherry aroma, grippy tannins, 92 points",
+    tool: "record_tasting_note",
+    args: { lot: "24-CS-A", aroma: "bright cherry", tannin: 4, score: 92 },
+  },
 ];

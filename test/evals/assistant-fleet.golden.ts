@@ -70,4 +70,25 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     kind: "read",
     maxToolCalls: 1,
   },
+  // ── Chem panel vs block-ripeness Brix (a classic confusable) + tasting ──
+  {
+    utterance: "Log pH 3.4 and TA 6.2 on lot 24-CS-A",
+    tool: "record_measurement",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "a LOT chem panel is record_measurement (write)",
+  },
+  {
+    utterance: "Log 24 Brix on Block 3",
+    tool: "log_brix",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "block RIPENESS Brix is log_brix — NOT record_measurement (the confusable this guards)",
+  },
+  {
+    utterance: "Tasting note on lot 24-CS-A: bright cherry, grippy tannins, 92 points",
+    tool: "record_tasting_note",
+    kind: "write",
+    maxToolCalls: 1,
+  },
 ];

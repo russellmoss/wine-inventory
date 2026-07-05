@@ -68,6 +68,8 @@ const TOOL_LABELS: Record<string, string> = {
   adjust_inventory: "Preparing inventory adjustment",
   rack_wine: "Preparing the transfer",
   add_addition: "Preparing the addition",
+  record_measurement: "Preparing the lab panel",
+  record_tasting_note: "Preparing the tasting note",
   revert_transfer: "Reverting the rack",
   query_transfers: "Checking recent rackings",
   navigate: "Finding the page",
