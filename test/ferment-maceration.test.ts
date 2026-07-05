@@ -6,10 +6,11 @@ import { isColdSoak, isExtendedMaceration, skinContactLabel } from "@/lib/fermen
 // no migration) and as points in the orthogonal (form × afState) space (no linear phase enum).
 
 describe("cap kind validation (extended for Phase 6)", () => {
-  it("accepts the four kinds incl. cold soak + maceration", () => {
+  it("accepts the kinds incl. cold soak, maceration, pulse-air", () => {
     expect(CAP_KINDS).toContain("COLD_SOAK");
     expect(CAP_KINDS).toContain("MACERATION");
-    for (const k of ["PUMPOVER", "PUNCHDOWN", "COLD_SOAK", "MACERATION"]) expect(isCapKind(k)).toBe(true);
+    expect(CAP_KINDS).toContain("PULSE_AIR"); // plan 043
+    for (const k of ["PUMPOVER", "PUNCHDOWN", "COLD_SOAK", "MACERATION", "PULSE_AIR"]) expect(isCapKind(k)).toBe(true);
   });
   it("rejects anything else", () => {
     expect(isCapKind("SPARGE")).toBe(false);

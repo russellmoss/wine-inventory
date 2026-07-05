@@ -6,7 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { rackWineTx } from "@/lib/vessels/rack-core";
 import { topVesselTx } from "@/lib/cellar/topping";
-import { filterVesselTx } from "@/lib/cellar/treatments";
+import { filterVesselTx, capManagementTx, type CapKind } from "@/lib/cellar/treatments";
 import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFIG, type AddAdditionInput } from "@/lib/cellar/addition";
 import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
 import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
@@ -92,6 +92,19 @@ async function dispatchOperationTx(
         actualOutputL: asNum(payload.actualOutputL), // A5: loss = pre − actual (computed in the tx)
         medium: asStr(payload.filterType), // dec 1: controlled filter media → LotTreatment.medium
         micron: asNum(payload.micron) ?? null,
+        note: note ?? undefined,
+      });
+      return { operationId: r.operationId, message: `${r.summary}.` };
+    }
+    case "CAP_MGMT": {
+      // Volume-neutral cap work (pumpover / punchdown / cold-soak / maceration / pulse-air). The technique
+      // rides `technique` (a CapKind); capManagementTx validates it + guards the vessel. Whole-vessel op.
+      const technique = asStr(payload.technique) ?? asStr(payload.kind);
+      if (!technique) throw new ActionError("Pick a cap-management technique (pumpover, punchdown, …).");
+      const r = await capManagementTx(tx, actor, {
+        vesselId: (asStr(payload.vesselId) ?? task.destVesselId ?? task.sourceVesselId) as string,
+        kind: technique as CapKind,
+        durationMin: asNum(payload.durationMin) ?? null,
         note: note ?? undefined,
       });
       return { operationId: r.operationId, message: `${r.summary}.` };
@@ -188,7 +201,7 @@ async function dispatchOperationTx(
     }
     default:
       throw new ActionError(
-        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. Supported: rack, addition, fining, topping, filtration, de-stem/crush, press/saignée.`,
+        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. Supported: rack, addition, fining, topping, filtration, cap management, de-stem/crush, press/saignée.`,
         "CONFLICT",
       );
   }
@@ -213,11 +226,14 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     };
   }
 
-  // A NEW commandId against an already-settled task is a genuine re-submit, not the offline-drain replay
-  // the commandId pre-check above handles — it must not double-write (a maintenance re-complete would
-  // double-deplete overhead stock). REJECTED is resubmittable (→ PENDING); terminal states are not.
-  if (task.status === "DONE" || task.status === "APPROVED" || task.status === "SKIPPED") {
-    throw new ActionError("That task is already completed.", "CONFLICT");
+  // A NEW commandId against an already-completed task is a genuine re-submit, not the offline-drain replay
+  // the commandId pre-check above handles — it must not double-write (a re-complete would write a SECOND
+  // immutable op: double-drain a rack, double-dose an addition, double-deplete overhead stock). A task in
+  // PENDING_APPROVAL is completed-and-awaiting-review — it must be APPROVED or REJECTED, never re-completed
+  // (the from===to transition shortcut would otherwise let it through). REJECTED is the only resubmittable
+  // completed state (→ PENDING → complete). Terminal + pending-review states are not.
+  if (task.status === "DONE" || task.status === "APPROVED" || task.status === "SKIPPED" || task.status === "PENDING_APPROVAL") {
+    throw new ActionError("That task is already completed (awaiting review).", "CONFLICT");
   }
 
   // Non-OPERATION lanes: direct-log, straight to DONE (no ledger op, no approval gate). OBSERVATION writes
@@ -344,4 +360,35 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
     }
     throw e;
   }
+}
+
+export type BatchCompleteResult = { completed: number; failed: number; results: (CompleteTaskResult & { ok: boolean; error?: string })[] };
+
+/**
+ * Complete N tasks in one call (plan 043): the cellar hand punches down tanks 3, 4, 5 and marks them all
+ * done at once. Loops completeTaskCore, each in its OWN runLedgerWrite (completeTaskCore owns its tx and has
+ * no tx-form) — so batch = N independent txs with per-item pass/fail, and one tank's failure never rolls
+ * back the rest. Mirrors bulkApproveTasksCore (D3). Each item MUST carry its own commandId (idempotency is
+ * per-attempt; a shared id would dedupe to a single write). autoFinalize is set per item by the action.
+ */
+export async function completeTasksBatchCore(actor: LedgerActor, input: { items: CompleteTaskInput[] }): Promise<BatchCompleteResult> {
+  const results: (CompleteTaskResult & { ok: boolean; error?: string })[] = [];
+  for (const item of input.items) {
+    try {
+      const r = await completeTaskCore(actor, item);
+      results.push({ ...r, ok: true });
+    } catch (e) {
+      results.push({
+        taskId: item.taskId,
+        attemptId: "",
+        operationId: null,
+        status: "FAILED",
+        duplicate: false,
+        message: "",
+        ok: false,
+        error: e instanceof Error ? e.message : "Failed to complete.",
+      });
+    }
+  }
+  return { completed: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
 }

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow, Textarea } from "@/components/ui";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabulary";
-import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
+import { startTaskAction, completeTaskAction, completeTasksBatchAction } from "@/lib/work-orders/actions";
 import type { CrushFormData } from "@/lib/ferment/crush-data";
 import type { PressFormData } from "@/lib/ferment/press-data";
 import type { HarvestWeighInFormData } from "@/lib/work-orders/harvest-weigh-in-data";
@@ -15,13 +15,14 @@ import { PressTaskForm } from "./PressTaskForm";
 import { HarvestWeighInTaskForm } from "./HarvestWeighInTaskForm";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
+import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
 // Dexie outbox uses). Not harvest-grade offline yet (Phase 28); online status is pinned via aria-live.
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null };
-const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION" };
+const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION", CAP_MGMT: "CAP_MGMT" };
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 
@@ -145,6 +146,93 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
   );
 }
 
+/** Plan 043: batch-complete N cap-management tanks at once. Pick the technique + duration ONCE, check the
+ * tanks, done. Shared actuals override each task's planned technique; the vessel is already on each task.
+ * Mints one commandId per selected task (per-attempt idempotency). Individual cards below still work — this
+ * is an additive shortcut for the "punch down 3, 4, 5" flow. Partial failures surface per-tank. */
+function BatchCapExecutor({ tasks, vessels, onDone }: { tasks: WorkOrderTaskView[]; vessels: Picker[]; onDone: () => void }) {
+  const def = TASK_VOCABULARY.CAP_MGMT;
+  const techniqueOptions = def?.fieldOptions?.technique ?? [];
+  const vLabel = (id: string | null | undefined) => (id ? vessels.find((v) => v.id === id)?.label ?? "a vessel" : "a vessel");
+  const [selected, setSelected] = React.useState<Set<string>>(() => new Set(tasks.map((t) => t.id)));
+  const [technique, setTechnique] = React.useState<string>("");
+  const [durationMin, setDurationMin] = React.useState<string>("");
+  const [note, setNote] = React.useState<string>("");
+  const [pending, startTransition] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+  const [failures, setFailures] = React.useState<{ taskId: string; error?: string }[] | null>(null);
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  const taskVessel = (t: WorkOrderTaskView) => {
+    const p = (t.plannedPayload ?? {}) as Record<string, unknown>;
+    return vLabel((typeof p.vesselId === "string" ? p.vesselId : null) ?? t.destVesselId);
+  };
+
+  function run() {
+    setError(null);
+    setFailures(null);
+    const chosen = tasks.filter((t) => selected.has(t.id));
+    if (chosen.length === 0) { setError("Pick at least one tank."); return; }
+    const shared: Record<string, unknown> = {};
+    if (technique) shared.technique = technique;
+    if (durationMin !== "") shared.durationMin = Number(durationMin);
+    const items = chosen.map((t) => ({
+      taskId: t.id,
+      commandId: crypto.randomUUID(), // one per task — a shared id would dedupe to a single write
+      actualPayload: shared,
+      completionNote: note.trim() || undefined,
+    }));
+    startTransition(async () => {
+      try {
+        const res = await completeTasksBatchAction({ items });
+        if (res.failed > 0) {
+          setFailures(res.results.filter((r) => !r.ok).map((r) => ({ taskId: r.taskId, error: r.error })));
+        } else {
+          onDone();
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't record the batch.");
+      }
+    });
+  }
+
+  return (
+    <Card style={{ padding: 18, borderColor: "var(--gold)" }}>
+      <Eyebrow>Batch cap management</Eyebrow>
+      <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 12px" }}>Work the cap on several tanks at once. Pick the technique, check the tanks, record them all.</div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <label style={lbl}>Technique
+          <select style={big} value={technique} onChange={(e) => setTechnique(e.target.value)}>
+            <option value="">— use each task&apos;s plan —</option>
+            {techniqueOptions.map((o) => <option key={o} value={o}>{CAP_LABELS[o as keyof typeof CAP_LABELS] ?? o}</option>)}
+          </select>
+        </label>
+        <label style={lbl}>Duration (min)<input type="number" inputMode="decimal" step="any" style={big} value={durationMin} onChange={(e) => setDurationMin(e.target.value)} /></label>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+        {tasks.map((t) => (
+          <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 15, padding: "6px 2px", cursor: "pointer" }}>
+            <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} style={{ width: 20, height: 20 }} />
+            <span>{t.seq}. {taskVessel(t)}{failures?.some((f) => f.taskId === t.id) ? <span style={{ color: "var(--danger)", fontSize: 12.5 }}> — {failures.find((f) => f.taskId === t.id)?.error}</span> : null}</span>
+          </label>
+        ))}
+      </div>
+
+      <Textarea label="Note (optional)" minRows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="applies to every tank in this batch" style={{ marginTop: 12 }} />
+      {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
+      <Button size="lg" fullWidth disabled={pending} onClick={run} style={{ marginTop: 14 }}>{pending ? "Recording…" : `Complete ${selected.size} ${selected.size === 1 ? "tank" : "tanks"}`}</Button>
+    </Card>
+  );
+}
+
 export function ExecuteClient({ wo, pickers, crushData, pressData, weighInData }: { wo: WorkOrderDetail; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; crushData: CrushFormData | null; pressData: PressFormData | null; weighInData: HarvestWeighInFormData | null }) {
   const router = useRouter();
   const [online, setOnline] = React.useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
@@ -156,6 +244,8 @@ export function ExecuteClient({ wo, pickers, crushData, pressData, weighInData }
 
   const open = wo.tasks.filter((t) => t.status === "PENDING" || t.status === "IN_PROGRESS" || t.status === "REJECTED");
   const done = wo.tasks.filter((t) => !open.includes(t));
+  // Plan 043: batch-complete cap-management tanks. Offer the shortcut only when ≥2 cap tasks are open.
+  const openCap = open.filter((t) => t.kind === "OPERATION" && t.opType === "CAP_MGMT");
 
   return (
     <div style={{ maxWidth: 620, margin: "0 auto", padding: "8px 4px 80px" }}>
@@ -169,6 +259,7 @@ export function ExecuteClient({ wo, pickers, crushData, pressData, weighInData }
         <Card style={{ marginTop: 20, textAlign: "center", padding: 36 }}>All tasks recorded ✓</Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+          {openCap.length >= 2 ? <BatchCapExecutor tasks={openCap} vessels={pickers.vessels} onDone={() => router.refresh()} /> : null}
           {open.map((t) => {
             // Plan 035: transform ops (de-stem/crush, press/saignée) take list-shaped run-time inputs
             // (picks, fractions) that don't fit the flat generic renderer — they get their own sub-forms.

@@ -100,6 +100,25 @@ describe("select field validation (A7) + filtration (Unit 2)", () => {
   });
 });
 
+describe("cap management task type (plan 043)", () => {
+  it("accepts a CAP_MGMT spec with a valid technique", () => {
+    expect(validateTemplateSpec({ tasks: [{ taskType: "CAP_MGMT", title: "Punch down", defaults: { technique: "PUNCHDOWN", durationMin: 5 } }] }).ok).toBe(true);
+    expect(validateTemplateSpec({ tasks: [{ taskType: "CAP_MGMT", title: "Pump over", defaults: { technique: "PUMPOVER" } }] }).ok).toBe(true);
+  });
+
+  it("rejects an out-of-vocabulary technique (never free-form)", () => {
+    const v = validateTemplateSpec({ tasks: [{ taskType: "CAP_MGMT", title: "x", defaults: { technique: "STIR" } }] });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("not a valid technique");
+  });
+
+  it("instantiates a CAP_MGMT task as an OPERATION carrying technique + durationMin, deriving destVesselId from vesselId", () => {
+    const [task] = instantiateTaskBuilds([{ taskType: "CAP_MGMT", title: "Punch down T3", values: { vesselId: "v-tank", technique: "PUNCHDOWN", durationMin: 3 } }]);
+    expect(task).toMatchObject({ seq: 1, kind: "OPERATION", opType: "CAP_MGMT", destVesselId: "v-tank" });
+    expect(task.plannedPayload).toMatchObject({ technique: "PUNCHDOWN", durationMin: 3 });
+  });
+});
+
 describe("maintenance task types (Unit 3) + instantiation", () => {
   it("instantiates a TEMP_SETPOINT with activityType + carries target fields", () => {
     const tasks = instantiateTasksFromSpec({ tasks: [{ taskType: "TEMP_SETPOINT", title: "Cold settle", defaults: { targetUnit: "°C" } }] }, [{ vesselId: "v1", targetValue: 4, achievedValue: 5 }]);
@@ -214,7 +233,7 @@ describe("shipped system templates", () => {
 
   it("covers the consolidated families (addition, fining, filtration, temp, clean, sanitize, steam, gas)", () => {
     const types = new Set(SYSTEM_TEMPLATES.flatMap((t) => t.spec.tasks.map((k) => k.taskType)));
-    for (const need of ["ADDITION", "FINING", "FILTRATION", "TEMP_SETPOINT", "CLEAN", "SANITIZE", "STEAM", "GAS"]) {
+    for (const need of ["ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT", "CLEAN", "SANITIZE", "STEAM", "GAS"]) {
       expect(types, `missing a system template for ${need}`).toContain(need);
     }
   });
@@ -222,5 +241,19 @@ describe("shipped system templates", () => {
   it("has unique template codes", () => {
     const codes = SYSTEM_TEMPLATES.map((t) => t.code);
     expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it("ships a délestage (rack & return) template as two RACK legs (plan 043)", () => {
+    const del = SYSTEM_TEMPLATES.find((t) => t.code === "SYS-DELESTAGE");
+    expect(del, "SYS-DELESTAGE missing").toBeTruthy();
+    expect(del!.spec.tasks.map((t) => t.taskType)).toEqual(["RACK", "RACK"]);
+    expect(del!.spec.tasks.every((t) => t.defaults?.rackType === "délestage")).toBe(true);
+    // Instantiating with origin+holding on the two legs yields out (origin→holding) then back (holding→origin).
+    const tasks = instantiateTasksFromSpec(del!.spec, [
+      { fromVesselId: "v-origin", toVesselId: "v-holding" },
+      { fromVesselId: "v-holding", toVesselId: "v-origin" },
+    ]);
+    expect(tasks[0]).toMatchObject({ opType: "RACK", sourceVesselId: "v-origin", destVesselId: "v-holding" });
+    expect(tasks[1]).toMatchObject({ opType: "RACK", sourceVesselId: "v-holding", destVesselId: "v-origin" });
   });
 });

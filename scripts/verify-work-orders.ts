@@ -16,7 +16,7 @@ import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
-import { completeTaskCore } from "@/lib/work-orders/execute";
+import { completeTaskCore, completeTasksBatchCore } from "@/lib/work-orders/execute";
 import { approveTaskCore, rejectTaskCore } from "@/lib/work-orders/approval";
 
 const TENANT = "org_demo_winery";
@@ -191,6 +191,65 @@ async function main() {
     assert(weighDup.duplicate === true, "duplicate weigh-in completion (same commandId) is a no-op");
     const pickCount = await prisma.harvestPick.count({ where: { harvestRecord: { blockId: block.id } } });
     assert(pickCount === 1, "no duplicate HarvestPick written");
+
+    // ── Plan 043: cap management as a WO — issue across 3 tanks, BATCH-complete, reject one (reverse). ──
+    const capTanks = await Promise.all(
+      [1, 2, 3].map((n) => prisma.vessel.create({ data: { code: `ZZ-WO-CAP${n}`, type: "TANK", capacityL: 500 } })),
+    );
+    for (let i = 0; i < capTanks.length; i++) await seedLotInVessel(`ZZWO-CAP-${i + 1}`, capTanks[i].id, 200);
+    const capWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWO cap management",
+      tasks: capTanks.map((v, i) => ({
+        seq: i + 1,
+        kind: "OPERATION" as const,
+        title: `Work the cap — ${v.code}`,
+        opType: "CAP_MGMT" as const,
+        destVesselId: v.id,
+        plannedPayload: { vesselId: v.id, technique: "PUNCHDOWN" },
+      })),
+    });
+    await issueWorkOrderCore(ACTOR, { workOrderId: capWo.workOrderId });
+    const capReservations = await prisma.reservation.count({ where: { workOrderId: capWo.workOrderId } });
+    assert(capReservations === 0, "cap management reserves nothing (volume-neutral)");
+    const capTasks = await prisma.workOrderTask.findMany({ where: { workOrderId: capWo.workOrderId }, orderBy: { seq: "asc" } });
+
+    // Batch-complete all three at once (one commandId per task; shared technique + duration).
+    const batch = await completeTasksBatchCore(ACTOR, {
+      items: capTasks.map((t, i) => ({ taskId: t.id, commandId: `zzwo-cap-${i + 1}`, actualPayload: { technique: "PUMPOVER", durationMin: 5 } })),
+    });
+    assert(batch.completed === 3 && batch.failed === 0, `batch completed all 3 cap tasks (completed=${batch.completed}, failed=${batch.failed})`);
+    assert(batch.results.every((r) => r.ok && r.operationId != null), "each batch item wrote a real CAP_MGMT op");
+    const capOps = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail, type: "CAP_MGMT" } });
+    assert(capOps === 3, `three CAP_MGMT ops written (${capOps})`);
+    const capTreatments = await prisma.lotTreatment.count({ where: { kind: "PUMPOVER", operation: { enteredBy: ACTOR.actorEmail } } });
+    assert(capTreatments === 3, `each cap op wrote a PUMPOVER treatment on its resident lot (${capTreatments})`);
+    const capVol = num((await prisma.vesselLot.aggregate({ where: { vesselId: capTanks[0].id }, _sum: { volumeL: true } }))._sum.volumeL);
+    assert(near(capVol, 200), "cap management is volume-neutral (200 L unchanged)");
+
+    // Batch idempotency: re-submitting the same commandIds is a no-op (no new ops).
+    const capDup = await completeTasksBatchCore(ACTOR, {
+      items: capTasks.map((t, i) => ({ taskId: t.id, commandId: `zzwo-cap-${i + 1}`, actualPayload: { technique: "PUMPOVER" } })),
+    });
+    assert(capDup.results.every((r) => r.ok), "duplicate batch completion is reported ok");
+    const capOpsAfterDup = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail, type: "CAP_MGMT" } });
+    assert(capOpsAfterDup === 3, "duplicate batch wrote no new CAP_MGMT ops (idempotent)");
+
+    // Regression (review P1): re-completing a PENDING_APPROVAL task with a FRESH commandId must be REJECTED —
+    // it must never write a second immutable op. (The same-commandId path above is the idempotent no-op;
+    // this is the different-commandId double-write the completeTaskCore guard now closes.)
+    let doubleWriteBlocked = false;
+    try {
+      await completeTaskCore(ACTOR, { taskId: capTasks[1].id, commandId: "zzwo-cap-fresh-2", actualPayload: { technique: "PUNCHDOWN" } });
+    } catch {
+      doubleWriteBlocked = true;
+    }
+    assert(doubleWriteBlocked, "re-completing a PENDING_APPROVAL task (fresh commandId) is rejected");
+    const capOpsAfterFresh = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail, type: "CAP_MGMT" } });
+    assert(capOpsAfterFresh === 3, "no second CAP_MGMT op written by the fresh-commandId re-completion");
+
+    // Reject one cap task → reverseOperationCore voids the neutral op (WORKORDER-1 reject path).
+    const capRejected = await rejectTaskCore(ADMIN, ACTOR, { taskId: capTasks[0].id, reason: "wrong technique" });
+    assert(capRejected.status === "REJECTED", "a cap-management task can be rejected (op reversed)");
 
     console.log(`\nALL WORK-ORDER CHECKS PASSED ✓  (${passed} assertions)`);
   });

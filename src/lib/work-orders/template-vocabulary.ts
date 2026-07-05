@@ -3,6 +3,7 @@ import type { CreateTaskInput } from "@/lib/work-orders/lifecycle";
 import { FILTER_MEDIA, RACK_TYPES } from "@/lib/cellar/filtration-vocab";
 import { TEMP_UNITS, GAS_TYPES } from "@/lib/cellar/vessel-activity-vocab";
 import { DOSE_UNIT_LABELS } from "@/lib/cellar/additions-math";
+import { CAP_KINDS } from "@/lib/cellar/cap-vocab";
 
 // Typed field vocabulary for work-order templates (Phase 9 Unit 10). Templates are NEVER free-form: a
 // template's spec is a list of tasks, each of a known task TYPE with a fixed set of allowed fields.
@@ -45,6 +46,8 @@ export const FIELD_LABELS: Record<string, string> = {
   lossL: "Loss (L)",
   volumeL: "Volume (L)",
   rackType: "Rack type",
+  technique: "Technique",
+  durationMin: "Duration (min)",
   filterType: "Filter type",
   micron: "Micron (µm)",
   actualOutputL: "Output volume (L)",
@@ -104,6 +107,17 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     // so a per-lot picker would mislead. The vessel's residents are filtered together.
     fields: { vesselId: "vessel", filterType: "select", micron: "number", actualOutputL: "number", note: "text" },
     fieldOptions: { filterType: FILTER_MEDIA },
+  },
+  CAP_MGMT: {
+    kind: "OPERATION",
+    opType: "CAP_MGMT",
+    label: "Cap management",
+    // Volume-NEUTRAL red-ferment cap work: pumpover / punchdown / cold-soak / maceration / pulse-air.
+    // `technique` → CapKind (LotTreatment.kind, a validated string — no DB enum); durationMin is optional.
+    // Whole-vessel (one LotTreatment per resident lot), so no lotId picker.
+    fields: { vesselId: "vessel", technique: "select", durationMin: "number", note: "text" },
+    fieldOptions: { technique: CAP_KINDS },
+    hint: "Pick a technique (pumpover, punchdown, …) and optionally how long. Records against every lot in the vessel; no volume change.",
   },
   BRIX: {
     kind: "OBSERVATION",
