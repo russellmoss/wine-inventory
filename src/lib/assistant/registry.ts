@@ -47,6 +47,7 @@ import { setYieldEstimateTool } from "./tools/set-yield-estimate";
 import { logHarvestPickTool } from "./tools/log-harvest-pick";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
 import { rackWineTool } from "./tools/rack-wine";
+import { addAdditionTool } from "./tools/add-addition";
 import { revertTransferTool } from "./tools/revert-transfer";
 import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
@@ -80,6 +81,7 @@ const ALL_TOOLS: AssistantTool[] = [
   logHarvestPickTool,
   adjustInventoryTool,
   rackWineTool,
+  addAdditionTool,
   revertTransferTool,
   dbFindTool,
   dbCreateTool,

@@ -26,6 +26,7 @@ import { commitSetYieldEstimate } from "./tools/set-yield-estimate";
 import { commitLogHarvestPick } from "./tools/log-harvest-pick";
 import { commitAdjustInventory } from "./tools/adjust-inventory";
 import { commitRackWine } from "./tools/rack-wine";
+import { commitAddAddition } from "./tools/add-addition";
 import { commitRevertTransfer } from "./tools/revert-transfer";
 import { commitDbCreate } from "./tools/db-create";
 import { commitDbUpdate } from "./tools/db-update";
@@ -42,6 +43,7 @@ const COMMITTERS: Record<string, Committer> = {
   log_harvest_pick: commitLogHarvestPick,
   adjust_inventory: commitAdjustInventory,
   rack_wine: commitRackWine,
+  add_addition: commitAddAddition,
   revert_transfer: commitRevertTransfer,
   db_create: commitDbCreate,
   db_update: commitDbUpdate,
