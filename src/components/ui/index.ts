@@ -24,6 +24,8 @@ export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
 export { Collapsible } from "./Collapsible";
 export type { CollapsibleProps } from "./Collapsible";
+export { Tabs } from "./Tabs";
+export type { TabsProps, TabItem } from "./Tabs";
 export { ExportCsvButton } from "./ExportCsvButton";
 export type { ExportCsvButtonProps, CsvColumn } from "./ExportCsvButton";
 export { MapLegend } from "./MapLegend";
