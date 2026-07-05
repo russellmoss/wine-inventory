@@ -278,4 +278,26 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "a §B bottled removal WITH a disposition (tasting) → compliance-accurate, not a bare adjust_inventory correction",
   },
+  // ── Sparkling (Wave 3): tirage vs bottling, riddling vs cap-management, disgorge ──
+  {
+    utterance: "Tirage tank 6 into 500 bottles at 24 g/L sugar",
+    tool: "sparkling_tirage",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "second fermentation in bottle — NOT an ordinary bottling run and NOT a dose to a tank",
+  },
+  {
+    utterance: "Riddled lot 24-BdB on the gyropalette",
+    tool: "log_riddling",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "remuage — sparkling-specific, not generic cap management (punchdown/pumpover)",
+  },
+  {
+    utterance: "Disgorge 200 bottles of lot 24-BdB",
+    tool: "sparkling_disgorge",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "eject the lees plug; dose/finish is a deep-link, not a guess",
+  },
 ];

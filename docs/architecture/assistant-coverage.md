@@ -138,7 +138,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 ### Specialized — lower frequency
 | Capability | Core | Tool |
 |---|---|---|
-| Sparkling: tirage / riddling / disgorgement / dosage / finalize (+ reverses) | `tirageCore` + 8 | ❌ |
+| Sparkling: tirage / riddling / disgorgement (+ reverses) | `tirageCore` + 8 | ✅ `sparkling_tirage` · `log_riddling` · `sparkling_disgorge` (Wave 3 slice D; gated on sparklingEnabled) · dose+finish deep-links En Tirage · reverses via `undo_operation` |
 | Bottling / taxpaid & bottled removal | `removeTaxpaidCore`, `removeBottledCore` | ✅ `remove_bulk_wine` · `remove_bottled_wine` (Wave 3 slice C; admin-only) |
 | Materials: create / receive / activate | `createStockMaterialCore`, `receiveSupplyCore`, `setMaterialActiveCore` | ✅ `create_material` · `receive_supply` · `set_material_active` (Wave 3 slice A) |
 | Cost: receive bulk-wine cost, consume | `receiveBulkWineCostCore`, `consumeMaterialCore` | ❌ |
@@ -228,7 +228,13 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
    `adjust_inventory` correction. **Follow-up:** `adjust_inventory` and `remove_bottled_wine` overlap on
    "remove N bottles" — narrow `adjust_inventory` to plain corrections (found/lost/recount) so a
    disposition-bearing removal always routes to the compliance path.
-   Remaining Wave 3: sparkling family · cost · trials / groups / recurring.
+10. ~~**Sparkling family**~~ ✅ **DONE (slice D)** — `sparkling_tirage` (bottle a base cuvée to tirage),
+    `log_riddling` (remuage), `sparkling_disgorge` (disgorge-only by chat; `finish:true` deep-links the En
+    Tirage worklist for the dose→finish flow). All gated on the `sparklingEnabled` setting (refused early
+    when off). Reverses ride the universal `undo_operation` (→ `reverseSparklingOperationCore`). Fleet guards
+    tirage-vs-bottling and riddling-vs-cap-management. **Partial:** the full DISGORGE→DOSAGE→FINISH (liqueur/
+    target RS + SKU + destination) stays on the En Tirage screen by design (deep-linked).
+    Remaining Wave 3: cost · trials / groups / recurring.
 
 ## Workflow
 

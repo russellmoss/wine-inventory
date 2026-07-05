@@ -325,4 +325,22 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { wine: "Sparkling Brut", bottles: 6, disposition: "BREAKAGE" },
     note: "breakage as a §B disposition (tags the movement → the right B-line)",
   },
+  {
+    utterance: "Tirage tank 6 into 500 bottles at 24 g/L sugar",
+    tool: "sparkling_tirage",
+    args: { vessel: "tank 6", bottleCount: 500, tirageSugarGpl: 24 },
+    note: "start the 2nd fermentation in bottle from the source tank; sugar OR target pressure — not a bottling run",
+  },
+  {
+    utterance: "Riddled lot 24-BdB on the gyropalette",
+    tool: "log_riddling",
+    args: { lot: "24-BdB", method: "gyropalette" },
+    note: "remuage log on an en-tirage lot",
+  },
+  {
+    utterance: "Disgorge 200 bottles of lot 24-BdB",
+    tool: "sparkling_disgorge",
+    args: { lot: "24-BdB", bottles: 200 },
+    note: "disgorge-only by chat; dose + finish (finish:true) deep-links the En Tirage screen",
+  },
 ];

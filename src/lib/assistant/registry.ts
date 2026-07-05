@@ -85,6 +85,9 @@ import { recordSampleResultsTool } from "./tools/record-sample-results";
 import { manageSampleTool } from "./tools/manage-sample";
 import { removeBulkWineTool } from "./tools/remove-bulk-wine";
 import { removeBottledWineTool } from "./tools/remove-bottled-wine";
+import { sparklingTirageTool } from "./tools/sparkling-tirage";
+import { logRiddlingTool } from "./tools/log-riddling";
+import { sparklingDisgorgeTool } from "./tools/sparkling-disgorge";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -144,6 +147,9 @@ const ALL_TOOLS: AssistantTool[] = [
   manageSampleTool,
   removeBulkWineTool,
   removeBottledWineTool,
+  sparklingTirageTool,
+  logRiddlingTool,
+  sparklingDisgorgeTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */
