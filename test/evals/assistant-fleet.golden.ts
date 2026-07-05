@@ -140,4 +140,24 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     kind: "write",
     maxToolCalls: 1,
   },
+  // ── Simple cellar ops — distinct from rack/addition ──
+  {
+    utterance: "Top the 2023 Grenache barrel with 3 L from keg 4",
+    tool: "top_up",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "topping (from→to + volume) — not a rack",
+  },
+  {
+    utterance: "Cross-flow filter tank 5 at 0.45 micron",
+    tool: "filter_vessel",
+    kind: "write",
+    maxToolCalls: 1,
+  },
+  {
+    utterance: "Punched down the Syrah tank for 20 minutes",
+    tool: "log_cap_management",
+    kind: "write",
+    maxToolCalls: 1,
+  },
 ];

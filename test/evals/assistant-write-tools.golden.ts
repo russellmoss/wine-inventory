@@ -198,4 +198,19 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     tool: "manage_work_order",
     args: { action: "start", wo: 142, task: "2" },
   },
+  {
+    utterance: "Top the 2023 Grenache barrel with 3 L from keg 4",
+    tool: "top_up",
+    args: { toVessel: "2023 Grenache barrel", fromVessel: "keg 4", volumeL: 3 },
+  },
+  {
+    utterance: "Cross-flow filter tank 5 at 0.45 micron",
+    tool: "filter_vessel",
+    args: { vessel: "tank 5", medium: "cross-flow", micron: 0.45 },
+  },
+  {
+    utterance: "Punched down T5 for 15 minutes",
+    tool: "log_cap_management",
+    args: { vessel: "T5", kind: "PUNCHDOWN", durationMin: 15 },
+  },
 ];
