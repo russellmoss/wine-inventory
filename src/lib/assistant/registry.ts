@@ -58,6 +58,8 @@ import { topUpTool } from "./tools/top-up";
 import { filterVesselTool } from "./tools/filter-vessel";
 import { logCapManagementTool } from "./tools/log-cap-management";
 import { blendLotsTool } from "./tools/blend-lots";
+import { transitionLotStateTool } from "./tools/transition-lot-state";
+import { undoOperationTool } from "./tools/undo-operation";
 import { revertTransferTool } from "./tools/revert-transfer";
 import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
@@ -102,6 +104,8 @@ const ALL_TOOLS: AssistantTool[] = [
   filterVesselTool,
   logCapManagementTool,
   blendLotsTool,
+  transitionLotStateTool,
+  undoOperationTool,
   revertTransferTool,
   dbFindTool,
   dbCreateTool,

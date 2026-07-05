@@ -37,6 +37,8 @@ import { commitTopUp } from "./tools/top-up";
 import { commitFilterVessel } from "./tools/filter-vessel";
 import { commitLogCapManagement } from "./tools/log-cap-management";
 import { commitBlendLots } from "./tools/blend-lots";
+import { commitTransitionLotState } from "./tools/transition-lot-state";
+import { commitUndoOperation } from "./tools/undo-operation";
 import { commitRevertTransfer } from "./tools/revert-transfer";
 import { commitDbCreate } from "./tools/db-create";
 import { commitDbUpdate } from "./tools/db-update";
@@ -64,6 +66,8 @@ const COMMITTERS: Record<string, Committer> = {
   filter_vessel: commitFilterVessel,
   log_cap_management: commitLogCapManagement,
   blend_lots: commitBlendLots,
+  transition_lot_state: commitTransitionLotState,
+  undo_operation: commitUndoOperation,
   revert_transfer: commitRevertTransfer,
   db_create: commitDbCreate,
   db_update: commitDbUpdate,

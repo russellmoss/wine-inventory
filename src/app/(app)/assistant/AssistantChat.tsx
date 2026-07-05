@@ -81,6 +81,8 @@ const TOOL_LABELS: Record<string, string> = {
   filter_vessel: "Preparing the filtration",
   log_cap_management: "Preparing the cap-management log",
   blend_lots: "Preparing the blend",
+  transition_lot_state: "Preparing the ferment update",
+  undo_operation: "Finding the operation to reverse",
   revert_transfer: "Reverting the rack",
   query_transfers: "Checking recent rackings",
   navigate: "Finding the page",

@@ -106,7 +106,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | Tasting notes | `recordTastingNoteCore`, `voidTastingNoteCore` | ✅ `record_tasting_note` (void = ❌) |
 | Lab samples (pull / send / attach results) | `pullSampleCore` + 3 | ❌ |
 | Ferment panel submit | `submitPanelCore` | 🟨 overlaps Brix |
-| Lot state transitions (AF/MLF done, dry) | `transitionStateCore` | ❌ |
+| Lot state transitions (AF/MLF done, dry) | `transitionStateCore` | ✅ `transition_lot_state` |
 
 ### Transforms — seasonal, high value
 | Capability | Core | Tool |
@@ -114,7 +114,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | De-stem / crush | `crushLotCore` | ❌ |
 | Press / saignée | `pressLotCore` | ❌ |
 | Blend | `blendLotsCore` | ✅ `blend_lots` (simple by chat; complex → deep-links /blend) |
-| Universal undo ("undo that last op") | `reverseOperationCore` | 🟨 `revert_transfer` = rack only |
+| Universal undo ("undo that last op") | `reverseOperationCore` | ✅ `undo_operation` (any op; `revert_transfer` stays the rack fast-path) |
 
 ### Work orders — author, run, review, and manage by chat (Wave 1 #3 complete)
 | Capability | Core | Tool |
@@ -204,7 +204,10 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
 4. ~~**Blend**~~ ✅ **DONE** — `blend_lots` (simple multi-source by chat; empty dest → new tagged lot,
    resident dest → grow; complex → deep-links `/blend`). Standalone crush/press left to the WO lane +
    /ferment screens (largely duplicate the WO-lane completion).
-6. **Lot state transitions** (`transitionStateCore`) + **universal undo** (`reverseOperationCore`) — last.
+6. ~~**Lot state transitions** + **universal undo**~~ ✅ **DONE** — `transition_lot_state` (AF/MLF,
+   per-lot) + `undo_operation` (reverses any op via a plan-024 correction; resolves an explicit id or the
+   most recent reversible op on a vessel/lot, strong confirm, core fails closed; deep-links the timeline
+   when nothing resolves). **Wave 2 complete** (loss deferred).
 
 **Wave 3 — specialized:**
 7. Materials (create/receive) · lab samples · bottling + compliance removals · sparkling family · cost ·
