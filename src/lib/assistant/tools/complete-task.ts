@@ -7,6 +7,7 @@ import { resolveWorkOrderTask, resolveVessel, type ResolvedTask } from "../scope
 import { completeTaskAction } from "@/lib/work-orders/actions";
 import { loadCrushFormData } from "@/lib/ferment/crush-data";
 import { loadPressFormData } from "@/lib/ferment/press-data";
+import { round2 } from "@/lib/round";
 
 // Assistant-coverage Wave 1 #3 (Slices A+B) — complete a work-order task by chat. Wraps
 // completeTaskAction → completeTaskCore (no re-implemented logic, no db_*).
@@ -18,7 +19,6 @@ import { loadPressFormData } from "@/lib/ferment/press-data";
 // form for that WO instead of guessing (these write real lineage). Everything routes through the WO
 // dispatch (crushLotTx/pressLotTx) inside the one ledger tx.
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 

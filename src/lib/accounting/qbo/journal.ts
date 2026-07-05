@@ -1,4 +1,5 @@
 import { assertBalanced, type JournalEntryInput, type JournalLineInput, type Posting } from "@/lib/accounting/adapter";
+import { round2 } from "@/lib/round";
 
 // Phase 15 Unit 8 — build a balanced QBO JournalEntry from ONE immutable export event. Each export
 // line is a self-balancing pair: DR debitAccount / CR creditAccount for the same amount. We apply ONE
@@ -66,7 +67,6 @@ export type SalesDeltaForJournal = {
 };
 
 const flip = (p: Posting): Posting => (p === "Debit" ? "Credit" : "Debit");
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export function buildSalesDeltaJournal(d: SalesDeltaForJournal, postingDate: Date): JournalEntryInput {
   const revenue = round2(d.revenueDelta);

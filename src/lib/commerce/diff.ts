@@ -1,5 +1,6 @@
 import type { EconomicSnapshot, SnapshotLine } from "@/lib/commerce/normalize";
 import type { SalesDeltaKind } from "@prisma/client";
+import { round2 } from "@/lib/round";
 
 // Phase 16 Unit 5 — the delta engine (the riskiest new logic; heavily tested). Diff the last-known
 // economic snapshot against the current one and emit the DIFFERENCE as an append-only delta. Economics
@@ -27,7 +28,6 @@ export type SalesDelta = {
   lineDeltas: LineDelta[];
 };
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const lineKey = (l: SnapshotLine | LineDelta) => `${l.skuRef}@@${l.inventoryLocationId ?? ""}`;
 
 type Effective = { revenue: number; tax: number; shipping: number; discount: number; lines: Map<string, LineDelta> };

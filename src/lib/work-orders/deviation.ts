@@ -5,11 +5,11 @@
 // (anti-rubber-stamp). Notes/instructions live as text columns on WorkOrder/Task/Attempt (Units 4/6);
 // attachment references ride inside actualPayload (no schema change, per the plan).
 
+import { round2 } from "@/lib/round";
+
 const VOLUME_FIELDS = new Set(["drawL", "lossL", "volumeL"]);
 const AMOUNT_FIELDS = new Set(["rateValue", "plannedAmount", "amount"]);
 const VOLUME_PCT_THRESHOLD = 1; // percent
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export type Deviation = {
   field: string;

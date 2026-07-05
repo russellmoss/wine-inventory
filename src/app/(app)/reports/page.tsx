@@ -2,13 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { classifyBlend } from "@/lib/bulk/blend";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
+import { round2 } from "@/lib/round";
 
 const sectionHead: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 };
 const h2Style: React.CSSProperties = { fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: 0 };
-
-function round2(n: number) {
-  return Math.round(n * 100) / 100;
-}
 
 async function bulkByVariety() {
   const vessels = await prisma.vessel.findMany({

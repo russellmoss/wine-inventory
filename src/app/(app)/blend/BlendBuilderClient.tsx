@@ -7,6 +7,7 @@ import { Card, Eyebrow, Button, Badge } from "@/components/ui";
 import { blendLotsAction, markTrialPromotedAction } from "@/lib/blend/actions";
 import { weightedRollup } from "@/lib/blend/compose";
 import type { BlendVessel, TrialPrefill } from "@/lib/blend/data";
+import { round2 } from "@/lib/round";
 
 const field: React.CSSProperties = {
   height: 38,
@@ -42,8 +43,6 @@ type SelectedSource = {
   deplete: boolean;
   components: SourceComponent[];
 };
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const isBarrel = (v: BlendVessel) => v.type === "BARREL";
 const vesselTypeLabel = (v: BlendVessel) => `${isBarrel(v) ? "Barrel" : "Tank"} ${v.code}`;

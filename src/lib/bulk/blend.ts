@@ -1,3 +1,5 @@
+import { round2 } from "@/lib/round";
+
 export type Component = { varietyId: string; varietyName: string; volumeL: number };
 
 export type VarietyShare = { varietyId: string; varietyName: string; volumeL: number; pct: number };
@@ -25,8 +27,4 @@ export function classifyBlend(components: Component[]): BlendInfo {
     .map((v) => ({ ...v, pct: totalL > 0 ? Math.round((v.volumeL / totalL) * 1000) / 10 : 0 }))
     .sort((a, b) => b.volumeL - a.volumeL);
   return { totalL, isBlend: varieties.length > 1, varieties };
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }

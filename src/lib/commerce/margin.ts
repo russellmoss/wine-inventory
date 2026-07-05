@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { round2 } from "@/lib/round";
 
 // Phase 16 Unit 10b — the read-only DTC per-channel margin view. Joins ingested revenue deltas
 // (net of discount, EXCLUDING tax + shipping) against Phase-8 absorption COGS, grouped by WineSku ×
@@ -13,8 +14,6 @@ export const GROSS_OF_FEES_CAVEAT = "Revenue is gross of payment-processor fees 
 export type MarginLine = { skuRef: string; qtyDelta: number; revenueDelta: number };
 export type MarginEvent = { channel: string | null; discountDelta: number; lines: MarginLine[] };
 export type MarginRow = { skuId: string; skuLabel: string; channel: string; unitsSold: number; netRevenue: number; cogs: number; margin: number; marginPct: number | null };
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * PURE: aggregate revenue deltas × COGS into per-(WineSku, channel) margin rows. Order-level discount is

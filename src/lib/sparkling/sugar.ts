@@ -1,4 +1,5 @@
 import type { DosageStyle } from "@prisma/client";
+import { round2 } from "@/lib/round";
 
 // Phase 7 Unit 3: PURE winemaking math for sparkling — tirage sugar ↔ bottle pressure, the
 // secondary-ferment ABV bump, dosage → residual sugar, and the EU sweetness classifier. All
@@ -11,8 +12,6 @@ export const G_PER_L_PER_ATM = 4;
 export const SUGAR_G_PER_L_PER_ABV = 16.8;
 /** Champagne target ≈ 6 atm. */
 export const DEFAULT_TARGET_ATM = 6;
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Tirage sugar (g/L) needed to reach a target bottle pressure. */
 export function tirageSugarForPressure(atm: number, gPerLPerAtm = G_PER_L_PER_ATM): number {

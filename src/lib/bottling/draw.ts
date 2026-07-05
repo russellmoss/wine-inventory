@@ -1,9 +1,9 @@
+import { round2 } from "@/lib/round";
+
 export const BOTTLE_L = 0.75; // 750ml
 export const CASE_SIZE = 12;
 
-export function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
+export { round2 };
 
 /** Suggested bottle count from available liters (floor — can't bottle a partial). */
 export function suggestBottles(availableL: number): number {
