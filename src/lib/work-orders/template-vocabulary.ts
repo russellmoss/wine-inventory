@@ -3,7 +3,7 @@ import type { CreateTaskInput } from "@/lib/work-orders/lifecycle";
 import { FILTER_MEDIA, RACK_TYPES } from "@/lib/cellar/filtration-vocab";
 import { TEMP_UNITS, GAS_TYPES } from "@/lib/cellar/vessel-activity-vocab";
 import { DOSE_UNIT_LABELS } from "@/lib/cellar/additions-math";
-import { CAP_KINDS } from "@/lib/cellar/treatments";
+import { CAP_KINDS } from "@/lib/cellar/cap-vocab";
 
 // Typed field vocabulary for work-order templates (Phase 9 Unit 10). Templates are NEVER free-form: a
 // template's spec is a list of tasks, each of a known task TYPE with a fixed set of allowed fields.

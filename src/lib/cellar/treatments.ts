@@ -17,21 +17,10 @@ import { vesselLabel, type CellarBaseResult } from "@/lib/cellar/addition";
 // (Fining lives in addition.ts — it shares the neutral-dose engine. Loss is in loss.ts.)
 // Everything routes through the chokepoint; nothing recomputes on read (VISION D14).
 
-// Phase 6: cold soak + extended maceration are non-volumetric cap-work too (council "cap mgmt
-// reused + extended"). They reuse the CAP_MGMT op + LotTreatment row (kind is a validated string,
-// NOT a DB enum — no migration). The orthogonal vectors make both representable: cold soak =
-// MUST + afState:NONE (pre-ferment); extended maceration = MUST + afState:DRY (post-ferment, still
-// on skins) — the old linear phase enum couldn't express "dry but on skins".
-// Plan 043: PULSE_AIR (pulsed compressed-air injection under the cap) is another volume-neutral cap-work
-// technique on a red ferment — modeled as a CapKind (a validated string, NOT a DB enum), so it rides the
-// existing CAP_MGMT op with zero migration and zero reverse/correct/edit wiring.
-export type CapKind = "PUMPOVER" | "PUNCHDOWN" | "COLD_SOAK" | "MACERATION" | "PULSE_AIR";
-
-export const CAP_KINDS: readonly CapKind[] = ["PUMPOVER", "PUNCHDOWN", "COLD_SOAK", "MACERATION", "PULSE_AIR"] as const;
-
-export function isCapKind(v: unknown): v is CapKind {
-  return typeof v === "string" && (CAP_KINDS as readonly string[]).includes(v);
-}
+// Cap-management vocabulary (pure) lives in ./cap-vocab so client-reachable modules (the WO template
+// vocabulary) can import it without dragging in prisma. Re-exported here for the server callers.
+export { type CapKind, CAP_KINDS, isCapKind, CAP_LABELS } from "./cap-vocab";
+import { type CapKind, isCapKind, CAP_LABELS } from "./cap-vocab";
 
 export type CapManagementInput = {
   vesselId: string;
@@ -40,14 +29,6 @@ export type CapManagementInput = {
   note?: string;
   captureMethod?: CaptureMethod;
   batchId?: string;
-};
-
-const CAP_LABELS: Record<CapKind, string> = {
-  PUMPOVER: "Pump-over",
-  PUNCHDOWN: "Punch-down",
-  COLD_SOAK: "Cold soak",
-  MACERATION: "Maceration",
-  PULSE_AIR: "Pulse-air",
 };
 
 /**
