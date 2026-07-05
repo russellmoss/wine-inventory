@@ -219,4 +219,20 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { components: [{ vessel: "tank 1", drawL: 300 }, { vessel: "tank 2", drawL: 300 }], toVessel: "tank 3", tag: "RES" },
     note: "new blend lot in an empty destination; blended/complex sources deep-link the /blend builder",
   },
+  {
+    utterance: "Lot 24-CS-A is dry",
+    tool: "transition_lot_state",
+    args: { lot: "24-CS-A", stage: "AF", to: "DRY" },
+  },
+  {
+    utterance: "MLF is complete on the Cab in tank 5",
+    tool: "transition_lot_state",
+    args: { vessel: "tank 5", stage: "MLF", to: "COMPLETE" },
+  },
+  {
+    utterance: "Undo the last addition on tank 5",
+    tool: "undo_operation",
+    args: { vessel: "tank 5" },
+    note: "resolves the most recent reversible op; the core fails closed if downstream/already-reversed",
+  },
 ];

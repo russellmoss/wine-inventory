@@ -167,4 +167,18 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "multi-source blend — distinct from a two-vessel rack",
   },
+  {
+    utterance: "Lot 24-CS-A is dry",
+    tool: "transition_lot_state",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "ferment-state change — not a Brix reading or a measurement",
+  },
+  {
+    utterance: "Undo the last addition on tank 5",
+    tool: "undo_operation",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "general reversal — revert_transfer is rack-specific; undo_operation covers the rest",
+  },
 ];

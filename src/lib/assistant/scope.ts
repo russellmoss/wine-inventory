@@ -200,6 +200,35 @@ export async function resolveLotTarget(opts: { lot?: string; vessel?: string }):
 
 export type ResolvedTask = { workOrderId: string; number: number; taskId: string; seq: number; title: string; opType: string | null; observationType: string | null; kind: string; status: string };
 
+/**
+ * Resolve the ledger operation to undo — an explicit id, or the most recent not-yet-corrected op on a
+ * vessel/lot. Returns null (no explicit id) when nothing's found, so the tool can deep-link the timeline
+ * instead of guessing. reverseOperationCore still fails closed (non-reversible type / downstream op), so
+ * this only needs to surface a candidate + its summary for the confirm card.
+ */
+export async function resolveRecentOperation(opts: { operationId?: number; vessel?: string; lot?: string }): Promise<{ operationId: number; lotId: string; summary: string } | null> {
+  const summarize = (op: { id: number; type: string; note: string | null; createdAt: Date }) =>
+    `#${op.id} ${op.type}${op.note ? ` — ${op.note}` : ""} (${op.createdAt.toISOString().slice(0, 10)})`;
+  const lotOf = (op: { lines: { lotId: string }[] }) => op.lines[0]?.lotId ?? "";
+  if (opts.operationId != null) {
+    const op = await prisma.lotOperation.findUnique({ where: { id: opts.operationId }, select: { id: true, type: true, note: true, createdAt: true, correctedBy: { select: { id: true } }, lines: { select: { lotId: true }, take: 1 } } });
+    if (!op) throw new Error(`No operation #${opts.operationId} exists.`);
+    if (op.correctedBy) throw new Error(`Operation #${op.id} was already reversed.`);
+    return { operationId: op.id, lotId: lotOf(op), summary: summarize(op) };
+  }
+  let vesselId: string | null = null;
+  let lotId: string | null = null;
+  if (opts.lot) lotId = (await resolveLotTarget({ lot: opts.lot })).lotId;
+  else if (opts.vessel) vesselId = (await resolveVesselContents(opts.vessel)).vesselId;
+  else throw new Error("Undo which operation? Give a vessel, a lot, or an operation number.");
+  const op = await prisma.lotOperation.findFirst({
+    where: { correctedBy: null, lines: { some: lotId ? { lotId } : { vesselId } } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, type: true, note: true, createdAt: true, lines: { select: { lotId: true }, take: 1 } },
+  });
+  return op ? { operationId: op.id, lotId: lotOf(op), summary: summarize(op) } : null;
+}
+
 /** Resolve a work order by its human number (for WO-level lifecycle actions that don't need a task). */
 export async function resolveWorkOrder(ref: string | number): Promise<{ workOrderId: string; number: number; status: string }> {
   const num = typeof ref === "number" ? ref : ref ? Number((String(ref).match(/\d+/) ?? [])[0]) : NaN;
