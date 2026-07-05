@@ -104,4 +104,26 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     tool: "archive_template",
     args: { template: "weekly topping" },
   },
+  {
+    utterance: "Add 30 g/hL KMBS to tank 5",
+    tool: "add_addition",
+    args: { vessel: "tank 5", material: "KMBS", amount: 30, unit: "g/hL" },
+    note: "rate unit → total computed against the tank volume; whole-vessel dose (no lot arg)",
+  },
+  {
+    utterance: "Dose 50 g/hL Fermaid-O in tank 3",
+    tool: "add_addition",
+    args: { vessel: "tank 3", material: "Fermaid-O", amount: 50, unit: "g/hL" },
+  },
+  {
+    utterance: "Add 2 g/L tartaric to barrel 12",
+    tool: "add_addition",
+    args: { vessel: "barrel 12", material: "tartaric", amount: 2, unit: "g/L" },
+  },
+  {
+    utterance: "Fine tank 7 with 48 g/hL bentonite",
+    tool: "add_addition",
+    args: { vessel: "tank 7", material: "bentonite", amount: 48, unit: "g/hL", fining: true },
+    note: "fining=true routes to addFiningCore; still the write dose tool, not a calculator",
+  },
 ];

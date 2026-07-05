@@ -90,8 +90,8 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 |---|---|---|
 | Rack / transfer | `rackWineCore` | ✅ `rack_wine` |
 | Whole-vessel rack | `rackVesselCore` | 🟨 lot-rack only |
-| Additions (SO₂, nutrients, acid…) | `addAdditionCore` | ❌ |
-| Fining | `addFiningCore` | ❌ |
+| Additions (SO₂, nutrients, acid…) | `addAdditionCore` | ✅ `add_addition` |
+| Fining | `addFiningCore` | ✅ `add_addition` (fining flag) |
 | Topping | `topVesselCore` | ❌ |
 | Filtration | `filterVesselCore` | ❌ |
 | Cap management (punch-down / pump-over) | `capManagementCore` | ❌ |
@@ -172,9 +172,16 @@ run, the SO₂ motivating case, `DomainError` instead of a silent NaN).
 
 ## Prioritized retrofit backlog
 
+**Fleet suite scaffolded (2026-07-05):** `test/evals/assistant-fleet.{golden,eval.test}.ts` — the second
+axis is live, seeded with the calculate-vs-dose boundary (`add_addition` write vs `calc_so2` read) +
+within-tool op selection (calc_so2's planner/kmbs/molecular). Structural layer runs in CI; the gated LLM
+layer (`ASSISTANT_EVAL=1`) asserts tool+operation selection with the full set loaded. Call-count economy
+is the next layer (needs the run loop). Every new tool adds a fleet case.
+
 **Wave 1 — daily floor, highest frequency (confirmed 2026-07-05):**
-1. **Additions + fining** (`addAdditionCore` / `addFiningCore`) — most frequent cellar write; uses the
-   `isDoseableCategory` additive-scope + `materialDisplayName` work from plan 036.
+1. ~~**Additions + fining**~~ ✅ **DONE** — `add_addition` (one tool, `fining` flag) wraps
+   `addAdditionCore`/`addFiningCore`; additive-scoped material resolve (`isDoseableCategory` refuses
+   packaging/cleaning), whole-vessel dose, confirm-nonce; golden + fleet cases landed.
 2. **Chem panels beyond Brix (pH/TA/full)** + **tasting notes** (`recordMeasurementsCore`,
    `recordTastingNoteCore`).
 3. **Work-order execution** — create-from-template + `completeTaskCore` (+ approve/reject); closes the
