@@ -172,4 +172,30 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { wo: 150, block: "Block 3", kg: 2000, destVessel: "tank 5", outputL: 1400 },
     note: "simple crush by chat; a multi-pick/complex one deep-links the execute form",
   },
+  {
+    utterance: "Approve WO 142",
+    tool: "review_task",
+    args: { wo: 142, decision: "approve" },
+  },
+  {
+    utterance: "Reject task 2 on WO 142 — wrong tank",
+    tool: "review_task",
+    args: { wo: 142, task: "2", decision: "reject", reason: "wrong tank" },
+    note: "reject reverses the ledger op (plan-024)",
+  },
+  {
+    utterance: "Cancel WO 142",
+    tool: "manage_work_order",
+    args: { action: "cancel", wo: 142 },
+  },
+  {
+    utterance: "Assign WO 142 to sam@winery.test",
+    tool: "manage_work_order",
+    args: { action: "assign", wo: 142, assigneeEmail: "sam@winery.test" },
+  },
+  {
+    utterance: "Start task 2 on WO 142",
+    tool: "manage_work_order",
+    args: { action: "start", wo: 142, task: "2" },
+  },
 ];

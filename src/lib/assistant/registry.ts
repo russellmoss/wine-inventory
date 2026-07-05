@@ -52,6 +52,8 @@ import { recordMeasurementTool } from "./tools/record-measurement";
 import { recordTastingNoteTool } from "./tools/record-tasting-note";
 import { createWorkOrderTool } from "./tools/create-work-order";
 import { completeTaskTool } from "./tools/complete-task";
+import { reviewTaskTool } from "./tools/review-task";
+import { manageWorkOrderTool } from "./tools/manage-work-order";
 import { revertTransferTool } from "./tools/revert-transfer";
 import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
@@ -90,6 +92,8 @@ const ALL_TOOLS: AssistantTool[] = [
   recordTastingNoteTool,
   createWorkOrderTool,
   completeTaskTool,
+  reviewTaskTool,
+  manageWorkOrderTool,
   revertTransferTool,
   dbFindTool,
   dbCreateTool,

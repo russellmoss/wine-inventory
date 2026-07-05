@@ -75,6 +75,8 @@ const TOOL_LABELS: Record<string, string> = {
   record_tasting_note: "Preparing the tasting note",
   create_work_order: "Preparing the work order",
   complete_task: "Preparing to complete the task",
+  review_task: "Preparing the review",
+  manage_work_order: "Preparing the work-order change",
   revert_transfer: "Reverting the rack",
   query_transfers: "Checking recent rackings",
   navigate: "Finding the page",

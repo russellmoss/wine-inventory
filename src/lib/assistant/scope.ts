@@ -199,6 +199,15 @@ export async function resolveLotTarget(opts: { lot?: string; vessel?: string }):
 
 export type ResolvedTask = { workOrderId: string; number: number; taskId: string; seq: number; title: string; opType: string | null; observationType: string | null; kind: string; status: string };
 
+/** Resolve a work order by its human number (for WO-level lifecycle actions that don't need a task). */
+export async function resolveWorkOrder(ref: string | number): Promise<{ workOrderId: string; number: number; status: string }> {
+  const num = typeof ref === "number" ? ref : ref ? Number((String(ref).match(/\d+/) ?? [])[0]) : NaN;
+  if (!Number.isFinite(num)) throw new Error("Which work order? Give its number, e.g. 'WO 142'.");
+  const wo = await prisma.workOrder.findFirst({ where: { number: num }, select: { id: true, number: true, status: true } });
+  if (!wo) throw new Error(`No work order #${num} exists.`);
+  return { workOrderId: wo.id, number: wo.number, status: wo.status };
+}
+
 /** Pull a work-order number out of "WO 142", "work order 142", "#142", or "142". */
 function parseWoNumber(text: string): number | null {
   const m = text.match(/\d+/);
@@ -211,7 +220,7 @@ function parseWoNumber(text: string): number | null {
  * it's ambiguous, we throw a message listing the open tasks so the model can ask. Tenant-scoped via the
  * prisma extension (RLS). Used by the assistant WO-execution tools (complete/approve/…).
  */
-export async function resolveWorkOrderTask(opts: { wo?: string | number; task?: string | number }): Promise<ResolvedTask> {
+export async function resolveWorkOrderTask(opts: { wo?: string | number; task?: string | number; states?: string[] }): Promise<ResolvedTask> {
   const num = typeof opts.wo === "number" ? opts.wo : opts.wo ? parseWoNumber(String(opts.wo)) : null;
   if (num == null) throw new Error("Which work order? Give its number, e.g. 'WO 142'.");
   const wo = await prisma.workOrder.findFirst({
@@ -221,7 +230,7 @@ export async function resolveWorkOrderTask(opts: { wo?: string | number; task?: 
   if (!wo) throw new Error(`No work order #${num} exists.`);
   if (wo.tasks.length === 0) throw new Error(`Work order #${num} has no tasks.`);
 
-  const OPEN = new Set(["PENDING", "IN_PROGRESS", "REJECTED"]);
+  const OPEN = new Set(opts.states ?? ["PENDING", "IN_PROGRESS", "REJECTED"]);
   const pick = (t: (typeof wo.tasks)[number]): ResolvedTask => ({ workOrderId: wo.id, number: wo.number, taskId: t.id, seq: t.seq, title: t.title, opType: t.opType, observationType: t.observationType, kind: t.kind, status: t.status });
   const describe = (t: (typeof wo.tasks)[number]) => `#${t.seq} ${t.title} (${t.status.toLowerCase()})`;
 
@@ -240,6 +249,6 @@ export async function resolveWorkOrderTask(opts: { wo?: string | number; task?: 
 
   const open = wo.tasks.filter((t) => OPEN.has(t.status));
   if (open.length === 1) return pick(open[0]);
-  if (open.length === 0) throw new Error(`WO #${num} has no open tasks (all done). Tasks: ${wo.tasks.map(describe).join("; ")}.`);
-  throw new Error(`WO #${num} has several open tasks — which one? ${open.map(describe).join("; ")}.`);
+  if (open.length === 0) throw new Error(`WO #${num} has no matching tasks. Tasks: ${wo.tasks.map(describe).join("; ")}.`);
+  throw new Error(`WO #${num} has several matching tasks — which one? ${open.map(describe).join("; ")}.`);
 }

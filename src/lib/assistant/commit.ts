@@ -31,6 +31,8 @@ import { commitRecordMeasurement } from "./tools/record-measurement";
 import { commitRecordTastingNote } from "./tools/record-tasting-note";
 import { commitCreateWorkOrder } from "./tools/create-work-order";
 import { commitCompleteTask } from "./tools/complete-task";
+import { commitReviewTask } from "./tools/review-task";
+import { commitManageWorkOrder } from "./tools/manage-work-order";
 import { commitRevertTransfer } from "./tools/revert-transfer";
 import { commitDbCreate } from "./tools/db-create";
 import { commitDbUpdate } from "./tools/db-update";
@@ -52,6 +54,8 @@ const COMMITTERS: Record<string, Committer> = {
   record_tasting_note: commitRecordTastingNote,
   create_work_order: commitCreateWorkOrder,
   complete_task: commitCompleteTask,
+  review_task: commitReviewTask,
+  manage_work_order: commitManageWorkOrder,
   revert_transfer: commitRevertTransfer,
   db_create: commitDbCreate,
   db_update: commitDbUpdate,
