@@ -67,6 +67,37 @@ export function niceAxisBounds(values: number[], step?: number): { yMin: number;
   return { yMin: round4(yMin), yMax: round4(yMax), step: round4(s) };
 }
 
+/**
+ * Index of the value in `sortedXs` (ascending) nearest to `target`. Used by the
+ * interactive chart to snap a pointer's data-time to the closest reading. Pure —
+ * no DOM. Handles: empty → -1; single → 0; exact match → that index; between two
+ * points → the closer one (ties round to the LATER/higher index); before the first
+ * → 0; after the last → last. Bisect (O(log n)).
+ */
+export function nearestByX(sortedXs: number[], target: number): number {
+  const n = sortedXs.length;
+  if (n === 0) return -1;
+  if (n === 1) return 0;
+  if (target <= sortedXs[0]) return 0;
+  if (target >= sortedXs[n - 1]) return n - 1;
+
+  // Binary search for the first index whose value is >= target (lower bound).
+  let lo = 0;
+  let hi = n - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedXs[mid] < target) lo = mid + 1;
+    else hi = mid;
+  }
+  // `lo` is the first index >= target; its neighbor `lo - 1` is the last < target.
+  const hiIdx = lo;
+  const loIdx = lo - 1;
+  const distHi = sortedXs[hiIdx] - target;
+  const distLo = target - sortedXs[loIdx];
+  // Tie → the later (higher-index) point.
+  return distHi <= distLo ? hiIdx : loIdx;
+}
+
 /** Compute the x (time, ms) and y (Brix) domain from the raw values. */
 export function computeDomain(xs: number[], ys: number[]): Domain {
   const { yMin, yMax } = brixAxisBounds(ys);

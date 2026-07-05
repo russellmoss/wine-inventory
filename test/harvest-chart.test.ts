@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { brixAxisBounds, scaleLinear, computeDomain } from "@/lib/harvest/chart";
+import { brixAxisBounds, scaleLinear, computeDomain, nearestByX } from "@/lib/harvest/chart";
 
 describe("brixAxisBounds", () => {
   it("returns a default band for no values", () => {
@@ -60,5 +60,47 @@ describe("computeDomain", () => {
     expect(d.xMax).toBe(1);
     expect(d.yMin).toBe(0);
     expect(d.yMax).toBe(30);
+  });
+});
+
+describe("nearestByX", () => {
+  const xs = [10, 20, 30, 40];
+
+  it("returns -1 for an empty array", () => {
+    expect(nearestByX([], 5)).toBe(-1);
+  });
+
+  it("returns 0 for a single-element array regardless of target", () => {
+    expect(nearestByX([42], 0)).toBe(0);
+    expect(nearestByX([42], 42)).toBe(0);
+    expect(nearestByX([42], 999)).toBe(0);
+  });
+
+  it("returns the exact index on an exact match", () => {
+    expect(nearestByX(xs, 10)).toBe(0);
+    expect(nearestByX(xs, 30)).toBe(2);
+    expect(nearestByX(xs, 40)).toBe(3);
+  });
+
+  it("picks the closer neighbor when between two points", () => {
+    expect(nearestByX(xs, 21)).toBe(1); // closer to 20
+    expect(nearestByX(xs, 29)).toBe(2); // closer to 30
+    expect(nearestByX(xs, 34)).toBe(2); // closer to 30
+    expect(nearestByX(xs, 36)).toBe(3); // closer to 40
+  });
+
+  it("rounds a midpoint tie to the later (higher) index", () => {
+    expect(nearestByX(xs, 25)).toBe(2); // equidistant 20/30 → 30
+    expect(nearestByX(xs, 15)).toBe(1); // equidistant 10/20 → 20
+  });
+
+  it("clamps to index 0 before the first point", () => {
+    expect(nearestByX(xs, -100)).toBe(0);
+    expect(nearestByX(xs, 9)).toBe(0);
+  });
+
+  it("clamps to the last index after the last point", () => {
+    expect(nearestByX(xs, 41)).toBe(3);
+    expect(nearestByX(xs, 1000)).toBe(3);
   });
 });
