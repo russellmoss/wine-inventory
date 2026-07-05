@@ -111,9 +111,10 @@ the manager never re-keys what the crew did. 8 tables (`WorkOrder`, `WorkOrderTa
 task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
 - **State changes on completion, not approval.** Marking a task done writes the **real, immutable** ledger
   op immediately (via the existing cores' new `…Tx` forms — `rackWineTx`, `topVesselTx`, `filterVesselTx`,
-  `recordNeutralDoseTx` — all in ONE `runLedgerWrite`, `execute.ts`). "Pending-approval" is a state on the
-  **task/attempt**, never on the op (invariant **WORKORDER-1**). Each execution is an append-only
-  `WorkOrderTaskAttempt` (`commandId`-idempotent), so redo-after-reject keeps history.
+  `recordNeutralDoseTx`, `capManagementTx`, `crushLotTx`, `pressLotTx` — all in ONE `runLedgerWrite`,
+  `execute.ts`). "Pending-approval" is a state on the **task/attempt**, never on the op (invariant
+  **WORKORDER-1**). Each execution is an append-only `WorkOrderTaskAttempt` (`commandId`-idempotent), so
+  redo-after-reject keeps history.
 - **Approve = finalize; reject = `reverseOperationCore`** (the plan-024 universal Undo — a new CORRECTION,
   never a row edit). Approve/reject use compare-and-swap on `PENDING_APPROVAL`; a reject blocked by a later
   op (LEDGER-11) surfaces as a conflict. Authority is a minimal `authority.ts` (`canApprove`,
@@ -135,6 +136,16 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   destination capacity / supply qty; `available-to-promise = on-hand − open allocations` **warns, never
   blocks**; the hard guarantee stays the ledger capacity/stock invariants at commit (**WORKORDER-2**).
   Supply reserve-on-issue → deplete-on-complete (draw-to-zero reports a shortfall, never goes negative).
+- **Cap management as a WO (plan 043):** a `CAP_MGMT` OPERATION task type routes completion through
+  `capManagementTx` (extracted from the cellar `capManagementCore`) — volume-neutral, reserves nothing.
+  Technique is a `CapKind` **validated string** (pumpover / punchdown / cold-soak / maceration / **pulse-air**),
+  NOT a DB enum, so pulse-air needed no migration + no reverse/correct/edit wiring. **Rack-and-return
+  (délestage)** is modeled as a two-leg RACK template (`SYS-DELESTAGE`: out origin→holding, back
+  holding→origin) reusing `rackWineTx` — no new op type. **Batch completion** (`completeTasksBatchCore` /
+  `completeTasksBatchAction`, mirroring `bulkApproveTasksCore`) completes N tanks at once — N independent
+  `runLedgerWrite` txs, per-tank pass/fail, one `commandId` per task; the execute screen's `BatchCapExecutor`
+  is the "punch down 3, 4, 5" UI. The assistant can ISSUE a cap-management WO by chat
+  (`issue_cap_management_wo`, draft→confirm, deep-links to the WO).
 - **Templates** (`templates.ts`, `template-vocabulary.ts`, `system-templates.ts`): typed-field vocabulary
   (never free-form), versioned clone-on-customize; an issued WO snaps the version it used; recurring +
   pay-basis stub (`recurring.ts`). Seeded via `npm run seed:work-order-templates`.
@@ -165,4 +176,4 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-03 from the live codebase (Next 16.2, 89 Prisma models). Adds Phase 9/9.1 Work orders + the Cellarhand rebrand. Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-05 (plan 043): cap management wired into work orders (CAP_MGMT task type + capManagementTx, pulse-air CapKind, délestage two-leg RACK template, batch completion, issue_cap_management_wo assistant tool). Prior refresh 2026-07-03 (Next 16.2, 89 Prisma models; Phase 9/9.1 + Cellarhand rebrand). Ask Claude to refresh after each phase.*
