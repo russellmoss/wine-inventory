@@ -22,9 +22,12 @@ import { vesselLabel, type CellarBaseResult } from "@/lib/cellar/addition";
 // NOT a DB enum — no migration). The orthogonal vectors make both representable: cold soak =
 // MUST + afState:NONE (pre-ferment); extended maceration = MUST + afState:DRY (post-ferment, still
 // on skins) — the old linear phase enum couldn't express "dry but on skins".
-export type CapKind = "PUMPOVER" | "PUNCHDOWN" | "COLD_SOAK" | "MACERATION";
+// Plan 043: PULSE_AIR (pulsed compressed-air injection under the cap) is another volume-neutral cap-work
+// technique on a red ferment — modeled as a CapKind (a validated string, NOT a DB enum), so it rides the
+// existing CAP_MGMT op with zero migration and zero reverse/correct/edit wiring.
+export type CapKind = "PUMPOVER" | "PUNCHDOWN" | "COLD_SOAK" | "MACERATION" | "PULSE_AIR";
 
-export const CAP_KINDS: readonly CapKind[] = ["PUMPOVER", "PUNCHDOWN", "COLD_SOAK", "MACERATION"] as const;
+export const CAP_KINDS: readonly CapKind[] = ["PUMPOVER", "PUNCHDOWN", "COLD_SOAK", "MACERATION", "PULSE_AIR"] as const;
 
 export function isCapKind(v: unknown): v is CapKind {
   return typeof v === "string" && (CAP_KINDS as readonly string[]).includes(v);
@@ -44,6 +47,7 @@ const CAP_LABELS: Record<CapKind, string> = {
   PUNCHDOWN: "Punch-down",
   COLD_SOAK: "Cold soak",
   MACERATION: "Maceration",
+  PULSE_AIR: "Pulse-air",
 };
 
 /**

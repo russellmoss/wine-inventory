@@ -12,6 +12,7 @@ const CAP_LABEL: Record<string, string> = {
   PUNCHDOWN: "Punch-down",
   COLD_SOAK: "Cold soak",
   MACERATION: "Maceration",
+  PULSE_AIR: "Pulse-air",
 };
 
 function basisLabel(basis: string | null): string {
