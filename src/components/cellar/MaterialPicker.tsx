@@ -54,13 +54,6 @@ const controlStyle: React.CSSProperties = {
   color: "var(--text-primary)",
 };
 
-function stockLabel(m: CellarMaterialDTO): string {
-  const shown = materialDisplayName(m);
-  if (!m.isStockTracked) return shown;
-  const qty = m.onHand ?? 0;
-  return `${shown} · ${qty} ${m.stockUnit ?? ""} on hand`.trimEnd();
-}
-
 export function MaterialPicker({
   materials,
   value,
@@ -93,13 +86,14 @@ export function MaterialPicker({
     () => materials.find((m) => m.name.toLowerCase() === value.trim().toLowerCase()),
     [materials, value],
   );
-  // Map each DTO in scope to the MaterialFilterPicker option shape (id-based). The label carries the
-  // on-hand suffix (stockLabel) so it reads the same as the old dropdown.
+  // Map each DTO in scope to the MaterialFilterPicker option shape (id-based). Label is the material
+  // NAME only — MaterialFilterPicker renders the family + on-hand itself (via kind/onHand), so putting
+  // on-hand in the label too would double it up.
   const options = React.useMemo<MaterialPickerOption[]>(
     () =>
       list.map((m) => ({
         id: m.id,
-        label: stockLabel(m),
+        label: materialDisplayName(m),
         kind: m.kind,
         category: m.category,
         subcategory: m.subcategory,

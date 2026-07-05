@@ -51,8 +51,10 @@ export function DoseForm({
     );
   }
 
+  // Stack: the material picker gets its own full-width row (it's a search+chips+list panel, not a
+  // one-line control), then the dose inputs sit on the row below.
   return (
-    <FormShell>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <MaterialPicker
         materials={materials}
         value={material}
@@ -60,34 +62,36 @@ export function DoseForm({
         kind={kind === "fine" ? "FINING" : undefined}
         placeholder={kind === "add" ? "Material (e.g. KMBS, DAP)" : "Fining agent (e.g. bentonite)"}
         ariaLabel="Material"
-        style={{ flex: "1 1 200px" }}
+        style={{ width: "100%" }}
       />
-      <input
-        value={rate}
-        onChange={(e) => setRate(e.target.value)}
-        inputMode="decimal"
-        placeholder="Rate"
-        style={{ ...fieldStyle, width: 88 }}
-        aria-label="Dose rate"
-      />
-      <select value={basis} onChange={(e) => setBasis(e.target.value as RateBasis)} style={{ ...fieldStyle, width: 130 }} aria-label="Dose basis">
-        {RATE_BASES.map((b) => (
-          <option key={b} value={b}>
-            {RATE_BASIS_LABELS[b]}
-          </option>
-        ))}
-      </select>
-      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={{ ...fieldStyle, flex: "1 1 140px" }} aria-label="Note" />
-      <Button variant="primary" size="sm" disabled={pending || !valid} onClick={submit} style={{ minHeight: 44 }}>
-        {pending ? "Saving…" : `${verb} to ${vessel.code}`}
-      </Button>
-      <div aria-live="polite" style={{ width: "100%", marginTop: 8, fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+      <FormShell>
+        <input
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+          inputMode="decimal"
+          placeholder="Rate"
+          style={{ ...fieldStyle, width: 88 }}
+          aria-label="Dose rate"
+        />
+        <select value={basis} onChange={(e) => setBasis(e.target.value as RateBasis)} style={{ ...fieldStyle, width: 130 }} aria-label="Dose basis">
+          {RATE_BASES.map((b) => (
+            <option key={b} value={b}>
+              {RATE_BASIS_LABELS[b]}
+            </option>
+          ))}
+        </select>
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={{ ...fieldStyle, flex: "1 1 140px" }} aria-label="Note" />
+        <Button variant="primary" size="sm" disabled={pending || !valid} onClick={submit} style={{ minHeight: 44 }}>
+          {pending ? "Saving…" : `${verb} to ${vessel.code}`}
+        </Button>
+      </FormShell>
+      <div aria-live="polite" style={{ fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
         {computed
           ? `${rate} ${RATE_BASIS_LABELS[basis]} × ${vessel.totalL} L = ${computed.total} ${computed.unit}`
           : vessel.totalL <= 0
             ? "This vessel is empty — nothing to dose."
             : "Enter a material and a rate to see the computed total."}
       </div>
-    </FormShell>
+    </div>
   );
 }
