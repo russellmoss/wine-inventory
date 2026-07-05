@@ -1,0 +1,139 @@
+# Assistant capability coverage
+
+> Living matrix of **what a winemaker can do in the app** vs. **what the AI assistant can do for them**.
+> This is a *coverage matrix derived from the code*, not a parallel roadmap — regenerate it by auditing
+> the tool registry against the domain cores; do not hand-maintain a wishlist that drifts.
+> Last audited: 2026-07-05 (28 tools on main).
+
+## Why this exists
+
+The assistant (and the MCP surface it becomes) is the "talk to do anything" wedge. Every feature we make
+assistant-controllable compounds that wedge *now*. The policy (see the go-forward gate below) is: **a
+feature isn't done until its write path has a typed tool + a golden eval case.** This doc tracks the
+retrofit backlog for everything built before that policy, and stays the scoreboard afterward.
+
+## How coverage is enforced (the gate is real)
+
+- **Tripwire [[TRIP-AI-EVAL]]** (`docs/architecture/tripwires/TRIP-AI-EVAL.md`, `enforce: guard`, D26/H8):
+  no AI write surface ships without an eval.
+- **Structural coverage guard** — `test/evals/assistant-tools.eval.test.ts` runs in normal `vitest`/CI and
+  **fails when a `kind: "write"` tool has no golden case** in `test/evals/assistant-write-tools.golden.ts`
+  and isn't listed in that file's `UNCOVERED_OK` with a reason. Deterministic, zero-cost, drift-proof (it
+  reads the real `inputSchema`). This is the teeth: adding an additions tool will red CI until its golden
+  case exists.
+- **Golden dataset** — `assistant-write-tools.golden.ts`: `{ utterance, tool, args, note? }`, real
+  winemaker phrasing → the structured call the model must produce. `args` are NL-shaped (names, not ids;
+  the resolver maps them later).
+- **Gated LLM eval** — `npm run eval:assistant` (`ASSISTANT_EVAL=1` + `ANTHROPIC_API_KEY`) feeds each
+  utterance to the model with the real tool schemas and asserts it selects the expected tool. Run before
+  shipping a change to the tools, prompt, or model.
+
+## Definition of done for one capability
+
+1. A typed tool that **calls the existing core** (`*Core`) — never re-implements domain logic, never uses
+   the generic `db_*` tools for a domain write. Writes go through `signProposal` + a `Committer`
+   (confirm-nonce, exactly-once); entity names resolve via `tools/resolve.ts` / `scope.ts`.
+2. **Golden case(s)** in `assistant-write-tools.golden.ts` — happy-path utterances + at least one that
+   should be **refused / clarified** (ambiguous entity, missing required, a domain guard).
+3. **Stop condition** for the build loop: `tsc` clean · the capability's own `verify:*` script green (the
+   core already owns the domain invariants) · `vitest`/`eval:assistant` structural guard green · the new
+   golden case present.
+4. Flip the row here to 🟨/✅.
+
+## Cross-cutting risk to close during the retrofit
+
+The generic **`db_create` / `db_update` / `db_delete`** tools are a raw-write escape hatch that can bypass
+the cores (ledger balance, RLS, cost rules). They're allow-listed in `UNCOVERED_OK` as "generic CRUD
+catch-all." As each typed core-routed tool lands, **fence the generics to read-mostly / non-domain use**
+so the model can't route a domain write around a core.
+
+## Coverage matrix
+
+Legend: ✅ tool exists · 🟨 partial · ❌ missing
+
+### Cellar operations — daily floor
+| Capability | Core | Tool |
+|---|---|---|
+| Rack / transfer | `rackWineCore` | ✅ `rack_wine` |
+| Whole-vessel rack | `rackVesselCore` | 🟨 lot-rack only |
+| Additions (SO₂, nutrients, acid…) | `addAdditionCore` | ❌ |
+| Fining | `addFiningCore` | ❌ |
+| Topping | `topVesselCore` | ❌ |
+| Filtration | `filterVesselCore` | ❌ |
+| Cap management (punch-down / pump-over) | `capManagementCore` | ❌ |
+| Loss / evaporation | `recordLossCore` | ❌ |
+| Correct / edit / delete an op | `correctOperationCore`, `editNeutralOperationCore`, `deleteNeutralOperationCore` | ❌ |
+
+### Chemistry & tasting — high frequency
+| Capability | Core | Tool |
+|---|---|---|
+| Brix reading | `recordMeasurementsCore` | 🟨 `log_brix` / `delete_brix` (Brix only) |
+| pH / TA / full chem panel | `recordMeasurementsCore` | ❌ |
+| Tasting notes | `recordTastingNoteCore`, `voidTastingNoteCore` | ❌ |
+| Lab samples (pull / send / attach results) | `pullSampleCore` + 3 | ❌ |
+| Ferment panel submit | `submitPanelCore` | 🟨 overlaps Brix |
+| Lot state transitions (AF/MLF done, dry) | `transitionStateCore` | ❌ |
+
+### Transforms — seasonal, high value
+| Capability | Core | Tool |
+|---|---|---|
+| De-stem / crush | `crushLotCore` | ❌ |
+| Press / saignée | `pressLotCore` | ❌ |
+| Blend | `blendLotsCore` | ❌ |
+| Universal undo ("undo that last op") | `reverseOperationCore` | 🟨 `revert_transfer` = rack only |
+
+### Work orders — can author templates by chat, can't run them
+| Capability | Core | Tool |
+|---|---|---|
+| Template CRUD | `createTemplateCore` + 5 | ✅ 6 tools |
+| Create / issue a WO from a template | `createWorkOrderFromTemplateCore`, `issueWorkOrderCore` | ❌ |
+| Assign / schedule / cancel a WO | `assignWorkOrderCore`, `scheduleWorkOrderCore`, `cancelWorkOrderCore` | ❌ |
+| Start / complete a task | `startTaskCore`, `completeTaskCore` (+ maintenance/note/observation) | ❌ |
+| Approve / reject / bulk-approve | `approveTaskCore`, `rejectTaskCore`, `bulkApproveTasksCore` | ❌ |
+| Recurring WO generation | `generateRecurringInstanceCore` | ❌ |
+
+### Harvest — best covered
+| Capability | Core | Tool |
+|---|---|---|
+| Log a pick / weigh-in (pH/TA, plan 039) | harvest actions | ✅ `log_harvest_pick` |
+| Yield estimate | `recordYieldEstimate` | ✅ `set_yield_estimate` |
+| Field / vineyard notes | fieldnotes | ✅ `save_field_report` / query |
+
+### Specialized — lower frequency
+| Capability | Core | Tool |
+|---|---|---|
+| Sparkling: tirage / riddling / disgorgement / dosage / finalize (+ reverses) | `tirageCore` + 8 | ❌ |
+| Bottling / taxpaid & bottled removal | `removeTaxpaidCore`, `removeBottledCore` | ❌ |
+| Materials: create / receive / adjust stock | `createStockMaterialCore`, `receiveSupplyCore`, `setMaterialActiveCore` | 🟨 `adjust_inventory` + generic db |
+| Cost: receive bulk-wine cost, consume | `receiveBulkWineCostCore`, `consumeMaterialCore` | ❌ |
+| Blend trials | `createTrialCore` + 5 | ❌ |
+| Vessel groups | `createGroupCore` + 4 | ❌ |
+
+### Reads (query tools present)
+`query_brix`, `query_yield`, `query_recent_harvests`, `query_transfers`, `query_vineyard_status`,
+`query_field_reports`, `query_audit`, `report_anomalies`, `get_field_report_form`, plus the template reads.
+
+## Prioritized retrofit backlog
+
+**Wave 1 — daily floor, highest frequency (confirmed 2026-07-05):**
+1. **Additions + fining** (`addAdditionCore` / `addFiningCore`) — most frequent cellar write; uses the
+   `isDoseableCategory` additive-scope + `materialDisplayName` work from plan 036.
+2. **Chem panels beyond Brix (pH/TA/full)** + **tasting notes** (`recordMeasurementsCore`,
+   `recordTastingNoteCore`).
+3. **Work-order execution** — create-from-template + `completeTaskCore` (+ approve/reject); closes the
+   author→run loop.
+
+**Wave 2 — frequent cellar + transforms:**
+4. Transforms: **crush / press / blend** (`crushLotCore` / `pressLotCore` / `blendLotsCore`).
+5. **Topping, filtration, cap management, loss.**
+6. **Lot state transitions** (`transitionStateCore`) + **universal undo** (`reverseOperationCore`).
+
+**Wave 3 — specialized:**
+7. Materials (create/receive) · lab samples · bottling + compliance removals · sparkling family · cost ·
+   trials / groups / recurring.
+
+## Workflow
+
+Use the **`assistant-coverage-interview`** skill per capability: it interviews for the assistant-specific
+"what passes / what stops it / what it refuses," emits the tool spec + golden case(s) + a loop stop
+condition, and flips the row here. Then `/work` (or a `/loop`) builds it against the named core.
