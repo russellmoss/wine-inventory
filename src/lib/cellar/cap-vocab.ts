@@ -6,9 +6,11 @@
 // LotTreatment row (kind is a validated string, NOT a DB enum — no migration).
 // Plan 043: PULSE_AIR (pulsed compressed-air injection under the cap) is another volume-neutral cap-work
 // technique — same treatment, no migration, no reverse/correct/edit wiring.
-export type CapKind = "PUMPOVER" | "PUNCHDOWN" | "COLD_SOAK" | "MACERATION" | "PULSE_AIR";
+// Plan 044: BATONNAGE (stirring the lees in a barrel) is likewise a volume-neutral, per-lot treatment —
+// it rides the same CAP_MGMT op + LotTreatment row (kind is a validated string, no migration).
+export type CapKind = "PUMPOVER" | "PUNCHDOWN" | "COLD_SOAK" | "MACERATION" | "PULSE_AIR" | "BATONNAGE";
 
-export const CAP_KINDS: readonly CapKind[] = ["PUMPOVER", "PUNCHDOWN", "COLD_SOAK", "MACERATION", "PULSE_AIR"] as const;
+export const CAP_KINDS: readonly CapKind[] = ["PUMPOVER", "PUNCHDOWN", "COLD_SOAK", "MACERATION", "PULSE_AIR", "BATONNAGE"] as const;
 
 export function isCapKind(v: unknown): v is CapKind {
   return typeof v === "string" && (CAP_KINDS as readonly string[]).includes(v);
@@ -20,4 +22,5 @@ export const CAP_LABELS: Record<CapKind, string> = {
   COLD_SOAK: "Cold soak",
   MACERATION: "Maceration",
   PULSE_AIR: "Pulse-air",
+  BATONNAGE: "Bâtonnage (lees stir)",
 };
