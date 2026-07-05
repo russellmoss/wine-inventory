@@ -103,4 +103,19 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
     category: "Maintenance",
     spec: { tasks: [{ taskType: "GAS", title: "Gas the headspace", defaults: { gasType: "Argon" }, instructions: "Pick the gas; optionally record a depletable supply (e.g. dry ice)." }] },
   },
+  // ── Vineyard (plan 039): the "weigh the fruit" stage. The weigh-in logs a HarvestPick to the block's
+  // current-vintage record; the NOTE block prompts for fruit condition + MOG. Block + weight + Brix/pH/TA
+  // are run-time inputs (entered on the execute sub-form), not template defaults. ──
+  {
+    code: "SYS-HARVEST-WEIGH-IN",
+    name: "Fruit intake / weigh-in",
+    description: "Weigh in fruit off a vineyard block (weight + optional Brix/pH/TA) and record fruit condition + MOG.",
+    category: "Vineyard",
+    spec: {
+      tasks: [
+        { taskType: "HARVEST_WEIGH_IN", title: "Weigh in fruit", instructions: "Pick the block; record the fruit weight (kg/lb) and, if measured, Brix / pH / TA. Logs a harvest pick — no cellar ledger op." },
+        { taskType: "NOTE", title: "Fruit condition & MOG", instructions: "Note MOG (material other than grapes: leaves, stems, dirt), any rot / mold, sunburn / raisining, and overall fruit condition." },
+      ],
+    },
+  },
 ];

@@ -121,8 +121,8 @@ export function HarvestWeighInTaskForm({ task, data, onDone }: { task: WorkOrder
         </label>
       </div>
 
-      <label style={{ ...lbl, marginTop: 12 }}>Note (optional)
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. hand-picked, morning" style={big} />
+      <label style={{ ...lbl, marginTop: 12 }}>Fruit condition / MOG / notes (optional)
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. clean fruit, light MOG, some sunburn" style={big} />
       </label>
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
