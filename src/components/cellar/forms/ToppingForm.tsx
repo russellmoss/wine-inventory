@@ -27,7 +27,7 @@ export function ToppingForm({
   const overCap = resulting != null && resulting > vessel.capacityL + 1e-9;
 
   return (
-    <FormShell>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <VesselFilterPicker
         options={sources}
         value={fromVesselId}
@@ -36,17 +36,19 @@ export function ToppingForm({
         ariaLabel="Source vessel"
         emptyHint="No other vessel has wine to top from."
       />
-      <input value={volume} onChange={(e) => setVolume(e.target.value)} inputMode="decimal" placeholder="Litres" style={{ ...fieldStyle, width: 96 }} aria-label="Topping volume" />
-      <Button
-        variant="primary"
-        size="sm"
-        disabled={pending || !valid || overCap}
-        onClick={() => onSubmit(() => topVesselAction({ toVesselId: vessel.id, fromVesselId, volumeL: volNum }), `topped ${volume} L`)}
-        style={{ minHeight: 44 }}
-      >
-        {pending ? "Saving…" : `Top ${vessel.code}`}
-      </Button>
-      <div aria-live="polite" style={{ width: "100%", marginTop: 8, fontSize: 13, color: overCap ? "var(--danger)" : "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+      <FormShell>
+        <input value={volume} onChange={(e) => setVolume(e.target.value)} inputMode="decimal" placeholder="Litres" style={{ ...fieldStyle, width: 96 }} aria-label="Topping volume" />
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={pending || !valid || overCap}
+          onClick={() => onSubmit(() => topVesselAction({ toVesselId: vessel.id, fromVesselId, volumeL: volNum }), `topped ${volume} L`)}
+          style={{ minHeight: 44 }}
+        >
+          {pending ? "Saving…" : `Top ${vessel.code}`}
+        </Button>
+      </FormShell>
+      <div aria-live="polite" style={{ fontSize: 13, color: overCap ? "var(--danger)" : "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
         {sources.length === 0
           ? "No other vessel has wine to top from."
           : resulting != null
@@ -55,6 +57,6 @@ export function ToppingForm({
               : `${vessel.code}: ${vessel.totalL} → ${resulting} L`
             : "Pick a source and a volume."}
       </div>
-    </FormShell>
+    </div>
   );
 }

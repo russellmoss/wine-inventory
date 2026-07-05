@@ -44,7 +44,7 @@ export function RackForm({
   const valid = !!toVesselId && drawValid && landedValid && (!newBlendActive || tokenValid);
 
   return (
-    <FormShell>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <VesselFilterPicker
         options={destinations}
         value={toVesselId}
@@ -53,6 +53,7 @@ export function RackForm({
         ariaLabel="Destination vessel"
         emptyHint="No other vessel to rack into."
       />
+      <FormShell>
       <input value={drawL} onChange={(e) => setDrawL(e.target.value)} inputMode="decimal" placeholder="Litres out" style={{ ...fieldStyle, width: 100 }} aria-label="Litres moved out of this vessel" title={`Out of ${vessel.code} (defaults to its full volume)`} />
       <input value={landedL} onChange={(e) => setLandedL(e.target.value)} inputMode="decimal" placeholder="Litres in (measured)" style={{ ...fieldStyle, width: 140 }} aria-label="Measured litres into the destination" />
       {newBlendActive ? (
@@ -79,7 +80,8 @@ export function RackForm({
       >
         {pending ? "Saving…" : newBlendActive ? `Rack as new blend` : `Rack from ${vessel.code}`}
       </Button>
-      <div aria-live="polite" style={{ width: "100%", marginTop: 8, fontSize: 13, color: !landedValid ? "var(--danger)" : "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+      </FormShell>
+      <div aria-live="polite" style={{ fontSize: 13, color: !landedValid ? "var(--danger)" : "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
         {destinations.length === 0
           ? "No other vessel to rack into."
           : !landedValid
@@ -101,6 +103,6 @@ export function RackForm({
                 ? `Enter the measured volume landed to record lees loss (out − in). Leaving it blank logs no loss.`
                 : `Lees loss = ${lossL} L (out ${draw} − in ${landed}).`}
       </div>
-    </FormShell>
+    </div>
   );
 }
