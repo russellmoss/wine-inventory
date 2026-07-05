@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { requireTenantId } from "@/lib/tenant/context";
-import type { OperationType } from "@/lib/ledger/vocabulary";
+import { CORRECTABLE_CELLAR_TYPES, REVERSIBLE_SPARKLING_TYPES, type OperationType } from "@/lib/ledger/vocabulary";
 import { correctOperationCore } from "@/lib/cellar/correct";
 import { revertTransferCore, type LedgerActor } from "@/lib/vessels/rack-core";
 import { reverseSparklingOperationCore } from "@/lib/sparkling/correct";
@@ -56,9 +56,11 @@ export type ReversibilityVerdict =
 
 // The cellar-6 (correctOperationCore): neutral voids + volumetric reverts. Phase 14: REMOVE_TAXPAID
 // is a volumetric vessel→external op, so it reverses through the same generic corrector.
-const CELLAR_TYPES = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS", "REMOVE_TAXPAID"]);
+// Built from the shared vocabulary arrays so the dispatcher and the family cores gate on ONE
+// definition (no drift between reverse.ts, cellar/correct.ts, sparkling/correct.ts).
+const CELLAR_TYPES = new Set<OperationType>(CORRECTABLE_CELLAR_TYPES);
 // Sparkling bottle-phase (reverseSparklingOperationCore).
-const SPARKLING_TYPES = new Set<OperationType>(["TIRAGE", "RIDDLING", "DISGORGEMENT", "DOSAGE", "FINISH"]);
+const SPARKLING_TYPES = new Set<OperationType>(REVERSIBLE_SPARKLING_TYPES);
 // Origination / split transforms (reverseTransformCore) — 024b.
 const TRANSFORM_TYPES = new Set<OperationType>(["CRUSH", "PRESS", "SAIGNEE"]);
 

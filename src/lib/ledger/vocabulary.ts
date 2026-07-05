@@ -38,6 +38,34 @@ export const OPERATION_TYPES = [
 export type OperationType = (typeof OPERATION_TYPES)[number];
 
 /**
+ * Reversibility op-type sets — the SINGLE source of truth shared by the universal reversal
+ * dispatcher (`src/lib/ledger/reverse.ts`) AND the family cores it routes to, so the timeline
+ * verdict and the mutation can never gate on divergent definitions.
+ *
+ * CORRECTABLE_CELLAR_TYPES: the cellar-6 (+ REMOVE_TAXPAID) reversed via `correctOperationCore`
+ * — neutral voids + volumetric reverts (Phase 14: REMOVE_TAXPAID is a volumetric vessel→external
+ * op, so it reverses through the same generic corrector).
+ * REVERSIBLE_SPARKLING_TYPES: the bottle-phase ops reversed via `reverseSparklingOperationCore`.
+ */
+export const CORRECTABLE_CELLAR_TYPES = [
+  "ADDITION",
+  "FINING",
+  "CAP_MGMT",
+  "TOPPING",
+  "FILTRATION",
+  "LOSS",
+  "REMOVE_TAXPAID",
+] as const satisfies readonly OperationType[];
+
+export const REVERSIBLE_SPARKLING_TYPES = [
+  "TIRAGE",
+  "RIDDLING",
+  "DISGORGEMENT",
+  "DOSAGE",
+  "FINISH",
+] as const satisfies readonly OperationType[];
+
+/**
  * Phase 6 fermentation state — THREE orthogonal vectors, NOT a linear phase enum
  * (council C1). `afState` (alcoholic ferment) + `mlfState` (malolactic) live on the Lot
  * alongside the physical `LotForm`. STUCK is DERIVED from the Brix trend (council C3),

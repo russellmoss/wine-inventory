@@ -5,6 +5,7 @@ import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
 import { laterTouchedKeys } from "@/lib/ledger/reverse-guard";
 import { negateCostForReversedOp } from "@/lib/cost/reverse";
+import { CORRECTABLE_CELLAR_TYPES } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
 // Correction across the Phase 3 ops (Unit 8, D6/D15). Two shapes:
@@ -25,7 +26,8 @@ export type CorrectResult = {
 
 // Phase 14: REMOVE_TAXPAID is a volumetric vessel→external op (structurally identical to LOSS), so
 // its reversal is the same compensating-inverse path — routed here via the "cellar" reverse family.
-const CORRECTABLE = new Set(["ADDITION", "FINING", "CAP_MGMT", "FILTRATION", "TOPPING", "LOSS", "REMOVE_TAXPAID"]);
+// Built from the shared vocabulary array so this core and the reverse dispatcher gate on ONE definition.
+const CORRECTABLE = new Set<string>(CORRECTABLE_CELLAR_TYPES);
 
 /** Correct (revert volumetric / void neutral) a single Phase 3 operation. */
 export async function correctOperationCore(

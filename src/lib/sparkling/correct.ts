@@ -4,7 +4,7 @@ import { writeAudit } from "@/lib/audit";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { balanceKey, type LedgerLine } from "@/lib/ledger/math";
-import { FUNCTIONAL_ZERO_L, type LedgerBucket } from "@/lib/ledger/vocabulary";
+import { FUNCTIONAL_ZERO_L, REVERSIBLE_SPARKLING_TYPES, type LedgerBucket } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
 // Phase 7 Unit 11: corrections for bottle-phase ops (D6/D15). The D15 guard is EXTENDED to cover
@@ -323,7 +323,8 @@ export type ReverseSparklingResult = {
   message: string;
 };
 
-const REVERSIBLE_SPARKLING = new Set(["TIRAGE", "RIDDLING", "DISGORGEMENT", "DOSAGE", "FINISH"]);
+// Built from the shared vocabulary array so this core and the reverse dispatcher gate on ONE definition.
+const REVERSIBLE_SPARKLING = new Set<string>(REVERSIBLE_SPARKLING_TYPES);
 
 /**
  * Reverse a single sparkling bottle-phase operation, dispatching by type: TIRAGE → un-bottle to
