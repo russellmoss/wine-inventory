@@ -7,15 +7,17 @@ import { usePrefersReducedMotion } from "@/components/ui/Collapsible";
 // Phase 038: a global, collapsible assistant dock — the same AssistantChat brain on every authed page.
 // Hidden on /assistant (that's the full-page chat, so the two never double-mount + fight over history).
 // Lazy: AssistantChat (and its history fetch) only mount on first open. z-index 60 sits above modals (50).
-// Text-only by design: voice is a full-screen overlay that lives on the /assistant page — enabling it inside
-// a collapsible dock would leave the mic/audio session running invisibly when the dock is closed.
+// Voice: honors the same server gate as the full page (`voiceEnabled`). The overlay is a full-screen,
+// fixed dialog that escapes the panel. Because the dock keeps AssistantChat mounted (display:none) after
+// first open to preserve chat state, we pass `active={open}` so the chat force-closes any live voice
+// session when the dock collapses — otherwise the mic/audio loop would keep running invisibly.
 // Reduced-motion aware; Escape closes; focus is managed for a11y.
 
 const AssistantChat = React.lazy(() =>
   import("@/app/(app)/assistant/AssistantChat").then((m) => ({ default: m.AssistantChat })),
 );
 
-export function AssistantDock({ userLabel }: { userLabel: string }) {
+export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: string; voiceEnabled?: boolean }) {
   const pathname = usePathname();
   const reduced = usePrefersReducedMotion();
   const titleId = React.useId();
@@ -33,11 +35,15 @@ export function AssistantDock({ userLabel }: { userLabel: string }) {
     mounted.current = true;
   }, [open]);
 
-  // Escape closes the panel while it's open.
+  // Escape closes the panel while it's open — but defer to any modal dialog on top of it (e.g. the
+  // voice overlay, aria-modal), so one Escape ends voice and drops back to the chat rather than
+  // collapsing the whole dock. Matches the full-page behavior where Escape only leaves voice.
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -107,7 +113,7 @@ export function AssistantDock({ userLabel }: { userLabel: string }) {
           </div>
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: "0 var(--space-4) var(--space-4)" }}>
             <React.Suspense fallback={<div style={{ padding: "var(--space-4)", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)" }}>Loading…</div>}>
-              <AssistantChat userLabel={userLabel} embedded />
+              <AssistantChat userLabel={userLabel} embedded voiceEnabled={voiceEnabled} active={open} />
             </React.Suspense>
           </div>
         </div>

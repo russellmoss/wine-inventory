@@ -12,6 +12,9 @@ import {
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
 import type { Caption } from "./voice/useVoiceSession";
+import { useDictation } from "./voice/useDictation";
+
+type VoiceMode = "converse" | "transcribe";
 
 // Voice mode is heavy (Web Audio, MediaRecorder, the visualizer) and only loads
 // when the user actually opens it — keep it out of the main chat bundle.
@@ -81,10 +84,11 @@ const TOOL_LABELS: Record<string, string> = {
   archive_template: "Preparing to archive",
 };
 
-export function AssistantChat({ userLabel, voiceEnabled = false, embedded = false }: { userLabel: string; voiceEnabled?: boolean; embedded?: boolean }) {
+export function AssistantChat({ userLabel, voiceEnabled = false, embedded = false, active = true }: { userLabel: string; voiceEnabled?: boolean; embedded?: boolean; active?: boolean }) {
   const [items, setItems] = React.useState<Item[]>([]);
   const [input, setInput] = React.useState("");
   const [voiceOpen, setVoiceOpen] = React.useState(false);
+  const [voiceMode, setVoiceMode] = React.useState<VoiceMode>("converse");
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -92,6 +96,47 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
   const [navPending, setNavPending] = React.useState<NavPending | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // When embedded in the dock, the chat stays mounted (display:none) after the dock collapses so its
+  // history survives. `active` is false while the dock is closed — force any live voice session shut so
+  // the mic/audio loop can't keep running invisibly. The overlay stops its session on unmount. Handled
+  // during render (React's sanctioned adjust-state-on-prop-change pattern) to avoid a setState-in-effect.
+  const [prevActive, setPrevActive] = React.useState(active);
+  if (prevActive !== active) {
+    setPrevActive(active);
+    if (!active) setVoiceOpen(false);
+  }
+
+  // Dictation ("Transcribe" mode): record → transcribe → drop the text into the input box for
+  // review/edit, rather than the hands-free Converse loop. Append to whatever's already typed.
+  const appendDictation = React.useCallback((text: string) => {
+    setInput((prev) => (prev.trim() ? `${prev.replace(/\s*$/, "")} ${text}` : text));
+  }, []);
+  const dictation = useDictation(appendDictation);
+
+  // Remember the last-picked mic mode across sessions. Hydrate AFTER mount (not via a lazy
+  // useState initializer) because this is an SSR'd client component: reading localStorage during
+  // render would either crash on the server or cause a hydration mismatch. Post-mount read is the
+  // sanctioned external-system sync here.
+  React.useEffect(() => {
+    const saved = localStorage.getItem("assistant.voiceMode");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot hydration of a persisted UI pref
+    if (saved === "transcribe" || saved === "converse") setVoiceMode(saved);
+  }, []);
+  const pickVoiceMode = React.useCallback((m: VoiceMode) => {
+    setVoiceMode(m);
+    try {
+      localStorage.setItem("assistant.voiceMode", m);
+    } catch {
+      /* private mode / storage disabled — mode just won't persist */
+    }
+  }, []);
+
+  // Dock collapse (active=false) must also abort any in-flight dictation and free the mic —
+  // this is external-system teardown, so it belongs in an effect (unlike the pure voiceOpen reset).
+  React.useEffect(() => {
+    if (!active) dictation.cancel();
+  }, [active, dictation]);
 
   // Append a clickable in-app link as its own assistant line (used when we
   // choose NOT to auto-navigate: incidental mention, unsaved-work downgrade, or
@@ -494,21 +539,82 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
             }}
           />
           {voiceEnabled ? (
-            <Button
-              size="lg"
-              variant="secondary"
-              onClick={() => setVoiceOpen(true)}
-              disabled={busy}
-              title="Talk to the assistant"
-              aria-label="Talk to the assistant"
-            >
-              🎙 Talk
-            </Button>
+            voiceMode === "transcribe" ? (
+              <Button
+                size="lg"
+                variant={dictation.state === "recording" ? "primary" : "secondary"}
+                onClick={() => {
+                  if (dictation.state === "recording") dictation.stop();
+                  else if (dictation.state === "idle") void dictation.start();
+                }}
+                disabled={busy || dictation.state === "transcribing"}
+                title="Dictate into the message box"
+                aria-label={dictation.state === "recording" ? "Stop dictation" : "Start dictation"}
+              >
+                {dictation.state === "recording" ? "⏹ Stop" : dictation.state === "transcribing" ? "…" : "🎙 Talk"}
+              </Button>
+            ) : (
+              <Button
+                size="lg"
+                variant="secondary"
+                onClick={() => setVoiceOpen(true)}
+                disabled={busy}
+                title="Talk to the assistant"
+                aria-label="Talk to the assistant"
+              >
+                🎙 Talk
+              </Button>
+            )
           ) : null}
           <Button size="lg" onClick={() => void send()} disabled={busy || input.trim().length === 0}>
             {busy ? "…" : "Send"}
           </Button>
         </div>
+        {voiceEnabled ? (
+          <div style={{ ...column, display: "flex", alignItems: "center", gap: "var(--space-2)", paddingTop: 8, flexWrap: "wrap" }}>
+            <div
+              role="group"
+              aria-label="Microphone mode"
+              style={{ display: "inline-flex", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-pill)", overflow: "hidden" }}
+            >
+              {(["converse", "transcribe"] as const).map((m) => {
+                const selected = voiceMode === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => pickVoiceMode(m)}
+                    aria-pressed={selected}
+                    disabled={dictation.state !== "idle" || voiceOpen}
+                    title={m === "converse" ? "Talk back-and-forth out loud" : "Dictate into the message box"}
+                    style={{
+                      padding: "4px 12px",
+                      border: "none",
+                      cursor: dictation.state !== "idle" || voiceOpen ? "default" : "pointer",
+                      fontFamily: "var(--font-body)",
+                      fontSize: 12,
+                      background: selected ? "var(--accent)" : "transparent",
+                      color: selected ? "var(--accent-on)" : "var(--text-muted)",
+                    }}
+                  >
+                    {m === "converse" ? "💬 Converse" : "✍️ Transcribe"}
+                  </button>
+                );
+              })}
+            </div>
+            {dictation.error ? (
+              <span style={{ fontSize: 11.5, color: "var(--danger)", fontFamily: "var(--font-body)" }}>{dictation.error}</span>
+            ) : dictation.state === "recording" ? (
+              <span style={{ fontSize: 11.5, color: "var(--accent)", fontFamily: "var(--font-body)" }}>● Listening… tap Stop when done</span>
+            ) : dictation.state === "transcribing" ? (
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-body)" }}>Transcribing…</span>
+            ) : (
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-body)" }}>
+                {voiceMode === "converse" ? "Talk = voice conversation" : "Talk = dictate into the box"}
+              </span>
+            )}
+          </div>
+        ) : null}
         <div style={{ ...column, fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-body)", paddingTop: 6, paddingBottom: 2 }}>
           The assistant can make mistakes. It only acts on your permitted vineyards, and changes need your confirmation.
         </div>

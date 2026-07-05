@@ -218,6 +218,7 @@ export function AppShell({
   pendingWorkOrders = 0,
   sparklingEnabled = false,
   complianceDeadlines = { count: 0, urgent: false },
+  voiceEnabled = false,
 }: {
   user: { name?: string | null; email: string; role?: string | null };
   children: React.ReactNode;
@@ -225,6 +226,7 @@ export function AppShell({
   pendingWorkOrders?: number;
   sparklingEnabled?: boolean;
   complianceDeadlines?: { count: number; urgent: boolean };
+  voiceEnabled?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -315,8 +317,9 @@ export function AppShell({
         )}
       </main>
 
-      {/* Global assistant dock — hides itself on /assistant (the full-page chat). Text-only; voice lives there. */}
-      <AssistantDock userLabel={user.name || user.email} />
+      {/* Global assistant dock — hides itself on /assistant (the full-page chat). Voice honors the same
+          server gate as the full page; the dock force-closes any open voice session when it collapses. */}
+      <AssistantDock userLabel={user.name || user.email} voiceEnabled={voiceEnabled} />
     </div>
   );
 }
