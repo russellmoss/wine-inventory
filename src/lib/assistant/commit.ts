@@ -33,6 +33,9 @@ import { commitCreateWorkOrder } from "./tools/create-work-order";
 import { commitCompleteTask } from "./tools/complete-task";
 import { commitReviewTask } from "./tools/review-task";
 import { commitManageWorkOrder } from "./tools/manage-work-order";
+import { commitTopUp } from "./tools/top-up";
+import { commitFilterVessel } from "./tools/filter-vessel";
+import { commitLogCapManagement } from "./tools/log-cap-management";
 import { commitRevertTransfer } from "./tools/revert-transfer";
 import { commitDbCreate } from "./tools/db-create";
 import { commitDbUpdate } from "./tools/db-update";
@@ -56,6 +59,9 @@ const COMMITTERS: Record<string, Committer> = {
   complete_task: commitCompleteTask,
   review_task: commitReviewTask,
   manage_work_order: commitManageWorkOrder,
+  top_up: commitTopUp,
+  filter_vessel: commitFilterVessel,
+  log_cap_management: commitLogCapManagement,
   revert_transfer: commitRevertTransfer,
   db_create: commitDbCreate,
   db_update: commitDbUpdate,

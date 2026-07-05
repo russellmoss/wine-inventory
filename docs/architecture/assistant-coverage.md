@@ -92,10 +92,10 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | Whole-vessel rack | `rackVesselCore` | 🟨 lot-rack only |
 | Additions (SO₂, nutrients, acid…) | `addAdditionCore` | ✅ `add_addition` |
 | Fining | `addFiningCore` | ✅ `add_addition` (fining flag) |
-| Topping | `topVesselCore` | ❌ |
-| Filtration | `filterVesselCore` | ❌ |
-| Cap management (punch-down / pump-over) | `capManagementCore` | ❌ |
-| Loss / evaporation | `recordLossCore` | ❌ |
+| Topping | `topVesselCore` | ✅ `top_up` |
+| Filtration | `filterVesselCore` | ✅ `filter_vessel` |
+| Cap management (punch-down / pump-over) | `capManagementCore` | ✅ `log_cap_management` |
+| Loss / evaporation | `recordLossCore` | ❌ (Wave 2 — deferred by user) |
 | Correct / edit / delete an op | `correctOperationCore`, `editNeutralOperationCore`, `deleteNeutralOperationCore` | ❌ |
 
 ### Chemistry & tasting — high frequency
@@ -198,9 +198,11 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
      ledger op) + `manage_work_order` (start/assign/schedule/cancel, one action-discriminated tool).
      Bulk-approve ("approve all today's racks") deferred — needs a task-set resolver.
 
-**Wave 2 — frequent cellar + transforms:**
-4. Transforms: **crush / press / blend** (`crushLotCore` / `pressLotCore` / `blendLotsCore`).
-5. **Topping, filtration, cap management, loss.**
+**Wave 2 — frequent cellar + transforms** (reordered: simple ops first):
+5. ~~**Topping, filtration, cap management**~~ ✅ **DONE** — `top_up`, `filter_vessel`,
+   `log_cap_management` (one tool each). Loss deferred (user trimmed it this pass).
+4. **Blend** (`blendLotsCore`) — the one genuinely-new transform; standalone crush/press largely
+   duplicate the WO-lane completion, so slot them after blend if wanted.
 6. **Lot state transitions** (`transitionStateCore`) + **universal undo** (`reverseOperationCore`).
 
 **Wave 3 — specialized:**
