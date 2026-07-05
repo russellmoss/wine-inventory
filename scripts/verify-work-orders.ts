@@ -72,6 +72,15 @@ async function scrub() {
   await prisma.vessel.deleteMany({ where: { code: { startsWith: "ZZ-WO" } } });
   await prisma.lot.deleteMany({ where: { code: { startsWith: "ZZWO" } } });
   await prisma.cellarMaterial.deleteMany({ where: { id: { in: matIds } } });
+  // Plan 039: harvest weigh-in fixtures (vineyard → block → record → picks). Delete records (cascades
+  // picks) before blocks (block delete is RESTRICTed by records); WOs above already freed the task→block FK.
+  const zVineyards = await prisma.vineyard.findMany({ where: { name: { startsWith: "ZZWO" } }, select: { id: true } });
+  const zvIds = zVineyards.map((v) => v.id);
+  const zBlocks = await prisma.vineyardBlock.findMany({ where: { vineyardId: { in: zvIds } }, select: { id: true } });
+  const zbIds = zBlocks.map((b) => b.id);
+  await prisma.harvestRecord.deleteMany({ where: { blockId: { in: zbIds } } });
+  await prisma.vineyardBlock.deleteMany({ where: { id: { in: zbIds } } });
+  await prisma.vineyard.deleteMany({ where: { id: { in: zvIds } } });
   await prisma.auditLog.deleteMany({ where: { actorEmail: ACTOR.actorEmail } });
   console.log(`  removed ${woIds.length} WOs, ${opIds.length} ops, ${lotIds.length} lots (by pattern)`);
 }
@@ -153,6 +162,35 @@ async function main() {
     assert(near(supplyRestored, 1000), `stock restored on reject (${supplyRestored} → 1000)`);
     const negatedSum = num((await prisma.costLine.aggregate({ where: { lotId, component: "MATERIAL" }, _sum: { amount: true } }))._sum.amount);
     assert(near(negatedSum, 0), `MATERIAL cost nets to zero after reversal (${negatedSum})`);
+
+    // ── Plan 039: a HARVEST_WEIGH_IN block writes a HarvestPick (no ledger op). ──
+    const vineyard = await prisma.vineyard.create({ data: { name: "ZZWO Vineyard" } });
+    const block = await prisma.vineyardBlock.create({ data: { vineyardId: vineyard.id, blockLabel: "ZZWO Block" } });
+    const weighWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWO weigh-in",
+      tasks: [
+        { seq: 1, kind: "OBSERVATION", title: "Weigh in fruit", observationType: "HARVEST_WEIGH_IN", blockId: block.id, plannedPayload: {} },
+      ],
+    });
+    await issueWorkOrderCore(ACTOR, { workOrderId: weighWo.workOrderId });
+    const weighTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: weighWo.workOrderId } });
+    const opsBefore = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
+    const weighDone = await completeTaskCore(ACTOR, {
+      taskId: weighTask.id,
+      commandId: "zzwo-weigh-1",
+      actualPayload: { blockId: block.id, weightKg: 1200, brixAtPick: 24, phAtPick: 3.4, taAtPick: 6.2, pickDate: "2026-09-15" },
+    });
+    assert(weighDone.status === "DONE" && weighDone.operationId === null, "weigh-in went straight to DONE (no ledger op)");
+    const opsAfter = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
+    assert(opsAfter === opsBefore, "weigh-in wrote NO ledger op");
+    const pick = await prisma.harvestPick.findFirst({ where: { harvestRecord: { blockId: block.id, vintageYear: 2026 } } });
+    assert(!!pick && near(num(pick!.weightKg), 1200) && near(num(pick!.brixAtPick), 24) && near(num(pick!.phAtPick), 3.4) && near(num(pick!.taAtPick), 6.2),
+      "a HarvestPick was written to the block's 2026 record with weight/Brix/pH/TA");
+    // Idempotency: same commandId is a no-op (no second pick).
+    const weighDup = await completeTaskCore(ACTOR, { taskId: weighTask.id, commandId: "zzwo-weigh-1", actualPayload: { blockId: block.id, weightKg: 1200 } });
+    assert(weighDup.duplicate === true, "duplicate weigh-in completion (same commandId) is a no-op");
+    const pickCount = await prisma.harvestPick.count({ where: { harvestRecord: { blockId: block.id } } });
+    assert(pickCount === 1, "no duplicate HarvestPick written");
 
     console.log(`\nALL WORK-ORDER CHECKS PASSED ✓  (${passed} assertions)`);
   });
