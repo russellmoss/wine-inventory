@@ -27,6 +27,7 @@ export type WorkOrderTaskView = {
   destVesselId: string | null;
   lotId: string | null;
   materialId: string | null;
+  blockId: string | null;
   assigneeEmail: string | null;
   dueAt: string | null;
   plannedPayload: unknown;
@@ -55,7 +56,7 @@ export type WorkOrderDetail = {
 function taskView(t: {
   id: string; seq: number; kind: string; status: string; title: string; opType: string | null;
   observationType: string | null; activityType: string | null; instructions: string | null; sourceVesselId: string | null;
-  destVesselId: string | null; lotId: string | null; materialId: string | null; assigneeEmail: string | null;
+  destVesselId: string | null; lotId: string | null; materialId: string | null; blockId: string | null; assigneeEmail: string | null;
   dueAt: Date | null; plannedPayload: unknown; currentAttemptId: string | null; completionNote: string | null;
   deviationReason: string | null; startedByEmail: string | null;
 }): WorkOrderTaskView {
@@ -73,6 +74,7 @@ function taskView(t: {
     destVesselId: t.destVesselId,
     lotId: t.lotId,
     materialId: t.materialId,
+    blockId: t.blockId,
     assigneeEmail: t.assigneeEmail,
     dueAt: t.dueAt ? t.dueAt.toISOString() : null,
     plannedPayload: t.plannedPayload,
@@ -134,13 +136,15 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
     const actualOf = (t: (typeof wo.tasks)[number]) => (t.attempts[0]?.actualPayload ?? {}) as Record<string, unknown>;
 
     // Collect every referenced id (canonical columns + payload) so we can resolve them to human labels.
-    const vIds = new Set<string>(); const lIds = new Set<string>(); const mIds = new Set<string>();
+    const vIds = new Set<string>(); const lIds = new Set<string>(); const mIds = new Set<string>(); const bIds = new Set<string>();
     const add = (set: Set<string>, v: unknown) => { if (typeof v === "string" && v) set.add(v); };
     for (const t of wo.tasks) {
       const p = (t.plannedPayload ?? {}) as Record<string, unknown>;
       [t.destVesselId, t.sourceVesselId, p.vesselId, p.fromVesselId, p.toVesselId].forEach((x) => add(vIds, x));
       [t.lotId, p.lotId].forEach((x) => add(lIds, x));
       [t.materialId, p.materialId].forEach((x) => add(mIds, x));
+      // Plan 039: a fruit weigh-in targets a vineyard block; the chosen block is a run-time (attempt) value.
+      [t.blockId, p.blockId, actualOf(t).blockId].forEach((x) => add(bIds, x));
       // Transform run-time ids (dest/source vessels, parent/add lots, fraction vessels) come off the attempt.
       if (t.opType === "CRUSH" || t.opType === "PRESS") {
         const a = actualOf(t);
@@ -149,16 +153,18 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
         if (Array.isArray(a.fractions)) for (const f of a.fractions as Record<string, unknown>[]) add(vIds, f?.destVesselId);
       }
     }
-    const [vessels, lots, materials, vols] = await Promise.all([
+    const [vessels, lots, materials, blocks, vols] = await Promise.all([
       prisma.vessel.findMany({ where: { id: { in: [...vIds] } }, select: { id: true, code: true, type: true, capacityL: true } }),
       prisma.lot.findMany({ where: { id: { in: [...lIds] } }, select: { id: true, code: true } }),
       prisma.cellarMaterial.findMany({ where: { id: { in: [...mIds] } }, select: { id: true, name: true } }),
+      bIds.size ? prisma.vineyardBlock.findMany({ where: { id: { in: [...bIds] } }, select: { id: true, blockLabel: true, code: true, vineyard: { select: { name: true } } } }) : Promise.resolve([] as { id: string; blockLabel: string | null; code: string | null; vineyard: { name: string } }[]),
       vIds.size ? prisma.vesselLot.groupBy({ by: ["vesselId"], where: { vesselId: { in: [...vIds] } }, _sum: { volumeL: true } }) : Promise.resolve([] as { vesselId: string; _sum: { volumeL: unknown } }[]),
     ]);
     const vMap = new Map(vessels.map((v) => [v.id, v]));
     const volMap = new Map(vols.map((g) => [g.vesselId, Number(g._sum.volumeL ?? 0)]));
     const lMap = new Map(lots.map((l) => [l.id, l.code]));
     const mMap = new Map(materials.map((m) => [m.id, m.name]));
+    const bMap = new Map(blocks.map((b) => [b.id, `${b.vineyard.name} · ${b.blockLabel ?? b.code ?? "block"}`]));
     const vLabel = (id?: string | null) => { const v = id ? vMap.get(id) : null; return v ? `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}` : null; };
     const vVolume = (id?: string | null) => { const v = id ? vMap.get(id) : null; if (!v) return 0; return v.type === "BARREL" ? Number(v.capacityL ?? volMap.get(id!) ?? 0) : Number(volMap.get(id!) ?? 0); };
     const isBarrel = (id?: string | null) => (id ? vMap.get(id)?.type === "BARREL" : false);
@@ -171,6 +177,7 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
       const typeLabel = t.kind === "OPERATION" ? `Operation · ${t.opType ?? ""}`
         : t.kind === "MAINTENANCE" ? `Maintenance · ${(t.activityType ?? "").replace(/_/g, " ").toLowerCase()}`
         : t.kind === "NOTE" ? "Checklist"
+        : t.observationType === "HARVEST_WEIGH_IN" ? "Fruit intake / weigh-in"
         : `Observation · ${t.observationType ?? ""}`;
 
       // Vessel(s): rack/top read from→to; everything else a single vessel.
@@ -220,6 +227,15 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
         const pct = num(m.crushedPct); if (pct != null) rows.push({ label: "% crushed", value: String(pct) });
         const temp = num(m.mustTempC); if (temp != null) rows.push({ label: "Must temp", value: `${temp} °C` });
         const cycle = str(m.pressCycle); if (cycle) rows.push({ label: "Press cycle", value: cycle });
+      } else if (t.observationType === "HARVEST_WEIGH_IN") {
+        // Plan 039: block + weigh-in readings are run-time (attempt) values; merge planned ⊕ actual.
+        const m = { ...p, ...actualOf(t) };
+        const blockLabel = bMap.get(str(m.blockId) ?? t.blockId ?? "");
+        if (blockLabel) rows.push({ label: "Block", value: blockLabel });
+        const wkg = num(m.weightKg); if (wkg != null) rows.push({ label: "Weight", value: `${wkg} kg` });
+        const bx = num(m.brixAtPick); if (bx != null) rows.push({ label: "Brix", value: `${bx} °Bx` });
+        const ph = num(m.phAtPick); if (ph != null) rows.push({ label: "pH", value: String(ph) });
+        const ta = num(m.taAtPick); if (ta != null) rows.push({ label: "TA", value: `${ta} g/L` });
       } else if (t.opType === "PRESS") {
         const m = { ...p, ...actualOf(t) };
         const opSel = str(m.op); if (opSel) rows.push({ label: "Operation", value: opSel === "SAIGNEE" ? "Saignée" : "Press" });

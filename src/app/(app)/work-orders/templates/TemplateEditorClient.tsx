@@ -24,7 +24,8 @@ const GROUPS: { label: string; kinds: string[] }[] = [
 ];
 
 // The WHERE (vessel/lot) is always chosen at run time — never a template default.
-const isWhereField = (type: FieldType) => type === "vessel" || type === "lot";
+// The WHERE (vessel / lot / vineyard block) is always chosen at run time — never a template default.
+const isWhereField = (type: FieldType) => type === "vessel" || type === "lot" || type === "block";
 
 export function TemplateEditorClient({
   mode,
@@ -138,7 +139,10 @@ export function TemplateEditorClient({
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {blocks.map((b, i) => {
               const def = TASK_VOCABULARY[b.taskType];
-              const whatFields = def ? Object.entries(def.fields).filter(([, type]) => !isWhereField(type)) : [];
+              // Plan 039: a fruit weigh-in's inputs (block + weight + Brix/pH/TA) are ALL run-time — a
+              // template bakes none of them (they'd be nonsensical defaults), so show no default fields.
+              const isWeighIn = def?.observationType === "HARVEST_WEIGH_IN";
+              const whatFields = def && !isWeighIn ? Object.entries(def.fields).filter(([, type]) => !isWhereField(type)) : [];
               return (
                 <div key={b._key} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
