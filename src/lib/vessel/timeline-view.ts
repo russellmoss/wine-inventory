@@ -26,26 +26,6 @@ export const TIMELINE_FILTERS: { bucket: TimelineBucket; label: string }[] = [
   { bucket: "workOrders", label: "Work orders" },
 ];
 
-// Ledger op types that count as physical "movements" of wine between locations.
-const MOVEMENT_OPS = new Set([
-  "RACK",
-  "TOPPING",
-  "FILTRATION",
-  "LOSS",
-  "SEED",
-  "CRUSH",
-  "PRESS",
-  "SAIGNEE",
-  "BOTTLE",
-  "DEPLETE",
-  "ADJUST",
-  "TIRAGE",
-  "RIDDLING",
-  "DISGORGEMENT",
-  "DOSAGE",
-  "FINISH",
-]);
-
 /**
  * The filter bucket for one timeline item — used to narrow the feed client-side. OP items branch on
  * op.type: ADDITION/FINING → additions, CAP_MGMT → capMgmt, else the movement bucket. Non-op items

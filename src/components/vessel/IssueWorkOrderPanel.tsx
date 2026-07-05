@@ -31,6 +31,7 @@ export function IssueWorkOrderPanel({ vesselId, vesselLabel, onClose, onIssued }
   const [loading, setLoading] = React.useState(true);
   const [issued, setIssued] = React.useState<NewWorkOrderIssued | null>(null);
 
+  // Retry handler (a user click — synchronous setState here is fine, unlike inside an effect).
   const load = React.useCallback(() => {
     setLoading(true);
     setLoadError(null);
@@ -40,9 +41,17 @@ export function IssueWorkOrderPanel({ vesselId, vesselLabel, onClose, onIssued }
       .finally(() => setLoading(false));
   }, [vesselId]);
 
+  // Load on mount without a synchronous setState prelude (loading initializes to true); cancel-guarded.
   React.useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    getVesselWorkOrderComposerData(vesselId)
+      .then((d) => !cancelled && setData(d))
+      .catch((e) => !cancelled && setLoadError(e instanceof Error ? e.message : "Couldn't load work-order templates."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [vesselId]);
 
   // Create + issue, then hold on the warnings screen; the user dismisses when they've read them.
   const handleCreateAndIssue = React.useCallback(

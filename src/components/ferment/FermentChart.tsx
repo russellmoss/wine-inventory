@@ -39,20 +39,22 @@ function linePath(rows: Row[], xOf: (t: number) => number, yOf: (v: number) => n
   return rows.map((r, i) => `${i === 0 ? "M" : "L"}${xOf(r.t).toFixed(1)},${yOf(r.v).toFixed(1)}`).join(" ");
 }
 
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" &&
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 export function FermentChart({ points, height = 240 }: { points: FermentPoint[]; height?: number }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const svgRef = React.useRef<SVGSVGElement | null>(null);
-  const [active, setActive] = React.useState<number | null>(null);
+  // Active hover point: the snapped reading index + the container-relative tooltip X, both computed
+  // at pointer time (never by reading the ref during render — that's a lint error and a footgun).
+  const [active, setActive] = React.useState<{ idx: number; leftPx: number } | null>(null);
   const [pinned, setPinned] = React.useState(false);
   const [reduceMotion, setReduceMotion] = React.useState(false);
 
   React.useEffect(() => {
-    setReduceMotion(prefersReducedMotion());
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, []);
 
   if (points.length === 0) {
@@ -93,34 +95,30 @@ export function FermentChart({ points, height = 240 }: { points: FermentPoint[];
     ));
 
   const canCrosshair = sortedTs.length >= 2;
-  const activeT = active != null && active >= 0 && active < sortedTs.length ? sortedTs[active] : null;
+  const activeT = active != null && active.idx >= 0 && active.idx < sortedTs.length ? sortedTs[active.idx] : null;
 
-  // Map a client X coordinate onto the data-time domain. The SVG scales its VB_W-wide viewBox
-  // to whatever width it renders at, so translate the pointer's client X into viewBox units
-  // (clientX - left) * VB_W / renderedWidth, then invert the [tMin,tMax] → [PAD.left, VB_W-right]
-  // scaleLinear used for xOf. Guarded against a degenerate (single-timestamp) time domain.
-  const indexFromClientX = (clientX: number): number | null => {
+  // Map a client X coordinate onto the data-time domain, returning the snapped reading index AND the
+  // container-relative tooltip X (px). Reads the ref inside the EVENT handler (never during render).
+  // The SVG scales its VB_W-wide viewBox to its rendered width, so translate clientX into viewBox
+  // units then invert the [tMin,tMax] → [PAD.left, VB_W-right] scaleLinear used for xOf.
+  const activeFromClientX = (clientX: number): { idx: number; leftPx: number } | null => {
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
     if (rect.width <= 0) return null;
     const vbX = ((clientX - rect.left) / rect.width) * VB_W;
     const plotSpan = VB_W - PAD.right - PAD.left;
-    let targetT: number;
-    if (tMax === tMin || plotSpan <= 0) {
-      targetT = tMin;
-    } else {
-      const frac = (vbX - PAD.left) / plotSpan;
-      targetT = tMin + frac * (tMax - tMin);
-    }
+    const targetT = tMax === tMin || plotSpan <= 0 ? tMin : tMin + ((vbX - PAD.left) / plotSpan) * (tMax - tMin);
     const idx = nearestByX(sortedTs, targetT);
-    return idx >= 0 ? idx : null;
+    if (idx < 0) return null;
+    const px = xOf(sortedTs[idx]) * (rect.width / VB_W);
+    return { idx, leftPx: Math.min(Math.max(px, 8), rect.width - 8) };
   };
 
   const handleMove = (e: React.PointerEvent) => {
     if (pinned && e.pointerType !== "mouse") return; // touch: keep the pin until the next tap
-    const idx = indexFromClientX(e.clientX);
-    if (idx != null) setActive(idx);
+    const next = activeFromClientX(e.clientX);
+    if (next) setActive(next);
   };
 
   const handleLeave = (e: React.PointerEvent) => {
@@ -129,21 +127,16 @@ export function FermentChart({ points, height = 240 }: { points: FermentPoint[];
 
   const handleDown = (e: React.PointerEvent) => {
     // Tap-to-pin (touch/pen); a mouse click also pins so it survives a subsequent leave.
-    const idx = indexFromClientX(e.clientX);
-    if (idx == null) return;
-    setActive(idx);
+    const next = activeFromClientX(e.clientX);
+    if (!next) return;
+    setActive(next);
     if (e.pointerType !== "mouse") setPinned(true);
   };
 
-  // Tooltip position, in container-relative pixels, derived from the active point's viewBox X
-  // scaled to the rendered width. Kept inside the container so it never spills off-screen.
+  // Tooltip position is the container-relative X captured at pointer time (no ref read in render).
   let tooltip: React.ReactNode = null;
-  if (activeT != null) {
-    const svg = svgRef.current;
-    const rect = svg?.getBoundingClientRect();
-    const scale = rect && rect.width > 0 ? rect.width / VB_W : 1;
-    const px = xOf(activeT) * scale;
-    const clampLeft = rect ? Math.min(Math.max(px, 8), rect.width - 8) : px;
+  if (activeT != null && active != null) {
+    const clampLeft = active.leftPx;
     const bVal = brixAt.get(activeT);
     const tVal = tempAt.get(activeT);
     const pVal = phAt.get(activeT);

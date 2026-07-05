@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Button, Modal } from "@/components/ui";
+import { Button, Modal, Tabs } from "@/components/ui";
 import { FermentMonitor } from "@/components/ferment/FermentMonitor";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import { correctOperationAction, revertRackAction } from "@/lib/cellar/actions";
@@ -10,6 +10,13 @@ import type { RackVesselResult } from "@/lib/vessels/rack-core";
 import { vesselAnalysesAction } from "@/lib/chemistry/actions";
 import type { VesselAnalyses } from "@/lib/chemistry/data";
 import { AnalyteTrends } from "@/components/chemistry/AnalyteTrends";
+import { getVesselTimelineAction } from "@/lib/vessel/timeline-actions";
+import type { VesselTimeline as VesselTimelineData } from "@/lib/vessel/timeline-data";
+import type { TimelineItem } from "@/lib/lot/timeline";
+import { VesselTimeline } from "@/components/vessel/VesselTimeline";
+import { TimelineEntryDetail } from "@/components/vessel/TimelineEntryDetail";
+import { IssueWorkOrderPanel } from "@/components/vessel/IssueWorkOrderPanel";
+import { vesselLabel } from "@/lib/lot/timeline";
 import {
   DoseForm,
   ToppingForm,
@@ -65,28 +72,57 @@ export function CellarActions({
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<LoggedToast | null>(null);
-  const [analysesOpen, setAnalysesOpen] = React.useState(false);
+  // Plan 045: the "History" workspace modal (Actions / Analyses / History tabs). Opens from one
+  // button; loads the timeline + analyses on open and refetches them after any mutation.
+  const [historyOpen, setHistoryOpen] = React.useState(false);
   const [analyses, setAnalyses] = React.useState<VesselAnalyses | null>(null);
   const [analysesLoading, setAnalysesLoading] = React.useState(false);
-  const [fermentOpen, setFermentOpen] = React.useState(false);
+  const [timeline, setTimeline] = React.useState<VesselTimelineData | null>(null);
+  const [timelineLoading, setTimelineLoading] = React.useState(false);
+  const [timelineError, setTimelineError] = React.useState(false);
+  const [detailItem, setDetailItem] = React.useState<TimelineItem | null>(null);
+  const [issueWoOpen, setIssueWoOpen] = React.useState(false);
   const [fermentLotId, setFermentLotId] = React.useState(vessel.residentLots[0]?.lotId ?? "");
   const fermentLot = vessel.residentLots.find((l) => l.lotId === fermentLotId) ?? vessel.residentLots[0];
 
   // Form state resets across vessels via a `key` remount in the parent (BulkClient), so no
   // reset effect is needed here.
 
-  async function openAnalyses() {
-    setAnalysesOpen(true);
-    setAnalyses(null);
+  const loadAnalyses = React.useCallback(async () => {
     setAnalysesLoading(true);
     try {
       setAnalyses(await vesselAnalysesAction(vessel.id));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load analyses.");
-      setAnalysesOpen(false);
+    } catch {
+      setAnalyses(null);
     } finally {
       setAnalysesLoading(false);
     }
+  }, [vessel.id]);
+
+  const loadTimeline = React.useCallback(async () => {
+    setTimelineLoading(true);
+    setTimelineError(false);
+    try {
+      setTimeline(await getVesselTimelineAction(vessel.id));
+    } catch {
+      setTimelineError(true);
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, [vessel.id]);
+
+  // Refetch both feeds after a mutation (an edit/undo can shift the occupancy window — Codex #4 —
+  // so never optimistic-patch; a full reload recomputes the window).
+  const refreshWorkspace = React.useCallback(() => {
+    void loadTimeline();
+    void loadAnalyses();
+  }, [loadTimeline, loadAnalyses]);
+
+  function openHistory() {
+    setHistoryOpen(true);
+    setIssueWoOpen(false);
+    void loadTimeline();
+    void loadAnalyses();
   }
 
   React.useEffect(() => {
@@ -103,6 +139,7 @@ export function CellarActions({
         const res = await fn();
         setMode(null);
         setToast({ label, undo: () => correctOperationAction(res.operationId) });
+        refreshWorkspace();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
@@ -122,6 +159,7 @@ export function CellarActions({
         } else {
           setToast({ label, undo: () => revertRackAction(res.transferId) });
         }
+        refreshWorkspace();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
@@ -136,6 +174,7 @@ export function CellarActions({
         const { undo } = await fn();
         setMode(null);
         setToast({ label, undo });
+        refreshWorkspace();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
@@ -149,134 +188,166 @@ export function CellarActions({
       try {
         await fn();
         setToast(null);
+        refreshWorkspace();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't undo.");
       }
     });
   }
 
-  return (
-    <div style={{ borderTop: "1px solid var(--border-strong)", paddingTop: 14, marginTop: 4 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: mode ? 12 : 0 }}>
-        <span style={{ fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", marginRight: 4 }}>
-          Cellar actions
-        </span>
-        {ACTIONS.map((a) => (
-          <Button
-            key={a.mode}
-            variant={mode === a.mode ? "primary" : "secondary"}
-            size="sm"
-            disabled={pending}
-            onClick={() => setMode((m) => (m === a.mode ? null : a.mode))}
-            style={{ minHeight: 44 }}
+  // ── Actions tab: log any cellar action (mode-switch over the extracted forms) + issue a work order.
+  const actionsTab = (
+    <div>
+      {issueWoOpen ? (
+        <IssueWorkOrderPanel
+          vesselId={vessel.id}
+          vesselLabel={vesselLabel(vessel.type, vessel.code)}
+          onClose={() => setIssueWoOpen(false)}
+          onIssued={() => void loadTimeline()}
+        />
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: mode ? 12 : 0 }}>
+            <span style={{ fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", marginRight: 4 }}>
+              Cellar actions
+            </span>
+            {ACTIONS.map((a) => (
+              <Button
+                key={a.mode}
+                variant={mode === a.mode ? "primary" : "secondary"}
+                size="sm"
+                disabled={pending}
+                onClick={() => setMode((m) => (m === a.mode ? null : a.mode))}
+                style={{ minHeight: 44 }}
+              >
+                {a.label}
+              </Button>
+            ))}
+            <Button variant="ghost" size="sm" onClick={() => setIssueWoOpen(true)} style={{ minHeight: 44, marginLeft: "auto" }}>
+              Issue work order
+            </Button>
+          </div>
+
+          {error ? <p style={{ color: "var(--danger)", fontSize: 13, margin: "4px 0 10px" }}>{error}</p> : null}
+
+          {mode === "RACK" ? <RackForm vessel={vessel} kegOptions={kegOptions} pending={pending} onSubmit={runRack} /> : null}
+          {mode === "ADD" ? <DoseForm kind="add" vessel={vessel} materials={materials} pending={pending} onSubmit={runOp} /> : null}
+          {mode === "FINE" ? <DoseForm kind="fine" vessel={vessel} materials={materials} pending={pending} onSubmit={runOp} /> : null}
+          {mode === "TOP" ? <ToppingForm vessel={vessel} kegOptions={kegOptions} pending={pending} onSubmit={runOp} /> : null}
+          {mode === "FILTER" ? <FiltrationForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
+          {mode === "DUMP" ? <DumpForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
+          {mode === "CAP" ? <CapForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
+          {mode === "ANALYSIS" ? <AnalysisForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
+          {mode === "TASTING" ? <TastingForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
+          {mode === "SAMPLE" ? <SampleForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
+
+          {toast ? (
+            <div
+              role="status"
+              style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, padding: "10px 14px", borderRadius: "var(--radius-md)", background: "var(--accent-soft)", border: "1px solid var(--border-strong)", fontSize: 13.5 }}
+            >
+              <span style={{ color: "var(--text-primary)" }}>Logged · {toast.label}</span>
+              <Button variant="ghost" size="sm" disabled={pending} onClick={undo} style={{ minHeight: 36 }}>
+                Undo
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+
+  // ── Analyses tab: fermentation monitoring (interactive chart + readings + state) + all-analyte trends.
+  const analysesTab = (
+    <div>
+      {vessel.residentLots.length > 1 ? (
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+            Lot in this vessel
+          </label>
+          <select
+            value={fermentLot?.lotId ?? ""}
+            onChange={(e) => setFermentLotId(e.target.value)}
+            style={{ height: 44, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontSize: 14 }}
           >
-            {a.label}
-          </Button>
-        ))}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={vessel.residentLots.length === 0}
-          onClick={() => setFermentOpen(true)}
-          style={{ minHeight: 44, marginLeft: "auto" }}
-        >
-          Fermentation
-        </Button>
-        <Button variant="ghost" size="sm" onClick={openAnalyses} style={{ minHeight: 44 }}>
-          View analyses
-        </Button>
-      </div>
-
-      {error ? <p style={{ color: "var(--danger)", fontSize: 13, margin: "4px 0 10px" }}>{error}</p> : null}
-
-      {mode === "RACK" ? <RackForm vessel={vessel} kegOptions={kegOptions} pending={pending} onSubmit={runRack} /> : null}
-      {mode === "ADD" ? (
-        <DoseForm kind="add" vessel={vessel} materials={materials} pending={pending} onSubmit={runOp} />
-      ) : null}
-      {mode === "FINE" ? (
-        <DoseForm kind="fine" vessel={vessel} materials={materials} pending={pending} onSubmit={runOp} />
-      ) : null}
-      {mode === "TOP" ? <ToppingForm vessel={vessel} kegOptions={kegOptions} pending={pending} onSubmit={runOp} /> : null}
-      {mode === "FILTER" ? <FiltrationForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
-      {mode === "DUMP" ? <DumpForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
-      {mode === "CAP" ? <CapForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
-      {mode === "ANALYSIS" ? <AnalysisForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
-      {mode === "TASTING" ? <TastingForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
-      {mode === "SAMPLE" ? <SampleForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
-
-      {toast ? (
-        <div
-          role="status"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginTop: 14,
-            padding: "10px 14px",
-            borderRadius: "var(--radius-md)",
-            background: "var(--accent-soft)",
-            border: "1px solid var(--border-strong)",
-            fontSize: 13.5,
-          }}
-        >
-          <span style={{ color: "var(--text-primary)" }}>Logged · {toast.label}</span>
-          <Button variant="ghost" size="sm" disabled={pending} onClick={undo} style={{ minHeight: 36 }}>
-            Undo
-          </Button>
+            {vessel.residentLots.map((l) => (
+              <option key={l.lotId} value={l.lotId}>
+                {l.code}
+              </option>
+            ))}
+          </select>
         </div>
       ) : null}
+      {fermentLot ? (
+        <FermentMonitor key={fermentLot.lotId} vesselId={vessel.id} vesselCode={vessel.code} lotId={fermentLot.lotId} lotCode={fermentLot.code} materials={materials} />
+      ) : (
+        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>This vessel is empty — nothing to monitor.</p>
+      )}
+      <div style={{ marginTop: 24, borderTop: "1px solid var(--border-subtle)", paddingTop: 16 }}>
+        <span style={{ fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>All analyses over time</span>
+        <div style={{ marginTop: 10 }}>
+          {analysesLoading && !analyses ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading…</p>
+          ) : (
+            <AnalyteTrends
+              readings={analyses?.readings ?? []}
+              molecular={analyses?.molecular ?? null}
+              molecularDateLabel={analyses?.molecularDateLabel ?? undefined}
+              emptyHint="No analyses logged on this vessel yet — log a reading above."
+              singleColumn
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── History tab: the occupancy-scoped activity timeline (read); each entry opens the detail modal.
+  const historyTab = (
+    <VesselTimeline
+      vesselCode={vessel.code}
+      items={timeline?.items ?? []}
+      windowStartAt={timeline?.windowStartAt ?? null}
+      onOpenEntry={(item) => setDetailItem(item)}
+      loading={timelineLoading}
+      error={timelineError}
+      onRetry={() => void loadTimeline()}
+    />
+  );
+
+  return (
+    <div style={{ borderTop: "1px solid var(--border-strong)", paddingTop: 14, marginTop: 4 }}>
+      <Button variant="primary" size="sm" onClick={openHistory} style={{ minHeight: 44 }}>
+        History
+      </Button>
 
       <Modal
-        open={analysesOpen}
-        onClose={() => setAnalysesOpen(false)}
-        title={`Analyses · ${vessel.code}`}
-        subtitle={analyses ? `${analyses.panelCount} panel${analyses.panelCount === 1 ? "" : "s"} logged on this vessel` : "Loading…"}
-        maxWidth="min(1200px, 94vw)"
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title={`History · ${vessel.code}`}
+        subtitle="Everything done to this vessel"
+        maxWidth="min(1100px, 96vw)"
+        fullScreenOnMobile
       >
-        {analysesLoading ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading…</p>
-        ) : (
-          <AnalyteTrends
-            readings={analyses?.readings ?? []}
-            molecular={analyses?.molecular ?? null}
-            molecularDateLabel={analyses?.molecularDateLabel ?? undefined}
-            emptyHint="No analyses logged on this vessel yet — log one above."
-            singleColumn
-          />
-        )}
+        <Tabs
+          defaultTab="history"
+          tabs={[
+            { id: "actions", label: "Actions", content: actionsTab },
+            { id: "analyses", label: "Analyses", content: analysesTab },
+            { id: "history", label: "History", content: historyTab },
+          ]}
+        />
       </Modal>
 
-      <Modal
-        open={fermentOpen}
-        onClose={() => setFermentOpen(false)}
-        title={`Fermentation monitoring · ${vessel.code}`}
-        subtitle="Log sugar, pH and temperature over time"
-        maxWidth="min(900px, 94vw)"
-      >
-        {vessel.residentLots.length > 1 ? (
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-              Lot in this vessel
-            </label>
-            <select
-              value={fermentLot?.lotId ?? ""}
-              onChange={(e) => setFermentLotId(e.target.value)}
-              style={{ height: 44, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontSize: 14 }}
-            >
-              {vessel.residentLots.map((l) => (
-                <option key={l.lotId} value={l.lotId}>
-                  {l.code}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        {fermentLot ? (
-          <FermentMonitor key={fermentLot.lotId} vesselId={vessel.id} vesselCode={vessel.code} lotId={fermentLot.lotId} lotCode={fermentLot.code} materials={materials} />
-        ) : (
-          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>This vessel is empty — nothing to monitor.</p>
-        )}
-      </Modal>
+      <TimelineEntryDetail
+        item={detailItem}
+        lotIdForOp={() => vessel.residentLots[0]?.lotId ?? null}
+        onClose={() => setDetailItem(null)}
+        onMutated={() => {
+          setDetailItem(null);
+          refreshWorkspace();
+        }}
+      />
     </div>
   );
 }
