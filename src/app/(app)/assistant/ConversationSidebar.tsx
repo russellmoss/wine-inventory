@@ -29,6 +29,9 @@ type Props = {
   onNew: () => void;
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
+  // "sidebar" (default): the fixed 320px page rail. "panel": fill the parent full-width
+  // (no right border), for the narrow dock where history is a full-panel takeover.
+  variant?: "sidebar" | "panel";
 };
 
 // Render a ts_headline snippet (wraps matches in <mark>…</mark>) into styled
@@ -72,20 +75,23 @@ export function ConversationSidebar({
   onNew,
   onRename,
   onDelete,
+  variant = "sidebar",
 }: Props) {
   const showingSearch = searchResults !== null;
+  const panel = variant === "panel";
 
   return (
     <aside
       style={{
-        width: 320,
-        flexShrink: 0,
+        width: panel ? "100%" : 320,
+        flexShrink: panel ? 1 : 0,
+        minWidth: 0,
         display: "flex",
         flexDirection: "column",
         gap: "var(--space-3)",
         height: "100%",
-        borderRight: "1px solid var(--border-strong)",
-        paddingRight: "var(--space-3)",
+        borderRight: panel ? "none" : "1px solid var(--border-strong)",
+        paddingRight: panel ? 0 : "var(--space-3)",
       }}
     >
       <Button size="sm" onClick={onNew} style={{ width: "100%" }}>
