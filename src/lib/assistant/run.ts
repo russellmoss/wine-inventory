@@ -4,6 +4,8 @@ import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
 import { type AssistantEvent, asProposal, asNavigation } from "./assistant-events";
+import { logCalculation } from "@/lib/winemaking-calc/log";
+import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
 
 // Repo standard (matches src/lib/fieldnotes/ai.ts): claude-opus-4-8. This is the
 // agentic tool-use loop, NOT the single-shot output_config call in ai.ts.
@@ -115,6 +117,14 @@ export async function runAssistant(opts: {
               });
               emit({ type: "tool", name: tu.name, phase: "end", ok: true });
               continue;
+            }
+
+            // Post-tool-result logging hook (LOCKED #11): a successful calc-* read is audited HERE,
+            // not in the tool (read tools stay PURE — they never touch Prisma). Best-effort: the
+            // assistant request has no ALS tenant context, so logCalculation wraps in runAsTenant
+            // itself and swallows any failure — a logging miss never breaks the chat answer.
+            if (tu.name.startsWith("calc_") && isCalcToolResult(out)) {
+              await logCalculation(buildAssistantLogPayload(user, out));
             }
 
             results.push({

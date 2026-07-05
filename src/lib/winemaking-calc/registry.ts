@@ -5,11 +5,20 @@
 // LOCKED registry rule: discriminated union `kind: "calc" | "static"`; NO React/JSX in here
 // (static reference *content* is mapped by id at the page layer). `compute` is a plain function
 // (server-importable). Pure — tested in test/winemaking-calc-registry.test.ts.
+//
+// PR2 (deferred PR1 /review items folded in here since PR2 modifies this file):
+//   1. `doseDescriptor()` factory — the 5 structurally-identical dosing descriptors
+//      (yeast / nutrient / acid / fining / oak) share one factory (DRY), mirroring the existing
+//      `conversionDescriptor()`.
+//   2. Typed unit readers — enum reads route through `requireOneOf` (→ DomainError) instead of a
+//      silent `as` cast. The page's <select>s constrain units, but PR2's assistant tools dispatch
+//      to these SAME compute functions with model-supplied units, so a bad unit must fail loudly.
 
 import {
   VOLUME_UNITS, VOLUME_UNIT_LABEL, RATE_UNITS, RateUnitId, MASS_UNITS, MASS_UNIT_LABEL,
   LIQUID_UNITS, LIQUID_UNIT_LABEL, VolumeUnit, MassUnit, LiquidUnit, round,
 } from "./units";
+import { requireOneOf } from "./validate";
 import { convertAll, convertTemp, unitsFor, ConvertibleDimension } from "./conversions";
 import { so2AsKmbs, so2AsLiquidSolution, freeSO2ForMolecularTarget, so2Reduction } from "./so2";
 import {
@@ -65,9 +74,18 @@ const rateOpts: FieldOption[] = (Object.keys(RATE_UNITS) as RateUnitId[]).map((u
 const massOpts: FieldOption[] = MASS_UNITS.map((u) => ({ value: u, label: MASS_UNIT_LABEL[u] }));
 const liqOpts: FieldOption[] = LIQUID_UNITS.map((u) => ({ value: u, label: LIQUID_UNIT_LABEL[u] }));
 
-// input readers (values arrive as strings from form fields)
+// input readers (values arrive as strings from form fields OR from the assistant's model output)
 const n = (input: Record<string, string | number>, k: string) => Number(input[k]);
 const s = (input: Record<string, string | number>, k: string) => String(input[k]);
+
+// Typed unit readers (deferred /review item 2): validate enum membership, throw DomainError on a
+// bad unit — never a silent `as` cast that would compute NaN downstream. Used by every compute.
+const RATE_UNIT_IDS = Object.keys(RATE_UNITS) as RateUnitId[];
+const vu = (input: Record<string, string | number>, k: string): VolumeUnit => requireOneOf(s(input, k), VOLUME_UNITS, "Volume unit");
+const mu = (input: Record<string, string | number>, k: string): MassUnit => requireOneOf(s(input, k), MASS_UNITS, "Output unit");
+const lu = (input: Record<string, string | number>, k: string): LiquidUnit => requireOneOf(s(input, k), LIQUID_UNITS, "Output unit");
+const rateU = (input: Record<string, string | number>, k: string): RateUnitId => requireOneOf(s(input, k), RATE_UNIT_IDS, "Rate unit");
+const tempU = (input: Record<string, string | number>, k: string): "C" | "F" => requireOneOf(s(input, k), ["C", "F"] as const, "Temperature unit");
 
 const volField = (def: VolumeUnit = "L"): FieldSpec => ({ name: "volumeUnit", label: "Volume unit", kind: "select", options: volOpts, default: def });
 const rateField = (name: string, label: string, def: RateUnitId = "ppm"): FieldSpec => ({ name, label, kind: "select", options: rateOpts, default: def });
@@ -98,6 +116,44 @@ function conversionDescriptor(dim: ConvertibleDimension): CalcDescriptor {
   };
 }
 
+/**
+ * Factory for the structurally-identical mass-dosing calculators (yeast / nutrient / acid / fining
+ * / oak): volume + rate + rate-unit + output-unit → a single mass, via the family's engine fn
+ * (each keeps its own guard messages). Mirrors `conversionDescriptor()`. Deferred /review item 1.
+ */
+function doseDescriptor(cfg: {
+  id: string;
+  section: CalcSection;
+  name: string;
+  description: string;
+  volumeLabel: string;
+  rateLabel: string;
+  rateDefault: number;
+  resultLabel: string;
+  formula: string;
+  fn: (i: { volume: number; volumeUnit: VolumeUnit; rate: number; rateUnit: RateUnitId; outUnit: MassUnit }) => number;
+}): CalcDescriptor {
+  return {
+    kind: "calc",
+    id: cfg.id,
+    section: cfg.section,
+    name: cfg.name,
+    description: cfg.description,
+    fields: [
+      { name: "volume", label: cfg.volumeLabel, kind: "number", default: 1000 }, volField(),
+      { name: "rate", label: cfg.rateLabel, kind: "number", default: cfg.rateDefault }, rateField("rateUnit", "Rate unit", "g_L"), massField(),
+    ],
+    compute: (input) => ({
+      values: [{
+        label: cfg.resultLabel,
+        value: round(cfg.fn({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), rate: n(input, "rate"), rateUnit: rateU(input, "rateUnit"), outUnit: mu(input, "outUnit") }), 2),
+        unit: s(input, "outUnit"),
+      }],
+      formula: cfg.formula,
+    }),
+  };
+}
+
 export const CALCULATORS: Descriptor[] = [
   // ── Section 1: Conversions ──
   ...CONVERSION_DIMS.map(conversionDescriptor),
@@ -109,7 +165,7 @@ export const CALCULATORS: Descriptor[] = [
       { name: "from", label: "From", kind: "select", options: [{ value: "C", label: "°C" }, { value: "F", label: "°F" }], default: "C" },
     ],
     compute: (input) => {
-      const from = s(input, "from") as "C" | "F";
+      const from = tempU(input, "from");
       const to = from === "C" ? "F" : "C";
       return { values: [{ label: `°${to}`, value: round(convertTemp(n(input, "value"), from, to), 4), unit: `°${to}` }], formula: "°F = °C×9/5+32 · °C = (°F−32)×5/9" };
     },
@@ -125,7 +181,7 @@ export const CALCULATORS: Descriptor[] = [
       massField(),
     ],
     compute: (input) => ({
-      values: [{ label: "KMBS", value: round(so2AsKmbs({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, target: n(input, "target"), targetUnit: s(input, "targetUnit") as RateUnitId, outUnit: s(input, "outUnit") as MassUnit }), 2), unit: s(input, "outUnit") }],
+      values: [{ label: "KMBS", value: round(so2AsKmbs({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), target: n(input, "target"), targetUnit: rateU(input, "targetUnit"), outUnit: mu(input, "outUnit") }), 2), unit: s(input, "outUnit") }],
       formula: "grams SO₂ = liters × target/factor; KMBS = ÷ 0.576",
     }),
   },
@@ -139,7 +195,7 @@ export const CALCULATORS: Descriptor[] = [
       { name: "outUnit", label: "Output unit", kind: "select", options: liqOpts, default: "mL" },
     ],
     compute: (input) => ({
-      values: [{ label: "Solution", value: round(so2AsLiquidSolution({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, rate: n(input, "rate"), rateUnit: s(input, "rateUnit") as RateUnitId, concentrationPct: n(input, "concentrationPct"), outUnit: s(input, "outUnit") as LiquidUnit }), 2), unit: s(input, "outUnit") }],
+      values: [{ label: "Solution", value: round(so2AsLiquidSolution({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), rate: n(input, "rate"), rateUnit: rateU(input, "rateUnit"), concentrationPct: n(input, "concentrationPct"), outUnit: lu(input, "outUnit") }), 2), unit: s(input, "outUnit") }],
       formula: "((liters/factor) × ((rate/conc)×100)) / liquidFactor",
     }),
   },
@@ -165,7 +221,7 @@ export const CALCULATORS: Descriptor[] = [
       { name: "concentration", label: "Peroxide strength", kind: "number", default: 3 }, rateField("concentrationUnit", "Peroxide unit", "g_L"),
     ],
     compute: (input) => ({
-      values: [{ label: "Reduction dose", value: round(so2Reduction({ actual: n(input, "actual"), actualUnit: s(input, "actualUnit") as RateUnitId, target: n(input, "target"), targetUnit: s(input, "targetUnit") as RateUnitId, concentration: n(input, "concentration"), concentrationUnit: s(input, "concentrationUnit") as RateUnitId }), 3) }],
+      values: [{ label: "Reduction dose", value: round(so2Reduction({ actual: n(input, "actual"), actualUnit: rateU(input, "actualUnit"), target: n(input, "target"), targetUnit: rateU(input, "targetUnit"), concentration: n(input, "concentration"), concentrationUnit: rateU(input, "concentrationUnit") }), 3) }],
       formula: "35/conc × (actual×factor × (target×1000)/factor × 0.0014) / factor",
     }),
   },
@@ -208,26 +264,20 @@ export const CALCULATORS: Descriptor[] = [
       { name: "temp", label: "Sample temp", kind: "number", default: 25 },
       { name: "tempUnit", label: "Temp unit", kind: "select", options: [{ value: "C", label: "°C" }, { value: "F", label: "°F" }], default: "C" },
     ],
-    compute: (input) => ({ values: [{ label: "Corrected SG", value: round(sgTemperatureCorrection({ measuredSG: n(input, "measuredSG"), temp: n(input, "temp"), tempUnit: s(input, "tempUnit") as "C" | "F" }), 4) }], formula: "corrected = measured + (3.59e-6·T² + 6.971e-5·T − 1.51687e-3), T in °F" }),
+    compute: (input) => ({ values: [{ label: "Corrected SG", value: round(sgTemperatureCorrection({ measuredSG: n(input, "measuredSG"), temp: n(input, "temp"), tempUnit: tempU(input, "tempUnit") }), 4) }], formula: "corrected = measured + (3.59e-6·T² + 6.971e-5·T − 1.51687e-3), T in °F" }),
   },
-  {
-    kind: "calc", id: "yeast-dose", section: "Fermentation & Sugar", name: "Yeast dosing",
-    description: "Mass of yeast to add at a target rate.",
-    fields: [
-      { name: "volume", label: "Juice volume", kind: "number", default: 1000 }, volField(),
-      { name: "rate", label: "Dose rate", kind: "number", default: 0.3 }, rateField("rateUnit", "Rate unit", "g_L"), massField(),
-    ],
-    compute: (input) => ({ values: [{ label: "Yeast", value: round(yeastNutrientDose({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, rate: n(input, "rate"), rateUnit: s(input, "rateUnit") as RateUnitId, outUnit: s(input, "outUnit") as MassUnit }), 2), unit: s(input, "outUnit") }], formula: "mass = liters × rate/factor (or × factor for lbs/1000gal)" }),
-  },
-  {
-    kind: "calc", id: "nutrient-dose", section: "Fermentation & Sugar", name: "Nutrient dosing",
-    description: "Mass of fermentation nutrient at a target rate.",
-    fields: [
-      { name: "volume", label: "Juice volume", kind: "number", default: 1000 }, volField(),
-      { name: "rate", label: "Dose rate", kind: "number", default: 0.25 }, rateField("rateUnit", "Rate unit", "g_L"), massField(),
-    ],
-    compute: (input) => ({ values: [{ label: "Nutrient", value: round(yeastNutrientDose({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, rate: n(input, "rate"), rateUnit: s(input, "rateUnit") as RateUnitId, outUnit: s(input, "outUnit") as MassUnit }), 2), unit: s(input, "outUnit") }], formula: "mass = liters × rate/factor" }),
-  },
+  doseDescriptor({
+    id: "yeast-dose", section: "Fermentation & Sugar", name: "Yeast dosing",
+    description: "Mass of yeast to add at a target rate.", volumeLabel: "Juice volume",
+    rateLabel: "Dose rate", rateDefault: 0.3, resultLabel: "Yeast", fn: yeastNutrientDose,
+    formula: "mass = liters × rate/factor (or × factor for lbs/1000gal)",
+  }),
+  doseDescriptor({
+    id: "nutrient-dose", section: "Fermentation & Sugar", name: "Nutrient dosing",
+    description: "Mass of fermentation nutrient at a target rate.", volumeLabel: "Juice volume",
+    rateLabel: "Dose rate", rateDefault: 0.25, resultLabel: "Nutrient", fn: yeastNutrientDose,
+    formula: "mass = liters × rate/factor",
+  }),
   {
     kind: "calc", id: "yan-dose", section: "Fermentation & Sugar", name: "YAN (nitrogen) dosing",
     description: "Mass of a nitrogen product to raise YAN by a target amount.",
@@ -237,7 +287,7 @@ export const CALCULATORS: Descriptor[] = [
       { name: "product", label: "Product", kind: "select", options: Object.keys(YAN_PRODUCTS).map((p) => ({ value: p, label: p })), default: "DAP" },
       massField(),
     ],
-    compute: (input) => ({ values: [{ label: s(input, "product"), value: round(yanDose({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, yanIncrease: n(input, "yanIncrease"), yanUnit: s(input, "yanUnit") as RateUnitId, product: s(input, "product"), outUnit: s(input, "outUnit") as MassUnit }), 2), unit: s(input, "outUnit") }], formula: "grams = (liters / src / factor) × YAN increase" }),
+    compute: (input) => ({ values: [{ label: s(input, "product"), value: round(yanDose({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), yanIncrease: n(input, "yanIncrease"), yanUnit: rateU(input, "yanUnit"), product: s(input, "product"), outUnit: mu(input, "outUnit") }), 2), unit: s(input, "outUnit") }], formula: "grams = (liters / src / factor) × YAN increase" }),
   },
 
   // ── Section 4: Chaptalization & Dilution ──
@@ -251,7 +301,7 @@ export const CALCULATORS: Descriptor[] = [
       { name: "denom", label: "Reference term", kind: "number", default: 100 },
       { name: "outUnit", label: "Output unit", kind: "select", options: volOpts, default: "L" },
     ],
-    compute: (input) => ({ values: [{ label: "Sugar to add", value: round(chaptalization({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, currentBrix: n(input, "currentBrix"), targetBrix: n(input, "targetBrix"), denom: n(input, "denom"), outUnit: s(input, "outUnit") as VolumeUnit }), 2) }], formula: "liters × (target−current)/(denom−target)" }),
+    compute: (input) => ({ values: [{ label: "Sugar to add", value: round(chaptalization({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), currentBrix: n(input, "currentBrix"), targetBrix: n(input, "targetBrix"), denom: n(input, "denom"), outUnit: vu(input, "outUnit") }), 2) }], formula: "liters × (target−current)/(denom−target)" }),
   },
   {
     kind: "calc", id: "water-dilution", section: "Chaptalization & Dilution", name: "Water dilution (Brix down)",
@@ -262,19 +312,16 @@ export const CALCULATORS: Descriptor[] = [
       { name: "targetBrix", label: "Target Brix", kind: "number", default: 22 },
       { name: "outUnit", label: "Output unit", kind: "select", options: volOpts, default: "L" },
     ],
-    compute: (input) => ({ values: [{ label: "Water to add", value: round(waterDilution({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, currentBrix: n(input, "currentBrix"), targetBrix: n(input, "targetBrix"), outUnit: s(input, "outUnit") as VolumeUnit }), 2) }], formula: "sugar mass-balance on 261.3 SGs → water volume" }),
+    compute: (input) => ({ values: [{ label: "Water to add", value: round(waterDilution({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), currentBrix: n(input, "currentBrix"), targetBrix: n(input, "targetBrix"), outUnit: vu(input, "outUnit") }), 2) }], formula: "sugar mass-balance on 261.3 SGs → water volume" }),
   },
 
   // ── Section 5: Acid & Deacidification ──
-  {
-    kind: "calc", id: "acid-addition", section: "Acid & Deacidification", name: "Acid addition",
-    description: "Mass of acid to add at a target rate.",
-    fields: [
-      { name: "volume", label: "Wine volume", kind: "number", default: 1000 }, volField(),
-      { name: "rate", label: "Acid rate", kind: "number", default: 1 }, rateField("rateUnit", "Rate unit", "g_L"), massField(),
-    ],
-    compute: (input) => ({ values: [{ label: "Acid", value: round(acidAddition({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, rate: n(input, "rate"), rateUnit: s(input, "rateUnit") as RateUnitId, outUnit: s(input, "outUnit") as MassUnit }), 2), unit: s(input, "outUnit") }], formula: "mass = liters × rate/factor" }),
-  },
+  doseDescriptor({
+    id: "acid-addition", section: "Acid & Deacidification", name: "Acid addition",
+    description: "Mass of acid to add at a target rate.", volumeLabel: "Wine volume",
+    rateLabel: "Acid rate", rateDefault: 1, resultLabel: "Acid", fn: acidAddition,
+    formula: "mass = liters × rate/factor",
+  }),
   {
     kind: "calc", id: "deacidification", section: "Acid & Deacidification", name: "Deacidification (3 reagents)",
     description: "Reagent mass for CaCO₃ / KHCO₃ / K-bicarb from a TA drop. Advisory — verify by bench trial.",
@@ -285,31 +332,25 @@ export const CALCULATORS: Descriptor[] = [
       { name: "targetTA", label: "Target TA", kind: "number", default: 6 }, rateField("targetTAUnit", "Target unit", "g_L"), massField(),
     ],
     compute: (input) => {
-      const r = deacidification({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, currentTA: n(input, "currentTA"), currentTAUnit: s(input, "currentTAUnit") as RateUnitId, targetTA: n(input, "targetTA"), targetTAUnit: s(input, "targetTAUnit") as RateUnitId, outUnit: s(input, "outUnit") as MassUnit });
+      const r = deacidification({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), currentTA: n(input, "currentTA"), currentTAUnit: rateU(input, "currentTAUnit"), targetTA: n(input, "targetTA"), targetTAUnit: rateU(input, "targetTAUnit"), outUnit: mu(input, "outUnit") });
       const u = s(input, "outUnit");
       return { values: [{ label: "Calcium carbonate", value: round(r.caco3, 2), unit: u }, { label: "Potassium bicarbonate", value: round(r.khco3, 2), unit: u }, { label: "K-bicarb (alt)", value: round(r.kbicarbAlt, 2), unit: u }], formula: "delta × liters × k (k = 0.67 / 0.673 / 0.62)" };
     },
   },
 
   // ── Section 6: Oak, Fining & Copper ──
-  {
-    kind: "calc", id: "fining", section: "Oak, Fining & Copper", name: "Fining agent dosing",
-    description: "Mass of fining agent at a target rate.",
-    fields: [
-      { name: "volume", label: "Wine volume", kind: "number", default: 1000 }, volField(),
-      { name: "rate", label: "Dose rate", kind: "number", default: 0.5 }, rateField("rateUnit", "Rate unit", "g_L"), massField(),
-    ],
-    compute: (input) => ({ values: [{ label: "Fining agent", value: round(finingDose({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, rate: n(input, "rate"), rateUnit: s(input, "rateUnit") as RateUnitId, outUnit: s(input, "outUnit") as MassUnit }), 2), unit: s(input, "outUnit") }], formula: "mass = liters × rate/factor (or × factor for lbs/1000gal)" }),
-  },
-  {
-    kind: "calc", id: "oak", section: "Oak, Fining & Copper", name: "Oak addition",
-    description: "Mass of oak at a target rate.",
-    fields: [
-      { name: "volume", label: "Wine volume", kind: "number", default: 1000 }, volField(),
-      { name: "rate", label: "Dose rate", kind: "number", default: 2 }, rateField("rateUnit", "Rate unit", "g_L"), massField(),
-    ],
-    compute: (input) => ({ values: [{ label: "Oak", value: round(oakDose({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, rate: n(input, "rate"), rateUnit: s(input, "rateUnit") as RateUnitId, outUnit: s(input, "outUnit") as MassUnit }), 2), unit: s(input, "outUnit") }], formula: "mass = liters × rate/factor" }),
-  },
+  doseDescriptor({
+    id: "fining", section: "Oak, Fining & Copper", name: "Fining agent dosing",
+    description: "Mass of fining agent at a target rate.", volumeLabel: "Wine volume",
+    rateLabel: "Dose rate", rateDefault: 0.5, resultLabel: "Fining agent", fn: finingDose,
+    formula: "mass = liters × rate/factor (or × factor for lbs/1000gal)",
+  }),
+  doseDescriptor({
+    id: "oak", section: "Oak, Fining & Copper", name: "Oak addition",
+    description: "Mass of oak at a target rate.", volumeLabel: "Wine volume",
+    rateLabel: "Dose rate", rateDefault: 2, resultLabel: "Oak", fn: oakDose,
+    formula: "mass = liters × rate/factor",
+  }),
   {
     kind: "calc", id: "copper-anhydrous", section: "Oak, Fining & Copper", name: "Copper sulfate (anhydrous)",
     description: "Mass of copper sulfate for a target elemental Cu. Regulated — TTB caps residual Cu at 0.5 mg/L.",
@@ -319,7 +360,7 @@ export const CALCULATORS: Descriptor[] = [
       { name: "rate", label: "Target Cu", kind: "number", default: 0.3 }, rateField("rateUnit", "Cu unit", "mg_L"), massField(),
     ],
     compute: (input) => {
-      const r = copperAsSulfate({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, rate: n(input, "rate"), rateUnit: s(input, "rateUnit") as RateUnitId, outUnit: s(input, "outUnit") as MassUnit });
+      const r = copperAsSulfate({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), rate: n(input, "rate"), rateUnit: rateU(input, "rateUnit"), outUnit: mu(input, "outUnit") });
       return { values: [{ label: "Copper sulfate", value: round(r.mass, 3), unit: s(input, "outUnit") }], formula: "liters × (Cu × 3.93)/factor", ...(r.ttbWarning ? { warning: r.ttbWarning } : {}) };
     },
   },
@@ -334,7 +375,7 @@ export const CALCULATORS: Descriptor[] = [
       { name: "outUnit", label: "Output unit", kind: "select", options: liqOpts, default: "mL" },
     ],
     compute: (input) => {
-      const r = copperAsSulfateSolution({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, rate: n(input, "rate"), rateUnit: s(input, "rateUnit") as RateUnitId, concentrationPct: n(input, "concentrationPct"), outUnit: s(input, "outUnit") as LiquidUnit });
+      const r = copperAsSulfateSolution({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), rate: n(input, "rate"), rateUnit: rateU(input, "rateUnit"), concentrationPct: n(input, "concentrationPct"), outUnit: lu(input, "outUnit") });
       return { values: [{ label: "Cu solution", value: round(r.mass, 2), unit: s(input, "outUnit") }], formula: "((liters/factor) × (((Cu×3.93)/conc)×100)) / liquidFactor", ...(r.ttbWarning ? { warning: r.ttbWarning } : {}) };
     },
   },
@@ -351,7 +392,7 @@ export const CALCULATORS: Descriptor[] = [
       { name: "initAlc", label: "Spirit alcohol (%)", kind: "number", default: 96 },
       { name: "outUnit", label: "Output unit", kind: "select", options: volOpts, default: "L" },
     ],
-    compute: (input) => ({ values: [{ label: "Spirit to add", value: round(fortificationPearson({ volume: n(input, "volume"), volumeUnit: s(input, "volumeUnit") as VolumeUnit, initAlc: n(input, "initAlc"), actualAlc: n(input, "actualAlc"), targetAlc: n(input, "targetAlc"), outUnit: s(input, "outUnit") as VolumeUnit }), 2) }], formula: "liters × (target−actual)/(spirit−target)" }),
+    compute: (input) => ({ values: [{ label: "Spirit to add", value: round(fortificationPearson({ volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"), initAlc: n(input, "initAlc"), actualAlc: n(input, "actualAlc"), targetAlc: n(input, "targetAlc"), outUnit: vu(input, "outUnit") }), 2) }], formula: "liters × (target−actual)/(spirit−target)" }),
   },
   {
     kind: "calc", id: "sweet-spot", section: "Fortification", name: "Alcohol sweet-spot ladder",
@@ -412,6 +453,10 @@ export function isCalc(d: Descriptor): d is CalcDescriptor {
 }
 /** All calculator descriptors (the computational ones). */
 export const CALC_DESCRIPTORS = CALCULATORS.filter(isCalc);
+/** Look up a computational descriptor by id (used by the page + the assistant calc tools). */
+export function calcById(id: string): CalcDescriptor | undefined {
+  return CALC_DESCRIPTORS.find((d) => d.id === id);
+}
 /** Default input record for a descriptor (field name → default value). */
 export function defaultInput(d: CalcDescriptor): Record<string, string | number> {
   return Object.fromEntries(d.fields.map((f) => [f.name, f.default]));

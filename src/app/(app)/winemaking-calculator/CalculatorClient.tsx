@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Badge, Button, Card, Eyebrow, Input } from "@/components/ui";
 import {
   CALCULATORS, SECTIONS, defaultInput, DomainError, isCalc,
   type CalcDescriptor, type CalcResult, type Descriptor, type FieldSpec,
 } from "@/lib/winemaking-calc";
+import type { CalcHistoryRow } from "@/lib/winemaking-calc/log";
+import type { LogCalcPayload } from "./actions";
 
 // Big 3: the calcs a winemaker reaches for most, pinned above the section list (design review).
 const PINNED = ["so2-kmbs", "chaptalization", "yan-dose"];
@@ -20,7 +22,13 @@ const STATIC_CONTENT: Record<string, string> = {
     "Recommended fining dose ranges vary by agent (bentonite, PVPP, gelatin, isinglass, egg white, activated carbon, etc.). Always bench-trial a fining before a cellar-scale addition — over-fining strips aroma and color.",
 };
 
-export default function CalculatorClient() {
+export default function CalculatorClient({
+  initialHistory = [],
+  logAction,
+}: {
+  initialHistory?: CalcHistoryRow[];
+  logAction?: (payload: LogCalcPayload) => Promise<CalcHistoryRow[]>;
+} = {}) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>("so2-molecular");
   const [inputs, setInputs] = useState<Record<string, string | number>>(() => {
@@ -29,6 +37,8 @@ export default function CalculatorClient() {
   });
   const [result, setResult] = useState<CalcResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<CalcHistoryRow[]>(initialHistory);
+  const [, startLogging] = useTransition();
 
   const selected = useMemo(() => CALCULATORS.find((c) => c.id === selectedId) ?? null, [selectedId]);
 
@@ -51,7 +61,16 @@ export default function CalculatorClient() {
     if (!selected || !isCalc(selected)) return;
     try {
       setError(null);
-      setResult(selected.compute(inputs));
+      const res = selected.compute(inputs);
+      setResult(res);
+      // Best-effort traceability log (source PAGE). Never blocks or breaks the result: a failed
+      // action is swallowed and the answer stays on screen. Refreshes the history panel on success.
+      if (logAction) {
+        const payload: LogCalcPayload = { calculatorId: selected.id, inputs: { ...inputs }, output: res.values };
+        startLogging(() => {
+          logAction(payload).then(setHistory).catch(() => {});
+        });
+      }
     } catch (e) {
       setResult(null);
       setError(e instanceof DomainError ? e.message : "Could not calculate — check your inputs.");
@@ -156,9 +175,62 @@ export default function CalculatorClient() {
         </div>
       </div>
 
+      <HistoryPanel rows={history} />
+
       <style>{`@media (max-width: 767px) { .wmc-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
+}
+
+function HistoryPanel({ rows }: { rows: CalcHistoryRow[] }) {
+  const calcName = (id: string) => CALCULATORS.find((c) => c.id === id)?.name ?? id;
+  return (
+    <Card>
+      <Eyebrow rule>Recent calculations</Eyebrow>
+      {rows.length === 0 ? (
+        <p style={{ color: "var(--text-secondary)", marginTop: "var(--space-3)" }}>
+          Your calculations appear here for traceability — inputs, result, and when they ran.
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: "var(--space-3) 0 0", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          {rows.map((r) => (
+            <li key={r.id}>
+              <details style={{ borderBottom: "1px solid var(--border-subtle)", paddingBottom: "var(--space-2)" }}>
+                <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 500 }}>{calcName(r.calculatorId)}</span>
+                  <span style={{ color: "var(--text-muted)", fontSize: "var(--text-caption)" }}>
+                    {new Date(r.createdAt).toLocaleString()}
+                  </span>
+                  <Badge tone={r.source === "ASSISTANT" ? "maroon" : "neutral"}>{r.source === "ASSISTANT" ? "Assistant" : "Page"}</Badge>
+                  {r.advisory && <Badge tone="gold">Advisory</Badge>}
+                  {r.danger && <Badge tone="red">Care</Badge>}
+                </summary>
+                <div style={{ marginTop: "var(--space-2)", fontSize: "var(--text-body-sm)", color: "var(--text-secondary)", display: "grid", gap: "var(--space-1)" }}>
+                  <div><span style={{ color: "var(--text-muted)" }}>Inputs: </span><code style={{ fontFamily: "var(--font-mono)" }}>{safeJson(r.inputs)}</code></div>
+                  <div><span style={{ color: "var(--text-muted)" }}>Result: </span><code style={{ fontFamily: "var(--font-mono)" }}>{formatOutput(r.output)}</code></div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "var(--text-caption)" }}>by {r.userEmail} · engine v{r.engineVersion}</div>
+                </div>
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function safeJson(v: unknown): string {
+  try { return JSON.stringify(v); } catch { return String(v); }
+}
+
+// The output is the CalcResult.values array; render it compactly (label: value unit).
+function formatOutput(output: unknown): string {
+  if (Array.isArray(output)) {
+    return output
+      .map((v) => (v && typeof v === "object" && "label" in v ? `${(v as { label: string }).label}: ${(v as { value: number }).value}${(v as { unit?: string }).unit ? " " + (v as { unit?: string }).unit : ""}` : String(v)))
+      .join(" · ");
+  }
+  return safeJson(output);
 }
 
 function CalcCard({

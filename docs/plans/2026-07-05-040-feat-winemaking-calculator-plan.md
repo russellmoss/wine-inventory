@@ -1,16 +1,19 @@
 ---
 title: Winemaking Calculator — page + assistant integration
 type: feat
-status: pr1-complete
+status: complete
 date: 2026-07-05
 branch: feat/winemaking-calculator
 depth: deep
 units: 15
 ---
 
-> **Build log:** PR1 (engine + page, units 1–10 + 13) BUILT on `feat/winemaking-calculator`
-> (11 commits off origin/main). 104 unit tests green, tsc + eslint + `npm run build` clean.
-> PR2 (units 11, 12, 14, 15 — CalculationLog + logging + assistant tools + history) NOT started.
+> **Build log:** PR1 (engine + page, units 1–10 + 13) MERGED to main (squash 5418315, PR #50).
+> PR2 (units 11, 12, 14, 15 — CalculationLog + logging + assistant tools + history) BUILT on
+> `feat/winemaking-calc-traceability`, plus the two deferred PR1 /review items (doseDescriptor
+> factory + typed unit readers). tsc + eslint + `next build` clean; full vitest 1307 green;
+> verify:tenant-isolation 34 checks (incl. calculation_log RLS + append-only); eval:assistant,
+> verify:invariants, verify:tripwires, verify:raw-sql all green.
 
 ## Overview
 

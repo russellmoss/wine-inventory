@@ -2906,3 +2906,44 @@ model Reservation {
   @@index([tenantId, materialId])
   @@map("reservation")
 }
+
+// ── Plan 040 PR2: winemaking-calculator traceability ──
+
+// Where a logged calculation was run from: the calculator PAGE, or the in-app ASSISTANT (chat/voice).
+enum CalculationSource {
+  PAGE
+  ASSISTANT
+}
+
+// Append-only, tenant-scoped audit of every winemaking-calculator run (page + assistant). If a bad
+// cellar addition happens, we can pull up exactly what was entered and what the engine returned —
+// which almost always proves the calculator was right and the entry was user error, but makes it
+// PROVABLE either way. `engineVersion` (CALC_ENGINE_VERSION) makes it forensic across formula fixes.
+//
+// Phase-12 checklist: tenantId NOT NULL from creation (new table, no backfill dance), FK →
+// organization ON DELETE RESTRICT, RLS ENABLE+FORCE+tenant_isolation, app_rls grant. DB-ENFORCED
+// APPEND-ONLY: the migration REVOKEs UPDATE + DELETE on this table from app_rls (INSERT + SELECT
+// only) — a tamper-resistant audit, with no edit/delete code path either. PII-free by construction:
+// inputs/outputs are numeric bench values + unit choices; the only identity is userId + userEmail.
+model CalculationLog {
+  tenantId      String            @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id            String            @id @default(cuid())
+  userId        String // who ran it (FK-free by design — userEmail snapshot survives user delete/rename)
+  userEmail     String // snapshot at calc time (no join needed to render history; survives rename)
+  calculatorId  String // the registry descriptor id, e.g. "so2-kmbs"
+  formulaId     String // the formula used (currently mirrors calculatorId; room for sub-formula granularity)
+  section       String // the calculator's section label, e.g. "SO₂ Additions"
+  inputs        Json // the (normalized) input record
+  output        Json // the CalcResult values array
+  unitsUsed     Json // the unit selections in play (subset of inputs, kept explicit for querying)
+  source        CalculationSource
+  engineVersion String // CALC_ENGINE_VERSION at calc time — proves code-bug vs user-error after a fix
+  advisory      Boolean           @default(false)
+  danger        Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, userId, createdAt])
+  @@index([tenantId, calculatorId, createdAt])
+  @@map("calculation_log")
+}

@@ -56,6 +56,13 @@ import { reportAnomaliesTool } from "./tools/report-anomalies";
 import { navigateTool } from "./tools/navigate";
 import { listTemplatesTool, getTemplateTool } from "./tools/templates-read";
 import { createTemplateTool, updateTemplateSpecTool, cloneTemplateTool, archiveTemplateTool } from "./tools/templates-write";
+import { calcSo2Tool } from "./tools/calc-so2";
+import { calcSugarTool } from "./tools/calc-sugar";
+import { calcAdditionsTool } from "./tools/calc-additions";
+import { calcBlendingTool } from "./tools/calc-blending";
+import { calcFortificationTool } from "./tools/calc-fortification";
+import { calcConvertTool } from "./tools/calc-convert";
+import { queryCalculationHistoryTool } from "./tools/query-calculation-history";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -86,6 +93,13 @@ const ALL_TOOLS: AssistantTool[] = [
   updateTemplateSpecTool,
   cloneTemplateTool,
   archiveTemplateTool,
+  calcSo2Tool,
+  calcSugarTool,
+  calcAdditionsTool,
+  calcBlendingTool,
+  calcFortificationTool,
+  calcConvertTool,
+  queryCalculationHistoryTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */

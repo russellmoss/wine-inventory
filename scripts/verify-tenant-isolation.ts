@@ -118,6 +118,11 @@ async function main() {
   // is a cross-tenant read of a winery's cleaning/setpoint activity + its overhead depletion ledger.
   await owner.vessel.upsert({ where: { id: "iso_vessel_b" }, update: {}, create: { id: "iso_vessel_b", tenantId: B, code: "ISO-TANK-B", type: "TANK", capacityL: "1000", updatedAt: now } });
   await owner.vesselActivityEvent.upsert({ where: { id: "iso_vae_b" }, update: {}, create: { id: "iso_vae_b", tenantId: B, vesselId: "iso_vessel_b", kind: "SANITIZE", enteredByEmail: "iso@test", commandId: "iso-vae-cmd-b" } });
+  // Plan 040 PR2: a calculation_log row per tenant (append-only audit; the DB-enforced no-UPDATE/DELETE
+  // is checked below via app_rls privilege denial).
+  const calc = { calculatorId: "so2-kmbs", formulaId: "so2-kmbs", section: "SO₂ Additions", inputs: {}, output: {}, unitsUsed: {}, source: "PAGE" as const, engineVersion: "1.0.0" };
+  await owner.calculationLog.upsert({ where: { id: "iso_calc_a" }, update: {}, create: { id: "iso_calc_a", tenantId: A, userId: "iso_user_a", userEmail: "iso@test", ...calc } });
+  await owner.calculationLog.upsert({ where: { id: "iso_calc_b" }, update: {}, create: { id: "iso_calc_b", tenantId: B, userId: "iso_user_b", userEmail: "iso@test", ...calc } });
 
   try {
     // 1. Fail-closed: no tenant context -> 0 rows.
@@ -262,6 +267,27 @@ async function main() {
     } catch { vaeFkRaised = true; }
     check("supply-use cross-tenant event reference rejected (composite FK, K11)", vaeFkRaised);
 
+    // 5j. Plan 040 PR2: calculation_log tenant isolation + DB-enforced append-only. A can't see B's;
+    // a foreign INSERT is rejected (WITH CHECK); and app_rls has UPDATE/DELETE REVOKEd, so even A's
+    // OWN row cannot be mutated (privilege denial) — the tamper-resistance the audit exists to give.
+    const aSeesCalcB = await asTenant(A, (db) => db.calculationLog.findFirst({ where: { id: "iso_calc_b" } }));
+    check("tenant A CANNOT see tenant B's calculation_log (RLS)", aSeesCalcB === null);
+    let calcInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.calculationLog.create({ data: { id: "iso_calc_x", tenantId: B, userId: "u", userEmail: "iso@test", calculatorId: "so2-kmbs", formulaId: "so2-kmbs", section: "SO₂ Additions", inputs: {}, output: {}, unitsUsed: {}, source: "PAGE", engineVersion: "1.0.0" } }));
+    } catch { calcInsertRaised = true; }
+    check("foreign-tenant calculation_log INSERT raises (WITH CHECK)", calcInsertRaised);
+    let calcUpdateDenied = false;
+    try {
+      await asTenant(A, (db) => db.calculationLog.update({ where: { id: "iso_calc_a" }, data: { section: "hacked" } }));
+    } catch { calcUpdateDenied = true; }
+    check("calculation_log UPDATE denied to app_rls (append-only)", calcUpdateDenied);
+    let calcDeleteDenied = false;
+    try {
+      await asTenant(A, (db) => db.calculationLog.delete({ where: { id: "iso_calc_a" } }));
+    } catch { calcDeleteDenied = true; }
+    check("calculation_log DELETE denied to app_rls (append-only)", calcDeleteDenied);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -282,6 +308,7 @@ async function main() {
     await owner.accountMapping.deleteMany({ where: { id: { in: ["iso_map_1", "iso_map_2"] } } });
     await owner.salesExportEvent.deleteMany({ where: { id: "iso_see_b" } });
     // Phase 9.1: supply-uses cascade with their event; delete events then the iso vessel (before org B).
+    await owner.calculationLog.deleteMany({ where: { id: { in: ["iso_calc_a", "iso_calc_b", "iso_calc_x"] } } });
     await owner.vesselActivitySupplyUse.deleteMany({ where: { id: { in: ["iso_vasu_fk"] } } });
     await owner.vesselActivityEvent.deleteMany({ where: { id: { in: ["iso_vae_b", "iso_vae_x"] } } });
     await owner.vessel.deleteMany({ where: { id: "iso_vessel_b" } });
