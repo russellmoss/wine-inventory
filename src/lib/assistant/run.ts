@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
+import { type AssistantEvent, asProposal, asNavigation } from "./assistant-events";
 
 // Repo standard (matches src/lib/fieldnotes/ai.ts): claude-opus-4-8. This is the
 // agentic tool-use loop, NOT the single-shot output_config call in ai.ts.
@@ -11,30 +12,6 @@ const MAX_TOKENS = 8192;
 const MAX_TURNS = 8; // hard cap — never loop unbounded on a server route
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
-
-/** Newline-delimited events the route streams to the client. */
-export type AssistantEvent =
-  | { type: "text"; text: string }
-  | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
-  | { type: "proposal"; tool: string; preview: string; token: string }
-  | { type: "conversation"; id: string; title?: string }
-  | { type: "error"; message: string }
-  | { type: "done" };
-
-type WriteProposal = { needsConfirmation: true; preview: string; token: string };
-
-function asProposal(out: unknown): WriteProposal | null {
-  if (
-    out &&
-    typeof out === "object" &&
-    (out as { needsConfirmation?: unknown }).needsConfirmation === true &&
-    typeof (out as { preview?: unknown }).preview === "string" &&
-    typeof (out as { token?: unknown }).token === "string"
-  ) {
-    return out as WriteProposal;
-  }
-  return null;
-}
 
 /**
  * Run the multi-turn tool-use loop and push events to `send` as they happen.
@@ -75,6 +52,10 @@ export async function runAssistant(opts: {
     content: m.content,
   }));
 
+  // Server-side signal for the navigate tool's auto-vs-link decision: what did
+  // the user actually just say? (Never trust the model to self-report intent.)
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content;
+
   const client = new Anthropic();
   const system = buildSystemPrompt();
 
@@ -103,7 +84,7 @@ export async function runAssistant(opts: {
           try {
             const tool = tools.find((t) => t.name === tu.name);
             if (!tool) throw new Error(`Unknown tool: ${tu.name}`);
-            const out = await tool.run({ user }, tu.input);
+            const out = await tool.run({ user, lastUserMessage }, tu.input);
 
             const proposal = tool.kind === "write" ? asProposal(out) : null;
             if (proposal) {
@@ -114,6 +95,23 @@ export async function runAssistant(opts: {
                 type: "tool_result",
                 tool_use_id: tu.id,
                 content: `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
+              });
+              emit({ type: "tool", name: tu.name, phase: "end", ok: true });
+              continue;
+            }
+
+            // Navigation action (a UI side-effect, not a mutation): the tool
+            // resolved + validated a target; hand it to the client to execute.
+            // Mirrors the proposal flow — do not loop the model on it.
+            const nav = asNavigation(out);
+            if (nav) {
+              emit({ type: "navigate", path: nav.path, label: nav.label, auto: nav.auto });
+              results.push({
+                type: "tool_result",
+                tool_use_id: tu.id,
+                content: nav.auto
+                  ? `The app is taking the user to ${nav.label} (${nav.path}). Do not call navigate again; briefly tell them you're opening it.`
+                  : `A link to ${nav.label} (${nav.path}) was shown to the user. Do not call navigate again; briefly point them to it.`,
               });
               emit({ type: "tool", name: tu.name, phase: "end", ok: true });
               continue;

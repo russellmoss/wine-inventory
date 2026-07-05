@@ -1,10 +1,12 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
+import { isSafeInternalPath } from "@/lib/assistant/assistant-events";
 
 // Lightweight, dependency-free markdown renderer for assistant replies. Handles
 // the subset the model actually produces in chat: headings, bold, inline code,
-// bullet and numbered lists, and paragraphs. Builds React nodes (no raw HTML).
+// links, bullet and numbered lists, and paragraphs. Builds React nodes (no raw HTML).
 
 type Block =
   | { type: "h"; level: number; text: string }
@@ -68,11 +70,42 @@ function parseBlocks(src: string): Block[] {
   return blocks;
 }
 
-const INLINE = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+// Inline tokens: bold, inline code, and markdown links [text](href).
+const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\))/g;
+const LINK = /^\[([^\]]+)\]\(([^)\s]+)\)$/;
+
+// Same-origin in-app link that does SPA navigation (router.push) on a plain
+// left-click, but honors Cmd/Ctrl/Shift/middle-click so "open in new tab" still
+// works. Unsafe/off-site hrefs never reach here — the caller renders plain text.
+function SafeLink({ href, label }: { href: string; label: string }) {
+  const router = useRouter();
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+        e.preventDefault();
+        router.push(href);
+      }}
+      style={{ color: "var(--accent)", textDecoration: "underline" }}
+    >
+      {label}
+    </a>
+  );
+}
 
 function renderInline(text: string): React.ReactNode[] {
   const parts = text.split(INLINE);
   return parts.map((part, i) => {
+    const link = LINK.exec(part);
+    if (link) {
+      const label = link[1];
+      const href = link[2];
+      // Only same-origin "/" paths become links; anything else renders as plain
+      // text (blocks javascript:, http(s)://, //off-site, backslash tricks).
+      if (isSafeInternalPath(href)) return <SafeLink key={i} href={href} label={label} />;
+      return <React.Fragment key={i}>{label}</React.Fragment>;
+    }
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={i} style={{ fontWeight: 600 }}>

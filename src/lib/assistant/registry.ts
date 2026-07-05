@@ -12,7 +12,15 @@ import type { AppUser } from "@/lib/access";
  */
 export type ToolKind = "read" | "write";
 
-export type ToolContext = { user: AppUser };
+export type ToolContext = {
+  user: AppUser;
+  /**
+   * The user's most recent message text. The navigate tool uses this to decide
+   * (server-side, not on the model's say-so) whether a navigation was an
+   * EXPLICIT "take me there" (auto-navigate) vs incidental (render a link).
+   */
+  lastUserMessage?: string;
+};
 
 export type AssistantTool = {
   name: string;
@@ -45,6 +53,7 @@ import { dbCreateTool } from "./tools/db-create";
 import { dbUpdateTool } from "./tools/db-update";
 import { dbDeleteTool } from "./tools/db-delete";
 import { reportAnomaliesTool } from "./tools/report-anomalies";
+import { navigateTool } from "./tools/navigate";
 import { listTemplatesTool, getTemplateTool } from "./tools/templates-read";
 import { createTemplateTool, updateTemplateSpecTool, cloneTemplateTool, archiveTemplateTool } from "./tools/templates-write";
 
@@ -70,6 +79,7 @@ const ALL_TOOLS: AssistantTool[] = [
   dbUpdateTool,
   dbDeleteTool,
   reportAnomaliesTool,
+  navigateTool,
   listTemplatesTool,
   getTemplateTool,
   createTemplateTool,

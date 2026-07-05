@@ -130,3 +130,40 @@ export async function resolveVessel(text: string): Promise<ResolvedVessel> {
   }
   return vessel;
 }
+
+/**
+ * What a vessel currently holds, for the assistant's "tank N and its history"
+ * flow. Resolves against the authoritative `vesselLots` projection (the same
+ * source the /vessels page links from), NOT the raw ledger. Returns the shape
+ * so the tool can answer honestly: single lot -> offer to open it; blend ->
+ * list each lot's link; empty -> point at the tanks list. Never picks one lot
+ * out of a blend. Tenant-scoped automatically via the prisma extension (RLS);
+ * vessels are cellar equipment and are not vineyard-bound.
+ */
+export type VesselContents =
+  | { kind: "empty"; vesselLabel: string }
+  | { kind: "single"; vesselLabel: string; lot: { id: string; code: string } }
+  | { kind: "blend"; vesselLabel: string; lots: { id: string; code: string }[] };
+
+export async function resolveVesselContents(text: string): Promise<VesselContents> {
+  const ref = parseVesselRef(text);
+  if (!ref) {
+    throw new Error(`I couldn't tell which vessel "${text}" is. Try e.g. "barrel 14" or "tank 1".`);
+  }
+  const vessel = await prisma.vessel.findFirst({
+    where: { type: ref.type, code: ref.code },
+    select: {
+      code: true,
+      type: true,
+      vesselLots: { include: { lot: { select: { id: true, code: true } } } },
+    },
+  });
+  if (!vessel) {
+    throw new Error(`No ${ref.type === "BARREL" ? "barrel" : "tank"} "${ref.code}" exists.`);
+  }
+  const label = `${ref.type === "BARREL" ? "Barrel" : "Tank"} ${vessel.code}`;
+  const lots = vessel.vesselLots.map((vl) => ({ id: vl.lot.id, code: vl.lot.code }));
+  if (lots.length === 0) return { kind: "empty", vesselLabel: label };
+  if (lots.length === 1) return { kind: "single", vesselLabel: label, lot: lots[0] };
+  return { kind: "blend", vesselLabel: label, lots };
+}

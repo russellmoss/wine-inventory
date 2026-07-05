@@ -101,3 +101,11 @@ decisions. Per-tenant branding builds on the existing token system (DESIGN.md) â
 become tenant-configurable, tokens stay.
 
 **Depends on / blocked by:** The multi-tenancy isolation foundation above.
+
+## [plan-042 PR-B] Wire dirty-form guard to real forms
+The assistant global dock can auto-navigate ("take me to X") after a 3s countdown.
+`pageHasUnsavedChanges()` (src/app/(app)/assistant/AssistantChat.tsx) checks for a
+`[data-unsaved="true"]` attribute, but no form sets it yet â€” so the downgrade-to-link
+protection is inert; only the countdown+Cancel protects a mid-edit user. Wire the
+high-risk forms (field-report editor, template spec builder, inventory-adjust) to set
+`data-unsaved="true"` while dirty. Source: /review of plan-042 PR-A.
