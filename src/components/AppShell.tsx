@@ -28,6 +28,7 @@ const WINERY: NavItem[] = [
   { href: "/lots", label: "Lot timeline" },
   { href: "/samples", label: "Samples" },
   { href: "/bottling", label: "Bottling" },
+  { href: "/winemaking-calculator", label: "Calculator" },
 ];
 
 const VINEYARDS: NavItem[] = [
