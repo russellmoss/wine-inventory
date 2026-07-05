@@ -164,6 +164,7 @@ export function MaterialPicker({
             onChange={handlePick}
             categoryScope={categoryScope ? [...categoryScope] : undefined}
             placeholder={placeholder}
+            autoFocus
           />
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <Button

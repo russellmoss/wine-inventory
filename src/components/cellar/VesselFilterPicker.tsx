@@ -57,9 +57,16 @@ export function VesselFilterPicker({
 
       <input
         type="text"
+        autoFocus
         placeholder={placeholder}
         value={q}
         onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && filtered.length > 0) {
+            e.preventDefault();
+            onChange(filtered[0].id); // Enter selects the top match
+          }
+        }}
         aria-label={placeholder}
         style={{ width: "100%", fontSize: 14, padding: "6px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface-raised)", marginBottom: 8 }}
       />
@@ -70,7 +77,7 @@ export function VesselFilterPicker({
         <button type="button" style={filterBtn(kind === "BARREL")} onClick={() => setKind("BARREL")}>Barrels</button>
       </div>
 
-      <div style={{ maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+      <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
         {filtered.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 4px" }}>{emptyHint}</div>
         ) : (
