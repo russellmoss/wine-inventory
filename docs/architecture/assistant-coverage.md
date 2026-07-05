@@ -28,6 +28,36 @@ retrofit backlog for everything built before that policy, and stays the scoreboa
   utterance to the model with the real tool schemas and asserts it selects the expected tool. Run before
   shipping a change to the tools, prompt, or model.
 
+## Fleet / efficiency evals — the second axis (matters at 30+ tools)
+
+The per-tool golden set proves each tool is *reachable*. It does **not** prove the model picks the RIGHT
+tool once 50 tools are loaded, or that it doesn't over-call. Selection accuracy degrades and schema token
+cost bloats as the tool list grows — non-linearly (adding tool #45 can make tool #12 harder to select). So
+we run a second, fleet-level eval axis with the **full** tool set loaded:
+
+- **Discrimination among confusables** — deliberate distractor cases for near-twins (`log_brix` vs a
+  future `record_panel`/`submit_panel`; `rack_wine` vs a future generic transfer). Assert the right one
+  wins with everything loaded.
+- **Economy (call count)** — a direct ask fires ONE tool, not six. Assert `toolCalls ≤ budget` per task;
+  flag over-calling and gratuitous reads.
+- **Read/write discipline** — "what's the Brix on T5?" must hit a query tool, never a write.
+- **Refuse / clarify at scale** — ambiguous questions still ask, not guess, even with 50 tempting tools.
+- **Aggregate scorecard** — track *selection accuracy %* + *avg tool-calls* over the suite as numbers.
+  A drop is the **canary for the tool-count cliff** and the "record an eval delta on a model/lib bump"
+  signal [[TRIP-AI-EVAL]] already asks for. Read/compute tools (e.g. a winemaking calculator) don't trip
+  the *write*-coverage guard, but they DO belong in the fleet suite (selection + economy).
+
+**The eval forces the architecture.** When the scorecard drops, that's the signal to shard the tool
+surface, not to keep piling tools into one flat list. The seam already exists: `getToolsFor(user)`
+(role-scoping) extends to **context/intent-scoped tool exposure** — surface only the relevant subset per
+context, or a small always-on core toolset + on-demand retrieval of the long tail (the pattern Claude's
+own deferred-tools / tool-search uses for hundreds of tools).
+
+**When to build:** scaffold it with the FIRST Wave-1 tool (one fleet case + a call-count assertion),
+grounded in real behavior; flip on the accuracy/economy thresholds as the count climbs past ~30–40. Every
+`assistant-coverage-interview` thereafter adds a fleet case + refreshes the economy budget, so it compounds
+with each tool instead of becoming a someday-audit.
+
 ## Definition of done for one capability
 
 1. A typed tool that **calls the existing core** (`*Core`) — never re-implements domain logic, never uses
@@ -35,10 +65,13 @@ retrofit backlog for everything built before that policy, and stays the scoreboa
    (confirm-nonce, exactly-once); entity names resolve via `tools/resolve.ts` / `scope.ts`.
 2. **Golden case(s)** in `assistant-write-tools.golden.ts` — happy-path utterances + at least one that
    should be **refused / clarified** (ambiguous entity, missing required, a domain guard).
-3. **Stop condition** for the build loop: `tsc` clean · the capability's own `verify:*` script green (the
+3. **A fleet case** — a full-toolset selection case with a call-count budget (+ a read/write-discipline
+   check where relevant), so the tool is proven selectable *and economical* among the crowd, not just in
+   isolation.
+4. **Stop condition** for the build loop: `tsc` clean · the capability's own `verify:*` script green (the
    core already owns the domain invariants) · `vitest`/`eval:assistant` structural guard green · the new
-   golden case present.
-4. Flip the row here to 🟨/✅.
+   golden + fleet case present.
+5. Flip the row here to 🟨/✅.
 
 ## Cross-cutting risk to close during the retrofit
 
