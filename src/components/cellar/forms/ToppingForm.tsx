@@ -4,6 +4,7 @@ import React from "react";
 import { Button } from "@/components/ui";
 import { topVesselAction } from "@/lib/cellar/actions";
 import { FormShell, fieldStyle, type CellarActionsVessel, type KegOption, type OpSubmit } from "./shared";
+import { VesselFilterPicker } from "@/components/cellar/VesselFilterPicker";
 
 // ── Topping ──
 export function ToppingForm({
@@ -27,16 +28,14 @@ export function ToppingForm({
 
   return (
     <FormShell>
-      <select value={fromVesselId} onChange={(e) => setFromVesselId(e.target.value)} style={{ ...fieldStyle, flex: "1 1 180px" }} aria-label="Source keg">
-        <option value="" disabled>
-          Top from…
-        </option>
-        {sources.map((k) => (
-          <option key={k.id} value={k.id}>
-            {k.label} ({k.totalL} L)
-          </option>
-        ))}
-      </select>
+      <VesselFilterPicker
+        options={sources}
+        value={fromVesselId}
+        onChange={setFromVesselId}
+        placeholder="Top from…"
+        ariaLabel="Source vessel"
+        emptyHint="No other vessel has wine to top from."
+      />
       <input value={volume} onChange={(e) => setVolume(e.target.value)} inputMode="decimal" placeholder="Litres" style={{ ...fieldStyle, width: 96 }} aria-label="Topping volume" />
       <Button
         variant="primary"

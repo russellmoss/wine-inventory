@@ -12,15 +12,18 @@ import {
 import { STOCK_UNITS, materialDisplayName, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import { createStockMaterialAction } from "@/lib/cellar/actions";
 import { useCurrency } from "@/components/money/CurrencyProvider";
+import { MaterialFilterPicker, type MaterialPickerOption } from "@/components/work-orders/MaterialFilterPicker";
 
 // Phase 8 (Unit 10): the stock-aware material picker. Replaces the free-text datalist with a
-// kind-filtered dropdown that shows on-hand next to each item, a "Create new…" modal that seeds a
-// costed opening SupplyLot, and a graceful free-text fallback for untracked materials. It emits the
-// material NAME (+ the matched DTO) so the addition/fining path is unchanged — the core resolves and
-// depletes by name. Selecting a zero-stock item is allowed but flags unknown-cost at entry (D14).
-
-const CREATE = "__create__";
-const OTHER = "__other__";
+// category-scoped, fuzzy-searchable, family-chip-filtered picker (MaterialFilterPicker) that shows
+// on-hand next to each item, a "Create new…" modal that seeds a costed opening SupplyLot, and a
+// graceful free-text fallback for untracked materials. It emits the material NAME (+ the matched DTO)
+// so the addition/fining path is unchanged — the core resolves and depletes by name. Selecting a
+// zero-stock item is allowed but flags unknown-cost at entry (D14).
+//
+// Phase (this change): the ADD picker is scoped to ADDITIVE + OTHER (mirrors the work-order additions
+// flow + the server WORKORDER-3 guard), so packaging/cleaning/sanitizing are hidden — you can't dose
+// a cork or a cleaner. The FINE form still pre-filters `list` to FINING (one family chip).
 
 const KIND_LABELS: Record<MaterialKind, string> = {
   YEAST: "Yeast",
@@ -80,6 +83,8 @@ export function MaterialPicker({
   ariaLabel?: string;
   style?: React.CSSProperties;
 }) {
+  // When the fine form pins a kind (FINING) we pre-filter to that family; otherwise the picker shows
+  // the full catalog and its own category chips scope it (ADDITIVE + OTHER, below).
   const list = React.useMemo(
     () => (kind ? materials.filter((m) => m.kind === kind) : materials),
     [materials, kind],
@@ -88,26 +93,46 @@ export function MaterialPicker({
     () => materials.find((m) => m.name.toLowerCase() === value.trim().toLowerCase()),
     [materials, value],
   );
+  // Map each DTO in scope to the MaterialFilterPicker option shape (id-based). The label carries the
+  // on-hand suffix (stockLabel) so it reads the same as the old dropdown.
+  const options = React.useMemo<MaterialPickerOption[]>(
+    () =>
+      list.map((m) => ({
+        id: m.id,
+        label: stockLabel(m),
+        kind: m.kind,
+        category: m.category,
+        subcategory: m.subcategory,
+        unit: m.stockUnit,
+        onHand: m.onHand,
+      })),
+    [list],
+  );
+  // MaterialFilterPicker selects by option id; our public `value` is the material NAME — derive the id
+  // from the matched DTO. Only meaningful when the current value maps to a known, in-scope material.
+  const selectedId = React.useMemo(
+    () => (matched && list.some((m) => m.id === matched.id) ? matched.id : ""),
+    [matched, list],
+  );
+
   // Typing mode: user chose "type a name" or the current value isn't a known material.
   const [typing, setTyping] = React.useState(false);
   const inFreetext = typing || (value.trim().length > 0 && !matched);
 
   const [modalOpen, setModalOpen] = React.useState(false);
 
-  function handleSelect(v: string) {
-    if (v === CREATE) {
-      setModalOpen(true);
-      return;
-    }
-    if (v === OTHER) {
-      setTyping(true);
-      onChange("", undefined);
-      return;
-    }
-    const m = list.find((x) => x.id === v);
+  // When the fine form pins a kind, don't scope by category (the kind pre-filter already narrows it);
+  // otherwise scope the additions picker to additives + generic OTHER, matching the WO additions flow.
+  const categoryScope = kind ? undefined : (["ADDITIVE", "OTHER"] as const);
+
+  function handlePick(id: string) {
+    const m = list.find((x) => x.id === id);
     if (m) {
       setTyping(false);
       onChange(m.name, m);
+    } else {
+      // "Change"/clear from within MaterialFilterPicker emits "".
+      onChange("", undefined);
     }
   }
 
@@ -138,23 +163,36 @@ export function MaterialPicker({
           </Button>
         </div>
       ) : (
-        <select
-          value={matched ? matched.id : ""}
-          onChange={(e) => handleSelect(e.target.value)}
-          aria-label={ariaLabel}
-          style={{ ...controlStyle, width: "100%" }}
-        >
-          <option value="" disabled>
-            {placeholder}
-          </option>
-          {list.map((m) => (
-            <option key={m.id} value={m.id}>
-              {stockLabel(m)}
-            </option>
-          ))}
-          <option value={CREATE}>＋ Create new stock item…</option>
-          <option value={OTHER}>Type a name (untracked)…</option>
-        </select>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <MaterialFilterPicker
+            options={options}
+            value={selectedId}
+            onChange={handlePick}
+            categoryScope={categoryScope ? [...categoryScope] : undefined}
+            placeholder={placeholder}
+          />
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setModalOpen(true)}
+            >
+              ＋ Create new stock item
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setTyping(true);
+                onChange("", undefined);
+              }}
+            >
+              Type a name (untracked)
+            </Button>
+          </div>
+        </div>
       )}
 
       {zeroStock ? (
