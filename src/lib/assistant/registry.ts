@@ -83,6 +83,8 @@ import { setMaterialActiveTool } from "./tools/set-material-active";
 import { pullSampleTool } from "./tools/pull-sample";
 import { recordSampleResultsTool } from "./tools/record-sample-results";
 import { manageSampleTool } from "./tools/manage-sample";
+import { removeBulkWineTool } from "./tools/remove-bulk-wine";
+import { removeBottledWineTool } from "./tools/remove-bottled-wine";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -140,6 +142,8 @@ const ALL_TOOLS: AssistantTool[] = [
   pullSampleTool,
   recordSampleResultsTool,
   manageSampleTool,
+  removeBulkWineTool,
+  removeBottledWineTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */

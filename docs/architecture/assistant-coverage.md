@@ -139,7 +139,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | Capability | Core | Tool |
 |---|---|---|
 | Sparkling: tirage / riddling / disgorgement / dosage / finalize (+ reverses) | `tirageCore` + 8 | ❌ |
-| Bottling / taxpaid & bottled removal | `removeTaxpaidCore`, `removeBottledCore` | ❌ |
+| Bottling / taxpaid & bottled removal | `removeTaxpaidCore`, `removeBottledCore` | ✅ `remove_bulk_wine` · `remove_bottled_wine` (Wave 3 slice C; admin-only) |
 | Materials: create / receive / activate | `createStockMaterialCore`, `receiveSupplyCore`, `setMaterialActiveCore` | ✅ `create_material` · `receive_supply` · `set_material_active` (Wave 3 slice A) |
 | Cost: receive bulk-wine cost, consume | `receiveBulkWineCostCore`, `consumeMaterialCore` | ❌ |
 | Blend trials | `createTrialCore` + 5 | ❌ |
@@ -220,7 +220,15 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
    the record_measurement analyte vocabulary + inheriting the sample's captured lot), `manage_sample`
    (send | cancel, action-discriminated). Sample resolves via `resolveOpenSample` (most-recent open on a
    lot/vessel, or an id). Fleet case guards the record_sample_results vs record_measurement confusable.
-   Remaining Wave 3: bottling + compliance removals · sparkling family · cost · trials / groups / recurring.
+9. ~~**Bottling + compliance removals**~~ ✅ **DONE (slice C)** — `remove_bulk_wine` (the §A
+   tax-determination event; wraps `removeTaxpaidCore`, resolves the vessel, disposition-tagged, reversible
+   via undo) and `remove_bottled_wine` (§B finished-goods removal; wraps `removeBottledCore`, resolves SKU
+   + location). Both **admin-only** (a removal is a tax event) via new typed `adminAction` wrappers
+   (`compliance/removal-actions.ts`). Fleet guards removal-vs-rack and removal-with-disposition vs a plain
+   `adjust_inventory` correction. **Follow-up:** `adjust_inventory` and `remove_bottled_wine` overlap on
+   "remove N bottles" — narrow `adjust_inventory` to plain corrections (found/lost/recount) so a
+   disposition-bearing removal always routes to the compliance path.
+   Remaining Wave 3: sparkling family · cost · trials / groups / recurring.
 
 ## Workflow
 
