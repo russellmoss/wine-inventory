@@ -4,7 +4,7 @@ import React from "react";
 
 // Lightweight, dependency-free markdown renderer for assistant replies. Handles
 // the subset the model actually produces in chat: headings, bold, inline code,
-// bullet and numbered lists, and paragraphs. Builds React nodes (no raw HTML).
+// links, bullet and numbered lists, and paragraphs. Builds React nodes (no raw HTML).
 
 type Block =
   | { type: "h"; level: number; text: string }
@@ -68,7 +68,23 @@ function parseBlocks(src: string): Block[] {
   return blocks;
 }
 
-const INLINE = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+// Inline tokens: bold, inline code, and markdown links [text](href).
+const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\))/g;
+const LINK = /^\[([^\]]+)\]\(([^)\s]+)\)$/;
+
+// Only permit same-origin, in-app navigation targets. A safe href is a relative
+// path that starts with a single "/" (not "//", which is protocol-relative and
+// could point off-site). This blocks "javascript:", "data:", "http(s)://", and
+// mailto: links — so neither the model nor any tool text echoed back into a reply
+// can produce a dangerous or off-site link. Anything else renders as plain text.
+function safeInternalHref(href: string): string | null {
+  const h = href.trim();
+  if (!h.startsWith("/")) return null; // must be relative to our app
+  if (h.startsWith("//")) return null; // protocol-relative -> off-site
+  if (h.includes(":")) return null; // no scheme of any kind
+  if (h.includes("\\")) return null; // no backslash tricks
+  return h;
+}
 
 function renderInline(text: string): React.ReactNode[] {
   const parts = text.split(INLINE);
@@ -95,6 +111,24 @@ function renderInline(text: string): React.ReactNode[] {
           {part.slice(1, -1)}
         </code>
       );
+    }
+    const link = LINK.exec(part);
+    if (link) {
+      const label = link[1];
+      const href = safeInternalHref(link[2]);
+      if (href) {
+        return (
+          <a
+            key={i}
+            href={href}
+            style={{ color: "var(--accent, #7b1e3b)", textDecoration: "underline" }}
+          >
+            {label}
+          </a>
+        );
+      }
+      // Unsafe/off-site target: render the visible label as plain text, never a link.
+      return <React.Fragment key={i}>{label}</React.Fragment>;
     }
     return <React.Fragment key={i}>{part}</React.Fragment>;
   });
