@@ -260,6 +260,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "single tank + duration; technique is the CapKind enum",
   },
   {
+    utterance: "Make a punch-down work order on T4 and assign it to russellmoss87@gmail.com",
+    tool: "issue_cap_management_wo",
+    args: { technique: "PUNCHDOWN", vessels: ["T4"], assigneeEmail: "russellmoss87@gmail.com" },
+    note: "assignee threads through to the WO's assigneeEmail (was silently dropped before this)",
+  },
+  {
     utterance: "Add a new tannin to the catalog called Grape Tannin VR Supra",
     tool: "create_material",
     args: { name: "Grape Tannin VR Supra", family: "Tannin" },

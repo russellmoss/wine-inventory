@@ -27,12 +27,12 @@ function label(v: Pick<ResolvedVessel, "type" | "code">): string {
   return v.type === "BARREL" ? `Barrel ${v.code}` : `Tank ${v.code}`;
 }
 
-type IssueInput = { technique?: unknown; vessels?: unknown; durationMin?: unknown; note?: unknown; title?: unknown };
+type IssueInput = { technique?: unknown; vessels?: unknown; durationMin?: unknown; note?: unknown; title?: unknown; assigneeEmail?: unknown };
 
 export const issueCapManagementWoTool: AssistantTool = {
   name: "issue_cap_management_wo",
   description:
-    "Issue a cap-management WORK ORDER for a red ferment across one or more tanks — pumpover, punchdown, cold-soak, maceration, or pulse-air. Use when the user wants to ASSIGN cap work to the crew ('punch down tanks 3, 4, 5 this afternoon', 'issue pumpovers for the ferments'). This creates a work order the cellar hand completes on the floor — it does NOT itself log the operation. To record a single cap op you just did, that's a different flow. Refer to tanks in plain language like 'tank 3'. This does NOT save immediately — it returns a preview to confirm.",
+    "Issue a cap-management WORK ORDER for a red ferment across one or more tanks — pumpover, punchdown, cold-soak, maceration, or pulse-air. Use when the user wants to ASSIGN cap work to the crew ('punch down tanks 3, 4, 5 this afternoon', 'issue pumpovers for the ferments'). This creates a work order the cellar hand completes on the floor — it does NOT itself log the operation. To record a single cap op you just did, that's a different flow. Refer to tanks in plain language like 'tank 3'. Pass the assignee's email if the user names who should do the work. This does NOT save immediately — it returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -46,6 +46,7 @@ export const issueCapManagementWoTool: AssistantTool = {
       durationMin: { type: "number", description: "Optional duration in minutes (applies to every tank)." },
       note: { type: "string", description: "Optional note for the crew." },
       title: { type: "string", description: "Optional work-order title (defaults to a sensible one)." },
+      assigneeEmail: { type: "string", description: "Email of the crew member this work order is assigned to (optional)." },
     },
     required: ["technique", "vessels"],
   },
@@ -78,6 +79,8 @@ export const issueCapManagementWoTool: AssistantTool = {
         ? Math.round(input.durationMin)
         : null;
     const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : null;
+    const assigneeEmail =
+      typeof input.assigneeEmail === "string" && input.assigneeEmail.trim() ? input.assigneeEmail.trim() : null;
     const title =
       typeof input.title === "string" && input.title.trim()
         ? input.title.trim()
@@ -85,13 +88,15 @@ export const issueCapManagementWoTool: AssistantTool = {
 
     const vesselList = resolved.map((v) => label(v)).join(", ");
     const durClause = durationMin ? ` (${durationMin} min)` : "";
-    const preview = `Issue a cap-management work order: ${CAP_LABELS[technique]} on ${vesselList}${durClause}. One task per tank; the crew records each on the floor.`;
+    const asgClause = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
+    const preview = `Issue a cap-management work order: ${CAP_LABELS[technique]} on ${vesselList}${durClause}${asgClause}. One task per tank; the crew records each on the floor.`;
 
     const token = signProposal("issue_cap_management_wo", {
       technique,
       durationMin,
       note,
       title,
+      ...(assigneeEmail ? { assigneeEmail } : {}),
       vessels: resolved.map((v) => ({ id: v.id, label: label(v) })),
     });
     return { needsConfirmation: true, preview, token };
@@ -103,6 +108,7 @@ export const commitIssueCapManagementWo: Committer = async (_user, args) => {
   const durationMin = args.durationMin == null ? undefined : Number(args.durationMin);
   const note = args.note == null ? undefined : String(args.note);
   const title = String(args.title);
+  const assigneeEmail = args.assigneeEmail == null ? null : String(args.assigneeEmail);
   const vessels = (Array.isArray(args.vessels) ? args.vessels : []) as { id: string; label: string }[];
   if (vessels.length === 0) throw new Error("This work order has no tanks.");
 
@@ -118,11 +124,12 @@ export const commitIssueCapManagementWo: Committer = async (_user, args) => {
   }));
   const tasks = instantiateTaskBuilds(builds);
 
-  const created = await createWorkOrderAction({ title, tasks });
+  const created = await createWorkOrderAction({ title, tasks, assigneeEmail });
   await issueWorkOrderAction({ workOrderId: created.workOrderId });
 
+  const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
   return {
-    message: `Issued work order #${created.number} "${title}" with ${vessels.length} ${vessels.length === 1 ? "task" : "tasks"}.`,
+    message: `Issued work order #${created.number} "${title}" with ${vessels.length} ${vessels.length === 1 ? "task" : "tasks"}${asgSuffix}.`,
     navigate: { path: entityPath("workOrder", created.workOrderId), label: `#${created.number} ${title}` },
   };
 };
