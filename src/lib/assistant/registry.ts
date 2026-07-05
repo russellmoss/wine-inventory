@@ -77,6 +77,9 @@ import { calcBlendingTool } from "./tools/calc-blending";
 import { calcFortificationTool } from "./tools/calc-fortification";
 import { calcConvertTool } from "./tools/calc-convert";
 import { queryCalculationHistoryTool } from "./tools/query-calculation-history";
+import { createMaterialTool } from "./tools/create-material";
+import { receiveSupplyTool } from "./tools/receive-supply";
+import { setMaterialActiveTool } from "./tools/set-material-active";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -128,6 +131,9 @@ const ALL_TOOLS: AssistantTool[] = [
   calcFortificationTool,
   calcConvertTool,
   queryCalculationHistoryTool,
+  createMaterialTool,
+  receiveSupplyTool,
+  setMaterialActiveTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */

@@ -219,4 +219,26 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "ASSIGNING cap work to the crew is issuing a WORK ORDER — not logging one op, not the calculator",
   },
+  // ── Materials (Wave 3): create-new vs restock-existing vs dose (the confusables) ──
+  {
+    utterance: "Add a new tannin to the catalog called Grape Tannin VR Supra",
+    tool: "create_material",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "CREATE a catalog material — not receiving stock and not dosing a vessel",
+  },
+  {
+    utterance: "Received 10 kg of tartaric at $8/kg",
+    tool: "receive_supply",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "RESTOCK an existing material (supply intake) — distinct from create_material and from add_addition",
+  },
+  {
+    utterance: "Retire the old ZZCOST KMBS supply",
+    tool: "set_material_active",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "catalog activate/deactivate — not a delete, not a dose",
+  },
 ];
