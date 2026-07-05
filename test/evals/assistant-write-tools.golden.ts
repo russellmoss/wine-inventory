@@ -166,4 +166,10 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { wo: 142 },
     note: "single open task → no task needed",
   },
+  {
+    utterance: "Complete the crush on WO 150 — Block 3, 2000 kg into tank 5, got 1400 L",
+    tool: "complete_task",
+    args: { wo: 150, block: "Block 3", kg: 2000, destVessel: "tank 5", outputL: 1400 },
+    note: "simple crush by chat; a multi-pick/complex one deep-links the execute form",
+  },
 ];
