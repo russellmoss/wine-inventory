@@ -287,18 +287,25 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
   }, [embedded]);
 
   // Persist the active conversation pointer (embedded only). Clearing on null means
-  // "New chat" won't be re-opened on reload.
+  // "New chat" won't be re-opened on reload — but NOT on the initial mount pass, where
+  // conversationId is null before the restore above has a chance to resolve. Skipping the
+  // first run keeps the stored id intact until a real transition-to-null (startNewChat).
+  const writeInitedRef = React.useRef(false);
   React.useEffect(() => {
     if (!embedded) return;
     try {
       if (conversationId) localStorage.setItem(DOCK_CONV_KEY, conversationId);
-      else localStorage.removeItem(DOCK_CONV_KEY);
+      else if (writeInitedRef.current) localStorage.removeItem(DOCK_CONV_KEY);
     } catch {
       /* private mode / storage disabled — just won't persist */
     }
+    writeInitedRef.current = true;
   }, [embedded, conversationId]);
 
   function startNewChat() {
+    // Never reset mid-stream: the in-flight send loop would append its tail into the
+    // fresh chat and persist the old conversation's id.
+    if (busy) return;
     setItems([]);
     setConversationId(null);
     setFeedback({});
@@ -316,11 +323,15 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     void refreshList();
   }
   function selectFromHistory(id: string) {
+    // Don't close the panel on a no-op: openConversation/startNewChat bail while a
+    // response is streaming, which would silently strand the user on the old chat.
+    if (busy) return;
     setVoiceOpen(false);
     setHistoryOpen(false);
     void openConversation(id);
   }
   function newFromHistory() {
+    if (busy) return;
     setVoiceOpen(false);
     setHistoryOpen(false);
     startNewChat();
@@ -608,6 +619,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
             variant="secondary"
             onClick={() => (historyOpen ? setHistoryOpen(false) : openHistory())}
             aria-expanded={historyOpen}
+            aria-controls="dock-history-panel"
             title={historyOpen ? "Back to the chat" : "Conversation history"}
           >
             {historyOpen ? "← Back to chat" : "☰ History"}
@@ -616,7 +628,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       ) : null}
 
       {embedded && historyOpen ? (
-        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+        <div id="dock-history-panel" role="region" aria-label="Conversation history" style={{ flex: 1, minHeight: 0, display: "flex" }}>
           <ConversationSidebar
             variant="panel"
             conversations={conversations}
