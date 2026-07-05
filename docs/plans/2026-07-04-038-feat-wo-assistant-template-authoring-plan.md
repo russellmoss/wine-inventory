@@ -1,7 +1,7 @@
 ---
 title: Work-order template authoring by assistant + global assistant dock (Phase 9 / plan-034 Phase 2)
 type: feat
-status: approved
+status: completed
 date: 2026-07-04
 branch: feat/wo-assistant-phase2
 depth: standard
