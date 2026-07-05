@@ -127,6 +127,18 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "fining=true routes to addFiningCore; still the write dose tool, not a calculator",
   },
   {
+    utterance: "Add 200 g of grape tannin to tank 3",
+    tool: "add_addition",
+    args: { vessel: "tank 3", material: "grape tannin", amount: 200, unit: "g" },
+    note: "ABSOLUTE total (flat grams), not a rate — the core takes amount+doseUnit for both",
+  },
+  {
+    utterance: "Pitch 25 g/hL of EC-1118 into tank 5",
+    tool: "add_addition",
+    args: { vessel: "tank 5", material: "EC-1118", amount: 25, unit: "g/hL" },
+    note: "yeast inoculation is a doseable ADDITIVE — 'pitch/inoculate' still routes to add_addition",
+  },
+  {
     utterance: "Log pH 3.4 and TA 6.2 g/L on lot 24-CS-A",
     tool: "record_measurement",
     args: { lot: "24-CS-A", pH: 3.4, ta: 6.2 },
