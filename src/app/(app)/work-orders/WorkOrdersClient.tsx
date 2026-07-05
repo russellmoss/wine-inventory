@@ -8,15 +8,12 @@ import { OPEN_STATUSES, type WorkOrderFilters } from "@/lib/work-orders/archive-
 import { WorkOrdersTabs } from "./WorkOrdersTabs";
 import { WorkOrderFilterBar } from "./WorkOrderFilterBar";
 import type { VesselOption } from "./new/VesselMultiSelect";
+import { statusTone } from "@/lib/work-orders/status-badge";
 
 type Dashboard = {
   buckets: { overdue: WorkOrderSummary[]; today: WorkOrderSummary[]; upcoming: WorkOrderSummary[]; unscheduled: WorkOrderSummary[] };
   pendingApproval: WorkOrderSummary[];
   counts: Record<string, number>;
-};
-
-const STATUS_TONE: Record<string, "neutral" | "gold" | "green" | "blue" | "maroon" | "red"> = {
-  DRAFT: "neutral", ISSUED: "blue", IN_PROGRESS: "gold", PENDING_APPROVAL: "maroon", APPROVED: "green", CANCELLED: "neutral",
 };
 
 function fmtDate(iso: string | null): string {
@@ -37,7 +34,7 @@ function WoCard({ wo }: { wo: WorkOrderSummary }) {
             {` · due ${fmtDate(wo.dueAt)}`}
           </div>
         </div>
-        <Badge tone={STATUS_TONE[wo.status] ?? "neutral"}>{wo.status.replace(/_/g, " ").toLowerCase()}</Badge>
+        <Badge tone={statusTone(wo.status)}>{wo.status.replace(/_/g, " ").toLowerCase()}</Badge>
       </Card>
     </Link>
   );
