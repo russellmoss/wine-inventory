@@ -2599,6 +2599,9 @@ enum VesselActivityKind {
   SANITIZE // sanitization (PAA, ozone) — consumes a SANITIZER supply as overhead
   STEAM // barrel/tank steaming — typically no supply
   GAS // inert gas / sparging (Ar / N₂ / CO₂ / dry ice) headspace blanket (dec 2)
+  OZONE // ozone / ozonated-water barrel sanitation (plan 044) — typically no supply
+  SO2 // SO₂ treatment: burned sulfur strip/ring OR SO₂ gas (plan 044) — method on targetUnit, strips/discs drain as overhead
+  WET_STORAGE // change/replenish citric+SO₂ storage solution in a wet-stored empty barrel (plan 044) — reagents drain as overhead
   OTHER
 }
 
