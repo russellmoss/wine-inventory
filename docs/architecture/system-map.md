@@ -121,6 +121,11 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   admin + auto-finalize-self-executed; Phase-23-replaceable). Bulk approve segregates deviations.
 - **Two other lanes:** OBSERVATION tasks (`observations.ts`) write chem/tasting/ferment readings directly,
   no gate. MAINTENANCE tasks (`vessel-activity.ts`, `maintenance.ts`) are LOTLESS — a `VesselActivityEvent`
+  (+ optional OVERHEAD `VesselActivitySupplyUse`, WORKORDER-3). Kinds: temp-setpoint / clean / sanitize / steam /
+  gas, plus (plan 044) **ozone / SO₂ treatment / wet-storage solution change** for the barrel shed. NOTE:
+  **bâtonnage (lees stirring) is NOT a maintenance task** — stirring lees is about the wine, so it rides
+  `CAP_MGMT` as a volume-neutral per-lot `LotTreatment` (a `BATONNAGE` `CapKind`, no migration), and the wine
+  lot's timeline shows the stir (approve/reject like any cap op).
 - **Vineyard-block target (plan 039, the minimal Phase-20 seam):** a `WorkOrderTask.blockId` (composite-FK'd
   `(tenantId, blockId) → vineyard_block(tenantId, id)`) + a `"block"` FieldType let ONE observation block —
   `HARVEST_WEIGH_IN` ("fruit intake / weigh-in") — target a vineyard block. Completing it routes through
