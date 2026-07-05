@@ -69,9 +69,13 @@ A natural-language assistant over the whole app, powered by `@anthropic-ai/sdk`.
 - `conversations.ts` / `history.ts` — persisted, shared across text + voice.
 - **Voice mode** reuses the *same* `/api/assistant` stream + tool loop (one brain); ElevenLabs does STT + TTS. Server key stays server-side.
 
-### 7. Vineyard + maps — `src/lib/map/`, `src/lib/vineyard/`
+### 7. Vineyard + maps — `src/lib/map/`, `src/lib/vineyard/`, `src/lib/harvest/`
 Satellite basemap (Esri keyless, or Google Map Tiles if keyed) with drawable blocks (`leaflet` +
-geoman), export to PNG or WGS84 shapefile.
+geoman), export to PNG or WGS84 shapefile. Harvest: per-block Brix curve + yield estimate + pick passes
+(`HarvestRecord` → `HarvestPick`). Plan 039: a pick captures the full fruit snapshot — weight + optional
+**Brix / pH / TA** (`phAtPick`/`taAtPick`, ranges from the analyte registry). A pick is written one of three
+ways through the SAME `harvest/pick-core.ts`: the manager Add-a-pick form, the assistant `log_harvest_pick`
+weigh-in tool (resolve block by NL → draft→confirm), or a work-order `HARVEST_WEIGH_IN` block (§10).
 
 ### 8. Accounting integration (Phase 15) — `src/lib/accounting/` + `src/lib/crypto/`
 Two-way QuickBooks Online off the Phase-8b cost export seam (does NOT rebuild the GL). A
@@ -116,6 +120,14 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   admin + auto-finalize-self-executed; Phase-23-replaceable). Bulk approve segregates deviations.
 - **Two other lanes:** OBSERVATION tasks (`observations.ts`) write chem/tasting/ferment readings directly,
   no gate. MAINTENANCE tasks (`vessel-activity.ts`, `maintenance.ts`) are LOTLESS — a `VesselActivityEvent`
+- **Vineyard-block target (plan 039, the minimal Phase-20 seam):** a `WorkOrderTask.blockId` (composite-FK'd
+  `(tenantId, blockId) → vineyard_block(tenantId, id)`) + a `"block"` FieldType let ONE observation block —
+  `HARVEST_WEIGH_IN` ("fruit intake / weigh-in") — target a vineyard block. Completing it routes through
+  `harvest-observations.ts` (off `completeObservationTaskCore`) and writes a **`HarvestPick`** (weight + optional
+  Brix/pH/TA) to the block's current-vintage record via the shared `harvest/pick-core.ts` — NOT an `AnalysisPanel`,
+  NO ledger op, straight to DONE. The block + readings are RUN-TIME (execute sub-form `HarvestWeighInTaskForm`,
+  never a template default — like vessel/lot). This is deliberately the SMALLEST vineyard-WO seam; **Phase 20
+  extends it** (general block-activity ledger, cross-block fan-out, farming cost) rather than rebuilding it.
   (cleaning, temp-setpoint, gas/blanket, filtration), and any sanitizer/gas consumed drains as **OVERHEAD**
   via append-only `VesselActivitySupplyUse` — never a wine `CostLine`/`SupplyConsumption`, kept out of the
   cost DAG (invariant **WORKORDER-3**; preserves COST-1/2 conservation).

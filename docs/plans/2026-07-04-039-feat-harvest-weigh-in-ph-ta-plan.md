@@ -1,7 +1,7 @@
 ---
 title: Harvest weigh-in — pH + TA on picks + an assistant fruit-intake tool
 type: feat
-status: approved
+status: completed
 date: 2026-07-04
 branch: feat/harvest-weigh-in
 depth: deep
@@ -302,14 +302,14 @@ DB-backed scripts need `.env` (run in CI).
 
 ## Success Criteria
 
-- [ ] `HarvestPick` stores optional pH + TA; migration applies cleanly (RLS unchanged).
-- [ ] Manager "Add a pick" captures weight + Brix + pH + TA (kg/lb weight preserved); pick history + admin
+- [x] `HarvestPick` stores optional pH + TA; migration applies cleanly (RLS unchanged).
+- [x] Manager "Add a pick" captures weight + Brix + pH + TA (kg/lb weight preserved); pick history + admin
       dashboard show pH/TA.
-- [ ] `log_harvest_pick` assistant tool logs a weigh-in by chat: resolves the block, draft→confirm, find-or-creates
+- [x] `log_harvest_pick` assistant tool logs a weigh-in by chat: resolves the block, draft→confirm, find-or-creates
       the vintage's HarvestRecord, writes the pick with weight/Brix/pH/TA; tenant + membership scoped.
-- [ ] D26/H8 eval coverage guard green (golden case added); assistant + harvest tests pass; build + tsc + eslint clean.
-- [ ] A work order can carry a **fruit-intake weigh-in block** targeting a vineyard block; completing it writes a
+- [x] D26/H8 eval coverage guard green (golden case added); assistant + harvest tests pass; build + tsc + eslint clean.
+- [x] A work order can carry a **fruit-intake weigh-in block** targeting a vineyard block; completing it writes a
       `HarvestPick` (weight/Brix/pH/TA) to that block's current-vintage record — no ledger op — visible in the
       harvest module; issuable from a template + the new-WO form, executed via a run-time sub-form, rendered on
       detail/print; `npm run verify:work-orders` green with a HARVEST_WEIGH_IN case.
-- [ ] The vineyard-block WO seam is minimal (one target + one block type) and documented so Phase 20 extends it.
+- [x] The vineyard-block WO seam is minimal (one target + one block type) and documented so Phase 20 extends it.

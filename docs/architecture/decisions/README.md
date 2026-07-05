@@ -33,4 +33,4 @@ What this makes easy, what it makes hard, and any entry added to [[scale-registe
 
 ## Index
 <!-- Add a line per ADR as you create them. -->
-- _(none yet — the first big one worth writing: tenant isolation via RLS + `app_rls` role)_
+- [[0001-vineyard-block-wo-target-seam]] — the minimal vineyard-block WO target (plan 039); Phase 20 extends it.
