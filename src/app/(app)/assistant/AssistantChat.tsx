@@ -34,8 +34,10 @@ type ProposalItem = {
   // A "View X →" link surfaced after a create/confirm succeeds (Unit 5).
   navigate?: { path: string; label: string };
 };
-// A clickable disambiguation picker (tool couldn't resolve a name to one record).
-type ChoiceOpt = { label: string; sublabel?: string; send: string };
+// A clickable disambiguation picker (tool couldn't resolve a name to one record). `resume` is the
+// deterministic path (POST a signed token → tool re-runs pinned by id → confirm card); `send` is a
+// legacy chat-message fallback.
+type ChoiceOpt = { label: string; sublabel?: string; resume?: string; send?: string };
 type ChoiceItem = { kind: "choice"; prompt: string; options: ChoiceOpt[]; chosen?: string };
 type Item = TextItem | ProposalItem | ChoiceItem;
 
@@ -447,9 +449,10 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     setItems((prev) => updateProposal(prev, index, { status: "error", result: "Cancelled." }));
   }
 
-  // Tap a disambiguation option → mark it chosen (locks the card) and re-drive the tool with the
-  // id-pinned message, which comes back as a normal confirm card. No name round-trip.
-  function chooseOption(index: number, opt: ChoiceOpt) {
+  // Tap a disambiguation option → lock the card, then resolve it DETERMINISTICALLY: POST the signed
+  // resume token so the tool re-runs pinned by id and returns a confirm card (no model round-trip, so an
+  // identical-name pick always lands on the exact record). `send` is a legacy fallback.
+  async function chooseOption(index: number, opt: ChoiceOpt) {
     const target = items[index];
     if (!target || target.kind !== "choice" || target.chosen || busy) return;
     setItems((prev) => {
@@ -458,7 +461,28 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       if (t && t.kind === "choice") next[index] = { ...t, chosen: opt.label };
       return next;
     });
-    void send(opt.send);
+    if (opt.resume) {
+      setStatus("Preparing…");
+      try {
+        const res = await fetch("/api/assistant/resolve-choice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: opt.resume }),
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.ok) {
+          setItems((prev) => [...prev, { kind: "proposal", preview: data.preview, token: data.token, status: "pending" }]);
+        } else {
+          setError(data?.error ?? "Couldn't prepare that selection.");
+        }
+      } catch {
+        setError("Network error preparing that selection.");
+      } finally {
+        setStatus(null);
+      }
+      return;
+    }
+    if (opt.send) void send(opt.send);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -518,7 +542,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
                 );
               }
               if (it.kind === "choice") {
-                return <ChoiceCard key={i} item={it} disabled={busy} onPick={(opt) => chooseOption(i, opt)} />;
+                return <ChoiceCard key={i} item={it} disabled={busy} onPick={(opt) => void chooseOption(i, opt)} />;
               }
               if (it.role === "user") return <Bubble key={i} role="user" content={it.content} />;
               const streaming = busy && i === items.length - 1;

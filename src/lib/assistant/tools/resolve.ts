@@ -32,7 +32,8 @@ export function resolveOneOrChoice<T>(
     prompt: string; // picker heading, e.g. 'Which "KMBS" did you mean?'
     describe: (r: T) => string; // button label
     detail?: (r: T) => string | undefined; // sublabel — a DISTINGUISHING field so dupes are tell-apart-able
-    send: (r: T) => string; // the id-pinned follow-up the tap posts
+    resume?: (r: T) => string; // signed resume token — the DETERMINISTIC tap (re-runs the tool, id-pinned)
+    send?: (r: T) => string; // legacy fallback: a chat message the tap sends (routes through the model)
     noneMsg: string;
   },
 ): ResolveResult<T> {
@@ -40,7 +41,12 @@ export function resolveOneOrChoice<T>(
   if (rows.length === 1) return { kind: "one", row: rows[0] };
   const options: ChoiceOption[] = rows.map((r) => {
     const sub = opts.detail?.(r);
-    return { label: opts.describe(r), send: opts.send(r), ...(sub ? { sublabel: sub } : {}) };
+    return {
+      label: opts.describe(r),
+      ...(opts.resume ? { resume: opts.resume(r) } : {}),
+      ...(opts.send ? { send: opts.send(r) } : {}),
+      ...(sub ? { sublabel: sub } : {}),
+    };
   });
   return { kind: "choice", choice: { needsChoice: true, prompt: opts.prompt, options } };
 }

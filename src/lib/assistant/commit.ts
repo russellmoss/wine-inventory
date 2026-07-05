@@ -87,6 +87,7 @@ const COMMITTERS: Record<string, Committer> = {
  */
 export async function commitProposal(user: AppUser, token: string): Promise<CommitResult> {
   const payload = verifyProposal(token);
+  if (payload.kind === "resume") throw new Error("That's a selection token, not a confirmation.");
   const committer = COMMITTERS[payload.tool];
   if (!committer) throw new Error("That action can no longer be applied.");
 
