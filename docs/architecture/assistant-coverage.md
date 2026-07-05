@@ -104,7 +104,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | Brix reading (block ripeness, harvest) | harvest | ✅ `log_brix` / `delete_brix` |
 | pH / TA / full chem panel (lot) | `recordMeasurementsCore` | ✅ `record_measurement` |
 | Tasting notes | `recordTastingNoteCore`, `voidTastingNoteCore` | ✅ `record_tasting_note` (void = ❌) |
-| Lab samples (pull / send / attach results) | `pullSampleCore` + 3 | ❌ |
+| Lab samples (pull / send / attach results / cancel) | `pullSampleCore` + 3 | ✅ `pull_sample` · `record_sample_results` · `manage_sample` (Wave 3 slice B) |
 | Ferment panel submit | `submitPanelCore` | 🟨 overlaps Brix |
 | Lot state transitions (AF/MLF done, dry) | `transitionStateCore` | ✅ `transition_lot_state` |
 
@@ -215,8 +215,12 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
    Wrap `createStockMaterialCore`/`receiveSupplyCore`/`setMaterialActiveCore`; golden + fleet cases guard
    create-new vs restock-existing vs dose. **Follow-up:** now fence the generic `db_create`/`db_update` so a
    material write can't route around these typed tools (the cross-cutting risk above).
-   Remaining Wave 3: lab samples · bottling + compliance removals · sparkling family · cost ·
-   trials / groups / recurring.
+8. ~~**Lab samples (pull / send / attach results / cancel)**~~ ✅ **DONE (slice B)** — `pull_sample`
+   (pull + optional send), `record_sample_results` (attach RETURNED readings to the open sample, reusing
+   the record_measurement analyte vocabulary + inheriting the sample's captured lot), `manage_sample`
+   (send | cancel, action-discriminated). Sample resolves via `resolveOpenSample` (most-recent open on a
+   lot/vessel, or an id). Fleet case guards the record_sample_results vs record_measurement confusable.
+   Remaining Wave 3: bottling + compliance removals · sparkling family · cost · trials / groups / recurring.
 
 ## Workflow
 

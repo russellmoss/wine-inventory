@@ -80,6 +80,9 @@ import { queryCalculationHistoryTool } from "./tools/query-calculation-history";
 import { createMaterialTool } from "./tools/create-material";
 import { receiveSupplyTool } from "./tools/receive-supply";
 import { setMaterialActiveTool } from "./tools/set-material-active";
+import { pullSampleTool } from "./tools/pull-sample";
+import { recordSampleResultsTool } from "./tools/record-sample-results";
+import { manageSampleTool } from "./tools/manage-sample";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -134,6 +137,9 @@ const ALL_TOOLS: AssistantTool[] = [
   createMaterialTool,
   receiveSupplyTool,
   setMaterialActiveTool,
+  pullSampleTool,
+  recordSampleResultsTool,
+  manageSampleTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */

@@ -16,7 +16,8 @@ import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
 // block at harvest) — this is a cellar lot's chemistry.
 
 // Seeded analytes → their canonical (analyte, default unit). Free-form analytes ride the `other` array.
-const ANALYTES: Record<string, { analyte: string; unit: string }> = {
+// Exported so the lab-sample results tool (record_sample_results) reuses the SAME analyte vocabulary.
+export const ANALYTES: Record<string, { analyte: string; unit: string }> = {
   pH: { analyte: "pH", unit: "" },
   ta: { analyte: "TA", unit: "g/L" },
   freeSO2: { analyte: "Free SO₂", unit: "mg/L" },
@@ -27,7 +28,7 @@ const ANALYTES: Record<string, { analyte: string; unit: string }> = {
   alcohol: { analyte: "Alcohol", unit: "%" },
 };
 
-type OtherReading = { analyte?: string; value?: number; unit?: string };
+export type OtherReading = { analyte?: string; value?: number; unit?: string };
 type RecordMeasurementRawInput = {
   lot?: string;
   vessel?: string;
@@ -36,9 +37,9 @@ type RecordMeasurementRawInput = {
   other?: OtherReading[];
 } & Partial<Record<keyof typeof ANALYTES, number>>;
 
-type Reading = { analyte: string; value: number; unit: string };
+export type Reading = { analyte: string; value: number; unit: string };
 
-function collectReadings(input: RecordMeasurementRawInput): Reading[] {
+export function collectReadings(input: Partial<Record<keyof typeof ANALYTES, number>> & { other?: OtherReading[] }): Reading[] {
   const readings: Reading[] = [];
   for (const [key, def] of Object.entries(ANALYTES)) {
     const v = input[key as keyof typeof ANALYTES];
@@ -54,7 +55,7 @@ function collectReadings(input: RecordMeasurementRawInput): Reading[] {
   return readings;
 }
 
-const analyteProps = Object.fromEntries(
+export const analyteProps = Object.fromEntries(
   Object.entries(ANALYTES).map(([k, d]) => [k, { type: "number", description: `${d.analyte}${d.unit ? ` (${d.unit})` : ""}` }]),
 );
 

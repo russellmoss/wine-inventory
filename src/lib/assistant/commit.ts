@@ -49,6 +49,9 @@ import { commitIssueCapManagementWo } from "./tools/work-orders-write";
 import { commitCreateMaterial } from "./tools/create-material";
 import { commitReceiveSupply } from "./tools/receive-supply";
 import { commitSetMaterialActive } from "./tools/set-material-active";
+import { commitPullSample } from "./tools/pull-sample";
+import { commitRecordSampleResults } from "./tools/record-sample-results";
+import { commitManageSample } from "./tools/manage-sample";
 
 // Static map of tool name -> committer. No side-effect registration, no import
 // cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
@@ -85,6 +88,9 @@ const COMMITTERS: Record<string, Committer> = {
   create_material: commitCreateMaterial,
   receive_supply: commitReceiveSupply,
   set_material_active: commitSetMaterialActive,
+  pull_sample: commitPullSample,
+  record_sample_results: commitRecordSampleResults,
+  manage_sample: commitManageSample,
 };
 
 /**
