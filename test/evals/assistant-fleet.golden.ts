@@ -112,4 +112,11 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     kind: "write",
     maxToolCalls: 1,
   },
+  {
+    utterance: "Complete the crush on WO 150 — Block 3, 2000 kg into tank 5, got 1400 L",
+    tool: "complete_task",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "simple crush completion routes through complete_task (deep-links the form only when complex)",
+  },
 ];

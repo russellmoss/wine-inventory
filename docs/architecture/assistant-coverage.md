@@ -123,7 +123,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | Create / issue a WO from a template | `createWorkOrderFromTemplateCore`, `issueWorkOrderCore` | ✅ `create_work_order` (create + issue) |
 | Assign / schedule / cancel a WO | `assignWorkOrderCore`, `scheduleWorkOrderCore`, `cancelWorkOrderCore` | ❌ (Slice C) |
 | Complete a task (rack/add/top/filt/obs/note/maint) | `completeTaskCore` | ✅ `complete_task` |
-| Complete a crush/press task | `completeTaskCore` (transform) | ❌ (Slice B — needs picks/fractions) |
+| Complete a crush/press task | `completeTaskCore` (transform) | ✅ `complete_task` (simple by chat; complex → deep-links the execute form) |
 | Approve / reject / bulk-approve | `approveTaskCore`, `rejectTaskCore`, `bulkApproveTasksCore` | ❌ (Slice C, admin) |
 | Recurring WO generation | `generateRecurringInstanceCore` | ❌ |
 
@@ -190,7 +190,9 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
    - **Slice A ✅ DONE** — `create_work_order` (create + issue from a template) + `complete_task`
      (rack/addition/topping/filtration/observation/note/maintenance; defaults to planned, crew states
      diffs). Fleet guards issue-instance (`create_work_order`) vs author-template (`create_template`).
-   - **Slice B** — extend `complete_task` to crush/press (conversational picks/fractions + strong confirm).
+   - **Slice B ✅ DONE** — `complete_task` handles crush (block + kg + dest + output; resolves the covering
+     pick, asks if ambiguous) and press (must lot + short fraction list). Complex/underspecified/multi-pick/
+     merge-into → deep-links the plan-035 execute form (a navigation, not a guess).
    - **Slice C** — `approve`/`reject` (admin, plan-024 reject warning) + start/assign/schedule/cancel.
 
 **Wave 2 — frequent cellar + transforms:**
