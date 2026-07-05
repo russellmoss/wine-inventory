@@ -27,6 +27,8 @@ import { commitLogHarvestPick } from "./tools/log-harvest-pick";
 import { commitAdjustInventory } from "./tools/adjust-inventory";
 import { commitRackWine } from "./tools/rack-wine";
 import { commitAddAddition } from "./tools/add-addition";
+import { commitRecordMeasurement } from "./tools/record-measurement";
+import { commitRecordTastingNote } from "./tools/record-tasting-note";
 import { commitRevertTransfer } from "./tools/revert-transfer";
 import { commitDbCreate } from "./tools/db-create";
 import { commitDbUpdate } from "./tools/db-update";
@@ -44,6 +46,8 @@ const COMMITTERS: Record<string, Committer> = {
   adjust_inventory: commitAdjustInventory,
   rack_wine: commitRackWine,
   add_addition: commitAddAddition,
+  record_measurement: commitRecordMeasurement,
+  record_tasting_note: commitRecordTastingNote,
   revert_transfer: commitRevertTransfer,
   db_create: commitDbCreate,
   db_update: commitDbUpdate,
