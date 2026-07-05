@@ -65,9 +65,15 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     // Phase 9.1 vessel-activity tables (checklist item 9).
     await owner.vessel.upsert({ where: { id: "isov_vessel_b" }, update: {}, create: { id: "isov_vessel_b", tenantId: B, code: "ISOV-TANK-B", type: "TANK", capacityL: "1000", updatedAt: now } });
     await owner.vesselActivityEvent.upsert({ where: { id: "isov_vae_b" }, update: {}, create: { id: "isov_vae_b", tenantId: B, vesselId: "isov_vessel_b", kind: "SANITIZE", enteredByEmail: "iso@test", commandId: "isov-vae-cmd-b" } });
+    // Plan 040 PR2 CalculationLog (checklist item 9): one calc-log row per tenant. Append-only —
+    // proven below by an app_rls UPDATE/DELETE being rejected at the privilege level.
+    const calc = { calculatorId: "so2-kmbs", formulaId: "so2-kmbs", section: "SO₂ Additions", inputs: {}, output: {}, unitsUsed: {}, source: "PAGE" as const, engineVersion: "1.0.0" };
+    await owner.calculationLog.upsert({ where: { id: "isov_calc_a" }, update: {}, create: { id: "isov_calc_a", tenantId: A, userId: "isov_user_a", userEmail: "iso@test", ...calc } });
+    await owner.calculationLog.upsert({ where: { id: "isov_calc_b" }, update: {}, create: { id: "isov_calc_b", tenantId: B, userId: "isov_user_b", userEmail: "iso@test", ...calc } });
   });
 
   afterAll(async () => {
+    await owner.calculationLog.deleteMany({ where: { id: { in: ["isov_calc_a", "isov_calc_b"] } } });
     await owner.vesselActivityEvent.deleteMany({ where: { id: { in: ["isov_vae_b", "isov_vae_x"] } } });
     await owner.vessel.deleteMany({ where: { id: "isov_vessel_b" } });
     await owner.workOrder.deleteMany({ where: { id: { in: ["isov_wo_a", "isov_wo_b", "isov_wo_x"] } } });
@@ -171,6 +177,18 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await expect(
       asTenant(A, (db) => db.vesselActivityEvent.create({ data: { id: "isov_vae_x", tenantId: B, vesselId: "isov_vessel_b", kind: "CLEAN", enteredByEmail: "iso@test", commandId: "isov-vae-cmd-x" } })),
     ).rejects.toThrow();
+  });
+
+  it("calculation_log is tenant-isolated + append-only (plan 040): A sees its own not B's; foreign INSERT rejected; UPDATE/DELETE denied", async () => {
+    expect(await asTenant(A, (db) => db.calculationLog.findFirst({ where: { id: "isov_calc_a" } }))).not.toBeNull();
+    expect(await asTenant(A, (db) => db.calculationLog.findFirst({ where: { id: "isov_calc_b" } }))).toBeNull();
+    // WITH CHECK: inserting a foreign tenantId while in A is rejected.
+    await expect(
+      asTenant(A, (db) => db.calculationLog.create({ data: { id: "isov_calc_x", tenantId: B, userId: "u", userEmail: "iso@test", calculatorId: "so2-kmbs", formulaId: "so2-kmbs", section: "SO₂ Additions", inputs: {}, output: {}, unitsUsed: {}, source: "PAGE", engineVersion: "1.0.0" } })),
+    ).rejects.toThrow();
+    // DB-enforced append-only: app_rls has UPDATE/DELETE REVOKEd, so even A's own row can't be mutated.
+    await expect(asTenant(A, (db) => db.calculationLog.update({ where: { id: "isov_calc_a" }, data: { section: "hacked" } }))).rejects.toThrow();
+    await expect(asTenant(A, (db) => db.calculationLog.delete({ where: { id: "isov_calc_a" } }))).rejects.toThrow();
   });
 
   // Coverage guard (checklist steps 6 + 9): EVERY non-global model must have RLS enabled + FORCED
