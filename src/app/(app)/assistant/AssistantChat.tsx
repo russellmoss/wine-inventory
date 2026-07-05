@@ -60,6 +60,10 @@ function pageHasUnsavedChanges(): boolean {
 // Readable conversation column width (Claude-native centered column).
 const CONTENT_MAX = 1040;
 
+// Dock-only: remember which conversation the widget was showing so a reload reopens it.
+// Server persistence is durable; this is just the pointer. Mirrors the assistant.voiceMode pref.
+const DOCK_CONV_KEY = "assistant.dock.conversationId";
+
 const TOOL_LABELS: Record<string, string> = {
   query_brix: "Checking Brix readings",
   query_yield: "Checking yields",
@@ -210,6 +214,9 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
   const [query, setQuery] = React.useState("");
   const [searchResults, setSearchResults] = React.useState<SearchResult[] | null>(null);
   const [searching, setSearching] = React.useState(false);
+  // Dock-only: the history takeover panel. The narrow dock has no room for the page's
+  // side-by-side rail, so History is a full-panel overlay toggled on/off (embedded only).
+  const [historyOpen, setHistoryOpen] = React.useState(false);
 
   // Note: no synchronous setState here — the first state update happens after the
   // await, so this stays clear of react-hooks/set-state-in-effect.
@@ -260,6 +267,37 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     return () => clearTimeout(handle);
   }, [query]);
 
+  // Dock persistence: reopen the last conversation on reload (embedded only). One-shot,
+  // post-mount (never a lazy useState initializer — SSR/hydration), and only from a clean
+  // start so we never clobber an in-progress chat. Runs BEFORE the write effect below so it
+  // captures the stored id before that effect can clear it. A stale id fails silently.
+  const restoredRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!embedded || restoredRef.current) return;
+    restoredRef.current = true;
+    if (items.length > 0 || conversationId !== null) return;
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(DOCK_CONV_KEY);
+    } catch {
+      saved = null;
+    }
+    if (saved) void openConversation(saved, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot hydration; deliberately mount-only
+  }, [embedded]);
+
+  // Persist the active conversation pointer (embedded only). Clearing on null means
+  // "New chat" won't be re-opened on reload.
+  React.useEffect(() => {
+    if (!embedded) return;
+    try {
+      if (conversationId) localStorage.setItem(DOCK_CONV_KEY, conversationId);
+      else localStorage.removeItem(DOCK_CONV_KEY);
+    } catch {
+      /* private mode / storage disabled — just won't persist */
+    }
+  }, [embedded, conversationId]);
+
   function startNewChat() {
     setItems([]);
     setConversationId(null);
@@ -270,7 +308,25 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     setSearchResults(null);
   }
 
-  async function openConversation(id: string) {
+  // Dock history controls. Opening the panel refreshes the list so it reflects
+  // conversations created since mount. Selecting/new closes any live voice session
+  // first — swapping items/conversationId under an open voice loop would desync it.
+  function openHistory() {
+    setHistoryOpen(true);
+    void refreshList();
+  }
+  function selectFromHistory(id: string) {
+    setVoiceOpen(false);
+    setHistoryOpen(false);
+    void openConversation(id);
+  }
+  function newFromHistory() {
+    setVoiceOpen(false);
+    setHistoryOpen(false);
+    startNewChat();
+  }
+
+  async function openConversation(id: string, opts?: { silent?: boolean }) {
     if (busy) return;
     setError(null);
     try {
@@ -283,6 +339,16 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       setQuery("");
       setSearchResults(null);
     } catch (e) {
+      // Silent restore of a stale/deleted stored id: drop it and stay on a fresh chat,
+      // no error banner. Explicit user selection still surfaces the failure.
+      if (opts?.silent) {
+        try {
+          localStorage.removeItem(DOCK_CONV_KEY);
+        } catch {
+          /* storage disabled */
+        }
+        return;
+      }
       setError(e instanceof Error ? e.message : "Could not load that conversation.");
     }
   }
@@ -535,6 +601,39 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         </div>
       ) : null}
 
+      {embedded ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", paddingBottom: "var(--space-2)", flex: "none" }}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => (historyOpen ? setHistoryOpen(false) : openHistory())}
+            aria-expanded={historyOpen}
+            title={historyOpen ? "Back to the chat" : "Conversation history"}
+          >
+            {historyOpen ? "← Back to chat" : "☰ History"}
+          </Button>
+        </div>
+      ) : null}
+
+      {embedded && historyOpen ? (
+        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          <ConversationSidebar
+            variant="panel"
+            conversations={conversations}
+            activeId={conversationId}
+            loading={listLoading}
+            query={query}
+            onQueryChange={setQuery}
+            searching={searching}
+            searchResults={searchResults}
+            onSelect={selectFromHistory}
+            onNew={newFromHistory}
+            onRename={(id, title) => void renameConversation(id, title)}
+            onDelete={(id) => void deleteConversation(id)}
+          />
+        </div>
+      ) : (
+      <>
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
         <div style={{ ...column, display: "flex", flexDirection: "column", gap: "var(--space-5)", padding: "var(--space-4) 0 var(--space-6)" }}>
           {items.length === 0 ? (
@@ -688,6 +787,8 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           The assistant can make mistakes. It only acts on your permitted vineyards, and changes need your confirmation.
         </div>
       </div>
+      </>
+      )}
       </div>
 
       {voiceOpen ? (
