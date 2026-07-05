@@ -58,9 +58,15 @@ const TOOL_LABELS: Record<string, string> = {
   rack_wine: "Preparing the transfer",
   revert_transfer: "Reverting the rack",
   query_transfers: "Checking recent rackings",
+  list_templates: "Listing templates",
+  get_template: "Reading the template",
+  create_template: "Drafting the template",
+  update_template_spec: "Preparing template changes",
+  clone_template: "Cloning the template",
+  archive_template: "Preparing to archive",
 };
 
-export function AssistantChat({ userLabel, voiceEnabled = false }: { userLabel: string; voiceEnabled?: boolean }) {
+export function AssistantChat({ userLabel, voiceEnabled = false, embedded = false }: { userLabel: string; voiceEnabled?: boolean; embedded?: boolean }) {
   const [items, setItems] = React.useState<Item[]>([]);
   const [input, setInput] = React.useState("");
   const [voiceOpen, setVoiceOpen] = React.useState(false);
@@ -333,28 +339,33 @@ export function AssistantChat({ userLabel, voiceEnabled = false }: { userLabel: 
   const column: React.CSSProperties = { width: "100%", maxWidth: CONTENT_MAX, marginLeft: "auto", marginRight: "auto" };
 
   return (
-    <div style={{ display: "flex", flexDirection: "row", gap: "var(--space-4)", height: "calc(100vh - 7rem)", minHeight: 420 }}>
-      <ConversationSidebar
-        conversations={conversations}
-        activeId={conversationId}
-        loading={listLoading}
-        query={query}
-        onQueryChange={setQuery}
-        searching={searching}
-        searchResults={searchResults}
-        onSelect={(id) => void openConversation(id)}
-        onNew={startNewChat}
-        onRename={(id, title) => void renameConversation(id, title)}
-        onDelete={(id) => void deleteConversation(id)}
-      />
+    // Embedded (the dock): fill the parent panel + drop the page-sized sidebar/header. Page: full viewport.
+    <div style={{ display: "flex", flexDirection: "row", gap: "var(--space-4)", height: embedded ? "100%" : "calc(100vh - 7rem)", minHeight: embedded ? 0 : 420 }}>
+      {!embedded ? (
+        <ConversationSidebar
+          conversations={conversations}
+          activeId={conversationId}
+          loading={listLoading}
+          query={query}
+          onQueryChange={setQuery}
+          searching={searching}
+          searchResults={searchResults}
+          onSelect={(id) => void openConversation(id)}
+          onNew={startNewChat}
+          onRename={(id, title) => void renameConversation(id, title)}
+          onDelete={(id) => void deleteConversation(id)}
+        />
+      ) : null}
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-      <div style={{ ...column, paddingBottom: "var(--space-3)" }}>
-        <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: "var(--text-h2)", margin: 0 }}>Assistant</h1>
-        <p style={{ fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", color: "var(--text-muted)", marginTop: 4 }}>
-          Ask about your vineyards in plain language, {userLabel.split("@")[0]}.
-        </p>
-      </div>
+      {!embedded ? (
+        <div style={{ ...column, paddingBottom: "var(--space-3)" }}>
+          <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: "var(--text-h2)", margin: 0 }}>Assistant</h1>
+          <p style={{ fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", color: "var(--text-muted)", marginTop: 4 }}>
+            Ask about your vineyards in plain language, {userLabel.split("@")[0]}.
+          </p>
+        </div>
+      ) : null}
 
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
         <div style={{ ...column, display: "flex", flexDirection: "column", gap: "var(--space-5)", padding: "var(--space-4) 0 var(--space-6)" }}>

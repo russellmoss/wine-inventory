@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth-client";
 import { Avatar } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
+import { AssistantDock } from "@/components/assistant/AssistantDock";
 
 type NavItem = { href: string; label: string; admin?: boolean; badge?: number };
 
@@ -312,6 +313,9 @@ export function AppShell({
           <div className="mx-auto px-4 py-5 md:px-10 md:py-8" style={{ maxWidth: "var(--container-xl)" }}>{children}</div>
         )}
       </main>
+
+      {/* Global assistant dock — hides itself on /assistant (the full-page chat). Text-only; voice lives there. */}
+      <AssistantDock userLabel={user.name || user.email} />
     </div>
   );
 }

@@ -76,4 +76,26 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: {},
     note: "no vessel — reverts the most recent rack",
   },
+  {
+    utterance: "Make a weekly barrel-care template: rack off the lees, then add 30 g/hL KMBS, then a checklist to top up",
+    tool: "create_template",
+    args: { name: "Weekly barrel care", spec: { tasks: [{ taskType: "RACK", title: "Rack off lees" }, { taskType: "ADDITION", title: "Add SO₂", defaults: { material: "KMBS", amount: 30, doseUnit: "g/hL" } }, { taskType: "NOTE", title: "Top up the barrels" }] } },
+    note: "material named under defaults.material — the tool resolves it to a real id in scope",
+  },
+  {
+    utterance: "Replace the weekly barrel-care template's blocks with a rack off the lees then a brix reading",
+    tool: "update_template_spec",
+    args: { template: "Weekly barrel care", spec: { tasks: [{ taskType: "RACK", title: "Rack off lees" }, { taskType: "BRIX", title: "Brix reading" }] } },
+    note: "coarse edit = full replace; utterance names the complete new block list (not a delta) so the golden doesn't encode silent block loss",
+  },
+  {
+    utterance: "Clone the system barrel-topping template so I can customize it",
+    tool: "clone_template",
+    args: { template: "barrel topping" },
+  },
+  {
+    utterance: "Archive the old weekly-topping template",
+    tool: "archive_template",
+    args: { template: "weekly topping" },
+  },
 ];
