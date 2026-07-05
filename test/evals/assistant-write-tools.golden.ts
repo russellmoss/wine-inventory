@@ -143,4 +143,27 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     tool: "record_tasting_note",
     args: { lot: "24-CS-A", aroma: "bright cherry", tannin: 4, score: 92 },
   },
+  {
+    utterance: "Issue the weekly barrel-care work order for tomorrow",
+    tool: "create_work_order",
+    args: { template: "weekly barrel care", dueDate: "2026-07-06" },
+    note: "create AND issue an instance from a template — not authoring a template (create_template)",
+  },
+  {
+    utterance: "Create a work order from the spray template",
+    tool: "create_work_order",
+    args: { template: "spray" },
+  },
+  {
+    utterance: "Mark the SO₂ addition on WO 142 done — only used 28 g",
+    tool: "complete_task",
+    args: { wo: 142, task: "SO₂ addition", amount: 28 },
+    note: "amount is the stated actual; completing an OPERATION task auto-logs the ledger op",
+  },
+  {
+    utterance: "WO 142 is done",
+    tool: "complete_task",
+    args: { wo: 142 },
+    note: "single open task → no task needed",
+  },
 ];

@@ -50,6 +50,8 @@ import { rackWineTool } from "./tools/rack-wine";
 import { addAdditionTool } from "./tools/add-addition";
 import { recordMeasurementTool } from "./tools/record-measurement";
 import { recordTastingNoteTool } from "./tools/record-tasting-note";
+import { createWorkOrderTool } from "./tools/create-work-order";
+import { completeTaskTool } from "./tools/complete-task";
 import { revertTransferTool } from "./tools/revert-transfer";
 import { dbFindTool } from "./tools/db-find";
 import { dbCreateTool } from "./tools/db-create";
@@ -86,6 +88,8 @@ const ALL_TOOLS: AssistantTool[] = [
   addAdditionTool,
   recordMeasurementTool,
   recordTastingNoteTool,
+  createWorkOrderTool,
+  completeTaskTool,
   revertTransferTool,
   dbFindTool,
   dbCreateTool,

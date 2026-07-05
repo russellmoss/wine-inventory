@@ -29,6 +29,8 @@ import { commitRackWine } from "./tools/rack-wine";
 import { commitAddAddition } from "./tools/add-addition";
 import { commitRecordMeasurement } from "./tools/record-measurement";
 import { commitRecordTastingNote } from "./tools/record-tasting-note";
+import { commitCreateWorkOrder } from "./tools/create-work-order";
+import { commitCompleteTask } from "./tools/complete-task";
 import { commitRevertTransfer } from "./tools/revert-transfer";
 import { commitDbCreate } from "./tools/db-create";
 import { commitDbUpdate } from "./tools/db-update";
@@ -48,6 +50,8 @@ const COMMITTERS: Record<string, Committer> = {
   add_addition: commitAddAddition,
   record_measurement: commitRecordMeasurement,
   record_tasting_note: commitRecordTastingNote,
+  create_work_order: commitCreateWorkOrder,
+  complete_task: commitCompleteTask,
   revert_transfer: commitRevertTransfer,
   db_create: commitDbCreate,
   db_update: commitDbUpdate,
