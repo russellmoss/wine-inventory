@@ -343,4 +343,15 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { lot: "24-BdB", bottles: 200 },
     note: "disgorge-only by chat; dose + finish (finish:true) deep-links the En Tirage screen",
   },
+  {
+    utterance: "The bulk Cab in tank 4 cost $5,000",
+    tool: "record_bulk_wine_cost",
+    args: { vessel: "tank 4", totalCost: 5000 },
+    note: "a mid-process MATERIAL cost node on a bulk WINE lot — not a material/supply receipt",
+  },
+  {
+    utterance: "Record $2,400 purchase cost for lot 24-BULK-1",
+    tool: "record_bulk_wine_cost",
+    args: { lot: "24-BULK-1", totalCost: 2400 },
+  },
 ];
