@@ -140,7 +140,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 |---|---|---|
 | Sparkling: tirage / riddling / disgorgement / dosage / finalize (+ reverses) | `tirageCore` + 8 | ❌ |
 | Bottling / taxpaid & bottled removal | `removeTaxpaidCore`, `removeBottledCore` | ❌ |
-| Materials: create / receive / adjust stock | `createStockMaterialCore`, `receiveSupplyCore`, `setMaterialActiveCore` | 🟨 `adjust_inventory` + generic db |
+| Materials: create / receive / activate | `createStockMaterialCore`, `receiveSupplyCore`, `setMaterialActiveCore` | ✅ `create_material` · `receive_supply` · `set_material_active` (Wave 3 slice A) |
 | Cost: receive bulk-wine cost, consume | `receiveBulkWineCostCore`, `consumeMaterialCore` | ❌ |
 | Blend trials | `createTrialCore` + 5 | ❌ |
 | Vessel groups | `createGroupCore` + 4 | ❌ |
@@ -210,7 +210,12 @@ is the next layer (needs the run loop). Every new tool adds a fleet case.
    when nothing resolves). **Wave 2 complete** (loss deferred).
 
 **Wave 3 — specialized:**
-7. Materials (create/receive) · lab samples · bottling + compliance removals · sparkling family · cost ·
+7. ~~**Materials (create / receive / activate)**~~ ✅ **DONE (slice A)** — `create_material`,
+   `receive_supply` (restock, resolves via the shared deterministic material picker), `set_material_active`.
+   Wrap `createStockMaterialCore`/`receiveSupplyCore`/`setMaterialActiveCore`; golden + fleet cases guard
+   create-new vs restock-existing vs dose. **Follow-up:** now fence the generic `db_create`/`db_update` so a
+   material write can't route around these typed tools (the cross-cutting risk above).
+   Remaining Wave 3: lab samples · bottling + compliance removals · sparkling family · cost ·
    trials / groups / recurring.
 
 ## Workflow

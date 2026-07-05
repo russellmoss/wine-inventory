@@ -259,4 +259,28 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { technique: "PUMPOVER", vessels: ["tank 11"], durationMin: 20 },
     note: "single tank + duration; technique is the CapKind enum",
   },
+  {
+    utterance: "Add a new tannin to the catalog called Grape Tannin VR Supra",
+    tool: "create_material",
+    args: { name: "Grape Tannin VR Supra", family: "Tannin" },
+    note: "CREATE a brand-new catalog material (not restock) — family drives additive vs cleaning/packaging",
+  },
+  {
+    utterance: "Create a Fermaid-O nutrient with 5 kg opening stock at $12/kg",
+    tool: "create_material",
+    args: { name: "Fermaid-O", family: "Nutrient", stockUnit: "kg", openingQty: 5, unitCost: 12 },
+    note: "optional opening stock seeds a costed supply lot",
+  },
+  {
+    utterance: "Received 10 kg of tartaric at $8/kg, lot A23",
+    tool: "receive_supply",
+    args: { material: "tartaric", qty: 10, unitCost: 8, lotCode: "A23" },
+    note: "RESTOCK an existing material (supply lot) — distinct from create_material; qty in the stock unit",
+  },
+  {
+    utterance: "Deactivate the old ZZCOST KMBS supply",
+    tool: "set_material_active",
+    args: { material: "ZZCOST KMBS", active: false },
+    note: "catalog toggle, history-safe (never a hard delete); reactivate = active:true",
+  },
 ];
