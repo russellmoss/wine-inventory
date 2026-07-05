@@ -263,4 +263,19 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "sample lifecycle admin — distinct from pulling or recording results",
   },
+  // ── Compliance removals (Wave 3): tax event vs rack vs plain inventory adjust ──
+  {
+    utterance: "Remove 800 L taxpaid from tank 5",
+    tool: "remove_bulk_wine",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "a tax-determination REMOVAL (wine leaves bond) — NOT a rack (wine-to-wine transfer)",
+  },
+  {
+    utterance: "Remove 12 bottles of Marp Reserve for tasting",
+    tool: "remove_bottled_wine",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "a §B bottled removal WITH a disposition (tasting) → compliance-accurate, not a bare adjust_inventory correction",
+  },
 ];

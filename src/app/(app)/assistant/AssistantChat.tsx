@@ -80,6 +80,8 @@ const TOOL_LABELS: Record<string, string> = {
   pull_sample: "Preparing the sample",
   record_sample_results: "Preparing the lab results",
   manage_sample: "Preparing the sample update",
+  remove_bulk_wine: "Preparing the removal",
+  remove_bottled_wine: "Preparing the bottled removal",
   rack_wine: "Preparing the transfer",
   add_addition: "Preparing the addition",
   record_measurement: "Preparing the lab panel",

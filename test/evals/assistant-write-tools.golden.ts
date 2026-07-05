@@ -301,4 +301,28 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { action: "cancel", lot: "24-CS-A" },
     note: "void a lost/mislabeled sample; 'send' is the other action",
   },
+  {
+    utterance: "Remove 800 L taxpaid from tank 5",
+    tool: "remove_bulk_wine",
+    args: { vessel: "tank 5", volumeL: 800, disposition: "TAXPAID" },
+    note: "the §A tax-determination event (bulk); reversible via undo → Amended report if the period is filed",
+  },
+  {
+    utterance: "Pull 20 L off tank 3 for tasting",
+    tool: "remove_bulk_wine",
+    args: { vessel: "tank 3", volumeL: 20, disposition: "TASTING" },
+    note: "disposition drives the §A line; TASTING = used on-site (not a rack)",
+  },
+  {
+    utterance: "Remove 12 bottles of Marp Reserve 2022 for tasting",
+    tool: "remove_bottled_wine",
+    args: { wine: "Marp Reserve", vintage: 2022, bottles: 12, disposition: "TASTING" },
+    note: "§B bottled removal WITH a disposition — not a plain adjust_inventory correction",
+  },
+  {
+    utterance: "Log 6 bottles of Sparkling Brut as breakage",
+    tool: "remove_bottled_wine",
+    args: { wine: "Sparkling Brut", bottles: 6, disposition: "BREAKAGE" },
+    note: "breakage as a §B disposition (tags the movement → the right B-line)",
+  },
 ];
