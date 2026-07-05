@@ -119,4 +119,25 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "simple crush completion routes through complete_task (deep-links the form only when complex)",
   },
+  // ── Review verbs vs completion (confusable) ──
+  {
+    utterance: "Approve WO 142",
+    tool: "review_task",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "manager review (approve) — not complete_task",
+  },
+  {
+    utterance: "Reject task 2 on WO 142, wrong tank",
+    tool: "review_task",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "reject reverses the ledger op",
+  },
+  {
+    utterance: "Cancel WO 142",
+    tool: "manage_work_order",
+    kind: "write",
+    maxToolCalls: 1,
+  },
 ];
