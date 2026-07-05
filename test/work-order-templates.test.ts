@@ -233,7 +233,7 @@ describe("shipped system templates", () => {
 
   it("covers the consolidated families (addition, fining, filtration, temp, clean, sanitize, steam, gas)", () => {
     const types = new Set(SYSTEM_TEMPLATES.flatMap((t) => t.spec.tasks.map((k) => k.taskType)));
-    for (const need of ["ADDITION", "FINING", "FILTRATION", "TEMP_SETPOINT", "CLEAN", "SANITIZE", "STEAM", "GAS"]) {
+    for (const need of ["ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT", "CLEAN", "SANITIZE", "STEAM", "GAS"]) {
       expect(types, `missing a system template for ${need}`).toContain(need);
     }
   });

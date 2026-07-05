@@ -69,6 +69,13 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
     spec: { tasks: [{ taskType: "BRIX", title: "Log Brix", instructions: "Read Brix at cap; note temperature." }] },
   },
   {
+    code: "SYS-CAP-MGMT",
+    name: "Cap management (pumpover / punchdown)",
+    description: "Work the cap on a red ferment — pumpover, punchdown, cold-soak, maceration, or pulse-air. Issue across many fermenters; complete tank-by-tank or in a batch. Volume-neutral.",
+    category: "Ferment",
+    spec: { tasks: [{ taskType: "CAP_MGMT", title: "Work the cap", defaults: { technique: "PUNCHDOWN" }, instructions: "Pick the technique (pumpover / punchdown / …) and optionally how long. Records against every lot in the vessel; no volume change." }] },
+  },
+  {
     code: "SYS-TEMP-SETPOINT",
     name: "Temperature setpoint",
     description: "Set a vessel to a target temperature — cold-settle, warm to start, or cool to arrest fermentation.",
