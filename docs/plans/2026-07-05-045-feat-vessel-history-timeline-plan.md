@@ -1,7 +1,7 @@
 ---
 title: Vessel workspace (tanks + barrels) — Actions / Analyses / History tabs, WO issue + status, occupancy-scoped editable timeline, interactive charts
 type: feat
-status: approved
+status: completed
 date: 2026-07-05
 branch: claude/vessel-history-timeline
 depth: deep
@@ -566,6 +566,21 @@ label (never color alone) so they're legible to color-blind users; timeline rows
 ISSUED→blue, IN_PROGRESS→gold (renders wine-burgundy per DESIGN.md known-drift #1 — accepted, matches the
 WO pages), PENDING_APPROVAL→maroon, APPROVED/DONE→green, REJECTED→red, DRAFT/CANCELLED/SKIPPED→neutral.
 Label always shown beside the dot; sentence-case.
+
+## Build status (2026-07-05)
+
+All 12 units implemented + committed on `claude/compassionate-dijkstra-b479ad` (rebased onto `origin/main`
+@ #73). Units 1/2/6 (pure) + 3 (loader) + 4 (Tabs) + 5 (form extraction) + 7/8 (feed + detail) + 9 (WO
+composer) + 10 (assembly). Green here: `tsc --noEmit` (0 errors), `eslint` (0 errors; only pre-existing
+warnings + one intentional unused-arg), `vitest run` (1466 passed / 112 skipped; the sole failure is the
+**pre-existing** `invariant-drift.test.ts` SyntaxError, unrelated). New pure tests: occupancy (13),
+timeline engine + status-badge (49), nearestByX (+7), timeline-view helpers (12).
+
+**Deferred to a `.env` environment (this worktree has none — known limitation):** `npm run build`
+(`prisma migrate deploy` needs `DATABASE_URL`), the DB-backed `getVesselTimeline` integration test, and
+the Unit 12 manual Demo-Winery walkthrough (tank + barrel; day-of-activity → issue WO → empty+refill →
+edit/undo → badge transitions). No new migration is introduced, so build should be clean once env is
+present. Recommend running these in CI / the main checkout before merge.
 
 ## GSTACK REVIEW REPORT
 
