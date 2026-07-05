@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  so2AsKmbs, so2AsLiquidSolution, freeSO2ForMolecularTarget, so2Reduction, KMBS_SO2_FRACTION,
+  so2AsKmbs, so2AsLiquidSolution, freeSO2ForMolecularTarget, so2Reduction, so2AdditionPlan, KMBS_SO2_FRACTION,
 } from "@/lib/winemaking-calc/so2";
 import { DomainError } from "@/lib/winemaking-calc/validate";
 
@@ -46,6 +46,40 @@ describe("free SO₂ for a molecular target", () => {
   it("rejects a negative molecular target and a non-positive pH", () => {
     expect(() => freeSO2ForMolecularTarget({ molecularTarget: -1, pH: 3.4 })).toThrow(DomainError);
     expect(() => freeSO2ForMolecularTarget({ molecularTarget: 0.8, pH: 0 })).toThrow(DomainError);
+  });
+});
+
+describe("SO₂ addition planner (composed workflow)", () => {
+  it("0.8 molecular @ pH 3.4, 20 free, 1000 US gal, 10% → target 31.9, addition 11.9, and matching doses", () => {
+    const p = so2AdditionPlan({
+      volume: 1000, volumeUnit: "GAL_US", molecularTarget: 0.8, pH: 3.4, currentFree: 20,
+      concentrationPct: 10, outUnit: "g",
+    });
+    expect(p.freeTarget).toBeCloseTo(31.9, 1);
+    expect(p.additionNeeded).toBeCloseTo(11.9, 1);
+    // Composition must equal the single-step calcs for the SAME addition.
+    expect(p.kmbsMass).toBeCloseTo(so2AsKmbs({ volume: 1000, volumeUnit: "GAL_US", target: p.additionNeeded, targetUnit: "ppm", outUnit: "g" }), 6);
+    expect(p.solutionVolume).toBeCloseTo(so2AsLiquidSolution({ volume: 1000, volumeUnit: "GAL_US", rate: p.additionNeeded, rateUnit: "ppm", concentrationPct: 10, outUnit: "mL" }), 6);
+  });
+  it("floors the addition at 0 and warns when current free already meets the target", () => {
+    const p = so2AdditionPlan({
+      volume: 1000, volumeUnit: "GAL_US", molecularTarget: 0.8, pH: 3.4, currentFree: 40,
+      concentrationPct: 10, outUnit: "g",
+    });
+    expect(p.additionNeeded).toBe(0);
+    expect(p.kmbsMass).toBe(0);
+    expect(p.solutionVolume).toBe(0);
+    expect(p.warning).toMatch(/no addition needed/i);
+  });
+  it("carries the low-molecular-target guard through the plan", () => {
+    const p = so2AdditionPlan({
+      volume: 1000, volumeUnit: "GAL_US", molecularTarget: 0.08, pH: 3.4, currentFree: 0,
+      concentrationPct: 10, outUnit: "g",
+    });
+    expect(p.warning).toMatch(/0\.8/);
+  });
+  it("rejects negative current free SO₂", () => {
+    expect(() => so2AdditionPlan({ volume: 1000, volumeUnit: "GAL_US", molecularTarget: 0.8, pH: 3.4, currentFree: -5, concentrationPct: 10, outUnit: "g" })).toThrow(DomainError);
   });
 });
 

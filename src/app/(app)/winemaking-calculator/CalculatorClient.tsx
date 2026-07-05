@@ -10,7 +10,7 @@ import type { CalcHistoryRow } from "@/lib/winemaking-calc/log";
 import type { LogCalcPayload } from "./actions";
 
 // Big 3: the calcs a winemaker reaches for most, pinned above the section list (design review).
-const PINNED = ["so2-kmbs", "chaptalization", "yan-dose"];
+const PINNED = ["so2-addition-plan", "chaptalization", "yan-dose"];
 
 // Static reference content, mapped by id at the page layer (the registry stays data-only).
 const STATIC_CONTENT: Record<string, string> = {
@@ -30,9 +30,9 @@ export default function CalculatorClient({
   logAction?: (payload: LogCalcPayload) => Promise<CalcHistoryRow[]>;
 } = {}) {
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>("so2-molecular");
+  const [selectedId, setSelectedId] = useState<string | null>("so2-addition-plan");
   const [inputs, setInputs] = useState<Record<string, string | number>>(() => {
-    const d = CALCULATORS.find((c) => c.id === "so2-molecular");
+    const d = CALCULATORS.find((c) => c.id === "so2-addition-plan");
     return d && isCalc(d) ? defaultInput(d) : {};
   });
   const [result, setResult] = useState<CalcResult | null>(null);

@@ -20,7 +20,7 @@ import {
 } from "./units";
 import { requireOneOf } from "./validate";
 import { convertAll, convertTemp, unitsFor, ConvertibleDimension } from "./conversions";
-import { so2AsKmbs, so2AsLiquidSolution, freeSO2ForMolecularTarget, so2Reduction } from "./so2";
+import { so2AsKmbs, so2AsLiquidSolution, freeSO2ForMolecularTarget, so2Reduction, so2AdditionPlan } from "./so2";
 import {
   brixToAlcohol, brixToSG, brixToSugarGL, sgToScales, sgTemperatureCorrection, yeastNutrientDose, yanDose, YAN_PRODUCTS,
 } from "./sugar";
@@ -172,6 +172,35 @@ export const CALCULATORS: Descriptor[] = [
   },
 
   // ── Section 2: SO₂ ──
+  {
+    kind: "calc", id: "so2-addition-plan", section: "SO₂ Additions", name: "SO₂ addition planner",
+    description: "The full workflow: from a molecular target + pH + the free SO₂ you already have, get the free-SO₂ target, the addition needed, and the dose both as KMBS and as a % stock solution.",
+    fields: [
+      { name: "volume", label: "Wine volume", kind: "number", default: 1000 }, volField("GAL_US"),
+      { name: "molecularTarget", label: "Molecular SO₂ target (mg/L)", kind: "number", default: 0.8 },
+      { name: "pH", label: "Wine pH", kind: "number", default: 3.4 },
+      { name: "currentFree", label: "Current free SO₂ (ppm)", kind: "number", default: 0 },
+      { name: "concentrationPct", label: "Solution strength (% w/v)", kind: "number", default: 10 },
+      massField(),
+    ],
+    compute: (input) => {
+      const p = so2AdditionPlan({
+        volume: n(input, "volume"), volumeUnit: vu(input, "volumeUnit"),
+        molecularTarget: n(input, "molecularTarget"), pH: n(input, "pH"), currentFree: n(input, "currentFree"),
+        concentrationPct: n(input, "concentrationPct"), outUnit: mu(input, "outUnit"),
+      });
+      return {
+        values: [
+          { label: "Free SO₂ target", value: round(p.freeTarget, 1), unit: "ppm" },
+          { label: "Addition needed", value: round(p.additionNeeded, 1), unit: "ppm" },
+          { label: "KMBS", value: round(p.kmbsMass, 2), unit: s(input, "outUnit") },
+          { label: "Solution", value: round(p.solutionVolume, 1), unit: "mL" },
+        ],
+        formula: "free target = molecular × (10^(pH−1.81)+1); addition = target − current; then KMBS (÷0.576) & % solution",
+        ...(p.warning ? { warning: p.warning } : {}),
+      };
+    },
+  },
   {
     kind: "calc", id: "so2-kmbs", section: "SO₂ Additions", name: "SO₂ addition as KMBS",
     description: "Grams of potassium metabisulfite to reach a target free-SO₂ addition.",

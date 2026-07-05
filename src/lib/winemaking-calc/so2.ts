@@ -67,6 +67,40 @@ export function freeSO2ForMolecularTarget(input: {
   return { freeSO2, pKa, ...(warning ? { warning } : {}) };
 }
 
+export type SO2AdditionPlan = {
+  freeTarget: number; // ppm free SO₂ needed in the wine to hit the molecular target at this pH
+  additionNeeded: number; // ppm free SO₂ to ADD (target − current, floored at 0)
+  kmbsMass: number; // mass of KMBS to deliver the addition, in `outUnit`
+  solutionVolume: number; // volume of the % stock solution to deliver the addition, in `solutionOutUnit`
+  pKa: number;
+  warning?: string;
+};
+
+/**
+ * The full SO₂ addition workflow in one step (composes the three single-purpose calcs): from a
+ * MOLECULAR target + pH, derive the free-SO₂ target; subtract the free SO₂ already present to get the
+ * ADDITION needed; then size that addition BOTH as KMBS mass and as a % stock-solution volume. Pure
+ * composition of freeSO2ForMolecularTarget + so2AsKmbs + so2AsLiquidSolution — no new formula.
+ */
+export function so2AdditionPlan(input: {
+  volume: number; volumeUnit: VolumeUnit;
+  molecularTarget: number; pH: number; currentFree: number;
+  concentrationPct: number; outUnit: MassUnit; solutionOutUnit?: LiquidUnit; pKa?: number;
+}): SO2AdditionPlan {
+  requireNonNegative(input.currentFree, "Current free SO₂");
+  const { freeSO2: freeTarget, pKa, warning: lowWarn } = freeSO2ForMolecularTarget({
+    molecularTarget: input.molecularTarget, pH: input.pH, pKa: input.pKa,
+  });
+  const additionNeeded = Math.max(0, freeTarget - input.currentFree);
+  const kmbsMass = so2AsKmbs({ volume: input.volume, volumeUnit: input.volumeUnit, target: additionNeeded, targetUnit: "ppm", outUnit: input.outUnit });
+  const solutionVolume = so2AsLiquidSolution({ volume: input.volume, volumeUnit: input.volumeUnit, rate: additionNeeded, rateUnit: "ppm", concentrationPct: input.concentrationPct, outUnit: input.solutionOutUnit ?? "mL" });
+  const atTarget = additionNeeded === 0
+    ? `Current free SO₂ (${input.currentFree} ppm) already meets or exceeds the ${freeTarget.toFixed(1)} ppm target — no addition needed.`
+    : undefined;
+  const warning = [lowWarn, atTarget].filter(Boolean).join(" ") || undefined;
+  return { freeTarget, additionNeeded, kmbsMass, solutionVolume, pKa, ...(warning ? { warning } : {}) };
+}
+
 /**
  * SO₂ Reduction (peroxide-style). ADVISORY + DANGEROUS: the reference's 35 / 0.0014 constants are
  * not a clean textbook identity (validate against the source UI), and H₂O₂ additions can
