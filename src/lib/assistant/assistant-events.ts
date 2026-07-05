@@ -19,10 +19,10 @@ export type AssistantEvent =
 
 /**
  * A safe in-app navigation target: a relative path rooted at a single "/".
- * Rejects protocol-relative ("//…"), any scheme (contains ":"), and backslash
- * tricks. This is the ONE gate — validate on the server before emitting a
- * `navigate`/link, AND on the client before `router.push`. Mirrors (and
- * supersedes) the ad-hoc check PR #44 added to the markdown renderer.
+ * Rejects protocol-relative ("//…"), any scheme (contains ":"), backslash
+ * tricks, and control chars. This is the ONE gate — validate on the server
+ * before emitting a `navigate`/link, AND on the client before `router.push`.
+ * Mirrors (and supersedes) the ad-hoc check PR #44 added to the markdown renderer.
  */
 export function isSafeInternalPath(path: unknown): path is string {
   if (typeof path !== "string") return false;
@@ -31,6 +31,9 @@ export function isSafeInternalPath(path: unknown): path is string {
   if (p.startsWith("//")) return false; // protocol-relative -> off-site
   if (p.includes(":")) return false; // no scheme of any kind (javascript:, data:, http:)
   if (p.includes("\\")) return false; // no backslash tricks
+  // Control chars (tab/newline/CR/etc.) get stripped by the URL parser and can
+  // turn "/\t/evil.com" into a protocol-relative redirect past the checks above.
+  if (p.split("").some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) return false;
   return true;
 }
 

@@ -38,9 +38,12 @@ type FeedbackState = { mode: "idle" | "form" | "sent"; rating?: "up" | "down" };
 // A pending auto-navigation showing a short cancellable countdown before push.
 type NavPending = { path: string; label: string };
 
-// Dirty-form guard: a form with unsaved edits opts in by setting
-// [data-unsaved="true"] on any element; we then downgrade auto-nav to a link
-// so we never yank the user out of unsaved work.
+// Dirty-form guard (forward seam): a page form with unsaved edits opts in by
+// setting [data-unsaved="true"] on any element; auto-nav then downgrades to a
+// link instead of yanking the user out of unsaved work. NOTE: no form sets this
+// attribute yet, so today the ACTIVE protection is the 3-second countdown +
+// Cancel (NavToast). TODO(plan-042 PR-B): wire the field-report editor, template
+// spec builder, and inventory-adjust forms to set data-unsaved while dirty.
 function pageHasUnsavedChanges(): boolean {
   if (typeof document === "undefined") return false;
   return document.querySelector('[data-unsaved="true"]') !== null;
@@ -284,6 +287,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     if (!text || busy) return;
     setError(null);
     setInput("");
+    setNavPending(null); // a new turn cancels any in-flight auto-nav countdown
 
     // Conversation history for the API = prior text turns + this user turn.
     const history = items

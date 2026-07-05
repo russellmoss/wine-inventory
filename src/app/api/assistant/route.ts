@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/dal";
-import { runAssistant, type ChatMessage, type AssistantEvent } from "@/lib/assistant/run";
+import { runAssistant, type ChatMessage } from "@/lib/assistant/run";
+import type { AssistantEvent } from "@/lib/assistant/assistant-events";
 import {
   findOwnedConversationId,
   createConversation,

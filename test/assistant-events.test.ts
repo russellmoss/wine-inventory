@@ -21,8 +21,11 @@ describe("isSafeInternalPath", () => {
       "",
       42 as unknown as string,
       null as unknown as string,
+      "/" + String.fromCharCode(9) + "/evil.com", // tab -> URL parser strips it into protocol-relative
+      "/a" + String.fromCharCode(10) + "b", // newline
+      "/a" + String.fromCharCode(13) + "b", // CR
     ]) {
-      expect(isSafeInternalPath(p), String(p)).toBe(false);
+      expect(isSafeInternalPath(p), JSON.stringify(p)).toBe(false);
     }
   });
 });

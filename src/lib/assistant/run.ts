@@ -5,8 +5,6 @@ import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
 import { type AssistantEvent, asProposal, asNavigation } from "./assistant-events";
 
-export type { AssistantEvent } from "./assistant-events";
-
 // Repo standard (matches src/lib/fieldnotes/ai.ts): claude-opus-4-8. This is the
 // agentic tool-use loop, NOT the single-shot output_config call in ai.ts.
 const MODEL = "claude-opus-4-8";
