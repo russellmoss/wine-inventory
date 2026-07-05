@@ -17,6 +17,8 @@ import {
   type VintageGroup,
 } from "@/lib/harvest/aggregate";
 import { deriveBrixAtPick, groupSeriesByBlock } from "@/lib/harvest/dashboard";
+import { coerceBrix, coercePh, coerceTa } from "@/lib/harvest/pick-fields";
+import { writeHarvestPickTx } from "@/lib/harvest/pick-core";
 
 const PATH = "/vineyards/harvest";
 
@@ -37,6 +39,8 @@ export type PickDTO = {
   pickDate: string;
   weightKg: number;
   brixAtPick: number | null;
+  phAtPick: number | null;
+  taAtPick: number | null;
   createdByEmail: string;
 };
 export type HarvestBlockDTO = {
@@ -183,7 +187,8 @@ export const recordYieldEstimate = action(
   },
 );
 
-/** Add a pick pass to a block+vintage. Multiple passes accumulate; total is derived. */
+/** Add a pick pass to a block+vintage. Multiple passes accumulate; total is derived. Plan 039: also
+ * captures optional field pH + TA (g/L tartaric) alongside Brix. */
 export const addHarvestPick = action(
   async (
     { actor },
@@ -193,6 +198,8 @@ export const addHarvestPick = action(
     pickDate: string,
     vintageYear?: number,
     brixAtPick?: number | null,
+    phAtPick?: number | null,
+    taAtPick?: number | null,
   ): Promise<void> => {
     const vineyardId = await requireBlockAccess(blockId);
     const kg = toKg(weight, assertUnit(unit));
@@ -200,45 +207,21 @@ export const addHarvestPick = action(
     const date = parseISODateUTC(pickDate);
     if (!date) throw new ActionError("Enter a valid pick date.");
     const vintage = vintageYear ?? date.getUTCFullYear();
-    let brix: Prisma.Decimal | null = null;
-    if (brixAtPick != null) {
-      if (!Number.isFinite(brixAtPick) || brixAtPick < BRIX_MIN || brixAtPick > BRIX_MAX) {
-        throw new ActionError(`Brix must be between ${BRIX_MIN} and ${BRIX_MAX} °Bx.`);
-      }
-      brix = new Prisma.Decimal(brixAtPick);
-    }
-    await runInTenantTx(async (tx) => {
-      const record = await tx.harvestRecord.upsert({
-        where: { tenantId_blockId_vintageYear: { tenantId: requireTenantId(), blockId, vintageYear: vintage } },
-        update: { updatedByEmail: actor.actorEmail },
-        create: {
-          blockId,
-          vineyardId,
-          vintageYear: vintage,
-          createdById: actor.actorUserId,
-          createdByEmail: actor.actorEmail,
-        },
-        select: { id: true },
-      });
-      const pick = await tx.harvestPick.create({
-        data: {
-          harvestRecordId: record.id,
-          pickDate: date,
-          weightKg: new Prisma.Decimal(kg),
-          brixAtPick: brix,
-          createdById: actor.actorUserId,
-          createdByEmail: actor.actorEmail,
-        },
-        select: { id: true },
-      });
-      await writeAudit(tx, {
-        ...actor,
-        action: "HARVEST_PICK_RECORDED",
-        entityType: "HarvestPick",
-        entityId: pick.id,
-        summary: `Recorded a ${vintage} harvest pick`,
-      });
-    });
+    const brix = coerceBrix(brixAtPick);
+    const ph = coercePh(phAtPick);
+    const ta = coerceTa(taAtPick);
+    await runInTenantTx((tx) =>
+      writeHarvestPickTx(tx, actor, {
+        blockId,
+        vineyardId,
+        vintageYear: vintage,
+        pickDate: date,
+        weightKg: kg,
+        brixAtPick: brix,
+        phAtPick: ph,
+        taAtPick: ta,
+      }),
+    );
     revalidatePath(PATH);
   },
 );
@@ -327,7 +310,7 @@ export async function getVineyardHarvest(
         yieldEstimateKg: true,
         picks: {
           orderBy: { pickDate: "asc" },
-          select: { id: true, pickDate: true, weightKg: true, brixAtPick: true, createdByEmail: true },
+          select: { id: true, pickDate: true, weightKg: true, brixAtPick: true, phAtPick: true, taAtPick: true, createdByEmail: true },
         },
       },
     }),
@@ -346,6 +329,8 @@ export async function getVineyardHarvest(
       pickDate: p.pickDate.toISOString().slice(0, 10),
       weightKg: p.weightKg.toNumber(),
       brixAtPick: p.brixAtPick != null ? p.brixAtPick.toNumber() : null,
+      phAtPick: p.phAtPick != null ? p.phAtPick.toNumber() : null,
+      taAtPick: p.taAtPick != null ? p.taAtPick.toNumber() : null,
       createdByEmail: p.createdByEmail,
     })),
   }));
@@ -394,7 +379,7 @@ export async function getVineyardHarvestDashboard(
         yieldEstimateKg: true,
         picks: {
           orderBy: { pickDate: "asc" },
-          select: { id: true, pickDate: true, weightKg: true, brixAtPick: true, createdByEmail: true },
+          select: { id: true, pickDate: true, weightKg: true, brixAtPick: true, phAtPick: true, taAtPick: true, createdByEmail: true },
         },
       },
     }),
@@ -432,6 +417,8 @@ export async function getVineyardHarvestDashboard(
         pickDate,
         weightKg: p.weightKg.toNumber(),
         brixAtPick: deriveBrixAtPick({ pickDate, brixAtPick: explicit }, series),
+        phAtPick: p.phAtPick != null ? p.phAtPick.toNumber() : null,
+        taAtPick: p.taAtPick != null ? p.taAtPick.toNumber() : null,
         createdByEmail: p.createdByEmail,
       };
     });

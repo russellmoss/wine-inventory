@@ -246,7 +246,11 @@ function BlockPanel({
                   <span style={{ color: "var(--text-muted)" }}> · {p.pickDate}</span>
                 </span>
                 <span style={{ color: "var(--text-secondary)" }}>
-                  {p.brixAtPick != null ? `@ ${p.brixAtPick} °Bx` : "—"}
+                  {[
+                    p.brixAtPick != null ? `@ ${p.brixAtPick} °Bx` : null,
+                    p.phAtPick != null ? `pH ${p.phAtPick}` : null,
+                    p.taAtPick != null ? `TA ${p.taAtPick}` : null,
+                  ].filter(Boolean).join(" · ") || "—"}
                 </span>
               </li>
             ))}

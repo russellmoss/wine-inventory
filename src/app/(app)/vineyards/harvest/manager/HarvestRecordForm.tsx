@@ -79,6 +79,8 @@ export function HarvestRecordForm({ blockId, defaultUnit, vintageYear, record }:
 
   const [weight, setWeight] = React.useState("");
   const [pickBrix, setPickBrix] = React.useState("");
+  const [pickPh, setPickPh] = React.useState("");
+  const [pickTa, setPickTa] = React.useState("");
   const [pickDate, setPickDate] = React.useState(todayISO);
 
   // Re-convert an in-progress (unsaved) pick weight when the unit toggles, so a
@@ -113,14 +115,18 @@ export function HarvestRecordForm({ blockId, defaultUnit, vintageYear, record }:
       return;
     }
     const b = pickBrix.trim() === "" ? null : Number(pickBrix);
-    if (b != null && !Number.isFinite(b)) {
+    const ph = pickPh.trim() === "" ? null : Number(pickPh);
+    const ta = pickTa.trim() === "" ? null : Number(pickTa);
+    if ([b, ph, ta].some((v) => v != null && !Number.isFinite(v))) {
       return;
     }
     pickRunner.run(
-      () => addHarvestPick(blockId, n, defaultUnit, pickDate, vintageYear, b),
+      () => addHarvestPick(blockId, n, defaultUnit, pickDate, vintageYear, b, ph, ta),
       () => {
         setWeight("");
         setPickBrix("");
+        setPickPh("");
+        setPickTa("");
         setPickDate(todayISO());
       },
     );
@@ -214,6 +220,38 @@ export function HarvestRecordForm({ blockId, defaultUnit, vintageYear, record }:
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
             <Input
+              name="pickPh"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min={2.5}
+              max={4.5}
+              placeholder="pH"
+              size="lg"
+              value={pickPh}
+              onChange={(ev) => setPickPh(ev.target.value)}
+              aria-label="pH at pick (optional)"
+              iconRight={<span style={{ fontSize: 13 }}>pH</span>}
+              style={{ flex: 1 }}
+            />
+            <Input
+              name="pickTa"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min={0}
+              max={20}
+              placeholder="TA"
+              size="lg"
+              value={pickTa}
+              onChange={(ev) => setPickTa(ev.target.value)}
+              aria-label="TA at pick, g/L tartaric (optional)"
+              iconRight={<span style={{ fontSize: 13 }}>g/L</span>}
+              style={{ flex: 1 }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+            <Input
               name="pickDate"
               type="date"
               size="lg"
@@ -251,6 +289,18 @@ export function HarvestRecordForm({ blockId, defaultUnit, vintageYear, record }:
               <span style={{ fontSize: 14 }}>
                 <strong>{formatWeightFromKg(p.weightKg, defaultUnit)}</strong>
                 <span style={{ color: "var(--text-muted)" }}> · {p.pickDate}</span>
+                {p.brixAtPick != null || p.phAtPick != null || p.taAtPick != null ? (
+                  <span style={{ color: "var(--text-secondary)" }}>
+                    {" · "}
+                    {[
+                      p.brixAtPick != null ? `${p.brixAtPick} °Bx` : null,
+                      p.phAtPick != null ? `pH ${p.phAtPick}` : null,
+                      p.taAtPick != null ? `TA ${p.taAtPick}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                ) : null}
               </span>
               <Button
                 variant="ghost"
