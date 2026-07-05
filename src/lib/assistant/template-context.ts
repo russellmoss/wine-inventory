@@ -84,6 +84,7 @@ export function resolveSpecMaterials(spec: TemplateSpec, materials: readonly Cel
   const byId = new Map(materials.map((m) => [m.id, m]));
 
   const tasks: TemplateTaskSpec[] = (spec?.tasks ?? []).map((task, i) => {
+    if (!task || typeof task !== "object") return task; // malformed element — validateTemplateSpec reports it
     const def = TASK_VOCABULARY[task.taskType];
     const key = def ? materialFieldKey(def) : null;
     if (!def || !key) return task; // unknown type or no material field → leave for validateTemplateSpec
@@ -94,11 +95,15 @@ export function resolveSpecMaterials(spec: TemplateSpec, materials: readonly Cel
     delete defaults.material; // the friendly-name input is never persisted
 
     const scoped = scopedMaterialsForTask(def, materials);
+    const namedStr = typeof named === "string" ? named.trim() : null;
 
-    if (typeof named === "string" && named.trim()) {
-      const [best] = rankMaterials(named.trim(), scoped, (m) => materialDisplayName(m));
+    if (namedStr) {
+      const [best] = rankMaterials(namedStr, scoped, (m) => materialDisplayName(m));
       if (best) defaults[key] = best.id;
-      else unresolved.push({ taskIndex: i, taskType: task.taskType, ref: named.trim() });
+      else unresolved.push({ taskIndex: i, taskType: task.taskType, ref: namedStr });
+    } else if (named != null && typeof named !== "string") {
+      // A non-string material (number/object/array) is a model error — flag it, never silently drop the dose.
+      unresolved.push({ taskIndex: i, taskType: task.taskType, ref: String(named) });
     } else if (typeof existingId === "string" && existingId) {
       const found = byId.get(existingId);
       const inScope = found && scoped.some((m) => m.id === found.id);
@@ -115,8 +120,9 @@ export function resolveSpecMaterials(spec: TemplateSpec, materials: readonly Cel
 export function previewSpec(spec: TemplateSpec, materials: readonly CellarMaterialDTO[] = []): string {
   const byId = new Map(materials.map((m) => [m.id, m]));
   const steps = (spec?.tasks ?? []).map((task) => {
+    if (!task || typeof task !== "object") return "step";
     const def = TASK_VOCABULARY[task.taskType];
-    const base = task.title?.trim() || def?.label || task.taskType;
+    const base = task.title?.trim() || def?.label || task.taskType || "step";
     const key = def ? materialFieldKey(def) : null;
     const matId = key ? task.defaults?.[key] : undefined;
     const mat = typeof matId === "string" ? byId.get(matId) : undefined;

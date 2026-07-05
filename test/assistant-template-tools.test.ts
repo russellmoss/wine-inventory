@@ -74,4 +74,10 @@ describe("template tools — tenant guard (runs before any DB access)", () => {
       createTemplateTool.run({ user: { role: "admin", activeOrganizationId: "org_demo_winery" } as never }, { name: "T", spec: { tasks: [] } }),
     ).rejects.toThrow(/at least one block/i);
   });
+
+  it("create_template rejects a malformed (null) block with a friendly error, not a crash", async () => {
+    await expect(
+      createTemplateTool.run({ user: { role: "admin", activeOrganizationId: "org_demo_winery" } as never }, { name: "T", spec: { tasks: [null] } }),
+    ).rejects.toThrow(/type and a title/i);
+  });
 });

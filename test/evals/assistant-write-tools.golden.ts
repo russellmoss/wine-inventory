@@ -83,10 +83,10 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "material named under defaults.material — the tool resolves it to a real id in scope",
   },
   {
-    utterance: "Update the weekly barrel-care template to also pull a brix reading at the end",
+    utterance: "Replace the weekly barrel-care template's blocks with a rack off the lees then a brix reading",
     tool: "update_template_spec",
     args: { template: "Weekly barrel care", spec: { tasks: [{ taskType: "RACK", title: "Rack off lees" }, { taskType: "BRIX", title: "Brix reading" }] } },
-    note: "full new block list, not a delta",
+    note: "coarse edit = full replace; utterance names the complete new block list (not a delta) so the golden doesn't encode silent block loss",
   },
   {
     utterance: "Clone the system barrel-topping template so I can customize it",

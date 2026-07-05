@@ -84,6 +84,20 @@ describe("resolveSpecMaterials", () => {
     expect(unresolved[0].ref).toBe("m_bogus");
   });
 
+  it("flags a non-string material value (number/object) instead of silently dropping the dose", () => {
+    const spec = { tasks: [{ taskType: "ADDITION", title: "Add", defaults: { material: 12345 } }] } as unknown as TemplateSpec;
+    const { spec: out, unresolved } = resolveSpecMaterials(spec, MATERIALS);
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0].taskType).toBe("ADDITION");
+    expect(out.tasks[0].defaults).not.toHaveProperty("materialId"); // never invents one
+  });
+
+  it("does not crash on a null/malformed task element (leaves it for validateTemplateSpec)", () => {
+    const spec = { tasks: [null, { taskType: "NOTE", title: "x" }] } as unknown as TemplateSpec;
+    expect(() => resolveSpecMaterials(spec, MATERIALS)).not.toThrow();
+    expect(() => previewSpec(spec, MATERIALS)).not.toThrow();
+  });
+
   it("passes NOTE / material-less tasks through untouched", () => {
     const spec: TemplateSpec = { tasks: [{ taskType: "NOTE", title: "Top up the barrels" }, { taskType: "RACK", title: "Rack", defaults: { lossL: 2 } }] };
     const { spec: out, unresolved } = resolveSpecMaterials(spec, MATERIALS);

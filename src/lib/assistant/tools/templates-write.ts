@@ -47,11 +47,19 @@ const SPEC_SCHEMA = {
   required: ["tasks"],
 } as const;
 
-/** Coerce the model's spec input into a TemplateSpec shape (structure only; content validated downstream). */
+/** Coerce the model's spec input into a TemplateSpec shape (structure only; content validated downstream).
+ * Rejects a null/non-object task element or a non-string taskType/title up front — otherwise the downstream
+ * resolver/validator would throw an unhandled TypeError instead of this friendly refusal. */
 function asSpec(raw: unknown): TemplateSpec {
   const spec = raw as { tasks?: unknown };
   if (!spec || !Array.isArray(spec.tasks) || spec.tasks.length === 0) {
     throw new Error("A template needs at least one block. Describe the steps.");
+  }
+  for (const t of spec.tasks) {
+    const rec = t as { taskType?: unknown; title?: unknown } | null;
+    if (!rec || typeof rec !== "object" || typeof rec.taskType !== "string" || typeof rec.title !== "string") {
+      throw new Error("Each block needs a type and a title — describe the steps in plain language.");
+    }
   }
   return spec as TemplateSpec;
 }
@@ -132,7 +140,9 @@ export const updateTemplateSpecTool: AssistantTool = {
     if (row.isSystem) throw new Error(`"${row.name}" is a locked system template — clone it first, then edit the copy.`);
     const { spec, preview } = await prepareSpec(tenantId, input.spec);
     const token = signProposal("update_template_spec", { templateId: row.id, name: row.name, spec: spec as unknown as Record<string, unknown> });
-    return { needsConfirmation: true, preview: `Update "${row.name}": ${preview}.`, token };
+    // Coarse edit = full replace. Make the block-count change unmissable in the confirm card so a user can't
+    // rubber-stamp away blocks the model dropped from the new list.
+    return { needsConfirmation: true, preview: `Replace all ${row.blockCount} block(s) in "${row.name}" with these ${spec.tasks.length}: ${preview}.`, token };
   },
 };
 

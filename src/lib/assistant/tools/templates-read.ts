@@ -18,10 +18,19 @@ export async function resolveTemplateRef(tenantId: string, ref: string): Promise
   const q = (ref ?? "").trim();
   if (!q) throw new Error("Which template? Give its name.");
   const rows = await listTemplatesForBuilder(tenantId, {});
-  const exact = rows.find((r) => r.id === q) ?? rows.find((r) => r.code.toLowerCase() === q.toLowerCase());
+  const lc = q.toLowerCase();
+  const exact =
+    rows.find((r) => r.id === q) ??
+    rows.find((r) => r.code.toLowerCase() === lc) ??
+    rows.find((r) => r.name.toLowerCase() === lc);
   if (exact) return exact;
+  // Never silently pick when the reference is ambiguous — a wrong pick could edit/archive the wrong template.
+  const contains = rows.filter((r) => r.name.toLowerCase().includes(lc));
+  if (contains.length === 1) return contains[0];
+  if (contains.length > 1) throw new Error(`Several templates match "${q}": ${contains.map((r) => r.name).join(", ")}. Which one?`);
   const ranked = rankMaterials(q, rows, (r) => r.name);
   if (ranked.length === 0) throw new Error(`No template matches "${q}". Ask me to list templates to see the options.`);
+  if (ranked.length > 1) throw new Error(`Several templates could match "${q}": ${ranked.slice(0, 4).map((r) => r.name).join(", ")}. Which one?`);
   return ranked[0];
 }
 
