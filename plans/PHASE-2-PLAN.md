@@ -8,6 +8,12 @@ depth: deep
 units: 13
 ---
 
+## Build Progress (feat/phase-2-bond-tax-class)
+
+- ✅ **S1 — schema** (commit `feat(phase-2): schema …`): Bond + ChangeOfTaxClassEvent models, line-level `sourceBondId`/`destBondId`, `ComplianceReport.bondId`/`filerSnapshot`, `OperationType += TRANSFER_IN_BOND, RETURN_TO_BOND`, `ComplianceReportStatus += NEEDS_AMENDMENT`. `prisma validate` + `generate` clean. `CHANGE_OWNERSHIP` NOT added (OQ-1 deferred).
+- ✅ **S2 — migrations** (commit `feat(phase-2): migrations …`): 3 migrations (enum-only → schema+RLS+composite-FKs → idempotent backfill). **Applied to dev DB** and verified: Demo Winery primary bond created; 7/7 existing 5120.17 reports scoped to `bondId`. RLS fail-closed guard passed.
+- ⏳ **C1–C7, U1, V1–V6 — NOT YET BUILT.** Resume at C1 (bond derivation). All open questions resolved; the units below are the precise contract. Continue with `/work plans/PHASE-2-PLAN.md` in a fresh session.
+
 ## Overview
 
 Give the append-only ledger a real **Bond** entity and close the compliance model's four
