@@ -33,6 +33,19 @@ describe("verify:parity", () => {
     expect(run(dir).violations).toEqual([]);
   });
 
+  it("accepts a path:line:col form on covered evidence", () => {
+    note("a.md", { id: "P-1", capability: "x", status: "covered", evidence: "package.json:2:5" });
+    expect(run(dir).violations).toEqual([]);
+  });
+
+  it("reports a clean violation (not a crash) when covered evidence is blank", () => {
+    // A blank `evidence:` used to parse to [] and crash resolveEvidence with a TypeError.
+    note("a.md", { id: "P-EMPTY", capability: "x", status: "covered", evidence: "" });
+    const { violations } = run(dir);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatch(/P-EMPTY.*no `evidence`/);
+  });
+
   it("flags a covered note with a dead evidence path", () => {
     note("a.md", { id: "P-DEAD", capability: "x", status: "covered", evidence: "src/lib/does-not-exist.ts" });
     const { violations } = run(dir);

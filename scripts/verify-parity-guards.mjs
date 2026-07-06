@@ -28,10 +28,11 @@ const STATUSES = new Set(["covered", "partial", "gap", "deliberately-omitted"]);
 // path (stripping an optional :line / #anchor). Returns null if it's not a path
 // (wikilink, external URL) or escapes the repo root.
 function resolveEvidence(repo, evidence) {
-  if (!evidence) return { kind: "missing" };
+  if (typeof evidence !== "string" || evidence === "") return { kind: "missing" };
   if (/\[\[.*\]\]/.test(evidence)) return { kind: "wikilink" };
   if (/^https?:\/\//.test(evidence)) return { kind: "external" };
-  const bare = evidence.replace(/[:#]\d+$/, "").replace(/#.*$/, "").trim();
+  // Strip a trailing :line or :line:col (editor/ripgrep form), then a #fragment.
+  const bare = evidence.replace(/(:\d+)+$/, "").replace(/#\d+$/, "").trim();
   const abs = resolve(repo, bare);
   const root = resolve(repo);
   if (abs !== root && !abs.startsWith(root + sep)) return { kind: "escape", abs };

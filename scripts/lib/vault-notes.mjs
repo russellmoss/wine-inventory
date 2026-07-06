@@ -24,30 +24,46 @@ export function readNote(absPath) {
   return readFileSync(absPath, "utf8").replace(/\r\n?/g, "\n");
 }
 
+// Strip surrounding double-quotes, unescaping via JSON.parse so a value written by
+// JSON.stringify (embedded quotes/colons) round-trips exactly; falls back to a naive
+// strip if it isn't valid JSON.
+function unquote(v) {
+  const t = v.trim();
+  if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) {
+    try { return JSON.parse(t); } catch { return t.slice(1, -1); }
+  }
+  return t;
+}
+
 // Parse YAML-ish frontmatter: scalar `key: value` plus simple block lists
 // (`key:` then `  - item` lines, e.g. tags/appliesTo). Returns {} if no
 // frontmatter block. Scalars are strings; list fields are arrays.
+//
+// A key with an empty inline value (`evidence:`) is an EMPTY SCALAR (""), NOT a
+// list — it only becomes a list if a `- item` line actually follows. (Treating
+// every empty value as `[]` made a blank `evidence:` parse to an array, which
+// then crashed the string-only consumers downstream.)
 export function parseFrontmatter(text) {
   const md = text.replace(/\r\n?/g, "\n");
   const m = md.match(/^---\n([\s\S]*?)\n---/);
   if (!m) return {};
   const out = {};
-  let listKey = null;
+  let pendingKey = null; // last key with an empty inline value — may turn into a list
   for (const line of m[1].split("\n")) {
     const item = line.match(/^\s+-\s+(.*)$/);
-    if (item && listKey) {
-      out[listKey].push(item[1].replace(/^"(.*)"$/, "$1").trim());
+    if (item && pendingKey) {
+      if (!Array.isArray(out[pendingKey])) out[pendingKey] = [];
+      out[pendingKey].push(unquote(item[1]));
       continue;
     }
     const kv = line.match(/^([a-zA-Z][\w-]*):\s*(.*)$/);
     if (!kv) continue;
     if (kv[2] === "") {
-      // A key with no inline value starts a block list.
-      listKey = kv[1];
-      out[listKey] = [];
+      pendingKey = kv[1];
+      out[kv[1]] = ""; // empty scalar by default; upgraded to [] iff items follow
     } else {
-      listKey = null;
-      out[kv[1]] = kv[2].replace(/^"(.*)"$/, "$1").trim();
+      pendingKey = null;
+      out[kv[1]] = unquote(kv[2]);
     }
   }
   return out;

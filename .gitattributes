@@ -10,5 +10,6 @@ docs/architecture/invariants/*.md text eol=lf
 # silent governance hole; a CRLF .mjs is harmless but kept consistent.
 docs/architecture/tripwires/*.md text eol=lf
 docs/architecture/parity/*.md text eol=lf
+docs/architecture/assistant-coverage.md text eol=lf
 scripts/*.mjs text eol=lf
 scripts/lib/*.mjs text eol=lf

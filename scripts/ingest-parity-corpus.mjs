@@ -19,6 +19,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseFrontmatter, readNote } from "./lib/vault-notes.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PARITY_DIR = join(REPO, "docs", "architecture", "parity");
@@ -74,18 +75,8 @@ function slug(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-// Minimal scalar frontmatter reader (CRLF→LF first, like the guard scripts).
-function frontmatter(md) {
-  md = md.replace(/\r\n?/g, "\n");
-  const m = md.match(/^---\n([\s\S]*?)\n---/);
-  if (!m) return {};
-  const out = {};
-  for (const line of m[1].split("\n")) {
-    const kv = line.match(/^([a-zA-Z][\w-]*):\s*(.*)$/);
-    if (kv && kv[2] !== "") out[kv[1]] = kv[2].replace(/^"(.*)"$/, "$1").trim();
-  }
-  return out;
-}
+// (frontmatter parsing for existing notes reuses the shared scripts/lib/vault-notes.mjs
+// parseFrontmatter — one parser, so read/write quote-escaping can't drift.)
 
 // Parse an INDEX.md: track the current `## Category` and collect every
 // `- [Title](relpath.md)` bullet (first markdown link only).
@@ -144,7 +135,7 @@ if (!existsSync(PARITY_DIR)) mkdirSync(PARITY_DIR, { recursive: true });
 const existingById = {};
 for (const f of readdirSync(PARITY_DIR)) {
   if (!f.endsWith(".md") || f === "README.md") continue;
-  const fm = frontmatter(readFileSync(join(PARITY_DIR, f), "utf8"));
+  const fm = parseFrontmatter(readNote(join(PARITY_DIR, f)));
   if (fm.id) existingById[fm.id] = { file: f, fm };
 }
 
@@ -160,11 +151,18 @@ for (const src of SOURCES) {
   }
   for (const art of parseIndex(readFileSync(indexPath, "utf8"))) {
     const corpusPath = `${src.dir}/${art.rel}`; // repo-relative
-    const id = `PARITY-${src.abbr}-${hash8(art.rel)}`;
-    if (seenIds.has(id)) { console.error(`\x1b[31mid collision: ${id} (${art.rel})\x1b[0m`); process.exit(1); }
+    // Deterministic id; on the rare djb2 collision, disambiguate (don't wedge the
+    // gate with a hard exit). Same corpus order → same suffix on every run.
+    let id = `PARITY-${src.abbr}-${hash8(art.rel)}`;
+    if (seenIds.has(id)) { let n = 2; while (seenIds.has(`${id}-${n}`)) n++; id = `${id}-${n}`; }
     seenIds.add(id);
 
     // Precedence: existing hand-edit > ENRICHMENT map > gap default.
+    // KNOWN LIMITATION: an existing note with status !== "gap" is treated as
+    // hand-enriched and wins; deliberately downgrading a MAPPED article back to
+    // `gap` on disk will be re-applied by ENRICHMENT on the next run. The ENRICHMENT
+    // map is the curated source of truth for those few entries — edit the map, not
+    // the generated note, to change a mapped article's status.
     const enr = ENRICHMENT[corpusPath] || {};
     const prev = existingById[id]?.fm || {};
     const prevEnriched = prev.status && prev.status !== "gap";

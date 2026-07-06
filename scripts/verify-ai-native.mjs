@@ -25,7 +25,7 @@
 // Exposes a pure run() → { violations, reachable, cores, table } (council S3).
 // Pure Node + the `typescript` dep. Run: node scripts/verify-ai-native.mjs [--write]
 // -----------------------------------------------------------------------------
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, lstatSync, existsSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -42,13 +42,17 @@ const SRC_EXT = [".ts", ".tsx", ".mts"];
 const rel = (abs) => relative(REPO, abs).replace(/\\/g, "/");
 
 // ---- walk src for module files ----------------------------------------------
+// lstatSync (does NOT follow links) so a symlink/junction under src/ can't send us
+// into an infinite loop or crash on an unreadable target — this repo uses junctions.
 function walk(dir, out = []) {
   for (const e of readdirSync(dir)) {
     if (e === "node_modules" || e === ".next") continue;
     const abs = join(dir, e);
-    const st = statSync(abs);
+    let st;
+    try { st = lstatSync(abs); } catch { continue; }
+    if (st.isSymbolicLink()) continue;
     if (st.isDirectory()) walk(abs, out);
-    else if (SRC_EXT.some((x) => abs.endsWith(x)) && !abs.endsWith(".d.ts")) out.push(abs);
+    else if (st.isFile() && SRC_EXT.some((x) => abs.endsWith(x)) && !abs.endsWith(".d.ts")) out.push(abs);
   }
   return out;
 }
@@ -59,10 +63,12 @@ function resolveSpecifier(fromFile, spec) {
   if (spec.startsWith("@/")) base = join(SRC, spec.slice(2));
   else if (spec.startsWith(".")) base = resolve(dirname(fromFile), spec);
   else return null; // bare / external module — not a core
+  // NodeNext/bundler code may write an explicit .js/.jsx/.mjs that maps to a .ts source.
+  base = base.replace(/\.(js|jsx|mjs)$/, "");
   const candidates = [];
+  if (SRC_EXT.some((x) => base.endsWith(x))) candidates.push(base);
   for (const x of SRC_EXT) candidates.push(base + x);
   for (const x of SRC_EXT) candidates.push(join(base, "index" + x));
-  if (SRC_EXT.some((x) => base.endsWith(x))) candidates.unshift(base);
   for (const c of candidates) {
     if (existsSync(c) && statSync(c).isFile()) return c;
   }
@@ -70,15 +76,24 @@ function resolveSpecifier(fromFile, spec) {
 }
 
 // ---- parse a file's outbound import/re-export edges --------------------------
+// Recurse the WHOLE tree (not just top-level) and capture both static
+// import/export-from AND dynamic `import("…")` calls — a core reachable only via a
+// lazy import must not read as a false gap.
 function importEdges(file, text) {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const specs = [];
-  sf.forEachChild((node) => {
+  const visit = (node) => {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
         node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
       specs.push(node.moduleSpecifier.text);
+    } else if (ts.isCallExpression(node) &&
+        node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
+      specs.push(node.arguments[0].text); // dynamic import("…")
     }
-  });
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sf, visit);
   return specs.map((s) => resolveSpecifier(file, s)).filter(Boolean);
 }
 
@@ -111,7 +126,7 @@ function buildGraph() {
   for (const f of files) {
     const text = readFileSync(f, "utf8");
     graph.set(f, importEdges(f, text));
-    if (/[/\\][^/\\]*-core\.ts$/.test(f)) {
+    if (/[/\\][^/\\]*-core\.(ts|tsx|mts)$/.test(f)) {
       const ex = coreExports(f, text);
       if (ex.length) coreOf.set(f, ex);
     }
@@ -204,7 +219,7 @@ function renderTable(table) {
 
 function writeDoc(table) {
   const block = renderTable(table);
-  let doc = existsSync(COVERAGE_DOC) ? readFileSync(COVERAGE_DOC, "utf8").replace(/\r\n?/g, "\n") : "# Assistant capability coverage\n";
+  let doc = existsSync(COVERAGE_DOC) ? readFileSync(COVERAGE_DOC, "utf8").replace(/^﻿/, "").replace(/\r\n?/g, "\n") : "# Assistant capability coverage\n";
   if (doc.includes(BEGIN) && doc.includes(END)) {
     doc = doc.replace(new RegExp(`${BEGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), block);
   } else {
@@ -220,7 +235,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { violations, table, cores, reachableCount } = run();
 
   const expected = writeDoc(table);
-  const actual = existsSync(COVERAGE_DOC) ? readFileSync(COVERAGE_DOC, "utf8").replace(/\r\n?/g, "\n") : "";
+  const actual = existsSync(COVERAGE_DOC) ? readFileSync(COVERAGE_DOC, "utf8").replace(/^﻿/, "").replace(/\r\n?/g, "\n") : "";
   if (write) {
     writeFileSync(COVERAGE_DOC, expected, "utf8");
     console.log(`${GRN}✓ wrote coverage table${RST} to docs/architecture/assistant-coverage.md (${reachableCount}/${cores} reachable)`);
