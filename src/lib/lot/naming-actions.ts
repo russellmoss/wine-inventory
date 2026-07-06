@@ -79,6 +79,26 @@ export const describeLotIdentityAction = action(
   },
 );
 
+export type NamingTemplateRow = {
+  id: string;
+  code: string;
+  name: string;
+  isSystem: boolean;
+  isDefault: boolean;
+  currentVersion: number;
+};
+
+/** List the tenant's naming templates (for the Settings authoring card). Read-only. */
+export const listNamingTemplatesAction = action(async (): Promise<NamingTemplateRow[]> => {
+  const { prisma } = await import("@/lib/prisma");
+  const rows = await prisma.namingTemplate.findMany({
+    where: { archivedAt: null },
+    select: { id: true, code: true, name: true, isSystem: true, isDefault: true, currentVersion: true },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+  });
+  return rows;
+});
+
 // ─────────────────────── naming-template authoring (admin) ───────────────────────
 
 /** Create a custom naming template (+ version 1). Validates the blend-origin constraint at authoring. */

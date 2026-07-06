@@ -57,6 +57,43 @@ The NAMING-1/2 mechanism is complete and **verify-guarded**; the following are a
 - New `verify:invariant-frontmatter` (pure Node) wired into `ci.yml` beside `verify:invariants`/`verify:tripwires`; `.gitattributes` pins `docs/architecture/invariants/*.md` to LF (closes PHASE-0 Surprise 2).
 - MIGRATE-1 `appliesTo` repoint stays **parked for Phase 3** (standing constraint honored). No kernel/bond contracts touched.
 
+## UI fast-follow (post-merge, 2026-07-06)
+
+Shipped as its own small PR (`chore/phase-1-ui-fast-follow`) after the Phase-1 merge, on the guarded
+cores + shipped server actions. Per the owner's call: **design gate only** (no eng/council — proportionate
+for UI wiring on proven mechanisms); the plan-stage design contracts (IA hierarchy, interaction states,
+token/component reuse, a11y) were applied during implementation.
+
+- **Brain-refresh** (phase boundary): system-map §2a (identity presentation layer) + scale-register
+  (cross-identifier search / `LotCodeEvent` growth) + security-register (new tables RLS + rename
+  authority + no-join-on-code tripwire); marker advanced to the merged HEAD.
+- **Assistant resolver fallback** (`scope.ts` `resolveLotTarget`): when no current-code match, falls back
+  to `searchLotsByIdentifier` (displayName / historical code / legacy id), resolving to `id` — so a renamed
+  or aliased lot is findable in the assistant; ambiguous matches list "code (formerly X)".
+- **Lot-list cross-identifier search** (`LotsClient`): a "find a lot by any code, name, or alias" box over
+  `searchLotsAction`, rendering the disambiguation envelope ("code · formerly / alias: X"), keyboard + SR
+  labels.
+- **Timeline "renamed → / also-known-as" affordance** (`TimelineEntryDetail`): a muted `LotAkaBlock`
+  (via `describeLotIdentityAction`) surfaces current code + display name + prior/legacy aliases without
+  rewriting the as-recorded snapshot (NAMING-2). Neutral styling, not an alert.
+- **NamingTemplateCard** (`/settings`): lists templates (active default marked), admin-authors a custom
+  pattern from an ordered token list (`createNamingTemplateAction` + `setDefaultNamingTemplateAction`,
+  blend-origin validated server-side); the built-in default reproduces `buildLotCode`.
+
+**Deferred (honest):** wiring cross-identifier search into `BlendBuilderClient` — its client-side haystack
+carries only resident `code` (no displayName/aliases), so it needs a `BlendVessel` loader/data-model change
+disproportionate to a fast-follow and low incremental value (resident current-code search already works;
+the standalone lot search + assistant resolver cover alias lookup app-wide). Tracked for a future pass.
+
+**Refactor note:** `getActiveTemplateSpec` moved from `naming-template.ts` (now pure/client-safe) into
+`generate.ts` (server-only) so the Settings client card can import `LOT_TOKENS`/types without dragging
+`tenant/context` into a client bundle (Turbopack build error, fixed).
+
+**Gates (worktree, real `node_modules`):** `tsc` 0 · `lint` 0 · `vitest` 1500 passed (+ the known
+pre-broken `invariant-drift.test.ts` load error) · `verify:naming` 25 · `verify:invariants`/`-frontmatter`/
+`-tripwires` green · `npm run build` compiled clean. (Worktree-via-junction tsc showed a spurious
+`rack-core`/`topping` depth artifact; a real `node_modules` install confirmed 0.)
+
 ## Landing
 
 Branch `feat/phase-1-identity-presentation`, incremental commits (V5 → S1/S2 → C1-C4 → V1/V2/V4 → V3 → U-backend → U2 → report). Next: `/ship` → PR → CI green → squash-merge → delete branch. Brain-refresh due (`prisma/schema` + `src/lib/ledger` touched) — run at `/ship`.

@@ -1,4 +1,3 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
 import { buildLotCode, buildBlendLotCode, type LotCodeParts, type BlendLotCodeParts } from "@/lib/lot/code";
 
 // Phase 1 (identity presentation) — the per-tenant, versioned tokenized naming scheme (plan C1).
@@ -8,11 +7,9 @@ import { buildLotCode, buildBlendLotCode, type LotCodeParts, type BlendLotCodePa
 // The blend anti-single-origin rule is preserved as a template CONSTRAINT (a blend spec must not
 // carry origin tokens) rather than a hardcode.
 //
-// No DB writes here. `getActiveTemplateSpec` reads the tenant's active default; if the tenant can't
-// be resolved or has no row, it falls back to the built-in default (== today's behavior) — so a
-// missing template never changes output and never leaks another tenant's scheme.
-
-type Db = PrismaClient | Prisma.TransactionClient;
+// Pure + client-safe: this module holds ONLY the renderer, token vocabulary, spec type, and spec
+// validation (no DB, no server-only imports) so client components (e.g. the Settings NamingTemplateCard)
+// can import `LOT_TOKENS`/types freely. The server-only tenant-template resolver lives in `generate.ts`.
 
 export const ORIGIN_TOKENS = ["VINEYARD", "BLOCK", "SUBBLOCK", "VARIETY"] as const;
 export const LOT_TOKENS = ["VINTAGE", ...ORIGIN_TOKENS, "FRACTION"] as const;
@@ -117,31 +114,5 @@ export function renderBlendLotCode(spec: NamingTemplateSpec, parts: BlendLotCode
   return rendered.join(sep);
 }
 
-/**
- * Resolve the tenant's active naming spec. Reads the tenant's default (isDefault, not archived);
- * falls back to the built-in default when the tenant can't be resolved or has no row — so output
- * never changes and never leaks across tenants. Uses the passed db (RLS/extension-scoped) and an
- * explicit tenantId filter (defense-in-depth) when a tenant is in scope.
- */
-export async function getActiveTemplateSpec(db: Db): Promise<NamingTemplateSpec> {
-  let tenantId: string | undefined;
-  try {
-    // Local import avoids a hard dependency when called from a context with no ALS tenant.
-    const { requireTenantId } = await import("@/lib/tenant/context");
-    tenantId = requireTenantId();
-  } catch {
-    return BUILTIN_DEFAULT_SPEC;
-  }
-  const tpl = await db.namingTemplate.findFirst({
-    where: { tenantId, isDefault: true, archivedAt: null },
-    select: { id: true, currentVersion: true },
-  });
-  if (!tpl) return BUILTIN_DEFAULT_SPEC;
-  const version = await db.namingTemplateVersion.findFirst({
-    where: { tenantId, templateId: tpl.id, version: tpl.currentVersion },
-    select: { spec: true },
-  });
-  const spec = version?.spec as unknown as NamingTemplateSpec | undefined;
-  if (!spec || (spec.kind !== "builtin-default" && spec.kind !== "custom")) return BUILTIN_DEFAULT_SPEC;
-  return spec;
-}
+// `getActiveTemplateSpec` (the server-only tenant resolver) lives in `generate.ts` to keep this module
+// pure/client-safe (no `@/lib/tenant/context` import bleeding into a client bundle).

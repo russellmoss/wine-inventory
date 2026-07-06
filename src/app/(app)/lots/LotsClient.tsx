@@ -7,6 +7,8 @@ import { Card, Eyebrow, Badge, Button } from "@/components/ui";
 import { formatL, type CurrentLocation } from "@/lib/lot/timeline";
 import type { LotListRow, LotListFilter, TastingSearchRow } from "@/lib/lot/data";
 import { searchTastingNotesAction } from "@/lib/chemistry/actions";
+import { searchLotsAction } from "@/lib/lot/naming-actions";
+import type { LotSearchMatch } from "@/lib/lot/identify";
 
 const TABS: { key: LotListFilter; label: string }[] = [
   { key: "ACTIVE", label: "Active" },
@@ -148,6 +150,83 @@ function TastingSearch() {
   );
 }
 
+// Phase 1 (identity presentation, plan U3): cross-identifier lot search — resolves by current code,
+// displayName, a historical code (via LotCodeEvent), or a legacy identifier. Renders the disambiguation
+// envelope so a query matching two lots is never silently collapsed; a historical hit shows "formerly X".
+function LotIdentifierSearch() {
+  const [q, setQ] = React.useState("");
+  const [results, setResults] = React.useState<LotSearchMatch[] | null>(null);
+  const [pending, startTransition] = React.useTransition();
+
+  function run() {
+    const term = q.trim();
+    if (term.length < 2) {
+      setResults([]);
+      return;
+    }
+    startTransition(async () => {
+      setResults(await searchLotsAction({ query: term, limit: 10 }));
+    });
+  }
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          run();
+        }}
+        style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
+      >
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Find a lot by any code, name, or alias"
+          style={searchFieldStyle}
+          aria-label="Find a lot by any identifier"
+        />
+        <Button type="submit" variant="secondary" size="sm" disabled={pending} style={{ minHeight: 44 }}>
+          {pending ? "Searching…" : "Find lot"}
+        </Button>
+        {results != null ? (
+          <Button type="button" variant="ghost" size="sm" onClick={() => { setQ(""); setResults(null); }} style={{ minHeight: 44 }}>
+            Clear
+          </Button>
+        ) : null}
+      </form>
+      {results != null ? (
+        results.length === 0 ? (
+          <p style={{ fontSize: 13.5, color: "var(--text-muted)", marginTop: 10 }}>No lots match “{q.trim()}”.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+            {results.map((r) => {
+              // Design contract: current-code/displayName hits show the code; a historical or legacy hit
+              // reads "code (formerly: matched-value)" so two-lot matches are disambiguated (council G4).
+              const secondary =
+                r.matchType === "historical-code" || r.matchType === "legacy-identifier"
+                  ? `formerly / alias: ${r.matchContext}`
+                  : r.matchType === "display-name" && r.displayName
+                    ? r.displayName
+                    : null;
+              return (
+                <Link
+                  key={r.lotId}
+                  href={`/lots/${r.lotId}`}
+                  aria-label={`${r.currentCode}${secondary ? `, ${secondary}` : ""}`}
+                  style={{ display: "block", padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-strong)", background: "var(--surface-raised)", color: "inherit" }}
+                >
+                  <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{r.currentCode}</span>
+                  {secondary ? <span style={{ color: "var(--text-muted)", fontSize: 13 }}> · {secondary}</span> : null}
+                </Link>
+              );
+            })}
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 function StatusTabs({ active, vesselId }: { active: LotListFilter; vesselId?: string }) {
   return (
     <div role="tablist" aria-label="Lot status filter" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 20 }}>
@@ -210,6 +289,7 @@ export function LotsClient({
         bottlings, and corrections, newest first.
       </p>
 
+      <LotIdentifierSearch />
       <TastingSearch />
 
       <StatusTabs active={status} vesselId={vesselId} />

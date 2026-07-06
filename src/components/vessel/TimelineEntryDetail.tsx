@@ -8,6 +8,30 @@ import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/addi
 import { editOperationAction, deleteOperationAction } from "@/lib/cellar/actions";
 import { reverseOperationAction } from "@/lib/ledger/actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
+import { describeLotIdentityAction } from "@/lib/lot/naming-actions";
+
+// Phase 1 (identity presentation, plan U4): the honest "renamed → / also-known-as" affordance. Timeline
+// entries render the code AS-RECORDED (the immutable snapshot); this surfaces the lot's CURRENT code +
+// prior codes / legacy aliases so a reader sees the rename history without any snapshot being rewritten
+// (NAMING-2). Neutral provenance styling (design-review): a muted line, never an alert.
+function LotAkaBlock({ lotId }: { lotId: string }) {
+  const [info, setInfo] = React.useState<{ currentCode: string; displayName: string | null; aliases: string[] } | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    describeLotIdentityAction({ lotId })
+      .then((r) => { if (live && r) setInfo({ currentCode: r.currentCode, displayName: r.displayName, aliases: r.aliases.map((a) => a.value) }); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [lotId]);
+  if (!info || (info.aliases.length === 0 && !info.displayName)) return null;
+  return (
+    <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>
+      Lot <span style={{ color: "var(--text-secondary)" }}>{info.currentCode}</span>
+      {info.displayName ? ` (${info.displayName})` : ""}
+      {info.aliases.length > 0 ? <> · formerly / also: {info.aliases.join(", ")}</> : null}
+    </div>
+  );
+}
 
 // ───────────────────────── Unit 8: the timeline-entry detail modal ─────────────────────────
 // Opens on any History entry. Shows full provenance (entered by / capture method / observed date+
@@ -387,6 +411,10 @@ export function TimelineEntryDetail({ item, lotIdForOp, onClose, onMutated }: Ti
   return (
     <Modal open onClose={onClose} title={item.summary} subtitle="Timeline entry">
       <ProvenanceBlock item={item} />
+      {(() => {
+        const lotId = lotIdForOp ? lotIdForOp(item) : null;
+        return lotId ? <LotAkaBlock lotId={lotId} /> : null;
+      })()}
       {woProvenance ? <WorkOrderBlock wo={woProvenance} /> : null}
       <div style={{ borderTop: "1px solid var(--border-subtle)", marginTop: 16, paddingTop: 16 }}>
         <ActionRegion item={item} lotIdForOp={lotIdForOp} onMutated={onMutated} onClose={onClose} />
