@@ -272,6 +272,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "multi-vessel fan-out: ONE work order, one topping task per barrel — the template path can't do this",
   },
   {
+    utterance: "I want a work order issued for russellmoss87@gmail.com, they are the assignee. It is for the topping of Barrel 1 through 5.",
+    tool: "issue_operation_wo",
+    args: { operation: "TOPPING", vessels: ["barrel 1", "barrel 2", "barrel 3", "barrel 4", "barrel 5"], assigneeEmail: "russellmoss87@gmail.com" },
+    note: "regression: conversational phrasing (assignee first, 'topping' buried, no 'work order for barrels…' lead) mis-routed to create_work_order + the 'Top the barrels' template → a single vessel-less task. A named vessel list is a fan-out, never the template path.",
+  },
+  {
     utterance: "Add 30 g/hL KMBS to barrels 1 through 8 as a work order",
     tool: "issue_operation_wo",
     args: { operation: "ADDITION", vessels: ["barrel 1", "barrel 8"], material: "KMBS", amount: 30, unit: "g/hL" },

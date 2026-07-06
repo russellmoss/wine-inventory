@@ -153,8 +153,12 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
           });
           const data = await res.json().catch(() => null);
           if (!activeRef.current) return; // overlay closed mid-request
-          if (res.ok && data?.ok) setProp({ ...p, status: "done", result: data.message });
-          else setProp({ ...p, status: "error", result: data?.error ?? "Could not apply." });
+          if (res.ok && data?.ok) {
+            setProp({ ...p, status: "done", result: data.message });
+            // Bust the client Router Cache so the page behind the overlay reflects the write (the
+            // committer's server-side revalidatePath doesn't reach the client). Mirrors AssistantChat.
+            router.refresh();
+          } else setProp({ ...p, status: "error", result: data?.error ?? "Could not apply." });
         } catch {
           setProp({ ...p, status: "error", result: "Network error." });
         }

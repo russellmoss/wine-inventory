@@ -17,7 +17,8 @@ type CreateWoRawInput = { template?: string; dueDate?: string; assigneeEmail?: s
 export const createWorkOrderTool: AssistantTool = {
   name: "create_work_order",
   description:
-    "Create and ISSUE a work order from a template — a live, assignable order the crew can execute. Use when the user says to create / issue / start a work order from a named template (e.g. 'issue the weekly barrel-care order for tomorrow'). Give the template by name; optionally a due date, assignee email, and a title. Does NOT save immediately — returns a preview to confirm.",
+    "Create and ISSUE a work order from a TEMPLATE — a live, assignable order whose tasks come from the template AS-IS. Use ONLY when the user names a template or wants a general SOP order (e.g. 'issue the weekly barrel-care order for tomorrow'). Give the template by name; optionally a due date, assignee email, and a title. Does NOT save immediately — returns a preview to confirm. " +
+    "DO NOT use this when the user names SPECIFIC vessels for a whole-vessel operation (topping / filtration / addition / fining across 'barrels 1–5', 'tanks 3, 4 and 7', etc.) — this tool clones a fixed template and CANNOT fan out one task per vessel, so the vessel scope would be lost. For that, use issue_operation_wo. For cap work (punchdown / pumpover / cold-soak) across vessels, use issue_cap_management_wo.",
   kind: "write",
   inputSchema: {
     type: "object",

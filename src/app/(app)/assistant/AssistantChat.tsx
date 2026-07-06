@@ -526,6 +526,12 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
             ? { path: data.navigate.path as string, label: data.navigate.label as string }
             : undefined;
         setItems((prev) => updateProposal(prev, index, { status: "done", result: data.message, navigate: nav }));
+        // A committed write invalidates the server caches (revalidatePath in the committer), but the
+        // user's client Router Cache is untouched because this wasn't a component-bound server action.
+        // Without this, a freshly created/updated record (e.g. an issued work order) won't appear on an
+        // already-open or client-cached list until a hard browser refresh. router.refresh() clears the
+        // client cache and refetches the current route with fresh server data (client state preserved).
+        router.refresh();
       } else {
         setItems((prev) => updateProposal(prev, index, { status: "error", result: data?.error ?? "Could not apply." }));
       }
