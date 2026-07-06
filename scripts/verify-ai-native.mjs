@@ -83,7 +83,7 @@ function importEdges(file, text) {
 }
 
 // ---- exported `*Core` symbols declared in a file ----------------------------
-function coreExports(file, text) {
+export function coreExports(file, text) {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const names = new Set();
   const hasExport = (n) => n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
@@ -99,7 +99,9 @@ function coreExports(file, text) {
   return [...names];
 }
 
-export function run() {
+export function run(opts = {}) {
+  const allow = opts.allowlist || ALLOWLIST;
+  const maxAllowed = opts.maxAllowed ?? MAX_ALLOWED;
   const files = walk(SRC);
   const graph = new Map();       // abs file → [abs imported files]
   const coreOf = new Map();      // abs core file → [*Core names]
@@ -132,7 +134,7 @@ export function run() {
   const table = cores.map((f) => {
     const reachable = via.has(f);
     const viaRoot = reachable ? rel(via.get(f)).replace("src/lib/assistant/tools/", "").replace(/\.tsx?$/, "") : "";
-    return { core: rel(f), exports: coreOf.get(f), reachable, via: viaRoot, allowed: !!ALLOWLIST[rel(f)] };
+    return { core: rel(f), exports: coreOf.get(f), reachable, via: viaRoot, allowed: !!allow[rel(f)] };
   });
 
   const violations = [];
@@ -142,14 +144,14 @@ export function run() {
       violations.push(`${row.core}: exports ${row.exports.join(", ")} but NO assistant tool reaches it (add a tool, or allow-list with a reason)`);
   }
   // Ratchet: the escape hatch can only shrink.
-  const allowKeys = Object.keys(ALLOWLIST);
-  if (allowKeys.length > MAX_ALLOWED)
-    violations.push(`allow-list has ${allowKeys.length} entries but MAX_ALLOWED=${MAX_ALLOWED} — the ratchet only shrinks; wire a tool or lower MAX_ALLOWED, don't raise it`);
+  const allowKeys = Object.keys(allow);
+  if (allowKeys.length > maxAllowed)
+    violations.push(`allow-list has ${allowKeys.length} entries but MAX_ALLOWED=${maxAllowed} — the ratchet only shrinks; wire a tool or lower MAX_ALLOWED, don't raise it`);
   // Stale allow-list entries (core gone, or now reachable).
   for (const k of allowKeys) {
     if (!coreOf.has(join(REPO, k))) violations.push(`allow-list entry \`${k}\` is stale — no such core file`);
     else if (via.has(join(REPO, k))) violations.push(`allow-list entry \`${k}\` is now reachable — remove it and lower MAX_ALLOWED`);
-    else if (!ALLOWLIST[k].owner || !ALLOWLIST[k].reason) violations.push(`allow-list entry \`${k}\` needs both \`owner\` and \`reason\``);
+    else if (!allow[k].owner || !allow[k].reason) violations.push(`allow-list entry \`${k}\` needs both \`owner\` and \`reason\``);
   }
 
   return { violations, table, cores: cores.length, reachableCount: table.filter((t) => t.reachable).length };
