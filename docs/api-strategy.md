@@ -20,8 +20,11 @@ From the 2026-07 research + incumbent-API analysis:
 
 - **Vintrace's API** reads as resource-CRUD (`GET /shipments`, `POST` bulk intake) oriented at
   sales/inventory/dispatch; its accounting sync is **one-way** ("just data dumps" — user review).
-- **InnoVint** imports one-way from lab/tank partners and has **no public developer REST API** surfaced
-  and **no QuickBooks API** at all (manual reconciliation).
+- **InnoVint** imports one-way from lab/tank partners and **does have a public REST API** at
+  `sutter.innovint.us/api/v1/` (PAT auth) — *corrected 2026-07 (Phase 0) from the incumbent-teardown
+  corpus; the earlier "no public REST API" claim was wrong.* It still has **no QuickBooks API** at all
+  (manual reconciliation). The anti-lock-in thesis holds regardless: their APIs are **extraction/one-way**,
+  so being two-way + export-friendly remains the competitive edge (Phase 13 targets the real API path).
 - Incumbents that **"obstruct the exit"** are a documented churn driver.
 
 So the API layer is itself competitive surface on three fronts: (1) **two-way** where they're one-way,

@@ -41,6 +41,32 @@ should be frictionless (they can be undone).
 ### 7. Consistent with the design system
 Uses [[DESIGN]] tokens — never hardcoded colors/fonts/spacing. Same component for the same job everywhere.
 
+<!-- Rules 8-12 added in Phase 0 from the incumbent teardown (analysis/incumbent-teardown/SYNTHESIS.md §B.3). -->
+
+### 8. Self-service correction is first-class
+When a correction is blocked (LEDGER-11), the UI **names the later operation that touched the wine** and
+offers **"unwind the chain (LIFO)"** in plain language — not an opaque error. Check: can the user resolve a
+blocked correction themselves, on the object, without a support ticket?
+
+### 9. No support ticket to configure anything
+Bonds, locations, members, vendors, vessel attributes, analysis metrics are **tenant-editable**. Gate a
+capability by the tenant's **plan** (Phase 17), never by a **support ticket**. Check: is every configuration
+surface self-serve for an admin?
+
+### 10. Exports never fail silently
+Server-side generation, synchronous folds: **"click export → file appears."** No pop-up-blocked silent
+failures, no hour-long rebuild banners. Check: does every export either produce the file or show a clear,
+actionable error?
+
+### 11. Offline-first capture is table stakes  *(forward principle — Phase 28; not yet enforceable)*
+Cellar-floor capture should not hard-fail without a live connection — it queues and syncs (D25/Phase 28).
+**Not built yet**, so unlike rules 1-10 this is not pass/fail-checkable on a current screen; it is a forward
+design commitment. Do not grade today's screens against it until Phase 28 lands.
+
+### 12. No phantom vessels
+Split and blend-return are **real operations**, never fake round-trips through a throwaway vessel. Check:
+does any flow create a temporary/fake vessel to model an operation that should be a first-class op?
+
 <!--
 TEMPLATE — copy for each new rule:
 
