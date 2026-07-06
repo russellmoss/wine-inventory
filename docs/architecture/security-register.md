@@ -136,6 +136,23 @@ TEMPLATE — copy for each new invariant / finding:
 
 ---
 
+## Identity presentation layer — new tenant-scoped tables + rename authority (Phase 1)
+- **What:** `LotIdentifier`, `LotCodeEvent`, `NamingTemplate`, `NamingTemplateVersion` — all tenant-scoped
+  to the Phase-12 checklist (RLS ENABLE+FORCE + `tenant_isolation` USING/WITH CHECK, fail-closed) with
+  composite `(tenantId, refId) → (tenantId, id)` FKs in raw SQL (K11). The tenant-isolation auto-coverage
+  guard requires RLS on every one; behavioral cases live in both isolation harnesses.
+- **Boundary:** rename/`displayName` are normal tenant-user actions (`action()`) — renaming is first-class
+  UX and not in the admin/owner high-risk set. Naming-**template authoring** is admin-gated (`adminAction`).
+  Identity is `id`; a `code` collision is a label error (offered disambiguation), never a data-integrity or
+  cross-tenant risk.
+- **Tripwire:** a new lot-identity table missing RLS (auto-coverage guard fails); a `WHERE code =` /
+  `lotCode =` join in `src/lib/{ledger,cost,transform,blend,compliance}` (a rename would then silently
+  mis-resolve — caught by `verify:naming`); a rename path writing a `LotOperationLine` snapshot (history
+  rewrite — `verify:naming` asserts snapshots are untouched); `runAsSystem` imported into the web app.
+- **Status:** 🟢 (built + guarded by `verify:naming` + `verify:tenant-isolation`)
+
+---
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_
