@@ -1207,10 +1207,10 @@ model Lot {
   costState            LotCostState?
   // Phase 8b (Unit 8): barrel-aging residency intervals for this lot (fill-based amortization).
   barrelFills          BarrelFill[]
-  // Phase 1 (identity presentation): external/source identifiers + the current-code convenience
-  // row (search index + Phase-3 re-import key), and the append-only rename history.
-  identifiers          LotIdentifier[]
-  codeEvents           LotCodeEvent[]
+  // Phase 1 (identity presentation): LotIdentifier / LotCodeEvent reference this lot via a COMPOSITE
+  // (tenantId, lotId)->(tenantId, id) FK declared in raw SQL (like work_order_task's lot ref, K11) —
+  // NOT a Prisma relation. Multi-field Prisma relations here blow TS's type-instantiation depth
+  // (excessive-stack-depth on VesselLot/Lot), so we keep the FK at the DB level and query by lotId.
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -1243,8 +1243,8 @@ model LotIdentifier {
   isCurrent        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-
-  lot Lot @relation(fields: [tenantId, lotId], references: [tenantId, id], onDelete: Restrict)
+  // Composite FK (tenantId, lotId)->lot(tenantId, id) is declared in raw SQL (see the schema
+  // migration) — not a Prisma relation (avoids the multi-field-relation type-depth blowup).
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -1270,8 +1270,8 @@ model LotCodeEvent {
   observedAt  DateTime @default(now())
   commandId   String // idempotency; UNIQUE per tenant (see @@unique below)
   createdAt   DateTime @default(now())
-
-  lot Lot @relation(fields: [tenantId, lotId], references: [tenantId, id], onDelete: Restrict)
+  // Composite FK (tenantId, lotId)->lot(tenantId, id) is declared in raw SQL (see the schema
+  // migration) — not a Prisma relation (avoids the multi-field-relation type-depth blowup).
 
   @@unique([tenantId, id])
   @@unique([tenantId, commandId]) // idempotency (checklist step 4: tenant-scoped, not global)
@@ -1298,8 +1298,9 @@ model NamingTemplate {
   archivedAt     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-
-  versions NamingTemplateVersion[]
+  // Versions reference this header via a COMPOSITE (tenantId, templateId)->(tenantId, id) FK declared
+  // in raw SQL — not a Prisma relation (multi-field relation type-depth blowup). Query versions by
+  // (tenantId, templateId, version) directly.
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -1318,8 +1319,7 @@ model NamingTemplateVersion {
   createdAt      DateTime @default(now())
   createdById    String?
   createdByEmail String?
-
-  template NamingTemplate @relation(fields: [tenantId, templateId], references: [tenantId, id], onDelete: Cascade)
+  // Composite FK (tenantId, templateId)->naming_template(tenantId, id) in raw SQL (not a Prisma relation).
 
   @@unique([tenantId, templateId, version])
   @@unique([tenantId, id])
