@@ -1,5 +1,5 @@
 import "server-only";
-import { Prisma } from "@prisma/client";
+import { Prisma, type WorkOrderTaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AppUser } from "@/lib/access";
 import { parseVesselRef } from "@/lib/vessels/ref";
@@ -347,6 +347,53 @@ export function parseWorkOrderRef(ref: string | number): WorkOrderRef | null {
 }
 
 const NEED_WO = "Which work order? Give its number (e.g. 'WO 142'), its id, or its link.";
+const NEED_WO_OR_VESSEL =
+  "Which work order? Give its number (e.g. 'WO 142'), its id/link, or name the vessel it's on (e.g. 'tank 1').";
+
+const DEFAULT_OPEN_STATES: WorkOrderTaskStatus[] = ["PENDING", "IN_PROGRESS", "REJECTED"];
+
+/**
+ * Resolve an open work-order task from a VESSEL reference alone — the "complete the punchdown on tank 1"
+ * flow, where the operator never cites a WO number. Tasks mirror their target vessel into the canonical
+ * `sourceVesselId`/`destVesselId` columns at issue time (template-vocabulary `canonicalColumns`), so we
+ * match on either. Scoped to still-open tasks and tenant-isolated via the prisma extension (RLS). When a
+ * task word is given ("punchdown"), it narrows by title fuzzy-match first, then by the op family the word
+ * maps to (so "punchdown" → CAP_MGMT even if the title reads "Cap management"). Ambiguity lists the open
+ * tasks (WO # + title) so the model can ask; nothing open throws a clear message.
+ */
+async function resolveTaskByVessel(vesselText: string, opts: { task?: string | number; states?: string[] }): Promise<ResolvedTask> {
+  const v = await matchVesselByText(vesselText); // throws a relayable message when unknown/ambiguous
+  const label = `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}`;
+  const states = (opts.states as WorkOrderTaskStatus[] | undefined) ?? DEFAULT_OPEN_STATES;
+  const rows = await prisma.workOrderTask.findMany({
+    where: { status: { in: states }, OR: [{ sourceVesselId: v.id }, { destVesselId: v.id }] },
+    orderBy: [{ dueAt: "asc" }, { seq: "asc" }],
+    select: { id: true, seq: true, title: true, opType: true, observationType: true, kind: true, status: true, workOrder: { select: { id: true, number: true } } },
+  });
+
+  type Row = (typeof rows)[number];
+  const pick = (t: Row): ResolvedTask => ({ workOrderId: t.workOrder.id, number: t.workOrder.number, taskId: t.id, seq: t.seq, title: t.title, opType: t.opType, observationType: t.observationType, kind: t.kind, status: t.status });
+  const describe = (t: Row) => `WO #${t.workOrder.number} · #${t.seq} ${t.title} (${t.status.toLowerCase()})`;
+
+  let candidates = rows;
+  const ref = opts.task;
+  if (ref != null && String(ref).trim() !== "") {
+    const needle = norm(String(ref));
+    let matched = needle ? rows.filter((t) => norm(t.title).includes(needle)) : [];
+    if (matched.length === 0) {
+      const types = opTypeFilter(String(ref)); // "punchdown" → CAP_MGMT, "rack" → RACK, …
+      if (types) matched = rows.filter((t) => t.opType != null && types.includes(t.opType as OperationType));
+    }
+    candidates = matched;
+  }
+
+  if (candidates.length === 1) return pick(candidates[0]);
+  if (candidates.length === 0) {
+    if (rows.length === 0) throw new Error(`No open work-order task on ${label}.`);
+    throw new Error(`No open task matching "${opts.task}" on ${label}. Open tasks: ${rows.map(describe).join("; ")}.`);
+  }
+  throw new Error(`${label} has several open tasks — which one? ${candidates.map(describe).join("; ")}.`);
+}
 
 /** Resolve a work order by number, id, or URL (for WO-level lifecycle actions that don't need a task). */
 export async function resolveWorkOrder(ref: string | number): Promise<{ workOrderId: string; number: number; status: string }> {
@@ -366,9 +413,13 @@ export async function resolveWorkOrder(ref: string | number): Promise<{ workOrde
  * it's ambiguous, we throw a message listing the open tasks so the model can ask. Tenant-scoped via the
  * prisma extension (RLS). Used by the assistant WO-execution tools (complete/approve/…).
  */
-export async function resolveWorkOrderTask(opts: { wo?: string | number; task?: string | number; states?: string[] }): Promise<ResolvedTask> {
+export async function resolveWorkOrderTask(opts: { wo?: string | number; task?: string | number; vessel?: string; states?: string[] }): Promise<ResolvedTask> {
   const parsed = opts.wo == null || opts.wo === "" ? null : parseWorkOrderRef(opts.wo);
-  if (!parsed) throw new Error(NEED_WO);
+  if (!parsed) {
+    // No WO number — resolve by the vessel it's on instead ("complete the punchdown on tank 1").
+    if (opts.vessel && opts.vessel.trim()) return resolveTaskByVessel(opts.vessel, { task: opts.task, states: opts.states });
+    throw new Error(NEED_WO_OR_VESSEL);
+  }
   const wo = await prisma.workOrder.findFirst({
     where: "id" in parsed ? { id: parsed.id } : { number: parsed.number },
     select: { id: true, number: true, tasks: { orderBy: { seq: "asc" }, select: { id: true, seq: true, title: true, opType: true, observationType: true, kind: true, status: true } } },
