@@ -12,6 +12,7 @@ import { startTaskAction, assignWorkOrderAction, scheduleWorkOrderAction, cancel
 type ManageRawInput = {
   action?: "start" | "assign" | "schedule" | "cancel";
   wo?: string | number;
+  vessel?: string; // start only: resolve the task by the vessel it's on when no WO number is given
   task?: string | number; // start only
   assigneeEmail?: string; // assign only
   dueDate?: string; // schedule only (YYYY-MM-DD)
@@ -21,19 +22,20 @@ type ManageRawInput = {
 export const manageWorkOrderTool: AssistantTool = {
   name: "manage_work_order",
   description:
-    "Manage a work order's lifecycle: start a task ('start task 2 on WO 142'), assign it ('assign WO 142 to sam@…'), reschedule it ('move WO 142 to Friday'), or cancel it ('cancel WO 142'). Identify the work order by its number (142), its id, or a link the user pastes (e.g. …/work-orders/<id>) — pass whichever the user gives, verbatim, in `wo`. Does NOT act immediately — returns a preview to confirm.",
+    "Manage a work order's lifecycle: start a task ('start task 2 on WO 142', 'start the punchdown on tank 1'), assign it ('assign WO 142 to sam@…'), reschedule it ('move WO 142 to Friday'), or cancel it ('cancel WO 142'). Identify the work order by its number (142), its id, or a pasted link (…/work-orders/<id>) in `wo`. For START only, when no WO number is given you may instead name the vessel the task is on (`vessel`, e.g. 'tank 1'). Does NOT act immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       action: { type: "string", enum: ["start", "assign", "schedule", "cancel"], description: "What to do." },
-      wo: { type: ["number", "string"], description: "The work order: its number (e.g. 142), its id, or a pasted link (…/work-orders/<id>)." },
-      task: { type: "string", description: "start only: which task (number/title). Optional if one is open." },
+      wo: { type: ["number", "string"], description: "The work order: its number (e.g. 142), its id, or a pasted link (…/work-orders/<id>). Required for assign/schedule/cancel; for start you may use `vessel` instead." },
+      vessel: { type: "string", description: "start only: the vessel the task is on, e.g. 'tank 1'. Use when no WO number is given; the open task on that vessel is resolved automatically." },
+      task: { type: "string", description: "start only: which task (number/title/op word like 'punchdown'). Optional if one is open." },
       assigneeEmail: { type: "string", description: "assign only: the assignee's email." },
       dueDate: { type: "string", description: "schedule only: new due date as YYYY-MM-DD." },
       reason: { type: "string", description: "cancel only: why (optional)." },
     },
-    required: ["action", "wo"],
+    required: ["action"],
   },
   async run(_ctx, rawInput) {
     const input = (rawInput ?? {}) as ManageRawInput;
@@ -41,7 +43,7 @@ export const manageWorkOrderTool: AssistantTool = {
     if (!action || !["start", "assign", "schedule", "cancel"].includes(action)) throw new Error("Say what to do: start, assign, schedule, or cancel.");
 
     if (action === "start") {
-      const task = await resolveWorkOrderTask({ wo: input.wo, task: input.task });
+      const task = await resolveWorkOrderTask({ wo: input.wo, task: input.task, vessel: input.vessel });
       const token = signProposal("manage_work_order", { action, taskId: task.taskId, label: `#${task.seq} ${task.title}`, woNumber: task.number });
       return { needsConfirmation: true, preview: `Start task #${task.seq} "${task.title}" on WO #${task.number}.`, token };
     }

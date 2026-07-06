@@ -25,6 +25,7 @@ const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : u
 type Fraction = { vessel?: string; volumeL?: number; label?: string };
 type CompleteTaskRawInput = {
   wo?: string | number;
+  vessel?: string;
   task?: string | number;
   amount?: number;
   lossL?: number;
@@ -143,13 +144,14 @@ async function buildPressPayload(task: ResolvedTask, input: CompleteTaskRawInput
 export const completeTaskTool: AssistantTool = {
   name: "complete_task",
   description:
-    "Mark a work-order task as done ('complete the SO₂ addition on WO 142', 'WO 142 task 2 is done'). Completing an OPERATION task auto-logs the real ledger op (pending approval); an OBSERVATION logs a reading. For simple ops, by default it records the PLANNED values — state only what differed. It also completes a de-stem/crush task (give block + kg + destination + measured output) or a press task (give the must lot + the fraction cuts); a complex/underspecified crush or press is handed off to the execute screen. Identify the WO by number and, if several tasks are open, the task by number or name. Does NOT save immediately — returns a preview to confirm.",
+    "Mark a work-order task as done ('complete the SO₂ addition on WO 142', 'WO 142 task 2 is done', 'complete the punchdown on tank 1'). Completing an OPERATION task auto-logs the real ledger op (pending approval); an OBSERVATION logs a reading. For simple ops, by default it records the PLANNED values — state only what differed. It also completes a de-stem/crush task (give block + kg + destination + measured output) or a press task (give the must lot + the fraction cuts); a complex/underspecified crush or press is handed off to the execute screen. Identify the work order by its number OR, when the operator doesn't have one, by the vessel it's on (`vessel`, e.g. 'tank 1') — pass the task word (e.g. 'punchdown') in `task` to disambiguate. Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
-      wo: { type: "number", description: "Work order number, e.g. 142." },
-      task: { type: "string", description: "Which task — its number (seq) or a bit of its title. Optional if the WO has a single open task." },
+      wo: { type: "number", description: "Work order number, e.g. 142. Omit if identifying the task by vessel instead." },
+      vessel: { type: "string", description: "The vessel the task is on, e.g. 'tank 1' or 'T1'. Use when no WO number is given ('complete the punchdown on tank 1'); the open task on that vessel is resolved automatically." },
+      task: { type: "string", description: "Which task — its number (seq) or a bit of its title/op ('punchdown', 'addition'). Optional if the target has a single open task; recommended when resolving by vessel." },
       amount: { type: "number", description: "Simple op only: the actual value if it differed — dose amount, rack draw (L), topping volume (L), or filtration output (L)." },
       lossL: { type: "number", description: "Liters lost (rack/filtration; or press lees), if stated." },
       reading: { type: "number", description: "Observation task: the reading value (Brix/panel)." },
@@ -170,11 +172,11 @@ export const completeTaskTool: AssistantTool = {
       },
       op: { type: "string", enum: ["PRESS", "SAIGNEE"], description: "Press task only: press (default) or saignée." },
     },
-    required: ["wo"],
+    required: [],
   },
   async run(_ctx, rawInput) {
     const input = (rawInput ?? {}) as CompleteTaskRawInput;
-    const task = await resolveWorkOrderTask({ wo: input.wo, task: input.task });
+    const task = await resolveWorkOrderTask({ wo: input.wo, task: input.task, vessel: input.vessel });
 
     let built: { payload: Record<string, unknown>; summary: string } | { navigate: { path: string; label: string; auto: boolean }; message: string };
     if (task.opType === "CRUSH") built = await buildCrushPayload(task, input);

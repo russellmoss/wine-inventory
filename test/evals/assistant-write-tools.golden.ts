@@ -185,6 +185,24 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "simple crush by chat; a multi-pick/complex one deep-links the execute form",
   },
   {
+    utterance: "Complete the punchdown on tank 1",
+    tool: "complete_task",
+    args: { vessel: "tank 1", task: "punchdown" },
+    note: "no WO number — the open task is resolved by the vessel it's on (sourceVesselId/destVesselId); the op word disambiguates when several are open",
+  },
+  {
+    utterance: "Mark the SO₂ addition on T3 as done",
+    tool: "complete_task",
+    args: { vessel: "T3", task: "SO₂ addition" },
+    note: "vessel-resolved completion; bare vessel code (no 'tank'/'barrel' word) still resolves",
+  },
+  {
+    utterance: "Start the punchdown on tank 1",
+    tool: "manage_work_order",
+    args: { action: "start", vessel: "tank 1", task: "punchdown" },
+    note: "start action can also resolve the task by vessel when no WO number is given",
+  },
+  {
     utterance: "Approve WO 142",
     tool: "review_task",
     args: { wo: 142, decision: "approve" },
