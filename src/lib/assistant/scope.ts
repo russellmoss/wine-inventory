@@ -212,8 +212,20 @@ export async function resolveLotTarget(opts: { lot?: string; vessel?: string }):
     const exact = rows.find((r) => r.code.toLowerCase() === lotRef.toLowerCase());
     if (exact) return { lotId: exact.id, lotCode: exact.code };
     if (rows.length === 1) return { lotId: rows[0].id, lotCode: rows[0].code };
-    if (rows.length === 0) throw new Error(`No active lot matches "${opts.lot}". Check the lot code, or name the vessel.`);
-    throw new Error(`Several lots match "${opts.lot}": ${rows.map((r) => r.code).join(", ")}. Which one?`);
+    if (rows.length > 1) {
+      throw new Error(`Several lots match "${opts.lot}": ${rows.map((r) => r.code).join(", ")}. Which one?`);
+    }
+    // Phase 1 (identity presentation) fallback: no current-code match — try cross-identifier search
+    // (displayName, historical codes via LotCodeEvent, legacy identifiers). Resolves to `id` first
+    // (NAMING-2), so a renamed or aliased lot is still findable by an old code or a legacy id.
+    const { searchLotsByIdentifier } = await import("@/lib/lot/identify");
+    const matches = await searchLotsByIdentifier(lotRef, { limit: 5 });
+    if (matches.length === 1) return { lotId: matches[0].lotId, lotCode: matches[0].currentCode };
+    if (matches.length > 1) {
+      const shown = matches.map((m) => (m.matchType === "current-code" ? m.currentCode : `${m.currentCode} (formerly ${m.matchContext})`));
+      throw new Error(`Several lots match "${opts.lot}": ${shown.join(", ")}. Which one?`);
+    }
+    throw new Error(`No active lot matches "${opts.lot}". Check the lot code, or name the vessel.`);
   }
   if (opts.vessel) {
     const c = await resolveVesselContents(opts.vessel);

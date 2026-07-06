@@ -13,6 +13,7 @@ import { AccountingConnectionCard, type ConnectionSummary } from "./AccountingCo
 import { AccountMappingCard } from "./AccountMappingCard";
 import { Commerce7ConnectionCard, type Commerce7ConnectionSummary } from "./Commerce7ConnectionCard";
 import { Commerce7MappingCard } from "./Commerce7MappingCard";
+import { NamingTemplateCard } from "./NamingTemplateCard";
 
 type AccountingMapping = { component: string; costAccount: string | null; inventoryAccount: string | null };
 
@@ -242,6 +243,9 @@ export function SettingsClient({
           {costMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{costMsg}</span>}
         </div>
       </Card>
+
+      {/* Phase 1 — lot naming template authoring (identity presentation layer). */}
+      <NamingTemplateCard />
 
       {/* Phase 15 — QuickBooks / accounting connection + account mapping, beside the cost card. */}
       <AccountingConnectionCard accounting={accounting} />

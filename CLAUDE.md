@@ -28,6 +28,21 @@ All font choices, colors, spacing, and aesthetic direction are defined there
 Do not hardcode colors, fonts, or spacing — reference the tokens. Do not deviate
 without explicit user approval. In QA mode, flag any code that doesn't match DESIGN.md.
 
+## UI QA on this repo (browser testing setup)
+
+CDP-attach via rstack `browse` is **unreliable on this Windows box** — do not burn time on it:
+`:9222` is squatted by **Lenovo Vantage** (not a browser with the app session), and `browse`'s cookie
+tooling is **mac/Linux-only** (`cookie-import-browser` reads `~/Library`/`~/.config` paths; `cookie-import`
+throws `isPathWithin is not defined`). Fresh headless login doesn't persist the session cookie.
+
+**Standard: the Playwright `storageState` harness.** Log in once with the Demo Winery creds
+(`demo@demo.com` / `demo1234`) via the bundled Playwright (`node_modules/playwright-core`, resolved with
+`createRequire` rooted at `~/.claude/skills/rstack/browse/package.json`), save `storageState` to a temp
+JSON, then every scenario script loads that state. This is cross-platform, needs no CDP port or cookie
+decryption, and is what the Phase-1 identity QA used (see `qa/PHASE-1-QA-REPORT.md`). Drive the dev
+server from the branch/worktree that has the surface under test (Turbopack hot-reloads edits). QA rule:
+create `QA-*`-prefixed fixtures, mutate only those, and keep `verify:naming` green before AND after.
+
 ## The "brain" — living docs + automatic maintenance loops
 `docs/` is an Obsidian vault (open it at the repo root). `docs/architecture/` holds the
 system-map plus three registers that must stay true. Keep them honest:
