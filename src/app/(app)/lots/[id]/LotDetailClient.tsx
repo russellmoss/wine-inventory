@@ -23,6 +23,7 @@ import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/li
 import { transitionStateAction } from "@/lib/ferment/actions";
 import { AnalyteTrends, type TrendReading } from "@/components/chemistry/AnalyteTrends";
 import { CompositionRollup } from "@/components/lot/CompositionRollup";
+import { LotIdentityControls } from "./LotIdentityControls";
 import { LineageTree } from "@/components/lot/LineageTree";
 import { CostPanel } from "@/components/cost/CostPanel";
 import type { LotCostView } from "@/lib/cost/data";
@@ -690,6 +691,7 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
             </Link>
           ) : null}
         </div>
+        <LotIdentityControls lotId={lot.id} code={lot.code} displayName={lot.displayName} aliases={lot.aliases} />
       </div>
 
       {/* 2 — Where it is now + 3 — Provenance + Fermentation (Phase 6) */}

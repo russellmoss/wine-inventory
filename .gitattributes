@@ -1,0 +1,6 @@
+# Pin the invariant register notes to LF. The guard checkers
+# (scripts/verify-invariant-guards.mjs, scripts/verify-invariant-frontmatter.mjs)
+# match frontmatter with a /^---\n/ regex that silently skips a CRLF file — so a
+# CRLF note is an invisible governance hole on Windows checkouts (core.autocrlf=true).
+# Committing these as LF keeps the checkers honest regardless of the local working tree.
+docs/architecture/invariants/*.md text eol=lf

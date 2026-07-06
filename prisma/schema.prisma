@@ -1138,6 +1138,11 @@ model Lot {
   tenantId           String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id                 String             @id @default(cuid())
   code               String
+  // Phase 1 (identity presentation): a MUTABLE, NON-unique free-text human label. Deliberately
+  // NO @@unique. Backfilled/left NULL; the presentation layer coalesces `displayName ?? code`
+  // (plan Q12), so a `code` rename never leaves a stale displayName. Identity stays on `id`;
+  // `code` is the mutable unique-per-tenant human code; see NAMING-1/2.
+  displayName        String?
   // form is MUTABLE over the lot's life (D4) but ONLY via the Phase 6 domain transitions
   // (crush→MUST, press/saignée→JUICE, AF-dry→WINE) — direct writes are banned; every change
   // records a LotStateEvent. origin*/code/provenance stay immutable.
@@ -1202,6 +1207,10 @@ model Lot {
   costState            LotCostState?
   // Phase 8b (Unit 8): barrel-aging residency intervals for this lot (fill-based amortization).
   barrelFills          BarrelFill[]
+  // Phase 1 (identity presentation): LotIdentifier / LotCodeEvent reference this lot via a COMPOSITE
+  // (tenantId, lotId)->(tenantId, id) FK declared in raw SQL (like work_order_task's lot ref, K11) —
+  // NOT a Prisma relation. Multi-field Prisma relations here blow TS's type-instantiation depth
+  // (excessive-stack-depth on VesselLot/Lot), so we keep the FK at the DB level and query by lotId.
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
@@ -1209,6 +1218,113 @@ model Lot {
   @@index([originVineyardId])
   @@index([tenantId])
   @@map("lot")
+}
+
+// Phase 1 (identity presentation) — external/source identifiers for a lot: the current human
+// `code` (a convenience projection kept in sync on rename), legacy incumbent codes imported in
+// Phase 3, spreadsheet aliases, TTB labels. This is the cross-identifier SEARCH index AND the
+// Phase-3 idempotent re-import key. Rename HISTORY lives in LotCodeEvent, NOT here (plan Q13):
+// the app rename path never writes a `prior-code` row — it updates the single `current-code`
+// row's value in place; `prior-code` is reserved for Phase-3 imported incumbent labels.
+// Tenant checklist: composite FK (tenantId,lotId)->lot(tenantId,id); RLS + the null-safe
+// re-import partial uniques + the single-`current-code`-per-lot partial unique live in raw SQL
+// (Prisma can't express partial uniques). `kind` stays an open String (Phase-3 adapters add
+// kinds without an ALTER TYPE) — plan Q4.
+model LotIdentifier {
+  tenantId         String   @default("")
+  id               String   @id @default(cuid())
+  lotId            String
+  kind             String // current-code | source-system-id | spreadsheet-alias | ttb-label | prior-code(Phase-3 imports only)
+  sourceSystem     String? // e.g. "innovint" | "vintrace" | null for app-native identifiers
+  sourceObjectType String?
+  value            String
+  validFrom        DateTime?
+  validTo          DateTime?
+  isCurrent        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  // Composite FK (tenantId, lotId)->lot(tenantId, id) is declared in raw SQL (see the schema
+  // migration) — not a Prisma relation (avoids the multi-field-relation type-depth blowup).
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, lotId])
+  @@index([tenantId, value]) // cross-identifier search index
+  @@map("lot_identifier")
+}
+
+// Phase 1 (identity presentation) — the append-only SOURCE OF TRUTH for in-app renames
+// (NAMING-2). A rename appends one row here and NEVER rewrites a LotOperationLine snapshot;
+// historical-code search reads fromValue/toValue. `commandId` is the idempotency key, scoped
+// per tenant (checklist step 4). `field` is CHECK-constrained to ('code','displayName') in raw
+// SQL (a fixed domain — plan Q4). Composite FK + RLS in raw SQL.
+model LotCodeEvent {
+  tenantId    String   @default("")
+  id          String   @id @default(cuid())
+  lotId       String
+  field       String // code | displayName (CHECK-constrained in migration)
+  fromValue   String?
+  toValue     String
+  actorUserId String?
+  actorEmail  String? // email snapshot (provenance), mirrors the ledger actor shape
+  observedAt  DateTime @default(now())
+  commandId   String // idempotency; UNIQUE per tenant (see @@unique below)
+  createdAt   DateTime @default(now())
+  // Composite FK (tenantId, lotId)->lot(tenantId, id) is declared in raw SQL (see the schema
+  // migration) — not a Prisma relation (avoids the multi-field-relation type-depth blowup).
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, commandId]) // idempotency (checklist step 4: tenant-scoped, not global)
+  @@index([tenantId, lotId])
+  @@index([tenantId, toValue]) // historical-code search
+  @@index([tenantId, fromValue]) // historical-code search
+  @@map("lot_code_event")
+}
+
+// Phase 1 (identity presentation) — a per-tenant, versioned tokenized naming scheme. Mirrors the
+// WorkOrderTemplate/Version clone-on-customize pattern: the header points at currentVersion; each
+// edit inserts a new immutable NamingTemplateVersion. The built-in default (isSystem+isDefault)
+// reproduces today's buildLotCode output byte-for-byte (the renderer delegates to it). Single
+// active default per tenant is a raw-SQL partial unique. Composite FK + RLS in raw SQL.
+model NamingTemplate {
+  tenantId       String    @default("")
+  id             String    @id @default(cuid())
+  code           String // per-tenant stable key
+  name           String
+  isSystem       Boolean   @default(false)
+  isDefault      Boolean   @default(false)
+  clonedFromId   String? // lineage of a clone-on-customize
+  currentVersion Int       @default(1) // naked pointer, matching WorkOrderTemplate precedent
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  // Versions reference this header via a COMPOSITE (tenantId, templateId)->(tenantId, id) FK declared
+  // in raw SQL — not a Prisma relation (multi-field relation type-depth blowup). Query versions by
+  // (tenantId, templateId, version) directly.
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("naming_template")
+}
+
+// An immutable version snapshot of a NamingTemplate's tokenized spec. Editing a template creates
+// a new version, never mutating an old one (WO-template parity). Composite tenant FK to the header.
+model NamingTemplateVersion {
+  tenantId       String   @default("")
+  id             String   @id @default(cuid())
+  templateId     String
+  version        Int
+  spec           Json // the tokenized pattern (ordered typed segments + blend-variant flag)
+  createdAt      DateTime @default(now())
+  createdById    String?
+  createdByEmail String?
+  // Composite FK (tenantId, templateId)->naming_template(tenantId, id) in raw SQL (not a Prisma relation).
+
+  @@unique([tenantId, templateId, version])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("naming_template_version")
 }
 
 // One immutable ledger event. The autoincrement `id` IS the monotonic fold order

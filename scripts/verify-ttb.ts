@@ -48,6 +48,20 @@ async function scrub() {
     const t = TENANT;
     await db.complianceReport.deleteMany({ where: { tenantId: t } });
     await db.complianceProfile.deleteMany({ where: { tenantId: t } });
+    // Cost artifacts + the Phase-15 accounting outbox reference bottling runs / snapshots / ops via
+    // RESTRICT FKs (bottling freezes a BottlingCostSnapshot, so a run can't be deleted while its
+    // snapshot stands). Delete them FIRST, in child→parent order, or the scrub hits P2003 on a prior
+    // run's orphan (bottling_cost_snapshot_tenantId_runId_fkey).
+    await db.accountingDelivery.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.costExportEvent.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.costVarianceEvent.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.bottlingCostSnapshot.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.barrelFill.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.barrelAsset.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.supplyConsumption.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.costLine.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.supplyLot.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.cellarMaterial.deleteMany({ where: { tenantId: t } }).catch(() => {});
     await db.stockMovement.deleteMany({ where: { tenantId: t } });
     await db.bottledInventory.deleteMany({ where: { tenantId: t } });
     await db.bottlingSource.deleteMany({ where: { tenantId: t } });

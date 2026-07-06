@@ -34,3 +34,5 @@ What this makes easy, what it makes hard, and any entry added to [[scale-registe
 ## Index
 <!-- Add a line per ADR as you create them. -->
 - [[0001-vineyard-block-wo-target-seam]] — the minimal vineyard-block WO target (plan 039); Phase 20 extends it.
+- [[0002-identity-vs-naming-split]] — `id` is identity; `code`/`displayName` are a mutable label; no opaque slug (FIX_RUNBOOK Phase 0/1; NAMING-1/2).
+- [[0003-two-track-migration-seed-not-replay]] — seed current balances into the fold, archive legacy history read-only (never replay); the regression tripwire (FIX_RUNBOOK Phase 0/3; MIGRATE-1).

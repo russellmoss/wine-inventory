@@ -132,6 +132,10 @@ export async function searchTastingNotes(q: string): Promise<TastingSearchRow[]>
 export type LotDetail = {
   id: string;
   code: string;
+  // Phase 1 (identity presentation): the mutable, NON-unique human label (coalesced `displayName ?? code`
+  // is the presentation rule) + prior codes / legacy identifiers for the "also-known-as" affordance.
+  displayName: string | null;
+  aliases: string[];
   form: string;
   // Phase 6: the two orthogonal ferment vectors + the DERIVED stuck signal (null when not
   // applicable — recomputed from the Brix trend, never stored).
@@ -454,9 +458,31 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
       ? { stuck: stuckRes.stuck, reason: stuckRes.reason, latestBrix: stuckRes.latestBrix }
       : null;
 
+  // Phase 1: prior codes (from the append-only rename log) + external identifiers = the a.k.a. set.
+  const [priorCodeRows, externalIdentifiers] = await Promise.all([
+    prisma.lotCodeEvent.findMany({
+      where: { lotId: id, field: "code" },
+      select: { fromValue: true },
+      orderBy: { observedAt: "desc" },
+    }),
+    prisma.lotIdentifier.findMany({
+      where: { lotId: id, NOT: { kind: "current-code" } },
+      select: { value: true },
+    }),
+  ]);
+  const aliases = [
+    ...new Set(
+      [...priorCodeRows.map((r) => r.fromValue), ...externalIdentifiers.map((r) => r.value)].filter(
+        (v): v is string => !!v && v !== lot.code,
+      ),
+    ),
+  ];
+
   return {
     id: lot.id,
     code: lot.code,
+    displayName: lot.displayName,
+    aliases,
     form: lot.form as string,
     afState: lot.afState as string,
     mlfState: lot.mlfState as string,

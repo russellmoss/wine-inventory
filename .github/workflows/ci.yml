@@ -28,6 +28,7 @@ jobs:
       # in docs/architecture/tripwires/ must have a live guard with no `static`
       # tripwire's forbidden pattern (e.g. runAsSystem in src/app) present.
       - run: npm run verify:invariants
+      - run: npm run verify:invariant-frontmatter
       - run: npm run verify:tripwires
       - run: npx vitest run
 

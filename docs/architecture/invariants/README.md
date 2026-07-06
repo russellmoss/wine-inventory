@@ -18,10 +18,13 @@ three things that run without you:
    the governed code (`src/lib/{ledger,tenant,cost,compliance}`, `prisma/schema.prisma`, …).
 
 > [!tip] Adding an invariant
-> Drop a new `.md` here with the same frontmatter shape (copy any existing one). Set `verify:`
-> to the guard that proves it — `npm run verify:xyz` or a `scripts/foo.ts` path. Run
-> `npm run verify:invariants` to confirm it's covered. That's it — the base and the hook pick
-> it up automatically.
+> Drop a new `.md` here with the same frontmatter shape (copy any existing one — mind the LF
+> line endings; a CRLF file's frontmatter is silently skipped by the checker). If the guard
+> already exists, set `verify:` to it (`npm run verify:xyz` or a `scripts/foo.ts` path) and
+> `status: guarded`, then run `npm run verify:invariants` to confirm it's covered. If you are
+> declaring an invariant *ahead of* its guard (governance-first), set `status: planned` (or
+> `deferred`) and **omit the `verify:` field entirely** — the checker skips notes with no
+> `verify:`, so the gate stays green; add `verify:` only when you flip to `status: guarded`.
 
 ## Dashboard
 
@@ -29,6 +32,15 @@ three things that run without you:
 
 ## Coverage snapshot
 
-18 invariants across ledger (DB + pure + correction), tenancy, cost, and compliance — all
-guarded (100%). The narrative and the *why* live in [[INVARIANTS]]; architecture context in
+**29 invariant notes: 23 guarded, 5 planned, 1 deferred.** The 23 guarded ones (ledger DB +
+pure + correction, tenancy, cost, compliance, work-orders, **naming** NAMING-1/2) are asserted by
+`npm run verify:invariants` (100% of *guarded* notes have a live guard) and their frontmatter
+well-formedness by `npm run verify:invariant-frontmatter`. NAMING-1/2 flipped to `guarded` in
+**Phase 1** (guard `npm run verify:naming`). The **5 planned** (BOND-1, TAXCLASS-1, TAXPAID-1,
+AMEND-1, MIGRATE-1) and **1 deferred** (CBMA-1) still **intentionally omit `verify:`** and are
+skipped by the checker until their enforcing guard ships (BOND/TAXCLASS/TAXPAID/AMEND → Phase 2,
+MIGRATE-1 → Phase 3), at which point each flips to `status: guarded`. Do **not** re-add a `verify:`
+field to a planned/deferred note before its guard exists — that would red the CI gate.
+
+The narrative and the *why* live in [[INVARIANTS]]; architecture context in
 [[system-map]], [[security-register]], [[scale-register]].
