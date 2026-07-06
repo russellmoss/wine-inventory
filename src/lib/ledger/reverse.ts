@@ -8,6 +8,7 @@ import { reverseSparklingOperationCore } from "@/lib/sparkling/correct";
 import { reverseBottlingRun } from "@/lib/bottling/run";
 import { reverseTransformCore } from "@/lib/transform/reverse";
 import { correctBlendCore } from "@/lib/blend/blend-correct";
+import { reverseTransferInBondCore } from "@/lib/compliance/transfer-in-bond-core";
 
 // Universal reversal layer (plan 024a). A single place that knows how to walk any reversible
 // ledger operation back, routing a bare operationId to the family core that already owns the
@@ -48,7 +49,7 @@ export async function resolveRunIdForBottleOp(operationId: number): Promise<stri
 // ─────────────────────────── Reversibility verdict (the single source of truth) ───────────────────────────
 
 /** The family core that owns an op type's physical reversal. */
-export type ReverseFamily = "cellar" | "rack" | "sparkling" | "bottle" | "transform" | "blend";
+export type ReverseFamily = "cellar" | "rack" | "sparkling" | "bottle" | "transform" | "blend" | "bond";
 
 export type ReversibilityVerdict =
   | { reversible: true; family: ReverseFamily }
@@ -81,6 +82,8 @@ export function reversibilityOf(type: OperationType): ReversibilityVerdict {
   if (type === "BOTTLE") return { reversible: true, family: "bottle" };
   if (TRANSFORM_TYPES.has(type)) return { reversible: true, family: "transform" };
   if (type === "BLEND") return { reversible: true, family: "blend" };
+  // Phase 2 (BOND-1): a TRANSFER_IN_BOND reverses via its own bond-swapping corrector (both bonds).
+  if (type === "TRANSFER_IN_BOND") return { reversible: true, family: "bond" };
   if (type === "CORRECTION") return { reversible: false, code: "correction", reason: "This entry is itself a reversal." };
   if (type === "SEED") return { reversible: false, code: "origination", reason: "Seeding is a lot's day-zero origination — it can't be undone." };
   // ADJUST / DEPLETE
@@ -149,6 +152,10 @@ export async function reverseOperationCore(actor: LedgerActor, input: { operatio
     case "blend": {
       const r = await correctBlendCore(actor, { operationId: opId });
       return { reversedOperationId: opId, reversedType: op.type, lotId: r.childLotId || anyLotId, correctionId: r.operationId, message: r.message };
+    }
+    case "bond": {
+      const r = await reverseTransferInBondCore(actor, { operationId: opId, note: input.note });
+      return { reversedOperationId: opId, reversedType: op.type, lotId: r.lotId || anyLotId, correctionId: r.correctionId, message: r.message };
     }
   }
 }

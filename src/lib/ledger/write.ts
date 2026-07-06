@@ -194,6 +194,9 @@ export async function writeLotOperation(
         bottleDelta: bucket === "BOTTLE_STORAGE" ? (l.bottleDelta ?? null) : null,
         lotCode: input.lotCodes.get(l.lotId) ?? l.lotId,
         vesselCode: l.vesselId ? (input.vesselCodes.get(l.vesselId) ?? null) : null,
+        // Phase 2 (BOND-1): line-level bond affiliation, stamped verbatim by the bond-moving cores.
+        sourceBondId: l.sourceBondId ?? null,
+        destBondId: l.destBondId ?? null,
       };
     }),
   });

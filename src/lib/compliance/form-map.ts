@@ -114,6 +114,15 @@ export function mapLineToForm(m: MovementInput): FormMapResult {
       return { target: m.source === "BULK" ? A(line, sub) : B(line, sub), partXReason: null };
     }
 
+    // In-bond transfer (BOND-1): symmetric per bond. The RECEIVED leg (+) posts §A7 (bulk) / §B3
+    // (bottled) on the DEST bond; the REMOVED leg (−) posts §A15 / §B9 on the SOURCE bond. The fold
+    // runs per-bond (C6) and feeds only the leg whose bond matches the report being folded, so each
+    // side hits exactly one report — the symmetric removed/received pair BOND-1 requires.
+    case "TRANSFER_IN_BOND":
+      return m.deltaSign > 0
+        ? { target: m.source === "BULK" ? A(7, sub) : B(3, sub), partXReason: null }
+        : { target: m.source === "BULK" ? A(15, sub) : B(9, sub), partXReason: null };
+
     // Blending: internal unless it crosses tax classes (ftn 5). Cross-class posts A5 (produced, into
     // the child class) / A20 (used for, out of each parent class) so the columns still foot, AND
     // flags an anomaly for human review (R8 — never a silent cross-class post).
