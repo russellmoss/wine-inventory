@@ -36,6 +36,7 @@
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",
     "verify:invariant-frontmatter": "node scripts/verify-invariant-frontmatter.mjs",
     "verify:tripwires": "node scripts/verify-tripwire-guards.mjs",
+    "verify:parity": "node scripts/verify-parity-guards.mjs",
     "check:invariant-drift": "node scripts/check-invariant-drift.mjs",
     "verify:tenant-isolation": "tsx --env-file=.env scripts/verify-tenant-isolation.ts",
     "verify:accounting-refresh": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting-refresh.ts",

@@ -43,4 +43,15 @@ if command -v node >/dev/null 2>&1 && [ -f scripts/verify-tripwire-guards.mjs ];
   fi
 fi
 
+# Parity check — warn (never block) if a status:covered parity note's evidence path
+# went stale (a "we cover this" claim that no longer points at real code).
+if command -v node >/dev/null 2>&1 && [ -f scripts/verify-parity-guards.mjs ]; then
+  par_out=$(node scripts/verify-parity-guards.mjs 2>&1)
+  if [ $? -ne 0 ]; then
+    printf '\033[31m✗  parity gap\033[0m — a covered capability lost its evidence:\n'
+    echo "$par_out" | grep -E 'MISSING|✗|•' | sed 's/^/      /'
+    printf '   → run: npm run verify:parity\n\n'
+  fi
+fi
+
 exit 0
