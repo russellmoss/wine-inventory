@@ -15,10 +15,12 @@ export const ALLOWLIST = {
   "src/lib/ferment/panel-core.ts": {
     owner: "winemaking",
     reason:
-      "submitPanelCore (chemistry/tasting panel submission) has no assistant write tool yet — " +
-      "it's UI-only via AnalysisPanel. Wire a submit_panel tool + golden eval to remove this and " +
-      "lower MAX_ALLOWED to 0.",
-    issue: "assistant-coverage backlog (docs/architecture/assistant-coverage.md)",
+      "submitPanelCore is the OFFLINE round-capture SYNC core (client-generated panelId/commandId/" +
+      "occupancyToken, idempotent outbox drain) — an internal mechanism, not a conversational surface. " +
+      "The user-facing capability it serves (record a chemistry panel on a lot) IS assistant-covered by " +
+      "record_measurement → recordMeasurementsCore. No direct chat tool is appropriate; this is a " +
+      "permanent internal-core exemption, not a backlog gap.",
+    issue: "n/a — internal offline-sync core (see record_measurement for the chat surface)",
   },
 };
 
