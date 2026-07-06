@@ -59,11 +59,39 @@ state of any vessel/lot is the fold of all lines over time, materialized in `Ves
     already depended on.
 
 ## Identity & provenance
-- **Lot identity excludes vintage** (D3); vintage is an attribute. Lot provenance
-  metadata (`code`, origin, `vintageYear`) is **immutable after the first operation**.
+- **Lot identity excludes vintage** (D3); vintage is an attribute.
+- **Identity is the surrogate `id` — the ONLY opaque identity.** `id` **and** the
+  point-in-time `lotCode`/`vesselCode` **line snapshots** on each `LotOperationLine` are
+  **immutable**. Origin (`vineyard`/`block`/`variety`) and `vintageYear` **provenance**
+  remain immutable after the first operation.
+- **The user-facing labels are a mutable presentation layer.** `code` is a **mutable,
+  unique-per-tenant** human label; `displayName` is a **mutable, NON-unique** free-text
+  label (see [[#Naming & identity presentation]] — NAMING-1/2). An **opaque system slug is
+  NOT used**: the surrogate `id` already provides the opaque stable key, so a second opaque
+  slug is redundant and would hide the codes winemakers recognize (Decision 2 — the
+  opaque-slug alternative is rejected permanently).
 - Every operation carries a **monotonic `sequence`** (deterministic fold ordering —
   `occurredAt` timestamps collide and clocks drift), plus `observedAt`/`enteredAt`/
   `enteredBy`/`captureMethod` provenance (D14).
+
+## Naming & identity presentation
+> Machine-readable notes: [[NAMING-1-identity-is-id]], [[NAMING-2-honest-rename]].
+> **Status:** planned in Phase 0; verify-guarded in Phase 1 (`verify:naming`).
+- **Identity is `id`, never `code` (NAMING-1, planned).** `code`/`displayName` uniqueness is
+  a **per-tenant UX constraint, not an identity constraint** — `code` is unique-per-tenant,
+  `displayName` has **no** uniqueness constraint. A `code` collision is a **label error** the
+  system **OFFERS to auto-disambiguate — it does not silently apply** it; silent
+  auto-disambiguation is reserved for **newly generated post-go-live codes only**. Nothing in
+  lineage, cost, or the ledger may join on `code`. Phase 1 adds `verify:naming` and flips this
+  to `guarded`.
+- **Honest rename (NAMING-2, planned).** A rename is an **append-only `LotCodeEvent`**
+  (`fromValue`/`toValue`/`actor`/`observedAt`/`commandId`) that **never rewrites
+  `LotOperationLine` snapshots**. Current-state reads resolve `id → current code/displayName`;
+  historical reads show the code **as-recorded** plus a "renamed → X / also-known-as"
+  affordance. **All user-facing filtering/lookup by a human `code` MUST resolve to the
+  surrogate `id` first, then read history by `id`** — never join on the mutable `code` (this
+  is what keeps `WHERE lotCode = ?` out of the codebase). Will be verify-guarded **like
+  LEDGER-10** — guard `verify:naming` lands in Phase 1; currently `status: planned`.
 
 ## Day-Zero boundary — D11
 - Full vine-to-bottle traceability **starts at cutover.** Pre-cutover wine is wrapped as
@@ -118,6 +146,11 @@ The cost engine is a projection over the ledger; it never invents or loses money
   account mapping and a deterministic `postingKey` (re-emit is a no-op). Incomplete-basis or unmapped sources
   are WITHHELD, never partially posted (D14); a reversal negates amounts and links back. Reading
   `cost_export_event` IS the per-SKU/per-run export view (Phase 15 posts it, no reshape).
+
+## Work orders — Phase 9 / 9.1 (WORKORDER-1/2/3)
+The work-order engine writes through the SAME ledger + cost machinery, so its invariants are ledger-adjacent.
+Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
+[[WORKORDER-2-reservations-are-advisory]], [[WORKORDER-3-maintenance-supply-is-overhead]].
 - **A completed work-order task's op is an ordinary immutable ledger op; approval is task metadata (WORKORDER-1, Phase 9).**
   Completing an OPERATION task writes a REAL, immutable ledger op immediately through the existing family cores
   (`rackWineTx`/`recordNeutralDoseTx`/`topVesselTx`), owned by an append-only `WorkOrderTaskAttempt` in
@@ -143,3 +176,52 @@ The cost engine is a projection over the ledger; it never invents or loses money
   corrupt cost conservation (COST-1/COST-2). Overhead depletion draws stock to zero and reports a shortfall — it
   never drives `qtyRemaining` negative — and a reversal (`reverseVesselActivityTx`) restores each lot by identity.
   Guard: `npm run verify:work-orders-enhancements`.
+
+## Compliance & migration invariants
+> Added in Phase 0 from the incumbent teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B.1(iv);
+> `FIX_RUNBOOK.md`). These are **planned** (narrative + register note, no guard yet); their `verify:`
+> guards land with the enforcing code — BOND/TAXCLASS/TAXPAID/AMEND in Phase 2, MIGRATE-1 in Phase 3.
+> Machine-readable notes: [[BOND-1-bond-isolation]], [[TAXCLASS-1-cross-class-blend]],
+> [[TAXPAID-1-terminal-state]], [[AMEND-1-amended-chain]], [[CBMA-1-controlled-group]],
+> [[MIGRATE-1-seed-not-replay]].
+
+- **Bond isolation, line-scoped + time-aware (BOND-1, planned).** Every tenant-scoped ledger position
+  belongs to exactly one bond, and **bond affiliation is posted at the operation/line level and is
+  time-aware** (the movement carries source + destination bond) — the authoritative bond of a position is
+  derived point-in-time from the ledger, mirroring `deriveTaxClass()`. Any lot-level "home bond" column is a
+  **projection only, never the compliance source of truth**. A cross-bond movement posts **symmetric
+  Removed-in-Bond (source) / Received-in-Bond (destination)** to both bonds' reports (§A 7/15, §B 3/9),
+  **atomically within a single ledger transaction** (one `runLedgerWrite` via a `…Tx` core) — a one-sided
+  or two-transaction post is a violation. Guard `verify:bond` lands Phase 2.
+
+- **Cross-class blend posts symmetrically (TAXCLASS-1, planned).** A blend/rack/topping across ≥2 tax
+  classes posts **symmetric Produced-by / Used-for-blending** movements (§A 5/20/24/25), **atomic within one
+  transaction**; the result carries the **destination (receiving) lot's** tax class and the winemaker is
+  warned when sources cross classes. (The mechanism for assigning a class to a brand-new blend lot is a
+  Phase-2 design detail — this invariant fixes only that the *class carried* is the receiving lot's.) Guard
+  lands Phase 2.
+
+- **Taxpaid is a terminal one-way state (TAXPAID-1, planned).** `REMOVE_TAXPAID` volume cannot re-enter
+  in-bond via an ordinary compensating reversal; only an explicit, **refund-flagged
+  Taxpaid-Returned-to-Bond** event re-admits it. This guards the generic reverser
+  (`reverseOperationCore`) against silently corrupting the tax-paid boundary. Guard lands Phase 2.
+
+- **Amended-chain integrity (AMEND-1, planned).** Correcting a **FILED** period marks all later FILED
+  reports in that **form + bond** chain `NEEDS_AMENDMENT` and regenerates begin-balances down the chain
+  (carry-forward makes this cheap). *(Open Phase-2 design question: whether the regeneration runs
+  synchronously or as a queued job with a `NEEDS_CALCULATION` lock at scale — the invariant states the rule,
+  not the mechanism.)* Guard lands Phase 2.
+
+- **Controlled-group CBMA credit (CBMA-1, DEFERRED).** Tenants in a common controlled group cannot each
+  independently claim the full 30k/100k/750k CBMA ladder — the credit is apportioned across the group.
+  `excise.ts:66-74` already parameterizes this as "v2". **Deferred — no code in these phases; activate when
+  multi-entity tenants appear.**
+
+- **Migration is seed-not-replay (MIGRATE-1, planned).** **Exactly one migration `SEED` per lot/vessel
+  participates in the volume/cost fold** (cutover balances). **Legacy operational history is ingested ONLY
+  into the read-only archive and is NEVER folded** (excluded from `foldLines()` / `VesselLot` / the cost
+  DAG). **An import cannot publish to the live tenant while any reconciliation delta remains unresolved** —
+  where "unresolved" means neither reconciled to zero nor explicitly accepted by the operator as a **named
+  exception** in the reconciliation pack (not a numeric tolerance). Operationalizes **D11** (no fabricated
+  ledger history). Will be verify-guarded — guard `verify:migration` lands in Phase 3; currently
+  `status: planned`.

@@ -11,6 +11,15 @@ appliesTo:
 tags:
   - invariant
 ---
+<!--
+  GUARD-SEQUENCING RULE (delete this comment in the real note):
+  - GUARDED invariant (default, guard already exists): keep `verify:` + `status: guarded` above.
+  - PLANNED/DEFERRED invariant (governance-first, declared ahead of its guard): DELETE the
+    `verify:` line from the frontmatter and set `status: planned` (or `deferred`). The checker
+    (scripts/verify-invariant-guards.mjs) skips any note with no `verify:`, so the CI gate stays
+    green; add `verify:` back only when you flip to `status: guarded`.
+  - Save as LF, not CRLF — a CRLF file's frontmatter is silently skipped by the checker.
+-->
 
 # {{title}}
 
