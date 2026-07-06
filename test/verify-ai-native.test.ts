@@ -8,36 +8,65 @@ import { run, coreExports } from "../scripts/verify-ai-native.mjs";
 // run() builds a TS import graph over all of src on first call (then memoizes), so give
 // the real-tree cases a generous timeout — they can be slow under a loaded parallel run.
 const T = 30000;
-describe("verify:ai-native — reachability + ratchet (real tree)", () => {
-  it("passes with the committed allow-list (green on landing)", () => {
+const PANEL = "src/lib/ferment/panel-core.ts"; // the real unreached core we exercise against
+describe("verify:ai-native — reachability + two-tier exemptions (real tree)", () => {
+  it("passes with the committed exemptions (green on landing)", () => {
     expect(run().violations).toEqual([]);
   }, T);
 
-  it("detects the real gap when the allow-list is emptied", () => {
-    // panel-core has no assistant tool; with an empty allow-list it must be a violation.
-    const { violations } = run({ allowlist: {}, maxAllowed: 0 });
+  it("flags a real gap: unreached core in NEITHER map", () => {
+    const { violations } = run({ internal: {}, gapAllowlist: {}, maxAllowed: 0 });
     expect(violations.some((v: string) => /panel-core\.ts.*NO assistant tool/.test(v))).toBe(true);
   }, T);
 
-  it("enforces the ratchet: allow-list larger than MAX_ALLOWED fails", () => {
+  it("INTERNAL is permanent — exempt even with MAX_ALLOWED=0", () => {
     const { violations } = run({
-      allowlist: { "src/lib/ferment/panel-core.ts": { owner: "x", reason: "y" } },
+      internal: { [PANEL]: { owner: "x", reason: "internal sync core" } },
+      gapAllowlist: {},
+      maxAllowed: 0,
+    });
+    expect(violations).toEqual([]);
+  }, T);
+
+  it("GAP_ALLOWLIST ratchets: more gap entries than MAX_ALLOWED fails", () => {
+    const { violations } = run({
+      internal: {},
+      gapAllowlist: { [PANEL]: { owner: "x", reason: "y", issue: "#1" } },
       maxAllowed: 0,
     });
     expect(violations.some((v: string) => /only shrinks|MAX_ALLOWED/.test(v))).toBe(true);
   }, T);
 
-  it("rejects a stale allow-list entry (no such core file)", () => {
+  it("rejects a stale GAP entry (no such core file)", () => {
     const { violations } = run({
-      allowlist: { "src/lib/ferment/does-not-exist-core.ts": { owner: "x", reason: "y" } },
+      gapAllowlist: { "src/lib/ferment/does-not-exist-core.ts": { owner: "x", reason: "y", issue: "#1" } },
       maxAllowed: 1,
     });
-    expect(violations.some((v: string) => /stale/.test(v))).toBe(true);
+    expect(violations.some((v: string) => /GAP_ALLOWLIST entry.*stale/.test(v))).toBe(true);
   }, T);
 
-  it("requires owner + reason on an allow-list entry", () => {
+  it("rejects a stale INTERNAL entry (no such core file)", () => {
     const { violations } = run({
-      allowlist: { "src/lib/ferment/panel-core.ts": { owner: "x" } },
+      internal: { "src/lib/ferment/does-not-exist-core.ts": { owner: "x", reason: "y" } },
+      gapAllowlist: {},
+      maxAllowed: 0,
+    });
+    expect(violations.some((v: string) => /INTERNAL entry.*stale/.test(v))).toBe(true);
+  }, T);
+
+  it("rejects a core listed in BOTH maps", () => {
+    const { violations } = run({
+      internal: { [PANEL]: { owner: "x", reason: "y" } },
+      gapAllowlist: { [PANEL]: { owner: "x", reason: "y", issue: "#1" } },
+      maxAllowed: 1,
+    });
+    expect(violations.some((v: string) => /in both INTERNAL and GAP_ALLOWLIST/.test(v))).toBe(true);
+  }, T);
+
+  it("requires owner + reason on a GAP entry", () => {
+    const { violations } = run({
+      internal: {},
+      gapAllowlist: { [PANEL]: { owner: "x" } },
       maxAllowed: 1,
     });
     expect(violations.some((v: string) => /needs both `owner` and `reason`/.test(v))).toBe(true);
