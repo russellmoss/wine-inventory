@@ -43,6 +43,7 @@ state is *derived* from the ledger, not stored loosely.
 - `actions.ts` — the server actions the UI calls.
 - `reverse.ts` + `reverse-guard.ts` — the **universal Undo**: `reverseOperationCore` dispatches an undo for *every* operation family (rack, bottle, sparkling, crush, press, saignée, blend), unwinding in LIFO order with guardrails.
 - `math.ts`, `vocabulary.ts` — volume math + naming.
+- **Timeline projections** derive per-lot and per-vessel history from the ledger for display: `src/lib/lot/timeline.ts` (lot) and `src/lib/vessel/timeline-{data,view,actions}.ts` (vessel). The **tank/barrel History workspace** (plan 045, `src/app/(app)/…` Actions / Analyses / History tabs) reads these. Edit/Undo of a timeline entry routes back through the ledger cores; a **work-order-sourced op is read-only from the timeline** (edit/delete must go through the WO reject path, not a row edit — was a 500, now blocked).
 
 ### 3. Transforms (fruit → wine) — `src/lib/transform/`
 The operations that change a lot's identity: `crush-core.ts` (`crushLotCore`), `press-core.ts`
@@ -61,12 +62,14 @@ Generates the two federal TTB reports from the ledger:
 - **5120.17** (operations) and **5000.24** (excise/tax) — **one shared table** (`ComplianceReport`),
   strictly separated by `formType` (`form-type.ts`, `form-map.ts`) so the two filing chains never cross.
 - `cbma.ts` (tax-credit ladder), `excise.ts`/`generate-excise.ts`, `fill-pdf.ts`/`fill-5000-24-pdf.ts` (produce the actual PDFs via `pdf-lib`), `deadlines.ts` + `reminders.ts` + `ics.ts` (deadline reminders + calendar), `anomaly.ts`.
+- **Removals** (`removal-core.ts` / `bottled-removal-core.ts`) are tax-determination events. The UI calls the FormData actions in `src/app/(app)/compliance/actions.ts`; the assistant calls the typed, **admin-gated** wrappers in `removal-actions.ts` (`removeTaxpaidTyped` / `removeBottledTyped`) — one shared core, either way (see [[security-register]]).
 
 ### 6. The assistant (chat + voice) — `src/lib/assistant/` + `src/lib/voice/`
 A natural-language assistant over the whole app, powered by `@anthropic-ai/sdk`.
 - `run.ts` — the tool-use loop; `tools/` + `registry.ts` — the actions it can take; `scope.ts` — permissions.
 - **Writes require explicit confirmation:** `confirm.ts` + `commit.ts` (signed-token / single-use nonce).
-- `conversations.ts` / `history.ts` — persisted, shared across text + voice.
+- **Wave 3 write coverage (2026-07):** each tool wraps the SAME core the UI uses — additions/doses (by rate OR absolute grams/kg/mL/L), materials + supply intake (`create_material`/`receive_supply`/`set_material_active`), lab samples (`pull_sample`/`record_sample_results`/`manage_sample`), sparkling (`sparkling_tirage`/`log_riddling`/`sparkling_disgorge`), bulk-wine cost (`record_bulk_wine_cost`), compliance removals (admin-gated, §5), and work orders (issue/manage, incl. **multi-vessel** + resolve by vessel/assignee/WO-id, with a deterministic server-side disambiguation picker via `resolve-choice`). New write tools ship with a golden eval (`test/evals/`, coverage guard in CI — see [[scale-register]]).
+- `conversations.ts` / `history.ts` — persisted, shared across text + voice; searchable conversation history + reload persistence in the dock (`ConversationSidebar`).
 - **Voice mode** reuses the *same* `/api/assistant` stream + tool loop (one brain); ElevenLabs does STT + TTS. Server key stays server-side.
 
 ### 7. Vineyard + maps — `src/lib/map/`, `src/lib/vineyard/`, `src/lib/harvest/`
@@ -181,4 +184,4 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-05 (plan 043): cap management wired into work orders (CAP_MGMT task type + capManagementTx, pulse-air CapKind, délestage two-leg RACK template, batch completion, issue_cap_management_wo assistant tool). Prior refresh 2026-07-03 (Next 16.2, 89 Prisma models; Phase 9/9.1 + Cellarhand rebrand). Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-06 (plans 044 + 045 + assistant Wave 3): barrel-maintenance work orders (new `VesselActivityKind` OZONE / SO2 / WET_STORAGE enum values via an isolated ALTER TYPE migration; bâtonnage rides CAP_MGMT); the tank/barrel **History workspace** (vessel/lot timeline projections, WO-sourced ops read-only from the timeline); and the **assistant Wave 3** write surface (materials, samples, sparkling, bulk-wine cost, admin-gated compliance removals, multi-vessel work orders, searchable conversation history). No new Prisma models — still 89. Prior refresh 2026-07-05 (plan 043, cap management in work orders). Ask Claude to refresh after each phase.*

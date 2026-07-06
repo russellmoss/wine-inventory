@@ -56,6 +56,13 @@
 ### Assistant/automated writes require explicit confirmation
 - Write actions go through a signed-token / single-use nonce confirmation path (`src/lib/assistant/
   confirm.ts` + `commit.ts`). Voice can confirm by tap or spoken "confirm" — the token path is unchanged.
+- **Wave 3 (2026-07) broadened the write surface** to materials/supply intake, lab samples, sparkling ops,
+  bulk-wine cost, and **compliance removals** (tax-determination events). No new privileged path: each
+  routes through the SAME core the UI uses, behind the same confirmation nonce, and the removal tools call
+  **admin-gated** typed wrappers (`src/lib/compliance/removal-actions.ts` → `removeTaxpaidTyped`/
+  `removeBottledTyped`, `adminAction`) — a cellar hand can draft a removal by chat but cannot commit it.
+- **Tripwire:** an assistant tool that writes without going through a shared core; a removal/cost committer
+  that skips `adminAction`; a new write tool that ships without a golden eval (the coverage guard fails CI).
 - **Status:** 🟢
 
 ### Work-order template authoring is admin-gated; the client spec is canonicalized server-side (plan 034)
