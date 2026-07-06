@@ -1,0 +1,22 @@
+---
+id: PARITY-VT-15cb63c4
+group: reporting
+incumbent: vintrace
+capability: Amending a Previously Submitted 5120.17
+status: gap
+ourApproach: ""
+aiNativeEdge: ""
+evidence: vintrace-docs/reporting/ttb-usa/amending-a-previously-submitted-5120-17.md
+tags:
+  - parity
+---
+
+# PARITY-VT-15cb63c4 — Amending a Previously Submitted 5120.17
+
+> [!info] Parity (vintrace) — gap — not yet built.
+
+- **Incumbent:** vintrace
+- **Our approach:** —
+- **AI-native edge:** —
+- **Evidence:** `vintrace-docs/reporting/ttb-usa/amending-a-previously-submitted-5120-17.md`
+- **Source:** `vintrace-docs/reporting/ttb-usa/amending-a-previously-submitted-5120-17.md` — see [[assistant-coverage]] / [[system-map]]

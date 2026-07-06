@@ -1,0 +1,83 @@
+filters:
+  and:
+    - file.hasTag("parity")
+    - 'file.ext == "md"'
+    - 'file.folder != "docs/_templates"'
+
+formulas:
+  status_icon: 'if(status == "covered", "✅ covered", if(status == "partial", "🟨 partial", if(status == "deliberately-omitted", "⚪ omitted", "❌ gap")))'
+  edge: 'if(aiNativeEdge, aiNativeEdge, "—")'
+
+properties:
+  id:
+    displayName: "ID"
+  formula.status_icon:
+    displayName: "Status"
+  incumbent:
+    displayName: "Incumbent"
+  capability:
+    displayName: "Capability"
+  group:
+    displayName: "Domain"
+  ourApproach:
+    displayName: "Our approach"
+  formula.edge:
+    displayName: "AI-native edge"
+  evidence:
+    displayName: "Evidence"
+
+views:
+  - type: table
+    name: "All (by status)"
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - formula.status_icon
+      - incumbent
+      - capability
+      - group
+      - ourApproach
+
+  - type: table
+    name: "⚠ Gaps & partial"
+    filters:
+      or:
+        - 'status == "gap"'
+        - 'status == "partial"'
+    groupBy:
+      property: group
+      direction: ASC
+    order:
+      - formula.status_icon
+      - incumbent
+      - capability
+      - evidence
+
+  - type: table
+    name: "✅ Covered (AI-native edge)"
+    filters:
+      and:
+        - 'status == "covered"'
+    order:
+      - capability
+      - incumbent
+      - formula.edge
+      - evidence
+
+  - type: table
+    name: "By domain"
+    groupBy:
+      property: group
+      direction: ASC
+    order:
+      - formula.status_icon
+      - incumbent
+      - capability
+
+  - type: cards
+    name: "Gallery"
+    order:
+      - capability
+      - formula.status_icon
+      - incumbent
