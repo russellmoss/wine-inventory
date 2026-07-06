@@ -104,9 +104,11 @@ CREATE INDEX "naming_template_version_tenantId_idx" ON "naming_template_version"
 
 -- ─────────────── Partial uniques (raw SQL — Prisma cannot express these) ───────────────
 -- Null-safe re-import idempotency key (council C1: a Prisma @@unique with a nullable column does NOT
--- dedupe, Postgres treats NULLs as distinct). Two partials cover both cases; COALESCE folds a nullable
--- sourceObjectType so a same-(system,value) row with null objectType still dedupes.
-CREATE UNIQUE INDEX "lot_identifier_native_value_key" ON "lot_identifier"("tenantId", "value") WHERE "sourceSystem" IS NULL;
+-- dedupe, Postgres treats NULLs as distinct). This partial keys SOURCE identifiers; COALESCE folds a
+-- nullable sourceObjectType so a same-(system,value) row with null objectType still dedupes.
+-- (App-native identifiers, sourceSystem NULL, are the current-code rows — deduped by the
+-- single-current-code partial below + the lot table's own unique(tenantId, code); a separate
+-- native-value unique would be redundant AND would wrongly block a two-lot code swap's mid-tx state.)
 CREATE UNIQUE INDEX "lot_identifier_source_value_key" ON "lot_identifier"("tenantId", "sourceSystem", (COALESCE("sourceObjectType", '')), "value") WHERE "sourceSystem" IS NOT NULL;
 -- Exactly one current-code row per lot (council C4: was app-maintained; now a DB partial unique).
 CREATE UNIQUE INDEX "lot_identifier_one_current_code_key" ON "lot_identifier"("tenantId", "lotId") WHERE "kind" = 'current-code';
