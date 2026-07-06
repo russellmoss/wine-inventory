@@ -7,8 +7,8 @@ import { resolveVessel, type ResolvedVessel } from "../scope";
 import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
-import { isDoseableCategory, categoryOf, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { resolveDoseUnit } from "@/lib/cellar/additions-math";
+import { resolveAdditiveFrom } from "./additive-resolve";
 
 // Assistant multi-vessel WO tool — issue ONE work order with one OPERATION task per vessel across a
 // list of vessels ("top barrels 1-5", "filter tanks 3, 4 and 7", "add 30 g/hL KMBS to barrels 1-8").
@@ -30,17 +30,9 @@ const DOSE_OPS = new Set<Operation>(["ADDITION", "FINING"]);
 const DOSE_UNITS = ["g/hL", "g/L", "mg/L", "mL/L", "g", "kg", "mL", "L"] as const;
 const OP_VERB: Record<Operation, string> = { TOPPING: "top", FILTRATION: "filter", ADDITION: "dose", FINING: "fine" };
 const OP_TITLE: Record<Operation, string> = { TOPPING: "Top", FILTRATION: "Filter", ADDITION: "Addition", FINING: "Fining" };
-const CAT_LABEL: Record<string, string> = {
-  CLEANING_SANITIZING: "cleaning / sanitizing",
-  PACKAGING: "packaging",
-  ADDITIVE: "additive",
-  OTHER: "other",
-};
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 const normUnit = (u: string): string => (/^ppm$/i.test(u.trim()) ? "mg/L" : u.trim());
 const label = (v: Pick<ResolvedVessel, "type" | "code">) => (v.type === "BARREL" ? `Barrel ${v.code}` : `Tank ${v.code}`);
-const catOf = (m: { category?: string | null; kind: string }) => (m.category ?? categoryOf(m.kind)) as MaterialCategory;
 
 type RawInput = {
   operation?: unknown;
@@ -130,7 +122,14 @@ export const issueOperationWoTool: AssistantTool = {
       const unit = normUnit(typeof input.unit === "string" ? input.unit : "");
       if (!resolveDoseUnit(unit)) throw new Error(`Unit must be one of: ${DOSE_UNITS.join(", ")} (or ppm).`);
 
-      const material = await resolveAdditive(materialRef);
+      // Resolve the additive ADDITIVE-scoped. On ambiguity (a partial name, or true name-duplicates like
+      // two "Bentonite" entries) hand back a clickable PICKER that pins by id — a re-drive of THIS tool
+      // with the same input — instead of a text "which one?" that dead-loops on identical names. The
+      // resume base is the original input; the picker overrides its `material` with "#<id>" on tap.
+      const all = await listMaterials();
+      const res = resolveAdditiveFrom(all, materialRef, input as Record<string, unknown>);
+      if (res.kind === "choice") return res.choice;
+      const material = res.row;
       sharedValues = { materialId: material.id, amount, doseUnit: unit };
       detail = ` — ${amount} ${unit} ${materialDisplayName(material)}`;
     }
@@ -167,29 +166,6 @@ export const issueOperationWoTool: AssistantTool = {
     return { needsConfirmation: true, preview, token };
   },
 };
-
-/** Resolve an additive by name, ADDITIVE-scoped. A name that matches only a non-additive (packaging /
- * cleaning) is a hard refusal (WORKORDER-3); ambiguity asks the user to be more specific (a multi-vessel
- * confirm flow is the wrong place for a per-material picker). */
-async function resolveAdditive(ref: string): Promise<{ id: string; name: string }> {
-  const all = await listMaterials();
-  const needle = norm(ref);
-  const nameNorms = (m: (typeof all)[number]) =>
-    [materialDisplayName(m), m.name, m.genericName, m.brandName, m.brand].filter(Boolean).map((x) => norm(String(x)));
-  const exact = all.filter((m) => nameNorms(m).includes(needle));
-  const fuzzy = all.filter((m) => nameNorms(m).some((h) => h !== "" && (h.includes(needle) || needle.includes(h))));
-  const matches = exact.length > 0 ? exact : fuzzy;
-  if (matches.length === 0) throw new Error(`No additive matches "${ref}". Add it to the expendables catalog first, or check the name.`);
-  const doseable = matches.filter((m) => isDoseableCategory(catOf(m)));
-  if (doseable.length === 0) {
-    const m = matches[0];
-    throw new Error(`"${materialDisplayName(m)}" is a ${CAT_LABEL[catOf(m)] ?? "non-additive"} material — it can't be dosed into wine.`);
-  }
-  if (doseable.length > 1) {
-    throw new Error(`Several additives match "${ref}": ${doseable.slice(0, 6).map((m) => materialDisplayName(m)).join(", ")}. Which one?`);
-  }
-  return { id: doseable[0].id, name: materialDisplayName(doseable[0]) };
-}
 
 export const commitIssueOperationWo: Committer = async (_user, args) => {
   const title = String(args.title);
