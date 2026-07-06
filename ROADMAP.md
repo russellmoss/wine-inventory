@@ -72,7 +72,7 @@ Wine Co. tenant. This is the pull-forward slice of **Phase 21a**.
 > partner — the achievable path is **sign by fall → onboard over winter → validate live 5120.17/5000.24
 > filings Jan–Jun → run harvest 2027.** That only works if **partner outreach starts NOW, in parallel
 > with 8b** — not after the sellable core ships. This is a build runbook so BD isn't a phase here, but it
-> IS the gating milestone: track it in `docs/STRATEGY.md` and treat "partner signed" as the trigger the
+> IS the gating milestone: track it in `analysis/incumbent-teardown/SYNTHESIS.md` and treat "partner signed" as the trigger the
 > gated phases wait on.
 
 **Then — the sellable core (this is what lands a US design partner):**
@@ -203,7 +203,10 @@ ops touched it; existing vessels show as Legacy Lots; app builds and existing te
 ## Phase 2 — Lot timeline (read-only chronology)  ✅ shipped
 > Also shipped alongside: **readable lot codes** — variety/vineyard abbreviations +
 > block/subblock geography + sublot tags, generated at lot creation, with a one-time
-> legacy recode. (Unplanned bonus; lives in `src/lib/lot/{code,generate}.ts`.)
+> legacy recode. (Originally an unplanned bonus; the identity/naming layer is now
+> first-class in **Phase 12.5 — Identity presentation layer**, which turns this hardcoded
+> `buildLotCode` into a versioned tokenized template + rename support. Lives in
+> `src/lib/lot/{code,generate}.ts`.)
 **Goal:** The CRM-style timeline view over the ledger, plus the two-views linkage.
 - Per-lot timeline (reverse-chronological feed of operations) + current-state header
   derived from the projection.
@@ -724,11 +727,56 @@ the Prisma singleton; auth/session → org mapping (existing auth vs Neon Auth o
 
 ---
 
+## Phase 12.5 — Identity presentation layer (naming templates + rename)  ⬜  *(FIX_RUNBOOK Phase 1 — hard dependency for migration)*
+> Pulled forward from the incumbent teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B.2;
+> `FIX_RUNBOOK.md` Phase 1 / council 3.4/3.7/3.12). Was previously an "unplanned bonus"
+> (see Phase 2 note) — now first-class because it is the **#1 self-inflicted gap** and a
+> **hard prerequisite for Phase 13 migration** (a winery must be able to adopt its incumbent's
+> codes verbatim and find lots by any known identifier).
+**Goal:** Separate durable identity (`id`) from the human-facing label, so a lot can be renamed
+and its incumbent codes adopted without ever rewriting history.
+**Domain requirements (durable):**
+- **`Lot.displayName`** — mutable, **NON-unique** free-text label (legacy free-typed names collide
+  legitimately); `code` stays mutable + **unique-per-tenant**; `id` remains the only opaque identity
+  (**no** opaque system slug — Decision 2). Honors **NAMING-1**.
+- **Per-tenant, versioned tokenized `NamingTemplate`** — today's hardcoded `buildLotCode` becomes the
+  default template's renderer (clone-on-customize, like WO templates).
+- **Append-only `LotCodeEvent`** — renames are events, never snapshot rewrites. Honors **NAMING-2**
+  (verify-guarded like LEDGER-10; `verify:naming` lands here).
+- **A `LotIdentifier` external-reference table (NOT three scalar `sourceSystem`/`sourceId`/`legacyCode`
+  columns)** — holds current code, prior codes, source-system IDs, spreadsheet aliases, TTB labels; the
+  idempotent re-import key **and** the cross-identifier search index.
+- **Cross-identifier search** into every lot picker — resolve current `code`, `displayName`, historical
+  codes (`LotCodeEvent`), and legacy identifiers (`LotIdentifier`), so a winemaker from InnoVint finds a
+  lot by whatever code they remember (council 3.12).
+**Exit:** a winemaker renames a lot's `code` + sets a non-unique `displayName`; the timeline shows history
+honestly (as-recorded + "renamed →"); no line snapshot is rewritten; cross-identifier search finds a lot by
+any known identifier. **Honors:** NAMING-1, NAMING-2, D3.
+**Implementation: deferred to `/plan` (FIX_RUNBOOK Phase 1).**
+
+### Remediation additions (FIX_RUNBOOK / incumbent teardown) — index
+> These teardown-driven additions live in the phase family where the implementer will look; this is the
+> one-line index so they stay auditable together. Source: `FIX_RUNBOOK.md` + `analysis/incumbent-teardown/SYNTHESIS.md` §B.2.
+- **Identity presentation layer** → Phase 12.5 above (FIX Phase 1).
+- **Migration kernel + two-track seed/archive + reconciliation pack** → Phase 13 rescope below (FIX Phase 3/4).
+- **Bond model, TRANSFER_IN_BOND, per-bond scoping, tax-class event, tax-paid terminal, AMEND-1** → Phase 14 rescope below (FIX Phase 2).
+- **New operations to name** (FIX Phase 5/6): `CHANGE_OWNERSHIP`, `TRANSFER_IN_BOND`, one-action in-place
+  lot split, lees sub-lot, barrel-group (+ break/combine), recurring WOs + first-class task-skip, guarded
+  metadata edit + fold-preserving reverse-and-rebook composite, generic `CUSTOM` op + `DRAIN`/`DELESTAGE`/`COLD_STAB`.
+- **Lifecycle writers to finish** (FIX Phase 5): `Lot.status` `DEPLETED`/`ARCHIVED` and
+  `LotLineage.kind=TRANSFORM` are declared-but-never-written — implement a real close/archive lifecycle
+  (archive-not-delete once activity exists).
+- **Do NOT chase:** vintrace's DSP / distillation / RTD breadth is explicitly out of scope (off-strategy).
+- **Weight↔volume dual fruit-lot tracking** (InnoVint's model): a Phase-6/30 evaluation, kept in its
+  roadmap home (see Phase 30) — not pulled forward.
+
+---
+
 ## Competitive / GTM layer (Phases 13–16) — the "wine ERP", not just production
 
 > These four phases turn the production system into a **fundable wine-industry ERP**, driven by
-> the competitive + go-to-market analysis in `docs/STRATEGY.md` and
-> `docs/competitive-analysis-vintrace-innovint.md`. **Build-order priority overrides phase
+> the competitive + go-to-market analysis in the **incumbent teardown**
+> (`analysis/incumbent-teardown/SYNTHESIS.md`). **Build-order priority overrides phase
 > numbers**, and it is **not** 13→16:
 > - **Near-term lead: 14 Compliance → 8 Cost → 15 Accounting.** Compliance (TTB) is ledger-derived
 >   (buildable now), table stakes for any US winery, and — with the correction/undo wedge — part
@@ -743,30 +791,51 @@ the Prisma singleton; auth/session → org mapping (existing auth vs Neon Auth o
 > Numbers = grouping, not sequence.
 
 ## Phase 13 — Migration & onboarding (import from Vintrace / InnoVint)  ⬜  *(GTM wedge — high priority)*
-**Goal:** Get a winery **off Vintrace/InnoVint and live in days** via AI-assisted import of their
-own data. The lead wedge — attacks the incumbents' #1 pain (painful, months-long onboarding) and
-the documented churn-with-exit-friction (wineries leave Vintrace and complain it obstructs exit).
+**Depends on:** **Phase 12.5** (identity presentation layer — `LotIdentifier`/`NamingTemplate`/rename/search)
+and **Phase 14** (Bond entity + line-level bond) — both are **hard prerequisites** (the seed adopts
+incumbent codes and must place a multi-bond winery's positions on the right bond). Chronological order in
+this file is not a contract; these dependencies are.
+**Goal:** Get a winery **off Vintrace/InnoVint and live in days** via a migration *kernel* + thin
+per-incumbent adapters. The lead wedge — attacks the incumbents' #1 pain (painful, months-long onboarding)
+and the documented churn-with-exit-friction (wineries leave Vintrace and complain it obstructs exit).
+Rescoped from the incumbent teardown (`FIX_RUNBOOK.md` Phase 3/4; council 3.1/3.2/3.3/3.9).
 **Domain requirements (durable):**
-- **Customer-authorized data import, never scraping:** ingest the winery's own exports (Vintrace
-  CSV — mind the ~1,000-record/file cap; InnoVint CSV/XLSX) and, where the customer provides a
-  token and ToS permits, the **Vintrace REST API**. Legal path: the winery owns its facts,
-  nominative-fair-use naming; verify each vendor's competitive-use ToS via the customer's signed
-  agreement (see `docs/competitive-analysis-vintrace-innovint.md`).
-- **AI-assisted mapping** — an LLM maps a messy source export onto our schema, reconciles units,
-  infers lineage, flags ambiguities for winemaker confirmation. This *is* the "configures your
-  winery" magic.
-- **Reuse the D11 legacy-lot pattern as the import spine** — seed lots at current state with the
-  source record as a JSON snapshot; do **not** fabricate years of fake ledger history.
-- **External identifiers** (`sourceSystem` + `sourceId`/`legacyCode`) on key entities so the
-  winery recognizes their data and re-imports are idempotent.
-- **US units:** import from **gallons / lbs·tons / °Brix** → canonical liters (D8), plus a
-  **winery display-unit setting** (gallons for US wineries) — needed for the US market *and*
-  migration comprehension. Extends the Phase 6 per-winery unit setting.
-- **Coverage gaps are explicit:** import what the model covers, snapshot the rest, track
-  unmapped source fields so nothing is silently dropped.
-**Exit:** a real Vintrace (and InnoVint) export imports cleanly under a tenant; the winery sees
-their lots/vessels/inventory in their own units + codes, live, without weeks of setup.
-**Implementation: deferred to `/plan`.**  **Honors:** D8, D11, D16.
+- **Incumbent-agnostic migration kernel, InnoVint-first, thin adapters.** Build one shared spine
+  (external-file legacy-seed + `LotIdentifier` idempotent keys + unit reconciliation + saved mappings +
+  reconciliation pack + coverage-gap tracking) with thin per-incumbent adapters (InnoVint the lighthouse;
+  vintrace second). Prove it end-to-end on a **synthetic InnoVint fixture bundle** committed to the repo —
+  no trial account, no design partner during build.
+- **Customer-authorized data import, never scraping:** ingest the winery's own exports (Vintrace CSV — mind
+  the ~1,000-record/file cap; InnoVint CSV/XLSX) and, where the customer provides a token and ToS permits,
+  the vendor REST API. Legal path: the winery owns its facts; verify each vendor's competitive-use ToS via
+  the customer's signed agreement (see `analysis/incumbent-teardown/SYNTHESIS.md`).
+- **Two-track seed/archive model (MIGRATE-1 — the load-bearing correctness fix).** Emit **exactly one
+  migration `SEED`** per lot/vessel that hard-sets current volume/cost/tax-class/bond at cutover — the ONLY
+  legacy-sourced data that participates in the fold. Ingest legacy operational history into a **read-only,
+  STRUCTURED archive** (typed columns keyed on the stable source action ID — **not** an opaque JSON blob,
+  so Phase 27 can make it queryable without re-ingest), **never folded**; the timeline stitches the two
+  visually. **Do not replay legacy history through the active fold** (double-counts the seed; makes the fold
+  disagree with the winemaker's Day-1 reality). Honors **D11**.
+- **Reconciliation pack + draft-until-sign-off.** An import stays **DRAFT** (not published to the live
+  tenant) until an operator signs off on a reconciliation pack (by-vessel occupancy, by-lot volume, cost by
+  lot, finished-goods counts, TTB totals, chemistry counts, unmapped entities, inferred/partial lineage,
+  with named-exception acceptance). **Publish is blocked while any reconciliation delta is unresolved.**
+  Gate publish to admin/owner.
+- **Deterministic saved mappings, AI suggest-only** — connector-specific templates + saved per-tenant
+  mappings are the primary path; AI *suggests* a mapping for unmatched columns but **never auto-commits**.
+  Emit row-level parse diagnostics.
+- **Identity via `LotIdentifier` (Phase 12.5), not scalar columns** — adopt incumbent codes **verbatim** into
+  `code` + `displayName` (non-unique); a genuine per-tenant `code` collision is a **preflight block with
+  operator resolution, never a silent suffix**; `LotIdentifier` values are the idempotent re-import keys.
+- **US units:** import from **gallons / lbs·tons / °Brix** → canonical liters (D8), plus a winery
+  display-unit setting. Extends the Phase 6 per-winery unit setting.
+- **Coverage gaps are explicit:** import what the model covers, snapshot the rest labeled inferred/partial,
+  track unmapped source fields so nothing is silently dropped.
+**Exit:** a synthetic (then a real, customer-provided) InnoVint export imports cleanly under a Demo tenant —
+preflight → mapping → draft → reconciliation → sign-off — current balances seeded (fold correct), legacy
+history archived read-only + stitched, codes adopted verbatim, publish gated on sign-off. **Honors:** D8,
+D11, D16, MIGRATE-1, NAMING-1, BOND-1.
+**Implementation: deferred to `/plan` (FIX_RUNBOOK Phase 3 kernel + Phase 4 InnoVint adapter).**
 
 ## Phase 14 — Compliance & reporting (TTB, excise, state/DTC)  🟦 *5120.17 + 5000.24 excise + filing-deadline reminders shipped; state/DTC remaining*  *(table stakes — high priority)*
 > **v1 shipped (plan 025):** TTB F 5120.17 **Part I §A + §B**, all 6 tax classes, gallons + Part X,
@@ -791,6 +860,27 @@ their lots/vessels/inventory in their own units + codes, live, without weeks of 
 > (documented, not built):** Pay.gov e-file/auto-submit, the TTB Pilot Combined Return, state/DTC
 > (ShipCompliant/Avalara), spirits/beer/tobacco computation, multi-entity controlled-group credit split,
 > Parts III/IV/VI–IX, mid-period cross-class movement auto-posting (anomaly-flagged).
+
+> **Remaining scope — bond + tax-class model (FIX_RUNBOOK Phase 2; SYNTHESIS §B.2; council 3.5).** Pulled
+> *before* Phase 13 migration (the seed must place a multi-bond winery's positions on the right bond):
+> - **`Bond` entity** (registry #, penal sum, premises, owner link), tenant-scoped + RLS-isolated. **Bond
+>   affiliation is posted at the operation/line level and is time-aware** — the authoritative bond is derived
+>   point-in-time from the ledger (mirroring `deriveTaxClass()`); any lot-level "home bond" is a **projection
+>   only, never the compliance source of truth**. Honors **BOND-1**.
+> - **`TRANSFER_IN_BOND` op family** — moves volume between bonds, posting **symmetric Removed-in-Bond /
+>   Received-in-Bond** to both bonds' reports (fills §A 7/15, §B 3/9), atomic in one ledger tx.
+> - **Per-bond report scoping** — one filed 5120.17 per bond; extend the `formType`-scoped query pattern with
+>   a bond scope reading the line-level bond so filing chains never cross.
+> - **`CHANGE_OWNERSHIP`** — atomic append-only ownership/bond change with **no follow-up zero-volume
+>   Measurement ritual** (kills vintrace's worst quirk).
+> - **Dated, append-only Change-Of-Tax-Class event** — ABV stays the suggested default but a winemaker can
+>   intentionally set/correct a class. Honors **TAXCLASS-1**.
+> - **Tax-paid terminal state + `RETURN_TO_BOND`** — taxpaid cannot re-enter in-bond via an ordinary
+>   reversal; only a refund-flagged Return-to-Bond re-admits. Honors **TAXPAID-1**.
+> - **Amended-chain integrity (AMEND-1)** — correcting a FILED period cascades `NEEDS_AMENDMENT` down the
+>   form+bond chain and regenerates begin-balances.
+> - **Bounded, partner-gated international sub-phase** (AU WET / NZ excise / CA Winegrower) — market
+>   expansion, **not a US-launch blocker**; kept in this roadmap home, sequenced on a real AU/NZ partner.
 
 **Goal:** Auto-generate the compliance a US winery legally must file, from the ledger. **Table
 stakes** — both incumbents generate the 5120.17; we cannot sell to a US winery without it. Our
@@ -1505,7 +1595,7 @@ auditable event — an advantage mutable-row incumbents can't match. Lead with i
   intelligence/presentation layer (10 → 19); then channel + commercialization (16, 17). **13 Migration**
   is an event-driven interrupt (gated on a real Vintrace/InnoVint export from a design partner), not a
   fixed slot. TTB is buildable on synthetic US data but validated only with a US design partner (Bhutan
-  doesn't file TTB). See `docs/STRATEGY.md` + `docs/competitive-analysis-vintrace-innovint.md`.
+  doesn't file TTB). See `analysis/incumbent-teardown/SYNTHESIS.md`.
 - Phase 11 (labor) has an **independent core** and does not block 7/8; it pays off most
   after Phase 9 (clock against work-order tasks) and feeds Phase 8 (labor cost per lot).
 - **Phase 24 (custom crush / AP / client portal)** depends on **Phase 23 (granular owner-scoped RBAC),

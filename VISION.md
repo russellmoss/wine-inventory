@@ -317,8 +317,8 @@ small/medium wineries (the fundable, competitive product). The production spine 
 stays the moat; on top of it the **ERP/GTM layer** — competitor **migration/onboarding**
 (the wedge), **TTB/state compliance** (table stakes), **two-way accounting**, and **DTC
 integration** — is now first-class (ROADMAP Phases 13–16). Phase **priority follows the
-competitive + go-to-market evidence** in `docs/STRATEGY.md` and
-`docs/competitive-analysis-vintrace-innovint.md`, not the phase numbers. The durable
+competitive + go-to-market evidence** in the incumbent teardown
+(`analysis/incumbent-teardown/SYNTHESIS.md`), not the phase numbers. The durable
 architectural edge that this ERP layer rests on is the append-only ledger + compensating
 corrections (D2/D6/D15): it directly answers the #1 recurring complaint about both
 incumbents ("can't cleanly fix a mistake") and makes cost + compliance provably correct.
