@@ -1,0 +1,22 @@
+---
+id: PARITY-VT-e099a59f
+group: setup-and-admin
+incumbent: vintrace
+capability: Anton Paar Integration
+status: gap
+ourApproach: ""
+aiNativeEdge: ""
+evidence: vintrace-docs/setup-and-admin/integrations-labs-and-tanks/anton-paar-integration.md
+tags:
+  - parity
+---
+
+# PARITY-VT-e099a59f — Anton Paar Integration
+
+> [!info] Parity (vintrace) — gap — not yet built.
+
+- **Incumbent:** vintrace
+- **Our approach:** —
+- **AI-native edge:** —
+- **Evidence:** `vintrace-docs/setup-and-admin/integrations-labs-and-tanks/anton-paar-integration.md`
+- **Source:** `vintrace-docs/setup-and-admin/integrations-labs-and-tanks/anton-paar-integration.md` — see [[assistant-coverage]] / [[system-map]]
