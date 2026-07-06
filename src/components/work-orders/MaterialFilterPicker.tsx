@@ -27,7 +27,10 @@ const ALL = "__all__";
 
 const box: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "var(--surface)" };
 const filterBtn = (active: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: "1px solid var(--border)", background: active ? "var(--wine-primary)" : "transparent", color: active ? "var(--surface-raised)" : "var(--text-secondary)" });
-const rowStyle = (active: boolean): React.CSSProperties => ({ display: "flex", alignItems: "center", gap: 8, fontSize: 14, padding: "7px 8px", cursor: "pointer", minHeight: 36, borderRadius: "var(--radius-sm)", background: active ? "var(--surface-raised)" : "transparent", borderLeft: `3px solid ${active ? "var(--wine-primary)" : "transparent"}`, borderTop: "none", borderRight: "none", borderBottom: "none", fontWeight: active ? 600 : 400, textAlign: "left", width: "100%" });
+// Two-line stacked row: bold name on top, muted "family · on hand" meta below. Stacking (not a 3-span
+// flex row) is what keeps this readable inside the narrow work-order execute card — a wide name no longer
+// collides with the on-hand text and wraps into an unreadable pile (see the Fining task pickers).
+const rowStyle = (active: boolean): React.CSSProperties => ({ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, fontSize: 14, padding: "8px 10px", cursor: "pointer", minHeight: 40, borderRadius: "var(--radius-sm)", background: active ? "var(--surface-raised)" : "transparent", borderLeft: `3px solid ${active ? "var(--wine-primary)" : "transparent"}`, borderTop: "none", borderRight: "none", borderBottom: "none", textAlign: "left", width: "100%" });
 
 const fmtOnHand = (o: MaterialPickerOption) => (o.onHand == null ? "" : `${Number(o.onHand).toLocaleString()}${o.unit ? ` ${o.unit}` : ""} on hand`);
 
@@ -117,13 +120,17 @@ export function MaterialFilterPicker({
         {filtered.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 4px" }}>No matching materials.</div>
         ) : (
-          filtered.map((o) => (
-            <button key={o.id} type="button" style={rowStyle(o.id === value)} onClick={() => onChange(o.id)}>
-              <span>{o.label}</span>
-              {activeFamily === ALL ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {builtinSubLabel(o.kind)}</span> : null}
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{fmtOnHand(o)}</span>
-            </button>
-          ))
+          filtered.map((o) => {
+            const onHand = fmtOnHand(o);
+            // Only repeat the family in the meta line when showing "All" (a family chip already names it).
+            const meta = [activeFamily === ALL ? builtinSubLabel(o.kind) : null, onHand].filter(Boolean).join(" · ");
+            return (
+              <button key={o.id} type="button" style={rowStyle(o.id === value)} onClick={() => onChange(o.id)}>
+                <span style={{ fontWeight: o.id === value ? 600 : 500, lineHeight: 1.3 }}>{o.label}</span>
+                {meta ? <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.3 }}>{meta}</span> : null}
+              </button>
+            );
+          })
         )}
       </div>
     </div>
