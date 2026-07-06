@@ -339,6 +339,17 @@ function ActionRegion({
       );
     }
     if (NEUTRAL_OPS.has(item.type)) {
+      // A WO-sourced neutral op is the immutable record of a completed task (WORKORDER-1) — it can't be
+      // edited/deleted from the timeline (the attempt→op FK is ON DELETE RESTRICT). Lock it up-front and
+      // point at the work order's reject flow, mirroring the corrected/correction lock above (Gemini G5).
+      if (item.workOrder) {
+        return (
+          <div style={{ fontSize: 13, color: "var(--text-muted)", display: "flex", gap: 6, alignItems: "center" }}>
+            <LockIcon />
+            Logged by work order #{item.workOrder.number} — to change or remove it, reject that work order&apos;s task.
+          </div>
+        );
+      }
       return <NeutralEdit event={item} onMutated={onMutated} onClose={onClose} />;
     }
     const lotId = lotIdForOp ? lotIdForOp(item) : null;
