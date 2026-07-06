@@ -137,6 +137,41 @@ export async function writeLotOperation(
     throw new ActionError("Cross-winery operation blocked.", "CONFLICT");
   }
 
+  // Phase 2 (TAXPAID-1 / CO-1): the tax-paid boundary is one-way. reversibilityOf(false) closes only
+  // the timeline Undo; this chokepoint guard is the invariant's teeth — it stops in-bond volume from
+  // sneaking back for a tax-paid-removed lot behind the reverser. Two vectors are blocked (the ONLY
+  // sanctioned re-admission is a refund-flagged RETURN_TO_BOND, which is excluded here):
+  //   (a) a CORRECTION whose target is a REMOVE_TAXPAID op (a direct compensating re-admission);
+  //   (b) a manual ADJUST that adds in-bond volume to a lot that carries tax-paid-removed volume.
+  // Normal in-bond adds of OTHER wine (RACK/TOPPING/BLEND/transfer) are not caught — they don't
+  // restore the removed tax-paid volume.
+  if (input.type !== "RETURN_TO_BOND") {
+    if (input.correctsOperationId != null) {
+      const corrected = await tx.lotOperation.findUnique({ where: { id: input.correctsOperationId }, select: { type: true } });
+      if (corrected?.type === "REMOVE_TAXPAID") {
+        throw new ActionError(
+          "Tax-paid removals are final for TTB. To bring wine back into bond, record a Return-to-Bond (refund) instead.",
+          "CONFLICT",
+        );
+      }
+    }
+    if (input.type === "ADJUST") {
+      const addedInBondLots = [...new Set(input.lines.filter((l) => l.vesselId && l.deltaL > 0).map((l) => l.lotId))];
+      if (addedInBondLots.length > 0) {
+        const taxpaid = await tx.lotOperationLine.findFirst({
+          where: { lotId: { in: addedInBondLots }, operation: { type: "REMOVE_TAXPAID" } },
+          select: { lotId: true },
+        });
+        if (taxpaid) {
+          throw new ActionError(
+            "That lot has wine removed tax-paid, which is final for TTB. Record a Return-to-Bond (refund) to bring wine back into bond.",
+            "CONFLICT",
+          );
+        }
+      }
+    }
+  }
+
   // Read full current state for every affected vessel (for fold + capacity), in-tx.
   const current = await tx.vesselLot.findMany({ where: { vesselId: { in: vesselIds } } });
   const currentBalances: VesselLotBalance[] = current.map((r) => ({

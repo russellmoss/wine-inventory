@@ -23,9 +23,10 @@ export type CorrectResult = {
   message: string;
 };
 
-// Phase 14: REMOVE_TAXPAID is a volumetric vessel→external op (structurally identical to LOSS), so
-// its reversal is the same compensating-inverse path — routed here via the "cellar" reverse family.
-const CORRECTABLE = new Set(["ADDITION", "FINING", "CAP_MGMT", "FILTRATION", "TOPPING", "LOSS", "REMOVE_TAXPAID"]);
+// Phase 2 (TAXPAID-1): REMOVE_TAXPAID is deliberately NOT correctable here — the tax-paid boundary is
+// terminal, so an ordinary compensating inverse must never re-admit tax-paid volume in-bond. The only
+// re-admission is a refund-flagged RETURN_TO_BOND (compliance/return-to-bond-core.ts).
+const CORRECTABLE = new Set(["ADDITION", "FINING", "CAP_MGMT", "FILTRATION", "TOPPING", "LOSS"]);
 
 /** Correct (revert volumetric / void neutral) a single Phase 3 operation. */
 export async function correctOperationCore(

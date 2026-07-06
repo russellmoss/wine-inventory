@@ -53,11 +53,13 @@ export type ReverseFamily = "cellar" | "rack" | "sparkling" | "bottle" | "transf
 
 export type ReversibilityVerdict =
   | { reversible: true; family: ReverseFamily }
-  | { reversible: false; code: "correction" | "origination" | "manual-adjust"; reason: string };
+  | { reversible: false; code: "correction" | "origination" | "manual-adjust" | "taxpaid-terminal" | "refund-event"; reason: string };
 
-// The cellar-6 (correctOperationCore): neutral voids + volumetric reverts. Phase 14: REMOVE_TAXPAID
-// is a volumetric vessel→external op, so it reverses through the same generic corrector.
-const CELLAR_TYPES = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS", "REMOVE_TAXPAID"]);
+// The cellar-6 (correctOperationCore): neutral voids + volumetric reverts.
+// Phase 2 (TAXPAID-1): REMOVE_TAXPAID is NO LONGER here — the tax-paid boundary is one-way, so an
+// ordinary compensating reversal must NOT silently re-admit tax-paid volume in-bond. It gets a bespoke
+// non-reversible verdict below; the ONLY re-admission is a refund-flagged RETURN_TO_BOND.
+const CELLAR_TYPES = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS"]);
 // Sparkling bottle-phase (reverseSparklingOperationCore).
 const SPARKLING_TYPES = new Set<OperationType>(["TIRAGE", "RIDDLING", "DISGORGEMENT", "DOSAGE", "FINISH"]);
 // Origination / split transforms (reverseTransformCore) — 024b.
@@ -84,6 +86,12 @@ export function reversibilityOf(type: OperationType): ReversibilityVerdict {
   if (type === "BLEND") return { reversible: true, family: "blend" };
   // Phase 2 (BOND-1): a TRANSFER_IN_BOND reverses via its own bond-swapping corrector (both bonds).
   if (type === "TRANSFER_IN_BOND") return { reversible: true, family: "bond" };
+  // Phase 2 (TAXPAID-1): the tax-paid boundary is terminal — never re-admit via the generic reverser.
+  if (type === "REMOVE_TAXPAID")
+    return { reversible: false, code: "taxpaid-terminal", reason: "Tax-paid removals are final for TTB. To bring wine back into bond, record a Return-to-Bond (refund) instead." };
+  // A RETURN_TO_BOND is itself the refund event — undo it by recording a new tax-paid removal, not a reversal.
+  if (type === "RETURN_TO_BOND")
+    return { reversible: false, code: "refund-event", reason: "A Return-to-Bond is a refund event — record a new tax-paid removal to move wine back out of bond." };
   if (type === "CORRECTION") return { reversible: false, code: "correction", reason: "This entry is itself a reversal." };
   if (type === "SEED") return { reversible: false, code: "origination", reason: "Seeding is a lot's day-zero origination — it can't be undone." };
   // ADJUST / DEPLETE

@@ -27,12 +27,44 @@ export type RemovalInput = {
   commandId?: string | null;
 };
 
-export type RemovalResult = { operationId: number; lotId: string; removedL: number; message: string };
+export type RemovalResult = { operationId: number; lotId: string; removedL: number; duplicate?: boolean; message: string };
+
+function isCommandConflict(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { code?: string }).code === "P2002" &&
+    JSON.stringify((e as { meta?: unknown }).meta ?? "").includes("commandId")
+  );
+}
+
+/** Reconstruct an already-committed removal (OQ-5: full crush-core commandId idempotency). */
+async function findByCommandId(commandId: string): Promise<RemovalResult | null> {
+  const op = await prisma.lotOperation.findUnique({
+    where: { commandId },
+    select: { id: true, type: true, metadata: true },
+  });
+  if (!op || op.type !== "REMOVE_TAXPAID") return null;
+  const m = (op.metadata ?? {}) as Record<string, unknown>;
+  return {
+    operationId: op.id,
+    lotId: String(m.lotId ?? ""),
+    removedL: Number(m.removedL ?? 0),
+    duplicate: true,
+    message: `Removal already recorded (operation #${op.id}).`,
+  };
+}
 
 export async function removeTaxpaidCore(actor: LedgerActor, input: RemovalInput): Promise<RemovalResult> {
   if (!(input.volumeL > 0)) throw new ActionError("Enter a positive volume to remove.");
   const label = REMOVAL_DISPOSITION_LABELS[input.disposition];
   if (!label) throw new ActionError("Unknown removal disposition.");
+
+  // OQ-5: pre-check the commandId so a double-submit is a no-op success, not a duplicate removal.
+  if (input.commandId) {
+    const existing = await findByCommandId(input.commandId);
+    if (existing) return existing;
+  }
 
   const vessel = await prisma.vessel.findUnique({
     where: { id: input.vesselId },
@@ -47,31 +79,40 @@ export async function removeTaxpaidCore(actor: LedgerActor, input: RemovalInput)
   const lotCodes = new Map(vessel.vesselLots.map((r) => [r.lotId, r.lot.code]));
   const vesselCodes = new Map([[vessel.id, vessel.code]]);
 
-  const operationId = await runLedgerWrite(async (tx) => {
-    const opId = await writeLotOperation(tx, {
-      type: "REMOVE_TAXPAID",
-      lines: plan.lines,
-      actorUserId: actor.actorUserId,
-      enteredBy: actor.actorEmail,
-      captureMethod: "MANUAL",
-      observedAt: input.observedAt,
-      note: input.note?.trim() || `${label} — ${plan.removedL} L from ${vessel.code}`,
-      commandId: input.commandId ?? null,
-      lotCodes,
-      vesselCodes,
-      capacityByVessel: new Map(), // removal never overfills
+  try {
+    const operationId = await runLedgerWrite(async (tx) => {
+      const opId = await writeLotOperation(tx, {
+        type: "REMOVE_TAXPAID",
+        lines: plan.lines,
+        actorUserId: actor.actorUserId,
+        enteredBy: actor.actorEmail,
+        captureMethod: "MANUAL",
+        observedAt: input.observedAt,
+        note: input.note?.trim() || `${label} — ${plan.removedL} L from ${vessel.code}`,
+        commandId: input.commandId ?? null,
+        lotCodes,
+        vesselCodes,
+        capacityByVessel: new Map(), // removal never overfills
+      });
+      // Authoritative disposition + section for the report fold (metadata, not the generic line reason);
+      // lotId/removedL are stamped so a duplicate-commandId submit reconstructs the same result (OQ-5).
+      await tx.lotOperation.update({ where: { id: opId }, data: { metadata: { disposition: input.disposition, source: "BULK", vesselId: vessel.id, lotId: source[0].lotId, removedL: plan.removedL } } });
+      await writeAudit(tx, {
+        ...actor,
+        action: "STOCK_MOVEMENT",
+        entityType: "LotOperation",
+        entityId: String(opId),
+        summary: `${label}: ${plan.removedL} L from ${vessel.code}`,
+      });
+      return opId;
     });
-    // Authoritative disposition + section for the report fold (metadata, not the generic line reason).
-    await tx.lotOperation.update({ where: { id: opId }, data: { metadata: { disposition: input.disposition, source: "BULK", vesselId: vessel.id } } });
-    await writeAudit(tx, {
-      ...actor,
-      action: "STOCK_MOVEMENT",
-      entityType: "LotOperation",
-      entityId: String(opId),
-      summary: `${label}: ${plan.removedL} L from ${vessel.code}`,
-    });
-    return opId;
-  });
 
-  return { operationId, lotId: source[0].lotId, removedL: plan.removedL, message: `${label}: removed ${plan.removedL} L from ${vessel.code}.` };
+    return { operationId, lotId: source[0].lotId, removedL: plan.removedL, message: `${label}: removed ${plan.removedL} L from ${vessel.code}.` };
+  } catch (e) {
+    if (input.commandId && isCommandConflict(e)) {
+      const existing = await findByCommandId(input.commandId);
+      if (existing) return existing;
+    }
+    throw e;
+  }
 }

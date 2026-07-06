@@ -23,6 +23,8 @@ export const SECTION_A_LINES: { line: number; label: string; kind: "begin" | "ad
   { line: 7, label: "Received in bond", kind: "add" },
   { line: 8, label: "Bottled wine dumped to bulk", kind: "add" },
   { line: 9, label: "Inventory gains", kind: "add" },
+  { line: 10, label: "Wine changed to this tax class", kind: "add" }, // Phase 2 (TAXCLASS-1): §A10 change-into
+  { line: 11, label: "Taxpaid wine returned to bulk", kind: "add" }, // Phase 2 (TAXPAID-1): §A11 return-to-bond
   { line: 12, label: "TOTAL", kind: "total" },
   { line: 13, label: "Bottled", kind: "remove" },
   { line: 14, label: "Removed taxpaid", kind: "remove" },

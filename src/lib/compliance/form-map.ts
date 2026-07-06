@@ -123,6 +123,12 @@ export function mapLineToForm(m: MovementInput): FormMapResult {
         ? { target: m.source === "BULK" ? A(7, sub) : B(3, sub), partXReason: null }
         : { target: m.source === "BULK" ? A(15, sub) : B(9, sub), partXReason: null };
 
+    // Return-to-bond (TAXPAID-1): the ONLY re-admission past the REMOVE_TAXPAID terminal state. The
+    // refund-flagged +V re-admission posts §A11 "taxpaid wine returned to bulk" (bulk) / §B4 "taxpaid
+    // wine returned to bond" (bottled) — an ADDITION, so the returned volume re-enters the column.
+    case "RETURN_TO_BOND":
+      return { target: m.source === "BULK" ? A(11, sub) : B(4, sub), partXReason: null };
+
     // Blending: internal unless it crosses tax classes (ftn 5). Cross-class posts A5 (produced, into
     // the child class) / A20 (used for, out of each parent class) so the columns still foot, AND
     // flags an anomaly for human review (R8 — never a silent cross-class post).

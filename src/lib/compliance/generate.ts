@@ -387,6 +387,11 @@ export async function foldPeriod(
           if (r.target) contributions.push({ section: r.target.section, line: r.target.line, column: c.taxClass, sub: r.target.sub, liters: Math.abs(l.deltaL) });
         }
       }
+    } else if (l.bucket === "VESSEL" && effType === "RETURN_TO_BOND" && l.deltaL > 0) {
+      // TAXPAID-1: the refund-flagged re-admission — the +V vessel leg posts §A11 (taxpaid wine
+      // returned to bulk, an addition). Its external counter-leg (reason "tax_return") is not a
+      // summary flow and is skipped by the EXTERNAL branch.
+      push("RETURN_TO_BOND", l, "BULK", l.deltaL, null);
     }
     // Other VESSEL legs (rack/topping/press/crush internal) net to zero within the section → skip.
   }

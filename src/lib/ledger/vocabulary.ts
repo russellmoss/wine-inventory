@@ -100,6 +100,10 @@ export const LINE_REASONS = [
   // SPECIFIC disposition (TAXPAID/EXPORT/…) that picks the §A/§B form line lives in the op's
   // metadata.disposition (authoritative); this generic tag keeps the line self-describing.
   "tax_removal",
+  // Phase 2 (TAXPAID-1): the external counter-leg of a RETURN_TO_BOND op — refund-flagged re-admission
+  // of tax-paid wine BACK into bond (the vessel +V leg posts §A11 "taxpaid wine returned to bulk").
+  // The ONLY sanctioned way past the REMOVE_TAXPAID terminal state. NOT loss (excluded from loss reports).
+  "tax_return",
 ] as const;
 export type LineReason = (typeof LINE_REASONS)[number];
 

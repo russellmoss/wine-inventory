@@ -26,6 +26,21 @@ describe("reversibilityOf", () => {
     expect(reversibilityOf("BLEND")).toEqual({ reversible: true, family: "blend" });
   });
 
+  it("routes TRANSFER_IN_BOND to the bond family (Phase 2, BOND-1)", () => {
+    expect(reversibilityOf("TRANSFER_IN_BOND")).toEqual({ reversible: true, family: "bond" });
+  });
+
+  it("makes REMOVE_TAXPAID and RETURN_TO_BOND terminal (Phase 2, TAXPAID-1 — T1 IRON RULE)", () => {
+    // REMOVE_TAXPAID was formerly in CELLAR_TYPES (reversible); the tax-paid boundary is now one-way.
+    expect(reversibilityOf("REMOVE_TAXPAID")).toMatchObject({ reversible: false, code: "taxpaid-terminal" });
+    // A RETURN_TO_BOND is itself the refund event — not reversed by the generic path.
+    expect(reversibilityOf("RETURN_TO_BOND")).toMatchObject({ reversible: false, code: "refund-event" });
+    for (const t of ["REMOVE_TAXPAID", "RETURN_TO_BOND"] as OperationType[]) {
+      const v = reversibilityOf(t);
+      if (!v.reversible) expect(v.reason.length).toBeGreaterThan(0);
+    }
+  });
+
   it("marks SEED / ADJUST / DEPLETE / CORRECTION non-undoable with a non-empty reason", () => {
     expect(reversibilityOf("SEED")).toMatchObject({ reversible: false, code: "origination" });
     expect(reversibilityOf("ADJUST")).toMatchObject({ reversible: false, code: "manual-adjust" });
