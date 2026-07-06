@@ -15,3 +15,11 @@ export const EXCISE_FORM: ComplianceFormTypeValue = "TTB_5000_24"; // Wine Excis
 export function formScope(formType: ComplianceFormTypeValue): { formType: ComplianceFormTypeValue } {
   return { formType };
 }
+
+// Phase 2 (BOND-1 / C6): the per-bond scope for the 5120.17. Every 5120.17 filing chain is scoped to
+// ONE bond so carry-forward never crosses bonds; a null bondId means "not bond-scoped" (the 5000.24
+// excise return stays bond-agnostic). Spread alongside formScope in every 5120.17 carry-forward /
+// downstream-mark query. Extends COMPLIANCE-1's form scope, never weakens it.
+export function bondScope(bondId: string | null | undefined): { bondId?: string } {
+  return bondId ? { bondId } : {};
+}
