@@ -37,7 +37,7 @@ describe("verify:ai-native — reachability + ratchet (real tree)", () => {
 
   it("requires owner + reason on an allow-list entry", () => {
     const { violations } = run({
-      allowlist: { "src/lib/ferment/panel-core.ts": { owner: "x" } as any },
+      allowlist: { "src/lib/ferment/panel-core.ts": { owner: "x" } },
       maxAllowed: 1,
     });
     expect(violations.some((v: string) => /needs both `owner` and `reason`/.test(v))).toBe(true);

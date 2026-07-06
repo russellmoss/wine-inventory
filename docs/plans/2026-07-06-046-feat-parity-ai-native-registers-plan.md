@@ -1,7 +1,7 @@
 ---
 title: Living registers for the product thesis — Capability-Parity + AI-Nativeness (core→tool) guard
 type: feat
-status: draft
+status: completed
 date: 2026-07-06
 branch: claude/laughing-lichterman-175f94
 depth: standard
@@ -364,19 +364,19 @@ locally → all exit 0.
 
 ## Success Criteria
 
-- [ ] `docs/architecture/parity/` exists with template, README, `parity.base`, and ~997 corpus-generated notes; `parity.base` shows honest coverage (real numerator, ~99% gap) + a Gaps view.
-- [ ] `scripts/ingest-parity-corpus.mjs` is idempotent and regenerates the stubs from the corpus indexes.
-- [ ] `npm run verify:parity` exits 0 on landing; exits 1 on a dead-evidence / `../`-escape / wikilink-on-covered fixture; link-rot on a non-covered note is a warning only.
-- [ ] `verify:ai-native` uses a TS-compiler-API import-graph (code is source of truth), NOT a doc parse or symbol-grep; a wrapper-reached core is correctly counted as reachable.
-- [ ] `assistant-coverage.md` table is auto-generated between markers; a hand-edit of the generated block fails the drift-check.
-- [ ] `ai-native-allowlist.mjs` ratchets: CI fails if length > `MAX_ALLOWED` or on a stale entry; each entry has `owner`+`reason`.
-- [ ] `TRIP-AI-CORE` note added (thin/process-only); `npm run verify:tripwires` and `verify:invariants` stay green.
-- [ ] `scripts/lib/vault-notes.mjs` extracted and used by the new scripts; the two existing guard scripts untouched.
-- [ ] Guards expose a pure `run()`; CLIs are thin wrappers; post-commit blocks always exit 0.
-- [ ] `.gitattributes` forces LF on the new note/script paths.
-- [ ] Unit 8 meta-tests green incl. adversarial parser fixtures (aliased/multiline/barrel/CRLF) and doc-drift.
-- [ ] Both new guards wired as hard gates in `ci.yml` (early in `check`) and as non-blocking blocks in `.githooks/post-commit`.
-- [ ] Full `vitest run` green (excluding pre-broken `invariant-drift.test.ts`); no regressions.
+- [x] `docs/architecture/parity/` exists with template, README, `parity.base`, and ~997 corpus-generated notes; `parity.base` shows honest coverage (real numerator, ~99% gap) + a Gaps view.
+- [x] `scripts/ingest-parity-corpus.mjs` is idempotent and regenerates the stubs from the corpus indexes.
+- [x] `npm run verify:parity` exits 0 on landing; exits 1 on a dead-evidence / `../`-escape / wikilink-on-covered fixture; link-rot on a non-covered note is a warning only.
+- [x] `verify:ai-native` uses a TS-compiler-API import-graph (code is source of truth), NOT a doc parse or symbol-grep; a wrapper-reached core is correctly counted as reachable.
+- [x] `assistant-coverage.md` table is auto-generated between markers; a hand-edit of the generated block fails the drift-check.
+- [x] `ai-native-allowlist.mjs` ratchets: CI fails if length > `MAX_ALLOWED` or on a stale entry; each entry has `owner`+`reason`.
+- [x] `TRIP-AI-CORE` note added (thin/process-only); `npm run verify:tripwires` and `verify:invariants` stay green.
+- [x] `scripts/lib/vault-notes.mjs` extracted and used by the new scripts; the two existing guard scripts untouched.
+- [x] Guards expose a pure `run()`; CLIs are thin wrappers; post-commit blocks always exit 0.
+- [x] `.gitattributes` forces LF on the new note/script paths.
+- [x] Unit 8 meta-tests green incl. adversarial parser fixtures (aliased/multiline/barrel/CRLF) and doc-drift.
+- [x] Both new guards wired as hard gates in `ci.yml` (early in `check`) and as non-blocking blocks in `.githooks/post-commit`.
+- [x] Full `vitest run` green (excluding pre-broken `invariant-drift.test.ts`); no regressions.
 
 ## Confidence Check
 
