@@ -99,9 +99,12 @@ export function coreExports(file, text) {
   return [...names];
 }
 
-export function run(opts = {}) {
-  const allow = opts.allowlist || ALLOWLIST;
-  const maxAllowed = opts.maxAllowed ?? MAX_ALLOWED;
+// The graph + reachability is independent of the allow-list, and the src tree
+// doesn't change within a process — so build it once and cache it. (Repeated
+// run() calls in the meta-tests would otherwise each re-walk + re-parse all of src.)
+let _graph = null;
+function buildGraph() {
+  if (_graph) return _graph;
   const files = walk(SRC);
   const graph = new Map();       // abs file → [abs imported files]
   const coreOf = new Map();      // abs core file → [*Core names]
@@ -113,29 +116,34 @@ export function run(opts = {}) {
       if (ex.length) coreOf.set(f, ex);
     }
   }
-
-  // roots = every assistant tool module (+ the registry that wires them).
   const roots = files.filter(
     (f) => rel(f).startsWith("src/lib/assistant/tools/") || rel(f) === "src/lib/assistant/registry.ts"
   );
-
   // Multi-source BFS; record which root first reached each file (for "via").
   const via = new Map();
   const queue = [];
   for (const r of roots) { if (!via.has(r)) { via.set(r, r); queue.push(r); } }
   for (let i = 0; i < queue.length; i++) {
-    const cur = queue[i];
-    for (const next of graph.get(cur) || []) {
-      if (!via.has(next)) { via.set(next, via.get(cur)); queue.push(next); }
+    for (const next of graph.get(queue[i]) || []) {
+      if (!via.has(next)) { via.set(next, via.get(queue[i])); queue.push(next); }
     }
   }
-
   const cores = [...coreOf.keys()].sort();
-  const table = cores.map((f) => {
+  const base = cores.map((f) => {
     const reachable = via.has(f);
     const viaRoot = reachable ? rel(via.get(f)).replace("src/lib/assistant/tools/", "").replace(/\.tsx?$/, "") : "";
-    return { core: rel(f), exports: coreOf.get(f), reachable, via: viaRoot, allowed: !!allow[rel(f)] };
+    return { core: rel(f), abs: f, exports: coreOf.get(f), reachable, via: viaRoot };
   });
+  _graph = { coreOf, via, base, coreCount: cores.length };
+  return _graph;
+}
+
+export function run(opts = {}) {
+  const allow = opts.allowlist || ALLOWLIST;
+  const maxAllowed = opts.maxAllowed ?? MAX_ALLOWED;
+  const { coreOf, via, base } = buildGraph();
+
+  const table = base.map((r) => ({ core: r.core, exports: r.exports, reachable: r.reachable, via: r.via, allowed: !!allow[r.core] }));
 
   const violations = [];
   // Unreachable + not allow-listed = the gap we care about.
@@ -154,7 +162,7 @@ export function run(opts = {}) {
     else if (!allow[k].owner || !allow[k].reason) violations.push(`allow-list entry \`${k}\` needs both \`owner\` and \`reason\``);
   }
 
-  return { violations, table, cores: cores.length, reachableCount: table.filter((t) => t.reachable).length };
+  return { violations, table, cores: table.length, reachableCount: table.filter((t) => t.reachable).length };
 }
 
 // ---- generated coverage table (deterministic) -------------------------------
