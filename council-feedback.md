@@ -1,104 +1,118 @@
-# Council Feedback — Work-Order Template Builder (Plan 034, Phase 1)
-**Date**: 2026-07-03
-**Reviewers**: Codex (types + data layer; ran on gpt-5.4-mini fallback — primary failed), Gemini 3.1 Pro (product logic + UX)
-**Plan**: docs/plans/2026-07-03-034-feat-work-order-template-builder-plan.md
+# Council Feedback — PHASE-2-PLAN (Bond + tax-class model)
+**Date**: 2026-07-06
+**Reviewers**: Codex gpt-5.4 (types + data layer + correctness), Gemini 3.1 Pro (compliance correctness + product/UX)
+**Plan**: `plans/PHASE-2-PLAN.md`
 
-## Critical Issues
+## Headline
+Both models converged on the same load-bearing gaps and each caught things the other missed. Strongest
+catches: (1) **`reversibilityOf(false)` alone does NOT enforce TAXPAID-1** — another positive-volume path
+can still re-admit taxpaid wine (Codex); (2) **cross-bond blends are a "superposition violation"** — the
+"walk to parent's bond" rule is undefined for multi-parent blends and must be **blocked** (Gemini); (3)
+the AMEND-1 cascade + fold must operate on **both** bond chains of a `TRANSFER_IN_BOND` (Codex + Gemini);
+(4) the Change-Of-Tax-Class event needs **explicit volume semantics** (both); (5) a real **cross-model
+tension on OQ-6** (excise amend) where Gemini cites the correct TTB rule.
 
-### Product (Gemini)
-1. **"No baked-in defaults" defeats the purpose of an SOP template (Decision #4, Unit 8).** The point of a
-   work-order template in an ERP is to *prevent cellar errors* by encoding the standard: material = KMBS,
-   rate = 30, unit = ppm. Forcing the operator to re-enter material + rate every run means the template
-   prevents nothing. Gemini's fix: allow baking in **material, rate, unit** (the "what") while leaving
-   vessels/lots to run time (the "where"). The data model already supports this (`defaults`), so excluding
-   it is *more* work for a *worse* product. → **Reverses a locked decision — user call.**
-2. **Multi-vessel multiplicity is muddled (Decision #1, Unit 8).** A structure-only builder has no vessel
-   inputs, so "a template targets multiple vessels" can't mean the template names vessels. The existing
-   run-time already handles this: the new-WO form's `VesselMultiSelect` fans one block out to N vessels at
-   submit. Fix: template = a single ordered flow of blocks; at run time pick N vessels and multiplex.
-   (Wording/clarity fix — already matches existing behavior. Folding.)
-3. **Frozen versioning vs. in-flight drafts (Decision #6, Unit 5).** Confirm `templateVersionId` is snapped
-   at WO *creation* (including DRAFT), not only at issue, so editing a template never mutates an open draft.
-   (`createWorkOrderFromTemplateCore` snaps `version.id` at creation → already handled; add a verification.)
+## Critical Issues (accepted → folded into the plan)
+1. **TAXPAID-1 needs a central admissibility guard, not just a non-reversible verdict** (Codex CRIT-3).
+   → C5 gains a guard: a positive in-bond increase to a taxpaid lot is rejected except via `RETURN_TO_BOND`.
+2. **Cross-bond blends must be blocked** (Gemini CRIT-3). → C1/C2: all blend parents same bond (else
+   `TRANSFER_IN_BOND` first); single-parent lineage child walks to its parent's bond; `verify:bond`
+   asserts the block.
+3. **AMEND-1 + fold must cover BOTH bond chains of a transfer** (Codex CRIT-1, Gemini SF-2). → C7/C2:
+   cascade derives scopes from emitted lines (per-line bond); a reversed transfer marks both chains.
+4. **Bond-moving ops require explicit, non-null, source≠dest bond** (Codex CRIT-2, DESIGN-3). → S1/C1/C2:
+   asymmetric fallback (legacy may derive primary; bond-moving never) + discriminated input types.
+5. **Change-Of-Tax-Class needs explicit volume semantics** (Codex CRIT-4, Gemini CRIT-1). → C4: post the
+   lot's on-hand volume as-of the event date (from the existing period fold) + stamp `volumeAtEvent`;
+   emit nothing for a no-op. Kept as a table event (ledger-op alternative rejected — would put tax class
+   on the ledger line, contradicting the settled "class is derived, never stored" architecture; the
+   volume-snapshot addresses Gemini's real "toxic reconstruction" concern).
+6. **Part VII "In Fermenters" contamination** (Gemini CRIT-2). → new **OQ-7** + guardrail: brand-new-blend
+   derivation must not promote null-ABV fermenting must into Part I; declaring out of fermenters posts
+   §A2/§A25. Full FERMENTING-state/`DECLARE_WINE` is likely beyond Phase-2 scope — escalate.
 
-### Engineering (Codex)
-1. **Client-shaped `spec` is not a trust boundary (Units 5, 8).** Accept `unknown` at the action boundary;
-   validate + **canonicalize** on the server (reject/strip unknown keys), persist only the sanitized object.
-   `validateTemplateSpec` currently reports errors but doesn't strip extra keys or return a normalized spec.
-   (The cores DO call `validateTemplateSpec` server-side, so malformed specs are rejected — but canonicalize.)
-2. **Auto-generated `code` retry loop is race/livelock-prone (Unit 5).** Bounded retry, fresh candidate each
-   attempt, typed conflict after the cap. Never reuse the same candidate after a P2002.
+## Design Questions / cross-model tension
+- **OQ-6 (excise amend) — CROSS-MODEL TENSION, resolved toward Gemini (TTB-correct).** Codex: decide now,
+  likely amend the 5000.24 chain. Gemini: **NO — a physical return-to-bond today is a decreasing
+  adjustment/credit on the CURRENT period's 5000.24 (Schedule B) or a Form 5620.8 claim; amending the old
+  return falsifies history.** → **OQ-6 RESOLVED: AMEND-1 stays 5120.17-only; flag for accountant.**
+- **OQ-1 (`CHANGE_OWNERSHIP`) — council consensus = DEFER** (both). Runbook Exact Scope lists it →
+  surface the runbook-vs-council tension at the STOP gate; recommendation flips to defer.
+- **OQ-2 (per-bond filer identity)** — bond-first AND snapshot filer identity onto the report row at FILE
+  (Gemini + Codex).
+- **OQ-3 (historical backfill)** — both lean physical-stamp for perf; bond-moving ops explicit regardless.
+  Keep NULL+derive for legacy with the asymmetric guard; flag the index tradeoff at the STOP gate.
+- **AMEND-1 UI illusion** (Gemini CRIT-4) — a `NEEDS_AMENDMENT` report must be watermarked Draft/Projected,
+  never shown as "Filed." Carry-forward chaining still reads last-filed for continuity. → `/design-review`.
 
-## Design Questions
-1. **Baked-in defaults** — allow optional material/rate/unit defaults in templates, or keep structure-only?
-2. **Who can author templates** — all users (current Decision #5) or restrict to winemaker/admin?
-3. **`NOTE` as an enum kind vs. a separate checklist store** — enum anti-pattern vs. one interleaved list.
-4. **All-checklist work orders** — allow (completes when all boxes checked) or require ≥1 real operation?
-
-## Suggested Improvements (folding into the plan)
-- **Exhaustiveness (Codex):** `assertNever` on every `WorkOrderTaskKind` switch incl. the
-  TemplateSpec→WorkOrderTask instantiation path (not just UI renderers) + a totality test.
-- **Explicit tenantId in `where` (Codex):** keep the tenant filter in Prisma queries even with RLS (repo K12).
-- **`updateTemplateSpecCore` reads `currentVersion` outside the tx (Codex):** move inside `runInTenantTx`
-  (or retry once) so the version read and the insert share one snapshot.
-- **Revalidation under-scoped (Codex):** also revalidate the detail path, version history, and the
-  `/work-orders/new` picker.
-- **Builder constraints (Gemini):** max blocks cap, name required, duplicate-name handling, min ≥1 task.
-- **Empty state (Gemini):** custom-tab CTA "Clone a system template or build from scratch."
-- **System-clone lineage (Gemini):** document that clones don't get future system-template updates (Phase-1
-  limitation); clear system-vs-custom separation.
-- **Migration gate (Codex):** enum migration live before Unit 2 code merges.
-
-## Recommendations (my synthesis)
-- **Q1 defaults:** ADOPT Gemini — allow *optional* defaults for the "what" (material/rate/unit/medium/gas),
-  vessels/lots stay run-time. Strongest finding; reverses Decision #4.
-- **Q2 permissions:** restrict *template authoring* to winemaker/admin; *all users* still issue/run WOs.
-- **Q3 NOTE store:** KEEP `NOTE` as a task kind — ledger/cost/compliance read ledger tables, not
-  `WorkOrderTask.kind`, so no query tax; interleaving needs one ordered list. Guard only approval queue + undo.
-- **Q4 all-checklist WO:** ALLOW; ensure the WO lifecycle can complete a WO whose tasks are all `NOTE`.
+## Suggested Improvements (accepted)
+- A2 carry-forward: deterministic final tiebreaker (`id desc`); mark ALL filed versions in a downstream period.
+- Indexes: composite `(tenantId, formType, bondId, status, periodEnd, generatedAt)`; `(tenantId, lotId, observedAt)` on the event table.
+- Partial `RETURN_TO_BOND` (explicit volume).
+- Single-bond UX: hide bond UI when count == 1 → design-review.
+- Exhaustive compile-time handling of new `OperationType` across reverse/form-map/labels.
+- Dedupe same-period blend §A5/20 vs class-change §A10/24/25 (adjust blend target class in the fold).
 
 ---
-## Raw Response — Codex (gpt-5.4-mini fallback)
+## Raw Response — Codex (gpt-5.4)
 
-CRITICAL
-- Units 5 & 8: server-action boundary trusts a client-shaped `spec: TemplateSpec`. Not a trust boundary.
-  Accept `unknown`, validate + canonicalize on the server, persist sanitized only.
-- Unit 5 + @@unique([tenantId, code]): auto-generated `code` retry loop race-prone unless bounded and
-  regenerates a fresh candidate each retry. Cap attempts, typed conflict, never reuse candidate after P2002.
+**CRITICAL**
+- TRANSFER_IN_BOND must amend-mark and fold on both bond scopes, not a single op scope. If the seam/fold
+  resolves bond once per op or lot, one side can stay FILED or net to zero. Fix: derive scopes from
+  emitted lines, carry explicit bondId per movement row, mark every touched {formType,bondId} chain in
+  the same tx.
+- Nullable sourceBondId/destBondId unsafe on bond-moving ops. Fix: require explicit ids, require
+  sourceBondId !== destBondId, reject fallback-to-primary on those op types.
+- Making REMOVE_TAXPAID non-reversible does not by itself enforce TAXPAID-1 — it only closes the undo
+  path, not another positive-volume path. Fix: central admissibility guard on positive in-bond increases;
+  whitelist only RETURN_TO_BOND + legit originations/transfers.
+- ChangeOfTaxClassEvent needs explicit volume semantics or §A10/24/25 will drift/double-count. Fix:
+  define the event as moving on-hand volume at observedAt from classBefore→classAfter; emit nothing for a
+  no-op.
+- OQ-6 not optional: a backdated taxable reversal leaves later filed 5000.24 rows wrong. Fix: decide now
+  whether refund RETURN_TO_BOND amend-marks the excise chain, or encode an op-to-form impact map.
 
-SHOULD FIX
-- Unit 2: NOTE is not just a type-union change. TS won't catch default branches, lookup maps, or
-  stringly-typed dispatchers routing NOTE through a fallback — incl. TemplateSpec→WorkOrderTask instantiation.
-  Add assertNever + a totality test.
-- Unit 4: getTemplateDetail/listWorkOrderTemplates need explicit tenant predicates, not only ambient RLS.
-- Unit 5: updateTemplateSpecCore reads currentVersion outside the tx then inserts version+1 inside. Brittle
-  stale-read window. Read/lock inside the tx or retry once.
-- Unit 5: revalidation under-scoped — won't refresh detail, version history, or the pickers.
+**SHOULD FIX**
+- A2 query needs a deterministic final tiebreaker (id desc, or latest-version-per-period first).
+- @@index([tenantId,formType,bondId]) too weak; add status,periodEnd,generatedAt.
+- Bond resolver + event table need tenantId+lotId+observedAt indexes in the same migration.
+- cascadeAmendmentMarks should mark all filed versions in a downstream period.
+- Enum/mirror work must be explicit and exhaustively handled at compile time (reverse/verdict/form/labels/tests).
+- Optional bond fields on LedgerLine aren't enough — use builders/discriminated input types.
 
-DESIGN QUESTIONS
-- Unit 1: define the gate proving the migration is live before any NOTE-bearing seed/fixture/client hits it.
-- Unit 8: define the canonical server-side shape of `spec`; make validateTemplateSpec return a normalized spec.
+**DESIGN QUESTIONS**
+- CHANGE_OWNERSHIP: wire semantics now or keep it out of the enum this phase.
+- Bond-first filer identity is safe only if snapshotted onto the report row at generation time.
+- Historical null bond backfill acceptable only if the fallback is asymmetric in code (legacy → primary
+  OK; bond-moving ops → never implicit primary).
 
----
-## Raw Response — Gemini 3.1 Pro
+## Raw Response — Gemini (3.1 Pro)
 
-CRITICAL
-1. "No baked-in defaults" fallacy (Decision #4, Unit 8): templates must enforce SOPs — pre-select material
-   (KMBS), rate (30), unit (ppm). Fix: bake material/rate/unit/gas, leave source/dest tanks to run time.
-2. Multi-vessel multiplicity confusion (Decision #1, Unit 8): winemakers build ONE block and batch-apply to
-   N vessels at run time. Fix: template = single linear flow; run time selects N vessels and multiplexes.
-3. Versioning mutates in-flight drafts (Decision #6, Unit 5): need template_version_id snapped at draft
-   creation; warn if a newer version exists.
+**CRITICAL**
+1. The "no-volume" tax class change breaks the pure fold — generating §A10/24/25 requires reconstructing
+   on-hand volume at the event instant. Fix: make it a balanced LEDGER OP (self-transfer -Vol classA /
+   +Vol classB).
+2. Part I (Bulk) vs Part VII (Fermenters) contamination — "falls back to class A" promotes fermenting
+   must from Part VII to Part I illegally. Fix: a FERMENTING pseudo-class/state; wine stays Part VII until
+   a DECLARE_WINE op.
+3. Cross-bond blends: superposition violation. Fix: block cross-bond blends; force a TRANSFER_IN_BOND of
+   one parent first.
+4. AMEND-1 "known-bad state" illusion — a NEEDS_AMENDMENT report shows stale numbers as "Filed." Fix: UI
+   masks/overlays a Draft/Projected watermark.
 
-SHOULD FIX
-1. NOTE enum is a reporting nightmare (Units 1-3): every reporting/compliance/cost query needs
-   WHERE kind != 'NOTE'. Fix: checklist_items JSONB column or a separate WorkOrderChecklist table.
-2. All-Note template state machine trap (Units 3, 8): how does a checklist-only WO reach Completed if state
-   relies on ledger postings? Require ≥1 operation, or treat pure checklists as a different feature.
-3. Missing builder constraints (Unit 8): duplicate names, max blocks, empty. Add unique (tenant, name,
-   not-archived), max block limit (~15), min 1 operation.
+**SHOULD FIX**
+1. Double-counting blends (§A5/20) vs same-period class changes (§A10/24/25). Fix: suppress the
+   class-change posting when it corrects a cross-class blend child in the same period; adjust the blend's
+   target class in the fold.
+2. Symmetric transfer-in-bond reversals must cascade NEEDS_AMENDMENT to BOTH bond chains.
+3. Partial return-to-bond — RETURN_TO_BOND must specify exact volume, not a state toggle.
+4. Single-bond UX friction — hide bond dropdowns/warnings/filters if a tenant has one bond.
 
-DESIGN QUESTIONS
-1. "All users can author" (Decision #5): cellar hands should rarely edit SOPs. Restrict to Winemaker/Admin.
-2. System vs custom clone lineage: clones orphan from future system updates. Document; separate in UI.
-3. Empty state (Unit 6): custom tab empty initially — CTA "Clone a System Template or Build from Scratch."
+**DESIGN / OPEN QUESTIONS**
+- OQ-1 CHANGE_OWNERSHIP: Defer (needs alternate-proprietor logic + inventory snapshots).
+- OQ-2 per-bond filer identity: Bond-first; ComplianceProfile 1:1 with Bond, fall back to Tenant.
+- OQ-3 historical line bond backfill: Stamp every historical line (NULL + read-time derivation destroys
+  index usage for high-volume ledger aggregations).
+- OQ-6 refund RETURN_TO_BOND amend the FILED 5000.24? NO (critical tax rule) — decreasing adjustment on
+  the CURRENT period's 5000.24 (Schedule B) or Form 5620.8; amending the old return falsifies history.
+  Keep AMEND-1 scoped strictly to 5120.17.
