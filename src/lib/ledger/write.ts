@@ -14,6 +14,7 @@ import {
 import { FUNCTIONAL_ZERO_L, type CaptureMethod, type OperationType } from "@/lib/ledger/vocabulary";
 import { foldBottledLot, resolveBucket, assertCountVolumeConsistent } from "@/lib/sparkling/projection";
 import { foldBarrelFills, type BarrelAffected } from "@/lib/cost/barrel-fold";
+import { cascadeAmendmentsForWrite } from "@/lib/compliance/amend";
 import type { SparklingMethod, BottleStage } from "@prisma/client";
 
 // The single transactional chokepoint for every bulk-wine operation (Phase 1 spine).
@@ -328,6 +329,13 @@ export async function writeLotOperation(
   }
 
   await syncVesselComponents(tx, input.lines);
+
+  // Phase 2 (AMEND-1): the compliance domain's fold at the chokepoint. If this op lands at/inside an
+  // already-FILED 5120.17 period, mark the affected (formType, bond) chains NEEDS_AMENDMENT in the SAME
+  // tx (broadened trigger, eng A1 — covers correction/transfer/return/removal/adjust uniformly). Cheap
+  // no-op for a current-period op (one findFirst returns nothing). 5120.17-only; excise is untouched.
+  await cascadeAmendmentsForWrite(tx, { lines: input.lines, observedAt: input.observedAt ?? new Date() });
+
   return op.id;
 }
 

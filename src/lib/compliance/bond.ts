@@ -17,7 +17,12 @@ import type { Prisma } from "@prisma/client";
 //
 // Script-safe (no "use server") — the period fold, verify scripts, and the CRUD actions all call it.
 
-type DbClient = Prisma.TransactionClient | typeof prisma;
+// A base TransactionClient handle. We deliberately do NOT use `Prisma.TransactionClient | typeof
+// prisma`: comparing the extended client's generics against the base blows TS's type-instantiation
+// depth once this module is pulled into the wider Phase-2 graph (the Phase-1 Surprise 1 class of
+// blowup). The extended module `prisma` is structurally assignable here and auto-injects tenantId at
+// runtime regardless; callers pass either a tx or the module client.
+type DbClient = Prisma.TransactionClient;
 
 /** A single bond registry row (the fields the derivation + filer identity need). */
 export type BondRow = {
@@ -43,7 +48,7 @@ const toRow = (b: {
 });
 
 /** All bonds for the active tenant (registry order; primary first). */
-export async function listBonds(client: DbClient = prisma): Promise<BondRow[]> {
+export async function listBonds(client: DbClient = prisma as unknown as DbClient): Promise<BondRow[]> {
   const bonds = await client.bond.findMany({
     orderBy: [{ isPrimary: "desc" }, { registryNumber: "asc" }],
     select: { id: true, registryNumber: true, penalSum: true, premises: true, isPrimary: true },
@@ -56,7 +61,7 @@ export async function listBonds(client: DbClient = prisma): Promise<BondRow[]> {
  * migrated tenant. Fails closed if absent (a tenant with wine but no bond is a broken backfill, not
  * a state to guess through). Cached-fn safe: reads the active tenant via the extension, no ALS peek.
  */
-export async function getPrimaryBond(client: DbClient = prisma): Promise<BondRow> {
+export async function getPrimaryBond(client: DbClient = prisma as unknown as DbClient): Promise<BondRow> {
   const primary = await client.bond.findFirst({
     where: { isPrimary: true },
     select: { id: true, registryNumber: true, penalSum: true, premises: true, isPrimary: true },
@@ -78,7 +83,7 @@ export async function getPrimaryBond(client: DbClient = prisma): Promise<BondRow
 export async function resolveBondsForLots(
   lotIds: string[],
   asOf: Date,
-  client: DbClient = prisma,
+  client: DbClient = prisma as unknown as DbClient,
   _depth = 0,
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
@@ -144,7 +149,7 @@ export async function resolveBondsForLots(
 }
 
 /** Single-lot convenience wrapper over resolveBondsForLots. */
-export async function deriveBond(lotId: string, asOf: Date, client: DbClient = prisma): Promise<string> {
+export async function deriveBond(lotId: string, asOf: Date, client: DbClient = prisma as unknown as DbClient): Promise<string> {
   const map = await resolveBondsForLots([lotId], asOf, client);
   const bondId = map.get(lotId);
   if (!bondId) throw new ActionError("Could not resolve a bond for that lot.", "CONFLICT");
@@ -174,7 +179,7 @@ function normalizeBondInput(input: BondInput): { registryNumber: string; penalSu
 /** Create a bond for the active tenant. The FIRST bond a tenant creates is NOT auto-primary — the
  * primary is the one minted at backfill; a net-new tenant's primary is set explicitly. A duplicate
  * registry number surfaces the per-tenant unique as a friendly error. */
-export async function createBondCore(input: BondInput, client: DbClient = prisma): Promise<BondRow> {
+export async function createBondCore(input: BondInput, client: DbClient = prisma as unknown as DbClient): Promise<BondRow> {
   const { registryNumber, penalSum, premises } = normalizeBondInput(input);
   const existing = await client.bond.findFirst({ where: { registryNumber }, select: { id: true } });
   if (existing) throw new ActionError(`A bond with registry number "${registryNumber}" already exists.`, "CONFLICT");
@@ -186,7 +191,7 @@ export async function createBondCore(input: BondInput, client: DbClient = prisma
 }
 
 /** Update a bond's registry number / penal sum / premises. Never flips isPrimary (use setPrimaryBondCore). */
-export async function updateBondCore(bondId: string, input: BondInput, client: DbClient = prisma): Promise<BondRow> {
+export async function updateBondCore(bondId: string, input: BondInput, client: DbClient = prisma as unknown as DbClient): Promise<BondRow> {
   const { registryNumber, penalSum, premises } = normalizeBondInput(input);
   const bond = await client.bond.findUnique({ where: { id: bondId }, select: { id: true } });
   if (!bond) throw new ActionError("That bond doesn't exist in this winery.", "CONFLICT");
@@ -202,7 +207,7 @@ export async function updateBondCore(bondId: string, input: BondInput, client: D
 
 /** Make `bondId` the tenant's single primary bond (unset any other). Exactly one primary per tenant:
  * deriveBond's legacy fallback and the single-bond UX both rely on it. Runs both writes in one tx. */
-export async function setPrimaryBondCore(bondId: string, client: DbClient = prisma): Promise<void> {
+export async function setPrimaryBondCore(bondId: string, client: DbClient = prisma as unknown as DbClient): Promise<void> {
   const bond = await client.bond.findUnique({ where: { id: bondId }, select: { id: true } });
   if (!bond) throw new ActionError("That bond doesn't exist in this winery.", "CONFLICT");
   await client.bond.updateMany({ where: { isPrimary: true, id: { not: bondId } }, data: { isPrimary: false } });
