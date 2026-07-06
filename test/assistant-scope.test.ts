@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scopedVineyardWhere } from "@/lib/assistant/scope";
+import { scopedVineyardWhere, parseWorkOrderRef } from "@/lib/assistant/scope";
 import type { AppUser } from "@/lib/access";
 
 const base: AppUser = {
@@ -32,5 +32,34 @@ describe("scopedVineyardWhere", () => {
 
   it("returns null for a manager with no vineyards", () => {
     expect(scopedVineyardWhere(base)).toBeNull();
+  });
+});
+
+describe("parseWorkOrderRef", () => {
+  it("takes a raw number", () => {
+    expect(parseWorkOrderRef(142)).toEqual({ number: 142 });
+  });
+
+  it("parses human-number strings", () => {
+    expect(parseWorkOrderRef("142")).toEqual({ number: 142 });
+    expect(parseWorkOrderRef("WO 142")).toEqual({ number: 142 });
+    expect(parseWorkOrderRef("#142")).toEqual({ number: 142 });
+  });
+
+  it("recognizes a bare database id (cuid) as an id, NOT a number", () => {
+    // Regression: the old parser ran /\d+/ over this and resolved WO #8 (from 'cmr8…') — the wrong order.
+    expect(parseWorkOrderRef("cmr8fnrmg0002jp04t5yx61c2")).toEqual({ id: "cmr8fnrmg0002jp04t5yx61c2" });
+  });
+
+  it("extracts the id from a pasted in-app URL", () => {
+    expect(parseWorkOrderRef("https://wine-inventory-seven.vercel.app/work-orders/cmr8fnrmg0002jp04t5yx61c2/execute")).toEqual({
+      id: "cmr8fnrmg0002jp04t5yx61c2",
+    });
+    expect(parseWorkOrderRef("/work-orders/cmr8fnrmg0002jp04t5yx61c2")).toEqual({ id: "cmr8fnrmg0002jp04t5yx61c2" });
+  });
+
+  it("returns null when nothing usable is present", () => {
+    expect(parseWorkOrderRef("")).toBeNull();
+    expect(parseWorkOrderRef("cancel it please")).toBeNull();
   });
 });

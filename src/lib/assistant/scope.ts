@@ -320,19 +320,44 @@ export async function resolveOpenSample(opts: { sampleId?: string; vessel?: stri
   return { sampleId: s.id, lotId: s.lotId, lotCode: s.lot.code, status: s.status, source: s.source };
 }
 
-/** Resolve a work order by its human number (for WO-level lifecycle actions that don't need a task). */
-export async function resolveWorkOrder(ref: string | number): Promise<{ workOrderId: string; number: number; status: string }> {
-  const num = typeof ref === "number" ? ref : ref ? Number((String(ref).match(/\d+/) ?? [])[0]) : NaN;
-  if (!Number.isFinite(num)) throw new Error("Which work order? Give its number, e.g. 'WO 142'.");
-  const wo = await prisma.workOrder.findFirst({ where: { number: num }, select: { id: true, number: true, status: true } });
-  if (!wo) throw new Error(`No work order #${num} exists.`);
-  return { workOrderId: wo.id, number: wo.number, status: wo.status };
+/** A parsed work-order reference: pinned either by database id (cuid) or by human number. */
+type WorkOrderRef = { id: string } | { number: number };
+
+/** A Prisma cuid: starts with 'c', then a run of lowercase-alnum. Used to tell an id from a number. */
+function looksLikeWorkOrderId(s: string): boolean {
+  return /^c[a-z0-9]{20,}$/i.test(s);
 }
 
-/** Pull a work-order number out of "WO 142", "work order 142", "#142", or "142". */
-function parseWoNumber(text: string): number | null {
-  const m = text.match(/\d+/);
-  return m ? Number(m[0]) : null;
+/**
+ * Parse whatever the assistant hands us for a work order — a human number (`142`, `"WO 142"`, `"#142"`),
+ * a database id (the cuid the create/issue tools return + the app URLs use), or an in-app URL/path
+ * (`…/work-orders/<id>/execute`). Returns whichever we can pin, or null. CRITICAL: an id is detected
+ * BEFORE the digit fallback — otherwise `\d+` would pluck a stray digit out of a cuid (e.g. `cmr8…` → 8)
+ * and silently resolve the WRONG work order.
+ */
+export function parseWorkOrderRef(ref: string | number): WorkOrderRef | null {
+  if (typeof ref === "number") return Number.isFinite(ref) ? { number: ref } : null;
+  const s = ref?.trim();
+  if (!s) return null;
+  const urlMatch = s.match(/work-orders\/([^/?#\s]+)/i); // a link/path: …/work-orders/<id>/…
+  if (urlMatch && looksLikeWorkOrderId(urlMatch[1])) return { id: urlMatch[1] };
+  if (looksLikeWorkOrderId(s)) return { id: s }; // a bare id pasted on its own
+  const m = s.match(/\d+/); // fall back to a human number embedded in the text
+  return m ? { number: Number(m[0]) } : null;
+}
+
+const NEED_WO = "Which work order? Give its number (e.g. 'WO 142'), its id, or its link.";
+
+/** Resolve a work order by number, id, or URL (for WO-level lifecycle actions that don't need a task). */
+export async function resolveWorkOrder(ref: string | number): Promise<{ workOrderId: string; number: number; status: string }> {
+  const parsed = parseWorkOrderRef(ref);
+  if (!parsed) throw new Error(NEED_WO);
+  const wo = await prisma.workOrder.findFirst({
+    where: "id" in parsed ? { id: parsed.id } : { number: parsed.number },
+    select: { id: true, number: true, status: true },
+  });
+  if (!wo) throw new Error("id" in parsed ? "No work order matches that id/link." : `No work order #${parsed.number} exists.`);
+  return { workOrderId: wo.id, number: wo.number, status: wo.status };
 }
 
 /**
@@ -342,13 +367,14 @@ function parseWoNumber(text: string): number | null {
  * prisma extension (RLS). Used by the assistant WO-execution tools (complete/approve/…).
  */
 export async function resolveWorkOrderTask(opts: { wo?: string | number; task?: string | number; states?: string[] }): Promise<ResolvedTask> {
-  const num = typeof opts.wo === "number" ? opts.wo : opts.wo ? parseWoNumber(String(opts.wo)) : null;
-  if (num == null) throw new Error("Which work order? Give its number, e.g. 'WO 142'.");
+  const parsed = opts.wo == null || opts.wo === "" ? null : parseWorkOrderRef(opts.wo);
+  if (!parsed) throw new Error(NEED_WO);
   const wo = await prisma.workOrder.findFirst({
-    where: { number: num },
+    where: "id" in parsed ? { id: parsed.id } : { number: parsed.number },
     select: { id: true, number: true, tasks: { orderBy: { seq: "asc" }, select: { id: true, seq: true, title: true, opType: true, observationType: true, kind: true, status: true } } },
   });
-  if (!wo) throw new Error(`No work order #${num} exists.`);
+  if (!wo) throw new Error("id" in parsed ? "No work order matches that id/link." : `No work order #${parsed.number} exists.`);
+  const num = wo.number;
   if (wo.tasks.length === 0) throw new Error(`Work order #${num} has no tasks.`);
 
   const OPEN = new Set(opts.states ?? ["PENDING", "IN_PROGRESS", "REJECTED"]);

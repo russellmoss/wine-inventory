@@ -260,6 +260,24 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "single tank + duration; technique is the CapKind enum",
   },
   {
+    utterance: "Make a punch-down work order on T4 and assign it to russellmoss87@gmail.com",
+    tool: "issue_cap_management_wo",
+    args: { technique: "PUNCHDOWN", vessels: ["T4"], assigneeEmail: "russellmoss87@gmail.com" },
+    note: "assignee threads through to the WO's assigneeEmail (was silently dropped before this)",
+  },
+  {
+    utterance: "Issue a topping work order for barrels 1 through 5, assigned to russellmoss87@gmail.com",
+    tool: "issue_operation_wo",
+    args: { operation: "TOPPING", vessels: ["barrel 1", "barrel 2", "barrel 3", "barrel 4", "barrel 5"], assigneeEmail: "russellmoss87@gmail.com" },
+    note: "multi-vessel fan-out: ONE work order, one topping task per barrel — the template path can't do this",
+  },
+  {
+    utterance: "Add 30 g/hL KMBS to barrels 1 through 8 as a work order",
+    tool: "issue_operation_wo",
+    args: { operation: "ADDITION", vessels: ["barrel 1", "barrel 8"], material: "KMBS", amount: 30, unit: "g/hL" },
+    note: "ADDITION variant needs material+amount+unit; the exact weigh-out is done per vessel on the floor",
+  },
+  {
     utterance: "Add a new tannin to the catalog called Grape Tannin VR Supra",
     tool: "create_material",
     args: { name: "Grape Tannin VR Supra", family: "Tannin" },

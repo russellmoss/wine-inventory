@@ -46,6 +46,7 @@ import { commitDbDelete } from "./tools/db-delete";
 import { commitSaveFieldReport } from "./tools/save-field-report";
 import { commitCreateTemplate, commitUpdateTemplateSpec, commitCloneTemplate, commitArchiveTemplate } from "./tools/templates-write";
 import { commitIssueCapManagementWo } from "./tools/work-orders-write";
+import { commitIssueOperationWo } from "./tools/issue-operation-wo";
 import { commitCreateMaterial } from "./tools/create-material";
 import { commitReceiveSupply } from "./tools/receive-supply";
 import { commitSetMaterialActive } from "./tools/set-material-active";
@@ -91,6 +92,7 @@ const COMMITTERS: Record<string, Committer> = {
   clone_template: commitCloneTemplate,
   archive_template: commitArchiveTemplate,
   issue_cap_management_wo: commitIssueCapManagementWo,
+  issue_operation_wo: commitIssueOperationWo,
   create_material: commitCreateMaterial,
   receive_supply: commitReceiveSupply,
   set_material_active: commitSetMaterialActive,

@@ -21,13 +21,13 @@ type ManageRawInput = {
 export const manageWorkOrderTool: AssistantTool = {
   name: "manage_work_order",
   description:
-    "Manage a work order's lifecycle: start a task ('start task 2 on WO 142'), assign it ('assign WO 142 to sam@…'), reschedule it ('move WO 142 to Friday'), or cancel it ('cancel WO 142'). Pick the action and the work order by number. Does NOT act immediately — returns a preview to confirm.",
+    "Manage a work order's lifecycle: start a task ('start task 2 on WO 142'), assign it ('assign WO 142 to sam@…'), reschedule it ('move WO 142 to Friday'), or cancel it ('cancel WO 142'). Identify the work order by its number (142), its id, or a link the user pastes (e.g. …/work-orders/<id>) — pass whichever the user gives, verbatim, in `wo`. Does NOT act immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       action: { type: "string", enum: ["start", "assign", "schedule", "cancel"], description: "What to do." },
-      wo: { type: "number", description: "Work order number, e.g. 142." },
+      wo: { type: ["number", "string"], description: "The work order: its number (e.g. 142), its id, or a pasted link (…/work-orders/<id>)." },
       task: { type: "string", description: "start only: which task (number/title). Optional if one is open." },
       assigneeEmail: { type: "string", description: "assign only: the assignee's email." },
       dueDate: { type: "string", description: "schedule only: new due date as YYYY-MM-DD." },
