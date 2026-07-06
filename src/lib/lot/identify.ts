@@ -1,12 +1,14 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
 // Phase 1 (identity presentation) — cross-identifier resolve/search + the timeline reader (plan C3),
 // plus the LotIdentifier write helpers (plan C4). NAMING-2 read-routing: every user-facing lookup by
 // a human code resolves to the surrogate `id` FIRST, then loads by id — nothing downstream joins on
 // the mutable `code`. Rename HISTORY is read from LotCodeEvent (the source of truth, plan Q13);
 // LotIdentifier holds external/source ids + the single current-code convenience row.
-
-type Db = PrismaClient | Prisma.TransactionClient;
+//
+// Read helpers use the tenant-scoped `prisma` singleton directly (repo convention, cf. lot/data.ts);
+// the tx-composable write helpers take a Prisma.TransactionClient so they compose into a rename tx.
 
 export const CURRENT_CODE_KIND = "current-code";
 
@@ -43,10 +45,10 @@ const PRIORITY: Record<MatchType, number> = {
  * is never silently collapsed. Three bounded, tenant-scoped, indexed queries, merged in memory.
  */
 export async function searchLotsByIdentifier(
-  db: Db,
   query: string,
   opts?: { limit?: number },
 ): Promise<LotSearchMatch[]> {
+  const db = prisma;
   const q = query.trim();
   if (!q) return [];
   const limit = opts?.limit ?? 10;
@@ -129,7 +131,8 @@ export async function searchLotsByIdentifier(
 }
 
 /** The lot's current identity + its aliases (prior codes from LotCodeEvent + external identifiers). */
-export async function describeLotIdentity(db: Db, lotId: string): Promise<LotIdentitySummary | null> {
+export async function describeLotIdentity(lotId: string): Promise<LotIdentitySummary | null> {
+  const db = prisma;
   const lot = await db.lot.findUnique({ where: { id: lotId }, select: { code: true, displayName: true } });
   if (!lot) return null;
   const [priorEvents, externals] = await Promise.all([
@@ -165,7 +168,8 @@ export async function describeLotIdentity(db: Db, lotId: string): Promise<LotIde
  * immediate rename target and the current code so the UI can render "A (renamed to B, currently C)"
  * — never the misleading "A → C" that skips B.
  */
-export async function asRecordedWithRename(db: Db, lotId: string, snapshotCode: string): Promise<AsRecorded> {
+export async function asRecordedWithRename(lotId: string, snapshotCode: string): Promise<AsRecorded> {
+  const db = prisma;
   const lot = await db.lot.findUnique({ where: { id: lotId }, select: { code: true } });
   const currentCode = lot?.code ?? snapshotCode;
   if (snapshotCode === currentCode) return { asRecorded: snapshotCode, currentCode };

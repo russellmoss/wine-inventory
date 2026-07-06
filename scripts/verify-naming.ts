@@ -144,7 +144,7 @@ async function main() {
 
   // (d) historical read: A -> B, currently B (single rename); after a second rename, chain to C
   await renameLotCore({ lotId, newCode: "ZZ-NM-C", actor: ACTOR, commandId: "zznm-rename-2" });
-  const asRec = await asRecordedWithRename(prisma, lotId, "ZZ-NM-A");
+  const asRec = await asRecordedWithRename(lotId, "ZZ-NM-A");
   assert(asRec.asRecorded === "ZZ-NM-A", "(d) historical read returns the as-recorded code");
   assert(asRec.renamedToImmediate === "ZZ-NM-B", "(d) immediate rename target is B (not C — no chain-skip)");
   assert(asRec.currentCode === "ZZ-NM-C", "(d) current code is C");
@@ -180,9 +180,9 @@ async function main() {
   await runInTenantTx(async (tx) => {
     await recordIdentifierTx(tx, { lotId, kind: "source-system-id", value: "INV-LEGACY-42", sourceSystem: "innovint" });
   });
-  const byLegacy = await searchLotsByIdentifier(prisma, "INV-LEGACY-42");
+  const byLegacy = await searchLotsByIdentifier("INV-LEGACY-42");
   assert(byLegacy.some((m) => m.lotId === lotId && m.matchType === "legacy-identifier"), "(h) search resolves a lot by a LotIdentifier value");
-  const byHist = await searchLotsByIdentifier(prisma, "ZZ-NM-A");
+  const byHist = await searchLotsByIdentifier("ZZ-NM-A");
   assert(byHist.some((m) => m.lotId === lotId && m.matchType === "historical-code"), "(h) search resolves a lot by a historical code");
   assert(byHist.find((m) => m.lotId === lotId)?.matchContext === "ZZ-NM-A", "(h) the envelope carries the historical matchContext");
 
