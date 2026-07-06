@@ -34,6 +34,7 @@ jobs:
       # claims must resolve, and every domain core must be import-reachable from an
       # assistant tool (the AI-native "talk-to-it" moat) or ratcheted on the allow-list.
       - run: npm run verify:parity
+      - run: npm run verify:ai-native
       - run: npx vitest run
 
   # Tenant-isolation proof against a real Postgres, run AS the NOBYPASSRLS app_rls role — the live RLS
