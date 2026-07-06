@@ -91,13 +91,23 @@ export async function resolveClassesForLots(
   const ids = [...new Set(lotIds)].filter(Boolean);
   if (ids.length === 0) return out;
 
-  const [lots, states, abvByLot] = await Promise.all([
+  const [lots, states, abvByLot, classEvents] = await Promise.all([
     prisma.lot.findMany({ where: { id: { in: ids } }, select: { id: true, code: true, productType: true, carbonation: true } }),
     prisma.bottledLotState.findMany({ where: { lotId: { in: ids } }, select: { lotId: true, method: true } }),
     resolveTaxAbvForLots(ids, asOf),
+    // Phase 2 (TAXCLASS-1): the latest Change-Of-Tax-Class event ≤ asOf is the point-in-time class
+    // authority — it supersedes both the ABV derivation and the ad-hoc report overrides Json.
+    prisma.changeOfTaxClassEvent.findMany({
+      where: { lotId: { in: ids }, observedAt: { lte: asOf } },
+      orderBy: [{ observedAt: "asc" }, { id: "asc" }],
+      select: { lotId: true, toClass: true },
+    }),
   ]);
   const lotById = new Map(lots.map((l) => [l.id, l]));
   const methodByLot = new Map(states.map((s) => [s.lotId, s.method as SparklingMethodLike]));
+  // asc order ⇒ the last write per lot is the newest in-scope event.
+  const eventClassByLot = new Map<string, WineTaxClass>();
+  for (const e of classEvents) eventClassByLot.set(e.lotId, e.toClass as WineTaxClass);
 
   for (const id of ids) {
     const lot = lotById.get(id);
@@ -110,15 +120,20 @@ export async function resolveClassesForLots(
       carbonation: (lot?.carbonation as "NONE" | "NATURAL" | "ARTIFICIAL") ?? "NONE",
       sparklingMethod: method,
     });
+    // Precedence: Change-Of-Tax-Class event → report override → ABV derivation. A declared class
+    // resolves the ABV-review blocker (it's an explicit human determination, never a silent default).
+    const eventClass = eventClassByLot.get(id);
+    const declared = eventClass ?? override;
+    const taxClass = declared ?? derived.taxClass;
     out.set(id, {
       lotId: id,
       lotCode: lot?.code ?? id,
-      taxClass: override ?? derived.taxClass,
-      sparklingSub: (override ? (override === "E_SPARKLING" ? derived.sparklingSub : null) : derived.sparklingSub),
-      needsAbvReview: override ? false : derived.needsAbvReview,
+      taxClass,
+      sparklingSub: declared ? (declared === "E_SPARKLING" ? derived.sparklingSub : null) : derived.sparklingSub,
+      needsAbvReview: declared ? false : derived.needsAbvReview,
       abv: abvRes.abv,
-      overridden: override != null,
-      reason: override ? "manual-override" : derived.reason,
+      overridden: declared != null,
+      reason: eventClass ? "class-change-event" : override ? "manual-override" : derived.reason,
     });
   }
   return out;
@@ -295,6 +310,9 @@ export async function foldPeriod(
   const periodLines = lines.filter((l) => l.observedAt >= start && l.observedAt <= end);
   const contributions: LineContribution[] = [];
   const partX = new Set<string>();
+  // R6/CO-6: lots whose FINAL (event-corrected) class was already posted this period via a cross-class
+  // blend §A5 — their class change must NOT also post §A24/§A10 or the same volume double-counts.
+  const crossClassBlendChildren = new Set<string>();
 
   // 4a. Produced-by-fermentation (A2): MUST/JUICE→WINE transitions in the period.
   const fermentEvents = await fermentToWineEvents(start, end);
@@ -361,6 +379,9 @@ export async function foldPeriod(
       if (crosses) {
         const c = classes.get(l.lotId);
         if (c) {
+          // The child (+delta) leg posts §A5 into its final class → suppress any same-period class
+          // change on it (R6/CO-6: don't post the same volume via both §A5 and §A10/§A24).
+          if (l.deltaL > 0) crossClassBlendChildren.add(l.lotId);
           const r = mapLineToForm({ opType: "BLEND", reason: null, source: "BULK", deltaSign: l.deltaL >= 0 ? 1 : -1, taxClass: c.taxClass, sparklingSub: c.sparklingSub, crossesTaxClass: true });
           if (r.partXReason) partX.add(r.partXReason);
           if (r.target) contributions.push({ section: r.target.section, line: r.target.line, column: c.taxClass, sub: r.target.sub, liters: Math.abs(l.deltaL) });
@@ -372,6 +393,26 @@ export async function foldPeriod(
 
   // 4c. §B bottled taxpaid removals (sales) from finished-goods stock movements.
   contributions.push(...(await bottledGoodsRemovals(start, end)));
+
+  // 4d. Change-Of-Tax-Class events in the period (TAXCLASS-1): move the event's snapshotted volume out
+  //     of the old class (§A24, a removal) and into the new class (§A10, an addition) so both columns
+  //     foot. §A is bulk WINE-form only — a null-ABV fermenting must is excluded here (Part VII
+  //     guardrail, CO-10). A same-period cross-class-blend child is skipped: its §A5 already carries
+  //     the corrected class, so posting §A10/§A24 too would double-count the same volume (R6/CO-6).
+  const classEvents = await prisma.changeOfTaxClassEvent.findMany({
+    where: { observedAt: { gte: start, lte: end } },
+    select: { lotId: true, fromClass: true, toClass: true, volumeAtEvent: true },
+  });
+  for (const ev of classEvents) {
+    if (crossClassBlendChildren.has(ev.lotId)) continue;
+    if (forms.get(ev.lotId) !== "WINE") continue;
+    const vol = Number(ev.volumeAtEvent ?? 0);
+    if (vol <= 0.01) continue;
+    const toClass = ev.toClass as WineTaxClass;
+    if (ev.fromClass) contributions.push({ section: "A", line: 24, column: ev.fromClass as WineTaxClass, sub: null, liters: vol });
+    contributions.push({ section: "A", line: 10, column: toClass, sub: null, liters: vol });
+    partX.add(`Tax class changed${ev.fromClass ? ` from ${ev.fromClass}` : ""} to ${toClass} (${vol} L) — verify §A lines 10/24.`);
+  }
 
   const fold = foldPeriodCells({ begin, contributions, endLiters, partX: [...partX] });
 
