@@ -4,3 +4,11 @@
 # CRLF note is an invisible governance hole on Windows checkouts (core.autocrlf=true).
 # Committing these as LF keeps the checkers honest regardless of the local working tree.
 docs/architecture/invariants/*.md text eol=lf
+
+# Same LF pin for the sibling registers + the pure-Node guard scripts that parse
+# them (verify:tripwires, verify:parity, verify:ai-native). A CRLF frontmatter is a
+# silent governance hole; a CRLF .mjs is harmless but kept consistent.
+docs/architecture/tripwires/*.md text eol=lf
+docs/architecture/parity/*.md text eol=lf
+scripts/*.mjs text eol=lf
+scripts/lib/*.mjs text eol=lf
