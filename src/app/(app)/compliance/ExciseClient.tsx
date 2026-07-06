@@ -21,7 +21,7 @@ export type ExciseView = {
   periodLabel: string;
   dueDate: string;
   cadence: ReturnCadence;
-  status: "DRAFT" | "FILED";
+  status: "DRAFT" | "FILED" | "NEEDS_AMENDMENT";
   version: "ORIGINAL" | "AMENDED";
   isFinalBusinessReport: boolean;
   remarks: string;

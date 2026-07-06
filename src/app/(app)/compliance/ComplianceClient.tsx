@@ -28,7 +28,7 @@ export type ReportView = {
   periodEnd: string;
   periodLabel: string;
   cadence: "MONTHLY" | "QUARTERLY" | "ANNUAL";
-  status: "DRAFT" | "FILED";
+  status: "DRAFT" | "FILED" | "NEEDS_AMENDMENT";
   version: "ORIGINAL" | "AMENDED";
   isFinalBusinessReport: boolean;
   remarks: string;

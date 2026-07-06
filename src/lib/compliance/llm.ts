@@ -12,7 +12,7 @@ const MODEL = "claude-opus-4-8";
 export type ReadinessInput = {
   periodLabel: string;
   balanced: boolean;
-  status: "DRAFT" | "FILED";
+  status: "DRAFT" | "FILED" | "NEEDS_AMENDMENT";
   findings: AnomalyFinding[];
   summaryLines: string[];
 };
@@ -28,7 +28,7 @@ function fallbackNote(input: ReadinessInput): string {
 
 export type ExciseReadinessInput = {
   periodLabel: string;
-  status: "DRAFT" | "FILED";
+  status: "DRAFT" | "FILED" | "NEEDS_AMENDMENT";
   grossTax: number;
   cbmaCredit: number;
   netTax: number;
