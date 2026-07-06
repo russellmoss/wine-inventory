@@ -70,9 +70,21 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     const calc = { calculatorId: "so2-kmbs", formulaId: "so2-kmbs", section: "SO₂ Additions", inputs: {}, output: {}, unitsUsed: {}, source: "PAGE" as const, engineVersion: "1.0.0" };
     await owner.calculationLog.upsert({ where: { id: "isov_calc_a" }, update: {}, create: { id: "isov_calc_a", tenantId: A, userId: "isov_user_a", userEmail: "iso@test", ...calc } });
     await owner.calculationLog.upsert({ where: { id: "isov_calc_b" }, update: {}, create: { id: "isov_calc_b", tenantId: B, userId: "isov_user_b", userEmail: "iso@test", ...calc } });
+    // Phase 1 identity-presentation tables (checklist item 9): naming_template(+version), lot_identifier,
+    // lot_code_event. lot_identifier/lot_code_event carry a composite (tenantId, lotId) FK to lot.
+    await owner.namingTemplate.upsert({ where: { id: "isov_nt_a" }, update: {}, create: { id: "isov_nt_a", tenantId: A, code: "isov-nt", name: "ISOV NT A", updatedAt: now } });
+    await owner.namingTemplate.upsert({ where: { id: "isov_nt_b" }, update: {}, create: { id: "isov_nt_b", tenantId: B, code: "isov-nt", name: "ISOV NT B", updatedAt: now } });
+    await owner.namingTemplateVersion.upsert({ where: { id: "isov_ntv_b" }, update: {}, create: { id: "isov_ntv_b", tenantId: B, templateId: "isov_nt_b", version: 1, spec: {} } });
+    await owner.lotIdentifier.upsert({ where: { id: "isov_li_a" }, update: {}, create: { id: "isov_li_a", tenantId: A, lotId: "isov_a", kind: "current-code", value: "ISOV-A", isCurrent: true, updatedAt: now } });
+    await owner.lotIdentifier.upsert({ where: { id: "isov_li_b" }, update: {}, create: { id: "isov_li_b", tenantId: B, lotId: "isov_b", kind: "current-code", value: "ISOV-B", isCurrent: true, updatedAt: now } });
+    await owner.lotCodeEvent.upsert({ where: { id: "isov_lce_b" }, update: {}, create: { id: "isov_lce_b", tenantId: B, lotId: "isov_b", field: "code", toValue: "ISOV-B2", commandId: "isov-lce-cmd-b" } });
   });
 
   afterAll(async () => {
+    await owner.lotCodeEvent.deleteMany({ where: { id: { in: ["isov_lce_b"] } } });
+    await owner.lotIdentifier.deleteMany({ where: { id: { in: ["isov_li_a", "isov_li_b", "isov_li_x", "isov_li_k11"] } } });
+    await owner.namingTemplateVersion.deleteMany({ where: { id: "isov_ntv_b" } });
+    await owner.namingTemplate.deleteMany({ where: { id: { in: ["isov_nt_a", "isov_nt_b"] } } });
     await owner.calculationLog.deleteMany({ where: { id: { in: ["isov_calc_a", "isov_calc_b"] } } });
     await owner.vesselActivityEvent.deleteMany({ where: { id: { in: ["isov_vae_b", "isov_vae_x"] } } });
     await owner.vessel.deleteMany({ where: { id: "isov_vessel_b" } });
@@ -162,6 +174,27 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
         await db.lotOperationLine.create({ data: { tenantId: A, operationId: op.id, lotId: "isov_b", deltaL: 1, bucket: "EXTERNAL", lotCode: "X" } });
       }),
     ).rejects.toThrow();
+  });
+
+  it("identity-presentation tables tenant-isolated (Phase 1): A can't see B's rows; foreign INSERT rejected", async () => {
+    expect(await asTenant(A, (db) => db.lotIdentifier.findFirst({ where: { id: "isov_li_a" } }))).not.toBeNull();
+    expect(await asTenant(A, (db) => db.lotIdentifier.findFirst({ where: { id: "isov_li_b" } }))).toBeNull();
+    expect(await asTenant(A, (db) => db.namingTemplate.findFirst({ where: { id: "isov_nt_b" } }))).toBeNull();
+    expect(await asTenant(A, (db) => db.lotCodeEvent.findFirst({ where: { id: "isov_lce_b" } }))).toBeNull();
+    await expect(
+      asTenant(A, (db) => db.lotIdentifier.create({ data: { id: "isov_li_x", tenantId: B, lotId: "isov_b", kind: "current-code", value: "X", updatedAt: new Date() } })),
+    ).rejects.toThrow();
+  });
+
+  it("lot_identifier composite-FK cross-tenant reference rejected (K11) + backfill lands on the right tenant (E4)", async () => {
+    // As A, pointing a lot_identifier at B's lot: composite (tenantId,lotId)->lot(tenantId,id) has no
+    // (A, isov_b) target, and WITH CHECK rejects a B-tenant row — either way it must throw.
+    await expect(
+      asTenant(A, (db) => db.lotIdentifier.create({ data: { id: "isov_li_k11", tenantId: A, lotId: "isov_b", kind: "prior-code", value: "K11", updatedAt: new Date() } })),
+    ).rejects.toThrow();
+    // The seeded current-code row for A's lot is visible to A and correctly tenant-stamped.
+    const li = await asTenant(A, (db) => db.lotIdentifier.findFirst({ where: { id: "isov_li_a" }, select: { tenantId: true, lotId: true } }));
+    expect(li).toMatchObject({ tenantId: A, lotId: "isov_a" });
   });
 
   it("work_order is tenant-isolated (Phase 9): A sees its own, not B's; foreign INSERT rejected", async () => {

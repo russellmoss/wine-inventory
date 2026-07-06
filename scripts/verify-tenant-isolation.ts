@@ -123,6 +123,14 @@ async function main() {
   const calc = { calculatorId: "so2-kmbs", formulaId: "so2-kmbs", section: "SO₂ Additions", inputs: {}, output: {}, unitsUsed: {}, source: "PAGE" as const, engineVersion: "1.0.0" };
   await owner.calculationLog.upsert({ where: { id: "iso_calc_a" }, update: {}, create: { id: "iso_calc_a", tenantId: A, userId: "iso_user_a", userEmail: "iso@test", ...calc } });
   await owner.calculationLog.upsert({ where: { id: "iso_calc_b" }, update: {}, create: { id: "iso_calc_b", tenantId: B, userId: "iso_user_b", userEmail: "iso@test", ...calc } });
+  // Phase 1 identity presentation: naming_template(+version), lot_identifier, lot_code_event. The
+  // identifier/event carry a composite (tenantId, lotId) FK to lot (K11).
+  await owner.namingTemplate.upsert({ where: { id: "iso_nt_a" }, update: {}, create: { id: "iso_nt_a", tenantId: A, code: "iso-nt", name: "ISO NT A", updatedAt: now } });
+  await owner.namingTemplate.upsert({ where: { id: "iso_nt_b" }, update: {}, create: { id: "iso_nt_b", tenantId: B, code: "iso-nt", name: "ISO NT B", updatedAt: now } });
+  await owner.namingTemplateVersion.upsert({ where: { id: "iso_ntv_b" }, update: {}, create: { id: "iso_ntv_b", tenantId: B, templateId: "iso_nt_b", version: 1, spec: {} } });
+  await owner.lotIdentifier.upsert({ where: { id: "iso_li_a" }, update: {}, create: { id: "iso_li_a", tenantId: A, lotId: "iso_lot_a", kind: "current-code", value: "ISO-A", isCurrent: true, updatedAt: now } });
+  await owner.lotIdentifier.upsert({ where: { id: "iso_li_b" }, update: {}, create: { id: "iso_li_b", tenantId: B, lotId: "iso_lot_b", kind: "current-code", value: "ISO-B", isCurrent: true, updatedAt: now } });
+  await owner.lotCodeEvent.upsert({ where: { id: "iso_lce_b" }, update: {}, create: { id: "iso_lce_b", tenantId: B, lotId: "iso_lot_b", field: "code", toValue: "ISO-B2", commandId: "iso-lce-cmd-b" } });
 
   try {
     // 1. Fail-closed: no tenant context -> 0 rows.
@@ -288,6 +296,25 @@ async function main() {
     } catch { calcDeleteDenied = true; }
     check("calculation_log DELETE denied to app_rls (append-only)", calcDeleteDenied);
 
+    // 5k. Phase 1 identity presentation: naming_template / lot_identifier / lot_code_event isolation
+    // + the lot_identifier composite (tenantId, lotId) FK cross-tenant reject (K11).
+    check("tenant A CANNOT see tenant B's lot_identifier (RLS)", (await asTenant(A, (db) => db.lotIdentifier.findFirst({ where: { id: "iso_li_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's naming_template (RLS)", (await asTenant(A, (db) => db.namingTemplate.findFirst({ where: { id: "iso_nt_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's lot_code_event (RLS)", (await asTenant(A, (db) => db.lotCodeEvent.findFirst({ where: { id: "iso_lce_b" } }))) === null);
+    let liInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.lotIdentifier.create({ data: { id: "iso_li_x", tenantId: B, lotId: "iso_lot_b", kind: "current-code", value: "X", updatedAt: new Date() } }));
+    } catch { liInsertRaised = true; }
+    check("foreign-tenant lot_identifier INSERT raises (WITH CHECK)", liInsertRaised);
+    let liFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.lotIdentifier.create({ data: { id: "iso_li_k11", tenantId: A, lotId: "iso_lot_b", kind: "prior-code", value: "K11", updatedAt: new Date() } }));
+    } catch { liFkRaised = true; }
+    check("lot_identifier cross-tenant lot reference rejected (composite FK, K11)", liFkRaised);
+    // E4: the seeded current-code row for A's lot is visible to A and correctly tenant-stamped.
+    const liA = await asTenant(A, (db) => db.lotIdentifier.findFirst({ where: { id: "iso_li_a" }, select: { tenantId: true, lotId: true } }));
+    check("backfilled current-code row lands on the right tenant (E4)", liA?.tenantId === A && liA?.lotId === "iso_lot_a");
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -317,6 +344,11 @@ async function main() {
     await owner.commerce7Connection.deleteMany({ where: { id: { in: ["iso_c7_conn_a", "iso_c7_conn_b", "iso_c7_conn_x"] } } });
     await owner.costExportEvent.deleteMany({ where: { id: "iso_cee_a" } });
     await owner.accountingConnection.deleteMany({ where: { id: { in: ["iso_acct_conn_a", "iso_acct_conn_b", "iso_acct_conn_x"] } } });
+    // Phase 1: identifiers/events (composite-FK'd to lot) + naming templates, before the lots/org drop.
+    await owner.lotCodeEvent.deleteMany({ where: { id: { in: ["iso_lce_b"] } } });
+    await owner.lotIdentifier.deleteMany({ where: { id: { in: ["iso_li_a", "iso_li_b", "iso_li_x", "iso_li_k11"] } } });
+    await owner.namingTemplateVersion.deleteMany({ where: { id: "iso_ntv_b" } });
+    await owner.namingTemplate.deleteMany({ where: { id: { in: ["iso_nt_a", "iso_nt_b"] } } });
     await owner.lotOperationLine.deleteMany({ where: { lotId: { in: ["iso_lot_a", "iso_lot_b"] } } });
     await owner.lotOperation.deleteMany({ where: { tenantId: B } });
     await owner.supplyLot.deleteMany({ where: { id: { in: ["iso_supply_b", "iso_supply_x"] } } });
