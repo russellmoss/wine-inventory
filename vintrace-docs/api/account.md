@@ -1,6 +1,6 @@
 # Vintrace v7 — Account API
 
-OpenAPI 3.0.3. Source: `vintrace-api/specs/account-api-v7.yaml`.
+OpenAPI 3.0.3. Source: `vintrace-docs/api/specs/account-api-v7.yaml`.
 
 **Server base URL** (path-versioned, per-tenant slug in the path):
 - Production: `https://oz50.vintrace.net/vinx2/api/v7/account`
@@ -44,7 +44,7 @@ Fetch one PO by its Vintrace-internal integer `id` (not `name`).
 - **Winery** (`common-schemas.yaml`) — winery/business-unit ref on the PO.
 - **Enums** — `PurchaseOrderState {NEW, APPROVED}`, `Fulfillment {NOT_FULFILLED, PART_FULFILLED, FULFILLED, OVER_FULFILLED}`, `TaxPolicy {TAX_INCLUSIVE, TAX_EXCLUSIVE, NO_TAX}`.
 
-> `common-schemas.yaml` is now vendored in `vintrace-api/specs/` from the public Stoplight v7 bundle; the shared shapes above are authoritative from that bundle.
+> `common-schemas.yaml` is now vendored in `vintrace-docs/api/specs/` from the public Stoplight v7 bundle; the shared shapes above are authoritative from that bundle.
 
 ---
 

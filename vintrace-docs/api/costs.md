@@ -1,6 +1,6 @@
 # Vintrace v7 — Costs API
 
-Reference for migration into Cellarhand. Source spec: `vintrace-api/specs/costs-api-v7.yaml` (OpenAPI 3.0.3).
+Reference for migration into Cellarhand. Source spec: `vintrace-docs/api/specs/costs-api-v7.yaml` (OpenAPI 3.0.3).
 
 - **Server base URL:** `https://oz50.vintrace.net/vinx2/api/v7/costs` (production), `https://sandbox.vintrace.net/vinx2demo/api/v7/costs` (sandbox). Path prefix `/api/v7/costs`.
 - **Auth:** HTTP Bearer token (`Authorization: Bearer <token>`). Tokens managed per Vintrace support article.
@@ -51,7 +51,7 @@ Returns a paginated, time-windowed stream of cost movements. Each row is one pos
 
 ## Key schemas
 
-Shared models are declared in `vintrace-api/specs/common-schemas.yaml`, recovered from the public Stoplight v7 optimized bundle.
+Shared models are declared in `vintrace-docs/api/specs/common-schemas.yaml`, recovered from the public Stoplight v7 optimized bundle.
 
 | Schema | Shape / fields | Notes |
 | --- | --- | --- |

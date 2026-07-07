@@ -1,6 +1,6 @@
 # Vintrace v7 API — Knowledge-Base Index
 
-OpenAPI 3.0.3 specs live in `vintrace-api/specs/*.yaml`; each has been read into a per-module KB
+OpenAPI 3.0.3 specs live in `vintrace-docs/api/specs/*.yaml`; each has been read into a per-module KB
 page (below). Every module shares the same envelope: **Bearer-token auth**, an optional
 `correlation-id` request header (echoed back), a `default` error root
 (`{ errors: [{ code, message, detail }] }`), and page-wrapped list responses
@@ -10,7 +10,7 @@ page (below). Every module shares the same envelope: **Bearer-token auth**, an o
 > Sandbox is `https://sandbox.vintrace.net/vinx2demo/api/v7/<module>` — **build and test the importer
 > here first** (see [`MIGRATION-STRATEGY.md`](./MIGRATION-STRATEGY.md) §D).
 
-> **Shared schemas recovered.** `vintrace-api/specs/common-schemas.yaml` now contains the shared v7
+> **Shared schemas recovered.** `vintrace-docs/api/specs/common-schemas.yaml` now contains the shared v7
 > components recovered from Vintrace's public Stoplight bundled docs, including `Measurement`,
 > `CostBreakdown`, `ExtIdentifiableEntity`, `CodedIdentifiableEntity`, `Winery`, `PageRoot`, and
 > `BaseErrorRoot`. The bundle defines `Measurement.unit` as a free string, not a closed enum.

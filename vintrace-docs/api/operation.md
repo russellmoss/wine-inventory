@@ -1,6 +1,6 @@
 # Vintrace Operation API v7 — Reference
 
-OpenAPI 3.0.3. Source: `vintrace-api/specs/operation-api-v7.yaml` (+ shared `common-schemas.yaml`).
+OpenAPI 3.0.3. Source: `vintrace-docs/api/specs/operation-api-v7.yaml` (+ shared `common-schemas.yaml`).
 
 - **Base URL (prod example):** `https://oz50.vintrace.net/vinx2/api/v7/operation`
 - **Base URL (sandbox example):** `https://sandbox.vintrace.net/vinx2demo/api/v7/operation`

@@ -1,6 +1,6 @@
 # Vintrace v7 — Identity API
 
-OpenAPI 3.0.3. Source spec: `vintrace-api/specs/identity-api-v7.yaml`.
+OpenAPI 3.0.3. Source spec: `vintrace-docs/api/specs/identity-api-v7.yaml`.
 
 **Server base URL**
 - Production (example): `https://oz50.vintrace.net/vinx2/api/v7/identity`

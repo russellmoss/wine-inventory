@@ -1,11 +1,11 @@
 # Vintrace v7 — Stock API
 
-Reference for migration into Cellarhand. Source spec: `vintrace-api/specs/stock-api-v7.yaml` (OpenAPI 3.0.3).
+Reference for migration into Cellarhand. Source spec: `vintrace-docs/api/specs/stock-api-v7.yaml` (OpenAPI 3.0.3).
 
 - **Server base URL:** `https://oz50.vintrace.net/vinx2/api/v7/stock` (production), `https://sandbox.vintrace.net/vinx2demo/api/v7/stock` (sandbox). Path prefix `/api/v7/stock`.
 - **Auth:** HTTP Bearer token (`Authorization: Bearer <token>`). Tokens managed per the Vintrace support article.
 - **Correlation:** optional `correlation-id` request header (UUID); echoed in the `correlation-id` response header, plus a `Location` header on create (`/stock/receivals/1234`).
-- **Scope:** this module is TINY — exactly **two endpoints**: a WRITE to receive stock into the cellar (`POST /receivals`) and a READ of outbound shipments (`GET /dispatches`). It is a goods-movement I/O surface (dry-goods / stock-item receipt in, dispatch out). It is NOT a batch/vessel/inventory-balance catalog: there is no "list stock items", no current on-hand levels, no stock-item master, and no GET for an individual receival. `/dispatches` is read-only (no create). Shared shapes such as `Measurement`, `IdentifiableEntity`, `ExtIdentifiableEntity`, `Winery`, and `PageRoot` are vendored in `vintrace-api/specs/common-schemas.yaml` from the public Stoplight v7 bundle.
+- **Scope:** this module is TINY — exactly **two endpoints**: a WRITE to receive stock into the cellar (`POST /receivals`) and a READ of outbound shipments (`GET /dispatches`). It is a goods-movement I/O surface (dry-goods / stock-item receipt in, dispatch out). It is NOT a batch/vessel/inventory-balance catalog: there is no "list stock items", no current on-hand levels, no stock-item master, and no GET for an individual receival. `/dispatches` is read-only (no create). Shared shapes such as `Measurement`, `IdentifiableEntity`, `ExtIdentifiableEntity`, `Winery`, and `PageRoot` are vendored in `vintrace-docs/api/specs/common-schemas.yaml` from the public Stoplight v7 bundle.
 
 ---
 

@@ -13,8 +13,14 @@ vintrace-docs/
 ├── INDEX.md             ← human/agent-readable tree: category → section → article (with links)
 ├── _manifest.json       ← machine-readable hierarchy + per-article metadata + file paths
 ├── _raw/                ← raw Zendesk API JSON responses (gitignored — re-parse without re-fetching)
+├── api/                 ← Vintrace v7 REST API: OpenAPI specs + migration KB (see api/INDEX.md)
 └── <category>/<section>/<article>.md   ← one Markdown file per article
 ```
+
+> **Two different Vintrace references, two purposes.** This help-center corpus is for
+> **competitive/parity analysis** (feeds the parity register). The [`api/`](./api/INDEX.md)
+> subtree is the **v7 OpenAPI specs + a migration knowledge base** for building the
+> Vintrace→Cellarhand importer (see [`api/MIGRATION-STRATEGY.md`](./api/MIGRATION-STRATEGY.md)).
 
 - **567 articles** across **7 categories** and **56 sections** (as of the last run).
 - Categories: vintrace Web, Harvest/Vintage, Setup and Admin, Reporting, Mobile App,

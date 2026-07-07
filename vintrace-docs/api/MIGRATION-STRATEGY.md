@@ -1,7 +1,7 @@
 # Vintrace → Cellarhand — Data-Migration Strategy
 
 > **Scope.** How to migrate a winery off **Vintrace** onto **Cellarhand** using the Vintrace v7 API
-> (`vintrace-api/specs/*.yaml`; per-module KB in [`INDEX.md`](./INDEX.md)) as the pull source, plus a
+> (`vintrace-docs/api/specs/*.yaml`; per-module KB in [`INDEX.md`](./INDEX.md)) as the pull source, plus a
 > CSV/report-export fallback for what the API cannot reach.
 >
 > **The one non-negotiable model** (from `FIX_RUNBOOK.md` MIGRATE-1 + `analysis/CELLARHAND-CURRENT-STATE.md`
@@ -18,7 +18,7 @@ nothing usable and the data must come from a **CSV / PDF report export** (§B) �
 winery's own authorized exports.
 
 > [!important] Shared schema status
-> `vintrace-api/specs/common-schemas.yaml` has been recovered from Vintrace's public Stoplight v7
+> `vintrace-docs/api/specs/common-schemas.yaml` has been recovered from Vintrace's public Stoplight v7
 > optimized bundle. The shared identifier shapes, `CostBreakdown` buckets, pagination envelope, and
 > error root are authoritative from that bundle. The bundle does **not** define a closed
 > `Measurement.unit` enum; units are free strings and must still be normalized by importer policy.
