@@ -88,3 +88,7 @@ vintrace-docs/_raw/
 
 # innovint docs corpus: keep the Markdown, ignore the raw page HTML
 innovint-docs/_raw/
+
+# AI agent tool dirs (Codex/agents scratch — never commit)
+.agents/
+.codex/
