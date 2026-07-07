@@ -25,7 +25,6 @@ import { generateReport, markReportFiled } from "@/lib/compliance/generate";
 import { fillExcisePdf } from "@/lib/compliance/fill-5000-24-pdf";
 import { returnPeriodBounds } from "@/lib/compliance/return-cadence";
 import { LITERS_PER_US_GALLON } from "@/lib/compliance/gallons";
-import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { PDFDocument } from "pdf-lib";
 import type { LotForm } from "@/lib/ledger/vocabulary";
 
@@ -53,6 +52,8 @@ async function scrub() {
     await db.lotOperationLine.deleteMany({ where: { tenantId: t } });
     await db.lotOperation.deleteMany({ where: { tenantId: t } });
     await db.vesselLot.deleteMany({ where: { tenantId: t } });
+    await db.lotIdentifier.deleteMany({ where: { tenantId: t } }).catch(() => {}); // Phase 1 FK → lot
+    await db.lotCodeEvent.deleteMany({ where: { tenantId: t } }).catch(() => {});
     await db.lot.deleteMany({ where: { tenantId: t } });
     await db.vessel.deleteMany({ where: { tenantId: t } });
     await db.location.deleteMany({ where: { tenantId: t } });
@@ -93,6 +94,11 @@ async function main() {
     const p1 = returnPeriodBounds(YEAR, "SEMIMONTHLY", 0); // Jan 1–15
     const p2 = returnPeriodBounds(YEAR, "SEMIMONTHLY", 1); // Jan 16–31
 
+    // Phase 2: the 5120.17 regression below (generateReport) needs a primary bond. This synthetic
+    // tenant may pre-date the backfill or be freshly created in CI — ensure one idempotently.
+    if (!(await prisma.bond.findFirst({ where: { isPrimary: true } }))) {
+      await prisma.bond.create({ data: { registryNumber: "BWN-ZZ-E", isPrimary: true } });
+    }
     const v1 = await prisma.vessel.create({ data: { code: "ZZ-E1", type: "TANK", capacityL: 200_000, isActive: true }, select: { id: true } });
     const v2 = await prisma.vessel.create({ data: { code: "ZZ-E2", type: "TANK", capacityL: 20_000, isActive: true }, select: { id: true } });
     const v3 = await prisma.vessel.create({ data: { code: "ZZ-E3", type: "TANK", capacityL: 20_000, isActive: true }, select: { id: true } });
@@ -106,7 +112,7 @@ async function main() {
 
     // Period 1: remove 29,000 taxpaid gal (all tier-1 CBMA). Period 2: 2,000 gal (straddles 30k).
     await removeTaxpaidCore(ACTOR, { vesselId: v1.id, volumeL: gal2L(29_000), disposition: "TAXPAID", observedAt: new Date(Date.UTC(YEAR, 0, 10)) });
-    const rmP2 = await removeTaxpaidCore(ACTOR, { vesselId: v2.id, volumeL: gal2L(2_000), disposition: "TAXPAID", observedAt: new Date(Date.UTC(YEAR, 0, 20)) });
+    await removeTaxpaidCore(ACTOR, { vesselId: v2.id, volumeL: gal2L(2_000), disposition: "TAXPAID", observedAt: new Date(Date.UTC(YEAR, 0, 20)) });
     // An EXPORT removal in period 2 — tax-EXEMPT, must NOT be taxed (C5).
     await removeTaxpaidCore(ACTOR, { vesselId: v3.id, volumeL: gal2L(1_000), disposition: "EXPORT", observedAt: new Date(Date.UTC(YEAR, 0, 21)) });
 
@@ -137,18 +143,20 @@ async function main() {
     assert(form.getTextField("Tax.21").getText() === g2.netTax.toFixed(2), "PDF Tax.21 (amount to pay) == net");
     assert(form.getTextField("Employer_ID").getText() === "12-3456789", "PDF header EIN filled");
 
-    // ── File period 2 → reverse its removal → amend ──
-    console.log("Filing period 2, then amending after reversing the removal…");
+    // ── File period 2 → record a found removal (Phase 2: tax-paid removals are TERMINAL, so we amend
+    //    UP by recording an additional found removal, not by reversing one) → amend ──
+    console.log("Filing period 2, then amending after recording an additional found removal…");
     await markReportFiled(g2.reportId, ACTOR.actorEmail);
     const filed = await prisma.complianceReport.findUnique({ where: { id: g2.reportId }, select: { status: true } });
     assert(filed!.status === "FILED", "period-2 return marked FILED (immutable)");
 
-    await reverseOperationCore(ACTOR, { operationId: rmP2.operationId }); // undo the 2,000 gal taxpaid removal
+    // A previously-unreported 1,000 gal taxpaid removal is found in period 2 → the amended return owes more.
+    await removeTaxpaidCore(ACTOR, { vesselId: v2.id, volumeL: gal2L(1_000), disposition: "TAXPAID", observedAt: new Date(Date.UTC(YEAR, 0, 20)) });
     const amend = await generateExciseReturn(TENANT, { periodStart: p2.start, periodEnd: p2.end, cadence: "SEMIMONTHLY", amendsReportId: g2.reportId });
     const amended = await prisma.complianceReport.findUnique({ where: { id: amend.reportId }, select: { version: true, amendsReportId: true } });
-    assert(amended!.version === "AMENDED", "regeneration after the reversal is an AMENDED return");
+    assert(amended!.version === "AMENDED", "regeneration after the correction is an AMENDED return");
     assert(amended!.amendsReportId === g2.reportId, "AMENDED references the original FILED return");
-    assert(amend.netTax < g2.netTax, `amended net tax reduced after the reversal (${amend.netTax} < ${g2.netTax})`);
+    assert(amend.netTax > g2.netTax, `amended net tax INCREASED after recording the found removal (${amend.netTax} > ${g2.netTax})`);
 
     // ── C4/E1 regression: a FILED excise return must NOT feed the 5120.17 carry-forward ──
     console.log("C4 regression: 5120.17 carry-forward must ignore the FILED excise return…");
