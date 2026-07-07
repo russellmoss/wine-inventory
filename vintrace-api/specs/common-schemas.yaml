@@ -1,0 +1,391 @@
+openapi: 3.0.3
+info:
+  title: Vintrace API v7 Common Schemas
+  version: v7
+  description: Shared components recovered from the public Vintrace Stoplight v7 bundled documentation.
+
+# Refs in the eight vendored module specs stay external and point here.
+# Source of truth: Stoplight project cHJqOjE4NzQyNg, branch YnI6NDI0MzAwNQ (v7),
+# optimized bundled node exports observed from https://api-docs.vintrace.com.
+paths: {}
+components:
+  parameters:
+    VintraceEntityIds:
+      name: id
+      in: query
+      required: false
+      description: A comma separated list of vintrace internally generated unique identifiers for this resource
+      schema:
+        type: string
+        examples:
+          - 1,2,3
+  responses:
+    DefaultError:
+      description: Unexpected error
+      headers:
+        correlation-id:
+          description: Unique identifier associated with the transaction
+          schema:
+            $ref: '#/components/schemas/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BaseErrorRoot'
+  schemas:
+    CorrelationId:
+      type: string
+      format: uuid
+    ResourceLink:
+      description: Contains the information of a hyper link to the resource
+      properties:
+        href:
+          description: Contains the absolute or relative hyperlink to the resource
+          type: string
+        rel:
+          description: Contains a text that describes what this entity is
+          type: string
+        method:
+          description: Contains the HTTP method that should be used to access this related resource
+          type: string
+    IdentifiableEntity:
+      type: object
+      discriminator:
+        propertyName: type
+      description: Represents an entity at vintrace that can be identified by the vintrace internal id, or name (internal id tried first, then name)
+      properties:
+        id:
+          description: The unique id of this entity.
+          type: integer
+        name:
+          description: The name of this entity
+          type: string
+    ExtIdentifiableEntity:
+      allOf:
+        - $ref: '#/components/schemas/IdentifiableEntity'
+        - type: object
+          description: Represents an entity at vintrace that can be identified by the vintrace internal id, an external id, or name (internal id tried first, then external id, then name)
+          properties:
+            extId:
+              description: The external unique identifier of this entity stored in system. Normally, passed from consumer when creating this entity. In some entities, this field is not mandatory. In the product entity, this extId is mapped to the item code field.
+              type: string
+    CodedIdentifiableEntity:
+      allOf:
+        - $ref: '#/components/schemas/IdentifiableEntity'
+      description: Represents an entity at vintrace that can be identified by the vintrace internal id, a short code, or name (internal id tried first, then short code, then name)
+      properties:
+        code:
+          description: A short code that represents the entity.
+          type: string
+    Winery:
+      allOf:
+        - $ref: '#/components/schemas/IdentifiableEntity'
+        - type: object
+          properties:
+            businessUnit:
+              description: The winery business unit value
+              type: string
+    Measurement:
+      discriminator:
+        propertyName: type
+      description: An entity that represents a complete measure. e.g volume, weight
+      properties:
+        value:
+          description: The number value of this measurement
+          type: number
+          format: double
+        unit:
+          description: The unit of this measurement
+          type: string
+    CostBreakdown:
+      description: Cost breakdown showing total as well as cost by bucket
+      type: object
+      properties:
+        total:
+          type: number
+          format: double
+        average:
+          type: number
+          format: double
+        fruit:
+          type: number
+          format: double
+        overhead:
+          type: number
+          format: double
+        storage:
+          type: number
+          format: double
+        additive:
+          type: number
+          format: double
+        bulk:
+          type: number
+          format: double
+        packaging:
+          type: number
+          format: double
+        operation:
+          type: number
+          format: double
+        freight:
+          type: number
+          format: double
+        other:
+          type: number
+          format: double
+    BaseError:
+      title: BaseError
+      type: object
+      properties:
+        code:
+          type: string
+          example: error_code
+        message:
+          type: string
+          example: Request was not successful
+        detail:
+          type: string
+          example: Please provide all the required parameters
+      required:
+        - code
+        - message
+        - detail
+    BaseErrorRoot:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/BaseError'
+      required:
+        - errors
+      description: Error response structure
+    PageRoot:
+      description: Pagination
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          example: 1000
+          format: int64
+          minimum: 0
+        offset:
+          type: integer
+          example: 0
+          minimum: 0
+          format: int32
+        limit:
+          type: integer
+          example: 10
+          minimum: 0
+          format: int32
+        first:
+          description: Path of the first batch of results
+          type: string
+          example: /resources?offset=0&limit=10
+        previous:
+          type: string
+          example: null
+          description: Path of the previous batch of results (null if on the first page)
+          nullable: true
+        next:
+          type: string
+          example: /resources?offset=10&limit=10
+          description: Path of the next batch of results (null if on the last page)
+          nullable: true
+        last:
+          description: Path of the last batch of results
+          type: string
+          example: resources?offset=990&limit=10
+        results:
+          type: array
+          items:
+            type: object
+      required:
+        - totalResults
+        - offset
+        - limit
+    Shared-openapi_BaseError:
+      $ref: '#/components/schemas/BaseError'
+    Shared-openapi_BaseErrorRoot:
+      $ref: '#/components/schemas/BaseErrorRoot'
+    Shared-openapi_PageRoot:
+      $ref: '#/components/schemas/PageRoot'
+    GradingScale:
+      description: A representation of the grading scale
+      type: object
+      properties:
+        id:
+          description: internal id of the grading scale
+          type: integer
+        name:
+          description: Human readable name of the grading scale
+          type: string
+    NamedGradingValue:
+      description: A representation of the grading value
+      type: object
+      properties:
+        id:
+          description: internal id of the grading value
+          type: integer
+        name:
+          description: Human readable name of the grading value
+          type: string
+    Grading:
+      type: object
+      properties:
+        scale:
+          $ref: '#/components/schemas/GradingScale'
+        value:
+          $ref: '#/components/schemas/NamedGradingValue'
+    GradingValue:
+      description: A representation of the quality/grade
+      type: object
+      properties:
+        scaleId:
+          description: internal id of the grading scale
+          type: integer
+        scaleName:
+          description: Human readable name of the grading scale
+          type: string
+        valueId:
+          description: internal id of the grading value
+          type: integer
+        valueName:
+          description: Human readable name of the grading value
+          type: string
+    AnalysisResult:
+      description: A measured laboratory result
+      properties:
+        name:
+          description: The name of the analytical test (e.g. Brix)
+          type: string
+        interfaceMappedName:
+          description: A field that stores the metric name of external systems.
+          type: string
+        value:
+          description: The numerical value of the result
+          type: number
+          format: double
+        nonNumericValue:
+          description: Used for analytical results that are not numeric (e.g. Pass/Fail)
+          type: string
+    WineBatchDetails:
+      allOf:
+        - $ref: '#/components/schemas/IdentifiableEntity'
+        - type: object
+          description: Wine batch details
+          properties:
+            description:
+              description: A long description for the wine batch
+              type: string
+            vintage:
+              description: The designated vintage/production year for this batch
+              type: string
+            designatedVariety:
+              $ref: '#/components/schemas/CodedIdentifiableEntity'
+            designatedRegion:
+              $ref: '#/components/schemas/CodedIdentifiableEntity'
+            program:
+              description: The assigned program code for this batch
+              type: string
+            grading:
+              $ref: '#/components/schemas/GradingValue'
+            productCategory:
+              $ref: '#/components/schemas/CodedIdentifiableEntity'
+            designatedProduct:
+              $ref: '#/components/schemas/CodedIdentifiableEntity'
+    AllocationSlice:
+      type: object
+      properties:
+        product:
+          description: The product for this allocation slice
+          allOf:
+            - $ref: '#/components/schemas/CodedIdentifiableEntity'
+        vintage:
+          type: string
+        itemCode:
+          description: The external item code used for this product + vintage combination
+          type: string
+        vessel:
+          description: The vessel that the allocation slice has been allocated from
+          type: string
+        allocationVolume:
+          description: The volume of this allocation slice
+          allOf:
+            - $ref: '#/components/schemas/Measurement'
+        allocationPercentageOfVessel:
+          description: The allocation slice represented as a percentage of the wine in the vessel
+          type: number
+          format: double
+    StackPosition:
+      description: The stack position of the barrel
+      properties:
+        level:
+          description: The level of the barrel
+          type: string
+        orientation:
+          description: The orientation of the barrel
+          type: string
+          enum:
+            - LEFT
+            - RIGHT
+            - ALL
+    StackCoordinates:
+      description: A stackable coordinate entity
+      properties:
+        storageArea:
+          $ref: '#/components/schemas/CodedIdentifiableEntity'
+        aisle:
+          type: string
+        stack:
+          description: start No. of stacks
+          type: string
+        toStack:
+          description: end No. of stacks
+          type: string
+        positions:
+          description: A collection of positions of each barrel
+          type: array
+          items:
+            $ref: '#/components/schemas/StackPosition'
+    TranslatedFieldWrapper:
+      type: object
+      discriminator:
+        propertyName: type
+      properties:
+        id:
+          description: The id (or ordinal value) of the field
+          type: integer
+        localizedName:
+          description: The localized/translated name of the field
+          type: string
+    PatchDocument:
+      description: A JSONPatch document as defined by RFC 6902
+      required:
+        - op
+        - path
+      properties:
+        op:
+          type: string
+          description: The operation to be performed
+          enum:
+            - ADD
+            - REMOVE
+            - REPLACE
+            - MOVE
+            - COPY
+            - TEST
+        path:
+          type: string
+          description: A JSON-Pointer
+        value:
+          type: object
+          description: The value to be used within the operations.
+        from:
+          type: string
+          description: A string containing a JSON Pointer value.
+    PatchRequest:
+      type: array
+      items:
+        $ref: '#/components/schemas/PatchDocument'

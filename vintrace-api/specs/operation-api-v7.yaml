@@ -1,0 +1,3928 @@
+openapi: 3.0.3
+info:
+  title: Vintrace Operation API
+  description: ''
+  version: 1.0.0
+servers:
+  - url: 'https://oz50.vintrace.net/vinx2/api/v7/operation'
+    description: Example production url
+  - url: 'https://sandbox.vintrace.net/vinx2demo/api/v7/operation'
+    description: Example sandbox url
+security:
+  - bearerAuth: []
+paths:
+  /shipments:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      summary: Get all shipments in the system
+      description: This endpoint returns all the shipments created by Bulk Dispatch and Inter-winery dispatch operations.
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: '#/components/parameters/ModifiedSince'
+        - $ref: '#/components/parameters/ModifiedBefore'
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            example: BULK
+          description: Filter the shipments by the operation type.
+        - name: dispatchType
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 'Bottling,Bulk Sale'
+          description: |
+            Filter the shipments by the dispatch type. 
+
+            Note, the comma is used as delimiter in this param and will conflict if the name dispatch type entity in Vintrace has a comma.
+        - name: freightCode
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 'FC1,FC2'
+          description: |
+            Filter the shipments by the name of freight code entity.
+
+            Note, the comma is used as delimiter in this param and will conflict if the name has a comma.
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 'allocations,metrics,cost,composition'
+          description: 'By default, allocations, metrics, composition and cost won''t be included in the wine details unless requested using this query param'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetShipmentsSuccessResponse'
+              examples:
+                successShipmentsResponse:
+                  value:
+                    totalResults: 1000
+                    offset: 0
+                    limit: 10
+                    first: '/api/v7/operation/shipments?offset=0&limit=10&include=allocations,metrics,cost'
+                    previous: null
+                    next: '/api/v7/operation/shipments?offset=10&limit=10&include=allocations,metrics,cost'
+                    last: '/api/v7/operation/shipments?offset=990&limit=10&include=allocations,metrics,cost'
+                    results:
+                      - id: 1
+                        workOrderNumber: TWL-123
+                        jobNumber: '2'
+                        type: BULK
+                        source:
+                          id: 2
+                          name: Winery A
+                          businessUnit: office 1
+                        destination:
+                          winery: null
+                          party:
+                            id: 3
+                            name: Company A
+                            extId: null
+                        occurredTime: 1650412615057
+                        modifiedTime: 1650412615057
+                        carrier:
+                          id: 1231
+                          name: Awesome Logistics
+                          extId: '121321'
+                        reference: abc dispatch
+                        dispatchType:
+                          id: 23423
+                          name: Bulk sale
+                        freightCode:
+                          id: 323423
+                          name: FC1
+                        reversed: false
+                        wineDetails:
+                          - vessel: 3920BDC
+                            batch: PO108
+                            wineBatch:
+                              id: 889383
+                              name: PO108
+                              description: 2021 Napa Valley Chardonnay
+                              vintage: '2021'
+                              designatedRegion:
+                                id: 65
+                                name: Napa Valley
+                                code: NAV
+                              designatedVariety:
+                                id: 3333
+                                name: Chardonnay
+                                code: CHA
+                              program: XYZ
+                              grading:
+                                scaleId: 2
+                                scaleName: Wine
+                                valueId: 67
+                                valueName: A
+                            wineryBuilding:
+                              id: 38293
+                              name: WB-1
+                            volume:
+                              value: 6000
+                              unit: gal
+                            loss:
+                              volume:
+                                value: 10
+                                unit: gal
+                              reason:
+                                id: 32342
+                                name: Bottling
+                            bottlingDetails: Bottling job 232342
+                            weight:
+                              value: 1000
+                            cost:
+                              total: 250000
+                              average: 300
+                              fruit: 209383
+                              overhead: 30000
+                              storage: 10000
+                              additive: 617
+                              bulk: 0
+                              packaging: 0
+                              operation: 0
+                              freight: 0
+                              other: 0
+                            allocations:
+                              - product:
+                                  id: 625
+                                  name: CHNAVPREM
+                                  code: CHV
+                                vintage: 2021
+                                itemCode: 21CHAVPREM
+                                allocationVolume:
+                                  value: 600
+                                  unit: gal
+                                allocationPercentageOfVessel: 100
+                            metrics:
+                              - name: Alcohol
+                                interfaceMappedName: ALC
+                                value: 15
+                                nonNumericValue: null
+                              - name: Brix
+                                interfaceMappedName: BRIX
+                                value: 0
+                                nonNumericValue: null
+                              - name: Residual Sugar
+                                interfaceMappedName: null
+                                value: 18
+                                nonNumericValue: null
+                              - name: Color 420
+                                interfaceMappedName: null
+                                value: 15
+                                nonNumericValue: null
+                            composition:
+                              - vintage: 2022
+                                variety:
+                                  id: 3333
+                                  name: Chardonnay
+                                region:
+                                  id: 65
+                                  name: Napa Valley
+                                percentage: 100
+                                block:
+                                  extId: '2342'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /barrel-treatments:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      summary: Get barrel move shipments
+      description: This endpoint returns shipments created by Treatment (barrel) operations.
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: '#/components/parameters/ModifiedSince'
+        - $ref: '#/components/parameters/ModifiedBefore'
+        - name: treatment
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 'Barrel Check,Move barrel 1'
+          description: |
+            Filter the barrel treatment by the name of treatment type. Case sensitive.
+
+            Note, comma is used as delimiter in this param and will conflict if the name has a comma.
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBarrelTreatmentsSuccessResponse'
+              examples:
+                successShipmentsResponse:
+                  value:
+                    totalResults: 1000
+                    offset: 0
+                    limit: 10
+                    first: /api/v7/operation/barrel-treatments?offset=0&limit=10
+                    previous: null
+                    next: /api/v7/operation/barrel-treatments?offset=10&limit=10
+                    last: /api/v7/operation/barrel-treatments?offset=990&limit=10
+                    results:
+                      - id: 1
+                        workOrderNumber: '123'
+                        jobNumber: '2'
+                        occurredTime: 1650412615057
+                        modifiedTime: 1650412615057
+                        operator:
+                          id: 39203
+                          name: 'User, A'
+                          extId: null
+                        reversed: false
+                        treatment:
+                          id: 1
+                          name: Barrel Check
+                          description: ''
+                          changeState: SOUSED
+                          bolRequired: true
+                        barrels:
+                          - id: 1
+                            name: 2019-0012
+                            capacity:
+                              value: 225
+                              unit: L
+                        freightCode:
+                          id: 323423
+                          name: FC1
+                        scale:
+                          id: 123213
+                          name: Scale 1
+                        totalWeight:
+                          value: 1
+                          unit: kg
+                        carrier:
+                          id: 88
+                          extId: C63535
+                          name: Fruit Freight
+                        party:
+                          id: 88
+                          extId: C63535
+                          name: Fruit Freight
+                        source:
+                          id: 5
+                          businessUnit: US57
+                          name: My Winery
+                        reference: XYZ123
+                        bolCode: WB1234
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /bookings:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      summary: Upsert this booking into vintrace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Booking'
+            examples:
+              createBookingRequest:
+                value:
+                  bookingNumber: BN1491
+                  bookedBy:
+                    extId: A-283
+                  winery:
+                    businessUnit: US57
+                  block:
+                    extId: U-01234
+                  vintage: 2025
+                  intendedProduct:
+                    extId: P100
+                  expectedTime: 1736502300000
+                  expectedDurationInMinutes: 120
+                  expectedQuantity:
+                    value: 5
+                    unit: tn
+                  bookingState: SCHEDULED
+                  harvester:
+                    extId: H63536
+                  note: Delivery most likely in the early morning.
+                  crusher:
+                    extId: c-229
+                  owner:
+                    extId: O39510
+                  carrier:
+                    extId: C63535
+                  receivingScales:
+                    extId: 39134
+                  receivingVessel:
+                    extId: V-11
+                  harvestMethod: HAND
+                  referenceNumber: REF-XYZ-789
+                  numberOfLoads: 3
+                  grading:
+                    scaleId: 5
+                    valueId: 1
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateBookingSuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    data:
+                      id: 1491
+                      bookingNumber: BN1491
+                      bookedBy:
+                        id: 1
+                        extId: A-283
+                        name: 'ADMINISTRATOR, System'
+                      winery:
+                        id: 5
+                        businessUnit: US57
+                        name: JX2 Winery
+                      block:
+                        id: 5
+                        extId: U-01234
+                        name: CH Block 1
+                      grower:
+                        id: 92
+                        extId: G-1902
+                        name: ABE Grower
+                      vineyard:
+                        id: 20
+                        extId: V-129
+                        name: ABE Vineyard
+                      variety:
+                        id: 1
+                        name: Chardonnay
+                        code: CH
+                      region:
+                        id: 1
+                        name: Napa Valley
+                        code: NV
+                      subRegion:
+                        id: 1
+                        name: Oak Knoll District
+                        code: OAD
+                      appellations:
+                        - Napa Valley
+                        - Napa County
+                      vintage: 2025
+                      growerContract:
+                        id: 210
+                        name: 2025 JX2 CH
+                      intendedProduct:
+                        id: 10
+                        extId: P100
+                        name: CHCH21
+                      expectedTime: 1736502300000
+                      expectedEndTime: 1736502300000
+                      expectedDurationInMinutes: 120
+                      expectedQuantity:
+                        value: 5
+                        unit: tn
+                      bookingState: SCHEDULED
+                      harvester:
+                        id: 100
+                        extId: H63536
+                        name: JX2 Harvesting
+                      note: Delivery most likely in the early morning.
+                      crusher:
+                        id: 1
+                        extId: c-229
+                        name: Crusher 1
+                      owner:
+                        id: 1
+                        extId: O39510
+                        name: JX2 Winery
+                      carrier:
+                        id: 90
+                        extId: C63535
+                        name: JX2 Carriers
+                      receivingScales:
+                        id: 1
+                        extId: 39134
+                        name: Main scales
+                      receivingVessel:
+                        id: 99
+                        extId: V-11
+                        name: F-25
+                      harvestMethod: HAND
+                      referenceNumber: REF-XYZ-789
+                      pickTime: 1723224600000
+                      program:
+                        id: 9
+                        name: JX2 Brand
+                      intendedUse:
+                        id: 5
+                        name: White Table
+                      numberOfLoads: 3
+                      areaEstimate: 5
+                      deliveryType: BINS
+                      pmsRate:
+                        id: 7
+                        value: 100
+                        unit: ppm
+                      serviceOrder:
+                        id: 5
+                        name: JX2 2025
+                      grading:
+                        scaleId: 5
+                        scaleName: Quality Grade
+                        valueId: 1
+                        valueName: A
+                      isInactive: false
+                      isBulkBooking: false
+                      isLastBooking: false
+        default:
+          $ref: '#/components/responses/DefaultError'
+  '/bookings/{bookingId}/deactivation':
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      summary: Deactivate this booking record
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              nullable: true
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingDeactivationResponse'
+              examples:
+                deactivateBookingResponse:
+                  value:
+                    data:
+                      inactive: true
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /fruit-intakes:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      summary: Record a new fruit intake transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FruitIntakeRequest'
+            examples:
+              unplannedArrival:
+                value:
+                  block:
+                    extId: U01234
+                  vintage: 2022
+                  bookingNumber: B9288
+                  owner:
+                    extId: O66253
+                  dateOccurred: 164876283628
+                  timeOut: 164876283628
+                  timeIn: 164876293628
+                  weighTag: PH-OB-50228768760
+                  externalWeighTag: PH-OB-50228768760
+                  winery:
+                    businessUnit: US57
+                  scale:
+                    name: TRUCK SCALES
+                  gross:
+                    value: 7.54
+                    unit: tn
+                  tare:
+                    value: 2.5
+                    unit: tn
+                  net:
+                    value: 5.04
+                    unit: tn
+                  jobStatus: complete
+                  intendedProduct:
+                    name: CHCH21
+                  unitPrice:
+                    value: 1200
+                    unit: $ / ton
+                  metrics:
+                    - name: Brix
+                      value: 23
+                    - name: MOG
+                      value: 2
+                    - name: NIRS
+                      value: 54
+                    - name: pH
+                      value: 3.4
+                    - name: Temp
+                      value: 65
+                    - name: VA
+                      value: 2.9
+                  harvestMethod: machine
+                  weighMasterText: Deputy John Smith
+                  carrier:
+                    name: Acme Trucking
+                  consignmentNote: TH78352
+                  driverName: Adam Sapple
+                  lastLoad: true
+                  operatorNotes: My operator notes
+                  truckRegistration: ABC-123
+              scheduledBooking:
+                value:
+                  vintage: 2022
+                  bookingNumber: B9288
+                  owner:
+                    extId: O66253
+                  dateOccurred: 164876283628
+                  timeOut: 164876283628
+                  timeIn: 164876293628
+                  weighTag: PH-OB-50228768760
+                  externalWeighTag: PH-OB-50228768760
+                  winery:
+                    businessUnit: US57
+                  scale:
+                    name: TRUCK SCALES
+                  gross:
+                    value: 7.54
+                    unit: tn
+                  tare:
+                    value: 2.5
+                    unit: tn
+                  net:
+                    value: 5.04
+                    unit: tn
+                  jobStatus: complete
+                  intendedProduct:
+                    name: CHCH21
+                  unitPrice:
+                    value: 1200
+                    unit: $ / ton
+                  metrics:
+                    - name: Brix
+                      value: 23
+                    - name: MOG
+                      value: 2
+                    - name: NIRS
+                      value: 54
+                    - name: pH
+                      value: 3.4
+                    - name: Temp
+                      value: 65
+                    - name: VA
+                      value: 2.9
+                  harvestMethod: machine
+                  weighMasterText: Deputy John Smith
+                  carrier:
+                    name: Acme Trucking
+                  consignmentNote: TH78352
+                  driverName: Adam Sapple
+                  lastLoad: false
+                  operatorNotes: My operator notes
+                  truckRegistration: ABC-123
+              autoLinkEarliestBooking:
+                value:
+                  block:
+                    extId: U01234
+                  vintage: 2022
+                  linkEarliestBooking: true
+                  owner:
+                    extId: O66253
+                  dateOccurred: 164876283628
+                  timeOut: 164876283628
+                  timeIn: 164876293628
+                  weighTag: PH-OB-50228768760
+                  externalWeighTag: PH-OB-50228768760
+                  winery:
+                    businessUnit: US57
+                  scale:
+                    name: TRUCK SCALES
+                  gross:
+                    value: 7.54
+                    unit: tn
+                  tare:
+                    value: 2.5
+                    unit: tn
+                  net:
+                    value: 5.04
+                    unit: tn
+                  jobStatus: complete
+                  intendedProduct:
+                    name: CHCH21
+                  unitPrice:
+                    value: 1200
+                    unit: $ / ton
+                  metrics:
+                    - name: Brix
+                      value: 23
+                    - name: MOG
+                      value: 2
+                    - name: NIRS
+                      value: 54
+                    - name: pH
+                      value: 3.4
+                    - name: Temp
+                      value: 65
+                    - name: VA
+                      value: 2.9
+                  harvestMethod: machine
+                  weighMasterText: Deputy John Smith
+                  carrier:
+                    name: Acme Trucking
+                  consignmentNote: TH78352
+                  driverName: Adam Sapple
+                  lastLoad: false
+                  truckRegistration: ABC-123
+      responses:
+        '201':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /fruit-intakes/7177
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateFruitIntakeSuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    data:
+                      id: 571
+                      block:
+                        id: 5
+                        extId: U01234
+                        name: CH1
+                      vintage: 2022
+                      bookingNumber: B9288
+                      owner:
+                        id: 1
+                        extId: O66253
+                        name: CBI
+                      dateOccurred: 164876283628
+                      timeOut: 164876283628
+                      timeIn: 164876293628
+                      weighTag: PH-OB-50228768760
+                      externalWeighTag: PH-OB-50228768760
+                      winery:
+                        id: 5
+                        businessUnit: US57
+                        name: My Winery
+                      scale:
+                        id: 123
+                        name: TRUCK SCALES
+                      gross:
+                        value: 7.54
+                        unit: tn
+                      tare:
+                        value: 2.5
+                        unit: tn
+                      net:
+                        value: 5.04
+                        unit: tn
+                      jobStatus: complete
+                      intendedProduct:
+                        name: CHCH21
+                      unitPrice:
+                        value: 1200
+                        unit: $ / ton
+                      metrics:
+                        - name: Brix
+                          value: 23
+                        - name: MOG
+                          value: 2
+                        - name: NIRS
+                          value: 54
+                        - name: pH
+                          value: 3.4
+                        - name: Temp
+                          value: 65
+                        - name: VA
+                          value: 2.9
+                      harvestMethod: machine
+                      weighMasterText: Deputy John Smith
+                      carrier:
+                        id: 77
+                        extId: C7363
+                        name: Acme Trucking
+        default:
+          $ref: '#/components/responses/DefaultError'
+  '/fruit-intakes/{fruitIntakeId}/pricing':
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/FruitIntakeId'
+    put:
+      summary: Update the pricing related data for this fruit intake record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFruitIntakePricing'
+            example:
+              gross:
+                value: 7.54
+                unit: tn
+              tare:
+                value: 2.5
+                unit: tn
+              net:
+                value: 5.04
+                unit: tn
+              unitPrice:
+                value: 1200
+                unit: $ / ton
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateFruitIntakePricingResponse'
+              example:
+                data:
+                  gross:
+                    value: 7.54
+                    unit: tn
+                  tare:
+                    value: 2.5
+                    unit: tn
+                  net:
+                    value: 5.04
+                    unit: tn
+                  unitPrice:
+                    value: 1200
+                    unit: $ / ton
+        default:
+          $ref: '#/components/responses/DefaultError'
+  '/fruit-intakes/{fruitIntakeId}/metrics':
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/FruitIntakeId'
+    put:
+      summary: Update the metrics for this fruit intake record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMetrics'
+            example:
+              metrics:
+                - name: Brix
+                  value: 23
+                - name: MOG
+                  value: 2
+                - name: NIRS
+                  value: 54
+                - name: pH
+                  value: 3.4
+                - name: Temp
+                  value: 65
+                - name: VA
+                  value: 2.9
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateMetricsResponse'
+              example:
+                data:
+                  metrics:
+                    - name: Brix
+                      value: 23
+                    - name: MOG
+                      value: 2
+                    - name: NIRS
+                      value: 54
+                    - name: pH
+                      value: 3.4
+                    - name: Temp
+                      value: 65
+                    - name: VA
+                      value: 2.9
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /bulk-intakes:
+    post:
+      summary: Create a new bulk intake
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkIntakeRequest'
+            examples:
+              createBulkIntakeWithVirtualVesselRequest:
+                value:
+                  occurredTime: 164876283628
+                  wineDetails:
+                    virtualVessel: true
+                    batch: 09a9ds
+                    winery:
+                      businessUnit: US57
+                    ownership:
+                      - owner:
+                          extId: S32342
+                        percentage: 100
+                    volume:
+                      value: 9923
+                      unit: gal
+                    fractionType: FREE_RUN
+                    fermentState: STOPPED
+                    malolacticState: STOPPED
+                    beverageType: Red
+                    reference: ABC Wine
+                    yieldRate: 200
+                    batchOwner:
+                      id: 1
+                      extId: O66253
+                      name: CBI
+                  composition:
+                    - vintage: 2022
+                      variety:
+                        name: Chardonnay
+                      region:
+                        name: Napa Valley
+                      subRegion:
+                        name: SubA
+                      percentage: 100
+                      block:
+                        extId: '2342'
+                  cost:
+                    amount: 39234
+                    rate: TOTAL
+                    freight: 232.2
+                    ttbDetails:
+                      taxState: BONDED
+                      taxClass:
+                        name: 14 to 16%
+                  deliveryDetails:
+                    purchaseOrder:
+                      name: VDP09
+                    receivedFrom:
+                      extId: 32342
+                    shippingRefNo: 32423
+                    truckNo: W123S
+                    driverName: Smiths
+                    sealNo: A93232
+                    compartmentNo: 2
+                    cipNo: 2222
+                    container: XX container
+                    customsEntryNumber: ABD-3923-CC
+                    carrier:
+                      extId: AD2342
+                    purchaseReference: S9302
+                    deliveryState: IN_TRANSIT
+                  metrics:
+                    - name: Brix
+                      value: 23
+                    - name: MOG
+                      value: 2
+                    - name: NIRS
+                      value: 54
+                    - name: pH
+                      value: 3.4
+                    - name: Temp
+                      value: 65
+                    - name: VA
+                      value: 2.9
+              createBulkIntakeWithRealVesselRequest:
+                value:
+                  occurredTime: 164876283628
+                  wineDetails:
+                    vessel: ABC-vessel
+                    batch: 09a9ds
+                    winery:
+                      businessUnit: US57
+                    ownership:
+                      - owner:
+                          extId: S32342
+                        percentage: 100
+                    volume:
+                      value: 9923
+                      unit: gal
+                    fractionType: FREE_RUN
+                    fermentState: STARTED
+                    malolacticState: STARTED
+                    beverageType: Red
+                    reference: ABC Wine
+                    productState: Centrifuged
+                    batchOwner:
+                      id: 1
+                      extId: O66253
+                      name: CBI
+                  composition:
+                    - vintage: 2022
+                      variety:
+                        name: Chardonnay
+                      region:
+                        name: Napa Valley
+                      subRegion:
+                        name: SubA
+                      percentage: 100
+                      block:
+                        extId: '2342'
+                  cost:
+                    amount: 39234
+                    rate: TOTAL
+                    freight: 232.2
+                    ttbDetails:
+                      taxState: BONDED
+                      taxClass:
+                        name: 14 to 16%
+                  deliveryDetails:
+                    purchaseOrder:
+                      name: VDP09
+                    receivedFrom:
+                      extId: 32342
+                    shippingRefNo: 32423
+                    truckNo: W123S
+                    driverName: Smiths
+                    sealNo: A93232
+                    compartmentNo: 2
+                    cipNo: 2222
+                    container: XX container
+                    customsEntryNumber: ABD-3923-CC
+                    carrier:
+                      extId: AD2342
+                    purchaseReference: S9302
+                    deliveryState: IN_TRANSIT
+                  metrics:
+                    - name: Brix
+                      value: 23
+                    - name: MOG
+                      value: 2
+                    - name: NIRS
+                      value: 54
+                    - name: pH
+                      value: 3.4
+                    - name: Temp
+                      value: 65
+                    - name: VA
+                      value: 2.9
+      responses:
+        '201':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /bulk-intakes/2342
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateBulkIntakeSuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    data:
+                      id: 71771
+                      occurredTime: 164876283628
+                      wineDetails:
+                        vessel: AVESSEL
+                        batch: 09a9ds
+                        ownership:
+                          - owner:
+                              id: 234234
+                              extId: S32342
+                              name: A winery
+                            percentage: 100
+                        volume:
+                          value: 9923
+                          unit: gal
+                        fractionType: FREE_RUN
+                        fermentState: STARTED
+                        malolacticState: STARTED
+                        beverageType: Red
+                        reference: ABC Wine
+                        yieldRate: 200
+                        batchOwner:
+                          id: 1
+                          extId: O66253
+                          name: CBI
+                      composition:
+                        - vintage: 2022
+                          variety:
+                            id: 3333
+                            name: Chardonnay
+                          region:
+                            id: 65
+                            name: Napa Valley
+                          subRegion:
+                            id: 66
+                            name: SubA
+                          percentage: 100
+                          block:
+                            extId: '2342'
+                      cost:
+                        amount: 39234
+                        rate: TOTAL
+                        freight: 232.2
+                        ttbDetails:
+                          taxState: BONDED
+                          taxClass:
+                            id: 653
+                            name: 14 to 16%
+                            federalName: <16%
+                            stateName: 14 to 21%
+                      deliveryDetails:
+                        purchaseOrder:
+                          id: 3232121
+                          name: VDP09
+                        receivedFrom:
+                          id: 39203
+                          name: Cellar
+                          extId: 32342
+                        shippingRefNo: 32423
+                        truckNo: W123S
+                        driverName: Smiths
+                        sealNo: A93232
+                        compartmentNo: 2
+                        cipNo: 2222
+                        container: XX container
+                        customsEntryNumber: ABD-3923-CC
+                        carrier:
+                          id: 39203
+                          name: Goods Logistics
+                          extId: AD2342
+                        purchaseReference: S9302
+                        deliveryState: IN_TRANSIT
+                      metrics:
+                        - name: Brix
+                          value: 23
+                        - name: MOG
+                          value: 2
+                        - name: NIRS
+                          value: 54
+                        - name: pH
+                          value: 3.4
+                        - name: Temp
+                          value: 65
+                        - name: VA
+                          value: 2.9
+        default:
+          $ref: '#/components/responses/DefaultError'
+    get:
+      summary: Get the bulk intake records in the system
+      description: Search all bulk intake records in the system matching the criteria
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: '#/components/parameters/ModifiedSince'
+        - $ref: '#/components/parameters/ModifiedBefore'
+        - name: purchaseReference
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter the search result by purchase reference. Support equal operation
+          examples:
+            equalTo:
+              value: 'eq:29320342'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBulkIntakesSuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    totalResults: 1000
+                    offset: 0
+                    limit: 10
+                    first: /bulk-intakes?offset=0&limit=10
+                    previous: null
+                    next: /bulk-intakes?offset=10&limit=10
+                    last: /bulk-intakes?offset=990&limit=10
+                    results:
+                      - id: 71771
+                        occurredTime: 164876283628
+                        reversed: false
+                        wineDetails:
+                          vessel: AVESSEL
+                          batch: 09a9ds
+                          ownership:
+                            - owner:
+                                id: 234234
+                                extId: S32342
+                                name: A winery
+                              percentage: 100
+                          volume:
+                            value: 9923
+                            unit: gal
+                          fractionType: FREE_RUN
+                          fermentState: FERMENTED
+                          malolacticState: FERMENTED
+                          beverageType: Red
+                          reference: ABC Wine
+                          yieldRate: 200
+                          batchOwner:
+                            id: 1
+                            extId: O66253
+                            name: CBI
+                        composition:
+                          - vintage: 2022
+                            variety:
+                              id: 3333
+                              name: Chardonnay
+                            region:
+                              id: 65
+                              name: Napa Valley
+                            percentage: 100
+                            block:
+                              extId: '2342'
+                        cost:
+                          amount: 39234
+                          rate: TOTAL
+                          freight: 232.2
+                          ttbDetails:
+                            taxState: BONDED
+                            taxClass:
+                              id: 653
+                              name: 14 to 16%
+                              federalName: <16%
+                              stateName: 14 to 21%
+                        deliveryDetails:
+                          purchaseOrder:
+                            id: 93023
+                            name: PO-2342
+                          receivedFrom:
+                            id: 39203
+                            name: Cellar
+                            extId: 32342
+                          shippingRefNo: '32423'
+                          truckNo: W123S
+                          driverName: Smiths
+                          sealNo: A93232
+                          compartmentNo: 2
+                          cipNo: 2222
+                          container: XX container
+                          customsEntryNumber: ABD-3923-CC
+                          carrier:
+                            id: 39203
+                            name: Goods Logistics
+                            extId: AD2342
+                          deliveryState: IN_TRANSIT
+        default:
+          $ref: '#/components/responses/DefaultError'
+  '/bulk-intakes/{id}':
+    patch:
+      summary: Partially update some fields in the bulk intake record
+      description: |
+        Provide functionality to update only some fields in the bulk intake record.
+
+        Note, not all fields will support this PATCH operation. Consult with developers for your use case.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/VintraceEntityId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: common-schemas.yaml#/components/schemas/PatchRequest
+            examples:
+              updateDeliveryState:
+                value:
+                  - path: /deliveryDetails/deliveryState
+                    op: REPLACE
+                    value: COMPLETE
+      responses:
+        '204':
+          description: Update is successful
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+  /trial-blends:
+    get:
+      summary: Get the trial blend records in the system
+      description: Get the trial blend records in the system
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: '#/components/parameters/ModifiedSince'
+        - $ref: '#/components/parameters/ModifiedBefore'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Filter the search result by status. Support multiple status in the value delimited by comma.
+
+            For complete list of values, refer to the enums of status field in TrialBlend schema.
+          examples:
+            filterByOneStatus:
+              value: REQUEST_FOR_APPROVAL
+            filterByTwoStatus:
+              value: 'REQUEST_FOR_APPROVAL,DRAFT'
+        - name: compositionSummaryBy
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Provide a summarised composition view based on the types provided in the query param. 
+
+            This query param support multiple types delimited by comma. Currently, you can summarize by variety,vintage,region,subRegion
+          example: 'variety,vintage,region,sub_region'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTrialBlendsSuccessResponse'
+              examples:
+                successResponseWithComposition:
+                  value:
+                    totalResults: 1000
+                    offset: 0
+                    limit: 10
+                    first: '/api/v7/operation/trial-blends?offset=0&limit=10&type=vintage,variety,region,sub_region'
+                    previous: null
+                    next: '/api/v7/operation/trial-blends?offset=10&limit=10&type=vintage,variety,region,sub_region'
+                    last: '/api/v7/operation/trial-blends?offset=990&limit=10&type=vintage,variety,region,sub_region'
+                    results:
+                      - reference: f137add1-3226-11ed-8f7d-0242ac110002
+                        name: TB-32342
+                        description: A trial blend
+                        year: '2022'
+                        winery:
+                          id: 92032
+                          name: Winery A
+                          businessUnit: null
+                        operator:
+                          id: 39203
+                          name: 'User, A'
+                          extId: null
+                        trialDate: 164876284000
+                        modifiedTime: 164876284000
+                        cost: 50.23
+                        amount:
+                          unit: L
+                          value: 30
+                        sampleVolume:
+                          unit: L
+                          value: 0.3
+                        status: DRAFT
+                        composition:
+                          summary:
+                            - type: VINTAGE
+                              elements:
+                                - name: 2022
+                                  percentage: 60
+                                - name: 2021
+                                  percentage: 40
+                            - type: VARIETY
+                              elements:
+                                - name: Chardonnay
+                                  percentage: 100
+                            - type: REGION
+                              elements:
+                                - name: Napa Valley
+                                  percentage: 100
+                            - type: SUB_REGION
+                              elements:
+                                - name: Rutherford
+                                  percentage: 30
+                                - name: UNSPECIFIED
+                                  percentage: 70
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /work-orders:
+    get:
+      summary: Get all the work orders in the system
+      description: Return all work orders matching the supplied query param conditions
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - name: scheduledSince
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            example: 164876284000
+          description: Only include work orders that are scheduled since the provided time stamp. The value is required to be in epoch milliseconds and inclusive.
+        - name: scheduledBefore
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            example: 164876284000
+          description: Only include work orders that are scheduled before the provided time stamp. The value is required to be in epoch milliseconds and inclusive.
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 'READY,IN_PROGRESS'
+          description: |
+            Only include work orders that are in the provided status list.
+
+            Support multiple types delimited by comma.
+        - name: operationTypes
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 'TIRAGE,BULK_DISPATCH'
+          description: |
+            Only include work orders that have the type of winery jobs in the provided list.
+
+            Support multiple types delimited by comma.
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetWorkOrdersSuccessResponse'
+              examples:
+                successResponseWithComposition:
+                  value:
+                    totalResults: 1000
+                    offset: 0
+                    limit: 10
+                    first: /vinx2/api/v7/operation/work-orders?offset=0&limit=10
+                    previous: null
+                    next: /vinx2/api/v7/operation/work-orders?offset=10&limit=10
+                    last: /vinx2/api/v7/operation/work-orders?offset=990&limit=10
+                    results:
+                      - id: 932032
+                        name: TWL-123
+                        assignedTo:
+                          id: 39203
+                          name: 'User, A'
+                          extId: null
+                        issuedBy:
+                          id: 39204
+                          name: 'User, B'
+                          extId: null
+                        status: READY
+                        scheduledTime: 164876284000
+                        summary: 'Bottling to A-SINGLE WINERY, user'
+                        jobs:
+                          - id: 2323
+                            type: WINERY
+                            jobNumber: 1
+                            status: ASSIGNED
+                            scheduledTime: 164876284000
+                            finishedTime: null
+                            operationType: TIRAGE
+                            link:
+                              href: '/vinx2/api/v7/operation/tirage/job:2323'
+                              rel: latest-version
+                              method: GET
+        default:
+          $ref: '#/components/responses/DefaultError'
+  '/tirage/{operationId}':
+    get:
+      summary: Get a tirage operation information in the system
+      description: |
+        This endpoint returns the completed or scheduled tirage operation associated with the id.
+
+        When scheduled operations is not completed, their data returned in this endpoint can be different because users can change the fields in the operation window after it's scheduled.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/OperationId'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TirageSuccessResponse'
+              example:
+                data:
+                  id: 1231
+                  workOrderNumber: TWL-123
+                  jobNumber: 1
+                  occurredTime: 1665013612000
+                  modifiedTime: 1665013612000
+                  operator:
+                    id: 39203
+                    name: 'User, A'
+                    extId: null
+                  reversed: false
+                  groupName: TIR100
+                  sourceWine:
+                    vessel: 66
+                    batch: 11CHBLRR
+                    designatedProduct:
+                      id: 625
+                      name: CHNAVPREM
+                      code: CHV
+                    productionYear: 2022
+                    winery:
+                      id: 3
+                      name: Winery B
+                      businessUnit: department 1
+                    wineryBuilding:
+                      id: 38293
+                      name: WB-1
+                  outVolume:
+                    value: 6000
+                    unit: gal
+                  loss:
+                    volume:
+                      value: 10
+                      unit: gal
+                    reason:
+                      id: 32342
+                      name: Bottling
+                  package:
+                    quantity:
+                      value: 100
+                      unit: units
+                    tirageItem:
+                      id: 93232
+                      name: 20TIRAGE
+                    tirageBatch: 10CHLEES
+                    totalPackagedVolume:
+                      value: 12000
+                      unit: gal
+        default:
+          $ref: '#/components/responses/DefaultError'
+    patch:
+      summary: Partially update fields in the tirage record
+      description: |
+        Provide functionality to update some fields in the tirage record.
+
+        Note, depending on the status of tirage operation, not all fields are allowed to be updated. Consult with Vintrace developers for your use case.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/OperationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: common-schemas.yaml#/components/schemas/PatchRequest
+            examples:
+              updateQuantityField:
+                value:
+                  - path: /package/quantity
+                    op: REPLACE
+                    value: 200
+              updateGroupNameField:
+                value:
+                  - path: /groupName
+                    op: REPLACE
+                    value: new group name
+      responses:
+        '204':
+          description: Update is successful
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+  /barrels-movements:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      summary: move barrels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveBarrelsRequest'
+            examples:
+              moveBarrelsInABarrelGroup:
+                value:
+                  occurredTime: 164876283628
+                  operator:
+                    id: 39203
+                  additionalInstructions: ''
+                  operatorNotes: operatorNotes
+                  documentIds:
+                    - 41
+                    - 40
+                  targetBatch: null
+                  movements:
+                    - vessel:
+                        id: 1
+                      newStorageAreas:
+                        - vesselToMove: barrel1
+                          storageArea:
+                            name: Area 51
+                          aisle: 2
+                          stack: Stack10
+                          toStack: Stack20
+                          positions:
+                            - level: 3
+                              orientation: LEFT
+                        - vesselToMove: barrel2
+                          storageArea:
+                            name: Area 52
+                          aisle: 3
+                          stack: Stack11
+                          toStack: Stack201
+                          positions:
+                            - level: 2
+                              orientation: LEFT
+              moveSingleBarrelGroup:
+                value:
+                  occurredTime: 164876283628
+                  operator:
+                    id: 39203
+                  additionalInstructions: ''
+                  operatorNotes: operatorNotes
+                  documentIds:
+                    - 41
+                    - 40
+                  targetBatch: null
+                  movements:
+                    vessel:
+                      id: 1
+                    newStorageAreas:
+                      - storageArea:
+                          name: Area 51
+                        aisle: 2
+                        stack: Stack10
+                        toStack: Stack20
+                        positions:
+                          - level: 3
+                            orientation: LEFT
+                      - storageArea:
+                          name: Area 52
+                        aisle: 3
+                        stack: Stack11
+                        toStack: Stack21
+                        positions:
+                          - level: 2
+                            orientation: LEFT
+              moveSingleBarrel:
+                value:
+                  occurredTime: 164876283628
+                  operator:
+                    id: 39203
+                  operatorNotes: operatorNotes
+                  documentIds:
+                    - 41
+                    - 40
+                  movements:
+                    - vessel:
+                        name: barrel
+                      newStorageAreas:
+                        - storageArea:
+                            name: Area 52
+                          aisle: 3
+                          stack: Stack11
+                          toStack: Stack21
+                          positions:
+                            - level: 2
+                              orientation: LEFT
+              moveBarrelToNewBatch:
+                value:
+                  occurredTime: 164876283628
+                  operator:
+                    id: 39203
+                  operatorNotes: operatorNotes
+                  documentIds:
+                    - 41
+                    - 40
+                  targetBatch: batch
+                  movements:
+                    - vessel:
+                        id: 123
+                      newStorageAreas:
+                        - storageArea:
+                            name: Area 52
+                          aisle: 3
+                          stack: Stack11
+                          toStack: Stack21
+                          positions:
+                            - level: 2
+                              orientation: LEFT
+              moveEmptyBarrel:
+                value:
+                  movements:
+                    - vessel:
+                        name: barrel
+                      newStorageAreas:
+                        - storageArea:
+                            name: Area 52
+                          aisle: 3
+                          stack: Stack11
+                          toStack: Stack21
+                          positions:
+                            - level: 2
+                              orientation: LEFT
+              moveEmptyBarrelGroup:
+                value:
+                  movements:
+                    - vessel:
+                        name: barrel group
+                      newStorageAreas:
+                        - storageArea:
+                            name: Area 51
+                          aisle: 2
+                          stack: Stack10
+                          toStack: Stack20
+                          positions:
+                            - level: 3
+                              orientation: LEFT
+                        - storageArea:
+                            name: Area 52
+                          aisle: 3
+                          stack: Stack11
+                          toStack: Stack21
+                          positions:
+                            - level: 2
+                              orientation: LEFT
+              moveEmptyBarrelGroupIndividualBarrel:
+                value:
+                  movements:
+                    - vessel:
+                        name: barrel group
+                      newStorageAreas:
+                        - vesselToMove: barrel1
+                          storageArea:
+                            name: Area 51
+                          aisle: 2
+                          stack: Stack10
+                          toStack: Stack20
+                          positions:
+                            - level: 3
+                              orientation: LEFT
+                        - vesselToMove: barrel2
+                          storageArea:
+                            name: Area 52
+                          aisle: 3
+                          stack: Stack11
+                          toStack: Stack201
+                          positions:
+                            - level: 2
+                              orientation: LEFT
+              multiMove:
+                value:
+                  occurredTime: 164876283628
+                  operator:
+                    id: 39203
+                  additionalInstructions: ''
+                  operatorNotes: operatorNotes
+                  documentIds:
+                    - 41
+                    - 40
+                  targetBatch: null
+                  movements:
+                    - vessel:
+                        id: 1
+                      newStorageAreas:
+                        - vesselToMove: barrel1
+                          storageArea:
+                            name: Area 51
+                          aisle: 2
+                          stack: Stack10
+                          toStack: Stack20
+                          positions:
+                            - level: 3
+                              orientation: LEFT
+                        - vesselToMove: barrel2
+                          storageArea:
+                            name: Area 52
+                          aisle: 3
+                          stack: Stack11
+                          toStack: Stack201
+                          positions:
+                            - level: 2
+                              orientation: LEFT
+                    - vessel:
+                        name: barrel group
+                      newStorageAreas:
+                        - vesselToMove: barrel1
+                          storageArea:
+                            name: Area 51
+                          aisle: 2
+                          stack: Stack10
+                          toStack: Stack20
+                          positions:
+                            - level: 3
+                              orientation: LEFT
+                        - vesselToMove: barrel2
+                          storageArea:
+                            name: Area 52
+                          aisle: 3
+                          stack: Stack11
+                          toStack: Stack201
+                          positions:
+                            - level: 2
+                              orientation: LEFT
+      responses:
+        '201':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /barrels-movements/2342
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MoveBarrelsResponse'
+              examples:
+                moveBarrelsInABarrelGroup:
+                  value:
+                    data:
+                      id: 1
+                      modifiedTime: 164876283628
+                      occurredTime: 164876283628
+                      operator:
+                        id: 39203
+                      additionalInstructions: ''
+                      operatorNotes: operatorNotes
+                      documentIds:
+                        - 41
+                        - 40
+                      targetBatch: null
+                      movements:
+                        - vessel:
+                            id: 1
+                          newStorageAreas:
+                            - vesselToMove: barrel1
+                              storageArea:
+                                name: Area 51
+                              aisle: 2
+                              stack: Stack10
+                              toStack: Stack20
+                              positions:
+                                - level: 3
+                                  orientation: LEFT
+                            - vesselToMove: barrel2
+                              storageArea:
+                                name: Area 52
+                              aisle: 3
+                              stack: Stack11
+                              toStack: Stack201
+                              positions:
+                                - level: 2
+                                  orientation: LEFT
+                moveSingleBarrelGroup:
+                  value:
+                    data:
+                      id: 1
+                      occurredTime: 164876283628
+                      modifiedTime: 164876283628
+                      operator:
+                        id: 39203
+                        name: 'User, A'
+                        extId: null
+                      movements:
+                        - vessel:
+                            id: 123
+                            name: barrel group
+                          newStorageAreas:
+                            - storageArea:
+                                id: 100
+                                name: Area 51
+                                code: Area51
+                              aisle: 2
+                              stack: Stack10
+                              toStack: Stack20
+                              positions:
+                                - level: 3
+                                  orientation: LEFT
+                            - storageArea:
+                                id: 101
+                                name: Area 52
+                                code: Area52
+                              aisle: 3
+                              stack: Stack11
+                              toStack: Stack21
+                              positions:
+                                - level: 2
+                                  orientation: LEFT
+                moveSingleBarrel:
+                  value:
+                    data:
+                      id: 1
+                      occurredTime: 164876283628
+                      modifiedTime: 164876283628
+                      operator:
+                        id: 39203
+                        name: 'User, A'
+                        extId: null
+                      movements:
+                        - vessel:
+                            id: 123
+                            name: barrel
+                          newStorageAreas:
+                            - storageArea:
+                                id: 101
+                                name: Area 52
+                                code: Area52
+                              aisle: 3
+                              stack: Stack11
+                              toStack: Stack21
+                              positions:
+                                - level: 2
+                                  orientation: LEFT
+                moveEmptyBarrel:
+                  value:
+                    data:
+                      dateOccurred: 164876283628
+                      operator:
+                        id: 39203
+                        name: 'User, A'
+                        extId: null
+                      movements:
+                        - vessel:
+                            id: 123
+                            name: barrel
+                          newStorageAreas:
+                            - storageArea:
+                                id: 101
+                                name: Area 52
+                                code: Area52
+                              aisle: 3
+                              stack: Stack11
+                              toStack: Stack21
+                              positions:
+                                - level: 2
+                                  orientation: LEFT
+                moveEmptyBarrelGroup:
+                  value:
+                    data:
+                      dateOccurred: 164876283628
+                      operator:
+                        id: 39203
+                        name: 'User, A'
+                        extId: null
+                      movements:
+                        - vessel:
+                            id: 123
+                            name: barrel group
+                          newStorageAreas:
+                            - storageArea:
+                                id: 100
+                                name: Area 51
+                                code: Area51
+                              aisle: 2
+                              stack: Stack10
+                              toStack: Stack20
+                              positions:
+                                - level: 3
+                                  orientation: LEFT
+                            - storageArea:
+                                id: 101
+                                name: Area 52
+                                code: Area52
+                              aisle: 3
+                              stack: Stack11
+                              toStack: Stack21
+                              positions:
+                                - level: 2
+                                  orientation: LEFT
+                moveEmptyBarrelGroupIndividualBarrel:
+                  value:
+                    data:
+                      dateOccurred: 164876283628
+                      operator:
+                        id: 39203
+                        name: 'User, A'
+                        extId: null
+                      movements:
+                        - vessel:
+                            id: 123
+                            name: barrel group
+                          newStorageAreas:
+                            - vesselToMove: barrel1
+                              storageArea:
+                                id: 100
+                                name: Area 51
+                                code: Area51
+                              aisle: 2
+                              stack: Stack10
+                              toStack: Stack20
+                              positions:
+                                - level: 3
+                                  orientation: LEFT
+                            - vesselToMove: barrel2
+                              storageArea:
+                                id: 101
+                                name: Area 52
+                                code: Area52
+                              aisle: 3
+                              stack: Stack11
+                              toStack: Stack201
+                              positions:
+                                - level: 2
+                                  orientation: LEFT
+                multiMove:
+                  value:
+                    data:
+                      occurredTime: 164876283628
+                      operator:
+                        id: 39203
+                      additionalInstructions: ''
+                      operatorNotes: operatorNotes
+                      documentIds:
+                        - 41
+                        - 40
+                      targetBatch: null
+                      movements:
+                        - vessel:
+                            id: 1
+                          newStorageAreas:
+                            - vesselToMove: barrel1
+                              storageArea:
+                                name: Area 51
+                              aisle: 2
+                              stack: Stack10
+                              toStack: Stack20
+                              positions:
+                                - level: 3
+                                  orientation: LEFT
+                            - vesselToMove: barrel2
+                              storageArea:
+                                name: Area 52
+                              aisle: 3
+                              stack: Stack11
+                              toStack: Stack201
+                              positions:
+                                - level: 2
+                                  orientation: LEFT
+                        - vessel:
+                            name: barrel group
+                          newStorageAreas:
+                            - vesselToMove: barrel1
+                              storageArea:
+                                name: Area 51
+                              aisle: 2
+                              stack: Stack10
+                              toStack: Stack20
+                              positions:
+                                - level: 3
+                                  orientation: LEFT
+                            - vesselToMove: barrel2
+                              storageArea:
+                                name: Area 52
+                              aisle: 3
+                              stack: Stack11
+                              toStack: Stack201
+                              positions:
+                                - level: 2
+                                  orientation: LEFT
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /wine-batches:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      summary: Get a list of wine batches in the system
+      description: Get the wine batches in the system
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: common-schemas.yaml#/components/parameters/VintraceEntityIds
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 'allocations,vessels'
+          description: 'By default, allocations and vessels won''t be included in the response unless requested using this query param'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetWineBatchSuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    totalResults: 1000
+                    offset: 0
+                    limit: 10
+                    first: /wine-batches?offset=0&limit=10
+                    previous: null
+                    next: /wine-batches?offset=10&limit=10
+                    last: /wine-batches?offset=990&limit=10
+                    results:
+                      - id: 571
+                        batchCode: test-batchCode
+                        batchNumber: test-batchNumber
+                        description: test
+                        productionYear: 2022
+                        owner:
+                          id: 1
+                          extId: O66253
+                          name: JX2 Winery
+                        grading:
+                          scaleId: 2
+                          scaleName: Wine
+                          valueId: 67
+                          valueName: A
+                        program:
+                          id: 33
+                          name: Premium Chardonnay
+                        designatedRegion:
+                          id: 32
+                          name: Napa Valley
+                        designatedSubRegion:
+                          id: 33
+                          name: SubA
+                        designatedVariety:
+                          id: 34
+                          name: Shiraz
+                        winery:
+                          id: 5
+                          name: My Winery
+                        category:
+                          id: 1
+                          name: Bulk Wine
+                        designatedProduct:
+                          id: 625
+                          name: CHNAVPREM
+                        costsTrackedPercentage: 100
+                        ageOfSpirits: test
+                        serviceOrder:
+                          id: 1234
+                          name: JX2 2023
+                        fractionType: FREE_RUN
+                        inactive: false
+                        vessels:
+                          - id: 1
+                            name: TANK_01
+                            type: TANK
+                            amount:
+                              value: 34
+                              unit: L
+                        allocations:
+                          - product:
+                              id: 625
+                              name: CHNAVPREM
+                              code: CHV
+                            vintage: 2021
+                            itemCode: 21CHAVPREM
+                            allocationVolume:
+                              value: 600
+                              unit: L
+                            allocationPercentageOfVessel: 100
+        default:
+          $ref: '#/components/responses/DefaultError'
+    post:
+      summary: Create a wine batch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWineBatchRequest'
+            examples:
+              createNewBatch:
+                value:
+                  batchCode: test-batchCode
+                  batchNumber: test-batchNumber
+                  description: test
+                  productionYear: 2022
+                  owner:
+                    id: 1
+                    name: JX2 Winery
+                  grading:
+                    scaleId: 2
+                    scaleName: Wine
+                    valueId: 67
+                    valueName: A
+                  program:
+                    id: 33
+                    name: Premium Chardonnay
+                  designatedRegion:
+                    name: Napa Valley
+                  designatedSubRegion:
+                    name: SubA
+                  designatedVariety:
+                    name: Shiraz
+                  winery:
+                    id: 5
+                    name: My Winery
+                  category:
+                    id: 1
+                    name: Bulk Wine
+                  designatedProduct:
+                    id: 625
+                    name: CHNAVPREM
+                  costsTrackedPercentage: 100
+                  ageOfSpirits: test
+                  serviceOrder:
+                    id: 1234
+                    name: JX2 2023
+                  fractionType: FREE_RUN
+      responses:
+        '201':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /wine-batches/123
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateWineBatchSuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    data:
+                      id: 571
+                      batchCode: test-batchCode
+                      batchNumber: test-batchNumber
+                      description: test
+                      productionYear: 2022
+                      owner:
+                        id: 1
+                        name: JX2 Winery
+                      grading:
+                        scaleId: 2
+                        scaleName: Wine
+                        valueId: 67
+                        valueName: A
+                      program:
+                        id: 33
+                        name: Premium Chardonnay
+                      designatedRegion:
+                        name: Napa Valley
+                      designatedSubRegion:
+                        name: SubA
+                      designatedVariety:
+                        name: Shiraz
+                      winery:
+                        id: 5
+                        name: My Winery
+                      category:
+                        id: 1
+                        name: Bulk Wine
+                      designatedProduct:
+                        id: 625
+                        name: CHNAVPREM
+                      costsTrackedPercentage: 100
+                      ageOfSpirits: test
+                      serviceOrder:
+                        id: 1234
+                        name: JX2 2023
+                      fractionType: FREE_RUN
+                      inactive: false
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /operation/documents:
+    put:
+      summary: Upload a file to an operation
+      description: This endpoint allows users to attach a document to a specified operation. The document will be associated with the operation and can be viewed later.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachDocumentsRequest'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachDocumentsSuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    documents:
+                      id: 12345
+                      name: delivery-docket.pdf
+                    process:
+                      id: 789
+                      type: DELIVERY
+        default:
+          $ref: '#/components/responses/DefaultError'
+components:
+  schemas:
+    GetShipmentsSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/ShipmentData'
+    ShipmentData:
+      description: This shipment object contains the data from the bulk dispatch operation and inter-winery dispatch operation.
+      type: object
+      properties:
+        id:
+          description: The unique internal identifier of this shipment generated by system
+          type: integer
+        workOrderNumber:
+          description: The associated work order number. Only set when the operation is scheduled in work order
+          type: string
+        jobNumber:
+          description: The job sequence on the work order for this shipment
+          type: string
+        shipmentNumber:
+          description: The unique business identifier of this shipment
+          type: string
+        type:
+          description: The type of the operation that triggers this shipment.
+          type: string
+          enum:
+            - BULK
+            - INTER_WINERY
+        source:
+          $ref: common-schemas.yaml#/components/schemas/Winery
+        destination:
+          $ref: '#/components/schemas/ShipmentDestination'
+        occurredTime:
+          description: The time when this shipment occurs. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+        modifiedTime:
+          description: The last modified time of this shipment. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+        wineDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShipmentWineDetails'
+        carrier:
+          description: The carrier that does the logistics
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        reference:
+          description: The reference number of this shipment
+          type: string
+        dispatchType:
+          description: The type of this shipment.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        freightCode:
+          description: The freight code of this shipment.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        reversed:
+          description: This flag indicates if the operation has been reversed.
+          type: boolean
+    ShipmentDestination:
+      description: This object represents the entity that's receiving the wine in dispatch operation.
+      properties:
+        winery:
+          $ref: common-schemas.yaml#/components/schemas/Winery
+        party:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+    ShipmentWineDetails:
+      description: Contains the details of wine that's dispatched
+      properties:
+        vessel:
+          description: The name of the vessel
+          type: string
+        batch:
+          description: The name of the batch. Deprecated. Use wineBatch.name instead
+          type: string
+          deprecated: true
+        wineBatch:
+          description: The details of the wine batch the wine in this vessel belongs to
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/WineBatchDetails
+        wineryBuilding:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        volume:
+          description: The volume that's been shipped
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        loss:
+          $ref: '#/components/schemas/WineTransferLoss'
+        bottlingDetails:
+          description: The extra details when the dispatch type is bottling
+          type: string
+        weight:
+          description: The weight of the wine
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        cost:
+          description: The cost of the batch at the operation time
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CostBreakdown
+        allocations:
+          description: The latest allocations of the wine
+          type: array
+          items:
+            allOf:
+              - $ref: common-schemas.yaml#/components/schemas/AllocationSlice
+        metrics:
+          description: The latest metrics of the wine
+          type: array
+          items:
+            allOf:
+              - $ref: common-schemas.yaml#/components/schemas/AnalysisResult
+        composition:
+          description: The composition of the wine
+          type: array
+          items:
+            $ref: '#/components/schemas/Composition'
+    HarvestMethod:
+      description: Was the fruit harvested by hand or machine?
+      type: string
+      enum:
+        - HAND
+        - MACHINE
+    DeliveryType:
+      description: Delivery method for the harvested fruit
+      type: string
+      enum:
+        - BINS
+        - TIPPER
+        - OTHER
+    PmsRate:
+      description: PMS (SO2) addition rate planned
+      type: object
+      properties:
+        id:
+          description: The unique identifier for the PMS rate.
+          type: integer
+        value:
+          description: The numeric value of the PMS (SO2) addition rate
+          type: number
+          format: double
+        unit:
+          description: The unit for the PMS (SO2) addition rate (e.g. 'ppm')
+          type: string
+    JobStatus:
+      description: The job status of the operation
+      type: string
+      enum:
+        - draft
+        - ready
+        - pending
+        - in progress
+        - submitted
+        - complete
+    GetBarrelTreatmentsSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/BarrelTreatmentData'
+    BarrelTreatmentData:
+      description: This object contains the data from the barrel treatment operation.
+      allOf:
+        - $ref: '#/components/schemas/ScheduleOperationDetails'
+      properties:
+        treatment:
+          $ref: '#/components/schemas/BarrelTreatmentType'
+        barrels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShipmentBarrelDetails'
+        totalWeight:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+        scale:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        carrier:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        party:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        source:
+          $ref: common-schemas.yaml#/components/schemas/Winery
+        reference:
+          description: The reference number of this treatment
+          type: string
+        bolCode:
+          description: The bill of lading code of this treatment
+          type: string
+        freightCode:
+          description: The freight code of this treatment.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+    BarrelTreatmentType:
+      description: Contains barrel treatment info.
+      properties:
+        id:
+          description: id of the barrel treatment definition
+          type: integer
+        name:
+          description: name of the barrel treatment definition
+          type: string
+        description:
+          description: description of the barrel treatment definition
+          type: string
+        barrelState:
+          $ref: '#/components/schemas/BarrelState'
+        bolRequired:
+          description: Require a Bill Of Lading be printed
+          type: boolean
+    ShipmentBarrelDetails:
+      description: Contains the details of the barrel that has been dispatched
+      properties:
+        id:
+          description: id of the barrel
+          type: integer
+        name:
+          description: name of the barrel
+          type: string
+        capacity:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+    BarrelState:
+      description: state of the barrel
+      type: string
+      enum:
+        - SOUSED
+        - WINE
+        - OFFLINE
+        - QC
+    CreateBookingSuccessResponse:
+      description: The response object of creating booking
+      properties:
+        data:
+          $ref: '#/components/schemas/Booking'
+    Booking:
+      type: object
+      required:
+        - bookingNumber
+        - block
+        - expectedTime
+        - owner
+        - vintage
+      properties:
+        id:
+          description: The unique identifier of this booking. Generated by vintrace.
+          type: integer
+        bookingNumber:
+          description: The human identifiable unique number for this booking.
+          type: string
+        bookedBy:
+          description: User who created/booked this fruit booking.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        winery:
+          description: The winery that the fruit is being delivered to.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+        block:
+          description: The block that the fruit will be picked from.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        grower:
+          description: The grower supplying the fruit.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        vineyard:
+          description: The vineyard the fruit originates from.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        variety:
+          description: Variety of the fruit being received.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        region:
+          description: Region/Sub AVA of the fruit being received.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        subRegion:
+          description: Sub region/Micro AVA of the fruit being received.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        appellations:
+          description: List of appellations associated with the fruit being received.
+          type: array
+          items:
+            type: string
+        vintage:
+          description: Vintage of the fruit being received.
+          type: integer
+        growerContract:
+          description: The grower contract linked to this booking.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        intendedProduct:
+          description: The product that the extracted fruit is destined for.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        expectedTime:
+          description: The booking time of the fruit receival. It's returned in epoch milliseconds.
+          type: integer
+          format: int64
+        expectedEndTime:
+          type: integer
+          format: int64
+          description: The expected end time of the receival. It's returned in epoch milliseconds.
+        expectedDurationInMinutes:
+          description: How long you expect the fruit receival to take in minutes.
+          type: integer
+        expectedQuantity:
+          description: The expected amount to be received against this load.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        bookingState:
+          $ref: '#/components/schemas/BookingState'
+        harvester:
+          description: The company or team harvesting the fruit.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        note:
+          description: Any notes / comments against the booking.
+          type: string
+        crusher:
+          description: The crusher or press that is planned to be used at extraction.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        owner:
+          description: The owner of the fruit (who you are receiving it for).
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        carrier:
+          description: The transporter of the fruit.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        receivingScales:
+          description: The scales to receive the fruit at.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        receivingVessel:
+          description: The vessel that the extracted fruit is destined for.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        harvestMethod:
+          allOf:
+            - $ref: '#/components/schemas/HarvestMethod'
+        referenceNumber:
+          type: string
+          description: External or internal reference number associated with the booking.
+        pickTime:
+          type: integer
+          format: int64
+          description: The time the fruit is expected to be picked. It's returned in epoch milliseconds.
+        program:
+          description: Program associated with the booking.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        intendedUse:
+          description: 'Intended use of the fruit to be extracted. e.g., table, still or sparkling.'
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        numberOfLoads:
+          type: integer
+          description: Planned number of loads expected.
+        areaEstimate:
+          type: number
+          format: double
+          description: Estimated area (e.g. hectares or acres) represented by this booking.
+        deliveryType:
+          description: Delivery type for the harvested fruit.
+          allOf:
+            - $ref: '#/components/schemas/DeliveryType'
+        pmsRate:
+          description: The PMS (SO2) addition rate planned.
+          allOf:
+            - $ref: '#/components/schemas/PmsRate'
+        serviceOrder:
+          description: Service order or work reference tied to this booking.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        grading:
+          $ref: common-schemas.yaml#/components/schemas/GradingValue
+        inactive:
+          type: boolean
+          description: Indicates if this booking is inactive.
+        bulkBooking:
+          type: boolean
+          description: Indicates if this is a bulk booking.
+        lastBooking:
+          type: boolean
+          description: Indicates if this is the final booking for the block.
+    BookingDeactivationResponse:
+      description: The response object when successfully deactivating the booking record
+      properties:
+        data:
+          type: object
+          properties:
+            inactive:
+              description: The inactive flag indicates that booking is deactivated or not
+              type: boolean
+    CreateFruitIntakeSuccessResponse:
+      description: The response object when successfully creating a fruit intake
+      properties:
+        data:
+          $ref: '#/components/schemas/FruitIntake'
+    FruitIntake:
+      type: object
+      required:
+        - net
+        - vintage
+        - scale
+        - dateOccurred
+      properties:
+        id:
+          type: integer
+        block:
+          description: The block that the fruit was picked from. Mandatory if booking number is not provided
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        vintage:
+          description: vintage of the fruit being received
+          type: integer
+        bookingNumber:
+          description: the booking related to this fruit intake. Mandatory if block is not provided
+          type: string
+        owner:
+          description: The owner of the fruit (who it was received for)
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        dateOccurred:
+          description: The date and time that the fruit was received
+          type: integer
+          format: int64
+        timeIn:
+          description: The date and time that the truck was weighed in (gross)
+          type: integer
+          format: int64
+        timeOut:
+          description: The date and time that the truck was weighed out (tare)
+          type: integer
+          format: int64
+        weighTag:
+          description: The unique identifier for this weight event in vintrace
+          type: string
+        externalWeighTag:
+          description: Third-party weigh tag reference number
+          type: string
+        winery:
+          description: The winery that the fruit was received at
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+        scale:
+          description: The scale that weighed the fruit
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        gross:
+          description: The gross weight of the fruit for this weight event
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        tare:
+          description: The tare weight of the truck/bins for this weight event
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        net:
+          description: The net weight of the fruit for this weight event
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        jobStatus:
+          allOf:
+            - $ref: '#/components/schemas/JobStatus'
+        intendedProduct:
+          description: The vessel that the extracted fruit is destined for
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        unitPrice:
+          description: The unit price and rate for this fruit
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        metrics:
+          description: an array of analysis results for the received fruit
+          type: array
+          items:
+            type: object
+            allOf:
+              - $ref: common-schemas.yaml#/components/schemas/AnalysisResult
+        harvestMethod:
+          allOf:
+            - $ref: '#/components/schemas/HarvestMethod'
+        weighMasterText:
+          description: The official weigh master name
+          type: string
+        carrier:
+          description: The transporter of the fruit
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        consignmentNote:
+          description: This is the Con. note / Shipping reference for the fruit that was received.
+          type: string
+        driverName:
+          description: This is the driver name of the truck.
+          type: string
+        lastLoad:
+          description: A flag that indicates to the system that this is the last load for the booking.
+          type: boolean
+        operatorNotes:
+          description: These are the operator notes as shown on the Notes tab of the completed operation.
+          type: string
+        truckRegistration:
+          description: This is the license plate number of the truck.
+          type: string
+    FruitIntakeRequest:
+      description: Request object for creating fruit intake
+      allOf:
+        - $ref: '#/components/schemas/FruitIntake'
+      properties:
+        linkEarliestBooking:
+          type: boolean
+          description: A flag that indicates the system to automatically link this intake to earliest booking with 0 intake for same block in the same day when a booking number is not provided
+          default: false
+    UpdateFruitIntakePricing:
+      description: Object for the pricing in fruit intake
+      properties:
+        gross:
+          description: The gross weight of the fruit for this weight event
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        tare:
+          description: The tare weight of the truck/bins for this weight event
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        net:
+          description: The net weight of the fruit for this weight event
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        unitPrice:
+          description: The unit price and rate for this fruit
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+    UpdateFruitIntakePricingResponse:
+      description: Response for updating the pricing in fruit intake
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/UpdateFruitIntakePricing'
+    UpdateMetrics:
+      description: Object for updating metrics
+      properties:
+        metrics:
+          description: an array of analysis results for the received fruit
+          type: array
+          items:
+            type: object
+            allOf:
+              - $ref: common-schemas.yaml#/components/schemas/AnalysisResult
+    UpdateMetricsResponse:
+      description: Response object for updating metrics
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/UpdateMetrics'
+    BulkIntakeRequest:
+      type: object
+      required:
+        - occurredTime
+        - wineDetails
+        - composition
+        - cost
+      properties:
+        occurredTime:
+          description: The occurrence time of this intake
+          type: integer
+          format: int64
+        wineDetails:
+          $ref: '#/components/schemas/WineDetailsInRequest'
+        composition:
+          type: array
+          items:
+            $ref: '#/components/schemas/Composition'
+        cost:
+          $ref: '#/components/schemas/Cost'
+        deliveryDetails:
+          $ref: '#/components/schemas/DeliveryDetails'
+        metrics:
+          description: an array of analysis results for the received fruit
+          type: array
+          items:
+            type: object
+            allOf:
+              - $ref: common-schemas.yaml#/components/schemas/AnalysisResult
+    BulkIntake:
+      type: object
+      required:
+        - occurredTime
+        - wineDetails
+        - composition
+        - cost
+      properties:
+        id:
+          type: integer
+        occurredTime:
+          description: The occurrence time of this intake
+          type: integer
+          format: int64
+        reversed:
+          description: Indicate if the record has been reversed
+          type: boolean
+        wineDetails:
+          $ref: '#/components/schemas/WineDetails'
+        composition:
+          type: array
+          items:
+            $ref: '#/components/schemas/Composition'
+        cost:
+          $ref: '#/components/schemas/Cost'
+        deliveryDetails:
+          $ref: '#/components/schemas/DeliveryDetails'
+        metrics:
+          description: an array of analysis results for the received fruit
+          type: array
+          items:
+            type: object
+            allOf:
+              - $ref: common-schemas.yaml#/components/schemas/AnalysisResult
+    WineDetails:
+      type: object
+      required:
+        - batch
+        - volume
+        - productType
+        - fractionType
+        - fermentState
+        - beverageType
+      properties:
+        vessel:
+          description: The destination vessel that the wine is allocated to.
+          type: string
+        batch:
+          description: the batch that the vessel belongs to
+          type: string
+        ownership:
+          description: The ownership of this wine. Can contain multiple ownerships.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ownership'
+        volume:
+          description: The total volume of this intake.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        fractionType:
+          $ref: '#/components/schemas/FractionType'
+        fermentState:
+          $ref: '#/components/schemas/FermentState'
+        malolacticState:
+          $ref: '#/components/schemas/FermentState'
+        beverageType:
+          description: 'The beverage type. E.g Red, Rose or Sparkling'
+          type: string
+        productType:
+          $ref: '#/components/schemas/ProductType'
+        reference:
+          description: The reference of this wine
+          type: string
+        yieldRate:
+          description: The yield rate of the wine
+          type: number
+        batchOwner:
+          description: The owner of the batch
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+    WineDetailsInRequest:
+      allOf:
+        - $ref: '#/components/schemas/WineDetails'
+      properties:
+        virtualVessel:
+          description: |
+            This flag indicates whether the received wine will be allocated to a virtual vessel in system. 
+
+            When this field is true, vessel is not required.
+          type: boolean
+          default: false
+        winery:
+          description: The winery that owns the liquid and batch. Mandatory if virtualVessel flag is true.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+    Ownership:
+      type: object
+      properties:
+        owner:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        percentage:
+          type: number
+          format: double
+    FractionType:
+      type: string
+      enum:
+        - FREE_RUN
+        - PRESSINGS
+        - MUST
+        - LEES
+        - UNKNOWN
+        - COMBINED
+        - CONDENSATE
+        - PRESSINGS_LIGHT
+        - PRESSINGS_HEAVY
+        - DRAININGS
+        - PRESSINGS_OVERNIGHT
+        - SAIGNEE
+    ProductType:
+      description: The product type. Default to LIQUID if not provided.
+      type: string
+      default: LIQUID
+      enum:
+        - LIQUID
+        - NEUTRAL_CONDENSATE
+    FermentState:
+      type: string
+      enum:
+        - UNFERMENTED
+        - STARTED
+        - STOPPED
+    BookingState:
+      description: The booking state.
+      type: string
+      enum:
+        - Scheduled
+        - Underway
+        - Completed
+        - Confirmed
+    Composition:
+      type: object
+      required:
+        - percentage
+        - vintage
+      properties:
+        percentage:
+          type: number
+          format: double
+        weighting:
+          type: number
+          format: double
+        vintage:
+          type: integer
+        block:
+          description: The block. Mandatory if the other details like region and variety are not provided.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        region:
+          description: Mandatory if block is not provided
+          allOf:
+            - $ref: '#/components/schemas/CodeableEntity'
+        subRegion:
+          description: Mandatory if block is not provided
+          allOf:
+            - $ref: '#/components/schemas/CodeableEntity'
+        variety:
+          description: Mandatory if block is not provided
+          allOf:
+            - $ref: '#/components/schemas/CodeableEntity'
+        componentVolume:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+    CodeableEntity:
+      description: Represents an entity at vintrace that contains a code
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+      properties:
+        code:
+          description: The code associated with this entity
+          type: string
+    Cost:
+      type: object
+      properties:
+        amount:
+          description: The numerical value of the cost amount
+          type: number
+          format: double
+        rate:
+          description: The rate of the cost amount. e.g Total
+          type: string
+          enum:
+            - TOTAL
+            - PER_LITRE
+            - PER_GALLON_US
+        freight:
+          description: The cost of freight
+          type: number
+          format: double
+        ttbDetails:
+          description: The TTB details for this wine as of the report date. Mandatory for customer in USA.
+          allOf:
+            - $ref: '#/components/schemas/TaxDetails'
+    TaxDetails:
+      description: 'Bond, tax state and tax class information'
+      type: object
+      required:
+        - taxState
+      properties:
+        bond:
+          description: The bonded wine facility the wine is stored at
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        taxState:
+          description: The bonded status of the wine
+          type: string
+          enum:
+            - BONDED
+            - TAXPAID
+            - NON_DECLARED
+        taxClass:
+          description: The TTB tax class for the wine
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+          properties:
+            federalName:
+              description: The federal tax class name
+              type: string
+            stateName:
+              description: The state tax class name
+              type: string
+        alcoholPercentage:
+          description: The alcohol percentage of the liquid
+          type: number
+          format: double
+    DeliveryDetails:
+      properties:
+        purchaseOrder:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        receivedFrom:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        carrier:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        shippingRefNo:
+          description: The reference number of this shipment
+          type: string
+        truckNo:
+          description: The truck number
+          type: string
+        driverName:
+          description: The driver name
+          type: string
+        sealNo:
+          description: The seal number
+          type: string
+        compartmentNo:
+          description: The compartment number
+          type: string
+        cipNo:
+          description: The CIP number
+          type: string
+        container:
+          description: The container
+          type: string
+        customsEntryNumber:
+          description: The custom entry number
+          type: string
+        purchaseReference:
+          description: Purchase reference
+          type: string
+        deliveryState:
+          description: The state of this liquid delivery
+          type: string
+          enum:
+            - IN_TRANSIT
+            - ON_DOCK
+            - RECEIVED
+    CreateBulkIntakeSuccessResponse:
+      description: The response object when successfully creating a fruit intake
+      properties:
+        data:
+          $ref: '#/components/schemas/BulkIntake'
+    GetBulkIntakesSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/BulkIntake'
+    GetTrialBlendsSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/TrialBlend'
+    TrialBlend:
+      description: Trial blend object.
+      properties:
+        reference:
+          description: The internal reference number that uniquely identifies this trial blend
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        year:
+          type: string
+        winery:
+          description: The winery of this trial blend
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+        operator:
+          description: The operator who created this trial blend in system.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        trialDate:
+          description: The time when this trial blend is recorded in system. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+        modifiedTime:
+          description: The last modified time of this trial blend
+          type: integer
+          format: int64
+        cost:
+          description: The calculated cost in dollar of this trial blend
+          type: number
+          format: double
+        amount:
+          description: The amount of this trial blend
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        sampleVolume:
+          description: The volume of the sample in this trial blend
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        status:
+          description: The status of this trial blend
+          type: string
+          enum:
+            - DRAFT
+            - FINAL
+            - REQUEST_APPROVAL
+            - APPROVED
+        composition:
+          description: The composition of this trial blend
+          type: object
+          properties:
+            summary:
+              type: array
+              items:
+                $ref: '#/components/schemas/CompositionSummary'
+    CompositionSummary:
+      type: object
+      properties:
+        type:
+          description: The type that the composition is summarised by. E.g vintage
+          type: string
+        elements:
+          description: The collection that contains the summarised data
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                description: The name of this composition element.
+                type: string
+              percentage:
+                description: The percentage of this composition type.
+                type: number
+                format: double
+    GetWorkOrdersSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/WorkOrder'
+    WorkOrder:
+      description: Represents a work order
+      required:
+        - id
+        - name
+        - issuedBy
+        - status
+        - scheduledTime
+      properties:
+        id:
+          description: The unique identifier of this work order. Generated by vintrace
+          type: integer
+        name:
+          description: The human readable work order number.
+          type: string
+        assignedTo:
+          description: The user whom this work order is assigned to execute
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        issuedBy:
+          description: The user who creates this work order
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        status:
+          description: The status of this work order
+          type: string
+          enum:
+            - DRAFT
+            - READY
+            - IN_PROGRESS
+            - SUBMITTED
+            - COMPLETED
+            - CANCELLED
+            - REPLAY
+        scheduledTime:
+          description: When this work order is scheduled for
+          type: integer
+          format: int64
+        summary:
+          description: The work order summary
+          type: string
+        jobs:
+          description: The work order jobs scheduled in this work order
+          type: array
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/WineryWorkOrderJob'
+    WorkOrderJob:
+      description: Represents a base model of work order job that has the basic fields of a job
+      required:
+        - id
+        - type
+        - jobNumber
+        - scheduledTime
+        - status
+      properties:
+        id:
+          description: The unique identifier of this job. Generated by vintrace
+          type: integer
+        type:
+          description: The type of this work order job
+          type: string
+          enum:
+            - WINERY
+            - MRP
+        jobNumber:
+          description: The sequence of this job in the work order
+          type: number
+          format: double
+        status:
+          description: The status of this job
+          type: string
+          enum:
+            - INCOMPLETE
+            - ASSIGNED
+            - COMPLETED
+            - ROLLBACK_REPLAY
+            - IN_PROGRESS
+            - PENDING_APPROVAL
+        scheduledTime:
+          description: When this work order job is scheduled for.
+          type: integer
+          format: int64
+        finishedTime:
+          description: When this work order job is finished.
+          type: integer
+          format: int64
+        link:
+          description: Contain the link to get details of this job
+          allOf:
+            - $ref: '#/components/schemas/ResourceLink'
+    WineryWorkOrderJob:
+      description: 'Represents the winery operation that can be added to work order such as bulk intake, tirage and so on.'
+      allOf:
+        - $ref: '#/components/schemas/WorkOrderJob'
+        - properties:
+            operationType:
+              description: The type of this winery job
+              type: string
+    ResourceLink:
+      description: Contains the information of a hyper link to the resource
+      properties:
+        href:
+          description: Contains the absolute or relative hyperlink to the resource
+          type: string
+        rel:
+          description: Contains a text that describes what this entity is
+          type: string
+        method:
+          description: Contains the HTTP method that should be used to access this related resource
+          type: string
+    TirageSuccessResponse:
+      description: The response object for tirage operation
+      properties:
+        data:
+          $ref: '#/components/schemas/Tirage'
+    ScheduleOperationDetails:
+      description: An object that contains basic details of operation. Designed for extending.
+      type: object
+      properties:
+        id:
+          description: The id of this operation. This field can be null when this operation scheduled in work order is not completed yet.
+          type: integer
+        workOrderNumber:
+          description: The work order number in which this operation is scheduled.
+          type: string
+          example: TWL-123
+        jobNumber:
+          description: The job number of this operation in the scheduled work order.
+          type: integer
+          example: 1
+        occurredTime:
+          description: |
+            The time when this operation occurs. Time is returned in epoch milliseconds.
+
+            This field can contain a future date when the operation is scheduled in a work order.
+          type: integer
+          format: int64
+        modifiedTime:
+          description: |
+            The last modified time of this operation. Time is returned in epoch milliseconds
+
+            This field can be null when the operation hasn't occurred.
+          type: integer
+          format: int64
+        operator:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        reversed:
+          description: The flag that indicates if this operation has been reversed
+          type: boolean
+    Tirage:
+      description: The object that contains details of a tirage operation
+      allOf:
+        - $ref: '#/components/schemas/ScheduleOperationDetails'
+      properties:
+        groupName:
+          description: The group name of produced bottles
+          type: string
+        sourceWine:
+          $ref: '#/components/schemas/TirageSourceWineDetails'
+        outVolume:
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        loss:
+          $ref: '#/components/schemas/WineTransferLoss'
+        package:
+          $ref: '#/components/schemas/TiragePackageDetails'
+    WineTransferLoss:
+      description: An object that contains the details of wine loss during transfer
+      type: object
+      properties:
+        volume:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+        reason:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+    TirageSourceWineDetails:
+      description: The source where the wines are drew off
+      type: object
+      properties:
+        vessel:
+          description: The name of the vessel
+          type: string
+        batch:
+          description: The batch that contains the vessel
+          type: string
+        designatedProduct:
+          description: The designated product of the source batch
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        productionYear:
+          description: The production year of the source batch
+          type: string
+        winery:
+          $ref: common-schemas.yaml#/components/schemas/Winery
+        wineryBuilding:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+    TiragePackageDetails:
+      description: The object that contains the Tirage/Packing details.
+      type: object
+      properties:
+        quantity:
+          description: The quantity that's been packaged
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        tirageItem:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        tirageBatch:
+          type: string
+        totalPackagedVolume:
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+    MoveBarrelsRequest:
+      description: Request object for move barrels
+      allOf:
+        - $ref: '#/components/schemas/MoveBarrels'
+    MoveBarrelsResponse:
+      description: Response object for move barrels
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/MoveBarrelsResponseData'
+    MoveBarrelsResponseData:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/MoveBarrels'
+      properties:
+        id:
+          description: |
+            The unique identifier of this resource. It is generated by vintrace internally. 
+            Only used for operation task.
+          type: integer
+        modifiedTime:
+          description: |
+            The last modified time of this operation. Time is returned in epoch milliseconds. 
+            Only used for operation task.
+          type: integer
+          format: int64
+    MoveBarrels:
+      type: object
+      required:
+        - movements
+      properties:
+        userActions:
+          x-internal: true
+          type: array
+          items:
+            type: string
+            x-sl-internally-excluded: true
+            x-sl-error-message: You do not have permission to view this reference
+        occurredTime:
+          description: Defaults to the current system time if not provided.
+          type: integer
+          format: int64
+        operator:
+          description: The initiator of this action. Defaults to the current system user if not provided.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        operatorNotes:
+          description: the notes of the operator (ignored when moving empty barrels).
+          type: string
+        documentIds:
+          description: the document ids of this operation (ignored when moving an empty barrels).
+          type: array
+          items:
+            type: integer
+        targetBatch:
+          description: The batch that the vessel change to
+          type: string
+        additionalInstructions:
+          description: The additional instructions
+          type: string
+        movements:
+          type: array
+          items:
+            type: object
+            properties:
+              vessel:
+                description: barrel or barrel group
+                allOf:
+                  - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+              newStorageAreas:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NewDestinationStorageArea'
+    NewDestinationStorageArea:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/StackCoordinates
+      properties:
+        vesselToMove:
+          description: Only available when fixed barrel coords system policy and feature are enabled
+          type: string
+    WineBatchData:
+      type: object
+      properties:
+        id:
+          description: The unique internal identifier of this wine batch generated by system
+          type: integer
+          readOnly: true
+        batchCode:
+          description: The code for this batch. Defaults to auto code if not provided.
+          type: string
+        batchNumber:
+          description: The number for this batch.
+          type: string
+        description:
+          description: The description for this batch.
+          type: string
+        productionYear:
+          description: The vintage for this batch. Defaults to the DEFAULT_VINTAGE in setting if not provided.
+          type: integer
+        owner:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        grading:
+          $ref: common-schemas.yaml#/components/schemas/GradingValue
+        program:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        designatedRegion:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        designatedSubRegion:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        designatedVariety:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        winery:
+          $ref: common-schemas.yaml#/components/schemas/Winery
+        category:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        designatedProduct:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        costsTrackedPercentage:
+          description: The costs tacked (%) for this batch.
+          type: number
+          format: double
+          default: 100
+        ageOfSpirits:
+          description: The age of spirits for this batch.
+          type: string
+        serviceOrder:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        fractionType:
+          $ref: '#/components/schemas/FractionType'
+        inactive:
+          type: boolean
+          default: false
+        vessels:
+          description: List of vessels where the batch hold liquid
+          readOnly: true
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              type:
+                description: The vessel type
+                type: string
+                enum:
+                  - TANK
+                  - BIN
+                  - BARREL
+                  - BARREL_GROUP
+                  - BIN_GROUP
+                  - PRESS
+                  - TANKER
+              amount:
+                $ref: common-schemas.yaml#/components/schemas/Measurement
+        allocations:
+          description: The latest allocations of the wine batch
+          readOnly: true
+          type: array
+          items:
+            $ref: common-schemas.yaml#/components/schemas/AllocationSlice
+    GetWineBatchSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/WineBatchData'
+    CreateWineBatchSuccessResponse:
+      description: The response object when successfully creating a batch
+      properties:
+        data:
+          $ref: '#/components/schemas/WineBatchData'
+    CreateWineBatchRequest:
+      description: Request object for creating wine batch
+      required:
+        - batchCode
+        - vintage
+        - winery
+        - owner
+      allOf:
+        - $ref: '#/components/schemas/WineBatchData'
+    AttachDocumentsRequest:
+      description: Request object for attaching documents to a process
+      properties:
+        processId:
+          description: The unique identifier for the process
+          type: integer
+        documentIds:
+          description: The unique identifiers for the documents
+          type: array
+          items:
+            type: integer
+    AttachDocumentsSuccessResponse:
+      description: The response object when successfully uploading documents
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+          description: A list of document objects
+        process:
+          type: object
+          description: Represents the process associated with the documents
+          properties:
+            id:
+              type: integer
+              description: The unique identifier of the process
+            type:
+              type: string
+              enum:
+                - EXTRACTION
+                - BLEND
+                - TRIAL_BLEND
+                - LIQUID_TRANSFER
+                - DELIVERY
+                - SAMPLING
+                - START_FERMENT
+                - STOP_FERMENT
+                - MEASUREMENT
+                - ANALYSIS
+                - ADDITION
+                - BATCHCREATE
+                - RACKING
+                - RACK_AND_RETURN
+                - RACK_TO_BARREL_GROUP
+                - PACKAGING_RUN
+                - PRODUCT_TREATMENT
+                - EQUIPMENT_TREATMENT
+                - PRESS_CYCLE
+                - CREATE_STOCK
+                - TASTING_NOTE
+                - IMPORT_COMPOSITION
+                - LIQUIDBATCHCREATE
+                - BREAK_AND_TOP
+                - TOPPING
+                - MOVE_TO_BATCH
+                - TASK
+                - BULK_DISPATCH
+                - RESURRECT
+                - CHANGE_OWNER
+                - BULK_INTAKE
+                - BARREL_TREATMENT
+                - REVERSE_BLEND
+                - INTAKE_CORRECTION
+                - REVERSE_EXTRACTION
+                - FIXUP
+                - NEW_PACKAGING_RUN
+                - NEW_BULK_DISPATCH
+                - TIRAGE
+                - RIDDLING
+                - TIRAGE_ADMIN
+                - MULTI_TRANSFER
+                - MULTI_TOPPING
+                - MULTI_ADDITION
+                - BIN_TRANSFER_BLEND
+                - BLEND_TRANSFER
+                - INTER_WINERY_BULK_DISPATCH
+              description: The type of the winery process
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Refer to https://support.vintrace.com/hc/en-us/articles/4407443037711-Manage-and-create-API-tokens for more info'
+  parameters:
+    CorrelationId:
+      name: correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional unique identifier associated with the transaction
+      example: d308faac-66e1-47df-a9ff-fbe61b4e8974
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The unique identifier of this booking. It accepts the id generated by vintrace or the unique booking number stored in the record
+      examples:
+        vintrace-generated-id:
+          value: '1232342'
+        external-id:
+          value: 'ext:ABC32423'
+    FruitIntakeId:
+      name: fruitIntakeId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The unique identifier of this fruit intake. It accepts the id generated by vintrace or the external weigh tag provided by external party.
+      examples:
+        vintrace-generated-id:
+          value: '1232342'
+        external-id:
+          value: 'ext:TE-123-21'
+    VintraceEntityId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: The unique identifier of this resource. It is generated by vintrace internally
+      examples:
+        vintrace-generated-id:
+          value: 1232342
+    OperationId:
+      name: operationId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The unique identifier for this resource. It accepts the winery process id or the associated job id if it's scheduled in the work order
+      examples:
+        process-id:
+          value: '39203242'
+        work-order-job-id:
+          value: 'job:12321'
+    PaginationLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 10
+        example: 10
+      description: Sets limit for maximum number of results in a paginated response
+    PaginationOffset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        example: 0
+        default: 0
+      description: Sets offset for the results in a paginated response
+    ModifiedSince:
+      name: modifiedSince
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+        example: 1650431615057
+      description: Only return records that are modified after the suppplied time
+    ModifiedBefore:
+      name: modifiedBefore
+      in: query
+      required: false
+      schema:
+        type: number
+        format: int64
+        example: 164876283628
+      description: Only return records that are modified before the supplied time.
+  responses:
+    DefaultError:
+      description: Unexpected error
+      headers:
+        correlation-id:
+          description: Unique identifier associated with the transaction
+          schema:
+            type: string
+            format: uuid
+      content:
+        application/json:
+          schema:
+            $ref: common-schemas.yaml#/components/schemas/BaseErrorRoot
+          examples:
+            badRequest (400):
+              value:
+                errors:
+                  - code: '123'
+                    message: Invalid data
+                    detail: Some data are invalid
+            notAuthorized (401):
+              value:
+                errors:
+                  - code: '23432'
+                    message: Token is not provided
+                    detail: Token must be provided
+            forbidden (403):
+              value:
+                errors:
+                  - code: '123'
+                    message: Permission not allowed
+                    detail: User must have permission to perform this operation
+            notFound (404):
+              value:
+                errors:
+                  - code: '123'
+                    message: Resource not found
+                    detail: 'Record with id: 2342 is not found.'
+            conflict (409):
+              value:
+                errors:
+                  - code: '123'
+                    message: Conflict
+                    detail: 'Multiple records with provided id: 2342 are found.'
+            preconditionFailed (422):
+              value:
+                errors:
+                  - code: '123'
+                    message: Unprocessable Content
+                    details: User confirmation is required
