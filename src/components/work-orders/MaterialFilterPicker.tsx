@@ -27,7 +27,11 @@ const ALL = "__all__";
 
 const box: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "var(--surface)" };
 const filterBtn = (active: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: "1px solid var(--border)", background: active ? "var(--wine-primary)" : "transparent", color: active ? "var(--surface-raised)" : "var(--text-secondary)" });
-const rowStyle = (active: boolean): React.CSSProperties => ({ display: "flex", alignItems: "center", gap: 8, fontSize: 14, padding: "7px 8px", cursor: "pointer", minHeight: 36, borderRadius: "var(--radius-sm)", background: active ? "var(--surface-raised)" : "transparent", borderLeft: `3px solid ${active ? "var(--wine-primary)" : "transparent"}`, borderTop: "none", borderRight: "none", borderBottom: "none", fontWeight: active ? 600 : 400, textAlign: "left", width: "100%" });
+// Row: name + family stacked on the LEFT (uses vertical space for long names without collision), on-hand
+// pinned RIGHT (uses the panel's horizontal space instead of cramming everything left). `flexShrink: 0` is
+// load-bearing — the scroll container is a flex COLUMN, so without it the browser compresses rows below
+// their content height (instead of scrolling) and wrapped two-line names overlap the next row.
+const rowStyle = (active: boolean): React.CSSProperties => ({ display: "flex", flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0, fontSize: 14, padding: "8px 10px", cursor: "pointer", minHeight: 40, borderRadius: "var(--radius-sm)", background: active ? "var(--surface-raised)" : "transparent", borderLeft: `3px solid ${active ? "var(--wine-primary)" : "transparent"}`, borderTop: "none", borderRight: "none", borderBottom: "none", textAlign: "left", width: "100%" });
 
 const fmtOnHand = (o: MaterialPickerOption) => (o.onHand == null ? "" : `${Number(o.onHand).toLocaleString()}${o.unit ? ` ${o.unit}` : ""} on hand`);
 
@@ -117,13 +121,20 @@ export function MaterialFilterPicker({
         {filtered.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 4px" }}>No matching materials.</div>
         ) : (
-          filtered.map((o) => (
-            <button key={o.id} type="button" style={rowStyle(o.id === value)} onClick={() => onChange(o.id)}>
-              <span>{o.label}</span>
-              {activeFamily === ALL ? <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {builtinSubLabel(o.kind)}</span> : null}
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{fmtOnHand(o)}</span>
-            </button>
-          ))
+          filtered.map((o) => {
+            const onHand = fmtOnHand(o);
+            // Only show the family under the name when on "All" (a family chip already names the rest).
+            const family = activeFamily === ALL ? builtinSubLabel(o.kind) : null;
+            return (
+              <button key={o.id} type="button" style={rowStyle(o.id === value)} onClick={() => onChange(o.id)}>
+                <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, flex: "1 1 auto" }}>
+                  <span style={{ fontWeight: o.id === value ? 600 : 500, lineHeight: 1.3 }}>{o.label}</span>
+                  {family ? <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.3 }}>{family}</span> : null}
+                </span>
+                {onHand ? <span style={{ marginLeft: "auto", flexShrink: 0, paddingLeft: 8, fontSize: 12, color: "var(--text-muted)", textAlign: "right", lineHeight: 1.3 }}>{onHand}</span> : null}
+              </button>
+            );
+          })
         )}
       </div>
     </div>

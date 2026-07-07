@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { blockToken, normalizeToken, disambiguate } from "@/lib/lot/code";
-import { getActiveTemplateSpec, renderLotCode, renderBlendLotCode } from "@/lib/lot/naming-template";
+import { renderLotCode, renderBlendLotCode, BUILTIN_DEFAULT_SPEC, type NamingTemplateSpec } from "@/lib/lot/naming-template";
+import { requireTenantId } from "@/lib/tenant/context";
 
 // Server-side lot-code assignment: compose the base human code (pure, from code.ts) and
 // disambiguate it against existing lot codes via the DB. Takes a prisma client OR a
@@ -8,6 +9,33 @@ import { getActiveTemplateSpec, renderLotCode, renderBlendLotCode } from "@/lib/
 // No "server-only" so the bottling/reversal path and scripts can call it too.
 
 type Db = PrismaClient | Prisma.TransactionClient;
+
+/**
+ * Resolve the tenant's active naming spec (server-only — lives here, not in the pure/client-safe
+ * naming-template.ts). Reads the tenant's default (isDefault, not archived); falls back to the
+ * built-in default when the tenant can't be resolved or has no row — so output never changes and
+ * never leaks across tenants. Explicit tenantId filter (defense-in-depth on top of RLS/extension).
+ */
+async function getActiveTemplateSpec(db: Db): Promise<NamingTemplateSpec> {
+  let tenantId: string;
+  try {
+    tenantId = requireTenantId();
+  } catch {
+    return BUILTIN_DEFAULT_SPEC;
+  }
+  const tpl = await db.namingTemplate.findFirst({
+    where: { tenantId, isDefault: true, archivedAt: null },
+    select: { id: true, currentVersion: true },
+  });
+  if (!tpl) return BUILTIN_DEFAULT_SPEC;
+  const version = await db.namingTemplateVersion.findFirst({
+    where: { tenantId, templateId: tpl.id, version: tpl.currentVersion },
+    select: { spec: true },
+  });
+  const spec = version?.spec as unknown as NamingTemplateSpec | undefined;
+  if (!spec || (spec.kind !== "builtin-default" && spec.kind !== "custom")) return BUILTIN_DEFAULT_SPEC;
+  return spec;
+}
 
 export type GenerateLotCodeInput = {
   vintage: number;

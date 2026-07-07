@@ -1,0 +1,22 @@
+---
+id: PARITY-VT-2c928d4c
+group: setup-and-admin
+incumbent: vintrace
+capability: Admeo Bio Systems Y15 Integration
+status: gap
+ourApproach: ""
+aiNativeEdge: ""
+evidence: vintrace-docs/setup-and-admin/integrations-labs-and-tanks/admeo-bio-systems-y15-integration.md
+tags:
+  - parity
+---
+
+# PARITY-VT-2c928d4c — Admeo Bio Systems Y15 Integration
+
+> [!info] Parity (vintrace) — gap — not yet built.
+
+- **Incumbent:** vintrace
+- **Our approach:** —
+- **AI-native edge:** —
+- **Evidence:** `vintrace-docs/setup-and-admin/integrations-labs-and-tanks/admeo-bio-systems-y15-integration.md`
+- **Source:** `vintrace-docs/setup-and-admin/integrations-labs-and-tanks/admeo-bio-systems-y15-integration.md` — see [[assistant-coverage]] / [[system-map]]

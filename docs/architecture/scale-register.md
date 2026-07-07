@@ -139,5 +139,22 @@ TEMPLATE — copy this block for each new decision:
   move to a `NEEDS_CALCULATION` lock + background regen — recorded here, deliberately deferred.
 - **Status:** 🟢 (built + proven by the `verify:ttb` AMEND-1 3-period chain; single-winery scale)
 
+## Identity presentation layer — cross-identifier search + rename history (Phase 1)
+- **What:** `LotIdentifier` (search index + Phase-3 re-import key), append-only `LotCodeEvent` (rename
+  history), per-tenant versioned `NamingTemplate(+Version)`. Cross-identifier search unions three
+  bounded, tenant-scoped, indexed queries (Lot by code/displayName, `LotCodeEvent` by from/toValue,
+  `LotIdentifier` by value) and merges in memory — resolves to `id` first, never joins on `code`.
+- **Fine until:** a single tenant accumulates a very large rename history or identifier set, or a lot
+  picker issues the search on every keystroke without debounce.
+- **What breaks at scale:** (a) historical-code search scanning `LotCodeEvent` — bounded by
+  `@@index([tenantId, toValue])` + `@@index([tenantId, fromValue])`; (b) identifier search — bounded by
+  `@@index([tenantId, value])`; (c) the 3-query fan-out is `take limit*3` per source then merged, so it
+  never returns unbounded rows; (d) `LotCodeEvent` grows append-only forever (one row per rename) — fine
+  at winery scale (renames are rare), but a pathological rename loop would bloat it.
+- **Tripwire:** a lot picker calling `searchLotsByIdentifier` unthrottled; the `(tenantId, toValue)` /
+  `(tenantId, value)` indexes dropped; a `WHERE code =`/`lotCode =` join appearing in
+  `src/lib/{ledger,cost,transform,blend,compliance}` (caught by `verify:naming`'s static scan).
+- **Status:** 🟢 (built + guarded by `verify:naming`; winery-scale volumes)
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

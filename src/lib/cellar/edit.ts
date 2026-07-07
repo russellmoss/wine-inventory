@@ -52,6 +52,20 @@ async function loadNeutralOp(operationId: number) {
   }
   if (op.correctedBy) throw new ActionError("That operation was already voided — it's shown marked, not editable.");
   if (op.treatments.length === 0) throw new ActionError("Nothing to edit on this operation.");
+  // A WO-sourced op is the immutable record of a completed task (WORKORDER-1) and its attempt row
+  // references it via an ON DELETE RESTRICT FK. Hard-deleting it here would (a) crash on that FK and
+  // (b) desync the work order's audit trail; editing it would diverge from what the task recorded.
+  // Route the operator to the work order's reject flow (plan-024 reverseOperationCore) instead.
+  const attempt = await prisma.workOrderTaskAttempt.findFirst({
+    where: { operationId: op.id },
+    select: { task: { select: { workOrder: { select: { number: true } } } } },
+  });
+  if (attempt) {
+    const n = attempt.task?.workOrder?.number;
+    throw new ActionError(
+      `This ${op.type.toLowerCase()} was logged by work order${n != null ? ` #${n}` : ""}. To change or remove it, reject that work order's task — editing or deleting it from the timeline would break the work order's record.`,
+    );
+  }
   return op;
 }
 

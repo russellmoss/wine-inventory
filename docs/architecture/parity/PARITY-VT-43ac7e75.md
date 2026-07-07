@@ -1,0 +1,22 @@
+---
+id: PARITY-VT-43ac7e75
+group: setup-and-admin
+incumbent: vintrace
+capability: Importing Sub-Regions
+status: gap
+ourApproach: ""
+aiNativeEdge: ""
+evidence: vintrace-docs/setup-and-admin/configuration/importing-sub-regions.md
+tags:
+  - parity
+---
+
+# PARITY-VT-43ac7e75 — Importing Sub-Regions
+
+> [!info] Parity (vintrace) — gap — not yet built.
+
+- **Incumbent:** vintrace
+- **Our approach:** —
+- **AI-native edge:** —
+- **Evidence:** `vintrace-docs/setup-and-admin/configuration/importing-sub-regions.md`
+- **Source:** `vintrace-docs/setup-and-admin/configuration/importing-sub-regions.md` — see [[assistant-coverage]] / [[system-map]]

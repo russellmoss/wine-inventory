@@ -82,3 +82,9 @@ test/e2e/.auth/
 .claude/workflows/
 .claude/skills/health-check/
 .claude/skills/health-remediate/
+
+# vintrace docs corpus: keep the Markdown, ignore the raw API dumps
+vintrace-docs/_raw/
+
+# innovint docs corpus: keep the Markdown, ignore the raw page HTML
+innovint-docs/_raw/

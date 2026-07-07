@@ -57,13 +57,17 @@ type SnapshotEntry = {
 // The read helpers accept an optional client so they can run inside a caller's tx (Phase 9 A2: the WO
 // completion runs the whole rack in ONE runLedgerWrite). Default to the module prisma for the standalone
 // callers (rackVesselCore, revertTransferCore).
-type DbClient = Prisma.TransactionClient | typeof prisma;
+// Base TransactionClient handle — NOT `Prisma.TransactionClient | typeof prisma`: the extended-vs-base
+// union comparison blows TS's type-instantiation depth once the wider graph is large (Phase-1 Surprise
+// 1 class; recurs after the Phase-2 + parity merge). The module `prisma` is structurally assignable and
+// auto-injects tenantId at runtime regardless.
+type DbClient = Prisma.TransactionClient;
 
-async function loadVesselLots(vesselId: string, client: DbClient = prisma) {
+async function loadVesselLots(vesselId: string, client: DbClient = prisma as unknown as DbClient) {
   return client.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
 }
 
-async function resolveNames(varietyIds: string[], vineyardIds: string[], client: DbClient = prisma) {
+async function resolveNames(varietyIds: string[], vineyardIds: string[], client: DbClient = prisma as unknown as DbClient) {
   const [vars, vys] = await Promise.all([
     client.variety.findMany({ where: { id: { in: [...new Set(varietyIds)] } }, select: { id: true, name: true } }),
     client.vineyard.findMany({ where: { id: { in: [...new Set(vineyardIds)] } }, select: { id: true, name: true } }),

@@ -44,6 +44,22 @@ state is *derived* from the ledger, not stored loosely.
 - `reverse.ts` + `reverse-guard.ts` — the **universal Undo**: `reverseOperationCore` dispatches an undo for *every* operation family (rack, bottle, sparkling, crush, press, saignée, blend), unwinding in LIFO order with guardrails.
 - `math.ts`, `vocabulary.ts` — volume math + naming.
 
+### 2a. Identity presentation layer (Phase 1) — `src/lib/lot/`
+Separates durable identity from the human label (NAMING-1/2). `Lot.id` is the ONLY opaque identity and
+carries all lineage/cost/ledger FKs; `Lot.code` is a **mutable, unique-per-tenant** human label and
+`Lot.displayName` a **mutable, NON-unique** free-text label (presented as `displayName ?? code`).
+- `naming-template.ts` — a per-tenant, versioned tokenized `NamingTemplate`(+`Version`) renderer; the
+  built-in default **delegates to `buildLotCode`** (byte-for-byte parity). `generate.ts` renders new
+  codes through the tenant's active template.
+- `rename.ts` — `renameLotCore`/`setDisplayNameCore`/`swapLotCodes`: append an **`LotCodeEvent`** (the
+  single source of truth for rename history) and **never rewrite `LotOperationLine` snapshots** (the
+  moat vs. incumbents). A `code` collision **offers** a disambiguation (never silently applies it).
+- `identify.ts` — `LotIdentifier` (external/source ids + the current-code convenience row) + cross-
+  identifier search that resolves **to `id` first** (current code, displayName, historical codes via
+  `LotCodeEvent`, legacy ids) — nothing downstream joins on the mutable `code`.
+- Guarded by `npm run verify:naming` (NAMING-1/2). New tenant-scoped tables `LotIdentifier`,
+  `LotCodeEvent`, `NamingTemplate`, `NamingTemplateVersion` (composite `(tenantId, refId)` FKs in raw SQL).
+
 ### 3. Transforms (fruit → wine) — `src/lib/transform/`
 The operations that change a lot's identity: `crush-core.ts` (`crushLotCore`), `press-core.ts`
 (`pressLotCore`), and `reverse.ts` (`reverseTransformCore`) which restores stock + lineage on undo.
