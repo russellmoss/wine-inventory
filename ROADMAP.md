@@ -757,9 +757,10 @@ any known identifier. **Honors:** NAMING-1, NAMING-2, D3.
 ### Remediation additions (FIX_RUNBOOK / incumbent teardown) — index
 > These teardown-driven additions live in the phase family where the implementer will look; this is the
 > one-line index so they stay auditable together. Source: `FIX_RUNBOOK.md` + `analysis/incumbent-teardown/SYNTHESIS.md` §B.2.
-- **Identity presentation layer** → Phase 12.5 above (FIX Phase 1).
-- **Migration kernel + two-track seed/archive + reconciliation pack** → Phase 13 rescope below (FIX Phase 3/4).
-- **Bond model, TRANSFER_IN_BOND, per-bond scoping, tax-class event, tax-paid terminal, AMEND-1** → Phase 14 rescope below (FIX Phase 2).
+- **Identity presentation layer** → Phase 12.5 above (FIX Phase 1). **✅ SHIPPED.**
+- **Bond model, TRANSFER_IN_BOND, per-bond scoping, tax-class event, tax-paid terminal, AMEND-1** → Phase 14 rescope below (FIX Phase 2). **✅ SHIPPED.**
+- **Migration kernel + two-track seed/archive + reconciliation pack** → Phase 13 rescope below (FIX Phase 3, then **Phase 7 Vintrace adapter first / Phase 4 InnoVint second** per v2.3). Prereqs (identity + bond) now cleared; **unblocked.**
+- **Living registers (parity + AI-native) + Vintrace v7 API KB** → `docs/architecture/parity/` (997 corpus gap-stubs, `verify:parity`), the AI-native core→tool guard (`verify:ai-native` + `TRIP-AI-CORE`), and `vintrace-docs/api/` (mapped v7 specs + migration strategy). **✅ SHIPPED.** The parity register is now the **instrument for tracking incumbent parity** — closing parity = burning down its gap list; a parity-gap sweep against the newly-mapped Vintrace capabilities (`purchase-orders`, `trial-blends`, `barrel-treatments`, `fruit/bulk-intakes`, `dispatch`) is a live TODO.
 - **New operations to name** (FIX Phase 5/6): `CHANGE_OWNERSHIP`, `TRANSFER_IN_BOND`, one-action in-place
   lot split, lees sub-lot, barrel-group (+ break/combine), recurring WOs + first-class task-skip, guarded
   metadata edit + fold-preserving reverse-and-rebook composite, generic `CUSTOM` op + `DRAIN`/`DELESTAGE`/`COLD_STAB`.
@@ -781,34 +782,51 @@ any known identifier. **Honors:** NAMING-1, NAMING-2, D3.
 > - **Near-term lead: 14 Compliance → 8 Cost → 15 Accounting.** Compliance (TTB) is ledger-derived
 >   (buildable now), table stakes for any US winery, and — with the correction/undo wedge — part
 >   of what makes the product worth switching to, i.e. what *lands* the first US design partner.
-> - **13 Migration comes LATER than its wedge status implies** — it is **gated on having a real
->   Vintrace/InnoVint export to build against**, which you only get once a design partner shares
->   theirs. Build it against real data, not guesses. (Virtuous order: compliance + undo + polish →
->   land a design partner → get their export → build migration.)
+> - **13 Migration** *(v2.3: gate largely CLEARED)* — was gated on "a real Vintrace/InnoVint export to
+>   build against, which you only get once a design partner shares theirs." That gate has loosened: warm
+>   Vintrace partners (Macari, Sparkling Pointe) are lined up, and the **Vintrace v7 API + sandbox** are
+>   already mapped (`vintrace-docs/api/`) — so you can build/dry-run the importer against the **sandbox now**
+>   and against the partners' real data at winter onboarding. Still "build against real data, not guesses" —
+>   the real data is just closer than this note assumed. (Virtuous order holds: compliance + undo + polish →
+>   partner → their export → migration; the API/sandbox lets migration prep start in parallel.)
 > - All of the above still come **ahead of** 9 (work orders), 10 (assistant), 11 (labor).
 > - **Note:** the Bhutan dogfood tenant is not a US filer, so TTB can be *built + tested on
 >   synthetic US-shaped data now* but *validated* only with the first US design-partner winery.
 > Numbers = grouping, not sequence.
 
-## Phase 13 — Migration & onboarding (import from Vintrace / InnoVint)  ⬜  *(GTM wedge — high priority)*
-**Depends on:** **Phase 12.5** (identity presentation layer — `LotIdentifier`/`NamingTemplate`/rename/search)
-and **Phase 14** (Bond entity + line-level bond) — both are **hard prerequisites** (the seed adopts
-incumbent codes and must place a multi-bond winery's positions on the right bond). Chronological order in
-this file is not a contract; these dependencies are.
+## Phase 13 — Migration & onboarding (import from Vintrace / InnoVint)  ⬜  *(GTM wedge — high priority; prereqs now CLEARED)*
+> **v2.3 update (Vintrace-first).** Both hard prerequisites are now **shipped**: identity presentation
+> (Phase 12.5) and the **Bond + tax-class model** (shipped as FIX_RUNBOOK Phase 2). So this phase is
+> **unblocked.** The incumbent order **flips to Vintrace-first** (FIX_RUNBOOK Decision 6): the warm design
+> partners (Macari, Sparkling Pointe) are on Vintrace, and the **Vintrace v7 REST API is mapped** with a
+> sandbox (`vintrace-docs/api/`, strategy in `vintrace-docs/api/MIGRATION-STRATEGY.md`). Build the Vintrace
+> adapter first (API = current-state seed; **CSV report exports = the history/TTB/finished-goods/materials/
+> chemistry gaps the API does not expose**); calibrate against **`sandbox.vintrace.net/vinx2demo`** and the
+> partners' own authorized data. InnoVint stays synthetic-until-a-partner as the **second** adapter.
+**Depends on:** ~~**Phase 12.5**~~ ✅ + ~~**Phase 14** (Bond entity + line-level bond)~~ ✅ — **both shipped**;
+this phase is unblocked. (Original rationale: the seed adopts incumbent codes and must place a multi-bond
+winery's positions on the right bond.) Chronological order in this file is not a contract; these
+dependencies are — and they're now met.
 **Goal:** Get a winery **off Vintrace/InnoVint and live in days** via a migration *kernel* + thin
 per-incumbent adapters. The lead wedge — attacks the incumbents' #1 pain (painful, months-long onboarding)
 and the documented churn-with-exit-friction (wineries leave Vintrace and complain it obstructs exit).
 Rescoped from the incumbent teardown (`FIX_RUNBOOK.md` Phase 3/4; council 3.1/3.2/3.3/3.9).
 **Domain requirements (durable):**
-- **Incumbent-agnostic migration kernel, InnoVint-first, thin adapters.** Build one shared spine
-  (external-file legacy-seed + `LotIdentifier` idempotent keys + unit reconciliation + saved mappings +
-  reconciliation pack + coverage-gap tracking) with thin per-incumbent adapters (InnoVint the lighthouse;
-  vintrace second). Prove it end-to-end on a **synthetic InnoVint fixture bundle** committed to the repo —
-  no trial account, no design partner during build.
-- **Customer-authorized data import, never scraping:** ingest the winery's own exports (Vintrace CSV — mind
-  the ~1,000-record/file cap; InnoVint CSV/XLSX) and, where the customer provides a token and ToS permits,
-  the vendor REST API. Legal path: the winery owns its facts; verify each vendor's competitive-use ToS via
-  the customer's signed agreement (see `analysis/incumbent-teardown/SYNTHESIS.md`).
+- **Incumbent-agnostic migration kernel, Vintrace-first, thin adapters** *(v2.3: was InnoVint-first)*. Build
+  one shared spine (external legacy-seed + `LotIdentifier` idempotent keys + unit reconciliation + saved
+  mappings + reconciliation pack + coverage-gap tracking) with thin per-incumbent adapters. **Vintrace is the
+  lighthouse** (real v7 REST API + sandbox, warm partners); **InnoVint is second** (synthetic fixture bundle
+  until a friendly InnoVint winery appears). Prove the kernel end-to-end against the Vintrace **sandbox**
+  first.
+- **Customer-authorized data import, never scraping:** ingest the winery's own data. For **Vintrace**, the
+  primary source is the **v7 REST API** (`vintrace-docs/api/` — token-auth, sandbox at
+  `sandbox.vintrace.net/vinx2demo`) for the current-state seed, **plus CSV report exports** for what the API
+  does not expose (operation history, filed TTB reports, finished-goods on-hand, materials catalog,
+  chemistry, actual harvest picks) — mind the ~1,000-record/file CSV cap. For **InnoVint**, CSV/XLSX exports.
+  **Unit normalization is importer policy** (Vintrace `Measurement.unit` is a free string, no enum — extends
+  D8 gallons/lbs/°Brix → liters). Legal path: the winery owns its facts; the customer's own token/exports
+  only — never a competitor trial account (FIX_RUNBOOK Decision 5). See
+  `vintrace-docs/api/MIGRATION-STRATEGY.md` + `analysis/incumbent-teardown/SYNTHESIS.md`.
 - **Two-track seed/archive model (MIGRATE-1 — the load-bearing correctness fix).** Emit **exactly one
   migration `SEED`** per lot/vessel that hard-sets current volume/cost/tax-class/bond at cutover — the ONLY
   legacy-sourced data that participates in the fold. Ingest legacy operational history into a **read-only,
@@ -820,7 +838,9 @@ Rescoped from the incumbent teardown (`FIX_RUNBOOK.md` Phase 3/4; council 3.1/3.
   tenant) until an operator signs off on a reconciliation pack (by-vessel occupancy, by-lot volume, cost by
   lot, finished-goods counts, TTB totals, chemistry counts, unmapped entities, inferred/partial lineage,
   with named-exception acceptance). **Publish is blocked while any reconciliation delta is unresolved.**
-  Gate publish to admin/owner.
+  Gate publish to admin/owner. **Tie the pack to the incumbent's OWN report output** (e.g. Vintrace's
+  vessel-details / TTB report CSVs) so the winemaker can see imported balances match their existing system
+  line-for-line — this is the onboarding-trust moment that wins the switch.
 - **Deterministic saved mappings, AI suggest-only** — connector-specific templates + saved per-tenant
   mappings are the primary path; AI *suggests* a mapping for unmatched columns but **never auto-commits**.
   Emit row-level parse diagnostics.
@@ -831,11 +851,19 @@ Rescoped from the incumbent teardown (`FIX_RUNBOOK.md` Phase 3/4; council 3.1/3.
   display-unit setting. Extends the Phase 6 per-winery unit setting.
 - **Coverage gaps are explicit:** import what the model covers, snapshot the rest labeled inferred/partial,
   track unmapped source fields so nothing is silently dropped.
-**Exit:** a synthetic (then a real, customer-provided) InnoVint export imports cleanly under a Demo tenant —
-preflight → mapping → draft → reconciliation → sign-off — current balances seeded (fold correct), legacy
-history archived read-only + stitched, codes adopted verbatim, publish gated on sign-off. **Honors:** D8,
-D11, D16, MIGRATE-1, NAMING-1, BOND-1.
-**Implementation: deferred to `/plan` (FIX_RUNBOOK Phase 3 kernel + Phase 4 InnoVint adapter).**
+**Exit:** *(v2.3)* a real **Vintrace** winery (Macari / Sparkling Pointe) imports cleanly against the
+**sandbox** first, then their production — preflight → mapping → draft → reconciliation → sign-off —
+current balances seeded from the v7 API (fold correct), legacy history + TTB archived read-only from CSV
+exports + stitched, codes adopted verbatim, publish gated on sign-off, reconciliation tied to Vintrace's
+own reports. (InnoVint synthetic-fixture path follows as the second adapter.) **Honors:** D8, D11, D16,
+MIGRATE-1, NAMING-1, BOND-1.
+**Implementation: deferred to `/plan` (FIX_RUNBOOK Phase 3 kernel + Phase 7 Vintrace adapter [now first];
+Phase 4 InnoVint second). Beachhead (v2.3 council): lead with **Macari** (standard estate) to prove the
+adapter first; **Sparkling Pointe second** (sparkling = an edge case that must not distort the V1 migration
+model, and winter is peak complexity for a sparkling house); Carlton Winemakers Studio (alternating
+proprietorship) later → Phase 24, gated on the now-shipped bond model. Build against the Vintrace sandbox +
+frozen partner extracts, not live systems; claim "opening balances + queryable archived history," not
+"seamless."**
 
 ## Phase 14 — Compliance & reporting (TTB, excise, state/DTC)  🟦 *5120.17 + 5000.24 excise + filing-deadline reminders shipped; state/DTC remaining*  *(table stakes — high priority)*
 > **v1 shipped (plan 025):** TTB F 5120.17 **Part I §A + §B**, all 6 tax classes, gallons + Part X,
