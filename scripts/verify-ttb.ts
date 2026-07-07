@@ -21,6 +21,7 @@ import { executeBottling } from "@/lib/bottling/run";
 import { recordLossCore } from "@/lib/cellar/loss";
 import { removeTaxpaidCore } from "@/lib/compliance/removal-core";
 import { removeBottledCore } from "@/lib/compliance/bottled-removal-core";
+import { returnToBondCore } from "@/lib/compliance/return-to-bond-core";
 import { generateReport, markReportFiled } from "@/lib/compliance/generate";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { fillTtbPdf } from "@/lib/compliance/fill-pdf";
@@ -46,8 +47,10 @@ async function scrub() {
   // Delete the synthetic tenant's rows in FK-safe order (owner client bypasses RLS).
   await runAsSystem(async (db) => {
     const t = TENANT;
-    await db.complianceReport.deleteMany({ where: { tenantId: t } });
+    await db.complianceReport.deleteMany({ where: { tenantId: t } }); // references bond → delete first
     await db.complianceProfile.deleteMany({ where: { tenantId: t } });
+    await db.bond.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.changeOfTaxClassEvent.deleteMany({ where: { tenantId: t } }).catch(() => {});
     // Cost artifacts + the Phase-15 accounting outbox reference bottling runs / snapshots / ops via
     // RESTRICT FKs (bottling freezes a BottlingCostSnapshot, so a run can't be deleted while its
     // snapshot stands). Delete them FIRST, in child→parent order, or the scrub hits P2003 on a prior
@@ -78,6 +81,8 @@ async function scrub() {
     await db.vesselLot.deleteMany({ where: { tenantId: t } });
     await db.lotVineyard.deleteMany({ where: { tenantId: t } });
     await db.lotHarvestSource.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await db.lotIdentifier.deleteMany({ where: { tenantId: t } }).catch(() => {}); // Phase 1 FK → lot
+    await db.lotCodeEvent.deleteMany({ where: { tenantId: t } }).catch(() => {});
     await db.lot.deleteMany({ where: { tenantId: t } });
     await db.vessel.deleteMany({ where: { tenantId: t } });
     await db.location.deleteMany({ where: { tenantId: t } });
@@ -112,13 +117,118 @@ async function seedLot(code: string, vesselId: string, volumeL: number, observed
   return lot.id;
 }
 
+// ─────────────────────────── AMEND-1 multi-period chain (V4 i–iii) ───────────────────────────
+// A dedicated synthetic tenant, three consecutive FILED monthly periods on one lot. Appending a
+// BACKDATED op into the earliest FILED period must (i) flip EVERY later report to NEEDS_AMENDMENT,
+// (ii) keep the carry-forward chaining through the marked reports (a marked P2 still carries its
+// last-filed onHandEnd — the A2 "sharpest catch"), and (iii) once P1/P2 are re-filed AMENDED, P3's
+// begin picks up the corrected upstream onHandEnd.
+async function verifyAmendChain() {
+  const T = "org_zz_amend_synth";
+  const gal = (fold: { cells: { section: string; line: number; column: string; gallons: number }[] }) =>
+    fold.cells.find((c) => c.section === "A" && c.line === 1 && c.column === "A_LE16")?.gallons ?? 0;
+  const storedEnd = async (reportId: string) => {
+    const r = await prisma.complianceReport.findUnique({ where: { id: reportId }, select: { onHandEnd: true } });
+    const cells = (r!.onHandEnd as unknown as { section: string; column: string; gallons: number }[]) ?? [];
+    return cells.find((c) => c.section === "A" && c.column === "A_LE16")?.gallons ?? 0;
+  };
+
+  console.log("\nAMEND-1 chain: scrubbing + seeding a 3-period tenant…");
+  await runAsSystem((db) => db.organization.upsert({ where: { id: T }, update: {}, create: { id: T, name: "ZZ AMEND Synthetic", slug: T } }));
+  await runAsSystem(async (db) => {
+    await db.complianceReport.deleteMany({ where: { tenantId: T } });
+    await db.bond.deleteMany({ where: { tenantId: T } }).catch(() => {});
+    await db.analysisReading.deleteMany({ where: { tenantId: T } }).catch(() => {});
+    await db.analysisPanel.deleteMany({ where: { tenantId: T } }).catch(() => {});
+    await db.changeOfTaxClassEvent.deleteMany({ where: { tenantId: T } }).catch(() => {});
+    await db.lotOperationLine.deleteMany({ where: { tenantId: T } });
+    await db.lotOperation.deleteMany({ where: { tenantId: T } });
+    await db.vesselLot.deleteMany({ where: { tenantId: T } });
+    await db.lotIdentifier.deleteMany({ where: { tenantId: T } }).catch(() => {});
+    await db.lotCodeEvent.deleteMany({ where: { tenantId: T } }).catch(() => {});
+    await db.lot.deleteMany({ where: { tenantId: T } });
+    await db.vessel.deleteMany({ where: { tenantId: T } });
+  });
+
+  await runAsTenant(T, async () => {
+    await prisma.bond.create({ data: { registryNumber: "BWN-AMD-0001", isPrimary: true } });
+    const v = await prisma.vessel.create({ data: { code: "AMD-T1", type: "TANK", capacityL: 5000, isActive: true }, select: { id: true } });
+    // Seed 2000 L class-a before P1 (April), with an ABV so it classifies cleanly (no filing blocker).
+    const lot = await prisma.lot.create({ data: { code: "AMD-CAB-2025", form: "WINE", vintageYear: 2025 }, select: { id: true, code: true } });
+    const seedAt = new Date(Date.UTC(2026, 3, 15));
+    await runLedgerWrite((tx) =>
+      writeLotOperation(tx, {
+        type: "SEED",
+        lines: [
+          { lotId: lot.id, vesselId: v.id, deltaL: 2000 },
+          { lotId: lot.id, vesselId: null, deltaL: -2000, reason: "seed" },
+        ] as LedgerLine[],
+        actorUserId: ACTOR.actorUserId, enteredBy: ACTOR.actorEmail, observedAt: seedAt,
+        lotCodes: new Map([[lot.id, lot.code]]), vesselCodes: new Map([[v.id, "AMD-T1"]]), capacityByVessel: new Map(),
+      }),
+    );
+    const panel = await prisma.analysisPanel.create({ data: { lotId: lot.id, observedAt: seedAt, enteredByEmail: ACTOR.actorEmail }, select: { id: true } });
+    await prisma.analysisReading.create({ data: { panelId: panel.id, analyte: "ALCOHOL", value: 13.5, unit: "% ABV" } });
+
+    // A balanced LOSS of `v` liters at `at` (backdate-able) — the chain's per-period on-hand changer.
+    const loss = (at: Date, liters: number) =>
+      runLedgerWrite((tx) =>
+        writeLotOperation(tx, {
+          type: "LOSS",
+          lines: [
+            { lotId: lot.id, vesselId: v.id, deltaL: -liters },
+            { lotId: lot.id, vesselId: null, deltaL: liters, reason: "loss" },
+          ] as LedgerLine[],
+          actorUserId: ACTOR.actorUserId, enteredBy: ACTOR.actorEmail, observedAt: at,
+          lotCodes: new Map([[lot.id, lot.code]]), vesselCodes: new Map([[v.id, "AMD-T1"]]), capacityByVessel: new Map(),
+        }),
+      );
+
+    const period = (m: number) => ({ start: new Date(Date.UTC(2026, m - 1, 1)), end: new Date(Date.UTC(2026, m, 0, 23, 59, 59, 999)) });
+    const P1 = period(5), P2 = period(6), P3 = period(7); // May / June / July 2026
+
+    // Each period loses 100 L, then files. Carry-forward: P1 end 1900 → P2 begin 1900 → end 1800 → P3 begin 1800 → end 1700.
+    await loss(new Date(Date.UTC(2026, 4, 10)), 100);
+    const g1 = await generateReport(T, { periodStart: P1.start, periodEnd: P1.end }); await markReportFiled(g1.reportId, ACTOR.actorEmail);
+    await loss(new Date(Date.UTC(2026, 5, 10)), 100);
+    const g2 = await generateReport(T, { periodStart: P2.start, periodEnd: P2.end }); await markReportFiled(g2.reportId, ACTOR.actorEmail);
+    await loss(new Date(Date.UTC(2026, 6, 10)), 100);
+    const g3 = await generateReport(T, { periodStart: P3.start, periodEnd: P3.end }); await markReportFiled(g3.reportId, ACTOR.actorEmail);
+    const p2End = await storedEnd(g2.reportId); // P2's last-filed onHandEnd (≈1800 L in gallons)
+    assert(p2End > 0, `AMEND-1 chain: P1→P2→P3 filed with carry-forward (P2 onHandEnd = ${p2End} gal)`);
+
+    // (i) Append a BACKDATED loss into the FILED P1 (May) → cascade marks P1, P2, P3.
+    await loss(new Date(Date.UTC(2026, 4, 20)), 50);
+    const statuses = await prisma.complianceReport.findMany({
+      where: { id: { in: [g1.reportId, g2.reportId, g3.reportId] } }, select: { id: true, status: true },
+    });
+    assert(statuses.every((s) => s.status === "NEEDS_AMENDMENT"), "AMEND-1 (i): a backdated op into filed P1 flips P1, P2 AND P3 to NEEDS_AMENDMENT");
+
+    // (ii) Regenerate P3 (no re-file yet): its begin must still read P2's LAST-FILED onHandEnd — the
+    // carry-forward reads FILED OR NEEDS_AMENDMENT, so a marked P2 doesn't break the chain (A2).
+    const p3draft = await generateReport(T, { periodStart: P3.start, periodEnd: P3.end, amendsReportId: g3.reportId });
+    assert(Math.abs(gal(p3draft.fold) - p2End) < 0.01, `AMEND-1 (ii): P3 begin still chains through the marked P2 (${gal(p3draft.fold)} == P2 ${p2End}), not P1`);
+
+    // (iii) Re-file P1 then P2 as AMENDED; regenerate P3 → its begin now picks up the CORRECTED P2 end.
+    const a1 = await generateReport(T, { periodStart: P1.start, periodEnd: P1.end, amendsReportId: g1.reportId }); await markReportFiled(a1.reportId, ACTOR.actorEmail);
+    const a2 = await generateReport(T, { periodStart: P2.start, periodEnd: P2.end, amendsReportId: g2.reportId }); await markReportFiled(a2.reportId, ACTOR.actorEmail);
+    const p2AmendEnd = await storedEnd(a2.reportId);
+    assert(Math.abs(p2AmendEnd - p2End) > 0.01, `AMEND-1 (iii): the re-filed P2 onHandEnd changed after the backdated loss (${p2AmendEnd} != ${p2End})`);
+    const p3draft2 = await generateReport(T, { periodStart: P3.start, periodEnd: P3.end, amendsReportId: g3.reportId });
+    assert(Math.abs(gal(p3draft2.fold) - p2AmendEnd) < 0.01, `AMEND-1 (iii): P3 begin now picks up the AMENDED P2 onHandEnd (${gal(p3draft2.fold)} == ${p2AmendEnd})`);
+  });
+  console.log(`  ✓ AMEND-1 chain assertions passed.`);
+}
+
 async function main() {
   console.log("Scrubbing synthetic tenant…");
   await runAsSystem((db) => db.organization.upsert({ where: { id: TENANT }, update: {}, create: { id: TENANT, name: "ZZ TTB Synthetic Winery", slug: TENANT } }));
   await scrub();
 
   await runAsTenant(TENANT, async () => {
-    // Reference data.
+    // Reference data. Phase 2: every tenant needs a primary bond (backfill created one for existing
+    // tenants; this synthetic tenant is fresh, so seed it — generateReport defaults the 5120.17 to it).
+    await prisma.bond.create({ data: { registryNumber: "BWN-ZZ-0001", isPrimary: true, premises: "ZZ Bonded Premises" } });
     const loc = await prisma.location.create({ data: { name: "ZZ Case Storage", isActive: true }, select: { id: true } });
     const v1 = await prisma.vessel.create({ data: { code: "ZZ-T1", type: "TANK", capacityL: 5000, isActive: true }, select: { id: true } });
     const v2 = await prisma.vessel.create({ data: { code: "ZZ-T2", type: "TANK", capacityL: 2000, isActive: true }, select: { id: true } });
@@ -190,25 +300,45 @@ async function main() {
     assert(form.getTextField("a2.2").getText() === cell("B", 2, "A_LE16").toFixed(2), "PDF §B2 cell == snapshot");
     assert(form.getTextField("EIN").getText() === "12-3456789", "PDF header EIN filled");
 
-    // ── File → reverse a removal (024 undo, C5 period) → amend ──
-    console.log("Filing, then amending after a correction…");
+    // ── File → TAXPAID-1 terminal + RETURN_TO_BOND (R1) + AMEND-1 cascade ──
+    console.log("Filing, then proving tax-paid is terminal + AMEND-1 cascade…");
     await markReportFiled(gen.reportId, ACTOR.actorEmail);
-    const filed = await prisma.complianceReport.findUnique({ where: { id: gen.reportId }, select: { status: true } });
+    const filed = await prisma.complianceReport.findUnique({ where: { id: gen.reportId }, select: { status: true, filerSnapshot: true, bondId: true } });
     assert(filed!.status === "FILED", "report marked FILED (immutable)");
+    assert(filed!.bondId != null, "filed 5120.17 is scoped to a bond (C6 per-bond chain)");
+    assert(filed!.filerSnapshot != null, "filer identity snapshotted onto the report at FILE (OQ-2/CO-8)");
 
-    await reverseOperationCore(ACTOR, { operationId: rmB.operationId }); // undo the 50 L class-b (port) taxpaid removal
+    // TAXPAID-1 (R1, IRON RULE): the port removal is now TERMINAL — the generic reverser REFUSES it
+    // (was: reverseOperationCore undid it and A14 shrank). This is the reversal-step update R1 mandates.
+    let refused = false;
+    try {
+      await reverseOperationCore(ACTOR, { operationId: rmB.operationId });
+    } catch {
+      refused = true;
+    }
+    assert(refused, "reverseOperationCore REFUSES a REMOVE_TAXPAID (tax-paid boundary is terminal — R1)");
+
+    // The ONE sanctioned re-admission: RETURN_TO_BOND the 50 L port back into v2. Recorded in July (a
+    // now-FILED period) → the AMEND-1 cascade flips July's report to NEEDS_AMENDMENT.
+    await returnToBondCore(ACTOR, { lotId: rmB.lotId, vesselId: v2.id, volumeL: 50 });
+    const afterReturn = await prisma.complianceReport.findUnique({ where: { id: gen.reportId }, select: { status: true } });
+    assert(afterReturn!.status === "NEEDS_AMENDMENT", "AMEND-1: an op appended into the FILED July period flips it to NEEDS_AMENDMENT");
+
     const amend = await generateReport(TENANT, { periodStart: START, periodEnd: END, cadence: "MONTHLY", amendsReportId: gen.reportId });
     const amended = await prisma.complianceReport.findUnique({ where: { id: amend.reportId }, select: { version: true, amendsReportId: true } });
-    assert(amended!.version === "AMENDED", "regeneration after a correction is an AMENDED report");
+    assert(amended!.version === "AMENDED", "regeneration after the return is an AMENDED report");
     assert(amended!.amendsReportId === gen.reportId, "AMENDED report references the original (immutable) report");
-    const amendSnap = amend.fold;
-    assert(amendSnap.balanced, "amended report still foots after the correction");
-    // The reversed removal's CORRECTION lands in July (C5) → A14 class b nets to zero.
-    const a14bAfterAmend = amendSnap.cells.find((c) => c.section === "A" && c.line === 14 && c.column === "B_16_21")?.gallons ?? 0;
-    assert(a14bAfterAmend < cell("A", 14, "B_16_21"), `A14 class b reduced after undoing the port removal (${a14bAfterAmend} < ${cell("A", 14, "B_16_21")})`);
+    assert(amend.fold.balanced, "amended report still foots after the return-to-bond");
+    // RETURN_TO_BOND posts §A11 (taxpaid wine returned to bulk); the original A14 removal stays (terminal).
+    const a11b = amend.fold.cells.find((c) => c.section === "A" && c.line === 11 && c.column === "B_16_21")?.gallons ?? 0;
+    const a14bAmend = amend.fold.cells.find((c) => c.section === "A" && c.line === 14 && c.column === "B_16_21")?.gallons ?? 0;
+    assert(a11b > 0, `A11 taxpaid-returned-to-bulk (class b) present after the return (${a11b} gal)`);
+    assert(Math.abs(a14bAmend - cell("A", 14, "B_16_21")) < 0.01, "A14 class b UNCHANGED (removal is terminal; the return posts A11, never a reversal)");
 
     console.log(`\n✅ verify-ttb: ${passed} assertions passed. Synthetic tenant '${TENANT}' left seeded for inspection.`);
   });
+
+  await verifyAmendChain();
 }
 
 main()

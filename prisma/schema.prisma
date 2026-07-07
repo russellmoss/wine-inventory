@@ -908,6 +908,13 @@ enum OperationType {
   // B8–B14). Added in a DEDICATED enum-only migration (Postgres ALTER TYPE ADD VALUE can't be used
   // in the tx that adds it) so the value commits before removal-core.ts writes it.
   REMOVE_TAXPAID
+  // Phase 2 (bond + tax-class): cross-bond movement (symmetric removed/received-in-bond) and the
+  // refund-flagged re-admission of tax-paid wine. Added in a DEDICATED enum-only migration
+  // (Postgres ALTER TYPE ADD VALUE can't be used in the tx that adds it) so the values commit
+  // before transfer-in-bond-core.ts / return-to-bond-core.ts write them. CHANGE_OWNERSHIP is
+  // DEFERRED (needs alternate-proprietor logic — Phase-2 OQ-1 resolved: not built this phase).
+  TRANSFER_IN_BOND
+  RETURN_TO_BOND
 }
 
 // Phase 6: fermentation is THREE orthogonal state vectors, NOT a linear phase enum
@@ -952,9 +959,14 @@ enum CarbonationMethod {
 }
 
 // TTB report lifecycle (status) is SEPARATE from the form version flag (council S4).
+// NEEDS_AMENDMENT (Phase 2, AMEND-1): a FILED period reopened by a later-dated op (a correction,
+// or a backdated bond/return op) landing in its window. The report keeps its last-filed onHandEnd
+// (carry-forward still chains through it) but the UI must never present it as "Filed" — the operator
+// must file an amended version. Added in the dedicated enum-only migration (Windows enum rule).
 enum ComplianceReportStatus {
   DRAFT
   FILED
+  NEEDS_AMENDMENT
 }
 
 // The form's VERSION selector (Original/Amended). "Final" is a separate business-closing flag
@@ -1389,6 +1401,14 @@ model LotOperationLine {
   bottleDelta Int? // signed bottle-count change on a BOTTLE_STORAGE leg (else NULL)
   lotCode     String
   vesselCode  String?
+  // Phase 2 (BOND-1): line-level, time-aware bond affiliation. A bond-moving op (TRANSFER_IN_BOND,
+  // RETURN_TO_BOND) stamps these with an EXPLICIT, non-null, source≠dest bond (enforced in the core,
+  // not the schema). Legacy/origination lines leave them NULL and the bond derives to the tenant's
+  // primary bond (OQ-3). The authoritative bond of a position is DERIVED point-in-time from these
+  // (deriveBond), never a mutable Lot column. Composite (tenantId, bondId) → bond(tenantId, id) FKs
+  // live in raw SQL (M2) — no Prisma @relation (Phase-1 Surprise 1: composite relations blow TS depth).
+  sourceBondId String?
+  destBondId   String?
   operation   LotOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
   lot         Lot          @relation(fields: [lotId], references: [id], onDelete: Restrict)
   vessel      Vessel?      @relation(fields: [vesselId], references: [id], onDelete: SetNull)
@@ -1397,6 +1417,7 @@ model LotOperationLine {
   @@index([lotId])
   @@index([vesselId])
   @@index([tenantId])
+  @@index([tenantId, destBondId]) // Phase 2: bond derivation lookup (latest dest bond ≤ asOf)
   @@map("lot_operation_line")
 }
 
@@ -1941,6 +1962,15 @@ model ComplianceReport {
   // S4: "Final" is a one-time business-closing flag, separate from status + version.
   isFinalBusinessReport Boolean                 @default(false)
   amendsReportId        String? // the ORIGINAL this row amends (version AMENDED)
+  // Phase 2 (BOND-1 / per-bond scoping): the bond this 5120.17 chain files for. NULL = legacy
+  // single-bond (pre-Phase-2 rows, backfilled to the tenant's primary bond). Carry-forward chains
+  // per (formType, bondId) so per-bond filing chains never cross. Composite (tenantId, bondId) →
+  // bond(tenantId, id) FK in raw SQL (M2). The 5000.24 excise return stays bond-agnostic (NULL).
+  bondId                String?
+  // Phase 2 (OQ-2, council Codex-DESIGN2): filer identity resolved bond-first (else the tenant
+  // ComplianceProfile) and SNAPSHOTTED at FILE, so an amended reprint never drifts if the Bond/
+  // profile is later edited. NULL on DRAFT (resolved live); frozen at markReportFiled.
+  filerSnapshot         Json?
   onHandEnd             Json // per section/column/sub gallons — the S3 carry-forward source
   computed              Json // full §A/§B line snapshot (frozen at FILE; re-derived for DRAFT — E2)
   overrides             Json // saved per-lot tax-class overrides applied at generation
@@ -1957,6 +1987,9 @@ model ComplianceReport {
   @@index([tenantId])
   @@index([tenantId, periodStart, periodEnd])
   @@index([tenantId, formType])
+  // Phase 2 (council Codex-SF): carry-forward + AMEND-1 downstream-mark scans filter by
+  // (formType, bondId, status) and order by periodEnd/generatedAt — cover them all.
+  @@index([tenantId, formType, bondId, status, periodEnd, generatedAt])
   @@index([amendsReportId])
   @@map("compliance_report")
 }
@@ -1988,6 +2021,63 @@ model ComplianceProfile {
   @@unique([tenantId])
   @@index([tenantId])
   @@map("compliance_profile")
+}
+
+// ───────────────────────── Phase 2: Bond + tax-class model (line-scoped, time-aware) ─────────────────────────
+// Both tables are tenant-scoped + RLS-isolated per the AGENTS.md Phase-12 checklist (tenantId
+// @default("") + @@index([tenantId]) + FK→organization ON DELETE RESTRICT + per-tenant uniques +
+// RLS ENABLE+FORCE+tenant_isolation, kept OUT of GLOBAL_MODELS). Composite cross-tenant FKs
+// (line→bond, report→bond, event→lot) are RAW SQL (tenantId, refId)→(tenantId, id) at the DB level
+// (K11 / Phase-1 Surprise 1) — NO Prisma @relation (composite relations blow TS type-instantiation
+// depth). Migrations: _bond_taxclass_enums (OperationType + status ADD VALUE), _bond_taxclass_schema
+// (these tables + line/report columns + RLS), _bond_taxclass_backfill (primary bond + report.bondId).
+
+// A TTB bond instrument. The winery's wine sits "in bond" under exactly one bond at a time; a
+// cross-bond movement (TRANSFER_IN_BOND) posts symmetric removed/received-in-bond to both bonds'
+// 5120.17 chains (BOND-1). Bonds are tenant-editable self-serve (ux-principle 9) — never a support
+// ticket. The authoritative bond of a position is DERIVED from the ledger line, never a mutable
+// Lot column; this table is the registry, not the per-lot source of truth.
+model Bond {
+  tenantId       String   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id             String   @id @default(cuid())
+  registryNumber String // TTB bond registry number (per-tenant unique)
+  penalSum       Decimal? @db.Decimal(12, 2)
+  premises       String? // bonded-premises address/description
+  ownerId        String? // optional owner link (organization / tenant owner record) — raw-SQL FK
+  isPrimary      Boolean  @default(false) // the tenant's default bond (exactly one; created at backfill)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, registryNumber])
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, isPrimary])
+  @@map("bond")
+}
+
+// A dated, append-only Change-Of-Tax-Class event (TAXCLASS-1). Tax class stays DERIVED (never a
+// stored Lot column); this event is the point-in-time OVERRIDE the winemaker sets to intentionally
+// declare/correct a class. It carries NO volume (so it is NOT a ledger op — a zero-volume line would
+// violate LEDGER-2); instead `volumeAtEvent` snapshots the lot's on-hand volume as-of `observedAt`
+// at write time, and the 5120.17 fold posts §A 10/24/25 from it. `resolveClassesForLots` reads the
+// latest in-scope event before falling back to ABV derivation. Append-only: a correction is a new event.
+model ChangeOfTaxClassEvent {
+  tenantId      String   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id            String   @id @default(cuid())
+  lotId         String // composite (tenantId, lotId) → lot(tenantId, id) FK in raw SQL (M2)
+  fromClass     String? // WineTaxClass (TS union); null = previously derived/undeclared
+  toClass       String // WineTaxClass the lot is declared into as-of observedAt
+  volumeAtEvent Decimal? @db.Decimal(10, 2) // on-hand liters as-of observedAt, stamped at write
+  observedAt    DateTime // the dated point-in-time change (drives §A 10/24/25 in the period fold)
+  actor         String? // actor email snapshot
+  reason        String?
+  commandId     String? // idempotency (double-submit → no-op); NULLs distinct per Postgres
+  createdAt     DateTime @default(now())
+
+  @@unique([tenantId, commandId])
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11)
+  @@index([tenantId, lotId, observedAt]) // point-in-time class resolution lookup
+  @@map("change_of_tax_class_event")
 }
 
 // ───────────────────────── Phase 8: supply stock + cost roll-up (D16 separated concerns) ─────────────────────────

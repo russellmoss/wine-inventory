@@ -131,6 +131,12 @@ async function main() {
   await owner.lotIdentifier.upsert({ where: { id: "iso_li_a" }, update: {}, create: { id: "iso_li_a", tenantId: A, lotId: "iso_lot_a", kind: "current-code", value: "ISO-A", isCurrent: true, updatedAt: now } });
   await owner.lotIdentifier.upsert({ where: { id: "iso_li_b" }, update: {}, create: { id: "iso_li_b", tenantId: B, lotId: "iso_lot_b", kind: "current-code", value: "ISO-B", isCurrent: true, updatedAt: now } });
   await owner.lotCodeEvent.upsert({ where: { id: "iso_lce_b" }, update: {}, create: { id: "iso_lce_b", tenantId: B, lotId: "iso_lot_b", field: "code", toValue: "ISO-B2", commandId: "iso-lce-cmd-b" } });
+  // Phase 2 (BOND-1 / TAXCLASS-1): a bond per tenant + a change_of_tax_class_event in B (composite
+  // (tenantId, lotId) → lot FK, K11). Isolation risk is a cross-tenant read of a winery's bonds /
+  // tax-class declarations, and a cross-tenant event→lot edge.
+  await owner.bond.upsert({ where: { id: "iso_bond_a" }, update: {}, create: { id: "iso_bond_a", tenantId: A, registryNumber: "ISO-BOND-A", isPrimary: true, updatedAt: now } });
+  await owner.bond.upsert({ where: { id: "iso_bond_b" }, update: {}, create: { id: "iso_bond_b", tenantId: B, registryNumber: "ISO-BOND-B", isPrimary: true, updatedAt: now } });
+  await owner.changeOfTaxClassEvent.upsert({ where: { id: "iso_ctc_b" }, update: {}, create: { id: "iso_ctc_b", tenantId: B, lotId: "iso_lot_b", toClass: "A_LE16", observedAt: now, commandId: "iso-ctc-cmd-b" } });
 
   try {
     // 1. Fail-closed: no tenant context -> 0 rows.
@@ -315,6 +321,22 @@ async function main() {
     const liA = await asTenant(A, (db) => db.lotIdentifier.findFirst({ where: { id: "iso_li_a" }, select: { tenantId: true, lotId: true } }));
     check("backfilled current-code row lands on the right tenant (E4)", liA?.tenantId === A && liA?.lotId === "iso_lot_a");
 
+    // Phase 2 (BOND-1 / TAXCLASS-1): bond + change_of_tax_class_event RLS + composite-FK reject + backfill-tenant.
+    check("tenant A CANNOT see tenant B's bond (RLS)", (await asTenant(A, (db) => db.bond.findFirst({ where: { id: "iso_bond_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's change_of_tax_class_event (RLS)", (await asTenant(A, (db) => db.changeOfTaxClassEvent.findFirst({ where: { id: "iso_ctc_b" } }))) === null);
+    let bondInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.bond.create({ data: { id: "iso_bond_x", tenantId: B, registryNumber: "ISO-BOND-X", updatedAt: new Date() } }));
+    } catch { bondInsertRaised = true; }
+    check("foreign-tenant bond INSERT raises (WITH CHECK)", bondInsertRaised);
+    let ctcFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.changeOfTaxClassEvent.create({ data: { id: "iso_ctc_k11", tenantId: A, lotId: "iso_lot_b", toClass: "A_LE16", observedAt: new Date() } }));
+    } catch { ctcFkRaised = true; }
+    check("change_of_tax_class_event cross-tenant lot reference rejected (composite FK, K11)", ctcFkRaised);
+    const bondA = await asTenant(A, (db) => db.bond.findFirst({ where: { id: "iso_bond_a" }, select: { tenantId: true, isPrimary: true } }));
+    check("bond fixture lands on the right tenant + is primary (backfill shape)", bondA?.tenantId === A && bondA?.isPrimary === true);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -347,6 +369,8 @@ async function main() {
     // Phase 1: identifiers/events (composite-FK'd to lot) + naming templates, before the lots/org drop.
     await owner.lotCodeEvent.deleteMany({ where: { id: { in: ["iso_lce_b"] } } });
     await owner.lotIdentifier.deleteMany({ where: { id: { in: ["iso_li_a", "iso_li_b", "iso_li_x", "iso_li_k11"] } } });
+    // Phase 2: change_of_tax_class_event is composite-FK'd to lot → delete before the lots below.
+    await owner.changeOfTaxClassEvent.deleteMany({ where: { id: { in: ["iso_ctc_b", "iso_ctc_k11"] } } });
     await owner.namingTemplateVersion.deleteMany({ where: { id: "iso_ntv_b" } });
     await owner.namingTemplate.deleteMany({ where: { id: { in: ["iso_nt_a", "iso_nt_b"] } } });
     await owner.lotOperationLine.deleteMany({ where: { lotId: { in: ["iso_lot_a", "iso_lot_b"] } } });
@@ -357,6 +381,8 @@ async function main() {
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });
     await owner.vineyard.deleteMany({ where: { id: { in: ["iso_vy_a", "iso_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["iso_lot_a", "iso_lot_b", "iso_lot_x"] } } });
+    // Phase 2: bonds are FK'd to organization → delete before org B drops.
+    await owner.bond.deleteMany({ where: { id: { in: ["iso_bond_a", "iso_bond_b", "iso_bond_x"] } } });
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
     await owner.$disconnect();

@@ -27,9 +27,9 @@ export type ToppingInput = {
 
 export type ToppingResult = CellarBaseResult & { addedL: number; lineageEdges: number };
 
-type DbClient = Prisma.TransactionClient | typeof prisma;
+type DbClient = Prisma.TransactionClient;
 
-async function loadVesselLots(vesselId: string, client: DbClient = prisma) {
+async function loadVesselLots(vesselId: string, client: DbClient = prisma as unknown as DbClient) {
   return client.vesselLot.findMany({ where: { vesselId }, include: { lot: true } });
 }
 

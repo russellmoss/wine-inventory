@@ -179,38 +179,38 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
 
 ## Compliance & migration invariants
 > Added in Phase 0 from the incumbent teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B.1(iv);
-> `FIX_RUNBOOK.md`). These are **planned** (narrative + register note, no guard yet); their `verify:`
-> guards land with the enforcing code — BOND/TAXCLASS/TAXPAID/AMEND in Phase 2, MIGRATE-1 in Phase 3.
+> `FIX_RUNBOOK.md`). BOND/TAXCLASS/TAXPAID/AMEND are **guarded** as of Phase 2 (`verify:bond` /
+> `verify:taxclass` / `verify:taxpaid` / `verify:ttb`); MIGRATE-1 stays **planned** (guard in Phase 3).
 > Machine-readable notes: [[BOND-1-bond-isolation]], [[TAXCLASS-1-cross-class-blend]],
 > [[TAXPAID-1-terminal-state]], [[AMEND-1-amended-chain]], [[CBMA-1-controlled-group]],
 > [[MIGRATE-1-seed-not-replay]].
 
-- **Bond isolation, line-scoped + time-aware (BOND-1, planned).** Every tenant-scoped ledger position
+- **Bond isolation, line-scoped + time-aware (BOND-1, guarded — `verify:bond`).** Every tenant-scoped ledger position
   belongs to exactly one bond, and **bond affiliation is posted at the operation/line level and is
   time-aware** (the movement carries source + destination bond) — the authoritative bond of a position is
   derived point-in-time from the ledger, mirroring `deriveTaxClass()`. Any lot-level "home bond" column is a
   **projection only, never the compliance source of truth**. A cross-bond movement posts **symmetric
   Removed-in-Bond (source) / Received-in-Bond (destination)** to both bonds' reports (§A 7/15, §B 3/9),
   **atomically within a single ledger transaction** (one `runLedgerWrite` via a `…Tx` core) — a one-sided
-  or two-transaction post is a violation. Guard `verify:bond` lands Phase 2.
+  or two-transaction post is a violation. Guarded by `verify:bond` (Phase 2).
 
-- **Cross-class blend posts symmetrically (TAXCLASS-1, planned).** A blend/rack/topping across ≥2 tax
+- **Cross-class blend posts symmetrically (TAXCLASS-1, guarded — `verify:taxclass`).** A blend/rack/topping across ≥2 tax
   classes posts **symmetric Produced-by / Used-for-blending** movements (§A 5/20/24/25), **atomic within one
   transaction**; the result carries the **destination (receiving) lot's** tax class and the winemaker is
   warned when sources cross classes. (The mechanism for assigning a class to a brand-new blend lot is a
-  Phase-2 design detail — this invariant fixes only that the *class carried* is the receiving lot's.) Guard
-  lands Phase 2.
+  Phase-2 design detail — this invariant fixes only that the *class carried* is the receiving lot's.) Guarded
+  by `verify:taxclass` (Phase 2).
 
-- **Taxpaid is a terminal one-way state (TAXPAID-1, planned).** `REMOVE_TAXPAID` volume cannot re-enter
+- **Taxpaid is a terminal one-way state (TAXPAID-1, guarded — `verify:taxpaid`).** `REMOVE_TAXPAID` volume cannot re-enter
   in-bond via an ordinary compensating reversal; only an explicit, **refund-flagged
   Taxpaid-Returned-to-Bond** event re-admits it. This guards the generic reverser
-  (`reverseOperationCore`) against silently corrupting the tax-paid boundary. Guard lands Phase 2.
+  (`reverseOperationCore`) against silently corrupting the tax-paid boundary. Guarded by `verify:taxpaid` (Phase 2).
 
-- **Amended-chain integrity (AMEND-1, planned).** Correcting a **FILED** period marks all later FILED
+- **Amended-chain integrity (AMEND-1, guarded — `verify:ttb`).** Correcting a **FILED** period marks all later FILED
   reports in that **form + bond** chain `NEEDS_AMENDMENT` and regenerates begin-balances down the chain
   (carry-forward makes this cheap). *(Open Phase-2 design question: whether the regeneration runs
   synchronously or as a queued job with a `NEEDS_CALCULATION` lock at scale — the invariant states the rule,
-  not the mechanism.)* Guard lands Phase 2.
+  not the mechanism.)* Guarded by `verify:ttb` (Phase 2) — the AMEND-1 3-period chain. Chosen v1: synchronous, in-transaction marking at the write chokepoint (Key Decision a).
 
 - **Controlled-group CBMA credit (CBMA-1, DEFERRED).** Tenants in a common controlled group cannot each
   independently claim the full 30k/100k/750k CBMA ladder — the credit is apportioned across the group.

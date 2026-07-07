@@ -34,6 +34,10 @@ export const OPERATION_TYPES = [
   "FINISH", // close the bottled lot into a sellable WineSku (shared materialization core)
   // ── Phase 14: tax determination + removal/used-for dispositions (TTB F 5120.17 A14–A23 / B8–B14) ──
   "REMOVE_TAXPAID", // wine removed/used out of bond; the disposition (reason) picks the form line
+  // ── Phase 2: bond + tax-class model (BOND-1 / TAXPAID-1) ──
+  "TRANSFER_IN_BOND", // move wine across bonds — one balanced op, symmetric removed(§A15/§B9)/received(§A7/§B3)
+  "RETURN_TO_BOND", // refund-flagged re-admission of tax-paid wine (§B4) — the ONLY way past the TAXPAID-1 terminal state
+  // CHANGE_OWNERSHIP is DEFERRED (Phase-2 OQ-1: needs alternate-proprietor logic) — not in this list.
 ] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 
@@ -96,6 +100,10 @@ export const LINE_REASONS = [
   // SPECIFIC disposition (TAXPAID/EXPORT/…) that picks the §A/§B form line lives in the op's
   // metadata.disposition (authoritative); this generic tag keeps the line self-describing.
   "tax_removal",
+  // Phase 2 (TAXPAID-1): the external counter-leg of a RETURN_TO_BOND op — refund-flagged re-admission
+  // of tax-paid wine BACK into bond (the vessel +V leg posts §A11 "taxpaid wine returned to bulk").
+  // The ONLY sanctioned way past the REMOVE_TAXPAID terminal state. NOT loss (excluded from loss reports).
+  "tax_return",
 ] as const;
 export type LineReason = (typeof LINE_REASONS)[number];
 

@@ -20,8 +20,14 @@ describe("verify:ai-native — reachability + two-tier exemptions (real tree)", 
   }, T);
 
   it("INTERNAL is permanent — exempt even with MAX_ALLOWED=0", () => {
+    // Exempt every real-tree unreached core so this case isolates the INTERNAL-permanence mechanism
+    // (PANEL + the Phase-2 compliance cores whose assistant tools are a deferred fast-follow).
     const { violations } = run({
-      internal: { [PANEL]: { owner: "x", reason: "internal sync core" } },
+      internal: {
+        [PANEL]: { owner: "x", reason: "internal sync core" },
+        "src/lib/compliance/return-to-bond-core.ts": { owner: "x", reason: "phase-2 gap (test-local)" },
+        "src/lib/compliance/tax-class-event-core.ts": { owner: "x", reason: "phase-2 gap (test-local)" },
+      },
       gapAllowlist: {},
       maxAllowed: 0,
     });

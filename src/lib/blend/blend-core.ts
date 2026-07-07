@@ -6,6 +6,7 @@ import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planBlend, planBlendSplit, foldLines, balanceKey, type BlendComponentDraw, type BlendPlan, type VesselLotBalance } from "@/lib/ledger/math";
 import { nextBlendLotCode, isUniqueViolation } from "@/lib/lot/generate";
+import { resolveBondsForLots } from "@/lib/compliance/bond";
 import type { CaptureMethod, LotForm } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
@@ -174,6 +175,19 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
     where: { id: { in: parentLotIds } },
     select: { id: true, provenanceComplete: true, sourceVineyards: { select: { vineyardId: true } } },
   });
+
+  // Phase 2 (BOND-1 / CO-2, Gemini-CRIT3): a blend can't straddle two bonds — wine can't be in a
+  // superposition of premises. All parents (and, for GROW_EXISTING, the resident child that absorbs
+  // them) must resolve to ONE bond. If they differ, the operator TRANSFER_IN_BONDs a parent into the
+  // other's bond first (a real transfer, never a phantom-vessel round-trip — ux-12).
+  const bondCheckLots = [...parentLotIds, ...(growChildLotId ? [growChildLotId] : [])];
+  const distinctBonds = new Set((await resolveBondsForLots(bondCheckLots, new Date())).values());
+  if (distinctBonds.size > 1) {
+    throw new ActionError(
+      "These lots are on different bonds. Transfer one into the other's bond before blending them.",
+      "CONFLICT",
+    );
+  }
 
   const capacityByVessel = new Map(vessels.map((v) => [v.id, Number(v.capacityL)]));
   const vesselCodes = new Map(vessels.map((v) => [v.id, v.code]));

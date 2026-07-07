@@ -96,7 +96,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
           key={view?.id ?? "none"}
           reports={reports.map((r) => ({
             id: r.id,
-            label: `${r.periodEnd.toISOString().slice(0, 10)} · ${r.version}${r.status === "FILED" ? " · FILED" : " · draft"}${r.taxDollars != null ? ` · $${Number(r.taxDollars).toFixed(2)}` : ""}`,
+            label: `${r.periodEnd.toISOString().slice(0, 10)} · ${r.version}${r.status === "FILED" ? " · FILED" : r.status === "NEEDS_AMENDMENT" ? " · needs amendment" : " · draft"}${r.taxDollars != null ? ` · $${Number(r.taxDollars).toFixed(2)}` : ""}`,
           }))}
           view={view}
           defaults={{ year: now.getUTCFullYear(), cadence: defaultCadence, isEftPayer, periodIndex: current?.index ?? 0 }}
@@ -153,7 +153,7 @@ export default async function CompliancePage({ searchParams }: { searchParams: P
         key={view?.id ?? "none"}
         reports={reports.map((r) => ({
           id: r.id,
-          label: `${r.periodEnd.toISOString().slice(0, 7)} · ${r.version}${r.status === "FILED" ? " · FILED" : " · draft"}${r.isFinalBusinessReport ? " · FINAL" : ""}`,
+          label: `${r.periodEnd.toISOString().slice(0, 7)} · ${r.version}${r.status === "FILED" ? " · FILED" : r.status === "NEEDS_AMENDMENT" ? " · needs amendment" : " · draft"}${r.isFinalBusinessReport ? " · FINAL" : ""}`,
         }))}
         view={view}
         profile={{

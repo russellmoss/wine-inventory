@@ -31,6 +31,13 @@ export type LedgerLine = {
   // Signed bottle-count change; set ONLY on BOTTLE_STORAGE legs (paired with deltaL). The DB
   // CHECK enforces bucket = 'BOTTLE_STORAGE' ⇔ bottleDelta IS NOT NULL.
   bottleDelta?: number;
+  // Phase 2 (BOND-1): line-level, time-aware bond affiliation. A bond-moving op stamps the REMOVED
+  // leg with `sourceBondId` (the bond the wine leaves, §A15/§B9) and the RECEIVED leg with
+  // `destBondId` (the bond it enters, §A7/§B3). Every other leg leaves both NULL and the position's
+  // bond derives point-in-time (deriveBond). Persisted verbatim by the chokepoint; the per-bond fold
+  // (C6) reads them to route each leg to the right bond's report. Composite FKs live in raw SQL (M2).
+  sourceBondId?: string | null;
+  destBondId?: string | null;
 };
 
 /** A row of the current-state projection: how much of one lot sits in one vessel. */

@@ -12,7 +12,8 @@ import {
   type FoldPeriodResult,
 } from "./period-fold";
 import type { SparklingMethodLike, SparklingSub, WineTaxClass } from "./types";
-import { OPS_FORM, formScope } from "./form-type";
+import { OPS_FORM, formScope, bondScope } from "./form-type";
+import { resolveBondsForLots, getPrimaryBond } from "./bond";
 
 // Unit 8 — the DB orchestration that turns the tenant ledger into the pure fold's inputs, then folds.
 // It resolves each lot's tax class (ABV as-of the event + productType/carbonation/sparkling method,
@@ -55,6 +56,9 @@ type LineRow = {
   observedAt: Date;
   metadata: unknown;
   correctsOperationId: number | null;
+  // Phase 2 (BOND-1): explicit per-leg bond on a bond-moving op (else null → derive the lot's bond).
+  sourceBondId: string | null;
+  destBondId: string | null;
 };
 
 /** Lot form as-of a timestamp, from LotStateEvent FORM transitions (fallback: the lot's current form). */
@@ -91,13 +95,23 @@ export async function resolveClassesForLots(
   const ids = [...new Set(lotIds)].filter(Boolean);
   if (ids.length === 0) return out;
 
-  const [lots, states, abvByLot] = await Promise.all([
+  const [lots, states, abvByLot, classEvents] = await Promise.all([
     prisma.lot.findMany({ where: { id: { in: ids } }, select: { id: true, code: true, productType: true, carbonation: true } }),
     prisma.bottledLotState.findMany({ where: { lotId: { in: ids } }, select: { lotId: true, method: true } }),
     resolveTaxAbvForLots(ids, asOf),
+    // Phase 2 (TAXCLASS-1): the latest Change-Of-Tax-Class event ≤ asOf is the point-in-time class
+    // authority — it supersedes both the ABV derivation and the ad-hoc report overrides Json.
+    prisma.changeOfTaxClassEvent.findMany({
+      where: { lotId: { in: ids }, observedAt: { lte: asOf } },
+      orderBy: [{ observedAt: "asc" }, { id: "asc" }],
+      select: { lotId: true, toClass: true },
+    }),
   ]);
   const lotById = new Map(lots.map((l) => [l.id, l]));
   const methodByLot = new Map(states.map((s) => [s.lotId, s.method as SparklingMethodLike]));
+  // asc order ⇒ the last write per lot is the newest in-scope event.
+  const eventClassByLot = new Map<string, WineTaxClass>();
+  for (const e of classEvents) eventClassByLot.set(e.lotId, e.toClass as WineTaxClass);
 
   for (const id of ids) {
     const lot = lotById.get(id);
@@ -110,15 +124,20 @@ export async function resolveClassesForLots(
       carbonation: (lot?.carbonation as "NONE" | "NATURAL" | "ARTIFICIAL") ?? "NONE",
       sparklingMethod: method,
     });
+    // Precedence: Change-Of-Tax-Class event → report override → ABV derivation. A declared class
+    // resolves the ABV-review blocker (it's an explicit human determination, never a silent default).
+    const eventClass = eventClassByLot.get(id);
+    const declared = eventClass ?? override;
+    const taxClass = declared ?? derived.taxClass;
     out.set(id, {
       lotId: id,
       lotCode: lot?.code ?? id,
-      taxClass: override ?? derived.taxClass,
-      sparklingSub: (override ? (override === "E_SPARKLING" ? derived.sparklingSub : null) : derived.sparklingSub),
-      needsAbvReview: override ? false : derived.needsAbvReview,
+      taxClass,
+      sparklingSub: declared ? (declared === "E_SPARKLING" ? derived.sparklingSub : null) : derived.sparklingSub,
+      needsAbvReview: declared ? false : derived.needsAbvReview,
       abv: abvRes.abv,
-      overridden: override != null,
-      reason: override ? "manual-override" : derived.reason,
+      overridden: declared != null,
+      reason: eventClass ? "class-change-event" : override ? "manual-override" : derived.reason,
     });
   }
   return out;
@@ -207,11 +226,14 @@ function onHandCells(
   classes: Map<string, PerLotClass>,
   forms: Map<string, LotForm> | null,
   wineOnly: boolean,
+  bondByLot: Map<string, string>,
+  bondId: string,
 ): OnHand[] {
   const acc = new Map<string, OnHand>();
   for (const [lotId, liters] of byLot) {
     if (liters <= 0.01) continue;
     if (wineOnly && forms && forms.get(lotId) !== "WINE") continue; // §A bulk = WINE-form only (C2)
+    if (bondByLot.get(lotId) !== bondId) continue; // Phase 2 (BOND-1): this bond's positions only
     const c = classes.get(lotId);
     if (!c) continue;
     const key = `${c.taxClass}:${c.sparklingSub ?? "-"}`;
@@ -230,8 +252,13 @@ export async function foldPeriod(
   tenantId: string,
   range: { start: Date; end: Date },
   overrides: Record<string, WineTaxClass> = {},
+  bondId?: string,
 ): Promise<GeneratedFold> {
   const { start, end } = range;
+  // Phase 2 (BOND-1 / C6): every 5120.17 is per-bond. Default to the tenant's primary bond so a
+  // single-bond tenant (every lot derives primary) folds EXACTLY as pre-Phase-2 (R2 regression).
+  const primaryBondId = (await getPrimaryBond()).id;
+  const scopeBondId = bondId ?? primaryBondId;
 
   // 1. Load every ledger line up to period end (single winery scale; batched — E5).
   const rawLines = await prisma.lotOperationLine.findMany({
@@ -242,6 +269,8 @@ export async function foldPeriod(
       bucket: true,
       reason: true,
       lotCode: true,
+      sourceBondId: true,
+      destBondId: true,
       operation: { select: { id: true, type: true, observedAt: true, metadata: true, correctsOperationId: true } },
     },
   });
@@ -256,19 +285,29 @@ export async function foldPeriod(
     observedAt: l.operation.observedAt,
     metadata: l.operation.metadata,
     correctsOperationId: l.operation.correctsOperationId,
+    sourceBondId: l.sourceBondId,
+    destBondId: l.destBondId,
   }));
 
   const allLotIds = [...new Set(lines.map((l) => l.lotId))];
-  const [classes, forms] = await Promise.all([
+  const [classes, forms, bondByLot] = await Promise.all([
     resolveClassesForLots(allLotIds, end, overrides),
     formAsOfMap(allLotIds, end),
+    // Phase 2 (BOND-1): the derived bond per lot as-of period end — on-hand + non-transfer flows
+    // attribute to it; TRANSFER_IN_BOND legs use their explicit per-leg bond instead.
+    resolveBondsForLots(allLotIds, end),
   ]);
+  // §B finished goods (BottledInventory/StockMovement) are NOT bond-tracked in the schema, so they
+  // attribute to the PRIMARY bond only (v1 boundary — bottled wine sits at the primary premises).
+  const isPrimaryReport = scopeBondId === primaryBondId;
 
   // 2. Begin balances — carry forward from the prior FILED report (S3), else first-report full fold.
-  // C4/E1: scope to the 5120.17 form or an excise return would become the operations carry-forward.
+  // C4/E1: scope to the 5120.17 form (else an excise return becomes the ops carry-forward). C6: scope
+  // to this BOND so per-bond filing chains never cross. A2 (C7): a NEEDS_AMENDMENT report still carries
+  // its last-filed onHandEnd until its amended successor files, so the chain doesn't break on a mark.
   const prior = await prisma.complianceReport.findFirst({
-    where: { ...formScope(OPS_FORM), status: "FILED", periodEnd: { lt: start } },
-    orderBy: [{ periodEnd: "desc" }, { generatedAt: "desc" }],
+    where: { ...formScope(OPS_FORM), ...bondScope(scopeBondId), status: { in: ["FILED", "NEEDS_AMENDMENT"] }, periodEnd: { lt: start } },
+    orderBy: [{ periodEnd: "desc" }, { generatedAt: "desc" }, { id: "desc" }],
     select: { onHandEnd: true },
   });
   let begin: BeginCell[];
@@ -277,30 +316,34 @@ export async function foldPeriod(
   } else {
     // First report: fold physical on-hand strictly BEFORE the period start, convert to gallons.
     const beforeStart = new Date(start.getTime() - 1);
-    const bulkBegin = onHandCells("A", onHandByLot(lines, "VESSEL", beforeStart), classes, forms, true);
-    const bottleBegin = onHandCells("B", onHandByLot(lines, "BOTTLE_STORAGE", beforeStart), classes, forms, false);
-    const goodsBegin = await bottledGoodsCells(beforeStart);
+    const bulkBegin = onHandCells("A", onHandByLot(lines, "VESSEL", beforeStart), classes, forms, true, bondByLot, scopeBondId);
+    const bottleBegin = onHandCells("B", onHandByLot(lines, "BOTTLE_STORAGE", beforeStart), classes, forms, false, bondByLot, scopeBondId);
+    const goodsBegin = isPrimaryReport ? await bottledGoodsCells(beforeStart) : [];
     begin = [...bulkBegin, ...bottleBegin, ...goodsBegin].map((c) => ({ section: c.section, column: c.column, sub: c.sub, gallons: litersToGallons(c.liters) }));
   }
 
   // 3. Physical on-hand at period END (the reconciliation anchor). §B unions sparkling in-process
   //    (BOTTLE_STORAGE ledger) + still finished goods (BottledInventory/StockMovement) — R4.
   const endLiters: OnHand[] = [
-    ...onHandCells("A", onHandByLot(lines, "VESSEL", end), classes, forms, true),
-    ...onHandCells("B", onHandByLot(lines, "BOTTLE_STORAGE", end), classes, forms, false),
-    ...(await bottledGoodsCells(end)),
+    ...onHandCells("A", onHandByLot(lines, "VESSEL", end), classes, forms, true, bondByLot, scopeBondId),
+    ...onHandCells("B", onHandByLot(lines, "BOTTLE_STORAGE", end), classes, forms, false, bondByLot, scopeBondId),
+    ...(isPrimaryReport ? await bottledGoodsCells(end) : []),
   ];
 
   // 4. Within-period flows → contributions (mapLineToForm per boundary leg).
   const periodLines = lines.filter((l) => l.observedAt >= start && l.observedAt <= end);
   const contributions: LineContribution[] = [];
   const partX = new Set<string>();
+  // R6/CO-6: lots whose FINAL (event-corrected) class was already posted this period via a cross-class
+  // blend §A5 — their class change must NOT also post §A24/§A10 or the same volume double-counts.
+  const crossClassBlendChildren = new Set<string>();
 
   // 4a. Produced-by-fermentation (A2): MUST/JUICE→WINE transitions in the period.
   const fermentEvents = await fermentToWineEvents(start, end);
   for (const ev of fermentEvents) {
     const c = classes.get(ev.lotId);
     if (!c) continue;
+    if ((bondByLot.get(ev.lotId) ?? primaryBondId) !== scopeBondId) continue; // BOND-1: this bond only
     // A2 volume = the lot's bulk volume as-of the transition.
     const vol = onHandByLot(lines.filter((l) => l.lotId === ev.lotId), "VESSEL", ev.observedAt).get(ev.lotId) ?? 0;
     if (vol <= 0.01) continue;
@@ -331,6 +374,9 @@ export async function foldPeriod(
   const push = (opType: ReportableOpType, l: LineRow, source: MovementSource, signedLiters: number, reason: string | null, crosses?: boolean) => {
     const c = classes.get(l.lotId);
     if (!c) return;
+    // Phase 2 (BOND-1): non-transfer flows attribute to the lot's derived bond. Only the leg on the
+    // bond being folded contributes (TRANSFER_IN_BOND legs are handled separately by explicit bond).
+    if ((bondByLot.get(l.lotId) ?? primaryBondId) !== scopeBondId) return;
     const r = mapLineToForm({ opType, reason, source, deltaSign: signedLiters >= 0 ? 1 : -1, taxClass: c.taxClass, sparklingSub: c.sparklingSub, crossesTaxClass: crosses });
     if (r.partXReason) partX.add(r.partXReason);
     if (!r.target) return;
@@ -358,20 +404,67 @@ export async function foldPeriod(
       // Cross-class blend (ftn 5): parent draws (−) → A20 used; child (+) → A5 produced (both positive
       // magnitudes; the leg sign only picks the line). Same-class → null.
       const crosses = (opLotClasses.get(l.opId)?.size ?? 1) > 1;
-      if (crosses) {
+      // Cross-bond blends are blocked at commit (C1/C2), so all legs of a blend share one bond; only
+      // the legs on the bond being folded contribute.
+      if (crosses && (bondByLot.get(l.lotId) ?? primaryBondId) === scopeBondId) {
         const c = classes.get(l.lotId);
         if (c) {
+          // The child (+delta) leg posts §A5 into its final class → suppress any same-period class
+          // change on it (R6/CO-6: don't post the same volume via both §A5 and §A10/§A24).
+          if (l.deltaL > 0) crossClassBlendChildren.add(l.lotId);
           const r = mapLineToForm({ opType: "BLEND", reason: null, source: "BULK", deltaSign: l.deltaL >= 0 ? 1 : -1, taxClass: c.taxClass, sparklingSub: c.sparklingSub, crossesTaxClass: true });
           if (r.partXReason) partX.add(r.partXReason);
           if (r.target) contributions.push({ section: r.target.section, line: r.target.line, column: c.taxClass, sub: r.target.sub, liters: Math.abs(l.deltaL) });
         }
       }
+    } else if (l.bucket === "VESSEL" && effType === "TRANSFER_IN_BOND") {
+      // BOND-1 symmetric posting, split across the two bonds' reports by EXPLICIT per-leg bond (NOT
+      // the lot's derived bond): the received leg (destBondId, +V) posts §A7 on the DEST bond; the
+      // removed leg (sourceBondId, −V) posts §A15 on the SOURCE bond. A reversal's swapped legs carry
+      // the same fields, so undoing a transfer posts the mirror pair on both chains automatically.
+      const c = classes.get(l.lotId);
+      if (c) {
+        if (l.destBondId === scopeBondId && l.deltaL > 0) {
+          const r = mapLineToForm({ opType: "TRANSFER_IN_BOND", reason: null, source: "BULK", deltaSign: 1, taxClass: c.taxClass, sparklingSub: c.sparklingSub });
+          if (r.target) contributions.push({ section: r.target.section, line: r.target.line, column: c.taxClass, sub: r.target.sub, liters: Math.abs(l.deltaL) });
+        } else if (l.sourceBondId === scopeBondId && l.deltaL < 0) {
+          const r = mapLineToForm({ opType: "TRANSFER_IN_BOND", reason: null, source: "BULK", deltaSign: -1, taxClass: c.taxClass, sparklingSub: c.sparklingSub });
+          if (r.target) contributions.push({ section: r.target.section, line: r.target.line, column: c.taxClass, sub: r.target.sub, liters: Math.abs(l.deltaL) });
+        }
+      }
+    } else if (l.bucket === "VESSEL" && effType === "RETURN_TO_BOND" && l.deltaL > 0) {
+      // TAXPAID-1: the refund-flagged re-admission — the +V vessel leg posts §A11 (taxpaid wine
+      // returned to bulk, an addition). Its external counter-leg (reason "tax_return") is not a
+      // summary flow and is skipped by the EXTERNAL branch.
+      push("RETURN_TO_BOND", l, "BULK", l.deltaL, null);
     }
     // Other VESSEL legs (rack/topping/press/crush internal) net to zero within the section → skip.
   }
 
-  // 4c. §B bottled taxpaid removals (sales) from finished-goods stock movements.
-  contributions.push(...(await bottledGoodsRemovals(start, end)));
+  // 4c. §B bottled taxpaid removals (sales) from finished-goods stock movements. Finished goods are
+  //     not bond-tracked (v1 boundary) → they belong to the primary bond's report only.
+  if (isPrimaryReport) contributions.push(...(await bottledGoodsRemovals(start, end)));
+
+  // 4d. Change-Of-Tax-Class events in the period (TAXCLASS-1): move the event's snapshotted volume out
+  //     of the old class (§A24, a removal) and into the new class (§A10, an addition) so both columns
+  //     foot. §A is bulk WINE-form only — a null-ABV fermenting must is excluded here (Part VII
+  //     guardrail, CO-10). A same-period cross-class-blend child is skipped: its §A5 already carries
+  //     the corrected class, so posting §A10/§A24 too would double-count the same volume (R6/CO-6).
+  const classEvents = await prisma.changeOfTaxClassEvent.findMany({
+    where: { observedAt: { gte: start, lte: end } },
+    select: { lotId: true, fromClass: true, toClass: true, volumeAtEvent: true },
+  });
+  for (const ev of classEvents) {
+    if (crossClassBlendChildren.has(ev.lotId)) continue;
+    if ((bondByLot.get(ev.lotId) ?? primaryBondId) !== scopeBondId) continue; // BOND-1: this bond only
+    if (forms.get(ev.lotId) !== "WINE") continue;
+    const vol = Number(ev.volumeAtEvent ?? 0);
+    if (vol <= 0.01) continue;
+    const toClass = ev.toClass as WineTaxClass;
+    if (ev.fromClass) contributions.push({ section: "A", line: 24, column: ev.fromClass as WineTaxClass, sub: null, liters: vol });
+    contributions.push({ section: "A", line: 10, column: toClass, sub: null, liters: vol });
+    partX.add(`Tax class changed${ev.fromClass ? ` from ${ev.fromClass}` : ""} to ${toClass} (${vol} L) — verify §A lines 10/24.`);
+  }
 
   const fold = foldPeriodCells({ begin, contributions, endLiters, partX: [...partX] });
 
@@ -392,6 +485,9 @@ export type GenerateReportInput = {
   amendsReportId?: string | null;
   overrides?: Record<string, WineTaxClass>;
   remarks?: string;
+  /** Phase 2 (C6): the bond this 5120.17 files for. Defaults to the tenant's primary bond (a
+   * single-bond tenant folds exactly as before). Carry-forward chains per (formType, bondId). */
+  bondId?: string | null;
 };
 
 /** The stored `computed` Json snapshot shape (frozen at FILE — E2; re-derived for DRAFT). */
@@ -414,7 +510,10 @@ export type GenerateReportResult = { reportId: string; fold: GeneratedFold; down
  */
 export async function generateReport(tenantId: string, input: GenerateReportInput): Promise<GenerateReportResult> {
   const overrides = input.overrides ?? {};
-  const fold = await foldPeriod(tenantId, { start: input.periodStart, end: input.periodEnd }, overrides);
+  // C6: this report files for one bond (default the primary). The fold + carry-forward + downstream
+  // mark all scope to it so per-bond filing chains never cross.
+  const scopeBondId = input.bondId ?? (await getPrimaryBond()).id;
+  const fold = await foldPeriod(tenantId, { start: input.periodStart, end: input.periodEnd }, overrides, scopeBondId);
 
   const version: "ORIGINAL" | "AMENDED" = input.amendsReportId ? "AMENDED" : "ORIGINAL";
 
@@ -444,6 +543,7 @@ export async function generateReport(tenantId: string, input: GenerateReportInpu
       periodEnd: input.periodEnd,
       cadence: input.cadence ?? "MONTHLY",
       formType: OPS_FORM, // C4/E1: explicit even though it is the column default
+      bondId: scopeBondId, // C6: the bond this 5120.17 chain files for
       status: "DRAFT",
       version,
       amendsReportId: input.amendsReportId ?? null,
@@ -459,17 +559,41 @@ export async function generateReport(tenantId: string, input: GenerateReportInpu
   // C4/E1: only later FILED 5120.17 reports are affected by a 5120.17 amendment.
   const downstreamStale =
     version === "AMENDED"
-      ? (await prisma.complianceReport.count({ where: { ...formScope(OPS_FORM), status: "FILED", periodStart: { gte: input.periodEnd } } })) > 0
+      ? (await prisma.complianceReport.count({ where: { ...formScope(OPS_FORM), ...bondScope(scopeBondId), status: { in: ["FILED", "NEEDS_AMENDMENT"] }, periodStart: { gte: input.periodEnd } } })) > 0
       : false;
 
   return { reportId: created.id, fold, downstreamStale };
+}
+
+/**
+ * Resolve the filer identity for a report, snapshotted at FILE (OQ-2 / council Codex-DESIGN2). Bond
+ * owns registry #/penal sum/premises (resolved bond-first); the tenant ComplianceProfile supplies
+ * EIN/operated-by/address. Snapshotting at file time means an amended reprint never drifts if the
+ * Bond or profile is later edited. A 5000.24 (bondId null) resolves from the profile only.
+ */
+async function resolveFilerSnapshot(bondId: string | null): Promise<Record<string, unknown>> {
+  const [profile, bond] = await Promise.all([
+    prisma.complianceProfile.findFirst({ select: { ein: true, registryNumber: true, operatedByName: true, operatedByAddress: true } }),
+    bondId ? prisma.bond.findUnique({ where: { id: bondId }, select: { registryNumber: true, penalSum: true, premises: true } }) : Promise.resolve(null),
+  ]);
+  return {
+    ein: profile?.ein ?? null,
+    operatedByName: profile?.operatedByName ?? null,
+    operatedByAddress: profile?.operatedByAddress ?? null,
+    // Bond-first for the bonded-premises identity; fall back to the tenant profile's registry.
+    registryNumber: bond?.registryNumber ?? profile?.registryNumber ?? null,
+    penalSum: bond?.penalSum == null ? null : Number(bond.penalSum),
+    premises: bond?.premises ?? profile?.operatedByAddress ?? null,
+    bondId: bondId ?? null,
+    snapshotAt: new Date().toISOString(),
+  };
 }
 
 /** Mark a DRAFT report FILED — freezes the snapshot as the legal audit record (E1/E2). Blocked when
  * any deterministic blocker is present (5120.17: ABV/balance OV#6; excise: ABV>24, missing rate,
  * negative tax — plan-026 U9). Returns the filed report id. */
 export async function markReportFiled(reportId: string, filedByEmail: string): Promise<{ id: string }> {
-  const report = await prisma.complianceReport.findUnique({ where: { id: reportId }, select: { status: true, formType: true, computed: true } });
+  const report = await prisma.complianceReport.findUnique({ where: { id: reportId }, select: { status: true, formType: true, computed: true, bondId: true } });
   if (!report) throw new Error("Report not found.");
   if (report.status === "FILED") throw new Error("This report is already filed and immutable.");
 
@@ -490,6 +614,11 @@ export async function markReportFiled(reportId: string, filedByEmail: string): P
     }
   }
 
-  await prisma.complianceReport.update({ where: { id: reportId }, data: { status: "FILED", filedAt: new Date(), filedByEmail } });
+  // OQ-2 / CO-8: freeze the filer identity onto the row at FILE so an amended reprint never drifts.
+  const filerSnapshot = await resolveFilerSnapshot(report.bondId);
+  await prisma.complianceReport.update({
+    where: { id: reportId },
+    data: { status: "FILED", filedAt: new Date(), filedByEmail, filerSnapshot: filerSnapshot as unknown as object },
+  });
   return { id: reportId };
 }
