@@ -1,4 +1,4 @@
-# FIX_RUNBOOK — Incumbent-Teardown Remediation · **v2.2**
+# FIX_RUNBOOK — Incumbent-Teardown Remediation · **v2.3**
 
 > **What this is.** A phased, executable remediation plan that turns the seven-agent incumbent
 > teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B/§C/§D, read against
@@ -26,6 +26,20 @@
 > (Phases 0–6 now, Phase 7 parked). Reality-dependent work is tracked in the new **Post-runbook calibration
 > backlog** so nothing silently drops. See Decision Log #5.
 >
+> **v2.3 (this revision) — the incumbent order flips to Vintrace-first, because reality changed.**
+> v2.1/v2.2 sequenced **InnoVint-first with Vintrace parked** on three premises that are now false:
+> (1) *no design partner during execution* — we now have **two warm partners, both on Vintrace** (Macari,
+> Sparkling Pointe); (2) *Vintrace is the harder second target (PDF-locked, two ID spaces)* — we have since
+> mapped a real, documented **Vintrace v7 REST API** (`vintrace-docs/api/`, incl. a **sandbox**) that gives
+> clean current-state reads, so it is the *easier* first target for the seed; (3) *Phase 4 (synthetic
+> InnoVint) is the partner-recruiting demo* — moot once partners exist. The v2.1 un-park trigger ("a
+> vintrace winery entering the pipeline un-parks Phase 7") **has fired.** So: **Phase 7 (Vintrace)
+> un-parks and becomes the FIRST/lighthouse adapter; Phase 4 (InnoVint) stays synthetic-until-a-partner and
+> becomes second.** Phases 1 and 2 are **shipped** (identity presentation; bond + tax-class model). The
+> migration source of truth is now `vintrace-docs/api/MIGRATION-STRATEGY.md` (API for the current-state
+> seed + CSV report exports for the history/TTB/finished-goods/materials/chemistry gaps the API doesn't
+> expose). See Decision Log #6.
+>
 > **How to run it.** One phase per session. Start each with `/plan` (feed it that phase's block from this
 > file), execute with `/work`, land via `/ship`. Every phase **ends green**: full `vitest` suite passing,
 > `npm run verify:invariants` + `npm run verify:tripwires` + all phase-specific `verify:*` guards passing,
@@ -43,7 +57,7 @@
 
 Review artifact: [`fix-council-feedback.md`](./fix-council-feedback.md) (parallel council review, Codex
 gpt-5.4 + Gemini 3.1 Pro, adjudicated). The four open §7 decisions were resolved as follows (Decision 5
-added in v2.2):
+added in v2.2; Decision 6 — the Vintrace-first flip — added in v2.3):
 
 1. **Full reorder, not the minimum edit.** The §5 phase reorder is adopted in full. *Rationale:* migration
    trust is the product thesis — "the easiest system to migrate to" — so the migration kernel and its
@@ -71,10 +85,33 @@ added in v2.2):
    upgrade path** that opportunistically enriches fixtures and drives the Phase-4 calibration fast-follow —
    nothing in the runbook blocks on them. *Rationale:* removes legal + availability blockers from the
    critical path while still proving the kernel end-to-end.
+6. **(v2.3) Vintrace is the lighthouse; InnoVint is second.** The incumbent order **flips**. Decision 5's
+   synthetic-InnoVint-first posture was correct **only under its stated premise — no design partner during
+   execution.** That premise no longer holds: two warm design partners (Macari, Sparkling Pointe) are on
+   **Vintrace**, and a real **Vintrace v7 REST API** + sandbox is now mapped (`vintrace-docs/api/`). So the
+   **first adapter built and calibrated is Vintrace, against those partners' own authorized exports/API +
+   the sandbox** (Phase 7 un-parks → first). **InnoVint (Phase 4) stays synthetic-until-a-partner and
+   becomes the second target**, un-parked when a friendly InnoVint winery enters the pipeline. Decision 5's
+   "customer's own data is the clean path; never a competitor trial account" **still governs** — it now
+   applies to Vintrace first. *Rationale:* build the importer for the customers you actually have, against a
+   real API, not a hypothetical you'd build to recruit customers you already recruited. The migration source
+   of truth is `vintrace-docs/api/MIGRATION-STRATEGY.md`. *(This supersedes the InnoVint-first ordering in
+   "Build posture & sequencing" and in ROADMAP Phase 13; the historical reasoning is kept there for the
+   record, flagged superseded.)*
 
 ---
 
 ## Build posture & sequencing (v2.2) — build Phase 4, defer Phase 7
+
+> [!important] SUPERSEDED by v2.3 (Decision 6) — read this section as historical rationale.
+> The InnoVint-first / Vintrace-parked ordering below assumed **no design partner during execution**.
+> That premise no longer holds. **The incumbent order is now Vintrace-first:** Phase 7 (Vintrace)
+> un-parks and becomes the **first/lighthouse** adapter (built against Macari/Sparkling Pointe's own
+> Vintrace exports + the v7 API/sandbox mapped in `vintrace-docs/api/`); Phase 4 (InnoVint) stays
+> **synthetic-until-a-partner** and becomes **second**. Phases 1 (identity) and 2 (bond + tax-class) are
+> **shipped**. Everything below about the *kernel being unproven until one adapter runs it*, *two-track
+> seed/archive*, *scope caps*, and *the un-park trigger* still applies — just with **Vintrace as the
+> adapter that proves the kernel** and InnoVint as the second target.
 
 **Decision:** Build **Phases 0–6 fully**. **Park Phase 7 (vintrace)** until a vintrace design partner is
 actually in the pipeline. Phase 4 (InnoVint) is **not** deferred — the two adapters are **not symmetric**,
@@ -341,7 +378,7 @@ None. This is the root of the graph.
 
 ---
 
-# PHASE 1 — Identity presentation layer (the #1 self-inflicted fix)
+# PHASE 1 — Identity presentation layer (the #1 self-inflicted fix)  ✅ SHIPPED
 
 **Traces to:** SYNTHESIS §2, §A.2 (naming/identity row), §B.1(ii)(iii), §B.2 (Phase 12.5), §C.2/§C.6,
 §D.0.1; current state §5; council `fix-council-feedback.md` §3.4 (LotIdentifier), §3.7 (non-unique
@@ -448,7 +485,7 @@ tenancy checklist pass + a `verify:tenant-isolation` case (council §6). Flip th
 
 ---
 
-# PHASE 2 — Bond + tax-class model (line-scoped, time-aware)
+# PHASE 2 — Bond + tax-class model (line-scoped, time-aware)  ✅ SHIPPED
 
 **Traces to:** SYNTHESIS §3, §A.1 (multi-bond table stake — FAIL), §A.2 (tax-class row), §A.3.8
 (ownership/bond as one atomic event), §B.1(iv), §B.2 (Phase 14 rescope), §C.12, §D.0.2; current state §4
@@ -662,7 +699,12 @@ multi-unit plan; it remains one runbook phase (the kernel) as specified.**
 
 ---
 
-# PHASE 4 — InnoVint lighthouse adapter
+# PHASE 4 — InnoVint adapter  🔁 v2.3: now the SECOND target (synthetic-until-a-partner)
+
+> [!note] v2.3 (Decision 6): InnoVint is no longer the lighthouse — **Vintrace (Phase 7) is now first.**
+> This phase is unchanged in *content* (build + validate against the corpus-derived synthetic InnoVint
+> fixture bundle), but it now runs AFTER the Vintrace adapter has proven the kernel, and it un-parks when a
+> friendly InnoVint winery enters the pipeline. The "InnoVint lighthouse" framing below is historical.
 
 **Traces to:** SYNTHESIS §A.3.6, §B.2, §D.2, §D.4–§D.5; corrected `docs/api-strategy.md` (InnoVint REST
 API); council `fix-council-feedback.md` §3.1/§3.9 (kernel model + mappings), §5 (lighthouse first).
@@ -907,7 +949,49 @@ boundaries). May also close representability gaps escalated from **Phase 4**. Ru
 
 ---
 
-# PHASE 7 — vintrace connector (⏸ DEFERRED — the harder second target)
+# PHASE 7 — Vintrace connector  ▶ v2.3: UN-PARKED — now the FIRST / lighthouse adapter
+
+> [!important] v2.3 (Decision 6): this is now the FIRST adapter built, not a deferred second target.
+> Reason: the warm design partners (Macari, Sparkling Pointe) are on Vintrace, and Vintrace exposes a real,
+> documented **v7 REST API + sandbox** (mapped in `vintrace-docs/api/`; strategy in
+> `vintrace-docs/api/MIGRATION-STRATEGY.md`) — so it proves the Phase-3 kernel. Build/calibrate against the
+> **sandbox (`sandbox.vintrace.net/vinx2demo`)** and the partners' **own authorized** exports/token (never a
+> competitor trial account — Decision 5 still governs). SOURCE SPLIT: the **API supplies the current-state
+> seed** (parties, blocks, vessel master, `GET /wine-batches` + `GET /vessel-details-report` for per-vessel
+> identity/volume/cost/tax posture); **CSV report exports supply the gaps the API does not expose** —
+> operation history (→ read-only archive), filed TTB/compliance reports, finished-goods on-hand, materials
+> catalog, chemistry, actual harvest picks. IMPORTER POLICY: Vintrace `Measurement.unit` is a free string
+> (no enum) — the importer owns unit→L/kg normalization (extends D8). The "harder second target /
+> PDF-locked" framing below is historical; the API changes the picture. Reconciliation ties imported
+> balances to Vintrace's **own report output** so the winemaker trusts the cutover (the onboarding-trust
+> moment).
+>
+> **Council-hardened build rules (v2.3 — Codex + Gemini review of Decision 6; both endorse the flip):**
+> 1. **Build against FROZEN captures, not live partner systems.** Dev/test the adapter against the
+>    **sandbox** + **frozen API/CSV extracts** committed as replayable fixture packs (the Vintrace analog of
+>    the synthetic bundle); calibrate against live/prod only at the end. This preserves the v2.2 "kernel
+>    proven on controllable fixtures" benefit while using REAL data shapes — avoids conflating kernel bugs
+>    with adapter/calibration bugs at partner-facing stakes.
+> 2. **Hard kernel/adapter boundary.** The Vintrace adapter only EXTRACTS + MAPS. Preflight, seed, archive,
+>    reconciliation, and draft/sign-off stay in the kernel. Do NOT let partner-specific patches leak into
+>    the kernel (else you've built "Macari-first," not "Vintrace-first").
+> 3. **Productize the CSV side as an evidence pack** (Codex): a required-export list, completeness checks, a
+>    provenance manifest, and an explicit **unsupported-history disclosure**. The CSV report-export variance
+>    (columns, report versions, free-text/naming drift, human export steps) is the *real* effort sink — plan
+>    for it, not for "can I parse my own fixture."
+> 4. **TTB continuity without replay** (resolves the Gemini lineage concern while keeping MIGRATE-1): do NOT
+>    relationally replay legacy picks through the fold (double-counts the seed). Instead **archive the
+>    last-filed Vintrace TTB reports + recompute forward periods from the seed** (carry-forward keys off the
+>    last filed report), and keep the history archive **structured + queryable** (Decision 4) so pre-cutover
+>    chemistry/ops are reference-grade, not a flat dump. Cutover lineage is *auditable-with-archived-
+>    provenance*, not "unbroken relational" — which is correct and honest for an opening-balances migration.
+> 5. **Honest claim, not "seamless."** The pitch is **"opening balances seeded + fully-archived, queryable
+>    history,"** NOT "full operational continuity from day one." Overclaiming seamless is the thing that
+>    breaks trust at cutover.
+> 6. **Beachhead order (Gemini): lead with the STANDARD ESTATE (Macari) to prove the adapter; Sparkling
+>    Pointe is the SECOND partner.** Sparkling (tirage/riddling/disgorge/dosage, multi-vintage assemblage) is
+>    an edge case that must not distort the V1 migration model, and winter is *peak* complexity for a
+>    sparkling house. Prove still-wine estate migration first, then extend to sparkling.
 
 **Traces to:** SYNTHESIS §D.3, §D.4–§D.5; §A.2 (vintrace rewrites-history caution); council
 `fix-council-feedback.md` §3.10 (export-bundle-first, no OCR). *(Was Phase 6 in v1.)*
