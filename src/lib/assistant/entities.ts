@@ -267,12 +267,56 @@ const finishedGoodCategory: EntityConfig = {
   create: async (tx, data) => (await tx.finishedGoodCategory.create({ data: data as Prisma.FinishedGoodCategoryUncheckedCreateInput, select: { id: true } })).id,
 };
 
+// The vessel `find` answers not just "tank 5" but the reverse-lookup winemakers actually ask —
+// "which tanks hold Cabernet Sauvignon?", "what tank has the QBO Demo Vineyard fruit?". A vessel's
+// current contents live in its VesselComponent rows (each carries the resident lot's variety +
+// source vineyard), so a free-text query matches the vessel code/blend name OR any resident
+// component's variety/vineyard name. The label is enriched with what the vessel holds so the model
+// can answer "Tank X holds <variety> from <vineyard>" directly from db_find. Vessels are cellar
+// equipment (vineyardScoped: false) — same visibility as the existing vessel-contents read path; no
+// scope change. Uses only prisma reads through the tenant-isolated client (RLS), never a db_* write.
+async function findVessels(q: string): Promise<EntityRow[]> {
+  const query = q.trim();
+  const where: Prisma.VesselWhereInput = query
+    ? {
+        OR: [
+          { code: { contains: query, mode: "insensitive" } },
+          { blendName: { contains: query, mode: "insensitive" } },
+          { components: { some: { variety: { name: { contains: query, mode: "insensitive" } } } } },
+          { components: { some: { vineyard: { name: { contains: query, mode: "insensitive" } } } } },
+        ],
+      }
+    : {};
+  const rows = await prisma.vessel.findMany({
+    where,
+    take: 25,
+    orderBy: { code: "asc" },
+    select: {
+      id: true,
+      code: true,
+      type: true,
+      blendName: true,
+      components: { select: { variety: { select: { name: true } }, vineyard: { select: { name: true } } } },
+    },
+  });
+  return rows.map((v) => {
+    const base = `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}`;
+    const varieties = [...new Set(v.components.map((c) => c.variety?.name).filter((n): n is string => !!n))];
+    const vineyards = [...new Set(v.components.map((c) => c.vineyard?.name).filter((n): n is string => !!n))];
+    const holds: string[] = [];
+    if (v.blendName) holds.push(`blend "${v.blendName}"`);
+    if (varieties.length) holds.push(varieties.join(", "));
+    if (vineyards.length) holds.push(`from ${vineyards.join(", ")}`);
+    const label = holds.length ? `${base} — holds ${holds.join(" ")}` : `${base} (empty)`;
+    return { id: v.id, label, vineyardId: null };
+  });
+}
+
 const vessel: EntityConfig = {
   name: "Vessel",
   displayName: "vessel",
   vineyardScoped: false,
-  find: async (_u, q) =>
-    (await prisma.vessel.findMany({ where: q ? { OR: [{ code: { contains: q, mode: "insensitive" } }, { blendName: { contains: q, mode: "insensitive" } }] } : {}, take: 25, orderBy: { code: "asc" }, select: { id: true, code: true, type: true } })).map((v) => ({ id: v.id, label: `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}`, vineyardId: null })),
+  find: async (_u, q) => findVessels(q),
   load: async (id) => {
     const v = await prisma.vessel.findUnique({ where: { id }, select: { id: true, code: true, type: true } });
     return v ? { id: v.id, label: `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}`, vineyardId: null } : null;
@@ -381,8 +425,7 @@ const ENTITIES: Record<string, EntityConfig> = {
 };
 
 /** Resolve an allowed entity by name (case-insensitive). Returns null for unknown
- *  or protected tables (AuditLog, User, Session, Account, Verification, inventory
- *  balance rows) — they are simply absent from the registry. */
+ *  or protected tables (AuditLog, User/auth) — they are simply absent from the registry. */
 export function getEntity(name: string): EntityConfig | null {
   if (!name) return null;
   const direct = ENTITIES[name];
