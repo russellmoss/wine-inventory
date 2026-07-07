@@ -10,11 +10,10 @@ page (below). Every module shares the same envelope: **Bearer-token auth**, an o
 > Sandbox is `https://sandbox.vintrace.net/vinx2demo/api/v7/<module>` — **build and test the importer
 > here first** (see [`MIGRATION-STRATEGY.md`](./MIGRATION-STRATEGY.md) §D).
 
-> **Shared-schema caveat.** `common-schemas.yaml` (`Measurement`, `CostBreakdown`,
-> `ExtIdentifiableEntity`, `CodedIdentifiableEntity`, `Winery`, `PageRoot`, `BaseErrorRoot`, …) is
-> `$ref`-ed by several specs but is **not present** in `vintrace-api/specs/`. Those field shapes were
-> reconstructed from in-file examples and must be confirmed against the real shared components file
-> before the client is trusted.
+> **Shared schemas recovered.** `vintrace-api/specs/common-schemas.yaml` now contains the shared v7
+> components recovered from Vintrace's public Stoplight bundled docs, including `Measurement`,
+> `CostBreakdown`, `ExtIdentifiableEntity`, `CodedIdentifiableEntity`, `Winery`, `PageRoot`, and
+> `BaseErrorRoot`. The bundle defines `Measurement.unit` as a free string, not a closed enum.
 
 ## Per-module KB pages
 

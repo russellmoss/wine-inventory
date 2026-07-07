@@ -316,7 +316,7 @@ components:
     GetStockDispatchesSuccessResponse:
       type: object
       allOf:
-        - $ref: common-schemas.yaml#/components/schemas/Shared-openapi_PageRoot
+        - $ref: common-schemas.yaml#/components/schemas/PageRoot
         - type: object
           properties:
             results:
@@ -541,7 +541,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: common-schemas.yaml#/components/schemas/Shared-openapi_BaseErrorRoot
+            $ref: common-schemas.yaml#/components/schemas/BaseErrorRoot
           examples:
             badRequest:
               value:

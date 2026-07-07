@@ -11,7 +11,7 @@ OpenAPI 3.0.3. Source spec: `vintrace-api/specs/identity-api-v7.yaml`.
 **Cross-cutting**
 - Optional `correlation-id` request header (uuid); echoed back on every response.
 - Errors: `default` response returns `{ errors: [{ code, message, detail }] }` (400/401/403/404/409).
-- List responses are page-wrapped (`Shared-openapi_PageRoot`): `totalResults`, `offset`, `limit`, `first`, `previous`, `next`, `last`, `results`.
+- List responses are page-wrapped (`PageRoot`): `totalResults`, `offset`, `limit`, `first`, `previous`, `next`, `last`, `results`.
 
 Scope note: this API is **narrow** — it manages only the shared **party/contact master** (people and organizations that a winery deals with). It does not touch wine, vessels, stock, or compliance data; those live in the other v7 specs (`vessel`, `stock`, `operation`, `harvest`, `costs`, `report`, `account`).
 

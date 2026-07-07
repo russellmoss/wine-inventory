@@ -23,7 +23,7 @@ Returns a paginated, time-windowed stream of cost movements. Each row is one pos
 - `wineryName` (string) — filter by winery name.
 - `wineryId` (int) — filter by winery id.
 
-**Response** `GetBusinessUnitTransactionsResponse` — a paged root (`totalResults`, `offset`, `limit`, `first`/`previous`/`next`/`last` link cursors) wrapping `result[]` of `TransactionDetails`.
+**Response** `GetBusinessUnitTransactionsResponse` — a paged root (`totalResults`, `offset`, `limit`, `first`/`previous`/`next`/`last` link cursors) wrapping `results[]` of `TransactionDetails`. The inline example still uses singular `result`; the recovered shared `PageRoot` schema uses `results`.
 
 **Key `TransactionDetails` fields (what a migration engineer needs)**
 - `activityId` (string, `XX:nnnnnnnn`) — the source activity that initiated the cost movement (e.g. `OP:29086`).
@@ -39,7 +39,7 @@ Returns a paginated, time-windowed stream of cost movements. Each row is one pos
 - `primaryWinery` / `secondaryWinery` / `otherWinery` (`Winery`: `{ id, name, businessUnit }`).
 - `productCategory` / `program` (`CodedIdentifiableEntity`: `{ id, name, code }`) — batch's product category + assigned program.
 - `volumeDelta` (`Measurement`: `{ unit, value }`) — signed volume change (e.g. `gal`, `-15`).
-- `costDelta` (`CostBreakdown`) — signed cost change in dollars, decomposed: `total`, `fruit`, `overhead`, `storage`, `additive`, `bulk`, `packaging`, `operation`, `freight`, `other`. **This is the money model.**
+- `costDelta` (`CostBreakdown`) — signed cost change in dollars, decomposed: `total`, `average`, `fruit`, `overhead`, `storage`, `additive`, `bulk`, `packaging`, `operation`, `freight`, `other`. **This is the money model.**
 - `customer` / `vendor` (`ExtIdentifiableEntity`) — bulk-wine buyer/seller if the movement is a bulk sale/purchase.
 - `lossReason` (`IdentifiableEntity`) — set on write-off/loss movements.
 - `allocationDescription` (string) + `impactedAllocations[]` (`{ productName, vintage, itemCode, name }`) — the finished-product allocations this movement touched.
@@ -51,20 +51,20 @@ Returns a paginated, time-windowed stream of cost movements. Each row is one pos
 
 ## Key schemas
 
-Shared models are declared in `common-schemas.yaml` (referenced but **not present** in this repo — field shapes below are read from the response example + property list).
+Shared models are declared in `vintrace-api/specs/common-schemas.yaml`, recovered from the public Stoplight v7 optimized bundle.
 
 | Schema | Shape / fields | Notes |
 | --- | --- | --- |
-| `TransactionDetails` | see field list above | One posted cost movement (row of `result[]`). |
-| `CostBreakdown` (`costDelta`) | `total, fruit, overhead, storage, additive, bulk, packaging, operation, freight, other` (all numeric, signed) | Vintrace's cost-component taxonomy. Maps roughly to our `CostComponent` enum — see mapping below. |
-| `Measurement` (`volumeDelta`) | `{ unit, value }` | Volume unit is arbitrary (example uses US `gal`); value is signed. |
+| `TransactionDetails` | see field list above | One posted cost movement (row of `results[]`). |
+| `CostBreakdown` (`costDelta`) | `total, average, fruit, overhead, storage, additive, bulk, packaging, operation, freight, other` (all numeric, signed) | Vintrace's cost-component taxonomy. Maps roughly to our `CostComponent` enum — see mapping below. |
+| `Measurement` (`volumeDelta`) | `{ unit, value }` | Unit is a free string in the bundled OpenAPI, not a closed enum; value is signed. |
 | `Winery` (`primaryWinery` …) | `{ id, name, businessUnit }` | A winery = a costing "business unit". Multi-winery within one Vintrace org. |
 | `CodedIdentifiableEntity` (`productCategory`, `program`) | `{ id, name, code }` | Product-category + program dimensions on a batch. |
 | `ExtIdentifiableEntity` (`customer`, `vendor`) | external-id-bearing party | Bulk trade counterparties. |
 | `IdentifiableEntity` (`lossReason`) | `{ id, name }` | Loss/write-off reason code. |
 | `impactedAllocations[]` | `{ productName, vintage, itemCode, name }` | Finished-product allocation refs (item code = vintage+product). |
 | `references` | `{ bulkSalesOrder, bulkPurchaseOrder, externalWorkOrder, workOrder, jobNumber, billOfLadingNumber }` | Source-document cross-refs. |
-| `PageRoot` | `totalResults, offset, limit, first, previous, next, last, result[]` | Standard Vintrace pagination envelope. |
+| `PageRoot` | `totalResults, offset, limit, first, previous, next, last, results[]` | Standard Vintrace pagination envelope. |
 | `BaseErrorRoot` | `errors[]` of `{ code, message, detail }` | Error envelope. |
 
 ### Notable models referenced but NOT in this API

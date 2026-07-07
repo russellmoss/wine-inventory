@@ -17,14 +17,11 @@ This document is honest about what the API can and cannot do. Where it says **GA
 nothing usable and the data must come from a **CSV / PDF report export** (§B) — never scraping, only the
 winery's own authorized exports.
 
-> [!important] Prerequisite (do this before writing the importer) — export `common-schemas`
-> The eight module specs `$ref` a shared components file (`common-schemas.yaml`: `Measurement`,
-> `CostBreakdown`, `CodedIdentifiableEntity`, `ExtIdentifiableEntity`, `Winery`, `PageRoot`,
-> `BaseErrorRoot`, …) that was **not in the Stoplight export**. The field shapes for those in this KB
-> were **reconstructed from in-file examples and are NOT authoritative.** Export `common-schemas` from
-> Stoplight (same Export flow), drop it in `vintrace-api/specs/`, and re-verify every unit-tagged
-> `Measurement` and `CostBreakdown` bucket, the pagination envelope, and the error root against the real
-> definitions before trusting the generated client. This is migration step 0.
+> [!important] Shared schema status
+> `vintrace-api/specs/common-schemas.yaml` has been recovered from Vintrace's public Stoplight v7
+> optimized bundle. The shared identifier shapes, `CostBreakdown` buckets, pagination envelope, and
+> error root are authoritative from that bundle. The bundle does **not** define a closed
+> `Measurement.unit` enum; units are free strings and must still be normalized by importer policy.
 
 ---
 
@@ -57,7 +54,7 @@ re-pull is a no-op / update, never a duplicate.
 | 2a | **Wine-batch identity** | `GET /wine-batches?include=vessels` (operation) | `Lot` (`code`←batchCode, `displayName`, `vintageYear`←productionYear, origin, ownership); `LotIdentifier` (`source-system-id`, `current-code`) | Adopt Vintrace batch codes **verbatim** (NAMING-1). No lineage, no AF/MLF state, no per-lot form here. |
 | 2b | **Per-vessel occupancy + composition** | `GET /vessel-details-report?asAtDate=<cutover>` (report) | `VesselLot` (`volumeL`), blend composition, `Vessel` roster | The authoritative **cutover balance** read: volume/ullage per vessel as-of the cutover date. A batch across N vessels = N rows; an emptied/bottled batch is **invisible** here (catch it via 2a + finished-goods CSV §B-3). |
 | 2c | **Tax-class + bond posture** | same `vessel-details-report` `ttbDetails`; `GET /bulk-intakes` `cost.ttbDetails` (operation) | tax-class inputs on `Lot` (`productType`/`carbonation`/`taxAbvOverride`); `Bond` line-level (Phase 2) | Raw material for `deriveTaxClass()` + bond placement. **Not** filed reports. Vessel `dspAccount` is mostly informational for wine. |
-| 2d | **Rolled-up cost basis** | `vessel-details-report` `CostBreakdown` (report); cross-check `GET /business-unit-transactions` (costs) | `LotCostState.totalCost` + `CostComponent` buckets | Report gives a per-vessel **snapshot** (total + fruit/overhead/storage/additive/bulk/packaging/operation/freight/other). Costs API gives the **delta stream** to reconcile against (§C). Vintrace `storage`/`freight`/`other` buckets are **lossy** into our enum → fold to `BARREL`/`VARIANCE`/note. |
+| 2d | **Rolled-up cost basis** | `vessel-details-report` `CostBreakdown` (report); cross-check `GET /business-unit-transactions` (costs) | `LotCostState.totalCost` + `CostComponent` buckets | Report gives a per-vessel **snapshot** (total + average + fruit/overhead/storage/additive/bulk/packaging/operation/freight/other). Costs API gives the **delta stream** to reconcile against (§C). Vintrace `storage`/`freight`/`other` buckets are **lossy** into our enum → fold to `BARREL`/`VARIANCE`/note. |
 | 2e | **Sparkling state** | `vessel-details-report` `sparklingInfo.state` (report) | `BottledLotState`, `BottleStage` | Snapshot position only (no tirage/disgorge/dosage dates or g/L). |
 
 ### Step 3 — Emit the seed
@@ -96,8 +93,10 @@ labeled **inferred/partial** on import and **never silent-dropped** (ux-principl
 | **B-8** | **Grower/buyer party linkage to fruit** | identity gives parties, but our harvest chain has no grower FK. | Capture grower `extId` on the block/intake CSV; hold until a Party model exists (schema addition, tracked). | (schema gap — record `extId`, don't drop) |
 | **B-9** | **Sales / DTC orders** | No sales surface in the API (only bulk **dispatch** shipments). | Out of Vintrace scope — DTC comes through our **Commerce7** path, not migration. | `Commerce7Order` / `SalesExportEvent` (separate integration) |
 
-**Unit normalization applies to every step** (D8): Vintrace weights/volumes are unit-tagged
-(tn/lb/gal_US/L, °Brix); convert to canonical **liters / kg** on import. Timestamps are epoch ms.
+**Unit normalization applies to every step** (D8): Vintrace measurements are unit-tagged, but the
+OpenAPI bundle defines the unit as a free string rather than an enum. Normalize known volume/weight
+codes seen in tenant data (for example `L`, `gal`, `kg`, `t`, `tn`, `lb`) to canonical **liters / kg**
+on import, and reject or map-review unknown unit strings. Timestamps are epoch ms.
 
 ---
 
@@ -131,8 +130,8 @@ production instance is touched.** Rationale and rules:
   and reconciliation logic are identical — only the base URL and token change.
 - Discover the API's real behaviors safely: the **no-list / GET-by-int-id** constraints on
   `account` and `vessel`, the **required `startDate`/`endDate`** on costs, the **`results` vs `result`**
-  wrapper inconsistency in the costs spec, page-envelope pagination, and the missing shared-schema field
-  shapes — all get pinned against the sandbox, not a customer's live cellar.
+  wrapper inconsistency in the costs examples, page-envelope pagination, and unit-string coverage —
+  all get pinned against the sandbox, not a customer's live cellar.
 - Confirm token scope + rate behavior against the sandbox; a full-history costs pull (delta stream from
   inception) is large — validate paging + backoff here first.
 - In **our** environment, all seeding/verification runs inside `runAsTenant("org_demo_winery", …)`

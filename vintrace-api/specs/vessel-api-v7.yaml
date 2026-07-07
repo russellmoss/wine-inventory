@@ -30,7 +30,7 @@ paths:
                 successResponse:
                   $ref: '#/components/examples/BarrelSuccessResponseExample'
         default:
-          $ref: common-responses.yaml#/components/responses/DefaultError
+          $ref: common-schemas.yaml#/components/responses/DefaultError
   '/barrel-groups/{id}':
     get:
       summary: Get the details of a barrel group
@@ -50,7 +50,7 @@ paths:
                 successResponse:
                   $ref: '#/components/examples/BarrelGroupSuccessResponseExample'
         default:
-          $ref: common-responses.yaml#/components/responses/DefaultError
+          $ref: common-schemas.yaml#/components/responses/DefaultError
   /tanks:
     post:
       summary: create a tank
@@ -137,7 +137,7 @@ paths:
                 successResponse:
                   $ref: '#/components/examples/TankSuccessResponseExample'
         default:
-          $ref: common-responses.yaml#/components/responses/DefaultError
+          $ref: common-schemas.yaml#/components/responses/DefaultError
   '/tanks/{id}':
     get:
       summary: Get the details of a tank
@@ -157,7 +157,7 @@ paths:
                 successResponse:
                   $ref: '#/components/examples/TankSuccessResponseExample'
         default:
-          $ref: common-responses.yaml#/components/responses/DefaultError
+          $ref: common-schemas.yaml#/components/responses/DefaultError
   '/tankers/{id}':
     get:
       summary: Get the details of a tanker
@@ -177,7 +177,7 @@ paths:
                 successResponse:
                   $ref: '#/components/examples/TankerSuccessResponseExample'
         default:
-          $ref: common-responses.yaml#/components/responses/DefaultError
+          $ref: common-schemas.yaml#/components/responses/DefaultError
   '/bins/{id}':
     get:
       summary: Get the details of a bin
@@ -197,7 +197,7 @@ paths:
                 successResponse:
                   $ref: '#/components/examples/BinSuccessResponseExample'
         default:
-          $ref: common-responses.yaml#/components/responses/DefaultError
+          $ref: common-schemas.yaml#/components/responses/DefaultError
 components:
   securitySchemes:
     bearerAuth:

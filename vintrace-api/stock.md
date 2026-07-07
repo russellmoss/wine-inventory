@@ -5,7 +5,7 @@ Reference for migration into Cellarhand. Source spec: `vintrace-api/specs/stock-
 - **Server base URL:** `https://oz50.vintrace.net/vinx2/api/v7/stock` (production), `https://sandbox.vintrace.net/vinx2demo/api/v7/stock` (sandbox). Path prefix `/api/v7/stock`.
 - **Auth:** HTTP Bearer token (`Authorization: Bearer <token>`). Tokens managed per the Vintrace support article.
 - **Correlation:** optional `correlation-id` request header (UUID); echoed in the `correlation-id` response header, plus a `Location` header on create (`/stock/receivals/1234`).
-- **Scope:** this module is TINY — exactly **two endpoints**: a WRITE to receive stock into the cellar (`POST /receivals`) and a READ of outbound shipments (`GET /dispatches`). It is a goods-movement I/O surface (dry-goods / stock-item receipt in, dispatch out). It is NOT a batch/vessel/inventory-balance catalog: there is no "list stock items", no current on-hand levels, no stock-item master, and no GET for an individual receival. `/dispatches` is read-only (no create). The referenced `common-schemas.yaml` (`Measurement`, `IdentifiableEntity`, `ExtIdentifiableEntity`, `Winery`, `Shared-openapi_PageRoot`, etc.) is not shipped with the spec; field shapes below are inferred from the inline examples.
+- **Scope:** this module is TINY — exactly **two endpoints**: a WRITE to receive stock into the cellar (`POST /receivals`) and a READ of outbound shipments (`GET /dispatches`). It is a goods-movement I/O surface (dry-goods / stock-item receipt in, dispatch out). It is NOT a batch/vessel/inventory-balance catalog: there is no "list stock items", no current on-hand levels, no stock-item master, and no GET for an individual receival. `/dispatches` is read-only (no create). Shared shapes such as `Measurement`, `IdentifiableEntity`, `ExtIdentifiableEntity`, `Winery`, and `PageRoot` are vendored in `vintrace-api/specs/common-schemas.yaml` from the public Stoplight v7 bundle.
 
 ---
 
@@ -55,7 +55,7 @@ Key `StockDispatchData` fields (extends `ScheduleOperationDetails`):
 - `stockItems[]` (`DispatchedStockItemData`): `item` (CodedIdentifiableEntity: id/name/code, e.g. `2019-0012`), `quantity` (Measurement, e.g. `1 x12` — a case pack), `routeDetails[].stockRoute` (`RouteStockItem`: `quantity`, `storageArea`, `bin`) — where it was pulled from.
 - `shippingInfo` (`StockDispatchShippingInfoData`): `carrier`, `vendor`, `sentBy` (ExtIdentifiableEntity); `containerTypes`, `reference`, `port`, `packingConfig`, `orderNo`, `truckNo`, `containerNo`, `sealNo`, `driverName`; `freightCode` / `scale` (IdentifiableEntity); `totalWeight` (Measurement); `shippingRemarks`.
 
-**Errors:** `default` → `Shared-openapi_BaseErrorRoot` (`errors[]` of `{ code, message, detail }`) — covers 400 bad request, 401 not-authorized, 403 forbidden, 404 not-found.
+**Errors:** `default` → `BaseErrorRoot` (`errors[]` of `{ code, message, detail }`) — covers 400 bad request, 401 not-authorized, 403 forbidden, 404 not-found.
 
 ---
 
@@ -67,7 +67,7 @@ Key `StockDispatchData` fields (extends `ScheduleOperationDetails`):
 - **`StockDispatchData`** — full outbound shipment: header (`source` winery, `destination`, `dispatchType`, operator, reversed) + `stockItems[]` + `shippingInfo`.
 - **`ScheduleOperationDetails`** (base for dispatch) — `id`, `workOrderNumber`, `jobNumber`, `occurredTime`, `modifiedTime`, `operator`, `reversed`. Ties a stock op back to a work order.
 - **`StockDispatchShippingInfoData`** — freight/logistics detail block for a dispatch (carrier, vendor, container/port/seal/truck, weight, remarks).
-- **Measurement** (common) — `{ value: number, unit: string }`. **IdentifiableEntity** — `{ id, name }`. **ExtIdentifiableEntity** — `{ id, name, extId }` (extId = external system key, the migration join point). **CodedIdentifiableEntity** — `{ id, name, code }`. **Winery** — a winery/business-unit reference.
+- **Measurement** (common) — `{ value: number, unit: string }`; the bundled spec does not publish a closed unit enum. **IdentifiableEntity** — `{ id, name }`. **ExtIdentifiableEntity** — `{ id, name, extId }` (extId = external system key, the migration join point). **CodedIdentifiableEntity** — `{ id, name, code }`. **Winery** — a winery/business-unit reference.
 
 ---
 

@@ -28,7 +28,7 @@ finished-goods inventory. Those live in the sibling APIs (`operation-`, `harvest
 ### `GET /vessel-details-report` - Bulk-wine vessel + contents snapshot
 
 Return vessel and contents details for bulk wines **at a specified date/time**.
-Response is paginated (`Shared-openapi_PageRoot`: `totalResults`, `offset`, `limit`,
+Response is paginated (`PageRoot`: `totalResults`, `offset`, `limit`,
 `first`/`previous`/`next`/`last` links, `results[]`).
 
 **Query params (all optional):**
@@ -62,7 +62,7 @@ migration engineer needs:
 - **TTB (`ttbDetails` -> `TaxDetails`):** `bond {id,name}` (bonded facility),
   `taxState` (`BONDED|TAXPAID|NON_DECLARED`), `taxClass {id,name,federalName,stateName}`,
   `alcoholPercentage`.
-- **Cost (`cost` -> `CostBreakdown`):** dollar breakdown - `total`, `fruit`,
+- **Cost (`cost` -> `CostBreakdown`):** dollar breakdown - `total`, `average`, `fruit`,
   `overhead`, `storage`, `additive`, `bulk`, `packaging`, `operation`, `freight`,
   `other`. **As-of `asAtDate`.**
 - **Composition (`composition[]`, opt-in):** the blend slices - per slice `vintage`,
@@ -77,16 +77,16 @@ migration engineer needs:
   Sugar/Color).
 - **Sparkling (`sparklingInfo.state`):** `BASE_WINE|TIRAGED|RIDDLING|RIDDLED|DISGORGED|DOSAGED|BOTTLED|TRANSFERRED`.
 
-**Errors:** `default` -> `Shared-openapi_BaseErrorRoot` (`errors[]` of
+**Errors:** `default` -> `BaseErrorRoot` (`errors[]` of
 `{code,message,detail}`); documented examples for 400/401/403.
 
 ---
 
 ## Key schemas
 
-Schemas prefixed `common-schemas.yaml#/...` are **external** to this spec (a shared
-components file not present in `vintrace-api/specs/`); shapes below are inferred from
-the response example + `$ref` names.
+Schemas prefixed `common-schemas.yaml#/...` are shared definitions vendored in
+`vintrace-api/specs/common-schemas.yaml`; those shared shapes are recovered from the
+public Stoplight v7 optimized bundle.
 
 ### `BulkWineDetails`
 The per-vessel snapshot row (the response `results[]` element). Full field list above.
@@ -109,7 +109,7 @@ identity object.
 `percentage` (0-100), `componentVolume` (`Measurement`). The blend breakdown.
 
 ### `CostBreakdown` (`cost`) - *external ref*
-Dollar cost decomposition: `total`, `fruit`, `overhead`, `storage`, `additive`,
+Dollar cost decomposition: `total`, `average`, `fruit`, `overhead`, `storage`, `additive`,
 `bulk`, `packaging`, `operation`, `freight`, `other`.
 
 ### `AllocationSlice` (`allocations[]`) - *external ref*
@@ -120,14 +120,14 @@ Dollar cost decomposition: `total`, `fruit`, `overhead`, `storage`, `additive`,
 `name`, `value`, `interfaceMappedName`.
 
 ### `Measurement` - *external ref*
-`{ value: number, unit: string }` (e.g. gal).
+`{ value: number, unit: string }` (e.g. gal). The bundled OpenAPI defines `unit` as a free string, not a closed enum.
 
 ### `Winery` / `IdentifiableEntity` / `ExtIdentifiableEntity` / `CodedIdentifiableEntity` - *external refs*
 Reference-entity shapes: `IdentifiableEntity {id,name}`;
 `ExtIdentifiableEntity {id,extId,name}`; `CodedIdentifiableEntity {id,name,code}`;
 `Winery {id,name,businessUnit}`.
 
-### `Shared-openapi_PageRoot` - *external ref*
+### `PageRoot` - *external ref*
 Pagination envelope: `totalResults`, `offset`, `limit`, `first`, `previous`, `next`,
 `last`, `results[]`.
 

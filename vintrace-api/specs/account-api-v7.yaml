@@ -383,7 +383,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: common-schemas.yaml#/components/schemas/Shared-openapi_BaseErrorRoot
+            $ref: common-schemas.yaml#/components/schemas/BaseErrorRoot
           examples:
             badRequest (400):
               value:

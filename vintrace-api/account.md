@@ -39,12 +39,12 @@ Fetch one PO by its Vintrace-internal integer `id` (not `name`).
 - **PurchaseOrder** — `id` (int, Vintrace), `name` (unique PO number), `vendor`, `vendorReference`, `deliverBy` (epoch ms), `state`, `fulfillment`, `winery`, `taxPolicy`, `freightCost`, `inactive`, `notes`, `lines[]`.
 - **PurchaseOrderLine** — `id`, `type`, `lineNumber`, `itemCode`, `vendorCode`, `description`, `quantityOrdered`/`quantityFulfilled` (`Measurement`), `unitPrice`, `totalPrice`, `taxable`.
 - **Line `type`** — `GENERAL` / `ADHOC` (free-text, fulfillment writable) vs `WINE_BATCH` / `STOCK` (resolve to a Vintrace entity via `itemCode`; fulfillment set by the receiving operation).
-- **Measurement** (`common-schemas.yaml`) — `{ unit: string, value: number }`. Used for ordered/fulfilled quantities.
+- **Measurement** (`common-schemas.yaml`) — `{ unit: string, value: number }`; the bundled spec does not publish a closed unit enum. Used for ordered/fulfilled quantities.
 - **ExtIdentifiableEntity** (`common-schemas.yaml`) — external-id-matchable ref (`{ id?, name?, extId? }`); used for `vendor`.
 - **Winery** (`common-schemas.yaml`) — winery/business-unit ref on the PO.
 - **Enums** — `PurchaseOrderState {NEW, APPROVED}`, `Fulfillment {NOT_FULFILLED, PART_FULFILLED, FULFILLED, OVER_FULFILLED}`, `TaxPolicy {TAX_INCLUSIVE, TAX_EXCLUSIVE, NO_TAX}`.
 
-> `common-schemas.yaml` is `$ref`-ed by the spec but is **not present** in `vintrace-api/specs/`; `Measurement` / `ExtIdentifiableEntity` / `Winery` / `BaseErrorRoot` shapes above are inferred from usage in this file's examples.
+> `common-schemas.yaml` is now vendored in `vintrace-api/specs/` from the public Stoplight v7 bundle; the shared shapes above are authoritative from that bundle.
 
 ---
 
