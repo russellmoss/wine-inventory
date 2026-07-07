@@ -32,15 +32,17 @@ three things that run without you:
 
 ## Coverage snapshot
 
-**29 invariant notes: 23 guarded, 5 planned, 1 deferred.** The 23 guarded ones (ledger DB +
-pure + correction, tenancy, cost, compliance, work-orders, **naming** NAMING-1/2) are asserted by
-`npm run verify:invariants` (100% of *guarded* notes have a live guard) and their frontmatter
-well-formedness by `npm run verify:invariant-frontmatter`. NAMING-1/2 flipped to `guarded` in
-**Phase 1** (guard `npm run verify:naming`). The **5 planned** (BOND-1, TAXCLASS-1, TAXPAID-1,
-AMEND-1, MIGRATE-1) and **1 deferred** (CBMA-1) still **intentionally omit `verify:`** and are
-skipped by the checker until their enforcing guard ships (BOND/TAXCLASS/TAXPAID/AMEND → Phase 2,
-MIGRATE-1 → Phase 3), at which point each flips to `status: guarded`. Do **not** re-add a `verify:`
-field to a planned/deferred note before its guard exists — that would red the CI gate.
+**29 invariant notes: 27 guarded, 1 planned, 1 deferred.** The 27 guarded ones (ledger DB +
+pure + correction, tenancy, cost, compliance, work-orders, **naming** NAMING-1/2, **bond +
+tax-class** BOND-1/TAXCLASS-1/TAXPAID-1/AMEND-1) are asserted by `npm run verify:invariants` (100%
+of *guarded* notes have a live guard) and their frontmatter well-formedness by
+`npm run verify:invariant-frontmatter`. NAMING-1/2 flipped to `guarded` in **Phase 1** (guard
+`npm run verify:naming`); BOND-1/TAXCLASS-1/TAXPAID-1/AMEND-1 flipped in **Phase 2** (guards
+`verify:bond` / `verify:taxclass` / `verify:taxpaid` / `verify:ttb`). The **1 planned** (MIGRATE-1)
+and **1 deferred** (CBMA-1) still **intentionally omit `verify:`** and are skipped by the checker
+until their enforcing guard ships (MIGRATE-1 → Phase 3), at which point each flips to
+`status: guarded`. Do **not** re-add a `verify:` field to a planned/deferred note before its guard
+exists — that would red the CI gate.
 
 The narrative and the *why* live in [[INVARIANTS]]; architecture context in
 [[system-map]], [[security-register]], [[scale-register]].

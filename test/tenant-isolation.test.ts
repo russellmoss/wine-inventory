@@ -78,11 +78,17 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.lotIdentifier.upsert({ where: { id: "isov_li_a" }, update: {}, create: { id: "isov_li_a", tenantId: A, lotId: "isov_a", kind: "current-code", value: "ISOV-A", isCurrent: true, updatedAt: now } });
     await owner.lotIdentifier.upsert({ where: { id: "isov_li_b" }, update: {}, create: { id: "isov_li_b", tenantId: B, lotId: "isov_b", kind: "current-code", value: "ISOV-B", isCurrent: true, updatedAt: now } });
     await owner.lotCodeEvent.upsert({ where: { id: "isov_lce_b" }, update: {}, create: { id: "isov_lce_b", tenantId: B, lotId: "isov_b", field: "code", toValue: "ISOV-B2", commandId: "isov-lce-cmd-b" } });
+    // Phase 2 (BOND-1 / TAXCLASS-1): a bond per tenant + a change_of_tax_class_event in B (composite
+    // (tenantId, lotId) FK to lot).
+    await owner.bond.upsert({ where: { id: "isov_bond_a" }, update: {}, create: { id: "isov_bond_a", tenantId: A, registryNumber: "ISOV-BOND-A", isPrimary: true, updatedAt: now } });
+    await owner.bond.upsert({ where: { id: "isov_bond_b" }, update: {}, create: { id: "isov_bond_b", tenantId: B, registryNumber: "ISOV-BOND-B", isPrimary: true, updatedAt: now } });
+    await owner.changeOfTaxClassEvent.upsert({ where: { id: "isov_ctc_b" }, update: {}, create: { id: "isov_ctc_b", tenantId: B, lotId: "isov_b", toClass: "A_LE16", observedAt: now, commandId: "isov-ctc-cmd-b" } });
   });
 
   afterAll(async () => {
     await owner.lotCodeEvent.deleteMany({ where: { id: { in: ["isov_lce_b"] } } });
     await owner.lotIdentifier.deleteMany({ where: { id: { in: ["isov_li_a", "isov_li_b", "isov_li_x", "isov_li_k11"] } } });
+    await owner.changeOfTaxClassEvent.deleteMany({ where: { id: { in: ["isov_ctc_b", "isov_ctc_k11"] } } }); // Phase 2: FK'd to lot
     await owner.namingTemplateVersion.deleteMany({ where: { id: "isov_ntv_b" } });
     await owner.namingTemplate.deleteMany({ where: { id: { in: ["isov_nt_a", "isov_nt_b"] } } });
     await owner.calculationLog.deleteMany({ where: { id: { in: ["isov_calc_a", "isov_calc_b"] } } });
@@ -94,6 +100,7 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["isov_blk_a", "isov_blk_b"] } } });
     await owner.vineyard.deleteMany({ where: { id: { in: ["isov_vy_a", "isov_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["isov_a", "isov_b"] } } });
+    await owner.bond.deleteMany({ where: { id: { in: ["isov_bond_a", "isov_bond_b", "isov_bond_x"] } } }); // Phase 2: FK'd to org
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
     await owner.$disconnect();
@@ -195,6 +202,20 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     // The seeded current-code row for A's lot is visible to A and correctly tenant-stamped.
     const li = await asTenant(A, (db) => db.lotIdentifier.findFirst({ where: { id: "isov_li_a" }, select: { tenantId: true, lotId: true } }));
     expect(li).toMatchObject({ tenantId: A, lotId: "isov_a" });
+  });
+
+  it("bond + change_of_tax_class_event tenant-isolated (Phase 2): A can't see B's; foreign INSERT + composite-FK rejected", async () => {
+    expect(await asTenant(A, (db) => db.bond.findFirst({ where: { id: "isov_bond_a" } }))).not.toBeNull();
+    expect(await asTenant(A, (db) => db.bond.findFirst({ where: { id: "isov_bond_b" } }))).toBeNull();
+    expect(await asTenant(A, (db) => db.changeOfTaxClassEvent.findFirst({ where: { id: "isov_ctc_b" } }))).toBeNull();
+    // Foreign-tenant bond INSERT → WITH CHECK rejects.
+    await expect(
+      asTenant(A, (db) => db.bond.create({ data: { id: "isov_bond_x", tenantId: B, registryNumber: "ISOV-BOND-X", updatedAt: new Date() } })),
+    ).rejects.toThrow();
+    // Change-of-tax-class event pointing at B's lot → composite (tenantId, lotId) FK reject (K11).
+    await expect(
+      asTenant(A, (db) => db.changeOfTaxClassEvent.create({ data: { id: "isov_ctc_k11", tenantId: A, lotId: "isov_b", toClass: "A_LE16", observedAt: new Date() } })),
+    ).rejects.toThrow();
   });
 
   it("work_order is tenant-isolated (Phase 9): A sees its own, not B's; foreign INSERT rejected", async () => {

@@ -3,8 +3,9 @@ id: TAXPAID-1
 group: compliance
 severity: critical
 enforcedBy: app-code
+verify: "npm run verify:taxpaid"
 decision: "§B.1(iv)"
-status: planned
+status: guarded
 appliesTo:
   - src/lib/compliance/
   - src/lib/ledger/
@@ -14,10 +15,10 @@ tags:
 
 # TAXPAID-1 — taxpaid is a terminal one-way state
 
-> [!danger] Invariant (critical, app-code) — PLANNED
+> [!danger] Invariant (critical, app-code) — GUARDED
 > `REMOVE_TAXPAID` volume cannot re-enter in-bond via an ordinary compensating reversal; only an explicit, refund-flagged Taxpaid-Returned-to-Bond event re-admits it. This guards the generic reverser (`reverseOperationCore`) against silently corrupting the tax-paid boundary.
 
-**Guarded by:** _planned_ — guard lands in **Phase 2** (`npm run verify:taxpaid`, or folded into `verify:excise`), which flips this note to `status: guarded`. Currently unguarded by design.
+**Guarded by:** `npm run verify:taxpaid` (Phase 2) — the reverser refuses REMOVE_TAXPAID, the write-chokepoint admissibility guard blocks the ADJUST re-admission path (CO-1), and only a refund-flagged RETURN_TO_BOND re-admits (§A11).
 **Decision:** SYNTHESIS §B.1(iv) — see [[INVARIANTS]] and [[system-map]].
 **Applies to:** `src/lib/compliance/`, `src/lib/ledger/`
 

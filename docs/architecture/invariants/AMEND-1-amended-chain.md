@@ -3,8 +3,9 @@ id: AMEND-1
 group: compliance
 severity: critical
 enforcedBy: app-code
+verify: "npm run verify:ttb"
 decision: "§B.1(iv)"
-status: planned
+status: guarded
 appliesTo:
   - src/lib/compliance/
 tags:
@@ -13,10 +14,10 @@ tags:
 
 # AMEND-1 — amended-chain integrity
 
-> [!danger] Invariant (critical, app-code) — PLANNED
+> [!danger] Invariant (critical, app-code) — GUARDED
 > Correcting a FILED period marks all later FILED reports in that form + bond chain `NEEDS_AMENDMENT` and regenerates begin-balances down the chain (carry-forward makes this cheap).
 
-**Guarded by:** _planned_ — guard lands in **Phase 2** (extends `verify:ttb` / `verify:excise`), which flips this note to `status: guarded`. Currently unguarded by design.
+**Guarded by:** `npm run verify:ttb` (Phase 2) — the AMEND-1 3-period chain: a backdated op flips the whole downstream (formType, bond) FILED chain to `NEEDS_AMENDMENT`, the carry-forward reads through a marked report, and re-filing picks up the corrected upstream onHandEnd. 5120.17-only.
 **Decision:** SYNTHESIS §B.1(iv) — see [[INVARIANTS]] and [[system-map]].
 **Applies to:** `src/lib/compliance/`
 
