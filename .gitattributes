@@ -13,3 +13,6 @@ docs/architecture/parity/*.md text eol=lf
 docs/architecture/assistant-coverage.md text eol=lf
 scripts/*.mjs text eol=lf
 scripts/lib/*.mjs text eol=lf
+
+# Vintrace API knowledge base (specs + generated KB) — keep LF for clean diffs.
+vintrace-api/** text eol=lf

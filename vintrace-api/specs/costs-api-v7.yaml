@@ -1,0 +1,413 @@
+openapi: 3.0.3
+info:
+  title: Vintrace Costs API
+  description: ''
+  version: 1.0.0
+servers:
+  - url: 'https://oz50.vintrace.net/vinx2/api/v7/costs'
+    description: Example production url
+  - url: 'https://sandbox.vintrace.net/vinx2demo/api/v7/costs'
+    description: Example sandbox url
+security:
+  - bearerAuth: []
+paths:
+  /business-unit-transactions:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      summary: Return bulk wine cost movements between two dates
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - $ref: '#/components/parameters/BusinessUnit'
+        - $ref: '#/components/parameters/WineryName'
+        - $ref: '#/components/parameters/WineryId'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBusinessUnitTransactionsResponse'
+              examples:
+                successBusinessUnitTransactionsResponse:
+                  value:
+                    totalResults: 120
+                    offset: 0
+                    limit: 2
+                    first: /mob/api/v7/costs/business-unit-transactions?endDate=1667192283000&startDate=1664600283000&limit=2&offset=0
+                    previous: null
+                    next: /mob/api/v7/costs/business-unit-transactions?endDate=1667192283000&startDate=1664600283000&limit=2&offset=2
+                    last: /mob/api/v7/costs/business-unit-transactions?endDate=1667192283000&startDate=1664600283000&limit=2&offset=120
+                    result:
+                      - activityId: 'OP:29086'
+                        postedId: 8260
+                        resultOfCorrection: false
+                        activityType: Movement out (Inter-winery)
+                        primaryCostTarget: CH 20 Z
+                        secondaryCostTarget: CH 20 F
+                        activitySummary: Transfer 15 gal of CH 20 Z from 0108Z to CH 20 F in 0002F
+                        activityDate: 1665285480000
+                        postedDate: 1665285555000
+                        primaryWinery:
+                          id: 1
+                          name: Z Winery
+                          businessUnit: Z24
+                        secondaryWinery:
+                          id: 6
+                          name: F Winery
+                          businessUnit: F22
+                        location: ZW
+                        vessel: 0108Z
+                        wineBatch: CH 20 Z
+                        productCategory:
+                          id: 71
+                          name: Bulk Market White
+                          code: BMW
+                        program:
+                          id: 33
+                          name: Premium Chardonnay
+                          code: PRCH
+                        volumeDelta:
+                          unit: gal
+                          value: -15
+                        costDelta:
+                          total: -579.610194
+                          fruit: 171.829951
+                          overhead: -51.918786
+                          storage: 0
+                          additive: 0
+                          bulk: 0
+                          packaging: 0
+                          operation: -163.325534
+                          freight: 0
+                          other: -536.195825
+                        customer: null
+                        vendor: null
+                        lossReason: null
+                        allocationDescription: '15 gal of 2020 FRANCIS GULLY from 0108Z, +15 gal of 2020 FRANCIS GULLY to 0002F'
+                        impactedAllocations:
+                          - productName: FRANCIS GULLY
+                            vintage: '2020'
+                            itemCode: 20FGULLY
+                            name: 2020 FRANCIS GULLY
+                        references:
+                          bulkSalesOrder: null
+                          bulkPurchaseOrder: null
+                          externalWorkOrder: null
+                          workOrder: TWL7177
+                          jobNumber: 1
+                          billOfLadingNumber: PW4
+                      - activityId: 'OP:29086'
+                        postedId: 8261
+                        resultOfCorrection: false
+                        activityType: Movement in (Inter-winery)
+                        primaryCostTarget: CH 20 F
+                        secondaryCostTarget: CH 20 Z
+                        activitySummary: Transfer 15 gal of CH 20 Z from 0108Z to CH 20 F in 0002F
+                        activityDate: 1665285480000
+                        postedDate: 1665285555000
+                        primaryWinery:
+                          id: 6
+                          name: F Winery
+                          businessUnit: F22
+                        secondaryWinery:
+                          id: 1
+                          name: Z Winery
+                          businessUnit: Z24
+                        location: FW
+                        vessel: 0002F
+                        wineBatch: CH 20 F
+                        productCategory:
+                          id: 71
+                          name: Bulk Market White
+                          code: BMW
+                        program:
+                          id: 33
+                          name: Premium Chardonnay
+                          code: PRCH
+                        volumeDelta:
+                          unit: gal
+                          value: 15
+                        costDelta:
+                          total: 579.610194
+                          fruit: -171.829951
+                          overhead: 51.918786
+                          storage: 0
+                          additive: 0
+                          bulk: 0
+                          packaging: 0
+                          operation: 163.325534
+                          freight: 0
+                          other: 536.195825
+                        customer: null
+                        vendor: null
+                        lossReason: null
+                        allocationDescription: '15 gal of 2020 FRANCIS GULLY from 0108Z, +15 gal of 2020 FRANCIS GULLY to 0002F'
+                        impactedAllocations:
+                          - productName: FRANCIS GULLY
+                            vintage: '2020'
+                            itemCode: 20FGULLY
+                            name: 2020 FRANCIS GULLY
+                        references:
+                          bulkSalesOrder: null
+                          bulkPurchaseOrder: null
+                          externalWorkOrder: null
+                          workOrder: TWL7177
+                          jobNumber: 1
+                          billOfLadingNumber: PW4
+        default:
+          $ref: '#/components/responses/DefaultError'
+components:
+  schemas:
+    GetBusinessUnitTransactionsResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/Shared-openapi_PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransactionDetails'
+    TransactionDetails:
+      description: The transaction details for a cost movement
+      type: object
+      properties:
+        activityDate:
+          description: The effective date of the activity related to this transaction
+          type: integer
+          format: Int64
+        postedDate:
+          description: The date that the cost movement related to the transaction was posted
+          type: integer
+          format: Int64
+        resultOfCorrection:
+          description: flag to indicate if this cost movement was triggered from the original activity or a subsequent correction
+          type: boolean
+        activityId:
+          description: 'The id of the activity that initiated the cost movement (format: XX:nnnnnnnn)'
+          type: string
+        postedId:
+          description: The unique internal event id of this cost movement
+          type: integer
+        activityType:
+          description: The type of activity that triggered this cost movement
+          type: string
+        activitySummary:
+          description: A summary of the activity that triggered this transaction
+          type: string
+        primaryCostTarget:
+          description: Human readable code/name of the main batch/item that this cost acted on
+          type: string
+        secondaryCostTarget:
+          description: Human readable code/name of the secondary batch/item that this cost acted on
+          type: string
+        primaryWinery:
+          description: The main winery involved in the transaction
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+        secondaryWinery:
+          description: The secondary winery involved in the transaction
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+        location:
+          description: The winery building within the primary winery
+          type: string
+        vessel:
+          description: The vessel related to this cost movement
+          type: string
+        wineBatch:
+          description: The wine batch involved in the movement
+          type: string
+        productCategory:
+          description: The designated product category for this batch
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        program:
+          description: The assigned program for this batch
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        volumeDelta:
+          description: The change in volume related to this transaction
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        costDelta:
+          description: The cost (in dollars) for this cost movement
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CostBreakdown
+        otherWinery:
+          description: The other winery involved in the transaction
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+        notes:
+          description: Summary of the transaction
+          type: string
+        customer:
+          description: The customer who purchased bulk wine for this transaction (if applicable for transaction type)
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        vendor:
+          description: The vendor bulk wine was purchased from for this transaction (if applicable for transaction type)
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        lossReason:
+          description: The optional loss reason associated with a write-off transaction
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        allocationDescription:
+          description: A summary of the allocation changes related to the winemaking transaction
+          type: string
+        impactedAllocations:
+          description: The allocations impacted by this transaction
+          type: object
+          properties:
+            productName:
+              description: The name of the allocated product
+              type: string
+            vintage:
+              description: The vintage for the allocated product
+              type: string
+            itemCode:
+              description: The external code for this vintage + product combination
+              type: string
+            name:
+              description: The human readable name for this vintage + product combination
+              type: string
+        references:
+          description: Different references for this transaction depending on the transaction type
+          type: object
+          properties:
+            bulkSalesOrder:
+              description: The bulk sales order number if applicable
+              type: string
+            bulkPurchaseOrder:
+              description: The bulk purchase order number if applicable
+              type: string
+            externalWorkOrder:
+              description: Future use; To capture the external work order number for bottling jobs in ERP system
+              type: string
+            workOrder:
+              description: The vintrace work order number for the job relating to this question
+              type: string
+            jobNUmber:
+              description: The position of this job on the vintrace work order
+              type: string
+            billOfLadingNumber:
+              description: The Bill Of Lading number for this transaction if applicable
+              type: string
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Refer to https://support.vintrace.com/hc/en-us/articles/4407443037711-Manage-and-create-API-tokens for more info'
+  parameters:
+    CorrelationId:
+      name: correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional unique identifer associated with the transaction
+      example: d308faac-66e1-47df-a9ff-fbe61b4e8974
+    PaginationLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        example: 10
+      description: Sets limit for maximum number of results in a paginated response
+    PaginationOffset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        example: 0
+      description: Sets offset for the results in a paginated response
+    StartDate:
+      name: startDate
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+        example: 1667192283000
+      description: The start date/time you are querying for transactions from
+    EndDate:
+      name: endDate
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+        example: 1667192283000
+      description: The end date/time you are querying for transactions until
+    BusinessUnit:
+      name: businessUnit
+      in: query
+      required: false
+      schema:
+        type: string
+        example: US57
+      description: The unique business unit for the winery you want to filter on
+    WineryName:
+      name: wineryName
+      in: query
+      required: false
+      schema:
+        type: string
+        example: Z Winery
+      description: The unique name of the winery you want to filter on
+    WineryId:
+      name: wineryId
+      in: query
+      required: false
+      schema:
+        type: integer
+        example: 7177
+      description: The id of the winery you want to filter on
+  responses:
+    DefaultError:
+      description: Unexpected error
+      headers:
+        correlation-id:
+          description: Unique identifier associated with the transaction
+          schema:
+            type: string
+            format: uuid
+      content:
+        application/json:
+          schema:
+            $ref: common-schemas.yaml#/components/schemas/Shared-openapi_BaseErrorRoot
+          examples:
+            badRequest (400):
+              value:
+                errors:
+                  - code: '123'
+                    message: Invalid data
+                    detail: Some data are invalid
+            notAuthorized (401):
+              value:
+                errors:
+                  - code: '23432'
+                    message: Token is not provided
+                    detail: Token must be provided
+            forbidden (403):
+              value:
+                errors:
+                  - code: '123'
+                    message: Permission not allowed
+                    detail: User must have permission to perform this operation

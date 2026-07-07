@@ -1,0 +1,417 @@
+openapi: 3.0.3
+info:
+  title: Vintrace Account API
+  description: ''
+  version: 1.0.0
+servers:
+  - url: 'https://oz50.vintrace.net/vinx2/api/v7/account'
+    description: Example production url
+  - url: 'https://sandbox.vintrace.net/vinx2demo/api/v7/account'
+    description: Example sandbox url
+security:
+  - bearerAuth: []
+paths:
+  /purchase-orders:
+    post:
+      summary: Create or update a purchase order with lines in the system
+      description: |
+        This endpoint will upsert the purchase order into Vintrace. 
+
+        The name field (required to be unique) that contains the identifier (e.g PO number) to be used to determine if the PO has existed or not.
+
+        For updating, the information from the request body will overwrite the existing value in Vintrace.  
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PurchaseOrder'
+            examples:
+              adhocPORequest:
+                value:
+                  name: PO-2
+                  vendor:
+                    extId: ABC-2342
+                  vendorReference: IT-92032
+                  deliverBy: 1650412615057
+                  state: NEW
+                  fulfillment: NOT_FULFILLED
+                  winery:
+                    name: A Winery
+                  freightCost: 3291.2
+                  notes: purchased on 01/12/2022
+                  inactive: false
+                  lines:
+                    - type: ADHOC
+                      lineNumber: 1
+                      itemCode: ADDITIVES
+                      vendorCode: item1
+                      description: Additives item x305
+                      quantityOrdered:
+                        unit: units
+                        value: 10
+                      unitPrice: 22.5
+                      totalPrice: 225
+                      quantityFulfilled:
+                        unit: units
+                        value: 0
+                      taxable: true
+              stockPORequest:
+                value:
+                  name: PO-3
+                  vendor:
+                    extId: ABC-2343
+                  vendorReference: IT-92032
+                  deliverBy: 1650412615057
+                  state: NEW
+                  fulfillment: NOT_FULFILLED
+                  winery:
+                    name: A Winery
+                  freightCost: 3291.2
+                  notes: purchased on 01/12/2022
+                  inactive: false
+                  lines:
+                    - type: STOCK
+                      lineNumber: 1
+                      itemCode: 10NVCHJX
+                      vendorCode: item1
+                      description: stock item 23432
+                      quantityOrdered:
+                        unit: x1
+                        value: 10
+                      unitPrice: 22.5
+                      totalPrice: 225
+                      taxable: true
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseOrderSuccessResponse'
+              example:
+                data:
+                  id: 234234
+                  name: PO-2
+                  vendor:
+                    id: 32342
+                    name: A company
+                    extId: ABC-2342
+                  vendorReference: IT-92032
+                  deliverBy: 1650412615057
+                  state: NEW
+                  fulfillment: NOT_FULFILLED
+                  winery:
+                    id: 392023
+                    name: A Winery
+                    businessUnit: null
+                  taxPolicy: TAX_EXCLUSIVE
+                  freightCost: 3291.2
+                  notes: purchased on 01/12/2022
+                  inactive: false
+                  items:
+                    - id: 23423
+                      type: ADHOC
+                      lineNumber: 1
+                      name: null
+                      vendorCode: item1
+                      description: Additives
+                      quantityOrdered:
+                        unit: units
+                        value: 10
+                      unitPrice: 22.5
+                      totalPrice: 225
+                      quantityFulfilled:
+                        unit: units
+                        value: 0
+                      taxable: true
+        default:
+          $ref: '#/components/responses/DefaultError'
+  '/purchase-orders/{id}':
+    get:
+      summary: Get the details of a purchase order.
+      description: Get the details of a purchase order.
+      parameters:
+        - $ref: '#/components/parameters/VintraceEntityId'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseOrderSuccessResponse'
+              example:
+                data:
+                  id: 234234
+                  name: PO-2
+                  vendor:
+                    id: 32342
+                    name: A company
+                    extId: ABC-2342
+                  vendorReference: IT-92032
+                  deliverBy: 1650412615057
+                  state: NEW
+                  fulfillment: NOT_FULFILLED
+                  winery:
+                    id: 392023
+                    name: A Winery
+                    businessUnit: null
+                  taxPolicy: TAX_EXCLUSIVE
+                  freightCost: 3291.2
+                  inactive: false
+                  lines:
+                    - id: 23423
+                      type: ADHOC
+                      lineNumber: 1
+                      itemCode: null
+                      vendorCode: item1
+                      description: Additives
+                      quantityOrdered:
+                        unit: units
+                        value: 10
+                      unitPrice: 22.5
+                      totalPrice: 225
+                      quantityFulfilled:
+                        unit: units
+                        value: 0
+                      taxable: true
+        default:
+          $ref: '#/components/responses/DefaultError'
+components:
+  schemas:
+    PurchaseOrderSuccessResponse:
+      description: 'The response object for creating, updating and getting a particular purchase order'
+      properties:
+        data:
+          $ref: '#/components/schemas/PurchaseOrder'
+    PurchaseOrder:
+      description: Represents a purchase order entity in vintrace
+      required:
+        - id
+        - name
+        - vendor
+      properties:
+        id:
+          description: Unique identifier of this purchase order.
+          type: integer
+        name:
+          description: The name of this purchase order. It is normally used to store the purchase order number. The value in this field is required to be unique.
+          type: string
+        vendor:
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        vendorReference:
+          description: The reference number from vendor
+          type: string
+        deliverBy:
+          description: The date when the line items in this purchase order are fully delivered by. Default to current date if not provided. Expected to be in epoch milliseconds.
+          type: integer
+          format: int64
+        state:
+          $ref: '#/components/schemas/PurchaseOrderState'
+        fulfillment:
+          $ref: '#/components/schemas/Fulfillment'
+        winery:
+          description: The winery of this purchase order. Default to the winery specified in the default setting if not provided
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+        taxPolicy:
+          $ref: '#/components/schemas/TaxPolicy'
+        freightCost:
+          description: The freight cost of this purchase order
+          type: number
+        inactive:
+          description: Flag that indicates if the PO is inactive or not
+          type: boolean
+          default: false
+        notes:
+          description: Notes about this purchase order
+          type: string
+        lines:
+          description: The line items of this purchase order
+          type: array
+          items:
+            $ref: '#/components/schemas/PurchaseOrderLine'
+    PurchaseOrderLine:
+      description: Stores general information of a purchase order line
+      type: object
+      required:
+        - id
+        - type
+        - itemName
+        - quantityOrdered
+      properties:
+        id:
+          description: Unique identifier of this purchase order line
+          type: integer
+        type:
+          description: The type of this line item
+          type: string
+          enum:
+            - GENERAL
+            - ADHOC
+            - WINE_BATCH
+            - STOCK
+        lineNumber:
+          description: Optional line number for identifying the line. It's normally used to store the line id from external party
+          type: string
+        itemCode:
+          description: 'The code of this line item in Vintrace. Depending on the line type, the value of this field will be used to lookup corresponding entities in Vintrace.'
+          type: string
+        vendorCode:
+          description: The vendor code of this line
+          type: string
+        description:
+          type: string
+        quantityOrdered:
+          description: This is the quantity that's been ordered for this line
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        unitPrice:
+          description: The unit price
+          type: number
+          format: double
+        totalPrice:
+          description: The total price of this line
+          type: number
+          format: double
+        quantityFulfilled:
+          description: |
+            This is the quantity that's been fulfilled for this line.
+
+            For general and adhoc type lines, this field is modifiable. For other types, it's readonly field and normally updated by associated operations.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        taxable:
+          description: Flag that indicates whether this line is taxable. Default to true
+          type: boolean
+          default: true
+    PurchaseOrderState:
+      description: The state of this purchase order.
+      type: string
+      default: NEW
+      enum:
+        - NEW
+        - APPROVED
+    Fulfillment:
+      description: The fulfillment status of this purchase order tracking the received wines.
+      type: string
+      default: NOT_FULFILLED
+      enum:
+        - NOT_FULFILLED
+        - PART_FULFILLED
+        - FULFILLED
+        - OVER_FULFILLED
+    TaxPolicy:
+      description: The tax policy
+      type: string
+      default: TAX_EXCLUSIVE
+      enum:
+        - TAX_INCLUSIVE
+        - TAX_EXCLUSIVE
+        - NO_TAX
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Refer to https://support.vintrace.com/hc/en-us/articles/4407443037711-Manage-and-create-API-tokens for more info'
+  parameters:
+    CorrelationId:
+      name: correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional unique identifier associated with the transaction
+      example: d308faac-66e1-47df-a9ff-fbe61b4e8974
+    VintraceEntityId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: The unique identifier of this resource. It is generated by vintrace internally
+      examples:
+        vintrace-generated-id:
+          value: 1232342
+    PaginationLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 10
+        example: 10
+      description: Sets limit for maximum number of results in a paginated response
+    PaginationOffset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        example: 0
+        default: 0
+      description: Sets offset for the results in a paginated response
+  responses:
+    DefaultError:
+      description: Unexpected error
+      headers:
+        correlation-id:
+          description: Unique identifier associated with the transaction
+          schema:
+            type: string
+            format: uuid
+      content:
+        application/json:
+          schema:
+            $ref: common-schemas.yaml#/components/schemas/Shared-openapi_BaseErrorRoot
+          examples:
+            badRequest (400):
+              value:
+                errors:
+                  - code: '123'
+                    message: Invalid data
+                    detail: Some data are invalid
+            notAuthorized (401):
+              value:
+                errors:
+                  - code: '23432'
+                    message: Token is not provided
+                    detail: Token must be provided
+            forbidden (403):
+              value:
+                errors:
+                  - code: '123'
+                    message: Permission not allowed
+                    detail: User must have permission to perform this operation
+            notFound (404):
+              value:
+                errors:
+                  - code: '123'
+                    message: Resource not found
+                    detail: 'Record with id: 2342 is not found.'
+            conflict (409):
+              value:
+                errors:
+                  - code: '123'
+                    message: Conflict
+                    detail: 'Multiple records with provided id: 2342 are found.'

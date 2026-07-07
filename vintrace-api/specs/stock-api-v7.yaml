@@ -1,0 +1,569 @@
+openapi: 3.0.3
+info:
+  title: Vintrace Stock API
+  description: ''
+  version: 1.0.0
+servers:
+  - url: 'https://oz50.vintrace.net/vinx2/api/v7/stock'
+    description: Example production url
+  - url: 'https://sandbox.vintrace.net/vinx2demo/api/v7/stock'
+    description: Example sandbox url
+security:
+  - bearerAuth: []
+paths:
+  /receivals:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      summary: Perform a receive stock operation in the system.
+      description: Insert the receive stock action into the system.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiveStockActionSchema'
+            examples:
+              receiveStockActionRequest:
+                value:
+                  occurredTime: 1644990021000
+                  operator:
+                    extId: 23423
+                  supplier:
+                    extId: 23423
+                  carrier:
+                    extId: 23423
+                  purchaseOrderName: VPO1
+                  purchaseOrderFulfillmentState: FULFILLED
+                  rego: 123ABC
+                  connote: ABC123
+                  driversName: someDriverName
+                  receivedBy:
+                    extId: 23423
+                  freightCost: 25
+                  stockDetails:
+                    - stockItemCode: SP/BL10NVPN
+                      receivedAmount:
+                        value: 600
+                        unit: gal
+                      price: 100
+                      priceType: TOTAL
+                      vendorCode: someVendorCode
+                      lotName: BID-001
+                      manufacturedDate: 1644990021000
+                      expiryDate: 1644990021000
+                      routeDetails:
+                        - routeStockItem:
+                            quantity: 5
+                            storageArea:
+                              id: 1234
+                            bin: testBin
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /stock/receivals/1234
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiveStockActionResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/ReceiveStockActionResponseExample'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /dispatches:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      summary: Get all stock dispatches
+      description: This endpoint returns all stock dispatch actions.
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetStockDispatchesSuccessResponse'
+              examples:
+                successShipmentsResponse:
+                  value:
+                    totalResults: 1000
+                    offset: 0
+                    limit: 10
+                    first: /api/v7/stock/dispatches?offset=0&limit=10
+                    previous: null
+                    next: /api/v7/stock/dispatches?offset=10&limit=10
+                    last: /api/v7/stock/dispatches?offset=990&limit=10
+                    results:
+                      - id: 1
+                        workOrderNumber: '123'
+                        jobNumber: '2'
+                        occurredTime: 1650412615057
+                        modifiedTime: 1650412615057
+                        operator:
+                          id: 39203
+                          name: 'User, A'
+                          extId: null
+                        reversed: false
+                        source:
+                          id: 2342
+                          name: ABC Winery
+                          businessUnit: null
+                        destination:
+                          id: 3
+                          name: Company A
+                          extId: null
+                        dispatchType:
+                          id: 12
+                          name: Export
+                        stockItems:
+                          - item:
+                              id: 1
+                              name: 2019-0012
+                              code: 2019-0012
+                            quantity:
+                              value: 1
+                              unit: x12
+                            routeDetails:
+                              stockRoute:
+                                - quantity: 1
+                                  storageArea:
+                                    id: 1
+                                    name: area
+                                  bin: bin
+                        shippingInfo:
+                          carrier:
+                            id: 1231
+                            name: Awesome Logistics
+                            extId: '121321'
+                          vendor:
+                            id: 1
+                            name: vendor
+                            extId: 2
+                          containerTypes: containerTypes
+                          reference: abc dispatch
+                          port: port
+                          packingConfig: packingConfig
+                          orderNo: orderNo
+                          truckNo: ABC2323
+                          containerNo: containerNo
+                          sentBy:
+                            id: 1
+                            name: vendor
+                            extId: 2
+                          driverName: driverName
+                          sealNo: sealNo
+                          freightCode:
+                            id: 323423
+                            name: FC1
+                          scale:
+                            id: 1
+                            name: scale
+                          totalWeight:
+                            value: 1
+                            unit: kg
+                          shippingRemarks: shippingRemarks
+        default:
+          $ref: '#/components/responses/DefaultError'
+components:
+  schemas:
+    stockDetailBody:
+      description: Represents a receive stock action detail.
+      properties:
+        stockItemCode:
+          description: The code of the stock item for this stock detail.
+          type: string
+        receivedAmount:
+          description: The amount received in stock units.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        price:
+          description: The price of the stock units.
+          type: number
+          format: double
+        priceType:
+          description: The type of price.
+          type: string
+          enum:
+            - PER_UNIT
+            - TOTAL
+        vendorCode:
+          description: The vendor code.
+          type: string
+        lotName:
+          description: The lot (stock item batch) name of the route info item.
+          type: string
+        manufacturedDate:
+          description: The manufactured date. Expected to be in epoch millisecond.
+          type: integer
+          format: int64
+        expiryDate:
+          description: The expiry date. Expected to be in epoch millisecond.
+          type: integer
+          format: int64
+        routeDetails:
+          description: The route details information.
+          type: array
+          items:
+            type: object
+            allOf:
+              - $ref: '#/components/schemas/RouteDetail'
+    RouteDetail:
+      description: Represents a route detail.
+      properties:
+        routeStockItem:
+          description: The route stock item.
+          allOf:
+            - $ref: '#/components/schemas/RouteStockItem'
+    RouteStockItem:
+      description: Represents a route stock item.
+      properties:
+        quantity:
+          description: The quantity of the route stock item.
+          type: number
+          format: double
+        storageArea:
+          description: The storage area of the route stock item.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        bin:
+          description: The bin of the route stock item.
+          type: string
+    ReceiveStockActionResponse:
+      description: Response object for returning the stock action data
+      properties:
+        data:
+          $ref: '#/components/schemas/ReceiveStockActionSchema'
+    ReceiveStockActionSchema:
+      allOf:
+        - type: object
+          required:
+            - vendor
+            - carrier
+            - receiveStockActionDetails
+          properties:
+            id:
+              description: The unique identifier of this job. Generated by vintrace
+              type: integer
+            occurredTime:
+              description: The date/time this action is taking place. Expected to be in epoch millisecond. Defaults to today's date if not provided.
+              type: integer
+              format: int64
+            operator:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            orderNo:
+              description: The order number of this action.
+              type: string
+            supplier:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            carrier:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            purchaseOrder:
+              $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+            purchaseOrderFulfillmentState:
+              description: The state of the purchase order.
+              type: string
+              enum:
+                - NOT_FULFILLED
+                - PART_FULFILLED
+                - FULFILLED
+                - OVER_FULFILLED
+            rego:
+              description: The truck license plate registration number.
+              type: string
+            connote:
+              description: The reference number of the shipping order.
+              type: string
+            driversName:
+              description: The name of the driver.
+              type: string
+            receivedBy:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            freightCost:
+              description: The cost of freight.
+              type: number
+              format: double
+            stockDetails:
+              description: The stock detail information.
+              type: array
+              items:
+                $ref: '#/components/schemas/stockDetailBody'
+            receiptNo:
+              description: The receipt number of this action.
+              type: string
+            purchaseOrderId:
+              description: The purchase order ID of this action.
+              type: string
+    GetStockDispatchesSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/Shared-openapi_PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/StockDispatchData'
+    StockDispatchData:
+      description: This object contains the data from the barrel treatment operation.
+      allOf:
+        - $ref: '#/components/schemas/ScheduleOperationDetails'
+      properties:
+        source:
+          description: The source of this dispatch.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Winery
+        destination:
+          description: The destination of the dispatch.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        dispatchType:
+          description: The dispatch type of the dispatch.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        stockItems:
+          description: The stock items of the dispatch.
+          type: array
+          items:
+            type: object
+            allOf:
+              - $ref: '#/components/schemas/DispatchedStockItemData'
+        shippingInfo:
+          description: The shipping info of the dispatch.
+          allOf:
+            - $ref: '#/components/schemas/StockDispatchShippingInfoData'
+    DispatchedStockItemData:
+      description: This object contains the stock item data from the stock dispatch operation.
+      properties:
+        item:
+          $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        quantity:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+        routeDetails:
+          description: The route details information.
+          type: array
+          items:
+            type: object
+            allOf:
+              - $ref: '#/components/schemas/DispatchRouteData'
+    DispatchRouteData:
+      description: This object contains the route details of stock item in the stock dispatch operation
+      properties:
+        stockRoute:
+          description: Contains route stock from storage area(s)
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/RouteStockItem'
+    StockDispatchShippingInfoData:
+      description: This object contains the shipping info data from the stock dispatch operation.
+      properties:
+        carrier:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        vendor:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        containerTypes:
+          type: string
+        reference:
+          type: string
+        port:
+          type: string
+        packingConfig:
+          type: string
+        orderNo:
+          type: string
+        truckNo:
+          type: string
+        containerNo:
+          type: string
+        sentBy:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        driverName:
+          type: string
+        sealNo:
+          type: string
+        freightCode:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        scale:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        totalWeight:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+        shippingRemarks:
+          type: string
+    ScheduleOperationDetails:
+      description: An object that contains basic details of operation. Designed for extending.
+      type: object
+      properties:
+        id:
+          description: The id of this operation. This field can be null when this operation scheduled in work order is not completed yet.
+          type: integer
+        workOrderNumber:
+          description: The work order number in which this operation is scheduled.
+          type: string
+          example: TWL-123
+        jobNumber:
+          description: The job number of this operation in the scheduled work order.
+          type: integer
+          example: 1
+        occurredTime:
+          description: |
+            The time when this stock operation occurs. Time is returned in epoch milliseconds.
+
+            This field can contain a future date when the operation is scheduled in a work order.
+          type: integer
+          format: int64
+        modifiedTime:
+          description: |
+            The last modified time of this operation. Time is returned in epoch milliseconds
+
+            This field can be null when the operation hasn't occurred.
+          type: integer
+          format: int64
+        operator:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        reversed:
+          description: The flag that indicates if this operation has been reversed
+          type: boolean
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Refer to https://support.vintrace.com/hc/en-us/articles/4407443037711-Manage-and-create-API-tokens for more info'
+  parameters:
+    CorrelationId:
+      name: correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional unique identifier associated with the transaction
+      example: d308faac-66e1-47df-a9ff-fbe61b4e8974
+    PaginationLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 10
+        example: 10
+      description: Sets limit for maximum number of results in a paginated response
+    PaginationOffset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        example: 0
+        default: 0
+      description: Sets offset for the results in a paginated response
+  examples:
+    ReceiveStockActionResponseExample:
+      value:
+        data:
+          id: 1234
+          occurredTime: 1644990021000
+          operator:
+            id: 1234
+            name: System Admin
+            extId: 23423
+          orderNo: ABC123
+          supplier:
+            id: 1234
+            name: System Admin
+            extId: 23423
+          carrier:
+            id: 1234
+            name: System Admin
+            extId: 23423
+          purchaseOrder:
+            id: 1234
+            name: VP01
+          purchaseOrderFulfillmentState: FULFILLED
+          rego: 123ABC
+          connote: '123'
+          driversName: someDriverName
+          receivedBy:
+            id: 1234
+            name: System Admin
+            extId: 23423
+          freightCost: 25
+          stockDetails:
+            - stockItemCode: SP/BL10NVPN
+              receivedAmount:
+                unit: gal
+                value: 600
+              price: 100
+              priceType: TOTAL
+              vendorCode: someVendorCode
+              lotName: BID-001
+              manufacturedDate: 1644990021000
+              expiryDate: 1644990021000
+              routeDetails:
+                - routeStockItem:
+                    quantity: 5
+                    storageArea:
+                      id: 1234
+                      name: SA2 - Tank farm
+                    bin: testBin
+          receiptNo: '110'
+          purchaseOrderId: 1234
+  responses:
+    DefaultError:
+      description: Unexpected error
+      headers:
+        correlation-id:
+          description: Unique identifier associated with the transaction
+          schema:
+            type: string
+            format: uuid
+      content:
+        application/json:
+          schema:
+            $ref: common-schemas.yaml#/components/schemas/Shared-openapi_BaseErrorRoot
+          examples:
+            badRequest:
+              value:
+                errors:
+                  - code: '123'
+                    message: Invalid data
+                    detail: Some data are invalid
+            notAuthorized:
+              value:
+                errors:
+                  - code: '23432'
+                    message: Token is not provided
+                    detail: Token must be provided
+            forbidden:
+              value:
+                errors:
+                  - code: '123'
+                    message: Permission not allowed
+                    detail: User must have permission to perform this operation
+            notFound:
+              value:
+                errors:
+                  - code: '1231'
+                    message: Resource not found
+                    detail: 'Resource with id: xxx could not be found in system'

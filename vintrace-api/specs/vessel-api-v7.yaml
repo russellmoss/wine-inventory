@@ -1,0 +1,1036 @@
+openapi: 3.0.3
+info:
+  title: Vintrace Vessel API
+  description: ''
+  version: 1.0.0
+servers:
+  - url: 'https://oz50.vintrace.net/vinx2/api/v7/vessel'
+    description: Example production url
+  - url: 'https://sandbox.vintrace.net/vinx2demo/api/v7/vessel'
+    description: Example sandbox url
+security:
+  - bearerAuth: []
+paths:
+  '/barrels/{id}':
+    get:
+      summary: Get the details of a barrel
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlationId:
+              $ref: common-schemas.yaml#/components/schemas/CorrelationId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BarrelSuccessResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/BarrelSuccessResponseExample'
+        default:
+          $ref: common-responses.yaml#/components/responses/DefaultError
+  '/barrel-groups/{id}':
+    get:
+      summary: Get the details of a barrel group
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlationId:
+              $ref: common-schemas.yaml#/components/schemas/CorrelationId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BarrelGroupSuccessResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/BarrelGroupSuccessResponseExample'
+        default:
+          $ref: common-responses.yaml#/components/responses/DefaultError
+  /tanks:
+    post:
+      summary: create a tank
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TankCreateRequest'
+            examples:
+              createTank:
+                value:
+                  name: 15-0086
+                  brand: desc
+                  capacity:
+                    value: 225
+                    unit: L
+                  wineryBuilding:
+                    name: WB-1
+                  owner:
+                    id: 2
+                  purchaseDate: 1644644421000
+                  purchasedUsed: false
+                  firstUsedDate: 1644644421000
+                  deliveredDate: 1644644421000
+                  grading:
+                    scale:
+                      name: Wine
+                    value:
+                      name: A
+                  usageCounter: 8
+                  inactive: false
+                  sanitationState:
+                    name: TO_BE_CLEANED
+                  lastSanitation: 1644644421000
+                  assetId: 24-153
+                  rfid: 12344
+                  miscellaneousInfo: Some extra information
+                  controlId: 14321
+                  alertState: false
+                  headspace: 12.5
+                  temperature: 10.2
+                  hasThermostat: true
+                  thermostatSetting: 10
+                  diameter: 1.5
+                  isRefrigerated: true
+                  isFermenter: false
+                  isInsulated: true
+                  isHeated: false
+                  constructionMaterial: Stainless steel
+                  tankCategory:
+                    name: Double tank
+                  dspAccount:
+                    name: PRODUCTION
+                  allowStaves: true
+                  containsStaves: true
+                  hasAgitator: true
+                  recount: false
+                  accountsReference: accountsReference
+                  purchaseOrderNumber: purchaseOrderNumber
+                  financialReference: financialReference
+                  depreciationStartDate: 1644644421000
+                  depreciationEndDate: 1644644421000
+                  vendor:
+                    id: 2
+      responses:
+        '201':
+          description: Success
+          headers:
+            correlationId:
+              $ref: common-schemas.yaml#/components/schemas/CorrelationId
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /tanks/7177
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TankSuccessResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/TankSuccessResponseExample'
+        default:
+          $ref: common-responses.yaml#/components/responses/DefaultError
+  '/tanks/{id}':
+    get:
+      summary: Get the details of a tank
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlationId:
+              $ref: common-schemas.yaml#/components/schemas/CorrelationId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TankSuccessResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/TankSuccessResponseExample'
+        default:
+          $ref: common-responses.yaml#/components/responses/DefaultError
+  '/tankers/{id}':
+    get:
+      summary: Get the details of a tanker
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlationId:
+              $ref: common-schemas.yaml#/components/schemas/CorrelationId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TankerSuccessResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/TankerSuccessResponseExample'
+        default:
+          $ref: common-responses.yaml#/components/responses/DefaultError
+  '/bins/{id}':
+    get:
+      summary: Get the details of a bin
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlationId:
+              $ref: common-schemas.yaml#/components/schemas/CorrelationId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BinSuccessResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/BinSuccessResponseExample'
+        default:
+          $ref: common-responses.yaml#/components/responses/DefaultError
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Refer to https://support.vintrace.com/hc/en-us/articles/4407443037711-Manage-and-create-API-tokens for more info'
+  parameters:
+    CorrelationId:
+      name: correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional unique identifier associated with the transaction
+      example: d308faac-66e1-47df-a9ff-fbe61b4e8974
+  schemas:
+    Barrel:
+      description: Represents a barrel entity in vintrace
+      allOf:
+        - $ref: '#/components/schemas/Vessel'
+      properties:
+        cooper:
+          description: Cooper that made the barrel
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        forest:
+          description: The forest present on the barrel
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        seasoning:
+          $ref: '#/components/schemas/BarrelSeasoningWrapper'
+        seasoningMonths:
+          description: The number of months the barrel was seasoned for
+          type: integer
+        toasting:
+          description: The toasting of the barrel
+          type: string
+        toastedHeads:
+          description: Flag to denote whether the barrel has toasted heads or not
+          type: boolean
+        grain:
+          description: The grain used in the barrel
+          type: string
+        lastContained:
+          description: Provides the beverage type of the barrel
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        oakType:
+          $ref: '#/components/schemas/OakTypeWrapper'
+        year:
+          description: The year the barrel was made
+          type: integer
+        barrelCategory:
+          description: The category of the barrel
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        location:
+          $ref: common-schemas.yaml#/components/schemas/StackCoordinates
+        barrelType:
+          $ref: '#/components/schemas/BarrelTypeWrapper'
+        barrelGroups:
+          description: A collection of the Barrel Groups that the barrel belongs to
+          type: array
+          items:
+            $ref: '#/components/schemas/BarrelGroupShort'
+        constructionMaterial:
+          description: The material used in the construction of the barrel
+          type: string
+        currentBillOfLadingDetails:
+          description: The current Bill of Lading details for the barrel
+          type: string
+        dspAccount:
+          $ref: '#/components/schemas/DspAccount'
+        recount:
+          description: Flag to denote whether the barrel has been flagged for a recount
+          type: boolean
+        lastFilledDate:
+          description: The last filled date of the barrel. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+    BarrelShort:
+      description: Represents a barrel entity in vintrace in short form
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+      properties:
+        link:
+          $ref: common-schemas.yaml#/components/schemas/ResourceLink
+    BarrelGroupShort:
+      description: Represents a barrel group entity in vintrace in short form
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+      properties:
+        link:
+          $ref: common-schemas.yaml#/components/schemas/ResourceLink
+    BarrelGroup:
+      description: Represents a barrel group entity in vintrace
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+      properties:
+        barrels:
+          description: A collection of barrels' short info
+          type: array
+          items:
+            $ref: '#/components/schemas/BarrelShort'
+        locations:
+          type: array
+          items:
+            $ref: common-schemas.yaml#/components/schemas/StackCoordinates
+        instructions:
+          description: Any instructions present for the barrel group
+          type: string
+        beenUsed:
+          description: Flag to denote whether the barrel group has been used
+          type: boolean
+        currentBillOfLadingDetails:
+          description: The current Bill of Lading details for the barrel group
+          type: string
+        lastFilledDate:
+          description: The last filled date of the barrel. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+    Bin:
+      description: Represents a bin entity in vintrace
+      allOf:
+        - $ref: '#/components/schemas/Vessel'
+      properties:
+        tareWeight:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+        commonTare:
+          description: Flag to denote if the bin has common tare
+          type: boolean
+        commonTareCertificateNumber:
+          description: The certificate number of the common tare
+          type: string
+        canAdjustTare:
+          description: Flag to denote whether the tare of the bin can be adjusted
+          type: boolean
+        maxBottles:
+          description: The maximum amount of bottles from this bin
+          type: integer
+        bottlesInUse:
+          description: The number of bottles currently in use
+          type: integer
+        location:
+          $ref: common-schemas.yaml#/components/schemas/StackCoordinates
+        stackMultiplier:
+          description: The stack multiplier of the bin
+          type: integer
+        dspAccount:
+          $ref: '#/components/schemas/DspAccount'
+    TankCreateRequest:
+      description: The request object for create a tank
+      allOf:
+        - $ref: '#/components/schemas/Tank'
+    Tank:
+      description: Represents a tank entity in vintrace
+      allOf:
+        - $ref: '#/components/schemas/Vessel'
+      properties:
+        headspace:
+          description: The empty space in the tank
+          type: number
+          format: double
+        temperature:
+          description: The temperature of the tank
+          type: number
+          format: double
+        hasThermostat:
+          description: Flag to denote whether the tank has a thermostat
+          type: boolean
+        thermostatSetting:
+          description: Temperature the thermostat is set to
+          type: number
+          format: double
+        diameter:
+          description: The diameter of the tank
+          type: number
+          format: double
+        isRefrigerated:
+          description: Flag to denote whether the tank is refrigerated
+          type: boolean
+        isFermenter:
+          description: Flag to denote whether the tank is a fermenter
+          type: boolean
+        isInsulated:
+          description: Flag to denote whether the tank is insulated
+          type: boolean
+        isHeated:
+          description: Flag to denote whether the tank is heated
+          type: boolean
+        constructionMaterial:
+          description: The material used in the construction of the tank
+          type: string
+        tankCategory:
+          description: The category of the tank
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        dspAccount:
+          $ref: '#/components/schemas/DspAccount'
+        allowStaves:
+          description: Flag to denote whether the tank allows staves
+          type: boolean
+        containsStaves:
+          description: Flag to denote whether the tank contains staves
+          type: boolean
+        hasAgitator:
+          description: Flag to denote whether the tank has an agitator
+          type: boolean
+        recount:
+          description: Flag to denote whether the tank has been flagged for a recount
+          type: boolean
+        accountsReference:
+          description: accounts reference
+          type: string
+        depreciationStartDate:
+          description: depreciation start date
+          type: integer
+          format: int64
+        depreciationEndDate:
+          description: depreciation end date
+          type: integer
+          format: int64
+        purchaseOrderNumber:
+          description: purchase order number
+          type: string
+        financialReference:
+          description: financial reference
+          type: string
+        vendor:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        dipTables:
+          description: A collection of the dip tables on the tank
+          type: array
+          items:
+            $ref: '#/components/schemas/DipTable'
+    Tanker:
+      description: Represents a tanker entity in vintrace
+      allOf:
+        - $ref: '#/components/schemas/Vessel'
+      properties:
+        truckNumber:
+          description: The number of the truck
+          type: string
+        sealNumber:
+          description: The seal number of the tanker
+          type: string
+        compartmentNumber:
+          description: The compartment number of the tanker
+          type: string
+        cleanInPlaceNumber:
+          description: The clean in place number of the tanker
+          type: string
+        currentBillOfLadingDetails:
+          description: The current Bill of Lading details for the tanker
+          type: string
+    Vessel:
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+      type: object
+      description: An entity that represents the details that all vessels share
+      required:
+        - id
+        - name
+        - owner
+        - capacity
+        - wineryBuilding
+      properties:
+        capacity:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+        wineryBuilding:
+          description: The wineryBuilding of the vessel (The default is the winery of setting `Winery Building`)
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        owner:
+          description: The owner of the vessel (The default is the owner of setting `Owner`)
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        brand:
+          description: The brand name of the vessel
+          type: string
+        purchaseDate:
+          description: The date and time when the vessel was purchased. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+        purchasedUsed:
+          description: Flag to denote whether the vessel was purchased used
+          type: boolean
+        firstUsedDate:
+          description: The date and time when the vessel was first used. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+        deliveredDate:
+          description: The date and time when the vessel was delivered. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+        grading:
+          description: The designated quality of this vessel
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Grading
+        position:
+          $ref: '#/components/schemas/VesselPosition'
+        usageCounter:
+          description: The amount of times this vessel has been used
+          type: integer
+        dimensions:
+          $ref: '#/components/schemas/VesselDimensions'
+        inactive:
+          description: Flag to denote whether the vessel is inactive
+          type: boolean
+        sanitationState:
+          $ref: '#/components/schemas/SanitationStateWrapper'
+        lastSanitation:
+          description: The last date and time when this vessel was cleaned. Time is returned in epoch milliseconds
+          type: integer
+          format: int64
+        assetId:
+          description: The unique asset ID of the vessel
+          type: string
+        rfid:
+          description: The Radio Frequency Identification tag on the vessel
+          type: string
+        miscellaneousInfo:
+          description: Any other information about the vessel
+          type: string
+        controlId:
+          description: The control ID of the vessel
+          type: string
+        alertState:
+          description: Flag to denote whether the vessel is in an alert state
+          type: boolean
+      discriminator:
+        propertyName: vesselType
+        mapping:
+          barrel: '#/components/schemas/Barrel'
+          barrelGroup: '#/components/schemas/BarrelGroup'
+          bin: '#/components/schemas/Bin'
+          tank: '#/components/schemas/Tank'
+          tanker: '#/components/schemas/Tanker'
+    VesselPosition:
+      type: object
+      properties:
+        x:
+          description: X coordinate of this position
+          type: integer
+        'y':
+          description: Y coordinate of this position
+          type: integer
+    VesselDimensions:
+      type: object
+      properties:
+        length:
+          description: Length
+          type: number
+          format: double
+        width:
+          description: Width
+          type: number
+          format: double
+        height:
+          description: Height
+          type: number
+          format: double
+    BarrelSeasoningWrapper:
+      description: The seasoning of the barrel
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/TranslatedFieldWrapper
+      properties:
+        name:
+          description: The name of the BarrelSeasoning enum itself
+          type: string
+          enum:
+            - UNKNOWN
+            - KILN
+            - KILN_AND_NATURAL
+            - NATURAL
+    OakTypeWrapper:
+      description: The type of oak
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/TranslatedFieldWrapper
+      properties:
+        name:
+          description: The name of the OakType enum itself
+          type: string
+          enum:
+            - FRENCH
+            - AMERICAN
+            - CANADIAN
+            - RUSSIAN
+            - SLOVENIAN
+            - HUNGARIAN
+            - OTHER
+            - BULGARIAN
+            - EASTERN_EUROPEAN
+            - CENTRAL_EUROPEAN
+            - SLOVAKIAN
+            - ACACIA
+            - FRENCH_OAK_ACACIA
+            - SLAVONIAN
+    BarrelTypeWrapper:
+      description: The type of the barrel
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/TranslatedFieldWrapper
+      properties:
+        name:
+          description: The name of the BarrelType enum itself
+          type: string
+          enum:
+            - BARREL
+            - KEG
+            - GLASS
+    DipTable:
+      description: Represents a dip table entity in vintrace
+      properties:
+        id:
+          description: Unique identifier of this dip table
+          type: integer
+        version:
+          description: Version of the dip table
+          type: integer
+        tickResolution:
+          description: Decimal the dip tick will be rounded to
+          type: number
+          format: double
+        volumeResolution:
+          description: Decimal the volume will be rounded to
+          type: number
+          format: double
+        dipMeasurementType:
+          $ref: '#/components/schemas/DipMeasurementTypeWrapper'
+        default:
+          description: Flag to denote whether or not the dip table is the current default
+          type: boolean
+    DipMeasurementTypeWrapper:
+      description: The type of the dip table
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/TranslatedFieldWrapper
+      properties:
+        name:
+          description: The name of the DipMeasurementType enum itself
+          type: string
+          enum:
+            - WET
+            - DRY
+    DspAccount:
+      description: The DSP (Distilled Spirits Plant) tax account of the vessel - only applicable to USA
+      allOf:
+        - $ref: '#/components/schemas/DspAccountWrapper'
+    DspAccountWrapper:
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/TranslatedFieldWrapper
+      properties:
+        name:
+          description: The name of the DspAccount enum itself
+          type: string
+          enum:
+            - PROCESSING
+            - PRODUCTION
+            - STORAGE
+            - TAXPAID
+            - STORAGE_IMPORTED
+    SanitationStateWrapper:
+      description: The sanitation state of the vessel
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/TranslatedFieldWrapper
+      properties:
+        name:
+          description: The name of the SanitationState enum itself
+          type: string
+          enum:
+            - TO_BE_CLEANED
+            - READY_FOR_USE
+            - OFFLINE_FOR_CLEANING
+    BarrelSuccessResponse:
+      description: The response object for a barrel
+      properties:
+        data:
+          $ref: '#/components/schemas/Barrel'
+    BarrelGroupSuccessResponse:
+      description: The response object for a barrel group
+      properties:
+        data:
+          $ref: '#/components/schemas/BarrelGroup'
+    BinSuccessResponse:
+      description: The response object for a bin
+      properties:
+        data:
+          $ref: '#/components/schemas/Bin'
+    TankSuccessResponse:
+      description: The response object for a tank
+      properties:
+        data:
+          $ref: '#/components/schemas/Tank'
+    TankerSuccessResponse:
+      description: The response object for a tanker
+      properties:
+        data:
+          $ref: '#/components/schemas/Tanker'
+  examples:
+    BarrelSuccessResponseExample:
+      value:
+        data:
+          id: 234234
+          name: 15-0086
+          capacity:
+            value: 225
+            unit: L
+          wineryBuilding:
+            id: 38293
+            name: WB-1
+          owner:
+            id: 1
+            name: JX2 Winery
+            extId: O66253
+          brand: 2017/MyWine
+          purchaseDate: 1644644421000
+          purchasedUsed: false
+          firstUsedDate: 1644644421000
+          deliveredDate: 1644644421000
+          grading:
+            scale:
+              id: 2
+              name: Wine
+            value:
+              id: 67
+              name: A
+          position:
+            x: 3
+            'y': 5
+          usageCounter: 8
+          dimensions:
+            length: 50
+            width: 50
+            height: 100
+          inactive: false
+          sanitationState: TO_BE_CLEANED
+          lastSanitation: 1644644421000
+          assetId: 24-153
+          rfid: 12344
+          miscellaneousInfo: Some extra information
+          controlId: 14321
+          alertState: false
+          cooper:
+            id: 2
+            name: Cooper Incorporated
+            extId: 123456
+          forest:
+            id: 3
+            name: Redwood Forest
+            extId: O122457
+          seasoning: KILN
+          seasoningMonths: 3
+          toasting: Medium
+          toastedHeads: true
+          grain: High level grain
+          lastContained:
+            id: 38186
+            name: Wine
+            extId: 123456
+          oakType: FRENCH
+          year: 2024
+          barrelCategory:
+            id: 2
+            name: Type-1
+            extId: 123458
+          location:
+            storageArea:
+              id: 100
+              name: Area 51
+              code: Area51
+            aisle: 2
+            stack: Stack10
+            toStack: Stack20
+            positions:
+              - level: 3
+                orientation: LEFT
+          barrelType: BARREL
+          barrelGroups:
+            - id: 11
+              name: BarrelGroup-234
+              link:
+                href: /vinx2/api/v7/vessel/barrel-groups/234234
+                rel: BARREL-GROUP
+                method: GET
+            - id: 22
+              name: BarrelGroup-432
+              link:
+                href: /vinx2/api/v7/vessel/barrel-groups/432432
+                rel: BARREL-GROUP
+                method: GET
+          constructionMaterial: Redwood
+          currentBillOfLadingDetails: Bill of Lading details
+          dspAccount: PRODUCTION
+          recount: false
+          lastFilledDate: 1644644421000
+    BarrelGroupSuccessResponseExample:
+      value:
+        data:
+          id: 234234
+          name: 15-0086
+          barrels:
+            - id: 11
+              name: Barrel-123
+              link:
+                href: /vinx2/api/v7/vessel/barrels/11
+                rel: BARREL
+                method: GET
+            - id: 22
+              name: Barrel-456
+              link:
+                href: /vinx2/api/v7/vessel/barrels/22
+                rel: BARREL
+                method: GET
+          locations:
+            - storageArea:
+                id: 100
+                name: Area 51
+                code: Area51
+              aisle: 2
+              stack: Stack10
+              toStack: Stack20
+              positions:
+                - level: 1
+                  orientation: ALL
+                - level: 2
+                  orientation: ALL
+                - level: 3
+                  orientation: ALL
+            - storageArea:
+                id: 100
+                name: Area 51
+                code: Area51
+              aisle: 2
+              stack: Stack20
+              toStack: Stack30
+              positions:
+                - level: 1
+                  orientation: ALL
+                - level: 2
+                  orientation: ALL
+                - level: 3
+                  orientation: ALL
+          instructions: Some instructions for this group
+          beenUsed: true
+          currentBillOfLadingDetails: Bill of Lading details
+          lastFilledDate: 1644644421000
+    BinSuccessResponseExample:
+      value:
+        data:
+          id: 234234
+          name: 15-0086
+          capacity:
+            value: 225
+            unit: L
+          wineryBuilding:
+            id: 38293
+            name: WB-1
+            extId: O66258
+          owner:
+            id: 1
+            name: JX2 Winery
+            extId: O66253
+          brand: 2017/MyWine
+          purchaseDate: 1644644421000
+          purchasedUsed: false
+          firstUsedDate: 1644644421000
+          deliveredDate: 1644644421000
+          grading:
+            scale:
+              id: 2
+              name: Wine
+            value:
+              id: 67
+              name: A
+          position:
+            x: 3
+            'y': 5
+          usageCounter: 8
+          dimensions:
+            length: 50
+            width: 50
+            height: 100
+          inactive: false
+          sanitationState: TO_BE_CLEANED
+          lastSanitation: 1644644421000
+          assetId: 24-153
+          rfid: 12344
+          miscellaneousInfo: Some extra information
+          controlId: 14321
+          alertState: false
+          tareWeight: 15 kg
+          commonTare: true
+          commonTareCertificateNumber: CN12345
+          canAdjustTare: true
+          maxBottles: 100
+          bottlesInUse: 40
+          location:
+            storageArea:
+              id: 100
+              name: Area 51
+              code: Area51
+            aisle: Bay02
+          stackMultiplier: 3
+          dspAccount: PRODUCTION
+    TankSuccessResponseExample:
+      value:
+        data:
+          id: 234234
+          name: 15-0086
+          capacity:
+            value: 225
+            unit: L
+          wineryBuilding:
+            id: 38293
+            name: WB-1
+            extId: O66258
+          owner:
+            id: 1
+            name: JX2 Winery
+            extId: O66253
+          brand: 2017/MyWine
+          purchaseDate: 1644644421000
+          purchasedUsed: false
+          firstUsedDate: 1644644421000
+          deliveredDate: 1644644421000
+          grading:
+            scale:
+              id: 2
+              name: Wine
+            value:
+              id: 67
+              name: A
+          position:
+            x: 3
+            'y': 5
+          usageCounter: 8
+          dimensions:
+            length: 50
+            width: 50
+            height: 100
+          inactive: false
+          sanitationState: TO_BE_CLEANED
+          lastSanitation: 1644644421000
+          assetId: 24-153
+          rfid: 12344
+          miscellaneousInfo: Some extra information
+          controlId: 14321
+          alertState: false
+          headspace: 12.5
+          temperature: 10.2
+          hasThermostat: true
+          thermostatSetting: 10
+          diameter: 1.5
+          isRefrigerated: true
+          isFermenter: false
+          isInsulated: true
+          isHeated: false
+          constructionMaterial: Stainless steel
+          tankCategory:
+            id: 100
+            name: Double tank
+          dspAccount: PRODUCTION
+          allowStaves: true
+          containsStaves: true
+          hasAgitator: true
+          recount: false
+          accountsReference: accountsReference
+          purchaseOrderNumber: purchaseOrderNumber
+          financialReference: financialReference
+          depreciationStartDate: 1644644421000
+          depreciationEndDate: 1644644421000
+          vendor:
+            id: 1
+            name: vendor
+            extId: 2
+          dipTables:
+            - dipTable: null
+              id: 5
+              version: 1.5
+              tickResolution: 0.01
+              volumeResolution: 0.01
+              measurementType: WET
+              isDefault: true
+            - dipTable: null
+              id: 6
+              version: 1.5
+              tickResolution: 0.01
+              volumeResolution: 0.01
+              measurementType: DRY
+              isDefault: false
+    TankerSuccessResponseExample:
+      value:
+        data:
+          id: 234234
+          name: 15-0086
+          capacity:
+            value: 225
+            unit: L
+          wineryBuilding:
+            id: 38293
+            name: WB-1
+          owner:
+            id: 1
+            name: JX2 Winery
+            extId: O66253
+          brand: 2017/MyWine
+          purchaseDate: 1644644421000
+          purchasedUsed: false
+          firstUsedDate: 1644644421000
+          deliveredDate: 1644644421000
+          grading:
+            scale:
+              id: 2
+              name: Wine
+            value:
+              id: 67
+              name: A
+          position:
+            x: 3
+            'y': 5
+          usageCounter: 8
+          dimensions:
+            length: 50
+            width: 50
+            height: 100
+          inactive: false
+          sanitationState: TO_BE_CLEANED
+          lastSanitation: 1644644421000
+          assetId: 24-153
+          rfid: 12344
+          miscellaneousInfo: Some extra information
+          controlId: 14321
+          alertState: false
+          truckNumber: 2
+          sealNumber: 1A
+          compartmentNumber: 3B
+          cleanInPlaceNumber: 1
+          currentBillOfLadingDetails: Bill of Lading details

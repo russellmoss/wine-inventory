@@ -1,0 +1,572 @@
+openapi: 3.0.3
+info:
+  title: Vintrace Report API
+  description: ''
+  version: 1.0.0
+servers:
+  - url: 'https://oz50.vintrace.net/vinx2/api/v7/report'
+    description: Example production url
+  - url: 'https://sandbox.vintrace.net/vinx2demo/api/v7/report'
+    description: Example sandbox url
+security:
+  - bearerAuth: []
+paths:
+  /vessel-details-report:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      summary: Return vessel and contents details for bulk wines at a specified date/time
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: '#/components/parameters/ReportDate'
+        - $ref: '#/components/parameters/BusinessUnit'
+        - $ref: '#/components/parameters/WineBatchCode'
+        - $ref: '#/components/parameters/VesselCode'
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/ExtraFields'
+        - $ref: '#/components/parameters/VesselId'
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/WineryId'
+        - $ref: '#/components/parameters/WineryName'
+        - $ref: '#/components/parameters/VesselType'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBulkWineDetailsReportResponse'
+              examples:
+                successBulkWineDetailsResponse:
+                  value:
+                    totalResults: 1
+                    offset: 0
+                    limit: 10
+                    first: /bulk-wine-report?offset=0&limit=10
+                    previous: null
+                    next: null
+                    last: /bulk-wine-report?offset=0&limit=10
+                    results:
+                      - id: 876
+                        productId: 5252
+                        name: T25-01
+                        description: 25kgal tank
+                        vesselType: TANK
+                        detailsAsAt: 16567262652
+                        beverageType:
+                          id: 2
+                          name: Red
+                        sparklingInfo:
+                          state: Bottled
+                        owner:
+                          id: 1
+                          extId: O66253
+                          name: CBI
+                        winery:
+                          id: 765
+                          name: My Winery
+                          businessUnit: US57
+                        wineBatch:
+                          id: 889383
+                          name: 21NAVCHA-05
+                          description: 2021 Napa Valley Chardonnay
+                          vintage: '2021'
+                          designatedRegion:
+                            id: 65
+                            name: Napa Valley
+                            code: NAV
+                          designatedSubRegion:
+                            id: 66
+                            name: Oakville
+                            code: OAK
+                          designatedVariety:
+                            id: 3333
+                            name: Chardonnay
+                            code: CHA
+                          program: XYZ
+                          productCategory:
+                            id: 1
+                            name: Bulk Wine
+                            code: TPC
+                          designatedProduct:
+                            id: 625
+                            name: CHNAVPREM
+                            code: CHV
+                          grading:
+                            scaleId: 2
+                            scaleName: Wine
+                            valueId: 67
+                            valueName: A
+                        productState:
+                          id: 222
+                          name: Filtered
+                          expectedLossesPercentage: 2
+                        volume:
+                          value: 25000
+                          unit: gal
+                        capacity:
+                          value: 25000
+                          unit: gal
+                        ullage:
+                          value: 0
+                          unit: gal
+                        ttbDetails:
+                          bond:
+                            id: 727623
+                            name: BW-CA-xxxxxx
+                          taxState: BONDED
+                          taxClass:
+                            id: 653
+                            name: 14 to 16%
+                            federalName: <16%
+                            stateName: 14 to 21%
+                        liveMetrics:
+                          - name: Alcohol
+                            value: 15
+                            interfaceMappedName: ALS
+                          - name: Brix
+                            value: 0
+                            interfaceMappedName: BRX
+                          - name: Residual Sugar
+                            value: 18
+                            interfaceMappedName: SUG
+                          - name: Color 420
+                            value: 15
+                            interfaceMappedName: COL
+                        cost:
+                          total: 250000
+                          fruit: 209383
+                          overhead: 30000
+                          storage: 10000
+                          additive: 617
+                          bulk: 0
+                          packaging: 0
+                          operation: 0
+                          freight: 0
+                          other: 0
+                        composition:
+                          - vintage: '2021'
+                            variety:
+                              id: 3333
+                              name: Chardonnay
+                              code: CHA
+                            region:
+                              id: 65
+                              name: Napa Valley
+                              code: NAV
+                            subRegion:
+                              id: null
+                              name: null
+                              code: null
+                            weighting: 0.95
+                            percentage: 95
+                            componentVolume:
+                              value: 23750
+                              unit: gal
+                          - vintage: '2021'
+                            variety:
+                              id: 3335
+                              name: Viognier
+                              code: VGN
+                            region:
+                              id: 65
+                              name: Napa Valley
+                              code: NAV
+                            subRegion:
+                              id: 6
+                              name: Napa
+                              code: NAP
+                            weighting: 0.05
+                            percentage: 5
+                            componentVolume:
+                              value: 1250
+                              unit: gal
+                        allocations:
+                          - product:
+                              id: 625
+                              name: CHNAVPREM
+                              code: CHV
+                            vintage: '2021'
+                            itemCode: 21CHNAVPREM
+                            allocationVolume:
+                              value: 20000
+                              unit: gal
+                            allocationPercentageOfVessel: 80
+                          - product:
+                              id: 625
+                              name: CHNAVSTD
+                            vintage: '2021'
+                            itemCode: 21CHNAVSTD
+                            allocationVolume:
+                              value: 2500
+                              unit: gal
+                            allocationPercentageOfVessel: 10
+                        unallocatedVolume:
+                          value: 2500
+                          unit: gal
+                        unallocatedPercentageOfVessel: 10
+        default:
+          $ref: '#/components/responses/DefaultError'
+components:
+  schemas:
+    GetBulkWineDetailsReportResponse:
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/Shared-openapi_PageRoot
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkWineDetails'
+    BulkWineDetails:
+      description: The bulk wine details for a vessel
+      type: object
+      properties:
+        id:
+          description: The internal unique identifier of this vessel
+          type: integer
+        productId:
+          description: 'The product ID of the wine/product/contents in the vessel as of the asAtDate. Depending on the value of asAtDate, it may contain an ID from the historical product revision.'
+          type: integer
+        name:
+          description: The human-readable name of this vessel
+          type: string
+        description:
+          description: The description of this vessel
+          type: string
+        vesselType:
+          description: The vessel type
+          type: string
+          enum:
+            - TANK
+            - BIN
+            - BARREL
+            - BARREL_GROUP
+            - BIN_GROUP
+            - PRESS
+            - TANKER
+        detailsAsAt:
+          description: The date that these details were effective
+          type: integer
+          format: int64
+        sparklingInfo:
+          description: This provides the sparkling information of the wine
+          type: object
+          properties:
+            state:
+              type: string
+              enum:
+                - BASE_WINE
+                - TIRAGED
+                - RIDDLING
+                - RIDDLED
+                - DISGORGED
+                - DOSAGED
+                - BOTTLED
+                - TRANSFERRED
+        beverageType:
+          description: This provides the beverage type of the wine
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        owner:
+          description: The owner of the fruit (who you are receiving it for)
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        winery:
+          $ref: common-schemas.yaml#/components/schemas/Winery
+        wineBatch:
+          description: The details of the wine batch the wine in this vessel belongs to
+          allOf:
+            - $ref: '#/components/schemas/BulkWineBatchDetails'
+        productState:
+          description: The state of the product at the effective date of the report
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+          properties:
+            expectedLossesPercentage:
+              description: A weighting value of the expected losses for wines in this state before production finished
+              type: number
+              format: double
+        volume:
+          description: The volume of the wine as of the report date
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        capacity:
+          description: The vessel capacity
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        ullage:
+          description: The ullage volume (available space) in the vessel at the report date
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        ttbDetails:
+          description: The TTB details for this wine as of the report date
+          allOf:
+            - $ref: '#/components/schemas/TaxDetails'
+        liveMetrics:
+          description: The analysis result for this wine as of the report date
+          type: array
+          items:
+            allOf:
+              - $ref: common-schemas.yaml#/components/schemas/AnalysisResult
+        cost:
+          description: The cost (in dollars) for this bulk wine as at the report date
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CostBreakdown
+        composition:
+          description: Details of the composition slices that the wine is composed of
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/CompositionSlice'
+        allocations:
+          description: Details of the products that this wine was allocated to as of the report date
+          type: array
+          items:
+            allOf:
+              - $ref: common-schemas.yaml#/components/schemas/AllocationSlice
+        unallocatedVolume:
+          description: The volume of unallocated wine (total volume less all allocation slices))
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        unallocatedPercentageOfVessel:
+          description: The unallocated wine represented as a percentage of the total volume
+          type: number
+          format: double
+    BulkWineBatchDetails:
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/WineBatchDetails
+        - type: object
+          description: Wine batch details
+          properties:
+            designatedSubRegion:
+              $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+    TaxDetails:
+      description: 'Bond, tax state and tax class information'
+      type: object
+      properties:
+        bond:
+          description: The bonded wine facility the wine is stored at
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        taxState:
+          description: The bonded status of the wine
+          type: string
+          enum:
+            - BONDED
+            - TAXPAID
+            - NON_DECLARED
+        taxClass:
+          description: The TTB tax class for the wine
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+          properties:
+            federalName:
+              description: The federal based tax class name
+              type: string
+            stateName:
+              description: The state based tax class name
+              type: string
+        alcoholPercentage:
+          description: The alcohol percentage of the liquid
+          type: number
+          format: double
+    CompositionSlice:
+      type: object
+      properties:
+        weighting:
+          description: The composition value expressed as a weighting  (between 0.0 to 1.0)
+          type: number
+          format: double
+        percentage:
+          description: The composition value expressed as a percentage (between 0.0 -> 100.0)
+          type: number
+          format: double
+        componentVolume:
+          description: The composition value calculated as a volume
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        vintage:
+          description: The composition vintage
+          type: string
+        block:
+          description: The composition block (if specified)
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        region:
+          description: The Composition Region/Appellation
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        subRegion:
+          description: The Composition Sub-Region
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+        variety:
+          description: The Composition Variety
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/CodedIdentifiableEntity
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Refer to https://support.vintrace.com/hc/en-us/articles/4407443037711-Manage-and-create-API-tokens for more info'
+  parameters:
+    CorrelationId:
+      name: correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional unique identifer associated with the transaction
+      example: d308faac-66e1-47df-a9ff-fbe61b4e8974
+    PaginationLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        example: 10
+      description: Sets limit for maximum number of results in a paginated response
+    PaginationOffset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        example: 0
+      description: Sets offset for the results in a paginated response
+    ReportDate:
+      name: asAtDate
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+        example: 1650431615057
+      description: The date/time you want to run the report for. Expected to be in epoch milliseconds (defaults to the current date/time).
+    BusinessUnit:
+      name: businessUnit
+      in: query
+      required: false
+      schema:
+        type: string
+        example: US57
+      description: The business unit for the winery you want to filter on
+    WineBatchCode:
+      name: batch
+      in: query
+      required: false
+      schema:
+        type: string
+        example: 21NPVPINOT
+      description: Filter results to just show details for this wine batch
+    VesselCode:
+      name: vessel
+      in: query
+      required: false
+      schema:
+        type: string
+        example: T25-01
+      description: Filter results to just show details for this vessel
+    Owner:
+      name: owner
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Filter results to just who details for this owner
+      examples:
+        vintrace-generated-id:
+          value: '1232342'
+        external-id:
+          value: 'ext:ABC32423'
+    ExtraFields:
+      name: extraFields
+      in: query
+      required: false
+      schema:
+        type: string
+        example: 'allocations,composition,livemetrics'
+      description: 'The extra fields must be used if you wish to view allocations, composition and live metrics in the response.'
+    VesselId:
+      name: vesselId
+      in: query
+      required: false
+      schema:
+        type: integer
+        example: 200
+      description: The id of the vessel you want to filter on
+    ProductId:
+      name: productId
+      in: query
+      required: false
+      schema:
+        type: integer
+        example: 1023
+      description: The product id of the wine/product that you want to filter on
+    WineryId:
+      name: wineryId
+      in: query
+      required: false
+      schema:
+        type: integer
+        example: 2
+      description: The id of the winery you want to filter on
+    WineryName:
+      name: wineryName
+      in: query
+      required: false
+      schema:
+        type: string
+        example: JX2 Winery
+      description: The unique name of the winery you want to filter on
+    VesselType:
+      name: vesselType
+      in: query
+      required: false
+      schema:
+        type: string
+        example: 'TANK,BARREL'
+      description: 'Only include vessels that are in the provided vessel list.Support multiple types delimited by comma.Allowed values: TANK BIN BARREL BARREL_GROUP BIN_GROUP PRESS TANKER'
+  responses:
+    DefaultError:
+      description: Unexpected error
+      headers:
+        correlation-id:
+          description: Unique identifer associated with the transaction
+          schema:
+            type: string
+            format: uuid
+      content:
+        application/json:
+          schema:
+            $ref: common-schemas.yaml#/components/schemas/Shared-openapi_BaseErrorRoot
+          examples:
+            badRequest (400):
+              value:
+                errors:
+                  - code: '123'
+                    message: Invalid data
+                    detail: Some data are invalid
+            notAuthorized (401):
+              value:
+                errors:
+                  - code: '23432'
+                    message: Token is not provided
+                    detail: Token must be provided
+            forbidden (403):
+              value:
+                errors:
+                  - code: '123'
+                    message: Permission not allowed
+                    detail: User must have permission to perform this operation

@@ -1,0 +1,377 @@
+openapi: 3.0.3
+info:
+  title: Vintrace Identity API
+  description: ''
+  version: 1.0.0
+servers:
+  - url: 'https://oz50.vintrace.net/vinx2/api/v7/identity'
+    description: Example production url
+  - url: 'https://sandbox.vintrace.net/vinx2demo/api/v7/identity'
+    description: Example sandbox url
+security:
+  - bearerAuth: []
+paths:
+  /parties:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      summary: Search parties in vintrace
+      parameters:
+        - name: governmentNumbers
+          in: query
+          required: false
+          schema:
+            type: string
+            example: '92032-232,92032-231'
+          description: Only include parties that have these government numbers. Support multiple values delimited by comma.
+        - name: roles
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 'grower,carrier'
+          description: Only include parties that have these roles. Support multiple values delimited by comma.
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPartiesSuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    totalResults: 1000
+                    offset: 0
+                    limit: 10
+                    first: /vinx2/api/v7/identity/parties?offset=0&limit=10
+                    previous: null
+                    next: /vinx2/api/v7/identity/parties?offset=10&limit=10
+                    last: /vinx2/api/v7/identity/parties?offset=990&limit=10
+                    results:
+                      - id: 167
+                        extId: 323423
+                        type: organisation
+                        roles:
+                          - grower
+                        organizationName: ExampleCompany
+                        contactNumbers:
+                          - type: MOBILE
+                            number: 411192922
+                          - type: BUSINESS
+                            areaCode: 613
+                            number: 99999999
+                        email: smith@123.com
+                        address:
+                          mailingName: Accounts Department
+                          street1: 22 Rainbow Walk
+                          city: HACKHAM
+                          state: VIC
+                          postalCode: 5163
+                          country: AUSTRALIA
+                        governmentNumber: 3920342
+        default:
+          $ref: '#/components/responses/DefaultError'
+    post:
+      summary: Upsert a party into vintrace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Party'
+            examples:
+              createOrganizationRequest:
+                value:
+                  extId: '323423'
+                  type: organisation
+                  roles:
+                    - grower
+                  organizationName: Example Company
+                  contactNumbers:
+                    - type: MOBILE
+                      number: 411192922
+                    - type: BUSINESS
+                      areaCode: 613
+                      number: 99999999
+                  email: smith@123.com
+                  address:
+                    mailingName: Accounts Department
+                    street1: 22 Rainbow Walk
+                    city: HACKHAM
+                    state: VIC
+                    postalCode: '5163'
+                    country: AUSTRALIA
+                  governmentNumber: '3920342'
+              updateOrganizationRequest:
+                value:
+                  id: 167
+                  extId: '323423'
+                  type: organisation
+                  roles:
+                    - grower
+                  organizationName: Example Company
+                  contactNumbers:
+                    - type: MOBILE
+                      number: 411192922
+                    - type: BUSINESS
+                      areaCode: 613
+                      number: 99999999
+                  email: smith@123.com
+                  address:
+                    mailingName: Accounts Department
+                    street1: 22 Rainbow Walk
+                    city: HACKHAM
+                    state: VIC
+                    postalCode: '5163'
+                    country: AUSTRALIA
+                  governmentNumber: '3920342'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpsertPartySuccessResponse'
+              examples:
+                successResponse:
+                  value:
+                    data:
+                      id: 167
+                      extId: '323423'
+                      type: organisation
+                      roles:
+                        - grower
+                      organizationName: ExampleCompany
+                      contactNumbers:
+                        - type: MOBILE
+                          number: 411192922
+                        - type: BUSINESS
+                          areaCode: 613
+                          number: 99999999
+                      email: smith@123.com
+                      address:
+                        mailingName: Accounts Department
+                        street1: 22 Rainbow Walk
+                        city: HACKHAM
+                        state: VIC
+                        postalCode: '5163'
+                        country: AUSTRALIA
+                      governmentNumber: '3920342'
+        default:
+          $ref: '#/components/responses/DefaultError'
+components:
+  schemas:
+    UpsertPartyRequest:
+      allOf:
+        - $ref: '#/components/schemas/Party'
+        - type: object
+          description: These phone fields are deprecated and kept for backwards compatible
+          properties:
+            mobilePhone:
+              description: Full phone number
+              example: 6149238323
+              type: string
+            businessPhone:
+              description: Full phone number
+              type: string
+              example: 613923832342
+            homePhone:
+              description: Full phone number
+              type: string
+              example: 613923832342
+    Party:
+      type: object
+      required:
+        - type
+      properties:
+        id:
+          type: integer
+          format: int32
+        type:
+          $ref: '#/components/schemas/PartyType'
+        extId:
+          type: string
+          description: Stores the id of this party from external system
+        roles:
+          type: array
+          description: The roles of this party
+          items:
+            $ref: '#/components/schemas/PartyRole'
+        organizationName:
+          type: string
+          description: Store the name of this party. Mandatory when type is an organization.
+        givenName:
+          type: string
+          description: Store the given name of this party if it is a person. Mandatory when type is a person.
+        surname:
+          type: string
+          description: Store the surname of this party if it is a person. Mandatory when type is a person.
+        contactNumbers:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhoneNumber'
+        email:
+          type: string
+          format: email
+        address:
+          $ref: '#/components/schemas/Address'
+        postalAddress:
+          $ref: '#/components/schemas/Address'
+        billingAddress:
+          $ref: '#/components/schemas/Address'
+        governmentNumber:
+          type: string
+          description: Stores the government identifier of this party
+    PartyType:
+      type: string
+      enum:
+        - carrier
+        - cooper
+        - customer
+        - grower
+        - laboratory
+        - owner
+        - vendor
+        - distributor
+        - harvester
+    PartyRole:
+      type: string
+      enum:
+        - carrier
+        - cooper
+        - customer
+        - grower
+        - laboratory
+        - owner
+        - vendor
+        - distributor
+        - harvester
+    Address:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        mailingName:
+          type: string
+        street1:
+          type: string
+        street2:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+    PhoneNumber:
+      type: object
+      required:
+        - type
+      properties:
+        id:
+          type: integer
+          format: int32
+        type:
+          description: 'The type of this phone number. e.g mobile, business, home'
+          type: string
+          enum:
+            - MOBILE
+            - BUSINESS
+            - HOME
+            - FAX
+        areaCode:
+          type: string
+        number:
+          type: string
+        extension:
+          type: string
+    UpsertPartySuccessResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Party'
+    GetPartiesSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/Shared-openapi_PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/Party'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Refer to https://support.vintrace.com/hc/en-us/articles/4407443037711-Manage-and-create-API-tokens for more info'
+  parameters:
+    CorrelationId:
+      name: correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier associated with the transaction
+      example: d308faac-66e1-47df-a9ff-fbe61b4e8974
+  responses:
+    DefaultError:
+      description: Unexpected error
+      headers:
+        correlation-id:
+          description: Unique identifier associated with the transaction
+          schema:
+            type: string
+            format: uuid
+      content:
+        application/json:
+          schema:
+            $ref: common-schemas.yaml#/components/schemas/Shared-openapi_BaseErrorRoot
+          examples:
+            badRequest (400):
+              value:
+                errors:
+                  - code: '123'
+                    message: Invalid data
+                    detail: Some data are invalid
+            notAuthorized (401):
+              value:
+                errors:
+                  - code: '23432'
+                    message: Token is not provided
+                    detail: Token must be provided
+            forbidden (403):
+              value:
+                errors:
+                  - code: '123'
+                    message: Permission not allowed
+                    detail: User must have permission to perform this operation
+            notFound (404):
+              value:
+                errors:
+                  - code: '123'
+                    message: Resource not found
+                    detail: 'Record with id: 2342 is not found.'
+            conflict (409):
+              value:
+                errors:
+                  - code: '123'
+                    message: Conflict
+                    detail: 'Multiple records with provided id: 2342 are found.'

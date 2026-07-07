@@ -1,0 +1,1282 @@
+openapi: 3.0.3
+info:
+  title: Vintrace Harvest API
+  description: ''
+  version: 1.0.0
+servers:
+  - url: 'https://oz50.vintrace.net/vinx2/api/v7/harvest'
+    description: Example production url
+  - url: 'https://sandbox.vintrace.net/vinx2demo/api/v7/harvest'
+    description: Example sandbox url
+security:
+  - bearerAuth: []
+paths:
+  /blocks:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      description: Upsert the block data into system
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Block'
+            examples:
+              createBlockRequest:
+                value:
+                  extId: '23423'
+                  name: Block example
+                  estate: true
+                  vineyard:
+                    name: V2342
+                    grower:
+                      extId: '32342'
+                  variety:
+                    name: Shiraz
+                  countyCode: CC
+                  inactive: false
+                  noOfVines: 900
+                  area: 13
+                  rootStock:
+                    name: MUL
+                  clone:
+                    name: MUL
+                  vineSpacing: '5'
+                  rowSpacing: '9'
+                  soilProfile: G
+                  trellis:
+                    name: D
+                  aspect: NORTH
+                  plantedTime: 1644990021000
+                  pruningType: '23'
+                  averageGradient: 4
+                  irrigationType: DDD
+                  frostProtection: OO
+                  organic: true
+                  organicCertifiedTime: 1644990021000
+                  township: '232020'
+                  range: '200'
+                  section: section
+                  emitterRate: 3
+                  emitterSize: 10
+                  siteId: S232
+                  noOfRows: 30
+                  districtCode: '8'
+                  regionalAdminCode: TEST
+                  comments: Comments
+                  code: ABC123
+                  defaultHarvestMethod: HAND
+                  description: I describe this
+                  graftedDate: 1756710101
+                  intendedUse:
+                    name: Sparkling
+                  rowNumbers: Row 1
+                  vineStructure:
+                    name: Vine structure 1
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /blocks/23423
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/BlockResponseExample'
+        default:
+          $ref: '#/components/responses/DefaultError'
+    get:
+      summary: Get all blocks in the system.
+      description: |
+        Get all the blocks that matches the provided query params in the system. 
+
+        By default, the block data returned in this endpoint only includes: 
+        id, code, name, description, grower, vineyard, region, subRegion, varietal, rowNumbers, estate, intendedUse, grading, externalId, inactive
+
+        API consumer can use the include and vintage query params to request including more information in the response.
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: common-schemas.yaml#/components/parameters/VintraceEntityIds
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            example: fruitPlacements
+          description: |
+            API consumer can use this query param to request including the fruitPlacements fields for the resources.
+            This must be done in combination with the vintage query param.
+
+            Invalid field names will be ignored.
+        - name: vintage
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 2024
+          description: |
+            API consumer can use this query param to request including the fruitPlacements fields for the resources.
+            This must be done in combination with the fruitPlacements query param.
+
+            Invalid field names will be ignored.
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBlocksSuccessResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/GetBlocksSuccessResponseExample'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  '/blocks/{blockId}/assessments':
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/BlockId'
+    post:
+      description: Upsert the assessment data for the block
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlockAssessment'
+            examples:
+              createAssessmentRequest:
+                value:
+                  vintage: 2021
+                  assessmentTime: 1644990021000
+                  producingForecast:
+                    value: 15
+                    unit: t
+                  availableForecast:
+                    value: 9
+                    unit: t
+                  harvestMethod: HAND
+                  expectedHarvestTime: 1644990021000
+                  earliestHarvestTime: 1644644421000
+                  sprayReportReceivedTime: 1643780421000
+                  cropInspectedTime: 1643780421000
+                  quarantineStatus: Completed
+                  clearQuarantineStatus: false
+                  grading: '3'
+                  intendedProduct:
+                    name: TBD
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: '/blocks/{id}/assessments/23423'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockAssessmentResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/BlockAssessmentResponseExample'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  '/blocks/{blockId}':
+    patch:
+      summary: Partially update some fields in the block record
+      description: |
+        Provide functionality to update only some fields in the bulk intake record.
+
+        Note, not all fields will support this PATCH operation. Consult with developers for your use case.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/BlockId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: common-schemas.yaml#/components/schemas/PatchRequest
+            examples:
+              updateRatePerTonne:
+                value:
+                  - path: /ratePerTonne
+                    op: REPLACE
+                    value: '700'
+      responses:
+        '204':
+          description: Update is successful
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /assessments:
+    get:
+      summary: Get all the block assessments in the system.
+      description: |
+        Get all the block assessments that matches the provided query params in the system. 
+
+        By default, the assessment data returned in this endpoint only includes: id, block, vintage, assessedBy, assessmentTime, producingForecast, availableForecast.
+
+        API consumer can use the extraFields query param to request including more information in the response.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - $ref: '#/components/parameters/AssessedBy'
+        - $ref: '#/components/parameters/CreatedSince'
+        - $ref: '#/components/parameters/CreatedBefore'
+        - $ref: '#/components/parameters/ExtraFields'
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAssessmentsResponse'
+              example:
+                totalResults: 1000
+                offset: 0
+                limit: 10
+                first: /assessments?offset=0&limit=10
+                previous: null
+                next: /assessments?offset=10&limit=10
+                last: /assessments?offset=990&limit=10
+                results:
+                  - id: 167
+                    block:
+                      id: 1
+                      extId: '7177'
+                      name: Block 1
+                    vintage: 2021
+                    assessmentTime: 1644990021000
+                    assessedBy:
+                      id: 1
+                      extId: null
+                      name: 'ADMINISTRATOR,  System'
+                    producingForecast:
+                      value: 15
+                      unit: t
+                    availableForecast:
+                      value: 9
+                      unit: t
+                    createdAt: 1644990021000
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /vineyards:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      description: Upsert the vineyard data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vineyard'
+            examples:
+              createVineyardRequest:
+                value:
+                  extId: ABC-3232
+                  name: Test vineyard
+                  code: VINECODE
+                  grower:
+                    extId: 32342
+                  region:
+                    name: Napa Valley
+                  adminAgridDivision: Grid Division 12
+                  subRegion:
+                    name: Oakville
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /vineyards/23423
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VineyardResponse'
+              examples:
+                successResponse:
+                  $ref: '#/components/examples/VineyardResponseExample'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /maturity-samples:
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      description: Create a maturity sample in system
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaturitySample'
+            examples:
+              createMaturitySample:
+                value:
+                  occurredTime: 1661736595000
+                  block:
+                    extId: U2342
+                  vintage: 2022
+                  analysisTemplate:
+                    name: template name
+                  laboratory:
+                    extId: Lab-2391
+                  type: BUNCH
+                  rows: rows
+                  vines: vines
+                  area: area
+                  reference: sample id 34322
+                  metrics:
+                    - name: Brix
+                      value: 23
+                    - name: Temp
+                      value: 65
+      responses:
+        '200':
+          description: Success
+          headers:
+            correlation-id:
+              description: Unique identifier associated with the transaction
+              schema:
+                type: string
+                format: uuid
+            Location:
+              description: The URI of newly created resource
+              schema:
+                type: string
+              example: /maturity-samples/23423
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaturitySampleResponse'
+              examples:
+                success:
+                  value:
+                    data:
+                      id: 23423
+                      occurredTime: 1661736595000
+                      operator:
+                        id: 92932
+                        name: api user
+                        extId: null
+                      block:
+                        id: 21231
+                        name: U2342
+                        extId: U2342
+                      vintage: 2022
+                      grower:
+                        id: 21231
+                        name: A company
+                        extId: null
+                      region:
+                        id: 65
+                        name: Napa Valley
+                      variety:
+                        id: 55
+                        name: Shiraz
+                      analysisTemplate:
+                        id: 293023
+                        name: template name
+                      laboratory:
+                        id: 92123
+                        name: A laboratory
+                        extId: Lab-2391
+                      type: BUNCH
+                      rows: rows
+                      vines: vines
+                      area: area
+                      reference: sample id 34322
+                      metrics:
+                        - name: Brix
+                          value: 23
+                        - name: Temp
+                          value: 65
+components:
+  schemas:
+    VineyardIdentifiableEntity:
+      description: An entity created for looking up vineyard in vintrace. Name and grower must be provided.
+      required:
+        - name
+        - grower
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+      properties:
+        grower:
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+    BlockResponse:
+      description: Response object for returning the block data
+      properties:
+        data:
+          $ref: '#/components/schemas/Block'
+    Block:
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+      type: object
+      required:
+        - extId
+        - name
+        - vineyard
+        - variety
+      properties:
+        name:
+          description: The name of this block.
+          type: string
+        estate:
+          description: TBD
+          type: boolean
+        vineyard:
+          description: The vineyard where the block is.
+          allOf:
+            - $ref: '#/components/schemas/VineyardIdentifiableEntity'
+        variety:
+          description: The varietal of this block
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        countyCode:
+          description: The county code
+          type: string
+        inactive:
+          description: The inactive status of this block
+          type: boolean
+        noOfVines:
+          description: The number of vines
+          type: integer
+        area:
+          description: The size of this block.
+          type: number
+          format: double
+        rootStock:
+          description: The root stock of this block.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        clone:
+          description: The clone of this block.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        vineSpacing:
+          description: The space of vine.
+          type: string
+        rowSpacing:
+          description: The space of row.
+          type: string
+        soilProfile:
+          description: The profile of the soil.
+          type: string
+        trellis:
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        aspect:
+          $ref: '#/components/schemas/Aspect'
+        plantedTime:
+          description: The planted time that is represented in milliseconds of epoch time.
+          type: integer
+          format: int64
+        pruningType:
+          $ref: '#/components/schemas/PruningType'
+        averageGradient:
+          description: Average gradient
+          type: number
+          format: double
+        irrigationType:
+          description: Irrigation type
+          type: string
+        frostProtection:
+          description: Frost protection
+          type: string
+        organic:
+          description: Flag that indicates if this block is organic
+          type: boolean
+        organicCertifiedTime:
+          description: The time when the organic is certified. This is represented in milliseconds of epoch time.
+          type: integer
+          format: int64
+        township:
+          description: Township
+          type: string
+        range:
+          description: Range
+          type: string
+        section:
+          description: Section
+          type: string
+        emitterRate:
+          description: The rate of emitter
+          type: number
+          format: double
+        emitterSize:
+          description: The size of emitter.
+          type: string
+        siteId:
+          description: The id of the site
+          type: string
+        noOfRows:
+          description: The number of rows
+          type: integer
+        districtCode:
+          description: The district code.
+          type: string
+        regionalAdminCode:
+          description: The regional admin code.
+          type: string
+        comments:
+          description: The comments for this block.
+          type: string
+        code:
+          description: A short code that represents the block.
+          type: string
+        defaultHarvestMethod:
+          description: The default harvest method.
+          type: string
+          enum:
+            - HAND
+            - MACHINE
+        description:
+          description: The description of this block.
+          type: string
+        graftedDate:
+          description: The grafted date of this block. Expected to be in epoch milliseconds.
+          type: integer
+          format: int64
+        intendedUse:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        rowNumbers:
+          description: The row numbers of this block.
+          type: string
+        vineStructure:
+          description: The vine structure of this block.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+    GetBlocksSuccessResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/Shared-openapi_PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              description: The response object for returning the blocks data
+              items:
+                $ref: '#/components/schemas/BlockData'
+    BlockData:
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+      type: object
+      required:
+        - id
+        - name
+        - grower
+        - vineyard
+        - region
+        - variety
+      properties:
+        code:
+          type: string
+          description: A short code that represents the block.
+        description:
+          type: string
+          description: The description of this block.
+        grower:
+          description: The grower
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        vineyard:
+          description: The vineyard where the block is.
+          allOf:
+            - $ref: '#/components/schemas/VineyardIdentifiableEntity'
+        region:
+          description: The associated region/sub-AVA of this block.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        subRegion:
+          description: The associated sub-region/micro-ava of this vineyard.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        variety:
+          description: The variety of this block
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        rowNumbers:
+          type: string
+          description: The row numbers of this block.
+        estate:
+          type: boolean
+          description: Indicates if this block is an estate.
+        intendedUse:
+          $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        grading:
+          description: The designated quality of this block
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Grading
+        inactive:
+          type: boolean
+          description: Indicates if this block is inactive.
+        fruitPlacement:
+          description: The fruit placement of this block.
+          allOf:
+            - $ref: '#/components/schemas/FruitPlacement'
+    FruitPlacement:
+      type: object
+      properties:
+        vintage:
+          description: The designated vintage/production year for this block
+          type: string
+        bulkStocks:
+          description: The bulk stocks associated with this block.
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkStock'
+    BulkStock:
+      allOf:
+        - $ref: '#/components/schemas/BatchInfo'
+      type: object
+      properties:
+        grading:
+          description: The designated quality of this batch
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Grading
+        totalVolume:
+          description: The total volume of the batch.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        compWeighting:
+          type: number
+          format: double
+          description: The component weighting of the batch.
+        equivalentVolume:
+          description: The equivalent volume of the batch.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        equivalentWeight:
+          description: The equivalent weight of the batch.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/Measurement
+        percentageOfFruit:
+          type: number
+          format: double
+          description: The percentage of fruit in the batch.
+    BatchInfo:
+      type: object
+      properties:
+        batchId:
+          type: integer
+          description: The batch id.
+        batchName:
+          type: string
+          description: The batch name.
+    VineyardResponse:
+      description: Response object for returning the vineyard data
+      properties:
+        data:
+          $ref: '#/components/schemas/Vineyard'
+    Vineyard:
+      description: Vineyard data
+      required:
+        - name
+        - grower
+      properties:
+        id:
+          description: The identifier of this vineyard
+          type: integer
+        extId:
+          description: An optional identifier for this vineyard from external system.
+          type: string
+        name:
+          description: The name of this vineyard. Must be unique
+          type: string
+        code:
+          description: The code of this vineyard.
+          type: string
+        grower:
+          description: The grower
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        region:
+          description: The associated region/sub-AVA of this vineyard. Optional if a sub region is provided.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        adminAgridDivision:
+          description: The agricultural division.
+          type: string
+        subRegion:
+          description: The associated sub-region/micro-ava of this vineyard. Note there will be validation error if the supplied subRegion does not belong to the supplied region.
+          allOf:
+            - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+    BlockAssessmentResponse:
+      description: Response object for returning the block assessment data
+      properties:
+        data:
+          $ref: '#/components/schemas/BlockAssessment'
+    BlockAssessment:
+      allOf:
+        - $ref: '#/components/schemas/BlockAssessmentOverview'
+        - type: object
+          required:
+            - vintage
+            - assessmentTime
+          properties:
+            harvestMethod:
+              description: The harvest method
+              type: string
+              enum:
+                - HAND
+                - MACHINE
+            expectedHarvestTime:
+              description: The expected harvest time. This is represented in milliseconds of epoch time.
+              type: integer
+              format: int64
+            earliestHarvestTime:
+              description: The earliest harvest time. This is represented in milliseconds of epoch time.
+              type: integer
+              format: int64
+            sprayReportReceivedTime:
+              description: The received time of spray report. This is represented in milliseconds of epoch time.
+              type: integer
+              format: int64
+            cropInspectedTime:
+              description: The inspected time of crop. This is represented in milliseconds of epoch time.
+              type: integer
+              format: int64
+            quarantineStatus:
+              description: The status of quarantine.
+              type: string
+            clearQuarantineStatus:
+              description: Flag to clear the quarantine status.
+              type: boolean
+            grading:
+              description: Grading
+              type: string
+            intendedProduct:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            comments:
+              description: The comments left on this assessment
+              type: string
+            locationDetails:
+              description: The location details where this block assessment is performed.
+              type: object
+              properties:
+                latitude:
+                  type: number
+                  format: double
+                  description: The latitude of the address
+                longitude:
+                  type: number
+                  format: double
+                  description: The longitude of the address
+                formattedAddress:
+                  type: string
+                  description: The formatted address line
+            intendedUse:
+              $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+            expectedProgram:
+              $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+            contract:
+              $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+            expectedCrushSite:
+              $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+            capitalBlock:
+              description: Flag to denote if this block is part of a capital project
+              type: boolean
+            capitalProjectNumber:
+              description: The capital project number
+              type: string
+            diseaseStatus:
+              description: The disease status of this block (case sensitive)
+              type: string
+              enum:
+                - APPROVED
+                - DISEASE_ASSESSMENT
+                - REJECTED
+    Aspect:
+      description: The aspect of this block
+      type: string
+      enum:
+        - North
+        - North East
+        - East
+        - South East
+        - South
+        - South West
+        - West
+        - North West
+        - Flat
+        - Ridge
+        - Undulating
+    PruningType:
+      description: The pruning type
+      type: string
+      enum:
+        - Cane
+        - Spur
+        - Hand
+        - Cordon
+        - Other
+    GetAssessmentsResponse:
+      type: object
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/Shared-openapi_PageRoot
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/BlockAssessmentOverview'
+    BlockAssessmentOverview:
+      required:
+        - block
+        - vintage
+        - assessmentTime
+      properties:
+        id:
+          description: The unique id of this entity.
+          type: integer
+        block:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        vintage:
+          description: Vintage
+          type: integer
+        assessmentTime:
+          description: The time when this assessment is made. This is represented in milliseconds of epoch time.
+          type: integer
+          format: int64
+        assessedBy:
+          $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+        producingForecast:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+        availableForecast:
+          $ref: common-schemas.yaml#/components/schemas/Measurement
+        createdAt:
+          description: The time when this assessment record is created in system. This is represented in milliseconds of epoch time.
+          type: integer
+          format: int64
+    MaturitySampleResponse:
+      description: Response object for creating the Maturity data
+      properties:
+        data:
+          $ref: '#/components/schemas/MaturitySample'
+    MaturitySample:
+      allOf:
+        - $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+        - type: object
+          required:
+            - occurredTime
+            - vintage
+            - block
+            - metrics
+          properties:
+            occurredTime:
+              description: The sample record time. Expected to be in epoch millisecond.
+              type: integer
+              format: int64
+            operator:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            block:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            vintage:
+              description: The vintage of this sample
+              type: integer
+            grower:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            region:
+              $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+            variety:
+              $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+            analysisTemplate:
+              $ref: common-schemas.yaml#/components/schemas/IdentifiableEntity
+            laboratory:
+              $ref: common-schemas.yaml#/components/schemas/ExtIdentifiableEntity
+            type:
+              description: The type of this sample
+              type: string
+              enum:
+                - BUNCH
+                - BERRY
+            rows:
+              type: string
+            vines:
+              type: string
+            area:
+              type: string
+            reference:
+              description: Reference number of this sample
+              type: string
+            metrics:
+              description: The metrics done for this sample. At least one metric must be provided.
+              type: array
+              items:
+                $ref: common-schemas.yaml#/components/schemas/AnalysisResult
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Refer to https://support.vintrace.com/hc/en-us/articles/4407443037711-Manage-and-create-API-tokens for more info'
+  parameters:
+    CorrelationId:
+      name: correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Optional unique identifier associated with the transaction
+      example: d308faac-66e1-47df-a9ff-fbe61b4e8974
+    PaginationLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        example: 10
+      description: Sets limit for maximum number of results in a paginated response
+    PaginationOffset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        example: 0
+      description: Sets offset for the results in a paginated response
+    BlockId:
+      name: blockId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The unique identifier of this block. It accepts the id generated by vintrace or external id stored in vintrace
+      examples:
+        vintrace-generated-id:
+          value: 1232342
+        external-id:
+          value: 'ext:ABC32423'
+    VintraceEntityId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: The unique identifier of this resource. It is generated by vintrace internally
+      examples:
+        vintrace-generated-id:
+          value: 1232342
+    AssessedBy:
+      name: assessedBy
+      in: query
+      required: false
+      schema:
+        type: string
+      examples:
+        particular-user-id:
+          value: 'eq:2342'
+        particular-user-ext-id:
+          value: 'eq:ext:api-user23234'
+        exclude-user-id:
+          value: 'ne:12312'
+      description: |
+        Filter assessments based on the users who has made the assessments. 
+
+        The value after the colon is the id, or external id (must be prefixed with ext:) of this user in Vintrace. 
+
+        Supports equal to (eq) and non equal to (ne) operations.
+    CreatedSince:
+      name: createdSince
+      in: query
+      required: false
+      schema:
+        type: string
+      examples:
+        date:
+          value: 1644644421000
+      description: Filter the records createdAt must be greater than createdSinceParameter.
+    CreatedBefore:
+      name: createdBefore
+      in: query
+      required: false
+      schema:
+        type: string
+      examples:
+        date:
+          value: 1644644421000
+      description: Filter the records createdAt must be less than createdSinceParameter.
+    ExtraFields:
+      name: extraFields
+      in: query
+      required: false
+      schema:
+        type: string
+        example: 'cropInspected,comments,locationDetails'
+      description: |
+        API consumer can use this query param to request including extra fields for the resources.
+
+        For field names, refer to the schema of BlockAssessment object.
+
+        Invalid field names will be ignored.
+  examples:
+    BlockResponseExample:
+      value:
+        data:
+          id: 167
+          extId: 23423
+          name: Block example
+          estate: true
+          vineyard:
+            id: 23423
+            name: V2342
+            grower:
+              extId: 32342
+          variety:
+            id: 2432423
+            name: Shiraz
+          countyCode: CC
+          inactive: false
+          noOfVines: 900
+          area: 13
+          rootStock:
+            id: 234231
+            name: MUL
+          clone:
+            id: 828932
+            name: MUL
+          vineSpacing: 5
+          rowSpacing: 9
+          soilProfile: G
+          trellis:
+            id: 2342321
+            name: D
+          aspect: NORTH
+          plantedTime: 1644990021000
+          pruningType: 23
+          averageGradient: 4
+          irrigationType: DDD
+          frostProtection: OO
+          organic: true
+          organicCertifiedTime: 1644990021000
+          township: 232020
+          range: 200
+          section: section
+          emitterRate: 3
+          emitterSize: 10
+          siteId: S232
+          noOfRows: 30
+    GetBlocksSuccessResponseExample:
+      value:
+        totalResults: 1000
+        offset: 0
+        limit: 10
+        first: /blocks?offset=0&limit=10
+        previous: null
+        next: /blocks?offset=10&limit=10
+        last: /blocks?offset=990&limit=10
+        results:
+          - id: 1
+            extId: 123
+            name: Block 1
+            code: BLK4321
+            description: This is block 1
+            grower:
+              id: 21231
+              name: A company
+              extId: 7545
+            vineyard:
+              id: 21232
+              name: Vineyard X
+            region:
+              id: 22212
+              name: Napa Valley
+              grower:
+                extId: '32342'
+            subRegion:
+              id: 12222
+              name: Oakville
+            variety:
+              id: 21236
+              name: Shiraz
+            rowNumbers: 1-10
+            estate: false
+            intendedUse:
+              id: 21237
+              name: Wine
+            grading:
+              scale:
+                id: 2
+                name: Wine
+              value:
+                id: 67
+                name: A
+            inactive: false
+            fruitPlacement:
+              vintage: 2024
+              bulkStocks:
+                - batchId: 456
+                  batchName: VB123
+                  vintage: 2024
+                  grading:
+                    scale:
+                      id: 2
+                      name: Wine
+                    value:
+                      id: 67
+                      name: A
+                  totalVolume: 10000
+                  compWeighting: 1
+                  equivalentVolume:
+                    value: 5000
+                    unit: L
+                  equivalentWeight:
+                    value: 1000
+                    unit: KG
+                  percentageOfFruit: 100
+                - batchId: 457
+                  batchName: VB124
+                  vintage: 2024
+                  grading:
+                    scale:
+                      id: 2
+                      name: Wine
+                    value:
+                      id: 67
+                      name: A
+                  totalVolume: 20000
+                  compWeighting: 1
+                  equivalentVolume:
+                    value: 10000
+                    unit: L
+                  equivalentWeight:
+                    value: 2000
+                    unit: KG
+                  percentageOfFruit: 75
+    BlockAssessmentResponseExample:
+      value:
+        data:
+          id: 167
+          block:
+            id: 1
+            extId: '7177'
+            name: Block 1
+          vintage: 2021
+          assessmentTime: 1644990021000
+          assessedBy:
+            id: 1
+            extId: null
+            name: 'ADMINISTRATOR,  System'
+          producingForecast:
+            value: 15
+            unit: t
+          availableForecast:
+            value: 9
+            unit: t
+          harvestMethod: HAND
+          expectedHarvestTime: 1644990021000
+          earliestHarvestTime: 1644644421000
+          sprayReportReceivedTime: 1643780421000
+          cropInspectedTime: 1643780421000
+          quarantineStatus: Completed
+          clearQuarantineStatus: false
+          grading: '3'
+          intendedProduct:
+            id: 23423
+            name: TBD
+    VineyardResponseExample:
+      value:
+        data:
+          id: 23423
+          extId: ABC-3232
+          name: My Oakville vineyard
+          code: MYOAK
+          grower:
+            id: 342342
+            name: Grower
+            extId: 32342
+          region:
+            id: 9302
+            name: Napa Valley
+          adminAgridDivision: Grid Division 12
+          subRegion:
+            id: 7177
+            name: Oakville
+  responses:
+    DefaultError:
+      description: Unexpected error
+      headers:
+        correlation-id:
+          description: Unique identifier associated with the transaction
+          schema:
+            type: string
+            format: uuid
+      content:
+        application/json:
+          schema:
+            $ref: common-schemas.yaml#/components/schemas/Shared-openapi_BaseErrorRoot
+          examples:
+            badRequest:
+              value:
+                errors:
+                  - code: '123'
+                    message: Invalid data
+                    detail: Some data are invalid
+            notAuthorized:
+              value:
+                errors:
+                  - code: '23432'
+                    message: Token is not provided
+                    detail: Token must be provided
+            forbidden:
+              value:
+                errors:
+                  - code: '123'
+                    message: Permission not allowed
+                    detail: User must have permission to perform this operation
+            notFound:
+              value:
+                errors:
+                  - code: '1231'
+                    message: Resource not found
+                    detail: 'Resource with id: xxx could not be found in system'
