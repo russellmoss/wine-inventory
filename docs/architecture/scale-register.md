@@ -122,5 +122,22 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟡 (built + proven offline by `verify:commerce7-idempotency`; live-load behavior validated
   in the **Unit-0 sandbox smoke** once keys land)
 
+## AMEND-1 amended-chain cascade is synchronous, in-transaction (Phase 2)
+
+- **What:** appending an op at/inside an already-FILED 5120.17 period marks the whole downstream
+  (formType, bond) FILED chain `NEEDS_AMENDMENT` synchronously, in the SAME `runLedgerWrite` tx, folded
+  at the `writeLotOperation` chokepoint (`compliance/amend.ts` `cascadeAmendmentsForWrite`). Chosen over
+  a queued `NEEDS_CALCULATION` job (Key Decision a) — a queue leaves the chain transiently inconsistent,
+  the exact silent-desync the invariant exists to prevent; and the repo has no job-queue infra.
+- **Fine until:** the downstream FILED chain per (formType, bond) is short — monthly cadence ⇒ a handful
+  of rows; marking is O(rows) via one `updateMany`; the common case is a cheap `findFirst` no-op (an op
+  in the current, unfiled period).
+- **What breaks at scale:** a custom-crush facility × many bonds × long backdated correction chains could
+  push the mark `updateMany` (+ the per-op bond derivation on backdated ops) toward `LEDGER_TX_TIMEOUT_MS`.
+- **Tripwire:** a backdated op into a filed period whose `runLedgerWrite` approaches the tx timeout; a
+  `NEEDS_AMENDMENT` mark count per correction climbing into the hundreds. **Escape hatch (not built):**
+  move to a `NEEDS_CALCULATION` lock + background regen — recorded here, deliberately deferred.
+- **Status:** 🟢 (built + proven by the `verify:ttb` AMEND-1 3-period chain; single-winery scale)
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

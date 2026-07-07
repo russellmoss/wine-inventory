@@ -134,6 +134,23 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟡 (built + proven offline by `verify:commerce7` + `verify:commerce7-idempotency` +
   `verify:tenant-isolation`; **live sandbox smoke pending** (Unit 0); Secret-Key KMS posture rides SEC-C4)
 
+## Bond isolation + tax-paid terminal boundary (Phase 2, BOND-1 / TAXPAID-1)
+
+- **What:** `Bond` + `ChangeOfTaxClassEvent` are tenant-scoped + RLS-forced (Phase-12 checklist);
+  composite `(tenantId, bondId) → bond` / `(tenantId, lotId) → lot` FKs (raw SQL, K11) make a
+  cross-tenant/cross-bond reference a DB error, not a leak. A `TRANSFER_IN_BOND` posts its symmetric
+  removed/received pair in ONE `runLedgerWrite` (BOND-1) — no half-committed cross-bond state.
+- **Tax-paid boundary:** `REMOVE_TAXPAID` is terminal — the generic reverser refuses it, and a central
+  admissibility guard at the `writeLotOperation` chokepoint (CO-1) blocks any CORRECTION-of-taxpaid or
+  positive in-bond ADJUST on a tax-paid-removed lot. The ONLY re-admission is a refund-flagged
+  `RETURN_TO_BOND`. This keeps the federal tax-paid line from being silently crossed behind the reverser.
+- **Authz:** high-risk bond ops (transfer, return-to-bond, tax-class change, bond CRUD) are `adminAction`-
+  gated (coarse admin gate; Owner-Based Permissions are Phase 23).
+- **Tripwire:** a one-sided/two-transaction cross-bond post; `REMOVE_TAXPAID` back in `CELLAR_TYPES` or
+  `CORRECTABLE`; a positive in-bond delta re-admitting tax-paid volume via any op other than
+  `RETURN_TO_BOND`; a lot-level "home bond" column treated as the compliance source of truth.
+- **Status:** 🟢 (proven by `verify:bond` / `verify:taxpaid` / `verify:tenant-isolation`)
+
 ---
 
 ## Open items the security loop is watching

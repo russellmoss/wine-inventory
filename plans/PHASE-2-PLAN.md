@@ -1,7 +1,7 @@
 ---
 title: "PHASE 2 — Bond + tax-class model (line-scoped, time-aware)"
 type: feat
-status: draft
+status: completed
 date: 2026-07-06
 branch: feat/phase-2-bond-tax-class
 depth: deep
@@ -12,7 +12,7 @@ units: 13
 
 - ✅ **S1 — schema** (commit `feat(phase-2): schema …`): Bond + ChangeOfTaxClassEvent models, line-level `sourceBondId`/`destBondId`, `ComplianceReport.bondId`/`filerSnapshot`, `OperationType += TRANSFER_IN_BOND, RETURN_TO_BOND`, `ComplianceReportStatus += NEEDS_AMENDMENT`. `prisma validate` + `generate` clean. `CHANGE_OWNERSHIP` NOT added (OQ-1 deferred).
 - ✅ **S2 — migrations** (commit `feat(phase-2): migrations …`): 3 migrations (enum-only → schema+RLS+composite-FKs → idempotent backfill). **Applied to dev DB** and verified: Demo Winery primary bond created; 7/7 existing 5120.17 reports scoped to `bondId`. RLS fail-closed guard passed.
-- ⏳ **C1–C7, U1, V1–V6 — NOT YET BUILT.** Resume at C1 (bond derivation). All open questions resolved; the units below are the precise contract. Continue with `/work plans/PHASE-2-PLAN.md` in a fresh session.
+- ✅ **C1–C7 + V1–V6 COMPLETE** (C3 DEFERRED per OQ-1). All guards green vs Neon: `verify:bond` (17), `verify:taxclass` (13), `verify:taxpaid` (11), `verify:ttb` incl. AMEND-1 chain, non-regressed `verify:excise`/`verify:reverse`/`verify:reverse-transform`; full vitest 1500, lint 0-error, build clean, `verify:invariants` 27/27. BOND/TAXCLASS/TAXPAID/AMEND flipped `guarded`. **U1 partial** (NEEDS_AMENDMENT watermark + action seams shipped; rendered surfaces deferred as manual-QA fast-follow). See `PHASE-2-REPORT.md`. One STOP-gate call: RETURN_TO_BOND re-admits bulk → §A11 (user chose, resolving the plan's §B4-vs-bulk contradiction).
 
 ## Overview
 
