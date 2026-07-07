@@ -171,15 +171,35 @@ export function ComplianceClient(props: {
               <div style={{ fontSize: 18, fontWeight: 600 }}>{view.balanced ? "Balances ✓" : "Does not balance ✗"}</div>
               <Badge tone={view.balanced ? "green" : "red"} variant="soft">{view.a13EqualsB2 ? "§A13 = §B2 ✓" : "§A13 ≠ §B2"}</Badge>
               <Badge tone="neutral" variant="soft">{view.version}{view.isFinalBusinessReport ? " · FINAL" : ""}</Badge>
-              <Badge tone={view.status === "FILED" ? "green" : "neutral"} variant={view.status === "FILED" ? "solid" : "soft"}>{view.status}</Badge>
+              {/* Phase 2 (CO-11): a NEEDS_AMENDMENT report is watermarked — NEVER shown as the green
+                  "Filed" chip. Its figures are projected until an amended return is filed. */}
+              <Badge
+                tone={view.status === "FILED" ? "green" : view.status === "NEEDS_AMENDMENT" ? "gold" : "neutral"}
+                variant={view.status === "FILED" ? "solid" : "soft"}
+              >
+                {view.status === "NEEDS_AMENDMENT" ? "Needs amendment" : view.status}
+              </Badge>
               <div style={{ marginLeft: "auto", fontSize: 14, color: blockers.length ? "var(--danger)" : "var(--positive)" }}>
-                {view.status === "FILED" ? "Filed (immutable)" : blockers.length ? `${blockers.length} blocker(s) before filing` : "Ready to file"}
+                {view.status === "FILED"
+                  ? "Filed (immutable)"
+                  : view.status === "NEEDS_AMENDMENT"
+                    ? "Superseded — file an amended return"
+                    : blockers.length ? `${blockers.length} blocker(s) before filing` : "Ready to file"}
               </div>
             </div>
             <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 8 }}>
               Period {view.periodStart} → {view.periodEnd} · {view.cadence.toLowerCase()}
             </div>
           </Card>
+
+          {view.status === "NEEDS_AMENDMENT" ? (
+            <Card style={{ marginBottom: 16, padding: 12, borderLeft: "4px solid var(--accent)", background: "var(--accent-soft)" }}>
+              <div style={{ fontSize: 14 }}>
+                This period was reopened by a later-dated correction. The figures below are <strong>projected</strong> — file an
+                amended return to true them up. (The last-filed figures still carry forward to later periods until you do.)
+              </div>
+            </Card>
+          ) : null}
 
           {/* Anomaly panel */}
           {view.findings.length > 0 ? (
