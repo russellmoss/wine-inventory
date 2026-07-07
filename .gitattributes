@@ -15,4 +15,4 @@ scripts/*.mjs text eol=lf
 scripts/lib/*.mjs text eol=lf
 
 # Vintrace API knowledge base (specs + generated KB) — keep LF for clean diffs.
-vintrace-api/** text eol=lf
+vintrace-docs/api/** text eol=lf

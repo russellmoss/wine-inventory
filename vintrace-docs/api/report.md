@@ -1,6 +1,6 @@
 # Vintrace v7 Report API - Migration Reference
 
-> OpenAPI source: `vintrace-api/specs/report-api-v7.yaml` (OpenAPI 3.0.3).
+> OpenAPI source: `vintrace-docs/api/specs/report-api-v7.yaml` (OpenAPI 3.0.3).
 > Auth: HTTP **Bearer** token (`Authorization: Bearer <token>`). See Vintrace's
 > "Manage and create API tokens" support article.
 > Base URL (server): `https://{host}.vintrace.net/{db}/api/v7/report`
@@ -85,7 +85,7 @@ migration engineer needs:
 ## Key schemas
 
 Schemas prefixed `common-schemas.yaml#/...` are shared definitions vendored in
-`vintrace-api/specs/common-schemas.yaml`; those shared shapes are recovered from the
+`vintrace-docs/api/specs/common-schemas.yaml`; those shared shapes are recovered from the
 public Stoplight v7 optimized bundle.
 
 ### `BulkWineDetails`

@@ -1,6 +1,6 @@
 # Vintrace v7 — Harvest API reference
 
-OpenAPI 3.0.3. Source: `vintrace-api/specs/harvest-api-v7.yaml` (title "Vintrace Harvest API").
+OpenAPI 3.0.3. Source: `vintrace-docs/api/specs/harvest-api-v7.yaml` (title "Vintrace Harvest API").
 
 - **Server base URL (prod):** `https://oz50.vintrace.net/vinx2/api/v7/harvest`
 - **Server base URL (sandbox):** `https://sandbox.vintrace.net/vinx2demo/api/v7/harvest`
