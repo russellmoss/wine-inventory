@@ -65,3 +65,53 @@ normalization, audio queue, config, transcribe) is covered by `test/voice-*.test
 
 - [ ] Chrome (primary), Edge, Safari. Note any Web Audio autoplay quirks (the
       AudioContext is created on the Talk click to satisfy autoplay policy).
+
+## Voice Focus / speaker recognition
+
+- [ ] While the assistant is speaking, put a glass, book, or small tool down on
+      the desk. Playback should continue; a short clink/tap should not trigger
+      barge-in.
+- [ ] Open **Settings -> Voice recognition**. If encryption/voice config is
+      unavailable, the section is visible but disabled with a clear explanation.
+- [ ] Enroll a voiceprint: accept the consent copy, click **Start recording**,
+      read each prompt at a natural pace, click **Stop recording**, repeat for
+      all three samples, and confirm the badge changes from **Not enrolled** to
+      **Active**.
+- [ ] In Settings, set **Default voice mode** to **My voice** and keep noisy-audio
+      cleanup off for the first pass.
+- [ ] Open **Talk**. The overlay shows **Listening only to you** or falls back to
+      **Open to anyone** if no active profile is available.
+- [ ] While the assistant is listening in **My voice**, have the enrolled user ask
+      a normal question. It should transcribe and answer.
+- [ ] While the assistant is speaking in **My voice**, make a desk tap or play a
+      short music transient. Playback should continue.
+- [ ] While the assistant is speaking in **My voice**, have someone else speak.
+      Playback should continue unless the candidate matches the enrolled profile.
+- [ ] Say **turn off speaker recognition** as the enrolled user. The current
+      session switches to **Team session** / **Open to anyone for this session**.
+- [ ] Tap **Open to anyone**. This must work even if speaker verification is
+      rejecting voices.
+- [ ] In **My voice**, produce two unmatched sustained-speech attempts. The overlay
+      should surface recovery copy offering to open the session to anyone.
+- [ ] Delete the voiceprint in Settings. The badge returns to **Not enrolled** and
+      the default mode resets to **Open**.
+
+## Audio isolation
+
+- [ ] Enable **Clean noisy audio before transcription when possible** in Settings.
+- [ ] With music or HVAC noise in the room, ask a question. If the isolation
+      provider fails or times out, the app should fall back to the original audio
+      instead of hanging.
+
+## Foreground wake phrase
+
+- [ ] In Settings, confirm **Wake phrase while Cellarhand is open** is disabled.
+- [ ] Open `/assistant` and leave it idle. There should be no wake-phrase status
+      line such as "armed", and the browser should not start a wake-listening mic
+      stream outside the Talk overlay.
+- [ ] Say **Hey Cellarhand** while the assistant page is open. Nothing should open
+      until the openWakeWord ONNX implementation ships.
+- [ ] Click **Talk** manually. The normal voice conversation flow should still work.
+- [ ] Keep this section disabled until
+      `docs/plans/2026-07-08-048-feat-openwakeword-onnx-wake-phrase-plan.md`
+      is implemented and verified.

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Button } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
 import { AudioVisualizer } from "./AudioVisualizer";
 import {
   useVoiceSession,
@@ -137,6 +137,8 @@ export function VoiceOverlay({ initialHistory, conversationId, onConversationId,
           border: "none",
           cursor: "pointer",
           fontSize: 22,
+          width: 44,
+          height: 44,
           lineHeight: 1,
           color: "var(--text-muted)",
         }}
@@ -145,6 +147,21 @@ export function VoiceOverlay({ initialHistory, conversationId, onConversationId,
       </button>
 
       <AudioVisualizer getLevel={session.getLevel} state={session.state} />
+
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap", justifyContent: "center" }}>
+        <Badge tone={session.focusMode === "my_voice" ? "gold" : "neutral"}>
+          {session.focusLabel}
+        </Badge>
+        {session.focusMode !== "team_session" ? (
+          <Button size="sm" variant="secondary" onClick={session.openToAnyone}>
+            Open to anyone
+          </Button>
+        ) : session.profileState === "active" ? (
+          <Button size="sm" variant="secondary" onClick={session.setMyVoice}>
+            My voice
+          </Button>
+        ) : null}
+      </div>
 
       <div
         style={{
@@ -158,6 +175,12 @@ export function VoiceOverlay({ initialHistory, conversationId, onConversationId,
       >
         {STATE_LABEL[session.state]}
       </div>
+
+      {session.focusNotice ? (
+        <div aria-live="polite" style={{ color: session.unmatchedBursts >= 2 ? "var(--danger)" : "var(--text-muted)", fontSize: 13.5, textAlign: "center", maxWidth: 460 }}>
+          {session.focusNotice}
+        </div>
+      ) : null}
 
       {session.error ? (
         <div style={{ color: "var(--danger)", fontSize: "var(--text-body-sm)", maxWidth: 460, textAlign: "center" }}>
@@ -212,10 +235,15 @@ export function VoiceOverlay({ initialHistory, conversationId, onConversationId,
         />
       ) : null}
 
-      <div style={{ display: "flex", gap: "var(--space-3)" }}>
+      <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap", justifyContent: "center" }}>
         {session.state === "speaking" ? (
           <Button variant="secondary" onClick={session.interrupt}>
             Interrupt
+          </Button>
+        ) : null}
+        {session.focusMode === "my_voice" ? (
+          <Button variant="secondary" onClick={session.openToAnyone}>
+            Open to anyone
           </Button>
         ) : null}
         <Button variant="secondary" onClick={close}>

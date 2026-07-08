@@ -4,6 +4,17 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { SentenceChunker } from "@/lib/voice/sentence-chunker";
 import { toSpeakable } from "@/lib/voice/speech";
+import {
+  createVoiceFocusSession,
+  focusModeLabel,
+  isTurnOffSpeakerRecognitionCommand,
+  isTurnOnSpeakerRecognitionCommand,
+  setVoiceFocusMode,
+  type VoiceFocusMode,
+  type VoiceFocusSession,
+  type VoiceProfileState,
+} from "@/lib/voice/focus";
+import type { VoiceSettingsView } from "@/lib/voice/settings-types";
 import { type AssistantEvent, parseEvent, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
@@ -39,6 +50,16 @@ const MAX_HISTORY = 40;
 const CONFIRM_RE = /\b(confirm|yes|yep|do it|go ahead|approve|apply)\b/i;
 const CANCEL_RE = /\b(cancel|no|nope|stop|never ?mind|discard)\b/i;
 
+async function loadVoiceSettings(): Promise<VoiceSettingsView | null> {
+  try {
+    const res = await fetch("/api/assistant/voice/settings", { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as VoiceSettingsView;
+  } catch {
+    return null;
+  }
+}
+
 export type VoiceSessionOptions = {
   initialHistory: ChatMessage[];
   conversationId: string | null;
@@ -52,12 +73,19 @@ export type VoiceSession = {
   captions: Caption[];
   proposal: PendingProposal | null;
   error: string | null;
+  focusMode: VoiceFocusMode;
+  focusLabel: string;
+  focusNotice: string | null;
+  profileState: VoiceProfileState;
+  unmatchedBursts: number;
   /** Live level for the visualizer (mic while listening, TTS while speaking). */
   getLevel: () => number;
   start: () => Promise<void>;
   stop: () => void;
   /** Manually interrupt the assistant mid-reply and listen again. */
   interrupt: () => void;
+  openToAnyone: () => void;
+  setMyVoice: () => void;
   confirmProposal: () => void;
   cancelProposal: () => void;
 };
@@ -90,9 +118,12 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   const [captions, setCaptions] = React.useState<Caption[]>([]);
   const [proposal, setProposal] = React.useState<PendingProposal | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [focus, setFocus] = React.useState<VoiceFocusSession>(() => createVoiceFocusSession("open", "not_enrolled"));
+  const [focusNotice, setFocusNotice] = React.useState<string | null>(null);
 
   const activeRef = React.useRef(false);
   const stateRef = React.useRef<VoiceState>("idle");
+  const focusRef = React.useRef<VoiceFocusSession>(focus);
   const historyRef = React.useRef<ChatMessage[]>(opts.initialHistory.slice());
   const conversationIdRef = React.useRef<string | null>(opts.conversationId);
   const proposalRef = React.useRef<PendingProposal | null>(null);
@@ -106,6 +137,10 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   // loops back to listening when this is set, so a transient queue-drain mid-stream
   // (network jitter between sentences) doesn't flip us to listening early.
   const streamDoneRef = React.useRef(false);
+
+  React.useEffect(() => {
+    focusRef.current = focus;
+  }, [focus]);
 
   React.useEffect(() => {
     optsRef.current = opts;
@@ -124,7 +159,11 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     const pushCaption = (role: "user" | "assistant", content: string) => {
       setCaptions((prev) => [...prev, { role, content }]);
     };
-
+    const updateFocus = (next: VoiceFocusSession, notice?: string | null) => {
+      focusRef.current = next;
+      setFocus(next);
+      if (notice !== undefined) setFocusNotice(notice);
+    };
     const startListening = () => {
       if (!activeRef.current) return;
       if (stateRef.current === "listening") return; // already listening; don't stack
@@ -306,6 +345,24 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         return;
       }
 
+      if (isTurnOffSpeakerRecognitionCommand(transcript)) {
+        const next = setVoiceFocusMode(focusRef.current, "team_session");
+        updateFocus(next, "Open to anyone for this session.");
+        pushCaption("user", transcript);
+        startListening();
+        return;
+      }
+      if (isTurnOnSpeakerRecognitionCommand(transcript)) {
+        const next = setVoiceFocusMode(focusRef.current, "my_voice");
+        updateFocus(
+          next,
+          next.mode === "my_voice" ? "Listening only to you." : "Set up voice recognition first.",
+        );
+        pushCaption("user", transcript);
+        startListening();
+        return;
+      }
+
       // Voice confirm/cancel of a pending write, gated to the pending proposal.
       if (proposalRef.current?.status === "pending") {
         if (CONFIRM_RE.test(transcript) && !CANCEL_RE.test(transcript)) {
@@ -360,6 +417,13 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     try {
       await playback.ensureContext();
       await mic.ensureReady();
+      const settings = await loadVoiceSettings();
+      if (settings) {
+        const next = createVoiceFocusSession(settings.preference.defaultFocusMode, settings.profile.state);
+        focusRef.current = next;
+        setFocus(next);
+        setFocusNotice(focusModeLabel(next.mode));
+      }
     } catch {
       setError("I need microphone access to listen. Check your browser's mic permission.");
       stateRef.current = "error";
@@ -383,6 +447,18 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   }, [mic, playback]);
 
   const interrupt = React.useCallback(() => implRef.current.interrupt(), []);
+  const openToAnyone = React.useCallback(() => {
+    const next = setVoiceFocusMode(focusRef.current, "team_session");
+    focusRef.current = next;
+    setFocus(next);
+    setFocusNotice("Open to anyone for this session.");
+  }, []);
+  const setMyVoice = React.useCallback(() => {
+    const next = setVoiceFocusMode(focusRef.current, "my_voice");
+    focusRef.current = next;
+    setFocus(next);
+    setFocusNotice(next.mode === "my_voice" ? "Listening only to you." : "Set up voice recognition first.");
+  }, []);
   const confirmProposal = React.useCallback(() => implRef.current.confirmProposal(), []);
   const cancelProposal = React.useCallback(() => implRef.current.cancelProposal(), []);
 
@@ -399,5 +475,23 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { state, captions, proposal, error, getLevel, start, stop, interrupt, confirmProposal, cancelProposal };
+  return {
+    state,
+    captions,
+    proposal,
+    error,
+    focusMode: focus.mode,
+    focusLabel: focusModeLabel(focus.mode),
+    focusNotice,
+    profileState: focus.profileState,
+    unmatchedBursts: focus.unmatchedBursts,
+    getLevel,
+    start,
+    stop,
+    interrupt,
+    openToAnyone,
+    setMyVoice,
+    confirmProposal,
+    cancelProposal,
+  };
 }

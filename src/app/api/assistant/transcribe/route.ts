@@ -1,5 +1,8 @@
 import { getCurrentUser } from "@/lib/dal";
+import { runAsTenant } from "@/lib/tenant/context";
 import { transcribeEnabled, transcribeAudio } from "@/lib/voice/transcribe";
+import { isolateVoiceAudio } from "@/lib/voice/isolation";
+import { getVoiceSettingsForUser } from "@/lib/voice/profile";
 
 // Speech-to-text for assistant voice mode. The client records an utterance and
 // posts it as multipart/form-data; we return the transcript. The OpenAI key
@@ -13,7 +16,7 @@ const MAX_BYTES = 25 * 1024 * 1024;
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  if (!user || user.banned || user.mustChangePassword) {
+  if (!user || user.banned || user.mustChangePassword || !user.activeOrganizationId) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
   }
 
@@ -37,7 +40,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const text = await transcribeAudio(file);
+    const settings = await runAsTenant(user.activeOrganizationId, () => getVoiceSettingsForUser(user.id));
+    let input: Blob = file;
+    if (settings.preference.audioIsolationEnabled) {
+      input = await isolateVoiceAudio(file).catch(() => file);
+    }
+    const text = await transcribeAudio(input);
     return Response.json({ text });
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);

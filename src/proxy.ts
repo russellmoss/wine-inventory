@@ -3,7 +3,7 @@ import { getSessionCookie } from "better-auth/cookies";
 
 // OPTIMISTIC redirect only. proxy.ts is NOT a security boundary in Next 16
 // (CVE-2025-29927). Authoritative checks live in the DAL + every server action.
-const PUBLIC_PREFIXES = ["/login", "/forgot-password", "/reset-password", "/api/auth", "/styleguide"];
+const PUBLIC_PREFIXES = ["/login", "/forgot-password", "/reset-password", "/api/auth", "/styleguide", "/manifest.webmanifest", "/vendor"];
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

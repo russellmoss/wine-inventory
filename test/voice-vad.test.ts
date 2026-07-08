@@ -9,14 +9,34 @@ describe("VadDetector", () => {
     const v = new VadDetector();
     expect(v.process(0.01, 0)).toBe("none"); // quiet
     expect(v.process(0.1, 100)).toBe("speech-start"); // loud onset
-    expect(v.process(0.1, 200)).toBe("none"); // still loud, no repeat
+    expect(v.process(0.1, 200)).toBe("none"); // still loud, no repeat before confirmation
     expect(v.isSpeaking).toBe(true);
+    expect(v.isConfirmed).toBe(false);
+  });
+
+  it("emits speech-confirmed only after enough sustained speech", () => {
+    const v = new VadDetector({ minSpeechMs: 250 });
+    expect(v.process(0.1, 0)).toBe("speech-start");
+    expect(v.process(0.1, 80)).toBe("none");
+    expect(v.process(0.1, 240)).toBe("none");
+    expect(v.process(0.1, 260)).toBe("speech-confirmed");
+    expect(v.process(0.1, 320)).toBe("none");
+    expect(v.isConfirmed).toBe(true);
+  });
+
+  it("does not confirm an 80ms tap", () => {
+    const v = new VadDetector({ hangoverMs: 120, minSpeechMs: 250 });
+    expect(v.process(0.1, 0)).toBe("speech-start");
+    expect(v.process(0.1, 80)).toBe("none");
+    expect(v.process(0.0, 220)).toBe("none");
+    expect(v.isSpeaking).toBe(false);
+    expect(v.isConfirmed).toBe(false);
   });
 
   it("finalizes after enough speech followed by the hangover of silence", () => {
     const v = new VadDetector({ speechThreshold: 0.04, hangoverMs: 1200, minSpeechMs: 250 });
     expect(v.process(0.1, 0)).toBe("speech-start");
-    expect(v.process(0.1, 300)).toBe("none"); // 300ms of speech (>= minSpeech)
+    expect(v.process(0.1, 300)).toBe("speech-confirmed"); // 300ms of speech (>= minSpeech)
     expect(v.process(0.01, 800)).toBe("none"); // silence starts (500ms since loud)
     expect(v.process(0.01, 1400)).toBe("none"); // 1100ms since last loud (300), < 1200
     expect(v.process(0.01, 1600)).toBe("finalize"); // 1300ms since last loud, >= 1200
@@ -54,6 +74,7 @@ describe("VadDetector", () => {
     expect(v.isSpeaking).toBe(true);
     v.reset();
     expect(v.isSpeaking).toBe(false);
+    expect(v.isConfirmed).toBe(false);
     expect(v.process(0.2, 50)).toBe("speech-start");
   });
 });

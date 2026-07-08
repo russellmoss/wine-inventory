@@ -9,11 +9,13 @@ import { setSparklingEnabled, saveCostSettings } from "@/lib/settings/actions";
 import type { CostSettings } from "@/lib/cost/policy";
 import { SUPPORTED_CURRENCIES, CURRENCY_LABELS } from "@/lib/money/currency";
 import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
+import type { VoiceSettingsView } from "@/lib/voice/settings-types";
 import { AccountingConnectionCard, type ConnectionSummary } from "./AccountingConnectionCard";
 import { AccountMappingCard } from "./AccountMappingCard";
 import { Commerce7ConnectionCard, type Commerce7ConnectionSummary } from "./Commerce7ConnectionCard";
 import { Commerce7MappingCard } from "./Commerce7MappingCard";
 import { NamingTemplateCard } from "./NamingTemplateCard";
+import { VoiceRecognitionCard } from "./VoiceRecognitionCard";
 
 type AccountingMapping = { component: string; costAccount: string | null; inventoryAccount: string | null };
 
@@ -46,6 +48,7 @@ export function SettingsClient({
   accountingMappings,
   accountingAp,
   commerce7,
+  voice,
 }: {
   sparklingEnabled: boolean;
   cost: CostSettings;
@@ -54,6 +57,7 @@ export function SettingsClient({
   accountingMappings: AccountingMapping[];
   accountingAp: { apInventoryAccount: string | null; apPayableAccount: string | null };
   commerce7: Commerce7ConnectionSummary | null;
+  voice: VoiceSettingsView;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
@@ -243,6 +247,8 @@ export function SettingsClient({
           {costMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{costMsg}</span>}
         </div>
       </Card>
+
+      <VoiceRecognitionCard initial={voice} />
 
       {/* Phase 1 — lot naming template authoring (identity presentation layer). */}
       <NamingTemplateCard />

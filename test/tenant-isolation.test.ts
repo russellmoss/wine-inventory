@@ -44,6 +44,8 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     // fixtures below (tenantId = A) can insert. Idempotent — a no-op update against the real tenant.
     await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Bhutan Wine Co", slug: A } });
     await owner.organization.upsert({ where: { id: B }, update: {}, create: { id: B, name: "Iso Vitest B", slug: B } });
+    await owner.user.upsert({ where: { id: "isov_voice_user_a" }, update: {}, create: { id: "isov_voice_user_a", name: "Voice A", email: "isov_voice_a@test" } });
+    await owner.user.upsert({ where: { id: "isov_voice_user_b" }, update: {}, create: { id: "isov_voice_user_b", name: "Voice B", email: "isov_voice_b@test" } });
     const now = new Date();
     await owner.lot.upsert({ where: { id: "isov_a" }, update: {}, create: { id: "isov_a", code: "ISOV-A", tenantId: A, updatedAt: now } });
     await owner.lot.upsert({ where: { id: "isov_b" }, update: {}, create: { id: "isov_b", code: "ISOV-B", tenantId: B, updatedAt: now } });
@@ -83,6 +85,12 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.bond.upsert({ where: { id: "isov_bond_a" }, update: {}, create: { id: "isov_bond_a", tenantId: A, registryNumber: "ISOV-BOND-A", isPrimary: true, updatedAt: now } });
     await owner.bond.upsert({ where: { id: "isov_bond_b" }, update: {}, create: { id: "isov_bond_b", tenantId: B, registryNumber: "ISOV-BOND-B", isPrimary: true, updatedAt: now } });
     await owner.changeOfTaxClassEvent.upsert({ where: { id: "isov_ctc_b" }, update: {}, create: { id: "isov_ctc_b", tenantId: B, lotId: "isov_b", toClass: "A_LE16", observedAt: now, commandId: "isov-ctc-cmd-b" } });
+    // Voice Focus tables: per-user tenant-scoped biometric preference/profile rows.
+    const voiceProfile = { status: "ACTIVE" as const, provider: "LOCAL_VOICEPRINT" as const, modelVersion: "test", embeddingCt: "ct", dekWrapped: "dek", consentAcceptedAt: now, consentVersion: "test" };
+    await owner.voiceProfile.upsert({ where: { id: "isov_voice_profile_a" }, update: {}, create: { id: "isov_voice_profile_a", tenantId: A, userId: "isov_voice_user_a", ...voiceProfile } });
+    await owner.voiceProfile.upsert({ where: { id: "isov_voice_profile_b" }, update: {}, create: { id: "isov_voice_profile_b", tenantId: B, userId: "isov_voice_user_b", ...voiceProfile } });
+    await owner.voicePreference.upsert({ where: { id: "isov_voice_pref_a" }, update: {}, create: { id: "isov_voice_pref_a", tenantId: A, userId: "isov_voice_user_a", defaultFocusMode: "MY_VOICE" } });
+    await owner.voicePreference.upsert({ where: { id: "isov_voice_pref_b" }, update: {}, create: { id: "isov_voice_pref_b", tenantId: B, userId: "isov_voice_user_b", defaultFocusMode: "MY_VOICE" } });
   });
 
   afterAll(async () => {
@@ -101,6 +109,9 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.vineyard.deleteMany({ where: { id: { in: ["isov_vy_a", "isov_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["isov_a", "isov_b"] } } });
     await owner.bond.deleteMany({ where: { id: { in: ["isov_bond_a", "isov_bond_b", "isov_bond_x"] } } }); // Phase 2: FK'd to org
+    await owner.voicePreference.deleteMany({ where: { id: { in: ["isov_voice_pref_a", "isov_voice_pref_b", "isov_voice_pref_x"] } } });
+    await owner.voiceProfile.deleteMany({ where: { id: { in: ["isov_voice_profile_a", "isov_voice_profile_b", "isov_voice_profile_x"] } } });
+    await owner.user.deleteMany({ where: { id: { in: ["isov_voice_user_a", "isov_voice_user_b"] } } });
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
     await owner.$disconnect();
@@ -215,6 +226,29 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     // Change-of-tax-class event pointing at B's lot → composite (tenantId, lotId) FK reject (K11).
     await expect(
       asTenant(A, (db) => db.changeOfTaxClassEvent.create({ data: { id: "isov_ctc_k11", tenantId: A, lotId: "isov_b", toClass: "A_LE16", observedAt: new Date() } })),
+    ).rejects.toThrow();
+  });
+
+  it("voice_profile + voice_preference are tenant-isolated: A cannot see B's; foreign INSERT rejected", async () => {
+    expect(await asTenant(A, (db) => db.voiceProfile.findFirst({ where: { id: "isov_voice_profile_a" } }))).not.toBeNull();
+    expect(await asTenant(A, (db) => db.voiceProfile.findFirst({ where: { id: "isov_voice_profile_b" } }))).toBeNull();
+    expect(await asTenant(A, (db) => db.voicePreference.findFirst({ where: { id: "isov_voice_pref_b" } }))).toBeNull();
+    await expect(
+      asTenant(A, (db) => db.voiceProfile.create({
+        data: {
+          id: "isov_voice_profile_x",
+          tenantId: B,
+          userId: "isov_voice_user_a",
+          status: "ACTIVE",
+          provider: "LOCAL_VOICEPRINT",
+          modelVersion: "test",
+        },
+      })),
+    ).rejects.toThrow();
+    await expect(
+      asTenant(A, (db) => db.voicePreference.create({
+        data: { id: "isov_voice_pref_x", tenantId: B, userId: "isov_voice_user_a", defaultFocusMode: "MY_VOICE" },
+      })),
     ).rejects.toThrow();
   });
 

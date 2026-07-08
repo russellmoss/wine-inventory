@@ -10,7 +10,7 @@ import { VadDetector } from "@/lib/voice/vad";
 //
 // Two turn modes keep echo out of the loop:
 //  - "listen": records via MediaRecorder; finalizes one utterance on end-of-speech.
-//  - "barge":  no recording, just watches for speech onset so the user can talk
+//  - "barge":  no recording, just watches for confirmed speech so the user can talk
 //              over the assistant. Used while the assistant is speaking.
 
 type Mode = "idle" | "listen" | "barge";
@@ -22,8 +22,8 @@ export type MicCapture = {
   ensureReady: () => Promise<void>;
   /** Begin a recording turn; fires onUtterance(blob) once on end-of-speech. */
   beginListen: (onUtterance: (audio: Blob) => void) => void;
-  /** Begin barge-in monitoring; fires onSpeech() once when the user starts talking. */
-  beginBargeIn: (onSpeech: () => void) => void;
+  /** Begin barge-in monitoring; fires onSpeech() once speech is sustained enough to be intentional. */
+  beginBargeIn: (onSpeech: (audio?: Blob) => void, options?: { record?: boolean }) => void;
   /** Stop the current turn (stops any active recording) without releasing the mic. */
   endTurn: () => void;
   /** Fully release the mic + audio context. */
@@ -52,7 +52,7 @@ export function useMicCapture(): MicCapture {
   const mimeRef = React.useRef<string | undefined>(undefined);
 
   const onUtteranceRef = React.useRef<((b: Blob) => void) | null>(null);
-  const onSpeechRef = React.useRef<(() => void) | null>(null);
+  const onSpeechRef = React.useRef<((audio?: Blob) => void) | null>(null);
 
   // Stop the active recorder and hand the assembled blob to the listener.
   const finalizeListen = React.useCallback(() => {
@@ -106,9 +106,14 @@ export function useMicCapture(): MicCapture {
           if (evt === "finalize") finalizeListen();
         } else if (mode === "barge") {
           const evt = vadRef.current.process(rms, now);
-          if (evt === "speech-start") {
+          if (evt === "speech-confirmed") {
             modeRef.current = "idle";
-            onSpeechRef.current?.();
+            const rec = recorderRef.current;
+            if (rec && rec.state !== "inactive") {
+              rec.stop();
+            } else {
+              onSpeechRef.current?.();
+            }
           }
         }
       }
@@ -153,9 +158,36 @@ export function useMicCapture(): MicCapture {
     modeRef.current = "listen";
   }, []);
 
-  const beginBargeIn = React.useCallback((onSpeech: () => void) => {
+  const beginBargeIn = React.useCallback((onSpeech: (audio?: Blob) => void, options?: { record?: boolean }) => {
+    const stream = streamRef.current;
     onSpeechRef.current = onSpeech;
     vadRef.current.reset();
+    chunksRef.current = [];
+    if (options?.record && stream) {
+      const prev = recorderRef.current;
+      if (prev && prev.state !== "inactive") {
+        prev.onstop = null;
+        try {
+          prev.stop();
+        } catch {
+          /* already stopped */
+        }
+      }
+      const rec = new MediaRecorder(stream, mimeRef.current ? { mimeType: mimeRef.current } : undefined);
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      rec.onstop = () => {
+        const type = mimeRef.current ?? "audio/webm";
+        const blob = new Blob(chunksRef.current, { type });
+        chunksRef.current = [];
+        const cb = onSpeechRef.current;
+        onSpeechRef.current = null;
+        cb?.(blob.size > 0 ? blob : undefined);
+      };
+      recorderRef.current = rec;
+      rec.start();
+    }
     modeRef.current = "barge";
   }, []);
 

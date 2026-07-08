@@ -32,6 +32,8 @@ model User {
   accounts               Account[]
   fieldNotes             FieldNote[]
   assistantConversations AssistantConversation[]
+  voiceProfiles          VoiceProfile[]
+  voicePreferences       VoicePreference[]
   // Phase 5 (D9): vineyard MEMBERSHIP set — replaced the single assignedVineyardId column
   // (dropped in migration 20260629000300 after the backfill was verified).
   vineyardMemberships    UserVineyard[]
@@ -193,6 +195,23 @@ enum AuditAction {
   SAMPLE_SENT
   SAMPLE_ATTACHED
   SAMPLE_CANCELLED
+}
+
+enum VoiceProfileStatus {
+  ACTIVE
+  DISABLED
+  NEEDS_REENROLL
+}
+
+enum VoiceProfileProvider {
+  LOCAL_VOICEPRINT
+  VENDOR_REF
+}
+
+enum VoiceFocusDefaultMode {
+  OPEN
+  MY_VOICE
+  TEAM_SESSION
 }
 
 // ───────────────────────── Shared registries ─────────────────────────
@@ -856,6 +875,50 @@ model AssistantMessage {
   @@map("assistant_message")
 }
 
+model VoiceProfile {
+  tenantId          String               @default("")
+  id                String               @id @default(cuid())
+  userId            String
+  status            VoiceProfileStatus   @default(ACTIVE)
+  provider          VoiceProfileProvider @default(LOCAL_VOICEPRINT)
+  providerRef       String?
+  embeddingCt       String?
+  dekWrapped        String?
+  modelVersion      String
+  threshold         Float                @default(0.82)
+  enrollmentQuality Float?
+  consentAcceptedAt DateTime?
+  consentVersion    String?
+  lastVerifiedAt    DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@map("voice_profile")
+}
+
+model VoicePreference {
+  tenantId              String                @default("")
+  id                    String                @id @default(cuid())
+  userId                String
+  defaultFocusMode      VoiceFocusDefaultMode @default(OPEN)
+  audioIsolationEnabled Boolean               @default(false)
+  wakeWordEnabled       Boolean               @default(false)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@map("voice_preference")
+}
+
 // ───────────────────────── Lot + operation ledger (Phase 1 spine) ─────────────────────────
 // The append-only source of truth for BULK wine. `VesselComponent` (above) is retired
 // after the Day-Zero migration; `VesselLot` is the materialized projection. See
@@ -1243,8 +1306,8 @@ model Lot {
 // (Prisma can't express partial uniques). `kind` stays an open String (Phase-3 adapters add
 // kinds without an ALTER TYPE) — plan Q4.
 model LotIdentifier {
-  tenantId         String   @default("")
-  id               String   @id @default(cuid())
+  tenantId         String    @default("")
+  id               String    @id @default(cuid())
   lotId            String
   kind             String // current-code | source-system-id | spreadsheet-alias | ttb-label | prior-code(Phase-3 imports only)
   sourceSystem     String? // e.g. "innovint" | "vintrace" | null for app-native identifiers
@@ -1252,9 +1315,9 @@ model LotIdentifier {
   value            String
   validFrom        DateTime?
   validTo          DateTime?
-  isCurrent        Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  isCurrent        Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   // Composite FK (tenantId, lotId)->lot(tenantId, id) is declared in raw SQL (see the schema
   // migration) — not a Prisma relation (avoids the multi-field-relation type-depth blowup).
 
@@ -1385,22 +1448,22 @@ model LotOperation {
 // keeps each operation balanced (seed-in, loss-out, bottle-out). `lotCode`/`vesselCode`
 // are durable snapshots so history reads survive later renames/deletes.
 model LotOperationLine {
-  tenantId    String       @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id          Int          @id @default(autoincrement())
-  operationId Int
-  lotId       String
-  vesselId    String? // null = "outside the cellar"
-  deltaL      Decimal      @db.Decimal(10, 2) // signed; CHECK(deltaL <> 0) in migration
-  reason      String?
+  tenantId     String       @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id           Int          @id @default(autoincrement())
+  operationId  Int
+  lotId        String
+  vesselId     String? // null = "outside the cellar"
+  deltaL       Decimal      @db.Decimal(10, 2) // signed; CHECK(deltaL <> 0) in migration
+  reason       String?
   // Phase 7 (K3): the explicit account this leg touches. VESSEL (vesselId set) | EXTERNAL
   // (left the cellar) | BOTTLE_STORAGE (wine-in-bottle). A BOTTLE_STORAGE leg carries BOTH
   // deltaL and bottleDelta; every other leg has bottleDelta NULL. The pairing is enforced by
   // a DB CHECK (bucket='BOTTLE_STORAGE' ⇔ bottleDelta IS NOT NULL). Backfilled on existing
   // rows: VESSEL where vesselId is set, else EXTERNAL.
-  bucket      LedgerBucket @default(EXTERNAL)
-  bottleDelta Int? // signed bottle-count change on a BOTTLE_STORAGE leg (else NULL)
-  lotCode     String
-  vesselCode  String?
+  bucket       LedgerBucket @default(EXTERNAL)
+  bottleDelta  Int? // signed bottle-count change on a BOTTLE_STORAGE leg (else NULL)
+  lotCode      String
+  vesselCode   String?
   // Phase 2 (BOND-1): line-level, time-aware bond affiliation. A bond-moving op (TRANSFER_IN_BOND,
   // RETURN_TO_BOND) stamps these with an EXPLICIT, non-null, source≠dest bond (enforced in the core,
   // not the schema). Legacy/origination lines leave them NULL and the bond derives to the tenant's
@@ -1409,9 +1472,9 @@ model LotOperationLine {
   // live in raw SQL (M2) — no Prisma @relation (Phase-1 Surprise 1: composite relations blow TS depth).
   sourceBondId String?
   destBondId   String?
-  operation   LotOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
-  lot         Lot          @relation(fields: [lotId], references: [id], onDelete: Restrict)
-  vessel      Vessel?      @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  operation    LotOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  lot          Lot          @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  vessel       Vessel?      @relation(fields: [vesselId], references: [id], onDelete: SetNull)
 
   @@index([operationId])
   @@index([lotId])
@@ -2897,35 +2960,35 @@ model WorkOrder {
 // for querying + composite FKs. `currentAttemptId` is the attempt owning the task's live op (A4); it is
 // a plain scalar (no FK) to avoid a cluster relation cycle — always set in the same tx as the attempt.
 model WorkOrderTask {
-  tenantId        String              @default("")
-  id              String              @id @default(cuid())
-  workOrderId     String
-  seq             Int // display + execution order within the WO
-  kind            WorkOrderTaskKind
-  status          WorkOrderTaskStatus @default(PENDING)
-  title           String
-  opType          OperationType? // set for OPERATION tasks (RACK/ADDITION/TOPPING/…); null for OBSERVATION
-  observationType String? // set for OBSERVATION tasks (e.g. "BRIX", "TASTING"); null for OPERATION
-  activityType    String? // A3: set for MAINTENANCE tasks (TEMP_SETPOINT/CLEAN/SANITIZE/STEAM/GAS); validated String mirror of VesselActivityKind
-  instructions    String? // task-level notes (Unit 9)
+  tenantId         String              @default("")
+  id               String              @id @default(cuid())
+  workOrderId      String
+  seq              Int // display + execution order within the WO
+  kind             WorkOrderTaskKind
+  status           WorkOrderTaskStatus @default(PENDING)
+  title            String
+  opType           OperationType? // set for OPERATION tasks (RACK/ADDITION/TOPPING/…); null for OBSERVATION
+  observationType  String? // set for OBSERVATION tasks (e.g. "BRIX", "TASTING"); null for OPERATION
+  activityType     String? // A3: set for MAINTENANCE tasks (TEMP_SETPOINT/CLEAN/SANITIZE/STEAM/GAS); validated String mirror of VesselActivityKind
+  instructions     String? // task-level notes (Unit 9)
   // Canonical query columns (A6) extracted from plannedPayload; composite-FK'd in raw SQL.
-  sourceVesselId  String?
-  destVesselId    String?
-  lotId           String?
-  materialId      String?
-  blockId         String? // plan 039: vineyard-block target for a HARVEST_WEIGH_IN observation (composite-FK'd in raw SQL)
-  assigneeId      String?
-  assigneeEmail   String?
-  dueAt           DateTime?
-  plannedPayload  Json // snapshot of the planned inputs (target rate + basis, note, etc.)
+  sourceVesselId   String?
+  destVesselId     String?
+  lotId            String?
+  materialId       String?
+  blockId          String? // plan 039: vineyard-block target for a HARVEST_WEIGH_IN observation (composite-FK'd in raw SQL)
+  assigneeId       String?
+  assigneeEmail    String?
+  dueAt            DateTime?
+  plannedPayload   Json // snapshot of the planned inputs (target rate + basis, note, etc.)
   currentAttemptId String? // A4: the attempt currently owning this task's ledger op (plain scalar, no FK)
-  completionNote  String?
-  deviationReason String?
-  startedAt       DateTime? // D5 claim
-  startedById     String?
-  startedByEmail  String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  completionNote   String?
+  deviationReason  String?
+  startedAt        DateTime? // D5 claim
+  startedById      String?
+  startedByEmail   String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   workOrder    WorkOrder              @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   attempts     WorkOrderTaskAttempt[]
@@ -3063,13 +3126,13 @@ model WorkOrderTemplate {
 // An immutable version snapshot of a template's typed-field spec (tasks + fields). Issuing a WO
 // references exactly one version; editing a template creates a new version, never mutating an old one.
 model WorkOrderTemplateVersion {
-  tenantId      String   @default("")
-  id            String   @id @default(cuid())
-  templateId    String
-  version       Int
-  spec          Json // the validated typed-field vocabulary snapshot (task list + fields)
-  createdAt     DateTime @default(now())
-  createdById   String?
+  tenantId       String   @default("")
+  id             String   @id @default(cuid())
+  templateId     String
+  version        Int
+  spec           Json // the validated typed-field vocabulary snapshot (task list + fields)
+  createdAt      DateTime @default(now())
+  createdById    String?
   createdByEmail String?
 
   template   WorkOrderTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)

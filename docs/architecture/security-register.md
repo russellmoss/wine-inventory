@@ -58,6 +58,20 @@
   confirm.ts` + `commit.ts`). Voice can confirm by tap or spoken "confirm" — the token path is unchanged.
 - **Status:** 🟢
 
+### Voice recognition is opt-in input focus, not authentication
+- Voice Focus stores only a derived mathematical voiceprint/provider reference, never raw enrollment
+  audio. The profile is tenant-scoped, protected by forced RLS, encrypted with the envelope helper, and
+  deletable by the user.
+- Speaker recognition can gate voice-mode interruption and session controls, but it is not login, MFA,
+  RBAC, or write authorization. Auth, tenant membership, and signed write confirmations remain
+  authoritative.
+- The client never receives match scores, thresholds, ciphertext, wrapped DEKs, provider bodies, or raw
+  audio. Shared devices must always expose a physical "Open to anyone" escape hatch.
+- **Tripwire:** raw voice audio stored or logged; voiceprint table added to `GLOBAL_MODELS`; a write
+  committed because of voice match alone; match scores exposed to the browser; no physical recovery path.
+- **Status:** 🟡 (v1 local voiceprint + RLS/envelope path implemented; provider-grade verification is
+  still a follow-up hardening decision)
+
 ### Work-order template authoring is admin-gated; the client spec is canonicalized server-side (plan 034)
 - Creating / editing / cloning / archiving a work-order template is **admin-only** (`adminAction` in
   `src/lib/work-orders/actions.ts`); issuing + running work orders stays open to all roles. A cellar hand

@@ -1,15 +1,18 @@
 import { getAppSettings, getCostSettings } from "@/lib/settings/data";
+import { requireReadyUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { asOpsCadence, asReturnCadence } from "@/lib/compliance/types";
 import { getConnectionSummary } from "@/lib/accounting/connection";
 import { getAccountMappings, getApAccounts } from "@/lib/accounting/coa";
 import { getConnectionSummary as getCommerce7Summary } from "@/lib/commerce/connection";
+import { getVoiceSettingsForUser } from "@/lib/voice/profile";
 import { SettingsClient } from "./SettingsClient";
 
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const [settings, cost, profile, accounting, accountingMappings, accountingAp, commerce7] = await Promise.all([
+  const user = await requireReadyUser();
+  const [settings, cost, profile, accounting, accountingMappings, accountingAp, commerce7, voice] = await Promise.all([
     getAppSettings(),
     getCostSettings(),
     prisma.complianceProfile.findFirst(),
@@ -17,6 +20,7 @@ export default async function SettingsPage() {
     getAccountMappings(),
     getApAccounts(),
     getCommerce7Summary(),
+    getVoiceSettingsForUser(user.id),
   ]);
   return (
     <SettingsClient
@@ -26,6 +30,7 @@ export default async function SettingsPage() {
       accountingMappings={accountingMappings}
       accountingAp={accountingAp}
       commerce7={commerce7}
+      voice={voice}
       complianceProfile={{
         ein: profile?.ein ?? "",
         registryNumber: profile?.registryNumber ?? "",
