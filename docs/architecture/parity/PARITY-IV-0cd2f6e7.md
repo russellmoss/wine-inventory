@@ -3,10 +3,12 @@ id: PARITY-IV-0cd2f6e7
 group: finance
 incumbent: innovint
 capability: How to Add Dry Goods Cost (Packaging and Additives)
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/finance/getting-started/how-to-add-dry-goods-cost-packaging-and-additives.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/finance/getting-started/how-to-add-dry-goods-cost-packaging-and-additives.md`

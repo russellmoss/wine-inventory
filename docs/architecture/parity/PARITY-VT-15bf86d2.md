@@ -3,10 +3,12 @@ id: PARITY-VT-15bf86d2
 group: setup-and-admin
 incumbent: vintrace
 capability: Linking QuickBooks Tax Rates
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/setup-and-admin/integrations-accounting/linking-quickbooks-tax-rates.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/setup-and-admin/integrations-accounting/linking-quickbooks-tax-rates.md`

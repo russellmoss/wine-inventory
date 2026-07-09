@@ -3,10 +3,12 @@ id: PARITY-IV-d3dd3270
 group: product-updates
 incumbent: innovint
 capability: "9/17/2025 Product Update: Improvements for Harvest, Reporting, InnoApp and SUPPLY!"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2025-2026/9-17-2025-product-update-improvements-for-harvest-reporting-innoapp-and-supply.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2025-2026/9-17-2025-product-update-improvements-for-harvest-reporting-innoapp-and-supply.md`

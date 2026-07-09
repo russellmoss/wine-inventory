@@ -3,10 +3,12 @@ id: PARITY-IV-0feb03c9
 group: product-updates
 incumbent: innovint
 capability: "11/12/21 Release Notes: Vineyard Block Yields, Color Header, Additions Across Owners"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/11-12-21-release-notes-vineyard-block-yields-color-header-additions-across-owners.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/11-12-21-release-notes-vineyard-block-yields-color-header-additions-across-owners.md`

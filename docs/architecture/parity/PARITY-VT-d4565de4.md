@@ -3,10 +3,12 @@ id: PARITY-VT-d4565de4
 group: vintrace-web
 incumbent: vintrace
 capability: Adding Costs for Wine/Juice Received in Bulk
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/costing/adding-costs-for-wine-juice-received-in-bulk.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/costing/adding-costs-for-wine-juice-received-in-bulk.md`

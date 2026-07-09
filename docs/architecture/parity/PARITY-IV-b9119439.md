@@ -3,10 +3,12 @@ id: PARITY-IV-b9119439
 group: new-to-innovint
 incumbent: innovint
 capability: Password Guidelines
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/new-to-innovint/accessing-innovint/password-guidelines.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/new-to-innovint/accessing-innovint/password-guidelines.md`

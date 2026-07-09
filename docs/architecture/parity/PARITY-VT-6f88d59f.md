@@ -3,10 +3,12 @@ id: PARITY-VT-6f88d59f
 group: release-notes
 incumbent: vintrace
 capability: Version 8.6.5
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/release-notes/web-version-8/version-8-6-5.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/release-notes/web-version-8/version-8-6-5.md`

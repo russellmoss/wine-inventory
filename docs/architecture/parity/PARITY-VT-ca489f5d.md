@@ -3,10 +3,12 @@ id: PARITY-VT-ca489f5d
 group: vintrace-web
 incumbent: vintrace
 capability: Sales Orders, Purchase Orders, and Stock Commitments
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/purchases/sales-orders-purchase-orders-and-stock-commitments.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/purchases/sales-orders-purchase-orders-and-stock-commitments.md`

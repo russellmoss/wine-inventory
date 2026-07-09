@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
+import { LINEAGE_KIND } from "@/lib/lot/lineage";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planLedgerRack, type VesselLotBalance } from "@/lib/ledger/math";
@@ -112,8 +113,8 @@ export async function topVesselTx(tx: Prisma.TransactionClient, actor: LedgerAct
       if (srcLotId === childLotId) continue;
       await tx.lotLineage.upsert({
         where: { parentLotId_childLotId: { parentLotId: srcLotId, childLotId } },
-        create: { parentLotId: srcLotId, childLotId, kind: "TOPPING", fraction },
-        update: { fraction, kind: "TOPPING" },
+        create: { parentLotId: srcLotId, childLotId, kind: LINEAGE_KIND.TOPPING, fraction },
+        update: { fraction, kind: LINEAGE_KIND.TOPPING },
       });
       lineageEdges++;
     }

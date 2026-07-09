@@ -3,10 +3,12 @@ id: PARITY-VT-d83c29c7
 group: vintrace-web
 incumbent: vintrace
 capability: Handling the Wine Equalisation Tax (WET)
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/sales/handling-the-wine-equalisation-tax-wet.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/sales/handling-the-wine-equalisation-tax-wet.md`

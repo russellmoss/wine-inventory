@@ -3,10 +3,12 @@ id: PARITY-IV-c57ae5dd
 group: make
 incumbent: innovint
 capability: Bond to Bond Transfers (B2B) within your InnoVint Winery
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/movement-actions/bond-to-bond-transfers-b2b-within-your-innovint-winery.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/movement-actions/bond-to-bond-transfers-b2b-within-your-innovint-winery.md`

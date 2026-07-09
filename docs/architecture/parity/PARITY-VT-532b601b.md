@@ -3,10 +3,12 @@ id: PARITY-VT-532b601b
 group: setup-and-admin
 incumbent: vintrace
 capability: "vintrace Vineyard Management (eVineyard) Integration: Specifying Vineyard Block IDs"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/setup-and-admin/integrations-vineyard/vintrace-vineyard-management-evineyard-integration-specifying-vineyard-block-ids.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/setup-and-admin/integrations-vineyard/vintrace-vineyard-management-evineyard-integration-specifying-vineyard-block-ids.md`

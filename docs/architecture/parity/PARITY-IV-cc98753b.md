@@ -3,10 +3,12 @@ id: PARITY-IV-cc98753b
 group: make
 incumbent: innovint
 capability: Adding, Editing, or Removing Tags
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/tags-notes/adding-editing-or-removing-tags.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/tags-notes/adding-editing-or-removing-tags.md`

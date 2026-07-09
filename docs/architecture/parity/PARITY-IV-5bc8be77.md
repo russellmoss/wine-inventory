@@ -3,10 +3,12 @@ id: PARITY-IV-5bc8be77
 group: make
 incumbent: innovint
 capability: Changing Lot Properties
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/lots/changing-lot-properties.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/lots/changing-lot-properties.md`

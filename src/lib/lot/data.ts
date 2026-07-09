@@ -151,6 +151,7 @@ export type LotDetail = {
   varietyName: string | null;
   vineyardName: string | null;
   current: CurrentState;
+  liveHoldings: { vesselVolumeL: number; bottledVolumeL: number; bottleCount: number; live: boolean };
   events: TimelineItem[];
   lineage: { parents: LotLineageRef[]; children: LotLineageRef[] };
   // Phase 5: the walked lineage graph + composition rollup. null when the lot has NO lineage
@@ -261,6 +262,7 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
     where: { id },
     include: {
       vesselLots: { include: { vessel: { select: { id: true, code: true, type: true } } } },
+      bottledState: { select: { volumeL: true, bottleCount: true } },
       parentEdges: { include: { parent: { select: { id: true, code: true } } } }, // this lot is the child
       childEdges: { include: { child: { select: { id: true, code: true } } } }, // this lot is the parent
     },
@@ -471,6 +473,8 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
       volumeL: Number(vl.volumeL),
     })),
   );
+  const bottledVolumeL = lot.bottledState ? Number(lot.bottledState.volumeL) : 0;
+  const bottleCount = lot.bottledState?.bottleCount ?? 0;
 
   const names = await resolveOriginNames([lot]);
   const origin = originFor(lot, names);
@@ -531,6 +535,12 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
     varietyName: origin.varietyName,
     vineyardName: origin.vineyardName,
     current,
+    liveHoldings: {
+      vesselVolumeL: current.totalL,
+      bottledVolumeL,
+      bottleCount,
+      live: current.totalL > 0.01 || bottledVolumeL > 0.01 || bottleCount > 0,
+    },
     events,
     lineage: {
       parents: lot.parentEdges.map((e) => ({ lotId: e.parent.id, code: e.parent.code })),

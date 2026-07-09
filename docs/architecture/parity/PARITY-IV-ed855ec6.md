@@ -3,10 +3,12 @@ id: PARITY-IV-ed855ec6
 group: product-updates
 incumbent: innovint
 capability: 10/10/18 - New Analysis Source Logos, Ferm Gen Printing, Editing Work Order Improvements, and more!
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/10-10-18-new-analysis-source-logos-ferm-gen-printing-editing-work-order-improvements-and-more.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/10-10-18-new-analysis-source-logos-ferm-gen-printing-editing-work-order-improvements-and-more.md`

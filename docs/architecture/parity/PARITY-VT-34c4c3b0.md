@@ -3,10 +3,12 @@ id: PARITY-VT-34c4c3b0
 group: vintrace-web
 incumbent: vintrace
 capability: Allocations Table
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/finished-goods-allocations/allocations-table.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/finished-goods-allocations/allocations-table.md`

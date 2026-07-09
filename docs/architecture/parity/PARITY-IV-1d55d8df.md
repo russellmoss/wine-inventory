@@ -3,10 +3,12 @@ id: PARITY-IV-1d55d8df
 group: harvest
 incumbent: innovint
 capability: Activating the Advanced Receive Fruit option and Weigh Tag Settings
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/harvest/settings-preferences/activating-the-advanced-receive-fruit-option-and-weigh-tag-settings.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/harvest/settings-preferences/activating-the-advanced-receive-fruit-option-and-weigh-tag-settings.md`

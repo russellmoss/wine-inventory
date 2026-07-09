@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
+import { LINEAGE_KIND } from "@/lib/lot/lineage";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planPress, type PressFractionDraw } from "@/lib/ledger/math";
@@ -296,8 +297,8 @@ export async function pressLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
     const fraction = denom > 0 ? Math.min(0.99999, round5(gross / denom)) : null;
     await tx.lotLineage.upsert({
       where: { parentLotId_childLotId: { parentLotId: input.parentLotId, childLotId } },
-      create: { parentLotId: input.parentLotId, childLotId, kind: "SPLIT", fraction },
-      update: { fraction, kind: "SPLIT" },
+      create: { parentLotId: input.parentLotId, childLotId, kind: LINEAGE_KIND.SPLIT, fraction },
+      update: { fraction, kind: LINEAGE_KIND.SPLIT },
     });
   }
   if (parent.sourceVineyards.length > 0 && newChildIds.length > 0) {

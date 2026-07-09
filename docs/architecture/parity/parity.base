@@ -6,6 +6,7 @@ filters:
 
 formulas:
   status_icon: 'if(status == "covered", "✅ covered", if(status == "partial", "🟨 partial", if(status == "deliberately-omitted", "⚪ omitted", "❌ gap")))'
+  overlap_icon: 'if(overlap == "both", "⭐ both", if(overlap == "vintrace-only", "VT only", if(overlap == "innovint-only", "IV only", "—")))'
   edge: 'if(aiNativeEdge, aiNativeEdge, "—")'
 
 properties:
@@ -13,6 +14,8 @@ properties:
     displayName: "ID"
   formula.status_icon:
     displayName: "Status"
+  formula.overlap_icon:
+    displayName: "Overlap"
   incumbent:
     displayName: "Incumbent"
   capability:
@@ -25,6 +28,8 @@ properties:
     displayName: "AI-native edge"
   evidence:
     displayName: "Evidence"
+  counterpart:
+    displayName: "Counterpart article"
 
 views:
   - type: table
@@ -34,9 +39,41 @@ views:
       direction: ASC
     order:
       - formula.status_icon
+      - formula.overlap_icon
       - incumbent
       - capability
       - group
+      - ourApproach
+
+  - type: table
+    name: "⭐ Table stakes (both incumbents)"
+    filters:
+      and:
+        - 'overlap == "both"'
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - formula.status_icon
+      - capability
+      - group
+      - ourApproach
+      - counterpart
+
+  - type: table
+    name: "⭐ Table stakes — our remaining gaps"
+    filters:
+      and:
+        - 'overlap == "both"'
+        - or:
+            - 'status == "gap"'
+            - 'status == "partial"'
+    groupBy:
+      property: group
+      direction: ASC
+    order:
+      - formula.status_icon
+      - capability
       - ourApproach
 
   - type: table

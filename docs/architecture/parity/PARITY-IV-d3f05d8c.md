@@ -3,10 +3,12 @@ id: PARITY-IV-d3f05d8c
 group: product-updates
 incumbent: innovint
 capability: "11/24/21 Release Notes: Partial Lot B2B Transfers, Year Planted, Mobile Orange Lot Dot"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/11-24-21-release-notes-partial-lot-b2b-transfers-year-planted-mobile-orange-lot-dot.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/11-24-21-release-notes-partial-lot-b2b-transfers-year-planted-mobile-orange-lot-dot.md`

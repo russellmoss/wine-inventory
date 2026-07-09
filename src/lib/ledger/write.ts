@@ -15,6 +15,7 @@ import { FUNCTIONAL_ZERO_L, type CaptureMethod, type OperationType } from "@/lib
 import { foldBottledLot, resolveBucket, assertCountVolumeConsistent } from "@/lib/sparkling/projection";
 import { foldBarrelFills, type BarrelAffected } from "@/lib/cost/barrel-fold";
 import { cascadeAmendmentsForWrite } from "@/lib/compliance/amend";
+import { assertLotsNotArchivedForNormalWriteTx, syncLotLifecycleStatusTx } from "@/lib/lot/lifecycle";
 import type { SparklingMethod, BottleStage } from "@prisma/client";
 
 // The single transactional chokepoint for every bulk-wine operation (Phase 1 spine).
@@ -141,6 +142,9 @@ export async function writeLotOperation(
   if (visibleLots.some((l) => l.tenantId !== tenantId) || visibleVessels.some((v) => v.tenantId !== tenantId)) {
     throw new ActionError("Cross-winery operation blocked.", "CONFLICT");
   }
+
+  const allowArchivedWrite = input.correctsOperationId != null || input.type === "CORRECTION";
+  await assertLotsNotArchivedForNormalWriteTx(tx, { lotIds, allowArchivedWrite });
 
   // Phase 2 (TAXPAID-1 / CO-1): the tax-paid boundary is one-way. reversibilityOf(false) closes only
   // the timeline Undo; this chokepoint guard is the invariant's teeth — it stops in-bond volume from
@@ -341,6 +345,12 @@ export async function writeLotOperation(
   // tx (broadened trigger, eng A1 — covers correction/transfer/return/removal/adjust uniformly). Cheap
   // no-op for a current-period op (one findFirst returns nothing). 5120.17-only; excise is untouched.
   await cascadeAmendmentsForWrite(tx, { lines: input.lines, observedAt: input.observedAt ?? new Date() });
+
+  await syncLotLifecycleStatusTx(tx, {
+    lotIds,
+    actor: { actorUserId: input.actorUserId, actorEmail: input.enteredBy },
+    allowArchivedReopen: allowArchivedWrite,
+  });
 
   return op.id;
 }

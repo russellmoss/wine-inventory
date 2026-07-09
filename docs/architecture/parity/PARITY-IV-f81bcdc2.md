@@ -3,10 +3,12 @@ id: PARITY-IV-f81bcdc2
 group: make
 incumbent: innovint
 capability: Winery Dashboard
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/dashboard-calendar/winery-dashboard.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/dashboard-calendar/winery-dashboard.md`

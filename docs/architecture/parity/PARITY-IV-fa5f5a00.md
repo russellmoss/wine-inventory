@@ -3,10 +3,12 @@ id: PARITY-IV-fa5f5a00
 group: make
 incumbent: innovint
 capability: "Analysis Panels: How to create, save, and delete"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/analysis/analysis-panels-how-to-create-save-and-delete.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/analysis/analysis-panels-how-to-create-save-and-delete.md`

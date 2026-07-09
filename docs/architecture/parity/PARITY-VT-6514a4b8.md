@@ -3,10 +3,12 @@ id: PARITY-VT-6514a4b8
 group: vintrace-web
 incumbent: vintrace
 capability: Dispatching Vessels as Part of a Bulk Wine Dispatch
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/barrel-management/dispatching-vessels-as-part-of-a-bulk-wine-dispatch.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/barrel-management/dispatching-vessels-as-part-of-a-bulk-wine-dispatch.md`

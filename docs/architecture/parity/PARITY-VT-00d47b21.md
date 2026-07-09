@@ -3,10 +3,12 @@ id: PARITY-VT-00d47b21
 group: vintrace-web
 incumbent: vintrace
 capability: Recording Loss for a Bin Group
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/sparkling-wine/recording-loss-for-a-bin-group.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/sparkling-wine/recording-loss-for-a-bin-group.md`

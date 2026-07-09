@@ -3,10 +3,12 @@ id: PARITY-VT-a85ce1e6
 group: vintrace-web
 incumbent: vintrace
 capability: Multi-Currency Support for Costing, Sales, and Purchases
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/sales/multi-currency-support-for-costing-sales-and-purchases.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/sales/multi-currency-support-for-costing-sales-and-purchases.md`

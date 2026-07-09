@@ -3,10 +3,12 @@ id: PARITY-IV-b02722ee
 group: make-advanced-features
 incumbent: innovint
 capability: InnoVint + TankNET Integration
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make-advanced-features/integrations/innovint-tanknet-integration.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make-advanced-features/integrations/innovint-tanknet-integration.md`

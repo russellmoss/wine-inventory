@@ -3,10 +3,12 @@ id: PARITY-IV-c42cac27
 group: innovint-academy
 incumbent: innovint
 capability: 2025 Harvest Academy
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/innovint-academy/video-informational-sessions/2025-harvest-academy.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/innovint-academy/video-informational-sessions/2025-harvest-academy.md`

@@ -3,10 +3,12 @@ id: PARITY-IV-0d9ddfe9
 group: new-to-innovint
 incumbent: innovint
 capability: "Step 3: Add your lots"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/new-to-innovint/getting-started-make-grow-finance/step-3-add-your-lots.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/new-to-innovint/getting-started-make-grow-finance/step-3-add-your-lots.md`

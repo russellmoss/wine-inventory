@@ -3,10 +3,12 @@ id: PARITY-VT-ebe835e4
 group: reporting
 incumbent: vintrace
 capability: Wine Spirit Additions Reports
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/reporting/government/wine-spirit-additions-reports.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/reporting/government/wine-spirit-additions-reports.md`

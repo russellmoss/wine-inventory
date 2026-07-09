@@ -3,10 +3,12 @@ id: PARITY-VT-fc98fe48
 group: setup-and-admin
 incumbent: vintrace
 capability: Set up DYMO label paper sizes
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/setup-and-admin/hardware/set-up-dymo-label-paper-sizes.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/setup-and-admin/hardware/set-up-dymo-label-paper-sizes.md`

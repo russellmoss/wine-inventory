@@ -3,10 +3,12 @@ id: PARITY-IV-4cf11a1d
 group: uncategorized
 incumbent: innovint
 capability: Submit a help ticket
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/uncategorized/general/submit-a-help-ticket.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/uncategorized/general/submit-a-help-ticket.md`

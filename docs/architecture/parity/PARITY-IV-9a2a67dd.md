@@ -3,10 +3,12 @@ id: PARITY-IV-9a2a67dd
 group: innovint-academy
 incumbent: innovint
 capability: Racking and Blending Workflows
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/innovint-academy/video-informational-sessions/racking-and-blending-workflows.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/innovint-academy/video-informational-sessions/racking-and-blending-workflows.md`

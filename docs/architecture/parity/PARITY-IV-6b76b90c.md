@@ -3,10 +3,12 @@ id: PARITY-IV-6b76b90c
 group: innovint-academy
 incumbent: innovint
 capability: "Harvest Academy: Workflows"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/innovint-academy/video-informational-sessions/harvest-academy-workflows.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/innovint-academy/video-informational-sessions/harvest-academy-workflows.md`

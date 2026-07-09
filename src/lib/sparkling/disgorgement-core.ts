@@ -1,6 +1,7 @@
 import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
+import { LINEAGE_KIND } from "@/lib/lot/lineage";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
@@ -139,7 +140,7 @@ export async function disgorgementCore(actor: LedgerActor, input: DisgorgementIn
     });
 
     // Lineage (SPLIT), child disgorgement metadata, parent stays en tirage.
-    await tx.lotLineage.create({ data: { parentLotId: input.lotId, childLotId: child.id, kind: "SPLIT", fraction: round5(trancheVol / parentVol) } });
+    await tx.lotLineage.create({ data: { parentLotId: input.lotId, childLotId: child.id, kind: LINEAGE_KIND.SPLIT, fraction: round5(trancheVol / parentVol) } });
     await tx.bottledLotState.update({ where: { lotId: child.id }, data: { disgorgedAt, disgorgementRunId } });
     await tx.bottledLotState.update({ where: { lotId: input.lotId }, data: { stage: "EN_TIRAGE" } });
     await writeDisgorgementTreatment(tx, opId, child.id, perBottleLossMl, sacrificed, breakage, input.method, input.note);
