@@ -1,4 +1,5 @@
 import { ActionError } from "@/lib/action-error";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { round2 } from "@/lib/bottling/draw";
@@ -21,6 +22,7 @@ export type RecordLossInput = {
   note?: string;
   captureMethod?: CaptureMethod;
   batchId?: string;
+  metadata?: Prisma.InputJsonValue | null;
 };
 
 /** Dump (discard) wine from a vessel — volume drops, nothing moves in. */
@@ -55,6 +57,7 @@ export async function recordLossCore(actor: LedgerActor, input: RecordLossInput)
       enteredBy: actor.actorEmail,
       captureMethod: input.captureMethod,
       note: input.note?.trim() || null,
+      metadata: input.metadata ?? null,
       lotCodes,
       vesselCodes,
       capacityByVessel,

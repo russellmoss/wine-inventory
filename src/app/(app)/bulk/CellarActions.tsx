@@ -22,6 +22,7 @@ import {
   ToppingForm,
   FiltrationForm,
   DumpForm,
+  LongTailForm,
   RackForm,
   CapForm,
   AnalysisForm,
@@ -43,7 +44,7 @@ export type { CellarActionsVessel, KegOption, ResidentLot };
 // inputMode="decimal" + ≥44px targets + aria-live math for the floor. Revalidation on the
 // server actions refreshes the page data; this component only owns the transient form state.
 
-type Mode = null | "RACK" | "ADD" | "TOP" | "FINE" | "FILTER" | "CAP" | "DUMP" | "ANALYSIS" | "TASTING" | "SAMPLE";
+type Mode = null | "RACK" | "ADD" | "TOP" | "FINE" | "FILTER" | "CAP" | "DUMP" | "LONG_TAIL" | "ANALYSIS" | "TASTING" | "SAMPLE";
 const ACTIONS: { mode: Exclude<Mode, null>; label: string }[] = [
   { mode: "RACK", label: "Rack" },
   { mode: "ADD", label: "Add" },
@@ -52,6 +53,7 @@ const ACTIONS: { mode: Exclude<Mode, null>; label: string }[] = [
   { mode: "FILTER", label: "Filter" },
   { mode: "CAP", label: "Cap" },
   { mode: "DUMP", label: "Dump" },
+  { mode: "LONG_TAIL", label: "Long-tail" },
   { mode: "ANALYSIS", label: "Analysis" },
   { mode: "TASTING", label: "Tasting" },
   { mode: "SAMPLE", label: "Sample" },
@@ -237,6 +239,7 @@ export function CellarActions({
           {mode === "FILTER" ? <FiltrationForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
           {mode === "DUMP" ? <DumpForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
           {mode === "CAP" ? <CapForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
+          {mode === "LONG_TAIL" ? <LongTailForm vessel={vessel} pending={pending} onSubmit={runOp} /> : null}
           {mode === "ANALYSIS" ? <AnalysisForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
           {mode === "TASTING" ? <TastingForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}
           {mode === "SAMPLE" ? <SampleForm vessel={vessel} pending={pending} onSubmit={runRecord} /> : null}

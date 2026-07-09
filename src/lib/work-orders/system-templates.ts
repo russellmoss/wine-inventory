@@ -65,6 +65,18 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
     },
   },
   {
+    code: "SYS-COLD-STAB",
+    name: "Cold stabilization",
+    description: "Chill a wine to stabilize tartrates, then record any real loss, filtration, or material addition separately.",
+    category: "Cellar",
+    spec: {
+      tasks: [
+        { taskType: "TEMP_SETPOINT", title: "Set cold-stab temperature", defaults: { targetUnit: "°C" }, instructions: "Set the target cold-stabilization temperature." },
+        { taskType: "NOTE", title: "Confirm stability / next step", instructions: "Record observations. If wine is filtered, racked, or lost, complete that as its own cellar operation." },
+      ],
+    },
+  },
+  {
     code: "SYS-TOP",
     name: "Top the barrels",
     description: "Top a vessel from a source to eliminate headspace.",

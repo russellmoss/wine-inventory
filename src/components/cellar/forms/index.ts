@@ -4,6 +4,7 @@ export { DoseForm } from "./DoseForm";
 export { ToppingForm } from "./ToppingForm";
 export { FiltrationForm } from "./FiltrationForm";
 export { DumpForm } from "./DumpForm";
+export { LongTailForm } from "./LongTailForm";
 export { RackForm } from "./RackForm";
 export { CapForm } from "./CapForm";
 export { AnalysisForm } from "./AnalysisForm";

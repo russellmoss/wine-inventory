@@ -22,6 +22,7 @@ function op(type: string, capKind?: string, dateLabel = "2026-07-05"): OpItem {
     captureMethod: "MANUAL",
     note: null,
     supplementalNote: null,
+    displayLabel: null,
     summary: "x",
     legs: [],
     treatments: capKind

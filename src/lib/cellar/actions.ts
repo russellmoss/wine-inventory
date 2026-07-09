@@ -16,6 +16,7 @@ import {
   type FiltrationInput,
 } from "@/lib/cellar/treatments";
 import { recordLossCore, type RecordLossInput } from "@/lib/cellar/loss";
+import { recordLongTailOperationCore, type LongTailOperationInput, type LongTailOperationResult } from "@/lib/cellar/long-tail";
 import { topVesselCore, type ToppingInput, type ToppingResult } from "@/lib/cellar/topping";
 import { upsertMaterialCore, createStockMaterialCore, updateMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput, type CreateStockMaterialInput, type UpdateMaterialInput } from "@/lib/cellar/materials";
 import {
@@ -142,6 +143,15 @@ export const capManagementAction = action(
 export const recordLossAction = action(
   async ({ actor }, input: RecordLossInput): Promise<CellarBaseResult> => {
     const res = await recordLossCore(actor, input);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/** Phase 6E: controlled long-tail cellar ops routed through existing ledger families. */
+export const recordLongTailOperationAction = action(
+  async ({ actor }, input: LongTailOperationInput): Promise<LongTailOperationResult> => {
+    const res = await recordLongTailOperationCore(actor, input);
     revalidateCaptureSurfaces();
     return res;
   },

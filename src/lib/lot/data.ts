@@ -21,6 +21,7 @@ import {
 import { detectStuck } from "@/lib/ferment/stuck";
 import { reversibilityForOperation } from "@/lib/ledger/reverse";
 import { operationSupplementalNote } from "@/lib/cellar/edit-policy";
+import { operationDisplayLabel } from "@/lib/cellar/long-tail-metadata";
 import type { AlcoholicFermState } from "@/lib/ledger/vocabulary";
 import {
   buildAncestry,
@@ -326,6 +327,7 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
           note: o.note,
           supplementalNote: operationSupplementalNote(o.metadata),
           splitKind: metadataString(o.metadata, "splitKind"),
+          displayLabel: operationDisplayLabel(o.metadata),
           correctsOperationId: o.correctsOperationId,
           treatments: [],
         },

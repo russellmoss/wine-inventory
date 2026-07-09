@@ -15,6 +15,7 @@ import {
 import { statusTone, statusLabel } from "@/lib/work-orders/status-badge";
 import { reversibilityForOperation } from "@/lib/ledger/reverse";
 import { operationSupplementalNote } from "@/lib/cellar/edit-policy";
+import { operationDisplayLabel } from "@/lib/cellar/long-tail-metadata";
 import { currentOccupancyWindow } from "@/lib/vessel/occupancy";
 
 // ───────────────────────── Vessel History timeline loader (plan 045) ─────────────────────────
@@ -116,6 +117,7 @@ export async function getVesselTimeline(vesselId: string): Promise<VesselTimelin
         captureMethod: h.captureMethod,
         note: h.note,
         supplementalNote: operationSupplementalNote(h.metadata),
+        displayLabel: operationDisplayLabel(h.metadata),
         correctsOperationId: h.correctsOperationId,
         treatments: [],
       },

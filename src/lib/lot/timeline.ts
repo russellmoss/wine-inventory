@@ -62,6 +62,7 @@ export type RawOperation = {
   note: string | null;
   supplementalNote?: string | null;
   splitKind?: string | null;
+  displayLabel?: string | null;
   correctsOperationId: number | null;
   /** Phase 3 treatment detail rows for THIS lot (neutral ops have these + no lines). */
   treatments?: RawTreatment[];
@@ -107,6 +108,7 @@ export type TimelineEvent = {
   captureMethod: string;
   note: string | null;
   supplementalNote: string | null;
+  displayLabel: string | null;
   summary: string;
   legs: TimelineLeg[];
   treatments: RawTreatment[]; // Phase 3 detail rows (for the rendered detail line)
@@ -260,7 +262,9 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
       summary = `Bottled ${formatL(bottleTotal || outTotal)} L`;
       break;
     case "LOSS":
-      summary = `Dumped ${formatL(outTotal)} L from ${srcLabels || "—"}`;
+      summary = opn.displayLabel
+        ? `${opn.displayLabel}: ${formatL(outTotal)} L from ${srcLabels || "—"}`
+        : `Dumped ${formatL(outTotal)} L from ${srcLabels || "—"}`;
       break;
     case "DEPLETE":
       summary = `Depleted ${formatL(outTotal)} L from ${srcLabels || "—"}`;
@@ -364,6 +368,7 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     captureMethod: opn.captureMethod,
     note: opn.note,
     supplementalNote: opn.supplementalNote ?? null,
+    displayLabel: opn.displayLabel ?? null,
     summary,
     legs,
     treatments,

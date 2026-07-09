@@ -113,6 +113,15 @@ describe("describeOperation — summaries", () => {
     expect(ev.summary).toBe("Dumped 3 L from Barrel 14");
   });
 
+  it("LOSS can display a controlled long-tail/custom label without changing the op type", () => {
+    const ev = describeOperation(op({ id: 81, type: "LOSS", displayLabel: "Drain to waste" }), [
+      inVessel("1", -12, "TANK"),
+      external(12, "dump"),
+    ]);
+    expect(ev.summary).toBe("Drain to waste: 12 L from Tank 1");
+    expect(ev.type).toBe("LOSS");
+  });
+
   it("DEPLETE reads 'Depleted <vol> L from <src>'", () => {
     const ev = describeOperation(op({ id: 9, type: "DEPLETE" }), [
       inVessel("1", -120, "TANK"),

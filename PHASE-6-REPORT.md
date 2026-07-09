@@ -2,7 +2,7 @@
 
 Date: 2026-07-09
 Branch: `codex/phase-6-operations-gaps`
-Status: 6A, 6B, 6C, and 6D landed; 6E remains unimplemented
+Status: 6A, 6B, 6C, 6D, and 6E landed
 
 ## Completed in This Slice
 
@@ -67,11 +67,21 @@ Status: 6A, 6B, 6C, and 6D landed; 6E remains unimplemented
 - Added `verify:barrel-groups`, a Demo Winery-only verifier covering saved group membership merge, group
   apply preview, blocked capacity member, per-barrel fan-out, batch correction, and barrel-fill open/close
   cost projection.
+- Added the 6E long-tail operation routing:
+  - recorded the semantic-fit decision in `plans/PHASE-6E-SEMANTIC-FIT.md`;
+  - did not add `DRAIN`, `DELESTAGE`, `COLD_STAB`, or `CUSTOM` enum values;
+  - routed drain-to-waste through existing `LOSS` / `dump`;
+  - added controlled `CUSTOM` v1 as a required metadata label on the existing `LOSS` line shape;
+  - added metadata helpers so timeline/search callers do not parse `LotOperation.metadata` ad hoc;
+  - kept `DELESTAGE` and `COLD_STAB` as work-order/process semantics, including a new cold-stabilization
+    system template;
+  - added a vessel action affordance for drain-to-waste and custom labeled loss.
+- Added `verify:long-tail-ops`, a Demo Winery-only verifier covering semantic-fit decisions, enum absence,
+  routed balanced writes, compliance mapping, metadata labels, and reversal.
 
 ## Explicitly Not Completed
 
 - No reverse-and-rebook adapters for posting/fold edits yet.
-- No long-tail operation enum or `CUSTOM` label work yet.
 - No InnoVint or Vintrace adapter work.
 
 ## Verification
@@ -79,6 +89,7 @@ Status: 6A, 6B, 6C, and 6D landed; 6E remains unimplemented
 - `npm run verify:phase6-reversal` - passed, including LIFO chain execution and neutral edit/delete retirement
 - `npm run verify:split-in-place` - passed, including retained/discarded lees, cost transfers, and reversal
 - `npm run verify:barrel-groups` - passed, including saved group merge, preview, blocked member, fan-out, batch correction, and barrel-fill fold assertions
+- `npm run verify:long-tail-ops` - passed, including semantic-fit decisions, routed LOSS writes, compliance mapping, labels, and reversal
 - `npm run verify:cost` - passed
 - `npm run verify:lifecycle` - passed
 - `npx vitest run test/cellar-edit-policy.test.ts test/vessel-timeline-view.test.ts test/lot-timeline.test.ts test/reverse-verdict.test.ts` - passed
