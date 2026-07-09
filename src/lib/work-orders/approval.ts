@@ -44,6 +44,12 @@ function parsePickDate(value: unknown, fallback: Date): Date {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
 }
 
+function closeEnough(value: unknown, expected: number | null, tolerance: number): boolean {
+  if (expected == null) return true;
+  if (value == null) return false;
+  return Math.abs(Number(value) - expected) <= tolerance;
+}
+
 async function reverseHarvestWeighInTx(
   tx: Prisma.TransactionClient,
   actor: LedgerActor,
@@ -64,18 +70,21 @@ async function reverseHarvestWeighInTx(
   const ph = asNum(payload.phAtPick);
   const ta = asNum(payload.taAtPick);
 
-  const picks = await tx.harvestPick.findMany({
+  const candidatePicks = await tx.harvestPick.findMany({
     where: {
       harvestRecord: { blockId, vintageYear: pickDate.getUTCFullYear() },
       pickDate: { gte: day.gte, lt: day.lt },
-      weightKg: new Prisma.Decimal(weightKg),
       ...(input.attempt.completedByEmail ? { createdByEmail: input.attempt.completedByEmail } : {}),
-      ...(brix == null ? {} : { brixAtPick: new Prisma.Decimal(brix) }),
-      ...(ph == null ? {} : { phAtPick: new Prisma.Decimal(ph) }),
-      ...(ta == null ? {} : { taAtPick: new Prisma.Decimal(ta) }),
     },
-    select: { id: true, _count: { select: { crushSources: true } } },
+    select: { id: true, weightKg: true, brixAtPick: true, phAtPick: true, taAtPick: true, _count: { select: { crushSources: true } } },
   });
+  const picks = candidatePicks.filter(
+    (pick) =>
+      closeEnough(pick.weightKg, weightKg, 0.01) &&
+      closeEnough(pick.brixAtPick, brix, 0.05) &&
+      closeEnough(pick.phAtPick, ph, 0.005) &&
+      closeEnough(pick.taAtPick, ta, 0.05),
+  );
   if (picks.length === 0) throw new ActionError("I couldn't find the harvest pick created by that weigh-in.", "CONFLICT");
   if (picks.length > 1) throw new ActionError("Several harvest picks match that weigh-in. Delete the exact pick from the harvest screen.", "CONFLICT");
   const pick = picks[0];
