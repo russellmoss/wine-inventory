@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
-import { laterTouchedKeys } from "@/lib/ledger/reverse-guard";
+import { laterTouchedBlockers } from "@/lib/ledger/reverse-guard";
 import { negateCostForReversedOp } from "@/lib/cost/reverse";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
@@ -26,12 +26,12 @@ export type CorrectResult = {
 // Phase 2 (TAXPAID-1): REMOVE_TAXPAID is deliberately NOT correctable here — the tax-paid boundary is
 // terminal, so an ordinary compensating inverse must never re-admit tax-paid volume in-bond. The only
 // re-admission is a refund-flagged RETURN_TO_BOND (compliance/return-to-bond-core.ts).
-const CORRECTABLE = new Set(["ADDITION", "FINING", "CAP_MGMT", "FILTRATION", "TOPPING", "LOSS"]);
+const CORRECTABLE = new Set(["SEED", "ADJUST", "DEPLETE", "ADDITION", "FINING", "CAP_MGMT", "FILTRATION", "TOPPING", "LOSS"]);
 
 /** Correct (revert volumetric / void neutral) a single Phase 3 operation. */
 export async function correctOperationCore(
   actor: LedgerActor,
-  input: { operationId: number; note?: string },
+  input: { operationId: number; note?: string; allowSeed?: boolean },
 ): Promise<CorrectResult> {
   const opId = input.operationId;
   const op = await prisma.lotOperation.findUnique({
@@ -41,6 +41,9 @@ export async function correctOperationCore(
   if (!op) throw new ActionError("That operation no longer exists.");
   if (op.type === "CORRECTION") throw new ActionError("A correction can't itself be corrected.");
   if (!CORRECTABLE.has(op.type)) throw new ActionError(`A ${op.type} operation isn't correctable here.`);
+  if (op.type === "SEED" && !input.allowSeed) {
+    throw new ActionError("Seed reversal must go through the universal reverser.", "CONFLICT");
+  }
   if (op.correctedBy) throw new ActionError("That operation has already been corrected.");
 
   // ── Neutral op (no volumetric lines): void the treatment(s) ──
@@ -79,11 +82,21 @@ export async function correctOperationCore(
   // ── Volumetric op: compensating inverse, guarded by D15 ──
   // Preserve each leg's `reason` so the inverse legs stay self-describing (e.g. a reversed
   // REMOVE_TAXPAID keeps "tax_removal", letting the compliance fold NET it against the original).
-  const origLines: LedgerLine[] = op.lines.map((l) => ({ lotId: l.lotId, vesselId: l.vesselId, deltaL: Number(l.deltaL), reason: (l.reason as LedgerLine["reason"]) ?? undefined }));
+  const origLines: LedgerLine[] = op.lines.map((l) => ({
+    lotId: l.lotId,
+    vesselId: l.vesselId,
+    deltaL: Number(l.deltaL),
+    reason: (l.reason as LedgerLine["reason"]) ?? undefined,
+    bucket: (l.bucket as LedgerLine["bucket"]) ?? undefined,
+    bottleDelta: l.bottleDelta ?? undefined,
+    sourceBondId: l.sourceBondId ?? undefined,
+    destBondId: l.destBondId ?? undefined,
+  }));
 
   // Shared LIFO guard: later ops that touched an affected position block the reverse — UNLESS they
   // are themselves already reversed (so a chain can unwind newest-first). See reverse-guard.ts.
-  const touchedKeys = await laterTouchedKeys(opId);
+  const blockers = await laterTouchedBlockers(opId);
+  const touchedKeys = new Set(blockers.flatMap((b) => b.keys));
 
   const affectedVesselIds = [...new Set(op.lines.filter((l) => l.vesselId).map((l) => l.vesselId as string))];
   const [projRows, vessels] = await Promise.all([
@@ -95,8 +108,15 @@ export async function correctOperationCore(
   const corr = planCorrection(origLines, currentBalances, touchedKeys);
   if (!corr.ok) {
     if (corr.reason === "downstream-activity") {
+      const blockerKeys = new Set(corr.blockedKeys);
+      const namedBlockers = blockers.filter((b) => b.keys.some((k) => blockerKeys.has(k))).slice(0, 3);
+      const blockerCopy = namedBlockers.length
+        ? namedBlockers
+            .map((b) => `${b.type.toLowerCase()} #${b.operationId} on ${b.observedAt.toISOString().slice(0, 10)}`)
+            .join(", ")
+        : "a later operation";
       throw new ActionError(
-        `Can't undo ${op.type.toLowerCase()} #${opId}: a later operation has since touched the same wine. Undo that first.`,
+        `Can't undo ${op.type.toLowerCase()} #${opId}: ${blockerCopy} has since touched the same wine. Undo newer operations first.`,
         "CONFLICT",
       );
     }

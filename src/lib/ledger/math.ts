@@ -456,7 +456,11 @@ export function planCorrection(
   const blockedKeys = [...new Set(affected)].filter((k) => touchedKeys.has(k));
   if (blockedKeys.length > 0) return { ok: false, reason: "downstream-activity", blockedKeys };
 
-  const inverse = originalLines.map((l) => ({ ...l, deltaL: round2(-l.deltaL) }));
+  const inverse = originalLines.map((l) => ({
+    ...l,
+    deltaL: round2(-l.deltaL),
+    bottleDelta: l.bottleDelta == null ? undefined : -l.bottleDelta,
+  }));
 
   // Defensive: the inverse must not drive any current balance negative.
   const balByKey = new Map(currentBalances.map((b) => [balanceKey(b.vesselId, b.lotId), b.volumeL]));

@@ -9,6 +9,7 @@ import { reverseBottlingRun } from "@/lib/bottling/run";
 import { reverseTransformCore } from "@/lib/transform/reverse";
 import { correctBlendCore } from "@/lib/blend/blend-correct";
 import { reverseTransferInBondCore } from "@/lib/compliance/transfer-in-bond-core";
+import { downstreamLineageChild, laterTouchedBlockers } from "@/lib/ledger/reverse-guard";
 
 // Universal reversal layer (plan 024a). A single place that knows how to walk any reversible
 // ledger operation back, routing a bare operationId to the family core that already owns the
@@ -53,13 +54,13 @@ export type ReverseFamily = "cellar" | "rack" | "sparkling" | "bottle" | "transf
 
 export type ReversibilityVerdict =
   | { reversible: true; family: ReverseFamily }
-  | { reversible: false; code: "correction" | "origination" | "manual-adjust" | "taxpaid-terminal" | "refund-event"; reason: string };
+  | { reversible: false; code: "correction" | "origination" | "manual-adjust" | "taxpaid-terminal" | "refund-event" | "already-reversed"; reason: string };
 
 // The cellar-6 (correctOperationCore): neutral voids + volumetric reverts.
 // Phase 2 (TAXPAID-1): REMOVE_TAXPAID is NO LONGER here — the tax-paid boundary is one-way, so an
 // ordinary compensating reversal must NOT silently re-admit tax-paid volume in-bond. It gets a bespoke
 // non-reversible verdict below; the ONLY re-admission is a refund-flagged RETURN_TO_BOND.
-const CELLAR_TYPES = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS"]);
+const CELLAR_TYPES = new Set<OperationType>(["ADJUST", "DEPLETE", "ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS"]);
 // Sparkling bottle-phase (reverseSparklingOperationCore).
 const SPARKLING_TYPES = new Set<OperationType>(["TIRAGE", "RIDDLING", "DISGORGEMENT", "DOSAGE", "FINISH"]);
 // Origination / split transforms (reverseTransformCore) — 024b.
@@ -94,8 +95,102 @@ export function reversibilityOf(type: OperationType): ReversibilityVerdict {
     return { reversible: false, code: "refund-event", reason: "A Return-to-Bond is a refund event — record a new tax-paid removal to move wine back out of bond." };
   if (type === "CORRECTION") return { reversible: false, code: "correction", reason: "This entry is itself a reversal." };
   if (type === "SEED") return { reversible: false, code: "origination", reason: "Seeding is a lot's day-zero origination — it can't be undone." };
-  // ADJUST / DEPLETE
+  // Unknown/future types fail closed until routed to a family.
   return { reversible: false, code: "manual-adjust", reason: "Correct this by recording a new volume adjustment." };
+}
+
+function metadataObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+async function seedReversibilityForOperation(operationId: number): Promise<ReversibilityVerdict> {
+  const op = await prisma.lotOperation.findUnique({
+    where: { id: operationId },
+    include: {
+      lines: { include: { lot: { select: { id: true, isLegacy: true, legacySnapshot: true } } } },
+      _count: { select: { costLines: true, supplyConsumptions: true, costTransfers: true } },
+    },
+  });
+  if (!op) return { reversible: false, code: "origination", reason: "That seed operation no longer exists." };
+
+  const meta = metadataObject(op.metadata);
+  if (meta.seedKind !== "MANUAL_OPERATOR_SEED") {
+    return {
+      reversible: false,
+      code: "origination",
+      reason: "Only explicitly marked manual operator seeds can be undone. Imported or legacy opening balances stay locked.",
+    };
+  }
+  if (op.captureMethod === "IMPORT" || op.batchId || op.correctsOperationId != null || op.enteredBy === "system@day-zero-migration") {
+    return { reversible: false, code: "origination", reason: "Imported, migration, or compensating seed entries are not undone from the timeline." };
+  }
+  if (op.commandId && /^(migration|import|legacy)[:_-]/i.test(op.commandId)) {
+    return { reversible: false, code: "origination", reason: "Migration seed entries are not undone from the timeline." };
+  }
+
+  const lotIds = [...new Set(op.lines.map((l) => l.lotId))];
+  const vesselLines = op.lines.filter((l) => l.vesselId != null);
+  if (lotIds.length !== 1 || vesselLines.length === 0) {
+    return { reversible: false, code: "origination", reason: "Only a simple single-lot manual seed can be undone." };
+  }
+  if (op.lines.some((l) => l.bucket === "BOTTLE_STORAGE" || l.bottleDelta != null)) {
+    return { reversible: false, code: "origination", reason: "Seeds with bottle-storage side effects are not undone from the timeline." };
+  }
+  if (op.lines.some((l) => l.lot.isLegacy || l.lot.legacySnapshot != null)) {
+    return { reversible: false, code: "origination", reason: "Legacy opening-balance seeds are not undone from the timeline." };
+  }
+  if (op._count.costLines > 0 || op._count.supplyConsumptions > 0 || op._count.costTransfers > 0) {
+    return { reversible: false, code: "origination", reason: "Seeds with cost artifacts need a dedicated correction path." };
+  }
+
+  const laterBlockers = await laterTouchedBlockers(operationId);
+  const affectedKeys = new Set(vesselLines.map((l) => `${l.vesselId}::${l.lotId}`));
+  const positionBlocker = laterBlockers.find((b) => b.keys.some((k) => affectedKeys.has(k)));
+  if (positionBlocker) {
+    return {
+      reversible: false,
+      code: "origination",
+      reason: `This seed is blocked by later ${positionBlocker.type.toLowerCase()} #${positionBlocker.operationId}. Undo newer operations first.`,
+    };
+  }
+  const laterLotOp = await prisma.lotOperationLine.findFirst({
+    where: {
+      lotId: { in: lotIds },
+      operationId: { gt: operationId },
+      operation: { type: { not: "CORRECTION" }, correctedBy: { is: null } },
+    },
+    select: { operationId: true, operation: { select: { type: true } } },
+  });
+  if (laterLotOp) {
+    return {
+      reversible: false,
+      code: "origination",
+      reason: `This seed is blocked by later ${laterLotOp.operation.type.toLowerCase()} #${laterLotOp.operationId}. Undo newer operations first.`,
+    };
+  }
+  const child = await downstreamLineageChild(lotIds);
+  if (child) return { reversible: false, code: "origination", reason: "This seed has downstream lineage and cannot be undone from the timeline." };
+
+  const bottled = await prisma.bottledLotState.findFirst({ where: { lotId: { in: lotIds } }, select: { lotId: true } });
+  if (bottled) return { reversible: false, code: "origination", reason: "This seed has bottled-lot state and cannot be undone from the timeline." };
+  const filed = await prisma.complianceReport.findFirst({
+    where: { status: "FILED", periodStart: { lte: op.observedAt }, periodEnd: { gte: op.observedAt } },
+    select: { id: true },
+  });
+  if (filed) return { reversible: false, code: "origination", reason: "This seed is in a filed compliance period and needs an amendment-safe correction path." };
+
+  return { reversible: true, family: "cellar" };
+}
+
+export async function reversibilityForOperation(operationId: number): Promise<ReversibilityVerdict> {
+  const op = await prisma.lotOperation.findUnique({
+    where: { id: operationId },
+    select: { type: true, correctedBy: { select: { id: true } } },
+  });
+  if (!op) return { reversible: false, code: "manual-adjust", reason: "That operation no longer exists." };
+  if (op.correctedBy) return { reversible: false, code: "already-reversed", reason: "That operation has already been reversed." };
+  if (op.type === "SEED") return seedReversibilityForOperation(operationId);
+  return reversibilityOf(op.type);
 }
 
 // ─────────────────────────── The dispatcher ───────────────────────────
@@ -127,14 +222,14 @@ export async function reverseOperationCore(actor: LedgerActor, input: { operatio
   if (op.tenantId !== requireTenantId()) throw new ActionError("Cross-winery reversal blocked.", "CONFLICT");
   if (op.correctedBy) throw new ActionError("That operation has already been reversed.");
 
-  const verdict = reversibilityOf(op.type);
+  const verdict = await reversibilityForOperation(opId);
   if (!verdict.reversible) throw new ActionError(verdict.reason, "CONFLICT");
 
   const anyLotId = op.lines[0]?.lotId ?? "";
 
   switch (verdict.family) {
     case "cellar": {
-      const r = await correctOperationCore(actor, { operationId: opId, note: input.note });
+      const r = await correctOperationCore(actor, { operationId: opId, note: input.note, allowSeed: op.type === "SEED" });
       return { reversedOperationId: opId, reversedType: op.type, lotId: anyLotId, correctionId: r.correctionId, message: r.message };
     }
     case "rack": {

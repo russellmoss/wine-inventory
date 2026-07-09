@@ -124,6 +124,7 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
           actorUserId: actor.actorUserId,
           enteredBy: actor.actorEmail,
           note: `Filled ${vessel.code} with ${volumeL} L (${vintage}) — lot ${code}`,
+          metadata: { seedKind: "MANUAL_OPERATOR_SEED" },
           lotCodes: new Map([[lot.id, code]]),
           vesselCodes: new Map([[vesselId, vessel.code]]),
           capacityByVessel: new Map([[vesselId, capacity]]),

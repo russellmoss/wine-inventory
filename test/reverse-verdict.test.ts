@@ -5,8 +5,8 @@ import type { OperationType } from "@/lib/ledger/vocabulary";
 // Pure verdict table (024a). This is the single source of truth the timeline reads to choose an
 // affordance AND the dispatcher reads to fail closed — so they can never disagree.
 describe("reversibilityOf", () => {
-  it("routes the cellar-6 to the cellar family", () => {
-    for (const t of ["ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS"] as OperationType[]) {
+  it("routes cellar corrections to the cellar family", () => {
+    for (const t of ["ADJUST", "DEPLETE", "ADDITION", "FINING", "CAP_MGMT", "TOPPING", "FILTRATION", "LOSS"] as OperationType[]) {
       expect(reversibilityOf(t)).toEqual({ reversible: true, family: "cellar" });
     }
   });
@@ -41,12 +41,10 @@ describe("reversibilityOf", () => {
     }
   });
 
-  it("marks SEED / ADJUST / DEPLETE / CORRECTION non-undoable with a non-empty reason", () => {
+  it("marks SEED / CORRECTION non-undoable with a non-empty reason", () => {
     expect(reversibilityOf("SEED")).toMatchObject({ reversible: false, code: "origination" });
-    expect(reversibilityOf("ADJUST")).toMatchObject({ reversible: false, code: "manual-adjust" });
-    expect(reversibilityOf("DEPLETE")).toMatchObject({ reversible: false, code: "manual-adjust" });
     expect(reversibilityOf("CORRECTION")).toMatchObject({ reversible: false, code: "correction" });
-    for (const t of ["SEED", "ADJUST", "DEPLETE", "CORRECTION"] as OperationType[]) {
+    for (const t of ["SEED", "CORRECTION"] as OperationType[]) {
       const v = reversibilityOf(t);
       if (!v.reversible) expect(v.reason.length).toBeGreaterThan(0);
     }
