@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     const out = await tool.run({ user }, payload.args);
     const proposal = asProposal(out);
     if (!proposal) throw new Error("Couldn't prepare that change — please ask again.");
-    return Response.json({ ok: true, preview: proposal.preview, token: proposal.token });
+    return Response.json({ ok: true, preview: proposal.preview, token: proposal.token, details: proposal.details });
   } catch (e) {
     return Response.json(
       { ok: false, error: e instanceof Error ? e.message : "Could not resolve that selection." },

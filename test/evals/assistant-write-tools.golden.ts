@@ -167,6 +167,37 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { template: "spray" },
   },
   {
+    utterance: "Rack T12 to T15, add 30 ppm SO2, pull a juice panel.",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Rack T12 to T15, add 30 ppm SO2, pull a juice panel.",
+      tasks: [
+        { kind: "RACK", from: "T12", to: "T15" },
+        { kind: "ADDITION", vessel: "T15", material: "SO2", amount: 30, unit: "ppm" },
+        { kind: "PANEL", vessel: "T15", panelName: "juice panel" },
+      ],
+    },
+    note: "Phase 9.2: multi-intent natural-language authoring creates a WO proposal, not immediate ledger ops",
+  },
+  {
+    utterance: "Make a work order to add 30 ppm KMBS to tank 12",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Make a work order to add 30 ppm KMBS to tank 12",
+      tasks: [{ kind: "ADDITION", vessel: "tank 12", material: "KMBS", amount: 30, unit: "ppm" }],
+    },
+    note: "work-order authoring path, not add_addition",
+  },
+  {
+    utterance: "Add 30 ppm sanitizer to T12 as a work order",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Add 30 ppm sanitizer to T12 as a work order",
+      tasks: [{ kind: "ADDITION", vessel: "T12", material: "sanitizer", amount: 30, unit: "ppm" }],
+    },
+    note: "tool should deterministically block non-doseable materials after selection",
+  },
+  {
     utterance: "Mark the SO₂ addition on WO 142 done — only used 28 g",
     tool: "complete_task",
     args: { wo: 142, task: "SO₂ addition", amount: 28 },
