@@ -1,4 +1,5 @@
 import "server-only";
+import { FeedbackAutomationMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
 import { coerceCurrency, type CurrencyCode } from "@/lib/money/currency";
@@ -12,6 +13,27 @@ export type AppSettingsView = { sparklingEnabled: boolean };
 export async function getAppSettings(): Promise<AppSettingsView> {
   const s = await prisma.appSettings.findFirst({ select: { sparklingEnabled: true } });
   return { sparklingEnabled: s?.sparklingEnabled ?? false };
+}
+
+export type FeedbackAutomationModes = {
+  assistantFeedbackMode: FeedbackAutomationMode;
+  bugReportMode: FeedbackAutomationMode;
+  featureRequestMode: FeedbackAutomationMode;
+};
+
+export async function getFeedbackAutomationModes(): Promise<FeedbackAutomationModes> {
+  const s = await prisma.appSettings.findFirst({
+    select: {
+      assistantFeedbackMode: true,
+      bugReportMode: true,
+      featureRequestMode: true,
+    },
+  });
+  return {
+    assistantFeedbackMode: s?.assistantFeedbackMode ?? FeedbackAutomationMode.AGENTIC_FIX,
+    bugReportMode: s?.bugReportMode ?? FeedbackAutomationMode.REPORT_ONLY,
+    featureRequestMode: s?.featureRequestMode ?? FeedbackAutomationMode.REPORT_ONLY,
+  };
 }
 
 /** The capability gate for the ENTIRE traditional-method sparkling UI/nav (default off). */

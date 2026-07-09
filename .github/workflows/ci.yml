@@ -23,6 +23,9 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run verify:raw-sql
+      - run: npm run verify:feedback
+      - run: npm run verify:feedback-idempotency
+      - run: npm run verify:feedback-security
       # Deterministic brain gates (pure Node, no DB): every invariant in
       # docs/architecture/invariants/ must have a live guard, and every tripwire
       # in docs/architecture/tripwires/ must have a live guard with no `static`
@@ -36,6 +39,23 @@ jobs:
       - run: npm run verify:parity
       - run: npm run verify:ai-native
       - run: npx vitest run
+
+  feedback-fence:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'feedback-bug')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Verify feedback automation write fence
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed.txt
+          npx tsx scripts/verify-feedback-fence.ts $(cat /tmp/changed.txt)
 
   # Tenant-isolation proof against a real Postgres, run AS the NOBYPASSRLS app_rls role — the live RLS
   # check the local dev loop can't run offline. Gated suite (TENANT_ISOLATION_DB=1) incl. the plan-029

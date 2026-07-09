@@ -1,11 +1,15 @@
 import { getCurrentUser } from "@/lib/dal";
-import { prisma } from "@/lib/prisma";
+import { FeedbackAutomationMode, FeedbackAutomationSource, type Prisma } from "@prisma/client";
 import {
   buildFeedbackSnapshot,
   parseClientConversation,
   type FeedbackDebugContext,
   type FeedbackConversationMessage,
 } from "@/lib/assistant/feedback-snapshot";
+import { getFeedbackAutomationModes } from "@/lib/settings/data";
+import { recordAutomationGate } from "@/lib/feedback/automation";
+import { runAsTenant } from "@/lib/tenant/context";
+import { runInTenantTx } from "@/lib/tenant/tx";
 
 // Capture thumbs up/down (+ optional "what was wrong") on an assistant reply.
 // On actionable negative feedback we best-effort trigger the feedback-fix
@@ -15,30 +19,13 @@ export const runtime = "nodejs";
 const MAX_COMMENT = 2000;
 const MAX_ID = 128;
 
-async function triggerWorkflow(feedbackId: string): Promise<void> {
-  const token = process.env.GITHUB_DISPATCH_TOKEN;
-  const repo = process.env.GITHUB_REPOSITORY; // "owner/name"
-  if (!token || !repo) return;
-  try {
-    await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify({ event_type: "assistant_feedback", client_payload: { feedbackId } }),
-    });
-  } catch {
-    // Best-effort: a failed dispatch must never fail the feedback save.
-  }
-}
-
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user || user.banned || user.mustChangePassword) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
   }
+  const tenantId = user.supportOrganizationId ?? user.activeOrganizationId;
+  if (!tenantId) return Response.json({ error: "No active winery." }, { status: 403 });
 
   let body: unknown;
   try {
@@ -77,23 +64,37 @@ export async function POST(req: Request) {
   }
   if (!conversation) return Response.json({ error: "Invalid conversation." }, { status: 400 });
 
-  const fb = await prisma.assistantFeedback.create({
-    data: {
-      rating,
-      comment,
-      conversation,
-      conversationId,
-      ratedMessageId,
-      debugContext,
-      actorUserId: user.id,
-      actorEmail: user.email,
-    },
-    select: { id: true },
-  });
+  const modes = await runAsTenant(tenantId, () => getFeedbackAutomationModes());
+  const modeAtSubmission =
+    rating === "down" && comment ? modes.assistantFeedbackMode : FeedbackAutomationMode.REPORT_ONLY;
 
-  if (rating === "down" && comment) {
-    await triggerWorkflow(fb.id);
-  }
+  const fb = await runAsTenant(tenantId, () =>
+    runInTenantTx(async (tx) => {
+      const created = await tx.assistantFeedback.create({
+        data: {
+          rating,
+          comment,
+          conversation,
+          conversationId,
+          ratedMessageId,
+          debugContext: debugContext as Prisma.InputJsonValue,
+          actorUserId: user.id,
+          actorEmail: user.email,
+          modeAtSubmission,
+        },
+        select: { id: true },
+      });
+      if (rating === "down" && comment) {
+        await recordAutomationGate(tx, {
+          tenantId,
+          sourceType: FeedbackAutomationSource.ASSISTANT_FEEDBACK,
+          sourceId: created.id,
+          mode: modeAtSubmission,
+        });
+      }
+      return created;
+    }),
+  );
 
   return Response.json({ ok: true, id: fb.id });
 }

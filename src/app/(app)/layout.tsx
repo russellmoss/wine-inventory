@@ -9,12 +9,13 @@ import { CurrencyProvider } from "@/components/money/CurrencyProvider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireReadyUser();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || Boolean(user.supportOrganizationId);
+  const effectiveTenantId = user.supportOrganizationId ?? user.activeOrganizationId;
   const [pendingSamples, sparklingEnabled, complianceDeadlines, pendingWorkOrders, currency] = await Promise.all([
     countOpenSamples(),
     isSparklingEnabled(),
-    isAdmin && user.activeOrganizationId ? openDeadlineBadge(user.activeOrganizationId, new Date()) : Promise.resolve({ count: 0, urgent: false }),
-    user.activeOrganizationId ? countPendingApprovalWorkOrders(user.activeOrganizationId) : Promise.resolve(0),
+    isAdmin && effectiveTenantId ? openDeadlineBadge(effectiveTenantId, new Date()) : Promise.resolve({ count: 0, urgent: false }),
+    effectiveTenantId ? countPendingApprovalWorkOrders(effectiveTenantId) : Promise.resolve(0),
     getTenantCurrency(),
   ]);
   return (

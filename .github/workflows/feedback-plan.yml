@@ -1,0 +1,46 @@
+name: Feedback plan
+
+on:
+  repository_dispatch:
+    types: [feedback_plan]
+  workflow_dispatch:
+    inputs:
+      automationRunId:
+        description: "Approved AutomationRun id"
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Build plan artifact
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          AUTOMATION_RUN_ID: ${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}
+        run: npx tsx scripts/feedback-plan-agent.ts
+      - name: Create GitHub issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="feedback: plan ${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}"
+          url=$(gh issue create --title "$title" --body-file .feedback-plan-body.md)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
+      - name: Mark automation planned
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npx tsx scripts/feedback-automation-mark.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" "${{ steps.issue.outputs.url }}" "${{ steps.issue.outputs.number }}"

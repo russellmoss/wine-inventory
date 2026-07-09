@@ -195,6 +195,58 @@ enum AuditAction {
   SAMPLE_SENT
   SAMPLE_ATTACHED
   SAMPLE_CANCELLED
+  IMPERSONATE
+}
+
+enum FeedbackAutomationMode {
+  REPORT_ONLY
+  PLAN_MODE
+  AGENTIC_FIX
+}
+
+enum FeedbackTicketKind {
+  BUG_REPORT
+  FEATURE_REQUEST
+}
+
+enum FeedbackSeverity {
+  P0
+  P1
+  P2
+}
+
+enum FeedbackItemStatus {
+  NEW
+  TRIAGED
+  IN_PROGRESS
+  RESOLVED
+  DISMISSED
+}
+
+enum FeedbackAutomationStatus {
+  NOT_REQUESTED
+  AWAITING_APPROVAL
+  QUEUED
+  RUNNING
+  PLANNED
+  PR_OPENED
+  FAILED
+  SKIPPED
+}
+
+enum FeedbackAttachmentCaptureSource {
+  AUTO_SCREENSHOT
+  MANUAL_UPLOAD
+}
+
+enum FeedbackAutomationSource {
+  ASSISTANT_FEEDBACK
+  FEEDBACK_TICKET
+}
+
+enum FeedbackAutomationKind {
+  PLAN
+  AGENTIC_FIX
 }
 
 enum VoiceProfileStatus {
@@ -817,26 +869,128 @@ model AssistantConfirmation {
 // `conversation` snapshots the transcript so the feedback-fix agent has context.
 // `status` tracks the improvement loop: NEW -> TRIAGED (agent opened a PR) -> ...
 model AssistantFeedback {
-  tenantId     String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id           String   @id @default(cuid())
-  createdAt    DateTime @default(now())
-  rating       String // "up" | "down"
-  comment      String? // free-text "what was wrong" (UNTRUSTED input)
-  conversation Json // [{ role, content }] transcript for context
-  conversationId String?
-  ratedMessageId String?
-  debugContext Json?
-  actorUserId  String?
-  actorEmail   String
-  status       String   @default("NEW") // NEW | TRIAGED | RESOLVED | DISMISSED
-  prUrl        String?
-  notes        String?
+  tenantId         String                   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id               String                   @id @default(cuid())
+  createdAt        DateTime                 @default(now())
+  rating           String // "up" | "down"
+  comment          String? // free-text "what was wrong" (UNTRUSTED input)
+  conversation     Json // [{ role, content }] transcript for context
+  conversationId   String?
+  ratedMessageId   String?
+  debugContext     Json?
+  actorUserId      String?
+  actorEmail       String
+  status           String                   @default("NEW") // NEW | TRIAGED | RESOLVED | DISMISSED
+  prUrl            String?
+  notes            String?
+  modeAtSubmission FeedbackAutomationMode   @default(AGENTIC_FIX)
+  automationStatus FeedbackAutomationStatus @default(NOT_REQUESTED)
+  severity         FeedbackSeverity?
+  githubIssueUrl   String?
+  githubRunUrl     String?
+  planMarkdown     String?
+  planTitle        String?
+  planGeneratedAt  DateTime?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  developerNotes   String?
+  attachments      FeedbackAttachment[]
 
   @@index([status, createdAt])
   @@index([conversationId])
   @@index([ratedMessageId])
   @@index([tenantId])
+  @@unique([tenantId, id])
   @@map("assistant_feedback")
+}
+
+model FeedbackTicket {
+  tenantId         String                   @default("")
+  id               String                   @id @default(cuid())
+  kind             FeedbackTicketKind
+  title            String
+  body             String
+  pageUrl          String?
+  userAgent        String?
+  debugContext     Json?
+  actorUserId      String?
+  actorEmail       String
+  modeAtSubmission FeedbackAutomationMode
+  automationStatus FeedbackAutomationStatus @default(NOT_REQUESTED)
+  status           FeedbackItemStatus       @default(NEW)
+  severity         FeedbackSeverity?
+  githubIssueUrl   String?
+  githubRunUrl     String?
+  prUrl            String?
+  planMarkdown     String?
+  planTitle        String?
+  planGeneratedAt  DateTime?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  developerNotes   String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  attachments      FeedbackAttachment[]
+
+  @@index([tenantId, kind, status, createdAt])
+  @@index([tenantId, severity, createdAt])
+  @@index([tenantId, automationStatus, createdAt])
+  @@unique([tenantId, id])
+  @@map("feedback_ticket")
+}
+
+model FeedbackAttachment {
+  tenantId            String                          @default("")
+  id                  String                          @id @default(cuid())
+  ticketId            String?
+  assistantFeedbackId String?
+  filename            String
+  contentType         String
+  byteSize            Int
+  width               Int?
+  height              Int?
+  sha256              String
+  blobUrl             String
+  annotatedBlobUrl    String?
+  captureSource       FeedbackAttachmentCaptureSource
+  createdAt           DateTime                        @default(now())
+  ticket              FeedbackTicket?                 @relation(fields: [tenantId, ticketId], references: [tenantId, id], onDelete: Cascade)
+  assistantFeedback   AssistantFeedback?              @relation(fields: [tenantId, assistantFeedbackId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, ticketId])
+  @@index([tenantId, assistantFeedbackId])
+  @@index([tenantId, createdAt])
+  @@map("feedback_attachment")
+}
+
+model AutomationRun {
+  tenantId            String                   @default("")
+  id                  String                   @id @default(cuid())
+  sourceType          FeedbackAutomationSource
+  sourceId            String
+  assistantFeedbackId String?
+  ticketId            String?
+  kind                FeedbackAutomationKind
+  attempt             Int                      @default(1)
+  status              FeedbackAutomationStatus @default(QUEUED)
+  idempotencyKey      String
+  approvedByUserId    String?
+  approvedAt          DateTime?
+  claimedAt           DateTime?
+  completedAt         DateTime?
+  workflowRunId       String?
+  githubIssueNumber   Int?
+  githubPrNumber      Int?
+  githubUrl           String?
+  error               String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@unique([idempotencyKey])
+  @@unique([tenantId, sourceType, sourceId, kind, attempt])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, sourceType, sourceId])
+  @@map("automation_run")
 }
 
 // A persisted assistant chat. Scoped to the owning user (personal history, not
@@ -1190,6 +1344,9 @@ model AppSettings {
   dtcShippingAccount       String?
   dtcClearingAccount       String?
   dtcDiscountAccount       String?
+  assistantFeedbackMode    FeedbackAutomationMode @default(AGENTIC_FIX)
+  bugReportMode            FeedbackAutomationMode @default(REPORT_ONLY)
+  featureRequestMode       FeedbackAutomationMode @default(REPORT_ONLY)
   updatedAt                DateTime      @updatedAt
 
   @@unique([tenantId])

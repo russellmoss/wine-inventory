@@ -7,7 +7,6 @@ name: Assistant feedback fix
 #  - repository_dispatch (the app fires this on thumbs-down + comment, if a
 #    GITHUB_DISPATCH_TOKEN is configured) — near-immediate.
 #  - workflow_dispatch (manual, optional feedbackId).
-#  - schedule (fallback sweep).
 #
 # Required repo secrets: ANTHROPIC_API_KEY, DATABASE_URL, DATABASE_URL_UNPOOLED.
 # Optional: GH_PAT (so the opened PR triggers the CI workflow; GITHUB_TOKEN-made
@@ -17,11 +16,12 @@ on:
     types: [assistant_feedback]
   workflow_dispatch:
     inputs:
+      automationRunId:
+        description: "Approved AutomationRun id"
+        required: true
       feedbackId:
-        description: "Specific feedback id (optional; newest NEW down-feedback if blank)"
-        required: false
-  schedule:
-    - cron: "*/30 * * * *"
+        description: "Specific assistant feedback id"
+        required: true
 
 concurrency:
   group: assistant-feedback
@@ -52,6 +52,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
           FEEDBACK_ID: ${{ github.event.client_payload.feedbackId || github.event.inputs.feedbackId }}
+          AUTOMATION_RUN_ID: ${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}
         run: npx tsx scripts/assistant-feedback-agent.ts
 
       - name: Open pull request
@@ -75,4 +76,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
-        run: npx tsx scripts/assistant-feedback-mark.ts "${{ steps.agent.outputs.feedbackId }}" "${{ steps.cpr.outputs.pull-request-url }}"
+        run: |
+          npx tsx scripts/assistant-feedback-mark.ts "${{ steps.agent.outputs.feedbackId }}" "${{ steps.cpr.outputs.pull-request-url }}"
+          if [ -n "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" ]; then
+            npx tsx scripts/feedback-automation-mark.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" "${{ steps.cpr.outputs.pull-request-url }}" "${{ steps.cpr.outputs.pull-request-number }}"
+          fi

@@ -4,17 +4,20 @@ import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth-client";
-import { Avatar } from "@/components/ui";
+import { exitSupportTenant } from "@/lib/developer/actions";
+import { Avatar, Button } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
 
-type NavItem = { href: string; label: string; admin?: boolean; badge?: number };
+type NavItem = { href: string; label: string; admin?: boolean; developer?: boolean; badge?: number };
 
 const MAIN: NavItem[] = [
   { href: "/", label: "Dashboard" },
   { href: "/assistant", label: "Assistant" },
+  { href: "/help/feedback", label: "Help / feedback" },
   { href: "/inventory", label: "Inventory" },
   { href: "/reports", label: "Reports" },
+  { href: "/developer", label: "Developer", developer: true },
   { href: "/compliance", label: "TTB compliance", admin: true },
   { href: "/accounting", label: "Accounting", admin: true },
   { href: "/audit", label: "Audit log", admin: true },
@@ -134,6 +137,7 @@ function SidebarContent({
   user,
   isActive,
   isAdmin,
+  isDeveloper,
   wineryOpen,
   setWineryOpen,
   vineyardsOpen,
@@ -147,9 +151,10 @@ function SidebarContent({
   sparklingEnabled,
   complianceDeadlines,
 }: {
-  user: { name?: string | null; email: string; role?: string | null };
+  user: { name?: string | null; email: string; role?: string | null; supportOrganizationId?: string | null; supportOrganizationName?: string | null; supportExpiresAt?: string | null };
   isActive: (href: string) => boolean;
   isAdmin: boolean;
+  isDeveloper: boolean;
   wineryOpen: boolean;
   setWineryOpen: (fn: (o: boolean) => boolean) => void;
   vineyardsOpen: boolean;
@@ -174,7 +179,7 @@ function SidebarContent({
         <BrandMark />
       </div>
       <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", flex: 1, overflowY: "auto" }}>
-        {MAIN.filter((n) => !n.admin || isAdmin).map((n) => {
+        {MAIN.filter((n) => (!n.admin || isAdmin) && (!n.developer || isDeveloper)).map((n) => {
           const active = isActive(n.href);
           const count = n.href === "/compliance" ? complianceDeadlines.count : 0;
           if (count <= 0) {
@@ -220,7 +225,7 @@ export function AppShell({
   complianceDeadlines = { count: 0, urgent: false },
   voiceEnabled = false,
 }: {
-  user: { name?: string | null; email: string; role?: string | null };
+  user: { name?: string | null; email: string; role?: string | null; supportOrganizationId?: string | null; supportOrganizationName?: string | null; supportExpiresAt?: string | null };
   children: React.ReactNode;
   pendingSamples?: number;
   pendingWorkOrders?: number;
@@ -230,7 +235,8 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || Boolean(user.supportOrganizationId);
+  const isDeveloper = user.role === "developer";
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const wineryActive = isActive(EN_TIRAGE_NAV.href) || WINERY.some((s) => isActive(s.href));
   const vineyardsActive = VINEYARDS.some((s) => isActive(s.href));
@@ -294,7 +300,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
       </aside>
 
       {/* Mobile drawer */}
@@ -303,12 +309,45 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
           </aside>
         </div>
       ) : null}
 
       <main className="app-main" style={{ flex: 1, minWidth: 0 }}>
+        {user.supportOrganizationId ? (
+          <div
+            role="status"
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 35,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "var(--space-3)",
+              padding: "10px 16px",
+              background: "var(--accent)",
+              color: "var(--accent-on)",
+              fontFamily: "var(--font-body)",
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
+            <span>
+              Support view: {user.supportOrganizationName ?? user.supportOrganizationId}
+              {user.supportExpiresAt ? ` expires ${new Date(user.supportExpiresAt).toLocaleTimeString()}` : ""}
+            </span>
+            <Button
+              size="sm"
+              variant="inverse"
+              onClick={() => {
+                void exitSupportTenant().then(() => router.refresh());
+              }}
+            >
+              Exit support view
+            </Button>
+          </div>
+        ) : null}
         {pathname.startsWith("/assistant") ? (
           // Full-bleed: the assistant is a workspace, not a document — use the width.
           <div className="px-4 py-4 md:px-6 md:py-6" style={{ height: "100%" }}>{children}</div>

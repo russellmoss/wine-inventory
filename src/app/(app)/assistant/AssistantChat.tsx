@@ -13,6 +13,7 @@ import {
 import { messagesToItems } from "@/lib/assistant/history";
 import type { Caption } from "./voice/useVoiceSession";
 import { useDictation } from "./voice/useDictation";
+import { FeedbackTicketModal } from "./FeedbackTicketModal";
 
 type VoiceMode = "converse" | "transcribe";
 
@@ -124,6 +125,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<Record<number, FeedbackState>>({});
+  const [ticketOpen, setTicketOpen] = React.useState(false);
   const [navPending, setNavPending] = React.useState<NavPending | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -732,7 +734,15 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         {error ? (
           <div style={{ ...column, color: "var(--danger)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", paddingBottom: "var(--space-2)" }}>{error}</div>
         ) : null}
-        <div style={{ ...column, display: "flex", gap: "var(--space-2)", alignItems: "flex-end" }}>
+        <div
+          style={{
+            ...column,
+            display: "flex",
+            flexDirection: embedded ? "column" : "row",
+            gap: "var(--space-2)",
+            alignItems: embedded ? "stretch" : "flex-end",
+          }}
+        >
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -741,12 +751,22 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
             placeholder="Ask a question…"
             disabled={busy}
             style={{
-              flex: 1, resize: "none", padding: "14px 16px", borderRadius: "var(--radius-lg)",
+              flex: embedded ? "0 0 auto" : 1,
+              width: embedded ? "100%" : undefined,
+              resize: "none", padding: "14px 16px", borderRadius: "var(--radius-lg)",
               border: "1px solid var(--border-strong)", background: "var(--surface-raised)",
               fontFamily: "var(--font-body)", fontSize: "var(--text-body)", color: "var(--text-primary)",
-              minHeight: 52, maxHeight: 200, boxShadow: "var(--shadow-md)",
+              minHeight: embedded ? 76 : 52, maxHeight: 200, boxShadow: "var(--shadow-md)",
             }}
           />
+          <div
+            style={{
+              display: "flex",
+              gap: "var(--space-2)",
+              justifyContent: embedded ? "flex-end" : "flex-start",
+              flexWrap: "wrap",
+            }}
+          >
           {voiceEnabled ? (
             voiceMode === "transcribe" ? (
               <Button
@@ -775,9 +795,13 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
               </Button>
             )
           ) : null}
+          <Button size="lg" variant="secondary" onClick={() => setTicketOpen(true)} disabled={busy}>
+            Report bug
+          </Button>
           <Button size="lg" onClick={() => void send()} disabled={busy || input.trim().length === 0}>
             {busy ? "…" : "Send"}
           </Button>
+          </div>
         </div>
         {voiceEnabled ? (
           <div style={{ ...column, display: "flex", alignItems: "center", gap: "var(--space-2)", paddingTop: 8, flexWrap: "wrap" }}>
@@ -848,6 +872,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           />
         </React.Suspense>
       ) : null}
+      <FeedbackTicketModal open={ticketOpen} onClose={() => setTicketOpen(false)} />
     </div>
   );
 }

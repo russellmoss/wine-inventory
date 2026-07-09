@@ -16,6 +16,7 @@ export type ActionCtx = {
 /** The active org (tenant) for a resolved user, or reject (K9): tenant comes ONLY from the verified
  *  session's active org, never from client input. */
 function resolveTenantId(user: AppUser): string {
+  if (user.supportOrganizationId) return user.supportOrganizationId;
   if (!user.activeOrganizationId) {
     throw new ActionError("Your account isn't attached to a winery.", "FORBIDDEN");
   }

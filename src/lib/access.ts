@@ -13,6 +13,9 @@ export type AppUser = {
   // membership (K13 revalidation) or the user belongs to no org. All tenant scoping keys off this.
   organizationIds: string[];
   activeOrganizationId: string | null;
+  supportOrganizationId?: string | null;
+  supportOrganizationName?: string | null;
+  supportExpiresAt?: string | null;
 };
 
 export type AccessDecision = "ok" | "login" | "banned" | "change-password" | "forbidden";
@@ -38,8 +41,18 @@ export function accessDecision(
   if (!user) return "login";
   if (user.banned) return "banned";
   if (user.mustChangePassword) return "change-password";
-  if (opts.requireAdmin && user.role !== "admin") return "forbidden";
+  if (opts.requireAdmin && !isTenantAdminLike(user)) return "forbidden";
   return "ok";
+}
+
+export function isDeveloper(user: AppUser | null): boolean {
+  return user?.role === "developer";
+}
+
+export function isTenantAdminLike(user: AppUser | null): boolean {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  return isDeveloper(user) && Boolean(user.supportOrganizationId);
 }
 
 /**

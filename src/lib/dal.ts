@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { accessDecision, resolveActiveOrg, type AppUser } from "@/lib/access";
+import { accessDecision, isDeveloper, resolveActiveOrg, type AppUser } from "@/lib/access";
+import { readSupportTenantContext } from "@/lib/developer/support-context";
 
-export { accessDecision, canManagerAccessVineyard, canAccessVineyard, canAccessLot } from "@/lib/access";
+export { accessDecision, canManagerAccessVineyard, canAccessVineyard, canAccessLot, isDeveloper, isTenantAdminLike } from "@/lib/access";
 export type { AppUser, AccessDecision } from "@/lib/access";
 
 /**
@@ -58,6 +59,9 @@ export function toAppUser(record: UserRecord, activeOrgClaim?: string | null): A
     vineyardIds: record.vineyardMemberships.map((m) => m.vineyardId),
     organizationIds,
     activeOrganizationId,
+    supportOrganizationId: null,
+    supportOrganizationName: null,
+    supportExpiresAt: null,
   };
 }
 
@@ -77,7 +81,15 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   if (!record) return null; // session points at a deleted user -> deny
   // K13: re-validate the session's active-org claim against the freshly-loaded membership set.
   const activeOrgClaim = session.session?.activeOrganizationId ?? null;
-  return toAppUser(record, activeOrgClaim);
+  const user = toAppUser(record, activeOrgClaim);
+  const support = await readSupportTenantContext(user);
+  if (!support) return user;
+  return {
+    ...user,
+    supportOrganizationId: support.tenantId,
+    supportOrganizationName: support.tenantName,
+    supportExpiresAt: support.expiresAt,
+  };
 });
 
 /**
@@ -119,6 +131,21 @@ export async function requireAdmin(): Promise<AppUser> {
     case "forbidden":
       redirect("/");
     default:
+      return user as AppUser;
+  }
+}
+
+/** Developer-only gate for the global support console. */
+export async function requireDeveloper(): Promise<AppUser> {
+  const user = await getCurrentUser();
+  switch (accessDecision(user)) {
+    case "login":
+    case "banned":
+      redirect("/login");
+    case "change-password":
+      redirect("/change-password");
+    default:
+      if (!isDeveloper(user)) redirect("/");
       return user as AppUser;
   }
 }

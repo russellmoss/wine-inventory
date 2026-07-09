@@ -16,7 +16,7 @@ export async function resolveTenantFromSession(): Promise<string | undefined> {
   try {
     const { getCurrentUser } = await import("@/lib/dal");
     const user = await getCurrentUser();
-    return user?.activeOrganizationId ?? undefined;
+    return user?.supportOrganizationId ?? user?.activeOrganizationId ?? undefined;
   } catch {
     return undefined;
   }

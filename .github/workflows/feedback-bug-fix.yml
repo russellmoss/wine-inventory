@@ -1,0 +1,60 @@
+name: Feedback bug fix
+
+on:
+  repository_dispatch:
+    types: [feedback_bug_fix]
+  workflow_dispatch:
+    inputs:
+      automationRunId:
+        description: "Approved AutomationRun id"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Run bug feedback agent
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          AUTOMATION_RUN_ID: ${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}
+        run: npx tsx scripts/bug-feedback-agent.ts
+      - name: Fence changed paths
+        if: steps.agent.outputs.changed == 'true'
+        run: |
+          git diff --name-only > /tmp/changed.txt
+          npx tsx scripts/verify-feedback-fence.ts $(cat /tmp/changed.txt)
+      - name: Open draft pull request
+        if: steps.agent.outputs.changed == 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GH_PAT || github.token }}
+          base: main
+          branch: ${{ steps.agent.outputs.branch }}
+          title: ${{ steps.agent.outputs.title }}
+          body-path: .feedback-bug-body.md
+          labels: feedback-bug
+          draft: true
+          delete-branch: true
+      - name: Mark automation PR opened
+        if: steps.cpr.outputs.pull-request-number
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npx tsx scripts/feedback-automation-mark.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" "${{ steps.cpr.outputs.pull-request-url }}" "${{ steps.cpr.outputs.pull-request-number }}"
