@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Modal, Badge, ConfirmButton } from "@/components/ui";
 import type { TimelineItem, OpItem, RecordItem, OpWorkOrderProvenance } from "@/lib/lot/timeline";
-import { deleteOperationAction } from "@/lib/cellar/actions";
+import { deleteOperationAction, editOperationAction } from "@/lib/cellar/actions";
 import { previewReversalChainAction, reverseOperationChainAction } from "@/lib/ledger/actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
 import { describeLotIdentityAction } from "@/lib/lot/naming-actions";
@@ -108,6 +108,7 @@ function ProvenanceBlock({ item }: { item: TimelineItem }) {
       <Row label="Entered by">{item.enteredBy}</Row>
       <Row label="Capture">{method}</Row>
       {item.note ? <Row label="Note">{item.note}</Row> : null}
+      {item.kind === "OP" && item.supplementalNote ? <Row label="Supplemental">{item.supplementalNote}</Row> : null}
     </div>
   );
 }
@@ -166,10 +167,20 @@ function ChainPreview({ preview, targetId }: { preview: ReversalChainPreview; ta
   );
 }
 
-// Phase 6A: neutral op edit is fenced until 6B; deletion now means append-only voiding.
-function NeutralEdit({ event, onMutated, onClose }: { event: OpItem; onMutated: () => void; onClose: () => void }) {
+function MetadataEdit({
+  event,
+  allowVoid,
+  onMutated,
+  onClose,
+}: {
+  event: OpItem;
+  allowVoid: boolean;
+  onMutated: () => void;
+  onClose: () => void;
+}) {
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
+  const [supplementalNote, setSupplementalNote] = React.useState(event.supplementalNote ?? "");
 
   function act(fn: () => Promise<unknown>) {
     setError(null);
@@ -187,16 +198,36 @@ function NeutralEdit({ event, onMutated, onClose }: { event: OpItem; onMutated: 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5 }}>{error}</p> : null}
-      <p style={{ fontSize: 13.5, color: "var(--text-secondary)", margin: 0 }}>
-        Metadata edits are fenced for Phase 6B. Void this operation and re-enter the corrected one.
-      </p>
+      <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13.5, color: "var(--text-secondary)" }}>
+        Supplemental note
+        <textarea
+          value={supplementalNote}
+          onChange={(e) => setSupplementalNote(e.target.value)}
+          rows={4}
+          style={{
+            padding: 10,
+            border: "1px solid var(--border-strong)",
+            borderRadius: "var(--radius-md)",
+            background: "var(--surface-raised)",
+            color: "var(--text-primary)",
+            fontFamily: "var(--font-body)",
+            fontSize: 14,
+            resize: "vertical",
+          }}
+        />
+      </label>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Void operation" disabled={pending}>
-          Void operation
+        <ConfirmButton onConfirm={() => act(() => editOperationAction({ operationId: event.id, supplementalNote }))} confirmLabel="Save note" disabled={pending}>
+          Save note
         </ConfirmButton>
+        {allowVoid ? (
+          <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Void operation" disabled={pending}>
+            Void operation
+          </ConfirmButton>
+        ) : null}
       </div>
       <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-        This writes a correction and keeps the original history visible.
+        Posting fields are not editable here. {allowVoid ? "Void writes a correction and keeps the original history visible." : "Use Undo or a typed rebook flow for operational changes."}
       </span>
     </div>
   );
@@ -350,22 +381,29 @@ function ActionRegion({
         </div>
       );
     }
-    if (NEUTRAL_OPS.has(item.type)) {
-      // A WO-sourced neutral op is the immutable record of a completed task (WORKORDER-1) — it can't be
-      // edited/deleted from the timeline (the attempt→op FK is ON DELETE RESTRICT). Lock it up-front and
-      // point at the work order's reject flow, mirroring the corrected/correction lock above (Gemini G5).
-      if (item.workOrder) {
+    const lotId = lotIdForOp ? lotIdForOp(item) : null;
+    if (item.workOrder) {
+      if (NEUTRAL_OPS.has(item.type)) {
         return (
           <div style={{ fontSize: 13, color: "var(--text-muted)", display: "flex", gap: 6, alignItems: "center" }}>
             <LockIcon />
-            Logged by work order #{item.workOrder.number} — to change or remove it, reject that work order&apos;s task.
+            Logged by work order #{item.workOrder.number} - to change or remove it, reject that work order&apos;s task.
           </div>
         );
       }
-      return <NeutralEdit event={item} onMutated={onMutated} onClose={onClose} />;
+      return <StructuralUndo event={item} lotId={lotId} onMutated={onMutated} onClose={onClose} />;
     }
-    const lotId = lotIdForOp ? lotIdForOp(item) : null;
-    return <StructuralUndo event={item} lotId={lotId} onMutated={onMutated} onClose={onClose} />;
+    if (NEUTRAL_OPS.has(item.type)) {
+      return <MetadataEdit event={item} allowVoid onMutated={onMutated} onClose={onClose} />;
+    }
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <MetadataEdit event={item} allowVoid={false} onMutated={onMutated} onClose={onClose} />
+        <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 14 }}>
+          <StructuralUndo event={item} lotId={lotId} onMutated={onMutated} onClose={onClose} />
+        </div>
+      </div>
+    );
   }
   // WORK_ORDER + VESSEL_ACTIVITY have no in-modal edit path here.
   return null;

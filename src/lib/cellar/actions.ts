@@ -231,7 +231,7 @@ export const revertRackAction = action(
   },
 );
 
-// ── Timeline neutral void / fenced edit placeholder ──
+// ── Timeline neutral void / fenced metadata edit ──
 
 /** Void an erroneous neutral op through append-only correction. Kept under the legacy action name. */
 export const deleteOperationAction = action(
@@ -242,7 +242,7 @@ export const deleteOperationAction = action(
   },
 );
 
-/** Phase 6B will add fenced metadata-only edits; this currently fails closed. */
+/** Edit a whitelisted operation metadata field. Posting/fold fields fail closed in the core. */
 export const editOperationAction = action(
   async ({ actor }, input: EditNeutralInput): Promise<{ operationId: number }> => {
     const res = await editNeutralOperationCore(actor, input);

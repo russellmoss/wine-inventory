@@ -10,6 +10,7 @@ import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { previewReversalChain, reverseOperationChainCore, reverseOperationCore, reversibilityForOperation } from "@/lib/ledger/reverse";
 import { addAdditionCore } from "@/lib/cellar/addition";
 import { deleteNeutralOperationCore, editNeutralOperationCore } from "@/lib/cellar/edit";
+import { operationSupplementalNote } from "@/lib/cellar/edit-policy";
 import { correctOperationCore } from "@/lib/cellar/correct";
 import type { LedgerLine } from "@/lib/ledger/math";
 
@@ -207,6 +208,33 @@ async function main() {
       () => editNeutralOperationCore(ACTOR, { operationId: neutral.operationId, rateValue: 20, rateBasis: "MG_L" }),
       "neutral in-place edit is refused until fenced metadata edits exist",
     );
+    await assertThrows(
+      () => editNeutralOperationCore(ACTOR, { operationId: neutral.operationId, observedAt: new Date().toISOString() } as never),
+      "observedAt metadata edit is refused",
+    );
+    await assertThrows(
+      () => editNeutralOperationCore(ACTOR, { operationId: neutral.operationId, vesselId: tankD } as never),
+      "vessel metadata edit is refused",
+    );
+    await assertThrows(
+      () => editNeutralOperationCore(ACTOR, { operationId: neutral.operationId, lotId: lotD } as never),
+      "lot metadata edit is refused",
+    );
+    await assertThrows(
+      () => editNeutralOperationCore(ACTOR, { operationId: neutral.operationId, type: "LOSS" } as never),
+      "operation type metadata edit is refused",
+    );
+    await assertThrows(
+      () => editNeutralOperationCore(ACTOR, { operationId: neutral.operationId, taxClass: "still" } as never),
+      "tax-class metadata edit is refused",
+    );
+    const auditsBefore = await prisma.auditLog.count({ where: { actorEmail: ACTOR.actorEmail, entityId: String(neutral.operationId), summary: { contains: "supplemental note" } } });
+    await editNeutralOperationCore(ACTOR, { operationId: neutral.operationId, supplementalNote: "Operator typo: dosage note clarified." });
+    const noted = await prisma.lotOperation.findUniqueOrThrow({ where: { id: neutral.operationId }, select: { note: true, metadata: true } });
+    assert(noted.note == null, "fenced metadata edit does not rewrite the original operation note");
+    assert(operationSupplementalNote(noted.metadata) === "Operator typo: dosage note clarified.", "supplemental note is stored in operation metadata");
+    const auditsAfter = await prisma.auditLog.count({ where: { actorEmail: ACTOR.actorEmail, entityId: String(neutral.operationId), summary: { contains: "supplemental note" } } });
+    assert(auditsAfter === auditsBefore + 1, "supplemental note edit appends an audit row");
     const voided = await deleteNeutralOperationCore(ACTOR, { operationId: neutral.operationId });
     assert(voided.correctionId > neutral.operationId, "neutral delete wrote a later correction operation");
     const originalNeutral = await prisma.lotOperation.findUnique({

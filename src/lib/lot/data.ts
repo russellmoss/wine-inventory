@@ -20,6 +20,7 @@ import {
 } from "@/lib/lot/timeline";
 import { detectStuck } from "@/lib/ferment/stuck";
 import { reversibilityForOperation } from "@/lib/ledger/reverse";
+import { operationSupplementalNote } from "@/lib/cellar/edit-policy";
 import type { AlcoholicFermState } from "@/lib/ledger/vocabulary";
 import {
   buildAncestry,
@@ -304,6 +305,7 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
     enteredBy: string;
     captureMethod: string;
     note: string | null;
+    metadata: unknown;
     correctsOperationId: number | null;
   }) {
     let group = byOp.get(o.id);
@@ -316,6 +318,7 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
           enteredBy: o.enteredBy,
           captureMethod: o.captureMethod,
           note: o.note,
+          supplementalNote: operationSupplementalNote(o.metadata),
           correctsOperationId: o.correctsOperationId,
           treatments: [],
         },

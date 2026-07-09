@@ -1,6 +1,14 @@
+import type { Prisma } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
 import { correctOperationCore } from "@/lib/cellar/correct";
+import { diff, writeAudit } from "@/lib/audit";
+import { runInTenantTx } from "@/lib/tenant/tx";
+import {
+  operationSupplementalNote,
+  validateOperationMetadataEdit,
+  withSupplementalNote,
+} from "@/lib/cellar/edit-policy";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 
 // Phase 6A retires the old neutral-op edit/delete path. Deleting a neutral operation now means
@@ -36,6 +44,19 @@ async function loadNeutralOp(operationId: number) {
   return op;
 }
 
+async function assertNotWorkOrderOwned(operationId: number, type: string) {
+  const attempt = await prisma.workOrderTaskAttempt.findFirst({
+    where: { operationId },
+    select: { task: { select: { workOrder: { select: { number: true } } } } },
+  });
+  if (!attempt) return;
+  const n = attempt.task?.workOrder?.number;
+  throw new ActionError(
+    `This ${type.toLowerCase()} was logged by work order${n != null ? ` #${n}` : ""}. To change it, reject that work order's task and re-issue it.`,
+    "CONFLICT",
+  );
+}
+
 /** Void a neutral op through an append-only CORRECTION. The legacy name is kept for callers. */
 export async function deleteNeutralOperationCore(
   actor: LedgerActor,
@@ -48,6 +69,7 @@ export async function deleteNeutralOperationCore(
 
 export type EditNeutralInput = {
   operationId: number;
+  supplementalNote?: string | null;
   materialName?: string;
   materialKind?: string;
   rateValue?: number;
@@ -57,14 +79,39 @@ export type EditNeutralInput = {
   note?: string | null;
 };
 
-/** Phase 6B will add fenced metadata-only edits. Until then, never mutate ledger history in place. */
+/** Fenced metadata edit. Only supplementalNote is direct-editable; posting fields are refused. */
 export async function editNeutralOperationCore(
-  _actor: LedgerActor,
+  actor: LedgerActor,
   input: EditNeutralInput,
 ): Promise<{ operationId: number }> {
-  await loadNeutralOp(input.operationId);
-  throw new ActionError(
-    "In-place operation edits are fenced off for Phase 6B. Void this operation and re-enter the corrected one.",
-    "CONFLICT",
-  );
+  const decision = validateOperationMetadataEdit(input as Record<string, unknown>);
+  if (!decision.ok) throw new ActionError(decision.reason, "CONFLICT");
+
+  const op = await prisma.lotOperation.findUnique({
+    where: { id: input.operationId },
+    select: { id: true, type: true, metadata: true },
+  });
+  if (!op) throw new ActionError("That operation no longer exists.");
+  await assertNotWorkOrderOwned(op.id, op.type);
+
+  const beforeNote = operationSupplementalNote(op.metadata);
+  if (beforeNote === decision.supplementalNote) return { operationId: op.id };
+  const nextMetadata = withSupplementalNote(op.metadata, decision.supplementalNote);
+
+  await runInTenantTx(async (tx) => {
+    await tx.lotOperation.update({
+      where: { id: op.id },
+      data: { metadata: nextMetadata as Prisma.InputJsonValue },
+    });
+    await writeAudit(tx, {
+      ...actor,
+      action: "UPDATE",
+      entityType: "LotOperation",
+      entityId: String(op.id),
+      changes: diff({ supplementalNote: beforeNote }, { supplementalNote: decision.supplementalNote }),
+      summary: `Edited supplemental note for ${op.type.toLowerCase()} #${op.id}`,
+    });
+  });
+
+  return { operationId: op.id };
 }

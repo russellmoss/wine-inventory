@@ -21,6 +21,7 @@ function op(type: string, capKind?: string, dateLabel = "2026-07-05"): OpItem {
     enteredBy: "a@b.test",
     captureMethod: "MANUAL",
     note: null,
+    supplementalNote: null,
     summary: "x",
     legs: [],
     treatments: capKind

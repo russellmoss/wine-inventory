@@ -60,6 +60,7 @@ export type RawOperation = {
   enteredBy: string;
   captureMethod: string;
   note: string | null;
+  supplementalNote?: string | null;
   correctsOperationId: number | null;
   /** Phase 3 treatment detail rows for THIS lot (neutral ops have these + no lines). */
   treatments?: RawTreatment[];
@@ -104,6 +105,7 @@ export type TimelineEvent = {
   enteredBy: string;
   captureMethod: string;
   note: string | null;
+  supplementalNote: string | null;
   summary: string;
   legs: TimelineLeg[];
   treatments: RawTreatment[]; // Phase 3 detail rows (for the rendered detail line)
@@ -354,6 +356,7 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     enteredBy: opn.enteredBy,
     captureMethod: opn.captureMethod,
     note: opn.note,
+    supplementalNote: opn.supplementalNote ?? null,
     summary,
     legs,
     treatments,

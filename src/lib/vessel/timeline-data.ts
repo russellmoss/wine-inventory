@@ -14,6 +14,7 @@ import {
 } from "@/lib/lot/timeline";
 import { statusTone, statusLabel } from "@/lib/work-orders/status-badge";
 import { reversibilityForOperation } from "@/lib/ledger/reverse";
+import { operationSupplementalNote } from "@/lib/cellar/edit-policy";
 import { currentOccupancyWindow } from "@/lib/vessel/occupancy";
 
 // ───────────────────────── Vessel History timeline loader (plan 045) ─────────────────────────
@@ -107,7 +108,17 @@ export async function getVesselTimeline(vesselId: string): Promise<VesselTimelin
   const byOp = new Map<number, { op: RawOperation; lines: RawLine[] }>();
   for (const h of headers) {
     byOp.set(h.id, {
-      op: { id: h.id, type: h.type, observedAt: h.observedAt, enteredBy: h.enteredBy, captureMethod: h.captureMethod, note: h.note, correctsOperationId: h.correctsOperationId, treatments: [] },
+      op: {
+        id: h.id,
+        type: h.type,
+        observedAt: h.observedAt,
+        enteredBy: h.enteredBy,
+        captureMethod: h.captureMethod,
+        note: h.note,
+        supplementalNote: operationSupplementalNote(h.metadata),
+        correctsOperationId: h.correctsOperationId,
+        treatments: [],
+      },
       lines: [],
     });
   }

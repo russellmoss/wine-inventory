@@ -17,7 +17,7 @@ import {
   type MigrationCutoverItem,
 } from "@/lib/lot/timeline";
 import type { LotDetail } from "@/lib/lot/data";
-import { deleteOperationAction } from "@/lib/cellar/actions";
+import { deleteOperationAction, editOperationAction } from "@/lib/cellar/actions";
 import { previewReversalChainAction, reverseOperationChainAction } from "@/lib/ledger/actions";
 import { archiveLotAction, unarchiveLotAction } from "@/lib/lot/lifecycle-actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
@@ -315,7 +315,7 @@ function LegLine({ leg }: { leg: TimelineLeg }) {
  * fenced metadata edits wait for 6B. Reversal of ANY op is a separate, always-visible affordance. */
 function isEditable(event: TimelineEvent): boolean {
   if (event.corrected || event.isCorrection) return false;
-  return NEUTRAL_OPS.has(event.type);
+  return true;
 }
 
 function ChainPreview({ preview, targetId }: { preview: ReversalChainPreview; targetId: number }) {
@@ -460,6 +460,11 @@ function OpRow({ event, editMode, onEdit, lotId }: { event: OpItem; editMode: bo
       ) : null}
       {event.note ? (
         <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6, fontStyle: "italic" }}>{event.note}</div>
+      ) : null}
+      {event.supplementalNote ? (
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>
+          Supplemental note: {event.supplementalNote}
+        </div>
       ) : null}
       <UndoControl event={event} lotId={lotId} />
     </li>
@@ -951,13 +956,13 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
         <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: 0 }}>Operation timeline</h2>
         {anyActionable ? (
           <Button variant={editMode ? "primary" : "ghost"} size="sm" onClick={() => setEditMode((v) => !v)} style={{ minHeight: 36 }}>
-            {editMode ? "Done editing" : "Edit timeline"}
+            {editMode ? "Done editing" : "Timeline actions"}
           </Button>
         ) : null}
       </div>
       {editMode ? (
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-8px 0 14px" }}>
-          Pick an event to void or remove. Additions, fining and cap management are voided with append-only corrections; fenced metadata edits come in Phase 6B.
+          Pick an event to edit its supplemental note. Additions, fining and cap management can also be voided with append-only corrections.
           Analyses and tasting notes can be removed; samples can be cancelled. To reverse any operation, use its
           <strong> Undo</strong> button on the timeline.
         </p>
@@ -979,7 +984,7 @@ function TimelineEditModal({ event, onClose }: { event: TimelineEvent | null; on
   if (!event) return null;
   // Key by op id so the panel remounts (fresh form state from props) per event — no effect.
   return (
-    <Modal open onClose={onClose} title="Edit timeline event" subtitle={event.summary}>
+    <Modal open onClose={onClose} title="Timeline action" subtitle={event.summary}>
       <EditPanel key={event.id} event={event} onClose={onClose} />
     </Modal>
   );
@@ -990,6 +995,7 @@ function EditPanel({ event, onClose }: { event: TimelineEvent; onClose: () => vo
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const isNeutral = NEUTRAL_OPS.has(event.type);
+  const [supplementalNote, setSupplementalNote] = React.useState(event.supplementalNote ?? "");
 
   function act(fn: () => Promise<unknown>) {
     setError(null);
@@ -1007,21 +1013,42 @@ function EditPanel({ event, onClose }: { event: TimelineEvent; onClose: () => vo
   return (
     <div>
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 12 }}>{error}</p> : null}
-      {isNeutral ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <p style={{ fontSize: 13.5, color: "var(--text-secondary)", margin: 0 }}>
-            Metadata edits are fenced for Phase 6B. Void this operation and re-enter the corrected one.
-          </p>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Void operation" disabled={pending}>
-              Void operation
-            </ConfirmButton>
-            <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>This writes a correction and keeps the original history visible.</span>
-          </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13.5, color: "var(--text-secondary)" }}>
+          Supplemental note
+          <textarea
+            value={supplementalNote}
+            onChange={(e) => setSupplementalNote(e.target.value)}
+            rows={4}
+            style={{
+              padding: 10,
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-md)",
+              background: "var(--surface-raised)",
+              color: "var(--text-primary)",
+              fontFamily: "var(--font-body)",
+              fontSize: 14,
+              resize: "vertical",
+            }}
+          />
+        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <ConfirmButton onConfirm={() => act(() => editOperationAction({ operationId: event.id, supplementalNote }))} confirmLabel="Save note" disabled={pending}>
+            Save note
+          </ConfirmButton>
+          {isNeutral ? (
+            <>
+              <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Void operation" disabled={pending}>
+                Void operation
+              </ConfirmButton>
+              <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Void writes a correction and keeps the original history visible.</span>
+            </>
+          ) : null}
         </div>
-      ) : (
-        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>This operation can&apos;t be edited or deleted from here - use Undo on the row to reverse it.</span>
-      )}
+        {!isNeutral ? (
+          <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Posting fields are not editable here; use Undo or a typed rebook flow.</span>
+        ) : null}
+      </div>
     </div>
   );
 }
