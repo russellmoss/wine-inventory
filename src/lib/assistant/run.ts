@@ -6,6 +6,12 @@ import { buildSystemPrompt } from "./prompt";
 import { type AssistantEvent, asProposal, asChoice, asNavigation } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
+import {
+  newAssistantTrace,
+  previewTraceValue,
+  pushToolTrace,
+  type AssistantTrace,
+} from "./trace";
 
 // Repo standard (matches src/lib/fieldnotes/ai.ts): claude-opus-4-8. This is the
 // agentic tool-use loop, NOT the single-shot output_config call in ai.ts.
@@ -14,6 +20,7 @@ const MAX_TOKENS = 8192;
 const MAX_TURNS = 8; // hard cap — never loop unbounded on a server route
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type AssistantRunResult = { text: string; trace: AssistantTrace };
 
 /**
  * Run the multi-turn tool-use loop and push events to `send` as they happen.
@@ -25,7 +32,7 @@ export async function runAssistant(opts: {
   user: AppUser;
   messages: ChatMessage[];
   send: (e: AssistantEvent) => void;
-}): Promise<string> {
+}): Promise<AssistantRunResult> {
   const { user, messages, send } = opts;
 
   // Accumulate everything streamed to the user so the caller can persist the
@@ -35,12 +42,6 @@ export async function runAssistant(opts: {
     if (e.type === "text") assistantText += e.text;
     send(e);
   };
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    emit({ type: "error", message: "The assistant is not configured (missing API key)." });
-    emit({ type: "done" });
-    return assistantText;
-  }
 
   const tools = getToolsFor(user);
   const toolDefs = tools.map((t) => ({
@@ -60,9 +61,23 @@ export async function runAssistant(opts: {
 
   const client = new Anthropic();
   const system = buildSystemPrompt();
+  const trace = newAssistantTrace({
+    model: MODEL,
+    maxTurns: MAX_TURNS,
+    systemPrompt: system,
+    toolNames: tools.map((t) => t.name),
+  });
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    emit({ type: "error", message: "The assistant is not configured (missing API key)." });
+    emit({ type: "done" });
+    trace.stopReason = "missing_api_key";
+    return { text: assistantText, trace };
+  }
 
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
+      trace.turns = turn + 1;
       const stream = client.messages.stream({
         model: MODEL,
         max_tokens: MAX_TOKENS,
@@ -83,6 +98,7 @@ export async function runAssistant(opts: {
         const results: Anthropic.ToolResultBlockParam[] = [];
         for (const tu of toolUses) {
           emit({ type: "tool", name: tu.name, phase: "start" });
+          const toolTrace = { name: tu.name, input: tu.input };
           try {
             const tool = tools.find((t) => t.name === tu.name);
             if (!tool) throw new Error(`Unknown tool: ${tu.name}`);
@@ -99,6 +115,12 @@ export async function runAssistant(opts: {
                 content: `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
               });
               emit({ type: "tool", name: tu.name, phase: "end", ok: true });
+              pushToolTrace(trace, {
+                ...toolTrace,
+                ok: true,
+                resultKind: "proposal",
+                resultPreview: proposal.preview,
+              });
               continue;
             }
 
@@ -116,6 +138,12 @@ export async function runAssistant(opts: {
                   .join("; ")}. Do not call this tool again; ask them to tap the one they mean.`,
               });
               emit({ type: "tool", name: tu.name, phase: "end", ok: true });
+              pushToolTrace(trace, {
+                ...toolTrace,
+                ok: true,
+                resultKind: "choice",
+                resultPreview: choice.prompt,
+              });
               continue;
             }
 
@@ -133,6 +161,12 @@ export async function runAssistant(opts: {
                   : `A link to ${nav.label} (${nav.path}) was shown to the user. Do not call navigate again; briefly point them to it.`,
               });
               emit({ type: "tool", name: tu.name, phase: "end", ok: true });
+              pushToolTrace(trace, {
+                ...toolTrace,
+                ok: true,
+                resultKind: "navigation",
+                resultPreview: `${nav.label} (${nav.path})`,
+              });
               continue;
             }
 
@@ -150,14 +184,27 @@ export async function runAssistant(opts: {
               content: typeof out === "string" ? out : JSON.stringify(out),
             });
             emit({ type: "tool", name: tu.name, phase: "end", ok: true });
+            pushToolTrace(trace, {
+              ...toolTrace,
+              ok: true,
+              resultKind: typeof out === "string" ? "text" : "json",
+              resultPreview: previewTraceValue(out),
+            });
           } catch (e) {
+            const message = e instanceof Error ? e.message : "Tool failed.";
             results.push({
               type: "tool_result",
               tool_use_id: tu.id,
-              content: e instanceof Error ? e.message : "Tool failed.",
+              content: message,
               is_error: true,
             });
             emit({ type: "tool", name: tu.name, phase: "end", ok: false });
+            pushToolTrace(trace, {
+              ...toolTrace,
+              ok: false,
+              resultKind: "error",
+              resultPreview: message,
+            });
           }
         }
         convo.push({ role: "user", content: results });
@@ -172,21 +219,25 @@ export async function runAssistant(opts: {
 
       if (msg.stop_reason === "refusal") {
         emit({ type: "error", message: "I can't help with that request." });
+        trace.stopReason = "refusal";
         break;
       }
 
       // end_turn or max_tokens — text already streamed via on("text").
+      trace.stopReason = msg.stop_reason ?? "end_turn";
       break;
     }
   } catch (e) {
     if (e instanceof Anthropic.RateLimitError) {
       emit({ type: "error", message: "The assistant is busy right now. Try again in a moment." });
+      trace.stopReason = "rate_limit";
     } else {
       emit({ type: "error", message: e instanceof Error ? e.message : "Assistant error." });
+      trace.stopReason = "error";
     }
   } finally {
     emit({ type: "done" });
   }
 
-  return assistantText;
+  return { text: assistantText, trace };
 }

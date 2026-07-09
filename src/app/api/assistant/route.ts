@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/dal";
 import { runAssistant, type ChatMessage } from "@/lib/assistant/run";
 import type { AssistantEvent } from "@/lib/assistant/assistant-events";
+import type { Prisma } from "@prisma/client";
 import {
   findOwnedConversationId,
   createConversation,
@@ -60,8 +61,14 @@ export async function POST(req: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (e: AssistantEvent) => {
+      const sendNow = (e: AssistantEvent) => {
         controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
+      };
+      const send = (e: AssistantEvent) => {
+        if (e.type === "done") {
+          return;
+        }
+        sendNow(e);
       };
 
       // Resolve (or create) the conversation, then persist the user turn. All
@@ -82,16 +89,23 @@ export async function POST(req: Request) {
           conversationId = await createConversation({ ownerUserId: user.id, title });
           send({ type: "conversation", id: conversationId, title });
         }
-        await appendMessage({ conversationId, role: "user", content: lastUserMessage });
+        const userMessageId = await appendMessage({ conversationId, role: "user", content: lastUserMessage });
+        send({ type: "message", role: "user", id: userMessageId });
       } catch {
         conversationId = null; // give up on persistence, still answer the user
       }
 
       try {
-        const assistantText = await runAssistant({ user, messages, send });
-        if (conversationId && assistantText.trim()) {
+        const run = await runAssistant({ user, messages, send });
+        if (conversationId && run.text.trim()) {
           try {
-            await appendMessage({ conversationId, role: "assistant", content: assistantText });
+            const assistantMessageId = await appendMessage({
+              conversationId,
+              role: "assistant",
+              content: run.text,
+              metadata: { trace: run.trace } as Prisma.InputJsonValue,
+            });
+            send({ type: "message", role: "assistant", id: assistantMessageId });
             await touchConversation(conversationId);
           } catch {
             /* best-effort: the reply already streamed to the user */
@@ -99,8 +113,8 @@ export async function POST(req: Request) {
         }
       } catch {
         send({ type: "error", message: "Assistant error." });
-        send({ type: "done" });
       } finally {
+        sendNow({ type: "done" });
         controller.close();
       }
     },

@@ -823,6 +823,9 @@ model AssistantFeedback {
   rating       String // "up" | "down"
   comment      String? // free-text "what was wrong" (UNTRUSTED input)
   conversation Json // [{ role, content }] transcript for context
+  conversationId String?
+  ratedMessageId String?
+  debugContext Json?
   actorUserId  String?
   actorEmail   String
   status       String   @default("NEW") // NEW | TRIAGED | RESOLVED | DISMISSED
@@ -830,6 +833,8 @@ model AssistantFeedback {
   notes        String?
 
   @@index([status, createdAt])
+  @@index([conversationId])
+  @@index([ratedMessageId])
   @@index([tenantId])
   @@map("assistant_feedback")
 }

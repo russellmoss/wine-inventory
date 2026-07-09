@@ -19,6 +19,7 @@ export type AssistantEvent =
   // dirty-form/countdown guards); `auto:false` = render as a link only.
   | { type: "navigate"; path: string; label: string; auto: boolean }
   | { type: "conversation"; id: string; title?: string }
+  | { type: "message"; role: "user" | "assistant"; id: string }
   | { type: "error"; message: string }
   | { type: "done" };
 

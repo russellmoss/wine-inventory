@@ -18,7 +18,7 @@ export type ConversationListItem = {
 export type ConversationDetail = {
   id: string;
   title: string;
-  messages: { role: string; content: string; createdAt: Date }[];
+  messages: { id: string; role: string; content: string; metadata: Prisma.JsonValue | null; createdAt: Date }[];
 };
 
 export type SearchHit = {
@@ -56,8 +56,8 @@ export async function appendMessage(args: {
   role: "user" | "assistant";
   content: string;
   metadata?: Prisma.InputJsonValue;
-}): Promise<void> {
-  await prisma.assistantMessage.create({
+}): Promise<string> {
+  const row = await prisma.assistantMessage.create({
     data: {
       conversationId: args.conversationId,
       role: args.role,
@@ -66,6 +66,7 @@ export async function appendMessage(args: {
     },
     select: { id: true },
   });
+  return row.id;
 }
 
 /** Bump updatedAt so the conversation floats to the top of the list. */
@@ -112,7 +113,7 @@ export async function getConversation(args: {
       messages: {
         orderBy: { createdAt: "asc" },
         take: MESSAGES_LIMIT,
-        select: { role: true, content: true, createdAt: true },
+        select: { id: true, role: true, content: true, metadata: true, createdAt: true },
       },
     },
   });

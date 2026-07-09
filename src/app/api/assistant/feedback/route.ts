@@ -1,5 +1,11 @@
 import { getCurrentUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
+import {
+  buildFeedbackSnapshot,
+  parseClientConversation,
+  type FeedbackDebugContext,
+  type FeedbackConversationMessage,
+} from "@/lib/assistant/feedback-snapshot";
 
 // Capture thumbs up/down (+ optional "what was wrong") on an assistant reply.
 // On actionable negative feedback we best-effort trigger the feedback-fix
@@ -7,24 +13,7 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 
 const MAX_COMMENT = 2000;
-const MAX_MESSAGES = 60;
-const MAX_CONTENT = 8000;
-
-type Msg = { role: "user" | "assistant"; content: string };
-
-function parseConversation(raw: unknown): Msg[] | null {
-  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_MESSAGES) return null;
-  const out: Msg[] = [];
-  for (const m of raw) {
-    if (!m || typeof m !== "object") return null;
-    const role = (m as { role?: unknown }).role;
-    const content = (m as { content?: unknown }).content;
-    if (role !== "user" && role !== "assistant") return null;
-    if (typeof content !== "string" || content.length > MAX_CONTENT) return null;
-    out.push({ role, content: content.slice(0, MAX_CONTENT) });
-  }
-  return out;
-}
+const MAX_ID = 128;
 
 async function triggerWorkflow(feedbackId: string): Promise<void> {
   const token = process.env.GITHUB_DISPATCH_TOKEN;
@@ -65,7 +54,27 @@ export async function POST(req: Request) {
   const rawComment = (body as { comment?: unknown })?.comment;
   const comment = typeof rawComment === "string" && rawComment.trim() ? rawComment.trim().slice(0, MAX_COMMENT) : null;
 
-  const conversation = parseConversation((body as { messages?: unknown })?.messages);
+  const rawConversationId = (body as { conversationId?: unknown })?.conversationId;
+  const rawRatedMessageId = (body as { ratedMessageId?: unknown })?.ratedMessageId;
+  const conversationId =
+    typeof rawConversationId === "string" && rawConversationId.length > 0 && rawConversationId.length <= MAX_ID
+      ? rawConversationId
+      : null;
+  const ratedMessageId =
+    typeof rawRatedMessageId === "string" && rawRatedMessageId.length > 0 && rawRatedMessageId.length <= MAX_ID
+      ? rawRatedMessageId
+      : null;
+
+  let conversation: FeedbackConversationMessage[] | null = null;
+  let debugContext: FeedbackDebugContext = { schemaVersion: 1, source: "client-fallback" };
+  if (conversationId && ratedMessageId) {
+    const snapshot = await buildFeedbackSnapshot({ conversationId, ratedMessageId, ownerUserId: user.id });
+    if (!snapshot) return Response.json({ error: "Rated assistant message not found." }, { status: 400 });
+    conversation = snapshot.conversation;
+    debugContext = snapshot.debugContext;
+  } else {
+    conversation = parseClientConversation((body as { messages?: unknown })?.messages);
+  }
   if (!conversation) return Response.json({ error: "Invalid conversation." }, { status: 400 });
 
   const fb = await prisma.assistantFeedback.create({
@@ -73,6 +82,9 @@ export async function POST(req: Request) {
       rating,
       comment,
       conversation,
+      conversationId,
+      ratedMessageId,
+      debugContext,
       actorUserId: user.id,
       actorEmail: user.email,
     },

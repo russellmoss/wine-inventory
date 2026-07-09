@@ -24,7 +24,7 @@ const VoiceOverlay = React.lazy(() =>
 
 type Role = "user" | "assistant";
 
-type TextItem = { kind: "text"; role: Role; content: string };
+type TextItem = { kind: "text"; id?: string; role: Role; content: string };
 type ProposalItem = {
   kind: "proposal";
   preview: string;
@@ -396,6 +396,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
 
   async function sendFeedback(i: number, rating: "up" | "down", comment?: string) {
     setFb(i, { mode: "sent", rating });
+    const rated = items[i];
     const transcript = items
       .filter((it): it is TextItem => it.kind === "text")
       .map((it) => ({ role: it.role, content: it.content }));
@@ -403,7 +404,13 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       await fetch("/api/assistant/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rating, comment, messages: transcript }),
+        body: JSON.stringify({
+          rating,
+          comment,
+          conversationId,
+          ratedMessageId: rated?.kind === "text" && rated.role === "assistant" ? rated.id : undefined,
+          messages: transcript,
+        }),
       });
     } catch {
       /* best-effort; don't disrupt the chat */
@@ -424,6 +431,20 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         return next;
       }
       return [...prev, { kind: "text", role: "assistant", content: text }];
+    });
+  }
+
+  function attachMessageId(role: Role, id: string) {
+    setItems((prev) => {
+      const next = [...prev];
+      for (let j = next.length - 1; j >= 0; j--) {
+        const it = next[j];
+        if (it.kind === "text" && it.role === role && !it.id) {
+          next[j] = { ...it, id };
+          return next;
+        }
+      }
+      return prev;
     });
   }
 
@@ -482,6 +503,8 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           requestNavigation(evt.path, evt.label, evt.auto);
         } else if (evt.type === "conversation") {
           setConversationId(evt.id);
+        } else if (evt.type === "message") {
+          attachMessageId(evt.role, evt.id);
         } else if (evt.type === "error") {
           setError(evt.message);
         }

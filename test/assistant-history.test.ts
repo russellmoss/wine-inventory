@@ -4,12 +4,12 @@ import { messagesToItems } from "@/lib/assistant/history";
 describe("messagesToItems", () => {
   it("maps user/assistant text turns in order", () => {
     const items = messagesToItems([
-      { role: "user", content: "hi" },
-      { role: "assistant", content: "hello" },
+      { id: "m1", role: "user", content: "hi" },
+      { id: "m2", role: "assistant", content: "hello" },
     ]);
     expect(items).toEqual([
-      { kind: "text", role: "user", content: "hi" },
-      { kind: "text", role: "assistant", content: "hello" },
+      { kind: "text", id: "m1", role: "user", content: "hi" },
+      { kind: "text", id: "m2", role: "assistant", content: "hello" },
     ]);
   });
 

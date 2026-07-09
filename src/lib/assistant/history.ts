@@ -1,8 +1,8 @@
 // Shared (client + test safe) helpers for rendering persisted conversation
 // history back into the chat UI. Pure — no server imports.
 
-export type PersistedMessage = { role: string; content: string; createdAt?: string };
-export type HistoryTextItem = { kind: "text"; role: "user" | "assistant"; content: string };
+export type PersistedMessage = { id?: string; role: string; content: string; createdAt?: string };
+export type HistoryTextItem = { kind: "text"; id?: string; role: "user" | "assistant"; content: string };
 
 /**
  * Map persisted messages into the chat UI's text items. Only user/assistant text
@@ -15,7 +15,12 @@ export function messagesToItems(messages: PersistedMessage[]): HistoryTextItem[]
   for (const m of messages) {
     if (!m || typeof m.content !== "string") continue;
     if (m.role === "user" || m.role === "assistant") {
-      out.push({ kind: "text", role: m.role, content: m.content });
+      out.push({
+        kind: "text",
+        ...(typeof m.id === "string" && m.id ? { id: m.id } : {}),
+        role: m.role,
+        content: m.content,
+      });
     }
   }
   return out;
