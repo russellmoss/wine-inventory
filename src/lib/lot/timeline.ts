@@ -61,6 +61,7 @@ export type RawOperation = {
   captureMethod: string;
   note: string | null;
   supplementalNote?: string | null;
+  splitKind?: string | null;
   correctsOperationId: number | null;
   /** Phase 3 treatment detail rows for THIS lot (neutral ops have these + no lines). */
   treatments?: RawTreatment[];
@@ -306,6 +307,12 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
     }
     case "PRESS": {
       const lossClause = lossTotal > 0 ? ` (${formatL(lossTotal)} L lees)` : "";
+      if (opn.splitKind === "IN_PLACE") {
+        summary = outTotal > 0
+          ? `Split ${formatL(outTotal)} L into sub-lot(s)${lossClause}`
+          : `Received ${formatL(inTotal)} L split sub-lot${dstLabels ? ` → ${dstLabels}` : ""}`;
+        break;
+      }
       // Must-lot press draws the parent (outTotal); whole-cluster press originates juice from
       // fruit (no in-vessel source — outTotal 0), so fall back to the volume that landed (inTotal).
       summary = `Pressed ${formatL(outTotal || inTotal)} L${dstLabels ? ` → ${dstLabels}` : ""}${lossClause}`;

@@ -201,6 +201,12 @@ function originFor(
   return { varietyName, vineyardName };
 }
 
+function metadataString(metadata: unknown, key: string): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
+}
+
 /**
  * The lot list. Filters by status (default ACTIVE = current cellar; DEPLETED / ARCHIVED /
  * ALL reach a bottled lot's full history). Optional vessel filter (NICE). Current volume +
@@ -319,6 +325,7 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
           captureMethod: o.captureMethod,
           note: o.note,
           supplementalNote: operationSupplementalNote(o.metadata),
+          splitKind: metadataString(o.metadata, "splitKind"),
           correctsOperationId: o.correctsOperationId,
           treatments: [],
         },

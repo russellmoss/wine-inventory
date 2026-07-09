@@ -2,7 +2,7 @@
 
 Date: 2026-07-09
 Branch: `codex/phase-6-operations-gaps`
-Status: 6A and 6B landed; 6C-6E remain unimplemented
+Status: 6A, 6B, and 6C landed; 6D-6E remain unimplemented
 
 ## Completed in This Slice
 
@@ -34,11 +34,28 @@ Status: 6A and 6B landed; 6C-6E remain unimplemented
 - Stamped new manual bulk seeds with `metadata.seedKind: "MANUAL_OPERATOR_SEED"`.
 - Added `verify:phase6-reversal`, a Demo Winery-only verifier. No new Bhutan Wine Co verifier work was
   added.
+- Added the 6C split-in-place / retained-lees workflow:
+  - script-safe `splitLotInPlaceCore`/`splitLotInPlaceTx` for splitting a resident lot into tracked
+    sub-lots without a phantom vessel;
+  - retained lees are represented as an explicit child lot with `sublotTag`; discarded lees remain an
+    ordinary external loss line;
+  - children inherit form, ferment state, origin/provenance, tax-class inputs, tax ABV override, and
+    ownership from the parent;
+  - each tracked child gets truthful `SPLIT` lineage, never transform lineage.
+- Added proportional inherited-cost transfer artifacts for 6C splits and reversal-time inverse
+  transfer rows, plus fixed the cost read authority to include outgoing transfer events so parent
+  remaining cost reflects split-out children.
+- Added a compact lot-page split modal for same-vessel split/lees capture; the backend core already
+  accepts destination vessel overrides for script/future workflow use.
+- Updated the lot timeline so 6C split operations read as splits, even though they reuse the reversible
+  `PRESS` ledger family under explicit `metadata.splitKind === "IN_PLACE"`.
+- Added `verify:split-in-place`, a Demo Winery-only verifier covering split volume conservation,
+  retained-vs-discarded lees, inherited fields, `SPLIT` lineage, proportional cost transfer, and
+  transform reversal cleanup.
 
 ## Explicitly Not Completed
 
 - No reverse-and-rebook adapters for posting/fold edits yet.
-- No split-in-place or lees sub-lot work yet.
 - No vessel/barrel group workflow work yet.
 - No long-tail operation enum or `CUSTOM` label work yet.
 - No InnoVint or Vintrace adapter work.
@@ -46,6 +63,7 @@ Status: 6A and 6B landed; 6C-6E remain unimplemented
 ## Verification
 
 - `npm run verify:phase6-reversal` - passed, including LIFO chain execution and neutral edit/delete retirement
+- `npm run verify:split-in-place` - passed, including retained/discarded lees, cost transfers, and reversal
 - `npx vitest run test/cellar-edit-policy.test.ts test/vessel-timeline-view.test.ts test/lot-timeline.test.ts test/reverse-verdict.test.ts` - passed
 - `npx vitest run test/reverse-verdict.test.ts` - passed
 - `npx tsc --noEmit` - passed
@@ -53,6 +71,10 @@ Status: 6A and 6B landed; 6C-6E remain unimplemented
 - `npm run test` - passed
 - `npm run lint` - passed with existing warnings only
 - `npm run build` - passed
+- 2026-07-09 6C note: `npm test` currently fails in unrelated work-order status-machine coverage
+  (`test/work-order-status.test.ts` expects `APPROVED -> REJECTED` to throw, while the working tree has
+  unrelated work-order changes allowing that transition). The 6C-specific verifier and Phase 6 reversal
+  verifier pass.
 
 ## Notes
 
@@ -60,3 +82,6 @@ Status: 6A and 6B landed; 6C-6E remain unimplemented
   expanded for Phase 6 acceptance proof.
 - 6B v1 deliberately implements supplemental-note metadata edits only. Posting/fold changes still need
   typed reverse-and-rebook adapters before they can be offered.
+- 6C uses the existing `PRESS` operation type with explicit split metadata to avoid an enum migration and
+  preserve the existing transform reversal path. A future UX pass can expose destination-vessel splitting
+  beyond the current same-vessel lot-page modal.

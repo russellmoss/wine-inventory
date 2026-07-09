@@ -17,7 +17,7 @@ import {
   type MigrationCutoverItem,
 } from "@/lib/lot/timeline";
 import type { LotDetail } from "@/lib/lot/data";
-import { deleteOperationAction, editOperationAction } from "@/lib/cellar/actions";
+import { deleteOperationAction, editOperationAction, splitLotInPlaceAction } from "@/lib/cellar/actions";
 import { previewReversalChainAction, reverseOperationChainAction } from "@/lib/ledger/actions";
 import { archiveLotAction, unarchiveLotAction } from "@/lib/lot/lifecycle-actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
@@ -240,6 +240,119 @@ function LifecycleControls({ lot }: { lot: LotDetail }) {
             />
             <ConfirmButton onConfirm={archive} confirmLabel={pending ? "Archiving..." : "Archive lot"} disabled={pending}>
               {pending ? "Archiving..." : "Archive lot"}
+            </ConfirmButton>
+          </div>
+        </Modal>
+      ) : null}
+    </Card>
+  );
+}
+
+function SplitLotControls({ lot }: { lot: LotDetail }) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [sourceVesselId, setSourceVesselId] = React.useState(lot.current.locations[0]?.vesselId ?? "");
+  const [tag, setTag] = React.useState("");
+  const [volumeL, setVolumeL] = React.useState("");
+  const [retainedLeesL, setRetainedLeesL] = React.useState("");
+  const [retainedLeesTag, setRetainedLeesTag] = React.useState("LEES");
+  const [discardedLeesL, setDiscardedLeesL] = React.useState("");
+  const [note, setNote] = React.useState("");
+  const [pending, startTransition] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+
+  if (lot.status !== "ACTIVE" || lot.current.locations.length === 0) return null;
+
+  function submit() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const primaryVol = Number(volumeL);
+        const leesVol = Number(retainedLeesL || 0);
+        const children: { volumeL: number; sublotTag: string; destVesselId: string; role: "SPLIT" | "LEES" }[] = [
+          { volumeL: primaryVol, sublotTag: tag.trim(), destVesselId: sourceVesselId, role: "SPLIT" },
+        ];
+        if (leesVol > 0) children.push({ volumeL: leesVol, sublotTag: retainedLeesTag.trim() || "LEES", destVesselId: sourceVesselId, role: "LEES" as const });
+        await splitLotInPlaceAction({
+          parentLotId: lot.id,
+          sourceVesselId,
+          commandId: newId(),
+          children,
+          discardedLeesL: discardedLeesL.trim() ? Number(discardedLeesL) : 0,
+          note: note.trim() || null,
+        });
+        setOpen(false);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't split this lot.");
+      }
+    });
+  }
+
+  const fieldStyle: React.CSSProperties = {
+    padding: "10px 12px",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-raised)",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-body)",
+    fontSize: 14,
+  };
+  const labelStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 6, fontSize: 13.5, color: "var(--text-secondary)" };
+
+  return (
+    <Card style={{ flex: "1 1 280px" }}>
+      <Eyebrow tone="ink">Split</Eyebrow>
+      <p style={{ marginTop: 10, color: "var(--text-secondary)", fontSize: 13.5 }}>
+        {formatL(lot.current.totalL)} L across {lot.current.locations.length} vessel{lot.current.locations.length === 1 ? "" : "s"}.
+      </p>
+      <Button variant="secondary" onClick={() => setOpen(true)} style={{ marginTop: 12 }}>
+        Split lot
+      </Button>
+      {open ? (
+        <Modal open onClose={() => setOpen(false)} title="Split lot" subtitle={lot.code}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {error ? <p role="alert" style={{ color: "var(--danger)", fontSize: 13.5, margin: 0 }}>{error}</p> : null}
+            <label style={labelStyle}>
+              Source vessel
+              <select value={sourceVesselId} onChange={(e) => setSourceVesselId(e.target.value)} style={fieldStyle}>
+                {lot.current.locations.map((l) => (
+                  <option key={l.vesselId} value={l.vesselId}>
+                    {l.label} · {formatL(l.volumeL)} L
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 140px", gap: 10 }}>
+              <label style={labelStyle}>
+                Sub-lot tag
+                <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="e.g. EXP-A" style={fieldStyle} />
+              </label>
+              <label style={labelStyle}>
+                Liters
+                <input value={volumeL} onChange={(e) => setVolumeL(e.target.value)} inputMode="decimal" style={fieldStyle} />
+              </label>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 140px", gap: 10 }}>
+              <label style={labelStyle}>
+                Retained lees tag
+                <input value={retainedLeesTag} onChange={(e) => setRetainedLeesTag(e.target.value)} style={fieldStyle} />
+              </label>
+              <label style={labelStyle}>
+                Liters
+                <input value={retainedLeesL} onChange={(e) => setRetainedLeesL(e.target.value)} inputMode="decimal" style={fieldStyle} />
+              </label>
+            </div>
+            <label style={labelStyle}>
+              Discarded lees
+              <input value={discardedLeesL} onChange={(e) => setDiscardedLeesL(e.target.value)} inputMode="decimal" style={fieldStyle} />
+            </label>
+            <label style={labelStyle}>
+              Note
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} style={{ ...fieldStyle, resize: "vertical" }} />
+            </label>
+            <ConfirmButton onConfirm={submit} confirmLabel={pending ? "Splitting..." : "Record split"} disabled={pending}>
+              {pending ? "Splitting..." : "Record split"}
             </ConfirmButton>
           </div>
         </Modal>
@@ -896,6 +1009,7 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "stretch", margin: "16px 0 28px" }}>
         <FermentControls lot={lot} />
         <LifecycleControls lot={lot} />
+        <SplitLotControls lot={lot} />
         <Card style={{ flex: "1 1 280px" }}>
           {empty ? (
             <div>

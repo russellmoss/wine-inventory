@@ -50,6 +50,11 @@ import {
   editNeutralOperationCore,
   type EditNeutralInput,
 } from "@/lib/cellar/edit";
+import {
+  splitLotInPlaceCore,
+  type SplitLotInPlaceInput,
+  type SplitLotInPlaceResult,
+} from "@/lib/cellar/split-core";
 
 // "use server" wrappers for the Phase 3 cellar operations. Each authorizes a ready user,
 // then calls the script-safe core with the audit actor and revalidates the capture
@@ -247,6 +252,18 @@ export const editOperationAction = action(
   async ({ actor }, input: EditNeutralInput): Promise<{ operationId: number }> => {
     const res = await editNeutralOperationCore(actor, input);
     revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+// ── Phase 6C split-in-place / retained lees ──
+
+export const splitLotInPlaceAction = action(
+  async ({ actor }, input: SplitLotInPlaceInput): Promise<SplitLotInPlaceResult> => {
+    const res = await splitLotInPlaceCore(actor, input);
+    revalidateCaptureSurfaces();
+    revalidatePath(`/lots/${res.parentLotId}`);
+    for (const child of res.children) revalidatePath(`/lots/${child.lotId}`);
     return res;
   },
 );

@@ -84,7 +84,7 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb, asOf?: Date
       select: { operationId: true, lotId: true, component: true, amount: true, basisCompleteness: true },
     }),
     db.operationCostTransfer.findMany({
-      where: { toLotId: { in: lotIds } },
+      where: { OR: [{ toLotId: { in: lotIds } }, { fromLotId: { in: lotIds } }] },
       select: { operationId: true, fromLotId: true, toLotId: true, transferredVolumeL: true, parentPreOpVolumeL: true },
     }),
     db.vesselLot.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
@@ -205,7 +205,7 @@ export async function getLotCostView(rootId: string, dbArg?: CostDb): Promise<Lo
       orderBy: { operationId: "asc" },
     }),
     db.operationCostTransfer.findMany({
-      where: { toLotId: { in: lotIds } },
+      where: { OR: [{ toLotId: { in: lotIds } }, { fromLotId: { in: lotIds } }] },
       select: { operationId: true, fromLotId: true, toLotId: true, transferredVolumeL: true, transferredCost: true },
       orderBy: { operationId: "asc" },
     }),
@@ -281,7 +281,7 @@ export async function maxCostOpIdFor(rootId: string, dbArg?: CostDb): Promise<nu
   const lotIds = await loadAncestryLotIds(rootId, db);
   const [line, transfer] = await Promise.all([
     db.costLine.aggregate({ where: { lotId: { in: lotIds } }, _max: { operationId: true } }),
-    db.operationCostTransfer.aggregate({ where: { toLotId: { in: lotIds } }, _max: { operationId: true } }),
+    db.operationCostTransfer.aggregate({ where: { OR: [{ toLotId: { in: lotIds } }, { fromLotId: { in: lotIds } }] }, _max: { operationId: true } }),
   ]);
   return Math.max(0, line._max.operationId ?? 0, transfer._max.operationId ?? 0);
 }

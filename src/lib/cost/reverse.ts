@@ -10,12 +10,12 @@ import { emitExportForVariance } from "@/lib/cost/export-emit";
 // later backdated edit can't change what an undo restores, council C3). Idempotent: a second call is
 // a no-op (guards on an existing reversal row). Cores don't COMPUTE cost; they just call this.
 
-/** Negate every not-yet-reversed SupplyConsumption + CostLine on `reversedOpId`, on `correctionOpId`. */
+/** Negate every not-yet-reversed cost artifact on `reversedOpId`, on `correctionOpId`. */
 export async function negateCostForReversedOp(
   tx: Prisma.TransactionClient,
   reversedOpId: number,
   correctionOpId: number,
-): Promise<{ consumptions: number; costLines: number; variances: number }> {
+): Promise<{ consumptions: number; costLines: number; costTransfers: number; variances: number }> {
   // Restore stock + write a negating consumption for each original depletion row.
   const consumptions = await tx.supplyConsumption.findMany({
     where: { operationId: reversedOpId, reversalOfConsumptionId: null },
@@ -66,6 +66,34 @@ export async function negateCostForReversedOp(
     negatedCostLines++;
   }
 
+  // Reverse inherited-cost transfer artifacts by writing the inverse edge. The rollup ignores
+  // transferredCost for math and uses the volume basis, so use a 100% child->parent basis here:
+  // the paired correction drains the split/blend child back to the source.
+  const transfers = await tx.operationCostTransfer.findMany({
+    where: { operationId: reversedOpId, reversalOfTransferId: null },
+  });
+  let negatedTransfers = 0;
+  for (const t of transfers) {
+    const already = await tx.operationCostTransfer.findFirst({ where: { reversalOfTransferId: t.id }, select: { id: true } });
+    if (already) continue;
+    await tx.operationCostTransfer.create({
+      data: {
+        operationId: correctionOpId,
+        fromLotId: t.toLotId,
+        toLotId: t.fromLotId,
+        transferredVolumeL: t.transferredVolumeL,
+        parentPreOpVolumeL: t.transferredVolumeL,
+        transferredCost: t.transferredCost,
+        currency: t.currency,
+        policyVersion: t.policyVersion,
+        reversalOfTransferId: t.id,
+      },
+    });
+    changedLotIds.add(t.fromLotId);
+    changedLotIds.add(t.toLotId);
+    negatedTransfers++;
+  }
+
   // Phase 8b (Unit 13, D12): negating an op's cost changes the basis of any lot it touched. If a
   // changed lot (or a downstream descendant) was already bottled, emit an explicit variance event —
   // the frozen COGS snapshot stays immutable; the delta is split sold vs on-hand. Idempotent.
@@ -75,5 +103,5 @@ export async function negateCostForReversedOp(
   // Phase 15 Unit 7 — emit an accounting export (+ delivery) per variance, in THIS same tx (outbox).
   for (const id of varianceIds) await emitExportForVariance(id, tx);
 
-  return { consumptions: negatedConsumptions, costLines: negatedCostLines, variances: varianceIds.length };
+  return { consumptions: negatedConsumptions, costLines: negatedCostLines, costTransfers: negatedTransfers, variances: varianceIds.length };
 }
