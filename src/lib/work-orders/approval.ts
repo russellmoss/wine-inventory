@@ -1,3 +1,4 @@
+import { Prisma, type WorkOrderTaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
@@ -16,6 +17,98 @@ import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 // individual review; the core approves the ids it's given).
 
 export type ReviewResult = { taskId: string; status: string; message: string };
+
+const REJECTABLE_STATUSES: WorkOrderTaskStatus[] = ["PENDING_APPROVAL", "APPROVED", "DONE"];
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function asNum(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+function sameUtcDay(date: Date): { gte: Date; lt: Date } {
+  const gte = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const lt = new Date(gte);
+  lt.setUTCDate(lt.getUTCDate() + 1);
+  return { gte, lt };
+}
+
+function parsePickDate(value: unknown, fallback: Date): Date {
+  if (typeof value !== "string" || value.trim() === "") return fallback;
+  const m = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return fallback;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+}
+
+async function reverseHarvestWeighInTx(
+  tx: Prisma.TransactionClient,
+  actor: LedgerActor,
+  input: {
+    task: { id: string; status: WorkOrderTaskStatus; currentAttemptId: string; workOrderId: string; blockId: string | null };
+    attempt: { id: string; actualPayload: Prisma.JsonValue; completedAt: Date; completedByEmail: string | null };
+    reason?: string;
+  },
+): Promise<void> {
+  const payload = jsonObject(input.attempt.actualPayload);
+  const blockId = input.task.blockId ?? (typeof payload.blockId === "string" ? payload.blockId : null);
+  if (!blockId) throw new ActionError("That fruit weigh-in has no block to reverse.", "CONFLICT");
+  const weightKg = asNum(payload.weightKg);
+  if (weightKg == null) throw new ActionError("That fruit weigh-in is missing its recorded weight, so I can't safely match the harvest pick.", "CONFLICT");
+  const pickDate = parsePickDate(payload.pickDate, input.attempt.completedAt);
+  const day = sameUtcDay(pickDate);
+  const brix = asNum(payload.brixAtPick);
+  const ph = asNum(payload.phAtPick);
+  const ta = asNum(payload.taAtPick);
+
+  const picks = await tx.harvestPick.findMany({
+    where: {
+      harvestRecord: { blockId, vintageYear: pickDate.getUTCFullYear() },
+      pickDate: { gte: day.gte, lt: day.lt },
+      weightKg: new Prisma.Decimal(weightKg),
+      ...(input.attempt.completedByEmail ? { createdByEmail: input.attempt.completedByEmail } : {}),
+      ...(brix == null ? {} : { brixAtPick: new Prisma.Decimal(brix) }),
+      ...(ph == null ? {} : { phAtPick: new Prisma.Decimal(ph) }),
+      ...(ta == null ? {} : { taAtPick: new Prisma.Decimal(ta) }),
+    },
+    select: { id: true, _count: { select: { crushSources: true } } },
+  });
+  if (picks.length === 0) throw new ActionError("I couldn't find the harvest pick created by that weigh-in.", "CONFLICT");
+  if (picks.length > 1) throw new ActionError("Several harvest picks match that weigh-in. Delete the exact pick from the harvest screen.", "CONFLICT");
+  const pick = picks[0];
+  if (pick._count.crushSources > 0) {
+    throw new ActionError("That weigh-in has already been used in a crush. Reverse the crush first, then back out the weigh-in.", "CONFLICT");
+  }
+
+  const claimed = await tx.workOrderTask.updateMany({
+    where: { id: input.task.id, status: input.task.status, currentAttemptId: input.task.currentAttemptId },
+    data: { status: "REJECTED" },
+  });
+  if (claimed.count === 0) throw new ActionError("That task was already reviewed or changed. Refresh and try again.", "CONFLICT");
+  await tx.harvestPick.delete({ where: { id: pick.id } });
+  const now = new Date();
+  await tx.workOrderTaskAttempt.update({
+    where: { id: input.attempt.id },
+    data: {
+      status: "REJECTED",
+      rejectedReason: input.reason?.trim() || null,
+      reviewedAt: now,
+      reviewedById: actor.actorUserId,
+      reviewedByEmail: actor.actorEmail,
+    },
+  });
+  await bumpWorkOrderRollupTx(tx, input.task.workOrderId);
+  await writeAudit(tx, {
+    ...actor,
+    action: "UPDATE",
+    entityType: "WorkOrderTask",
+    entityId: input.task.id,
+    summary: `Backed out a fruit weigh-in task and deleted harvest pick ${pick.id}${input.reason ? `: ${input.reason}` : ""}`,
+  });
+}
 
 /** Approve (finalize) a task. A4: claim PENDING_APPROVAL→APPROVED guarded on currentAttemptId. */
 export async function approveTaskCore(user: ApproverUser, actor: LedgerActor, input: { taskId: string }): Promise<ReviewResult> {
@@ -65,19 +158,41 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
   const auth = canApprove(user);
   if (!auth.ok) throw new ActionError(auth.reason, "FORBIDDEN");
 
-  const task = await prisma.workOrderTask.findUnique({ where: { id: input.taskId }, select: { id: true, status: true, currentAttemptId: true, workOrderId: true } });
+  const task = await prisma.workOrderTask.findUnique({
+    where: { id: input.taskId },
+    select: { id: true, status: true, currentAttemptId: true, workOrderId: true, observationType: true, blockId: true },
+  });
   if (!task) throw new ActionError("That task no longer exists.");
-  if (task.status !== "PENDING_APPROVAL") throw new ActionError("That task isn't awaiting approval.", "CONFLICT");
+  if (!REJECTABLE_STATUSES.includes(task.status)) throw new ActionError("That task isn't completed or awaiting approval.", "CONFLICT");
   if (!task.currentAttemptId) throw new ActionError("That task has no attempt to reject.", "CONFLICT");
-  const attempt = await prisma.workOrderTaskAttempt.findUnique({ where: { id: task.currentAttemptId }, select: { id: true, operationId: true } });
-  if (!attempt?.operationId) throw new ActionError("That task's attempt has no ledger operation to reverse.", "CONFLICT");
+  const currentAttemptId = task.currentAttemptId;
+  const attempt = await prisma.workOrderTaskAttempt.findUnique({
+    where: { id: currentAttemptId },
+    select: { id: true, operationId: true, actualPayload: true, completedAt: true, completedByEmail: true },
+  });
+  if (!attempt) throw new ActionError("That task has no attempt to reject.", "CONFLICT");
+
+  if (!attempt.operationId) {
+    if (task.observationType !== "HARVEST_WEIGH_IN" || task.status !== "DONE") {
+      throw new ActionError("That task has no reversible ledger operation or harvest pick to back out.", "CONFLICT");
+    }
+    await runInTenantTx((tx) =>
+      reverseHarvestWeighInTx(tx, actor, {
+        task: { id: task.id, status: task.status, currentAttemptId, workOrderId: task.workOrderId, blockId: task.blockId },
+        attempt,
+        reason: input.reason,
+      }),
+    );
+    return { taskId: task.id, status: "REJECTED", message: "Rejected - the harvest pick was deleted." };
+  }
   const attemptId = attempt.id;
   const operationId = attempt.operationId;
+  const originalStatus = task.status;
 
   // 1. Claim the task (A4) so a concurrent approve can't slip in while we reverse.
   await runInTenantTx(async (tx) => {
     const claimed = await tx.workOrderTask.updateMany({
-      where: { id: task.id, status: "PENDING_APPROVAL", currentAttemptId: attemptId },
+      where: { id: task.id, status: originalStatus, currentAttemptId: attemptId },
       data: { status: "REJECTED" },
     });
     if (claimed.count === 0) throw new ActionError("That task was already reviewed or changed. Refresh and try again.", "CONFLICT");
@@ -101,7 +216,7 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
       correctionId = already.correctedBy.id; // fall through to step 3, recording REJECTED
     } else {
       await runInTenantTx(async (tx) => {
-        await tx.workOrderTask.updateMany({ where: { id: task.id, status: "REJECTED" }, data: { status: "PENDING_APPROVAL" } });
+        await tx.workOrderTask.updateMany({ where: { id: task.id, status: "REJECTED" }, data: { status: originalStatus } });
       });
       if (e instanceof ActionError && e.code === "CONFLICT") {
         throw new ActionError(`Can't reject this task yet: ${e.message} Undo the later operation first, then reject.`, "CONFLICT");
@@ -130,9 +245,13 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
       action: "UPDATE",
       entityType: "WorkOrderTask",
       entityId: task.id,
-      summary: `Rejected a work-order task (ledger reversed)${input.reason ? `: ${input.reason}` : ""}`,
+      summary: `${originalStatus === "APPROVED" ? "Reverted an approved" : "Rejected a"} work-order task (ledger reversed)${input.reason ? `: ${input.reason}` : ""}`,
     });
-    return { taskId: task.id, status: "REJECTED", message: "Rejected — the ledger operation was reversed." };
+    return {
+      taskId: task.id,
+      status: "REJECTED",
+      message: originalStatus === "APPROVED" ? "Reverted - the ledger operation was reversed and the work order was reopened." : "Rejected - the ledger operation was reversed.",
+    };
   });
 }
 

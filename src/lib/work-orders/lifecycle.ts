@@ -275,5 +275,6 @@ export async function bumpWorkOrderRollupTx(tx: Prisma.TransactionClient, workOr
   if (next !== wo.status) data.status = next;
   if (next === "IN_PROGRESS" && !wo.startedAt) data.startedAt = new Date();
   if (next === "APPROVED") data.completedAt = new Date();
+  if (next !== "APPROVED" && wo.status === "APPROVED") data.completedAt = null;
   if (Object.keys(data).length > 0) await tx.workOrder.update({ where: { id: workOrderId }, data });
 }

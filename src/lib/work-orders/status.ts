@@ -8,29 +8,32 @@ import { ActionError } from "@/lib/action-error";
 
 // ── Work order shell ──
 // DRAFT is editable pre-issue. ISSUED = assigned/scheduled/reserved. IN_PROGRESS = a crew tapped Start
-// (D5). PENDING_APPROVAL = all tasks done, ≥1 awaiting review. APPROVED + CANCELLED are terminal. Most
-// WO transitions are DRIVEN by the task rollup (see rollUpWorkOrderStatus) but each move is still
-// guarded so a bad rollup can't wedge an illegal state.
+// (D5). PENDING_APPROVAL = all tasks done, ≥1 awaiting review. APPROVED is final unless an admin reverts
+// an approved task (then the shell reopens for redo); CANCELLED is terminal. Most WO transitions are
+// DRIVEN by the task rollup (see rollUpWorkOrderStatus) but each move is still guarded so a bad rollup
+// can't wedge an illegal state.
 const WO_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   DRAFT: ["ISSUED", "CANCELLED"],
   ISSUED: ["IN_PROGRESS", "PENDING_APPROVAL", "APPROVED", "CANCELLED"],
   IN_PROGRESS: ["PENDING_APPROVAL", "APPROVED", "ISSUED", "CANCELLED"],
   PENDING_APPROVAL: ["APPROVED", "IN_PROGRESS", "CANCELLED"],
-  APPROVED: [],
+  APPROVED: ["IN_PROGRESS"],
   CANCELLED: [],
 };
 
 // ── Task ──
 // PENDING → IN_PROGRESS (claim, D5) → PENDING_APPROVAL (OPERATION completed; a real op exists) →
 // APPROVED (finalized) | REJECTED (op reversed; resubmit → back to PENDING per decision 1). DONE is the
-// OBSERVATION terminal (no approval gate). SKIPPED = intentionally not done (un-skippable back to PENDING).
+// OBSERVATION terminal (no approval gate), except reversible observation lanes such as fruit weigh-in can
+// be admin-rejected to back out their external record. SKIPPED = intentionally not done (un-skippable
+// back to PENDING).
 const TASK_TRANSITIONS: Record<WorkOrderTaskStatus, WorkOrderTaskStatus[]> = {
   PENDING: ["IN_PROGRESS", "PENDING_APPROVAL", "DONE", "SKIPPED"],
   IN_PROGRESS: ["PENDING_APPROVAL", "DONE", "PENDING", "SKIPPED"],
   PENDING_APPROVAL: ["APPROVED", "REJECTED"],
   REJECTED: ["PENDING", "PENDING_APPROVAL"],
-  APPROVED: [],
-  DONE: [],
+  APPROVED: ["REJECTED"],
+  DONE: ["REJECTED"],
   SKIPPED: ["PENDING"],
 };
 
@@ -66,12 +69,13 @@ export function assertTaskTransition(from: WorkOrderTaskStatus, to: WorkOrderTas
  *   - all tasks terminal AND ≥1 PENDING_APPROVAL  → PENDING_APPROVAL (awaiting review)
  *   - all tasks terminal AND none pending review  → APPROVED (everything finalized/observed/skipped)
  * A DRAFT or CANCELLED WO is never rolled up here (its status is set explicitly by issue/cancel).
+ * APPROVED can roll back to IN_PROGRESS when an admin reverts a completed task.
  */
 export function rollUpWorkOrderStatus(
   current: WorkOrderStatus,
   taskStatuses: WorkOrderTaskStatus[],
 ): WorkOrderStatus {
-  if (current === "DRAFT" || current === "CANCELLED" || current === "APPROVED") return current;
+  if (current === "DRAFT" || current === "CANCELLED") return current;
   if (taskStatuses.length === 0) return current;
 
   const anyPendingApproval = taskStatuses.some((s) => s === "PENDING_APPROVAL");

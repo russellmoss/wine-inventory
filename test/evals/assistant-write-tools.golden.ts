@@ -214,6 +214,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "reject reverses the ledger op (plan-024)",
   },
   {
+    utterance: "Back out WO 13, it never happened",
+    tool: "review_task",
+    args: { wo: 13, decision: "reject" },
+    note: "revert/back out a completed work order by rejecting its single reversible task, not by cancelling the shell",
+  },
+  {
     utterance: "Cancel WO 142",
     tool: "manage_work_order",
     args: { action: "cancel", wo: 142 },

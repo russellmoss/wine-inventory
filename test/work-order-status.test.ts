@@ -22,6 +22,10 @@ describe("work order status machine", () => {
     expect(isLegalWorkOrderTransition("APPROVED", "CANCELLED")).toBe(false);
   });
 
+  it("allows an approved work order to reopen after an admin task revert", () => {
+    expect(() => assertWorkOrderTransition("APPROVED", "IN_PROGRESS")).not.toThrow();
+  });
+
   it("allows cancelling from any non-terminal state", () => {
     for (const s of ["DRAFT", "ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] as const) {
       expect(() => assertWorkOrderTransition(s, "CANCELLED")).not.toThrow();
@@ -43,21 +47,26 @@ describe("work order task status machine", () => {
 
   it("allows reject → resubmit (REJECTED → PENDING, decision 1)", () => {
     expect(() => assertTaskTransition("PENDING_APPROVAL", "REJECTED")).not.toThrow();
+    expect(() => assertTaskTransition("APPROVED", "REJECTED")).not.toThrow();
+    expect(() => assertTaskTransition("DONE", "REJECTED")).not.toThrow();
     expect(() => assertTaskTransition("REJECTED", "PENDING")).not.toThrow();
   });
 
   it("rejects illegal task moves", () => {
-    expect(() => assertTaskTransition("APPROVED", "REJECTED")).toThrow();
     expect(() => assertTaskTransition("DONE", "APPROVED")).toThrow();
     expect(() => assertTaskTransition("PENDING", "APPROVED")).toThrow(); // must go through PENDING_APPROVAL
   });
 });
 
 describe("rollUpWorkOrderStatus", () => {
-  it("keeps DRAFT/CANCELLED/APPROVED unchanged (explicitly set states)", () => {
+  it("keeps DRAFT/CANCELLED unchanged (explicitly set states)", () => {
     expect(rollUpWorkOrderStatus("DRAFT", ["PENDING"])).toBe("DRAFT");
     expect(rollUpWorkOrderStatus("CANCELLED", ["APPROVED"])).toBe("CANCELLED");
     expect(rollUpWorkOrderStatus("APPROVED", ["APPROVED"])).toBe("APPROVED");
+  });
+
+  it("reopens an approved work order when a completed task is rejected for redo", () => {
+    expect(rollUpWorkOrderStatus("APPROVED", ["REJECTED", "DONE"])).toBe("IN_PROGRESS");
   });
 
   it("rolls to IN_PROGRESS when any task has started but work is still open", () => {
