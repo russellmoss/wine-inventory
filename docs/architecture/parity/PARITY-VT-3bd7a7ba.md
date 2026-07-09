@@ -3,10 +3,12 @@ id: PARITY-VT-3bd7a7ba
 group: vintrace-web
 incumbent: vintrace
 capability: Searching for a Dispatch
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/bottling-and-inventory/searching-for-a-dispatch.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/bottling-and-inventory/searching-for-a-dispatch.md`

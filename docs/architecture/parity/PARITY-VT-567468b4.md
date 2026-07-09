@@ -3,10 +3,12 @@ id: PARITY-VT-567468b4
 group: vintrace-web
 incumbent: vintrace
 capability: Setting Up an Additive Template
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/lab-work/setting-up-an-additive-template.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/lab-work/setting-up-an-additive-template.md`

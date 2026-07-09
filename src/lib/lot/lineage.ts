@@ -3,11 +3,19 @@
 // per-lot meta map; everything here is cycle-guarded and depth-bounded so a deep solera or an
 // accidental cycle can never blow the stack.
 
+export const LINEAGE_KINDS = ["SPLIT", "BLEND", "TOPPING"] as const;
+export type LineageKind = (typeof LINEAGE_KINDS)[number];
+export const LINEAGE_KIND = {
+  SPLIT: "SPLIT",
+  BLEND: "BLEND",
+  TOPPING: "TOPPING",
+} as const satisfies Record<LineageKind, LineageKind>;
+
 export type LineageEdge = {
   parentLotId: string;
   childLotId: string;
   fraction: number | null;
-  kind: string;
+  kind: LineageKind | string;
 };
 
 export type LotMeta = {

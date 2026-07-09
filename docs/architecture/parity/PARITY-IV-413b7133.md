@@ -3,10 +3,12 @@ id: PARITY-IV-413b7133
 group: innoapp
 incumbent: innovint
 capability: "InnoApp: Vessels"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/innoapp/innoapp/innoapp-vessels.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/innoapp/innoapp/innoapp-vessels.md`

@@ -3,10 +3,12 @@ id: PARITY-IV-3da2df03
 group: harvest
 incumbent: innovint
 capability: Weight and Volume Adjustments for Undeclared Fruit or Juice
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/harvest/harvest-workflow-fermentation-tracking/weight-and-volume-adjustments-for-undeclared-fruit-or-juice.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/harvest/harvest-workflow-fermentation-tracking/weight-and-volume-adjustments-for-undeclared-fruit-or-juice.md`

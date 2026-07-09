@@ -3,10 +3,12 @@ id: PARITY-VT-381afb8e
 group: setup-and-admin
 incumbent: vintrace
 capability: Syncing Client Billing Invoices with Xero
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/setup-and-admin/integrations-accounting/syncing-client-billing-invoices-with-xero.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/setup-and-admin/integrations-accounting/syncing-client-billing-invoices-with-xero.md`

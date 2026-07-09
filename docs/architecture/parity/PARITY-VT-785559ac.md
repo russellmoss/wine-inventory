@@ -3,10 +3,12 @@ id: PARITY-VT-785559ac
 group: setup-and-admin
 incumbent: vintrace
 capability: "Copying a Tank's Dip Chart"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/setup-and-admin/configuration/copying-a-tank-s-dip-chart.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/setup-and-admin/configuration/copying-a-tank-s-dip-chart.md`

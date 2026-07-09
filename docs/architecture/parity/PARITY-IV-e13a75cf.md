@@ -3,10 +3,12 @@ id: PARITY-IV-e13a75cf
 group: make
 incumbent: innovint
 capability: Lot Explorer
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/lots/lot-explorer.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/lots/lot-explorer.md`

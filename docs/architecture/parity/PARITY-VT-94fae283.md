@@ -3,10 +3,12 @@ id: PARITY-VT-94fae283
 group: setup-and-admin
 incumbent: vintrace
 capability: AgCode Integration
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/setup-and-admin/integrations-vineyard/agcode-integration.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/setup-and-admin/integrations-vineyard/agcode-integration.md`

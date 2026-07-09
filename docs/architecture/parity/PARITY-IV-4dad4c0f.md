@@ -3,10 +3,12 @@ id: PARITY-IV-4dad4c0f
 group: product-updates
 incumbent: innovint
 capability: 03/19/18 - Custom Report Filters Save, Composition Breakdown by Volume, and more
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/03-19-18-custom-report-filters-save-composition-breakdown-by-volume-and-more.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/03-19-18-custom-report-filters-save-composition-breakdown-by-volume-and-more.md`

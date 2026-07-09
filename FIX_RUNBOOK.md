@@ -1,4 +1,4 @@
-# FIX_RUNBOOK — Incumbent-Teardown Remediation · **v2.3**
+# FIX_RUNBOOK — Incumbent-Teardown Remediation · **v2.4**
 
 > **What this is.** A phased, executable remediation plan that turns the seven-agent incumbent
 > teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B/§C/§D, read against
@@ -40,6 +40,15 @@
 > seed + CSV report exports for the history/TTB/finished-goods/materials/chemistry gaps the API doesn't
 > expose). See Decision Log #6.
 >
+> **Current execution posture (v2.4) -- no design partner yet; keep building the app.**
+> Decision #6 only applies when a real Vintrace design partner is active. Current reality is
+> **no design partner / no authorized incumbent data yet**, so the runbook resumes the partnerless posture:
+> build **Phase 3 as a generic, incumbent-agnostic migration kernel**, then move to **Phase 5** and
+> **Phase 6** product work. **Do not build Phase 4 or Phase 7 now** except for any minimal synthetic
+> fixture needed to verify the Phase-3 kernel. Phase 4 returns when we intentionally want a synthetic
+> migration demo or receive authorized InnoVint data; Phase 7 returns only when a real Vintrace partner
+> and authorized exports/API access exist. See Decision Log #7.
+>
 > **How to run it.** One phase per session. Start each with `/plan` (feed it that phase's block from this
 > file), execute with `/work`, land via `/ship`. Every phase **ends green**: full `vitest` suite passing,
 > `npm run verify:invariants` + `npm run verify:tripwires` + all phase-specific `verify:*` guards passing,
@@ -57,7 +66,8 @@
 
 Review artifact: [`fix-council-feedback.md`](./fix-council-feedback.md) (parallel council review, Codex
 gpt-5.4 + Gemini 3.1 Pro, adjudicated). The four open §7 decisions were resolved as follows (Decision 5
-added in v2.2; Decision 6 — the Vintrace-first flip — added in v2.3):
+added in v2.2; Decision 6 — the Vintrace-first flip — added in v2.3; Decision 7 — the current partnerless
+app-building lane — added in v2.4):
 
 1. **Full reorder, not the minimum edit.** The §5 phase reorder is adopted in full. *Rationale:* migration
    trust is the product thesis — "the easiest system to migrate to" — so the migration kernel and its
@@ -98,6 +108,40 @@ added in v2.2; Decision 6 — the Vintrace-first flip — added in v2.3):
    of truth is `vintrace-docs/api/MIGRATION-STRATEGY.md`. *(This supersedes the InnoVint-first ordering in
    "Build posture & sequencing" and in ROADMAP Phase 13; the historical reasoning is kept there for the
    record, flagged superseded.)*
+7. **(v2.4) Current partnerless lane: Phase 3 generic kernel -> Phase 5 -> Phase 6; park Phase 4 and
+   Phase 7.** Decision 6 is treated as conditional on an active Vintrace design partner with authorized
+   exports/API access. Until that condition is true, do not spend build cycles on real incumbent adapters.
+   Build the **generic migration kernel** in Phase 3 using synthetic/frozen fixtures only as proof, then
+   keep building the app through **Phase 5 lifecycle debt** and **Phase 6 operations gaps**. Phase 4 is
+   parked unless we explicitly choose to make a synthetic migration demo; Phase 7 is parked until a real
+   Vintrace partner exists. *Rationale:* app/product work is not blocked by design-partner discovery, but
+   partner-specific migration code without partner data is guesswork.
+
+---
+
+## Current execution posture (v2.4) -- no design partner yet
+
+This section is authoritative for the next work sessions.
+
+**Build now:**
+- **Phase 3 -- generic migration kernel only.** Build the incumbent-agnostic spine: draft import batches,
+  two-track seed/archive semantics, structured `LegacyOperation`, saved mappings, reconciliation pack,
+  publish/sign-off blocking, tenant isolation, and `verify:migration`. Use synthetic/frozen fixtures only
+  to prove the kernel. Do not build a real InnoVint or Vintrace adapter in this phase.
+- **Phase 5 -- lifecycle-writer debt.** Product work; safe to continue without a design partner.
+- **Phase 6 -- operations gaps.** Product work; safe to continue without a design partner.
+
+**Park for later:**
+- **Phase 4 -- InnoVint adapter/demo.** Park unless we explicitly decide we need a synthetic migration demo
+  before outreach, or until a friendly winery provides its own authorized InnoVint exports.
+- **Phase 7 -- Vintrace connector.** Park until a real Vintrace design partner is active and we have
+  authorized exports/API access. Do not build against imagined partner data.
+
+**Practical next sequence:** `Phase 3 generic kernel -> Phase 5 -> Phase 6`.
+
+Schema/database migrations required by these phases still happen normally. What is deferred is
+**customer/incumbent data migration and partner-specific adapter calibration**, not ordinary Prisma
+migrations needed by app features.
 
 ---
 
@@ -186,7 +230,44 @@ it land without breaking the existing safety gates:
 
 ---
 
-## Phase dependency graph (v2)
+## Phase dependency graph (v2.4 current; partnerless lane)
+
+Current execution sequence:
+
+```
+PHASE 0  Governance & docs                         shipped
+   |
+   v
+PHASE 1  Identity presentation layer               shipped
+   |
+   v
+PHASE 2  Bond + tax-class model                    shipped
+   |
+   v
+PHASE 3  Generic migration kernel                  build now
+   |       incumbent-agnostic spine only; synthetic/frozen proof fixtures
+   |
+   +----> PHASE 5  Lifecycle-writer debt           build after Phase 3
+   |
+   +----> PHASE 6  Operations gaps                 build after Phase 5
+
+PHASE 4  InnoVint adapter/demo                     parked
+         un-park for an intentional synthetic demo or authorized InnoVint exports
+
+PHASE 7  Vintrace connector                        parked
+         un-park only with a real Vintrace partner + authorized exports/API
+```
+
+**Current hard dependencies:** **1 -> 3** and **2 -> 3** remain load-bearing. Phases 5 and 6 depend on
+0/1/2 and can run after the generic Phase-3 kernel without a partner adapter. Phase 4 is no longer a
+required predecessor for Phase 5/6 under Decision 7. Phase 7 is not started until its partner trigger
+fires.
+
+**Current build boundary (v2.4):** build **Phase 3 generic kernel -> Phase 5 -> Phase 6**. Park Phase 4 and
+Phase 7. Do not build real incumbent adapters, live import flows, or partner-specific parser calibration
+without authorized partner data.
+
+### Historical graph (v2/v2.2/v2.3 context)
 
 ```
 PHASE 0  Governance & docs
@@ -223,6 +304,8 @@ fixture bundle — no trial account, no design partner during execution); **Phas
 posture & sequencing" above) — do not start it until a vintrace winery is actually in the pipeline, at
 which point it depends on 3 and 4 being merged and that partner's own authorized vintrace exports being
 available.
+
+> [!important] Superseded for current execution by Decision 7 / v2.4 above.
 
 ---
 
@@ -599,9 +682,13 @@ suggest-only), and a **reconciliation pack + draft-until-sign-off** with a publi
 substrate every connector (Phase 4 InnoVint, Phase 7 vintrace) rides. **No connector-specific parsing
 here** beyond what's needed to prove the kernel with a synthetic bundle.
 
+> [!important] v2.4 current execution: keep Phase 3 generic. Build adapter interfaces and synthetic/frozen
+> proof fixtures only where needed to verify kernel contracts. Do not build the Phase-4 InnoVint adapter or
+> Phase-7 Vintrace connector inside this phase.
+
 ### Exact scope
-**0. Reference-data readiness preflight (Decision 3 — the `/plan` MUST START HERE).**
-- Begin the Phase-3 `/plan` with a **reference-data audit against a real or synthetic InnoVint export
+**0. Reference-data readiness preflight (Decision 3 + Decision 7 — the `/plan` MUST START HERE).**
+- Begin the Phase-3 `/plan` with a **reference-data audit against the generic synthetic/frozen proof
   bundle**: enumerate every reference entity the import must resolve a foreign key to
   (location→**vessel**, cost→**additive/material**, SKU→**WineSku**, account mapping, **bond**, tax class,
   users, barrel groups/types). For each, mark **`exists`** (audit current CRUD — materials/vessels/CoA-
@@ -700,6 +787,10 @@ multi-unit plan; it remains one runbook phase (the kernel) as specified.**
 ---
 
 # PHASE 4 — InnoVint adapter  🔁 v2.3: now the SECOND target (synthetic-until-a-partner)
+
+> [!important] v2.4 current execution: **park this phase for now.** Phase 4 is no longer required before
+> Phase 5/6. Un-park only if we explicitly choose to create a synthetic migration demo before outreach, or
+> when a friendly winery provides its own authorized InnoVint exports.
 
 > [!note] v2.3 (Decision 6): InnoVint is no longer the lighthouse — **Vintrace (Phase 7) is now first.**
 > This phase is unchanged in *content* (build + validate against the corpus-derived synthetic InnoVint
@@ -950,6 +1041,10 @@ boundaries). May also close representability gaps escalated from **Phase 4**. Ru
 ---
 
 # PHASE 7 — Vintrace connector  ▶ v2.3: UN-PARKED — now the FIRST / lighthouse adapter
+
+> [!important] v2.4 current execution: **park this phase.** Decision 6 only reactivates when a real
+> Vintrace design partner exists and we have authorized exports/API access. Until then, build nothing here
+> beyond generic Phase-3 kernel surfaces.
 
 > [!important] v2.3 (Decision 6): this is now the FIRST adapter built, not a deferred second target.
 > Reason: the warm design partners (Macari, Sparkling Pointe) are on Vintrace, and Vintrace exposes a real,

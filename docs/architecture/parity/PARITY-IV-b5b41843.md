@@ -3,10 +3,12 @@ id: PARITY-IV-b5b41843
 group: innovint-academy
 incumbent: innovint
 capability: Knock Out Your Production Costs!
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/innovint-academy/video-trainings-tutorials/knock-out-your-production-costs.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/innovint-academy/video-trainings-tutorials/knock-out-your-production-costs.md`

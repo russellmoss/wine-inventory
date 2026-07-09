@@ -3,10 +3,12 @@ id: PARITY-VT-f78b48a0
 group: reporting
 incumbent: vintrace
 capability: Troubleshooting Your TTB report
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/reporting/ttb-usa/troubleshooting-your-ttb-report.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/reporting/ttb-usa/troubleshooting-your-ttb-report.md`

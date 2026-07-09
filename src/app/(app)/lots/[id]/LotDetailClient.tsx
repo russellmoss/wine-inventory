@@ -20,6 +20,7 @@ import type { LotDetail } from "@/lib/lot/data";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { deleteOperationAction, editOperationAction } from "@/lib/cellar/actions";
 import { reverseOperationAction } from "@/lib/ledger/actions";
+import { archiveLotAction, unarchiveLotAction } from "@/lib/lot/lifecycle-actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
 import { transitionStateAction } from "@/lib/ferment/actions";
 import { AnalyteTrends, type TrendReading } from "@/components/chemistry/AnalyteTrends";
@@ -131,6 +132,114 @@ function FermentControls({ lot }: { lot: LotDetail }) {
         ) : null}
       </div>
       {error ? <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{error}</p> : null}
+    </Card>
+  );
+}
+
+function LifecycleControls({ lot }: { lot: LotDetail }) {
+  const router = useRouter();
+  const [archiveOpen, setArchiveOpen] = React.useState(false);
+  const [reason, setReason] = React.useState("");
+  const [pending, startTransition] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+
+  const isArchived = lot.status === "ARCHIVED";
+  const canArchive = !lot.liveHoldings.live && lot.status !== "CORRECTED" && !isArchived;
+  const disabledReason = lot.status === "CORRECTED"
+    ? "Corrected lots stay terminal."
+    : lot.liveHoldings.live
+      ? "Live vessel or bottle holdings remain."
+      : "";
+
+  function archive() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await archiveLotAction({ lotId: lot.id, reason: reason.trim() || null });
+        setArchiveOpen(false);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not archive this lot.");
+      }
+    });
+  }
+
+  function unarchive() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await unarchiveLotAction({ lotId: lot.id });
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not unarchive this lot.");
+      }
+    });
+  }
+
+  return (
+    <Card style={{ flex: "1 1 280px" }}>
+      <Eyebrow tone="ink">Lifecycle</Eyebrow>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+        <Badge tone={statusTone(lot.status)} variant="soft">
+          {statusLabel(lot.status)}
+        </Badge>
+        {lot.liveHoldings.bottleCount > 0 ? (
+          <Badge tone="maroon" variant="soft">
+            {lot.liveHoldings.bottleCount} bottles in process
+          </Badge>
+        ) : null}
+      </div>
+      <p style={{ marginTop: 10, color: "var(--text-secondary)", fontSize: 13.5 }}>
+        {isArchived
+          ? "Archived lots are closed to normal cellar work."
+          : lot.status === "DEPLETED"
+            ? "No live vessel or bottle-storage holdings."
+            : "Lifecycle follows vessel and bottle-storage holdings."}
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+        {isArchived ? (
+          <ConfirmButton onConfirm={unarchive} confirmLabel={pending ? "Restoring..." : "Unarchive"} disabled={pending}>
+            {pending ? "Restoring..." : "Unarchive"}
+          </ConfirmButton>
+        ) : (
+          <Button variant="secondary" disabled={!canArchive || pending} onClick={() => setArchiveOpen(true)}>
+            Archive
+          </Button>
+        )}
+      </div>
+      {!canArchive && !isArchived && disabledReason ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 8 }}>{disabledReason}</p>
+      ) : null}
+      {error ? <p role="alert" style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{error}</p> : null}
+      {archiveOpen ? (
+        <Modal open onClose={() => setArchiveOpen(false)} title="Archive lot" subtitle={lot.code}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: 0 }}>
+              Archive closes this zero-balance lot from normal cellar work. It does not delete the lot or its history.
+            </p>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason (optional)"
+              aria-label="Archive reason"
+              rows={3}
+              style={{
+                padding: "10px 12px",
+                border: "1px solid var(--border-strong)",
+                borderRadius: "var(--radius-md)",
+                background: "var(--surface-raised)",
+                color: "var(--text-primary)",
+                fontFamily: "var(--font-body)",
+                fontSize: 14,
+                resize: "vertical",
+              }}
+            />
+            <ConfirmButton onConfirm={archive} confirmLabel={pending ? "Archiving..." : "Archive lot"} disabled={pending}>
+              {pending ? "Archiving..." : "Archive lot"}
+            </ConfirmButton>
+          </div>
+        </Modal>
+      ) : null}
     </Card>
   );
 }
@@ -739,6 +848,7 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
       {/* 2 — Where it is now + 3 — Provenance + Fermentation (Phase 6) */}
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "stretch", margin: "16px 0 28px" }}>
         <FermentControls lot={lot} />
+        <LifecycleControls lot={lot} />
         <Card style={{ flex: "1 1 280px" }}>
           {empty ? (
             <div>

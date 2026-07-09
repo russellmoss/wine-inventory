@@ -3,10 +3,12 @@ id: PARITY-IV-9aaab5b8
 group: guidance-faqs
 incumbent: innovint
 capability: How do I record Reverse Osmosis filtration in InnoVint?
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/guidance-faqs/frequently-asked-questions/how-do-i-record-reverse-osmosis-filtration-in-innovint.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/guidance-faqs/frequently-asked-questions/how-do-i-record-reverse-osmosis-filtration-in-innovint.md`

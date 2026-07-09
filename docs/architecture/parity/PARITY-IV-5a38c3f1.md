@@ -3,10 +3,12 @@ id: PARITY-IV-5a38c3f1
 group: product-updates
 incumbent: innovint
 capability: "12/2/2022 Release Notes: New Work Order Print Designs and more!"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/12-2-2022-release-notes-new-work-order-print-designs-and-more.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/12-2-2022-release-notes-new-work-order-print-designs-and-more.md`

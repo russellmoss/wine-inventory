@@ -3,10 +3,12 @@ id: PARITY-IV-9673cd82
 group: innoapp
 incumbent: innovint
 capability: "InnoApp: What are my Quick Actions?"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/innoapp/innoapp/innoapp-what-are-my-quick-actions.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/innoapp/innoapp/innoapp-what-are-my-quick-actions.md`

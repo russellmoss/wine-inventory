@@ -3,10 +3,12 @@ id: PARITY-IV-f1000d27
 group: make
 incumbent: innovint
 capability: How to record a Simple Addition
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/additions/how-to-record-a-simple-addition.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/additions/how-to-record-a-simple-addition.md`

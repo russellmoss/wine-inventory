@@ -3,10 +3,12 @@ id: PARITY-IV-e53d2f43
 group: guidance-faqs
 incumbent: innovint
 capability: Which B2B Action should I use?
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/guidance-faqs/frequently-asked-questions/which-b2b-action-should-i-use.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/guidance-faqs/frequently-asked-questions/which-b2b-action-should-i-use.md`

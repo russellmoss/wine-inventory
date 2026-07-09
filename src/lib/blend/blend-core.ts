@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
+import { LINEAGE_KIND } from "@/lib/lot/lineage";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planBlend, planBlendSplit, foldLines, balanceKey, type BlendComponentDraw, type BlendPlan, type VesselLotBalance } from "@/lib/ledger/math";
@@ -293,8 +294,8 @@ export async function blendLotsCore(actor: LedgerActor, input: BlendLotsInput): 
         const fraction = grossDenom > 0 ? Math.min(0.99999, round5(p.grossL / grossDenom)) : null;
         await tx.lotLineage.upsert({
           where: { parentLotId_childLotId: { parentLotId: p.lotId, childLotId } },
-          create: { parentLotId: p.lotId, childLotId, kind: "BLEND", fraction },
-          update: { fraction, kind: "BLEND" },
+          create: { parentLotId: p.lotId, childLotId, kind: LINEAGE_KIND.BLEND, fraction },
+          update: { fraction, kind: LINEAGE_KIND.BLEND },
         });
         edges++;
       }

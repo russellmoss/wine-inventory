@@ -3,10 +3,12 @@ id: PARITY-VT-0f3119b5
 group: harvest-vintage
 incumbent: vintrace
 capability: "Updating Blocks' Micro AVAs in Bulk"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/harvest-vintage/growers-vineyards-and-blocks/updating-blocks-micro-avas-in-bulk.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/harvest-vintage/growers-vineyards-and-blocks/updating-blocks-micro-avas-in-bulk.md`

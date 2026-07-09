@@ -3,10 +3,12 @@ id: PARITY-VT-340bab6d
 group: setup-and-admin
 incumbent: vintrace
 capability: Setting up Okta
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/setup-and-admin/configuration/setting-up-okta.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/setup-and-admin/configuration/setting-up-okta.md`

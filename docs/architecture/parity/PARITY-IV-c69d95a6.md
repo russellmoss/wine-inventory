@@ -3,10 +3,12 @@ id: PARITY-IV-c69d95a6
 group: grow
 incumbent: innovint
 capability: How to Import Vineyard Events and Crop Estimates via CSV file
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/grow/general/how-to-import-vineyard-events-and-crop-estimates-via-csv-file.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/grow/general/how-to-import-vineyard-events-and-crop-estimates-via-csv-file.md`

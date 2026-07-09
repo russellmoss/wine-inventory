@@ -1512,7 +1512,7 @@ model LotLineage {
   parentLotId String
   childLotId  String
   fraction    Decimal? @db.Decimal(6, 5)
-  kind        String // SPLIT | BLEND | TRANSFORM
+  kind        String // SPLIT | BLEND | TOPPING
   createdAt   DateTime @default(now())
   parent      Lot      @relation("LotParent", fields: [parentLotId], references: [id], onDelete: Restrict)
   child       Lot      @relation("LotChild", fields: [childLotId], references: [id], onDelete: Cascade)

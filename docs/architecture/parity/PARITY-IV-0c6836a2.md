@@ -3,10 +3,12 @@ id: PARITY-IV-0c6836a2
 group: product-updates
 incumbent: innovint
 capability: "11/23/2023 Release Notes: Multi-lot BOLs & CA Grape Crush Report Pricing Districts"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2023/11-23-2023-release-notes-multi-lot-bols-ca-grape-crush-report-pricing-districts.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2023/11-23-2023-release-notes-multi-lot-bols-ca-grape-crush-report-pricing-districts.md`

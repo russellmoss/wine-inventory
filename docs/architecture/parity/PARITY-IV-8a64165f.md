@@ -3,10 +3,12 @@ id: PARITY-IV-8a64165f
 group: product-updates
 incumbent: innovint
 capability: "10/10/2022 Release Notes: QR Code Scanning on your tablet!"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/10-10-2022-release-notes-qr-code-scanning-on-your-tablet.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/10-10-2022-release-notes-qr-code-scanning-on-your-tablet.md`

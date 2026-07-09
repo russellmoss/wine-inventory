@@ -3,10 +3,12 @@ id: PARITY-IV-a358373b
 group: product-updates
 incumbent: innovint
 capability: 08/24/20 Release Notes - New Analysis Sources
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/08-24-20-release-notes-new-analysis-sources.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/08-24-20-release-notes-new-analysis-sources.md`

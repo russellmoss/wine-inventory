@@ -3,10 +3,12 @@ id: PARITY-VT-ef30d66a
 group: vintrace-web
 incumbent: vintrace
 capability: Setting Up New Barrels
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/barrel-management/setting-up-new-barrels.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/barrel-management/setting-up-new-barrels.md`

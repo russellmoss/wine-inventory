@@ -3,10 +3,12 @@ id: PARITY-IV-9d3a8660
 group: product-updates
 incumbent: innovint
 capability: 04/23/18 - Lot Labels for Vessels, Browser Tab Headers, and more
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/04-23-18-lot-labels-for-vessels-browser-tab-headers-and-more.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/04-23-18-lot-labels-for-vessels-browser-tab-headers-and-more.md`

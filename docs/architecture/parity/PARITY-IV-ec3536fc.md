@@ -3,10 +3,12 @@ id: PARITY-IV-ec3536fc
 group: make
 incumbent: innovint
 capability: How to backdate an action
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/recording-actions/how-to-backdate-an-action.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/recording-actions/how-to-backdate-an-action.md`

@@ -3,10 +3,12 @@ id: PARITY-VT-918c7b08
 group: vintrace-web
 incumbent: vintrace
 capability: Printing QR Codes for Storage Areas and Bays
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: vintrace-docs/vintrace-web/bottling-and-inventory/printing-qr-codes-for-storage-areas-and-bays.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (vintrace) — gap — not yet built.
 
 - **Incumbent:** vintrace
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `vintrace-docs/vintrace-web/bottling-and-inventory/printing-qr-codes-for-storage-areas-and-bays.md`

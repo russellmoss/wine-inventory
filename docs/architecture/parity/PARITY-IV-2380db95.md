@@ -3,10 +3,12 @@ id: PARITY-IV-2380db95
 group: new-to-innovint
 incumbent: innovint
 capability: How to Access the Support Center and Submit a Help Ticket
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/new-to-innovint/general/how-to-access-the-support-center-and-submit-a-help-ticket.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/new-to-innovint/general/how-to-access-the-support-center-and-submit-a-help-ticket.md`

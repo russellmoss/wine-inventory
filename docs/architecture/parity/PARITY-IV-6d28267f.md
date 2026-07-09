@@ -3,10 +3,12 @@ id: PARITY-IV-6d28267f
 group: make
 incumbent: innovint
 capability: Notifications in InnoVint
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/work-orders/notifications-in-innovint.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/work-orders/notifications-in-innovint.md`

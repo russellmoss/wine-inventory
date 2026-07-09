@@ -3,10 +3,12 @@ id: PARITY-IV-a5245129
 group: innovint-academy
 incumbent: innovint
 capability: How to Add or Remove Users
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/innovint-academy/quick-video-tutorials/how-to-add-or-remove-users.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/innovint-academy/quick-video-tutorials/how-to-add-or-remove-users.md`

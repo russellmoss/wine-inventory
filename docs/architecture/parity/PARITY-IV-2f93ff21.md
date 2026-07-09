@@ -3,10 +3,12 @@ id: PARITY-IV-2f93ff21
 group: harvest
 incumbent: innovint
 capability: Fruit Lot Explorer
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/harvest/harvest-workflow-fermentation-tracking/fruit-lot-explorer.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/harvest/harvest-workflow-fermentation-tracking/fruit-lot-explorer.md`

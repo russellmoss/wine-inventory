@@ -3,10 +3,12 @@ id: PARITY-IV-e306c00a
 group: product-updates
 incumbent: innovint
 capability: "1/14/2022 Release Notes: New Vessel Types, Three New Imports, Member Management Settings"
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/1-14-2022-release-notes-new-vessel-types-three-new-imports-member-management-settings.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/1-14-2022-release-notes-new-vessel-types-three-new-imports-member-management-settings.md`

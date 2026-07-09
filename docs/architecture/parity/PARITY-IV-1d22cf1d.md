@@ -3,10 +3,12 @@ id: PARITY-IV-1d22cf1d
 group: product-updates
 incumbent: innovint
 capability: 04/17/20 Release Notes - Vineyard and Additive Pagination
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/product-updates/product-updates-2017-2022/04-17-20-release-notes-vineyard-and-additive-pagination.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/product-updates/product-updates-2017-2022/04-17-20-release-notes-vineyard-and-additive-pagination.md`

@@ -3,10 +3,12 @@ id: PARITY-IV-f1286c73
 group: make
 incumbent: innovint
 capability: Winery Activity Feed
+overlap: unknown
 status: gap
 ourApproach: ""
 aiNativeEdge: ""
 evidence: innovint-docs/make/reporting/winery-activity-feed.md
+counterpart: ""
 tags:
   - parity
 ---
@@ -16,6 +18,7 @@ tags:
 > [!info] Parity (innovint) — gap — not yet built.
 
 - **Incumbent:** innovint
+- **Cross-incumbent overlap:** unknown
 - **Our approach:** —
 - **AI-native edge:** —
 - **Evidence:** `innovint-docs/make/reporting/winery-activity-feed.md`
