@@ -36,7 +36,7 @@ export const COST_SETTINGS_DEFAULTS: CostSettings = {
 
 /**
  * Does this cost component fold into the lot's CAPITALIZED cost under the tenant's policy? (D5)
- * MATERIAL, DOSAGE_LIQUEUR, and VARIANCE always capitalize (VARIANCE here is a reconciliation of
+ * MATERIAL, DOSAGE_LIQUEUR, OPENING_BALANCE, and VARIANCE always capitalize (VARIANCE here is a reconciliation of
  * already-capitalized cost — the abnormal-loss WRITE-OFF is modeled as an expense line the roll-up
  * excludes at attach time, not gated here). The rest are toggle-gated: a component that is toggled
  * OFF is still RECORDED as a CostLine, it just does not roll into cost-per-bottle (D9/Unit 9).
@@ -45,6 +45,7 @@ export function isComponentCapitalized(component: CostComponent, s: CostSettings
   switch (component) {
     case "MATERIAL":
     case "DOSAGE_LIQUEUR":
+    case "OPENING_BALANCE":
     case "VARIANCE":
       return true;
     case "FRUIT":

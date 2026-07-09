@@ -50,6 +50,7 @@
     "verify:accounting": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting.ts",
     "verify:commerce7-idempotency": "tsx --conditions=react-server --env-file=.env scripts/verify-commerce7-idempotency.ts",
     "verify:commerce7": "tsx --conditions=react-server --env-file=.env scripts/verify-commerce7.ts",
+    "verify:migration": "tsx --conditions=react-server --env-file=.env scripts/verify-migration.ts",
     "seed:demo-commerce7": "tsx --conditions=react-server --env-file=.env scripts/seed-demo-commerce7.ts",
     "qa:e2e": "playwright test",
     "qa:e2e:report": "playwright show-report",

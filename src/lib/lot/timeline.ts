@@ -477,6 +477,22 @@ export type SampleItem = TimelineMeta & {
   lab: string | null;
 };
 
+export type LegacyOperationItem = TimelineMeta & {
+  kind: "LEGACY_OPERATION";
+  id: string;
+  summary: string;
+  sourceSystem: string;
+  sourceActionType: string;
+  evidenceRef: string | null;
+};
+
+export type MigrationCutoverItem = TimelineMeta & {
+  kind: "MIGRATION_CUTOVER";
+  id: string;
+  summary: string;
+  importBatchId: string;
+};
+
 /**
  * A vessel-maintenance event (VesselActivityEvent) as a timeline item (plan 045). Not a ledger op
  * and not lot-scoped — it belongs to the vessel. `describeVesselActivity` labels every current
@@ -508,7 +524,7 @@ export type WorkOrderItem = TimelineMeta & {
 };
 
 export type OpItem = TimelineEvent & { kind: "OP" };
-export type RecordItem = MeasurementItem | TastingItem | SampleItem;
+export type RecordItem = MeasurementItem | TastingItem | SampleItem | LegacyOperationItem | MigrationCutoverItem;
 export type TimelineItem = OpItem | RecordItem | VesselActivityItem | WorkOrderItem;
 
 export type RawPanel = {
@@ -551,6 +567,30 @@ export type RawSample = {
   status: string;
   source: string | null;
   lab: string | null;
+};
+
+export type RawLegacyOperation = {
+  id: string;
+  importBatchId: string;
+  sourceSystem: string;
+  sourceActionType: string;
+  occurredAt: Date | string | null;
+  actorName: string | null;
+  note: string | null;
+  evidenceRef: string | null;
+  canonicalVolumeL: number | null;
+  sourceVesselKey: string | null;
+  vesselCode: string | null;
+  createdAt: Date | string;
+};
+
+export type RawMigrationCutover = {
+  importBatchId: string;
+  cutoverAt: Date | string;
+  sourceName: string | null;
+  sourceSystem: string;
+  actorEmail: string | null;
+  createdAt: Date | string;
 };
 
 function baseMeta(observed: Date | string, created: Date | string, enteredBy: string, captureMethod: string, note: string | null): TimelineMeta {
@@ -627,6 +667,30 @@ export function describeSample(sample: RawSample): SampleItem {
     source: sample.source,
     lab: sample.lab,
     ...baseMeta(sample.pulledAt, sample.createdAt, sample.enteredByEmail, sample.captureMethod, sample.note),
+  };
+}
+
+export function describeLegacyOperation(op: RawLegacyOperation): LegacyOperationItem {
+  const volume = op.canonicalVolumeL == null ? "" : ` ${formatL(op.canonicalVolumeL)} L`;
+  const where = op.vesselCode ?? op.sourceVesselKey;
+  return {
+    kind: "LEGACY_OPERATION",
+    id: op.id,
+    summary: `Imported history: ${op.sourceActionType}${volume}${where ? ` (${where})` : ""}`,
+    sourceSystem: op.sourceSystem,
+    sourceActionType: op.sourceActionType,
+    evidenceRef: op.evidenceRef,
+    ...baseMeta(op.occurredAt ?? op.createdAt, op.createdAt, op.actorName ?? "Imported history", "IMPORT", op.note),
+  };
+}
+
+export function describeMigrationCutover(raw: RawMigrationCutover): MigrationCutoverItem {
+  return {
+    kind: "MIGRATION_CUTOVER",
+    id: `migration-cutover:${raw.importBatchId}`,
+    importBatchId: raw.importBatchId,
+    summary: "Cellarhand starts here",
+    ...baseMeta(raw.cutoverAt, raw.createdAt, raw.actorEmail ?? raw.sourceName ?? raw.sourceSystem, "IMPORT", "Opening balance imported from source."),
   };
 }
 
