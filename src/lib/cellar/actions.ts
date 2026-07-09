@@ -20,6 +20,8 @@ import { topVesselCore, type ToppingInput, type ToppingResult } from "@/lib/cell
 import { upsertMaterialCore, createStockMaterialCore, updateMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput, type CreateStockMaterialInput, type UpdateMaterialInput } from "@/lib/cellar/materials";
 import {
   applyToGroup,
+  previewGroupApply,
+  type GroupApplyPreview,
   type GroupApplyResult,
   type GroupOpSpec,
   type GroupTarget,
@@ -28,6 +30,7 @@ import {
   addMemberCore,
   createGroupCore,
   deactivateGroupCore,
+  mergeGroupMembershipCore,
   removeMemberCore,
   renameGroupCore,
   type VesselGroupDTO,
@@ -182,6 +185,18 @@ export const removeGroupMemberAction = action(async ({ actor }, groupId: string,
   await removeMemberCore(actor, groupId, vesselId);
   revalidatePath("/bulk");
 });
+
+export const mergeGroupMembershipAction = action(
+  async ({ actor }, input: { sourceGroupId: string; targetGroupId: string; deactivateSource?: boolean }): Promise<VesselGroupDTO> => {
+    const dto = await mergeGroupMembershipCore(actor, input);
+    revalidatePath("/bulk");
+    return dto;
+  },
+);
+
+export const previewGroupApplyAction = action(
+  async (_ctx, target: GroupTarget, spec: GroupOpSpec): Promise<GroupApplyPreview> => previewGroupApply(target, spec),
+);
 
 /** Fan one cellar operation out across a group (or ad-hoc multi-select). */
 export const applyToGroupAction = action(

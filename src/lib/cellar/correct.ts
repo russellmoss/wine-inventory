@@ -166,6 +166,8 @@ export async function correctOperationCore(
 
 export type BatchCorrectOutcome = {
   operationId: number;
+  operationType?: string;
+  vesselLabel?: string | null;
   status: "corrected" | "blocked" | "error";
   message: string;
 };
@@ -188,7 +190,7 @@ export async function correctBatchCore(actor: LedgerActor, input: { batchId: str
   const ops = await prisma.lotOperation.findMany({
     where: { batchId: input.batchId, type: { not: "CORRECTION" } },
     orderBy: { id: "desc" }, // newest first — fewer false downstream blocks
-    select: { id: true },
+    select: { id: true, type: true, lines: { select: { vesselCode: true }, where: { vesselCode: { not: null } }, take: 1 } },
   });
   if (ops.length === 0) throw new ActionError("No operations found for that batch.");
 
@@ -196,12 +198,12 @@ export async function correctBatchCore(actor: LedgerActor, input: { batchId: str
   for (const o of ops) {
     try {
       const res = await correctOperationCore(actor, { operationId: o.id });
-      outcomes.push({ operationId: o.id, status: "corrected", message: res.message });
+      outcomes.push({ operationId: o.id, operationType: o.type, vesselLabel: o.lines[0]?.vesselCode ?? null, status: "corrected", message: res.message });
     } catch (e) {
       if (e instanceof ActionError) {
-        outcomes.push({ operationId: o.id, status: "blocked", message: e.message });
+        outcomes.push({ operationId: o.id, operationType: o.type, vesselLabel: o.lines[0]?.vesselCode ?? null, status: "blocked", message: e.message });
       } else {
-        outcomes.push({ operationId: o.id, status: "error", message: e instanceof Error ? e.message : "Unexpected error" });
+        outcomes.push({ operationId: o.id, operationType: o.type, vesselLabel: o.lines[0]?.vesselCode ?? null, status: "error", message: e instanceof Error ? e.message : "Unexpected error" });
       }
     }
   }

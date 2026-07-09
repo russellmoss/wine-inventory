@@ -26,6 +26,7 @@
     "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",
     "verify:phase6-reversal": "tsx --conditions=react-server --env-file=.env scripts/verify-phase6-reversal.ts",
     "verify:split-in-place": "tsx --conditions=react-server --env-file=.env scripts/verify-split-in-place.ts",
+    "verify:barrel-groups": "tsx --conditions=react-server --env-file=.env scripts/verify-barrel-groups.ts",
     "verify:ttb": "tsx --conditions=react-server --env-file=.env scripts/verify-ttb.ts",
     "verify:bond": "tsx --conditions=react-server --env-file=.env scripts/verify-bond.ts",
     "verify:taxclass": "tsx --conditions=react-server --env-file=.env scripts/verify-taxclass.ts",

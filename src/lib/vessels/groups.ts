@@ -123,16 +123,81 @@ export async function addMemberCore(actor: LedgerActor, groupId: string, vesselI
     prisma.vessel.findUnique({ where: { id: vesselId } }),
   ]);
   if (!group) throw new ActionError("Group not found.");
+  if (!group.isActive) throw new ActionError("That group is inactive.");
   if (!vessel) throw new ActionError("Vessel not found.");
-  await prisma.vesselGroupMember.upsert({
-    where: { tenantId_groupId_vesselId: { tenantId: requireTenantId(), groupId, vesselId } },
-    create: { groupId, vesselId },
-    update: {},
+  await runInTenantTx(async (tx) => {
+    await tx.vesselGroupMember.upsert({
+      where: { tenantId_groupId_vesselId: { tenantId: requireTenantId(), groupId, vesselId } },
+      create: { groupId, vesselId },
+      update: {},
+    });
+    await writeAudit(tx, {
+      ...actor,
+      action: "UPDATE",
+      entityType: "VesselGroup",
+      entityId: groupId,
+      summary: `Added ${label(vessel)} to vessel group "${group.name}"`,
+    });
   });
 }
 
 export async function removeMemberCore(actor: LedgerActor, groupId: string, vesselId: string): Promise<void> {
-  await prisma.vesselGroupMember.deleteMany({ where: { groupId, vesselId } });
+  const [group, vessel] = await Promise.all([
+    prisma.vesselGroup.findUnique({ where: { id: groupId } }),
+    prisma.vessel.findUnique({ where: { id: vesselId } }),
+  ]);
+  if (!group) throw new ActionError("Group not found.");
+  if (!vessel) throw new ActionError("Vessel not found.");
+  await runInTenantTx(async (tx) => {
+    const removed = await tx.vesselGroupMember.deleteMany({ where: { groupId, vesselId } });
+    if (removed.count > 0) {
+      await writeAudit(tx, {
+        ...actor,
+        action: "UPDATE",
+        entityType: "VesselGroup",
+        entityId: groupId,
+        summary: `Removed ${label(vessel)} from vessel group "${group.name}"`,
+      });
+    }
+  });
+}
+
+export async function mergeGroupMembershipCore(
+  actor: LedgerActor,
+  input: { sourceGroupId: string; targetGroupId: string; deactivateSource?: boolean },
+): Promise<VesselGroupDTO> {
+  if (input.sourceGroupId === input.targetGroupId) throw new ActionError("Pick two different groups to merge.");
+  const [source, target, sourceMembers] = await Promise.all([
+    prisma.vesselGroup.findUnique({ where: { id: input.sourceGroupId } }),
+    prisma.vesselGroup.findUnique({ where: { id: input.targetGroupId } }),
+    prisma.vesselGroupMember.findMany({ where: { groupId: input.sourceGroupId }, select: { vesselId: true } }),
+  ]);
+  if (!source) throw new ActionError("Source group not found.");
+  if (!target) throw new ActionError("Target group not found.");
+  if (!source.isActive || !target.isActive) throw new ActionError("Only active groups can be merged.");
+
+  await runInTenantTx(async (tx) => {
+    if (sourceMembers.length > 0) {
+      await tx.vesselGroupMember.createMany({
+        data: sourceMembers.map((m) => ({ groupId: input.targetGroupId, vesselId: m.vesselId })),
+        skipDuplicates: true,
+      });
+    }
+    if (input.deactivateSource ?? true) {
+      await tx.vesselGroup.update({ where: { id: input.sourceGroupId }, data: { isActive: false } });
+    }
+    await writeAudit(tx, {
+      ...actor,
+      action: "UPDATE",
+      entityType: "VesselGroup",
+      entityId: input.targetGroupId,
+      summary: `Merged membership from "${source.name}" into "${target.name}" (${sourceMembers.length} member${sourceMembers.length === 1 ? "" : "s"})`,
+    });
+  });
+
+  const dto = await getGroup(input.targetGroupId);
+  if (!dto) throw new ActionError("Group vanished after merge.");
+  return dto;
 }
 
 /** One group with members (or null). */

@@ -2,7 +2,7 @@
 
 Date: 2026-07-09
 Branch: `codex/phase-6-operations-gaps`
-Status: 6A, 6B, and 6C landed; 6D-6E remain unimplemented
+Status: 6A, 6B, 6C, and 6D landed; 6E remains unimplemented
 
 ## Completed in This Slice
 
@@ -52,11 +52,25 @@ Status: 6A, 6B, and 6C landed; 6D-6E remain unimplemented
 - Added `verify:split-in-place`, a Demo Winery-only verifier covering split volume conservation,
   retained-vs-discarded lees, inherited fields, `SPLIT` lineage, proportional cost transfer, and
   transform reversal cleanup.
+- Added the 6D saved barrel-group workflow hardening:
+  - reused existing `VesselGroup` / `VesselGroupMember`; no parallel barrel-group model was added;
+  - saved group "combine" is membership merge only and writes audit, not ledger operations;
+  - member add/remove now writes audit inside tenant transactions;
+  - group fan-out has a read-only preview with per-member ready/skipped/blocked states, capacity risk,
+    empty-member skips, source-vessel skips, and source shortfall checks;
+  - group apply consumes the same preview and returns a distinct `blocked` count instead of flattening
+    all non-applied members into skipped;
+  - batch correction outcomes now carry member operation type and vessel label for clearer partial unwind
+    reporting;
+  - the bulk group UI distinguishes saved groups from one-time selections and states that saved groups
+    organize members only while physical wine movement uses cellar verbs.
+- Added `verify:barrel-groups`, a Demo Winery-only verifier covering saved group membership merge, group
+  apply preview, blocked capacity member, per-barrel fan-out, batch correction, and barrel-fill open/close
+  cost projection.
 
 ## Explicitly Not Completed
 
 - No reverse-and-rebook adapters for posting/fold edits yet.
-- No vessel/barrel group workflow work yet.
 - No long-tail operation enum or `CUSTOM` label work yet.
 - No InnoVint or Vintrace adapter work.
 
@@ -64,6 +78,9 @@ Status: 6A, 6B, and 6C landed; 6D-6E remain unimplemented
 
 - `npm run verify:phase6-reversal` - passed, including LIFO chain execution and neutral edit/delete retirement
 - `npm run verify:split-in-place` - passed, including retained/discarded lees, cost transfers, and reversal
+- `npm run verify:barrel-groups` - passed, including saved group merge, preview, blocked member, fan-out, batch correction, and barrel-fill fold assertions
+- `npm run verify:cost` - passed
+- `npm run verify:lifecycle` - passed
 - `npx vitest run test/cellar-edit-policy.test.ts test/vessel-timeline-view.test.ts test/lot-timeline.test.ts test/reverse-verdict.test.ts` - passed
 - `npx vitest run test/reverse-verdict.test.ts` - passed
 - `npx tsc --noEmit` - passed
@@ -71,10 +88,7 @@ Status: 6A, 6B, and 6C landed; 6D-6E remain unimplemented
 - `npm run test` - passed
 - `npm run lint` - passed with existing warnings only
 - `npm run build` - passed
-- 2026-07-09 6C note: `npm test` currently fails in unrelated work-order status-machine coverage
-  (`test/work-order-status.test.ts` expects `APPROVED -> REJECTED` to throw, while the working tree has
-  unrelated work-order changes allowing that transition). The 6C-specific verifier and Phase 6 reversal
-  verifier pass.
+- `npm test` - passed
 
 ## Notes
 
@@ -85,3 +99,5 @@ Status: 6A, 6B, and 6C landed; 6D-6E remain unimplemented
 - 6C uses the existing `PRESS` operation type with explicit split metadata to avoid an enum migration and
   preserve the existing transform reversal path. A future UX pass can expose destination-vessel splitting
   beyond the current same-vessel lot-page modal.
+- 6D deliberately treats saved group merge/deactivate/add/remove as membership metadata. Physical
+  combine/split/rack work must continue through typed cellar operations.

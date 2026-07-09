@@ -5,17 +5,18 @@ import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import type { VesselGroupDTO } from "@/lib/vessels/groups";
-import type { GroupApplyResult, GroupOpSpec } from "@/lib/cellar/group-apply";
+import type { GroupApplyPreview, GroupApplyResult, GroupOpSpec } from "@/lib/cellar/group-apply";
 import {
   applyToGroupAction,
   correctBatchAction,
   createGroupAction,
   deactivateGroupAction,
+  previewGroupApplyAction,
 } from "@/lib/cellar/actions";
 
 // Group actions on /bulk (Phase 3, Unit 9, D13). Target a saved group OR an ad-hoc
 // multi-select, pick an op, and fan it out — one op per member sharing a batchId. The
-// result summary reports "applied / skipped" with a semantic <ul> of per-member
+// result summary reports per-member applied/skipped/blocked/error outcomes with a semantic <ul> of
 // exceptions; nothing aborts the batch. A small group manager (create from the current
 // selection / deactivate) sits alongside. Undo reverts the whole batch.
 
@@ -68,6 +69,7 @@ export function GroupActions({
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<GroupApplyResult | null>(null);
+  const [preview, setPreview] = React.useState<GroupApplyPreview | null>(null);
 
   // Target: a saved group, or an ad-hoc set of vessel ids.
   const [groupId, setGroupId] = React.useState<string>("");
@@ -139,8 +141,31 @@ export function GroupActions({
         const target = groupId ? { groupId } : { vesselIds: targetVesselIds };
         const res = await applyToGroupAction(target, spec);
         setResult(res);
+        setPreview(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong.");
+      }
+    });
+  }
+
+  function previewRun() {
+    const spec = buildSpec();
+    if (!spec) {
+      setError("Fill in the operation details first.");
+      return;
+    }
+    if (targetCount === 0) {
+      setError("Pick a saved group or select at least one vessel.");
+      return;
+    }
+    setError(null);
+    setResult(null);
+    startTransition(async () => {
+      try {
+        const target = groupId ? { groupId } : { vesselIds: targetVesselIds };
+        setPreview(await previewGroupApplyAction(target, spec));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't preview the group operation.");
       }
     });
   }
@@ -225,8 +250,8 @@ export function GroupActions({
           {/* Target */}
           <Eyebrow tone="ink">Target</Eyebrow>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "8px 0 12px" }}>
-            <select value={groupId} onChange={(e) => setGroupId(e.target.value)} style={{ ...fieldStyle, flex: "1 1 220px" }} aria-label="Saved group">
-              <option value="">Ad-hoc selection…</option>
+            <select value={groupId} onChange={(e) => { setGroupId(e.target.value); setPreview(null); }} style={{ ...fieldStyle, flex: "1 1 220px" }} aria-label="Saved group">
+              <option value="">One-time vessel selection...</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name} ({g.members.length})
@@ -239,6 +264,9 @@ export function GroupActions({
               </Button>
             ) : null}
           </div>
+          <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "-4px 0 12px" }}>
+            Saved groups organize members only. Moving or combining wine still uses cellar operations below.
+          </p>
 
           {!groupId ? (
             <>
@@ -347,10 +375,15 @@ export function GroupActions({
               <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Litres" style={{ ...fieldStyle, width: 96 }} aria-label="Litres" />
             ) : null}
 
+            <Button variant="secondary" size="sm" disabled={pending || targetCount === 0} onClick={previewRun} style={{ minHeight: 44 }}>
+              {pending ? "Checking..." : "Preview"}
+            </Button>
             <Button variant="primary" size="sm" disabled={pending || targetCount === 0} onClick={apply} style={{ minHeight: 44 }}>
               {pending ? "Applying…" : `Apply to ${targetCount || "—"}`}
             </Button>
           </div>
+
+          {preview ? <GroupPreview preview={preview} /> : null}
 
           {/* Result summary */}
           {result ? <GroupResult result={result} pending={pending} onUndo={undoBatch} /> : null}
@@ -452,8 +485,43 @@ function VesselChip({ v, on, onToggle }: { v: GroupVessel; on: boolean; onToggle
   );
 }
 
+function statusTone(status: "ready" | "skipped" | "blocked" | "applied" | "error") {
+  if (status === "ready" || status === "applied") return "green" as const;
+  if (status === "blocked" || status === "error") return "red" as const;
+  return "neutral" as const;
+}
+
+function GroupPreview({ preview }: { preview: GroupApplyPreview }) {
+  return (
+    <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: "var(--radius-md)", background: "var(--surface-sunken, var(--paper-100))", border: "1px solid var(--border-strong)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <Badge tone="green" variant="soft">{preview.ready} ready</Badge>
+        {preview.skipped > 0 ? <Badge tone="neutral" variant="soft">{preview.skipped} skipped</Badge> : null}
+        {preview.blocked > 0 ? <Badge tone="red" variant="soft">{preview.blocked} blocked</Badge> : null}
+        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          {preview.targetType === "saved-group" ? `Saved group: ${preview.targetName}` : "One-time vessel selection"}
+        </span>
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {preview.members.map((m) => (
+          <div key={m.vesselId} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) 88px minmax(160px, 2fr)", gap: 8, alignItems: "center", fontSize: 13 }}>
+            <span style={{ color: "var(--text-primary)" }}>{m.label}</span>
+            <Badge tone={statusTone(m.status)} variant="soft">{m.status}</Badge>
+            <span style={{ color: "var(--text-secondary)" }}>{m.message}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function GroupResult({ result, pending, onUndo }: { result: GroupApplyResult; pending: boolean; onUndo: (batchId: string) => void }) {
   const exceptions = result.outcomes.filter((o) => o.status !== "applied");
+  const summaryParts = [
+    result.skipped > 0 ? `${result.skipped} skipped` : null,
+    result.blocked > 0 ? `${result.blocked} blocked` : null,
+    result.errored > 0 ? `${result.errored} errored` : null,
+  ].filter((part): part is string => Boolean(part));
   return (
     <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: "var(--radius-md)", background: "var(--surface-sunken, var(--paper-100))", border: "1px solid var(--border-strong)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -465,6 +533,11 @@ function GroupResult({ result, pending, onUndo }: { result: GroupApplyResult; pe
             {result.skipped} skipped
           </Badge>
         ) : null}
+        {result.blocked > 0 ? (
+          <Badge tone="red" variant="soft">
+            {result.blocked} blocked
+          </Badge>
+        ) : null}
         {result.errored > 0 ? (
           <Badge tone="red" variant="soft">
             {result.errored} errored
@@ -472,7 +545,7 @@ function GroupResult({ result, pending, onUndo }: { result: GroupApplyResult; pe
         ) : null}
         <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
           Applied to {result.applied} of {result.total}
-          {result.skipped + result.errored > 0 ? ` · ${result.skipped + result.errored} skipped` : ""}
+          {summaryParts.length > 0 ? ` (${summaryParts.join(", ")})` : ""}
         </span>
         {result.applied > 0 ? (
           <Button variant="ghost" size="sm" disabled={pending} onClick={() => onUndo(result.batchId)} style={{ minHeight: 36, marginLeft: "auto" }}>
