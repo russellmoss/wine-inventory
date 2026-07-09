@@ -1,0 +1,4 @@
+sourcePositionKey,sourceLotKey,sourceSystemId,code,displayName,form,productType,carbonation,declaredTaxClass,vintageYear,originVineyardName,originBlockName,originVarietyName,sourceVesselKey,vesselCode,volume,volumeUnit,bondKey,costAmount,costCurrency,costCompleteness,inventoryKind
+pos-001,lot-a,SRC-LOT-A,MIG-COLLIDE,Duplicate Field Blend,WINE,WINE,NONE,A_LE16,2025,Demo Vineyard,Block A,Cabernet Sauvignon,tank-a,T-MIG-A,500,L,bond-main,1200.50,USD,KNOWN,BULK_VESSEL
+pos-002,lot-b,SRC-LOT-B,MIG-B,Duplicate Field Blend,WINE,WINE,NONE,,2025,Demo Vineyard,Block B,Merlot,tank-b,T-MIG-B,132.5,gal,bond-main,,USD,UNKNOWN,BULK_VESSEL
+fg-001,lot-fg,SRC-FG,MIG-FG,Finished proof case,FINISHED,WINE,NONE,,2024,Demo Vineyard,Block C,Chardonnay,case-storage,Case Room,12,case,bond-main,240.00,USD,PARTIAL,FINISHED_GOODS

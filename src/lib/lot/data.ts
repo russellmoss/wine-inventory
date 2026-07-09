@@ -5,6 +5,8 @@ import {
   buildTimeline,
   currentState,
   describeMeasurementPanel,
+  describeLegacyOperation,
+  describeMigrationCutover,
   describeSample,
   describeTastingNote,
   mergeTimeline,
@@ -269,7 +271,7 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
   // (Phase 3), each with its operation header. UNIONing lot_operation_line.lotId with
   // lot_treatment.lotId is what makes volume-NEUTRAL ops (additions, fining, cap mgmt)
   // appear on the timeline at all — they have no lines.
-  const [lines, treatments, panels, tastingNotes, samples] = await Promise.all([
+  const [lines, treatments, panels, tastingNotes, samples, legacyRows] = await Promise.all([
     prisma.lotOperationLine.findMany({ where: { lotId: id }, include: { operation: true } }),
     prisma.lotTreatment.findMany({ where: { lotId: id }, include: { operation: true } }),
     // Phase 4 standalone records: non-voided panels (+ their readings), non-voided tasting
@@ -281,6 +283,7 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
     }),
     prisma.lotTastingNote.findMany({ where: { lotId: id, voidedAt: null } }),
     prisma.sample.findMany({ where: { lotId: id, status: { not: "CANCELLED" } } }),
+    prisma.legacyOperation.findMany({ where: { lotId: id, publishedAt: { not: null } }, orderBy: { occurredAt: "desc" } }),
   ]);
 
   // Resolve vessel types for labeling (deleted vessels keep only their code snapshot).
@@ -377,6 +380,14 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
 
   // Phase 4 standalone records → display items, then HYBRID-merged into the op backbone by
   // observedAt (ops keep their id order; records slot in). Decimal → number at this boundary.
+  const legacyBatchIds = [...new Set(legacyRows.map((r) => r.importBatchId))];
+  const legacyBatches = legacyBatchIds.length
+    ? await prisma.migrationImportBatch.findMany({
+        where: { id: { in: legacyBatchIds } },
+        select: { id: true, cutoverAt: true, sourceName: true, sourceSystem: true, publishedByEmail: true, createdAt: true },
+      })
+    : [];
+
   const recordItems: RecordItem[] = [
     ...panels.map((p) =>
       describeMeasurementPanel({
@@ -421,6 +432,32 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
         status: s.status,
         source: s.source,
         lab: s.lab,
+      }),
+    ),
+    ...legacyRows.map((r) =>
+      describeLegacyOperation({
+        id: r.id,
+        importBatchId: r.importBatchId,
+        sourceSystem: r.sourceSystem,
+        sourceActionType: r.sourceActionType,
+        occurredAt: r.occurredAt,
+        actorName: r.actorName,
+        note: r.note,
+        evidenceRef: r.evidenceRef,
+        canonicalVolumeL: r.canonicalVolumeL == null ? null : Number(r.canonicalVolumeL),
+        sourceVesselKey: r.sourceVesselKey,
+        vesselCode: r.vesselCode,
+        createdAt: r.createdAt,
+      }),
+    ),
+    ...legacyBatches.map((b) =>
+      describeMigrationCutover({
+        importBatchId: b.id,
+        cutoverAt: b.cutoverAt,
+        sourceName: b.sourceName,
+        sourceSystem: b.sourceSystem,
+        actorEmail: b.publishedByEmail,
+        createdAt: b.createdAt,
       }),
     ),
   ];

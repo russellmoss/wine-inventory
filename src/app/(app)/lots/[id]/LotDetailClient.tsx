@@ -10,10 +10,11 @@ import {
   type TimelineItem,
   type TimelineLeg,
   type OpItem,
-  type RecordItem,
   type MeasurementItem,
   type TastingItem,
   type SampleItem,
+  type LegacyOperationItem,
+  type MigrationCutoverItem,
 } from "@/lib/lot/timeline";
 import type { LotDetail } from "@/lib/lot/data";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
@@ -31,6 +32,7 @@ import type { LotCostView } from "@/lib/cost/data";
 type Tone = React.ComponentProps<typeof Badge>["tone"];
 
 const NEUTRAL_OPS = new Set(["ADDITION", "FINING", "CAP_MGMT"]);
+type EditableRecordItem = MeasurementItem | TastingItem | SampleItem;
 
 // Human "Undo <step>" verb per op type (falls back to the lowercased type). Reversal itself is
 // decided server-side (event.reversible / event.reversalReason from the dispatcher's verdict).
@@ -413,7 +415,7 @@ function EditRecordButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function MeasurementRow({ item, editMode, onEditRecord }: { item: MeasurementItem; editMode: boolean; onEditRecord: (i: RecordItem) => void }) {
+function MeasurementRow({ item, editMode, onEditRecord }: { item: MeasurementItem; editMode: boolean; onEditRecord: (i: EditableRecordItem) => void }) {
   return (
     <RecordRail
       badgeTone="gold"
@@ -439,7 +441,7 @@ function MeasurementRow({ item, editMode, onEditRecord }: { item: MeasurementIte
   );
 }
 
-function TastingRow({ item, editMode, onEditRecord }: { item: TastingItem; editMode: boolean; onEditRecord: (i: RecordItem) => void }) {
+function TastingRow({ item, editMode, onEditRecord }: { item: TastingItem; editMode: boolean; onEditRecord: (i: EditableRecordItem) => void }) {
   const struct: [string, number | null][] = [
     ["Tannin", item.structure.tannin],
     ["Acidity", item.structure.acidity],
@@ -486,7 +488,7 @@ function TastingRow({ item, editMode, onEditRecord }: { item: TastingItem; editM
   );
 }
 
-function SampleRow({ item, editMode, onEditRecord }: { item: SampleItem; editMode: boolean; onEditRecord: (i: RecordItem) => void }) {
+function SampleRow({ item, editMode, onEditRecord }: { item: SampleItem; editMode: boolean; onEditRecord: (i: EditableRecordItem) => void }) {
   return (
     <RecordRail
       badgeTone={SAMPLE_TONE[item.status] ?? "neutral"}
@@ -507,6 +509,40 @@ function SampleRow({ item, editMode, onEditRecord }: { item: SampleItem; editMod
   );
 }
 
+function LegacyOperationRow({ item }: { item: LegacyOperationItem }) {
+  return (
+    <RecordRail
+      badgeTone="neutral"
+      badgeLabel="IMPORTED HISTORY"
+      summary={item.summary}
+      observedAt={item.observedAt}
+      dateLabel={item.dateLabel}
+      enteredBy={item.enteredBy}
+      captureMethod={item.captureMethod}
+      note={item.note}
+    >
+      <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+        Pre-Cellarhand archive{item.evidenceRef ? ` · ${item.evidenceRef}` : ""}
+      </div>
+    </RecordRail>
+  );
+}
+
+function MigrationCutoverRow({ item }: { item: MigrationCutoverItem }) {
+  return (
+    <RecordRail
+      badgeTone="blue"
+      badgeLabel="CUTOVER"
+      summary={item.summary}
+      observedAt={item.observedAt}
+      dateLabel={item.dateLabel}
+      enteredBy={item.enteredBy}
+      captureMethod={item.captureMethod}
+      note={item.note}
+    />
+  );
+}
+
 function TimelineRow({
   item,
   editMode,
@@ -517,7 +553,7 @@ function TimelineRow({
   item: TimelineItem;
   editMode: boolean;
   onEdit: (e: OpItem) => void;
-  onEditRecord: (i: RecordItem) => void;
+  onEditRecord: (i: EditableRecordItem) => void;
   lotId: string;
 }) {
   switch (item.kind) {
@@ -529,12 +565,16 @@ function TimelineRow({
       return <TastingRow item={item} editMode={editMode} onEditRecord={onEditRecord} />;
     case "SAMPLE":
       return <SampleRow item={item} editMode={editMode} onEditRecord={onEditRecord} />;
+    case "LEGACY_OPERATION":
+      return <LegacyOperationRow item={item} />;
+    case "MIGRATION_CUTOVER":
+      return <MigrationCutoverRow item={item} />;
   }
 }
 
 // Edit-mode void/cancel for a standalone record (eng-review item 3). Panels + tasting notes
 // soft-delete; samples cancel. Confirms, then refreshes from the server.
-function RecordEditModal({ item, onClose }: { item: RecordItem | null; onClose: () => void }) {
+function RecordEditModal({ item, onClose }: { item: EditableRecordItem | null; onClose: () => void }) {
   if (!item) return null;
   return (
     <Modal open onClose={onClose} title="Edit record" subtitle={item.summary}>
@@ -543,7 +583,7 @@ function RecordEditModal({ item, onClose }: { item: RecordItem | null; onClose: 
   );
 }
 
-function RecordEditPanel({ item, onClose }: { item: RecordItem; onClose: () => void }) {
+function RecordEditPanel({ item, onClose }: { item: EditableRecordItem; onClose: () => void }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
@@ -641,10 +681,12 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
 
   const [editMode, setEditMode] = React.useState(false);
   const [selected, setSelected] = React.useState<OpItem | null>(null);
-  const [selectedRecord, setSelectedRecord] = React.useState<RecordItem | null>(null);
+  const [selectedRecord, setSelectedRecord] = React.useState<EditableRecordItem | null>(null);
   // Editable in edit mode: neutral ops (edit/delete), plus every standalone record (void/cancel).
   // Reversal of any op is the always-visible Undo control, not gated behind edit mode.
-  const anyActionable = lot.events.some((e) => (e.kind === "OP" ? isEditable(e) : true));
+  const anyActionable = lot.events.some((e) =>
+    e.kind === "OP" ? isEditable(e) : e.kind === "MEASUREMENT" || e.kind === "TASTING" || e.kind === "SAMPLE",
+  );
 
   return (
     <div>

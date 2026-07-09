@@ -38,6 +38,17 @@ export type ChangeTaxClassResult = {
   message: string;
 };
 
+export type RecordTaxClassEventTxInput = {
+  lotId: string;
+  lotCode?: string | null;
+  fromClass: WineTaxClass | null;
+  toClass: WineTaxClass;
+  volumeAtEvent: number;
+  observedAt: Date;
+  reason?: string | null;
+  commandId?: string | null;
+};
+
 function isCommandConflict(e: unknown): boolean {
   return (
     typeof e === "object" &&
@@ -72,6 +83,55 @@ async function onHandAsOf(lotId: string, asOf: Date): Promise<number> {
     select: { deltaL: true },
   });
   return round2(lines.reduce((a, l) => a + Number(l.deltaL), 0));
+}
+
+export async function recordTaxClassEventTx(
+  tx: Prisma.TransactionClient,
+  actor: LedgerActor,
+  input: RecordTaxClassEventTxInput,
+): Promise<ChangeTaxClassResult> {
+  if (input.fromClass === input.toClass) {
+    return {
+      eventId: null,
+      lotId: input.lotId,
+      fromClass: input.fromClass,
+      toClass: input.toClass,
+      volumeAtEvent: 0,
+      noop: true,
+      duplicate: false,
+      message: `${input.lotCode ?? input.lotId} is already class ${input.toClass} - no change recorded.`,
+    };
+  }
+  const created = await tx.changeOfTaxClassEvent.create({
+    data: {
+      lotId: input.lotId,
+      fromClass: input.fromClass,
+      toClass: input.toClass,
+      volumeAtEvent: input.volumeAtEvent,
+      observedAt: input.observedAt,
+      actor: actor.actorEmail,
+      reason: input.reason?.trim() || null,
+      commandId: input.commandId ?? null,
+    },
+    select: { id: true },
+  });
+  await writeAudit(tx, {
+    ...actor,
+    action: "UPDATE",
+    entityType: "ChangeOfTaxClassEvent",
+    entityId: created.id,
+    summary: `Tax class of ${input.lotCode ?? input.lotId}: ${input.fromClass ?? "-"} -> ${input.toClass} (${input.volumeAtEvent} L)`,
+  });
+  return {
+    eventId: created.id,
+    lotId: input.lotId,
+    fromClass: input.fromClass,
+    toClass: input.toClass,
+    volumeAtEvent: input.volumeAtEvent,
+    noop: false,
+    duplicate: false,
+    message: `Recorded ${input.lotCode ?? input.lotId} as tax class ${input.toClass} (was ${input.fromClass ?? "undeclared"}).`,
+  };
 }
 
 /**

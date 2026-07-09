@@ -79,6 +79,10 @@ export type WriteOpInput = {
   /** Phase 6: client idempotency key (crush/press/saignée). UNIQUE — a duplicate submit
    * aborts with P2002, which the caller treats as success (council S4). */
   commandId?: string | null;
+  /** Phase 3 migration: groups opening-balance seed ops for one import batch. */
+  batchId?: string | null;
+  /** Structured provenance/idempotency metadata persisted with the immutable op. */
+  metadata?: Prisma.InputJsonValue | null;
   /** lotId -> human code, for durable line snapshots. */
   lotCodes: Map<string, string>;
   /** vesselId -> human code, for durable line snapshots. */
@@ -209,6 +213,8 @@ export async function writeLotOperation(
       note: input.note ?? null,
       correctsOperationId: input.correctsOperationId ?? null,
       commandId: input.commandId ?? null,
+      batchId: input.batchId ?? null,
+      metadata: input.metadata ?? undefined,
     },
     select: { id: true },
   });

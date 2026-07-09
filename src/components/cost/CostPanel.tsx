@@ -20,6 +20,7 @@ const COMPONENT_LABELS: Record<CostComponent, string> = {
   DOSAGE_LIQUEUR: "Dosage liqueur",
   PACKAGING: "Packaging / dry goods",
   VARIANCE: "Variance",
+  OPENING_BALANCE: "Opening balance",
 };
 
 const num = { fontVariantNumeric: "tabular-nums" } as const;

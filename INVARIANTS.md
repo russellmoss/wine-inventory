@@ -180,7 +180,8 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
 ## Compliance & migration invariants
 > Added in Phase 0 from the incumbent teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B.1(iv);
 > `FIX_RUNBOOK.md`). BOND/TAXCLASS/TAXPAID/AMEND are **guarded** as of Phase 2 (`verify:bond` /
-> `verify:taxclass` / `verify:taxpaid` / `verify:ttb`); MIGRATE-1 stays **planned** (guard in Phase 3).
+> `verify:taxclass` / `verify:taxpaid` / `verify:ttb`); MIGRATE-1 is **guarded** as of Phase 3
+> (`verify:migration`).
 > Machine-readable notes: [[BOND-1-bond-isolation]], [[TAXCLASS-1-cross-class-blend]],
 > [[TAXPAID-1-terminal-state]], [[AMEND-1-amended-chain]], [[CBMA-1-controlled-group]],
 > [[MIGRATE-1-seed-not-replay]].
@@ -217,11 +218,10 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   `excise.ts:66-74` already parameterizes this as "v2". **Deferred — no code in these phases; activate when
   multi-entity tenants appear.**
 
-- **Migration is seed-not-replay (MIGRATE-1, planned).** **Exactly one migration `SEED` per lot/vessel
+- **Migration is seed-not-replay (MIGRATE-1, guarded - `verify:migration`).** **Exactly one migration `SEED` per lot/vessel
   participates in the volume/cost fold** (cutover balances). **Legacy operational history is ingested ONLY
   into the read-only archive and is NEVER folded** (excluded from `foldLines()` / `VesselLot` / the cost
   DAG). **An import cannot publish to the live tenant while any reconciliation delta remains unresolved** —
   where "unresolved" means neither reconciled to zero nor explicitly accepted by the operator as a **named
   exception** in the reconciliation pack (not a numeric tolerance). Operationalizes **D11** (no fabricated
-  ledger history). Will be verify-guarded — guard `verify:migration` lands in Phase 3; currently
-  `status: planned`.
+  ledger history). Guarded by `npm run verify:migration` in Phase 3.

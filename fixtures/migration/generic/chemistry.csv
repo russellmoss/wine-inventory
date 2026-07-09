@@ -1,0 +1,2 @@
+sourcePanelKey,sourceReadingKey,sourceLotKey,sourceVesselKey,observedAt,enteredByEmail,analyte,value,unit,note
+panel-001,reading-001,lot-a,tank-a,2026-01-10T12:00:00.000Z,lab@generic-proof.test,ALCOHOL,13.2,% v/v,Imported ABV proof reading

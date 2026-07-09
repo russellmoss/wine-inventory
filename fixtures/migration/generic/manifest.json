@@ -1,0 +1,13 @@
+{
+  "sourceSystem": "generic-proof",
+  "sourceName": "Generic proof import",
+  "formatVersion": "phase3-v1",
+  "datasets": {
+    "currentState": "current-state.csv",
+    "legacyOperations": "legacy-operations.csv",
+    "chemistry": "chemistry.csv"
+  },
+  "expectedFinishedGoodsCases": 12,
+  "expectedChemistryReadings": 1,
+  "expectedTtbGallons": 211.34
+}

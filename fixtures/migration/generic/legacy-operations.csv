@@ -1,0 +1,2 @@
+sourceActionId,sourceActionType,subjectType,occurredAt,sourceLotKey,sourceVesselKey,volume,volumeUnit,actorName,note,evidenceRef
+hist-001,RACK,LOT,2025-11-04T14:30:00.000Z,lot-a,tank-a,50,L,Legacy Cellar,Archived rack before Cellarhand cutover,legacy://hist-001

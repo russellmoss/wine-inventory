@@ -46,6 +46,9 @@ export function bucketOf(item: TimelineItem): Exclude<TimelineBucket, "all"> {
       return "maintenance";
     case "WORK_ORDER":
       return "workOrders";
+    case "LEGACY_OPERATION":
+    case "MIGRATION_CUTOVER":
+      return "movements";
   }
 }
 
@@ -73,6 +76,10 @@ export function chipLabel(item: TimelineItem): string {
       return "Maintenance";
     case "WORK_ORDER":
       return "Work order";
+    case "LEGACY_OPERATION":
+      return "Imported history";
+    case "MIGRATION_CUTOVER":
+      return "Cutover";
   }
 }
 

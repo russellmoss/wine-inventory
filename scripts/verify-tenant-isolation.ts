@@ -137,6 +137,38 @@ async function main() {
   await owner.bond.upsert({ where: { id: "iso_bond_a" }, update: {}, create: { id: "iso_bond_a", tenantId: A, registryNumber: "ISO-BOND-A", isPrimary: true, updatedAt: now } });
   await owner.bond.upsert({ where: { id: "iso_bond_b" }, update: {}, create: { id: "iso_bond_b", tenantId: B, registryNumber: "ISO-BOND-B", isPrimary: true, updatedAt: now } });
   await owner.changeOfTaxClassEvent.upsert({ where: { id: "iso_ctc_b" }, update: {}, create: { id: "iso_ctc_b", tenantId: B, lotId: "iso_lot_b", toClass: "A_LE16", observedAt: now, commandId: "iso-ctc-cmd-b" } });
+  // Phase 3 migration kernel: a staged batch + children in tenant B. Isolation risk is a cross-tenant
+  // read of draft migration evidence, and cross-tenant staged-position -> vessel/bond/lot edges.
+  await owner.migrationImportBatch.upsert({
+    where: { id: "iso_mig_batch_b" },
+    update: {},
+    create: { id: "iso_mig_batch_b", tenantId: B, sourceSystem: "iso-migration", status: "DRAFT", cutoverAt: now, sourceManifest: {}, updatedAt: now },
+  });
+  await owner.migrationSeedLot.upsert({
+    where: { id: "iso_mig_lot_b" },
+    update: {},
+    create: { id: "iso_mig_lot_b", tenantId: B, importBatchId: "iso_mig_batch_b", sourceLotKey: "iso-source-lot-b", code: "ISO-MIG-B", form: "WINE", updatedAt: now },
+  });
+  await owner.migrationSeedPosition.upsert({
+    where: { id: "iso_mig_pos_b" },
+    update: {},
+    create: { id: "iso_mig_pos_b", tenantId: B, importBatchId: "iso_mig_batch_b", seedLotId: "iso_mig_lot_b", sourcePositionKey: "iso-pos-b", sourceVesselKey: "iso-vessel-b", vesselId: "iso_vessel_b", vesselCode: "ISO-TANK-B", volumeL: "1.00", bondId: "iso_bond_b", updatedAt: now },
+  });
+  await owner.migrationReconciliationItem.upsert({
+    where: { id: "iso_mig_rec_b" },
+    update: {},
+    create: { id: "iso_mig_rec_b", tenantId: B, importBatchId: "iso_mig_batch_b", kind: "FINISHED_GOODS", subjectType: "BATCH", subjectKey: "fg", label: "FG", severity: "WARNING", status: "OPEN", message: "coverage gap", updatedAt: now },
+  });
+  await owner.migrationFieldMapping.upsert({
+    where: { id: "iso_mig_field_b" },
+    update: {},
+    create: { id: "iso_mig_field_b", tenantId: B, sourceSystem: "iso-migration", sourceDataset: "current-state", sourceObjectType: "position", sourceField: "volume", targetField: "volume", updatedAt: now },
+  });
+  await owner.migrationEntityMapping.upsert({
+    where: { id: "iso_mig_entity_b" },
+    update: {},
+    create: { id: "iso_mig_entity_b", tenantId: B, sourceSystem: "iso-migration", sourceDataset: "current-state", sourceObjectType: "vessel", sourceKey: "iso-vessel-b", targetType: "vessel", targetId: "iso_vessel_b", updatedAt: now },
+  });
 
   try {
     // 1. Fail-closed: no tenant context -> 0 rows.
@@ -337,6 +369,30 @@ async function main() {
     const bondA = await asTenant(A, (db) => db.bond.findFirst({ where: { id: "iso_bond_a" }, select: { tenantId: true, isPrimary: true } }));
     check("bond fixture lands on the right tenant + is primary (backfill shape)", bondA?.tenantId === A && bondA?.isPrimary === true);
 
+    // Phase 3 migration kernel: staged/import evidence tables are tenant-isolated, and composite FKs
+    // reject cross-tenant staged references.
+    check("tenant A CANNOT see tenant B's migration_import_batch (RLS)", (await asTenant(A, (db) => db.migrationImportBatch.findFirst({ where: { id: "iso_mig_batch_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's migration_seed_lot (RLS)", (await asTenant(A, (db) => db.migrationSeedLot.findFirst({ where: { id: "iso_mig_lot_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's migration_seed_position (RLS)", (await asTenant(A, (db) => db.migrationSeedPosition.findFirst({ where: { id: "iso_mig_pos_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's legacy/reconciliation mapping tables (RLS)",
+      (await asTenant(A, (db) => db.migrationReconciliationItem.findFirst({ where: { id: "iso_mig_rec_b" } }))) === null &&
+      (await asTenant(A, (db) => db.migrationFieldMapping.findFirst({ where: { id: "iso_mig_field_b" } }))) === null &&
+      (await asTenant(A, (db) => db.migrationEntityMapping.findFirst({ where: { id: "iso_mig_entity_b" } }))) === null);
+    let migInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.migrationImportBatch.create({ data: { id: "iso_mig_batch_x", tenantId: B, sourceSystem: "iso", cutoverAt: new Date(), sourceManifest: {}, updatedAt: new Date() } }));
+    } catch { migInsertRaised = true; }
+    check("foreign-tenant migration_import_batch INSERT raises (WITH CHECK)", migInsertRaised);
+    let migFkRaised = false;
+    try {
+      await asTenant(A, async (db) => {
+        const batch = await db.migrationImportBatch.create({ data: { id: "iso_mig_batch_a", tenantId: A, sourceSystem: "iso", cutoverAt: new Date(), sourceManifest: {}, updatedAt: new Date() } });
+        const lot = await db.migrationSeedLot.create({ data: { id: "iso_mig_lot_a", tenantId: A, importBatchId: batch.id, sourceLotKey: "a", code: "A", form: "WINE", updatedAt: new Date() } });
+        await db.migrationSeedPosition.create({ data: { id: "iso_mig_pos_fk", tenantId: A, importBatchId: batch.id, seedLotId: lot.id, sourcePositionKey: "fk", sourceVesselKey: "foreign", vesselId: "iso_vessel_b", vesselCode: "B", volumeL: "1.00", updatedAt: new Date() } });
+      });
+    } catch { migFkRaised = true; }
+    check("migration_seed_position cross-tenant vessel reference rejected (composite FK)", migFkRaised);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -360,6 +416,15 @@ async function main() {
     await owner.calculationLog.deleteMany({ where: { id: { in: ["iso_calc_a", "iso_calc_b", "iso_calc_x"] } } });
     await owner.vesselActivitySupplyUse.deleteMany({ where: { id: { in: ["iso_vasu_fk"] } } });
     await owner.vesselActivityEvent.deleteMany({ where: { id: { in: ["iso_vae_b", "iso_vae_x"] } } });
+    await owner.migrationAnalysisReading.deleteMany({ where: { importBatchId: { in: ["iso_mig_batch_b", "iso_mig_batch_a", "iso_mig_batch_x"] } } });
+    await owner.migrationAnalysisPanel.deleteMany({ where: { importBatchId: { in: ["iso_mig_batch_b", "iso_mig_batch_a", "iso_mig_batch_x"] } } });
+    await owner.migrationSeedPosition.deleteMany({ where: { id: { in: ["iso_mig_pos_b", "iso_mig_pos_fk"] } } });
+    await owner.migrationSeedLot.deleteMany({ where: { id: { in: ["iso_mig_lot_b", "iso_mig_lot_a"] } } });
+    await owner.legacyOperation.deleteMany({ where: { importBatchId: { in: ["iso_mig_batch_b", "iso_mig_batch_a", "iso_mig_batch_x"] } } });
+    await owner.migrationReconciliationItem.deleteMany({ where: { id: "iso_mig_rec_b" } });
+    await owner.migrationFieldMapping.deleteMany({ where: { id: "iso_mig_field_b" } });
+    await owner.migrationEntityMapping.deleteMany({ where: { id: "iso_mig_entity_b" } });
+    await owner.migrationImportBatch.deleteMany({ where: { id: { in: ["iso_mig_batch_b", "iso_mig_batch_a", "iso_mig_batch_x"] } } });
     await owner.vessel.deleteMany({ where: { id: "iso_vessel_b" } });
     // Phase 9: tasks cascade with their work_order; delete WOs (both tenants + the negative-control rows).
     await owner.workOrder.deleteMany({ where: { id: { in: ["iso_wo_a", "iso_wo_b", "iso_wo_x", "iso_wo_fk_a"] } } });
