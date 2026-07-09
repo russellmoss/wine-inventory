@@ -50,6 +50,9 @@ export type ProposalCostLine = {
   estimatedCost: number | null;
   method: "weighted_average" | "unknown" | "untracked";
   reason?: string;
+  // Phase 9.3: cleaning/sanitizing/gas/wet-storage supply drains as OVERHEAD, never wine COGS
+  // (WORKORDER-3). Additions/fining capitalize into wine. Defaults to "wine_cogs" when omitted.
+  classification?: "wine_cogs" | "overhead";
 };
 
 export type ProposalCostSummary = {
