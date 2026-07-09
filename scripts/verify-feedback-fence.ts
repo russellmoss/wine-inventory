@@ -1,47 +1,22 @@
 /**
  * Mechanical write-fence for feedback automation PRs.
  * Pass changed paths as args, or set CHANGED_PATHS as newline-separated paths.
+ *
+ * Allow/deny rules live in ./feedback-fence-rules.ts — the SAME module the bug-fix agent
+ * uses to restrict itself, so the agent and this CI gate can never disagree.
  */
-const deniedPrefixes = [
-  ".env",
-  ".github/workflows/",
-  "prisma/migrations/",
-  "src/lib/auth",
-  "src/lib/dal",
-  "src/lib/tenant/",
-  "src/lib/prisma",
-];
-
-const allowedPrefixes = [
-  "src/lib/assistant/",
-  "src/app/(app)/assistant/",
-  "src/components/",
-  "src/app/(app)/help/",
-  "src/app/api/feedback/",
-];
-
-function norm(path: string): string {
-  return path.replace(/\\/g, "/").replace(/^"\s*|\s*"$/g, "");
-}
-
-function denied(path: string): boolean {
-  return deniedPrefixes.some((prefix) => path === prefix || path.startsWith(prefix));
-}
-
-function allowed(path: string): boolean {
-  return allowedPrefixes.some((prefix) => path.startsWith(prefix));
-}
+import { normPath, isDenied, isAllowed } from "./feedback-fence-rules";
 
 const paths = (process.argv.slice(2).length ? process.argv.slice(2) : (process.env.CHANGED_PATHS ?? "").split(/\r?\n/))
-  .map(norm)
+  .map(normPath)
   .filter(Boolean);
 
 let failures = 0;
 for (const path of paths) {
-  if (denied(path)) {
+  if (isDenied(path)) {
     console.error(`✗ FAIL denied path touched: ${path}`);
     failures++;
-  } else if (!allowed(path)) {
+  } else if (!isAllowed(path)) {
     console.error(`✗ FAIL outside feedback automation allowlist: ${path}`);
     failures++;
   }
