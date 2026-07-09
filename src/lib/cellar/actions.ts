@@ -231,9 +231,9 @@ export const revertRackAction = action(
   },
 );
 
-// ── Timeline edit/delete (volume-neutral ops only; volumetric ops use correct/revert) ──
+// ── Timeline neutral void / fenced edit placeholder ──
 
-/** Hard-delete an erroneous neutral op off the timeline (audit row retained). */
+/** Void an erroneous neutral op through append-only correction. Kept under the legacy action name. */
 export const deleteOperationAction = action(
   async ({ actor }, operationId: number): Promise<{ deletedOperationId: number }> => {
     const res = await deleteNeutralOperationCore(actor, { operationId });
@@ -242,7 +242,7 @@ export const deleteOperationAction = action(
   },
 );
 
-/** Edit a neutral op's treatment(s) in place (material/rate/basis/note or cap kind/duration). */
+/** Phase 6B will add fenced metadata-only edits; this currently fails closed. */
 export const editOperationAction = action(
   async ({ actor }, input: EditNeutralInput): Promise<{ operationId: number }> => {
     const res = await editNeutralOperationCore(actor, input);

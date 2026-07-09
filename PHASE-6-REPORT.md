@@ -2,7 +2,7 @@
 
 Date: 2026-07-09
 Branch: `codex/phase-6-operations-gaps`
-Status: 6A partial landed; 6B-6E remain unimplemented
+Status: 6A safety hardening landed; 6B-6E remain unimplemented
 
 ## Completed in This Slice
 
@@ -13,6 +13,15 @@ Status: 6A partial landed; 6B-6E remain unimplemented
   bond fields, and line reasons.
 - Added richer LIFO blocker detail via `laterTouchedBlockers`, so blocked correction errors can name
   the downstream operation id/type/date instead of only saying "later activity."
+- Added a real LIFO undo preview/executor:
+  - `previewReversalChain` recursively discovers newer blocking operations.
+  - `reverseOperationChainCore` recomputes the chain server-side and executes newest-first.
+  - client actions require the previewed step ids to match the recomputed chain before mutation.
+- Updated the lot timeline and vessel history modal to preview the chain before executing undo.
+- Retired the old neutral-op hard-delete path. The legacy delete action now voids neutral operations
+  through append-only `CORRECTION`, keeping the original visible.
+- Fenced the old in-place neutral edit path closed until Phase 6B metadata-only edits exist.
+- Switched vessel timeline reversibility to the same DB-aware verdict as the lot timeline.
 - Kept `SEED` fail-closed by default. Only seeds explicitly marked with
   `metadata.seedKind === "MANUAL_OPERATOR_SEED"` can become reversible, and only when DB-state checks
   find no import/migration/legacy marker, downstream touches, lineage, cost artifacts, bottle state, or
@@ -23,8 +32,6 @@ Status: 6A partial landed; 6B-6E remain unimplemented
 
 ## Explicitly Not Completed
 
-- No LIFO chain preview/executor UI yet.
-- No neutral edit/delete retirement yet.
 - No fenced metadata edit affordance yet.
 - No split-in-place or lees sub-lot work yet.
 - No vessel/barrel group workflow work yet.
@@ -33,7 +40,7 @@ Status: 6A partial landed; 6B-6E remain unimplemented
 
 ## Verification
 
-- `npm run verify:phase6-reversal` - passed
+- `npm run verify:phase6-reversal` - passed, including LIFO chain execution and neutral edit/delete retirement
 - `npx vitest run test/reverse-verdict.test.ts` - passed
 - `npx tsc --noEmit` - passed
 - `npm run verify:lifecycle` - passed
@@ -45,5 +52,4 @@ Status: 6A partial landed; 6B-6E remain unimplemented
 
 - Existing `verify:reverse` and `verify:reverse-transform` still need tenant review before being
   expanded for Phase 6 acceptance proof.
-- This slice intentionally implements the safe backend foundation first. The rest of 6A still needs a
-  dedicated LIFO preview/action workflow before 6A is complete.
+- 6A deliberately fences metadata editing rather than implementing it. That belongs to 6B.

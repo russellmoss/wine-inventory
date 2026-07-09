@@ -7,7 +7,9 @@
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
-import { reverseOperationCore, reversibilityForOperation } from "@/lib/ledger/reverse";
+import { previewReversalChain, reverseOperationChainCore, reverseOperationCore, reversibilityForOperation } from "@/lib/ledger/reverse";
+import { addAdditionCore } from "@/lib/cellar/addition";
+import { deleteNeutralOperationCore, editNeutralOperationCore } from "@/lib/cellar/edit";
 import { correctOperationCore } from "@/lib/cellar/correct";
 import type { LedgerLine } from "@/lib/ledger/math";
 
@@ -87,7 +89,15 @@ async function statusOf(lotId: string): Promise<string> {
 async function cleanup() {
   await prisma.auditLog.deleteMany({ where: { actorEmail: ACTOR.actorEmail } }).catch(() => {});
   await prisma.lotOperation.updateMany({ where: { enteredBy: ACTOR.actorEmail }, data: { correctsOperationId: null } }).catch(() => {});
+  const ops = await prisma.lotOperation.findMany({ where: { enteredBy: ACTOR.actorEmail }, select: { id: true } }).catch(() => []);
+  const opIds = ops.map((o) => o.id);
+  await prisma.supplyConsumption.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
+  await prisma.costLine.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
+  await prisma.operationCostTransfer.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
+  await prisma.lotTreatment.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
+  await prisma.lotOperationLine.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
   await prisma.lotOperation.deleteMany({ where: { enteredBy: ACTOR.actorEmail } }).catch(() => {});
+  await prisma.cellarMaterial.deleteMany({ where: { name: { startsWith: prefix } } }).catch(() => {});
   await prisma.bottledLotState.deleteMany({ where: { lotId: { in: created.lotIds } } }).catch(() => {});
   await prisma.vesselLot.deleteMany({ where: { lotId: { in: created.lotIds } } }).catch(() => {});
   await prisma.lotLineage.deleteMany({ where: { OR: [{ parentLotId: { in: created.lotIds } }, { childLotId: { in: created.lotIds } }] } }).catch(() => {});
@@ -155,6 +165,57 @@ async function main() {
       () => correctOperationCore(ACTOR, { operationId: marked.operationId }),
       "direct correction path refuses SEED even when the universal reverser would allow it",
     );
+
+    console.log("\n4. LIFO preview/executor unwinds newer blockers first");
+    const tankD = await makeVessel(`${prefix}-D`);
+    const { lotId: lotD } = await seedLot(`${prefix}-D`, tankD, 100);
+    const olderAdjust = await writeOp({
+      type: "ADJUST",
+      lines: [
+        { lotId: lotD, vesselId: tankD, deltaL: 10 },
+        { lotId: lotD, vesselId: null, deltaL: -10, reason: "adjust" },
+      ] as LedgerLine[],
+      actorUserId: ACTOR.actorUserId,
+      enteredBy: ACTOR.actorEmail,
+      lotCodes: new Map([[lotD, `${prefix}-D`]]),
+      vesselCodes: new Map([[tankD, tankD]]),
+      capacityByVessel: new Map([[tankD, 1000]]),
+    });
+    const newerLoss = await writeOp({
+      type: "LOSS",
+      lines: [
+        { lotId: lotD, vesselId: tankD, deltaL: -5 },
+        { lotId: lotD, vesselId: null, deltaL: 5, reason: "loss" },
+      ] as LedgerLine[],
+      actorUserId: ACTOR.actorUserId,
+      enteredBy: ACTOR.actorEmail,
+      lotCodes: new Map([[lotD, `${prefix}-D`]]),
+      vesselCodes: new Map([[tankD, tankD]]),
+      capacityByVessel: new Map([[tankD, 1000]]),
+    });
+    await assertThrows(() => reverseOperationCore(ACTOR, { operationId: olderAdjust }), "direct reverse blocks on later touched wine");
+    const preview = await previewReversalChain(olderAdjust);
+    assert(preview.executable, "preview marks the LIFO chain executable");
+    assert(preview.steps.map((s) => s.operationId).join(",") === `${newerLoss},${olderAdjust}`, "preview orders newer blocker before target");
+    const chain = await reverseOperationChainCore(ACTOR, { operationId: olderAdjust, expectedStepIds: preview.steps.map((s) => s.operationId) });
+    assert(chain.reversed.length === 2, "chain executor reversed both operations");
+    assert((await vesselVolume(lotD)) === 100, "chain executor restored the pre-adjust volume");
+
+    console.log("\n5. Neutral delete is append-only and edit is fenced");
+    const neutral = await addAdditionCore(ACTOR, { vesselId: tankD, materialName: `${prefix}-KMBS`, rateValue: 10, rateBasis: "MG_L" });
+    await assertThrows(
+      () => editNeutralOperationCore(ACTOR, { operationId: neutral.operationId, rateValue: 20, rateBasis: "MG_L" }),
+      "neutral in-place edit is refused until fenced metadata edits exist",
+    );
+    const voided = await deleteNeutralOperationCore(ACTOR, { operationId: neutral.operationId });
+    assert(voided.correctionId > neutral.operationId, "neutral delete wrote a later correction operation");
+    const originalNeutral = await prisma.lotOperation.findUnique({
+      where: { id: neutral.operationId },
+      include: { correctedBy: true, treatments: true },
+    });
+    assert(originalNeutral != null, "neutral delete kept the original operation");
+    assert(originalNeutral?.correctedBy?.id === voided.correctionId, "neutral original points at its correction");
+    assert(originalNeutral?.treatments.every((t) => t.voidedByOperationId === voided.correctionId) === true, "neutral treatments are voided by correction");
   });
 }
 

@@ -2,11 +2,10 @@
 
 import React from "react";
 import Link from "next/link";
-import { Modal, Badge, Button, ConfirmButton } from "@/components/ui";
+import { Modal, Badge, ConfirmButton } from "@/components/ui";
 import type { TimelineItem, OpItem, RecordItem, OpWorkOrderProvenance } from "@/lib/lot/timeline";
-import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
-import { editOperationAction, deleteOperationAction } from "@/lib/cellar/actions";
-import { reverseOperationAction } from "@/lib/ledger/actions";
+import { deleteOperationAction } from "@/lib/cellar/actions";
+import { previewReversalChainAction, reverseOperationChainAction } from "@/lib/ledger/actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
 import { describeLotIdentityAction } from "@/lib/lot/naming-actions";
 
@@ -46,6 +45,12 @@ function LotAkaBlock({ lotId }: { lotId: string }) {
 
 const NEUTRAL_OPS = new Set(["ADDITION", "FINING", "CAP_MGMT"]);
 
+type ReversalChainPreview = {
+  executable: boolean;
+  reason: string | null;
+  steps: { operationId: number; type: string; observedAt: string; reversible: boolean; reason: string | null }[];
+};
+
 const UNDO_STEP_LABEL: Record<string, string> = {
   RACK: "rack",
   TOPPING: "topping",
@@ -67,7 +72,7 @@ function undoStepLabel(type: string): string {
 
 export type TimelineEntryDetailProps = {
   item: TimelineItem | null;
-  /** Resolve a lotId for reversing a structural OP (reverseOperationAction needs one). */
+  /** Resolve a lotId for reversing an OP (the chain executor needs one for revalidation). */
   lotIdForOp?: (item: TimelineItem) => string | null;
   onClose: () => void;
   onMutated: () => void;
@@ -144,32 +149,27 @@ function WorkOrderBlock({ wo }: { wo: OpWorkOrderProvenance }) {
   );
 }
 
-const fieldStyle: React.CSSProperties = {
-  height: 44,
-  padding: "0 10px",
-  border: "1px solid var(--border-strong)",
-  borderRadius: "var(--radius-md)",
-  background: "var(--surface-raised)",
-  fontFamily: "var(--font-body)",
-  fontSize: 14,
-  color: "var(--text-primary)",
-};
+function ChainPreview({ preview, targetId }: { preview: ReversalChainPreview; targetId: number }) {
+  if (preview.steps.length <= 1) return null;
+  return (
+    <div style={{ margin: "10px 0", fontSize: 12.5, color: "var(--text-secondary)" }}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>Undo chain</div>
+      <ol style={{ margin: 0, paddingLeft: 18 }}>
+        {preview.steps.map((step) => (
+          <li key={step.operationId}>
+            {step.type.toLowerCase()} #{step.operationId}
+            {step.operationId === targetId ? " (target)" : ""}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
 
-// Edit form for an ADDITION/FINING/CAP_MGMT op (reuses editOperationAction; matches the lot-detail
-// EditPanel field set). capKind is narrowed to the two the edit core accepts.
+// Phase 6A: neutral op edit is fenced until 6B; deletion now means append-only voiding.
 function NeutralEdit({ event, onMutated, onClose }: { event: OpItem; onMutated: () => void; onClose: () => void }) {
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
-  const tr = event.treatments[0];
-  const isDose = event.type === "ADDITION" || event.type === "FINING";
-  const isCap = event.type === "CAP_MGMT";
-
-  const [material, setMaterial] = React.useState(tr?.materialName ?? "");
-  const [rate, setRate] = React.useState(tr?.rateValue != null ? String(tr.rateValue) : "");
-  const [basis, setBasis] = React.useState<RateBasis>((tr?.rateBasis as RateBasis) ?? "G_HL");
-  const [capKind, setCapKind] = React.useState<"PUMPOVER" | "PUNCHDOWN">(tr?.kind === "PUNCHDOWN" ? "PUNCHDOWN" : "PUMPOVER");
-  const [duration, setDuration] = React.useState(tr?.durationMin != null ? String(tr.durationMin) : "");
-  const [note, setNote] = React.useState(event.note ?? "");
 
   function act(fn: () => Promise<unknown>) {
     setError(null);
@@ -184,58 +184,19 @@ function NeutralEdit({ event, onMutated, onClose }: { event: OpItem; onMutated: 
     });
   }
 
-  function saveEdit() {
-    const opId = event.id;
-    if (isDose) {
-      const r = Number(rate);
-      if (!material.trim() || !(r > 0)) {
-        setError("Enter a material and a rate greater than 0.");
-        return;
-      }
-      act(() => editOperationAction({ operationId: opId, materialName: material.trim(), rateValue: r, rateBasis: basis, note }));
-    } else if (isCap) {
-      act(() => editOperationAction({ operationId: opId, capKind, durationMin: duration ? Number(duration) : null, note }));
-    }
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5 }}>{error}</p> : null}
-      {isDose ? (
-        <>
-          <input value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="Material" style={fieldStyle} aria-label="Material" />
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="Rate" style={{ ...fieldStyle, width: 110 }} aria-label="Rate" />
-            <select value={basis} onChange={(e) => setBasis(e.target.value as RateBasis)} style={{ ...fieldStyle, flex: 1 }} aria-label="Basis">
-              {RATE_BASES.map((b) => (
-                <option key={b} value={b}>
-                  {RATE_BASIS_LABELS[b]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </>
-      ) : null}
-      {isCap ? (
-        <>
-          <select value={capKind} onChange={(e) => setCapKind(e.target.value as "PUMPOVER" | "PUNCHDOWN")} style={fieldStyle} aria-label="Cap kind">
-            <option value="PUMPOVER">Pump-over</option>
-            <option value="PUNCHDOWN">Punch-down</option>
-          </select>
-          <input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="decimal" placeholder="Minutes (optional)" style={fieldStyle} aria-label="Duration" />
-        </>
-      ) : null}
-      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={fieldStyle} aria-label="Note" />
+      <p style={{ fontSize: 13.5, color: "var(--text-secondary)", margin: 0 }}>
+        Metadata edits are fenced for Phase 6B. Void this operation and re-enter the corrected one.
+      </p>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <ConfirmButton onConfirm={saveEdit} confirmLabel="Save changes" disabled={pending}>
-          Save changes
-        </ConfirmButton>
-        <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Delete it" disabled={pending}>
-          Delete entirely
+        <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Void operation" disabled={pending}>
+          Void operation
         </ConfirmButton>
       </div>
       <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-        Delete removes it from the history (an audit record is kept).
+        This writes a correction and keeps the original history visible.
       </span>
     </div>
   );
@@ -256,6 +217,7 @@ function StructuralUndo({
 }) {
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
+  const [preview, setPreview] = React.useState<ReversalChainPreview | null>(null);
 
   if (!event.reversible) {
     return (
@@ -276,11 +238,23 @@ function StructuralUndo({
   }
 
   const step = undoStepLabel(event.type);
+  function previewChain() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        setPreview(await previewReversalChainAction({ operationId: event.id }));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn’t preview that undo.");
+      }
+    });
+  }
+
   function run() {
     setError(null);
     startTransition(async () => {
       try {
-        await reverseOperationAction({ operationId: event.id, lotId: lotId as string });
+        const expectedStepIds = preview?.steps.map((s) => s.operationId);
+        await reverseOperationChainAction({ operationId: event.id, lotId: lotId as string, expectedStepIds });
         onClose();
         onMutated();
       } catch (e) {
@@ -290,9 +264,23 @@ function StructuralUndo({
   }
   return (
     <div>
-      <ConfirmButton onConfirm={run} confirmLabel={pending ? "Undoing…" : `Undo ${step}`} disabled={pending}>
-        {pending ? "Undoing…" : `Undo ${step}`}
-      </ConfirmButton>
+      {!preview ? (
+        <ConfirmButton onConfirm={previewChain} confirmLabel={pending ? "Checking…" : `Preview undo ${step}`} disabled={pending}>
+          {pending ? "Checking…" : `Preview undo ${step}`}
+        </ConfirmButton>
+      ) : preview.executable ? (
+        <>
+          <ChainPreview preview={preview} targetId={event.id} />
+          <ConfirmButton onConfirm={run} confirmLabel={pending ? "Undoing…" : preview.steps.length > 1 ? `Undo ${preview.steps.length} steps` : `Undo ${step}`} disabled={pending}>
+            {pending ? "Undoing…" : preview.steps.length > 1 ? `Undo ${preview.steps.length} steps` : `Undo ${step}`}
+          </ConfirmButton>
+        </>
+      ) : (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", display: "flex", gap: 6, alignItems: "center" }}>
+          <LockIcon />
+          {preview.reason ?? "This undo chain can't be executed."}
+        </div>
+      )}
       {error ? (
         <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", marginTop: 6 }}>
           {error}

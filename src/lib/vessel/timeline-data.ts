@@ -13,7 +13,7 @@ import {
   type VesselKind,
 } from "@/lib/lot/timeline";
 import { statusTone, statusLabel } from "@/lib/work-orders/status-badge";
-import { reversibilityOf } from "@/lib/ledger/reverse";
+import { reversibilityForOperation } from "@/lib/ledger/reverse";
 import { currentOccupancyWindow } from "@/lib/vessel/occupancy";
 
 // ───────────────────────── Vessel History timeline loader (plan 045) ─────────────────────────
@@ -149,13 +149,13 @@ export async function getVesselTimeline(vesselId: string): Promise<VesselTimelin
   const rawOps = [...byOp.values()].sort((a, b) => b.op.id - a.op.id);
   const opEvents = buildTimeline(rawOps, { correctedIds });
 
-  // 4) Reversibility verdict per op (Gemini G5) — the detail modal disables Edit/Undo up-front.
-  for (const ev of opEvents) {
-    if (ev.corrected || ev.isCorrection) continue;
-    const verdict = reversibilityOf(ev.type);
+  // 4) Reversibility verdict per op (Gemini G5) - same DB-aware verdict as the lot timeline.
+  await Promise.all(opEvents.map(async (ev) => {
+    if (ev.corrected || ev.isCorrection) return;
+    const verdict = await reversibilityForOperation(ev.id);
     if (verdict.reversible) ev.reversible = true;
     else ev.reversalReason = verdict.reason;
-  }
+  }));
 
   // 5) WO provenance on WO-sourced op entries — back-link attempt.operationId → task → work order.
   if (opIds.length) {

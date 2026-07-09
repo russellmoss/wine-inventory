@@ -17,9 +17,8 @@ import {
   type MigrationCutoverItem,
 } from "@/lib/lot/timeline";
 import type { LotDetail } from "@/lib/lot/data";
-import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
-import { deleteOperationAction, editOperationAction } from "@/lib/cellar/actions";
-import { reverseOperationAction } from "@/lib/ledger/actions";
+import { deleteOperationAction } from "@/lib/cellar/actions";
+import { previewReversalChainAction, reverseOperationChainAction } from "@/lib/ledger/actions";
 import { archiveLotAction, unarchiveLotAction } from "@/lib/lot/lifecycle-actions";
 import { voidPanelAction, voidTastingNoteAction, cancelSampleAction } from "@/lib/chemistry/actions";
 import { transitionStateAction } from "@/lib/ferment/actions";
@@ -34,6 +33,11 @@ type Tone = React.ComponentProps<typeof Badge>["tone"];
 
 const NEUTRAL_OPS = new Set(["ADDITION", "FINING", "CAP_MGMT"]);
 type EditableRecordItem = MeasurementItem | TastingItem | SampleItem;
+type ReversalChainPreview = {
+  executable: boolean;
+  reason: string | null;
+  steps: { operationId: number; type: string; observedAt: string; reversible: boolean; reason: string | null }[];
+};
 
 // Human "Undo <step>" verb per op type (falls back to the lowercased type). Reversal itself is
 // decided server-side (event.reversible / event.reversalReason from the dispatcher's verdict).
@@ -307,12 +311,28 @@ function LegLine({ leg }: { leg: TimelineLeg }) {
   );
 }
 
-/** Whether this event can be EDITED/DELETED in edit mode. Only neutral ops (a dose's material/
- * rate, or cap kind/duration) are editable, and neutral ops can be hard-deleted. Reversal of ANY
- * op is a separate, always-visible affordance (UndoControl), driven by the dispatcher's verdict. */
+/** Whether this event can open the edit-mode action modal. Neutral ops can be append-only voided;
+ * fenced metadata edits wait for 6B. Reversal of ANY op is a separate, always-visible affordance. */
 function isEditable(event: TimelineEvent): boolean {
   if (event.corrected || event.isCorrection) return false;
   return NEUTRAL_OPS.has(event.type);
+}
+
+function ChainPreview({ preview, targetId }: { preview: ReversalChainPreview; targetId: number }) {
+  if (preview.steps.length <= 1) return null;
+  return (
+    <div style={{ margin: "10px 0", fontSize: 12.5, color: "var(--text-secondary)" }}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>Undo chain</div>
+      <ol style={{ margin: 0, paddingLeft: 18 }}>
+        {preview.steps.map((step) => (
+          <li key={step.operationId}>
+            {step.type.toLowerCase()} #{step.operationId}
+            {step.operationId === targetId ? " (target)" : ""}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }
 
 // The universal, always-visible reversal affordance for one op row (024a). Reads the loader's
@@ -324,33 +344,56 @@ function UndoControl({ event, lotId }: { event: OpItem; lotId: string }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
+  const [preview, setPreview] = React.useState<ReversalChainPreview | null>(null);
 
   if (event.corrected || event.isCorrection) return null;
 
   if (!event.reversible) {
     if (!event.reversalReason) return null;
-    return (
-      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>{event.reversalReason}</div>
-    );
+    return <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>{event.reversalReason}</div>;
   }
 
   const step = undoStepLabel(event.type);
+  function previewChain() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        setPreview(await previewReversalChainAction({ operationId: event.id }));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't preview that undo.");
+      }
+    });
+  }
+
   function run() {
     setError(null);
     startTransition(async () => {
       try {
-        await reverseOperationAction({ operationId: event.id, lotId });
+        const expectedStepIds = preview?.steps.map((s) => s.operationId);
+        await reverseOperationChainAction({ operationId: event.id, lotId, expectedStepIds });
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't undo that step.");
       }
     });
   }
+
   return (
     <div style={{ marginTop: 10 }}>
-      <ConfirmButton onConfirm={run} confirmLabel={pending ? "Undoing…" : `Undo ${step}`} disabled={pending}>
-        {pending ? "Undoing…" : `Undo ${step}`}
-      </ConfirmButton>
+      {!preview ? (
+        <ConfirmButton onConfirm={previewChain} confirmLabel={pending ? "Checking..." : `Preview undo ${step}`} disabled={pending}>
+          {pending ? "Checking..." : `Preview undo ${step}`}
+        </ConfirmButton>
+      ) : preview.executable ? (
+        <>
+          <ChainPreview preview={preview} targetId={event.id} />
+          <ConfirmButton onConfirm={run} confirmLabel={pending ? "Undoing..." : preview.steps.length > 1 ? `Undo ${preview.steps.length} steps` : `Undo ${step}`} disabled={pending}>
+            {pending ? "Undoing..." : preview.steps.length > 1 ? `Undo ${preview.steps.length} steps` : `Undo ${step}`}
+          </ConfirmButton>
+        </>
+      ) : (
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>{preview.reason ?? "This undo chain can't be executed."}</div>
+      )}
       {error ? (
         <div role="alert" style={{ fontSize: 12.5, color: "var(--danger)", marginTop: 6 }}>
           {error}
@@ -359,7 +402,6 @@ function UndoControl({ event, lotId }: { event: OpItem; lotId: string }) {
     </div>
   );
 }
-
 function OpRow({ event, editMode, onEdit, lotId }: { event: OpItem; editMode: boolean; onEdit: (e: OpItem) => void; lotId: string }) {
   const dim = event.corrected;
   return (
@@ -791,7 +833,7 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
   const [editMode, setEditMode] = React.useState(false);
   const [selected, setSelected] = React.useState<OpItem | null>(null);
   const [selectedRecord, setSelectedRecord] = React.useState<EditableRecordItem | null>(null);
-  // Editable in edit mode: neutral ops (edit/delete), plus every standalone record (void/cancel).
+  // Editable in edit mode: neutral ops (void), plus every standalone record (void/cancel).
   // Reversal of any op is the always-visible Undo control, not gated behind edit mode.
   const anyActionable = lot.events.some((e) =>
     e.kind === "OP" ? isEditable(e) : e.kind === "MEASUREMENT" || e.kind === "TASTING" || e.kind === "SAMPLE",
@@ -915,7 +957,7 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
       </div>
       {editMode ? (
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-8px 0 14px" }}>
-          Pick an event to edit or remove. Additions, fining and cap management can be edited or deleted here.
+          Pick an event to void or remove. Additions, fining and cap management are voided with append-only corrections; fenced metadata edits come in Phase 6B.
           Analyses and tasting notes can be removed; samples can be cancelled. To reverse any operation, use its
           <strong> Undo</strong> button on the timeline.
         </p>
@@ -932,9 +974,7 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
   );
 }
 
-// Edit/delete/revert one timeline event. Neutral ops (Add/Fine/Cap) are editable + hard-
-// deletable; topping/filtration/dump are revertable (compensating correction). Every action
-// confirms before applying, then refreshes the page from the server.
+// Edit-mode action modal. Neutral ops are voided append-only; fenced metadata edits wait for 6B.
 function TimelineEditModal({ event, onClose }: { event: TimelineEvent | null; onClose: () => void }) {
   if (!event) return null;
   // Key by op id so the panel remounts (fresh form state from props) per event — no effect.
@@ -949,19 +989,7 @@ function EditPanel({ event, onClose }: { event: TimelineEvent; onClose: () => vo
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
-
-  const tr = event.treatments[0];
-  const isDose = event.type === "ADDITION" || event.type === "FINING";
-  const isCap = event.type === "CAP_MGMT";
   const isNeutral = NEUTRAL_OPS.has(event.type);
-
-  // Prefilled from the event's treatment via lazy initializers (no reset effect needed).
-  const [material, setMaterial] = React.useState(tr?.materialName ?? "");
-  const [rate, setRate] = React.useState(tr?.rateValue != null ? String(tr.rateValue) : "");
-  const [basis, setBasis] = React.useState<RateBasis>((tr?.rateBasis as RateBasis) ?? "G_HL");
-  const [capKind, setCapKind] = React.useState<"PUMPOVER" | "PUNCHDOWN">(tr?.kind === "PUNCHDOWN" ? "PUNCHDOWN" : "PUMPOVER");
-  const [duration, setDuration] = React.useState(tr?.durationMin != null ? String(tr.durationMin) : "");
-  const [note, setNote] = React.useState(event.note ?? "");
 
   function act(fn: () => Promise<unknown>) {
     setError(null);
@@ -976,83 +1004,24 @@ function EditPanel({ event, onClose }: { event: TimelineEvent; onClose: () => vo
     });
   }
 
-  function saveEdit() {
-    const opId = event.id;
-    if (isDose) {
-      const r = Number(rate);
-      if (!material.trim() || !(r > 0)) {
-        setError("Enter a material and a rate greater than 0.");
-        return;
-      }
-      act(() => editOperationAction({ operationId: opId, materialName: material.trim(), rateValue: r, rateBasis: basis, note }));
-    } else if (isCap) {
-      act(() => editOperationAction({ operationId: opId, capKind, durationMin: duration ? Number(duration) : null, note }));
-    }
-  }
-
-  const fieldStyle: React.CSSProperties = {
-    height: 44,
-    padding: "0 10px",
-    border: "1px solid var(--border-strong)",
-    borderRadius: "var(--radius-md)",
-    background: "var(--surface-raised)",
-    fontFamily: "var(--font-body)",
-    fontSize: 14,
-    color: "var(--text-primary)",
-  };
-
   return (
     <div>
-      <div>
-        {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 12 }}>{error}</p> : null}
-
-        {isDose ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-            <input value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="Material" style={fieldStyle} aria-label="Material" />
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="Rate" style={{ ...fieldStyle, width: 110 }} aria-label="Rate" />
-              <select value={basis} onChange={(e) => setBasis(e.target.value as RateBasis)} style={{ ...fieldStyle, flex: 1 }} aria-label="Basis">
-                {RATE_BASES.map((b) => (
-                  <option key={b} value={b}>
-                    {RATE_BASIS_LABELS[b]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={fieldStyle} aria-label="Note" />
-            <ConfirmButton onConfirm={saveEdit} confirmLabel="Save changes" disabled={pending}>
-              Save changes
+      {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 12 }}>{error}</p> : null}
+      {isNeutral ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <p style={{ fontSize: 13.5, color: "var(--text-secondary)", margin: 0 }}>
+            Metadata edits are fenced for Phase 6B. Void this operation and re-enter the corrected one.
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Void operation" disabled={pending}>
+              Void operation
             </ConfirmButton>
+            <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>This writes a correction and keeps the original history visible.</span>
           </div>
-        ) : null}
-
-        {isCap ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-            <select value={capKind} onChange={(e) => setCapKind(e.target.value as "PUMPOVER" | "PUNCHDOWN")} style={fieldStyle} aria-label="Cap kind">
-              <option value="PUMPOVER">Pump-over</option>
-              <option value="PUNCHDOWN">Punch-down</option>
-            </select>
-            <input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="decimal" placeholder="Minutes (optional)" style={fieldStyle} aria-label="Duration" />
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={fieldStyle} aria-label="Note" />
-            <ConfirmButton onConfirm={saveEdit} confirmLabel="Save changes" disabled={pending}>
-              Save changes
-            </ConfirmButton>
-          </div>
-        ) : null}
-
-        <div style={{ borderTop: "1px solid var(--border-strong)", paddingTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          {isNeutral ? (
-            <>
-              <ConfirmButton onConfirm={() => act(() => deleteOperationAction(event.id))} confirmLabel="Delete it" disabled={pending}>
-                Delete entirely
-              </ConfirmButton>
-              <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Removes it from the timeline (an audit record is kept). To reverse it instead, use Undo on the row.</span>
-            </>
-          ) : (
-            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>This operation can&rsquo;t be edited or deleted from here — use Undo on the row to reverse it.</span>
-          )}
         </div>
-      </div>
+      ) : (
+        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>This operation can&apos;t be edited or deleted from here - use Undo on the row to reverse it.</span>
+      )}
     </div>
   );
 }

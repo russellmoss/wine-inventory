@@ -103,7 +103,10 @@ function metadataObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-async function seedReversibilityForOperation(operationId: number): Promise<ReversibilityVerdict> {
+async function seedReversibilityForOperation(
+  operationId: number,
+  opts: { ignoreLaterBlocks?: boolean } = {},
+): Promise<ReversibilityVerdict> {
   const op = await prisma.lotOperation.findUnique({
     where: { id: operationId },
     include: {
@@ -143,30 +146,32 @@ async function seedReversibilityForOperation(operationId: number): Promise<Rever
     return { reversible: false, code: "origination", reason: "Seeds with cost artifacts need a dedicated correction path." };
   }
 
-  const laterBlockers = await laterTouchedBlockers(operationId);
-  const affectedKeys = new Set(vesselLines.map((l) => `${l.vesselId}::${l.lotId}`));
-  const positionBlocker = laterBlockers.find((b) => b.keys.some((k) => affectedKeys.has(k)));
-  if (positionBlocker) {
-    return {
-      reversible: false,
-      code: "origination",
-      reason: `This seed is blocked by later ${positionBlocker.type.toLowerCase()} #${positionBlocker.operationId}. Undo newer operations first.`,
-    };
-  }
-  const laterLotOp = await prisma.lotOperationLine.findFirst({
-    where: {
-      lotId: { in: lotIds },
-      operationId: { gt: operationId },
-      operation: { type: { not: "CORRECTION" }, correctedBy: { is: null } },
-    },
-    select: { operationId: true, operation: { select: { type: true } } },
-  });
-  if (laterLotOp) {
-    return {
-      reversible: false,
-      code: "origination",
-      reason: `This seed is blocked by later ${laterLotOp.operation.type.toLowerCase()} #${laterLotOp.operationId}. Undo newer operations first.`,
-    };
+  if (!opts.ignoreLaterBlocks) {
+    const laterBlockers = await laterTouchedBlockers(operationId);
+    const affectedKeys = new Set(vesselLines.map((l) => `${l.vesselId}::${l.lotId}`));
+    const positionBlocker = laterBlockers.find((b) => b.keys.some((k) => affectedKeys.has(k)));
+    if (positionBlocker) {
+      return {
+        reversible: false,
+        code: "origination",
+        reason: `This seed is blocked by later ${positionBlocker.type.toLowerCase()} #${positionBlocker.operationId}. Undo newer operations first.`,
+      };
+    }
+    const laterLotOp = await prisma.lotOperationLine.findFirst({
+      where: {
+        lotId: { in: lotIds },
+        operationId: { gt: operationId },
+        operation: { type: { not: "CORRECTION" }, correctedBy: { is: null } },
+      },
+      select: { operationId: true, operation: { select: { type: true } } },
+    });
+    if (laterLotOp) {
+      return {
+        reversible: false,
+        code: "origination",
+        reason: `This seed is blocked by later ${laterLotOp.operation.type.toLowerCase()} #${laterLotOp.operationId}. Undo newer operations first.`,
+      };
+    }
   }
   const child = await downstreamLineageChild(lotIds);
   if (child) return { reversible: false, code: "origination", reason: "This seed has downstream lineage and cannot be undone from the timeline." };
@@ -191,6 +196,110 @@ export async function reversibilityForOperation(operationId: number): Promise<Re
   if (op.correctedBy) return { reversible: false, code: "already-reversed", reason: "That operation has already been reversed." };
   if (op.type === "SEED") return seedReversibilityForOperation(operationId);
   return reversibilityOf(op.type);
+}
+
+async function baseReversibilityForOperation(operationId: number): Promise<ReversibilityVerdict> {
+  const op = await prisma.lotOperation.findUnique({
+    where: { id: operationId },
+    select: { type: true, correctedBy: { select: { id: true } } },
+  });
+  if (!op) return { reversible: false, code: "manual-adjust", reason: "That operation no longer exists." };
+  if (op.correctedBy) return { reversible: false, code: "already-reversed", reason: "That operation has already been reversed." };
+  if (op.type === "SEED") return seedReversibilityForOperation(operationId, { ignoreLaterBlocks: true });
+  return reversibilityOf(op.type);
+}
+
+export type ReversalChainStep = {
+  operationId: number;
+  type: OperationType;
+  observedAt: string;
+  enteredBy: string;
+  reversible: boolean;
+  reason: string | null;
+};
+
+export type ReversalChainPreview = {
+  operationId: number;
+  executable: boolean;
+  reason: string | null;
+  steps: ReversalChainStep[];
+};
+
+async function collectLaterBlockerIds(operationId: number, seen = new Set<number>()): Promise<Set<number>> {
+  const blockers = await laterTouchedBlockers(operationId);
+  for (const blocker of blockers) {
+    if (seen.has(blocker.operationId)) continue;
+    seen.add(blocker.operationId);
+    await collectLaterBlockerIds(blocker.operationId, seen);
+  }
+  return seen;
+}
+
+export async function previewReversalChain(operationId: number): Promise<ReversalChainPreview> {
+  const root = await prisma.lotOperation.findUnique({
+    where: { id: operationId },
+    select: { id: true, tenantId: true },
+  });
+  if (!root) {
+    return { operationId, executable: false, reason: "That operation no longer exists.", steps: [] };
+  }
+  if (root.tenantId !== requireTenantId()) {
+    return { operationId, executable: false, reason: "Cross-winery reversal blocked.", steps: [] };
+  }
+
+  const blockerIds = [...(await collectLaterBlockerIds(operationId))].sort((a, b) => b - a);
+  const stepIds = [...blockerIds, operationId];
+  const ops = await prisma.lotOperation.findMany({
+    where: { id: { in: stepIds } },
+    select: { id: true, type: true, observedAt: true, enteredBy: true },
+  });
+  const byId = new Map(ops.map((op) => [op.id, op]));
+  const steps: ReversalChainStep[] = [];
+
+  for (const id of stepIds) {
+    const op = byId.get(id);
+    if (!op) continue;
+    const verdict = await baseReversibilityForOperation(id);
+    steps.push({
+      operationId: id,
+      type: op.type,
+      observedAt: op.observedAt.toISOString(),
+      enteredBy: op.enteredBy,
+      reversible: verdict.reversible,
+      reason: verdict.reversible ? null : verdict.reason,
+    });
+  }
+
+  const blocked = steps.find((step) => !step.reversible);
+  return {
+    operationId,
+    executable: !blocked && steps.length > 0,
+    reason: blocked ? `${blocked.type.toLowerCase()} #${blocked.operationId}: ${blocked.reason}` : null,
+    steps,
+  };
+}
+
+export type ReversalChainResult = {
+  operationId: number;
+  reversed: ReverseOperationResult[];
+};
+
+export async function reverseOperationChainCore(
+  actor: LedgerActor,
+  input: { operationId: number; lotId?: string; note?: string; expectedStepIds?: number[] },
+): Promise<ReversalChainResult> {
+  const preview = await previewReversalChain(input.operationId);
+  if (!preview.executable) throw new ActionError(preview.reason ?? "That reversal chain cannot be executed.", "CONFLICT");
+  const stepIds = preview.steps.map((s) => s.operationId);
+  if (input.expectedStepIds && input.expectedStepIds.join(",") !== stepIds.join(",")) {
+    throw new ActionError("The undo chain changed. Preview it again before executing.", "CONFLICT");
+  }
+
+  const reversed: ReverseOperationResult[] = [];
+  for (const stepId of stepIds) {
+    reversed.push(await reverseOperationCore(actor, { operationId: stepId, note: input.note }));
+  }
+  return { operationId: input.operationId, reversed };
 }
 
 // ─────────────────────────── The dispatcher ───────────────────────────
