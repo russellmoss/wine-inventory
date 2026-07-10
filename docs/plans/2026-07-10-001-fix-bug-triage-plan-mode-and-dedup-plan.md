@@ -1,7 +1,7 @@
 ---
 title: /bug-triage — plan-mode/skip awareness + cross-tenant dedup
 type: fix
-status: draft
+status: completed
 date: 2026-07-10
 branch: fix/bug-triage-plan-mode-and-dedup
 depth: standard
