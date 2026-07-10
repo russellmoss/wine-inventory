@@ -175,6 +175,18 @@ function matchMaterial(all: CellarMaterialDTO[], ref: string): CellarMaterialDTO
   return matchMaterialByRef(all, ref, { scope: materialScopeForTask({ opType: "ADDITION" }), doseableOnly: true });
 }
 
+/** Map a natural-language select value onto a task type's controlled vocabulary (case/diacritic-
+ * insensitive) so "14 C" -> "°C" and "argon" -> "Argon". Falls back to the raw value when nothing matches
+ * (the readiness core then blocks it, surfacing the mismatch). */
+function matchSelectValue(taskType: string, field: string, raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const options = TASK_VOCABULARY[taskType]?.fieldOptions?.[field];
+  if (!options) return raw;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const n = norm(raw);
+  return (options as readonly string[]).find((o) => norm(o) === n) ?? raw;
+}
+
 type ObservationTarget = { lotId: string; lotCode: string; vesselId?: string; vesselLabel?: string };
 
 /** Resolve a lot/vessel observation target (shared by PANEL + BRIX). A blended or empty vessel throws so
@@ -229,7 +241,7 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         ...(singleLot ? { lotId: singleLot.id } : {}),
         ...(drawL > 0 ? { drawL } : {}),
         ...(lossL > 0 ? { lossL } : {}),
-        ...(intent.rackType ? { rackType: intent.rackType } : {}),
+        ...(intent.rackType ? { rackType: matchSelectValue("RACK", "rackType", intent.rackType) } : {}),
         ...(intent.note ? { note: intent.note } : {}),
       };
       taskBuilds.push({ taskType: "RACK", title: `Rack ${from.label} to ${to.label}`, values, taskKey: randomUUID() });
@@ -321,7 +333,7 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 
     if (intent.kind === "FILTRATION") {
       const vessel = await resolveVesselState(intent.vessel);
-      const values = { vesselId: vessel.id, ...(intent.filterType ? { filterType: intent.filterType } : {}), ...(intent.micron != null ? { micron: intent.micron } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      const values = { vesselId: vessel.id, ...(intent.filterType ? { filterType: matchSelectValue("FILTRATION", "filterType", intent.filterType) } : {}), ...(intent.micron != null ? { micron: intent.micron } : {}), ...(intent.note ? { note: intent.note } : {}) };
       taskBuilds.push({ taskType: "FILTRATION", title: `Filter ${vessel.label}`, values, taskKey: randomUUID() });
       tasks.push({ seq, kind: "FILTRATION", title: `Filter ${vessel.label}`, summary: `Filter ${vessel.label}${intent.filterType ? ` through ${intent.filterType}` : ""}${intent.micron != null ? ` (${intent.micron} µm)` : ""}`, entities: [{ role: "vessel", label: vessel.label, id: vessel.id }] });
       continue;
@@ -329,7 +341,7 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 
     if (intent.kind === "CAP_MGMT") {
       const vessel = await resolveVesselState(intent.vessel);
-      const values = { vesselId: vessel.id, ...(intent.technique ? { technique: intent.technique } : {}), ...(intent.durationMin != null ? { durationMin: intent.durationMin } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      const values = { vesselId: vessel.id, ...(intent.technique ? { technique: matchSelectValue("CAP_MGMT", "technique", intent.technique) } : {}), ...(intent.durationMin != null ? { durationMin: intent.durationMin } : {}), ...(intent.note ? { note: intent.note } : {}) };
       taskBuilds.push({ taskType: "CAP_MGMT", title: `Cap work on ${vessel.label}`, values, taskKey: randomUUID() });
       tasks.push({ seq, kind: "CAP_MGMT", title: `Cap management`, summary: `${intent.technique ?? "Cap work"} on ${vessel.label}${intent.durationMin != null ? ` for ${intent.durationMin} min` : ""}`, entities: [{ role: "vessel", label: vessel.label, id: vessel.id }] });
       continue;
@@ -337,7 +349,7 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 
     if (intent.kind === "TEMP_SETPOINT") {
       const vessel = await resolveVesselState(intent.vessel);
-      const values = { vesselId: vessel.id, ...(intent.targetValue != null ? { targetValue: intent.targetValue } : {}), ...(intent.targetUnit ? { targetUnit: intent.targetUnit } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      const values = { vesselId: vessel.id, ...(intent.targetValue != null ? { targetValue: intent.targetValue } : {}), ...(intent.targetUnit ? { targetUnit: matchSelectValue("TEMP_SETPOINT", "targetUnit", intent.targetUnit) } : {}), ...(intent.note ? { note: intent.note } : {}) };
       taskBuilds.push({ taskType: "TEMP_SETPOINT", title: `Set ${vessel.label} temperature`, values, taskKey: randomUUID() });
       tasks.push({ seq, kind: "TEMP_SETPOINT", title: `Temperature setpoint`, summary: `Set ${vessel.label}${intent.targetValue != null ? ` to ${intent.targetValue}${intent.targetUnit ?? ""}` : ""}`, entities: [{ role: "vessel", label: vessel.label, id: vessel.id }] });
       continue;
@@ -356,8 +368,8 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         vesselId: vessel.id,
         ...(material ? { materialId: material.id } : {}),
         ...(intent.amount != null ? { amount: intent.amount } : {}),
-        ...(intent.gasType ? { gasType: intent.gasType } : {}),
-        ...(intent.so2Method ? { so2Method: intent.so2Method } : {}),
+        ...(intent.gasType ? { gasType: matchSelectValue(intent.kind, "gasType", intent.gasType) } : {}),
+        ...(intent.so2Method ? { so2Method: matchSelectValue(intent.kind, "so2Method", intent.so2Method) } : {}),
         ...(intent.durationMin != null ? { durationMin: intent.durationMin } : {}),
         ...(intent.note ? { note: intent.note } : {}),
       };
@@ -389,8 +401,9 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
     }
 
     if (intent.kind === "PRESS") {
-      const values = { ...(intent.op ? { op: intent.op } : {}), ...(intent.note ? { note: intent.note } : {}) };
-      taskBuilds.push({ taskType: "PRESS", title: intent.op === "SAIGNEE" ? "Saignée" : "Press", values, taskKey: randomUUID() });
+      const op = matchSelectValue("PRESS", "op", intent.op);
+      const values = { ...(op ? { op } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "PRESS", title: op === "SAIGNEE" ? "Saignée" : "Press", values, taskKey: randomUUID() });
       tasks.push({ seq, kind: "PRESS", title: intent.op === "SAIGNEE" ? "Saignée" : "Press", summary: "Must lot, source vessel and press fractions entered on the floor", entities: [] });
       continue;
     }

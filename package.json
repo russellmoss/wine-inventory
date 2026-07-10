@@ -37,6 +37,7 @@
     "verify:reminders": "tsx --conditions=react-server --env-file=.env scripts/verify-reminders.ts",
     "verify:work-orders": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders.ts",
     "verify:work-order-nl": "tsx --conditions=react-server --env-file=.env scripts/verify-work-order-nl.ts",
+    "verify:universal-work-order-authoring": "tsx --conditions=react-server --env-file=.env scripts/verify-universal-work-order-authoring.ts",
     "verify:work-orders-enhancements": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders-enhancements.ts",
     "verify:work-orders-transform": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders-transform.ts",
     "verify:naming": "tsx --env-file=.env scripts/verify-naming.ts",

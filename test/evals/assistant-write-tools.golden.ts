@@ -197,6 +197,68 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     },
     note: "tool should deterministically block non-doseable materials after selection",
   },
+  // ── Phase 9.3: expanded task-family coverage (all route through propose_work_order). ──
+  {
+    utterance: "Work order for crush day: weigh Block 7 Merlot, crush to T12, add 30 ppm SO2, set T12 to 14 C",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Work order for crush day: weigh Block 7 Merlot, crush to T12, add 30 ppm SO2, set T12 to 14 C",
+      tasks: [
+        { kind: "HARVEST_WEIGH_IN", block: "Block 7 Merlot" },
+        { kind: "CRUSH", destVessel: "T12" },
+        { kind: "ADDITION", vessel: "T12", material: "SO2", amount: 30, unit: "ppm" },
+        { kind: "TEMP_SETPOINT", vessel: "T12", targetValue: 14, targetUnit: "C" },
+      ],
+    },
+    note: "crush-day workflow: weigh-in + crush + dose + setpoint, all one WO proposal",
+  },
+  {
+    utterance: "Make a work order to press T8 and gas T15 with argon",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Make a work order to press T8 and gas T15 with argon",
+      tasks: [
+        { kind: "PRESS", op: "PRESS" },
+        { kind: "GAS", vessel: "T15", gasType: "argon" },
+      ],
+    },
+    note: "press-day: press (source/fractions runtime) + gas blanket",
+  },
+  {
+    utterance: "Work order: clean and sanitize T15 and T16",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Work order: clean and sanitize T15 and T16",
+      tasks: [
+        { kind: "CLEAN", vessel: "T15" },
+        { kind: "SANITIZE", vessel: "T15" },
+        { kind: "CLEAN", vessel: "T16" },
+        { kind: "SANITIZE", vessel: "T16" },
+      ],
+    },
+    note: "vessel cleaning/sanitizing is supported (in-scope maintenance)",
+  },
+  {
+    utterance: "Work order to filter T15 through 0.45 micron pads",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Work order to filter T15 through 0.45 micron pads",
+      tasks: [{ kind: "FILTRATION", vessel: "T15", filterType: "pad", micron: 0.45 }],
+    },
+    note: "filtration with media + micron",
+  },
+  {
+    utterance: "Pull lab samples from T12 and T15 and send them to ETS as a work order",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Pull lab samples from T12 and T15 and send them to ETS as a work order",
+      tasks: [
+        { kind: "SAMPLE_PULL", vessel: "T12", lab: "ETS", sendNow: true },
+        { kind: "SAMPLE_PULL", vessel: "T15", lab: "ETS", sendNow: true },
+      ],
+    },
+    note: "sample-pull WO tasks (real samples created on completion), not pull_sample",
+  },
   {
     utterance: "Mark the SO₂ addition on WO 142 done — only used 28 g",
     tool: "complete_task",
