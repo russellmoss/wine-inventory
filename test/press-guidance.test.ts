@@ -28,9 +28,27 @@ describe("press guidance helpers", () => {
   });
 
   it("detects a stale pinned source and lists current pressable positions", () => {
-    const stale = stalePinnedPressSource({ lotId: "gone", sourceVesselId: "old" }, positions);
+    const stale = stalePinnedPressSource({
+      lotId: "gone",
+      sourceVesselId: "old",
+      plannedPayload: { plannedSourceVesselLabel: "Tank 6", plannedSourceLotCode: "24-RS-M" },
+    }, positions);
     expect(stale.stale).toBe(true);
+    expect(stale.expected).toBe("Tank 6 / 24-RS-M");
     expect(stale.current).toContain("T6 / 24-RS-M (1200 L)");
+  });
+
+  it("can show a planned pinned source even after it is stale", () => {
+    const guidance = buildPressGuidance(
+      {
+        lotId: "gone",
+        sourceVesselId: "old",
+        plannedPayload: { plannedSourceVesselLabel: "Tank 6", plannedSourceLotCode: "24-RS-M" },
+      },
+      positions,
+      vessels,
+    );
+    expect(guidance.items).toEqual([{ label: "Pinned source", value: "Tank 6 / 24-RS-M" }]);
   });
 
   it("seeds a planned destination only when it still exists", () => {

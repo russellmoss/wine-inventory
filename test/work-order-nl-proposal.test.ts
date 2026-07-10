@@ -90,6 +90,23 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
     ]);
   });
 
+  it("canonicalizes PRESS source, destination guidance, and press cycle", () => {
+    const structured = canonicalizeNlWorkOrderDraft({
+      sourceText: "press tank 6 into tank 5",
+      tasks: [{ kind: "press", sourceVessel: "tank 6", destVessel: "tank 5", pressCycle: "Champagne", note: "keep free-run separate" }],
+    });
+    expect(structured.intents[0]).toEqual({
+      kind: "PRESS",
+      sourceVessel: "tank 6",
+      destVessel: "tank 5",
+      pressCycle: "Champagne",
+      note: "keep free-run separate",
+    });
+
+    const freeText = canonicalizeNlWorkOrderDraft({ sourceText: "Press tank 6 into tank 5" });
+    expect(freeText.intents[0]).toMatchObject({ kind: "PRESS", sourceVessel: "tank 6", destVessel: "tank 5", op: "PRESS" });
+  });
+
   it("defaults a following maintenance/observation vessel to the prior rack destination", () => {
     const draft = canonicalizeNlWorkOrderDraft({
       sourceText: "rack then clean",

@@ -547,6 +547,7 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       }
       const values = {
         ...(source ? { parentLotId: source.lotId, sourceVesselId: source.vesselId } : {}),
+        ...(source ? { plannedSourceVesselLabel: source.vesselLabel, plannedSourceLotCode: source.lotCode } : {}),
         ...(plannedDest ? { plannedDestVesselId: plannedDest.id, plannedDestVesselLabel: plannedDest.label } : {}),
         ...(op ? { op } : {}),
         ...(intent.pressCycle ? { pressCycle: intent.pressCycle } : {}),

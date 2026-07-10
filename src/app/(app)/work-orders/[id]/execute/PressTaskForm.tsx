@@ -108,7 +108,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
       {guidance.items.length > 0 ? <PlannedGuidanceCard items={guidance.items} /> : null}
       {stale.stale ? (
         <div style={{ padding: 12, borderRadius: "var(--radius-md)", background: "var(--surface-alt)", marginBottom: 12, fontSize: 13.5 }}>
-          <strong>The planned source is stale.</strong> The pinned lot/source is no longer a pressable position. Current pressable positions: {stale.current.length ? stale.current.join("; ") : "none"}.
+          <strong>The planned source is stale.</strong> Expected {stale.expected}, but that lot/source is no longer a pressable position. Current pressable positions: {stale.current.length ? stale.current.join("; ") : "none"}.
         </div>
       ) : null}
 

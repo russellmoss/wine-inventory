@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isPressableLotState } from "@/lib/ferment/press-data";
-import { resolveVessel, vesselCodeCandidates, normVesselCode } from "@/lib/assistant/scope";
+import { parseVesselRef } from "@/lib/vessels/ref";
 
 export type CellarContentsQuery = {
   vessel?: string;
@@ -10,7 +10,7 @@ export type CellarContentsQuery = {
   vineyard?: string;
   lot?: string;
   vintage?: number;
-  form?: "FRUIT" | "MUST" | "BULK" | "BOTTLED" | "JUICE" | "WINE" | string;
+  form?: "FRUIT" | "MUST" | "JUICE" | "WINE" | "BOTTLED_IN_PROCESS" | "FINISHED" | "BULK" | "BOTTLED" | string;
   vesselType?: "TANK" | "BARREL";
   onlyNonEmpty?: boolean;
   onlyPressable?: boolean;
@@ -57,19 +57,46 @@ function label(type: string, code: string): string {
   return `${type === "BARREL" ? "Barrel" : "Tank"} ${code}`;
 }
 
+function normVesselCode(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function vesselCodeCandidates(text: string): { type: "TANK" | "BARREL" | null; wanted: string[]; codes: string[] } {
+  const ref = parseVesselRef(text);
+  const original = (text ?? "").trim();
+  const raw = (ref?.code ?? text ?? "").trim();
+  const wanted = new Set<string>([normVesselCode(raw)]);
+  const codes = new Set<string>([original, raw]);
+  if (ref) {
+    const typed = `${ref.type === "BARREL" ? "B" : "T"}${raw}`;
+    wanted.add(normVesselCode(typed));
+    codes.add(typed);
+  }
+  return { type: ref?.type ?? null, wanted: [...wanted].filter(Boolean), codes: [...codes].filter(Boolean) };
+}
+
 function vesselWhere(ref: string | undefined, vesselType: CellarContentsQuery["vesselType"]): Prisma.VesselWhereInput {
   const where: Prisma.VesselWhereInput = { isActive: true };
   if (vesselType) where.type = vesselType;
   if (!ref) return where;
-  const { type, wanted } = vesselCodeCandidates(ref);
+  const { type, codes } = vesselCodeCandidates(ref);
   const typeFilter = type ?? vesselType;
   if (typeFilter) where.type = typeFilter;
-  if (wanted.length > 0) {
-    where.OR = wanted.map((w) => ({
+  if (codes.length > 0) {
+    where.OR = codes.map((w) => ({
       code: { equals: w, mode: "insensitive" },
     }));
   }
   return where;
+}
+
+function normalizeForm(form: CellarContentsQuery["form"]): "FRUIT" | "MUST" | "JUICE" | "WINE" | "BOTTLED_IN_PROCESS" | "FINISHED" | null {
+  if (!form) return null;
+  const up = form.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (up === "BULK") return "WINE";
+  if (up === "BOTTLED") return "FINISHED";
+  if (up === "FRUIT" || up === "MUST" || up === "JUICE" || up === "WINE" || up === "BOTTLED_IN_PROCESS" || up === "FINISHED") return up;
+  return null;
 }
 
 async function idsForNameSearch(model: "variety" | "vineyard", name: string): Promise<string[]> {
@@ -94,6 +121,7 @@ async function buildLotWhere(query: CellarContentsQuery): Promise<Prisma.LotWher
   const variety = clean(query.variety);
   const vineyard = clean(query.vineyard);
   const lot = clean(query.lot);
+  const form = normalizeForm(query.form);
 
   if (lot) {
     AND.push({
@@ -104,7 +132,8 @@ async function buildLotWhere(query: CellarContentsQuery): Promise<Prisma.LotWher
     });
   }
   if (query.vintage != null) AND.push({ vintageYear: query.vintage });
-  if (query.form) AND.push({ form: query.form as never });
+  if (query.form && !form) return null;
+  if (form) AND.push({ form });
   if (query.onlyPressable) AND.push({ form: "MUST", status: "ACTIVE" });
   if (variety) {
     const ids = await idsForNameSearch("variety", variety);
@@ -132,9 +161,7 @@ export async function queryCellarContents(raw: CellarContentsQuery): Promise<Cel
   const lotWhere = await buildLotWhere(query);
   if (lotWhere == null) return { vessels: [], emptyMatches: 0, truncated: false };
 
-  const where: Prisma.VesselWhereInput = clean(query.vessel)
-    ? { id: (await resolveVessel(clean(query.vessel)!)).id, ...(query.vesselType ? { type: query.vesselType } : {}) }
-    : vesselWhere(undefined, query.vesselType);
+  const where: Prisma.VesselWhereInput = vesselWhere(clean(query.vessel), query.vesselType);
   if (onlyNonEmpty) where.vesselLots = { some: { lot: lotWhere } };
 
   const rows = await prisma.vessel.findMany({

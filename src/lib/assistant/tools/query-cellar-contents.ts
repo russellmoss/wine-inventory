@@ -50,7 +50,11 @@ export const queryCellarContentsTool: AssistantTool = {
       vineyard: { type: "string", description: "Optional vineyard/source name. Uses current lot source-vineyard membership, not block/pick granularity." },
       lot: { type: "string", description: "Optional lot code or display-name text." },
       vintage: { type: "number", description: "Optional vintage year." },
-      form: { type: "string", enum: ["FRUIT", "MUST", "JUICE", "WINE", "BULK", "BOTTLED"], description: "Optional current lot form/stage filter." },
+      form: {
+        type: "string",
+        enum: ["FRUIT", "MUST", "JUICE", "WINE", "BOTTLED_IN_PROCESS", "FINISHED", "BULK", "BOTTLED"],
+        description: "Optional current lot form/stage filter. BULK aliases to WINE; BOTTLED aliases to FINISHED.",
+      },
       vesselType: { type: "string", enum: ["TANK", "BARREL"], description: "Optional vessel type filter." },
       onlyNonEmpty: { type: "boolean", description: "Defaults true except exact vessel lookups." },
       onlyPressable: { type: "boolean", description: "When true, returns only active MUST positions that can be pressed." },
