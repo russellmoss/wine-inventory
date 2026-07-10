@@ -6,11 +6,27 @@ import type { TaskBuild } from "@/lib/work-orders/template-vocabulary";
 export const NL_WORK_ORDER_SCHEMA_VERSION = 2;
 export const NL_WORK_ORDER_MAX_TASKS = 25;
 
+// Phase 9.3 Unit 4: maintenance kinds that share the {vessel, optional overhead supply} shape.
+export type NlMaintenanceKind = "CLEAN" | "SANITIZE" | "STEAM" | "OZONE" | "GAS" | "SO2" | "WET_STORAGE";
+
 export type NlWorkOrderIntent =
   | { kind: "RACK"; from: string; to: string; drawL?: number; lossL?: number; rackType?: string; note?: string }
+  | { kind: "TOPPING"; from: string; to: string; volumeL?: number; note?: string }
   | { kind: "ADDITION" | "FINING"; vessel: string; material: string; amount: number; unit: string; note?: string }
+  | { kind: "FILTRATION"; vessel: string; filterType?: string; micron?: number; note?: string }
+  | { kind: "CAP_MGMT"; vessel: string; technique?: string; durationMin?: number; note?: string }
+  | { kind: "TEMP_SETPOINT"; vessel: string; targetValue?: number; targetUnit?: string; note?: string }
+  | { kind: NlMaintenanceKind; vessel: string; material?: string; amount?: number; gasType?: string; so2Method?: string; durationMin?: number; note?: string }
+  | { kind: "CRUSH"; destVessel?: string; note?: string }
+  | { kind: "PRESS"; op?: string; note?: string }
+  | { kind: "HARVEST_WEIGH_IN"; block?: string; note?: string }
   | { kind: "PANEL"; vessel?: string; lot?: string; panelName?: string; note?: string }
+  | { kind: "BRIX"; vessel?: string; lot?: string; note?: string }
   | { kind: "NOTE"; title: string; note?: string };
+
+// Kinds whose only run-time target/inputs are captured on the execute screen (no propose-time resolution).
+export const NL_RUNTIME_KINDS = new Set<NlWorkOrderIntent["kind"]>(["CRUSH", "PRESS", "HARVEST_WEIGH_IN"]);
+export const NL_MAINTENANCE_KINDS = new Set<string>(["CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE"]);
 
 export type NlWorkOrderDraft = {
   schemaVersion: 2;
@@ -106,7 +122,11 @@ export type NlWorkOrderCommitArgs = {
 
 type RawIntent = Record<string, unknown>;
 
-const SUPPORTED = new Set(["RACK", "ADDITION", "FINING", "PANEL", "NOTE"]);
+const SUPPORTED = new Set([
+  "RACK", "TOPPING", "ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT",
+  "CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE",
+  "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "NOTE",
+]);
 const DOSE_UNITS = new Set(["g/hL", "mg/L", "ppm", "g/L", "mL/L", "g", "kg", "mL", "L", "oz", "lb", "fl oz", "gal"]);
 
 function cleanString(value: unknown): string | null {
@@ -116,6 +136,12 @@ function cleanString(value: unknown): string | null {
 function positiveNumber(value: unknown): number | null {
   const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Any finite number (temperatures can be negative, e.g. a -2 °C cold-settle setpoint). */
+function finiteNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
 }
 
 export function normalizeDoseUnit(unit: string): string {
@@ -202,6 +228,95 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       });
       continue;
     }
+    if (up === "BRIX") {
+      const vessel = cleanString(raw.vessel) ?? lastRackDestination ?? undefined;
+      const lot = cleanString(raw.lot) ?? undefined;
+      if (!vessel && !lot) throw new Error("A Brix reading needs a vessel or lot.");
+      intents.push({ kind: "BRIX", ...(vessel ? { vessel } : {}), ...(lot ? { lot } : {}), ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
+      continue;
+    }
+    if (up === "TOPPING") {
+      const from = cleanString(raw.from) ?? cleanString(raw.fromVessel);
+      const to = cleanString(raw.to) ?? cleanString(raw.toVessel);
+      if (!from || !to) throw new Error("A topping task needs both a source and a destination vessel.");
+      intents.push({
+        kind: "TOPPING",
+        from,
+        to,
+        ...(positiveNumber(raw.volumeL) != null ? { volumeL: positiveNumber(raw.volumeL)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
+    if (up === "FILTRATION") {
+      const vessel = cleanString(raw.vessel) ?? lastRackDestination;
+      if (!vessel) throw new Error("A filtration task needs a vessel.");
+      intents.push({
+        kind: "FILTRATION",
+        vessel,
+        ...(cleanString(raw.filterType) ? { filterType: cleanString(raw.filterType)! } : {}),
+        ...(positiveNumber(raw.micron) != null ? { micron: positiveNumber(raw.micron)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
+    if (up === "CAP_MGMT") {
+      const vessel = cleanString(raw.vessel) ?? lastRackDestination;
+      if (!vessel) throw new Error("A cap-management task needs a vessel.");
+      intents.push({
+        kind: "CAP_MGMT",
+        vessel,
+        ...(cleanString(raw.technique) ? { technique: cleanString(raw.technique)! } : {}),
+        ...(positiveNumber(raw.durationMin) != null ? { durationMin: positiveNumber(raw.durationMin)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
+    if (up === "TEMP_SETPOINT") {
+      const vessel = cleanString(raw.vessel) ?? lastRackDestination;
+      if (!vessel) throw new Error("A temperature setpoint needs a vessel.");
+      intents.push({
+        kind: "TEMP_SETPOINT",
+        vessel,
+        ...(finiteNumber(raw.targetValue) != null ? { targetValue: finiteNumber(raw.targetValue)! } : {}),
+        ...(cleanString(raw.targetUnit) ? { targetUnit: cleanString(raw.targetUnit)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
+    if (NL_MAINTENANCE_KINDS.has(up)) {
+      const vessel = cleanString(raw.vessel) ?? lastRackDestination;
+      if (!vessel) throw new Error(`A ${up.toLowerCase()} task needs a vessel.`);
+      intents.push({
+        kind: up as NlMaintenanceKind,
+        vessel,
+        ...(cleanString(raw.material) ? { material: cleanString(raw.material)! } : {}),
+        ...(positiveNumber(raw.amount) != null ? { amount: positiveNumber(raw.amount)! } : {}),
+        ...(cleanString(raw.gasType) ? { gasType: cleanString(raw.gasType)! } : {}),
+        ...(cleanString(raw.so2Method) ? { so2Method: cleanString(raw.so2Method)! } : {}),
+        ...(positiveNumber(raw.durationMin) != null ? { durationMin: positiveNumber(raw.durationMin)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
+    if (up === "CRUSH") {
+      intents.push({
+        kind: "CRUSH",
+        ...(cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ?? cleanString(raw.vessel) ? { destVessel: (cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ?? cleanString(raw.vessel))! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
+    if (up === "PRESS") {
+      const op = cleanString(raw.op);
+      intents.push({ kind: "PRESS", ...(op ? { op } : {}), ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
+      continue;
+    }
+    if (up === "HARVEST_WEIGH_IN") {
+      intents.push({ kind: "HARVEST_WEIGH_IN", ...(cleanString(raw.block) ? { block: cleanString(raw.block)! } : {}), ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
+      continue;
+    }
+    // NOTE (the only remaining SUPPORTED kind).
     const title = cleanString(raw.title);
     if (!title) throw new Error("A note task needs a title.");
     intents.push({ kind: "NOTE", title, ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });

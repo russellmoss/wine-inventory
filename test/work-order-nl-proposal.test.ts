@@ -50,3 +50,59 @@ describe("natural-language work-order proposal parser", () => {
   });
 });
 
+describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
+  it("canonicalizes maintenance / filtration / cap / temp / topping kinds", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "press day",
+      tasks: [
+        { kind: "topping", from: "T1", to: "T2", volumeL: 5 },
+        { kind: "filtration", vessel: "T2", filterType: "pad", micron: 0.45 },
+        { kind: "cap_mgmt", vessel: "T3", technique: "punchdown", durationMin: 10 },
+        { kind: "temp_setpoint", vessel: "T3", targetValue: -2, targetUnit: "C" },
+        { kind: "clean", vessel: "T4", material: "proxycarb", amount: 50 },
+        { kind: "gas", vessel: "T2", gasType: "argon" },
+        { kind: "so2", vessel: "B1", so2Method: "burned disc" },
+      ],
+    });
+    expect(draft.intents.map((i) => i.kind)).toEqual([
+      "TOPPING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT", "CLEAN", "GAS", "SO2",
+    ]);
+    // A cold-settle setpoint can be a negative temperature (positiveNumber would drop it).
+    expect(draft.intents[3]).toMatchObject({ kind: "TEMP_SETPOINT", vessel: "T3", targetValue: -2, targetUnit: "C" });
+    expect(draft.intents[4]).toMatchObject({ kind: "CLEAN", vessel: "T4", material: "proxycarb", amount: 50 });
+  });
+
+  it("canonicalizes the runtime transform kinds and BRIX", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "crush day",
+      tasks: [
+        { kind: "crush", destVessel: "T12" },
+        { kind: "press", op: "SAIGNEE" },
+        { kind: "harvest_weigh_in", block: "Block 7" },
+        { kind: "brix", vessel: "T12" },
+      ],
+    });
+    expect(draft.intents).toEqual([
+      { kind: "CRUSH", destVessel: "T12" },
+      { kind: "PRESS", op: "SAIGNEE" },
+      { kind: "HARVEST_WEIGH_IN", block: "Block 7" },
+      { kind: "BRIX", vessel: "T12" },
+    ]);
+  });
+
+  it("defaults a following maintenance/observation vessel to the prior rack destination", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "rack then clean",
+      tasks: [
+        { kind: "rack", from: "T1", to: "T2" },
+        { kind: "clean", material: "sanitizer" },
+      ],
+    });
+    expect(draft.intents[1]).toMatchObject({ kind: "CLEAN", vessel: "T2" });
+  });
+
+  it("still rejects a genuinely unsupported instruction", () => {
+    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "teleport", vessel: "T1" }] })).toThrow(/Unsupported work-order instruction/);
+  });
+});
+

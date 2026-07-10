@@ -52,6 +52,17 @@ type ResolvedVesselState = {
 
 const ROUND = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
 
+/** Short verbs for the maintenance-lane task titles/summaries (display only). */
+const TASK_LABELS: Record<string, string> = {
+  CLEAN: "Clean",
+  SANITIZE: "Sanitize",
+  STEAM: "Steam",
+  OZONE: "Ozone-treat",
+  GAS: "Gas",
+  SO2: "SO₂-treat",
+  WET_STORAGE: "Wet-storage",
+};
+
 function num(v: unknown): number {
   return v == null ? 0 : typeof v === "number" ? v : Number(v);
 }
@@ -118,7 +129,9 @@ function categoryOfMaterial(m: CellarMaterialDTO): MaterialCategory {
   return (m.category ?? categoryOf(m.kind)) as MaterialCategory;
 }
 
-function matchMaterial(all: CellarMaterialDTO[], ref: string): CellarMaterialDTO {
+/** Resolve a material by ref within a task's scope. `doseableOnly` enforces WORKORDER-3 for additions
+ * (cleaning/packaging can never be dosed into wine); maintenance supplies pass their overhead scope. */
+function matchMaterialByRef(all: CellarMaterialDTO[], ref: string, opts: { scope?: MaterialCategory[]; doseableOnly?: boolean }): CellarMaterialDTO {
   const raw = ref.trim();
   const idToken = raw.match(/#\s*([0-9a-z-]{8,})/i)?.[1] ?? (raw.startsWith("#") ? raw.slice(1) : null);
   if (idToken) {
@@ -134,20 +147,56 @@ function matchMaterial(all: CellarMaterialDTO[], ref: string): CellarMaterialDTO
   const exact = all.filter((m) => names(m).includes(needle));
   const fuzzy = all.filter((m) => names(m).some((h) => h && (h.includes(needle) || needle.includes(h))));
   const matches = exact.length ? exact : fuzzy;
-  if (matches.length === 0) throw new Error(`No additive matches "${ref}". Add it to the expendables catalog first, or check the name.`);
-  const scoped = materialScopeForTask({ opType: "ADDITION" });
-  const doseable = matches.filter((m) => {
+  if (matches.length === 0) throw new Error(`No material matches "${ref}". Add it to the expendables catalog first, or check the name.`);
+  const inScope = matches.filter((m) => {
     const category = categoryOfMaterial(m);
-    return isDoseableCategory(category) && (!scoped || scoped.includes(category));
+    if (opts.doseableOnly && !isDoseableCategory(category)) return false;
+    return !opts.scope || opts.scope.includes(category);
   });
-  if (doseable.length === 0) {
+  if (inScope.length === 0) {
     const m = matches[0];
-    throw new Error(`"${materialDisplayName(m)}" is a ${categoryOfMaterial(m).toLowerCase().replace(/_/g, " ")} material - it cannot be dosed into wine.`);
+    const cat = categoryOfMaterial(m).toLowerCase().replace(/_/g, " ");
+    throw new Error(
+      opts.doseableOnly
+        ? `"${materialDisplayName(m)}" is a ${cat} material - it cannot be dosed into wine.`
+        : `"${materialDisplayName(m)}" (${cat}) is not a valid supply for this task.`,
+    );
   }
-  if (doseable.length > 1) {
-    throw new Error(`Several additives match "${ref}": ${doseable.map((m) => `${materialDisplayName(m)} (${m.id.slice(0, 6)})`).join(", ")}.`);
+  if (inScope.length > 1) {
+    throw new Error(`Several materials match "${ref}": ${inScope.map((m) => `${materialDisplayName(m)} (${m.id.slice(0, 6)})`).join(", ")}.`);
   }
-  return doseable[0];
+  return inScope[0];
+}
+
+/** Additions/fining: doseable additives only (WORKORDER-3). */
+function matchMaterial(all: CellarMaterialDTO[], ref: string): CellarMaterialDTO {
+  return matchMaterialByRef(all, ref, { scope: materialScopeForTask({ opType: "ADDITION" }), doseableOnly: true });
+}
+
+type ObservationTarget = { lotId: string; lotCode: string; vesselId?: string; vesselLabel?: string };
+
+/** Resolve a lot/vessel observation target (shared by PANEL + BRIX). A blended or empty vessel throws so
+ * the model asks for one lot; an empty vessel that an earlier rack fills binds to that planned lot. */
+async function resolveObservationTarget(
+  intent: { lot?: string; vessel?: string },
+  plannedLotByVesselId: Map<string, { id: string; code: string }>,
+  label: string,
+): Promise<ObservationTarget> {
+  if (intent.lot) {
+    const t = await resolveLotTarget({ lot: intent.lot });
+    return { lotId: t.lotId, lotCode: t.lotCode };
+  }
+  if (intent.vessel) {
+    const vessel = await resolveVesselState(intent.vessel);
+    if (vessel.lots.length === 1) return { lotId: vessel.lots[0].id, lotCode: vessel.lots[0].code, vesselId: vessel.id, vesselLabel: vessel.label };
+    if (vessel.lots.length === 0 && plannedLotByVesselId.has(vessel.id)) {
+      const planned = plannedLotByVesselId.get(vessel.id)!;
+      return { lotId: planned.id, lotCode: planned.code, vesselId: vessel.id, vesselLabel: vessel.label };
+    }
+    if (vessel.lots.length > 1) throw new Error(`${vessel.label} holds a blend (${vessel.lots.map((l) => l.code).join(", ")}) - which lot is this ${label} for?`);
+    throw new Error(`${vessel.label} is empty - there is no lot to attach this ${label} to.`);
+  }
+  throw new Error(`This ${label} needs a lot or vessel.`);
 }
 
 function convertDoseToStock(total: { total: number; unit: "g" | "mL" } | null, stockUnit: string | null | undefined): { qty: number; unit: string } | null {
@@ -252,46 +301,113 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       continue;
     }
 
-    if (intent.kind === "PANEL") {
-      let target: { lotId: string; lotCode: string };
-      let vesselId: string | undefined;
-      let vesselLabel: string | null = null;
-      if (intent.lot) {
-        target = await resolveLotTarget({ lot: intent.lot });
-      } else if (intent.vessel) {
-        const vessel = await resolveVesselState(intent.vessel);
-        vesselId = vessel.id;
-        vesselLabel = vessel.label;
-        if (vessel.lots.length === 1) {
-          target = { lotId: vessel.lots[0].id, lotCode: vessel.lots[0].code };
-        } else if (vessel.lots.length === 0 && plannedLotByVesselId.has(vessel.id)) {
-          // Bind the panel to the lot a prior rack in THIS work order will deliver (completion-time seam).
-          const planned = plannedLotByVesselId.get(vessel.id)!;
-          target = { lotId: planned.id, lotCode: planned.code };
-        } else if (vessel.lots.length > 1) {
-          throw new Error(`${vessel.label} holds a blend (${vessel.lots.map((lot) => lot.code).join(", ")}) - which lot is this panel for?`);
-        } else {
-          throw new Error(`${vessel.label} is empty - there is no lot to attach this panel to.`);
-        }
-      } else {
-        throw new Error("A panel task needs a lot or vessel.");
-      }
-      const values = {
-        lotId: target.lotId,
-        ...(vesselId ? { vesselId } : {}),
-        ...(intent.note ? { note: intent.note } : {}),
-      };
-      taskBuilds.push({ taskType: "PANEL", title: `Pull panel - ${target.lotCode}`, values, taskKey: randomUUID() });
+    if (intent.kind === "PANEL" || intent.kind === "BRIX") {
+      const label = intent.kind === "PANEL" ? "panel" : "Brix reading";
+      const target = await resolveObservationTarget(intent, plannedLotByVesselId, label);
+      const values = { lotId: target.lotId, ...(target.vesselId ? { vesselId: target.vesselId } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      const panelName = intent.kind === "PANEL" ? intent.panelName ?? "Chem panel" : "Brix reading";
+      taskBuilds.push({ taskType: intent.kind, title: `${intent.kind === "PANEL" ? "Pull panel" : "Brix"} - ${target.lotCode}`, values, taskKey: randomUUID() });
       tasks.push({
         seq,
-        kind: "PANEL",
-        title: intent.panelName ?? "Chem panel",
-        summary: `Pull ${intent.panelName ?? "chem panel"} for lot ${target.lotCode}`,
+        kind: intent.kind,
+        title: panelName,
+        summary: `${intent.kind === "PANEL" ? `Pull ${panelName}` : "Brix reading"} for lot ${target.lotCode}`,
         entities: [
           { role: "lot", label: target.lotCode, id: target.lotId },
-          ...(vesselId && vesselLabel ? [{ role: "vessel", label: vesselLabel, id: vesselId }] : []),
+          ...(target.vesselId && target.vesselLabel ? [{ role: "vessel", label: target.vesselLabel, id: target.vesselId }] : []),
         ],
       });
+      continue;
+    }
+
+    if (intent.kind === "TOPPING") {
+      const [from, to] = await Promise.all([resolveVesselState(intent.from), resolveVesselState(intent.to)]);
+      if (intent.volumeL != null) {
+        plannedVolumeDeltaByVesselId.set(from.id, ROUND((plannedVolumeDeltaByVesselId.get(from.id) ?? 0) - intent.volumeL));
+        plannedVolumeDeltaByVesselId.set(to.id, ROUND((plannedVolumeDeltaByVesselId.get(to.id) ?? 0) + intent.volumeL));
+      }
+      const values = { fromVesselId: from.id, toVesselId: to.id, ...(intent.volumeL != null ? { volumeL: intent.volumeL } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "TOPPING", title: `Top ${to.label} from ${from.label}`, values, taskKey: randomUUID() });
+      tasks.push({ seq, kind: "TOPPING", title: `Top ${to.label}`, summary: `${intent.volumeL != null ? `${intent.volumeL} L ` : ""}from ${from.label} to ${to.label}`, entities: [{ role: "from", label: from.label, id: from.id }, { role: "to", label: to.label, id: to.id }] });
+      continue;
+    }
+
+    if (intent.kind === "FILTRATION") {
+      const vessel = await resolveVesselState(intent.vessel);
+      const values = { vesselId: vessel.id, ...(intent.filterType ? { filterType: intent.filterType } : {}), ...(intent.micron != null ? { micron: intent.micron } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "FILTRATION", title: `Filter ${vessel.label}`, values, taskKey: randomUUID() });
+      tasks.push({ seq, kind: "FILTRATION", title: `Filter ${vessel.label}`, summary: `Filter ${vessel.label}${intent.filterType ? ` through ${intent.filterType}` : ""}${intent.micron != null ? ` (${intent.micron} µm)` : ""}`, entities: [{ role: "vessel", label: vessel.label, id: vessel.id }] });
+      continue;
+    }
+
+    if (intent.kind === "CAP_MGMT") {
+      const vessel = await resolveVesselState(intent.vessel);
+      const values = { vesselId: vessel.id, ...(intent.technique ? { technique: intent.technique } : {}), ...(intent.durationMin != null ? { durationMin: intent.durationMin } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "CAP_MGMT", title: `Cap work on ${vessel.label}`, values, taskKey: randomUUID() });
+      tasks.push({ seq, kind: "CAP_MGMT", title: `Cap management`, summary: `${intent.technique ?? "Cap work"} on ${vessel.label}${intent.durationMin != null ? ` for ${intent.durationMin} min` : ""}`, entities: [{ role: "vessel", label: vessel.label, id: vessel.id }] });
+      continue;
+    }
+
+    if (intent.kind === "TEMP_SETPOINT") {
+      const vessel = await resolveVesselState(intent.vessel);
+      const values = { vesselId: vessel.id, ...(intent.targetValue != null ? { targetValue: intent.targetValue } : {}), ...(intent.targetUnit ? { targetUnit: intent.targetUnit } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "TEMP_SETPOINT", title: `Set ${vessel.label} temperature`, values, taskKey: randomUUID() });
+      tasks.push({ seq, kind: "TEMP_SETPOINT", title: `Temperature setpoint`, summary: `Set ${vessel.label}${intent.targetValue != null ? ` to ${intent.targetValue}${intent.targetUnit ?? ""}` : ""}`, entities: [{ role: "vessel", label: vessel.label, id: vessel.id }] });
+      continue;
+    }
+
+    if (intent.kind === "CLEAN" || intent.kind === "SANITIZE" || intent.kind === "STEAM" || intent.kind === "OZONE" || intent.kind === "GAS" || intent.kind === "SO2" || intent.kind === "WET_STORAGE") {
+      const vessel = await resolveVesselState(intent.vessel);
+      let material: CellarMaterialDTO | null = null;
+      if (intent.material) {
+        material = matchMaterialByRef(await listMaterials(), intent.material, { scope: materialScopeForTask({ activityType: intent.kind }) });
+      }
+      const values = {
+        vesselId: vessel.id,
+        ...(material ? { materialId: material.id } : {}),
+        ...(intent.amount != null ? { amount: intent.amount } : {}),
+        ...(intent.gasType ? { gasType: intent.gasType } : {}),
+        ...(intent.so2Method ? { so2Method: intent.so2Method } : {}),
+        ...(intent.durationMin != null ? { durationMin: intent.durationMin } : {}),
+        ...(intent.note ? { note: intent.note } : {}),
+      };
+      const verb = TASK_LABELS[intent.kind];
+      taskBuilds.push({ taskType: intent.kind, title: `${verb} ${vessel.label}`, values, taskKey: randomUUID() });
+      tasks.push({
+        seq,
+        kind: intent.kind,
+        title: verb,
+        summary: `${verb} ${vessel.label}${material ? ` with ${materialDisplayName(material)}` : ""}`,
+        entities: [{ role: "vessel", label: vessel.label, id: vessel.id }, ...(material ? [{ role: "supply", label: materialDisplayName(material), id: material.id }] : [])],
+      });
+      continue;
+    }
+
+    if (intent.kind === "CRUSH") {
+      let destVesselId: string | undefined;
+      let destLabel: string | null = null;
+      if (intent.destVessel) {
+        const v = await resolveVesselState(intent.destVessel);
+        destVesselId = v.id;
+        destLabel = v.label;
+      }
+      const values = { ...(destVesselId ? { destVesselId } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "CRUSH", title: "De-stem / crush", values, taskKey: randomUUID() });
+      tasks.push({ seq, kind: "CRUSH", title: "De-stem / crush", summary: `Crush${destLabel ? ` to ${destLabel}` : ""}; picks and measured volume entered on the floor`, entities: destVesselId && destLabel ? [{ role: "destination", label: destLabel, id: destVesselId }] : [] });
+      continue;
+    }
+
+    if (intent.kind === "PRESS") {
+      const values = { ...(intent.op ? { op: intent.op } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "PRESS", title: intent.op === "SAIGNEE" ? "Saignée" : "Press", values, taskKey: randomUUID() });
+      tasks.push({ seq, kind: "PRESS", title: intent.op === "SAIGNEE" ? "Saignée" : "Press", summary: "Must lot, source vessel and press fractions entered on the floor", entities: [] });
+      continue;
+    }
+
+    if (intent.kind === "HARVEST_WEIGH_IN") {
+      const values = { ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "HARVEST_WEIGH_IN", title: "Fruit intake / weigh-in", values, taskKey: randomUUID() });
+      tasks.push({ seq, kind: "HARVEST_WEIGH_IN", title: "Fruit intake / weigh-in", summary: `Weigh in fruit${intent.block ? ` (${intent.block})` : ""}; block and weights entered on the floor`, entities: [] });
       continue;
     }
 
