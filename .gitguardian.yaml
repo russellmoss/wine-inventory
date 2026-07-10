@@ -1,0 +1,25 @@
+# GitGuardian / ggshield configuration.
+# https://docs.gitguardian.com/ggshield-docs/configuration
+#
+# We suppress ONE class of finding here: the default credentials of the
+# throwaway Postgres *service containers* used by CI (.github/workflows/ci.yml).
+# Those DBs are ephemeral, listen only on localhost inside the GitHub runner,
+# hold no real data, and are destroyed when the job ends — the literal string
+# "postgres" is not a secret. See CLAUDE.md / the CI job comments for context.
+#
+# This is deliberately narrow: we ignore the specific match values, NOT the
+# whole workflow file, so a real credential accidentally committed to ci.yml
+# would still be caught.
+version: 2
+
+secret:
+  ignored-matches:
+    # POSTGRES_PASSWORD / connection-string password for the CI-only Postgres
+    # service containers (feedback-domain-verify + tenant-isolation jobs).
+    - name: "CI Postgres service-container default password (ephemeral, localhost-only)"
+      match: postgres
+    # The app_rls login password minted in-CI purely so the tenant-isolation
+    # suite can authenticate as the NOBYPASSRLS role. Set only inside the runner
+    # (ALTER ROLE ... PASSWORD), never a production credential.
+    - name: "app_rls CI-only login password (tenant-isolation proof)"
+      match: app_rls_ci_pw
