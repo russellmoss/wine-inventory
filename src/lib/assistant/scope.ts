@@ -1,7 +1,7 @@
 import "server-only";
 import { Prisma, type WorkOrderTaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { AppUser } from "@/lib/access";
+import { isTenantAdminLike, type AppUser } from "@/lib/access";
 import { parseVesselRef } from "@/lib/vessels/ref";
 import type { OperationType } from "@/lib/ledger/vocabulary";
 
@@ -12,7 +12,7 @@ import type { OperationType } from "@/lib/ledger/vocabulary";
  * (nothing is in scope).
  */
 export function scopedVineyardWhere(user: AppUser): Prisma.VineyardWhereInput | null {
-  if (user.role === "admin") return {};
+  if (isTenantAdminLike(user)) return {};
   if (user.vineyardIds.length === 0) return null;
   return { id: { in: user.vineyardIds } };
 }
@@ -64,7 +64,7 @@ export async function findScopedBlocks(
   opts: { block?: string; vineyard?: string; variety?: string },
 ): Promise<ScopedBlock[]> {
   const where: Prisma.VineyardBlockWhereInput = {};
-  if (user.role !== "admin") {
+  if (!isTenantAdminLike(user)) {
     if (user.vineyardIds.length === 0) return [];
     where.vineyardId = { in: user.vineyardIds };
   }

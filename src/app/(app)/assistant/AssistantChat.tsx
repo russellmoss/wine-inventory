@@ -30,6 +30,7 @@ type ProposalItem = {
   kind: "proposal";
   preview: string;
   token: string;
+  details?: WorkOrderProposalCardDetails;
   status: "pending" | "applying" | "done" | "error";
   result?: string;
   // A "View X →" link surfaced after a create/confirm succeeds (Unit 5).
@@ -41,6 +42,21 @@ type ProposalItem = {
 type ChoiceOpt = { label: string; sublabel?: string; resume?: string; send?: string };
 type ChoiceItem = { kind: "choice"; prompt: string; options: ChoiceOpt[]; chosen?: string };
 type Item = TextItem | ProposalItem | ChoiceItem;
+
+type WorkOrderProposalCardDetails = {
+  title?: string;
+  status?: string;
+  tasks?: { seq: number; title: string; summary: string; entities?: { role: string; label: string }[]; members?: { id: string; label: string; detail?: string }[] }[];
+  warnings?: { severity: "blocking" | "confirmable" | "completion_check"; code: string; message: string }[];
+  unresolved?: { label: string; reason: string }[];
+  cost?: {
+    totalKnownCost: number | null;
+    hasUnknownCost: boolean;
+    currency: string | null;
+    lines: { taskSeq: number; materialLabel: string; qty: number | null; unit: string | null; estimatedCost: number | null; method: string; reason?: string }[];
+  };
+  diff?: { rows: { kind: string; label: string; before: string; after: string }[] };
+};
 
 type FeedbackState = { mode: "idle" | "form" | "sent"; rating?: "up" | "down" };
 
@@ -496,7 +512,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           setStatus(evt.phase === "start" ? `${TOOL_LABELS[evt.name] ?? evt.name}…` : "Thinking…");
         } else if (evt.type === "proposal") {
           setStatus(null);
-          setItems((prev) => [...prev, { kind: "proposal", preview: evt.preview, token: evt.token, status: "pending" }]);
+          setItems((prev) => [...prev, { kind: "proposal", preview: evt.preview, token: evt.token, details: asWorkOrderProposalDetails(evt.details), status: "pending" }]);
         } else if (evt.type === "choice") {
           setStatus(null);
           setItems((prev) => [...prev, { kind: "choice", prompt: evt.prompt, options: evt.options }]);
@@ -591,7 +607,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         });
         const data = await res.json().catch(() => null);
         if (res.ok && data?.ok) {
-          setItems((prev) => [...prev, { kind: "proposal", preview: data.preview, token: data.token, status: "pending" }]);
+          setItems((prev) => [...prev, { kind: "proposal", preview: data.preview, token: data.token, details: asWorkOrderProposalDetails(data.details), status: "pending" }]);
         } else {
           setError(data?.error ?? "Couldn't prepare that selection.");
         }
@@ -915,6 +931,22 @@ function updateProposal(items: Item[], index: number, patch: Partial<ProposalIte
   return next;
 }
 
+function asWorkOrderProposalDetails(value: unknown): WorkOrderProposalCardDetails | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const v = value as WorkOrderProposalCardDetails;
+  if (!Array.isArray(v.tasks) || !Array.isArray(v.warnings) || !v.cost || !v.diff) return undefined;
+  return v;
+}
+
+function money(amount: number | null, currency: string | null | undefined): string {
+  if (amount == null) return "UNKNOWN";
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" }).format(amount);
+  } catch {
+    return `${currency || "USD"} ${amount.toFixed(2)}`;
+  }
+}
+
 function FeedbackBar({
   state,
   onUp,
@@ -1073,6 +1105,7 @@ function ChoiceCard({ item, disabled, onPick }: { item: ChoiceItem; disabled: bo
 function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onConfirm: () => void; onCancel: () => void }) {
   const done = item.status === "done";
   const errored = item.status === "error";
+  const details = item.details;
   return (
     <div
       style={{
@@ -1088,6 +1121,8 @@ function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onCon
         Confirm change
       </div>
       <div style={{ fontSize: "var(--text-body)", color: "var(--text-primary)", marginBottom: 12 }}>{item.preview}</div>
+
+      {details ? <WorkOrderProposalDetails details={details} /> : null}
 
       {item.status === "pending" || item.status === "applying" ? (
         <div style={{ display: "flex", gap: "var(--space-2)" }}>
@@ -1108,6 +1143,132 @@ function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onCon
           ) : null}
         </div>
       )}
+    </div>
+  );
+}
+
+function WorkOrderProposalDetails({ details }: { details: WorkOrderProposalCardDetails }) {
+  const warnings = details.warnings ?? [];
+  const blocking = warnings.filter((w) => w.severity === "blocking");
+  const confirmable = warnings.filter((w) => w.severity === "confirmable");
+  const completion = warnings.filter((w) => w.severity === "completion_check");
+  const cost = details.cost;
+  return (
+    <div aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", marginBottom: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+        {(details.tasks ?? []).map((task) => (
+          <div
+            key={task.seq}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: "var(--space-2) var(--space-3)",
+              background: "var(--surface)",
+            }}
+          >
+            <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "baseline", flexWrap: "wrap" }}>
+              <strong style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>#{task.seq}</strong>
+              <span style={{ fontSize: "var(--text-body)", color: "var(--text-primary)", fontWeight: 600 }}>{task.title}</span>
+            </div>
+            <div style={{ marginTop: 2, fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>{task.summary}</div>
+            {task.entities?.length ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                {task.entities.map((entity, i) => (
+                  <span
+                    key={`${entity.role}-${i}`}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-pill)",
+                      padding: "2px 8px",
+                      fontSize: 12,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {entity.role}: {entity.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {/* Phase 9.4a: a group-rack task stays ONE row; its members collapse behind an expander. */}
+            {task.members?.length ? (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer", fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+                  {task.members.length} {task.members.length === 1 ? "vessel" : "vessels"}
+                </summary>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, color: "var(--text-muted)" }}>
+                  {task.members.map((m) => (
+                    <li key={m.id}>
+                      {m.label}
+                      {m.detail ? ` — ${m.detail}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      {details.unresolved?.length ? (
+        <div style={{ borderLeft: "3px solid var(--danger)", paddingLeft: "var(--space-3)" }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Needs input</div>
+          {details.unresolved.map((u, i) => (
+            <div key={i} style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+              {u.label}: {u.reason}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {warnings.length ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <WarningGroup title="Blocks creation" warnings={blocking} tone="var(--danger)" />
+          <WarningGroup title="Confirm with warning" warnings={confirmable} tone="var(--warning, #a66a00)" />
+          <WarningGroup title="Checked at completion" warnings={completion} tone="var(--text-muted)" />
+        </div>
+      ) : null}
+
+      {cost ? (
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-2)" }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Supply estimate</div>
+          <div style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+            Total: {money(cost.totalKnownCost, cost.currency)}
+            {cost.hasUnknownCost ? " (some costs unknown)" : ""}
+          </div>
+          {cost.lines?.map((line, i) => (
+            <div key={i} style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+              Task #{line.taskSeq}: {line.materialLabel} - {line.qty == null ? "UNKNOWN" : `${line.qty} ${line.unit ?? ""}`} - {money(line.estimatedCost, cost.currency)}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {details.diff?.rows?.length ? (
+        <details>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Planned diff</summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+            {details.diff.rows.map((row, i) => (
+              <div key={i} style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+                {row.label}: {row.before} to {row.after}
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function WarningGroup({ title, warnings, tone }: { title: string; warnings: NonNullable<WorkOrderProposalCardDetails["warnings"]>; tone: string }) {
+  if (warnings.length === 0) return null;
+  return (
+    <div style={{ borderLeft: `3px solid ${tone}`, paddingLeft: "var(--space-3)" }}>
+      <div style={{ fontWeight: 600, color: tone }}>{title}</div>
+      {warnings.map((warning) => (
+        <div key={`${warning.code}-${warning.message}`} style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+          {warning.message}
+        </div>
+      ))}
     </div>
   );
 }

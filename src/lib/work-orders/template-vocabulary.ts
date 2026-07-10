@@ -75,6 +75,17 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     fields: { fromVesselId: "vessel", toVesselId: "vessel", drawL: "number", lossL: "number", rackType: "select", note: "text" },
     fieldOptions: { rackType: RACK_TYPES },
   },
+  GROUP_RACK: {
+    kind: "OPERATION",
+    opType: "RACK",
+    label: "Group rack / barrel-down",
+    // Phase 9.4a: one source tank ↔ many barrels as ONE balanced RACK op. The resolved member set +
+    // direction + allocations ride in plannedPayload.groupRack (authored by NL/assistant, not the field
+    // builder), so only `note` is a template-settable field here. Completion routes via the RACK dispatch
+    // branch (execute.ts) on the groupRack payload; reject reverses the single op (group-rack-core.ts).
+    fields: { note: "text" },
+    hint: "Barrel down a tank into a barrel group/range, or rack a barrel group back to a tank — one reviewable task, one balanced ledger operation.",
+  },
   ADDITION: {
     kind: "OPERATION",
     opType: "ADDITION",
@@ -131,6 +142,16 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     observationType: "PANEL",
     label: "Chem panel",
     fields: { vesselId: "vessel", lotId: "lot", note: "text" },
+  },
+  // Phase 9.3: pull/send a real lab sample on completion (over the idempotent pullSampleCore). A PANEL
+  // stays a chem-panel observation; SAMPLE_PULL owns the sample lifecycle. `lab` is free text; `sendNow`
+  // marks it sent at pull time. The lot is bound at authoring (like PANEL); readings come back later.
+  SAMPLE_PULL: {
+    kind: "OBSERVATION",
+    observationType: "SAMPLE_PULL",
+    label: "Pull / send sample",
+    fields: { vesselId: "vessel", lotId: "lot", lab: "text", note: "text" },
+    hint: "Pulls a real lab sample when the task is completed. Enter the lab (and whether to send it now); lab results are attached later.",
   },
   // ── MAINTENANCE lane (Phase 9.1): lotless, vessel-scoped, no ledger op, no approval gate. ──
   TEMP_SETPOINT: {
@@ -306,11 +327,15 @@ export function canonicalizeTemplateSpec(spec: TemplateSpec): TemplateSpec {
 /** Canonical columns (A6) extracted from a task's payload — mirror the JSON for querying + composite FKs. */
 function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
   const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const destVesselId =
+    taskType === "PRESS"
+      ? s(payload.toVesselId) ?? s(payload.vesselId)
+      : s(payload.toVesselId) ?? s(payload.vesselId) ?? s(payload.destVesselId);
   return {
     // Transform ops (plan 035): CRUSH mirrors its destVesselId; PRESS mirrors sourceVesselId + the
     // parent lot (parentLotId). Null at issue time — the real vessels/lot are captured at run time.
     sourceVesselId: s(payload.fromVesselId) ?? s(payload.sourceVesselId),
-    destVesselId: s(payload.toVesselId) ?? s(payload.vesselId) ?? s(payload.destVesselId),
+    destVesselId,
     lotId: s(payload.lotId) ?? s(payload.parentLotId),
     materialId: s(payload.materialId),
     // Plan 039: the HARVEST_WEIGH_IN block target (a vineyard block). Null at issue; the block is chosen
@@ -326,7 +351,15 @@ function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
  */
 /** A single explicit task to build (used by the new-WO form when it fans out multi-vessel selections +
  * appends extra additions — the flat list the form sends instead of index-keyed spec overrides). */
-export type TaskBuild = { taskType: string; title?: string; values: Record<string, unknown> };
+export type TaskBuild = {
+  taskType: string;
+  title?: string;
+  values: Record<string, unknown>;
+  // Phase 9.3: a proposal-local stable key (uuid) minted per TaskBuild. Carried into the created
+  // WorkOrderTask's plannedPayload so completion-time dependency refs survive reordering/retries/fanout
+  // (Unit 5). NOT part of the freshness fingerprint (the signed payload already HMAC-protects it).
+  taskKey?: string;
+};
 
 /** Instantiate an explicit flat list of task builds into CreateTaskInput[] (validates each taskType +
  * derives canonical columns). Mirrors instantiateTasksFromSpec's per-task logic. */
@@ -334,7 +367,7 @@ export function instantiateTaskBuilds(builds: TaskBuild[]): CreateTaskInput[] {
   return builds.map((b, i) => {
     const def = TASK_VOCABULARY[b.taskType];
     if (!def) throw new Error(`Unknown task type "${b.taskType}".`);
-    const payload = { ...b.values };
+    const payload = { ...b.values, ...(b.taskKey ? { taskKey: b.taskKey } : {}) };
     const canon = canonicalColumns(b.taskType, payload);
     return {
       seq: i + 1,

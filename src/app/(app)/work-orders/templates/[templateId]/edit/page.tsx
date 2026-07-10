@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { getTemplateDetail, getWorkOrderPickers } from "@/lib/work-orders/data";
 import { TemplateEditorClient } from "../../TemplateEditorClient";
 import type { TemplateTaskSpec } from "@/lib/work-orders/template-vocabulary";
@@ -19,7 +19,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ t
     </div>
   );
 
-  if (user.role !== "admin") return back("Only an admin can create or edit templates.");
+  if (!isTenantAdminLike(user)) return back("Only an admin can create or edit templates.");
   const template = await getTemplateDetail(tenantId, templateId);
   if (!template) return back("That template no longer exists.");
   if (template.isSystem) return back("System templates can't be edited — clone it first, then customize the copy.");

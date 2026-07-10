@@ -84,7 +84,7 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(180px, 1fr) repeat(3, minmax(130px, 160px)) auto auto",
+              gridTemplateColumns: TENANT_GRID_COLUMNS,
               gap: "var(--space-2)",
               alignItems: "end",
               color: "var(--text-muted)",
@@ -167,6 +167,11 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
 
 const cellStyle: React.CSSProperties = { padding: "10px 8px", verticalAlign: "top" };
 
+// Shared so the header row and every tenant row line up. The last two (Save/Support)
+// use fixed widths because `auto` columns size per-grid from their own content — the
+// header text and the row buttons differ, so `auto auto` would drift out of alignment.
+const TENANT_GRID_COLUMNS = "minmax(180px, 1fr) repeat(3, minmax(130px, 160px)) 80px 80px";
+
 function TenantModes({
   tenant,
   busy,
@@ -181,7 +186,7 @@ function TenantModes({
   const [featureRequestMode, setFeature] = React.useState(tenant.modes.featureRequestMode);
   const key = `tenant-${tenant.id}`;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1fr) repeat(3, minmax(130px, 160px)) auto auto", gap: "var(--space-2)", alignItems: "center" }}>
+    <div style={{ display: "grid", gridTemplateColumns: TENANT_GRID_COLUMNS, gap: "var(--space-2)", alignItems: "center" }}>
       <div>
         <div style={{ fontWeight: 600 }}>{tenant.name}</div>
         <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{tenant.id}</div>

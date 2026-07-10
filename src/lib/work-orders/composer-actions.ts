@@ -4,6 +4,7 @@ import { action } from "@/lib/actions";
 import { listTemplatesWithSpec, getWorkOrderPickers, type PickerOption } from "@/lib/work-orders/data";
 import { createWorkOrderFromTemplateCore } from "@/lib/work-orders/templates";
 import { issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
+import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
 import { revalidatePath } from "next/cache";
 
 // Plan 045, Unit 9 — the "issue a work order against THIS vessel" composer. Two thin server wrappers over
@@ -40,6 +41,7 @@ export type CreateAndIssueInput = {
   autoFinalize?: boolean;
   perTaskOverrides?: Record<string, unknown>[];
   taskBuilds?: { taskType: string; title?: string; values: Record<string, unknown> }[];
+  readinessFingerprint?: string | null;
 };
 
 export type CreateAndIssueResult = {
@@ -54,7 +56,15 @@ export type CreateAndIssueResult = {
  * steps — no new lifecycle logic. Revalidates the WO surfaces. */
 export const createAndIssueWorkOrderAction = action(
   async ({ actor }, input: CreateAndIssueInput): Promise<CreateAndIssueResult> => {
-    const created = await createWorkOrderFromTemplateCore(actor, input);
+    const { readinessFingerprint, ...coreInput } = input;
+    if (coreInput.taskBuilds && coreInput.taskBuilds.length > 0) {
+      await gateWorkOrderReadinessForWrite(
+        coreInput.taskBuilds,
+        { source: "vessel_modal", title: coreInput.title ?? "Work order", assigneeEmail: coreInput.assigneeEmail ?? null, dueDate: null },
+        readinessFingerprint,
+      );
+    }
+    const created = await createWorkOrderFromTemplateCore(actor, coreInput);
     const issued = await issueWorkOrderCore(actor, { workOrderId: created.workOrderId });
     revalidatePath("/work-orders");
     revalidatePath(`/work-orders/${issued.workOrderId}`);

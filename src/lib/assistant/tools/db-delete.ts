@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
+import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
@@ -65,7 +66,7 @@ export const dbDeleteTool: AssistantTool = {
 };
 
 export const commitDbDelete: Committer = async (user, args) => {
-  if (user.role !== "admin") throw new Error("Deleting records requires an admin.");
+  if (!isTenantAdminLike(user)) throw new Error("Deleting records requires an admin or developer.");
   const entity = getEntity(String(args.entity ?? ""));
   if (!entity) throw new Error("That entity can no longer be deleted.");
   const id = String(args.id);

@@ -87,6 +87,50 @@
 - **Status:** 🟢 (admin gate + server-side canonicalization + tenant scoping verified by the /review
   security specialist + the write-nothing guard)
 
+### Feedback-fix agents: attacker-influenced input, but a fixed output path
+- The bug-fix / assistant-feedback agents (`scripts/bug-feedback-agent.ts`,
+  `scripts/assistant-feedback-agent.ts`) run in GitHub Actions holding real secrets
+  (`DATABASE_URL`, `GH_PAT`) on **untrusted** ticket text — and now on **untrusted screenshots**
+  (`scripts/feedback-attachment-images.ts` fetches the ticket's private Blob images and passes them
+  to Claude as vision blocks). Both system prompts frame text AND images as data, never instructions.
+- Images change the model's **input** only. The **output** path is unchanged and is where safety
+  lives: modify-existing-files-only inside the write-fence (`scripts/feedback-fence-rules.ts`), no
+  new files, a typecheck gate, a post-run fence self-check, and **no lint/test in the credentialed
+  job** (that is the RCE vector — the PR's clean-context CI runs them). So adding vision does not
+  widen the RCE surface.
+- The Blob token in the two feedback CI jobs is **read-only in use**; the job already holds stronger
+  secrets. There is no read-only Blob token type in this `@vercel/blob` version. Size/count/byte
+  budgets in the selector bound cost + payload.
+- **Tripwire:** any change that lets an image (or its decoded text) trigger a **tool call / code
+  execution** in the agent, or that runs lint/test/`npm`-scripts in the credentialed job.
+- **Status:** 🟢 (output path unchanged; pure selector guarded by `test/feedback-attachment-images.test.ts`)
+
+### The feedback auto-fix fence widens to cellar-floor domains, never to money/tenancy/ledger (plan 052)
+- The write-fence allowlist (`scripts/feedback-fence-rules.ts` `allowedPrefixes`) covers UI/assistant
+  PLUS the cellar-floor server domains (`work-orders`, `vessel(s)`, `lot`, `blend`, `bottling`, `bulk`,
+  `cellar`, `ferment`, `harvest`, `chemistry`, `stock`, `inventory`, `sparkling`, `vineyard`,
+  `winemaking-calc`, `units`, `reference`, `settings`, `locations`, `fieldnotes`, `developer`,
+  `feedback`) so the loop can fix real domain bugs, PLUS `test/` so a fix carries its regression test.
+  Allowing `test/` is safe: test files run ONLY in the PR's clean-context `check` CI (vitest, no
+  secrets), NEVER in the credentialed feedback-bug-fix agent job (which writes files but runs no
+  lint/test — the RCE boundary is unchanged). It MUST NOT include the money/tenancy/ledger/moat
+  domains: `ledger`, `cost`, `money`, `accounting`, `commerce`, `compliance`, `transform` (kept out by
+  omission — unlisted ⇒ `isAllowed` false), the hard-denied `auth`/`dal`/`tenant`/`prisma`/`.env`/
+  workflows/migrations, and the file `src/lib/audit.ts` (audit-trail integrity is human-review-only).
+- **What breaks at scale:** widening auto-merge into domain code lets an autonomous LLM land a change
+  to code that writes to the append-only ledger. The required `check` CI job runs NO DB domain proof,
+  so the backstop is the label-gated **`feedback-domain-verify`** job: it runs a touched domain's
+  runtime `verify:*` (resolved by `resolveDomainVerifies`); a mapped domain whose proof fails blocks
+  the merge, and an UNMAPPED widened domain has no proof so the auto-merge gate (`bug-triage`) must
+  route it to a human. Auto-merge stays fence-only + small + root-fix + CI-green as before.
+- **Tripwire:** the excluded set (`ledger`/`cost`/`money`/`accounting`/`commerce`/`compliance`/
+  `transform`/`audit.ts`) appearing in `allowedPrefixes`; a domain fix auto-merging with
+  `feedback-domain-verify` red or absent; a new widened domain shipping with no `domainVerifyMap`
+  entry AND being treated as auto-mergeable. See [[TRIP-SEC-FEEDBACK-FENCE]].
+- **Status:** 🟡 (fence + backstop shipped and unit-tested; the `feedback-domain-verify` CI job needs
+  its first live run to confirm the domain `verify:*` run clean in-CI, and the global `bug-triage`
+  auto-merge FENCE must be synced to match — plan 052 Unit 5)
+
 ### Secrets never enter the repo or the client
 - Secrets live in `.env` (gitignored) / Vercel env / GitHub Actions secrets. Client-exposed keys are
   `NEXT_PUBLIC_*` **by design only** (e.g. Google Map Tiles, restricted by referrer).

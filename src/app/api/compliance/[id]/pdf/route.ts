@@ -1,4 +1,4 @@
-import { getCurrentUser } from "@/lib/dal";
+import { getCurrentUser, isTenantAdminLike } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { fillTtbPdf, type ProfileHeader } from "@/lib/compliance/fill-pdf";
 import { fillExcisePdf } from "@/lib/compliance/fill-5000-24-pdf";
@@ -17,7 +17,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!user || user.banned || user.mustChangePassword) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
   }
-  if (user.role !== "admin") {
+  if (!isTenantAdminLike(user)) {
     return Response.json({ error: "Compliance reports are admin-only." }, { status: 403 });
   }
 

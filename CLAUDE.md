@@ -12,6 +12,7 @@ Key routing rules:
 - Execute a plan, build it -> invoke work
 - Full pipeline, idea to PR -> invoke lfg
 - Bugs, errors, "why is this broken", 500 errors -> invoke investigate
+- Triage the bug backlog, "smash these bugs", which fixes to merge first, merge no-brainer bug fixes -> invoke bug-triage
 - Ship, deploy, push, create PR -> invoke ship
 - QA, test the site, find bugs -> invoke qa
 - Code review, check my diff -> invoke review

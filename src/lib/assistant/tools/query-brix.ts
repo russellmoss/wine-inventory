@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool, ToolContext } from "../registry";
 
 type QueryBrixInput = {
@@ -19,7 +20,7 @@ function buildBlockWhere(
   input: QueryBrixInput,
 ): Prisma.VineyardBlockWhereInput | null {
   const where: Prisma.VineyardBlockWhereInput = {};
-  if (ctx.user.role !== "admin") {
+  if (!isTenantAdminLike(ctx.user)) {
     if (ctx.user.vineyardIds.length === 0) return null;
     where.vineyardId = { in: ctx.user.vineyardIds };
   }

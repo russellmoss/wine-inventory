@@ -22,6 +22,7 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
   const reduced = usePrefersReducedMotion();
   const titleId = React.useId();
   const [open, setOpen] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
   const [everOpened, setEverOpened] = React.useState(false);
   const fabRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -43,21 +44,43 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
-      setOpen(false);
+      if (expanded) setExpanded(false);
+      else closeDock();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [expanded, open]);
 
   // The full-page assistant lives at /assistant — don't stack a dock on top of it.
   if (pathname === "/assistant" || pathname.startsWith("/assistant/")) return null;
 
   const openDock = () => {
     setEverOpened(true);
+    setExpanded(false);
     setOpen(true);
   };
 
+  function closeDock() {
+    setExpanded(false);
+    setOpen(false);
+  }
+
   const transition = reduced ? "none" : "opacity var(--duration-normal) var(--ease-out), transform var(--duration-normal) var(--ease-out)";
+  const panelPosition: React.CSSProperties = expanded
+    ? {
+        left: "50%",
+        top: "50%",
+        width: "min(94vw, clamp(520px, 75vw, 1040px))",
+        height: "min(86vh, max(75vh, 620px))",
+        transform: "translate(-50%, -50%)",
+      }
+    : {
+        right: "var(--space-5)",
+        bottom: "var(--space-5)",
+        width: "min(440px, 94vw)",
+        height: "min(620px, 80vh)",
+        transform: open ? "none" : "translateY(8px)",
+      };
 
   return (
     <>
@@ -85,31 +108,69 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
 
       {/* Expanded panel — kept mounted after first open so chat state survives collapse. */}
       {everOpened ? (
-        <div
-          ref={panelRef}
-          role="dialog"
-          aria-labelledby={titleId}
-          aria-modal={false}
-          tabIndex={-1}
-          style={{
-            position: "fixed", right: "var(--space-5)", bottom: "var(--space-5)", zIndex: 60,
-            width: "min(440px, 94vw)", height: "min(620px, 80vh)",
-            display: open ? "flex" : "none", flexDirection: "column",
-            background: "var(--surface-raised)", border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-xl)", overflow: "hidden",
-            opacity: open ? 1 : 0, transform: open ? "none" : "translateY(8px)", transition,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--space-3) var(--space-4)", borderBottom: "1px solid var(--border-strong)", flex: "none" }}>
-            <span id={titleId} style={{ fontFamily: "var(--font-heading)", fontWeight: 500, fontSize: 15, color: "var(--text-primary)" }}>Assistant</span>
+        <>
+          {open && expanded ? (
             <button
               type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Close the assistant"
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, lineHeight: 1, color: "var(--text-muted)", padding: 4 }}
-            >
-              ×
-            </button>
+              aria-label="Shrink the assistant"
+              onClick={() => setExpanded(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 59,
+                border: "none",
+                padding: 0,
+                cursor: "default",
+                background: "rgba(20, 19, 15, 0.28)",
+              }}
+            />
+          ) : null}
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-labelledby={titleId}
+            aria-modal={false}
+            tabIndex={-1}
+            style={{
+              position: "fixed",
+              zIndex: expanded ? 61 : 60,
+              ...panelPosition,
+              display: open ? "flex" : "none", flexDirection: "column",
+              background: "var(--surface-raised)", border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-xl)", overflow: "hidden",
+              opacity: open ? 1 : 0,
+              transition,
+            }}
+          >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--space-3) var(--space-4)", borderBottom: "1px solid var(--border-strong)", flex: "none" }}>
+            <span id={titleId} style={{ fontFamily: "var(--font-heading)", fontWeight: 500, fontSize: 15, color: "var(--text-primary)" }}>Assistant</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                aria-label={expanded ? "Shrink the assistant" : "Enlarge the assistant"}
+                title={expanded ? "Shrink" : "Enlarge"}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 6, lineHeight: 0, borderRadius: "var(--radius-md)" }}
+              >
+                {expanded ? (
+                  <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true">
+                    <path d="M6.5 2.5v4h-4M10.5 14.5v-4h4M2.8 6.2 6.5 2.5M14.2 10.8l-3.7 3.7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true">
+                    <path d="M6.5 2.5h-4v4M10.5 14.5h4v-4M2.8 2.8l3.7 3.7M14.2 14.2l-3.7-3.7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={closeDock}
+                aria-label="Close the assistant"
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, lineHeight: 1, color: "var(--text-muted)", padding: 4 }}
+              >
+                ×
+              </button>
+            </div>
           </div>
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: "0 var(--space-4) var(--space-4)" }}>
             <React.Suspense fallback={<div style={{ padding: "var(--space-4)", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)" }}>Loading…</div>}>
@@ -117,6 +178,7 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
             </React.Suspense>
           </div>
         </div>
+        </>
       ) : null}
     </>
   );

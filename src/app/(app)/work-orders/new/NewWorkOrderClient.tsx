@@ -7,6 +7,9 @@ import { Card, Button, Input, Checkbox, Eyebrow, Badge } from "@/components/ui";
 import { TASK_VOCABULARY, fieldLabel, type TemplateSpec, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { computeDoseTotal, isRateUnit } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
+import { previewWorkOrderReadinessAction } from "@/lib/work-orders/proposal-readiness-actions";
+import type { WorkOrderReadinessProposal } from "@/lib/work-orders/proposal-readiness";
+import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadinessPanel";
 import { VesselMultiSelect } from "./VesselMultiSelect";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
@@ -25,6 +28,40 @@ function todayLocal(): string {
 
 /** Result of a locked-vessel create+issue (mirrors createAndIssueWorkOrderAction's return). */
 export type NewWorkOrderIssued = { workOrderId: string; number: number; status: string; reservationWarnings: string[] };
+
+// ── Task-build assembly (hoisted so the live readiness preview and submit build the SAME TaskBuild[]). ──
+
+/** Clean a value map for submit/preview: drop empty strings/undefined + empty vessel arrays. */
+function cleanValues(raw: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(raw).filter(([, v]) => v !== "" && v !== undefined && !(Array.isArray(v) && v.length === 0)),
+  );
+}
+
+// One task → one build, UNLESS its vesselId is a multi-select array → fan out to one build per vessel.
+function buildsForTask(taskType: string, taskTitle: string, values: Record<string, unknown>): TaskBuild[] {
+  const vessels = Array.isArray(values.vesselId) ? (values.vesselId as string[]) : values.vesselId ? [values.vesselId as string] : [];
+  if (vessels.length > 1) return vessels.map((vid) => ({ taskType, title: taskTitle, values: { ...values, vesselId: vid } }));
+  if (vessels.length === 1) return [{ taskType, title: taskTitle, values: { ...values, vesselId: vessels[0] } }];
+  return [{ taskType, title: taskTitle, values }];
+}
+
+// Plan 045: in locked-vessel mode, fold the locked vessel into a task's values — pin a single-vessel field
+// (vesselId), and default a transform SOURCE-vessel field (fromVesselId/sourceVesselId) where unset. No-op
+// when unlocked.
+function withLockedVessel(lockedVessel: { id: string; label: string } | undefined, taskType: string, values: Record<string, unknown>): Record<string, unknown> {
+  if (!lockedVessel) return values;
+  const def = TASK_VOCABULARY[taskType];
+  if (!def) return values;
+  const out = { ...values };
+  if ("vesselId" in def.fields && (out.vesselId === undefined || (Array.isArray(out.vesselId) && out.vesselId.length === 0))) {
+    out.vesselId = [lockedVessel.id];
+  }
+  for (const srcKey of ["fromVesselId", "sourceVesselId"] as const) {
+    if (srcKey in def.fields && (out[srcKey] === undefined || out[srcKey] === "")) out[srcKey] = lockedVessel.id;
+  }
+  return out;
+}
 
 export function NewWorkOrderClient({
   templates,
@@ -64,7 +101,7 @@ export function NewWorkOrderClient({
   const [pending, startTransition] = React.useTransition();
 
   const template = templates.find((t) => t.id === templateId);
-  const spec = (template?.spec ?? { tasks: [] }) as TemplateSpec;
+  const spec = React.useMemo<TemplateSpec>(() => (template?.spec ?? { tasks: [] }) as TemplateSpec, [template]);
 
   function setField(taskIdx: number, key: string, value: unknown) {
     setOverrides((prev) => ({ ...prev, [taskIdx]: { ...(prev[taskIdx] ?? {}), [key]: value } }));
@@ -227,57 +264,63 @@ export function NewWorkOrderClient({
     );
   }
 
-  // Clean a value map for submit: drop empty strings/undefined + empty vessel arrays.
-  function cleanValues(raw: Record<string, unknown>): Record<string, unknown> {
-    return Object.fromEntries(
-      Object.entries(raw).filter(([, v]) => v !== "" && v !== undefined && !(Array.isArray(v) && v.length === 0)),
-    );
-  }
-
-  // One task → one build, UNLESS its vesselId is a multi-select array → fan out to one build per vessel.
-  function buildsForTask(taskType: string, taskTitle: string, values: Record<string, unknown>): TaskBuild[] {
-    const vessels = Array.isArray(values.vesselId) ? (values.vesselId as string[]) : values.vesselId ? [values.vesselId as string] : [];
-    if (vessels.length > 1) return vessels.map((vid) => ({ taskType, title: taskTitle, values: { ...values, vesselId: vid } }));
-    if (vessels.length === 1) return [{ taskType, title: taskTitle, values: { ...values, vesselId: vessels[0] } }];
-    return [{ taskType, title: taskTitle, values }];
-  }
-
-  // Plan 045: in locked-vessel mode, fold the locked vessel into a task's values before it's built — pin a
-  // single-vessel field (vesselId), and default a transform SOURCE-vessel field (fromVesselId /
-  // sourceVesselId) where the crew hasn't already picked one. A no-op when unlocked.
-  function withLockedVessel(taskType: string, values: Record<string, unknown>): Record<string, unknown> {
-    if (!lockedVessel) return values;
-    const def = TASK_VOCABULARY[taskType];
-    if (!def) return values;
-    const out = { ...values };
-    if ("vesselId" in def.fields && (out.vesselId === undefined || (Array.isArray(out.vesselId) && out.vesselId.length === 0))) {
-      out.vesselId = [lockedVessel.id];
-    }
-    for (const srcKey of ["fromVesselId", "sourceVesselId"] as const) {
-      if (srcKey in def.fields && (out[srcKey] === undefined || out[srcKey] === "")) out[srcKey] = lockedVessel.id;
-    }
+  // The TaskBuild[] the form currently represents — the single source fed to BOTH the live readiness
+  // preview and submit, so what the winemaker sees is exactly what gets created.
+  const taskBuilds = React.useMemo<TaskBuild[]>(() => {
+    const out: TaskBuild[] = [];
+    spec.tasks.forEach((t, i) => {
+      out.push(...buildsForTask(t.taskType, t.title, cleanValues(withLockedVessel(lockedVessel, t.taskType, { ...(t.defaults ?? {}), ...(overrides[i] ?? {}) }))));
+    });
+    extraKeys.forEach((k) => {
+      const values = cleanValues(withLockedVessel(lockedVessel, "ADDITION", overrides[k] ?? {}));
+      if (Object.keys(values).length > 0) out.push(...buildsForTask("ADDITION", "Add material", values));
+    });
     return out;
-  }
+  }, [spec, overrides, extraKeys, lockedVessel]);
+
+  // ── Live readiness preview (Unit 2): debounced call to the shared readiness engine as the form changes.
+  // A request counter drops stale responses. The returned fingerprint is threaded back on submit so the
+  // server refuses a stale create. ──
+  const [readiness, setReadiness] = React.useState<WorkOrderReadinessProposal | null>(null);
+  const [readinessPending, setReadinessPending] = React.useState(false);
+  const readinessReq = React.useRef(0);
+
+  React.useEffect(() => {
+    if (taskBuilds.length === 0) return; // stale preview is hidden in render; nothing to fetch
+    const id = ++readinessReq.current;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      setReadinessPending(true);
+      previewWorkOrderReadinessAction({
+        source: lockedVessel ? "vessel_modal" : "manual",
+        title: title.trim() || template?.name || "Work order",
+        assigneeEmail: assigneeEmail.trim() || null,
+        dueDate: null,
+        taskBuilds,
+      })
+        .then((p) => { if (!cancelled && id === readinessReq.current) setReadiness(p); })
+        .catch(() => { if (!cancelled && id === readinessReq.current) setReadiness(null); })
+        .finally(() => { if (!cancelled && id === readinessReq.current) setReadinessPending(false); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [taskBuilds, title, assigneeEmail, lockedVessel, template?.name]);
+
+  const hasTasks = taskBuilds.length > 0;
+  const readinessBlocked = hasTasks && readiness?.status === "blocked";
 
   function submit() {
     setError(null);
     if (!templateId) { setError("Pick a template."); return; }
-    const builds: TaskBuild[] = [];
-    spec.tasks.forEach((t, i) => {
-      builds.push(...buildsForTask(t.taskType, t.title, cleanValues(withLockedVessel(t.taskType, { ...(t.defaults ?? {}), ...(overrides[i] ?? {}) }))));
-    });
-    extraKeys.forEach((k) => {
-      const values = cleanValues(withLockedVessel("ADDITION", overrides[k] ?? {}));
-      if (Object.keys(values).length > 0) builds.push(...buildsForTask("ADDITION", "Add material", values));
-    });
-    if (builds.length === 0) { setError("Add at least one task."); return; }
+    if (taskBuilds.length === 0) { setError("Add at least one task."); return; }
+    if (readinessBlocked) { setError("Resolve the blocking issues above before issuing."); return; }
     const payload = {
       templateId,
       title: title.trim() || undefined,
       assigneeEmail: assigneeEmail.trim() || null,
       dueAt: dueAt ? new Date(dueAt) : null,
       autoFinalize,
-      taskBuilds: builds,
+      taskBuilds,
+      readinessFingerprint: readiness?.fingerprint ?? null,
     };
     startTransition(async () => {
       try {
@@ -366,10 +409,27 @@ export function NewWorkOrderClient({
             <Button variant="secondary" size="sm" onClick={() => setExtraKeys((keys) => [...keys, nextExtraKey.current++])}>+ Add another addition</Button>
           </div>
 
+          {/* Shared readiness preview — cost/supply/capacity/compliance before create/issue (Unit 2). */}
+          {hasTasks && readiness ? (
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+              <WorkOrderReadinessPanel proposal={readiness} />
+            </div>
+          ) : hasTasks && readinessPending ? (
+            <div style={{ fontSize: 13, color: "var(--text-muted)", borderTop: "1px solid var(--border)", paddingTop: 12 }}>Checking readiness…</div>
+          ) : null}
+
           {error ? <div style={{ color: "var(--danger)", fontSize: 14 }}>{error}</div> : null}
+
+          {/* Effect summary above the CTA (design review): who/when + what happens on confirm. */}
+          {hasTasks ? (
+            <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px" }}>
+              {taskBuilds.length} task{taskBuilds.length === 1 ? "" : "s"} · {assigneeEmail.trim() ? `assigned to ${assigneeEmail.trim()}` : "unassigned"} · {dueAt ? `due ${dueAt}` : "no due date"}.{" "}
+              {lockedVessel ? "Creating & issuing now reserves supply/capacity and sends it to the crew." : "Creates a draft you can review before issuing."}
+            </div>
+          ) : null}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <Button variant="ghost" onClick={() => (lockedVessel ? onCancel?.() : router.push("/work-orders"))}>Cancel</Button>
-            <Button disabled={pending} onClick={submit}>{pending ? (lockedVessel ? "Issuing…" : "Creating…") : lockedVessel ? "Create & issue" : "Create draft"}</Button>
+            <Button disabled={pending || readinessBlocked} onClick={submit}>{pending ? (lockedVessel ? "Issuing…" : "Creating…") : lockedVessel ? "Issue Work Order" : "Create draft"}</Button>
           </div>
         </Card>
       )}

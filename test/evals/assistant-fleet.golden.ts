@@ -25,6 +25,26 @@ export type FleetCase = {
 };
 
 export const ASSISTANT_FLEET: FleetCase[] = [
+  {
+    utterance: "What is in tank 5?",
+    tool: "query_cellar_contents",
+    kind: "read",
+    maxToolCalls: 1,
+    note: "current vessel contents are a cellar-state read, not navigation or db_find",
+  },
+  {
+    utterance: "What tanks have Cabernet Sauvignon?",
+    tool: "query_cellar_contents",
+    kind: "read",
+    maxToolCalls: 1,
+  },
+  {
+    utterance: "What tank is holding QBO Demo Vineyard fruit?",
+    tool: "query_cellar_contents",
+    kind: "read",
+    maxToolCalls: 1,
+    note: "vineyard/source fruit reverse search uses current lot source-vineyard membership",
+  },
   // ── The calculate-vs-dose boundary (read vs write) ──
   {
     utterance: "Add 30 g/hL KMBS to tank 5",
@@ -128,6 +148,27 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     kind: "write",
     maxToolCalls: 1,
     note: "create+issue a work-order INSTANCE from a template",
+  },
+  {
+    utterance: "Rack T12 to T15, add 30 ppm SO2, pull a juice panel.",
+    tool: "propose_work_order",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "multi-intent WO authoring must route to propose_work_order, not rack_wine/add_addition/create_work_order",
+  },
+  {
+    utterance: "Rack T12 to T15 as a work order",
+    tool: "propose_work_order",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "planned two-vessel rack work order is authoring, not an immediate rack_wine ledger operation",
+  },
+  {
+    utterance: "Make a work order to blend T1 and T2",
+    tool: "propose_work_order",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "unsupported blend authoring should be refused by the proposal tool, not misrouted to blend_lots",
   },
   {
     utterance: "Make a weekly barrel-care template: rack off the lees then add 30 g/hL KMBS",

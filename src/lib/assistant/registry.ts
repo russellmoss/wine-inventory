@@ -1,5 +1,5 @@
 import "server-only";
-import type { AppUser } from "@/lib/access";
+import { isTenantAdminLike, type AppUser } from "@/lib/access";
 
 /**
  * The assistant's tool registry — the single source of truth for what the
@@ -36,6 +36,7 @@ import { queryBrixTool } from "./tools/query-brix";
 import { queryYieldTool } from "./tools/query-yield";
 import { queryRecentHarvestsTool } from "./tools/query-recent-harvests";
 import { queryTransfersTool } from "./tools/query-transfers";
+import { queryCellarContentsTool } from "./tools/query-cellar-contents";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryFieldReportsTool } from "./tools/query-field-reports";
 import { getFieldReportFormTool } from "./tools/get-field-report-form";
@@ -71,6 +72,7 @@ import { listTemplatesTool, getTemplateTool } from "./tools/templates-read";
 import { createTemplateTool, updateTemplateSpecTool, cloneTemplateTool, archiveTemplateTool } from "./tools/templates-write";
 import { issueCapManagementWoTool } from "./tools/work-orders-write";
 import { issueOperationWoTool } from "./tools/issue-operation-wo";
+import { proposeWorkOrderTool } from "./tools/propose-work-order";
 import { calcSo2Tool } from "./tools/calc-so2";
 import { calcSugarTool } from "./tools/calc-sugar";
 import { calcAdditionsTool } from "./tools/calc-additions";
@@ -96,6 +98,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryYieldTool,
   queryRecentHarvestsTool,
   queryTransfersTool,
+  queryCellarContentsTool,
   queryVineyardStatusTool,
   queryFieldReportsTool,
   getFieldReportFormTool,
@@ -135,6 +138,7 @@ const ALL_TOOLS: AssistantTool[] = [
   archiveTemplateTool,
   issueCapManagementWoTool,
   issueOperationWoTool,
+  proposeWorkOrderTool,
   calcSo2Tool,
   calcSugarTool,
   calcAdditionsTool,
@@ -158,6 +162,6 @@ const ALL_TOOLS: AssistantTool[] = [
 
 /** Tools this user is allowed to see, after role filtering. */
 export function getToolsFor(user: AppUser): AssistantTool[] {
-  const isAdmin = user.role === "admin";
+  const isAdmin = isTenantAdminLike(user);
   return ALL_TOOLS.filter((t) => !t.adminOnly || isAdmin);
 }

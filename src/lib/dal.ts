@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { accessDecision, isDeveloper, resolveActiveOrg, type AppUser } from "@/lib/access";
+import { accessDecision, isDeveloper, resolveActiveOrg, DEVELOPER_HOME_ORG_ID, type AppUser } from "@/lib/access";
 import { readSupportTenantContext } from "@/lib/developer/support-context";
 
 export { accessDecision, canManagerAccessVineyard, canAccessVineyard, canAccessLot, isDeveloper, isTenantAdminLike } from "@/lib/access";
@@ -48,7 +48,11 @@ type UserRecord = {
  */
 export function toAppUser(record: UserRecord, activeOrgClaim?: string | null): AppUser {
   const organizationIds = record.memberships.map((m) => m.organizationId);
-  const activeOrganizationId = resolveActiveOrg(organizationIds, activeOrgClaim);
+  // Developers default into the Demo Winery sandbox (never a real tenant) whenever they are members
+  // of it. Explicit real-tenant access goes through the short-lived support context, not stale
+  // session.activeOrganizationId claims.
+  const preferOrgId = record.role === "developer" ? DEVELOPER_HOME_ORG_ID : null;
+  const activeOrganizationId = resolveActiveOrg(organizationIds, activeOrgClaim, { preferOrgId });
   return {
     id: record.id,
     name: record.name ?? null,

@@ -34,6 +34,7 @@ export function resolveAdditiveFrom(
   all: CellarMaterialDTO[],
   ref: string,
   resumeBase: Record<string, unknown>,
+  resumeTool = "issue_operation_wo",
 ): ResolveResult<CellarMaterialDTO> {
   const raw = ref.trim();
 
@@ -66,7 +67,7 @@ export function resolveAdditiveFrom(
     prompt: `Which "${ref}" do you mean?`,
     describe: (m) => materialDisplayName(m),
     detail: (m) => [m.kind, m.subcategory].filter(Boolean).join(" · ") + ` · ref ${m.id.replace(/-/g, "").slice(0, 6)}`,
-    resume: (m) => signResume("issue_operation_wo", { ...resumeBase, material: `#${m.id}` }),
+    resume: (m) => signResume(resumeTool, { ...resumeBase, material: `#${m.id}` }),
     noneMsg: `No additive matches "${ref}". Add it to the expendables catalog first, or check the name.`,
   });
 }

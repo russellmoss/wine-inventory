@@ -5,11 +5,13 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { rackWineTx } from "@/lib/vessels/rack-core";
+import { groupRackTx, type GroupRackInput } from "@/lib/vessels/group-rack-core";
 import { topVesselTx } from "@/lib/cellar/topping";
 import { filterVesselTx, capManagementTx, type CapKind } from "@/lib/cellar/treatments";
 import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFIG, type AddAdditionInput } from "@/lib/cellar/addition";
 import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
 import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
+import { isPressableLotState } from "@/lib/ferment/press-data";
 import type { RateBasis } from "@/lib/cellar/additions-math";
 import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { assertTaskTransition } from "@/lib/work-orders/status";
@@ -52,6 +54,33 @@ type TaskRow = WorkOrderTask;
 const asNum = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 const asStr = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);
 
+/** Phase 9.4a: coerce a RACK task's `groupRack` payload block into a GroupRackInput, or null if the
+ * task is an ordinary single-vessel rack. Member lists come from the signed proposal payload; the
+ * worker's actuals (per-destination / per-source volumes) arrive merged over the plan. */
+function parseGroupRackPayload(payload: Record<string, unknown>): GroupRackInput | null {
+  const gr = payload.groupRack;
+  if (!gr || typeof gr !== "object" || Array.isArray(gr)) return null;
+  const g = gr as Record<string, unknown>;
+  const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : []);
+  const numOrNullArr = (v: unknown): (number | null)[] | undefined =>
+    Array.isArray(v) ? v.map((x) => (typeof x === "number" && Number.isFinite(x) ? x : null)) : undefined;
+  const lossL = asNum(g.lossL);
+  const note = asStr(g.note);
+  if (g.direction === "BARREL_DOWN") {
+    const sourceVesselId = asStr(g.sourceVesselId);
+    const destVesselIds = strArr(g.destVesselIds);
+    if (!sourceVesselId || destVesselIds.length === 0) return null;
+    return { direction: "BARREL_DOWN", sourceVesselId, destVesselIds, drawL: asNum(g.drawL), perDestVolumeL: numOrNullArr(g.perDestVolumeL), lossL, note };
+  }
+  if (g.direction === "RACK_TO_TANK") {
+    const destVesselId = asStr(g.destVesselId);
+    const sourceVesselIds = strArr(g.sourceVesselIds);
+    if (!destVesselId || sourceVesselIds.length === 0) return null;
+    return { direction: "RACK_TO_TANK", destVesselId, sourceVesselIds, perSourceDrawL: numOrNullArr(g.perSourceDrawL), lossL, note };
+  }
+  return null;
+}
+
 /** Merge planned ⊕ actual — the worker's actuals win. A3: nothing here is frozen at issue; the amount
  * is (re)computed from current vessel volume inside the core at open time. */
 function mergedPayload(task: TaskRow, actual?: Record<string, unknown>): Record<string, unknown> {
@@ -73,6 +102,13 @@ async function dispatchOperationTx(
   const asBool = (v: unknown): boolean => v === true || v === "true";
   switch (task.opType) {
     case "RACK": {
+      // Phase 9.4a: a group barrel-down / rack-to-tank task carries a `groupRack` block → ONE balanced
+      // multi-vessel RACK op (not the single-vessel VesselTransfer path). commandId is threaded to the op.
+      const groupRack = parseGroupRackPayload(payload);
+      if (groupRack) {
+        const r = await groupRackTx(tx, actor, groupRack, { commandId, note: note ?? undefined });
+        return { operationId: r.operationId, message: r.message };
+      }
       // dec 4a: an optional rack descriptor rides the op note (off gross/fine lees, clean-to-clean, délestage).
       const rackType = asStr(payload.rackType);
       const rackNote = [rackType ? `Rack: ${rackType}` : null, note].filter(Boolean).join(" — ") || undefined;
@@ -187,6 +223,13 @@ async function dispatchOperationTx(
       const lossL = asNum(payload.lossL);
       if (lossL != null && lossL < 0) throw new ActionError("Lees loss can't be negative."); // fail with a clean 400 at the boundary, not a raw planPress Error inside the tx
       const opSel = asStr(payload.op);
+      const current = await tx.vesselLot.findFirst({
+        where: { lotId: parentLotId, vesselId: sourceVesselId },
+        select: { lot: { select: { code: true, form: true, status: true } }, vessel: { select: { code: true } } },
+      });
+      if (!current || !isPressableLotState(current.lot)) {
+        throw new ActionError("The pinned press source is stale: that vessel no longer holds the active MUST lot. Refresh the work order and choose the current pressable position.", "CONFLICT");
+      }
       const r = await pressLotTx(tx, actor, {
         commandId,
         parentLotId,

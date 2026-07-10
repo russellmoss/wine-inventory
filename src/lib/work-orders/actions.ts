@@ -23,6 +23,8 @@ import {
 import type { TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
+import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
+import { assertDependenciesSatisfied, type TaskDependencyRef, type PredecessorState, type AttemptOutcome } from "@/lib/work-orders/nl-dependencies";
 import { prisma } from "@/lib/prisma";
 import { canManagerAccessVineyard, type AppUser } from "@/lib/access";
 import { ActionError } from "@/lib/action-error";
@@ -94,7 +96,10 @@ export const issueWorkOrderAction = action(async ({ actor }, input: { workOrderI
   return res;
 });
 
-/** Create a DRAFT work order from a template (snaps the current version), with per-task field overrides. */
+/** Create a DRAFT work order from a template (snaps the current version), with per-task field overrides.
+ * Phase 9.3: when the client sends explicit taskBuilds, re-run the shared readiness engine server-side
+ * immediately before writing and refuse on a true blocker (or stale state) — the write path is the last
+ * authority, not the form. */
 export const createWorkOrderFromTemplateAction = action(
   async (
     { actor },
@@ -107,9 +112,18 @@ export const createWorkOrderFromTemplateAction = action(
       autoFinalize?: boolean;
       perTaskOverrides?: Record<string, unknown>[];
       taskBuilds?: { taskType: string; title?: string; values: Record<string, unknown> }[];
+      readinessFingerprint?: string | null;
     },
   ) => {
-    const res = await createWorkOrderFromTemplateCore(actor, input);
+    const { readinessFingerprint, ...coreInput } = input;
+    if (coreInput.taskBuilds && coreInput.taskBuilds.length > 0) {
+      await gateWorkOrderReadinessForWrite(
+        coreInput.taskBuilds,
+        { source: "manual", title: coreInput.title ?? "Work order", assigneeEmail: coreInput.assigneeEmail ?? null, dueDate: null },
+        readinessFingerprint,
+      );
+    }
+    const res = await createWorkOrderFromTemplateCore(actor, coreInput);
     revalidateWorkOrders(res.workOrderId);
     return res;
   },
@@ -146,7 +160,42 @@ export const startTaskAction = action(async ({ actor }, input: { taskId: string 
 /** Per-task completion pre-flight (shared by single + batch completion): enforce the D9 vineyard-access
  * guard for a HARVEST_WEIGH_IN and compute autoFinalize server-side (never client-trusted). Returns the
  * input enriched with the resolved autoFinalize. */
+/** Phase 9.3 Unit 5: state-machine gating — a task carrying dependency refs (plannedPayload.dependsOn) is
+ * not completable until every predecessor it names (by stable taskKey, within the same WO) has a
+ * successful attempt. Inert for tasks with no dependsOn (nothing emits edges yet). Read-only. */
+async function assertTaskDependenciesReady(taskId: string): Promise<void> {
+  const task = await prisma.workOrderTask.findUnique({ where: { id: taskId }, select: { workOrderId: true, plannedPayload: true } });
+  const payload = (task?.plannedPayload ?? {}) as Record<string, unknown>;
+  // Defensive: plannedPayload is persisted from client taskBuilds without a field whitelist, so a crafted
+  // dependsOn could hold junk — keep only well-formed refs (a bad ref must not 500 the completion).
+  const needs = (Array.isArray(payload.dependsOn) ? payload.dependsOn : []).filter(
+    (r): r is TaskDependencyRef => !!r && typeof r === "object" && typeof (r as { taskKey?: unknown }).taskKey === "string",
+  );
+  if (!task || needs.length === 0) return;
+  const siblings = await prisma.workOrderTask.findMany({
+    where: { workOrderId: task.workOrderId },
+    select: { kind: true, title: true, destVesselId: true, sourceVesselId: true, lotId: true, plannedPayload: true, attempts: { select: { seq: true, status: true, operationId: true } } },
+  });
+  const byKey = new Map<string, PredecessorState>();
+  for (const s of siblings) {
+    const p = (s.plannedPayload ?? {}) as Record<string, unknown>;
+    const key = typeof p.taskKey === "string" ? p.taskKey : null;
+    if (!key) continue;
+    byKey.set(key, {
+      taskKey: key,
+      title: s.title,
+      destVesselId: s.destVesselId,
+      sourceVesselId: s.sourceVesselId,
+      lotId: s.lotId,
+      isOperation: s.kind === "OPERATION",
+      attempts: s.attempts.map((a): AttemptOutcome => ({ seq: a.seq, status: a.status, operationId: a.operationId })),
+    });
+  }
+  assertDependenciesSatisfied(needs, byKey);
+}
+
 async function prepareCompleteInput(user: AppUser, input: CompleteTaskInput): Promise<CompleteTaskInput> {
+  await assertTaskDependenciesReady(input.taskId);
   const task = await prisma.workOrderTask.findUnique({
     where: { id: input.taskId },
     select: { observationType: true, blockId: true, workOrder: { select: { autoFinalize: true } } },

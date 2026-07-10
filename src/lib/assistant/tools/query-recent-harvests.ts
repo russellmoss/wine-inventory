@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 
 type QueryRecentHarvestsInput = {
@@ -33,12 +34,12 @@ export const queryRecentHarvestsTool: AssistantTool = {
     const { user } = ctx;
 
     // Scope: managers are pinned to their vineyard membership set; admins see all.
-    if (user.role !== "admin" && user.vineyardIds.length === 0) {
+    if (!isTenantAdminLike(user) && user.vineyardIds.length === 0) {
       return { message: "You don't have a vineyard assigned, so there's nothing in scope." };
     }
 
     const recordWhere: Prisma.HarvestRecordWhereInput = {};
-    if (user.role !== "admin") recordWhere.vineyardId = { in: user.vineyardIds };
+    if (!isTenantAdminLike(user)) recordWhere.vineyardId = { in: user.vineyardIds };
     if (input.vineyard) {
       recordWhere.vineyard = { name: { contains: input.vineyard, mode: "insensitive" } };
     }

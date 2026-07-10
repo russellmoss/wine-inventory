@@ -251,6 +251,118 @@ export function planBlendSplit(
   return { lines, childTotalL: s.childTotalL, lossL: s.lossL, parentGrossByLot: s.parentGrossByLot };
 }
 
+// ───────────────────────── Phase 9.4a: group rack (barrel-down / rack-to-tank) ─────────────────────────
+
+/** One destination of a barrel-down: how much NET wine lands in this vessel (Σ across lots). */
+export type RackDestination = { vesselId: string; volumeL: number };
+/** One source position of a rack-to-tank: how much of one lot to draw from one vessel. */
+export type MultiSourceDraw = { vesselId: string; lotId: string; drawL: number };
+
+export type MultiRackPlan = {
+  lines: LedgerLine[];
+  drawnL: number; // total pulled from the source side
+  intoL: number; // total delivered to the destination side = drawnL − lossL
+  lossL: number;
+};
+
+/**
+ * Plan a barrel-down (Phase 9.4a): ONE source vessel racked into MANY destination vessels,
+ * PRESERVING LOT IDENTITY (each lot keeps its identity in every destination — this is a RACK, not a
+ * BLEND, so NO child lot is minted). Generalizes `planLedgerRack` from 1 destination → N. Each source
+ * lot is deducted proportionally for the total draw (`Σdestination + loss`), loss is spread over the
+ * moved volume as an external counter-account (per lot), and each lot's NET is distributed across the
+ * destinations proportionally to each destination's target volume. Balance holds PER LOT (−deduct
+ * from source, +loss external, +Σ per-destination = deduct−loss). Single-lot source (the common
+ * barrel-down) lands each destination's exact target; a multi-lot source co-resides proportionally.
+ * Throws on empty source, no/zero destination, negative loss, or an over-draw.
+ */
+export function planRackSplit(
+  source: VesselLotBalance[],
+  destinations: RackDestination[],
+  lossL = 0,
+): MultiRackPlan {
+  if (source.length === 0) throw new Error("Source vessel is empty.");
+  if (destinations.length === 0) throw new Error("A barrel-down needs at least one destination vessel.");
+  if (lossL < 0) throw new Error("Loss can't be negative.");
+
+  const fromVesselId = source[0].vesselId; // all source rows share the source vessel
+  let intoTotal = 0;
+  for (const d of destinations) {
+    if (!(d.volumeL > 0)) throw new Error("Each destination volume must be greater than 0.");
+    intoTotal = round2(intoTotal + d.volumeL);
+  }
+  const drawTotal = round2(intoTotal + lossL);
+  if (!(drawTotal > 0)) throw new Error("Transfer volume must be greater than 0.");
+
+  // 1. Deduct the total draw from the source, split proportionally across its lots.
+  const deductions = computeProportionalDraw(
+    source.map((b) => ({ id: b.lotId, volumeL: b.volumeL })),
+    drawTotal,
+  );
+  const moved = deductions.filter((d) => d.deduct > 0);
+
+  // 2. Loss spread proportionally over the moved volume (external counter-account, per lot).
+  const lossPortions =
+    lossL > 0 ? computeProportionalDraw(moved.map((d) => ({ id: d.id, volumeL: d.deduct })), lossL) : [];
+  const lostById = new Map(lossPortions.map((l) => [l.id, l.deduct]));
+
+  const lines: LedgerLine[] = [];
+  for (const d of moved) {
+    lines.push({ lotId: d.id, vesselId: fromVesselId, deltaL: round2(-d.deduct) });
+    const lostForLot = lostById.get(d.id) ?? 0;
+    if (lostForLot > 0) lines.push({ lotId: d.id, vesselId: null, deltaL: round2(lostForLot), reason: "loss" });
+    const net = round2(d.deduct - lostForLot);
+    if (net <= 0) continue;
+    // 3. Distribute this lot's NET across the destinations proportional to each destination's target
+    // (centiliter-exact; consumedL === net ≤ intoTotal so it never over-draws the destination shares).
+    const perDest = computeProportionalDraw(
+      destinations.map((x) => ({ id: x.vesselId, volumeL: x.volumeL })),
+      net,
+    );
+    for (const pd of perDest) {
+      if (pd.deduct > 0) lines.push({ lotId: d.id, vesselId: pd.id, deltaL: round2(pd.deduct) });
+    }
+  }
+  assertBalanced(lines);
+  return { lines, drawnL: drawTotal, intoL: intoTotal, lossL: round2(lossL) };
+}
+
+/**
+ * Plan a rack-to-tank (Phase 9.4a): MANY source vessels racked into ONE destination vessel,
+ * PRESERVING LOT IDENTITY. The inverse of `planRackSplit`. One `-drawL` line per source (vessel, lot)
+ * position; loss is spread proportionally per DISTINCT lot as an external counter-account; the
+ * destination receives one `+(gross−loss)` line per distinct lot (so racking ten barrels of the same
+ * lot back reconstitutes ONE lot in the tank; different lots co-reside — no blend). Balance holds per
+ * lot. Throws on no draws, a non-positive draw, negative loss, or a loss exceeding the total drawn.
+ */
+export function planRackMerge(draws: MultiSourceDraw[], toVesselId: string, lossL = 0): MultiRackPlan {
+  if (draws.length === 0) throw new Error("A rack-to-tank needs at least one source vessel.");
+  if (lossL < 0) throw new Error("Loss can't be negative.");
+
+  let drawTotal = 0;
+  const grossByLot = new Map<string, number>();
+  const lines: LedgerLine[] = [];
+  for (const s of draws) {
+    if (!(s.drawL > 0)) throw new Error("Each source draw must be greater than 0.");
+    lines.push({ lotId: s.lotId, vesselId: s.vesselId, deltaL: round2(-s.drawL) });
+    grossByLot.set(s.lotId, round2((grossByLot.get(s.lotId) ?? 0) + s.drawL));
+    drawTotal = round2(drawTotal + s.drawL);
+  }
+  if (lossL > drawTotal + EPS) throw new Error("Loss can't exceed the total drawn.");
+
+  const grossLots = [...grossByLot.entries()].map(([lotId, grossL]) => ({ id: lotId, volumeL: grossL }));
+  const lossPortions = lossL > 0 ? computeProportionalDraw(grossLots, lossL) : [];
+  const lostById = new Map(lossPortions.map((l) => [l.id, l.deduct]));
+  for (const g of grossLots) {
+    const lost = lostById.get(g.id) ?? 0;
+    if (lost > 0) lines.push({ lotId: g.id, vesselId: null, deltaL: round2(lost), reason: "loss" });
+    const net = round2(g.volumeL - lost);
+    if (net > 0) lines.push({ lotId: g.id, vesselId: toVesselId, deltaL: net });
+  }
+  assertBalanced(lines);
+  return { lines, drawnL: round2(drawTotal), intoL: round2(drawTotal - lossL), lossL: round2(lossL) };
+}
+
 // ───────────────────────── Phase 6: crush & press (state transforms) ─────────────────────────
 
 /** One harvest pick consumed by a crush, with the data needed to guard partial consumption. */

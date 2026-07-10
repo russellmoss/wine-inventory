@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getToolsFor, type AssistantTool } from "@/lib/assistant/registry";
 import { ASSISTANT_WRITE_GOLDEN } from "./assistant-write-tools.golden";
+import { ASSISTANT_READ_GOLDEN } from "./assistant-read-tools.golden";
 
 /**
  * H8 / D26 — the assistant eval harness, seeded over the shipped write tools. Two layers:
@@ -21,6 +22,7 @@ import { ASSISTANT_WRITE_GOLDEN } from "./assistant-write-tools.golden";
 const TOOLS = getToolsFor({ role: "admin" } as never);
 const BY_NAME = new Map<string, AssistantTool>(TOOLS.map((t) => [t.name, t]));
 const WRITE_TOOL_NAMES = TOOLS.filter((t) => t.kind === "write").map((t) => t.name);
+const REQUIRED_READ_TOOL_NAMES = ["query_cellar_contents"];
 
 // Write tools intentionally NOT covered by a golden case (yet), with the reason. A NEW write tool that
 // is neither covered nor listed here fails the coverage guard — that's the D26 "governed from day one"
@@ -73,6 +75,24 @@ describe("H8 structural eval — golden cases match the real tool registry", () 
     }
   });
 
+  it.each(ASSISTANT_READ_GOLDEN)("$utterance -> $tool", (gc) => {
+    const tool = BY_NAME.get(gc.tool);
+    expect(tool, `golden references unknown tool "${gc.tool}"`).toBeDefined();
+    expect(tool!.kind, `"${gc.tool}" is not a read tool`).toBe("read");
+
+    const { props, required } = schemaOf(tool!);
+    for (const key of Object.keys(gc.args)) {
+      expect(props[key], `"${gc.tool}" has no input property "${key}"`).toBeDefined();
+      expect(
+        typeMatches(props[key]?.type, gc.args[key]),
+        `"${gc.tool}".${key} expected ${props[key]?.type}, got ${typeof gc.args[key]}`,
+      ).toBe(true);
+    }
+    for (const req of required) {
+      expect(Object.keys(gc.args), `"${gc.tool}" requires "${req}"`).toContain(req);
+    }
+  });
+
   it("every write tool is either covered by a golden case or explicitly allow-listed (D26 coverage guard)", () => {
     const covered = new Set(ASSISTANT_WRITE_GOLDEN.map((g) => g.tool));
     const ungoverned = WRITE_TOOL_NAMES.filter((n) => !covered.has(n) && !(n in UNCOVERED_OK));
@@ -85,6 +105,12 @@ describe("H8 structural eval — golden cases match the real tool registry", () 
   it("UNCOVERED_OK does not list stale/nonexistent write tools", () => {
     const stale = Object.keys(UNCOVERED_OK).filter((n) => !WRITE_TOOL_NAMES.includes(n));
     expect(stale, `UNCOVERED_OK names non-write/removed tools: ${stale.join(", ")}`).toEqual([]);
+  });
+
+  it("required read tools are covered by a golden case", () => {
+    const covered = new Set(ASSISTANT_READ_GOLDEN.map((g) => g.tool));
+    const missing = REQUIRED_READ_TOOL_NAMES.filter((name) => !covered.has(name));
+    expect(missing, `read tool(s) with no golden case: ${missing.join(", ")}`).toEqual([]);
   });
 });
 
