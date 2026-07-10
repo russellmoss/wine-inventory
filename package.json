@@ -62,6 +62,7 @@
     "verify:feedback-idempotency": "tsx --conditions=react-server scripts/verify-feedback-idempotency.ts",
     "verify:feedback-security": "tsx --conditions=react-server scripts/verify-feedback-security.ts",
     "verify:feedback-fence": "tsx --conditions=react-server scripts/verify-feedback-fence.ts",
+    "verify:feedback-domain": "tsx --conditions=react-server scripts/verify-feedback-domain.ts",
     "verify:migration": "tsx --conditions=react-server --env-file=.env scripts/verify-migration.ts",
     "verify:lifecycle": "tsx --conditions=react-server --env-file=.env scripts/verify-lifecycle.ts",
     "verify:projection": "tsx --env-file=.env scripts/verify-projection.ts",

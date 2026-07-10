@@ -55,10 +55,16 @@ jobs:
           labels: feedback-bug
           draft: true
           delete-branch: true
+          # Commit app UI + all of src/lib. This is intentionally broader than the fence:
+          # the agent already self-reverts any out-of-fence edit (bug-feedback-agent.ts uses
+          # fencePass), and the "Fence changed paths" step above fails the job closed if anything
+          # outside the allowlist (or in a denied path) slipped through — so a broad add-paths can't
+          # leak denied code. Broad here just avoids a second hand-synced domain list drifting from
+          # scripts/feedback-fence-rules.ts (plan 052).
           add-paths: |
             src/app
             src/components
-            src/lib/assistant
+            src/lib
       - name: Mark automation PR opened
         if: steps.cpr.outputs.pull-request-number
         env:

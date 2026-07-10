@@ -57,6 +57,49 @@ jobs:
           git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed.txt
           npx tsx scripts/verify-feedback-fence.ts $(cat /tmp/changed.txt)
 
+  # Domain-verify backstop (plan 052): when a feedback-bug PR touches a WIDENED server domain
+  # (e.g. src/lib/work-orders), run that domain's runtime verify:* against a throwaway Postgres, so
+  # an LLM fix can't auto-merge into governed code unproven — the required `check` job runs NO DB
+  # domain proof. Label-gated like feedback-fence (skips green on ordinary PRs). Unmapped widened
+  # domains warn + exit 0 here; the auto-merge gate (bug-triage) routes those to human review.
+  feedback-domain-verify:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'feedback-bug')
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wine_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wine_ci
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/wine_ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      # The domain verify:* scripts load env via `tsx --env-file=.env`; there is no committed .env in
+      # CI, so materialize one from the job env pointing at the throwaway Postgres.
+      - name: Write .env for the domain proofs
+        run: printf 'DATABASE_URL=%s\nDATABASE_URL_UNPOOLED=%s\n' "$DATABASE_URL" "$DATABASE_URL_UNPOOLED" > .env
+      - name: Run domain proofs for changed paths
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed.txt
+          CHANGED_PATHS="$(cat /tmp/changed.txt)" npx tsx scripts/verify-feedback-domain.ts
+
   # Tenant-isolation proof against a real Postgres, run AS the NOBYPASSRLS app_rls role — the live RLS
   # check the local dev loop can't run offline. Gated suite (TENANT_ISOLATION_DB=1) incl. the plan-029
   # raw-SQL cases. Migrations run as the superuser owner; app_rls gets a password post-migrate.
