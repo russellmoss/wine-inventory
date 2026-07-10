@@ -327,11 +327,15 @@ export function canonicalizeTemplateSpec(spec: TemplateSpec): TemplateSpec {
 /** Canonical columns (A6) extracted from a task's payload — mirror the JSON for querying + composite FKs. */
 function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
   const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const destVesselId =
+    taskType === "PRESS"
+      ? s(payload.toVesselId) ?? s(payload.vesselId)
+      : s(payload.toVesselId) ?? s(payload.vesselId) ?? s(payload.destVesselId);
   return {
     // Transform ops (plan 035): CRUSH mirrors its destVesselId; PRESS mirrors sourceVesselId + the
     // parent lot (parentLotId). Null at issue time — the real vessels/lot are captured at run time.
     sourceVesselId: s(payload.fromVesselId) ?? s(payload.sourceVesselId),
-    destVesselId: s(payload.toVesselId) ?? s(payload.vesselId) ?? s(payload.destVesselId),
+    destVesselId,
     lotId: s(payload.lotId) ?? s(payload.parentLotId),
     materialId: s(payload.materialId),
     // Plan 039: the HARVEST_WEIGH_IN block target (a vineyard block). Null at issue; the block is chosen

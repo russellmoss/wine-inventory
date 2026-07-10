@@ -1,10 +1,11 @@
 "use client";
 
 import React from "react";
-import { Card, Button, Badge } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { PressFormData } from "@/lib/ferment/press-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
+import { buildPressGuidance, initialPressFractionDestination, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
 
 // Plan 035 Unit 5: the native run-time press / saignée sub-form on the work-order execute screen. Mirrors
 // the standalone PressClient's must-lot path (pick the pressable position, PRESS vs SAIGNEE, the fraction
@@ -28,6 +29,9 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const positions = data?.positions ?? [];
   const vessels = data?.vessels ?? [];
   const cycles = data?.pressCycles ?? [];
+  const guidance = buildPressGuidance(task, positions, vessels);
+  const stale = stalePinnedPressSource(task, positions);
+  const initialDestVesselId = initialPressFractionDestination(vessels, guidance.plannedDestVesselId);
 
   // Prefill the position from the task's canonical lot/source vessel when the manager pinned them at issue.
   const initialKey = (() => {
@@ -37,7 +41,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const [posKey, setPosKey] = React.useState(initialKey);
   const pos = positions.find((p) => `${p.vesselId}:${p.lotId}` === posKey);
   const [op, setOp] = React.useState<"PRESS" | "SAIGNEE">(String(planned.op) === "SAIGNEE" ? "SAIGNEE" : "PRESS");
-  const [fractions, setFractions] = React.useState<Fraction[]>([{ id: newFid(), destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "free-run", estimated: false }]);
+  const [fractions, setFractions] = React.useState<Fraction[]>([{ id: newFid(), destVesselId: initialDestVesselId, volumeL: "", label: "free-run", estimated: false }]);
   const [pressCycle, setPressCycle] = React.useState(planned.pressCycle != null ? String(planned.pressCycle) : "");
   const [note, setNote] = React.useState("");
   const [pending, startTransition] = React.useTransition();
@@ -92,6 +96,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
     return (
       <Card style={{ padding: 18 }}>
         {header}
+        {guidance.items.length > 0 ? <PlannedGuidanceCard items={guidance.items} /> : null}
         <div style={{ fontSize: 13.5, color: "var(--text-muted)" }}>Nothing to press — no MUST lot is sitting in a vessel. De-stem fruit into a must lot first.</div>
       </Card>
     );
@@ -100,6 +105,12 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   return (
     <Card style={{ padding: 18 }}>
       {header}
+      {guidance.items.length > 0 ? <PlannedGuidanceCard items={guidance.items} /> : null}
+      {stale.stale ? (
+        <div style={{ padding: 12, borderRadius: "var(--radius-md)", background: "var(--surface-alt)", marginBottom: 12, fontSize: 13.5 }}>
+          <strong>The planned source is stale.</strong> The pinned lot/source is no longer a pressable position. Current pressable positions: {stale.current.length ? stale.current.join("; ") : "none"}.
+        </div>
+      ) : null}
 
       <label style={lbl}>Lot to press
         <select style={big} value={posKey} onChange={(e) => setPosKey(e.target.value)}>
@@ -152,6 +163,21 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         {canStart ? <Button size="lg" variant="secondary" disabled={pending} onClick={() => startTransition(async () => { await startTaskAction({ taskId: task.id }); })}>Start</Button> : null}
         <Button size="lg" fullWidth disabled={pending} onClick={complete}>{pending ? "Pressing…" : op === "SAIGNEE" ? "Complete — record the bleed" : "Complete — record the press"}</Button>
+      </div>
+    </Card>
+  );
+}
+
+function PlannedGuidanceCard({ items }: { items: { label: string; value: string }[] }) {
+  return (
+    <Card role="region" aria-label="Planned guidance" style={{ padding: 12, marginBottom: 12, boxShadow: "var(--shadow-sm)" }}>
+      <Eyebrow>Planned guidance</Eyebrow>
+      <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+        {items.map((item) => (
+          <div key={item.label} style={{ fontSize: 13.5 }}>
+            <strong>{item.label}:</strong> {item.value}
+          </div>
+        ))}
       </div>
     </Card>
   );

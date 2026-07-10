@@ -25,6 +25,26 @@ export type FleetCase = {
 };
 
 export const ASSISTANT_FLEET: FleetCase[] = [
+  {
+    utterance: "What is in tank 5?",
+    tool: "query_cellar_contents",
+    kind: "read",
+    maxToolCalls: 1,
+    note: "current vessel contents are a cellar-state read, not navigation or db_find",
+  },
+  {
+    utterance: "What tanks have Cabernet Sauvignon?",
+    tool: "query_cellar_contents",
+    kind: "read",
+    maxToolCalls: 1,
+  },
+  {
+    utterance: "What tank is holding QBO Demo Vineyard fruit?",
+    tool: "query_cellar_contents",
+    kind: "read",
+    maxToolCalls: 1,
+    note: "vineyard/source fruit reverse search uses current lot source-vineyard membership",
+  },
   // ── The calculate-vs-dose boundary (read vs write) ──
   {
     utterance: "Add 30 g/hL KMBS to tank 5",

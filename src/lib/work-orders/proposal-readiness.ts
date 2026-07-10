@@ -561,12 +561,15 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
 
     case "CRUSH": {
       runtime(ctx, seq, "CRUSH", "picks", "Harvest picks", "Harvest picks (with kg) are entered on the execute screen.");
-      runtime(ctx, seq, "CRUSH", "destVesselId", "Destination vessel", "The destination vessel and measured output volume are entered on the execute screen.");
+      if (!str(v.destVesselId)) runtime(ctx, seq, "CRUSH", "destVesselId", "Destination vessel", "The destination vessel is entered on the execute screen.");
+      runtime(ctx, seq, "CRUSH", "actualOutputL", "Measured output volume", "The measured output volume is entered on the execute screen.");
       return;
     }
     case "PRESS": {
       validateSelect(ctx, seq, "PRESS", "op", v.op);
-      runtime(ctx, seq, "PRESS", "fractions", "Press fractions", "The must lot, source vessel, and press fractions are entered on the execute screen.");
+      if (!str(v.parentLotId)) runtime(ctx, seq, "PRESS", "parentLotId", "Must lot", "The must lot is entered on the execute screen.");
+      if (!str(v.sourceVesselId)) runtime(ctx, seq, "PRESS", "sourceVesselId", "Source vessel", "The source vessel is entered on the execute screen.");
+      runtime(ctx, seq, "PRESS", "fractions", "Press fractions", "The press fractions are entered on the execute screen.");
       return;
     }
     case "HARVEST_WEIGH_IN": {
@@ -657,12 +660,10 @@ function collectIds(taskBuilds: TaskBuild[]): { vesselIds: string[]; lotIds: str
   const materialIds = new Set<string>();
   for (const task of taskBuilds) {
     const v = task.values;
-    for (const key of ["fromVesselId", "toVesselId", "vesselId", "sourceVesselId", "destVesselId"]) {
+    for (const key of ["fromVesselId", "toVesselId", "vesselId", "sourceVesselId", "destVesselId", "plannedDestVesselId"]) {
       const id = str(v[key]);
       if (id) vesselIds.add(id);
     }
-    // Phase 9.4a: a group-rack task's members live under `groupRack` — load them all so the readiness
-    // engine can fan capacity/headroom across the whole member set.
     const gr = v.groupRack;
     if (gr && typeof gr === "object" && !Array.isArray(gr)) {
       const g = gr as Record<string, unknown>;
@@ -675,8 +676,10 @@ function collectIds(taskBuilds: TaskBuild[]): { vesselIds: string[]; lotIds: str
         if (Array.isArray(arr)) for (const id of arr) if (typeof id === "string" && id) vesselIds.add(id);
       }
     }
-    const lotId = str(v.lotId);
-    if (lotId) lotIds.add(lotId);
+    for (const key of ["lotId", "parentLotId"]) {
+      const id = str(v[key]);
+      if (id) lotIds.add(id);
+    }
     const materialId = str(v.materialId);
     if (materialId) materialIds.add(materialId);
   }

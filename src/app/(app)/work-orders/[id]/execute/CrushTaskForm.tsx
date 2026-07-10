@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Card, Button, Badge } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { CrushFormData } from "@/lib/ferment/crush-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
@@ -25,11 +25,14 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const planned = (task.plannedPayload ?? {}) as Record<string, unknown>;
   const blocks = data?.blocks ?? [];
   const vessels = data?.vessels ?? [];
+  const plannedDestVesselId = typeof task.destVesselId === "string" && task.destVesselId ? task.destVesselId : typeof planned.destVesselId === "string" ? planned.destVesselId : "";
+  const initialDestVesselId = plannedDestVesselId && vessels.some((v) => v.id === plannedDestVesselId) ? plannedDestVesselId : vessels[0]?.id ?? "";
+  const plannedNote = typeof planned.note === "string" && planned.note.trim() ? planned.note.trim() : "";
 
   const [blockId, setBlockId] = React.useState(blocks[0]?.blockId ?? "");
   const block = blocks.find((b) => b.blockId === blockId);
   const [consumed, setConsumed] = React.useState<Record<string, string>>({});
-  const [destVesselId, setDestVesselId] = React.useState(vessels[0]?.id ?? "");
+  const [destVesselId, setDestVesselId] = React.useState(initialDestVesselId);
   const dest = vessels.find((v) => v.id === destVesselId);
   const [mode, setMode] = React.useState<"NEW" | "ADD">("NEW");
   const [addLotId, setAddLotId] = React.useState("");
@@ -105,6 +108,7 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
     return (
       <Card style={{ padding: 18 }}>
         {header}
+        {plannedNote ? <PlannedGuidanceCard note={plannedNote} /> : null}
         <div style={{ fontSize: 13.5, color: "var(--text-muted)" }}>No harvest picks with fruit remaining. Record picks under Harvest first.</div>
       </Card>
     );
@@ -113,6 +117,7 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   return (
     <Card style={{ padding: 18 }}>
       {header}
+      {plannedNote ? <PlannedGuidanceCard note={plannedNote} /> : null}
 
       <label style={lbl}>Block (vintage)
         <select style={big} value={blockId} onChange={(e) => { setBlockId(e.target.value); setConsumed({}); }}>
@@ -188,6 +193,15 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
         {canStart ? <Button size="lg" variant="secondary" disabled={pending} onClick={() => startTransition(async () => { await startTaskAction({ taskId: task.id }); })}>Start</Button> : null}
         <Button size="lg" fullWidth disabled={pending} onClick={complete}>{pending ? "De-stemming…" : "Complete — record the crush"}</Button>
       </div>
+    </Card>
+  );
+}
+
+function PlannedGuidanceCard({ note }: { note: string }) {
+  return (
+    <Card role="region" aria-label="Planned guidance" style={{ padding: 12, marginBottom: 12, boxShadow: "var(--shadow-sm)" }}>
+      <Eyebrow>Planned guidance</Eyebrow>
+      <div style={{ fontSize: 13.5, marginTop: 6 }}>{note}</div>
     </Card>
   );
 }

@@ -11,6 +11,7 @@ import { filterVesselTx, capManagementTx, type CapKind } from "@/lib/cellar/trea
 import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFIG, type AddAdditionInput } from "@/lib/cellar/addition";
 import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
 import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
+import { isPressableLotState } from "@/lib/ferment/press-data";
 import type { RateBasis } from "@/lib/cellar/additions-math";
 import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { assertTaskTransition } from "@/lib/work-orders/status";
@@ -222,6 +223,13 @@ async function dispatchOperationTx(
       const lossL = asNum(payload.lossL);
       if (lossL != null && lossL < 0) throw new ActionError("Lees loss can't be negative."); // fail with a clean 400 at the boundary, not a raw planPress Error inside the tx
       const opSel = asStr(payload.op);
+      const current = await tx.vesselLot.findFirst({
+        where: { lotId: parentLotId, vesselId: sourceVesselId },
+        select: { lot: { select: { code: true, form: true, status: true } }, vessel: { select: { code: true } } },
+      });
+      if (!current || !isPressableLotState(current.lot)) {
+        throw new ActionError("The pinned press source is stale: that vessel no longer holds the active MUST lot. Refresh the work order and choose the current pressable position.", "CONFLICT");
+      }
       const r = await pressLotTx(tx, actor, {
         commandId,
         parentLotId,
