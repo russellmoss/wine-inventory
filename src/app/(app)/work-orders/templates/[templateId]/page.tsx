@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { getTemplateDetail } from "@/lib/work-orders/data";
 import { TemplateDetailClient } from "./TemplateDetailClient";
 
@@ -19,5 +19,5 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
       </div>
     );
   }
-  return <TemplateDetailClient template={template} isAdmin={user.role === "admin"} />;
+  return <TemplateDetailClient template={template} isAdmin={isTenantAdminLike(user)} />;
 }

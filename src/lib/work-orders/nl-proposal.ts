@@ -18,7 +18,7 @@ export type NlWorkOrderIntent =
   | { kind: "TEMP_SETPOINT"; vessel: string; targetValue?: number; targetUnit?: string; note?: string }
   | { kind: NlMaintenanceKind; vessel: string; material?: string; amount?: number; gasType?: string; so2Method?: string; durationMin?: number; note?: string }
   | { kind: "CRUSH"; destVessel?: string; note?: string }
-  | { kind: "PRESS"; op?: string; note?: string }
+  | { kind: "PRESS"; sourceVessel?: string; sourceLot?: string; destVessel?: string; op?: "PRESS" | "SAIGNEE" | string; pressCycle?: string; note?: string }
   | { kind: "HARVEST_WEIGH_IN"; block?: string; note?: string }
   | { kind: "PANEL"; vessel?: string; lot?: string; panelName?: string; note?: string }
   | { kind: "BRIX"; vessel?: string; lot?: string; note?: string }
@@ -376,7 +376,15 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     }
     if (up === "PRESS") {
       const op = cleanString(raw.op);
-      intents.push({ kind: "PRESS", ...(op ? { op } : {}), ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
+      intents.push({
+        kind: "PRESS",
+        ...(cleanString(raw.sourceVessel) ?? cleanString(raw.fromVessel) ?? cleanString(raw.vessel) ? { sourceVessel: (cleanString(raw.sourceVessel) ?? cleanString(raw.fromVessel) ?? cleanString(raw.vessel))! } : {}),
+        ...(cleanString(raw.sourceLot) ?? cleanString(raw.lot) ? { sourceLot: (cleanString(raw.sourceLot) ?? cleanString(raw.lot))! } : {}),
+        ...(cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ? { destVessel: (cleanString(raw.destVessel) ?? cleanString(raw.toVessel))! } : {}),
+        ...(op ? { op } : {}),
+        ...(cleanString(raw.pressCycle) ? { pressCycle: cleanString(raw.pressCycle)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
       continue;
     }
     if (up === "HARVEST_WEIGH_IN") {
@@ -435,6 +443,16 @@ export function parseWorkOrderUtteranceForEval(sourceText: string): NlWorkOrderI
   const rackBarrels = text.match(/\brack\s+barrels?\s+(.+?)\s+(?:back\s+)?(?:in ?to|to)\s+(.+?)(?:[,;.]|$)/i);
   if (rackBarrels) {
     intents.push({ kind: "RACK_TO_TANK", fromGroup: rackBarrels[1].trim(), to: rackBarrels[2].trim() });
+  }
+
+  const press = text.match(/\bpress\s+([a-z0-9# -]+?)(?:\s+(?:to|into)\s+([a-z0-9# -]+?))?(?:,|;|\band\b|$)/i);
+  if (press) {
+    intents.push({
+      kind: "PRESS",
+      sourceVessel: press[1].trim(),
+      ...(press[2]?.trim() ? { destVessel: press[2].trim() } : {}),
+      op: "PRESS",
+    });
   }
 
   return intents;

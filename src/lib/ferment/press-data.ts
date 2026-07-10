@@ -21,6 +21,10 @@ export type PressDestVessel = { id: string; code: string; capacityL: number };
 
 export type PressFormData = { positions: PressablePosition[]; vessels: PressDestVessel[]; pressCycles: string[] };
 
+export function isPressableLotState(lot: { form: string; status: string }): boolean {
+  return lot.form === "MUST" && lot.status === "ACTIVE";
+}
+
 export async function loadPressFormData(): Promise<PressFormData> {
   const positions = await prisma.vesselLot.findMany({
     where: { lot: { form: "MUST", status: "ACTIVE" } },
@@ -29,7 +33,7 @@ export async function loadPressFormData(): Promise<PressFormData> {
       volumeL: true,
       updatedAt: true,
       vessel: { select: { code: true } },
-      lot: { select: { id: true, code: true, form: true, afState: true } },
+      lot: { select: { id: true, code: true, form: true, status: true, afState: true } },
     },
     orderBy: { vessel: { code: "asc" } },
   });
@@ -44,16 +48,18 @@ export async function loadPressFormData(): Promise<PressFormData> {
 
   return {
     pressCycles: cycles.map((c) => c.name),
-    positions: positions.map((p) => ({
-      vesselId: p.vesselId,
-      vesselCode: p.vessel.code,
-      lotId: p.lot.id,
-      lotCode: p.lot.code,
-      form: p.lot.form,
-      afState: p.lot.afState,
-      volumeL: Number(p.volumeL),
-      revision: p.updatedAt.toISOString(),
-    })),
+    positions: positions
+      .filter((p) => isPressableLotState(p.lot))
+      .map((p) => ({
+        vesselId: p.vesselId,
+        vesselCode: p.vessel.code,
+        lotId: p.lot.id,
+        lotCode: p.lot.code,
+        form: p.lot.form,
+        afState: p.lot.afState,
+        volumeL: Number(p.volumeL),
+        revision: p.updatedAt.toISOString(),
+      })),
     vessels: vessels.map((v) => ({ id: v.id, code: v.code, capacityL: Number(v.capacityL) })),
   };
 }

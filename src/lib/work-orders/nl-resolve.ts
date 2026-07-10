@@ -10,6 +10,7 @@ import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCate
 import { computeDoseTotal, convertDoseToStock } from "@/lib/cellar/additions-math";
 import { TASK_VOCABULARY, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { buildWorkOrderReadiness, assertFreshReadiness } from "@/lib/work-orders/proposal-readiness";
+import { isPressableLotState } from "@/lib/ferment/press-data";
 import {
   canonicalizeNlWorkOrderDraft,
   normalizeDoseUnit,
@@ -32,7 +33,7 @@ type VesselLite = {
 type VesselContentsRow = {
   lotId: string;
   volumeL: Prisma.Decimal | number;
-  lot: { id: string; code: string; status: string; updatedAt: Date; taxAbvOverride: Prisma.Decimal | null };
+  lot: { id: string; code: string; form: string; status: string; updatedAt: Date; taxAbvOverride: Prisma.Decimal | null };
 };
 
 type ResolvedVesselState = {
@@ -44,7 +45,7 @@ type ResolvedVesselState = {
   volumeL: number;
   isActive: boolean;
   updatedAt: string;
-  lots: { id: string; code: string; status: string; volumeL: number; updatedAt: string; taxAbvOverride: number | null }[];
+  lots: { id: string; code: string; form: string; status: string; volumeL: number; updatedAt: string; taxAbvOverride: number | null }[];
 };
 
 const ROUND = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
@@ -99,7 +100,7 @@ async function loadVesselStateById(id: string): Promise<ResolvedVesselState> {
       isActive: true,
       updatedAt: true,
       vesselLots: {
-        include: { lot: { select: { id: true, code: true, status: true, updatedAt: true, taxAbvOverride: true } } },
+        include: { lot: { select: { id: true, code: true, form: true, status: true, updatedAt: true, taxAbvOverride: true } } },
         orderBy: { lot: { code: "asc" } },
       },
     },
@@ -108,6 +109,7 @@ async function loadVesselStateById(id: string): Promise<ResolvedVesselState> {
   const lots = vessel.vesselLots.map((vl) => ({
     id: vl.lot.id,
     code: vl.lot.code,
+    form: vl.lot.form,
     status: vl.lot.status,
     volumeL: num(vl.volumeL),
     updatedAt: vl.lot.updatedAt.toISOString(),
@@ -154,6 +156,55 @@ async function resolveGroupMembers(expr: string): Promise<ResolvedVesselState[]>
   }
   const byId = new Map(members.map((m) => [m.id, m]));
   return sortByLabel([...byId.values()]);
+}
+
+async function resolvePressSource(intent: { sourceVessel?: string; sourceLot?: string }): Promise<{
+  lotId: string;
+  lotCode: string;
+  vesselId: string;
+  vesselLabel: string;
+  volumeL: number;
+} | null> {
+  if (intent.sourceLot) {
+    const lot = await resolveLotTarget({ lot: intent.sourceLot });
+    const positions = await prisma.vesselLot.findMany({
+      where: { lotId: lot.lotId, lot: { status: "ACTIVE" } },
+      select: {
+        vesselId: true,
+        volumeL: true,
+        vessel: { select: { code: true, type: true } },
+        lot: { select: { id: true, code: true, form: true, status: true } },
+      },
+      orderBy: { vessel: { code: "asc" } },
+    });
+    const pressable = positions.filter((p) => isPressableLotState(p.lot));
+    if (pressable.length === 1) {
+      const p = pressable[0];
+      return { lotId: p.lot.id, lotCode: p.lot.code, vesselId: p.vesselId, vesselLabel: vesselLabel({ type: p.vessel.type, code: p.vessel.code }), volumeL: num(p.volumeL) };
+    }
+    if (pressable.length > 1) {
+      throw new Error(`Lot ${lot.lotCode} is split across multiple pressable vessels: ${pressable.map((p) => vesselLabel({ type: p.vessel.type, code: p.vessel.code })).join(", ")}. Which vessel should be pressed?`);
+    }
+    throw new Error(`Lot ${lot.lotCode} is not currently an active MUST lot in a vessel, so it cannot be pressed from a work order.`);
+  }
+
+  if (intent.sourceVessel) {
+    const vessel = await resolveVesselState(intent.sourceVessel);
+    const pressable = vessel.lots.filter((lot) => isPressableLotState(lot));
+    if (pressable.length === 1) {
+      const lot = pressable[0];
+      return { lotId: lot.id, lotCode: lot.code, vesselId: vessel.id, vesselLabel: vessel.label, volumeL: lot.volumeL };
+    }
+    if (pressable.length > 1) {
+      throw new Error(`${vessel.label} holds multiple pressable MUST lots: ${pressable.map((lot) => `${lot.code} (${lot.volumeL} L)`).join(", ")}. Which lot should be pressed?`);
+    }
+    const current = vessel.lots.length
+      ? vessel.lots.map((lot) => `${lot.code} (${lot.form}, ${lot.status}, ${lot.volumeL} L)`).join(", ")
+      : "it is empty";
+    throw new Error(`${vessel.label} has no active MUST lot to press right now; current contents: ${current}.`);
+  }
+
+  return null;
 }
 
 function categoryOfMaterial(m: CellarMaterialDTO): MaterialCategory {
@@ -488,9 +539,34 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 
     if (intent.kind === "PRESS") {
       const op = matchSelectValue("PRESS", "op", intent.op);
-      const values = { ...(op ? { op } : {}), ...(intent.note ? { note: intent.note } : {}) };
-      taskBuilds.push({ taskType: "PRESS", title: op === "SAIGNEE" ? "Saignée" : "Press", values, taskKey: randomUUID() });
-      tasks.push({ seq, kind: "PRESS", title: intent.op === "SAIGNEE" ? "Saignée" : "Press", summary: "Must lot, source vessel and press fractions entered on the floor", entities: [] });
+      const source = await resolvePressSource(intent);
+      let plannedDest: { id: string; label: string } | null = null;
+      if (intent.destVessel) {
+        const dest = await resolveVesselState(intent.destVessel);
+        plannedDest = { id: dest.id, label: dest.label };
+      }
+      const values = {
+        ...(source ? { parentLotId: source.lotId, sourceVesselId: source.vesselId } : {}),
+        ...(source ? { plannedSourceVesselLabel: source.vesselLabel, plannedSourceLotCode: source.lotCode } : {}),
+        ...(plannedDest ? { plannedDestVesselId: plannedDest.id, plannedDestVesselLabel: plannedDest.label } : {}),
+        ...(op ? { op } : {}),
+        ...(intent.pressCycle ? { pressCycle: intent.pressCycle } : {}),
+        ...(intent.note ? { note: intent.note } : {}),
+      };
+      const title = op === "SAIGNEE" ? "Saignee" : "Press";
+      taskBuilds.push({ taskType: "PRESS", title, values, taskKey: randomUUID() });
+      tasks.push({
+        seq,
+        kind: "PRESS",
+        title,
+        summary: source
+          ? `${title} ${source.lotCode} from ${source.vesselLabel}${plannedDest ? `; destination hint ${plannedDest.label}` : ""}; fractions and volumes entered on the floor`
+          : "Must lot, source vessel and press fractions entered on the floor",
+        entities: [
+          ...(source ? [{ role: "source", label: source.vesselLabel, id: source.vesselId }, { role: "lot", label: source.lotCode, id: source.lotId }] : []),
+          ...(plannedDest ? [{ role: "planned destination", label: plannedDest.label, id: plannedDest.id }] : []),
+        ],
+      });
       continue;
     }
 
@@ -566,6 +642,24 @@ export function buildNlWorkOrderCommitArgs(proposal: WorkOrderProposal): NlWorkO
 export async function assertFreshNlWorkOrderProposal(args: NlWorkOrderCommitArgs): Promise<void> {
   // Unified on the shared readiness fingerprint (same hash used to mint the proposal).
   await assertFreshReadiness(args.taskBuilds, args.fingerprint);
+  await assertPinnedPressSourcesFresh(args.taskBuilds);
+}
+
+async function assertPinnedPressSourcesFresh(taskBuilds: TaskBuild[]): Promise<void> {
+  for (const task of taskBuilds) {
+    if (task.taskType !== "PRESS") continue;
+    const parentLotId = typeof task.values.parentLotId === "string" ? task.values.parentLotId : null;
+    const sourceVesselId = typeof task.values.sourceVesselId === "string" ? task.values.sourceVesselId : null;
+    if (!parentLotId || !sourceVesselId) continue;
+    const row = await prisma.vesselLot.findFirst({
+      where: { lotId: parentLotId, vesselId: sourceVesselId },
+      select: { lot: { select: { code: true, form: true, status: true } }, vessel: { select: { code: true, type: true } } },
+    });
+    if (!row || !isPressableLotState(row.lot)) {
+      const vessel = row ? vesselLabel({ type: row.vessel.type, code: row.vessel.code }) : "that source vessel";
+      throw new Error(`This press work-order proposal is stale: ${vessel} no longer holds the pinned active MUST lot. Regenerate it from current cellar contents.`);
+    }
+  }
 }
 
 export function dueAtFromCommitArgs(args: Pick<NlWorkOrderCommitArgs, "dueDate">): Date | null {

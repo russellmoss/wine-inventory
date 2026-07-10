@@ -43,6 +43,10 @@ describe("accessDecision", () => {
   it("allows admin into admin areas", () => {
     expect(accessDecision({ ...base, role: "admin" }, { requireAdmin: true })).toBe("ok");
   });
+
+  it("allows developer into admin areas", () => {
+    expect(accessDecision({ ...base, role: "developer" }, { requireAdmin: true })).toBe("ok");
+  });
 });
 
 describe("canManagerAccessVineyard (set-based alias)", () => {
@@ -54,6 +58,9 @@ describe("canManagerAccessVineyard (set-based alias)", () => {
     expect(canManagerAccessVineyard({ ...base, role: "admin", vineyardIds: ["v2"] }, "v1")).toBe(
       true,
     );
+  });
+  it("developer reaches any vineyard", () => {
+    expect(canManagerAccessVineyard({ ...base, role: "developer", vineyardIds: [] }, "v1")).toBe(true);
   });
   // PARITY (IRON RULE): a single-vineyard manager behaves EXACTLY as before the set migration.
   it("single-vineyard manager reaches only their vineyard", () => {

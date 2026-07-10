@@ -1,5 +1,5 @@
 import "server-only";
-import type { AppUser } from "@/lib/access";
+import { isTenantAdminLike, type AppUser } from "@/lib/access";
 
 /**
  * The assistant's tool registry — the single source of truth for what the
@@ -36,6 +36,7 @@ import { queryBrixTool } from "./tools/query-brix";
 import { queryYieldTool } from "./tools/query-yield";
 import { queryRecentHarvestsTool } from "./tools/query-recent-harvests";
 import { queryTransfersTool } from "./tools/query-transfers";
+import { queryCellarContentsTool } from "./tools/query-cellar-contents";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryFieldReportsTool } from "./tools/query-field-reports";
 import { getFieldReportFormTool } from "./tools/get-field-report-form";
@@ -97,6 +98,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryYieldTool,
   queryRecentHarvestsTool,
   queryTransfersTool,
+  queryCellarContentsTool,
   queryVineyardStatusTool,
   queryFieldReportsTool,
   getFieldReportFormTool,
@@ -160,6 +162,6 @@ const ALL_TOOLS: AssistantTool[] = [
 
 /** Tools this user is allowed to see, after role filtering. */
 export function getToolsFor(user: AppUser): AssistantTool[] {
-  const isAdmin = user.role === "admin";
+  const isAdmin = isTenantAdminLike(user);
   return ALL_TOOLS.filter((t) => !t.adminOnly || isAdmin);
 }

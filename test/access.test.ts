@@ -103,14 +103,14 @@ describe("resolveActiveOrg (tenant resolution + K13 revalidation)", () => {
     expect(resolveActiveOrg([], "orgA")).toBeNull();
     expect(resolveActiveOrg([], null)).toBeNull();
   });
-  it("prefers preferOrgId (developer → Demo Winery) over earliest membership when no claim", () => {
+  it("prefers preferOrgId (developer -> Demo Winery) over earliest membership when no claim", () => {
     expect(resolveActiveOrg(["org_bhutan_wine_co", "org_demo_winery"], null, { preferOrgId: "org_demo_winery" })).toBe("org_demo_winery");
     expect(resolveActiveOrg(["org_bhutan_wine_co", "org_demo_winery"], undefined, { preferOrgId: "org_demo_winery" })).toBe("org_demo_winery");
   });
+  it("prefers preferOrgId over a stale-but-valid session claim", () => {
+    expect(resolveActiveOrg(["org_bhutan_wine_co", "org_demo_winery"], "org_bhutan_wine_co", { preferOrgId: "org_demo_winery" })).toBe("org_demo_winery");
+  });
   it("ignores preferOrgId when the user isn't a member of it", () => {
     expect(resolveActiveOrg(["org_bhutan_wine_co"], null, { preferOrgId: "org_demo_winery" })).toBe("org_bhutan_wine_co");
-  });
-  it("an explicit valid claim still overrides the preference (dev switched to the real tenant)", () => {
-    expect(resolveActiveOrg(["org_bhutan_wine_co", "org_demo_winery"], "org_bhutan_wine_co", { preferOrgId: "org_demo_winery" })).toBe("org_bhutan_wine_co");
   });
 });
