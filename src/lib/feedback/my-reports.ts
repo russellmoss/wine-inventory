@@ -14,7 +14,11 @@ import { getCurrentUser } from "@/lib/dal";
  *   - Own-only: filtered to actorUserId === the signed-in user.
  *   - Reporter-safe: returns a NARROW whitelisted shape only. NEVER expose developerNotes,
  *     prUrl, githubIssueUrl, severity, automationStatus, or debugContext to a customer.
+ *   - Bounded: capped at MAX_REPORTS newest items so a prolific reporter can't render an
+ *     unbounded list (there is no actorUserId index; the per-tenant row count is small).
  */
+
+const MAX_REPORTS = 50;
 
 export type MyReport = {
   sourceType: "FEEDBACK_TICKET" | "ASSISTANT_FEEDBACK";
@@ -34,12 +38,14 @@ export async function getMyReports(): Promise<MyReport[]> {
     prisma.feedbackTicket.findMany({
       where: { actorUserId: user.id },
       orderBy: { createdAt: "desc" },
+      take: MAX_REPORTS,
       // Whitelist: only reporter-safe columns leave the DB.
       select: { id: true, kind: true, title: true, status: true, createdAt: true, resolvedAt: true },
     }),
     prisma.assistantFeedback.findMany({
       where: { actorUserId: user.id, rating: "down" },
       orderBy: { createdAt: "desc" },
+      take: MAX_REPORTS,
       select: { id: true, status: true, createdAt: true, resolvedAt: true },
     }),
   ]);
@@ -64,5 +70,7 @@ export async function getMyReports(): Promise<MyReport[]> {
     resolvedAt: a.resolvedAt ? a.resolvedAt.toISOString() : null,
   }));
 
-  return [...ticketReports, ...assistantReports].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return [...ticketReports, ...assistantReports]
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, MAX_REPORTS);
 }
