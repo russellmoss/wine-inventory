@@ -110,7 +110,10 @@
   PLUS the cellar-floor server domains (`work-orders`, `vessel(s)`, `lot`, `blend`, `bottling`, `bulk`,
   `cellar`, `ferment`, `harvest`, `chemistry`, `stock`, `inventory`, `sparkling`, `vineyard`,
   `winemaking-calc`, `units`, `reference`, `settings`, `locations`, `fieldnotes`, `developer`,
-  `feedback`) so the loop can fix real domain bugs. It MUST NOT include the money/tenancy/ledger/moat
+  `feedback`) so the loop can fix real domain bugs, PLUS `test/` so a fix carries its regression test.
+  Allowing `test/` is safe: test files run ONLY in the PR's clean-context `check` CI (vitest, no
+  secrets), NEVER in the credentialed feedback-bug-fix agent job (which writes files but runs no
+  lint/test — the RCE boundary is unchanged). It MUST NOT include the money/tenancy/ledger/moat
   domains: `ledger`, `cost`, `money`, `accounting`, `commerce`, `compliance`, `transform` (kept out by
   omission — unlisted ⇒ `isAllowed` false), the hard-denied `auth`/`dal`/`tenant`/`prisma`/`.env`/
   workflows/migrations, and the file `src/lib/audit.ts` (audit-trail integrity is human-review-only).

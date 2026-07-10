@@ -34,7 +34,7 @@ export const deniedPrefixes = [
 ];
 
 // Writable surfaces — app UI + components + the assistant + the feedback API + the cellar-floor
-// SERVER domains. The money/tenancy/ledger/compliance/moat domains are deliberately absent
+// SERVER domains + regression tests (test/). The money/tenancy/ledger/compliance/moat domains are deliberately absent
 // (ledger, cost, money, accounting, commerce, compliance, transform) or hard-denied below
 // (auth, dal, tenant, prisma) — plus src/lib/audit.ts, which is not under any allowed dir and so
 // stays unwritable. Anything not listed here fails `isAllowed`, so the exclusions need no deny entry.
@@ -44,6 +44,11 @@ export const allowedPrefixes = [
   "src/app/api/feedback/",
   "src/components/",
   "src/lib/assistant/",
+  // Regression tests — a fix should carry its test. SAFE: test files run ONLY in the PR's
+  // clean-context CI (the `check` job: vitest, no secrets), NEVER in the credentialed feedback-bug-fix
+  // agent job (which writes files but runs no lint/test — the RCE boundary is unchanged). See
+  // [[TRIP-SEC-FEEDBACK-FENCE]] / security-register.
+  "test/",
   // Cellar-floor server domains (plan 052) — where real winemaking-ops bugs live
   "src/lib/work-orders/",
   "src/lib/vessel/",

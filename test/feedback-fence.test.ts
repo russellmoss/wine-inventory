@@ -15,6 +15,11 @@ describe("feedback write-fence: allowed surfaces", () => {
     expect(fencePass("src/lib/assistant/prompt.ts")).toBe(true);
   });
 
+  it("accepts regression tests (a fix should carry its test; they run only in clean-context CI)", () => {
+    expect(fencePass("test/work-order-nl-proposal.test.ts")).toBe(true);
+    expect(fencePass("test/feedback-fence.test.ts")).toBe(true);
+  });
+
   it("accepts the plan-052 cellar-floor server domains", () => {
     expect(fencePass("src/lib/work-orders/execute.ts")).toBe(true);
     expect(fencePass("src/lib/vessel/state.ts")).toBe(true);
