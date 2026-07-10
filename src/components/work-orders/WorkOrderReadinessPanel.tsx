@@ -24,6 +24,7 @@ export type WorkOrderReadinessView = {
   diff: ProposalDiff;
   unresolved: UnresolvedItem[];
   runtimeInputs: ReadinessRuntimeInput[];
+  coverage?: { taskSeq: number; taskType: string; state: string; reason: string }[];
 };
 
 const box: React.CSSProperties = { borderRadius: "var(--radius-md)", padding: "10px 12px", fontSize: 13.5, lineHeight: 1.5 };
@@ -130,6 +131,21 @@ export function WorkOrderReadinessPanel({ proposal }: { proposal: WorkOrderReadi
               ? "Total not shown — at least one supply cost is unknown."
               : `Total ≈ ${money(proposal.cost.totalKnownCost, proposal.cost.currency)}`}
           </div>
+        </Section>
+      ) : null}
+
+      {/* Not included: task families that can't be created here (future_phase / unsupported). */}
+      {(proposal.coverage ?? []).some((c) => c.state === "future_phase" || c.state === "unsupported") ? (
+        <Section title="Not included in this work order" tone="var(--red)">
+          <List
+            items={(proposal.coverage ?? [])
+              .filter((c) => c.state === "future_phase" || c.state === "unsupported")
+              .map((c) => (
+                <span key={`cov-${c.taskSeq}`}>
+                  <strong>#{c.taskSeq} {c.taskType}</strong> — {c.reason} <em>({c.state === "future_phase" ? "future phase" : "not supported"})</em>
+                </span>
+              ))}
+          />
         </Section>
       ) : null}
 

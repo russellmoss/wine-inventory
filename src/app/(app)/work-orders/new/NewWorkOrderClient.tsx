@@ -419,6 +419,14 @@ export function NewWorkOrderClient({
           ) : null}
 
           {error ? <div style={{ color: "var(--danger)", fontSize: 14 }}>{error}</div> : null}
+
+          {/* Effect summary above the CTA (design review): who/when + what happens on confirm. */}
+          {hasTasks ? (
+            <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px" }}>
+              {taskBuilds.length} task{taskBuilds.length === 1 ? "" : "s"} · {assigneeEmail.trim() ? `assigned to ${assigneeEmail.trim()}` : "unassigned"} · {dueAt ? `due ${dueAt}` : "no due date"}.{" "}
+              {lockedVessel ? "Creating & issuing now reserves supply/capacity and sends it to the crew." : "Creates a draft you can review before issuing."}
+            </div>
+          ) : null}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <Button variant="ghost" onClick={() => (lockedVessel ? onCancel?.() : router.push("/work-orders"))}>Cancel</Button>
             <Button disabled={pending || readinessBlocked} onClick={submit}>{pending ? (lockedVessel ? "Issuing…" : "Creating…") : lockedVessel ? "Issue Work Order" : "Create draft"}</Button>
