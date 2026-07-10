@@ -10,8 +10,18 @@ bug reports, and feature requests.
 - `GITHUB_DISPATCH_TOKEN`: token used by the app to dispatch approved automation.
 - `GITHUB_REPOSITORY`: `owner/repo`.
 - `ANTHROPIC_API_KEY`: used by feedback automation workflows.
-- `BLOB_READ_WRITE_TOKEN`: Vercel Blob private upload/read token.
+- `BLOB_READ_WRITE_TOKEN`: Vercel Blob private upload/read token. Needed in TWO places:
+  the app (upload/read attachments) AND as a **GitHub Actions secret** for the
+  `feedback-bug-fix` / `assistant-feedback` workflows, so the fix agent can fetch a
+  ticket's private screenshots and pass them to Claude as vision input. If the secret is
+  absent, the agent runs text-only (no crash), it just can't see the images.
 - `DATABASE_URL` / `DATABASE_URL_UNPOOLED`: normal app and owner DB URLs.
+
+> **Dev / free tier:** the screenshots ride on Vercel Blob. On the Hobby plan the included
+> free Blob allotment covers dev/QA easily (attachments are capped at 5 MB and ≤5 per item),
+> so create a Blob store in the Hobby project and copy `BLOB_READ_WRITE_TOKEN` into local
+> `.env`. Note Blob is usage-metered, not a hard fixed free tier, so it is not a "can never
+> be billed" guarantee — dev volume just stays well inside the free bucket.
 
 ## First developer
 

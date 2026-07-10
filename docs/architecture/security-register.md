@@ -87,6 +87,24 @@
 - **Status:** 🟢 (admin gate + server-side canonicalization + tenant scoping verified by the /review
   security specialist + the write-nothing guard)
 
+### Feedback-fix agents: attacker-influenced input, but a fixed output path
+- The bug-fix / assistant-feedback agents (`scripts/bug-feedback-agent.ts`,
+  `scripts/assistant-feedback-agent.ts`) run in GitHub Actions holding real secrets
+  (`DATABASE_URL`, `GH_PAT`) on **untrusted** ticket text — and now on **untrusted screenshots**
+  (`scripts/feedback-attachment-images.ts` fetches the ticket's private Blob images and passes them
+  to Claude as vision blocks). Both system prompts frame text AND images as data, never instructions.
+- Images change the model's **input** only. The **output** path is unchanged and is where safety
+  lives: modify-existing-files-only inside the write-fence (`scripts/feedback-fence-rules.ts`), no
+  new files, a typecheck gate, a post-run fence self-check, and **no lint/test in the credentialed
+  job** (that is the RCE vector — the PR's clean-context CI runs them). So adding vision does not
+  widen the RCE surface.
+- The Blob token in the two feedback CI jobs is **read-only in use**; the job already holds stronger
+  secrets. There is no read-only Blob token type in this `@vercel/blob` version. Size/count/byte
+  budgets in the selector bound cost + payload.
+- **Tripwire:** any change that lets an image (or its decoded text) trigger a **tool call / code
+  execution** in the agent, or that runs lint/test/`npm`-scripts in the credentialed job.
+- **Status:** 🟢 (output path unchanged; pure selector guarded by `test/feedback-attachment-images.test.ts`)
+
 ### Secrets never enter the repo or the client
 - Secrets live in `.env` (gitignored) / Vercel env / GitHub Actions secrets. Client-exposed keys are
   `NEXT_PUBLIC_*` **by design only** (e.g. Google Map Tiles, restricted by referrer).
