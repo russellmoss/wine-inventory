@@ -36,10 +36,15 @@ async function main() {
     automationStatus: i.automationStatus, // NOT_REQUESTED | AWAITING_APPROVAL | QUEUED | RUNNING | PLANNED | PR_OPENED | FAILED | SKIPPED
     modeAtSubmission: i.modeAtSubmission,
     prUrl: i.prUrl,
-    githubIssueUrl: i.githubIssueUrl,
+    githubIssueUrl: i.githubIssueUrl, // where a PLANNED item's plan / a SKIPPED item's run log lives
+    // A PLAN_ONLY run stores its plan in the DB. Surface it (capped) so the triage goalie can
+    // route it for review instead of blindly re-dispatching. planPresent lets a consumer branch
+    // without paying for the snippet. Full plan lives in the DB + githubIssueUrl.
+    planPresent: Boolean(i.planMarkdown),
+    planMarkdown: i.planMarkdown ? i.planMarkdown.slice(0, 1500) : null,
     attachmentCount: i.attachmentCount, // screenshots the fix agent can see as vision
     awaitingRunId: i.awaitingRunId, // non-null => an AutomationRun is AWAITING_APPROVAL and can be dispatched
-    developerNotes: i.developerNotes,
+    developerNotes: i.developerNotes, // carries a SKIPPED run's "why I declined" note back to triage
     open: ACTIONABLE_STATUSES.has(i.status),
   }));
 
@@ -50,6 +55,9 @@ async function main() {
     awaitingDispatch: items.filter((i) => i.awaitingRunId).length,
     withPr: items.filter((i) => i.prUrl).length,
     running: items.filter((i) => i.automationStatus === "RUNNING").length,
+    planned: items.filter((i) => i.automationStatus === "PLANNED").length,
+    prOpened: items.filter((i) => i.automationStatus === "PR_OPENED").length,
+    skipped: items.filter((i) => i.automationStatus === "SKIPPED").length,
     failed: items.filter((i) => i.automationStatus === "FAILED").length,
   };
 
