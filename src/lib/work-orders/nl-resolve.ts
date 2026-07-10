@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { resolveVessel, resolveLotTarget } from "@/lib/assistant/scope";
+import { expandVesselRange, resolveGroupByName } from "@/lib/vessels/range";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { computeDoseTotal, convertDoseToStock } from "@/lib/cellar/additions-math";
@@ -84,8 +85,12 @@ export function validateNlWorkOrderMetadata(draft: Pick<NlWorkOrderDraft, "assig
 
 async function resolveVesselState(ref: string): Promise<ResolvedVesselState> {
   const resolved = await resolveVessel(ref);
+  return loadVesselStateById(resolved.id);
+}
+
+async function loadVesselStateById(id: string): Promise<ResolvedVesselState> {
   const vessel = (await prisma.vessel.findUnique({
-    where: { id: resolved.id },
+    where: { id },
     select: {
       id: true,
       code: true,
@@ -99,7 +104,7 @@ async function resolveVesselState(ref: string): Promise<ResolvedVesselState> {
       },
     },
   })) as (VesselLite & { vesselLots: VesselContentsRow[] }) | null;
-  if (!vessel) throw new Error(`No vessel matches "${ref}".`);
+  if (!vessel) throw new Error("That vessel no longer exists.");
   const lots = vessel.vesselLots.map((vl) => ({
     id: vl.lot.id,
     code: vl.lot.code,
@@ -119,6 +124,36 @@ async function resolveVesselState(ref: string): Promise<ResolvedVesselState> {
     updatedAt: vessel.updatedAt.toISOString(),
     lots,
   };
+}
+
+const sortByLabel = (xs: ResolvedVesselState[]): ResolvedVesselState[] =>
+  [...xs].sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+
+/**
+ * Phase 9.4a: resolve a group expression to an ordered, deduped member set — a range ("B101-B110"), a
+ * saved VesselGroup name, or a comma/and-separated list. Throws a relayable message when it can't
+ * (empty / single / ambiguous group), so the proposal stays honest rather than faking a group.
+ */
+async function resolveGroupMembers(expr: string): Promise<ResolvedVesselState[]> {
+  const range = expandVesselRange(expr); // throws on inverted/oversized
+  let members: ResolvedVesselState[];
+  if (range) {
+    members = await Promise.all(range.map((code) => resolveVesselState(code)));
+  } else {
+    const g = await resolveGroupByName(expr);
+    if (g.kind === "many") throw new Error(`Several groups match "${expr}": ${g.names.join(", ")}. Name one.`);
+    if (g.kind === "one") {
+      members = await Promise.all(g.members.map((m) => loadVesselStateById(m.id)));
+    } else {
+      const parts = expr.split(/\s*(?:,|\band\b)\s*/i).map((s) => s.trim()).filter(Boolean);
+      if (parts.length < 2) {
+        throw new Error(`Couldn't resolve "${expr}" to a barrel group. Use a range like B101-B110, a saved group name, or a comma-separated list.`);
+      }
+      members = await Promise.all(parts.map((p) => resolveVesselState(p)));
+    }
+  }
+  const byId = new Map(members.map((m) => [m.id, m]));
+  return sortByLabel([...byId.values()]);
 }
 
 function categoryOfMaterial(m: CellarMaterialDTO): MaterialCategory {
@@ -255,6 +290,57 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
           { role: "to", label: to.label, id: to.id },
           ...(singleLot ? [{ role: "lot", label: singleLot.code, id: singleLot.id }] : []),
         ],
+      });
+      continue;
+    }
+
+    if (intent.kind === "BARREL_DOWN") {
+      const src = await resolveVesselState(intent.from);
+      const members = (await resolveGroupMembers(intent.toGroup)).filter((m) => m.id !== src.id);
+      if (members.length === 0) throw new Error("A barrel-down needs at least one destination barrel.");
+      const lossL = intent.lossL ?? 0;
+      const groupRack = {
+        direction: "BARREL_DOWN" as const,
+        sourceVesselId: src.id,
+        destVesselIds: members.map((m) => m.id),
+        ...(intent.drawL != null ? { drawL: intent.drawL } : {}),
+        ...(lossL > 0 ? { lossL } : {}),
+        memberCodes: members.map((m) => m.code),
+      };
+      const values = { sourceVesselId: src.id, groupRack, ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "GROUP_RACK", title: `Barrel down ${src.label} to ${members.length} ${members.length === 1 ? "barrel" : "barrels"}`, values, taskKey: randomUUID() });
+      tasks.push({
+        seq,
+        kind: "BARREL_DOWN",
+        title: `Barrel down ${src.label}`,
+        summary: `${src.label} → ${members.length} ${members.length === 1 ? "barrel" : "barrels"} (${members[0].code}…${members.at(-1)!.code})${lossL > 0 ? `, ${lossL} L loss` : ""}`,
+        entities: [{ role: "source", label: src.label, id: src.id }],
+        members: members.map((m) => ({ id: m.id, label: m.label, detail: `${m.volumeL}/${m.capacityL} L` })),
+      });
+      continue;
+    }
+
+    if (intent.kind === "RACK_TO_TANK") {
+      const dest = await resolveVesselState(intent.to);
+      const members = (await resolveGroupMembers(intent.fromGroup)).filter((m) => m.id !== dest.id);
+      if (members.length === 0) throw new Error("Racking barrels to a tank needs at least one source barrel.");
+      const lossL = intent.lossL ?? 0;
+      const groupRack = {
+        direction: "RACK_TO_TANK" as const,
+        destVesselId: dest.id,
+        sourceVesselIds: members.map((m) => m.id),
+        ...(lossL > 0 ? { lossL } : {}),
+        memberCodes: members.map((m) => m.code),
+      };
+      const values = { destVesselId: dest.id, groupRack, ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({ taskType: "GROUP_RACK", title: `Rack ${members.length} ${members.length === 1 ? "barrel" : "barrels"} to ${dest.label}`, values, taskKey: randomUUID() });
+      tasks.push({
+        seq,
+        kind: "RACK_TO_TANK",
+        title: `Rack barrels to ${dest.label}`,
+        summary: `${members.length} ${members.length === 1 ? "barrel" : "barrels"} (${members[0].code}…${members.at(-1)!.code}) → ${dest.label}${lossL > 0 ? `, ${lossL} L loss` : ""}`,
+        entities: [{ role: "destination", label: dest.label, id: dest.id }],
+        members: members.map((m) => ({ id: m.id, label: m.label, detail: `${m.volumeL} L` })),
       });
       continue;
     }

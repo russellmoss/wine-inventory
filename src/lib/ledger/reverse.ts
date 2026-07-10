@@ -4,6 +4,7 @@ import { requireTenantId } from "@/lib/tenant/context";
 import type { OperationType } from "@/lib/ledger/vocabulary";
 import { correctOperationCore } from "@/lib/cellar/correct";
 import { revertTransferCore, type LedgerActor } from "@/lib/vessels/rack-core";
+import { reverseGroupRackCore, isGroupRackMetadata } from "@/lib/vessels/group-rack-core";
 import { reverseSparklingOperationCore } from "@/lib/sparkling/correct";
 import { reverseBottlingRun } from "@/lib/bottling/run";
 import { reverseTransformCore } from "@/lib/transform/reverse";
@@ -343,9 +344,17 @@ export async function reverseOperationCore(actor: LedgerActor, input: { operatio
     }
     case "rack": {
       const transferId = await resolveTransferIdForOp(opId);
-      if (!transferId) throw new ActionError("That rack predates the ledger link and can't be undone from the timeline.", "CONFLICT");
-      const r = await revertTransferCore(actor, { transferId });
-      return { reversedOperationId: opId, reversedType: op.type, lotId: anyLotId, correctionId: null, message: r.message };
+      if (transferId) {
+        const r = await revertTransferCore(actor, { transferId });
+        return { reversedOperationId: opId, reversedType: op.type, lotId: anyLotId, correctionId: null, message: r.message };
+      }
+      // Phase 9.4a: a group rack (one tank ↔ many barrels) has no 1:1 VesselTransfer — reverse the whole
+      // op as one compensating CORRECTION over all its lines.
+      if (isGroupRackMetadata(op.metadata)) {
+        const r = await reverseGroupRackCore(actor, { operationId: opId, note: input.note });
+        return { reversedOperationId: opId, reversedType: op.type, lotId: anyLotId, correctionId: r.correctionId, message: r.message };
+      }
+      throw new ActionError("That rack predates the ledger link and can't be undone from the timeline.", "CONFLICT");
     }
     case "sparkling": {
       const r = await reverseSparklingOperationCore(actor, { operationId: opId, note: input.note });

@@ -113,9 +113,24 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
     expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "teleport", vessel: "T1" }] })).toThrow(/Unsupported work-order instruction/);
   });
 
-  it("declines group barrel-down as future_phase (not faked), structured and free-text", () => {
-    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "barrel_down", vessel: "T12" }] })).toThrow(/isn't completable yet/);
-    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "Barrel down T12 into B101-B110" })).toThrow(/isn't completable yet/);
+  // Phase 9.4a: group barrel-down / rack-to-tank are now first-class intents (one reviewable task →
+  // one balanced ledger op), no longer declined as future_phase.
+  it("canonicalizes group barrel-down (structured + free-text) into a BARREL_DOWN intent", () => {
+    const structured = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "barrel_down", from: "T12", toGroup: "B101-B110" }] });
+    expect(structured.intents[0]).toEqual({ kind: "BARREL_DOWN", from: "T12", toGroup: "B101-B110" });
+    const freeText = canonicalizeNlWorkOrderDraft({ sourceText: "Barrel down T12 into B101-B110" });
+    expect(freeText.intents[0]).toMatchObject({ kind: "BARREL_DOWN", from: "T12", toGroup: "B101-B110" });
+  });
+
+  it("canonicalizes rack-barrels-to-tank into a RACK_TO_TANK intent", () => {
+    const structured = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "rack_barrels_to_tank", fromGroup: "B101-B110", to: "T15" }] });
+    expect(structured.intents[0]).toEqual({ kind: "RACK_TO_TANK", fromGroup: "B101-B110", to: "T15" });
+    const freeText = canonicalizeNlWorkOrderDraft({ sourceText: "Rack barrels B101-B110 back to T15" });
+    expect(freeText.intents[0]).toMatchObject({ kind: "RACK_TO_TANK", fromGroup: "B101-B110", to: "T15" });
+  });
+
+  it("still rejects a group barrel-down missing its group/source", () => {
+    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "barrel_down", from: "T12" }] })).toThrow(/barrel group or range/i);
   });
 });
 

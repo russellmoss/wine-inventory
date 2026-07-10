@@ -23,6 +23,11 @@ export type NlWorkOrderIntent =
   | { kind: "PANEL"; vessel?: string; lot?: string; panelName?: string; note?: string }
   | { kind: "BRIX"; vessel?: string; lot?: string; note?: string }
   | { kind: "SAMPLE_PULL"; vessel?: string; lot?: string; lab?: string; sendNow?: boolean; note?: string }
+  // Phase 9.4a: group rack as ONE task. BARREL_DOWN = one source tank → many barrels; RACK_TO_TANK =
+  // many barrels → one tank. `toGroup`/`fromGroup` is a range ("B101-B110"), a saved-group name, or a
+  // comma/and list — expanded to a resolved, sorted member set in nl-resolve.
+  | { kind: "BARREL_DOWN"; from: string; toGroup: string; drawL?: number; lossL?: number; note?: string }
+  | { kind: "RACK_TO_TANK"; fromGroup: string; to: string; lossL?: number; note?: string }
   | { kind: "NOTE"; title: string; note?: string };
 
 // Kinds whose only run-time target/inputs are captured on the execute screen (no propose-time resolution).
@@ -47,6 +52,9 @@ export type ProposedTask = {
   title: string;
   summary: string;
   entities: { role: string; label: string; id?: string }[];
+  // Phase 9.4a: a group-rack task's resolved member set, for the ONE-parent-row-expandable-to-members
+  // review card. Present only on BARREL_DOWN / RACK_TO_TANK; never fans out into N tasks.
+  members?: { id: string; label: string; detail?: string }[];
 };
 
 export type UnresolvedItem = {
@@ -130,13 +138,21 @@ const SUPPORTED = new Set([
 ]);
 const DOSE_UNITS = new Set(["g/hL", "mg/L", "ppm", "g/L", "mL/L", "g", "kg", "mL", "L", "oz", "lb", "fl oz", "gal"]);
 
-// Phase 9.3 Unit 6: group barrel-down / rack-barrels-to-tank is recognized but surfaced as future_phase,
-// not faked. A group RACK is N member ops under ONE reviewable task, but WorkOrderTaskAttempt is
-// one-op-per-attempt and reject reverses a single op — per-member completion state is a schema/model
-// change out of 9.3's no-schema-change scope (plan fallback b). Decline honestly with the alternative.
-const GROUP_RACK_KINDS = new Set(["BARREL_DOWN", "RACK_BARRELS_TO_TANK", "GROUP_RACK", "RACK_BARRELS"]);
-const GROUP_RACK_MESSAGE =
-  "Group barrel-down / racking a whole barrel group in one work order isn't completable yet (it needs per-barrel completion state, a later phase). Author the barrel racks individually, or rack to a single vessel.";
+// Phase 9.4a: group barrel-down / rack-barrels-to-tank is now a first-class SUPPORTED task — ONE
+// reviewable WorkOrderTask → ONE balanced RACK LotOperation with many lines (NOT N ops). The 9.3
+// premise that "a group RACK is N member ops" was wrong: it's one op with N destination/source lines,
+// so the one-op-per-attempt + single-operationId reject model is preserved (see group-rack-core.ts).
+/** Map a raw intent kind (+ its fields) to a group-rack direction, or null if it isn't a group rack. */
+function groupRackDirection(up: string | undefined, raw: RawIntent): "BARREL_DOWN" | "RACK_TO_TANK" | null {
+  if (!up) return null;
+  if (up === "BARREL_DOWN" || up === "BARRELDOWN") return "BARREL_DOWN";
+  if (up === "RACK_TO_TANK" || up === "RACK_BARRELS_TO_TANK" || up === "RACK_BARREL_TO_TANK" || up === "RACK_BARRELS") return "RACK_TO_TANK";
+  if (up === "GROUP_RACK") {
+    if (cleanString(raw.fromGroup) || cleanString(raw.sources)) return "RACK_TO_TANK";
+    return "BARREL_DOWN"; // default: a group destination
+  }
+  return null;
+}
 
 function cleanString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -185,7 +201,34 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
   for (const raw of tasks) {
     const kind = cleanString(raw.kind) ?? cleanString(raw.type) ?? cleanString(raw.operation);
     const up = kind?.toUpperCase();
-    if (up && GROUP_RACK_KINDS.has(up)) throw new Error(GROUP_RACK_MESSAGE);
+    const groupDir = groupRackDirection(up, raw);
+    if (groupDir === "BARREL_DOWN") {
+      const from = cleanString(raw.from) ?? cleanString(raw.fromVessel) ?? cleanString(raw.source);
+      const toGroup = cleanString(raw.toGroup) ?? cleanString(raw.destinations) ?? cleanString(raw.barrels) ?? cleanString(raw.group) ?? cleanString(raw.to);
+      if (!from || !toGroup) throw new Error("A barrel-down needs a source vessel and a barrel group or range (e.g. B101-B110).");
+      intents.push({
+        kind: "BARREL_DOWN",
+        from,
+        toGroup,
+        ...(positiveNumber(raw.drawL ?? raw.volumeL) != null ? { drawL: positiveNumber(raw.drawL ?? raw.volumeL)! } : {}),
+        ...(positiveNumber(raw.lossL) != null ? { lossL: positiveNumber(raw.lossL)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
+    if (groupDir === "RACK_TO_TANK") {
+      const fromGroup = cleanString(raw.fromGroup) ?? cleanString(raw.sources) ?? cleanString(raw.barrels) ?? cleanString(raw.group) ?? cleanString(raw.from);
+      const to = cleanString(raw.to) ?? cleanString(raw.toVessel);
+      if (!fromGroup || !to) throw new Error("Racking barrels to a tank needs a barrel group or range and a destination tank.");
+      intents.push({
+        kind: "RACK_TO_TANK",
+        fromGroup,
+        to,
+        ...(positiveNumber(raw.lossL) != null ? { lossL: positiveNumber(raw.lossL)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
     if (!up || !SUPPORTED.has(up)) {
       throw new Error(`Unsupported work-order instruction "${kind ?? "unknown"}".`);
     }
@@ -353,7 +396,10 @@ export function parseWorkOrderUtteranceForEval(sourceText: string): NlWorkOrderI
   const intents: NlWorkOrderIntent[] = [];
   let currentVessel: string | null = null;
 
-  const rack = text.match(/\brack\s+([a-z0-9# -]+?)\s+(?:to|into)\s+([a-z0-9# -]+?)(?:,|;|\band\b|$)/i);
+  // Phase 9.4a: group phrases ("barrel down …", "rack barrels …") are handled below as one group-rack
+  // intent — don't let the generic single-vessel rack matcher swallow them first.
+  const isGroupRackPhrase = /\bbarrel[\s-]*down\b/i.test(text) || /\brack\s+barrels?\b/i.test(text);
+  const rack = isGroupRackPhrase ? null : text.match(/\brack\s+([a-z0-9# -]+?)\s+(?:to|into)\s+([a-z0-9# -]+?)(?:,|;|\band\b|$)/i);
   if (rack) {
     const from = rack[1].trim();
     const to = rack[2].trim();
@@ -381,8 +427,14 @@ export function parseWorkOrderUtteranceForEval(sourceText: string): NlWorkOrderI
   if (/\bblend\b/i.test(text)) {
     throw new Error("Blend authoring is not in scope for natural-language work orders yet.");
   }
-  if (/\bbarrel[\s-]*down\b|\brack\s+barrels?\b/i.test(text)) {
-    throw new Error(GROUP_RACK_MESSAGE);
+  // Phase 9.4a: barrel-down / rack-barrels-to-tank parse to a single group-rack intent.
+  const barrelDown = text.match(/\bbarrel[\s-]*down\s+(.+?)\s+(?:in ?to|to)\s+(.+?)(?:[,;.]|$)/i);
+  if (barrelDown) {
+    intents.push({ kind: "BARREL_DOWN", from: barrelDown[1].trim(), toGroup: barrelDown[2].trim() });
+  }
+  const rackBarrels = text.match(/\brack\s+barrels?\s+(.+?)\s+(?:back\s+)?(?:in ?to|to)\s+(.+?)(?:[,;.]|$)/i);
+  if (rackBarrels) {
+    intents.push({ kind: "RACK_TO_TANK", fromGroup: rackBarrels[1].trim(), to: rackBarrels[2].trim() });
   }
 
   return intents;

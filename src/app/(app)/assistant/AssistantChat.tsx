@@ -46,7 +46,7 @@ type Item = TextItem | ProposalItem | ChoiceItem;
 type WorkOrderProposalCardDetails = {
   title?: string;
   status?: string;
-  tasks?: { seq: number; title: string; summary: string; entities?: { role: string; label: string }[] }[];
+  tasks?: { seq: number; title: string; summary: string; entities?: { role: string; label: string }[]; members?: { id: string; label: string; detail?: string }[] }[];
   warnings?: { severity: "blocking" | "confirmable" | "completion_check"; code: string; message: string }[];
   unresolved?: { label: string; reason: string }[];
   cost?: {
@@ -1188,6 +1188,22 @@ function WorkOrderProposalDetails({ details }: { details: WorkOrderProposalCardD
                   </span>
                 ))}
               </div>
+            ) : null}
+            {/* Phase 9.4a: a group-rack task stays ONE row; its members collapse behind an expander. */}
+            {task.members?.length ? (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer", fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+                  {task.members.length} {task.members.length === 1 ? "vessel" : "vessels"}
+                </summary>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, color: "var(--text-muted)" }}>
+                  {task.members.map((m) => (
+                    <li key={m.id}>
+                      {m.label}
+                      {m.detail ? ` — ${m.detail}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             ) : null}
           </div>
         ))}

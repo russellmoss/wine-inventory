@@ -75,6 +75,17 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     fields: { fromVesselId: "vessel", toVesselId: "vessel", drawL: "number", lossL: "number", rackType: "select", note: "text" },
     fieldOptions: { rackType: RACK_TYPES },
   },
+  GROUP_RACK: {
+    kind: "OPERATION",
+    opType: "RACK",
+    label: "Group rack / barrel-down",
+    // Phase 9.4a: one source tank ↔ many barrels as ONE balanced RACK op. The resolved member set +
+    // direction + allocations ride in plannedPayload.groupRack (authored by NL/assistant, not the field
+    // builder), so only `note` is a template-settable field here. Completion routes via the RACK dispatch
+    // branch (execute.ts) on the groupRack payload; reject reverses the single op (group-rack-core.ts).
+    fields: { note: "text" },
+    hint: "Barrel down a tank into a barrel group/range, or rack a barrel group back to a tank — one reviewable task, one balanced ledger operation.",
+  },
   ADDITION: {
     kind: "OPERATION",
     opType: "ADDITION",
