@@ -20,7 +20,7 @@ const MAIN: NavItem[] = [
   { href: "/developer", label: "Developer", developer: true },
   { href: "/compliance", label: "TTB compliance", admin: true },
   { href: "/accounting", label: "Accounting", admin: true },
-  { href: "/audit", label: "Audit log", admin: true },
+  { href: "/audit", label: "Audit log" },
 ];
 
 const WINERY: NavItem[] = [

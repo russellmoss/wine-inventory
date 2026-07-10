@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/dal";
+import { requireReadyUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
 import type { Prisma } from "@prisma/client";
@@ -14,7 +14,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<{ entityType?: string; actor?: string }> }) {
-  await requireAdmin();
+  await requireReadyUser();
   const sp = await searchParams;
   const entityType = (sp.entityType ?? "").trim();
   const actor = (sp.actor ?? "").trim();
@@ -27,13 +27,18 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
     prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 }),
     prisma.auditLog.findMany({ distinct: ["entityType"], select: { entityType: true }, orderBy: { entityType: "asc" } }),
   ]);
+  const filterCopy = [
+    entityType ? `type ${entityType}` : null,
+    actor ? `actor matching "${actor}"` : null,
+  ].filter(Boolean).join(" and ");
 
   return (
     <div>
-      <Eyebrow rule>Admin</Eyebrow>
+      <Eyebrow rule>Winery activity</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Audit log</h1>
       <p style={{ color: "var(--text-secondary)", marginBottom: 20, maxWidth: "64ch" }}>
-        Every inventory and account change, with who did it and when. Most recent first (latest 200).
+        A tenant-scoped trail of ERP activity: who did what, when, and which record changed.
+        Most recent first (latest 200{filterCopy ? ` matching ${filterCopy}` : ""}).
       </p>
 
       <form method="get" style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
@@ -58,13 +63,18 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
             <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
               <th style={{ padding: "10px 14px", fontWeight: 500 }}>When</th>
               <th style={{ padding: "10px 14px", fontWeight: 500 }}>Actor</th>
+              <th style={{ padding: "10px 14px", fontWeight: 500 }}>Action</th>
               <th style={{ padding: "10px 14px", fontWeight: 500 }}>Type</th>
               <th style={{ padding: "10px 14px", fontWeight: 500 }}>What changed</th>
             </tr>
           </thead>
           <tbody>
             {entries.length === 0 ? (
-              <tr><td colSpan={4} style={{ padding: "20px 14px", color: "var(--text-muted)" }}>No matching entries.</td></tr>
+              <tr>
+                <td colSpan={5} style={{ padding: "20px 14px", color: "var(--text-muted)" }}>
+                  {filterCopy ? "No matching audit entries." : "No audit entries yet for this winery."}
+                </td>
+              </tr>
             ) : (
               entries.map((e) => (
                 <tr key={e.id} style={{ borderTop: "1px solid var(--border-strong)" }}>
@@ -72,6 +82,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                     {e.createdAt.toISOString().slice(0, 16).replace("T", " ")}
                   </td>
                   <td style={{ padding: "10px 14px" }}>{e.actorEmail}</td>
+                  <td style={{ padding: "10px 14px" }}><Badge tone="gold" variant="soft">{e.action}</Badge></td>
                   <td style={{ padding: "10px 14px" }}><Badge tone="neutral" variant="soft">{e.entityType}</Badge></td>
                   <td style={{ padding: "10px 14px" }}>{e.summary}</td>
                 </tr>
