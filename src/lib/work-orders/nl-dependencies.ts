@@ -182,6 +182,7 @@ export function isPredecessorComplete(pred: PredecessorState): boolean {
  */
 export function assertDependenciesSatisfied(needs: TaskDependencyRef[], predecessorByKey: Map<string, PredecessorState>): void {
   for (const ref of needs) {
+    if (!ref || typeof ref.taskKey !== "string") continue; // defensive: skip a malformed ref, never crash
     const pred = predecessorByKey.get(ref.taskKey);
     if (!pred) throw new Error("This task depends on another task that is no longer in the work order.");
     if (!isPredecessorComplete(pred)) {

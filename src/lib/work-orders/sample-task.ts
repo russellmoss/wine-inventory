@@ -29,8 +29,10 @@ export async function completeSamplePullTaskCore(
   const merged = { ...planned, ...(input.actualPayload ?? {}) };
   const vesselId = task.destVesselId ?? task.sourceVesselId ?? asStr(merged.vesselId) ?? undefined;
   const lotHint = task.lotId ?? asStr(merged.lotId) ?? undefined;
-  // Bind the lot the same way the sample core would (vessel -> resident lot), before the tx (read-only).
-  const lotId = lotHint ?? (await resolveSampleLotId({ vesselId, lotId: lotHint }));
+  // When a vessel is known, resolve THROUGH resolveSampleLotId so a client-supplied lotId is validated to
+  // be resident in that vessel (residency + tenant scope) — never trust the hint verbatim. Mirrors the
+  // original pullSampleCore and the harvest-weigh-in server guard. Only a lot with no vessel uses the hint.
+  const lotId = vesselId ? await resolveSampleLotId({ vesselId, lotId: lotHint }) : (lotHint ?? (await resolveSampleLotId({ vesselId, lotId: lotHint })));
 
   const sampleInput = {
     lotId,

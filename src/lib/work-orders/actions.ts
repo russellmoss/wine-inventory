@@ -166,7 +166,11 @@ export const startTaskAction = action(async ({ actor }, input: { taskId: string 
 async function assertTaskDependenciesReady(taskId: string): Promise<void> {
   const task = await prisma.workOrderTask.findUnique({ where: { id: taskId }, select: { workOrderId: true, plannedPayload: true } });
   const payload = (task?.plannedPayload ?? {}) as Record<string, unknown>;
-  const needs = Array.isArray(payload.dependsOn) ? (payload.dependsOn as TaskDependencyRef[]) : [];
+  // Defensive: plannedPayload is persisted from client taskBuilds without a field whitelist, so a crafted
+  // dependsOn could hold junk — keep only well-formed refs (a bad ref must not 500 the completion).
+  const needs = (Array.isArray(payload.dependsOn) ? payload.dependsOn : []).filter(
+    (r): r is TaskDependencyRef => !!r && typeof r === "object" && typeof (r as { taskKey?: unknown }).taskKey === "string",
+  );
   if (!task || needs.length === 0) return;
   const siblings = await prisma.workOrderTask.findMany({
     where: { workOrderId: task.workOrderId },
