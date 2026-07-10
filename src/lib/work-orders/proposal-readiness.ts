@@ -793,3 +793,25 @@ export async function assertFreshReadiness(taskBuilds: TaskBuild[], fingerprint:
   const current = await buildReadinessFingerprint(taskBuilds);
   if (current !== fingerprint) throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
 }
+
+/**
+ * Server-side write gate (Unit 2): re-run readiness immediately before a create/issue writes. Refuse on a
+ * true blocker (returns the refreshed reasons) or, when an expected fingerprint is supplied, on stale state.
+ * `needs_input` does NOT block a manual create — those fields are resolved on the execute screen. Returns
+ * the fresh proposal so the caller can surface reservation-style warnings.
+ */
+export async function gateWorkOrderReadinessForWrite(
+  taskBuilds: TaskBuild[],
+  meta: { source: WorkOrderReadinessSource; title: string; assigneeEmail: string | null; dueDate: string | null },
+  expectedFingerprint?: string | null,
+): Promise<WorkOrderReadinessProposal> {
+  const proposal = await buildWorkOrderReadiness({ ...meta, taskBuilds });
+  if (expectedFingerprint && proposal.fingerprint !== expectedFingerprint) {
+    throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
+  }
+  const blockers = proposal.warnings.filter((w) => w.severity === "blocking");
+  if (blockers.length > 0) {
+    throw new Error(`This work order can't be created yet: ${blockers.map((b) => b.message).join(" ")}`);
+  }
+  return proposal;
+}

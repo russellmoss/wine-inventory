@@ -23,6 +23,7 @@ import {
 import type { TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
+import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
 import { prisma } from "@/lib/prisma";
 import { canManagerAccessVineyard, type AppUser } from "@/lib/access";
 import { ActionError } from "@/lib/action-error";
@@ -94,7 +95,10 @@ export const issueWorkOrderAction = action(async ({ actor }, input: { workOrderI
   return res;
 });
 
-/** Create a DRAFT work order from a template (snaps the current version), with per-task field overrides. */
+/** Create a DRAFT work order from a template (snaps the current version), with per-task field overrides.
+ * Phase 9.3: when the client sends explicit taskBuilds, re-run the shared readiness engine server-side
+ * immediately before writing and refuse on a true blocker (or stale state) — the write path is the last
+ * authority, not the form. */
 export const createWorkOrderFromTemplateAction = action(
   async (
     { actor },
@@ -107,9 +111,18 @@ export const createWorkOrderFromTemplateAction = action(
       autoFinalize?: boolean;
       perTaskOverrides?: Record<string, unknown>[];
       taskBuilds?: { taskType: string; title?: string; values: Record<string, unknown> }[];
+      readinessFingerprint?: string | null;
     },
   ) => {
-    const res = await createWorkOrderFromTemplateCore(actor, input);
+    const { readinessFingerprint, ...coreInput } = input;
+    if (coreInput.taskBuilds && coreInput.taskBuilds.length > 0) {
+      await gateWorkOrderReadinessForWrite(
+        coreInput.taskBuilds,
+        { source: "manual", title: coreInput.title ?? "Work order", assigneeEmail: coreInput.assigneeEmail ?? null, dueDate: null },
+        readinessFingerprint,
+      );
+    }
+    const res = await createWorkOrderFromTemplateCore(actor, coreInput);
     revalidateWorkOrders(res.workOrderId);
     return res;
   },

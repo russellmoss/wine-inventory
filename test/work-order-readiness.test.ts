@@ -224,4 +224,22 @@ describe("computeWorkOrderReadiness — envelope", () => {
     expect(p.coverage[0].state).toBe("unsupported");
     expect(p.warnings.some((w) => w.code === "unknown_task_type")).toBe(true);
   });
+
+  // Unit 2 guarantee: the readiness math is source-independent. The manual builder and the embedded vessel
+  // modal (and the assistant) MUST get the same warnings/cost/diff for the same TaskBuild[].
+  it("produces identical warnings/cost/diff regardless of source", () => {
+    const state = makeState({
+      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 1000, lots: [{ id: "l1", code: "LOT-1", status: "AGING", volumeL: 1000, updatedAt: "x", taxAbvOverride: null }] })]]),
+      materialsById: new Map([["m1", material({ id: "m1", displayName: "KMBS" })]]),
+    });
+    const builds: TaskBuild[] = [{ taskType: "ADDITION", values: { vesselId: "v1", materialId: "m1", amount: 30, doseUnit: "g" } }];
+    const manual = computeWorkOrderReadiness(input(builds, { source: "manual" }), state);
+    const modal = computeWorkOrderReadiness(input(builds, { source: "vessel_modal" }), state);
+    expect(modal.source).toBe("vessel_modal");
+    expect(manual.warnings).toEqual(modal.warnings);
+    expect(manual.cost).toEqual(modal.cost);
+    expect(manual.diff).toEqual(modal.diff);
+    expect(manual.unresolved).toEqual(modal.unresolved);
+    expect(manual.status).toBe(modal.status);
+  });
 });
