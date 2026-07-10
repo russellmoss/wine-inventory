@@ -531,7 +531,20 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         destVesselId = v.id;
         destLabel = v.label;
       }
-      const values = { ...(destVesselId ? { destVesselId } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      // Thread the template-settable process defaults (captured by canonicalizeRawIntents) into
+      // plannedPayload so CrushTaskForm prefills them — this is what makes "50% crushed" land in the
+      // % crushed field instead of the form's 100% default. Run-time inputs (picks, measured volume)
+      // are still floor-entered. plannedPayload is a direct pass-through of these values (see the
+      // "without a field whitelist" note in actions.ts), and the keys match TASK_VOCABULARY.CRUSH.
+      const values = {
+        ...(destVesselId ? { destVesselId } : {}),
+        ...(intent.destemmed != null ? { destemmed: intent.destemmed } : {}),
+        ...(intent.crusherOn != null ? { crusherOn: intent.crusherOn } : {}),
+        ...(intent.crushedPct != null ? { crushedPct: intent.crushedPct } : {}),
+        ...(intent.mustTempC != null ? { mustTempC: intent.mustTempC } : {}),
+        ...(intent.pressCycle ? { pressCycle: intent.pressCycle } : {}),
+        ...(intent.note ? { note: intent.note } : {}),
+      };
       taskBuilds.push({ taskType: "CRUSH", title: "De-stem / crush", values, taskKey: randomUUID() });
       tasks.push({ seq, kind: "CRUSH", title: "De-stem / crush", summary: `Crush${destLabel ? ` to ${destLabel}` : ""}; picks and measured volume entered on the floor`, entities: destVesselId && destLabel ? [{ role: "destination", label: destLabel, id: destVesselId }] : [] });
       continue;

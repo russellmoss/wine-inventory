@@ -17,7 +17,11 @@ export type NlWorkOrderIntent =
   | { kind: "CAP_MGMT"; vessel: string; technique?: string; durationMin?: number; note?: string }
   | { kind: "TEMP_SETPOINT"; vessel: string; targetValue?: number; targetUnit?: string; note?: string }
   | { kind: NlMaintenanceKind; vessel: string; material?: string; amount?: number; gasType?: string; so2Method?: string; durationMin?: number; note?: string }
-  | { kind: "CRUSH"; destVessel?: string; note?: string }
+  // CRUSH process defaults (destemmed / crusher rollers on-off / % crushed / must temp / press cycle) are
+  // template-settable "what" the assistant can bake in; the run-time inputs (picks, destination, measured
+  // volume) are still entered on the execute screen. These prefill the crush sub-form via plannedPayload,
+  // so e.g. "50% crushed" lands in the % crushed field instead of defaulting to 100.
+  | { kind: "CRUSH"; destVessel?: string; destemmed?: boolean; crusherOn?: boolean; crushedPct?: number; mustTempC?: number; pressCycle?: string; note?: string }
   | { kind: "PRESS"; sourceVessel?: string; sourceLot?: string; destVessel?: string; op?: "PRESS" | "SAIGNEE" | string; pressCycle?: string; note?: string }
   | { kind: "HARVEST_WEIGH_IN"; block?: string; note?: string }
   | { kind: "PANEL"; vessel?: string; lot?: string; panelName?: string; note?: string }
@@ -167,6 +171,23 @@ function positiveNumber(value: unknown): number | null {
 function finiteNumber(value: unknown): number | null {
   const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
   return Number.isFinite(n) ? n : null;
+}
+
+/** A 0–100 percentage (the crush % of fruit that passes the rollers). Returns null for out-of-range / NaN. */
+function percentNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+}
+
+/** Parse a tri-state boolean-ish flag (true/false/"true"/"false"/"on"/"off"/"yes"/"no"); null when absent. */
+function booleanFlag(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (v === "true" || v === "on" || v === "yes") return true;
+    if (v === "false" || v === "off" || v === "no") return false;
+  }
+  return null;
 }
 
 export function normalizeDoseUnit(unit: string): string {
@@ -367,9 +388,21 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       continue;
     }
     if (up === "CRUSH") {
+      // Process defaults (destemmed / crusher rollers / % crushed / must temp / press cycle) are optional
+      // template "what" the assistant can bake in; they prefill the run-time crush sub-form. `crushedPct`
+      // only makes sense when the rollers are ON, so drop it when crusherOn is explicitly false.
+      const crusherOn = booleanFlag(raw.crusherOn);
+      const crushedPct = percentNumber(raw.crushedPct);
+      const destemmed = booleanFlag(raw.destemmed);
+      const mustTempC = finiteNumber(raw.mustTempC ?? raw.mustTemp);
       intents.push({
         kind: "CRUSH",
         ...(cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ?? cleanString(raw.vessel) ? { destVessel: (cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ?? cleanString(raw.vessel))! } : {}),
+        ...(destemmed != null ? { destemmed } : {}),
+        ...(crusherOn != null ? { crusherOn } : {}),
+        ...(crushedPct != null && crusherOn !== false ? { crushedPct } : {}),
+        ...(mustTempC != null ? { mustTempC } : {}),
+        ...(cleanString(raw.pressCycle) ? { pressCycle: cleanString(raw.pressCycle)! } : {}),
         ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
       });
       continue;

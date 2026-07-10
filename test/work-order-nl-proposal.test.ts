@@ -90,6 +90,45 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
     ]);
   });
 
+  it("captures CRUSH process defaults (the '50% rollers on' fix) so they can prefill the execute form", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "crush the fruit 50% rollers on into tank 12",
+      tasks: [
+        { kind: "crush", destVessel: "T12", destemmed: true, crusherOn: true, crushedPct: 50, mustTempC: 14 },
+      ],
+    });
+    expect(draft.intents[0]).toEqual({
+      kind: "CRUSH",
+      destVessel: "T12",
+      destemmed: true,
+      crusherOn: true,
+      crushedPct: 50,
+      mustTempC: 14,
+    });
+  });
+
+  it("coerces string-ish CRUSH flags and drops crushedPct when the rollers are off (whole-cluster)", () => {
+    const on = canonicalizeNlWorkOrderDraft({
+      sourceText: "crush 50% rollers on",
+      tasks: [{ kind: "CRUSH", crusherOn: "on", crushedPct: "50", destemmed: "yes" }],
+    });
+    expect(on.intents[0]).toEqual({ kind: "CRUSH", destemmed: true, crusherOn: true, crushedPct: 50 });
+
+    const wholeCluster = canonicalizeNlWorkOrderDraft({
+      sourceText: "whole cluster, rollers off",
+      tasks: [{ kind: "CRUSH", crusherOn: "off", crushedPct: 50 }],
+    });
+    // crushedPct is meaningless when the rollers are off — it must be dropped, not carried at 50.
+    expect(wholeCluster.intents[0]).toEqual({ kind: "CRUSH", crusherOn: false });
+
+    const outOfRange = canonicalizeNlWorkOrderDraft({
+      sourceText: "crush",
+      tasks: [{ kind: "CRUSH", crushedPct: 150 }],
+    });
+    // 150 is out of the 0-100 range → dropped, no crushedPct key.
+    expect(outOfRange.intents[0]).toEqual({ kind: "CRUSH" });
+  });
+
   it("canonicalizes PRESS source, destination guidance, and press cycle", () => {
     const structured = canonicalizeNlWorkOrderDraft({
       sourceText: "press tank 6 into tank 5",
