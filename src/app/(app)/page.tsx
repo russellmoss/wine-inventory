@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { Card, Eyebrow, Metric, Badge } from "@/components/ui";
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
   const wineryName = org?.name ?? "Your winery";
 
   // plan-027 Unit 7 — upcoming TTB filing deadlines (admins only; compliance is admin-scoped).
-  const isAdmin = user.role === "admin";
+  const isAdmin = isTenantAdminLike(user);
   const deadlines =
     isAdmin && user.activeOrganizationId ? await openDeadlinesForTenant(user.activeOrganizationId, new Date(), { horizonDays: 45 }) : [];
 

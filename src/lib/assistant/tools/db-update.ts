@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit, diff } from "@/lib/audit";
+import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
@@ -14,11 +15,11 @@ type DbUpdateInput = { entity?: string; query?: string; id?: string; values?: Re
 /** Managers may only touch their own vineyard's rows; global records are admin-only. */
 function assertScoped(entity: { vineyardScoped: boolean }, user: { role: string | null; vineyardIds: string[] }, vineyardId: string | null) {
   if (entity.vineyardScoped) {
-    if (user.role !== "admin" && (!vineyardId || !user.vineyardIds.includes(vineyardId))) {
+    if (!isTenantAdminLike(user) && (!vineyardId || !user.vineyardIds.includes(vineyardId))) {
       throw new Error("You can only edit records in your assigned vineyard.");
     }
-  } else if (user.role !== "admin") {
-    throw new Error("Only an admin can change global records.");
+  } else if (!isTenantAdminLike(user)) {
+    throw new Error("Only an admin or developer can change global records.");
   }
 }
 

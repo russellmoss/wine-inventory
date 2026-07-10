@@ -1,5 +1,5 @@
 import "server-only";
-import type { AppUser } from "@/lib/access";
+import { isTenantAdminLike, type AppUser } from "@/lib/access";
 
 /**
  * The assistant's tool registry — the single source of truth for what the
@@ -162,6 +162,6 @@ const ALL_TOOLS: AssistantTool[] = [
 
 /** Tools this user is allowed to see, after role filtering. */
 export function getToolsFor(user: AppUser): AssistantTool[] {
-  const isAdmin = user.role === "admin";
+  const isAdmin = isTenantAdminLike(user);
   return ALL_TOOLS.filter((t) => !t.adminOnly || isAdmin);
 }

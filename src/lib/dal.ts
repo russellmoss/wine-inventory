@@ -48,8 +48,9 @@ type UserRecord = {
  */
 export function toAppUser(record: UserRecord, activeOrgClaim?: string | null): AppUser {
   const organizationIds = record.memberships.map((m) => m.organizationId);
-  // Developers default into the Demo Winery sandbox (never a real tenant) when they haven't explicitly
-  // claimed an org — matches the login-session default in auth.ts.
+  // Developers default into the Demo Winery sandbox (never a real tenant) whenever they are members
+  // of it. Explicit real-tenant access goes through the short-lived support context, not stale
+  // session.activeOrganizationId claims.
   const preferOrgId = record.role === "developer" ? DEVELOPER_HOME_ORG_ID : null;
   const activeOrganizationId = resolveActiveOrg(organizationIds, activeOrgClaim, { preferOrgId });
   return {

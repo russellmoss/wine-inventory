@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth-client";
 import { exitSupportTenant } from "@/lib/developer/actions";
+import { isTenantAdminLike } from "@/lib/access";
 import { Avatar, Button } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
@@ -235,7 +236,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isAdmin = user.role === "admin" || Boolean(user.supportOrganizationId);
+  const isAdmin = isTenantAdminLike(user);
   const isDeveloper = user.role === "developer";
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const wineryActive = isActive(EN_TIRAGE_NAV.href) || WINERY.some((s) => isActive(s.href));

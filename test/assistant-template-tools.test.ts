@@ -29,15 +29,18 @@ describe("template tools — kinds + admin gating", () => {
     }
   });
 
-  it("getToolsFor: an admin sees the write tools; a manager does not, but still sees the reads", () => {
+  it("getToolsFor: admin and developer see write tools; a manager does not, but still sees the reads", () => {
     const adminNames = getToolsFor({ role: "admin" } as never).map((t) => t.name);
+    const developerNames = getToolsFor({ role: "developer" } as never).map((t) => t.name);
     const managerNames = getToolsFor({ role: "manager" } as never).map((t) => t.name);
     for (const t of WRITE) {
       expect(adminNames, `admin should see ${t.name}`).toContain(t.name);
+      expect(developerNames, `developer should see ${t.name}`).toContain(t.name);
       expect(managerNames, `manager must NOT see ${t.name}`).not.toContain(t.name);
     }
     for (const t of READ) {
       expect(adminNames).toContain(t.name);
+      expect(developerNames).toContain(t.name);
       expect(managerNames, `manager should see ${t.name}`).toContain(t.name);
     }
   });

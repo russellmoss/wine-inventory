@@ -28,19 +28,19 @@ export type AccessDecision = "ok" | "login" | "banned" | "change-password" | "fo
 export const DEVELOPER_HOME_ORG_ID = "org_demo_winery";
 
 /**
- * Resolve the VALIDATED active organization (the tenant) for a request (K9/K13). The session's
- * claimed active org is honored only if it's a real membership; otherwise we fall back to
- * `preferOrgId` when the user is a member of it (developers → Demo Winery), then the user's earliest
- * membership, and a user with no membership resolves to `null` (denied by tenant scoping). Pure so
- * it's unit-tested without a DB. Membership set is the source of truth.
+ * Resolve the VALIDATED active organization (the tenant) for a request (K9/K13). When a preferred
+ * org is supplied and the user is a member of it, it wins before any session claim.
+ * Otherwise a valid session claim is honored, then the user's earliest membership. A user with no
+ * membership resolves to `null` (denied by tenant scoping). Pure so it's unit-tested without a DB.
+ * Membership set is the source of truth.
  */
 export function resolveActiveOrg(
   organizationIds: string[],
   claim: string | null | undefined,
   opts: { preferOrgId?: string | null } = {},
 ): string | null {
-  if (claim && organizationIds.includes(claim)) return claim;
   if (opts.preferOrgId && organizationIds.includes(opts.preferOrgId)) return opts.preferOrgId;
+  if (claim && organizationIds.includes(claim)) return claim;
   return organizationIds[0] ?? null;
 }
 
@@ -55,14 +55,16 @@ export function accessDecision(
   return "ok";
 }
 
-export function isDeveloper(user: AppUser | null): boolean {
+type RoleBearingUser = { role?: string | null; supportOrganizationId?: string | null };
+
+export function isDeveloper(user: RoleBearingUser | null): boolean {
   return user?.role === "developer";
 }
 
-export function isTenantAdminLike(user: AppUser | null): boolean {
+export function isTenantAdminLike(user: RoleBearingUser | null): boolean {
   if (!user) return false;
   if (user.role === "admin") return true;
-  return isDeveloper(user) && Boolean(user.supportOrganizationId);
+  return isDeveloper(user);
 }
 
 /**
@@ -72,7 +74,7 @@ export function isTenantAdminLike(user: AppUser | null): boolean {
  */
 export function canAccessVineyard(user: AppUser | null, vineyardId: string): boolean {
   if (!user) return false;
-  if (user.role === "admin") return true;
+  if (isTenantAdminLike(user)) return true;
   return user.vineyardIds.includes(vineyardId);
 }
 
@@ -90,7 +92,7 @@ export const canManagerAccessVineyard = canAccessVineyard;
  */
 export function canAccessLot(user: AppUser | null, lotSourceVineyardIds: string[]): boolean {
   if (!user) return false;
-  if (user.role === "admin") return true;
+  if (isTenantAdminLike(user)) return true;
   const mine = new Set(user.vineyardIds);
   return lotSourceVineyardIds.some((id) => mine.has(id));
 }

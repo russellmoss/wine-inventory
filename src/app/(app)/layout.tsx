@@ -1,4 +1,4 @@
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { AppShell } from "@/components/AppShell";
 import { countOpenSamples } from "@/lib/chemistry/data";
 import { isSparklingEnabled, getTenantCurrency } from "@/lib/settings/data";
@@ -9,7 +9,7 @@ import { CurrencyProvider } from "@/components/money/CurrencyProvider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireReadyUser();
-  const isAdmin = user.role === "admin" || Boolean(user.supportOrganizationId);
+  const isAdmin = isTenantAdminLike(user);
   const effectiveTenantId = user.supportOrganizationId ?? user.activeOrganizationId;
   const [pendingSamples, sparklingEnabled, complianceDeadlines, pendingWorkOrders, currency] = await Promise.all([
     countOpenSamples(),

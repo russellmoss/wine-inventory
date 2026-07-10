@@ -7,10 +7,10 @@ export type ApproverUser = { id: string; role: string | null };
 
 export type ApprovalDecision = { ok: true } | { ok: false; reason: string };
 
-/** Can this user approve/reject work-order tasks? v1: admins only. */
+/** Can this user approve/reject work-order tasks? v1: admins and developers. */
 export function canApprove(user: ApproverUser): ApprovalDecision {
-  if (user.role === "admin") return { ok: true };
-  return { ok: false, reason: "Only an admin can approve work-order tasks." };
+  if (user.role === "admin" || user.role === "developer") return { ok: true };
+  return { ok: false, reason: "Only an admin or developer can approve work-order tasks." };
 }
 
 /** Should a just-completed OPERATION task finalize immediately (skip the review queue)? v1: only when

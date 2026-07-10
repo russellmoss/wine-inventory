@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit, diff } from "@/lib/audit";
+import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
@@ -12,14 +13,14 @@ type DbCreateInput = { entity?: string; values?: Record<string, unknown> };
 
 function assertScoped(entity: { vineyardScoped: boolean }, user: { role: string | null; vineyardIds: string[] }, data: Record<string, unknown>) {
   if (entity.vineyardScoped) {
-    if (user.role !== "admin") {
+    if (!isTenantAdminLike(user)) {
       const vid = (data as { vineyardId?: string }).vineyardId;
       if (!vid || !user.vineyardIds.includes(vid)) {
         throw new Error("You can only create records in your assigned vineyard.");
       }
     }
-  } else if (user.role !== "admin") {
-    throw new Error("Only an admin can create global records.");
+  } else if (!isTenantAdminLike(user)) {
+    throw new Error("Only an admin or developer can create global records.");
   }
 }
 
