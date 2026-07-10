@@ -51,6 +51,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          # Read-only use: lets the agent fetch any attached screenshots for vision.
+          # If unset, the agent runs text-only (graceful).
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
           FEEDBACK_ID: ${{ github.event.client_payload.feedbackId || github.event.inputs.feedbackId }}
           AUTOMATION_RUN_ID: ${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}
         run: npx tsx scripts/assistant-feedback-agent.ts
