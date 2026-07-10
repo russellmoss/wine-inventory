@@ -1,7 +1,7 @@
 ---
 title: Phase 9.3 - Universal work-order authoring and coverage
 type: feat-plan
-status: planned
+status: in-progress
 date: 2026-07-09
 branch: codex/phase-9-3-universal-work-order-authoring
 depth: deep
@@ -747,6 +747,17 @@ Regression gates:
 - Staleness eval: changed vessel/material/asset state refuses confirmation.
 
 ## Implementation units
+
+> **Progress (2026-07-09):** Units 1-3 shipped on branch `claude/phase-9-3-work-order-authoring-17d114`.
+> - [x] **Unit 1** - shared readiness engine (`proposal-readiness.ts`, pure core + coverage table + 15 tests) - `e93760d`
+> - [x] **Unit 2** - readiness wired into the manual builder + vessel issuer + server write-gate + `WorkOrderReadinessPanel` - `1a32ae4`
+> - [x] **Unit 3** - assistant path on the shared core; schema v1->2; hard-reject old/resume tokens; `taskKey` - `7dc4bca` (verify:work-order-nl 14/14 green)
+> - [ ] **Unit 4** - resolver expansion for the remaining no-schema-change task types (NL parsing broadening)
+> - [ ] **Unit 5** - hardened dependency graph (execution-time dependent math + gating)
+> - [ ] **Unit 6** - group-aware transfer/rack task (DECIDED: wire a real group-rack completion adapter)
+> - [ ] **Unit 7** - sample/tasting WO tasks
+> - [ ] **Unit 8** - proposal + execute UI expansion (in-place pickers, drop-and-re-sign, floor a11y)
+> - [ ] **Unit 9** - H8 evals + `verify:universal-work-order-authoring` + Demo Winery e2e
 
 ### Unit 1 - Shared physical work-order readiness engine
 
