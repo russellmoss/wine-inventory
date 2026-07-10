@@ -21,16 +21,26 @@ export type AppUser = {
 export type AccessDecision = "ok" | "login" | "banned" | "change-password" | "forbidden";
 
 /**
+ * The sandbox tenant developers default into instead of a real customer tenant. A developer lands
+ * here on login (and when no active-org claim is set) whenever they're a member of it; they reach a
+ * real tenant explicitly (org switch / support console), never by accident.
+ */
+export const DEVELOPER_HOME_ORG_ID = "org_demo_winery";
+
+/**
  * Resolve the VALIDATED active organization (the tenant) for a request (K9/K13). The session's
- * claimed active org is honored only if it's a real membership; otherwise we fall back to the
- * user's earliest membership, and a user with no membership resolves to `null` (denied by tenant
- * scoping). Pure so it's unit-tested without a DB. Membership set is the source of truth.
+ * claimed active org is honored only if it's a real membership; otherwise we fall back to
+ * `preferOrgId` when the user is a member of it (developers → Demo Winery), then the user's earliest
+ * membership, and a user with no membership resolves to `null` (denied by tenant scoping). Pure so
+ * it's unit-tested without a DB. Membership set is the source of truth.
  */
 export function resolveActiveOrg(
   organizationIds: string[],
   claim: string | null | undefined,
+  opts: { preferOrgId?: string | null } = {},
 ): string | null {
   if (claim && organizationIds.includes(claim)) return claim;
+  if (opts.preferOrgId && organizationIds.includes(opts.preferOrgId)) return opts.preferOrgId;
   return organizationIds[0] ?? null;
 }
 

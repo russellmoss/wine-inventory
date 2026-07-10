@@ -3,6 +3,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin, organization } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "./prisma";
+import { DEVELOPER_HOME_ORG_ID } from "./access";
 import { hashPassword, verifyPassword } from "./password";
 import { sendEmail, resetPasswordEmailHtml } from "./email";
 
@@ -52,15 +53,21 @@ export const auth = betterAuth({
       create: {
         // Multi-tenancy (K2/K13): stamp the active organization onto the session at login so
         // the tenant is resolvable from the verified session. One active org per session for now
-        // (multi-org switcher UI is the deferred slice) — pick the user's earliest membership.
+        // (multi-org switcher UI is the deferred slice) — pick the user's earliest membership,
+        // EXCEPT developers, who default into the Demo Winery sandbox (never a real tenant) when
+        // they're a member of it. Keeps mirror with resolveActiveOrg's developer preference.
         before: async (session) => {
-          const membership = await prisma.member.findFirst({
+          const memberships = await prisma.member.findMany({
             where: { userId: session.userId },
             select: { organizationId: true },
             orderBy: { createdAt: "asc" },
           });
-          if (!membership) return; // no membership → no active org (denied downstream)
-          return { data: { ...session, activeOrganizationId: membership.organizationId } };
+          if (memberships.length === 0) return; // no membership → no active org (denied downstream)
+          const orgIds = memberships.map((m) => m.organizationId);
+          const actor = await prisma.user.findUnique({ where: { id: session.userId }, select: { role: true } });
+          const activeOrganizationId =
+            actor?.role === "developer" && orgIds.includes(DEVELOPER_HOME_ORG_ID) ? DEVELOPER_HOME_ORG_ID : orgIds[0];
+          return { data: { ...session, activeOrganizationId } };
         },
         after: async (session) => {
           // Login event ledger. Never block login on an audit failure.
