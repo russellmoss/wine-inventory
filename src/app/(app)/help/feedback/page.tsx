@@ -1,6 +1,9 @@
-import { FeedbackForm } from "./FeedbackForm";
+import { FeedbackPanel } from "./FeedbackPanel";
+import { MyReports } from "./MyReports";
+import { getMyReports } from "@/lib/feedback/my-reports";
 
-export default function HelpFeedbackPage() {
+export default async function HelpFeedbackPage() {
+  const reports = await getMyReports();
   return (
     <div style={{ display: "grid", gap: "var(--space-5)", maxWidth: 820 }}>
       <div>
@@ -11,7 +14,8 @@ export default function HelpFeedbackPage() {
           Send a bug report or feature request to the developer backlog.
         </p>
       </div>
-      <FeedbackForm />
+      <FeedbackPanel />
+      <MyReports reports={reports} />
     </div>
   );
 }
