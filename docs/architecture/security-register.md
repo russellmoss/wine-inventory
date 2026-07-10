@@ -105,6 +105,29 @@
   execution** in the agent, or that runs lint/test/`npm`-scripts in the credentialed job.
 - **Status:** 🟢 (output path unchanged; pure selector guarded by `test/feedback-attachment-images.test.ts`)
 
+### The feedback auto-fix fence widens to cellar-floor domains, never to money/tenancy/ledger (plan 052)
+- The write-fence allowlist (`scripts/feedback-fence-rules.ts` `allowedPrefixes`) covers UI/assistant
+  PLUS the cellar-floor server domains (`work-orders`, `vessel(s)`, `lot`, `blend`, `bottling`, `bulk`,
+  `cellar`, `ferment`, `harvest`, `chemistry`, `stock`, `inventory`, `sparkling`, `vineyard`,
+  `winemaking-calc`, `units`, `reference`, `settings`, `locations`, `fieldnotes`, `developer`,
+  `feedback`) so the loop can fix real domain bugs. It MUST NOT include the money/tenancy/ledger/moat
+  domains: `ledger`, `cost`, `money`, `accounting`, `commerce`, `compliance`, `transform` (kept out by
+  omission — unlisted ⇒ `isAllowed` false), the hard-denied `auth`/`dal`/`tenant`/`prisma`/`.env`/
+  workflows/migrations, and the file `src/lib/audit.ts` (audit-trail integrity is human-review-only).
+- **What breaks at scale:** widening auto-merge into domain code lets an autonomous LLM land a change
+  to code that writes to the append-only ledger. The required `check` CI job runs NO DB domain proof,
+  so the backstop is the label-gated **`feedback-domain-verify`** job: it runs a touched domain's
+  runtime `verify:*` (resolved by `resolveDomainVerifies`); a mapped domain whose proof fails blocks
+  the merge, and an UNMAPPED widened domain has no proof so the auto-merge gate (`bug-triage`) must
+  route it to a human. Auto-merge stays fence-only + small + root-fix + CI-green as before.
+- **Tripwire:** the excluded set (`ledger`/`cost`/`money`/`accounting`/`commerce`/`compliance`/
+  `transform`/`audit.ts`) appearing in `allowedPrefixes`; a domain fix auto-merging with
+  `feedback-domain-verify` red or absent; a new widened domain shipping with no `domainVerifyMap`
+  entry AND being treated as auto-mergeable. See [[TRIP-SEC-FEEDBACK-FENCE]].
+- **Status:** 🟡 (fence + backstop shipped and unit-tested; the `feedback-domain-verify` CI job needs
+  its first live run to confirm the domain `verify:*` run clean in-CI, and the global `bug-triage`
+  auto-merge FENCE must be synced to match — plan 052 Unit 5)
+
 ### Secrets never enter the repo or the client
 - Secrets live in `.env` (gitignored) / Vercel env / GitHub Actions secrets. Client-exposed keys are
   `NEXT_PUBLIC_*` **by design only** (e.g. Google Map Tiles, restricted by referrer).
