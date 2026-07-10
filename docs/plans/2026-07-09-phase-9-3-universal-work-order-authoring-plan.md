@@ -752,8 +752,8 @@ Regression gates:
 > - [x] **Unit 1** - shared readiness engine (`proposal-readiness.ts`, pure core + coverage table + 15 tests) - `e93760d`
 > - [x] **Unit 2** - readiness wired into the manual builder + vessel issuer + server write-gate + `WorkOrderReadinessPanel` - `1a32ae4`
 > - [x] **Unit 3** - assistant path on the shared core; schema v1->2; hard-reject old/resume tokens; `taskKey` - `7dc4bca` (verify:work-order-nl 14/14 green)
-> - [ ] **Unit 4** - resolver expansion for the remaining no-schema-change task types (NL parsing broadening)
-> - [ ] **Unit 5** - hardened dependency graph (execution-time dependent math + gating)
+> - [x] **Unit 4** - resolver/NL expansion to all no-schema-change task types (+ generalized material matcher) - `744bd9b`
+> - [x] **Unit 5** - hardened dependency graph pure core (validation/cascade/simulate/gate/resolve + tests) - `ca4156b`; completion-path wiring + NL edge emission = documented integration tail (needs live DB QA)
 > - [ ] **Unit 6** - group-aware transfer/rack task (DECIDED: wire a real group-rack completion adapter)
 > - [ ] **Unit 7** - sample/tasting WO tasks
 > - [ ] **Unit 8** - proposal + execute UI expansion (in-place pickers, drop-and-re-sign, floor a11y)
