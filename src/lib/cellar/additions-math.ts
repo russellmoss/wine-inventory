@@ -85,6 +85,26 @@ export function isRateUnit(u: string | null | undefined): boolean {
   return resolveDoseUnit(u)?.kind === "rate";
 }
 
+/**
+ * Convert a computed dose total (g|mL) to a material's stock unit for reservation/cost. Shared by the
+ * NL resolver (stamps plannedAmount/plannedUnit into the task) AND the readiness engine (cost + ATP) so
+ * the displayed planned dose and the cost basis can never silently diverge. Six-decimal rounding.
+ */
+export function convertDoseToStock(total: AdditionTotal | null, stockUnit: string | null | undefined): { qty: number; unit: string } | null {
+  if (!total || !stockUnit) return null;
+  const round6 = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
+  if (total.unit === "g") {
+    if (stockUnit === "g") return { qty: total.total, unit: "g" };
+    if (stockUnit === "kg") return { qty: round6(total.total / 1000), unit: "kg" };
+    if (stockUnit === "mg") return { qty: round6(total.total * 1000), unit: "mg" };
+  }
+  if (total.unit === "mL") {
+    if (stockUnit === "mL") return { qty: total.total, unit: "mL" };
+    if (stockUnit === "L") return { qty: round6(total.total / 1000), unit: "L" };
+  }
+  return null;
+}
+
 /** The total (g/mL) a given Amount + Units resolves to against a volume. Rate → amount×volume; abs → amount. */
 export function computeDoseTotal(amount: number, unit: string, volumeL: number): AdditionTotal | null {
   const r = resolveDoseUnit(unit);

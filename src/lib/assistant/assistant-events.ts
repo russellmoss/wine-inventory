@@ -8,7 +8,7 @@
 export type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
-  | { type: "proposal"; tool: string; preview: string; token: string }
+  | { type: "proposal"; tool: string; preview: string; token: string; details?: unknown }
   // A disambiguation picker: the tool couldn't resolve a name to ONE record, so
   // instead of asking in text (which dead-loops when names collide), it hands the
   // client clickable options. Each option's `send` is a follow-up message that
@@ -69,7 +69,7 @@ export function parseEvent(line: string): AssistantEvent | null {
 // shape and turns it into the matching stream event, mirroring the proposal flow) ----
 
 /** A write tool's confirmation proposal (never mutates on first call). */
-export type WriteProposal = { needsConfirmation: true; preview: string; token: string };
+export type WriteProposal = { needsConfirmation: true; preview: string; token: string; details?: unknown };
 
 export function asProposal(out: unknown): WriteProposal | null {
   if (

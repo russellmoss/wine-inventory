@@ -71,6 +71,7 @@ import { listTemplatesTool, getTemplateTool } from "./tools/templates-read";
 import { createTemplateTool, updateTemplateSpecTool, cloneTemplateTool, archiveTemplateTool } from "./tools/templates-write";
 import { issueCapManagementWoTool } from "./tools/work-orders-write";
 import { issueOperationWoTool } from "./tools/issue-operation-wo";
+import { proposeWorkOrderTool } from "./tools/propose-work-order";
 import { calcSo2Tool } from "./tools/calc-so2";
 import { calcSugarTool } from "./tools/calc-sugar";
 import { calcAdditionsTool } from "./tools/calc-additions";
@@ -135,6 +136,7 @@ const ALL_TOOLS: AssistantTool[] = [
   archiveTemplateTool,
   issueCapManagementWoTool,
   issueOperationWoTool,
+  proposeWorkOrderTool,
   calcSo2Tool,
   calcSugarTool,
   calcAdditionsTool,

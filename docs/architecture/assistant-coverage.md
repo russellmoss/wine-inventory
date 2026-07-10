@@ -3,8 +3,9 @@
 > Living matrix of **what a winemaker can do in the app** vs. **what the AI assistant can do for them**.
 > This is a *coverage matrix derived from the code*, not a parallel roadmap — regenerate it by auditing
 > the tool registry against the domain cores; do not hand-maintain a wishlist that drifts.
-> Last audited: 2026-07-05. Base cellar/ledger surface = 28 tools; plan 040 added a **winemaking
-> calculator** (7 read/compute tools, see below); plan 042 added navigation/deep-link tools.
+> Last audited: 2026-07-09. Base cellar/ledger surface = 28 tools; plan 040 added a **winemaking
+> calculator** (7 read/compute tools, see below); plan 042 added navigation/deep-link tools; Phase 9.2
+> added natural-language work-order authoring.
 
 ## Why this exists
 
@@ -121,6 +122,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 |---|---|---|
 | Template CRUD | `createTemplateCore` + 5 | ✅ 6 tools |
 | Create / issue a WO from a template | `createWorkOrderFromTemplateCore`, `issueWorkOrderCore` | ✅ `create_work_order` (create + issue) |
+| Natural-language WO authoring | `createWorkOrderCore`, `issueWorkOrderCore` | ✅ `propose_work_order` (LLM proposes; deterministic validation; human confirms; no ledger write) |
 | Start / assign / schedule / cancel a WO | `startTaskCore`, `assignWorkOrderCore`, `scheduleWorkOrderCore`, `cancelWorkOrderCore` | ✅ `manage_work_order` (action-discriminated) |
 | Complete a task (rack/add/top/filt/obs/note/maint) | `completeTaskCore` | ✅ `complete_task` |
 | Complete a crush/press task | `completeTaskCore` (transform) | ✅ `complete_task` (simple by chat; complex → deep-links the execute form) |

@@ -13,9 +13,8 @@ type QueryAuditInput = {
 export const queryAuditTool: AssistantTool = {
   name: "query_audit",
   description:
-    "Search the audit log to answer 'who changed X, and when?'. Call this for questions about who made a change, edit history, or accountability. Filter by a free-text term (matched against the change description), an actor email, and/or an entity type. Inventory/stock changes are logged under entityType 'BottledInventory' or 'FinishedGoodInventory' (action STOCK_MOVEMENT) — NOT 'StockMovement'. When unsure of the entity type, prefer a free-text 'search' (e.g. 'inventory', a wine name) and leave entityType blank; if a filtered query returns nothing, this tool reports the entity types that actually exist so you can retry. Admin only.",
+    "Search the tenant-scoped audit log to answer 'who changed X, and when?'. Call this for questions about who made a change, edit history, or accountability. Filter by a free-text term (matched against the change description), an actor email, and/or an entity type. Inventory/stock changes are logged under entityType 'BottledInventory' or 'FinishedGoodInventory' (action STOCK_MOVEMENT) — NOT 'StockMovement'. When unsure of the entity type, prefer a free-text 'search' (e.g. 'inventory', a wine name) and leave entityType blank; if a filtered query returns nothing, this tool reports the entity types that actually exist so you can retry.",
   kind: "read",
-  adminOnly: true,
   inputSchema: {
     type: "object",
     properties: {

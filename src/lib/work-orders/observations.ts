@@ -8,6 +8,7 @@ import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 import type { CompleteTaskInput, CompleteTaskResult } from "@/lib/work-orders/execute";
 import { completeHarvestWeighInTaskCore } from "@/lib/work-orders/harvest-observations";
+import { completeSamplePullTaskCore } from "@/lib/work-orders/sample-task";
 
 // The observation lane (Phase 9 Unit 8): OBSERVATION tasks write DIRECTLY to the measurement store
 // (AnalysisPanel/readings — soft-deletable, non-ledger) and go straight to DONE. No approval gate, no
@@ -26,6 +27,10 @@ export async function completeObservationTaskCore(
   // AnalysisPanel. Route it to its own core before the lot/reading path below.
   if (task.observationType === "HARVEST_WEIGH_IN") {
     return completeHarvestWeighInTaskCore(actor, input);
+  }
+  // Phase 9.3: a sample-pull observation creates a real Sample (idempotent) via its own adapter.
+  if (task.observationType === "SAMPLE_PULL") {
+    return completeSamplePullTaskCore(actor, input);
   }
   assertTaskTransition(task.status, "DONE");
 

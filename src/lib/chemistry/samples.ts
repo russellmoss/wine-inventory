@@ -1,4 +1,4 @@
-import type { SampleStatus } from "@prisma/client";
+import type { Prisma, SampleStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
@@ -53,49 +53,61 @@ function toDate(d: Date | string | null | undefined): Date | null {
   return typeof d === "string" ? new Date(d) : d;
 }
 
-/** Pull a sample off a vessel's lot. Optionally mark it sent in the same step. */
+/** Resolve the lot a sample attaches to (vessel → its resident lot, or an explicit lotId). Read-only. */
+export async function resolveSampleLotId(input: Pick<PullSampleInput, "lotId" | "vesselId">): Promise<string> {
+  if (input.vesselId) return resolveVesselLot(input.vesselId, input.lotId);
+  if (input.lotId) return input.lotId;
+  throw new ActionError("A lot or a vessel is required to pull a sample.");
+}
+
+/** tx-form: create the Sample row + audit inside a caller-owned transaction (Phase 9.3: the WO sample-pull
+ * completion needs the sample write, the attempt, and the status flip to be ONE atomic tx so a retry can't
+ * orphan a sample). `clientRequestId` is @unique on Sample — a duplicate throws P2002 (idempotency). */
+export async function createSampleTx(
+  tx: Prisma.TransactionClient,
+  actor: LedgerActor,
+  args: { lotId: string; input: PullSampleInput },
+): Promise<{ sampleId: string; lotId: string; status: SampleStatus }> {
+  const { lotId, input } = args;
+  const now = new Date();
+  const status: SampleStatus = input.sendNow ? "SENT" : "PULLED";
+  const row = await tx.sample.create({
+    data: {
+      lotId,
+      vesselId: input.vesselId ?? null,
+      status,
+      source: input.source?.trim() || null,
+      lab: input.lab?.trim() || null,
+      pulledAt: now,
+      sentAt: input.sendNow ? now : null,
+      expectedAt: toDate(input.expectedAt),
+      enteredById: actor.actorUserId,
+      enteredByEmail: actor.actorEmail,
+      captureMethod: input.captureMethod ?? "MANUAL",
+      note: input.note?.trim() || null,
+      clientRequestId: input.clientRequestId ?? null,
+    },
+    select: { id: true },
+  });
+  await writeAudit(tx, {
+    ...actor,
+    action: "SAMPLE_PULLED",
+    entityType: "Sample",
+    entityId: row.id,
+    summary: `Pulled a sample${input.source ? ` from ${input.source.trim()}` : ""}${input.sendNow ? " (sent)" : ""}`,
+  });
+  return { sampleId: row.id, lotId, status };
+}
+
+/** Pull a sample off a vessel's lot. Optionally mark it sent in the same step. Standalone (owns its tx). */
 export async function pullSampleCore(actor: LedgerActor, input: PullSampleInput): Promise<SampleResult> {
   if (input.clientRequestId) {
     const existing = await prisma.sample.findUnique({ where: { clientRequestId: input.clientRequestId } });
     if (existing) return { sampleId: existing.id, lotId: existing.lotId, status: existing.status };
   }
-
-  let lotId: string;
-  if (input.vesselId) lotId = await resolveVesselLot(input.vesselId, input.lotId);
-  else if (input.lotId) lotId = input.lotId;
-  else throw new ActionError("A lot or a vessel is required to pull a sample.");
-
-  const now = new Date();
-  const status: SampleStatus = input.sendNow ? "SENT" : "PULLED";
-  const created = await runInTenantTx(async (tx) => {
-    const row = await tx.sample.create({
-      data: {
-        lotId,
-        vesselId: input.vesselId ?? null,
-        status,
-        source: input.source?.trim() || null,
-        lab: input.lab?.trim() || null,
-        pulledAt: now,
-        sentAt: input.sendNow ? now : null,
-        expectedAt: toDate(input.expectedAt),
-        enteredById: actor.actorUserId,
-        enteredByEmail: actor.actorEmail,
-        captureMethod: input.captureMethod ?? "MANUAL",
-        note: input.note?.trim() || null,
-        clientRequestId: input.clientRequestId ?? null,
-      },
-      select: { id: true },
-    });
-    await writeAudit(tx, {
-      ...actor,
-      action: "SAMPLE_PULLED",
-      entityType: "Sample",
-      entityId: row.id,
-      summary: `Pulled a sample${input.source ? ` from ${input.source.trim()}` : ""}${input.sendNow ? " (sent)" : ""}`,
-    });
-    return row;
-  });
-  return { sampleId: created.id, lotId, status };
+  const lotId = await resolveSampleLotId(input);
+  const created = await runInTenantTx((tx) => createSampleTx(tx, actor, { lotId, input }));
+  return { sampleId: created.sampleId, lotId, status: created.status };
 }
 
 /** Mark a pulled sample as sent to a lab (sets sentAt). */

@@ -108,7 +108,7 @@ export async function runAssistant(opts: {
             if (proposal) {
               // Don't commit. Surface a confirm card to the user; tell the model
               // to stop and await the out-of-band confirmation.
-              emit({ type: "proposal", tool: tu.name, preview: proposal.preview, token: proposal.token });
+              emit({ type: "proposal", tool: tu.name, preview: proposal.preview, token: proposal.token, details: proposal.details });
               results.push({
                 type: "tool_result",
                 tool_use_id: tu.id,
