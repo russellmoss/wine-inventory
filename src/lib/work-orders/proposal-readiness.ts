@@ -7,6 +7,7 @@ import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCate
 import { computeDoseTotal, resolveDoseUnit } from "@/lib/cellar/additions-math";
 import { evaluateAtp, advisoryWarning } from "@/lib/work-orders/atp";
 import { TASK_VOCABULARY, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { validateDependencyGraph, type TaskDependency } from "@/lib/work-orders/nl-dependencies";
 import type {
   ProposalStatus,
   ProposalWarning,
@@ -97,9 +98,7 @@ export const TASK_COVERAGE: Record<string, TaskCoverageEntry> = {
   NOTE: { state: "supported", reason: "A checklist item; no inventory, ledger, or cost effect." },
 };
 
-/** A minimal dependency graph shape (full DAG validation + completion-time resolution land in Unit 5). */
-export type TaskDependencyRef = { kind: "task_output"; taskKey: string; output: string };
-export type TaskDependency = { taskKey: string; needs: TaskDependencyRef[] };
+export type { TaskDependency, TaskDependencyRef } from "@/lib/work-orders/nl-dependencies";
 
 export type WorkOrderReadinessInput = {
   source: WorkOrderReadinessSource;
@@ -558,6 +557,13 @@ export function computeWorkOrderReadiness(input: WorkOrderReadinessInput, state:
     coverage.push({ taskSeq: seq, taskType: task.taskType, state: cov?.state ?? "unsupported", reason: cov?.reason ?? `Unknown task type "${task.taskType}".` });
     readTask(ctx, state, seq, task);
   });
+
+  // Dependency graph is a pure proposal-time gate: a bad graph (missing key, cycle, unknown output) is a
+  // true blocker — a dependent task must never point at a missing/wrong predecessor.
+  if (input.dependencyGraph && input.dependencyGraph.length > 0) {
+    const dep = validateDependencyGraph(input.taskBuilds, input.dependencyGraph);
+    for (const err of dep.errors) blocking(ctx, "invalid_dependency_graph", err);
+  }
 
   const blockers = ctx.warnings.filter((w) => w.severity === "blocking");
   const status: ProposalStatus = blockers.length > 0 ? "blocked" : ctx.unresolved.length > 0 ? "needs_input" : "ready";
