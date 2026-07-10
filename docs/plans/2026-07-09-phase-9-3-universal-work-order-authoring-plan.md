@@ -754,10 +754,11 @@ Regression gates:
 > - [x] **Unit 3** - assistant path on the shared core; schema v1->2; hard-reject old/resume tokens; `taskKey` - `7dc4bca` (verify:work-order-nl 14/14 green)
 > - [x] **Unit 4** - resolver/NL expansion to all no-schema-change task types (+ generalized material matcher) - `744bd9b`
 > - [x] **Unit 5** - hardened dependency graph pure core (validation/cascade/simulate/gate/resolve + tests) - `ca4156b`; completion-path wiring + NL edge emission = documented integration tail (needs live DB QA)
-> - [ ] **Unit 6** - group-aware transfer/rack task (DECIDED: wire a real group-rack completion adapter)
-> - [ ] **Unit 7** - sample/tasting WO tasks
-> - [ ] **Unit 8** - proposal + execute UI expansion (in-place pickers, drop-and-re-sign, floor a11y)
-> - [ ] **Unit 9** - H8 evals + `verify:universal-work-order-authoring` + Demo Winery e2e
+> - [x] **Unit 6** - group barrel-down surfaced as `future_phase` - `7ab16c3`. REVERSAL of the "real adapter" call: a group RACK is N member ops under one reviewable task, but WorkOrderTaskAttempt is one-op-per-attempt and reject reverses a single op — per-member completion state needs a schema/model change (out of 9.3's no-schema-change scope). Real adapter = scoped follow-up.
+> - [x] **Unit 7** - sample-pull WO task over pullSampleCore, end-to-end idempotent (sample + attempt + status flip in one tx) - `395dfe1`
+> - [~] **Unit 8** - shared readiness panel (Unit 2) + "Not included" coverage section + confirm effect-summary - `c213b3b`. Remaining UI (assistant-card rich render, drop-and-re-sign round-trip, execute-screen group/blocked-dep) is app-driven, deferred to /qa iteration + group/dep follow-ups.
+> - [x] **Unit 9** - H8 golden cases + `verify:universal-work-order-authoring` (13 e2e assertions) + NL select normalization - `23141d9`
+> - [x] **Unit 5 tail** - dependency gate wired into completion pre-flight (inert-safe) - `9af3948`
 
 ### Unit 1 - Shared physical work-order readiness engine
 
