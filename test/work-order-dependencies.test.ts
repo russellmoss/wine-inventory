@@ -89,7 +89,7 @@ describe("simulatePlanState (display-only)", () => {
 });
 
 function pred(over: Partial<PredecessorState> = {}): PredecessorState {
-  return { taskKey: "k-crush", title: "De-stem / crush", destVesselId: "v-t12", lotId: "l-must", isOperation: true, attempts: [], ...over };
+  return { taskKey: "k-crush", title: "De-stem / crush", destVesselId: "v-t12", sourceVesselId: "v-src", lotId: "l-must", isOperation: true, attempts: [], ...over };
 }
 
 describe("completion-time gating + output resolution", () => {

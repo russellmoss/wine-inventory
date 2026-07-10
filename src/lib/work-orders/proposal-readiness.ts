@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
-import { computeDoseTotal, resolveDoseUnit } from "@/lib/cellar/additions-math";
+import { computeDoseTotal, resolveDoseUnit, convertDoseToStock } from "@/lib/cellar/additions-math";
 import { evaluateAtp, advisoryWarning } from "@/lib/work-orders/atp";
 import { TASK_VOCABULARY, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { validateDependencyGraph, type TaskDependency } from "@/lib/work-orders/nl-dependencies";
@@ -199,21 +199,6 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Convert a computed dose total (g|mL) to the material's stock unit. Pure. */
-function convertDoseToStock(total: { total: number; unit: "g" | "mL" } | null, stockUnit: string | null | undefined): { qty: number; unit: string } | null {
-  if (!total || !stockUnit) return null;
-  if (total.unit === "g") {
-    if (stockUnit === "g") return { qty: total.total, unit: "g" };
-    if (stockUnit === "kg") return { qty: ROUND(total.total / 1000), unit: "kg" };
-    if (stockUnit === "mg") return { qty: ROUND(total.total * 1000), unit: "mg" };
-  }
-  if (total.unit === "mL") {
-    if (stockUnit === "mL") return { qty: total.total, unit: "mL" };
-    if (stockUnit === "L") return { qty: ROUND(total.total / 1000), unit: "L" };
-  }
-  return null;
-}
-
 type Ctx = {
   warnings: ProposalWarning[];
   unresolved: UnresolvedItem[];
@@ -330,29 +315,35 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       const from = requireVessel(ctx, state, seq, str(v.fromVesselId), "source");
       const to = requireVessel(ctx, state, seq, str(v.toVesselId), "destination");
       if (!from || !to) return;
-      const drawL = numOrNull(v.drawL) ?? from.volumeL;
+      // Account for volume already moved by EARLIER tasks in this proposal (parity with the ADDITION path),
+      // so chained racks warn against the planned state, not the raw DB volume. Advisory only.
+      const priorFrom = ctx.plannedVolumeDeltaByVesselId.get(from.id) ?? 0;
+      const priorTo = ctx.plannedVolumeDeltaByVesselId.get(to.id) ?? 0;
+      const effFrom = ROUND(from.volumeL + priorFrom);
+      const effTo = ROUND(to.volumeL + priorTo);
+      const drawL = numOrNull(v.drawL) ?? effFrom;
       const lossL = numOrNull(v.lossL) ?? 0;
       const intoL = Math.max(0, drawL - lossL);
-      ctx.plannedVolumeDeltaByVesselId.set(from.id, ROUND((ctx.plannedVolumeDeltaByVesselId.get(from.id) ?? 0) - drawL));
-      ctx.plannedVolumeDeltaByVesselId.set(to.id, ROUND((ctx.plannedVolumeDeltaByVesselId.get(to.id) ?? 0) + intoL));
+      ctx.plannedVolumeDeltaByVesselId.set(from.id, ROUND(priorFrom - drawL));
+      ctx.plannedVolumeDeltaByVesselId.set(to.id, ROUND(priorTo + intoL));
       const sourceReserved = from.lots.reduce((sum, lot) => sum + (state.lotVolumeReservedById.get(lot.id) ?? 0), 0);
       confirmable(
         ctx,
         "source_volume_short",
-        advisoryWarning(evaluateAtp({ kind: "LOT_VOLUME", targetLabel: from.label, supply: from.volumeL, alreadyReserved: sourceReserved, requested: drawL, unit: "L" })),
+        advisoryWarning(evaluateAtp({ kind: "LOT_VOLUME", targetLabel: from.label, supply: effFrom, alreadyReserved: sourceReserved, requested: drawL, unit: "L" })),
       );
       confirmable(
         ctx,
         "destination_headroom_short",
-        advisoryWarning(evaluateAtp({ kind: "VESSEL_CAPACITY", targetLabel: to.label, supply: to.capacityL - to.volumeL, alreadyReserved: to.capacityReserved, requested: intoL, unit: "L" })),
+        advisoryWarning(evaluateAtp({ kind: "VESSEL_CAPACITY", targetLabel: to.label, supply: to.capacityL - effTo, alreadyReserved: to.capacityReserved, requested: intoL, unit: "L" })),
       );
       if (from.lots.length > 1) {
         confirmable(ctx, "rack_blend_review", `${from.label} contains multiple lots; review compliance and lot allocation before completion.`);
       }
       const singleLot = from.lots.length === 1 ? from.lots[0] : null;
       if (singleLot) ctx.plannedLotByVesselId.set(to.id, { id: singleLot.id, code: singleLot.code });
-      ctx.diffRows.push({ kind: "vessel", label: from.label, before: `${from.volumeL} L`, after: `${ROUND(from.volumeL - drawL)} L planned` });
-      ctx.diffRows.push({ kind: "vessel", label: to.label, before: `${to.volumeL} L`, after: `${ROUND(to.volumeL + intoL)} L planned` });
+      ctx.diffRows.push({ kind: "vessel", label: from.label, before: `${effFrom} L`, after: `${ROUND(effFrom - drawL)} L planned` });
+      ctx.diffRows.push({ kind: "vessel", label: to.label, before: `${effTo} L`, after: `${ROUND(effTo + intoL)} L planned` });
       return;
     }
 
@@ -364,20 +355,24 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       if (volumeL == null || volumeL <= 0) {
         runtime(ctx, seq, "TOPPING", "volumeL", "Top-up volume (L)", "The top-up volume is confirmed on the floor.");
       } else {
-        ctx.plannedVolumeDeltaByVesselId.set(from.id, ROUND((ctx.plannedVolumeDeltaByVesselId.get(from.id) ?? 0) - volumeL));
-        ctx.plannedVolumeDeltaByVesselId.set(to.id, ROUND((ctx.plannedVolumeDeltaByVesselId.get(to.id) ?? 0) + volumeL));
+        const priorFrom = ctx.plannedVolumeDeltaByVesselId.get(from.id) ?? 0;
+        const priorTo = ctx.plannedVolumeDeltaByVesselId.get(to.id) ?? 0;
+        const effFrom = ROUND(from.volumeL + priorFrom);
+        const effTo = ROUND(to.volumeL + priorTo);
+        ctx.plannedVolumeDeltaByVesselId.set(from.id, ROUND(priorFrom - volumeL));
+        ctx.plannedVolumeDeltaByVesselId.set(to.id, ROUND(priorTo + volumeL));
         const sourceReserved = from.lots.reduce((sum, lot) => sum + (state.lotVolumeReservedById.get(lot.id) ?? 0), 0);
         confirmable(
           ctx,
           "source_volume_short",
-          advisoryWarning(evaluateAtp({ kind: "LOT_VOLUME", targetLabel: from.label, supply: from.volumeL, alreadyReserved: sourceReserved, requested: volumeL, unit: "L" })),
+          advisoryWarning(evaluateAtp({ kind: "LOT_VOLUME", targetLabel: from.label, supply: effFrom, alreadyReserved: sourceReserved, requested: volumeL, unit: "L" })),
         );
         confirmable(
           ctx,
           "destination_headroom_short",
-          advisoryWarning(evaluateAtp({ kind: "VESSEL_CAPACITY", targetLabel: to.label, supply: to.capacityL - to.volumeL, alreadyReserved: to.capacityReserved, requested: volumeL, unit: "L" })),
+          advisoryWarning(evaluateAtp({ kind: "VESSEL_CAPACITY", targetLabel: to.label, supply: to.capacityL - effTo, alreadyReserved: to.capacityReserved, requested: volumeL, unit: "L" })),
         );
-        ctx.diffRows.push({ kind: "vessel", label: to.label, before: `${to.volumeL} L`, after: `${ROUND(to.volumeL + volumeL)} L planned` });
+        ctx.diffRows.push({ kind: "vessel", label: to.label, before: `${effTo} L`, after: `${ROUND(effTo + volumeL)} L planned` });
       }
       return;
     }

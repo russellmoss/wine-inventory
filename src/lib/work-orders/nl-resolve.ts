@@ -6,13 +6,9 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { resolveVessel, resolveLotTarget } from "@/lib/assistant/scope";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
-import { computeDoseTotal } from "@/lib/cellar/additions-math";
-import type { TaskBuild } from "@/lib/work-orders/template-vocabulary";
-import {
-  buildWorkOrderReadiness,
-  buildReadinessFingerprint,
-  assertFreshReadiness,
-} from "@/lib/work-orders/proposal-readiness";
+import { computeDoseTotal, convertDoseToStock } from "@/lib/cellar/additions-math";
+import { TASK_VOCABULARY, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { buildWorkOrderReadiness, assertFreshReadiness } from "@/lib/work-orders/proposal-readiness";
 import {
   canonicalizeNlWorkOrderDraft,
   normalizeDoseUnit,
@@ -138,6 +134,12 @@ function matchMaterialByRef(all: CellarMaterialDTO[], ref: string, opts: { scope
     const normalized = idToken.replace(/-/g, "").toLowerCase();
     const pinned = all.find((m) => m.id.replace(/-/g, "").toLowerCase() === normalized);
     if (!pinned) throw new Error("That material is not in the catalog anymore.");
+    // Honor the scope/doseable contract even for an id-pinned material (WORKORDER-3 defense-in-depth, so
+    // it isn't solely dependent on the downstream readiness recheck).
+    const category = categoryOfMaterial(pinned);
+    const cat = category.toLowerCase().replace(/_/g, " ");
+    if (opts.doseableOnly && !isDoseableCategory(category)) throw new Error(`"${materialDisplayName(pinned)}" is a ${cat} material - it cannot be dosed into wine.`);
+    if (opts.scope && !opts.scope.includes(category)) throw new Error(`"${materialDisplayName(pinned)}" (${cat}) is not a valid supply for this task.`);
     return pinned;
   }
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -197,26 +199,6 @@ async function resolveObservationTarget(
     throw new Error(`${vessel.label} is empty - there is no lot to attach this ${label} to.`);
   }
   throw new Error(`This ${label} needs a lot or vessel.`);
-}
-
-function convertDoseToStock(total: { total: number; unit: "g" | "mL" } | null, stockUnit: string | null | undefined): { qty: number; unit: string } | null {
-  if (!total || !stockUnit) return null;
-  if (total.unit === "g") {
-    if (stockUnit === "g") return { qty: total.total, unit: "g" };
-    if (stockUnit === "kg") return { qty: ROUND(total.total / 1000), unit: "kg" };
-    if (stockUnit === "mg") return { qty: ROUND(total.total * 1000), unit: "mg" };
-  }
-  if (total.unit === "mL") {
-    if (stockUnit === "mL") return { qty: total.total, unit: "mL" };
-    if (stockUnit === "L") return { qty: ROUND(total.total / 1000), unit: "L" };
-  }
-  return null;
-}
-
-/** @deprecated Phase 9.3: fingerprinting is unified on the shared readiness core. Kept as a thin alias so
- * callers stay on one hash across propose + commit. */
-export async function buildNlWorkOrderFingerprint(taskBuilds: TaskBuild[]): Promise<string> {
-  return buildReadinessFingerprint(taskBuilds);
 }
 
 // Phase 9.3 Unit 3: the assistant path now ONLY resolves NL intents to canonical TaskBuild[] (+ the
@@ -358,11 +340,14 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 
     if (intent.kind === "CLEAN" || intent.kind === "SANITIZE" || intent.kind === "STEAM" || intent.kind === "OZONE" || intent.kind === "GAS" || intent.kind === "SO2" || intent.kind === "WET_STORAGE") {
       const vessel = await resolveVesselState(intent.vessel);
+      // Only keep fields this maintenance type actually declares — STEAM has no material/amount, OZONE only
+      // duration, etc. Prevents leaking an unsupported (and un-costed) materialId into the task payload.
+      const fields = TASK_VOCABULARY[intent.kind].fields;
       let material: CellarMaterialDTO | null = null;
-      if (intent.material) {
+      if (intent.material && "materialId" in fields) {
         material = matchMaterialByRef(await listMaterials(), intent.material, { scope: materialScopeForTask({ activityType: intent.kind }) });
       }
-      const values = {
+      const candidate: Record<string, unknown> = {
         vesselId: vessel.id,
         ...(material ? { materialId: material.id } : {}),
         ...(intent.amount != null ? { amount: intent.amount } : {}),
@@ -371,6 +356,7 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         ...(intent.durationMin != null ? { durationMin: intent.durationMin } : {}),
         ...(intent.note ? { note: intent.note } : {}),
       };
+      const values = Object.fromEntries(Object.entries(candidate).filter(([k]) => k in fields));
       const verb = TASK_LABELS[intent.kind];
       taskBuilds.push({ taskType: intent.kind, title: `${verb} ${vessel.label}`, values, taskKey: randomUUID() });
       tasks.push({

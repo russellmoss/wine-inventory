@@ -114,6 +114,11 @@ function num(v: unknown): number {
  * Walk the ordered task builds accumulating planned volume deltas per vessel from volume-moving ops
  * (RACK/TOPPING). For UX/warning display only — the AUTHORITATIVE dose/capacity for a dependent task is
  * recomputed at completion against the predecessor's actual recorded output.
+ *
+ * Note: this is a pure taskBuilds-only approximation. It only accounts for EXPLICIT drawL/volumeL — a
+ * full-transfer rack (no drawL, meaning "draw everything") contributes 0 here because the source volume is
+ * a DB value this pure fn can't see. The readiness engine, which loads vessel state, defaults such a draw
+ * to the source volume; keep this helper for display where the DB isn't loaded, not as the capacity gate.
  */
 export function simulatePlanState(taskBuilds: TaskBuild[]): Map<string, number> {
   const delta = new Map<string, number>();
@@ -151,6 +156,7 @@ export type PredecessorState = {
   title: string;
   /** Canonical output columns of the producing task (mirrors WorkOrderTask). */
   destVesselId: string | null;
+  sourceVesselId: string | null;
   lotId: string | null;
   isOperation: boolean; // OPERATION tasks must have written a ledger op; observations/maintenance need not
   attempts: AttemptOutcome[];
@@ -196,8 +202,9 @@ export function resolveProducedOutput(ref: TaskDependencyRef, pred: PredecessorS
     case "operationId":
       return { output: ref.output, operationId: attempt.operationId, vesselId: null, lotId: null };
     case "destVessel":
-    case "sourceVessel":
       return { output: ref.output, operationId: attempt.operationId, vesselId: pred.destVesselId, lotId: null };
+    case "sourceVessel":
+      return { output: ref.output, operationId: attempt.operationId, vesselId: pred.sourceVesselId, lotId: null };
     case "destLot":
       return { output: ref.output, operationId: attempt.operationId, vesselId: pred.destVesselId, lotId: pred.lotId };
     default:

@@ -116,6 +116,25 @@ describe("computeWorkOrderReadiness — RACK", () => {
     expect(p.warnings.some((w) => w.code === "inactive_vessel")).toBe(true);
   });
 
+  it("accounts for an earlier rack's fill when warning on a second rack into the same tank", () => {
+    const state = makeState({
+      vesselsById: new Map([
+        ["v1", vessel({ id: "v1", code: "T1", volumeL: 300, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
+        ["v3", vessel({ id: "v3", code: "T3", volumeL: 300, lots: [{ id: "l3", code: "L3", status: "AGING", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
+        ["v2", vessel({ id: "v2", code: "T2", capacityL: 500, volumeL: 0 })],
+      ]),
+    });
+    const p = computeWorkOrderReadiness(
+      input([
+        { taskType: "RACK", values: { fromVesselId: "v1", toVesselId: "v2", drawL: 300 } },
+        { taskType: "RACK", values: { fromVesselId: "v3", toVesselId: "v2", drawL: 300 } },
+      ]),
+      state,
+    );
+    // First rack fills T2 to 300 (fits); the second must see only 200 L headroom and warn (short 100).
+    expect(p.warnings.filter((w) => w.code === "destination_headroom_short")).toHaveLength(1);
+  });
+
   it("blocks when a referenced vessel no longer exists", () => {
     const state = makeState({ vesselsById: new Map([["v-to", vessel({ id: "v-to", code: "T2" })]]) });
     const p = computeWorkOrderReadiness(input([{ taskType: "RACK", values: { fromVesselId: "gone", toVesselId: "v-to" } }]), state);
