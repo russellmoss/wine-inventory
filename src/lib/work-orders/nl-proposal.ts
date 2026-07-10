@@ -1,6 +1,9 @@
 import type { TaskBuild } from "@/lib/work-orders/template-vocabulary";
 
-export const NL_WORK_ORDER_SCHEMA_VERSION = 1;
+// Phase 9.3 Unit 3: bumped 1 -> 2 when the assistant path moved onto the shared readiness engine. The
+// committer hard-rejects any non-current version (no silent upconversion); the 5-min token TTL bounds the
+// exposure of an in-flight v1 token. Choice/resume token payloads are versioned too.
+export const NL_WORK_ORDER_SCHEMA_VERSION = 2;
 export const NL_WORK_ORDER_MAX_TASKS = 25;
 
 export type NlWorkOrderIntent =
@@ -10,7 +13,7 @@ export type NlWorkOrderIntent =
   | { kind: "NOTE"; title: string; note?: string };
 
 export type NlWorkOrderDraft = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   sourceText: string;
   title: string;
   assigneeEmail: string | null;
@@ -72,7 +75,7 @@ export type ProposalDiffRow = {
 export type ProposalDiff = { rows: ProposalDiffRow[] };
 
 export type WorkOrderProposalDetails = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   sourceText: string;
   title: string;
   assigneeEmail: string | null;
@@ -92,7 +95,7 @@ export type WorkOrderProposal = WorkOrderProposalDetails & {
 };
 
 export type NlWorkOrderCommitArgs = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   sourceText: string;
   title: string;
   assigneeEmail: string | null;
@@ -138,7 +141,7 @@ export function canonicalizeNlWorkOrderDraft(raw: unknown): NlWorkOrderDraft {
   const title = cleanString(obj.title) ?? titleFromIntents(intents);
   const assigneeEmail = cleanString(obj.assigneeEmail);
   const dueDate = cleanString(obj.dueDate);
-  return { schemaVersion: 1, sourceText, title, assigneeEmail, dueDate, intents };
+  return { schemaVersion: 2, sourceText, title, assigneeEmail, dueDate, intents };
 }
 
 export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] {

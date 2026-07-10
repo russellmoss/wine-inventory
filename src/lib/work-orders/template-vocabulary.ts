@@ -326,7 +326,15 @@ function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
  */
 /** A single explicit task to build (used by the new-WO form when it fans out multi-vessel selections +
  * appends extra additions — the flat list the form sends instead of index-keyed spec overrides). */
-export type TaskBuild = { taskType: string; title?: string; values: Record<string, unknown> };
+export type TaskBuild = {
+  taskType: string;
+  title?: string;
+  values: Record<string, unknown>;
+  // Phase 9.3: a proposal-local stable key (uuid) minted per TaskBuild. Carried into the created
+  // WorkOrderTask's plannedPayload so completion-time dependency refs survive reordering/retries/fanout
+  // (Unit 5). NOT part of the freshness fingerprint (the signed payload already HMAC-protects it).
+  taskKey?: string;
+};
 
 /** Instantiate an explicit flat list of task builds into CreateTaskInput[] (validates each taskType +
  * derives canonical columns). Mirrors instantiateTasksFromSpec's per-task logic. */
@@ -334,7 +342,7 @@ export function instantiateTaskBuilds(builds: TaskBuild[]): CreateTaskInput[] {
   return builds.map((b, i) => {
     const def = TASK_VOCABULARY[b.taskType];
     if (!def) throw new Error(`Unknown task type "${b.taskType}".`);
-    const payload = { ...b.values };
+    const payload = { ...b.values, ...(b.taskKey ? { taskKey: b.taskKey } : {}) };
     const canon = canonicalColumns(b.taskType, payload);
     return {
       seq: i + 1,

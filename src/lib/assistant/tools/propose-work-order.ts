@@ -17,6 +17,7 @@ import {
 import {
   canonicalizeNlWorkOrderDraft,
   proposalDetails,
+  NL_WORK_ORDER_SCHEMA_VERSION,
   type NlWorkOrderDraft,
   type NlWorkOrderIntent,
   type NlWorkOrderCommitArgs,
@@ -60,6 +61,9 @@ function inputForPinnedMaterial(draft: NlWorkOrderDraft, index: number, material
     return { ...intent, material: `#${materialId}` };
   });
   return {
+    // Version the resume token payload (Unit 3): a picker token minted under an older schema must not
+    // resolve against the current resolver. run() rejects a non-current version below.
+    schemaVersion: NL_WORK_ORDER_SCHEMA_VERSION,
     sourceText: draft.sourceText,
     title: draft.title,
     ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
@@ -141,7 +145,11 @@ export const proposeWorkOrderTool: AssistantTool = {
   async run(ctx, rawInput) {
     const tenantId = ctx.user.activeOrganizationId;
     if (!tenantId) throw new Error("No active winery in context.");
-    const raw = (rawInput ?? {}) as RawInput;
+    const raw = (rawInput ?? {}) as RawInput & { schemaVersion?: unknown };
+    // Hard-reject a resume/choice token minted under an older schema version — no silent upconversion.
+    if (raw.schemaVersion != null && raw.schemaVersion !== NL_WORK_ORDER_SCHEMA_VERSION) {
+      return "This work-order proposal is stale. Regenerate it before confirming.";
+    }
     const draft = canonicalizeNlWorkOrderDraft(raw);
     const choice = await materialChoiceIfNeeded(draft);
     if (choice) return choice;
@@ -159,7 +167,7 @@ export const proposeWorkOrderTool: AssistantTool = {
 function commitArgs(raw: Record<string, unknown>): NlWorkOrderCommitArgs {
   const taskBuilds = Array.isArray(raw.taskBuilds) ? (raw.taskBuilds as TaskBuild[]) : [];
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sourceText: String(raw.sourceText ?? ""),
     title: String(raw.title ?? "Natural-language work order"),
     assigneeEmail: raw.assigneeEmail == null ? null : String(raw.assigneeEmail),
@@ -170,8 +178,12 @@ function commitArgs(raw: Record<string, unknown>): NlWorkOrderCommitArgs {
 }
 
 export const commitProposeWorkOrder: Committer = async (_user, rawArgs) => {
+  // Hard-reject any non-current schema version (no upconversion). The signed token's 5-min TTL bounds the
+  // exposure of an in-flight v1 token; the stale message tells the user to regenerate.
+  if (rawArgs.schemaVersion != null && rawArgs.schemaVersion !== NL_WORK_ORDER_SCHEMA_VERSION) {
+    throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
+  }
   const args = commitArgs(rawArgs);
-  if (args.schemaVersion !== 1) throw new Error("Unsupported work-order proposal version.");
   if (args.taskBuilds.length === 0) throw new Error("This work-order proposal has no tasks.");
   await assertFreshNlWorkOrderProposal(args);
 

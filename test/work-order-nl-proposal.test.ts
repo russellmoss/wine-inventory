@@ -4,6 +4,7 @@ import {
   normalizeDoseUnit,
   parseWorkOrderUtteranceForEval,
   NL_WORK_ORDER_MAX_TASKS,
+  NL_WORK_ORDER_SCHEMA_VERSION,
 } from "@/lib/work-orders/nl-proposal";
 
 describe("natural-language work-order proposal parser", () => {
@@ -26,6 +27,9 @@ describe("natural-language work-order proposal parser", () => {
     expect(draft.intents).toEqual([{ kind: "ADDITION", vessel: "tank 12", material: "KMBS", amount: 30, unit: "mg/L" }]);
     expect(draft.dueDate).toBe("2026-07-10");
     expect(draft.assigneeEmail).toBe("cellar@demowinery.test");
+    // Phase 9.3: canonical drafts stamp the current schema version (bumped 1 -> 2).
+    expect(draft.schemaVersion).toBe(NL_WORK_ORDER_SCHEMA_VERSION);
+    expect(NL_WORK_ORDER_SCHEMA_VERSION).toBe(2);
   });
 
   it("does not silently accept unsupported blend authoring", () => {
