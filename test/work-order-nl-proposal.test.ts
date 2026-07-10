@@ -112,5 +112,10 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
   it("still rejects a genuinely unsupported instruction", () => {
     expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "teleport", vessel: "T1" }] })).toThrow(/Unsupported work-order instruction/);
   });
+
+  it("declines group barrel-down as future_phase (not faked), structured and free-text", () => {
+    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "barrel_down", vessel: "T12" }] })).toThrow(/isn't completable yet/);
+    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "Barrel down T12 into B101-B110" })).toThrow(/isn't completable yet/);
+  });
 });
 

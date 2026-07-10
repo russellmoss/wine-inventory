@@ -130,6 +130,14 @@ const SUPPORTED = new Set([
 ]);
 const DOSE_UNITS = new Set(["g/hL", "mg/L", "ppm", "g/L", "mL/L", "g", "kg", "mL", "L", "oz", "lb", "fl oz", "gal"]);
 
+// Phase 9.3 Unit 6: group barrel-down / rack-barrels-to-tank is recognized but surfaced as future_phase,
+// not faked. A group RACK is N member ops under ONE reviewable task, but WorkOrderTaskAttempt is
+// one-op-per-attempt and reject reverses a single op — per-member completion state is a schema/model
+// change out of 9.3's no-schema-change scope (plan fallback b). Decline honestly with the alternative.
+const GROUP_RACK_KINDS = new Set(["BARREL_DOWN", "RACK_BARRELS_TO_TANK", "GROUP_RACK", "RACK_BARRELS"]);
+const GROUP_RACK_MESSAGE =
+  "Group barrel-down / racking a whole barrel group in one work order isn't completable yet (it needs per-barrel completion state, a later phase). Author the barrel racks individually, or rack to a single vessel.";
+
 function cleanString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -177,6 +185,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
   for (const raw of tasks) {
     const kind = cleanString(raw.kind) ?? cleanString(raw.type) ?? cleanString(raw.operation);
     const up = kind?.toUpperCase();
+    if (up && GROUP_RACK_KINDS.has(up)) throw new Error(GROUP_RACK_MESSAGE);
     if (!up || !SUPPORTED.has(up)) {
       throw new Error(`Unsupported work-order instruction "${kind ?? "unknown"}".`);
     }
@@ -371,6 +380,9 @@ export function parseWorkOrderUtteranceForEval(sourceText: string): NlWorkOrderI
 
   if (/\bblend\b/i.test(text)) {
     throw new Error("Blend authoring is not in scope for natural-language work orders yet.");
+  }
+  if (/\bbarrel[\s-]*down\b|\brack\s+barrels?\b/i.test(text)) {
+    throw new Error(GROUP_RACK_MESSAGE);
   }
 
   return intents;
