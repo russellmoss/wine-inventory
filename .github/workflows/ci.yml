@@ -95,6 +95,11 @@ jobs:
       # CI, so materialize one from the job env pointing at the throwaway Postgres.
       - name: Write .env for the domain proofs
         run: printf 'DATABASE_URL=%s\nDATABASE_URL_UNPOOLED=%s\n' "$DATABASE_URL" "$DATABASE_URL_UNPOOLED" > .env
+      # The domain verify:* scripts (e.g. verify:work-orders) assume the demo tenant org exists —
+      # they seed their own vessels/lots but not the organization. A fresh `migrate deploy` DB has no
+      # org, so vessel/lot creates fail on the tenantId FK. Seed it first (idempotent, DATABASE_URL only).
+      - name: Seed the demo tenant (fixtures for the domain proofs)
+        run: npm run seed:demo-tenant
       - name: Run domain proofs for changed paths
         run: |
           git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed.txt
