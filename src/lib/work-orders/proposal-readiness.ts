@@ -57,6 +57,7 @@ export type TaskCoverageEntry = { state: TaskCoverageState; reason: string; runt
 // new task type cannot ship without an explicit coverage decision + reason.
 export const TASK_COVERAGE: Record<string, TaskCoverageEntry> = {
   RACK: { state: "supported", reason: "Vessel-to-vessel transfer against resolved vessels." },
+  GROUP_RACK: { state: "supported", reason: "Group barrel-down / rack-to-tank across a resolved member set — one balanced ledger operation." },
   ADDITION: { state: "supported", reason: "Dose an existing doseable material into a resolved vessel." },
   FINING: { state: "supported", reason: "Fine a resolved vessel with an existing doseable material." },
   TOPPING: { state: "supported", reason: "Top a resolved vessel from a source vessel." },
@@ -348,6 +349,64 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       return;
     }
 
+    case "GROUP_RACK": {
+      const gr = v.groupRack && typeof v.groupRack === "object" && !Array.isArray(v.groupRack) ? (v.groupRack as Record<string, unknown>) : null;
+      if (!gr) {
+        blocking(ctx, "invalid_group_rack", `Task #${seq} is missing its group-rack details.`);
+        return;
+      }
+      const lossL = numOrNull(gr.lossL) ?? 0;
+      const memberList = (key: string): string[] => (Array.isArray(gr[key]) ? (gr[key] as unknown[]).filter((x): x is string => typeof x === "string" && !!x) : []);
+      if (gr.direction === "RACK_TO_TANK") {
+        const dest = requireVessel(ctx, state, seq, str(gr.destVesselId), "destination");
+        const memberIds = memberList("sourceVesselIds");
+        if (!dest) return;
+        if (memberIds.length === 0) {
+          blocking(ctx, "empty_group", `Task #${seq}: the barrel group has no members.`);
+          return;
+        }
+        const sources = memberIds.map((id) => state.vesselsById.get(id)).filter((x): x is ReadinessVesselState => !!x);
+        if (sources.length !== memberIds.length) blocking(ctx, "missing_vessel", `A source barrel in task #${seq} no longer exists.`);
+        for (const s of sources) if (!s.isActive) blocking(ctx, "inactive_vessel", `${s.label} is inactive.`);
+        const drawTotal = ROUND(sources.reduce((a, s) => a + s.volumeL, 0));
+        const intoL = Math.max(0, ROUND(drawTotal - lossL));
+        const destHeadroom = ROUND(dest.capacityL - dest.volumeL - dest.capacityReserved);
+        if (intoL > destHeadroom + 1e-9) {
+          blocking(ctx, "group_headroom_short", `${dest.label} has only ${destHeadroom} L of headroom, but ${intoL} L would rack back. Reduce the racked volume.`);
+        }
+        if (dest.lots.length > 0) confirmable(ctx, "rack_to_tank_resident", `${dest.label} already holds wine; the racked barrels will co-reside with it (no blend is created).`);
+        ctx.diffRows.push({ kind: "vessel", label: dest.label, before: `${dest.volumeL} L`, after: `${ROUND(dest.volumeL + intoL)} L planned` });
+        return;
+      }
+      // BARREL_DOWN (default)
+      const src = requireVessel(ctx, state, seq, str(gr.sourceVesselId), "source");
+      const memberIds = memberList("destVesselIds");
+      if (!src) return;
+      if (memberIds.length === 0) {
+        blocking(ctx, "empty_group", `Task #${seq}: the barrel group has no members.`);
+        return;
+      }
+      const dests = memberIds.map((id) => state.vesselsById.get(id)).filter((x): x is ReadinessVesselState => !!x);
+      if (dests.length !== memberIds.length) blocking(ctx, "missing_vessel", `A destination barrel in task #${seq} no longer exists.`);
+      for (const d of dests) if (!d.isActive) blocking(ctx, "inactive_vessel", `${d.label} is inactive.`);
+      const drawL = numOrNull(gr.drawL) ?? src.volumeL;
+      const intoL = Math.max(0, ROUND(drawL - lossL));
+      const totalHeadroom = ROUND(dests.reduce((a, d) => a + Math.max(0, d.capacityL - d.volumeL - d.capacityReserved), 0));
+      const sourceReserved = src.lots.reduce((sum, lot) => sum + (state.lotVolumeReservedById.get(lot.id) ?? 0), 0);
+      confirmable(
+        ctx,
+        "source_volume_short",
+        advisoryWarning(evaluateAtp({ kind: "LOT_VOLUME", targetLabel: src.label, supply: src.volumeL, alreadyReserved: sourceReserved, requested: drawL, unit: "L" })),
+      );
+      if (intoL > totalHeadroom + 1e-9) {
+        blocking(ctx, "group_headroom_short", `The ${dests.length} destination barrels have only ${totalHeadroom} L of headroom, but ${intoL} L needs to move. Add barrels or reduce the amount.`);
+      }
+      if (src.lots.length > 1) confirmable(ctx, "rack_blend_review", `${src.label} holds multiple lots; each barrel receives a proportional share (co-residence, not a blend).`);
+      ctx.diffRows.push({ kind: "vessel", label: src.label, before: `${src.volumeL} L`, after: `${ROUND(src.volumeL - drawL)} L planned` });
+      ctx.diffRows.push({ kind: "vessel", label: `${dests.length} barrels`, before: "—", after: `+${intoL} L across ${dests.length}` });
+      return;
+    }
+
     case "TOPPING": {
       const from = requireVessel(ctx, state, seq, str(v.fromVesselId), "source");
       const to = requireVessel(ctx, state, seq, str(v.toVesselId), "destination");
@@ -601,6 +660,20 @@ function collectIds(taskBuilds: TaskBuild[]): { vesselIds: string[]; lotIds: str
     for (const key of ["fromVesselId", "toVesselId", "vesselId", "sourceVesselId", "destVesselId"]) {
       const id = str(v[key]);
       if (id) vesselIds.add(id);
+    }
+    // Phase 9.4a: a group-rack task's members live under `groupRack` — load them all so the readiness
+    // engine can fan capacity/headroom across the whole member set.
+    const gr = v.groupRack;
+    if (gr && typeof gr === "object" && !Array.isArray(gr)) {
+      const g = gr as Record<string, unknown>;
+      for (const key of ["sourceVesselId", "destVesselId"]) {
+        const id = str(g[key]);
+        if (id) vesselIds.add(id);
+      }
+      for (const key of ["sourceVesselIds", "destVesselIds"]) {
+        const arr = g[key];
+        if (Array.isArray(arr)) for (const id of arr) if (typeof id === "string" && id) vesselIds.add(id);
+      }
     }
     const lotId = str(v.lotId);
     if (lotId) lotIds.add(lotId);
