@@ -94,11 +94,11 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
             }}
           >
             <span>Tenant</span>
-            <span>Assistant thumbs-down</span>
-            <span>Bug reports</span>
-            <span>Feature requests</span>
-            <span>Save</span>
-            <span>Support</span>
+            <span style={{ textAlign: "center" }}>Assistant thumbs-down</span>
+            <span style={{ textAlign: "center" }}>Bug reports</span>
+            <span style={{ textAlign: "center" }}>Feature requests</span>
+            <span style={{ textAlign: "center" }}>Save</span>
+            <span style={{ textAlign: "center" }}>Support</span>
           </div>
           {data.tenants.map((tenant) => (
             <TenantModes key={tenant.id} tenant={tenant} busy={busy} run={run} />
