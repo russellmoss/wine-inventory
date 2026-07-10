@@ -22,6 +22,7 @@ export type NlWorkOrderIntent =
   | { kind: "HARVEST_WEIGH_IN"; block?: string; note?: string }
   | { kind: "PANEL"; vessel?: string; lot?: string; panelName?: string; note?: string }
   | { kind: "BRIX"; vessel?: string; lot?: string; note?: string }
+  | { kind: "SAMPLE_PULL"; vessel?: string; lot?: string; lab?: string; sendNow?: boolean; note?: string }
   | { kind: "NOTE"; title: string; note?: string };
 
 // Kinds whose only run-time target/inputs are captured on the execute screen (no propose-time resolution).
@@ -125,7 +126,7 @@ type RawIntent = Record<string, unknown>;
 const SUPPORTED = new Set([
   "RACK", "TOPPING", "ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT",
   "CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE",
-  "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "NOTE",
+  "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL", "NOTE",
 ]);
 const DOSE_UNITS = new Set(["g/hL", "mg/L", "ppm", "g/L", "mL/L", "g", "kg", "mL", "L", "oz", "lb", "fl oz", "gal"]);
 
@@ -233,6 +234,20 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       const lot = cleanString(raw.lot) ?? undefined;
       if (!vessel && !lot) throw new Error("A Brix reading needs a vessel or lot.");
       intents.push({ kind: "BRIX", ...(vessel ? { vessel } : {}), ...(lot ? { lot } : {}), ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
+      continue;
+    }
+    if (up === "SAMPLE_PULL") {
+      const vessel = cleanString(raw.vessel) ?? lastRackDestination ?? undefined;
+      const lot = cleanString(raw.lot) ?? undefined;
+      if (!vessel && !lot) throw new Error("A sample task needs a vessel or lot.");
+      intents.push({
+        kind: "SAMPLE_PULL",
+        ...(vessel ? { vessel } : {}),
+        ...(lot ? { lot } : {}),
+        ...(cleanString(raw.lab) ? { lab: cleanString(raw.lab)! } : {}),
+        ...(raw.sendNow === true ? { sendNow: true } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
       continue;
     }
     if (up === "TOPPING") {

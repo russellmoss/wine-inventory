@@ -68,6 +68,7 @@ export const TASK_COVERAGE: Record<string, TaskCoverageEntry> = {
   CAP_MGMT: { state: "supported", reason: "Volume-neutral cap work on a resolved vessel." },
   BRIX: { state: "supported", reason: "Brix reading against a resolved lot/vessel." },
   PANEL: { state: "supported", reason: "Chem panel against a resolved lot/vessel." },
+  SAMPLE_PULL: { state: "supported", reason: "Pull/send a real lab sample for a resolved lot/vessel on completion." },
   TEMP_SETPOINT: {
     state: "supported",
     reason: "Temperature setpoint on a resolved vessel; the achieved reading is entered at completion.",
@@ -412,7 +413,9 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
     }
 
     case "BRIX":
-    case "PANEL": {
+    case "PANEL":
+    case "SAMPLE_PULL": {
+      const noun = task.taskType === "PANEL" ? "panel" : task.taskType === "SAMPLE_PULL" ? "sample" : "reading";
       const lotId = str(v.lotId);
       if (lotId) {
         if (!state.lotsById.has(lotId) && !isLotInLoadedVessel(state, lotId)) {
@@ -425,14 +428,14 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       if (vessel.lots.length === 1) return;
       if (vessel.lots.length === 0 && ctx.plannedLotByVesselId.has(vessel.id)) {
         const planned = ctx.plannedLotByVesselId.get(vessel.id)!;
-        completionCheck(ctx, "observation_after_planned_rack", `${vessel.label} is empty now; this ${task.taskType === "PANEL" ? "panel" : "reading"} will attach to lot ${planned.code} planned to arrive from an earlier rack task.`);
+        completionCheck(ctx, "observation_after_planned_rack", `${vessel.label} is empty now; this ${noun} will attach to lot ${planned.code} planned to arrive from an earlier rack task.`);
         return;
       }
       if (vessel.lots.length > 1) {
-        unresolved(ctx, `task-${seq}-lot`, `${task.taskType === "PANEL" ? "Panel" : "Brix"} lot`, `${vessel.label} holds a blend (${vessel.lots.map((l) => l.code).join(", ")}) - pick which lot this reading is for.`);
+        unresolved(ctx, `task-${seq}-lot`, `${noun} lot`, `${vessel.label} holds a blend (${vessel.lots.map((l) => l.code).join(", ")}) - pick which lot this ${noun} is for.`);
         return;
       }
-      unresolved(ctx, `task-${seq}-lot`, "Lot", `${vessel.label} is empty - there is no lot to attach this reading to.`);
+      unresolved(ctx, `task-${seq}-lot`, "Lot", `${vessel.label} is empty - there is no lot to attach this ${noun} to.`);
       return;
     }
 

@@ -132,6 +132,16 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     label: "Chem panel",
     fields: { vesselId: "vessel", lotId: "lot", note: "text" },
   },
+  // Phase 9.3: pull/send a real lab sample on completion (over the idempotent pullSampleCore). A PANEL
+  // stays a chem-panel observation; SAMPLE_PULL owns the sample lifecycle. `lab` is free text; `sendNow`
+  // marks it sent at pull time. The lot is bound at authoring (like PANEL); readings come back later.
+  SAMPLE_PULL: {
+    kind: "OBSERVATION",
+    observationType: "SAMPLE_PULL",
+    label: "Pull / send sample",
+    fields: { vesselId: "vessel", lotId: "lot", lab: "text", note: "text" },
+    hint: "Pulls a real lab sample when the task is completed. Enter the lab (and whether to send it now); lab results are attached later.",
+  },
   // ── MAINTENANCE lane (Phase 9.1): lotless, vessel-scoped, no ledger op, no approval gate. ──
   TEMP_SETPOINT: {
     kind: "MAINTENANCE",

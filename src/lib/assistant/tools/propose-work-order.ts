@@ -106,7 +106,7 @@ function previewText(proposal: ReturnType<typeof proposalDetails>): string {
 export const proposeWorkOrderTool: AssistantTool = {
   name: "propose_work_order",
   description:
-    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (their real inputs — picks, fractions, weights, destination — are entered on the execute screen); PANEL and BRIX observations; and explicit checklist NOTE. Non-vessel equipment/floor cleaning and bottling are NOT supported here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
+    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (their real inputs — picks, fractions, weights, destination — are entered on the execute screen); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); and explicit checklist NOTE. Non-vessel equipment/floor cleaning and bottling are NOT supported here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -126,7 +126,7 @@ export const proposeWorkOrderTool: AssistantTool = {
               enum: [
                 "RACK", "TOPPING", "ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT",
                 "CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE",
-                "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "NOTE",
+                "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL", "NOTE",
               ],
             },
             from: { type: "string", description: "Source vessel for RACK/TOPPING." },
@@ -151,6 +151,8 @@ export const proposeWorkOrderTool: AssistantTool = {
             destVessel: { type: "string", description: "Optional crush destination vessel." },
             op: { type: "string", enum: ["PRESS", "SAIGNEE"], description: "PRESS task operation." },
             block: { type: "string", description: "Optional vineyard block hint for HARVEST_WEIGH_IN (confirmed on the floor)." },
+            lab: { type: "string", description: "Lab name for a SAMPLE_PULL task." },
+            sendNow: { type: "boolean", description: "For SAMPLE_PULL: mark the sample sent to the lab at pull time." },
             panelName: { type: "string" },
             title: { type: "string" },
             note: { type: "string" },

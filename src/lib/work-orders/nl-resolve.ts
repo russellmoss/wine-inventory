@@ -283,17 +283,22 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       continue;
     }
 
-    if (intent.kind === "PANEL" || intent.kind === "BRIX") {
-      const label = intent.kind === "PANEL" ? "panel" : "Brix reading";
-      const target = await resolveObservationTarget(intent, plannedLotByVesselId, label);
-      const values = { lotId: target.lotId, ...(target.vesselId ? { vesselId: target.vesselId } : {}), ...(intent.note ? { note: intent.note } : {}) };
-      const panelName = intent.kind === "PANEL" ? intent.panelName ?? "Chem panel" : "Brix reading";
-      taskBuilds.push({ taskType: intent.kind, title: `${intent.kind === "PANEL" ? "Pull panel" : "Brix"} - ${target.lotCode}`, values, taskKey: randomUUID() });
+    if (intent.kind === "PANEL" || intent.kind === "BRIX" || intent.kind === "SAMPLE_PULL") {
+      const noun = intent.kind === "PANEL" ? "panel" : intent.kind === "SAMPLE_PULL" ? "sample" : "Brix reading";
+      const target = await resolveObservationTarget(intent, plannedLotByVesselId, noun);
+      const values: Record<string, unknown> = { lotId: target.lotId, ...(target.vesselId ? { vesselId: target.vesselId } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      if (intent.kind === "SAMPLE_PULL") {
+        if (intent.lab) values.lab = intent.lab;
+        if (intent.sendNow) values.sendNow = true;
+      }
+      const title = intent.kind === "PANEL" ? `Pull panel - ${target.lotCode}` : intent.kind === "SAMPLE_PULL" ? `Pull sample - ${target.lotCode}` : `Brix - ${target.lotCode}`;
+      const displayTitle = intent.kind === "PANEL" ? intent.panelName ?? "Chem panel" : intent.kind === "SAMPLE_PULL" ? `Pull${intent.sendNow ? "/send" : ""} sample` : "Brix reading";
+      taskBuilds.push({ taskType: intent.kind, title, values, taskKey: randomUUID() });
       tasks.push({
         seq,
         kind: intent.kind,
-        title: panelName,
-        summary: `${intent.kind === "PANEL" ? `Pull ${panelName}` : "Brix reading"} for lot ${target.lotCode}`,
+        title: displayTitle,
+        summary: `${displayTitle} for lot ${target.lotCode}${intent.kind === "SAMPLE_PULL" && intent.lab ? ` (${intent.lab})` : ""}`,
         entities: [
           { role: "lot", label: target.lotCode, id: target.lotId },
           ...(target.vesselId && target.vesselLabel ? [{ role: "vessel", label: target.vesselLabel, id: target.vesselId }] : []),

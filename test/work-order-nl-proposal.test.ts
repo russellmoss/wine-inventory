@@ -101,6 +101,14 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
     expect(draft.intents[1]).toMatchObject({ kind: "CLEAN", vessel: "T2" });
   });
 
+  it("canonicalizes a sample-pull with lab + sendNow", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "pull samples",
+      tasks: [{ kind: "sample_pull", vessel: "T12", lab: "ETS", sendNow: true }],
+    });
+    expect(draft.intents[0]).toEqual({ kind: "SAMPLE_PULL", vessel: "T12", lab: "ETS", sendNow: true });
+  });
+
   it("still rejects a genuinely unsupported instruction", () => {
     expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "teleport", vessel: "T1" }] })).toThrow(/Unsupported work-order instruction/);
   });
