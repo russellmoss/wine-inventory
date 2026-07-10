@@ -4,6 +4,7 @@ import {
   isDenied,
   isAllowed,
   normPath,
+  resolveDomainVerifies,
 } from "../scripts/feedback-fence-rules";
 
 describe("feedback write-fence: allowed surfaces", () => {
@@ -68,5 +69,62 @@ describe("feedback write-fence: path normalization", () => {
   it("normalizes Windows separators and stray quotes before matching", () => {
     expect(fencePass(normPath('"src\\lib\\work-orders\\execute.ts"'))).toBe(true);
     expect(fencePass(normPath("src\\lib\\ledger\\append.ts"))).toBe(false);
+  });
+});
+
+describe("domain-verify backstop: resolveDomainVerifies", () => {
+  it("maps a work-orders edit to its runtime proofs", () => {
+    const r = resolveDomainVerifies(["src/lib/work-orders/execute.ts"]);
+    expect(r.scripts).toEqual(
+      expect.arrayContaining(["verify:work-orders", "verify:work-orders-transform"]),
+    );
+    expect(r.provenDomains).toContain("src/lib/work-orders/");
+    expect(r.unmappedDomains).toEqual([]);
+  });
+
+  it("maps a chemistry edit to verify:chemistry", () => {
+    const r = resolveDomainVerifies(["src/lib/chemistry/panel.ts"]);
+    expect(r.scripts).toEqual(["verify:chemistry"]);
+    expect(r.unmappedDomains).toEqual([]);
+  });
+
+  it("treats pure-logic domains as proven with no scripts to run", () => {
+    const r = resolveDomainVerifies(["src/lib/winemaking-calc/engine.ts"]);
+    expect(r.scripts).toEqual([]);
+    expect(r.provenDomains).toContain("src/lib/winemaking-calc/");
+    expect(r.unmappedDomains).toEqual([]);
+  });
+
+  it("flags a widened-but-unmapped domain as needing human review", () => {
+    const r = resolveDomainVerifies(["src/lib/vessel/state.ts", "src/lib/lot/create.ts"]);
+    expect(r.unmappedDomains).toEqual(
+      expect.arrayContaining(["src/lib/vessel/", "src/lib/lot/"]),
+    );
+    expect(r.scripts).toEqual([]);
+  });
+
+  it("ignores original UI/assistant surfaces (exempt from the domain-proof policy)", () => {
+    const r = resolveDomainVerifies([
+      "src/lib/assistant/prompt.ts",
+      "src/components/ui/Button.tsx",
+      "src/app/(app)/developer/page.tsx",
+    ]);
+    expect(r.scripts).toEqual([]);
+    expect(r.provenDomains).toEqual([]);
+    expect(r.unmappedDomains).toEqual([]);
+  });
+
+  it("ignores out-of-fence paths (the fence handles those, not this)", () => {
+    const r = resolveDomainVerifies(["src/lib/ledger/append.ts", "src/lib/tenant/context.ts"]);
+    expect(r.scripts).toEqual([]);
+    expect(r.unmappedDomains).toEqual([]);
+  });
+
+  it("dedupes proofs across multiple files in the same domain", () => {
+    const r = resolveDomainVerifies([
+      "src/lib/work-orders/execute.ts",
+      "src/lib/work-orders/reject.ts",
+    ]);
+    expect(r.scripts.filter((s) => s === "verify:work-orders")).toHaveLength(1);
   });
 });
