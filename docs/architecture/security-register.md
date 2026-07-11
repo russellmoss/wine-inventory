@@ -228,6 +228,36 @@ TEMPLATE — copy for each new invariant / finding:
 
 ---
 
+## Developer support / "god mode" impersonation — cross-tenant read/write
+- **What:** a `developer`-role user can `enterSupportTenant(tenantId)` (`src/lib/developer/`), stamping
+  `supportOrganizationId` on their own user; `resolveTenantFromSession` then prefers it over the session's
+  `activeOrganizationId`, so the developer operates **inside** that tenant. This is deliberate cross-tenant
+  access — the ONLY sanctioned way one identity touches another tenant through the app.
+- **Boundary:** gated on `requireDeveloper()` (not tenant-admin); every enter/exit is audited as an
+  **`IMPERSONATE`** `AuditAction`. Access still flows **through RLS** (`app.tenant_id` is set to the
+  impersonated tenant — no `runAsSystem`/BYPASSRLS), so isolation invariants (TENANT-1) still hold; the
+  risk is *authorization* (who may impersonate), not *isolation*. Developers also default into the Demo
+  Winery sandbox at login, keeping real tenants out of routine dev traffic.
+- **Tripwire:** the `developer` role granted to a non-staff account; an impersonation path that sets the
+  tenant WITHOUT writing the `IMPERSONATE` audit row; `supportOrganizationId` resolvable for a
+  non-developer; a support session with no `exitSupportTenant` bound (stale god-mode). **Not built:** a
+  time-box / auto-expiry on the support session — recorded here, deferred.
+- **Status:** 🟡 (built; audited + RLS-scoped, but impersonation authority is broad and unbounded in time)
+
+## Feedback → automation auto-fix loop — agentic change fence
+- **What:** in-app feedback + assistant thumbs-down can trigger an `AGENTIC_FIX` `AutomationRun`
+  (`src/lib/feedback/`, `.github/workflows/feedback-*`) that lets an agent open a fix PR from user-supplied
+  text — an untrusted-input → code-change path.
+- **Boundary:** modes are explicit (REPORT_ONLY / PLAN_MODE / AGENTIC_FIX); auto-fixes are **fenced** to an
+  allowlist of paths (guarded by `verify:feedback-fence`, which now permits `test/` so fixes carry their
+  tests) and open a PR — **never auto-merge `main`**. Feedback tables are tenant-scoped + RLS; a security
+  harness (`verify:feedback-security`) + domain proof (`verify:feedback-domain`) gate the loop.
+- **Tripwire:** the change-fence widening to cover CI/deploy config, secrets, or `prisma/migrations/`; an
+  automation run writing outside its PR branch; feedback content reaching a shell/agent without the fence;
+  the loop gaining merge rights.
+- **Status:** 🟡 (built + guarded; agentic-fix on untrusted input is inherently higher-risk — keep the
+  fence tight and PR-only)
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_

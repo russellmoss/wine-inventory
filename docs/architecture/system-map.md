@@ -9,7 +9,7 @@
 - **Cellarhand** — the product's brand (renamed from "BWC Operating System"; assets in `design-system/assets/logos`, wired via `src/components/BrandMark.tsx` + `src/app/{icon.svg,apple-icon.png,manifest.ts}`).
 - **Next.js 16.2** (app router) + **React 19** + **TypeScript** — `src/app/…`
 - **Tailwind v4** — styling via design tokens (see [[DESIGN]]); `src/styles/print.css` for printable work orders.
-- **Prisma ORM → Neon serverless Postgres** — **89 models** in `prisma/schema.prisma` (~2.9k lines).
+- **Prisma ORM → Neon serverless Postgres** — **110 models** in `prisma/schema.prisma` (~3.6k lines).
 - **better-auth** — authentication (`@node-rs/argon2` for password hashing).
 - **Vercel** — hosting. `npm run build` runs `prisma migrate deploy` first, so **deploys apply migrations automatically**.
 - **Sentry** — error monitoring (`instrumentation.ts`, `sentry.*.config.ts`) → auto-opens GitHub issues.
@@ -33,16 +33,39 @@ as the restricted **`app_rls`** role, which *cannot* bypass RLS.
 - `tx.ts` — `runInTenantTx()` for transactions.
 - `system.ts` — `runAsSystem()` for owner-level cross-tenant maintenance (bypasses RLS).
 - `models.ts` — `GLOBAL_MODELS` denylist: the auth tables (User/Session/Account/Verification/Organization/Member/Invitation) are the **only** non-tenant-scoped tables.
+- **Support / "god mode" (developer impersonation):** a `developer`-role user can `enterSupportTenant(tenantId)`
+  (`src/lib/developer/`), which stamps `supportOrganizationId` on their user (audited as an **`IMPERSONATE`**
+  action, `exitSupportTenant` clears it). `resolveTenantFromSession` then prefers `supportOrganizationId`
+  over the session's `activeOrganizationId`, so the developer transparently reads/writes the target
+  tenant **through the same RLS path** (no bypass — `app.tenant_id` is set to the impersonated tenant).
+  Developers also default into the **Demo Winery** sandbox at login (`DEVELOPER_HOME_ORG_ID`,
+  `src/lib/access.ts`) rather than the earliest membership. See [[security-register]].
 → This is the #1 area to watch as you grow. See [[scale-register]].
 
 ### 2. The lot ledger (the spine) — `src/lib/ledger/`
 A **lot** is a tracked quantity of wine (`Lot`, `LotOperation`, `LotOperationLine`, `VesselLot`,
 `LotLineage`, `LotStateEvent` in the schema). Every action is an **append-only operation**; current
 state is *derived* from the ledger, not stored loosely.
-- `write.ts` — `runLedgerWrite()`, the single guarded path for ledger writes.
-- `actions.ts` — the server actions the UI calls.
-- `reverse.ts` + `reverse-guard.ts` — the **universal Undo**: `reverseOperationCore` dispatches an undo for *every* operation family (rack, bottle, sparkling, crush, press, saignée, blend), unwinding in LIFO order with guardrails.
-- `math.ts`, `vocabulary.ts` — volume math + naming.
+- `write.ts` — `runLedgerWrite()`, the single guarded path for ledger writes. Now also carries a
+  `batchId` + structured `metadata` (used by migration seeds), guards writes against **archived lots**
+  (`assertLotsNotArchivedForNormalWriteTx`, corrections excepted), and syncs each touched lot's
+  **lifecycle status** (`syncLotLifecycleStatusTx`, `src/lib/lot/lifecycle.ts`; guarded by `verify:lifecycle`).
+- `actions.ts` — the server actions the UI calls, including the **cascade undo** (`previewReversalChainAction`
+  / `reverseOperationChainAction`).
+- `reverse.ts` + `reverse-guard.ts` — the **universal Undo**: `reverseOperationCore` dispatches an undo for *every* operation family (rack, bottle, sparkling, crush, press, saignée, blend), unwinding in LIFO order with guardrails. Every undo is still a **new CORRECTION op**, never a row edit (LEDGER-10).
+  - **Reversal chains:** `previewReversalChain` recursively walks `laterTouchedBlockers` to build the LIFO
+    set of ops that must be undone first, and `reverseOperationChainCore` executes them in order (with an
+    `expectedStepIds` optimistic-concurrency check so a changed chain aborts).
+  - **Manual-seed reversal:** a `SEED` op is normally irreversible (origination), but a narrowly-gated
+    `MANUAL_OPERATOR_SEED` can be undone — `seedReversibilityForOperation` refuses imported/migration/legacy
+    seeds, seeds with cost artifacts, downstream lineage, bottled state, or a filed compliance period
+    (keeps MIGRATE-1 intact). `CELLAR_TYPES` now routes `ADJUST`/`DEPLETE` through the cellar corrector;
+    `REMOVE_TAXPAID` stays excluded (TAXPAID-1).
+- `math.ts`, `vocabulary.ts` — volume math + naming. `math.ts` adds **group rack** (Phase 9.4a):
+  `planRackSplit` (one source vessel → many destinations, barrel-down) and `planRackMerge` (many sources →
+  one destination, rack-to-tank), both lot-identity-preserving and balanced per lot. A group rack has no
+  1:1 `VesselTransfer`, so its undo reverses the whole op as one compensating CORRECTION
+  (`reverseGroupRackCore`).
 
 ### 2a. Identity presentation layer (Phase 1) — `src/lib/lot/`
 Separates durable identity from the human label (NAMING-1/2). `Lot.id` is the ONLY opaque identity and
@@ -67,8 +90,14 @@ The operations that change a lot's identity: `crush-core.ts` (`crushLotCore`), `
 ### 4. Cost engine (Phase 8a) — `src/lib/cost/`
 Cost follows the wine. Fruit/supply cost attaches at crush and is carried, rolled up, and *negated on
 reversal* through the same operations as the ledger.
-- `rollup.ts`, `consume.ts`, `deplete.ts`, `cogs.ts`/`cogs-write.ts`, `policy.ts`, `reverse.ts`, `cache.ts`.
+- `rollup.ts`, `consume.ts`, `deplete.ts`, `cogs.ts`/`cogs-write.ts`, `policy.ts`, `reverse.ts`, `transfer.ts`, `cache.ts`.
 - Schema: `SupplyLot`, `CostLine`, `SupplyConsumption`, `OperationCostTransfer`, `LotCostState`, `BottlingCostSnapshot`.
+- **Inherited-cost transfers:** `transfer.ts` (`writeProportionalCostTransfers`) persists an audit-row
+  snapshot of the dollars a split/blend moves parent→child (the rollup still recomputes from the volume
+  basis). On undo, `reverse.ts` negates each transfer by writing the **inverse edge**, and cost reads now
+  look at transfers on **either** side (`fromLotId` OR `toLotId`) — all conserving (COST-1).
+- **`OPENING_BALANCE` cost component** (migration cutover balances) capitalizes like MATERIAL/DOSAGE/VARIANCE
+  (`policy.ts`, `isComponentCapitalized`).
 - Cost is computed largely on read (rollup) — a scale watch-item, see [[scale-register]].
 - **Currency (Phase 037):** one tenant-wide currency (`AppSettings.currency`, from {USD, EUR, NZD, AUD, ZAR, GBP}), set on the Settings "Cost accounting" card. It is a DISPLAY LABEL only — no FX conversion. The pure helper `src/lib/money/currency.ts` (`coerceCurrency`/`currencySymbol`/`formatMoney`) drives the symbol; `CurrencyProvider`/`useCurrency` (`src/components/money/`) push it into client cost inputs (symbol prefix via `Input iconLeft`) + displays, and `getTenantCurrency` feeds server pages. Each `SupplyLot` stamps the currency it was entered under, so changing the setting never re-values history. Orthogonal to `costingPolicyVersion` — a currency change does NOT bump it (D17). TTB excise `taxDollars` intentionally stays `$` (federal statutory USD).
 
@@ -190,6 +219,30 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   (`/[id]/print` + `print.css`), Open|Archive dashboard with a pending-count nav badge. Proven by
   `npm run verify:work-orders` (+ `verify:work-orders-enhancements`); invariants WORKORDER-1/2/3.
 
+### 11. Migration kernel (Phase 3, seed-not-replay) — `src/lib/migration/`
+Onboarding a winery off a legacy system (Vintrace/InnoVint/spreadsheets) via a **two-track** model
+(MIGRATE-1): a **draft → reconcile → sign-off → publish** path. 9 new tenant-scoped tables
+(`MigrationImportBatch`, `MigrationSeedLot`, `MigrationSeedPosition`, `LegacyOperation`,
+`MigrationAnalysisPanel`/`Reading`, `MigrationReconciliationItem`, `MigrationField`/`EntityMapping`) hold
+the staged import. **Publish** (`publish.ts`) posts **exactly one** cutover `SEED` per lot/vessel
+(`captureMethod = IMPORT`, `batchId` + `metadata` set) into the live ledger + cost DAG; legacy
+operational history lands in the **read-only archive** (`LegacyOperation`) and is *never* folded into
+`LotOperationLine`/`VesselLot`/cost. A publish is blocked while any reconciliation delta is unresolved.
+Guarded by `npm run verify:migration`.
+
+### 12. Voice biometrics + focus — `src/lib/voice/`, schema `VoiceProfile`/`VoicePreference`
+Speaker enrollment + a per-tenant/user voice-focus default (OPEN / MY_VOICE / TEAM_SESSION) so the
+hands-free assistant can scope who it listens to. Both tables are tenant-scoped to the Phase-12 checklist
+(RLS ENABLE+FORCE, `(tenantId,id)` uniques, composite FKs); the enrollment reference is local/vendor-ref
+metadata, not raw audio.
+
+### 13. Feedback → automation loop — `src/lib/feedback/` (+ `.github/workflows/feedback-*`)
+In-app bug reports / feature requests (`FeedbackTicket` + `FeedbackAttachment` auto-screenshot) and
+assistant thumbs-down feedback feed an **automation** pipeline (`AutomationRun`): REPORT_ONLY / PLAN_MODE /
+AGENTIC_FIX modes open a plan or an auto-fix PR (never auto-merge). Tenant-scoped + RLS; guarded by a
+suite (`verify:feedback`, `-idempotency`, `-security`, `-fence`, `-domain`). The auto-fix change-fence is
+security-relevant — see [[security-register]].
+
 ## How a typical write flows
 1. UI (or the assistant) calls a **server action** — or a **work-order task is completed**, which builds the same core input.
 2. The action runs inside the **tenant context** → Prisma auto-injects `tenantId`; **RLS** enforces it at Postgres.
@@ -197,4 +250,4 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-05 (plan 043): cap management wired into work orders (CAP_MGMT task type + capManagementTx, pulse-air CapKind, délestage two-leg RACK template, batch completion, issue_cap_management_wo assistant tool). Prior refresh 2026-07-03 (Next 16.2, 89 Prisma models; Phase 9/9.1 + Cellarhand rebrand). Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-11 (auto brain-refresh): 110 Prisma models (~3.6k lines). New since last marker — migration kernel (Phase 3, seed-not-replay §11), voice biometrics/focus (§12), feedback→automation loop (§13), developer support/"god mode" impersonation (§1), ledger reversal chains + group rack + gated manual-seed reversal + lot archival lifecycle (§2), inherited-cost-transfer reversal + OPENING_BALANCE component (§4). Prior refresh 2026-07-05 (plan 043): cap management in work orders. Ask Claude to refresh after each phase.*

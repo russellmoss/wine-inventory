@@ -156,5 +156,31 @@ TEMPLATE — copy this block for each new decision:
   `src/lib/{ledger,cost,transform,blend,compliance}` (caught by `verify:naming`'s static scan).
 - **Status:** 🟢 (built + guarded by `verify:naming`; winery-scale volumes)
 
+## Migration kernel — bulk import → cutover-seed publish (Phase 3)
+- **What:** an import batch stages many `MigrationSeedLot`/`SeedPosition` rows, then **publish**
+  (`src/lib/migration/publish.ts`) posts one cutover `SEED` per lot/vessel into the live ledger + cost DAG,
+  and archives legacy operational rows (`LegacyOperation`) without folding them (MIGRATE-1).
+- **Fine until:** an onboarding batch is a few hundred lots/positions — a one-shot publish inside a bounded
+  set of `runLedgerWrite` seeds.
+- **What breaks at scale:** a large winery cutover (thousands of lots × positions × analysis readings)
+  publishing in one pass could push the publish transaction(s) toward `LEDGER_TX_TIMEOUT_MS`, and the
+  archive tables grow unbounded per import.
+- **Tripwire:** a publish whose seed count climbs into the thousands or whose tx approaches the timeout;
+  `LegacyOperation`/`MigrationSeedPosition` row counts per batch growing faster than the reconcile UI can
+  page. **Escape hatch (not built):** chunk publish into batched seed posts with a resumable cursor.
+- **Status:** 🟢 (built + guarded by `verify:migration`; single-winery onboarding scale)
+
+## Reversal chains — recursive later-blocker walk (cascade undo)
+- **What:** `previewReversalChain` (`src/lib/ledger/reverse.ts`) recursively calls `laterTouchedBlockers`
+  to collect every downstream op that must unwind before the target, then reverses them LIFO. Each step is
+  a fresh reversibility check + a compensating CORRECTION.
+- **Fine until:** an operator undoes a recent op with a short tail of later activity on the same positions.
+- **What breaks at scale:** a deep chain (undo an old op under a long history) fans out one blocker query
+  per step and one `reverseOperationCore` per step — O(chain length) queries + writes in a single action.
+- **Tripwire:** a preview/execute whose step count runs into the dozens+, or the recursive blocker walk
+  dominating an undo action's latency. **Escape hatch (not built):** batch the blocker fetch / cap chain
+  depth with an explicit "too deep — undo newer ops first" refusal.
+- **Status:** 🟢 (built + guarded by `verify:reverse`; winery-scale timelines)
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*
