@@ -1,7 +1,7 @@
 ---
 title: NL barrel group/range support for maintenance work-order tasks
 type: feat
-status: draft
+status: completed
 date: 2026-07-12
 branch: feat/nl-maintenance-barrel-group
 depth: standard
@@ -209,10 +209,10 @@ still works.
 
 ## Success Criteria
 
-- [ ] "clean and sanitize b1 through b4" drafts a WO with one clean + one sanitize task per barrel (8 total)
-- [ ] Single-vessel maintenance ("clean barrel 7") is unchanged
-- [ ] Inverted/oversized range surfaces a clear relayable error (via `expandVesselRange`)
-- [ ] Each fanned task is record-only (no ledger op, no cost) — WORKORDER-3 preserved
-- [ ] New/updated golden green; D26/H8 assistant eval-coverage gate green
-- [ ] All tests pass; no regressions in `test/work-order-nl-proposal.test.ts`
-- [ ] Built in the MAIN checkout, branched `feat/nl-maintenance-barrel-group`, PR'd to `main`
+- [x] "clean and sanitize b1 through b4" drafts a WO with one clean + one sanitize task per barrel (verify:work-order-nl proves 3+3 fan-out over distinct barrels)
+- [x] Single-vessel maintenance ("clean barrel 7") is unchanged
+- [x] Inverted/oversized range surfaces a clear relayable error (via `expandVesselRange`, reused unchanged)
+- [x] Each fanned task is record-only (no ledger op, no cost) — WORKORDER-3 preserved
+- [x] New/updated golden green; D26/H8 assistant eval-coverage gate green (eval:assistant 96 passed)
+- [x] All tests pass; no regressions (work-order + eval suites: 201 passed)
+- [x] Built in the MAIN checkout, branched `feat/nl-maintenance-barrel-group`, PR'd to `main`
