@@ -100,6 +100,31 @@ describe("A2 payload class-split (ledger-safety hardening at instantiation)", ()
   });
 });
 
+describe("A4 per-task assignee plumbing", () => {
+  it("carries assigneeId to the CreateTaskInput column, not into plannedPayload", () => {
+    const [task] = instantiateTaskBuilds(
+      [{ taskType: "SANITIZE", title: "Sanitize T3", values: { vesselId: "v1" }, assigneeId: "user-maria" }],
+      RESOLVED,
+    );
+    expect(task.assigneeId).toBe("user-maria");
+    expect((task.plannedPayload as Record<string, unknown>).assigneeId).toBeUndefined();
+  });
+
+  it("defaults to null when no per-task assignee is given (inherits the order lead)", () => {
+    const [task] = instantiateTaskBuilds([{ taskType: "SANITIZE", values: { vesselId: "v1" } }], RESOLVED);
+    expect(task.assigneeId).toBeNull();
+  });
+
+  it("strips an assigneeId smuggled inside values (reserved payload key)", () => {
+    const [task] = instantiateTaskBuilds(
+      [{ taskType: "SANITIZE", values: { vesselId: "v1", assigneeId: "spoofed" } }],
+      RESOLVED,
+    );
+    expect((task.plannedPayload as Record<string, unknown>).assigneeId).toBeUndefined();
+    expect(task.assigneeId).toBeNull();
+  });
+});
+
 describe("A1 assertUserTaskTypeSafe (the record-only safety line)", () => {
   it("accepts a NOTE-kind record-only type", () => {
     expect(() => assertUserTaskTypeSafe(CUSTOM_WEIGH)).not.toThrow();

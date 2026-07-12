@@ -376,6 +376,10 @@ export type TaskBuild = {
   // WorkOrderTask's plannedPayload so completion-time dependency refs survive reordering/retries/fanout
   // (Unit 5). NOT part of the freshness fingerprint (the signed payload already HMAC-protects it).
   taskKey?: string;
+  // Plan 053 A4: per-task assignee — a User id already resolved server-side (email is a transient UI
+  // lookup hint, never persisted from here; SF3). Omitted → inherits the order-level assignee. It rides
+  // as a first-class CreateTaskInput column, NOT in plannedPayload (assigneeId is a reserved payload key).
+  assigneeId?: string | null;
 };
 
 /** Instantiate an explicit flat list of task builds into CreateTaskInput[] (validates each taskType +
@@ -391,6 +395,7 @@ export function instantiateTaskBuilds(builds: TaskBuild[], vocab: ResolvedTaskVo
     return {
       seq: i + 1,
       groupSeq: b.groupSeq ?? 0,
+      assigneeId: b.assigneeId ?? null,
       kind: def.kind,
       title: b.title?.trim() || def.label,
       opType: def.opType ?? null,
