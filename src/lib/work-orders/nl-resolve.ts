@@ -8,6 +8,7 @@ import { expandVesselRange, resolveGroupByName } from "@/lib/vessels/range";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { computeDoseTotal, convertDoseToStock } from "@/lib/cellar/additions-math";
+import { guessPackagingFactor, theoreticalConsumption, type PackagingPlanLine } from "@/lib/bottling/packaging-bom";
 import { TASK_VOCABULARY, type TaskBuild, type ResolvedTaskVocabulary } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { buildWorkOrderReadiness, assertFreshReadiness } from "@/lib/work-orders/proposal-readiness";
@@ -208,6 +209,46 @@ async function resolvePressSource(intent: { sourceVessel?: string; sourceLot?: s
   return null;
 }
 
+// Plan 055a (J2): the read-side packaging estimate — "how many corks/bottles for 500 cases?". Pure over
+// the shipped factor math + on-hand; no write. Named items resolve individually; else this SKU's last-run
+// BoM; else nothing (with a note). Exported for the estimate_packaging_needs assistant read tool.
+export type PackagingEstimateLine = { label: string; materialId: string; per: "bottle" | "case"; factor: number; needed: number; onHand: number | null; shortfall: number };
+export type PackagingEstimate = { bottles: number; cases: number; lines: PackagingEstimateLine[]; note?: string };
+
+export async function estimatePackagingNeeds(
+  input: { skuName?: string; cases?: number; bottles?: number; packaging?: string[] },
+  opts?: { tenantId?: string },
+): Promise<PackagingEstimate> {
+  const run = async (): Promise<PackagingEstimate> => {
+    const bottles = input.cases != null && input.cases > 0 ? Math.round(input.cases * 12) : input.bottles != null && input.bottles > 0 ? Math.round(input.bottles) : 0;
+    const all = await listMaterials();
+    let base: { materialId: string; per: "bottle" | "case"; factor: number }[] = [];
+    if (input.packaging && input.packaging.length > 0) {
+      base = input.packaging.map((ref) => {
+        const m = matchPackaging(all, ref);
+        const g = guessPackagingFactor(materialDisplayName(m), m.kind);
+        return { materialId: m.id, per: g.per, factor: g.factor };
+      });
+    } else if (input.skuName) {
+      base = await lastRunPackagingForSku(input.skuName);
+    }
+    const byId = new Map(all.map((m) => [m.id, m]));
+    const lines: PackagingEstimateLine[] = base.map((l) => {
+      const m = byId.get(l.materialId);
+      const needed = theoreticalConsumption(l, bottles);
+      const onHand = m && m.onHand != null ? Number(m.onHand) : null;
+      return { label: m ? materialDisplayName(m) : l.materialId, materialId: l.materialId, per: l.per, factor: l.factor, needed, onHand, shortfall: onHand != null ? Math.max(0, needed - onHand) : 0 };
+    });
+    return {
+      bottles,
+      cases: Math.ceil(bottles / 12),
+      lines,
+      ...(base.length === 0 ? { note: "Name the packaging (e.g. glass, cork, capsule, labels, case box), or bottle this SKU once so its packaging can be reused." } : {}),
+    };
+  };
+  return opts?.tenantId ? runAsTenant(opts.tenantId, run) : run();
+}
+
 function categoryOfMaterial(m: CellarMaterialDTO): MaterialCategory {
   return (m.category ?? categoryOf(m.kind)) as MaterialCategory;
 }
@@ -260,6 +301,39 @@ function matchMaterialByRef(all: CellarMaterialDTO[], ref: string, opts: { scope
 /** Additions/fining: doseable additives only (WORKORDER-3). */
 function matchMaterial(all: CellarMaterialDTO[], ref: string): CellarMaterialDTO {
   return matchMaterialByRef(all, ref, { scope: materialScopeForTask({ opType: "ADDITION" }), doseableOnly: true });
+}
+
+/** Plan 055a: packaging materials for a BOTTLE task — PACKAGING (+ generic OTHER) scope, never dosed. */
+function matchPackaging(all: CellarMaterialDTO[], ref: string): CellarMaterialDTO {
+  return matchMaterialByRef(all, ref, { scope: materialScopeForTask({ opType: "BOTTLE" }) });
+}
+
+/** Plan 055a: "our standard packaging" → the packaging BoM (materialId + per + factor) from THIS SKU's
+ * most-recent bottling WO task. Returns [] when no prior run exists (→ the assistant authors the bottling
+ * task with no packaging and tells the user to set it in the builder). qty is re-derived by the caller. */
+async function lastRunPackagingForSku(skuName: string): Promise<Omit<PackagingPlanLine, "qty">[]> {
+  const key = skuName.trim().toLowerCase();
+  if (!key) return [];
+  const recent = await prisma.workOrderTask.findMany({
+    where: { opType: "BOTTLE" },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    select: { plannedPayload: true },
+  });
+  for (const t of recent) {
+    const p = (t.plannedPayload ?? {}) as { skuName?: unknown; packaging?: unknown };
+    if (typeof p.skuName !== "string" || p.skuName.trim().toLowerCase() !== key) continue;
+    if (!Array.isArray(p.packaging) || p.packaging.length === 0) continue;
+    const lines = (p.packaging as Record<string, unknown>[])
+      .map((l) => ({
+        materialId: typeof l.materialId === "string" ? l.materialId : "",
+        per: l.per === "case" ? ("case" as const) : ("bottle" as const),
+        factor: typeof l.factor === "number" && l.factor > 0 ? l.factor : 1,
+      }))
+      .filter((l) => l.materialId);
+    if (lines.length) return lines;
+  }
+  return [];
 }
 
 /** Map a natural-language select value onto a task type's controlled vocabulary (case/diacritic-
@@ -619,6 +693,58 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       };
       taskBuilds.push({ taskType: "HARVEST_WEIGH_IN", title: "Fruit intake / weigh-in", values, taskKey: randomUUID() });
       tasks.push({ seq, kind: "HARVEST_WEIGH_IN", title: "Fruit intake / weigh-in", summary: `Weigh in fruit${intent.block ? ` (${intent.block})` : ""}; block${intent.blockId ? " prefilled," : " and"} weights entered on the floor`, entities: [] });
+      continue;
+    }
+
+    if (intent.kind === "BOTTLE") {
+      // Author-only (BOTTLE is TASK_COVERAGE "runtime"): source vessels, final bottle count, measured ABV,
+      // and destination are floor-entered on BottlingTaskForm. A named vessel is a display hint for the
+      // summary only. The packaging BoM + planned bottle count are captured here (Plan 055a / 056).
+      const skuName = intent.skuName?.trim() || null;
+      const skuVintage = intent.skuVintage;
+      const plannedBottles = intent.cases != null ? Math.round(intent.cases * 12) : intent.bottles != null ? Math.round(intent.bottles) : null;
+
+      // Resolve the packaging lines per J1: named items → resolve each (PACKAGING/OTHER scope, `#id` pins
+      // survive from a choice-token); else "standard" → copy this SKU's last run; else none. qty derives
+      // from the planned bottle count × factor (0 when the count is unknown — the floor enters actuals).
+      let packagingLines: { materialId: string; per: "bottle" | "case"; factor: number }[] = [];
+      const packagingEntities: { role: string; label: string; id: string }[] = [];
+      if (intent.packaging && intent.packaging.length > 0) {
+        const all = await listMaterials();
+        for (const ref of intent.packaging) {
+          const m = matchPackaging(all, ref);
+          const g = guessPackagingFactor(materialDisplayName(m), m.kind);
+          packagingLines.push({ materialId: m.id, per: g.per, factor: g.factor });
+          packagingEntities.push({ role: "packaging", label: materialDisplayName(m), id: m.id });
+        }
+      } else if (intent.standardPackaging && skuName) {
+        packagingLines = await lastRunPackagingForSku(skuName);
+      }
+      const packaging = packagingLines.map((l) => ({ ...l, qty: plannedBottles != null ? theoreticalConsumption(l, plannedBottles) : 0 }));
+
+      const skuLabel = skuName ? `${skuName}${skuVintage != null ? ` ${skuVintage}` : ""}` : "the finished wine";
+      const title = skuName ? `Bottle ${skuLabel}` : "Bottling";
+      const values = {
+        ...(skuName ? { skuName } : {}),
+        ...(skuVintage != null ? { skuVintage } : {}),
+        ...(plannedBottles != null ? { packagingBottles: plannedBottles } : {}),
+        ...(packaging.length ? { packaging } : {}),
+        ...(intent.note ? { note: intent.note } : {}),
+      };
+      taskBuilds.push({ taskType: "BOTTLE", title, values, taskKey: randomUUID() });
+      const caseText = plannedBottles != null ? ` ~${Math.ceil(plannedBottles / 12)} cases (${plannedBottles} bottles)` : "";
+      const pkgText = packaging.length
+        ? `; packaging: ${packagingEntities.length ? packagingEntities.map((e) => e.label).join(", ") : `${packaging.length} line(s) from the last run`}`
+        : intent.standardPackaging
+          ? "; no prior run to copy packaging from — add it in the builder"
+          : "";
+      tasks.push({
+        seq,
+        kind: "BOTTLE",
+        title,
+        summary: `Bottle ${skuLabel}${caseText}${intent.vessel ? ` from ${intent.vessel}` : ""}${pkgText}. Source vessels, final count, ABV and destination entered on the floor.`,
+        entities: packagingEntities,
+      });
       continue;
     }
 

@@ -7,7 +7,7 @@ import { materialDisplayName } from "@/lib/cellar/materials";
 import { listMaterials } from "@/lib/cellar/materials";
 import { findScopedBlocks, type ScopedBlock } from "../scope";
 import type { AppUser } from "@/lib/access";
-import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
 import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
@@ -75,26 +75,63 @@ function inputForPinnedMaterial(draft: NlWorkOrderDraft, index: number, material
   };
 }
 
+const PACKAGING_SCOPE = materialScopeForTask({ opType: "BOTTLE" }) ?? [];
+
+/** Plan 055a: pin a chosen PACKAGING material onto one entry of a BOTTLE task's `packaging` array by
+ * rewriting that entry to `#id` (mirrors inputForPinnedMaterial for additions). */
+function inputForPinnedPackaging(draft: NlWorkOrderDraft, index: number, itemIdx: number, materialId: string): Record<string, unknown> {
+  const tasks = draft.intents.map((intent, i): NlWorkOrderIntent => {
+    if (i !== index || intent.kind !== "BOTTLE" || !intent.packaging) return intent;
+    return { ...intent, packaging: intent.packaging.map((p, k) => (k === itemIdx ? `#${materialId}` : p)) };
+  });
+  return {
+    schemaVersion: NL_WORK_ORDER_SCHEMA_VERSION,
+    sourceText: draft.sourceText,
+    title: draft.title,
+    ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
+    ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    tasks,
+  };
+}
+
+function choiceOption(draft: NlWorkOrderDraft, m: CellarMaterialDTO, resumeInput: Record<string, unknown>) {
+  return {
+    label: materialDisplayName(m),
+    sublabel: [m.kind, m.stockUnit ? `${m.onHand ?? 0} ${m.stockUnit} on hand` : null, `ref ${m.id.replace(/-/g, "").slice(0, 6)}`]
+      .filter(Boolean)
+      .join(" - "),
+    resume: signResume("propose_work_order", resumeInput),
+  };
+}
+
 async function materialChoiceIfNeeded(draft: NlWorkOrderDraft): Promise<ChoiceRequest | null> {
   const all = await listMaterials();
   for (const [index, intent] of draft.intents.entries()) {
-    if (intent.kind !== "ADDITION" && intent.kind !== "FINING") continue;
-    if (intent.material.trim().startsWith("#")) continue;
-    const matches = materialMatches(all, intent.material);
-    if (matches.length <= 1) continue;
-    const doseable = matches.filter((m) => isDoseableCategory(catOf(m)));
-    if (doseable.length <= 1) continue;
-    return {
-      needsChoice: true,
-      prompt: `Which "${intent.material}" do you mean?`,
-      options: doseable.slice(0, 25).map((m) => ({
-        label: materialDisplayName(m),
-        sublabel: [m.kind, m.stockUnit ? `${m.onHand ?? 0} ${m.stockUnit} on hand` : null, `ref ${m.id.replace(/-/g, "").slice(0, 6)}`]
-          .filter(Boolean)
-          .join(" - "),
-        resume: signResume("propose_work_order", inputForPinnedMaterial(draft, index, m.id)),
-      })),
-    };
+    if (intent.kind === "ADDITION" || intent.kind === "FINING") {
+      if (intent.material.trim().startsWith("#")) continue;
+      const matches = materialMatches(all, intent.material);
+      if (matches.length <= 1) continue;
+      const doseable = matches.filter((m) => isDoseableCategory(catOf(m)));
+      if (doseable.length <= 1) continue;
+      return {
+        needsChoice: true,
+        prompt: `Which "${intent.material}" do you mean?`,
+        options: doseable.slice(0, 25).map((m) => choiceOption(draft, m, inputForPinnedMaterial(draft, index, m.id))),
+      };
+    }
+    // Plan 055a: an ambiguous packaging name on a BOTTLE task → picker (never invent an id).
+    if (intent.kind === "BOTTLE" && intent.packaging) {
+      for (const [itemIdx, ref] of intent.packaging.entries()) {
+        if (ref.trim().startsWith("#")) continue;
+        const inScope = materialMatches(all, ref).filter((m) => PACKAGING_SCOPE.includes(catOf(m)));
+        if (inScope.length <= 1) continue;
+        return {
+          needsChoice: true,
+          prompt: `Which "${ref}" do you mean?`,
+          options: inScope.slice(0, 25).map((m) => choiceOption(draft, m, inputForPinnedPackaging(draft, index, itemIdx, m.id))),
+        };
+      }
+    }
   }
   return null;
 }
@@ -156,7 +193,7 @@ function previewText(proposal: ReturnType<typeof proposalDetails>): string {
 export const proposeWorkOrderTool: AssistantTool = {
   name: "propose_work_order",
   description:
-    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (run-time inputs — picks, fractions, weights, measured volume — are entered on the execute screen, but CRUSH process defaults ARE settable here: destemmed, crusherOn, crushedPct e.g. 50 for '50% crushed'/'50% rollers on', mustTempC — they prefill the execute crush form; whenever the user names the fruit/lot, pass `block` on the HARVEST_WEIGH_IN and CRUSH tasks — on weigh-in it prefills the block, on crush it names the fruit in the title); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); group racking BARREL_DOWN (one source tank into a barrel group/range via `toGroup`, e.g. 'barrel down T12 into B101-B110') and RACK_TO_TANK (a barrel group/range back into one tank via `fromGroup`) as ONE reviewable task; and explicit checklist NOTE. `toGroup`/`fromGroup` may be a range ('B101-B110'), a saved group name, or a comma list. Non-vessel equipment/floor cleaning and bottling are NOT supported here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
+    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (run-time inputs — picks, fractions, weights, measured volume — are entered on the execute screen, but CRUSH process defaults ARE settable here: destemmed, crusherOn, crushedPct e.g. 50 for '50% crushed'/'50% rollers on', mustTempC — they prefill the execute crush form; whenever the user names the fruit/lot, pass `block` on the HARVEST_WEIGH_IN and CRUSH tasks — on weigh-in it prefills the block, on crush it names the fruit in the title); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); group racking BARREL_DOWN (one source tank into a barrel group/range via `toGroup`, e.g. 'barrel down T12 into B101-B110') and RACK_TO_TANK (a barrel group/range back into one tank via `fromGroup`) as ONE reviewable task; BOTTLE (bottle a vessel into a finished SKU with its packaging dry-goods — pass `skuName`, `skuVintage`, an estimated `cases` or `bottles`, and either `packaging` (named dry goods: glass, cork, capsule, labels, case boxes) or `standardPackaging: true` for 'our usual packaging' which copies this SKU's last run; the source vessels, final bottle count, measured ABV and destination are entered on the execute screen); and explicit checklist NOTE. `toGroup`/`fromGroup` may be a range ('B101-B110'), a saved group name, or a comma list. Non-vessel equipment/floor cleaning is NOT supported here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -177,7 +214,7 @@ export const proposeWorkOrderTool: AssistantTool = {
                 "RACK", "TOPPING", "ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT",
                 "CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE",
                 "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL",
-                "BARREL_DOWN", "RACK_TO_TANK", "NOTE",
+                "BARREL_DOWN", "RACK_TO_TANK", "BOTTLE", "NOTE",
               ],
             },
             from: { type: "string", description: "Source vessel for RACK/TOPPING, or source tank for BARREL_DOWN." },
@@ -211,6 +248,12 @@ export const proposeWorkOrderTool: AssistantTool = {
             op: { type: "string", enum: ["PRESS", "SAIGNEE"], description: "PRESS task operation." },
             pressCycle: { type: "string", description: "Optional named press cycle/program for a PRESS task." },
             block: { type: "string", description: "Vineyard block / fruit lot for HARVEST_WEIGH_IN and CRUSH, e.g. 'Russian River Pinot Noir (Block 1)'. Pass this whenever the user names the fruit. On weigh-in it resolves to the real block and prefills the execute screen (an ambiguous name shows a picker); on crush it names the fruit in the task title/instructions so the crew knows which to pull." },
+            skuName: { type: "string", description: "BOTTLE: the finished wine's name, e.g. 'Estate Cab'." },
+            skuVintage: { type: "number", description: "BOTTLE: the finished wine's vintage year." },
+            cases: { type: "number", description: "BOTTLE: estimated cases to bottle (×12 bottles). Sizes the packaging BoM + reservation; the final count is entered on the floor." },
+            bottles: { type: "number", description: "BOTTLE: estimated bottle count, if given instead of cases." },
+            packaging: { type: "array", items: { type: "string" }, description: "BOTTLE: named packaging dry goods to consume (glass, cork, capsule, front/back labels, case box). Each resolves to a PACKAGING material; ambiguous names show a picker." },
+            standardPackaging: { type: "boolean", description: "BOTTLE: use this SKU's usual packaging — copies the packaging bill-of-materials from its most recent bottling run. Use when the user says 'our standard/usual packaging'." },
             lab: { type: "string", description: "Lab name for a SAMPLE_PULL task." },
             sendNow: { type: "boolean", description: "For SAMPLE_PULL: mark the sample sent to the lab at pull time." },
             panelName: { type: "string" },
