@@ -489,6 +489,33 @@ export async function listTemplatesWithSpec(tenantId: string): Promise<{ id: str
   });
 }
 
+/** Plan 053 A6: org members for the per-task assignee picker. `member` is a GLOBAL (non-tenant) table
+ * keyed by organizationId, so it is queried directly (not through the tenant RLS extension). */
+export type OrgMemberRow = { userId: string; name: string; email: string };
+export async function listOrgMembers(tenantId: string): Promise<OrgMemberRow[]> {
+  const members = await prisma.member.findMany({
+    where: { organizationId: tenantId },
+    select: { userId: true, user: { select: { name: true, email: true } } },
+    orderBy: { id: "asc" },
+  });
+  return members.map((m) => ({ userId: m.userId, name: m.user?.name?.trim() || m.user?.email || "Member", email: m.user?.email ?? "" }));
+}
+
+/** Plan 053 A6: candidate predecessor work orders for the "runs after" cross-order dependency picker —
+ * the tenant's non-terminal WOs (a finished/cancelled order isn't a useful prerequisite to add). */
+export type DependableWorkOrderRow = { id: string; number: number; title: string; status: string };
+export async function listDependableWorkOrders(tenantId: string): Promise<DependableWorkOrderRow[]> {
+  return runAsTenant(tenantId, async () => {
+    const wos = await prisma.workOrder.findMany({
+      where: { status: { in: ["DRAFT", "ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] } },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+      select: { id: true, number: true, title: true, status: true },
+    });
+    return wos.map((w) => ({ id: w.id, number: w.number, title: w.title, status: w.status }));
+  });
+}
+
 export type TemplateListRow = { id: string; code: string; name: string; category: string | null; isSystem: boolean; archivedAt: string | null; blockCount: number };
 
 /** The builder's template list (plan 034). System + custom, block count derived from the current

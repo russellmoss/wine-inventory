@@ -20,7 +20,9 @@ import {
   archiveTemplateCore,
   unarchiveTemplateCore,
 } from "@/lib/work-orders/templates";
-import type { TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import type { TemplateSpec, TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
@@ -125,6 +127,49 @@ export const createWorkOrderFromTemplateAction = action(
       );
     }
     const res = await createWorkOrderFromTemplateCore(actor, coreInput);
+    revalidateWorkOrders(res.workOrderId);
+    return res;
+  },
+);
+
+/** Plan 053 A6: create a DRAFT work order from the palette builder — a flat TaskBuild[] carrying groupSeq
+ * (sequential groups) + per-task assigneeId, with no template lock. Re-runs the shared readiness gate
+ * server-side, resolves the tenant vocabulary, instantiates, creates, then wires any WO->WO dependencies. */
+export const createWorkOrderFromBuildsAction = action(
+  async (
+    { actor },
+    input: {
+      title?: string;
+      instructions?: string;
+      assigneeEmail?: string | null;
+      dueAt?: Date | null;
+      autoFinalize?: boolean;
+      taskBuilds: TaskBuild[];
+      dependsOnWorkOrderIds?: string[];
+      readinessFingerprint?: string | null;
+    },
+  ) => {
+    const builds = Array.isArray(input.taskBuilds) ? input.taskBuilds : [];
+    if (builds.length === 0) throw new ActionError("A work order needs at least one task.");
+    await gateWorkOrderReadinessForWrite(
+      builds,
+      { source: "manual", title: input.title?.trim() || "Work order", assigneeEmail: input.assigneeEmail ?? null, dueDate: null },
+      input.readinessFingerprint,
+    );
+    const tasks = instantiateTaskBuilds(builds, await resolveTaskVocabulary());
+    const res = await createWorkOrderCore(actor, {
+      title: input.title?.trim() || "Work order",
+      instructions: input.instructions,
+      assigneeEmail: input.assigneeEmail ?? null,
+      dueAt: input.dueAt ?? null,
+      autoFinalize: input.autoFinalize,
+      tasks,
+    });
+    for (const depId of input.dependsOnWorkOrderIds ?? []) {
+      if (depId && depId !== res.workOrderId) {
+        await addWorkOrderDependencyCore(actor, { workOrderId: res.workOrderId, dependsOnWorkOrderId: depId });
+      }
+    }
     revalidateWorkOrders(res.workOrderId);
     return res;
   },
