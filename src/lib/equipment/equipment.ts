@@ -4,15 +4,15 @@ import { runAsTenant, requireTenantId } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
+import { EQUIPMENT_KINDS, EQUIPMENT_STATUSES, type EquipmentKind, type EquipmentStatus, type EquipmentRow } from "@/lib/equipment/vocab";
 
 // Plan 053 B10: the equipment registry (presses, filters, pumps…) + its advisory link to work-order tasks.
 // kind/status are VALIDATED STRINGS (no Prisma enum). Referenced equipment is advisory (WORKORDER-2):
-// surfaced on tasks, never blocks. Maintenance of equipment stays record-only (no ledger/cost).
-
-export const EQUIPMENT_KINDS = ["press", "filter", "pump", "tank_accessory", "hose", "other"] as const;
-export const EQUIPMENT_STATUSES = ["available", "in_use", "maintenance", "retired"] as const;
-export type EquipmentKind = (typeof EQUIPMENT_KINDS)[number];
-export type EquipmentStatus = (typeof EQUIPMENT_STATUSES)[number];
+// surfaced on tasks, never blocks. Maintenance of equipment stays record-only (no ledger/cost). The
+// client-safe vocab (kinds/statuses/labels/EquipmentRow) lives in ./vocab so client components can import
+// it without pulling this server module.
+export { EQUIPMENT_KINDS, EQUIPMENT_STATUSES, equipmentKindLabel } from "@/lib/equipment/vocab";
+export type { EquipmentKind, EquipmentStatus, EquipmentRow } from "@/lib/equipment/vocab";
 
 export function normalizeEquipmentKind(v: unknown): EquipmentKind {
   if (typeof v === "string" && (EQUIPMENT_KINDS as readonly string[]).includes(v)) return v as EquipmentKind;
@@ -22,10 +22,6 @@ export function normalizeEquipmentStatus(v: unknown): EquipmentStatus {
   if (v == null || v === "") return "available";
   if (typeof v === "string" && (EQUIPMENT_STATUSES as readonly string[]).includes(v)) return v as EquipmentStatus;
   throw new ActionError(`Invalid equipment status "${String(v)}" (allowed: ${EQUIPMENT_STATUSES.join(", ")}).`);
-}
-
-export function equipmentKindLabel(kind: string): string {
-  return kind.charAt(0).toUpperCase() + kind.slice(1).replace(/_/g, " ");
 }
 
 export type EquipmentInput = { name: string; kind: string; status?: string | null; locationId?: string | null; notes?: string | null };
@@ -87,8 +83,6 @@ export async function attachTaskEquipmentCore(taskId: string, equipmentIds: stri
     skipDuplicates: true,
   });
 }
-
-export type EquipmentRow = { id: string; name: string; kind: string; status: string; locationId: string | null; notes: string | null; isActive: boolean };
 
 /** All equipment for a tenant (active first). K12-safe: tenantId explicit + runAsTenant. */
 export async function listEquipment(tenantId: string, opts?: { activeOnly?: boolean }): Promise<EquipmentRow[]> {

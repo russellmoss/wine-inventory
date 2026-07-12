@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Badge, Eyebrow } from "@/components/ui";
-import { EQUIPMENT_KINDS, EQUIPMENT_STATUSES, equipmentKindLabel, type EquipmentRow } from "@/lib/equipment/equipment";
+import { EQUIPMENT_KINDS, EQUIPMENT_STATUSES, equipmentKindLabel, type EquipmentRow } from "@/lib/equipment/vocab";
 import { createEquipmentAction, updateEquipmentAction, archiveEquipmentAction } from "@/lib/equipment/actions";
 
 type LocationRow = { id: string; name: string; kind: string | null };
