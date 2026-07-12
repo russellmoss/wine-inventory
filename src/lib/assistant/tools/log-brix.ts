@@ -20,7 +20,7 @@ type LogBrixInput = {
 export const logBrixTool: AssistantTool = {
   name: "log_brix",
   description:
-    "Record a NEW Brix (sugar / ripeness) reading for a vineyard block. Use when the user wants to log, add, or record a Brix measurement. This does NOT save immediately — it returns a preview the user must confirm in the UI.",
+    "Record a NEW Brix (sugar / RIPENESS) reading for a VINEYARD BLOCK — grapes still on the vine, tracking ripening toward harvest. Use ONLY when the reading is against a block/vineyard. Do NOT use this for sugar on must or wine that is already picked and sitting in a tank/barrel (a mid-ferment tank sugar reading) — that is a cellar-lot reading; use record_measurement with the `brix` field against the vessel/lot instead. This does NOT save immediately — it returns a preview the user must confirm in the UI.",
   kind: "write",
   inputSchema: {
     type: "object",

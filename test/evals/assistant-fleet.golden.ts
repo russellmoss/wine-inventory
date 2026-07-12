@@ -136,6 +136,13 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     note: "block RIPENESS Brix is log_brix — NOT record_measurement (the confusable this guards)",
   },
   {
+    utterance: "Took a sample of tank T4 mid-ferment — log 10.5 Brix on it",
+    tool: "record_measurement",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "the OTHER side of the confusable: sugar on must/wine already IN a vessel is a cellar-lot reading (record_measurement `brix`), NOT a vineyard-block ripeness reading (log_brix)",
+  },
+  {
     utterance: "Tasting note on lot 24-CS-A: bright cherry, grippy tannins, 92 points",
     tool: "record_tasting_note",
     kind: "write",

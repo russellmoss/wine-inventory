@@ -13,7 +13,9 @@ import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
 // whole-vessel — the one-lot invariant); a blend vessel is ambiguous → resolveLotTarget asks which lot.
 // Values are accepted as typed (no plausibility ceiling) and shown in the confirm card so a typo is
 // visible before confirming. This is NOT the block-ripeness Brix reading (that's log_brix, on a vineyard
-// block at harvest) — this is a cellar lot's chemistry.
+// block with grapes still on the vine / at harvest) — this is a cellar lot's chemistry, INCLUDING a
+// sugar/Brix reading on must or wine already fermenting in a vessel (mid-ferment sugar rides the `brix`
+// analyte here, on the LOT — never pushed back to a vineyard block).
 
 // Seeded analytes → their canonical (analyte, default unit). Free-form analytes ride the `other` array.
 // Exported so the lab-sample results tool (record_sample_results) reuses the SAME analyte vocabulary.
@@ -26,6 +28,10 @@ export const ANALYTES: Record<string, { analyte: string; unit: string }> = {
   rs: { analyte: "RS", unit: "g/L" },
   malic: { analyte: "Malic", unit: "g/L" },
   alcohol: { analyte: "Alcohol", unit: "%" },
+  // Sugar/Brix on must or wine ALREADY in a vessel (mid-ferment tracking) — the cellar-lot reading, as
+  // opposed to the vineyard-block ripeness Brix at harvest (log_brix). Lets a tank sugar reading attach
+  // to the LOT instead of being misrouted to a block.
+  brix: { analyte: "Brix", unit: "°Bx" },
 };
 
 export type OtherReading = { analyte?: string; value?: number; unit?: string };
@@ -62,7 +68,7 @@ export const analyteProps = Object.fromEntries(
 export const recordMeasurementTool: AssistantTool = {
   name: "record_measurement",
   description:
-    "Record a bench/lab chemistry panel (pH, TA, free/total SO₂, VA, residual sugar, malic, alcohol, …) against a LOT. Use when the user reports lab/bench numbers for a wine lot. Give the lot by code (e.g. 'lot 24-CS-A') or the vessel (e.g. 'tank 5'); a blend vessel will ask which lot. This is NOT the vineyard-block ripeness Brix reading (that's log_brix). Does NOT save immediately — returns a preview to confirm.",
+    "Record a bench/lab reading (pH, TA, free/total SO₂, VA, residual sugar, malic, alcohol, and Brix/sugar) against a LOT. Use when the user reports numbers for wine or must that is ALREADY in a vessel — including a mid-ferment SUGAR/BRIX reading on a tank/barrel (pass it as `brix`). Give the lot by code (e.g. 'lot 24-CS-A') or the vessel (e.g. 'tank 5' / 'T4'); a vessel holding more than one lot will ask which lot. This is NOT the vineyard-block ripeness Brix reading on grapes still on the vine at harvest — that's log_brix. Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
