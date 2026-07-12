@@ -213,6 +213,51 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
   });
 });
 
+describe("Plan 060 — maintenance across a barrel group/range", () => {
+  it("carries a barrel group onto a maintenance intent as vesselGroup (no single vessel)", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "clean b1 through b4",
+      tasks: [{ kind: "clean", group: "B1-B4" }],
+    });
+    expect(draft.intents[0]).toEqual({ kind: "CLEAN", vesselGroup: "B1-B4" });
+  });
+
+  it("accepts the group under barrels/vessels/vesselGroup aliases", () => {
+    for (const raw of [
+      { kind: "sanitize", barrels: "B1-B4" },
+      { kind: "sanitize", vessels: "B1,B2,B3,B4" },
+      { kind: "sanitize", vesselGroup: "west row" },
+    ]) {
+      const draft = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [raw] });
+      expect(draft.intents[0]).toMatchObject({ kind: "SANITIZE" });
+      expect((draft.intents[0] as { vesselGroup?: string }).vesselGroup).toBeTruthy();
+      expect((draft.intents[0] as { vessel?: string }).vessel).toBeUndefined();
+    }
+  });
+
+  it("leaves the single-vessel maintenance path unchanged", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "clean barrel 7",
+      tasks: [{ kind: "clean", vessel: "barrel 7" }],
+    });
+    expect(draft.intents[0]).toEqual({ kind: "CLEAN", vessel: "barrel 7" });
+  });
+
+  it("prefers the group when both a group and a single vessel are given", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "x",
+      tasks: [{ kind: "clean", vessel: "barrel 7", group: "B1-B4" }],
+    });
+    expect(draft.intents[0]).toEqual({ kind: "CLEAN", vesselGroup: "B1-B4" });
+  });
+
+  it("throws a group-aware error when a maintenance task has neither a vessel nor a group", () => {
+    expect(() =>
+      canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "sanitize", material: "citric" }] }),
+    ).toThrow(/needs a vessel, or a barrel group\/range/i);
+  });
+});
+
 
 describe("Plan 055a — BOTTLE authoring canonicalization", () => {
   it("canonicalizes a structured BOTTLE intent with standard packaging", () => {
