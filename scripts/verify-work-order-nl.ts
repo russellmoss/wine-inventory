@@ -221,6 +221,26 @@ async function main() {
     const b1 = await prisma.vessel.create({ data: { code: "ZZNL-B1", type: "BARREL", capacityL: 225 } });
     const b2 = await prisma.vessel.create({ data: { code: "ZZNL-B2", type: "BARREL", capacityL: 225 } });
     const b3 = await prisma.vessel.create({ data: { code: "ZZNL-B3", type: "BARREL", capacityL: 225 } });
+
+    // ── Plan 060: maintenance across a barrel group/range fans out to one record-only task per barrel. ──
+    const maintProposal = await buildNlWorkOrderProposal({
+      sourceText: "clean and sanitize the three barrels",
+      title: "ZZNL barrel maintenance group",
+      tasks: [
+        { kind: "CLEAN", vesselGroup: "ZZNL-B1, ZZNL-B2, ZZNL-B3" },
+        { kind: "SANITIZE", vesselGroup: "ZZNL-B1, ZZNL-B2, ZZNL-B3" },
+      ],
+    });
+    assert(maintProposal.status === "ready", "barrel-group maintenance proposal is ready");
+    const maintTypes = maintProposal.taskBuilds.map((t) => t.taskType);
+    assert(maintTypes.filter((t) => t === "CLEAN").length === 3, `CLEAN fanned to 3 barrels (got ${maintTypes.filter((t) => t === "CLEAN").length})`);
+    assert(maintTypes.filter((t) => t === "SANITIZE").length === 3, `SANITIZE fanned to 3 barrels (got ${maintTypes.filter((t) => t === "SANITIZE").length})`);
+    assert(maintProposal.taskBuilds.length === 6, `two maintenance kinds × 3 barrels = 6 task builds (got ${maintProposal.taskBuilds.length})`);
+    const cleanVesselIds = new Set(maintProposal.taskBuilds.filter((t) => t.taskType === "CLEAN").map((t) => (t.values as { vesselId?: string }).vesselId));
+    assert(cleanVesselIds.size === 3 && cleanVesselIds.has(b1.id) && cleanVesselIds.has(b2.id) && cleanVesselIds.has(b3.id), "each fanned CLEAN task targets a distinct barrel (b1/b2/b3)");
+    const oneVessel = await buildNlWorkOrderProposal({ sourceText: "clean one barrel", title: "ZZNL one barrel", tasks: [{ kind: "CLEAN", vessel: "ZZNL-B1" }] });
+    assert(oneVessel.taskBuilds.length === 1 && oneVessel.taskBuilds[0].taskType === "CLEAN", "single-vessel maintenance still produces exactly one task");
+
     const grProposal = await buildNlWorkOrderProposal({
       sourceText: "barrel down the tank into the three barrels",
       title: "ZZNL group rack",
