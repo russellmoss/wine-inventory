@@ -313,6 +313,51 @@ async function main() {
   const reemit = await emitExportForSnapshot(snap!.id);
   assert(reemit.emitted === 0, `re-emit is idempotent — 0 new lines (got ${reemit.emitted})`);
 
+  // Plan 056: PACKAGING dry goods capitalize into the bottled-goods COGS. SEPARATE fixture — the liquid-
+  // only bottling above is untouched (its totals must not move). Bottle with a 2-line packaging BoM and
+  // assert the PACKAGING bucket, the liquid+packaging total, per-bottle, and the stock draw-down.
+  console.log("\n── PACKAGING capitalizes into bottled-goods COGS (Plan 056) ──");
+  const pkgTank = await prisma.vessel.create({ data: { code: "ZZ-COST-PKGTANK", type: "TANK", capacityL: 500 } });
+  createdVesselIds.push(pkgTank.id);
+  const pkgLot = await seedLot("ZZCOST-PKG", pkgTank.id, 300);
+  await receiveBulkWineCostCore(ACTOR, { lotId: pkgLot, totalCost: 600, note: "pkg fixture bulk ($2/L)" });
+  // Costed packaging supplies (counted stock, eaches): glass @ $0.80/ea, cork @ $0.10/ea.
+  const glass = await prisma.cellarMaterial.create({ data: { name: "ZZCOST Glass 750", normalizedKey: normalizeMaterialKey("ZZCOST Glass 750"), kind: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
+  createdMaterialIds.push(glass.id);
+  await prisma.supplyLot.create({ data: { materialId: glass.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.80" } });
+  const cork = await prisma.cellarMaterial.create({ data: { name: "ZZCOST Cork", normalizedKey: normalizeMaterialKey("ZZCOST Cork"), kind: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
+  createdMaterialIds.push(cork.id);
+  await prisma.supplyLot.create({ data: { materialId: cork.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.10" } });
+
+  const pkgBottles = 100;
+  const pkgConsumedL = round2(0.75 * pkgBottles); // 75 L
+  const pkgLiquid = r2(2 * pkgConsumedL); // 75 L × $2/L = $150
+  const expectedPkgCost = r2(100 * 0.8 + 100 * 0.1); // 100 glass + 100 cork = $90
+  await executeBottling(
+    {
+      vesselIds: [pkgTank.id], destinationLocationId: loc.id, skuName: "ZZCOST PkgWine", skuVintage: 2024,
+      bottlesProduced: pkgBottles, date: new Date(), abv: 13.5,
+      packaging: [{ materialId: glass.id, qty: 100 }, { materialId: cork.id, qty: 100 }],
+    },
+    ACTOR,
+  );
+  const pkgSnap = await prisma.bottlingCostSnapshot.findFirst({ where: { sku: { name: "ZZCOST PkgWine" } }, orderBy: { createdAt: "desc" } });
+  assert(!!pkgSnap, "a COGS snapshot was frozen for the packaging run");
+  const pkgBd = pkgSnap!.componentBreakdown as Record<string, number>;
+  assert(near(pkgBd.PACKAGING ?? 0, expectedPkgCost), `componentBreakdown.PACKAGING = $${expectedPkgCost} (got ${pkgBd.PACKAGING})`);
+  assert(near(pkgBd.MATERIAL ?? 0, pkgLiquid), `liquid MATERIAL still $${pkgLiquid} (got ${pkgBd.MATERIAL})`);
+  assert(near(Number(pkgSnap!.totalRunCost), pkgLiquid + expectedPkgCost), `totalRunCost = liquid $${pkgLiquid} + packaging $${expectedPkgCost} (got ${Number(pkgSnap!.totalRunCost)})`);
+  assert(Number(pkgSnap!.costPerBottle) === Math.round(((pkgLiquid + expectedPkgCost) / pkgBottles) * 100) / 100, `cost-per-bottle reflects liquid + packaging (got ${Number(pkgSnap!.costPerBottle)})`);
+  assert(pkgSnap!.basisCompleteness === "KNOWN", "packaging snapshot basis is KNOWN (all lots costed)");
+  const glassAfter = r2(Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: glass.id } })).qtyRemaining));
+  const corkAfter = r2(Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: cork.id } })).qtyRemaining));
+  assert(glassAfter === 100 && corkAfter === 100, `packaging stock drew down 200 → 100 each (glass ${glassAfter}, cork ${corkAfter})`);
+  const pkgCons = await prisma.supplyConsumption.findMany({ where: { operationId: pkgSnap!.costBasisAsOfOperationId! } });
+  assert(pkgCons.length === 2, `two packaging SupplyConsumption rows on the bottle op (got ${pkgCons.length})`);
+  const pkgCostLines = await prisma.costLine.findMany({ where: { operationId: pkgSnap!.costBasisAsOfOperationId!, component: "PACKAGING" } });
+  assert(pkgCostLines.length === 2 && pkgCostLines.every((l) => l.lotId === null), "two PACKAGING CostLines (lotId null) on the bottle op");
+  assert(near(pkgCostLines.reduce((a, l) => a + Number(l.amount), 0), expectedPkgCost), "PACKAGING CostLines sum to the run's packaging cost (single source of truth)");
+
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }
 
