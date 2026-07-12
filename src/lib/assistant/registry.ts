@@ -56,6 +56,7 @@ import { createWorkOrderTool } from "./tools/create-work-order";
 import { completeTaskTool } from "./tools/complete-task";
 import { reviewTaskTool } from "./tools/review-task";
 import { manageWorkOrderTool } from "./tools/manage-work-order";
+import { groupRackBatchTool } from "./tools/group-rack-batch";
 import { topUpTool } from "./tools/top-up";
 import { filterVesselTool } from "./tools/filter-vessel";
 import { logCapManagementTool } from "./tools/log-cap-management";
@@ -120,6 +121,7 @@ const ALL_TOOLS: AssistantTool[] = [
   completeTaskTool,
   reviewTaskTool,
   manageWorkOrderTool,
+  groupRackBatchTool,
   topUpTool,
   filterVesselTool,
   logCapManagementTool,

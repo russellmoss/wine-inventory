@@ -348,9 +348,6 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
  * PENDING (that was the only batch). To reverse a fully-completed task under review, use rejectTaskCore.
  */
 export async function rejectGroupRackBatchCore(user: ApproverUser, actor: LedgerActor, input: { taskId: string; reason?: string }): Promise<ReviewResult> {
-  const auth = canApprove(user);
-  if (!auth.ok) throw new ActionError(auth.reason, "FORBIDDEN");
-
   const task = await prisma.workOrderTask.findUnique({ where: { id: input.taskId }, select: { id: true, status: true, currentAttemptId: true, workOrderId: true, opType: true, kind: true, plannedPayload: true } });
   if (!task) throw new ActionError("That task no longer exists.");
   if (task.kind !== "OPERATION" || task.opType !== "RACK" || !hasGroupRackPayload(task.plannedPayload)) {
@@ -362,6 +359,17 @@ export async function rejectGroupRackBatchCore(user: ApproverUser, actor: Ledger
   const batches = await liveGroupRackBatches(task.id);
   if (batches.length === 0) throw new ActionError("There's no recorded batch to undo.", "CONFLICT");
   const latest = batches[0];
+
+  // Plan 055 D1 (LOOSEN, replaces the 054 admin-only gate): an admin/developer may undo any batch; a
+  // non-admin may self-undo their OWN last batch while the task is still IN_PROGRESS (a mid-work correction,
+  // not a review action). Settled / PENDING_APPROVAL reversal still goes through rejectTaskCore (admin) — the
+  // IN_PROGRESS guard above already excludes those states here.
+  if (!canApprove(user).ok) {
+    const owner = await prisma.workOrderTaskAttempt.findUnique({ where: { id: latest.id }, select: { completedById: true } });
+    if (!owner?.completedById || owner.completedById !== user.id) {
+      throw new ActionError("Only an admin (or the person who recorded this batch) can undo it.", "FORBIDDEN");
+    }
+  }
   const remaining = batches.slice(1);
   const nextStatus: WorkOrderTaskStatus = remaining.length > 0 ? "IN_PROGRESS" : "PENDING";
 

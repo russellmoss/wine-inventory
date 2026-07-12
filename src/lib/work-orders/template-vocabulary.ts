@@ -417,6 +417,10 @@ export type TaskBuild = {
   // Plan 053 B10: advisory required-equipment ids (EquipmentAsset). Not part of CreateTaskInput/payload;
   // the create action attaches them as WorkOrderTaskEquipment rows after the tasks exist. Never blocks.
   equipmentIds?: string[];
+  // Plan 055 U8: per-task priority (LOW/NORMAL/HIGH/URGENT, validated by normalizeWorkOrderPriority at the
+  // resolver). Rides as a first-class CreateTaskInput column (the WorkOrderTask.priority column already
+  // persists via lifecycle.ts). Omitted → null (defaults to NORMAL in the UI). NOT a plannedPayload key.
+  priority?: string | null;
 };
 
 /** Instantiate an explicit flat list of task builds into CreateTaskInput[] (validates each taskType +
@@ -438,6 +442,7 @@ export function instantiateTaskBuilds(builds: TaskBuild[], vocab: ResolvedTaskVo
       seq: i + 1,
       groupSeq: b.groupSeq ?? 0,
       assigneeId: b.assigneeId ?? null,
+      priority: b.priority ?? null,
       kind: def.kind,
       title: b.title?.trim() || def.label,
       opType: def.opType ?? null,

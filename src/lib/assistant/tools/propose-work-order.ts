@@ -8,9 +8,10 @@ import { listMaterials } from "@/lib/cellar/materials";
 import { findScopedBlocks, type ScopedBlock } from "../scope";
 import type { AppUser } from "@/lib/access";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
-import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
-import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
-import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
+import { createWorkOrderFromBuildsAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import type { TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { findEquipmentByName, listEquipment, equipmentKindLabel, type EquipmentRow } from "@/lib/equipment/equipment";
+import { listOrgMembers, type OrgMemberRow } from "@/lib/work-orders/data";
 import {
   buildNlWorkOrderCommitArgs,
   buildNlWorkOrderProposal,
@@ -183,6 +184,116 @@ async function resolveWeighInBlocks(user: AppUser, draft: NlWorkOrderDraft): Pro
   return null;
 }
 
+/** Plan 055 U3: pin a chosen EquipmentAsset onto an EQUIPMENT_SERVICE task (both the display name and the
+ * resolved id) for a choice-token resume — mirrors inputForPinnedBlock. */
+function inputForPinnedEquipment(draft: NlWorkOrderDraft, index: number, eq: EquipmentRow): Record<string, unknown> {
+  const tasks = draft.intents.map((intent, i): NlWorkOrderIntent => {
+    if (i !== index || intent.kind !== "EQUIPMENT_SERVICE") return intent;
+    return { ...intent, equipment: eq.name, equipmentId: eq.id };
+  });
+  return {
+    schemaVersion: NL_WORK_ORDER_SCHEMA_VERSION,
+    sourceText: draft.sourceText,
+    title: draft.title,
+    ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
+    ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    tasks,
+  };
+}
+
+/**
+ * Plan 055 U3: resolve the EquipmentAsset named on each EQUIPMENT_SERVICE task to a real id, so it attaches
+ * to the task (via the TaskBuild's equipmentIds) and can have its status transitioned on completion. Runs at
+ * the tool layer (findEquipmentByName needs the tenant + the choice token needs signResume). Mirrors
+ * materialChoiceIfNeeded: a unique match is pinned onto the intent in place; several → a clickable picker; a
+ * name that resolves to nothing throws (an equipment-service task with no equipment has nothing to service).
+ */
+async function resolveEquipmentForTasks(tenantId: string, draft: NlWorkOrderDraft): Promise<ChoiceRequest | null> {
+  for (const [index, intent] of draft.intents.entries()) {
+    if (intent.kind !== "EQUIPMENT_SERVICE" || intent.equipmentId) continue;
+    const ref = intent.equipment?.trim();
+    if (!ref) continue; // canonicalizer already required equipment or equipmentId
+    const matches = await findEquipmentByName(tenantId, ref);
+    if (matches.length === 0) {
+      throw new Error(`No active equipment matches "${ref}". Add it to the equipment registry first, or check the name.`);
+    }
+    if (matches.length === 1) {
+      intent.equipmentId = matches[0].id;
+      intent.equipment = matches[0].name;
+      continue;
+    }
+    return {
+      needsChoice: true,
+      prompt: `Which equipment do you mean for "${ref}"?`,
+      options: matches.slice(0, 25).map((e) => ({
+        label: e.name,
+        sublabel: [equipmentKindLabel(e.kind), e.status ? equipmentKindLabel(e.status) : null].filter(Boolean).join(" · ") || undefined,
+        resume: signResume("propose_work_order", inputForPinnedEquipment(draft, index, e)),
+      })),
+    };
+  }
+  return null;
+}
+
+/** Plan 055 U7: pin a chosen org member onto a task's per-task assignee (name + resolved User id) for a
+ * choice-token resume. assignee/assigneeId are NlTaskMeta fields present on every intent kind. */
+function inputForPinnedAssignee(draft: NlWorkOrderDraft, index: number, member: OrgMemberRow): Record<string, unknown> {
+  const tasks = draft.intents.map((intent, i): NlWorkOrderIntent => (i !== index ? intent : { ...intent, assignee: member.name, assigneeId: member.userId }));
+  return {
+    schemaVersion: NL_WORK_ORDER_SCHEMA_VERSION,
+    sourceText: draft.sourceText,
+    title: draft.title,
+    ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
+    ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    tasks,
+  };
+}
+
+/** Match org members by name (exact-normalized first, then a two-directional substring). */
+function matchMembersByName(members: OrgMemberRow[], ref: string): OrgMemberRow[] {
+  const n = norm(ref);
+  if (!n) return [];
+  const exact = members.filter((m) => norm(m.name) === n);
+  if (exact.length) return exact;
+  return members.filter((m) => {
+    const h = norm(m.name);
+    return h && (h.includes(n) || n.includes(h));
+  });
+}
+
+/**
+ * Plan 055 U7: resolve a per-task assignee (name/email) to a User id, so it lands on the task's assigneeId.
+ * An exact email match wins; else a fuzzy name match. A unique hit is pinned in place; several → a picker
+ * (same signed-choice pattern as materials/equipment); NO match degrades gracefully (the per-task assignee
+ * is dropped — the task inherits the order-level assignee — rather than blocking the whole work order).
+ */
+async function resolveAssigneesForTasks(tenantId: string, draft: NlWorkOrderDraft): Promise<ChoiceRequest | null> {
+  let members: OrgMemberRow[] | null = null;
+  for (const [index, intent] of draft.intents.entries()) {
+    const ref = intent.assignee?.trim();
+    if (!ref || intent.assigneeId) continue;
+    if (!members) members = await listOrgMembers(tenantId);
+    const byEmail = members.filter((m) => m.email && m.email.toLowerCase() === ref.toLowerCase());
+    const matches = byEmail.length ? byEmail : matchMembersByName(members, ref);
+    if (matches.length === 0) continue; // graceful degrade — inherit the order-level assignee
+    if (matches.length === 1) {
+      intent.assigneeId = matches[0].userId;
+      intent.assignee = matches[0].name;
+      continue;
+    }
+    return {
+      needsChoice: true,
+      prompt: `Which person do you mean for "${ref}"?`,
+      options: matches.slice(0, 25).map((m) => ({
+        label: m.name,
+        sublabel: m.email || undefined,
+        resume: signResume("propose_work_order", inputForPinnedAssignee(draft, index, m)),
+      })),
+    };
+  }
+  return null;
+}
+
 function previewText(proposal: ReturnType<typeof proposalDetails>): string {
   const taskText = proposal.tasks.map((task) => `#${task.seq} ${task.summary}`).join("; ");
   const warningCount = proposal.warnings.length;
@@ -193,7 +304,7 @@ function previewText(proposal: ReturnType<typeof proposalDetails>): string {
 export const proposeWorkOrderTool: AssistantTool = {
   name: "propose_work_order",
   description:
-    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (run-time inputs — picks, fractions, weights, measured volume — are entered on the execute screen, but CRUSH process defaults ARE settable here: destemmed, crusherOn, crushedPct e.g. 50 for '50% crushed'/'50% rollers on', mustTempC — they prefill the execute crush form; whenever the user names the fruit/lot, pass `block` on the HARVEST_WEIGH_IN and CRUSH tasks — on weigh-in it prefills the block, on crush it names the fruit in the title); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); group racking BARREL_DOWN (one source tank into a barrel group/range via `toGroup`, e.g. 'barrel down T12 into B101-B110') and RACK_TO_TANK (a barrel group/range back into one tank via `fromGroup`) as ONE reviewable task; BOTTLE (bottle a vessel into a finished SKU with its packaging dry-goods — pass `skuName`, `skuVintage`, an estimated `cases` or `bottles`, and either `packaging` (named dry goods: glass, cork, capsule, labels, case boxes) or `standardPackaging: true` for 'our usual packaging' which copies this SKU's last run; the source vessels, final bottle count, measured ABV and destination are entered on the execute screen); and explicit checklist NOTE. `toGroup`/`fromGroup` may be a range ('B101-B110'), a saved group name, or a comma list. Non-vessel equipment/floor cleaning is NOT supported here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
+    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (run-time inputs — picks, fractions, weights, measured volume — are entered on the execute screen, but CRUSH process defaults ARE settable here: destemmed, crusherOn, crushedPct e.g. 50 for '50% crushed'/'50% rollers on', mustTempC — they prefill the execute crush form; whenever the user names the fruit/lot, pass `block` on the HARVEST_WEIGH_IN and CRUSH tasks — on weigh-in it prefills the block, on crush it names the fruit in the title); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); group racking BARREL_DOWN (one source tank into a barrel group/range via `toGroup`, e.g. 'barrel down T12 into B101-B110') and RACK_TO_TANK (a barrel group/range back into one tank via `fromGroup`) as ONE reviewable task; BOTTLE (bottle a vessel into a finished SKU with its packaging dry-goods — pass `skuName`, `skuVintage`, an estimated `cases` or `bottles`, and either `packaging` (named dry goods: glass, cork, capsule, labels, case boxes) or `standardPackaging: true` for 'our usual packaging' which copies this SKU's last run; the source vessels, final bottle count, measured ABV and destination are entered on the execute screen); EQUIPMENT_SERVICE (service a press/pump/filter or other EquipmentAsset by name — pass `equipment`, e.g. 'the basket press'; optionally `setStatus` to transition it, e.g. maintenance→available, on completion; the equipment is resolved by name and an ambiguous name shows a picker); and explicit checklist NOTE. `toGroup`/`fromGroup` may be a range ('B101-B110'), a saved group name, or a comma list. Per-task planning: set `assignee` (a name or email; resolved to a real member, ambiguous → picker), `priority` (LOW/NORMAL/HIGH/URGENT), and `groupSeq` on any task — when the user sequences work ('X and then Y', 'do X, followed by Y') put later steps in a higher groupSeq so they run after the earlier group. Floor/facility cleaning (not a vessel or a registered EquipmentAsset) is NOT supported here. Cross-order WO→WO dependencies are set in the visual builder, not here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -214,7 +325,7 @@ export const proposeWorkOrderTool: AssistantTool = {
                 "RACK", "TOPPING", "ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT",
                 "CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE",
                 "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL",
-                "BARREL_DOWN", "RACK_TO_TANK", "BOTTLE", "NOTE",
+                "BARREL_DOWN", "RACK_TO_TANK", "BOTTLE", "EQUIPMENT_SERVICE", "NOTE",
               ],
             },
             from: { type: "string", description: "Source vessel for RACK/TOPPING, or source tank for BARREL_DOWN." },
@@ -254,6 +365,11 @@ export const proposeWorkOrderTool: AssistantTool = {
             bottles: { type: "number", description: "BOTTLE: estimated bottle count, if given instead of cases." },
             packaging: { type: "array", items: { type: "string" }, description: "BOTTLE: named packaging dry goods to consume (glass, cork, capsule, front/back labels, case box). Each resolves to a PACKAGING material; ambiguous names show a picker." },
             standardPackaging: { type: "boolean", description: "BOTTLE: use this SKU's usual packaging — copies the packaging bill-of-materials from its most recent bottling run. Use when the user says 'our standard/usual packaging'." },
+            equipment: { type: "string", description: "EQUIPMENT_SERVICE: the equipment to service by name, e.g. 'the basket press', 'pump P2'. Resolved to a registered EquipmentAsset; an ambiguous name shows a picker." },
+            setStatus: { type: "string", enum: ["available", "in_use", "maintenance", "retired"], description: "EQUIPMENT_SERVICE: optionally set the equipment's status when the service is recorded (on completion), e.g. 'maintenance' or 'available'." },
+            assignee: { type: "string", description: "Per-task assignee: a member's name or email. Resolved to a real org member; an ambiguous name shows a picker; no match leaves the task on the order-level assignee." },
+            priority: { type: "string", enum: ["LOW", "NORMAL", "HIGH", "URGENT"], description: "Per-task priority. Only set it when the user says so." },
+            groupSeq: { type: "number", description: "Per-task sequential group index (0 = first group; tasks with the same index run in parallel). Use for same-work-order ordering: when the user says 'X and then Y' / 'followed by', put the later step in a higher group so it can't complete until the earlier group is done." },
             lab: { type: "string", description: "Lab name for a SAMPLE_PULL task." },
             sendNow: { type: "boolean", description: "For SAMPLE_PULL: mark the sample sent to the lab at pull time." },
             panelName: { type: "string" },
@@ -279,6 +395,10 @@ export const proposeWorkOrderTool: AssistantTool = {
     if (choice) return choice;
     const blockChoice = await resolveWeighInBlocks(ctx.user, draft);
     if (blockChoice) return blockChoice;
+    const equipmentChoice = await resolveEquipmentForTasks(tenantId, draft);
+    if (equipmentChoice) return equipmentChoice;
+    const assigneeChoice = await resolveAssigneesForTasks(tenantId, draft);
+    if (assigneeChoice) return assigneeChoice;
     const proposal = await buildNlWorkOrderProposal(draft);
     if (proposal.status !== "ready") {
       const reasons = [...proposal.unresolved.map((u) => u.reason), ...proposal.warnings.filter((w) => w.severity === "blocking").map((w) => w.message)];
@@ -303,7 +423,36 @@ function commitArgs(raw: Record<string, unknown>): NlWorkOrderCommitArgs {
   };
 }
 
-export const commitProposeWorkOrder: Committer = async (_user, rawArgs) => {
+/**
+ * Plan 055 U4 (clean fold): revalidate the signed advisory ids at commit — equipment + per-task assignee can
+ * go stale between propose and confirm (archived equipment, a removed member). Both are advisory (never block
+ * a create), so a now-invalid id is DROPPED (equipment) / nulled to the order-level assignee, not a hard
+ * failure. This never changes the readiness fingerprint (which hashes only {taskType,title,values}), so the
+ * builder action's freshness re-check still matches the signed proposal.
+ */
+async function revalidateSignedIds(tenantId: string, builds: TaskBuild[]): Promise<TaskBuild[]> {
+  const needsEquip = builds.some((b) => Array.isArray(b.equipmentIds) && b.equipmentIds.length > 0);
+  const needsAssignee = builds.some((b) => !!b.assigneeId);
+  if (!needsEquip && !needsAssignee) return builds;
+  const [equipment, members] = await Promise.all([
+    needsEquip ? listEquipment(tenantId, { activeOnly: true }) : Promise.resolve([] as EquipmentRow[]),
+    needsAssignee ? listOrgMembers(tenantId) : Promise.resolve([] as OrgMemberRow[]),
+  ]);
+  const validEquip = new Set(equipment.map((e) => e.id));
+  const validMember = new Set(members.map((m) => m.userId));
+  return builds.map((b) => {
+    const next: TaskBuild = { ...b };
+    if (Array.isArray(next.equipmentIds)) {
+      const kept = next.equipmentIds.filter((id) => validEquip.has(id));
+      if (kept.length > 0) next.equipmentIds = kept;
+      else delete next.equipmentIds;
+    }
+    if (next.assigneeId && !validMember.has(next.assigneeId)) next.assigneeId = null;
+    return next;
+  });
+}
+
+export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
   // Hard-reject any non-current schema version (no upconversion). The signed token's 5-min TTL bounds the
   // exposure of an in-flight v1 token; the stale message tells the user to regenerate.
   if (rawArgs.schemaVersion != null && rawArgs.schemaVersion !== NL_WORK_ORDER_SCHEMA_VERSION) {
@@ -311,14 +460,25 @@ export const commitProposeWorkOrder: Committer = async (_user, rawArgs) => {
   }
   const args = commitArgs(rawArgs);
   if (args.taskBuilds.length === 0) throw new Error("This work-order proposal has no tasks.");
+  // Freshness fingerprint + pinned press-source liveness (the builder action re-gates readiness too, but
+  // only assertFreshNlWorkOrderProposal checks the pinned press source still holds its MUST lot).
   await assertFreshNlWorkOrderProposal(args);
 
-  const tasks = instantiateTaskBuilds(args.taskBuilds, await resolveTaskVocabulary());
-  const created = await createWorkOrderAction({
+  // Plan 055 U4 (LOCKED eng decision): commit through the SAME builder action the visual builder uses, so
+  // equipment attach (attachTaskEquipmentCore, inside the action) + any WO→WO deps ride ONE deterministic
+  // path. equipmentIds/assigneeId ride INSIDE the already-signed taskBuilds (never a new top-level arg), so
+  // signed-payload integrity holds. The builder action creates a DRAFT; we then issue it, preserving the
+  // existing "draft created, not issued" recovery when issue fails (e.g. a reservation conflict).
+  const tenantId = user.activeOrganizationId;
+  const taskBuilds = tenantId ? await revalidateSignedIds(tenantId, args.taskBuilds) : args.taskBuilds;
+  const taskCount = taskBuilds.length;
+
+  const created = await createWorkOrderFromBuildsAction({
     title: args.title,
-    tasks,
     assigneeEmail: args.assigneeEmail,
     dueAt: dueAtFromCommitArgs(args),
+    taskBuilds,
+    readinessFingerprint: args.fingerprint,
   });
 
   try {
@@ -326,7 +486,7 @@ export const commitProposeWorkOrder: Committer = async (_user, rawArgs) => {
     const warningSuffix =
       issued.reservationWarnings.length > 0 ? ` Warnings: ${issued.reservationWarnings.join(" ")}` : "";
     return {
-      message: `Issued work order #${created.number} "${args.title}" with ${tasks.length} task${tasks.length === 1 ? "" : "s"}.${warningSuffix}`,
+      message: `Issued work order #${created.number} "${args.title}" with ${taskCount} task${taskCount === 1 ? "" : "s"}.${warningSuffix}`,
       navigate: { path: entityPath("workOrder", created.workOrderId), label: `#${created.number} ${args.title}` },
     };
   } catch (e) {
