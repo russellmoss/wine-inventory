@@ -5,6 +5,8 @@ import { signProposal, signResume } from "../confirm";
 import { entityPath } from "../routes";
 import { materialDisplayName } from "@/lib/cellar/materials";
 import { listMaterials } from "@/lib/cellar/materials";
+import { findScopedBlocks, type ScopedBlock } from "../scope";
+import type { AppUser } from "@/lib/access";
 import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
 import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
@@ -97,6 +99,53 @@ async function materialChoiceIfNeeded(draft: NlWorkOrderDraft): Promise<ChoiceRe
   return null;
 }
 
+function inputForPinnedBlock(draft: NlWorkOrderDraft, index: number, block: ScopedBlock): Record<string, unknown> {
+  const tasks = draft.intents.map((intent, i): NlWorkOrderIntent => {
+    if (i !== index || intent.kind !== "HARVEST_WEIGH_IN") return intent;
+    return { ...intent, block: block.label, blockId: block.id };
+  });
+  return {
+    schemaVersion: NL_WORK_ORDER_SCHEMA_VERSION,
+    sourceText: draft.sourceText,
+    title: draft.title,
+    ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
+    ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    tasks,
+  };
+}
+
+/**
+ * Resolve the vineyard block named on each HARVEST_WEIGH_IN task to a real VineyardBlock id, so it flows to
+ * WorkOrderTask.blockId and prefills the weigh-in execute screen. Runs at the tool layer because the block
+ * resolver (findScopedBlocks) needs the AppUser for vineyard-access scoping, which the tenant-context NL
+ * core does not have. Mirrors materialChoiceIfNeeded: a unique match is pinned onto the intent in place; an
+ * ambiguous name returns a clickable picker (resume re-runs the tool with the chosen block pinned); no match
+ * degrades to the existing hint (the block still shows in the summary and is confirmed on the floor).
+ */
+async function resolveWeighInBlocks(user: AppUser, draft: NlWorkOrderDraft): Promise<ChoiceRequest | null> {
+  for (const [index, intent] of draft.intents.entries()) {
+    if (intent.kind !== "HARVEST_WEIGH_IN") continue;
+    if (!intent.block || intent.block.trim().startsWith("#") || intent.blockId) continue;
+    const blocks = await findScopedBlocks(user, { block: intent.block });
+    if (blocks.length === 0) continue; // graceful degrade: keep the free-text hint
+    if (blocks.length === 1) {
+      intent.blockId = blocks[0].id;
+      intent.block = blocks[0].label;
+      continue;
+    }
+    return {
+      needsChoice: true,
+      prompt: `Which block do you mean for "${intent.block}"?`,
+      options: blocks.slice(0, 25).map((b) => ({
+        label: b.label,
+        sublabel: [b.varietyName, b.vineyardName].filter(Boolean).join(" · ") || undefined,
+        resume: signResume("propose_work_order", inputForPinnedBlock(draft, index, b)),
+      })),
+    };
+  }
+  return null;
+}
+
 function previewText(proposal: ReturnType<typeof proposalDetails>): string {
   const taskText = proposal.tasks.map((task) => `#${task.seq} ${task.summary}`).join("; ");
   const warningCount = proposal.warnings.length;
@@ -107,7 +156,7 @@ function previewText(proposal: ReturnType<typeof proposalDetails>): string {
 export const proposeWorkOrderTool: AssistantTool = {
   name: "propose_work_order",
   description:
-    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (run-time inputs — picks, fractions, weights, measured volume — are entered on the execute screen, but CRUSH process defaults ARE settable here: destemmed, crusherOn, crushedPct e.g. 50 for '50% crushed'/'50% rollers on', mustTempC — they prefill the execute crush form); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); group racking BARREL_DOWN (one source tank into a barrel group/range via `toGroup`, e.g. 'barrel down T12 into B101-B110') and RACK_TO_TANK (a barrel group/range back into one tank via `fromGroup`) as ONE reviewable task; and explicit checklist NOTE. `toGroup`/`fromGroup` may be a range ('B101-B110'), a saved group name, or a comma list. Non-vessel equipment/floor cleaning and bottling are NOT supported here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
+    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (run-time inputs — picks, fractions, weights, measured volume — are entered on the execute screen, but CRUSH process defaults ARE settable here: destemmed, crusherOn, crushedPct e.g. 50 for '50% crushed'/'50% rollers on', mustTempC — they prefill the execute crush form; whenever the user names the fruit/lot, pass `block` on the HARVEST_WEIGH_IN and CRUSH tasks — on weigh-in it prefills the block, on crush it names the fruit in the title); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); group racking BARREL_DOWN (one source tank into a barrel group/range via `toGroup`, e.g. 'barrel down T12 into B101-B110') and RACK_TO_TANK (a barrel group/range back into one tank via `fromGroup`) as ONE reviewable task; and explicit checklist NOTE. `toGroup`/`fromGroup` may be a range ('B101-B110'), a saved group name, or a comma list. Non-vessel equipment/floor cleaning and bottling are NOT supported here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -161,7 +210,7 @@ export const proposeWorkOrderTool: AssistantTool = {
             sourceLot: { type: "string", description: "PRESS source lot. If that lot is split across vessels, the resolver asks which vessel." },
             op: { type: "string", enum: ["PRESS", "SAIGNEE"], description: "PRESS task operation." },
             pressCycle: { type: "string", description: "Optional named press cycle/program for a PRESS task." },
-            block: { type: "string", description: "Optional vineyard block hint for HARVEST_WEIGH_IN (confirmed on the floor)." },
+            block: { type: "string", description: "Vineyard block / fruit lot for HARVEST_WEIGH_IN and CRUSH, e.g. 'Russian River Pinot Noir (Block 1)'. Pass this whenever the user names the fruit. On weigh-in it resolves to the real block and prefills the execute screen (an ambiguous name shows a picker); on crush it names the fruit in the task title/instructions so the crew knows which to pull." },
             lab: { type: "string", description: "Lab name for a SAMPLE_PULL task." },
             sendNow: { type: "boolean", description: "For SAMPLE_PULL: mark the sample sent to the lab at pull time." },
             panelName: { type: "string" },
@@ -185,6 +234,8 @@ export const proposeWorkOrderTool: AssistantTool = {
     const draft = canonicalizeNlWorkOrderDraft(raw);
     const choice = await materialChoiceIfNeeded(draft);
     if (choice) return choice;
+    const blockChoice = await resolveWeighInBlocks(ctx.user, draft);
+    if (blockChoice) return blockChoice;
     const proposal = await buildNlWorkOrderProposal(draft);
     if (proposal.status !== "ready") {
       const reasons = [...proposal.unresolved.map((u) => u.reason), ...proposal.warnings.filter((w) => w.severity === "blocking").map((w) => w.message)];

@@ -21,9 +21,15 @@ export type NlWorkOrderIntent =
   // template-settable "what" the assistant can bake in; the run-time inputs (picks, destination, measured
   // volume) are still entered on the execute screen. These prefill the crush sub-form via plannedPayload,
   // so e.g. "50% crushed" lands in the % crushed field instead of defaulting to 100.
-  | { kind: "CRUSH"; destVessel?: string; destemmed?: boolean; crusherOn?: boolean; crushedPct?: number; mustTempC?: number; pressCycle?: string; note?: string }
+  // `block` is a free-text lot/vineyard-block label the assistant can name so the crew knows which fruit to
+  // pull; CRUSH has no formal block binding (it binds the harvest pick at run time), so this only stamps the
+  // task title/instructions.
+  | { kind: "CRUSH"; destVessel?: string; block?: string; destemmed?: boolean; crusherOn?: boolean; crushedPct?: number; mustTempC?: number; pressCycle?: string; note?: string }
   | { kind: "PRESS"; sourceVessel?: string; sourceLot?: string; destVessel?: string; op?: "PRESS" | "SAIGNEE" | string; pressCycle?: string; note?: string }
-  | { kind: "HARVEST_WEIGH_IN"; block?: string; note?: string }
+  // `block` is the human label (for the summary); `blockId` is a resolved VineyardBlock id pinned by the
+  // tool layer (which has the user for vineyard-access scoping). When blockId is present it flows to
+  // WorkOrderTask.blockId and prefills the weigh-in execute screen.
+  | { kind: "HARVEST_WEIGH_IN"; block?: string; blockId?: string; note?: string }
   | { kind: "PANEL"; vessel?: string; lot?: string; panelName?: string; note?: string }
   | { kind: "BRIX"; vessel?: string; lot?: string; note?: string }
   | { kind: "SAMPLE_PULL"; vessel?: string; lot?: string; lab?: string; sendNow?: boolean; note?: string }
@@ -398,6 +404,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       intents.push({
         kind: "CRUSH",
         ...(cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ?? cleanString(raw.vessel) ? { destVessel: (cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ?? cleanString(raw.vessel))! } : {}),
+        ...(cleanString(raw.block) ? { block: cleanString(raw.block)! } : {}),
         ...(destemmed != null ? { destemmed } : {}),
         ...(crusherOn != null ? { crusherOn } : {}),
         ...(crushedPct != null && crusherOn !== false ? { crushedPct } : {}),
@@ -421,7 +428,14 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       continue;
     }
     if (up === "HARVEST_WEIGH_IN") {
-      intents.push({ kind: "HARVEST_WEIGH_IN", ...(cleanString(raw.block) ? { block: cleanString(raw.block)! } : {}), ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
+      intents.push({
+        kind: "HARVEST_WEIGH_IN",
+        ...(cleanString(raw.block) ? { block: cleanString(raw.block)! } : {}),
+        // blockId is pinned by the tool layer (propose-work-order.ts) after vineyard-access-scoped
+        // resolution; it is never something the model supplies.
+        ...(cleanString(raw.blockId) ? { blockId: cleanString(raw.blockId)! } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
       continue;
     }
     // NOTE (the only remaining SUPPORTED kind).
