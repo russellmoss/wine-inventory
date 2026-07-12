@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { resolveLotTarget } from "../scope";
+import { resolveLotTargetOrChoice } from "../scope";
 import { receiveBulkWineCostAction } from "@/lib/cost/actions";
 import type { ReceiveBulkWineCostInput } from "@/lib/cost/receive";
 
@@ -31,7 +31,9 @@ export const recordBulkWineCostTool: AssistantTool = {
   async run(_ctx, rawInput) {
     const input = (rawInput ?? {}) as RawInput;
     if (typeof input.totalCost !== "number" || !(input.totalCost > 0)) throw new Error("What did it cost? Give a positive total.");
-    const { lotId, lotCode } = await resolveLotTarget({ lot: input.lot, vessel: input.vessel });
+    const resolved = await resolveLotTargetOrChoice({ lot: input.lot, vessel: input.vessel }, "record_bulk_wine_cost", input as Record<string, unknown>);
+    if (resolved.kind === "choice") return resolved.choice;
+    const { lotId, lotCode } = resolved.row;
     const preview = `Record a bulk-wine purchase cost of ${input.totalCost.toLocaleString()} for lot ${lotCode} (mid-process material cost node).`;
     const token = signProposal("record_bulk_wine_cost", {
       lotId,

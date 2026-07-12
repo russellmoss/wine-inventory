@@ -1073,10 +1073,12 @@ function ChoiceCard({ item, disabled, onPick }: { item: ChoiceItem; disabled: bo
             <button
               key={k}
               type="button"
+              aria-pressed={isChosen}
               onClick={() => onPick(opt)}
               disabled={disabled || locked}
               style={{
                 textAlign: "left",
+                minHeight: 44,
                 padding: "var(--space-2) var(--space-3)",
                 borderRadius: "var(--radius-md)",
                 border: `1px solid ${isChosen ? "var(--positive)" : "var(--border)"}`,

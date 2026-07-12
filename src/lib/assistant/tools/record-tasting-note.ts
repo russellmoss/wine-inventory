@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { resolveLotTarget } from "../scope";
+import { resolveLotTargetOrChoice } from "../scope";
 import { recordTastingNoteAction } from "@/lib/chemistry/actions";
 import type { RecordTastingNoteInput } from "@/lib/chemistry/tasting";
 
@@ -61,7 +61,9 @@ export const recordTastingNoteTool: AssistantTool = {
     if (prose.length === 0 && structure.length === 0 && !hasScore) {
       throw new Error("Add at least one tasting detail — aroma, flavor, a 1–5 structure score, an overall score, or notes.");
     }
-    const { lotId, lotCode } = await resolveLotTarget({ lot: input.lot, vessel: input.vessel });
+    const resolved = await resolveLotTargetOrChoice({ lot: input.lot, vessel: input.vessel }, "record_tasting_note", input as Record<string, unknown>);
+    if (resolved.kind === "choice") return resolved.choice;
+    const { lotId, lotCode } = resolved.row;
 
     const bits: string[] = [];
     if (input.aroma?.trim()) bits.push(`aroma: ${input.aroma.trim()}`);

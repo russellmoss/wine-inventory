@@ -32,7 +32,9 @@ export const manageSampleTool: AssistantTool = {
     const input = (rawInput ?? {}) as RawInput;
     const action = String(input.action ?? "");
     if (action !== "send" && action !== "cancel") throw new Error("Say whether to 'send' or 'cancel' the sample.");
-    const sample = await resolveOpenSample({ sampleId: input.sampleId, vessel: input.vessel, lot: input.lot });
+    const r = await resolveOpenSample({ sampleId: input.sampleId, vessel: input.vessel, lot: input.lot }, "manage_sample", input as Record<string, unknown>);
+    if (r.kind === "choice") return r.choice;
+    const sample = r.row;
 
     if (action === "send") {
       const preview = `Send the sample on lot ${sample.lotCode} to the lab${input.lab?.trim() ? ` (${input.lab.trim()})` : ""}${input.expectedAt ? `, results expected ${input.expectedAt}` : ""}.`;
