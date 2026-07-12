@@ -1,5 +1,5 @@
 import type { Prisma, CostBasisCompleteness, CostingMethod } from "@prisma/client";
-import { planDepletion, type SupplyLotView } from "@/lib/cost/deplete";
+import { planDepletion, type SupplyLotView, type DepletionPlan } from "@/lib/cost/deplete";
 import { round8 } from "@/lib/cost/rollup";
 import { convert } from "@/lib/units/measure";
 
@@ -21,6 +21,59 @@ export function stockConversionFactor(doseUnit: "g" | "mL", stockUnit: string): 
 }
 
 export type ConsumePerLot = { lotId: string; amount: number };
+
+export type DepleteSupplyInput = {
+  operationId: number;
+  materialId: string;
+  /** quantity to draw, ALREADY expressed in the material's stock unit (caller does any dose→stock or
+   * pack→each conversion first). */
+  qtyInStock: number;
+  method: CostingMethod;
+  policyVersion: number;
+};
+
+/**
+ * Plan 056 Unit 1 (DRY extract) — the SHARED stock draw-down step. Reads the material's on-hand
+ * SupplyLots, plans the depletion under `method` (FIFO/WA, oldest-first physical draw), decrements each
+ * drawn lot's `qtyRemaining`, and writes one `SupplyConsumption` row per drawn lot (identity-restorable
+ * on reversal via `reversalOfConsumptionId`). Below-stock draws to zero + reports the shortfall in the
+ * returned plan (never blocks — D14). It does NOT write CostLines: each caller records its own component
+ * lines (additions: `MATERIAL` per dosed wine lot; packaging: `PACKAGING`, lotId null, on the bottle op).
+ * Both `consumeMaterialCore` and `consumePackagingTx` call this, so stock draw-down has one source of
+ * truth. Behaviour is locked by the characterization tests in `test/cost-consume.test.ts`.
+ */
+export async function depleteSupplyLotsTx(tx: Prisma.TransactionClient, input: DepleteSupplyInput): Promise<DepletionPlan> {
+  const available = await tx.supplyLot.findMany({
+    where: { materialId: input.materialId, qtyRemaining: { gt: 0 } },
+    select: { id: true, qtyRemaining: true, unitCost: true, receivedAt: true },
+  });
+  const lots: SupplyLotView[] = available.map((l) => ({
+    id: l.id,
+    qtyRemaining: Number(l.qtyRemaining),
+    unitCost: l.unitCost == null ? null : Number(l.unitCost),
+    receivedAt: l.receivedAt.getTime(),
+  }));
+
+  const plan = planDepletion(lots, input.qtyInStock, input.method);
+
+  for (const line of plan.lines) {
+    await tx.supplyLot.update({ where: { id: line.supplyLotId }, data: { qtyRemaining: { decrement: line.qty } } });
+    await tx.supplyConsumption.create({
+      data: {
+        operationId: input.operationId,
+        supplyLotId: line.supplyLotId,
+        qty: line.qty,
+        unitCost: line.unitCost,
+        extendedCost: line.extendedCost,
+        methodUsed: input.method,
+        basisCompleteness: plan.completeness,
+        policyVersion: input.policyVersion,
+      },
+    });
+  }
+
+  return plan;
+}
 
 export type ConsumeInput = {
   operationId: number;
@@ -63,35 +116,15 @@ export async function consumeMaterialCore(tx: Prisma.TransactionClient, input: C
   }
 
   const qtyInStock = round8(totalAmount * factor);
-  const available = await tx.supplyLot.findMany({
-    where: { materialId: input.materialId, qtyRemaining: { gt: 0 } },
-    select: { id: true, qtyRemaining: true, unitCost: true, receivedAt: true },
+
+  // DRY (Plan 056 Unit 1): the SupplyLot draw-down + SupplyConsumption write is the shared step.
+  const plan = await depleteSupplyLotsTx(tx, {
+    operationId: input.operationId,
+    materialId: input.materialId,
+    qtyInStock,
+    method,
+    policyVersion,
   });
-  const lots: SupplyLotView[] = available.map((l) => ({
-    id: l.id,
-    qtyRemaining: Number(l.qtyRemaining),
-    unitCost: l.unitCost == null ? null : Number(l.unitCost),
-    receivedAt: l.receivedAt.getTime(),
-  }));
-
-  const plan = planDepletion(lots, qtyInStock, method);
-
-  // Deplete each drawn supply lot + write one SupplyConsumption row (identity-restorable on reversal).
-  for (const line of plan.lines) {
-    await tx.supplyLot.update({ where: { id: line.supplyLotId }, data: { qtyRemaining: { decrement: line.qty } } });
-    await tx.supplyConsumption.create({
-      data: {
-        operationId: input.operationId,
-        supplyLotId: line.supplyLotId,
-        qty: line.qty,
-        unitCost: line.unitCost,
-        extendedCost: line.extendedCost,
-        methodUsed: method,
-        basisCompleteness: plan.completeness,
-        policyVersion,
-      },
-    });
-  }
 
   // Allocate the depletion's cost across the dosed lots proportional to each lot's dose amount.
   await recordCostLines(tx, input, currency, policyVersion, plan.completeness, (p) => {

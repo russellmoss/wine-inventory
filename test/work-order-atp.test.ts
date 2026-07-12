@@ -87,4 +87,27 @@ describe("reservationIntentsForTask", () => {
     });
     expect(intents).toEqual([]);
   });
+
+  it("a BOTTLE task holds one MATERIAL_QTY (eaches) per planned packaging line (Plan 056)", () => {
+    const intents = reservationIntentsForTask({
+      id: "t6", opType: "BOTTLE", sourceVesselId: null, destVesselId: null, lotId: null, materialId: null, dueAt: null,
+      plannedPayload: { packaging: [{ materialId: "glass", qty: 1200 }, { materialId: "cork", qty: 1200 }, { materialId: "box", qty: 100 }] },
+    });
+    expect(intents).toEqual([
+      { kind: "MATERIAL_QTY", materialId: "glass", qty: 1200, unit: "unit" },
+      { kind: "MATERIAL_QTY", materialId: "cork", qty: 1200, unit: "unit" },
+      { kind: "MATERIAL_QTY", materialId: "box", qty: 100, unit: "unit" },
+    ]);
+  });
+
+  it("a BOTTLE task with no/empty packaging BoM reserves nothing; skips zero/blank lines", () => {
+    expect(reservationIntentsForTask({
+      id: "t7", opType: "BOTTLE", sourceVesselId: null, destVesselId: null, lotId: null, materialId: null, dueAt: null,
+      plannedPayload: { skuName: "Estate", skuVintage: 2026 },
+    })).toEqual([]);
+    expect(reservationIntentsForTask({
+      id: "t8", opType: "BOTTLE", sourceVesselId: null, destVesselId: null, lotId: null, materialId: null, dueAt: null,
+      plannedPayload: { packaging: [{ materialId: "glass", qty: 0 }, { materialId: "", qty: 10 }, { qty: 5 }] },
+    })).toEqual([]);
+  });
 });
