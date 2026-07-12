@@ -212,7 +212,8 @@ export function WorkOrderBuilderClient({
         const res = await createWorkOrderFromBuildsAction({
           title: title.trim() || undefined,
           assigneeEmail: leadEmail || null,
-          dueAt: dueAt ? new Date(dueAt) : null,
+          // Parse the yyyy-mm-dd as LOCAL midnight (not UTC) so the due date doesn't shift a day back.
+          dueAt: dueAt ? new Date(`${dueAt}T00:00:00`) : null,
           taskBuilds,
           dependsOnWorkOrderIds: dependsOn,
           readinessFingerprint: readiness?.fingerprint ?? null,
@@ -228,13 +229,15 @@ export function WorkOrderBuilderClient({
 
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 4px" }}>
+      {/* Responsive: stack the header + palette/canvas grids on narrow viewports (phones/tablets). */}
+      <style>{`@media (max-width: 760px){.wob-header-grid{grid-template-columns:1fr !important}.wob-main-grid{grid-template-columns:1fr !important}}`}</style>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 300, margin: 0 }}>New work order</h1>
         <Link href="/work-orders"><Button variant="ghost">Cancel</Button></Link>
       </div>
 
       <Card style={{ padding: 16, marginBottom: 16 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
+        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
           <label style={labelStyle}>Title
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Racking + topping — Block 12" />
           </label>
@@ -268,7 +271,7 @@ export function WorkOrderBuilderClient({
         )}
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 16 }}>
+      <div className="wob-main-grid" style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 16 }}>
         {/* Palette */}
         <Card style={{ padding: 12, alignSelf: "start" }}>
           <Eyebrow>Add a task</Eyebrow>

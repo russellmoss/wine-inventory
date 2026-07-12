@@ -16,9 +16,12 @@ import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } 
 export type WorkOrderTaskView = {
   id: string;
   seq: number;
+  groupSeq: number; // plan 053: sequential-group index (tasks in a group run in parallel)
   kind: "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE";
   status: string;
   title: string;
+  assigneeId: string | null;
+  assigneeName: string | null; // resolved from assigneeId for display
   opType: string | null;
   observationType: string | null;
   activityType: string | null;
@@ -51,21 +54,27 @@ export type WorkOrderDetail = {
   issuedAt: string | null;
   startedByEmail: string | null;
   tasks: WorkOrderTaskView[];
+  // Plan 053 A5: cross-order prerequisites — this WO's tasks can't complete until these are done.
+  dependsOn: { id: string; number: number; title: string; status: string }[];
 };
 
 function taskView(t: {
-  id: string; seq: number; kind: string; status: string; title: string; opType: string | null;
+  id: string; seq: number; groupSeq: number; kind: string; status: string; title: string; opType: string | null;
   observationType: string | null; activityType: string | null; instructions: string | null; sourceVesselId: string | null;
-  destVesselId: string | null; lotId: string | null; materialId: string | null; blockId: string | null; assigneeEmail: string | null;
+  destVesselId: string | null; lotId: string | null; materialId: string | null; blockId: string | null;
+  assigneeId: string | null; assigneeEmail: string | null;
   dueAt: Date | null; plannedPayload: unknown; currentAttemptId: string | null; completionNote: string | null;
   deviationReason: string | null; startedByEmail: string | null;
-}): WorkOrderTaskView {
+}, assigneeName: string | null): WorkOrderTaskView {
   return {
     id: t.id,
     seq: t.seq,
+    groupSeq: t.groupSeq,
     kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE",
     status: t.status,
     title: t.title,
+    assigneeId: t.assigneeId,
+    assigneeName,
     opType: t.opType,
     observationType: t.observationType,
     activityType: t.activityType,
@@ -90,9 +99,18 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
   return runAsTenant(tenantId, async () => {
     const wo = await prisma.workOrder.findUnique({
       where: { id: workOrderId },
-      include: { tasks: { orderBy: { seq: "asc" } } },
+      include: { tasks: { orderBy: [{ groupSeq: "asc" }, { seq: "asc" }] } },
     });
     if (!wo) return null;
+    // Resolve per-task assignee ids → names for display (User is a global table).
+    const assigneeIds = [...new Set(wo.tasks.map((t) => t.assigneeId).filter((x): x is string => !!x))];
+    const users = assigneeIds.length ? await prisma.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true, email: true } }) : [];
+    const nameOf = new Map(users.map((u) => [u.id, u.name?.trim() || u.email || "Member"]));
+    // Plan 053 A5: this WO's cross-order prerequisites.
+    const depEdges = await prisma.workOrderDependency.findMany({ where: { workOrderId: wo.id }, select: { dependsOnWorkOrderId: true } });
+    const depWos = depEdges.length
+      ? await prisma.workOrder.findMany({ where: { id: { in: depEdges.map((d) => d.dependsOnWorkOrderId) } }, select: { id: true, number: true, title: true, status: true } })
+      : [];
     return {
       id: wo.id,
       number: wo.number,
@@ -106,7 +124,8 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       issuedByEmail: wo.issuedByEmail,
       issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null,
       startedByEmail: wo.startedByEmail,
-      tasks: wo.tasks.map(taskView),
+      tasks: wo.tasks.map((t) => taskView(t, t.assigneeId ? nameOf.get(t.assigneeId) ?? null : null)),
+      dependsOn: depWos.map((d) => ({ id: d.id, number: d.number, title: d.title, status: d.status })),
     };
   });
 }
