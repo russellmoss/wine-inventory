@@ -6,6 +6,7 @@ import {
   FeedbackAutomationMode,
   FeedbackItemStatus,
   FeedbackSeverity,
+  FeedbackTriageClass,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireDeveloper } from "@/lib/dal";
@@ -136,12 +137,17 @@ export async function updateFeedbackItem(input: {
   sourceType: "ASSISTANT_FEEDBACK" | "FEEDBACK_TICKET";
   id: string;
   severity?: "P0" | "P1" | "P2" | "";
+  triageClass?: string; // "" clears to untriaged; a valid enum value sets the disposition
   status?: string;
   developerNotes?: string;
 }) {
   const developer = await requireDeveloper();
   const tenantId = assertTenantId(input.tenantId);
   const severity = input.severity ? (input.severity as FeedbackSeverity) : null;
+  const triageClass =
+    input.triageClass && input.triageClass in FeedbackTriageClass
+      ? (input.triageClass as FeedbackTriageClass)
+      : null;
   const notes = typeof input.developerNotes === "string" ? input.developerNotes.slice(0, 5000) : undefined;
 
   await runAsTenant(tenantId, () =>
@@ -151,6 +157,7 @@ export async function updateFeedbackItem(input: {
           where: { id: input.id },
           data: {
             severity,
+            triageClass,
             developerNotes: notes,
             status: input.status && input.status !== "IN_PROGRESS" ? input.status : undefined,
             resolvedAt: input.status === "RESOLVED" ? new Date() : undefined,
@@ -163,6 +170,7 @@ export async function updateFeedbackItem(input: {
           where: { id: input.id },
           data: {
             severity,
+            triageClass,
             developerNotes: notes,
             status,
             resolvedAt: status === FeedbackItemStatus.RESOLVED ? new Date() : undefined,

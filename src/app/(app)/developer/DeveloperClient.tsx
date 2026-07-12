@@ -17,6 +17,27 @@ const MODES = [
   ["AGENTIC_FIX", "Agentic fix"],
 ] as const;
 
+// Plan 059: the goalie-assigned disposition (mirror of FeedbackTriageClass). Drives the backlog
+// column, the filter, and the item editor. Kept as string literals so the client needs no server enum.
+type DispositionTone = "red" | "blue" | "gold" | "neutral" | "maroon";
+const DISPOSITIONS: ReadonlyArray<readonly [string, string, DispositionTone]> = [
+  ["DEFECT", "Defect", "red"],
+  ["MODEL_BEHAVIOR", "Model behavior", "blue"],
+  ["PRODUCT_GAP", "Product gap", "gold"],
+  ["NOT_A_BUG", "Not a bug", "neutral"],
+  ["UNCLEAR", "Unclear", "maroon"],
+];
+const DISPOSITION_META = new Map<string, { label: string; tone: DispositionTone }>(
+  DISPOSITIONS.map(([v, label, tone]) => [v, { label, tone }]),
+);
+const UNTRIAGED = "UNTRIAGED"; // pseudo-value for null (untriaged) in the filter
+
+function DispositionBadge({ value }: { value: string | null }) {
+  if (!value) return <Badge tone="neutral" variant="outline">Untriaged</Badge>;
+  const meta = DISPOSITION_META.get(value);
+  return <Badge tone={meta?.tone ?? "neutral"}>{meta?.label ?? value}</Badge>;
+}
+
 function ModeSelect({
   value,
   onChange,
@@ -52,6 +73,55 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<DeveloperFeedbackItem | null>(null);
+
+  // Plan 059: client-side disposition filter + sortable columns over the bounded backlog
+  // (≤20 tenants × 8 items). The DB index still serves the CLI/triage:list queries.
+  type SortCol = "createdAt" | "tenantName" | "kind" | "title" | "severity" | "triageClass" | "status" | "automationStatus";
+  const [dispoFilter, setDispoFilter] = React.useState<Set<string>>(new Set()); // empty = all
+  const [sort, setSort] = React.useState<{ col: SortCol; dir: "asc" | "desc" }>({ col: "createdAt", dir: "desc" });
+
+  const toggleDispo = (value: string) =>
+    setDispoFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  const toggleSort = (col: SortCol) =>
+    setSort((prev) => (prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" }));
+
+  const shownItems = React.useMemo(() => {
+    const filtered =
+      dispoFilter.size === 0
+        ? data.items
+        : data.items.filter((i) => dispoFilter.has(i.triageClass ?? UNTRIAGED));
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const av = (a[sort.col] ?? "") as string;
+      const bv = (b[sort.col] ?? "") as string;
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+  }, [data.items, dispoFilter, sort]);
+
+  const dispoCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const i of data.items) {
+      const key = i.triageClass ?? UNTRIAGED;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [data.items]);
+
+  const th = (label: string, col?: SortCol) => (
+    <th
+      style={{ ...cellStyle, cursor: col ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}
+      onClick={col ? () => toggleSort(col) : undefined}
+      aria-sort={col && sort.col === col ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+    >
+      {label}
+      {col && sort.col === col ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
+    </th>
+  );
 
   async function run(key: string, fn: () => Promise<void>) {
     setBusy(key);
@@ -108,22 +178,65 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
 
       <Card>
         <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, marginTop: 0 }}>Feedback backlog</h2>
+
+        {/* Plan 059: disposition filter — toggle chips (empty = show all). */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: "var(--space-3)" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 12, fontWeight: 600 }}>Disposition:</span>
+          {[...DISPOSITIONS.map(([v, label]) => [v, label] as const), [UNTRIAGED, "Untriaged"] as const].map(([value, label]) => {
+            const active = dispoFilter.has(value);
+            const count = dispoCounts.get(value) ?? 0;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => toggleDispo(value)}
+                aria-pressed={active}
+                style={{
+                  cursor: "pointer",
+                  height: 28,
+                  padding: "0 10px",
+                  borderRadius: "var(--radius-pill, 999px)",
+                  border: `1px solid ${active ? "var(--wine-primary)" : "var(--border-strong)"}`,
+                  background: active ? "var(--accent-soft)" : "var(--surface-raised)",
+                  color: active ? "var(--wine-primary)" : "var(--text-muted)",
+                  fontFamily: "var(--font-body)",
+                  fontSize: 12.5,
+                  fontWeight: active ? 600 : 400,
+                }}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
+          {dispoFilter.size > 0 ? (
+            <Button size="sm" variant="ghost" onClick={() => setDispoFilter(new Set())}>Clear</Button>
+          ) : null}
+        </div>
+
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--font-body)", fontVariantNumeric: "tabular-nums" }}>
             <thead>
               <tr style={{ textAlign: "left", color: "var(--text-muted)", fontSize: 12 }}>
-                <th style={cellStyle}>Created</th>
-                <th style={cellStyle}>Tenant</th>
-                <th style={cellStyle}>Type</th>
-                <th style={cellStyle}>Title</th>
-                <th style={cellStyle}>Severity</th>
-                <th style={cellStyle}>Status</th>
-                <th style={cellStyle}>Automation</th>
-                <th style={cellStyle}>Actions</th>
+                {th("Created", "createdAt")}
+                {th("Tenant", "tenantName")}
+                {th("Type", "kind")}
+                {th("Title", "title")}
+                {th("Severity", "severity")}
+                {th("Disposition", "triageClass")}
+                {th("Status", "status")}
+                {th("Automation", "automationStatus")}
+                {th("Actions")}
               </tr>
             </thead>
             <tbody>
-              {data.items.map((item) => (
+              {shownItems.length === 0 ? (
+                <tr>
+                  <td style={{ ...cellStyle, color: "var(--text-muted)" }} colSpan={9}>
+                    No items match the selected disposition.
+                  </td>
+                </tr>
+              ) : null}
+              {shownItems.map((item) => (
                 <tr key={`${item.sourceType}-${item.id}`} style={{ borderTop: "1px solid var(--border)" }}>
                   <td style={cellStyle}>{new Date(item.createdAt).toLocaleString()}</td>
                   <td style={cellStyle}>{item.tenantName}</td>
@@ -135,6 +248,7 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
                     <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{item.id}</div>
                   </td>
                   <td style={cellStyle}><Badge tone={item.severity === "P0" ? "red" : item.severity === "P1" ? "gold" : "neutral"}>{item.severity ?? "Unset"}</Badge></td>
+                  <td style={cellStyle}><DispositionBadge value={item.triageClass} /></td>
                   <td style={cellStyle}>{item.status}</td>
                   <td style={cellStyle}>{item.automationStatus}</td>
                   <td style={cellStyle}>
@@ -221,6 +335,7 @@ function ItemEditor({
   onClose: () => void;
 }) {
   const [severity, setSeverity] = React.useState(item.severity ?? "");
+  const [triageClass, setTriageClass] = React.useState(item.triageClass ?? "");
   const [status, setStatus] = React.useState(item.status);
   const [developerNotes, setDeveloperNotes] = React.useState(item.developerNotes ?? "");
   const key = `edit-${item.sourceType}-${item.id}`;
@@ -238,7 +353,7 @@ function ItemEditor({
         {item.planMarkdown ? (
           <pre style={{ whiteSpace: "pre-wrap", background: "var(--surface-sunken)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", overflow: "auto" }}>{item.planMarkdown}</pre>
         ) : null}
-        <div style={{ display: "grid", gridTemplateColumns: "160px 180px 1fr", gap: "var(--space-3)", alignItems: "end" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "140px 200px 180px 1fr", gap: "var(--space-3)", alignItems: "end" }}>
           <label style={{ display: "grid", gap: 6 }}>
             <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Severity</span>
             <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={selectStyle}>
@@ -248,13 +363,22 @@ function ItemEditor({
               <option value="P2">P2</option>
             </select>
           </label>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Disposition</span>
+            <select value={triageClass} onChange={(e) => setTriageClass(e.target.value)} style={selectStyle}>
+              <option value="">Untriaged</option>
+              {DISPOSITIONS.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
           <Input label="Status" value={status} onChange={(e) => setStatus(e.target.value)} />
           <Textarea label="Developer notes" value={developerNotes} onChange={(e) => setDeveloperNotes(e.target.value)} minRows={3} />
         </div>
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           <Button
             disabled={busy === key}
-            onClick={() => run(key, () => updateFeedbackItem({ tenantId: item.tenantId, sourceType: item.sourceType, id: item.id, severity: severity as "P0" | "P1" | "P2" | "", status, developerNotes }))}
+            onClick={() => run(key, () => updateFeedbackItem({ tenantId: item.tenantId, sourceType: item.sourceType, id: item.id, severity: severity as "P0" | "P1" | "P2" | "", triageClass, status, developerNotes }))}
           >
             Save item
           </Button>

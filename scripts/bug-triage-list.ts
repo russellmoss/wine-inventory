@@ -33,6 +33,7 @@ async function main() {
     body: i.body,
     severityReported: i.severity, // P0 | P1 | P2 | null (developer-set)
     status: i.status, // NEW | TRIAGED | IN_PROGRESS | RESOLVED | DISMISSED
+    triageClass: i.triageClass, // DEFECT | MODEL_BEHAVIOR | PRODUCT_GAP | NOT_A_BUG | UNCLEAR | null (goalie-assigned disposition)
     automationStatus: i.automationStatus, // NOT_REQUESTED | AWAITING_APPROVAL | QUEUED | RUNNING | PLANNED | PR_OPENED | FAILED | SKIPPED
     modeAtSubmission: i.modeAtSubmission,
     prUrl: i.prUrl,

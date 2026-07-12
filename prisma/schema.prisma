@@ -249,6 +249,17 @@ enum FeedbackAutomationKind {
   AGENTIC_FIX
 }
 
+// The triaged DISPOSITION — what KIND of problem an item is, assigned by the bug-triage goalie
+// from root cause (NOT the reporter's intake kind). Decides which workflow the item belongs in.
+// Nullable on the models: an untriaged item has no disposition yet. Mirror of the skill's `type`.
+enum FeedbackTriageClass {
+  DEFECT // real code bug with a concrete lever → auto-fix (in-fence) / human (out-of-fence)
+  MODEL_BEHAVIOR // LLM/assistant adherence miss; prompt/eval mitigation, recurrence expected
+  PRODUCT_GAP // missing capability / unmodeled path / design decision → /plan or /office-hours
+  NOT_A_BUG // works-as-designed / user-error / permissions / empty-state → dismiss
+  UNCLEAR // needs /investigate
+}
+
 enum VoiceProfileStatus {
   ACTIVE
   DISABLED
@@ -895,12 +906,14 @@ model AssistantFeedback {
   resolvedAt       DateTime?
   resolvedByUserId String?
   developerNotes   String?
+  triageClass      FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
   attachments      FeedbackAttachment[]
 
   @@index([status, createdAt])
   @@index([conversationId])
   @@index([ratedMessageId])
   @@index([tenantId])
+  @@index([tenantId, triageClass])
   @@unique([tenantId, id])
   @@map("assistant_feedback")
 }
@@ -929,6 +942,7 @@ model FeedbackTicket {
   resolvedAt       DateTime?
   resolvedByUserId String?
   developerNotes   String?
+  triageClass      FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
   attachments      FeedbackAttachment[]
@@ -936,6 +950,7 @@ model FeedbackTicket {
   @@index([tenantId, kind, status, createdAt])
   @@index([tenantId, severity, createdAt])
   @@index([tenantId, automationStatus, createdAt])
+  @@index([tenantId, triageClass, createdAt])
   @@unique([tenantId, id])
   @@map("feedback_ticket")
 }

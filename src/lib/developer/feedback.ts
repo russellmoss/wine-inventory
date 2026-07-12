@@ -35,6 +35,7 @@ export type DeveloperFeedbackItem = {
   automationStatus: string;
   status: string;
   severity: string | null;
+  triageClass: string | null; // Plan 059: goalie-assigned disposition (DEFECT | MODEL_BEHAVIOR | PRODUCT_GAP | NOT_A_BUG | UNCLEAR), null = untriaged
   githubIssueUrl: string | null;
   prUrl: string | null;
   planMarkdown: string | null;
@@ -128,6 +129,7 @@ export async function getDeveloperFeedbackData(input: {
           automationStatus: fb.automationStatus,
           status: fb.status,
           severity: fb.severity,
+          triageClass: fb.triageClass,
           githubIssueUrl: fb.githubIssueUrl,
           prUrl: fb.prUrl,
           planMarkdown: fb.planMarkdown ? sanitizePlainText(fb.planMarkdown, 8000) : null,
@@ -152,6 +154,7 @@ export async function getDeveloperFeedbackData(input: {
           automationStatus: ticket.automationStatus,
           status: ticket.status,
           severity: ticket.severity,
+          triageClass: ticket.triageClass,
           githubIssueUrl: ticket.githubIssueUrl,
           prUrl: ticket.prUrl,
           planMarkdown: ticket.planMarkdown ? sanitizePlainText(ticket.planMarkdown, 8000) : null,
