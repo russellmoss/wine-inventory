@@ -30,6 +30,11 @@ export type CreateTaskInput = {
   assigneeId?: string | null;
   assigneeEmail?: string | null;
   dueAt?: Date | null;
+  // Plan 053 B8: per-task planning fields (data capture only).
+  priority?: string | null;
+  estimatedDurationMin?: number | null;
+  scheduledStart?: Date | null;
+  scheduledEnd?: Date | null;
   plannedPayload: Prisma.InputJsonValue;
 };
 
@@ -40,6 +45,11 @@ export type CreateWorkOrderInput = {
   assigneeEmail?: string | null;
   dueAt?: Date | null;
   scheduledFor?: Date | null;
+  // Plan 053 B8: ERP planning fields (validated by the action layer; persisted as-is).
+  priority?: string | null;
+  estimatedDurationMin?: number | null;
+  scheduledStart?: Date | null;
+  scheduledEnd?: Date | null;
   autoFinalize?: boolean;
   templateVersionId?: string | null;
   tasks: CreateTaskInput[];
@@ -100,6 +110,10 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
         assigneeEmail: input.assigneeEmail ?? null,
         dueAt: input.dueAt ?? null,
         scheduledFor: input.scheduledFor ?? null,
+        priority: input.priority ?? null,
+        estimatedDurationMin: input.estimatedDurationMin ?? null,
+        scheduledStart: input.scheduledStart ?? null,
+        scheduledEnd: input.scheduledEnd ?? null,
         autoFinalize: input.autoFinalize ?? false,
         templateVersionId: input.templateVersionId ?? null,
         tasks: {
@@ -123,6 +137,10 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
             assigneeId: t.assigneeId ?? null,
             assigneeEmail: t.assigneeEmail ?? null,
             dueAt: t.dueAt ?? null,
+            priority: t.priority ?? null,
+            estimatedDurationMin: t.estimatedDurationMin ?? null,
+            scheduledStart: t.scheduledStart ?? null,
+            scheduledEnd: t.scheduledEnd ?? null,
             plannedPayload: t.plannedPayload,
           })),
         },

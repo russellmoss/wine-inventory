@@ -49,6 +49,7 @@ export type WorkOrderDetail = {
   assigneeEmail: string | null;
   dueAt: string | null;
   scheduledFor: string | null;
+  priority: string | null; // plan 053 B8
   autoFinalize: boolean;
   issuedByEmail: string | null;
   issuedAt: string | null;
@@ -120,6 +121,7 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       assigneeEmail: wo.assigneeEmail,
       dueAt: wo.dueAt ? wo.dueAt.toISOString() : null,
       scheduledFor: wo.scheduledFor ? wo.scheduledFor.toISOString() : null,
+      priority: wo.priority,
       autoFinalize: wo.autoFinalize,
       issuedByEmail: wo.issuedByEmail,
       issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null,

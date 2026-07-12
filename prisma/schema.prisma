@@ -3334,6 +3334,12 @@ model WorkOrder {
   assigneeEmail     String?
   dueAt             DateTime?
   scheduledFor      DateTime?
+  // Plan 053 B8: ERP planning fields (data capture only; no auto-scheduling). priority is a validated
+  // string (LOW/NORMAL/HIGH/URGENT — no enum, Windows ALTER TYPE hazard); scheduledStart/End are a window.
+  priority             String?
+  estimatedDurationMin Int?
+  scheduledStart       DateTime?
+  scheduledEnd         DateTime?
   autoFinalize      Boolean         @default(false) // auto-finalize self-executed work (decision 2)
   issuedAt          DateTime?
   issuedById        String?
@@ -3410,6 +3416,11 @@ model WorkOrderTask {
   assigneeId       String?
   assigneeEmail    String?
   dueAt            DateTime?
+  // Plan 053 B8: per-task planning fields (data capture only). priority is a validated string.
+  priority             String?
+  estimatedDurationMin Int?
+  scheduledStart       DateTime?
+  scheduledEnd         DateTime?
   plannedPayload   Json // snapshot of the planned inputs (target rate + basis, note, etc.)
   currentAttemptId String? // A4: the attempt currently owning this task's ledger op (plain scalar, no FK)
   completionNote   String?

@@ -11,6 +11,7 @@ import type { WorkOrderReadinessProposal } from "@/lib/work-orders/proposal-read
 import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadinessPanel";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
+import { WORK_ORDER_PRIORITIES } from "@/lib/work-orders/planning";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Member = { userId: string; name: string; email: string };
@@ -61,6 +62,7 @@ export function WorkOrderBuilderClient({
   const [title, setTitle] = React.useState("");
   const [dueAt, setDueAt] = React.useState(todayLocal());
   const [leadEmail, setLeadEmail] = React.useState("");
+  const [priority, setPriority] = React.useState("NORMAL");
   const [groups, setGroups] = React.useState<BuilderTask[][]>([[]]);
   const [dependsOn, setDependsOn] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
@@ -212,6 +214,7 @@ export function WorkOrderBuilderClient({
         const res = await createWorkOrderFromBuildsAction({
           title: title.trim() || undefined,
           assigneeEmail: leadEmail || null,
+          priority,
           // Parse the yyyy-mm-dd as LOCAL midnight (not UTC) so the due date doesn't shift a day back.
           dueAt: dueAt ? new Date(`${dueAt}T00:00:00`) : null,
           taskBuilds,
@@ -237,7 +240,7 @@ export function WorkOrderBuilderClient({
       </div>
 
       <Card style={{ padding: 16, marginBottom: 16 }}>
-        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
+        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
           <label style={labelStyle}>Title
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Racking + topping — Block 12" />
           </label>
@@ -245,6 +248,11 @@ export function WorkOrderBuilderClient({
             <select style={field} value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)}>
               <option value="">— unassigned —</option>
               {members.map((m) => <option key={m.userId} value={m.email}>{m.name}</option>)}
+            </select>
+          </label>
+          <label style={labelStyle}>Priority
+            <select style={field} value={priority} onChange={(e) => setPriority(e.target.value)}>
+              {WORK_ORDER_PRIORITIES.map((p) => <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>)}
             </select>
           </label>
           <label style={labelStyle}>Due
