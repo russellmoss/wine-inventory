@@ -353,7 +353,10 @@ export function AppShell({
           // Full-bleed: the assistant is a workspace, not a document — use the width.
           <div className="px-4 py-4 md:px-6 md:py-6" style={{ height: "100%" }}>{children}</div>
         ) : (
-          <div className="mx-auto px-4 py-5 md:px-10 md:py-8" style={{ maxWidth: "var(--container-xl)" }}>{children}</div>
+          // Extra bottom padding reserves a "safe area" so the fixed assistant FAB (bottom-right,
+          // var(--space-5) + 52px tall) never overlaps a page's bottom-anchored control (e.g. a
+          // full-width "Create work order" submit). Inline paddingBottom overrides py-*'s bottom only.
+          <div className="mx-auto px-4 py-5 md:px-10 md:py-8" style={{ maxWidth: "var(--container-xl)", paddingBottom: "calc(var(--space-5) * 2 + 52px)" }}>{children}</div>
         )}
       </main>
 
