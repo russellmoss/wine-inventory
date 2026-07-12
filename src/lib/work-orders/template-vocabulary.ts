@@ -380,6 +380,9 @@ export type TaskBuild = {
   // lookup hint, never persisted from here; SF3). Omitted → inherits the order-level assignee. It rides
   // as a first-class CreateTaskInput column, NOT in plannedPayload (assigneeId is a reserved payload key).
   assigneeId?: string | null;
+  // Plan 053 B10: advisory required-equipment ids (EquipmentAsset). Not part of CreateTaskInput/payload;
+  // the create action attaches them as WorkOrderTaskEquipment rows after the tasks exist. Never blocks.
+  equipmentIds?: string[];
 };
 
 /** Instantiate an explicit flat list of task builds into CreateTaskInput[] (validates each taskType +

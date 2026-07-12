@@ -102,6 +102,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
                   {t.kind === "OPERATION" ? t.opType : t.kind === "NOTE" ? "checklist" : t.kind === "MAINTENANCE" ? `maintenance · ${t.activityType}` : t.observationType === "HARVEST_WEIGH_IN" ? "fruit weigh-in" : `observation · ${t.observationType}`}
                   {t.assigneeName ? ` · ${t.assigneeName}` : ""}
                 </div>
+                {t.equipment.length ? <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Equipment: {t.equipment.join(", ")}</div> : null}
                 {t.deviationReason ? <div style={{ fontSize: 13, color: "var(--warning, #b8860b)", marginTop: 6 }}>Deviation: {t.deviationReason}</div> : null}
                 {t.completionNote ? <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Note: {t.completionNote}</div> : null}
               </Card>

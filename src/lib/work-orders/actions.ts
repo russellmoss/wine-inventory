@@ -24,6 +24,7 @@ import type { TemplateSpec, TaskBuild } from "@/lib/work-orders/template-vocabul
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { normalizeWorkOrderPriority, normalizeDurationMin } from "@/lib/work-orders/planning";
+import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
@@ -182,6 +183,15 @@ export const createWorkOrderFromBuildsAction = action(
     for (const depId of input.dependsOnWorkOrderIds ?? []) {
       if (depId && depId !== res.workOrderId) {
         await addWorkOrderDependencyCore(actor, { workOrderId: res.workOrderId, dependsOnWorkOrderId: depId });
+      }
+    }
+    // B10: attach advisory required-equipment to the created tasks (seq matches taskBuilds order). Never blocks.
+    const needsEquipment = builds.some((b) => Array.isArray(b.equipmentIds) && b.equipmentIds.length > 0);
+    if (needsEquipment) {
+      const rows = await prisma.workOrderTask.findMany({ where: { workOrderId: res.workOrderId }, orderBy: { seq: "asc" }, select: { id: true, seq: true } });
+      for (const t of rows) {
+        const eq = builds[t.seq - 1]?.equipmentIds;
+        if (Array.isArray(eq) && eq.length > 0) await attachTaskEquipmentCore(t.id, eq);
       }
     }
     revalidateWorkOrders(res.workOrderId);

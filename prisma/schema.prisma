@@ -3390,6 +3390,42 @@ model WorkOrderDependency {
   @@map("work_order_dependency")
 }
 
+// Plan 053 B10: a simple equipment registry (presses, filters, pumps…). Tenant-scoped + RLS-isolated.
+// `kind`/`status` are validated strings (no enum). Referenced by work-order tasks as ADVISORY required
+// equipment (WorkOrderTaskEquipment) — surfaced, never blocks (WORKORDER-2). Maintenance stays record-only.
+model EquipmentAsset {
+  tenantId   String   @default("")
+  id         String   @id @default(cuid())
+  name       String
+  kind       String // press / filter / pump / tank-accessory / other (validated string)
+  status     String   @default("available") // available / in_use / maintenance / retired
+  locationId String? // plain ref → location.id (K11/K12)
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id]) // composite-FK target for work_order_task_equipment
+  @@index([tenantId])
+  @@map("equipment_asset")
+}
+
+// Plan 053 B10: ADVISORY link from a work-order task to the equipment it needs. Append-only join; never
+// blocks completion. Composite cross-tenant FKs (raw SQL) to work_order_task + equipment_asset (K11).
+model WorkOrderTaskEquipment {
+  tenantId    String   @default("")
+  id          String   @id @default(cuid())
+  taskId      String
+  equipmentId String
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, taskId, equipmentId])
+  @@index([tenantId, equipmentId])
+  @@index([tenantId, taskId])
+  @@map("work_order_task_equipment")
+}
+
 // One task in a work order. OPERATION tasks write a real immutable ledger op on completion (via an
 // attempt); OBSERVATION tasks write to the measurement store and go straight to DONE. `plannedPayload`
 // snapshots the planned inputs incl. the target RATE + basis (A3 — the amount is computed at open time

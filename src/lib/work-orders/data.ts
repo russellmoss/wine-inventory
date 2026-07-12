@@ -22,6 +22,7 @@ export type WorkOrderTaskView = {
   title: string;
   assigneeId: string | null;
   assigneeName: string | null; // resolved from assigneeId for display
+  equipment: string[]; // plan 053 B10: advisory required-equipment names
   opType: string | null;
   observationType: string | null;
   activityType: string | null;
@@ -67,11 +68,12 @@ function taskView(t: {
   assigneeId: string | null; assigneeEmail: string | null;
   dueAt: Date | null; plannedPayload: unknown; currentAttemptId: string | null; completionNote: string | null;
   deviationReason: string | null; startedByEmail: string | null;
-}, assigneeName: string | null): WorkOrderTaskView {
+}, assigneeName: string | null, equipment: string[]): WorkOrderTaskView {
   return {
     id: t.id,
     seq: t.seq,
     groupSeq: t.groupSeq,
+    equipment,
     kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE",
     status: t.status,
     title: t.title,
@@ -115,6 +117,17 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       : [];
     // Plan 053 B9: resolve the WO's location id → name for display.
     const loc = wo.locationId ? await prisma.location.findUnique({ where: { id: wo.locationId }, select: { name: true } }) : null;
+    // Plan 053 B10: advisory required-equipment names per task.
+    const taskIds = wo.tasks.map((t) => t.id);
+    const eqLinks = taskIds.length ? await prisma.workOrderTaskEquipment.findMany({ where: { taskId: { in: taskIds } }, select: { taskId: true, equipmentId: true } }) : [];
+    const eqIds = [...new Set(eqLinks.map((l) => l.equipmentId))];
+    const eqAssets = eqIds.length ? await prisma.equipmentAsset.findMany({ where: { id: { in: eqIds } }, select: { id: true, name: true } }) : [];
+    const eqNameOf = new Map(eqAssets.map((e) => [e.id, e.name]));
+    const eqByTask = new Map<string, string[]>();
+    for (const l of eqLinks) {
+      const name = eqNameOf.get(l.equipmentId);
+      if (name) eqByTask.set(l.taskId, [...(eqByTask.get(l.taskId) ?? []), name]);
+    }
     return {
       id: wo.id,
       number: wo.number,
@@ -130,7 +143,7 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       issuedByEmail: wo.issuedByEmail,
       issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null,
       startedByEmail: wo.startedByEmail,
-      tasks: wo.tasks.map((t) => taskView(t, t.assigneeId ? nameOf.get(t.assigneeId) ?? null : null)),
+      tasks: wo.tasks.map((t) => taskView(t, t.assigneeId ? nameOf.get(t.assigneeId) ?? null : null, eqByTask.get(t.id) ?? [])),
       dependsOn: depWos.map((d) => ({ id: d.id, number: d.number, title: d.title, status: d.status })),
     };
   });

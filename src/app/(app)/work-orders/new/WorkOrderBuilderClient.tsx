@@ -17,7 +17,8 @@ type Picker = { id: string; label: string; unit?: string | null; kind?: string |
 type Member = { userId: string; name: string; email: string };
 type DependableWo = { id: string; number: number; title: string; status: string };
 type LocationRow = { id: string; name: string; kind: string | null };
-type BuilderTask = { key: string; taskType: string; title: string; values: Record<string, unknown>; assigneeId: string };
+type EquipmentPick = { id: string; name: string; kind: string };
+type BuilderTask = { key: string; taskType: string; title: string; values: Record<string, unknown>; assigneeId: string; equipmentIds: string[] };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 };
@@ -53,12 +54,14 @@ export function WorkOrderBuilderClient({
   members,
   dependableWorkOrders,
   locations,
+  equipment,
   vocab,
 }: {
   pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] };
   members: Member[];
   dependableWorkOrders: DependableWo[];
   locations: LocationRow[];
+  equipment: EquipmentPick[];
   vocab: ResolvedTaskVocabulary;
 }) {
   const router = useRouter();
@@ -85,9 +88,16 @@ export function WorkOrderBuilderClient({
   function addTask(taskType: string) {
     setGroups((prev) => {
       const next = prev.length ? prev.map((g) => [...g]) : [[]];
-      next[next.length - 1].push({ key: newKey(), taskType, title: "", values: {}, assigneeId: "" });
+      next[next.length - 1].push({ key: newKey(), taskType, title: "", values: {}, assigneeId: "", equipmentIds: [] });
       return next;
     });
+  }
+  function toggleEquipment(groupIdx: number, key: string, equipmentId: string) {
+    setGroups((prev) => prev.map((g, gi) => (gi === groupIdx ? g.map((t) => {
+      if (t.key !== key) return t;
+      const on = t.equipmentIds.includes(equipmentId);
+      return { ...t, equipmentIds: on ? t.equipmentIds.filter((x) => x !== equipmentId) : [...t.equipmentIds, equipmentId] };
+    }) : g)));
   }
   function addGroup() {
     setGroups((prev) => [...prev, []]);
@@ -128,6 +138,7 @@ export function WorkOrderBuilderClient({
           groupSeq: gi,
           assigneeId: t.assigneeId || undefined,
           taskKey: t.key,
+          equipmentIds: t.equipmentIds.length ? t.equipmentIds : undefined,
         });
       }
     });
@@ -358,6 +369,24 @@ export function WorkOrderBuilderClient({
                                 </label>
                               )}
                             </div>
+                            {equipment.length > 0 && (
+                              <div style={{ marginTop: 8 }}>
+                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Equipment needed (advisory)</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                                  {equipment.map((eq) => {
+                                    const on = t.equipmentIds.includes(eq.id);
+                                    return (
+                                      <button key={eq.id} type="button" onClick={() => toggleEquipment(gi, t.key, eq.id)}
+                                        style={{ fontSize: 11, padding: "3px 8px", borderRadius: 999, cursor: "pointer",
+                                          border: on ? "1px solid var(--accent)" : "1px solid var(--border)",
+                                          background: on ? "var(--accent)" : "var(--surface)", color: on ? "#fff" : "var(--text-secondary)" }}>
+                                        {eq.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
