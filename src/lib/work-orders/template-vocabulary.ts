@@ -5,6 +5,7 @@ import { FILTER_MEDIA, RACK_TYPES } from "@/lib/cellar/filtration-vocab";
 import { TEMP_UNITS, GAS_TYPES, SO2_METHODS } from "@/lib/cellar/vessel-activity-vocab";
 import { DOSE_UNIT_LABELS } from "@/lib/cellar/additions-math";
 import { CAP_KINDS } from "@/lib/cellar/cap-vocab";
+import { EQUIPMENT_STATUSES } from "@/lib/equipment/vocab";
 
 // Typed field vocabulary for work-order templates (Phase 9 Unit 10). Templates are NEVER free-form: a
 // template's spec is a list of tasks, each of a known task TYPE with a fixed set of allowed fields.
@@ -233,6 +234,18 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     fields: { vesselId: "vessel", materialId: "material", amount: "number", note: "text" },
     hint: "Change/replenish the citric+SO₂ storage solution in a wet-stored empty barrel. Record each reagent drawn (overhead).",
   },
+  // Plan 053 E16: service an EquipmentAsset (press, pump, filter…), NOT a vessel. Record-only overhead
+  // (WORKORDER-3): no VesselActivityEvent, no ledger op, no cost. `setStatus` optionally transitions every
+  // EquipmentAsset attached to the task (the advisory equipment link from B10) on completion — e.g. flip a
+  // press to "maintenance" while it's serviced, then back to "available". Downtime/parts/cost stay deferred.
+  EQUIPMENT_SERVICE: {
+    kind: "MAINTENANCE",
+    activityType: "EQUIPMENT_SERVICE",
+    label: "Equipment service",
+    fields: { setStatus: "select", note: "text" },
+    fieldOptions: { setStatus: [...EQUIPMENT_STATUSES] },
+    hint: "Attach the equipment being serviced (in the builder). Optionally set its status (e.g. maintenance → available) when you record the service.",
+  },
   // ── TRANSFORM lane (plan 035): fruit intake + press. These create/split lots, so their run-time
   // inputs (picks for crush; fractions for press) are lists entered on the execute screen via custom
   // sub-forms — NOT template defaults. The vocabulary `fields` below are the "what" a template can bake
@@ -256,6 +269,20 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     fields: { op: "select", pressCycle: "text", note: "text" },
     fieldOptions: { op: ["PRESS", "SAIGNEE"] },
     hint: "The must lot, source vessel and the press fractions (cuts) are entered when the work order is run.",
+  },
+  // Plan 053 E15: bottling as a first-class governed task. Routes through the SAME bottling core
+  // (runBottlingTx) as the standalone /bottling flow, so it writes a real BOTTLE ledger op + COGS snapshot
+  // + finished goods (WORKORDER-1), is idempotent by commandId, and reverses on rejection via the universal
+  // reverseOperationCore path. Only the SKU name/vintage + wine method are template-settable process
+  // defaults; the source vessels, bottle count, measured ABV and destination are captured at run time on the
+  // bottling sub-form (like crush picks / press fractions). Still wine only through the WO task for now —
+  // the tank-method (Charmat) sparkling path stays on the dedicated /bottling flow.
+  BOTTLE: {
+    kind: "OPERATION",
+    opType: "BOTTLE",
+    label: "Bottling",
+    fields: { skuName: "text", skuVintage: "number", note: "text" },
+    hint: "The source vessels, bottle count, measured ABV and destination location are entered when the work order is run.",
   },
   // ── VINEYARD lane (plan 039): the "weigh the fruit" stage. A block-targeted observation that writes a
   // HarvestPick (weight + optional Brix/pH/TA) to the block's current-vintage harvest record — NO cellar

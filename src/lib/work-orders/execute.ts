@@ -11,6 +11,7 @@ import { filterVesselTx, capManagementTx, type CapKind } from "@/lib/cellar/trea
 import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFIG, type AddAdditionInput } from "@/lib/cellar/addition";
 import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
 import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
+import { runBottlingTx } from "@/lib/bottling/run";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import type { RateBasis } from "@/lib/cellar/additions-math";
 import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
@@ -242,9 +243,38 @@ async function dispatchOperationTx(
       });
       return { operationId: r.operationId, message: r.message };
     }
+    case "BOTTLE": {
+      // Plan 053 E15: bottle through the SAME core as the standalone /bottling flow (runBottlingTx), but
+      // INSIDE this WO completion tx (runLedgerWrite is SERIALIZABLE + retry). Source vessels, bottle count,
+      // measured ABV and destination are entered on the run-time bottling sub-form. The returned BOTTLE op
+      // id is stamped on the attempt so a reject reverses it via the universal reverseOperationCore path.
+      const vesselIds = Array.isArray(payload.vesselIds)
+        ? (payload.vesselIds as unknown[]).filter((v): v is string => typeof v === "string" && !!v)
+        : [];
+      if (vesselIds.length === 0) throw new ActionError("Pick at least one source vessel to bottle from.");
+      const destinationLocationId = asStr(payload.destinationLocationId);
+      if (!destinationLocationId) throw new ActionError("Pick a destination location for the bottles.");
+      const skuName = asStr(payload.skuName);
+      if (!skuName) throw new ActionError("Give the bottled wine a name.");
+      const bottlesProduced = asNum(payload.bottlesProduced);
+      if (!(bottlesProduced != null && bottlesProduced >= 1)) throw new ActionError("Enter the number of bottles produced (at least 1).");
+      const abv = asNum(payload.abv);
+      if (!(abv != null && abv > 0)) throw new ActionError("Enter the wine's alcohol by volume (%). ABV is required to classify the wine for TTB reporting.");
+      const skuVintage = asNum(payload.skuVintage) ?? new Date().getFullYear();
+      const r = await runBottlingTx(tx, {
+        vesselIds,
+        destinationLocationId,
+        skuName,
+        skuVintage,
+        bottlesProduced,
+        abv,
+        date: new Date(),
+      }, actor);
+      return { operationId: r.bottleOpId, message: `Bottled ${bottlesProduced} bottles of "${skuName} ${skuVintage}".` };
+    }
     default:
       throw new ActionError(
-        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. Supported: rack, addition, fining, topping, filtration, cap management, de-stem/crush, press/saignée.`,
+        `Work orders can't yet auto-log a ${task.opType ?? "?"} operation. Supported: rack, addition, fining, topping, filtration, cap management, de-stem/crush, press/saignée, bottling.`,
         "CONFLICT",
       );
   }

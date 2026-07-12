@@ -71,6 +71,19 @@ async function scrub() {
   await prisma.lotOperation.updateMany({ where: { enteredBy: ACTOR.actorEmail }, data: { correctsOperationId: null } }).catch(() => {});
   await prisma.reservation.deleteMany({ where: { workOrderId: { in: woIds } } }).catch(() => {});
   await prisma.workOrder.deleteMany({ where: { id: { in: woIds } } }).catch(() => {}); // cascades tasks + attempts
+
+  // E15 bottling artifacts — delete BEFORE the lots (BottlingSource FK→lot). Order: cost snapshot (FK→run
+  // RESTRICT) + stock movements + bottled inventory (FK→sku) → run (cascades sources) → sku. Location goes
+  // last, below, once nothing references it.
+  const skus = await prisma.wineSku.findMany({ where: { name: { startsWith: "ZZWT" } }, select: { id: true } });
+  const skuIds = skus.map((s) => s.id);
+  const runs = await prisma.bottlingRun.findMany({ where: { wineSkuId: { in: skuIds } }, select: { id: true } });
+  const runIds = runs.map((r) => r.id);
+  await prisma.bottlingCostSnapshot.deleteMany({ where: { runId: { in: runIds } } }).catch(() => {});
+  await prisma.stockMovement.deleteMany({ where: { bottlingRunId: { in: runIds } } }).catch(() => {});
+  await prisma.bottledInventory.deleteMany({ where: { wineSkuId: { in: skuIds } } }).catch(() => {});
+  await prisma.bottlingRun.deleteMany({ where: { id: { in: runIds } } }).catch(() => {}); // cascades sources
+  await prisma.wineSku.deleteMany({ where: { id: { in: skuIds } } }).catch(() => {});
   const ops = await prisma.lotOperation.findMany({ where: { enteredBy: ACTOR.actorEmail }, select: { id: true } });
   const opIds = ops.map((o) => o.id);
   await prisma.costLine.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
@@ -87,6 +100,7 @@ async function scrub() {
   await prisma.harvestRecord.deleteMany({ where: { id: { in: recordIds } } }).catch(() => {});
   await prisma.vesselComponent.deleteMany({ where: { OR: [{ varietyId: { in: varietyIds } }, { vineyardId: { in: vineyardIds } }] } }).catch(() => {});
   await prisma.vessel.deleteMany({ where: { code: { startsWith: "ZZWT-" } } }).catch(() => {});
+  await prisma.location.deleteMany({ where: { name: { startsWith: "ZZWT" } } }).catch(() => {});
   await prisma.vineyardBlock.deleteMany({ where: { id: { in: blockIds } } }).catch(() => {});
   await prisma.variety.deleteMany({ where: { id: { in: varietyIds } } }).catch(() => {});
   await prisma.vineyard.deleteMany({ where: { id: { in: vineyardIds } } }).catch(() => {});
@@ -224,6 +238,54 @@ async function main() {
     assert(pressMap.get("Lees loss") === "100 L", `press print shows lees loss (got "${pressMap.get("Lees loss")}")`);
     const allValues = [...crushRows.values(), ...pressRows.map((r) => r.value)];
     assert(!allValues.some((v) => cuidRe.test(v)), "no raw cuid appears in the printed transform rows");
+
+    // ── 6. BOTTLE work-order task (Plan 053 E15) → real BOTTLE op + finished goods + COGS, idempotent, reversible. ──
+    console.log("\n── 6. Bottle a work-order task ──");
+    // Section 2 left tankB holding the 900 L free-run lot — bottle from it.
+    const srcLotId = fractions[0].lotId;
+    const srcBefore = await lotVol(tankB, srcLotId);
+    assert(srcBefore > 100, `source tank holds wine to bottle (${srcBefore} L)`);
+    const bottleLoc = await prisma.location.create({ data: { name: "ZZWT Bottling Cellar", isActive: true } });
+    const bottleWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWT bottling",
+      tasks: [{ seq: 1, kind: "OPERATION", title: "Bottle the free-run", opType: "BOTTLE", plannedPayload: { skuName: "ZZWT Estate", skuVintage: 2026 } }],
+    });
+    await issueWorkOrderCore(ACTOR, { workOrderId: bottleWo.workOrderId });
+    const bottleTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: bottleWo.workOrderId } });
+    const bottleDone = await completeTaskCore(ACTOR, {
+      taskId: bottleTask.id, commandId: "zzwt-bottle-1",
+      actualPayload: { vesselIds: [tankB], destinationLocationId: bottleLoc.id, skuName: "ZZWT Estate", skuVintage: 2026, bottlesProduced: 100, abv: 13.5 },
+    });
+    assert(bottleDone.operationId != null, "BOTTLE task completion wrote a ledger op");
+    const bottleOp = await prisma.lotOperation.findUniqueOrThrow({ where: { id: bottleDone.operationId! }, select: { type: true } });
+    assert(bottleOp.type === "BOTTLE", "the op is a real BOTTLE");
+    const bottleMeta = await meta(bottleDone.operationId!);
+    const runId = String(bottleMeta.runId);
+    const run = await prisma.bottlingRun.findUniqueOrThrow({ where: { id: runId }, select: { wineSkuId: true, bottlesProduced: true } });
+    assert(run.bottlesProduced === 100, `a bottling run for 100 bottles was created (got ${run.bottlesProduced})`);
+    const inv = await prisma.bottledInventory.findFirstOrThrow({ where: { wineSkuId: run.wineSkuId, locationId: bottleLoc.id }, select: { totalBottles: true } });
+    assert(inv.totalBottles === 100, `finished goods materialized: 100 bottles on hand at the destination (got ${inv.totalBottles})`);
+    const snap = await prisma.bottlingCostSnapshot.findFirst({ where: { runId }, select: { id: true } });
+    assert(snap != null, "a COGS snapshot was frozen for the run");
+    assert(near(await lotVol(tankB, srcLotId), srcBefore - 75), `the source drained 75 L for 100 bottles (${srcBefore} → ${await lotVol(tankB, srcLotId)})`);
+    assert(bottleDone.status === "PENDING_APPROVAL", "the bottling completion is PENDING_APPROVAL (reviewable)");
+
+    // Idempotency: the same commandId (offline-drain replay) must NOT bottle twice.
+    const bottleDup = await completeTaskCore(ACTOR, {
+      taskId: bottleTask.id, commandId: "zzwt-bottle-1",
+      actualPayload: { vesselIds: [tankB], destinationLocationId: bottleLoc.id, skuName: "ZZWT Estate", skuVintage: 2026, bottlesProduced: 100, abv: 13.5 },
+    });
+    assert(bottleDup.duplicate === true, "a same-commandId re-submit is reported as a duplicate (idempotent)");
+    assert(near(await lotVol(tankB, srcLotId), srcBefore - 75), "the duplicate submit wrote NO second BOTTLE op (source unchanged)");
+
+    // Reject → the universal reverseOperationCore restores the wine + removes the bottles.
+    const bottleRej = await rejectTaskCore(ADMIN, ACTOR, { taskId: bottleTask.id, reason: "wrong sku" });
+    assert(bottleRej.status === "REJECTED", "rejecting the bottling task moved it to REJECTED");
+    const bottleOpAfter = await prisma.lotOperation.findUniqueOrThrow({ where: { id: bottleDone.operationId! }, select: { correctedBy: { select: { id: true } } } });
+    assert(bottleOpAfter.correctedBy != null, "the BOTTLE op was reversed (marked corrected, append-only)");
+    assert(near(await lotVol(tankB, srcLotId), srcBefore), `the bottled wine was restored to the source tank (back to ${srcBefore} L)`);
+    const invAfter = await prisma.bottledInventory.findFirst({ where: { wineSkuId: run.wineSkuId, locationId: bottleLoc.id }, select: { totalBottles: true } });
+    assert((invAfter?.totalBottles ?? 0) === 0, "the 100 bottles were removed from finished goods on reversal");
 
     console.log(`\nALL WORK-ORDER-TRANSFORM CHECKS PASSED ✓  (${passed} assertions)`);
   });

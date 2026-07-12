@@ -23,6 +23,7 @@ import type { LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore } from "@/lib/work-orders/execute";
+import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
 import { reverseVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { seedStarterMaterials } from "@/lib/onboarding/seed-starter-materials";
 import { getWorkOrderArchive, getWorkOrderPrintView } from "@/lib/work-orders/data";
@@ -62,6 +63,11 @@ async function scrub() {
   const woIds = wos.map((w) => w.id);
   const mats = await prisma.cellarMaterial.findMany({ where: { name: { startsWith: "ZZWE" } }, select: { id: true } });
   const matIds = mats.map((m) => m.id);
+  // E16: equipment + its advisory task links (delete links before the assets; FK equipment RESTRICT).
+  const equip = await prisma.equipmentAsset.findMany({ where: { name: { startsWith: "ZZWE" } }, select: { id: true } });
+  const equipIds = equip.map((e) => e.id);
+  await prisma.workOrderTaskEquipment.deleteMany({ where: { equipmentId: { in: equipIds } } });
+  await prisma.equipmentAsset.deleteMany({ where: { id: { in: equipIds } } });
   // Delete activity events BEFORE the work orders: the event→task composite FK is ON DELETE RESTRICT, so a
   // task with a recorded activity event can't be cascade-deleted while the event still references it.
   const events = await prisma.vesselActivityEvent.findMany({ where: { enteredByEmail: ACTOR.actorEmail }, select: { id: true } });
@@ -245,6 +251,30 @@ async function main() {
     assert((await prisma.analysisPanel.count()) === panelsBeforeNote, "NOTE wrote NO measurement panel");
     const noteWoRow = await prisma.workOrder.findUniqueOrThrow({ where: { id: noteWo.workOrderId }, select: { status: true } });
     assert(noteWoRow.status === "APPROVED", `all-checklist WO auto-completed to APPROVED once every item was checked (got ${noteWoRow.status})`);
+
+    // ── E16. EQUIPMENT_SERVICE ties to an EquipmentAsset (not a vessel): record-only, transitions the
+    // attached equipment's status, writes NO ledger op + NO vessel event + NO cost (WORKORDER-3). ──
+    const opsBeforeSvc = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
+    const eventsBeforeSvc = await prisma.vesselActivityEvent.count({ where: { enteredByEmail: ACTOR.actorEmail } });
+    const consBeforeSvc = await prisma.supplyConsumption.count();
+    const costBeforeSvc = await prisma.costLine.count();
+    const press = await prisma.equipmentAsset.create({ data: { name: "ZZWE Press", kind: "press", status: "maintenance" } });
+    const svcWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWE equipment service",
+      tasks: [{ seq: 1, kind: "MAINTENANCE", title: "Service the press", activityType: "EQUIPMENT_SERVICE", plannedPayload: { setStatus: "available" } }],
+    });
+    await issueWorkOrderCore(ACTOR, { workOrderId: svcWo.workOrderId });
+    const svcTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: svcWo.workOrderId } });
+    await attachTaskEquipmentCore(svcTask.id, [press.id]);
+    const svcDone = await completeTaskCore(ACTOR, { taskId: svcTask.id, commandId: "zzwe-svc-1", actualPayload: { setStatus: "available" } });
+    assert(svcDone.status === "DONE" && svcDone.operationId === null, "EQUIPMENT_SERVICE went straight to DONE, no ledger op");
+    const pressAfter = await prisma.equipmentAsset.findUniqueOrThrow({ where: { id: press.id }, select: { status: true } });
+    assert(pressAfter.status === "available", `the serviced press transitioned maintenance → available (got ${pressAfter.status})`);
+    assert((await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } })) === opsBeforeSvc, "EQUIPMENT_SERVICE wrote NO LotOperation");
+    assert((await prisma.vesselActivityEvent.count({ where: { enteredByEmail: ACTOR.actorEmail } })) === eventsBeforeSvc, "EQUIPMENT_SERVICE wrote NO VesselActivityEvent (it's equipment, not a vessel)");
+    assert((await prisma.supplyConsumption.count()) === consBeforeSvc && (await prisma.costLine.count()) === costBeforeSvc, "WORKORDER-3: equipment service wrote NO SupplyConsumption / CostLine");
+    const svcDup = await completeTaskCore(ACTOR, { taskId: svcTask.id, commandId: "zzwe-svc-1", actualPayload: { setStatus: "available" } });
+    assert(svcDup.duplicate === true, "duplicate equipment-service submit (same commandId) is an idempotent no-op");
 
     // ── 7. The finished WOs (all tasks DONE → WO APPROVED) appear in the filterable archive. ──
     const archive = await getWorkOrderArchive(TENANT, { q: "ZZWE" }, 1);

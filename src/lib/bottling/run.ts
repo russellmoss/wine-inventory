@@ -45,8 +45,11 @@ const SERIAL = {
 // The shared serialization-retry wrapper (D18/H2), labelled for this domain's logs.
 const withRetry = <T>(fn: () => Promise<T>) => withWriteRetry(fn, 5, "bottling");
 
-/** Apply a bottling run within an existing transaction. Returns the new run id. */
-async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput, actor: Actor): Promise<string> {
+/** Apply a bottling run within an existing transaction. Returns the new run id + the BOTTLE ledger op id.
+ * Exported as `runBottlingTx` (Plan 053 E15) so a work-order BOTTLE task can bottle INSIDE the WO completion
+ * tx (runLedgerWrite is already SERIALIZABLE + retry) — the caller stamps the op id on the task attempt so
+ * rejection reverses it through the universal reverseOperationCore path (the BOTTLE op carries {runId}). */
+export async function runBottlingTx(tx: Prisma.TransactionClient, input: BottlingInput, actor: Actor): Promise<{ runId: string; bottleOpId: number }> {
   const { vesselIds, destinationLocationId, skuName, skuVintage, bottlesProduced, date, method, dosageStyle, abv } = input;
   if (bottlesProduced < 1) throw new ActionError("Bottles produced must be at least 1.");
   if (!skuName) throw new ActionError("Give the bottled wine a name.");
@@ -158,7 +161,7 @@ async function applyBottling(tx: Prisma.TransactionClient, input: BottlingInput,
   const { cases, loose } = casesAndLoose(bottlesProduced);
   const codes = vessels.map((v) => v.code).join(", ");
   await writeAudit(tx, { ...actor, action: "BOTTLING", entityType: "BottlingRun", entityId: runId, summary: `Bottled ${bottlesProduced} bottles (${cases}c + ${loose}) of "${skuName} ${skuVintage}" from ${codes} into ${location.name}` });
-  return runId;
+  return { runId, bottleOpId };
 }
 
 /** Reverse a bottling run within a transaction: restore bulk via the ledger, remove the bottles,
@@ -271,7 +274,7 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
 }
 
 export async function executeBottling(input: BottlingInput, actor: Actor): Promise<void> {
-  await withRetry(() => runInTenantTx((tx) => applyBottling(tx, input, actor), SERIAL));
+  await withRetry(() => runInTenantTx((tx) => runBottlingTx(tx, input, actor), SERIAL));
 }
 
 export async function deleteBottling(runId: string, actor: Actor): Promise<void> {
@@ -292,7 +295,7 @@ export async function editBottling(runId: string, input: BottlingInput, actor: A
   await withRetry(() =>
     runInTenantTx(async (tx) => {
       await reverseBottlingTx(tx, runId, actor);
-      await applyBottling(tx, input, actor);
+      await runBottlingTx(tx, input, actor);
     }, SERIAL),
   );
 }

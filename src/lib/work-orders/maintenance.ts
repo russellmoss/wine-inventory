@@ -7,6 +7,7 @@ import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 import { recordVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { coerceVesselActivityKind } from "@/lib/cellar/vessel-activity-vocab";
+import { EQUIPMENT_STATUSES } from "@/lib/equipment/vocab";
 import type { CompleteTaskInput, CompleteTaskResult } from "@/lib/work-orders/execute";
 
 // The maintenance lane (Phase 9.1 Unit 3, A4): MAINTENANCE tasks (temp setpoints + cleaning/sanitizing/
@@ -29,6 +30,50 @@ export async function completeMaintenanceTaskCore(
 
   const planned = (task.plannedPayload ?? {}) as Record<string, unknown>;
   const merged = { ...planned, ...(input.actualPayload ?? {}) };
+
+  // Plan 053 E16: an EQUIPMENT_SERVICE task services an EquipmentAsset, not a vessel. Record-only overhead
+  // (WORKORDER-3): NO VesselActivityEvent, NO ledger op, NO cost. It optionally transitions the status of
+  // every EquipmentAsset attached to the task (the advisory equipment link from B10). Branch out here,
+  // before coerceVesselActivityKind (which only knows vessel-activity kinds) and the vessel requirement.
+  if (task.activityType === "EQUIPMENT_SERVICE") {
+    const raw = asStr(merged.setStatus);
+    const setStatus = raw && (EQUIPMENT_STATUSES as readonly string[]).includes(raw) ? raw : null;
+    const result = await runInTenantTx(async (tx) => {
+      const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
+      const attempt = await tx.workOrderTaskAttempt.create({
+        data: {
+          taskId: task.id, seq, commandId: input.commandId, status: "APPROVED",
+          actualPayload: merged as Prisma.InputJsonValue, operationId: null,
+          completionNote: input.completionNote?.trim() || null, deviationReason: input.deviationReason?.trim() || null,
+          completedById: actor.actorUserId, completedByEmail: actor.actorEmail,
+          reviewedAt: new Date(), reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail,
+        },
+        select: { id: true },
+      });
+      let transitioned = 0;
+      if (setStatus) {
+        const links = await tx.workOrderTaskEquipment.findMany({ where: { taskId: task.id }, select: { equipmentId: true } });
+        const equipmentIds = links.map((l) => l.equipmentId);
+        if (equipmentIds.length > 0) {
+          transitioned = (await tx.equipmentAsset.updateMany({ where: { id: { in: equipmentIds } }, data: { status: setStatus } })).count;
+        }
+      }
+      // Same CAS guard as the vessel-activity lane: a concurrent completion with a different commandId loses.
+      const claimed = await tx.workOrderTask.updateMany({
+        where: { id: task.id, status: task.status, currentAttemptId: task.currentAttemptId },
+        data: { status: "DONE", currentAttemptId: attempt.id, completionNote: input.completionNote?.trim() || null, deviationReason: input.deviationReason?.trim() || null },
+      });
+      if (claimed.count === 0) throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
+      await bumpWorkOrderRollupTx(tx, task.workOrderId);
+      await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Recorded equipment service${setStatus ? ` (${transitioned} set to ${setStatus})` : ""}` });
+      return { attemptId: attempt.id, transitioned };
+    }, { isolationLevel: "Serializable" });
+    const msg = setStatus
+      ? `Equipment service recorded — ${result.transitioned} asset${result.transitioned === 1 ? "" : "s"} set to ${setStatus}.`
+      : "Equipment service recorded.";
+    return { taskId: task.id, attemptId: result.attemptId, operationId: null, status: "DONE", duplicate: false, message: msg };
+  }
+
   const kind = coerceVesselActivityKind(task.activityType);
   const vesselId = task.destVesselId ?? task.sourceVesselId ?? asStr(merged.vesselId) ?? null;
   if (!vesselId) throw new ActionError("This maintenance task has no vessel.");

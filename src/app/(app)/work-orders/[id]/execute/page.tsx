@@ -4,6 +4,7 @@ import { getWorkOrderDetail, getWorkOrderPickers } from "@/lib/work-orders/data"
 import { loadCrushFormData } from "@/lib/ferment/crush-data";
 import { loadPressFormData } from "@/lib/ferment/press-data";
 import { loadHarvestWeighInFormData } from "@/lib/work-orders/harvest-weigh-in-data";
+import { loadBottlingTaskFormData } from "@/lib/bottling/bottling-task-data";
 import { ExecuteClient } from "./ExecuteClient";
 
 export const dynamic = "force-dynamic";
@@ -20,10 +21,12 @@ export default async function ExecuteWorkOrderPage({ params }: { params: Promise
   const hasCrush = wo.tasks.some((t) => t.kind === "OPERATION" && t.opType === "CRUSH");
   const hasPress = wo.tasks.some((t) => t.kind === "OPERATION" && t.opType === "PRESS");
   const hasWeighIn = wo.tasks.some((t) => t.kind === "OBSERVATION" && t.observationType === "HARVEST_WEIGH_IN");
-  const [crushData, pressData, weighInData] = await Promise.all([
+  const hasBottle = wo.tasks.some((t) => t.kind === "OPERATION" && t.opType === "BOTTLE");
+  const [crushData, pressData, weighInData, bottlingData] = await Promise.all([
     hasCrush ? loadCrushFormData() : Promise.resolve(null),
     hasPress ? loadPressFormData() : Promise.resolve(null),
     hasWeighIn ? loadHarvestWeighInFormData() : Promise.resolve(null),
+    hasBottle ? loadBottlingTaskFormData() : Promise.resolve(null),
   ]);
-  return <ExecuteClient wo={wo} pickers={pickers} crushData={crushData} pressData={pressData} weighInData={weighInData} />;
+  return <ExecuteClient wo={wo} pickers={pickers} crushData={crushData} pressData={pressData} weighInData={weighInData} bottlingData={bottlingData} />;
 }
