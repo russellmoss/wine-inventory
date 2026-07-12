@@ -92,6 +92,7 @@ import { sparklingTirageTool } from "./tools/sparkling-tirage";
 import { logRiddlingTool } from "./tools/log-riddling";
 import { sparklingDisgorgeTool } from "./tools/sparkling-disgorge";
 import { recordBulkWineCostTool } from "./tools/record-bulk-wine-cost";
+import { fileFeedbackTool } from "./tools/file-feedback";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -158,6 +159,7 @@ const ALL_TOOLS: AssistantTool[] = [
   logRiddlingTool,
   sparklingDisgorgeTool,
   recordBulkWineCostTool,
+  fileFeedbackTool,
 ];
 
 /** Tools this user is allowed to see, after role filtering. */
