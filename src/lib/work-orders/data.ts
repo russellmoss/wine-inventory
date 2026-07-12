@@ -7,11 +7,31 @@ import { bucketWorkOrders, type BucketedItem } from "@/lib/work-orders/buckets";
 import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/lib/work-orders/deviation";
 import { buildArchiveWhere, buildOpenWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilters, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
 import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
+import { deriveGroupRackProgress, type BatchAttemptLite, type PlannedGroupRack } from "@/lib/work-orders/group-rack-progress";
 
 // Read-side view-models for work orders (Phase 9). K12-safe: every reader takes tenantId as an EXPLICIT
 // argument and wraps its reads in runAsTenant — never reads the ALS tenant (so these stay correct even
 // if wrapped in cache() later). Serializable shapes only (Dates → ISO, Decimals → numbers). The
 // dashboard bucketing lives in dashboard.ts (Unit 13); this file holds the detail + count reads.
+
+// Plan 054 (Phase 9.4b): per-member progress for a group barrel-down / rack-to-tank task, so the execute
+// screen can show done vs. pending members + headroom, and the detail page can show progress.
+export type GroupRackMemberView = {
+  vesselId: string;
+  code: string | null;
+  done: boolean;
+  currentL: number | null;
+  capacityL: number | null;
+  headroomL: number | null;
+};
+export type GroupRackTaskView = {
+  direction: "BARREL_DOWN" | "RACK_TO_TANK";
+  sideVesselId: string | null; // the source (barrel-down) or destination (rack-to-tank) vessel
+  members: GroupRackMemberView[];
+  doneCount: number;
+  pendingCount: number;
+  allMembersDone: boolean;
+};
 
 export type WorkOrderTaskView = {
   id: string;
@@ -39,6 +59,7 @@ export type WorkOrderTaskView = {
   completionNote: string | null;
   deviationReason: string | null;
   startedByEmail: string | null;
+  groupRack: GroupRackTaskView | null; // plan 054: set only for group barrel-down / rack-to-tank tasks
 };
 
 export type WorkOrderDetail = {
@@ -68,12 +89,13 @@ function taskView(t: {
   assigneeId: string | null; assigneeEmail: string | null;
   dueAt: Date | null; plannedPayload: unknown; currentAttemptId: string | null; completionNote: string | null;
   deviationReason: string | null; startedByEmail: string | null;
-}, assigneeName: string | null, equipment: string[]): WorkOrderTaskView {
+}, assigneeName: string | null, equipment: string[], groupRack: GroupRackTaskView | null = null): WorkOrderTaskView {
   return {
     id: t.id,
     seq: t.seq,
     groupSeq: t.groupSeq,
     equipment,
+    groupRack,
     kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE",
     status: t.status,
     title: t.title,
@@ -128,6 +150,8 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       const name = eqNameOf.get(l.equipmentId);
       if (name) eqByTask.set(l.taskId, [...(eqByTask.get(l.taskId) ?? []), name]);
     }
+    // Plan 054: enrich group barrel-down / rack-to-tank tasks with per-member progress + headroom.
+    const grByTask = await buildGroupRackViews(wo.tasks);
     return {
       id: wo.id,
       number: wo.number,
@@ -143,10 +167,74 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       issuedByEmail: wo.issuedByEmail,
       issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null,
       startedByEmail: wo.startedByEmail,
-      tasks: wo.tasks.map((t) => taskView(t, t.assigneeId ? nameOf.get(t.assigneeId) ?? null : null, eqByTask.get(t.id) ?? [])),
+      tasks: wo.tasks.map((t) => taskView(t, t.assigneeId ? nameOf.get(t.assigneeId) ?? null : null, eqByTask.get(t.id) ?? [], grByTask.get(t.id) ?? null)),
       dependsOn: depWos.map((d) => ({ id: d.id, number: d.number, title: d.title, status: d.status })),
     };
   });
+}
+
+/** Plan 054: for every group-rack task, derive per-member done/pending (from its attempts) + current
+ * volume/headroom (from the member vessels). Runs in the caller's tenant context. */
+async function buildGroupRackViews(tasks: { id: string; kind: string; opType: string | null; plannedPayload: unknown }[]): Promise<Map<string, GroupRackTaskView>> {
+  const out = new Map<string, GroupRackTaskView>();
+  const grTasks = tasks.filter((t) => {
+    if (t.kind !== "OPERATION" || t.opType !== "RACK") return false;
+    const p = (t.plannedPayload ?? {}) as Record<string, unknown>;
+    const gr = p.groupRack;
+    return !!(gr && typeof gr === "object" && !Array.isArray(gr));
+  });
+  if (grTasks.length === 0) return out;
+
+  const attemptRows = await prisma.workOrderTaskAttempt.findMany({
+    where: { taskId: { in: grTasks.map((t) => t.id) } },
+    select: { id: true, taskId: true, seq: true, status: true, operationId: true, actualPayload: true },
+  });
+  const attemptsByTask = new Map<string, BatchAttemptLite[]>();
+  for (const a of attemptRows) {
+    const p = (a.actualPayload ?? {}) as Record<string, unknown>;
+    const grb = p.groupRackBatch;
+    const lite: BatchAttemptLite = { id: a.id, seq: a.seq, status: a.status, operationId: a.operationId, groupRackBatch: grb && typeof grb === "object" ? (grb as BatchAttemptLite["groupRackBatch"]) : null };
+    attemptsByTask.set(a.taskId, [...(attemptsByTask.get(a.taskId) ?? []), lite]);
+  }
+
+  // Load every member + side vessel once for volume/headroom.
+  const allVesselIds = new Set<string>();
+  for (const t of grTasks) {
+    const gr = ((t.plannedPayload ?? {}) as Record<string, unknown>).groupRack as PlannedGroupRack;
+    for (const id of gr.destVesselIds ?? []) allVesselIds.add(id);
+    for (const id of gr.sourceVesselIds ?? []) allVesselIds.add(id);
+  }
+  const vessels = allVesselIds.size
+    ? await prisma.vessel.findMany({ where: { id: { in: [...allVesselIds] } }, select: { id: true, capacityL: true, vesselLots: { select: { volumeL: true } } } })
+    : [];
+  const fillOf = new Map(vessels.map((v) => {
+    const current = Math.round(v.vesselLots.reduce((a, l) => a + Number(l.volumeL), 0) * 100) / 100;
+    const capacity = Number(v.capacityL);
+    return [v.id, { currentL: current, capacityL: capacity, headroomL: Math.max(0, Math.round((capacity - current) * 100) / 100) }];
+  }));
+
+  for (const t of grTasks) {
+    const planned = ((t.plannedPayload ?? {}) as Record<string, unknown>).groupRack as PlannedGroupRack;
+    let progress;
+    try {
+      progress = deriveGroupRackProgress(planned, attemptsByTask.get(t.id) ?? []);
+    } catch {
+      continue; // a malformed group-rack payload just gets no progress block (renders as before)
+    }
+    const members: GroupRackMemberView[] = progress.members.map((m) => {
+      const fill = fillOf.get(m.vesselId);
+      return { vesselId: m.vesselId, code: m.code, done: m.done, currentL: fill?.currentL ?? null, capacityL: fill?.capacityL ?? null, headroomL: fill?.headroomL ?? null };
+    });
+    out.set(t.id, {
+      direction: progress.direction,
+      sideVesselId: (planned.sourceVesselId as string) ?? (planned.destVesselId as string) ?? null,
+      members,
+      doneCount: progress.completedVesselIds.length,
+      pendingCount: progress.pendingVesselIds.length,
+      allMembersDone: progress.allMembersDone,
+    });
+  }
+  return out;
 }
 
 // ── Printable work order (Unit 6 fix): resolve the raw IDs in a task's payload to the human names/codes a

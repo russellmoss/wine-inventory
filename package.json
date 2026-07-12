@@ -43,6 +43,7 @@
     "grant:developer-demo": "tsx --conditions=react-server --env-file=.env scripts/grant-developer-demo-membership.ts",
     "verify:work-orders-enhancements": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders-enhancements.ts",
     "verify:work-orders-transform": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders-transform.ts",
+    "verify:group-rack-progressive": "tsx --conditions=react-server --env-file=.env scripts/verify-group-rack-progressive.ts",
     "verify:naming": "tsx --env-file=.env scripts/verify-naming.ts",
     "verify:raw-sql": "tsx scripts/check-raw-sql-tenant-safety.ts",
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",

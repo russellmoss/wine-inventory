@@ -20,6 +20,34 @@ export type ReviewResult = { taskId: string; status: string; message: string };
 
 const REJECTABLE_STATUSES: WorkOrderTaskStatus[] = ["PENDING_APPROVAL", "APPROVED", "DONE"];
 
+// ── Plan 054 (Phase 9.4b): a group-rack task can carry MANY batch attempts (one balanced op each), so
+// approve must finalize every live batch and reject must reverse every live batch LIFO. ──
+
+function hasGroupRackPayload(plannedPayload: unknown): boolean {
+  const p = jsonObject(plannedPayload);
+  const gr = p.groupRack;
+  return !!(gr && typeof gr === "object" && !Array.isArray(gr));
+}
+
+/** Live (non-rejected) group-rack BATCH attempts with a real op, newest-first (LIFO reject order). */
+async function liveGroupRackBatches(taskId: string): Promise<{ id: string; operationId: number; seq: number }[]> {
+  const attempts = await prisma.workOrderTaskAttempt.findMany({
+    where: { taskId, status: { not: "REJECTED" } },
+    select: { id: true, seq: true, operationId: true, actualPayload: true },
+    orderBy: { seq: "desc" },
+  });
+  return attempts
+    .filter((a) => a.operationId != null && "groupRackBatch" in jsonObject(a.actualPayload))
+    .map((a) => ({ id: a.id, operationId: a.operationId as number, seq: a.seq }));
+}
+
+/** Recover the compensating op id for a reversed op (rack/group-rack families return correctionId=null). */
+async function correctionIdFor(operationId: number, revCorrectionId: number | null): Promise<number | null> {
+  if (revCorrectionId != null) return revCorrectionId;
+  const op = await prisma.lotOperation.findUnique({ where: { id: operationId }, select: { correctedBy: { select: { id: true } } } });
+  return op?.correctedBy?.id ?? null;
+}
+
 function jsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -124,18 +152,25 @@ export async function approveTaskCore(user: ApproverUser, actor: LedgerActor, in
   const auth = canApprove(user);
   if (!auth.ok) throw new ActionError(auth.reason, "FORBIDDEN");
 
-  const task = await prisma.workOrderTask.findUnique({ where: { id: input.taskId }, select: { id: true, status: true, currentAttemptId: true, workOrderId: true } });
+  const task = await prisma.workOrderTask.findUnique({ where: { id: input.taskId }, select: { id: true, status: true, currentAttemptId: true, workOrderId: true, plannedPayload: true } });
   if (!task) throw new ActionError("That task no longer exists.");
   if (task.status !== "PENDING_APPROVAL") throw new ActionError("That task isn't awaiting approval.", "CONFLICT");
   if (!task.currentAttemptId) throw new ActionError("That task has no attempt to approve.", "CONFLICT");
 
+  // Plan 054: a group-rack task approves ALL its live batch attempts at once (one approval = accept every
+  // batch). A single-op task has exactly one live attempt, so this is a superset of the prior behavior.
+  const isGroupRack = hasGroupRackPayload(task.plannedPayload);
+  const liveBatches = isGroupRack ? await liveGroupRackBatches(task.id) : [];
+  const opIdsToCheck = isGroupRack && liveBatches.length > 0
+    ? liveBatches.map((b) => b.operationId)
+    : await prisma.workOrderTaskAttempt.findUnique({ where: { id: task.currentAttemptId }, select: { operationId: true } }).then((a) => (a?.operationId ? [a.operationId] : []));
+
   // Guard against finalizing an op that was already reversed elsewhere (e.g. the timeline Undo). Without
   // this, the WO would show APPROVED while the underlying stock movement was negated — silent divergence.
-  const currentAttempt = await prisma.workOrderTaskAttempt.findUnique({ where: { id: task.currentAttemptId }, select: { operationId: true } });
-  if (currentAttempt?.operationId) {
-    const op = await prisma.lotOperation.findUnique({ where: { id: currentAttempt.operationId }, select: { correctedBy: { select: { id: true } } } });
+  for (const opId of opIdsToCheck) {
+    const op = await prisma.lotOperation.findUnique({ where: { id: opId }, select: { correctedBy: { select: { id: true } } } });
     if (op?.correctedBy) {
-      throw new ActionError("That task's ledger operation was already reversed. Reject it (to resubmit) instead of approving.", "CONFLICT");
+      throw new ActionError("That task has a ledger operation that was already reversed. Reject it (to resubmit) instead of approving.", "CONFLICT");
     }
   }
 
@@ -147,12 +182,13 @@ export async function approveTaskCore(user: ApproverUser, actor: LedgerActor, in
       data: { status: "APPROVED" },
     });
     if (claimed.count === 0) throw new ActionError("That task was already reviewed or changed. Refresh and try again.", "CONFLICT");
-    await tx.workOrderTaskAttempt.update({
-      where: { id: task.currentAttemptId! },
+    // Finalize every live attempt (all group-rack batches, or the single op attempt).
+    await tx.workOrderTaskAttempt.updateMany({
+      where: { taskId: task.id, status: { not: "REJECTED" }, operationId: { not: null } },
       data: { status: "APPROVED", reviewedAt: now, reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail },
     });
     await bumpWorkOrderRollupTx(tx, task.workOrderId);
-    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Approved a work-order task` });
+    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: isGroupRack && liveBatches.length > 1 ? `Approved a work-order task (${liveBatches.length} batches)` : `Approved a work-order task` });
     return { taskId: task.id, status: "APPROVED", message: "Approved." };
   });
 }
@@ -169,11 +205,52 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
 
   const task = await prisma.workOrderTask.findUnique({
     where: { id: input.taskId },
-    select: { id: true, status: true, currentAttemptId: true, workOrderId: true, observationType: true, blockId: true },
+    select: { id: true, status: true, currentAttemptId: true, workOrderId: true, observationType: true, blockId: true, plannedPayload: true },
   });
   if (!task) throw new ActionError("That task no longer exists.");
   if (!REJECTABLE_STATUSES.includes(task.status)) throw new ActionError("That task isn't completed or awaiting approval.", "CONFLICT");
   if (!task.currentAttemptId) throw new ActionError("That task has no attempt to reject.", "CONFLICT");
+
+  // Plan 054: a multi-batch group-rack reverses EVERY live batch op, newest-first (LIFO — the ledger's
+  // laterTouchedKeys guard requires undoing the most recent draw on the shared source before older ones).
+  if (hasGroupRackPayload(task.plannedPayload)) {
+    const batches = await liveGroupRackBatches(task.id);
+    if (batches.length > 1) {
+      const originalStatus = task.status;
+      await runInTenantTx(async (tx) => {
+        const claimed = await tx.workOrderTask.updateMany({ where: { id: task.id, status: originalStatus, currentAttemptId: task.currentAttemptId }, data: { status: "REJECTED" } });
+        if (claimed.count === 0) throw new ActionError("That task was already reviewed or changed. Refresh and try again.", "CONFLICT");
+      });
+      const now = new Date();
+      let reversedAny = false;
+      for (const b of batches) {
+        try {
+          const rev = await reverseOperationCore(actor, { operationId: b.operationId, note: input.reason });
+          const corr = await correctionIdFor(b.operationId, rev.correctionId ?? null);
+          reversedAny = true;
+          await runInTenantTx((tx) => tx.workOrderTaskAttempt.update({ where: { id: b.id }, data: { status: "REJECTED", correctionOperationId: corr, rejectedReason: input.reason?.trim() || null, reviewedAt: now, reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail } }));
+        } catch (e) {
+          const already = await prisma.lotOperation.findUnique({ where: { id: b.operationId }, select: { correctedBy: { select: { id: true } } } });
+          if (already?.correctedBy) {
+            await runInTenantTx((tx) => tx.workOrderTaskAttempt.update({ where: { id: b.id }, data: { status: "REJECTED", correctionOperationId: already.correctedBy!.id, rejectedReason: input.reason?.trim() || null, reviewedAt: now, reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail } }));
+            reversedAny = true;
+            continue;
+          }
+          if (!reversedAny) {
+            await runInTenantTx((tx) => tx.workOrderTask.updateMany({ where: { id: task.id, status: "REJECTED" }, data: { status: originalStatus } }));
+          }
+          if (e instanceof ActionError && e.code === "CONFLICT") throw new ActionError(`Can't reject this task yet: ${e.message} Undo the later operation first, then reject.`, "CONFLICT");
+          throw e;
+        }
+      }
+      await runInTenantTx(async (tx) => {
+        await bumpWorkOrderRollupTx(tx, task.workOrderId);
+        await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Rejected a group-rack task — reversed ${batches.length} batches${input.reason ? `: ${input.reason}` : ""}` });
+      });
+      return { taskId: task.id, status: "REJECTED", message: `Rejected - all ${batches.length} batches were reversed.` };
+    }
+  }
+
   const currentAttemptId = task.currentAttemptId;
   const attempt = await prisma.workOrderTaskAttempt.findUnique({
     where: { id: currentAttemptId },
@@ -261,6 +338,59 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
       status: "REJECTED",
       message: originalStatus === "APPROVED" ? "Reverted - the ledger operation was reversed and the work order was reopened." : "Rejected - the ledger operation was reversed.",
     };
+  });
+}
+
+/**
+ * Plan 054: undo the LATEST recorded batch of an in-progress group-rack task (a mid-work correction, not a
+ * review action). Reverses that batch's op (LIFO — it's the most recent draw on the shared source), marks
+ * its attempt REJECTED, and reopens its members. The task returns to IN_PROGRESS (other batches remain) or
+ * PENDING (that was the only batch). To reverse a fully-completed task under review, use rejectTaskCore.
+ */
+export async function rejectGroupRackBatchCore(user: ApproverUser, actor: LedgerActor, input: { taskId: string; reason?: string }): Promise<ReviewResult> {
+  const auth = canApprove(user);
+  if (!auth.ok) throw new ActionError(auth.reason, "FORBIDDEN");
+
+  const task = await prisma.workOrderTask.findUnique({ where: { id: input.taskId }, select: { id: true, status: true, currentAttemptId: true, workOrderId: true, opType: true, kind: true, plannedPayload: true } });
+  if (!task) throw new ActionError("That task no longer exists.");
+  if (task.kind !== "OPERATION" || task.opType !== "RACK" || !hasGroupRackPayload(task.plannedPayload)) {
+    throw new ActionError("That task isn't a group barrel-down / rack-to-tank.", "CONFLICT");
+  }
+  if (task.status !== "IN_PROGRESS") {
+    throw new ActionError("You can only undo a batch while the task is still in progress. Use Reject to reverse a completed task that's under review.", "CONFLICT");
+  }
+  const batches = await liveGroupRackBatches(task.id);
+  if (batches.length === 0) throw new ActionError("There's no recorded batch to undo.", "CONFLICT");
+  const latest = batches[0];
+  const remaining = batches.slice(1);
+  const nextStatus: WorkOrderTaskStatus = remaining.length > 0 ? "IN_PROGRESS" : "PENDING";
+
+  // Reverse the latest batch op (its own tx; validates LEDGER-11 reversibility).
+  let correctionId: number | null = null;
+  try {
+    const rev = await reverseOperationCore(actor, { operationId: latest.operationId, note: input.reason });
+    correctionId = await correctionIdFor(latest.operationId, rev.correctionId ?? null);
+  } catch (e) {
+    const already = await prisma.lotOperation.findUnique({ where: { id: latest.operationId }, select: { correctedBy: { select: { id: true } } } });
+    if (already?.correctedBy) correctionId = already.correctedBy.id;
+    else if (e instanceof ActionError && e.code === "CONFLICT") throw new ActionError(`Can't undo this batch yet: ${e.message} Undo the later operation first.`, "CONFLICT");
+    else throw e;
+  }
+
+  return runInTenantTx(async (tx) => {
+    const now = new Date();
+    await tx.workOrderTaskAttempt.update({
+      where: { id: latest.id },
+      data: { status: "REJECTED", correctionOperationId: correctionId, rejectedReason: input.reason?.trim() || null, reviewedAt: now, reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail },
+    });
+    const claimed = await tx.workOrderTask.updateMany({
+      where: { id: task.id, status: "IN_PROGRESS", currentAttemptId: task.currentAttemptId },
+      data: { status: nextStatus, currentAttemptId: remaining[0]?.id ?? null },
+    });
+    if (claimed.count === 0) throw new ActionError("That task changed while you were undoing a batch. Refresh and try again.", "CONFLICT");
+    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Undid the last group-rack batch (ledger reversed)${input.reason ? `: ${input.reason}` : ""}` });
+    return { taskId: task.id, status: nextStatus, message: "Undid the last batch — its wine was returned to the source." };
   });
 }
 

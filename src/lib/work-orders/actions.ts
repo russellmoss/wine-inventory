@@ -11,7 +11,7 @@ import {
   startTaskCore,
   type CreateWorkOrderInput,
 } from "@/lib/work-orders/lifecycle";
-import { completeTaskCore, completeTasksBatchCore, type CompleteTaskInput } from "@/lib/work-orders/execute";
+import { completeTaskCore, completeTasksBatchCore, completeGroupRackBatchCore, type CompleteTaskInput, type GroupRackBatchInput } from "@/lib/work-orders/execute";
 import {
   createWorkOrderFromTemplateCore,
   createTemplateCore,
@@ -27,7 +27,7 @@ import { normalizeWorkOrderPriority, normalizeDurationMin } from "@/lib/work-ord
 import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
 import { draftNlWorkOrderForBuilder } from "@/lib/work-orders/nl-resolve";
 import { requireTenantId } from "@/lib/tenant/context";
-import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
+import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore, rejectGroupRackBatchCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
 import { firstBlockingPriorTask } from "@/lib/work-orders/group-gating";
@@ -347,6 +347,25 @@ export const approveTaskAction = action(async ({ user, actor }, input: { taskId:
  * conflict. Admin-only. */
 export const rejectTaskAction = action(async ({ user, actor }, input: { taskId: string; reason?: string }) => {
   const res = await rejectTaskCore(user, actor, input);
+  revalidateWorkOrders(res.taskId);
+  return res;
+});
+
+/** Plan 054: complete a SUBSET of a group-rack task's members ("these 4 barrels now"). Runs the same
+ * group/WO-dependency gating + server-side autoFinalize as a normal completion, then the batch core. */
+export const completeGroupRackBatchAction = action(async ({ user, actor }, input: GroupRackBatchInput) => {
+  await assertTaskDependenciesReady(input.taskId);
+  const task = await prisma.workOrderTask.findUnique({ where: { id: input.taskId }, select: { workOrderId: true, workOrder: { select: { autoFinalize: true } } } });
+  if (task) await assertPredecessorsDone(task.workOrderId);
+  const autoFinalize = task ? shouldAutoFinalize(user, { autoFinalize: task.workOrder.autoFinalize }) : false;
+  const res = await completeGroupRackBatchCore(actor, { ...input, autoFinalize });
+  revalidateWorkOrders(res.taskId);
+  return res;
+});
+
+/** Plan 054: undo the latest batch of an in-progress group-rack task (LIFO). Admin-only (canApprove). */
+export const rejectGroupRackBatchAction = action(async ({ user, actor }, input: { taskId: string; reason?: string }) => {
+  const res = await rejectGroupRackBatchCore(user, actor, input);
   revalidateWorkOrders(res.taskId);
   return res;
 });

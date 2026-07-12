@@ -12,6 +12,7 @@ import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFI
 import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
 import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
 import { runBottlingTx } from "@/lib/bottling/run";
+import { deriveGroupRackProgress, type BatchAttemptLite, type GroupRackProgress, type PlannedGroupRack } from "@/lib/work-orders/group-rack-progress";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import type { RateBasis } from "@/lib/cellar/additions-math";
 import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
@@ -430,6 +431,177 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
         // Report the committed task status (an auto-finalized attempt is APPROVED, not PENDING_APPROVAL).
         return { taskId: task.id, attemptId: dup.id, operationId: dup.operationId, status: dup.task.status, duplicate: true, message: "Already recorded." };
       }
+    }
+    throw e;
+  }
+}
+
+// ───────────────────── Plan 054 (Phase 9.4b): progressive group-rack completion ─────────────────────
+
+export type GroupRackBatchInput = {
+  taskId: string;
+  commandId: string;
+  memberVesselIds: string[]; // the subset of PENDING members to complete in this batch
+  perMemberVolumeL?: (number | null)[]; // optional, aligned to memberVesselIds (barrel-down NET fill / rack-to-tank draw)
+  lossL?: number;
+  note?: string;
+  autoFinalize?: boolean;
+};
+
+/** Read the task's attempts as the DB-free lite shape the progress projection consumes. */
+async function loadGroupRackProgress(taskId: string, planned: PlannedGroupRack): Promise<GroupRackProgress> {
+  const attempts = await prisma.workOrderTaskAttempt.findMany({
+    where: { taskId },
+    select: { id: true, seq: true, status: true, operationId: true, actualPayload: true },
+  });
+  const lite: BatchAttemptLite[] = attempts.map((a) => {
+    const p = (a.actualPayload ?? {}) as Record<string, unknown>;
+    const grb = p.groupRackBatch;
+    return {
+      id: a.id,
+      seq: a.seq,
+      status: a.status,
+      operationId: a.operationId,
+      groupRackBatch: grb && typeof grb === "object" ? (grb as BatchAttemptLite["groupRackBatch"]) : null,
+    };
+  });
+  return deriveGroupRackProgress(planned, lite);
+}
+
+function plannedGroupRackOf(task: TaskRow): PlannedGroupRack | null {
+  const payload = (task.plannedPayload ?? {}) as Record<string, unknown>;
+  const gr = payload.groupRack;
+  if (!gr || typeof gr !== "object" || Array.isArray(gr)) return null;
+  return gr as PlannedGroupRack;
+}
+
+/**
+ * Complete a SUBSET of a group-rack task's members ("these 4 barrels now"). Writes ONE balanced RACK op
+ * over just the selected members (via groupRackTx, drawn against current state), records a `groupRackBatch`
+ * on the attempt, and keeps the task IN_PROGRESS until the last member lands — only then does it enter
+ * review (PENDING_APPROVAL / APPROVED when auto-finalize). Idempotent on commandId. The one-shot "complete
+ * everything at once" is just this with every pending member selected. Never mutates the one-shot
+ * completeTaskCore path (single-vessel racks + other op families keep their terminal-completion guard).
+ */
+export async function completeGroupRackBatchCore(actor: LedgerActor, input: GroupRackBatchInput): Promise<CompleteTaskResult> {
+  const task = await prisma.workOrderTask.findUnique({ where: { id: input.taskId } });
+  if (!task) throw new ActionError("That task no longer exists.");
+
+  // Idempotency (A1): a prior attempt with this commandId already committed this batch.
+  const prior = await prisma.workOrderTaskAttempt.findUnique({ where: { commandId: input.commandId } });
+  if (prior) {
+    return { taskId: task.id, attemptId: prior.id, operationId: prior.operationId, status: task.status, duplicate: true, message: "Already recorded." };
+  }
+
+  const planned = plannedGroupRackOf(task);
+  if (task.kind !== "OPERATION" || task.opType !== "RACK" || !planned) {
+    throw new ActionError("That task isn't a group barrel-down / rack-to-tank.", "CONFLICT");
+  }
+  // Additional batches are accepted only while the task is still workable. A task under review
+  // (PENDING_APPROVAL) or settled (DONE/APPROVED/SKIPPED) is not; a REJECTED task must be resubmitted
+  // (→ PENDING) first via the normal flow. This never touches completeTaskCore's terminal guard.
+  if (task.status !== "PENDING" && task.status !== "IN_PROGRESS") {
+    throw new ActionError(`Can't add work to a ${task.status.replace(/_/g, " ").toLowerCase()} task.`, "CONFLICT");
+  }
+
+  const before = await loadGroupRackProgress(task.id, planned);
+  const pending = new Set(before.pendingVesselIds);
+  const selected = [...new Set(input.memberVesselIds.filter((x) => typeof x === "string" && x))];
+  if (selected.length === 0) throw new ActionError("Pick at least one vessel to complete.");
+  const notPending = selected.filter((id) => !pending.has(id));
+  if (notPending.length > 0) {
+    throw new ActionError("Some selected vessels are already recorded or aren't part of this task. Refresh and try again.", "CONFLICT");
+  }
+
+  const lossL = input.lossL != null && input.lossL > 0 ? input.lossL : 0;
+  const explicit = input.perMemberVolumeL;
+  const volById = new Map<string, number | null>();
+  selected.forEach((id, i) => volById.set(id, explicit?.[i] ?? null));
+
+  // Build a subset GroupRackInput. Barrel-down needs an explicit draw bounded to the selected barrels
+  // (omitting drawL would try to move the WHOLE source into the subset). Default each selected barrel to
+  // its current headroom; a caller-supplied volume overrides. Rack-to-tank drains each selected source
+  // fully unless a per-source volume is given.
+  let groupInput: GroupRackInput;
+  if (before.direction === "BARREL_DOWN") {
+    const sourceVesselId = String(planned.sourceVesselId);
+    const fill = await prisma.vessel.findMany({
+      where: { id: { in: selected } },
+      select: { id: true, capacityL: true, vesselLots: { select: { volumeL: true } } },
+    });
+    const headroomById = new Map<string, number>();
+    for (const v of fill) {
+      const current = v.vesselLots.reduce((a, l) => a + Number(l.volumeL), 0);
+      headroomById.set(v.id, Math.max(0, Math.round((Number(v.capacityL) - current) * 100) / 100));
+    }
+    const perDestVolumeL = selected.map((id) => {
+      const explicitV = volById.get(id);
+      return explicitV != null && explicitV > 0 ? explicitV : (headroomById.get(id) ?? 0);
+    });
+    const drawL = Math.round((perDestVolumeL.reduce((a, v) => a + v, 0) + lossL) * 100) / 100;
+    if (!(drawL > 0)) throw new ActionError("The selected barrels are already full — nothing to fill.", "CONFLICT");
+    groupInput = { direction: "BARREL_DOWN", sourceVesselId, destVesselIds: selected, perDestVolumeL, drawL, lossL, note: input.note };
+  } else {
+    const destVesselId = String(planned.destVesselId);
+    const perSourceDrawL = selected.map((id) => volById.get(id) ?? null);
+    groupInput = { direction: "RACK_TO_TANK", destVesselId, sourceVesselIds: selected, perSourceDrawL, lossL, note: input.note };
+  }
+
+  const finalize = input.autoFinalize === true;
+  try {
+    const result = await runLedgerWrite(async (tx) => {
+      const r = await groupRackTx(tx, actor, groupInput, { commandId: input.commandId, note: input.note });
+
+      const now = new Date();
+      const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
+      const batchPayload = { ...(task.plannedPayload as Record<string, unknown>), groupRackBatch: { memberVesselIds: selected, operationId: r.operationId }, ...(input.note ? { note: input.note } : {}) };
+      const attempt = await tx.workOrderTaskAttempt.create({
+        data: {
+          taskId: task.id,
+          seq,
+          commandId: input.commandId,
+          status: finalize ? "APPROVED" : "PENDING_APPROVAL",
+          actualPayload: batchPayload as Prisma.InputJsonValue,
+          operationId: r.operationId,
+          completionNote: input.note?.trim() || null,
+          completedById: actor.actorUserId,
+          completedByEmail: actor.actorEmail,
+          ...(finalize ? { reviewedAt: now, reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail } : {}),
+        },
+        select: { id: true },
+      });
+
+      // Recompute progress AFTER this batch to decide whether the task is now fully done.
+      const doneNow = before.completedVesselIds.length + selected.length >= before.members.length;
+      const taskStatus = doneNow ? (finalize ? "APPROVED" : "PENDING_APPROVAL") : "IN_PROGRESS";
+
+      // CAS on the (status, currentAttemptId) we read at the top — a concurrent batch loses and retries.
+      const claimed = await tx.workOrderTask.updateMany({
+        where: { id: task.id, status: task.status, currentAttemptId: task.currentAttemptId },
+        data: { status: taskStatus, currentAttemptId: attempt.id },
+      });
+      if (claimed.count === 0) {
+        throw new ActionError("That task changed while you were completing it. Refresh and try again.", "CONFLICT");
+      }
+
+      // Discharge the advisory holds only once the whole task is done (group racks carry no material
+      // reservations today, so this is a no-op in practice — kept for parity + future-proofing).
+      if (doneNow) await releaseReservationsForTaskTx(tx, { taskId: task.id });
+      await bumpWorkOrderRollupTx(tx, task.workOrderId);
+      await writeAudit(tx, {
+        ...actor,
+        action: "STOCK_MOVEMENT",
+        entityType: "WorkOrderTask",
+        entityId: task.id,
+        summary: `Group-rack batch (${selected.length} ${selected.length === 1 ? "vessel" : "vessels"}${doneNow ? ", task complete" : ", more remaining"}): ${r.message}`,
+      });
+      return { attemptId: attempt.id, operationId: r.operationId, taskStatus, message: r.message };
+    });
+    return { taskId: task.id, attemptId: result.attemptId, operationId: result.operationId, status: result.taskStatus, duplicate: false, message: result.message };
+  } catch (e) {
+    if (e && typeof e === "object" && (e as { code?: string }).code === "P2002") {
+      const dup = await prisma.workOrderTaskAttempt.findUnique({ where: { commandId: input.commandId }, include: { task: { select: { status: true } } } });
+      if (dup) return { taskId: task.id, attemptId: dup.id, operationId: dup.operationId, status: dup.task.status, duplicate: true, message: "Already recorded." };
     }
     throw e;
   }

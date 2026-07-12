@@ -103,6 +103,18 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
                   {t.assigneeName ? ` · ${t.assigneeName}` : ""}
                 </div>
                 {t.equipment.length ? <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Equipment: {t.equipment.join(", ")}</div> : null}
+                {t.groupRack ? (
+                  <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 5 }}>
+                    {t.groupRack.direction === "RACK_TO_TANK" ? "Rack to tank" : "Barrel down"}: <strong>{t.groupRack.doneCount} of {t.groupRack.members.length} done</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 4 }}>
+                      {t.groupRack.members.map((m) => (
+                        <span key={m.vesselId} style={{ fontSize: 11.5, padding: "2px 7px", borderRadius: 999, background: m.done ? "var(--paper-100)" : "var(--surface)", border: "1px solid var(--border)", color: m.done ? "var(--text-secondary)" : "var(--text-muted)" }}>
+                          {m.done ? "✓ " : ""}{m.code ?? m.vesselId.slice(0, 6)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {t.deviationReason ? <div style={{ fontSize: 13, color: "var(--warning, #b8860b)", marginTop: 6 }}>Deviation: {t.deviationReason}</div> : null}
                 {t.completionNote ? <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Note: {t.completionNote}</div> : null}
               </Card>
