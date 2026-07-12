@@ -368,6 +368,10 @@ export type TaskBuild = {
   taskType: string;
   title?: string;
   values: Record<string, unknown>;
+  // Plan 053 A3: sequential-group index (0 = first group). Tasks with the same groupSeq run in parallel;
+  // a task can't complete until every task in a lower group is worker-completed. The builder sets this
+  // from the visual group order; omitted → 0 (ungated), which is the template/NL default.
+  groupSeq?: number;
   // Phase 9.3: a proposal-local stable key (uuid) minted per TaskBuild. Carried into the created
   // WorkOrderTask's plannedPayload so completion-time dependency refs survive reordering/retries/fanout
   // (Unit 5). NOT part of the freshness fingerprint (the signed payload already HMAC-protects it).
@@ -386,6 +390,7 @@ export function instantiateTaskBuilds(builds: TaskBuild[], vocab: ResolvedTaskVo
     const canon = canonicalColumns(b.taskType, payload);
     return {
       seq: i + 1,
+      groupSeq: b.groupSeq ?? 0,
       kind: def.kind,
       title: b.title?.trim() || def.label,
       opType: def.opType ?? null,

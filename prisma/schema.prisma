@@ -3372,6 +3372,7 @@ model WorkOrderTask {
   id               String              @id @default(cuid())
   workOrderId      String
   seq              Int // display + execution order within the WO
+  groupSeq         Int                 @default(0) // plan 053 A3: sequential-group index. Tasks share a group (run in parallel); a task may complete only once every task in a LOWER group is worker-completed. Positional → reject/reissue-safe, no task-dep edge table.
   kind             WorkOrderTaskKind
   status           WorkOrderTaskStatus @default(PENDING)
   title            String

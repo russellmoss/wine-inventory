@@ -24,7 +24,7 @@ import type { TemplateSpec } from "@/lib/work-orders/template-vocabulary";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
-import { assertDependenciesSatisfied, type TaskDependencyRef, type PredecessorState, type AttemptOutcome } from "@/lib/work-orders/nl-dependencies";
+import { firstBlockingPriorTask } from "@/lib/work-orders/group-gating";
 import { prisma } from "@/lib/prisma";
 import { canManagerAccessVineyard, type AppUser } from "@/lib/access";
 import { ActionError } from "@/lib/action-error";
@@ -160,38 +160,21 @@ export const startTaskAction = action(async ({ actor }, input: { taskId: string 
 /** Per-task completion pre-flight (shared by single + batch completion): enforce the D9 vineyard-access
  * guard for a HARVEST_WEIGH_IN and compute autoFinalize server-side (never client-trusted). Returns the
  * input enriched with the resolved autoFinalize. */
-/** Phase 9.3 Unit 5: state-machine gating — a task carrying dependency refs (plannedPayload.dependsOn) is
- * not completable until every predecessor it names (by stable taskKey, within the same WO) has a
- * successful attempt. Inert for tasks with no dependsOn (nothing emits edges yet). Read-only. */
+/** Plan 053 A3: sequential-group gating. Tasks share a `groupSeq` (parallel within a group); a task may
+ * complete only once EVERY task in a LOWER group is worker-completed. Positional (no taskKey/dependsOn
+ * blob), so a rejected-and-reissued predecessor naturally holds its group open until it is redone. The
+ * decision is the pure `firstBlockingPriorTask`; this wrapper just loads the sibling tasks. */
 async function assertTaskDependenciesReady(taskId: string): Promise<void> {
-  const task = await prisma.workOrderTask.findUnique({ where: { id: taskId }, select: { workOrderId: true, plannedPayload: true } });
-  const payload = (task?.plannedPayload ?? {}) as Record<string, unknown>;
-  // Defensive: plannedPayload is persisted from client taskBuilds without a field whitelist, so a crafted
-  // dependsOn could hold junk — keep only well-formed refs (a bad ref must not 500 the completion).
-  const needs = (Array.isArray(payload.dependsOn) ? payload.dependsOn : []).filter(
-    (r): r is TaskDependencyRef => !!r && typeof r === "object" && typeof (r as { taskKey?: unknown }).taskKey === "string",
-  );
-  if (!task || needs.length === 0) return;
+  const task = await prisma.workOrderTask.findUnique({ where: { id: taskId }, select: { workOrderId: true, groupSeq: true } });
+  if (!task || task.groupSeq <= 0) return;
   const siblings = await prisma.workOrderTask.findMany({
-    where: { workOrderId: task.workOrderId },
-    select: { kind: true, title: true, destVesselId: true, sourceVesselId: true, lotId: true, plannedPayload: true, attempts: { select: { seq: true, status: true, operationId: true } } },
+    where: { workOrderId: task.workOrderId, groupSeq: { lt: task.groupSeq } },
+    select: { title: true, seq: true, status: true, groupSeq: true },
   });
-  const byKey = new Map<string, PredecessorState>();
-  for (const s of siblings) {
-    const p = (s.plannedPayload ?? {}) as Record<string, unknown>;
-    const key = typeof p.taskKey === "string" ? p.taskKey : null;
-    if (!key) continue;
-    byKey.set(key, {
-      taskKey: key,
-      title: s.title,
-      destVesselId: s.destVesselId,
-      sourceVesselId: s.sourceVesselId,
-      lotId: s.lotId,
-      isOperation: s.kind === "OPERATION",
-      attempts: s.attempts.map((a): AttemptOutcome => ({ seq: a.seq, status: a.status, operationId: a.operationId })),
-    });
+  const blocking = firstBlockingPriorTask(task.groupSeq, siblings);
+  if (blocking) {
+    throw new ActionError(`"${blocking.title}" must be completed before this task can run — finish the earlier step first.`);
   }
-  assertDependenciesSatisfied(needs, byKey);
 }
 
 async function prepareCompleteInput(user: AppUser, input: CompleteTaskInput): Promise<CompleteTaskInput> {

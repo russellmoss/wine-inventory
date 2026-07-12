@@ -15,6 +15,7 @@ import { reserveForWorkOrderTx, releaseReservationsForWorkOrderTx } from "@/lib/
 
 export type CreateTaskInput = {
   seq: number;
+  groupSeq?: number; // plan 053 A3: sequential-group index (0 = first group / ungated). Parallel within a group.
   kind: WorkOrderTaskKind;
   title: string;
   opType?: OperationType | null;
@@ -107,6 +108,7 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
           create: input.tasks.map((t) => ({
             tenantId,
             seq: t.seq,
+            groupSeq: t.groupSeq ?? 0,
             kind: t.kind,
             title: t.title.trim(),
             opType: t.opType ?? null,
