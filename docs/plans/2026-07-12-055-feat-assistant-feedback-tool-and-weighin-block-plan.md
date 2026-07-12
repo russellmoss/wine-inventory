@@ -1,7 +1,7 @@
 ---
 title: Assistant feedback/bug-report tool + weigh-in vineyard-block prefill
 type: feat
-status: draft
+status: completed
 date: 2026-07-12
 branch: feat/assistant-feedback-tool-weighin-block
 depth: standard
@@ -249,14 +249,15 @@ execute screen prefills the named block; crush task title names the lot. Run `np
 
 ## Success Criteria
 
-- [ ] Assistant files a `BUG_REPORT` and a `FEATURE_REQUEST` from chat via confirm-before-write; rows land
-      in Demo Winery (read-back proven).
-- [ ] Assistant no longer claims it "can't file bugs" (tool description/prompt updated).
-- [ ] `file_feedback` is covered by ≥1 golden case; D26/H8 coverage guard green.
-- [ ] Naming a vineyard block on a harvest-intake WO prefills the weigh-in execute screen's block picker.
-- [ ] Ambiguous block name shows a picker; unknown name degrades to hint (WO still issues).
-- [ ] CRUSH task title/instructions name the lot/block.
-- [ ] `npm run build` clean; NL work-order verify green; no regressions in existing tests.
+- [x] Assistant files a `BUG_REPORT` and a `FEATURE_REQUEST` from chat via confirm-before-write; rows land
+      in Demo Winery (read-back proven — `createFeedbackTicket` e2e).
+- [x] Assistant no longer claims it "can't file bugs" (tool description + system prompt updated).
+- [x] `file_feedback` is covered by 2 golden cases; D26/H8 coverage guard green.
+- [x] Naming a vineyard block on a harvest-intake WO prefills the weigh-in execute screen's block picker
+      (proven: resolved blockId reaches `WorkOrderTask.blockId`).
+- [x] Ambiguous block name shows a picker; unknown name degrades to hint (WO still issues).
+- [x] CRUSH task title/instructions name the lot/block.
+- [x] `npm run build` clean; NL work-order verify green (14 assertions); full suite 1784 passing, 0 fail.
 
 ## Confidence Check
 
