@@ -504,4 +504,24 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     tool: "record_bulk_wine_cost",
     args: { lot: "24-BULK-1", totalCost: 2400 },
   },
+  {
+    utterance: "Report this as a bug: the weigh-in task didn't carry the vineyard block I named",
+    tool: "file_feedback",
+    args: {
+      kind: "bug",
+      title: "Weigh-in work-order task drops the named vineyard block",
+      body: "Authoring a fruit-intake work order for Russian River Pinot Noir (Block 1): the block was not carried onto the weigh-in / crush tasks, so the crew has to re-pick it on the execute screen.",
+    },
+    note: "bug report composed from the conversation; all three fields are required",
+  },
+  {
+    utterance: "File a feature request to let me pre-select a block on weigh-in tasks",
+    tool: "file_feedback",
+    args: {
+      kind: "feature",
+      title: "Let weigh-in/crush tasks carry a pre-selected vineyard block",
+      body: "Allow the author to set the vineyard block on HARVEST_WEIGH_IN and CRUSH tasks so it shows on the work order and prefills the execute screen.",
+    },
+    note: "feature request via file_feedback; kind='feature' maps to FEATURE_REQUEST",
+  },
 ];

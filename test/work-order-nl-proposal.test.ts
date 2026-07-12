@@ -129,6 +129,29 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
     expect(outOfRange.intents[0]).toEqual({ kind: "CRUSH" });
   });
 
+  it("carries a named block onto CRUSH (title stamp) and HARVEST_WEIGH_IN (plus a pinned blockId)", () => {
+    // plan 055: the assistant passes `block` when the user names the fruit. On CRUSH it is a free-text
+    // label (stamped into the title downstream); on HARVEST_WEIGH_IN a pinned blockId (added by the tool
+    // layer after vineyard-access-scoped resolution) rides alongside so it prefills the execute screen.
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "take in the RRV Pinot, weigh it, destem to T6",
+      tasks: [
+        { kind: "harvest_weigh_in", block: "Russian River Pinot Noir (Block 1)", blockId: "blk_rrv1" },
+        { kind: "crush", destVessel: "T6", block: "Russian River Pinot Noir (Block 1)" },
+      ],
+    });
+    expect(draft.intents[0]).toEqual({
+      kind: "HARVEST_WEIGH_IN",
+      block: "Russian River Pinot Noir (Block 1)",
+      blockId: "blk_rrv1",
+    });
+    expect(draft.intents[1]).toEqual({
+      kind: "CRUSH",
+      destVessel: "T6",
+      block: "Russian River Pinot Noir (Block 1)",
+    });
+  });
+
   it("canonicalizes PRESS source, destination guidance, and press cycle", () => {
     const structured = canonicalizeNlWorkOrderDraft({
       sourceText: "press tank 6 into tank 5",

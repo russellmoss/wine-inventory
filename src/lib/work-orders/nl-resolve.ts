@@ -555,6 +555,13 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       // % crushed field instead of the form's 100% default. Run-time inputs (picks, measured volume)
       // are still floor-entered. plannedPayload is a direct pass-through of these values (see the
       // "without a field whitelist" note in actions.ts), and the keys match TASK_VOCABULARY.CRUSH.
+      // CRUSH has no formal block binding (the block→pick→lot is chosen on the execute form at run time),
+      // so a named lot/block only stamps the title + instructions to tell the crew which fruit to pull.
+      const block = intent.block?.trim() || null;
+      const title = block ? `De-stem / crush — ${block}` : "De-stem / crush";
+      const noteWithBlock = block
+        ? `Fruit: ${block}.${intent.note ? ` ${intent.note}` : ""}`
+        : intent.note;
       const values = {
         ...(destVesselId ? { destVesselId } : {}),
         ...(intent.destemmed != null ? { destemmed: intent.destemmed } : {}),
@@ -562,10 +569,10 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         ...(intent.crushedPct != null ? { crushedPct: intent.crushedPct } : {}),
         ...(intent.mustTempC != null ? { mustTempC: intent.mustTempC } : {}),
         ...(intent.pressCycle ? { pressCycle: intent.pressCycle } : {}),
-        ...(intent.note ? { note: intent.note } : {}),
+        ...(noteWithBlock ? { note: noteWithBlock } : {}),
       };
-      taskBuilds.push({ taskType: "CRUSH", title: "De-stem / crush", values, taskKey: randomUUID() });
-      tasks.push({ seq, kind: "CRUSH", title: "De-stem / crush", summary: `Crush${destLabel ? ` to ${destLabel}` : ""}; picks and measured volume entered on the floor`, entities: destVesselId && destLabel ? [{ role: "destination", label: destLabel, id: destVesselId }] : [] });
+      taskBuilds.push({ taskType: "CRUSH", title, values, taskKey: randomUUID() });
+      tasks.push({ seq, kind: "CRUSH", title, summary: `Crush${block ? ` ${block}` : ""}${destLabel ? ` to ${destLabel}` : ""}; picks and measured volume entered on the floor`, entities: destVesselId && destLabel ? [{ role: "destination", label: destLabel, id: destVesselId }] : [] });
       continue;
     }
 
@@ -603,9 +610,15 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
     }
 
     if (intent.kind === "HARVEST_WEIGH_IN") {
-      const values = { ...(intent.note ? { note: intent.note } : {}) };
+      // A resolved blockId (pinned by the tool layer) flows to WorkOrderTask.blockId via canonicalColumns
+      // and prefills the weigh-in execute screen's block picker. Weights + confirmation are still
+      // floor-entered; blockId is a runtime field so it never blocks readiness (proposal-readiness.ts).
+      const values = {
+        ...(intent.blockId ? { blockId: intent.blockId } : {}),
+        ...(intent.note ? { note: intent.note } : {}),
+      };
       taskBuilds.push({ taskType: "HARVEST_WEIGH_IN", title: "Fruit intake / weigh-in", values, taskKey: randomUUID() });
-      tasks.push({ seq, kind: "HARVEST_WEIGH_IN", title: "Fruit intake / weigh-in", summary: `Weigh in fruit${intent.block ? ` (${intent.block})` : ""}; block and weights entered on the floor`, entities: [] });
+      tasks.push({ seq, kind: "HARVEST_WEIGH_IN", title: "Fruit intake / weigh-in", summary: `Weigh in fruit${intent.block ? ` (${intent.block})` : ""}; block${intent.blockId ? " prefilled," : " and"} weights entered on the floor`, entities: [] });
       continue;
     }
 
