@@ -364,4 +364,26 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "a packaging-quantity question is a READ estimate — never propose_work_order (no work is authored)",
   },
+  // ── Plan 055: equipment-service authoring vs group-rack batch completion vs review ──
+  {
+    utterance: "Make a work order to service the basket press and set it to maintenance",
+    tool: "propose_work_order",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "authoring an equipment-service task is propose_work_order — NOT complete_task/manage_work_order",
+  },
+  {
+    utterance: "Complete the barrel-down for B101-B104 on WO 210",
+    tool: "group_rack_batch",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "progressive group-rack batch completion is group_rack_batch — NOT complete_task (which is one-shot/terminal for a group rack)",
+  },
+  {
+    utterance: "Undo the last batch on WO 210",
+    tool: "group_rack_batch",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "undo the last group-rack batch is group_rack_batch action:undo — NOT review_task/undo_operation",
+  },
 ];

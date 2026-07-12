@@ -245,3 +245,55 @@ describe("Plan 055a — BOTTLE authoring canonicalization", () => {
     );
   });
 });
+
+describe("Plan 055 U3 — EQUIPMENT_SERVICE canonicalization", () => {
+  it("canonicalizes an equipment-service intent + validates setStatus", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "service the press",
+      tasks: [{ kind: "equipment_service", equipment: "basket press", setStatus: "maintenance", note: "annual" }],
+    });
+    expect(draft.intents[0]).toEqual({ kind: "EQUIPMENT_SERVICE", equipment: "basket press", setStatus: "maintenance", note: "annual" });
+  });
+
+  it("normalizes a spaced/uppercased status ('In Use' -> 'in_use')", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "x",
+      tasks: [{ kind: "EQUIPMENT_SERVICE", equipment: "pump P2", setStatus: "In Use" }],
+    });
+    expect(draft.intents[0]).toMatchObject({ kind: "EQUIPMENT_SERVICE", equipment: "pump P2", setStatus: "in_use" });
+  });
+
+  it("rejects an invalid equipment status", () => {
+    expect(() =>
+      canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "EQUIPMENT_SERVICE", equipment: "press", setStatus: "broken" }] }),
+    ).toThrow(/not a valid equipment status/i);
+  });
+
+  it("requires the equipment (or a pinned id) to service", () => {
+    expect(() =>
+      canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "EQUIPMENT_SERVICE", setStatus: "available" }] }),
+    ).toThrow(/needs the equipment to service/i);
+  });
+});
+
+describe("Plan 055 U7/U8/D3 — per-task assignee / priority / groupSeq meta", () => {
+  it("carries assignee, priority, and groupSeq onto ANY task kind", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "rack then add, sequenced, assigned",
+      tasks: [
+        { kind: "rack", from: "T1", to: "T2", assignee: "Russell", priority: "HIGH", groupSeq: 0 },
+        { kind: "addition", vessel: "T2", material: "KMBS", amount: 30, unit: "ppm", assignee: "sam@winery.test", priority: "URGENT", groupSeq: 1 },
+      ],
+    });
+    expect(draft.intents[0]).toMatchObject({ kind: "RACK", from: "T1", to: "T2", assignee: "Russell", priority: "HIGH", groupSeq: 0 });
+    expect(draft.intents[1]).toMatchObject({ kind: "ADDITION", vessel: "T2", assignee: "sam@winery.test", priority: "URGENT", groupSeq: 1 });
+  });
+
+  it("omits meta fields when absent (no spurious keys — existing exact-shape tests stay green)", () => {
+    const draft = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "rack", from: "T1", to: "T2" }] });
+    expect(draft.intents[0]).toEqual({ kind: "RACK", from: "T1", to: "T2" });
+    expect("assignee" in draft.intents[0]).toBe(false);
+    expect("priority" in draft.intents[0]).toBe(false);
+    expect("groupSeq" in draft.intents[0]).toBe(false);
+  });
+});

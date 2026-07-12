@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { resolveWorkOrderTask, normVesselCode } from "../scope";
+import { resolveWorkOrderTask } from "../scope";
 import { entityPath } from "../routes";
 import { prisma } from "@/lib/prisma";
 import { expandVesselRange, resolveGroupByName } from "@/lib/vessels/range";
@@ -13,6 +13,7 @@ import {
   type GroupRackProgress,
   type PlannedGroupRack,
 } from "@/lib/work-orders/group-rack-progress";
+import { selectGroupRackMembers, isAllRemainingExpr, type GroupRackMemberLite } from "@/lib/work-orders/group-rack-select";
 import { completeGroupRackBatchAction, rejectGroupRackBatchAction } from "@/lib/work-orders/actions";
 
 // Plan 054 shipped progressive group-rack completion (complete a SUBSET of a barrel-down / rack-to-tank
@@ -20,58 +21,6 @@ import { completeGroupRackBatchAction, rejectGroupRackBatchAction } from "@/lib/
 // write tool modeled on manage_work_order. WORKORDER-1: it routes through the SAME cores the execute
 // screen uses (completeGroupRackBatchCore / rejectGroupRackBatchCore via their actions) — no parallel path,
 // no model-originated ledger write.
-
-export type GroupRackMemberLite = { vesselId: string; code: string | null };
-
-const REST_RE = /^(the\s+)?(rest|remaining|all|everything|all\s+remaining|all\s+the\s+rest)$/i;
-
-/**
- * Plan 055 U6 (pure): expand a member reference to the group-rack member vessels it selects, resolved
- * against THIS task's member set (never the whole cellar). Supports a range ("B101-B104"), a comma/and list
- * ("B101, B103 and B105"), and the "rest"/"all remaining" sentinel (→ every pending member). A candidate
- * that isn't one of the task's members is `unknown` (a clear error at the tool); a member that's already
- * recorded is `droppedDone` (silently excluded — you can't re-complete it). The selection is intersected
- * with `pendingVesselIds` so it can only ever complete work that's actually left. Deterministic + DB-free.
- */
-export function selectGroupRackMembers(
-  expr: string | null | undefined,
-  members: GroupRackMemberLite[],
-  pendingVesselIds: string[],
-): { selected: string[]; droppedDone: string[]; unknown: string[] } {
-  const pending = new Set(pendingVesselIds);
-  const trimmed = (expr ?? "").trim();
-  if (!trimmed || REST_RE.test(trimmed)) {
-    return { selected: [...pendingVesselIds], droppedDone: [], unknown: [] };
-  }
-
-  // Candidate codes: a range expands to a code list; otherwise a comma/and-separated list of codes.
-  const range = expandVesselRange(trimmed); // throws on an inverted/oversized range — let it surface
-  const candidates = range ?? trimmed.split(/\s*(?:,|\band\b)\s*/i).map((s) => s.trim()).filter(Boolean);
-
-  const byCode = new Map<string, GroupRackMemberLite>();
-  for (const m of members) if (m.code) byCode.set(normVesselCode(m.code), m);
-
-  const selected: string[] = [];
-  const droppedDone: string[] = [];
-  const unknown: string[] = [];
-  const seen = new Set<string>();
-  for (const c of candidates) {
-    const member = byCode.get(normVesselCode(c));
-    if (!member) {
-      unknown.push(c);
-      continue;
-    }
-    if (!pending.has(member.vesselId)) {
-      droppedDone.push(member.code ?? c);
-      continue;
-    }
-    if (!seen.has(member.vesselId)) {
-      seen.add(member.vesselId);
-      selected.push(member.vesselId);
-    }
-  }
-  return { selected, droppedDone, unknown };
-}
 
 type LoadedGroupRack = { planned: PlannedGroupRack; progress: GroupRackProgress; members: GroupRackMemberLite[] };
 
@@ -167,7 +116,7 @@ export const groupRackBatchTool: AssistantTool = {
     // Resolve a saved-group name to its member codes first (so "the north barrels" works), then expand
     // against this task's own members. A range / list / "the rest" is handled directly by the expander.
     let expr = input.members?.trim() || "";
-    if (expr && !REST_RE.test(expr) && !expandVesselRange(expr) && !/[,]|\band\b/i.test(expr)) {
+    if (expr && !isAllRemainingExpr(expr) && !expandVesselRange(expr) && !/[,]|\band\b/i.test(expr)) {
       const g = await resolveGroupByName(expr).catch(() => ({ kind: "none" as const }));
       if (g.kind === "one") expr = g.members.map((m) => m.code).join(", ");
       else if (g.kind === "many") throw new Error(`Several groups match "${input.members}": ${g.names.join(", ")}. Name one, or give a barrel range/list.`);

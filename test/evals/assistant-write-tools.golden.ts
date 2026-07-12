@@ -553,4 +553,52 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     },
     note: "terse, no packaging/count → author the BOTTLE task only; packaging + count set on the floor/builder",
   },
+  // ── Plan 055 U3: equipment-service authoring (resolve the EquipmentAsset by name; status flip at completion). ──
+  {
+    utterance: "Make a work order to service the basket press and set it to maintenance",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Make a work order to service the basket press and set it to maintenance",
+      tasks: [{ kind: "EQUIPMENT_SERVICE", equipment: "basket press", setStatus: "maintenance" }],
+    },
+    note: "equipment resolved by name (ambiguous → picker); setStatus transitions the asset on completion, not authoring; record-only (no ledger/cost)",
+  },
+  {
+    utterance: "Work order: clean and service pump P2, then set it back to available",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Work order: clean and service pump P2, then set it back to available",
+      tasks: [{ kind: "EQUIPMENT_SERVICE", equipment: "pump P2", setStatus: "available" }],
+    },
+    note: "equipment-service on a named pump; 'set it back to available' → setStatus:available",
+  },
+  // ── Plan 055 U7/U8: per-task assignee + priority on an authored task. ──
+  {
+    utterance: "Make a work order to rack T12 to T15, assign it to Russell, high priority",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Make a work order to rack T12 to T15, assign it to Russell, high priority",
+      tasks: [{ kind: "RACK", from: "T12", to: "T15", assignee: "Russell", priority: "HIGH" }],
+    },
+    note: "per-task assignee (name → resolved member, ambiguous → picker) + priority; both ride the signed taskBuild, never plannedPayload",
+  },
+  // ── Plan 055 U5/U6: progressive group-rack batch completion + undo (new group_rack_batch tool). ──
+  {
+    utterance: "Complete the barrel-down for B101-B104 on WO 210",
+    tool: "group_rack_batch",
+    args: { action: "complete", wo: 210, members: "B101-B104" },
+    note: "complete a SUBSET of a group barrel-down; members intersected with pending; all-or-nothing at confirm",
+  },
+  {
+    utterance: "Finish the rest of WO 210",
+    tool: "group_rack_batch",
+    args: { action: "complete", wo: 210, members: "the rest" },
+    note: "'the rest'/'all remaining' → every barrel still pending",
+  },
+  {
+    utterance: "Undo the last batch on WO 210",
+    tool: "group_rack_batch",
+    args: { action: "undo", wo: 210 },
+    note: "LIFO undo of the last recorded batch while the task is in progress (the executor or an admin)",
+  },
 ];
