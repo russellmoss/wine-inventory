@@ -31,18 +31,33 @@ without explicit user approval. In QA mode, flag any code that doesn't match DES
 
 ## UI QA on this repo (browser testing setup)
 
-CDP-attach via rstack `browse` is **unreliable on this Windows box** — do not burn time on it:
-`:9222` is squatted by **Lenovo Vantage** (not a browser with the app session), and `browse`'s cookie
-tooling is **mac/Linux-only** (`cookie-import-browser` reads `~/Library`/`~/.config` paths; `cookie-import`
-throws `isPathWithin is not defined`). Fresh headless login doesn't persist the session cookie.
+**Standard: the in-app Claude browser (`mcp__Claude_Browser__*`), driven against the local dev server.**
+CDP-attach via rstack `browse` is **unreliable on this Windows box** — do not burn time on it: `:9222` is
+squatted by **Lenovo Vantage** (not a browser with the app session), `browse`'s cookie tooling is
+mac/Linux-only, and fresh headless login doesn't persist the session cookie. Use the in-app browser instead.
 
-**Standard: the Playwright `storageState` harness.** Log in once with the Demo Winery creds
-(`demo@demo.com` / `demo1234`) via the bundled Playwright (`node_modules/playwright-core`, resolved with
-`createRequire` rooted at `~/.claude/skills/rstack/browse/package.json`), save `storageState` to a temp
-JSON, then every scenario script loads that state. This is cross-platform, needs no CDP port or cookie
-decryption, and is what the Phase-1 identity QA used (see `qa/PHASE-1-QA-REPORT.md`). Drive the dev
-server from the branch/worktree that has the surface under test (Turbopack hot-reloads edits). QA rule:
-create `QA-*`-prefixed fixtures, mutate only those, and keep `verify:naming` green before AND after.
+Flow: start the dev server (`npm run dev`, `localhost:3000`) from the MAIN repo checkout that has the
+surface under test (Turbopack hot-reloads edits). Open it with `preview_start`/`navigate`; **the USER logs
+in once in the pane** with the Demo Winery creds (`demo@demo.com` / `demo1234`) — never type a password
+yourself (safety rule). The pane's session cookie persists across navigations and dev-server restarts.
+
+Reliability gotchas on this box (learned the hard way — treat as rules):
+- **Reads:** use `get_page_text` and `read_page` — they're reliable. **Screenshots can hang** in the pane;
+  don't depend on them, fall back to the text reads.
+- **Text inputs:** `form_input` sets the DOM value but does NOT fire React's `onChange` on a **controlled**
+  input (state stays empty → the submit guard blocks with no server call). Use `computer` left_click(ref)
+  then `type` for controlled text fields. Native `<select>` works fine with `form_input`.
+- **Definitive proof:** for data-write flows, confirm persistence with a short
+  `runAsTenant("org_demo_winery", …)` tsx script that reads the rows back — the browser proves the UI, the
+  script proves the DB (and dodges the pane's flakiness).
+
+QA rules: all fake-data work is the **Demo Winery** sandbox ONLY (never Bhutan); create `QA-*`-prefixed
+fixtures, mutate only those, clean them up after; keep `verify:naming` green before AND after.
+
+**Fallback (headless / CI, no interactive login): the Playwright `storageState` harness.** Log in once with
+the Demo creds via the bundled Playwright (`node_modules/playwright-core`, resolved with `createRequire`
+rooted at `~/.claude/skills/rstack/browse/package.json`), save `storageState` to a temp JSON, then scenario
+scripts load that state (see `qa/PHASE-1-QA-REPORT.md`).
 
 ## The "brain" — living docs + automatic maintenance loops
 `docs/` is an Obsidian vault (open it at the repo root). `docs/architecture/` holds the
