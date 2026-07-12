@@ -19,6 +19,7 @@ export const RESERVED_PAYLOAD_KEYS: readonly string[] = [
   "dependsOn",
   "assigneeId",
   "assigneeEmail",
+  "__fieldSchema", // C11: framework-injected Custom Log field-spec snapshot (never from user input)
 ];
 
 /**

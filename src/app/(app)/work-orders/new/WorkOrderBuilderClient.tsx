@@ -205,6 +205,22 @@ export function WorkOrderBuilderClient({
         </label>
       );
     }
+    if (type === "date") {
+      return (
+        <label key={key} style={labelStyle}>
+          {fieldLabel(key)}
+          <input type="date" style={field} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value)} />
+        </label>
+      );
+    }
+    if (type === "boolean") {
+      return (
+        <label key={key} style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
+          <input type="checkbox" checked={current === true} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.checked)} />
+          {fieldLabel(key)}
+        </label>
+      );
+    }
     if (key === "note" || key === "instructions") {
       return (
         <label key={key} style={{ ...labelStyle, gridColumn: "1 / -1" }}>
