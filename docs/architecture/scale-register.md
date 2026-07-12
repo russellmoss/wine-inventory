@@ -156,5 +156,12 @@ TEMPLATE — copy this block for each new decision:
   `src/lib/{ledger,cost,transform,blend,compliance}` (caught by `verify:naming`'s static scan).
 - **Status:** 🟢 (built + guarded by `verify:naming`; winery-scale volumes)
 
+### Bulk migration import publishes a whole batch through the ledger chokepoint (plan: migration/import)
+- **Choice:** onboarding import (`src/lib/migration/publish.ts`) writes REAL ledger ops for every seeded lot/position on sign-off, through the same `runLedgerWrite` SERIALIZABLE chokepoint as live cellar ops.
+- **Fine until:** a batch of a few hundred lots (a normal winery's back-book).
+- **What breaks:** a very large historical import (thousands of lots/ops) in one publish is a long SERIALIZABLE transaction — lock-hold time + retry pressure on the single-writer chokepoint (D18/H2), and memory if the whole batch materializes at once.
+- **Tripwire:** a publish that times out / retries repeatedly; import batches trending into the thousands of rows; publish latency climbing.
+- **Status:** 🟢 (winery back-book volumes today; if multi-vintage bulk imports get large, chunk the publish).
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

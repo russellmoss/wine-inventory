@@ -9,14 +9,14 @@
 - **Cellarhand** — the product's brand (renamed from "BWC Operating System"; assets in `design-system/assets/logos`, wired via `src/components/BrandMark.tsx` + `src/app/{icon.svg,apple-icon.png,manifest.ts}`).
 - **Next.js 16.2** (app router) + **React 19** + **TypeScript** — `src/app/…`
 - **Tailwind v4** — styling via design tokens (see [[DESIGN]]); `src/styles/print.css` for printable work orders.
-- **Prisma ORM → Neon serverless Postgres** — **89 models** in `prisma/schema.prisma` (~2.9k lines).
+- **Prisma ORM → Neon serverless Postgres** — **115 models** in `prisma/schema.prisma` (~3.75k lines).
 - **better-auth** — authentication (`@node-rs/argon2` for password hashing).
 - **Vercel** — hosting. `npm run build` runs `prisma migrate deploy` first, so **deploys apply migrations automatically**.
 - **Sentry** — error monitoring (`instrumentation.ts`, `sentry.*.config.ts`) → auto-opens GitHub issues.
 
 ## How the code is organized
 - `src/app/` — pages + API routes. Everything real lives under the **`(app)`** route group (inventory, lots, vessels, blend, bottling, compliance, samples, reports, assistant, settings, users, audit…). Auth pages (login, reset-password) sit outside it.
-- `src/lib/<domain>/` — the brains. One folder per domain: `tenant`, `ledger`, `transform`, `cost`, `compliance`, `accounting`, `commerce`, `work-orders`, `assistant`, `voice`, `blend`, `bottling`, `sparkling`, `cellar`, `ferment`, `harvest`, `vineyard`, `chemistry`, `inventory`, `stock`, `offline`, `onboarding`, `map`, etc.
+- `src/lib/<domain>/` — the brains. One folder per domain: `tenant`, `ledger`, `transform`, `cost`, `compliance`, `accounting`, `commerce`, `work-orders`, `equipment`, `assistant`, `voice`, `blend`, `bottling`, `sparkling`, `cellar`, `ferment`, `harvest`, `vineyard`, `chemistry`, `inventory`, `stock`, `migration`, `feedback`, `developer`, `offline`, `onboarding`, `map`, etc.
 - `src/components/` — UI. `src/styles/` — tokens.
 - `scripts/` — verification + seeding (`verify:ttb`, `verify:cost`, `verify:reverse`, `seed:demo-tenant`, …).
 
@@ -67,8 +67,12 @@ The operations that change a lot's identity: `crush-core.ts` (`crushLotCore`), `
 ### 4. Cost engine (Phase 8a) — `src/lib/cost/`
 Cost follows the wine. Fruit/supply cost attaches at crush and is carried, rolled up, and *negated on
 reversal* through the same operations as the ledger.
-- `rollup.ts`, `consume.ts`, `deplete.ts`, `cogs.ts`/`cogs-write.ts`, `policy.ts`, `reverse.ts`, `cache.ts`.
+- `rollup.ts`, `consume.ts`, `deplete.ts`, `cogs.ts`/`cogs-write.ts`, `policy.ts`, `reverse.ts`, `cache.ts`, `transfer.ts`.
 - Schema: `SupplyLot`, `CostLine`, `SupplyConsumption`, `OperationCostTransfer`, `LotCostState`, `BottlingCostSnapshot`.
+- **Packaging dry-goods (plan 056):** at bottling, packaging materials (glass/closures/labels/capsules)
+  deplete from supply lots and **capitalize into a COGS PACKAGING bucket** via `consume-packaging.ts` +
+  `transfer.ts` — same conserve-and-negate discipline as fruit/additives (COST-1/2), reversed append-only
+  when a bottling run is reversed. Bottling can run standalone (`/bottling`) or as a governed WO task.
 - Cost is computed largely on read (rollup) — a scale watch-item, see [[scale-register]].
 - **Currency (Phase 037):** one tenant-wide currency (`AppSettings.currency`, from {USD, EUR, NZD, AUD, ZAR, GBP}), set on the Settings "Cost accounting" card. It is a DISPLAY LABEL only — no FX conversion. The pure helper `src/lib/money/currency.ts` (`coerceCurrency`/`currencySymbol`/`formatMoney`) drives the symbol; `CurrencyProvider`/`useCurrency` (`src/components/money/`) push it into client cost inputs (symbol prefix via `Input iconLeft`) + displays, and `getTenantCurrency` feeds server pages. Each `SupplyLot` stamps the currency it was entered under, so changing the setting never re-values history. Orthogonal to `costingPolicyVersion` — a currency change does NOT bump it (D17). TTB excise `taxDollars` intentionally stays `$` (federal statutory USD).
 
@@ -185,10 +189,47 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   mL/L/fl oz/gal, count) — imperial converts to the metric canonical at intake AND in the dose path
   (`DOSE_UNIT_LABELS`, `stockConversionFactor`); cross-dimension → UNKNOWN cost (D14), never $0. Adding a
   `MATERIAL_KIND` built-in is still a const edit; the Phase-036 fields are one columns-only migration.
-- **Surfaces** (`src/app/(app)/work-orders/`): manager issue (`/new`), floor-first execution checklist
-  (`/[id]/execute`, offline-tolerant via the Dexie outbox), review/approval queue (`/review`), printable WO
-  (`/[id]/print` + `print.css`), Open|Archive dashboard with a pending-count nav badge. Proven by
-  `npm run verify:work-orders` (+ `verify:work-orders-enhancements`); invariants WORKORDER-1/2/3.
+- **Builder + planning (plan 053):** a WO is composed from a **task palette** into ordered, sequentially-
+  gated **groups** (`group-gating.ts`), each task with its own **assignee + priority**, plus **WO→WO
+  dependencies** (`work_order_dependency`) and planning fields. A `Location.kind` classifies where work
+  happens (cellar/warehouse/crush_pad/lab/bottling/…), and an **equipment registry** (`src/lib/equipment/`,
+  `EquipmentAsset`) advisory-links presses/filters/pumps to tasks (`work_order_task_equipment`, surfaced never
+  blocking — WORKORDER-2; equipment maintenance is record-only). **Record-only Custom Log task types**
+  (`custom-log*.ts`, `WorkOrderTaskType` — no `kind`/`opType` column, so they touch no ledger/cost) plus
+  **per-tenant field overlays** (`WorkOrderTaskTypeOverlay`: a HIDEABLE-field allowlist + relabel/reorder) let
+  a winery add & tune its own task types at `/work-orders/task-types` — guarded by invariant **WORKORDER-4**.
+- **Progressive group completion (plan 054):** a group barrel-down / rack-to-tank can finish in passes
+  ("4 now, the rest tomorrow") — `group-rack-progress.ts`/`group-rack-select.ts` complete a subset as one
+  reviewable task, per-batch op + LIFO reject, no schema (the attempt model is already N-op-capable).
+- **Surfaces** (`src/app/(app)/work-orders/`): manager issue (`/new`), a **palette builder**, floor-first
+  execution checklist (`/[id]/execute`, offline-tolerant via the Dexie outbox), review/approval queue
+  (`/review`), printable WO (`/[id]/print` + `print.css`), template + task-type admin (`/templates`,
+  `/task-types`), Open|Archive dashboard with a pending-count nav badge. Proven by `npm run verify:work-orders`
+  (+ `verify:work-orders-enhancements`); invariants WORKORDER-1/2/3/4.
+
+### 11. Data migration / onboarding import — `src/lib/migration/`
+Batch-imports a winery's **existing** data (vintrace/innovint/CSV) so onboarding doesn't start from zero —
+the import half of the moat. A `MigrationImportBatch` moves DRAFT → PREFLIGHT_BLOCKED → READY_FOR_REVIEW →
+SIGNED_OFF → PUBLISHED (or DISCARDED). Parse → map entities/fields (`migration_entity_mapping` /
+`migration_field_mapping`) → **reconcile** against expected totals (`migration_reconciliation_item`: vessel/lot
+volume, cost, finished-goods, TTB total, chemistry, lineage) → on sign-off, **`publish.ts` writes REAL ledger
+operations** (via `writeLotOperation`/`runLedgerWrite`) plus lot identifiers + tax-class events, seeding lots/
+positions (`migration_seed_lot`/`migration_seed_position`) and preserving raw source rows (`legacy_operation`).
+Tenant-scoped + append-only, so an import is just more ledger history — reversible like any op. Files:
+`batch.ts`, `publish.ts`, `generic-fixture.ts`, `units.ts`, `types.ts`, `actions.ts`.
+
+### 12. Feedback + the developer auto-fix loop — `src/lib/feedback/` + `src/lib/developer/`
+The product's self-healing loop. Users file a **bug/feature ticket** (`FeedbackTicket`) or a **thumbs-down** on
+an assistant reply (`AssistantFeedback`), optionally with screenshots (`FeedbackAttachment`, fed to the fix
+agent as vision). Per-tenant automation modes (`AppSettings`: REPORT_ONLY | PLAN_MODE | AGENTIC_FIX,
+`feedback/automation.ts`) decide whether an `AutomationRun` spawns; AGENTIC_FIX dispatches a GitHub-Actions fix
+agent that writes code **inside a fence** (UI/assistant + widened cellar-floor `src/lib` domains, NEVER
+money/ledger/tenancy/audit — plan 052, gated by `verify:feedback-fence` + `feedback-domain-verify`). The
+`/developer` console + the `/bug-triage` skill work the backlog; each item carries a **`triageClass`
+disposition** (DEFECT | MODEL_BEHAVIOR | PRODUCT_GAP | NOT_A_BUG | UNCLEAR, plan 059) the goalie assigns from
+root cause, so the fixer is never fed a product-gap it can't fix. Support-tenant impersonation via
+`developer/support-context.ts`. See [[security-register]] — the fence is the control that lets an autonomous
+agent touch `main` safely.
 
 ## How a typical write flows
 1. UI (or the assistant) calls a **server action** — or a **work-order task is completed**, which builds the same core input.
@@ -197,4 +238,4 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-05 (plan 043): cap management wired into work orders (CAP_MGMT task type + capManagementTx, pulse-air CapKind, délestage two-leg RACK template, batch completion, issue_cap_management_wo assistant tool). Prior refresh 2026-07-03 (Next 16.2, 89 Prisma models; Phase 9/9.1 + Cellarhand rebrand). Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-12 (plans 053–059; 115 Prisma models, ~3.75k schema lines): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented two previously-undocumented subsystems — **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, incl. the plan-059 `triageClass` disposition). Prior refresh 2026-07-05 (plan 043): cap management in work orders. Ask Claude to refresh after each phase.*

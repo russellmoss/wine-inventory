@@ -228,6 +228,18 @@ TEMPLATE — copy for each new invariant / finding:
 
 ---
 
+### An autonomous fix agent can write to `main` — the fence is the whole control
+- The feedback auto-fix loop (AGENTIC_FIX mode, `src/lib/feedback/automation.ts`) dispatches a GitHub-Actions
+  agent that writes code and opens/merges PRs with **no human authoring the diff**.
+- It is bounded by a **fence**: only UI/assistant + widened cellar-floor `src/lib` domains are auto-fixable;
+  **NEVER** money/ledger/tenancy/audit/auth/`prisma`/migrations (plan 052). Enforced by CI checks
+  `verify:feedback-fence` + `feedback-domain-verify`, a tight auto-merge gate (fence-only + fully-green +
+  small + root-cause-reviewed), and branch protection (never `--admin`).
+- The plan-059 `triageClass` disposition routes `product-gap`/out-of-fence items to humans, so the agent is
+  not handed changes it structurally shouldn't attempt.
+- **Watch:** the fence allowlist IS the trust boundary — widening it into `src/lib/{ledger,cost,tenant,compliance,accounting,commerce}` or `prisma/` hands an autonomous agent the crown jewels. A green `feedback-domain-verify` proves the domain's own tests pass, NOT that a fix is complete — read the diff before trusting the gate.
+- **Status:** 🟡 (control in place + CI-gated; posture depends entirely on keeping the fence tight — see the plan-052 fence sync + the `/bug-triage` goalie).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_
