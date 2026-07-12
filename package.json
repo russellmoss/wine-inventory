@@ -36,6 +36,7 @@
     "verify:cost": "tsx --conditions=react-server --env-file=.env scripts/verify-cost.ts",
     "verify:reminders": "tsx --conditions=react-server --env-file=.env scripts/verify-reminders.ts",
     "verify:work-orders": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders.ts",
+    "verify:user-types-record-only": "tsx --conditions=react-server --env-file=.env scripts/verify-user-types-record-only.ts",
     "verify:work-order-nl": "tsx --conditions=react-server --env-file=.env scripts/verify-work-order-nl.ts",
     "verify:assistant-cellar-contents": "tsx --conditions=react-server --env-file=.env scripts/verify-assistant-cellar-contents.ts",
     "verify:universal-work-order-authoring": "tsx --conditions=react-server --env-file=.env scripts/verify-universal-work-order-authoring.ts",
