@@ -583,6 +583,15 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       runtime(ctx, seq, "HARVEST_WEIGH_IN", "weightKg", "Fruit weight (kg)", "The fruit weight (with optional Brix/pH/TA) is entered on the execute screen.");
       return;
     }
+    case "BOTTLE": {
+      // Plan 055a: authorable now (SKU + estimated count + packaging BoM captured at authoring); the source
+      // vessels, final bottle count, measured ABV, and destination are floor inputs recorded at execute.
+      runtime(ctx, seq, "BOTTLE", "vesselIds", "Source vessels", "The source vessels are entered on the execute screen.");
+      runtime(ctx, seq, "BOTTLE", "bottlesProduced", "Bottle count", "The final bottle count is entered on the execute screen.");
+      runtime(ctx, seq, "BOTTLE", "abv", "Measured ABV", "The measured ABV is entered on the execute screen for TTB classification.");
+      runtime(ctx, seq, "BOTTLE", "destinationLocationId", "Destination", "The destination location is entered on the execute screen.");
+      return;
+    }
 
     case "NOTE":
       return;

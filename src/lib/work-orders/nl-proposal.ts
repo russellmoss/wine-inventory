@@ -26,6 +26,12 @@ export type NlWorkOrderIntent =
   // task title/instructions.
   | { kind: "CRUSH"; destVessel?: string; block?: string; destemmed?: boolean; crusherOn?: boolean; crushedPct?: number; mustTempC?: number; pressCycle?: string; note?: string }
   | { kind: "PRESS"; sourceVessel?: string; sourceLot?: string; destVessel?: string; op?: "PRESS" | "SAIGNEE" | string; pressCycle?: string; note?: string }
+  // Plan 056/055a: author a bottling task WITH its packaging dry-goods BoM. Like CRUSH/PRESS the run-time
+  // inputs (source vessels, final bottle count, measured ABV, destination) are floor-entered at execute;
+  // authoring captures the SKU + an estimated case/bottle count (sizes the packaging + reservation) + the
+  // packaging. `packaging` = named dry goods to resolve individually; `standardPackaging` = "our usual"
+  // (copy this SKU's most-recent run's BoM). `vessel` is a display hint for the summary only.
+  | { kind: "BOTTLE"; vessel?: string; skuName?: string; skuVintage?: number; cases?: number; bottles?: number; packaging?: string[]; standardPackaging?: boolean; note?: string }
   // `block` is the human label (for the summary); `blockId` is a resolved VineyardBlock id pinned by the
   // tool layer (which has the user for vineyard-access scoping). When blockId is present it flows to
   // WorkOrderTask.blockId and prefills the weigh-in execute screen.
@@ -144,8 +150,22 @@ type RawIntent = Record<string, unknown>;
 const SUPPORTED = new Set([
   "RACK", "TOPPING", "ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT",
   "CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE",
-  "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL", "NOTE",
+  "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL", "BOTTLE", "NOTE",
 ]);
+
+/** Parse a possibly-mixed packaging arg: an array of dry-goods names, or a "standard"/"usual" sentinel
+ * string. Returns { standard } when the caller signalled the SKU's usual packaging, else the named list. */
+function parsePackagingArg(raw: RawIntent): { names: string[]; standard: boolean } {
+  const standard = booleanFlag(raw.standardPackaging) === true;
+  const p = raw.packaging;
+  if (typeof p === "string") {
+    const s = p.trim().toLowerCase();
+    if (s === "standard" || s === "usual" || s === "default" || s === "our standard" || s === "our usual") return { names: [], standard: true };
+    return { names: s ? [p.trim()] : [], standard };
+  }
+  const names = Array.isArray(p) ? p.map((x) => cleanString(x)).filter((x): x is string => !!x) : [];
+  return { names, standard };
+}
 const DOSE_UNITS = new Set(["g/hL", "mg/L", "ppm", "g/L", "mL/L", "g", "kg", "mL", "L", "oz", "lb", "fl oz", "gal"]);
 
 // Phase 9.4a: group barrel-down / rack-barrels-to-tank is now a first-class SUPPORTED task — ONE
@@ -438,6 +458,26 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       });
       continue;
     }
+    if (up === "BOTTLE") {
+      // Authoring only — all optional. skuName/vintage prefill the run-time bottling sub-form; cases/bottles
+      // size the packaging BoM + reservation; packaging names / standard flag drive the BoM resolution.
+      const { names, standard } = parsePackagingArg(raw);
+      const skuVintage = finiteNumber(raw.skuVintage ?? raw.vintage);
+      const cases = positiveNumber(raw.cases);
+      const bottles = positiveNumber(raw.bottles ?? raw.bottlesProduced);
+      intents.push({
+        kind: "BOTTLE",
+        ...(cleanString(raw.vessel) ?? cleanString(raw.from) ?? cleanString(raw.sourceVessel) ? { vessel: (cleanString(raw.vessel) ?? cleanString(raw.from) ?? cleanString(raw.sourceVessel))! } : {}),
+        ...(cleanString(raw.skuName) ?? cleanString(raw.wine) ?? cleanString(raw.sku) ? { skuName: (cleanString(raw.skuName) ?? cleanString(raw.wine) ?? cleanString(raw.sku))! } : {}),
+        ...(skuVintage != null ? { skuVintage } : {}),
+        ...(cases != null ? { cases } : {}),
+        ...(bottles != null ? { bottles } : {}),
+        ...(names.length ? { packaging: names } : {}),
+        ...(standard ? { standardPackaging: true } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
     // NOTE (the only remaining SUPPORTED kind).
     const title = cleanString(raw.title);
     if (!title) throw new Error("A note task needs a title.");
@@ -490,6 +530,24 @@ export function parseWorkOrderUtteranceForEval(sourceText: string): NlWorkOrderI
   const rackBarrels = text.match(/\brack\s+barrels?\s+(.+?)\s+(?:back\s+)?(?:in ?to|to)\s+(.+?)(?:[,;.]|$)/i);
   if (rackBarrels) {
     intents.push({ kind: "RACK_TO_TANK", fromGroup: rackBarrels[1].trim(), to: rackBarrels[2].trim() });
+  }
+
+  // Plan 055a: "bottle T6 into 500 cases of the 2024 Estate Cab [with our standard packaging]".
+  const bottle = text.match(/\bbottle\s+([a-z0-9# -]+?)\s+into\s+(?:([0-9]+)\s*cases?\s+of\s+)?(?:the\s+)?(?:([0-9]{4})\s+)?(.+?)(?:\s+with\s+(.+?))?(?:[,;.]|$)/i);
+  if (bottle) {
+    const cases = bottle[2] ? Number(bottle[2]) : undefined;
+    const skuVintage = bottle[3] ? Number(bottle[3]) : undefined;
+    const skuName = bottle[4]?.replace(/\bwith\b.*$/i, "").trim() || undefined;
+    const pkgPhrase = bottle[5]?.trim().toLowerCase() ?? "";
+    const standardPackaging = /\b(standard|usual|our)\b/.test(pkgPhrase) || undefined;
+    intents.push({
+      kind: "BOTTLE",
+      vessel: bottle[1].trim(),
+      ...(skuName ? { skuName } : {}),
+      ...(skuVintage ? { skuVintage } : {}),
+      ...(cases ? { cases } : {}),
+      ...(standardPackaging ? { standardPackaging: true } : {}),
+    });
   }
 
   const press = text.match(/\bpress\s+([a-z0-9# -]+?)(?:\s+(?:to|into)\s+([a-z0-9# -]+?))?(?:,|;|\band\b|$)/i);
