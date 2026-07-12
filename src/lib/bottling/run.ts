@@ -183,10 +183,14 @@ export async function runBottlingTx(tx: Prisma.TransactionClient, input: Bottlin
   return { runId, bottleOpId };
 }
 
-/** Reverse a bottling run within a transaction: restore bulk via the ledger, remove the bottles,
- * delete the run. When `opts.correctsOperationId` is given (the timeline-undo path), the restore
- * SEED op is stamped as the compensating correction of that BOTTLE op, so the ledger marks it
- * `corrected` (append-only — the BOTTLE op is never mutated) and it can't be reversed twice. */
+/** Reverse a bottling run within a transaction, APPEND-ONLY (Plan 056 D3): restore bulk via a SEED
+ * ledger op, remove the bottles from finished goods, negate the run's cost artifacts + restore packaging
+ * stock by identity, and write a reversing COGS snapshot that un-posts the accounting to zero. The run +
+ * original snapshot are NEVER deleted (they carry immutable, possibly-exported postings). The reversed
+ * BOTTLE op is resolved from `opts.correctsOperationId` (WO/timeline reject) or the run's original
+ * snapshot (standalone delete/edit); the SEED restore is stamped as its compensating correction so the
+ * ledger marks it `corrected` and it can't be reversed twice. A reversed run is filtered from the active
+ * bottling list by the presence of its reversing snapshot. */
 async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, actor: Actor, opts?: { correctsOperationId?: number }): Promise<void> {
   const run = await tx.bottlingRun.findUnique({
     where: { id: runId },
@@ -258,6 +262,15 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
     lines.push({ lotId, vesselId: s.vesselId, deltaL: vol });
     lines.push({ lotId, vesselId: null, deltaL: round2(-vol), reason: "seed" });
   }
+  // Plan 056 (D3) — resolve the reversed BOTTLE op: explicit (WO/timeline reject) or the run's original
+  // snapshot (standalone delete/edit). Stamping the SEED restore as its compensating correction marks the
+  // BOTTLE op `corrected` (append-only) in BOTH paths, so the run is detectable as reversed and can't be
+  // undone twice.
+  let reversedBottleOpId = opts?.correctsOperationId ?? null;
+  if (reversedBottleOpId == null) {
+    const s0 = await tx.bottlingCostSnapshot.findFirst({ where: { runId, reversalOfSnapshotId: null }, select: { costBasisAsOfOperationId: true } });
+    reversedBottleOpId = s0?.costBasisAsOfOperationId ?? null;
+  }
   let seedOpId: number | null = null;
   if (lines.length > 0) {
     seedOpId = await writeLotOperation(tx, {
@@ -266,81 +279,68 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
       actorUserId: actor.actorUserId,
       enteredBy: actor.actorEmail,
       note: `Restored wine from reversed bottling run ${runId}`,
-      correctsOperationId: opts?.correctsOperationId ?? null,
+      correctsOperationId: reversedBottleOpId,
       lotCodes,
       vesselCodes,
       capacityByVessel,
     });
   }
 
-  const correctsOpId = opts?.correctsOperationId ?? null;
-  if (correctsOpId != null) {
-    // Plan 056 (council D3/C4) — APPEND-ONLY reversal for the governed WO/timeline reject path. The COGS
-    // snapshot's export events (CostExportEvent / AccountingDelivery) are immutable and may already be
-    // POSTED, so hard-deleting the snapshot would orphan the ledger. Instead: keep the original snapshot
-    // immutable, write a REVERSING snapshot (reversalOfSnapshotId) whose export negates the original to
-    // zero (`:rev` mirror-image journal), and negate the bottle op's CostLines + restore the packaging
-    // SupplyLot stock by identity via the shared negateCostForReversedOp. Nothing is erased; the run
-    // stays (snapshot FK is RESTRICT) and is filtered from the active bottling list via its corrected
-    // BOTTLE op. (The standalone delete/edit path keeps the legacy hard-delete below until Phase 3.)
-    const correctionOpId = seedOpId ?? correctsOpId;
-    const snaps = await tx.bottlingCostSnapshot.findMany({
-      where: { runId, reversalOfSnapshotId: null },
-      select: {
-        id: true, skuId: true, taxClass: true, bottledAt: true, goodBottles: true, totalRunCost: true,
-        costPerBottle: true, currency: true, costBasisAsOfOperationId: true, componentBreakdown: true,
-        basisCompleteness: true, policyVersion: true, postingKey: true,
+  // Plan 056 (council D3/C4) — APPEND-ONLY reversal for EVERY bottling reversal (WO/timeline reject AND
+  // standalone delete/edit, Phase 3 unified). The COGS snapshot's export events (CostExportEvent /
+  // AccountingDelivery) are immutable and may already be POSTED, so hard-deleting the snapshot would orphan
+  // the ledger. Instead: keep the original snapshot immutable, write a REVERSING snapshot
+  // (reversalOfSnapshotId) whose export negates the original to zero (`:rev` mirror-image journal), and
+  // negate the bottle op's CostLines + restore the packaging SupplyLot stock by identity via the shared
+  // negateCostForReversedOp. Nothing is erased; the run stays (snapshot FK is RESTRICT) and is filtered
+  // from the active bottling list via its reversing snapshot.
+  const correctionOpId = seedOpId ?? reversedBottleOpId;
+  const snaps = await tx.bottlingCostSnapshot.findMany({
+    where: { runId, reversalOfSnapshotId: null },
+    select: {
+      id: true, skuId: true, taxClass: true, bottledAt: true, goodBottles: true, totalRunCost: true,
+      costPerBottle: true, currency: true, costBasisAsOfOperationId: true, componentBreakdown: true,
+      basisCompleteness: true, policyVersion: true, postingKey: true,
+    },
+  });
+  const bottleOpIds = new Set<number>();
+  for (const s of snaps) {
+    if (s.costBasisAsOfOperationId != null) bottleOpIds.add(s.costBasisAsOfOperationId);
+    const already = await tx.bottlingCostSnapshot.findFirst({ where: { reversalOfSnapshotId: s.id }, select: { id: true } });
+    if (already) continue; // idempotent: a re-reversal writes no second reversing snapshot
+    // The reversing snapshot mirrors the original's (positive) breakdown; the export seam negates it
+    // via isReversal (reversalOfSnapshotId set). Distinct postingKey so the per-tenant unique holds.
+    const rev = await tx.bottlingCostSnapshot.create({
+      data: {
+        runId,
+        skuId: s.skuId,
+        taxClass: s.taxClass,
+        bottledAt: s.bottledAt,
+        goodBottles: s.goodBottles,
+        totalRunCost: s.totalRunCost,
+        costPerBottle: s.costPerBottle,
+        currency: s.currency,
+        costBasisAsOfOperationId: correctionOpId,
+        componentBreakdown: s.componentBreakdown as Prisma.InputJsonValue,
+        basisCompleteness: s.basisCompleteness,
+        policyVersion: s.policyVersion,
+        postingKey: s.postingKey ? `${s.postingKey}:rev` : null,
+        sourceSnapshotId: s.id,
+        reversalOfSnapshotId: s.id,
       },
+      select: { id: true },
     });
-    const bottleOpIds = new Set<number>();
-    for (const s of snaps) {
-      if (s.costBasisAsOfOperationId != null) bottleOpIds.add(s.costBasisAsOfOperationId);
-      const already = await tx.bottlingCostSnapshot.findFirst({ where: { reversalOfSnapshotId: s.id }, select: { id: true } });
-      if (already) continue; // idempotent: a re-reversal writes no second reversing snapshot
-      // The reversing snapshot mirrors the original's (positive) breakdown; the export seam negates it
-      // via isReversal (reversalOfSnapshotId set). Distinct postingKey so the per-tenant unique holds.
-      const rev = await tx.bottlingCostSnapshot.create({
-        data: {
-          runId,
-          skuId: s.skuId,
-          taxClass: s.taxClass,
-          bottledAt: s.bottledAt,
-          goodBottles: s.goodBottles,
-          totalRunCost: s.totalRunCost,
-          costPerBottle: s.costPerBottle,
-          currency: s.currency,
-          costBasisAsOfOperationId: correctionOpId,
-          componentBreakdown: s.componentBreakdown as Prisma.InputJsonValue,
-          basisCompleteness: s.basisCompleteness,
-          policyVersion: s.policyVersion,
-          postingKey: s.postingKey ? `${s.postingKey}:rev` : null,
-          sourceSnapshotId: s.id,
-          reversalOfSnapshotId: s.id,
-        },
-        select: { id: true },
-      });
-      await emitExportForSnapshot(rev.id, tx); // net-zero reversing journal (idempotent by postingKey)
-    }
-    // Negate the bottle op's CostLines (VARIANCE residual + PACKAGING) and restore the packaging
-    // SupplyConsumption stock by identity, on the correction (SEED) op — append-only, never mutates the
-    // originals. (The bottle op carries no liquid SupplyConsumption; liquid is restored via the SEED
-    // ledger lines above.)
-    const reversedOps = bottleOpIds.size > 0 ? [...bottleOpIds] : [correctsOpId];
-    for (const opId of reversedOps) await negateCostForReversedOp(tx, opId, correctionOpId);
-    // Physical finished-goods reversal: the bottles were already decremented above; drop the run's
-    // finished-goods StockMovements (not an accounting-ledger artifact). The run + snapshots persist.
-    await tx.stockMovement.deleteMany({ where: { bottlingRunId: runId } });
-  } else {
-    // Standalone delete/edit path (Plan 056 Phase 3 converts these to append-only) — legacy hard-delete.
-    // Reachable only for still-wine runs with NO packaging (standalone packaging authoring lands in
-    // Phase 3), so no packaging stock can leak here.
-    const snaps = await tx.bottlingCostSnapshot.findMany({ where: { runId }, select: { costBasisAsOfOperationId: true } });
-    const bottleOpIds = snaps.map((s) => s.costBasisAsOfOperationId).filter((x): x is number => x != null);
-    if (bottleOpIds.length > 0) await tx.costLine.deleteMany({ where: { operationId: { in: bottleOpIds } } });
-    await tx.bottlingCostSnapshot.deleteMany({ where: { runId } });
-    await tx.stockMovement.deleteMany({ where: { bottlingRunId: runId } });
-    await tx.bottlingRun.delete({ where: { id: runId } }); // cascades sources
+    await emitExportForSnapshot(rev.id, tx); // net-zero reversing journal (idempotent by postingKey)
   }
+  // Negate the bottle op's CostLines (VARIANCE residual + PACKAGING) and restore the packaging
+  // SupplyConsumption stock by identity, on the correction (SEED) op — append-only, never mutates the
+  // originals. (The bottle op carries no liquid SupplyConsumption; liquid is restored via the SEED
+  // ledger lines above.)
+  const reversedOps = bottleOpIds.size > 0 ? [...bottleOpIds] : reversedBottleOpId != null ? [reversedBottleOpId] : [];
+  if (correctionOpId != null) for (const opId of reversedOps) await negateCostForReversedOp(tx, opId, correctionOpId);
+  // Physical finished-goods reversal: the bottles were already decremented above; drop the run's
+  // finished-goods StockMovements (not an accounting-ledger artifact). The run + snapshots persist.
+  await tx.stockMovement.deleteMany({ where: { bottlingRunId: runId } });
 
   await writeAudit(tx, {
     ...actor,
