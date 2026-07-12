@@ -19,7 +19,7 @@
  *   - ASSISTANT_FEEDBACK has no IN_PROGRESS state (mirrors updateFeedbackItem); it is ignored there.
  *   - Writes an audit row, same as a human edit in the console.
  */
-import { FeedbackItemStatus } from "@prisma/client";
+import { FeedbackItemStatus, FeedbackTriageClass } from "@prisma/client";
 import { runAsTenant } from "../src/lib/tenant/context";
 import { runInTenantTx } from "../src/lib/tenant/tx";
 import { writeAudit } from "../src/lib/audit";
@@ -32,6 +32,7 @@ function arg(name: string): string | undefined {
 const hasFlag = (name: string) => process.argv.includes(`--${name}`);
 
 const VALID = new Set(["NEW", "TRIAGED", "IN_PROGRESS", "RESOLVED", "DISMISSED"]);
+const VALID_TRIAGE_CLASS = new Set<string>(Object.values(FeedbackTriageClass));
 
 async function resolveActor(tenantId: string): Promise<{ id: string; email: string } | null> {
   const explicit = arg("approver") ?? process.env.TRIAGE_APPROVER_USER_ID;
@@ -53,16 +54,22 @@ async function main() {
   const id = arg("id");
   const status = arg("status");
   const note = arg("note");
+  const triageClass = arg("triage-class"); // optional disposition; absent => leave untouched
   const dryRun = hasFlag("dry-run");
 
   if (!tenantId || !id || !status || (sourceType !== "FEEDBACK_TICKET" && sourceType !== "ASSISTANT_FEEDBACK")) {
-    console.error("Usage: --tenant=<id> --source=<FEEDBACK_TICKET|ASSISTANT_FEEDBACK> --id=<itemId> --status=<RESOLVED|DISMISSED|TRIAGED|IN_PROGRESS> [--note=...] [--dry-run]");
+    console.error("Usage: --tenant=<id> --source=<FEEDBACK_TICKET|ASSISTANT_FEEDBACK> --id=<itemId> --status=<RESOLVED|DISMISSED|TRIAGED|IN_PROGRESS> [--triage-class=<DEFECT|MODEL_BEHAVIOR|PRODUCT_GAP|NOT_A_BUG|UNCLEAR>] [--note=...] [--dry-run]");
     process.exit(2);
   }
   if (!VALID.has(status)) {
     console.error(`Invalid --status. One of: ${[...VALID].join(", ")}`);
     process.exit(2);
   }
+  if (triageClass !== undefined && !VALID_TRIAGE_CLASS.has(triageClass)) {
+    console.error(`Invalid --triage-class. One of: ${[...VALID_TRIAGE_CLASS].join(", ")}`);
+    process.exit(2);
+  }
+  const triageClassValue = triageClass as FeedbackTriageClass | undefined;
 
   const actor = await resolveActor(tenantId);
   if (!actor) {
@@ -71,7 +78,7 @@ async function main() {
   }
 
   if (dryRun) {
-    console.log(JSON.stringify({ ok: true, dryRun: true, tenantId, sourceType, id, status, note: note ?? null, actor: actor.email }, null, 2));
+    console.log(JSON.stringify({ ok: true, dryRun: true, tenantId, sourceType, id, status, triageClass: triageClassValue ?? null, note: note ?? null, actor: actor.email }, null, 2));
     return;
   }
 
@@ -85,6 +92,7 @@ async function main() {
           data: {
             // assistant feedback has no IN_PROGRESS state
             status: status !== "IN_PROGRESS" ? status : undefined,
+            triageClass: triageClassValue,
             developerNotes,
             resolvedAt: status === "RESOLVED" ? new Date() : undefined,
             resolvedByUserId: status === "RESOLVED" ? actor.id : undefined,
@@ -97,6 +105,7 @@ async function main() {
           where: { id },
           data: {
             status: status as FeedbackItemStatus,
+            triageClass: triageClassValue,
             developerNotes,
             resolvedAt: status === "RESOLVED" ? new Date() : undefined,
             resolvedByUserId: status === "RESOLVED" ? actor.id : undefined,
@@ -115,7 +124,7 @@ async function main() {
     }),
   );
 
-  console.log(JSON.stringify({ ok: true, tenantId, sourceType, id, status, actor: actor.email }, null, 2));
+  console.log(JSON.stringify({ ok: true, tenantId, sourceType, id, status, triageClass: triageClassValue ?? null, actor: actor.email }, null, 2));
 }
 
 function mergeNotes(note: string | undefined, existing: string | null): string | undefined {
