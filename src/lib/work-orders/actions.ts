@@ -23,6 +23,8 @@ import {
 import type { TemplateSpec, TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
+import { normalizeWorkOrderPriority, normalizeDurationMin } from "@/lib/work-orders/planning";
+import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
@@ -143,6 +145,11 @@ export const createWorkOrderFromBuildsAction = action(
       instructions?: string;
       assigneeEmail?: string | null;
       dueAt?: Date | null;
+      priority?: string | null;
+      estimatedDurationMin?: number | null;
+      scheduledStart?: Date | null;
+      scheduledEnd?: Date | null;
+      locationId?: string | null;
       autoFinalize?: boolean;
       taskBuilds: TaskBuild[];
       dependsOnWorkOrderIds?: string[];
@@ -151,6 +158,9 @@ export const createWorkOrderFromBuildsAction = action(
   ) => {
     const builds = Array.isArray(input.taskBuilds) ? input.taskBuilds : [];
     if (builds.length === 0) throw new ActionError("A work order needs at least one task.");
+    // B8: validate the planning inputs server-side (never trust the form).
+    const priority = normalizeWorkOrderPriority(input.priority);
+    const estimatedDurationMin = normalizeDurationMin(input.estimatedDurationMin);
     await gateWorkOrderReadinessForWrite(
       builds,
       { source: "manual", title: input.title?.trim() || "Work order", assigneeEmail: input.assigneeEmail ?? null, dueDate: null },
@@ -162,12 +172,26 @@ export const createWorkOrderFromBuildsAction = action(
       instructions: input.instructions,
       assigneeEmail: input.assigneeEmail ?? null,
       dueAt: input.dueAt ?? null,
+      priority,
+      estimatedDurationMin,
+      scheduledStart: input.scheduledStart ?? null,
+      scheduledEnd: input.scheduledEnd ?? null,
+      locationId: input.locationId ?? null,
       autoFinalize: input.autoFinalize,
       tasks,
     });
     for (const depId of input.dependsOnWorkOrderIds ?? []) {
       if (depId && depId !== res.workOrderId) {
         await addWorkOrderDependencyCore(actor, { workOrderId: res.workOrderId, dependsOnWorkOrderId: depId });
+      }
+    }
+    // B10: attach advisory required-equipment to the created tasks (seq matches taskBuilds order). Never blocks.
+    const needsEquipment = builds.some((b) => Array.isArray(b.equipmentIds) && b.equipmentIds.length > 0);
+    if (needsEquipment) {
+      const rows = await prisma.workOrderTask.findMany({ where: { workOrderId: res.workOrderId }, orderBy: { seq: "asc" }, select: { id: true, seq: true } });
+      for (const t of rows) {
+        const eq = builds[t.seq - 1]?.equipmentIds;
+        if (Array.isArray(eq) && eq.length > 0) await attachTaskEquipmentCore(t.id, eq);
       }
     }
     revalidateWorkOrders(res.workOrderId);

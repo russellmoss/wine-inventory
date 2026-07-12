@@ -11,11 +11,14 @@ import type { WorkOrderReadinessProposal } from "@/lib/work-orders/proposal-read
 import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadinessPanel";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
+import { WORK_ORDER_PRIORITIES } from "@/lib/work-orders/planning";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Member = { userId: string; name: string; email: string };
 type DependableWo = { id: string; number: number; title: string; status: string };
-type BuilderTask = { key: string; taskType: string; title: string; values: Record<string, unknown>; assigneeId: string };
+type LocationRow = { id: string; name: string; kind: string | null };
+type EquipmentPick = { id: string; name: string; kind: string };
+type BuilderTask = { key: string; taskType: string; title: string; values: Record<string, unknown>; assigneeId: string; equipmentIds: string[] };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 };
@@ -50,17 +53,23 @@ export function WorkOrderBuilderClient({
   pickers,
   members,
   dependableWorkOrders,
+  locations,
+  equipment,
   vocab,
 }: {
   pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] };
   members: Member[];
   dependableWorkOrders: DependableWo[];
+  locations: LocationRow[];
+  equipment: EquipmentPick[];
   vocab: ResolvedTaskVocabulary;
 }) {
   const router = useRouter();
   const [title, setTitle] = React.useState("");
   const [dueAt, setDueAt] = React.useState(todayLocal());
   const [leadEmail, setLeadEmail] = React.useState("");
+  const [priority, setPriority] = React.useState("NORMAL");
+  const [locationId, setLocationId] = React.useState("");
   const [groups, setGroups] = React.useState<BuilderTask[][]>([[]]);
   const [dependsOn, setDependsOn] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
@@ -79,9 +88,16 @@ export function WorkOrderBuilderClient({
   function addTask(taskType: string) {
     setGroups((prev) => {
       const next = prev.length ? prev.map((g) => [...g]) : [[]];
-      next[next.length - 1].push({ key: newKey(), taskType, title: "", values: {}, assigneeId: "" });
+      next[next.length - 1].push({ key: newKey(), taskType, title: "", values: {}, assigneeId: "", equipmentIds: [] });
       return next;
     });
+  }
+  function toggleEquipment(groupIdx: number, key: string, equipmentId: string) {
+    setGroups((prev) => prev.map((g, gi) => (gi === groupIdx ? g.map((t) => {
+      if (t.key !== key) return t;
+      const on = t.equipmentIds.includes(equipmentId);
+      return { ...t, equipmentIds: on ? t.equipmentIds.filter((x) => x !== equipmentId) : [...t.equipmentIds, equipmentId] };
+    }) : g)));
   }
   function addGroup() {
     setGroups((prev) => [...prev, []]);
@@ -122,6 +138,7 @@ export function WorkOrderBuilderClient({
           groupSeq: gi,
           assigneeId: t.assigneeId || undefined,
           taskKey: t.key,
+          equipmentIds: t.equipmentIds.length ? t.equipmentIds : undefined,
         });
       }
     });
@@ -212,6 +229,8 @@ export function WorkOrderBuilderClient({
         const res = await createWorkOrderFromBuildsAction({
           title: title.trim() || undefined,
           assigneeEmail: leadEmail || null,
+          priority,
+          locationId: locationId || null,
           // Parse the yyyy-mm-dd as LOCAL midnight (not UTC) so the due date doesn't shift a day back.
           dueAt: dueAt ? new Date(`${dueAt}T00:00:00`) : null,
           taskBuilds,
@@ -237,7 +256,7 @@ export function WorkOrderBuilderClient({
       </div>
 
       <Card style={{ padding: 16, marginBottom: 16 }}>
-        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
+        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12 }}>
           <label style={labelStyle}>Title
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Racking + topping — Block 12" />
           </label>
@@ -245,6 +264,17 @@ export function WorkOrderBuilderClient({
             <select style={field} value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)}>
               <option value="">— unassigned —</option>
               {members.map((m) => <option key={m.userId} value={m.email}>{m.name}</option>)}
+            </select>
+          </label>
+          <label style={labelStyle}>Priority
+            <select style={field} value={priority} onChange={(e) => setPriority(e.target.value)}>
+              {WORK_ORDER_PRIORITIES.map((p) => <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>)}
+            </select>
+          </label>
+          <label style={labelStyle}>Location
+            <select style={field} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+              <option value="">— none —</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </label>
           <label style={labelStyle}>Due
@@ -339,6 +369,24 @@ export function WorkOrderBuilderClient({
                                 </label>
                               )}
                             </div>
+                            {equipment.length > 0 && (
+                              <div style={{ marginTop: 8 }}>
+                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Equipment needed (advisory)</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                                  {equipment.map((eq) => {
+                                    const on = t.equipmentIds.includes(eq.id);
+                                    return (
+                                      <button key={eq.id} type="button" onClick={() => toggleEquipment(gi, t.key, eq.id)}
+                                        style={{ fontSize: 11, padding: "3px 8px", borderRadius: 999, cursor: "pointer",
+                                          border: on ? "1px solid var(--accent)" : "1px solid var(--border)",
+                                          background: on ? "var(--accent)" : "var(--surface)", color: on ? "#fff" : "var(--text-secondary)" }}>
+                                        {eq.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
