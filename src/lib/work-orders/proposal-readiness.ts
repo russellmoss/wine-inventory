@@ -98,6 +98,12 @@ export const TASK_COVERAGE: Record<string, TaskCoverageEntry> = {
     runtimeFields: ["blockId", "weightKg"],
   },
   NOTE: { state: "supported", reason: "A checklist item; no inventory, ledger, or cost effect." },
+  BOTTLE: {
+    state: "runtime",
+    reason: "The source vessels, bottle count, measured ABV, and destination are entered on the execute screen.",
+    runtimeFields: ["vesselIds", "bottlesProduced", "abv", "destinationLocationId"],
+  },
+  EQUIPMENT_SERVICE: { state: "supported", reason: "Record-only service of the attached equipment; optionally transitions its status. No ledger or cost effect." },
 };
 
 export type { TaskDependency, TaskDependencyRef } from "@/lib/work-orders/nl-dependencies";
