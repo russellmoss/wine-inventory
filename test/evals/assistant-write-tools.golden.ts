@@ -151,6 +151,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "vessel → its lot; a blend would ask which",
   },
   {
+    utterance: "Log 10.5 Brix on tank T4",
+    tool: "record_measurement",
+    args: { vessel: "T4", brix: 10.5 },
+    note: "mid-ferment tank SUGAR reading is a cellar-lot reading (record_measurement `brix`), NOT the vineyard-block ripeness Brix (log_brix)",
+  },
+  {
     utterance: "Tasting note on lot 24-CS-A: bright cherry aroma, grippy tannins, 92 points",
     tool: "record_tasting_note",
     args: { lot: "24-CS-A", aroma: "bright cherry", tannin: 4, score: 92 },
