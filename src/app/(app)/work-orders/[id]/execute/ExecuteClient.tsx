@@ -54,8 +54,10 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     if (type === "block") return null;
     if (type === "material") {
       // Phase 034: category-filtered + fuzzy picker (replaces the flat <select>). Scope depends on the task.
+      // The picker is a full panel (search box + filter chips + scrollable list), so it spans BOTH grid
+      // columns — cramming it into one 1fr column left it half-width and hard to read.
       return (
-        <label key={key} style={lbl}>{fieldLabel(key)}
+        <label key={key} style={{ ...lbl, gridColumn: "1 / -1" }}>{fieldLabel(key)}
           <MaterialFilterPicker
             options={pickers.materials}
             value={String(cur)}
