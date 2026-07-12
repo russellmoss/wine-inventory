@@ -160,6 +160,8 @@ export function coerceMaterialCategory(raw: unknown): MaterialCategory {
  */
 export function materialScopeForTask(def: { opType?: string | null; activityType?: string | null }): MaterialCategory[] | undefined {
   if (def.opType === "ADDITION" || def.opType === "FINING") return ["ADDITIVE", "OTHER"];
+  // Plan 056: a BOTTLE task's packaging bill-of-materials draws dry goods (glass/cork/capsule/label/case).
+  if (def.opType === "BOTTLE") return ["PACKAGING", "OTHER"];
   if (def.activityType === "CLEAN" || def.activityType === "SANITIZE") return ["CLEANING_SANITIZING", "OTHER"];
   // Plan 044: SO₂ strips/discs and citric+KMBS storage reagents can live under either taxonomy depending on
   // how the winery categorized them — union both (still overhead-only, never dosed into wine, WORKORDER-3).
