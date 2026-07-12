@@ -11,7 +11,7 @@ import { CAP_KINDS } from "@/lib/cellar/cap-vocab";
 // Free-form cells would break the cost/compliance mapping (the roadmap-locked ERP pattern). Validation +
 // instantiation are pure (unit-tested); templates.ts persists versioned, clone-on-customize templates.
 
-export type FieldType = "vessel" | "lot" | "material" | "block" | "number" | "text" | "rateBasis" | "select";
+export type FieldType = "vessel" | "lot" | "material" | "block" | "number" | "text" | "rateBasis" | "select" | "date" | "boolean";
 
 export type TaskTypeDef = {
   kind: WorkOrderTaskKind;
@@ -28,6 +28,13 @@ export type TaskTypeDef = {
   /** Plan 053 (A1): true only for tenant-authored "Custom Logs" (record-only NOTE types). Built-ins are
    * false/undefined. Governed (ledger/observation/maintenance) types are code-defined here forever. */
   isUserDefined?: boolean;
+  /** Plan 053 (C11): for user-defined Custom Logs, the rich field spec (type/options/required/dimension/
+   * stage). Drives stage-aware rendering + capture; the plain `fields` map above mirrors the keys so the
+   * shared validate/canonicalize/instantiate engine still works. Undefined for built-ins. */
+  customFields?: import("@/lib/work-orders/custom-log-fields").CustomLogFieldSpec[];
+  /** Plan 053 (C12): per-field display label overrides from a tenant overlay (key → label). Renderers
+   * prefer this over the default fieldLabel(key). Undefined for un-overlaid types. */
+  fieldLabels?: Record<string, string>;
 };
 
 /** Plan 053 (A1): the task-type map an authoring path validates/instantiates against. It is the built-in
@@ -393,7 +400,12 @@ export function instantiateTaskBuilds(builds: TaskBuild[], vocab: ResolvedTaskVo
     if (!def) throw new Error(`Unknown task type "${b.taskType}".`);
     // A2: strip framework-owned/discriminator keys (and, for Custom Logs, anything not declared) BEFORE
     // the payload is persisted. taskKey is then re-applied by the framework, never taken from input.
-    const payload = { ...sanitizeTaskPayload(def, b.values), ...(b.taskKey ? { taskKey: b.taskKey } : {}) };
+    // C11: snapshot a Custom Log's field spec onto the task so it renders stably even if the type later changes.
+    const payload = {
+      ...sanitizeTaskPayload(def, b.values),
+      ...(b.taskKey ? { taskKey: b.taskKey } : {}),
+      ...(def.isUserDefined && def.customFields ? { __fieldSchema: def.customFields as unknown } : {}),
+    };
     const canon = canonicalColumns(b.taskType, payload);
     return {
       seq: i + 1,

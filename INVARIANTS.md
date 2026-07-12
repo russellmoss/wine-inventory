@@ -177,6 +177,16 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   never drives `qtyRemaining` negative — and a reversal (`reverseVesselActivityTx`) restores each lot by identity.
   Guard: `npm run verify:work-orders-enhancements`.
 
+- **Tenant-authored task types are record-only (WORKORDER-4, Plan 053 Phase C).**
+  A "Custom Log" (a tenant-authored task type via the task builder) is always a `NOTE` and can NEVER declare a
+  ledger `opType`, an `observationType`, or a maintenance `activityType` — it records data onto the task only,
+  never touching the immutable ledger, the cost roll-up, or the governed measurement store. Only code-defined
+  built-in types in `TASK_VOCABULARY` reach those; a user type can't shadow a built-in key either. Enforced
+  structurally (`work_order_task_type` has no kind/opType column), by `assertUserTaskTypeSafe` (before every
+  persist AND on every resolve), and by the resolver's built-in-collision skip. Field overlays
+  (`WorkOrderTaskTypeOverlay`) are display-only and `assertOverlaySafe` forbids hiding a field a governed core
+  needs. Machine-readable note: [[WORKORDER-4-user-types-record-only]]. Guard: `npm run verify:user-types-record-only`.
+
 ## Compliance & migration invariants
 > Added in Phase 0 from the incumbent teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B.1(iv);
 > `FIX_RUNBOOK.md`). BOND/TAXCLASS/TAXPAID/AMEND are **guarded** as of Phase 2 (`verify:bond` /

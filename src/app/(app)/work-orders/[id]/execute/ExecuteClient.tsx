@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow, Textarea } from "@/components/ui";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabulary";
+import type { CustomLogFieldSpec } from "@/lib/work-orders/custom-log-fields";
 import { startTaskAction, completeTaskAction, completeTasksBatchAction } from "@/lib/work-orders/actions";
 import type { CrushFormData } from "@/lib/ferment/crush-data";
 import type { PressFormData } from "@/lib/ferment/press-data";
@@ -101,9 +102,26 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     return <label key={key} style={lbl}>{fieldLabel(key)}<input type="text" style={big} value={String(cur)} onChange={(e) => set(key, e.target.value)} /></label>;
   }
 
+  // C11: a Custom Log task carries its field spec as a snapshot on the task (plannedPayload.__fieldSchema),
+  // so it renders stably even if the type later changes. Render the execution-stage fields here.
+  const customFields = Array.isArray((planned as Record<string, unknown>).__fieldSchema)
+    ? ((planned as Record<string, unknown>).__fieldSchema as CustomLogFieldSpec[])
+    : [];
+  function renderCustomField(f: CustomLogFieldSpec) {
+    const cur = fields[f.key] ?? "";
+    const label = f.label + (f.type === "number" && f.dimension && f.dimension !== "unitless" ? ` (${f.dimension})` : "");
+    if (f.type === "select") return <label key={f.key} style={lbl}>{label}<select style={big} value={String(cur)} onChange={(e) => set(f.key, e.target.value)}><option value="">— pick —</option>{(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}</select></label>;
+    if (f.type === "number") return <label key={f.key} style={lbl}>{label}<input type="number" inputMode="decimal" step="any" style={big} value={String(cur)} onChange={(e) => set(f.key, e.target.value === "" ? "" : Number(e.target.value))} /></label>;
+    if (f.type === "date") return <label key={f.key} style={lbl}>{label}<input type="date" style={big} value={String(cur)} onChange={(e) => set(f.key, e.target.value)} /></label>;
+    if (f.type === "boolean") return <label key={f.key} style={{ ...lbl, display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={cur === true} onChange={(e) => set(f.key, e.target.checked)} />{label}</label>;
+    return <label key={f.key} style={lbl}>{label}<input type="text" style={big} value={String(cur)} onChange={(e) => set(f.key, e.target.value)} /></label>;
+  }
+
   function complete() {
     setError(null);
-    const actualPayload: Record<string, unknown> = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "" && v !== undefined));
+    const actualPayload: Record<string, unknown> = Object.fromEntries(
+      Object.entries(fields).filter(([k, v]) => v !== "" && v !== undefined && k !== "__fieldSchema"),
+    );
     if (task.kind === "OBSERVATION") {
       const v = Number(readingValue);
       if (Number.isFinite(v)) actualPayload.readings = [{ analyte: task.observationType ?? "BRIX", value: v, unit: task.observationType === "BRIX" ? "Brix" : "" }];
@@ -131,6 +149,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {def ? Object.entries(def.fields).filter(([k]) => k !== "note").map(([k, t]) => renderField(k, t)) : null}
+        {customFields.filter((f) => (f.stage ?? []).includes("execution")).map(renderCustomField)}
         {task.kind === "OBSERVATION" ? (
           <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
         ) : null}

@@ -1,4 +1,8 @@
+import { prisma } from "@/lib/prisma";
+import { getTenantId, runAsTenant } from "@/lib/tenant/context";
 import { TASK_VOCABULARY, type ResolvedTaskVocabulary, type TaskTypeDef } from "@/lib/work-orders/template-vocabulary";
+import { customLogToTaskDef } from "@/lib/work-orders/custom-log-fields";
+import { applyOverlay, type OverlayRow } from "@/lib/work-orders/overlays";
 
 // Plan 053 (A1): the ONE place every authoring path (UI builder, template cores, assistant tools) gets its
 // task-type vocabulary. It returns the built-in TASK_VOCABULARY today; Phase C merges the current tenant's
@@ -10,12 +14,41 @@ import { TASK_VOCABULARY, type ResolvedTaskVocabulary, type TaskTypeDef } from "
 // types and display-only overlays on built-ins will ever be layered in here (enforced in Phase C by
 // assertUserTaskTypeSafe / assertOverlaySafe before persist, and re-asserted on merge).
 
-/** Resolve the task-type vocabulary for the current tenant. A1: built-ins only. Phase C: + user types + overlays. */
-export async function resolveTaskVocabulary(): Promise<ResolvedTaskVocabulary> {
-  // Phase C will: (1) load WorkOrderTaskType rows for the tenant, run assertUserTaskTypeSafe on each, and
-  // add them (never overwriting a built-in key); (2) load WorkOrderTaskTypeOverlay rows and applyOverlay to
-  // the matching built-in. Until then the resolved map equals the built-ins.
-  return { ...TASK_VOCABULARY };
+/** Resolve the task-type vocabulary for a tenant: built-ins + the tenant's record-only Custom Logs (C11).
+ * Phase C12 folds field overlays on top. `tenantId` is explicit (K12) — pass it from server components /
+ * readers; server actions with ALS context can omit it (falls back to getTenantId()). No tenant → built-ins.
+ * A user Custom Log can NEVER shadow a built-in key, and assertUserTaskTypeSafe re-checks record-only on
+ * every merge, so a governed (ledger/observation/maintenance) type can't be introduced or hijacked here. */
+export async function resolveTaskVocabulary(tenantId?: string): Promise<ResolvedTaskVocabulary> {
+  const vocab: ResolvedTaskVocabulary = { ...TASK_VOCABULARY };
+  const tid = tenantId ?? getTenantId();
+  if (!tid) return vocab; // no tenant context → built-ins only
+
+  const [userTypes, overlays] = await runAsTenant(tid, () =>
+    Promise.all([
+      prisma.workOrderTaskType.findMany({ where: { archivedAt: null }, select: { code: true, label: true, fieldsJson: true } }),
+      prisma.workOrderTaskTypeOverlay.findMany({ where: { archivedAt: null }, select: { baseTaskType: true, hiddenFields: true, relabels: true, fieldOrder: true } }),
+    ]),
+  );
+  for (const t of userTypes) {
+    if (vocab[t.code]) continue; // never shadow a built-in — governed keys are sacrosanct
+    const def = customLogToTaskDef({ label: t.label, fieldsJson: t.fieldsJson });
+    assertUserTaskTypeSafe(def); // defense-in-depth: re-assert record-only on the resolve path
+    vocab[t.code] = def;
+  }
+  // C12: apply display overlays to the matching BUILT-IN types (hide/relabel/reorder; never user types).
+  for (const o of overlays) {
+    const base = vocab[o.baseTaskType];
+    if (!base || base.isUserDefined) continue; // overlays only touch built-ins
+    const row: OverlayRow = {
+      baseTaskType: o.baseTaskType,
+      hiddenFields: Array.isArray(o.hiddenFields) ? o.hiddenFields : [],
+      relabels: (o.relabels ?? {}) as Record<string, string>,
+      fieldOrder: Array.isArray(o.fieldOrder) ? o.fieldOrder : [],
+    };
+    vocab[o.baseTaskType] = applyOverlay(base, row);
+  }
+  return vocab;
 }
 
 /** Assert a candidate USER-defined task type stays on the record-only side of the safety line (Phase C uses
