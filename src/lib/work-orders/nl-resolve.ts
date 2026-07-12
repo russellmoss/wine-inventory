@@ -8,7 +8,8 @@ import { expandVesselRange, resolveGroupByName } from "@/lib/vessels/range";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { computeDoseTotal, convertDoseToStock } from "@/lib/cellar/additions-math";
-import { TASK_VOCABULARY, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { TASK_VOCABULARY, type TaskBuild, type ResolvedTaskVocabulary } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { buildWorkOrderReadiness, assertFreshReadiness } from "@/lib/work-orders/proposal-readiness";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import {
@@ -273,6 +274,21 @@ function matchSelectValue(taskType: string, field: string, raw: string | undefin
   return (options as readonly string[]).find((o) => norm(o) === n) ?? raw;
 }
 
+/** D14: match a NOTE title against the tenant's record-only Custom Logs. Returns the user task-type code
+ * when the title equals the code or label, or the label appears as a whole substring of the title
+ * ("log a barrel weigh on T1" -> BARREL_WEIGH). Conservative on purpose: only user-defined (NOTE-shaped)
+ * types are candidates, so a match can never author a governed op. */
+function matchUserTaskType(vocab: ResolvedTaskVocabulary, title: string): string | null {
+  const t = title.trim().toLowerCase();
+  if (!t) return null;
+  for (const [code, def] of Object.entries(vocab)) {
+    if (!def.isUserDefined) continue;
+    const label = def.label.trim().toLowerCase();
+    if (t === code.toLowerCase() || t === label || (label.length >= 3 && t.includes(label))) return code;
+  }
+  return null;
+}
+
 type ObservationTarget = { lotId: string; lotCode: string; vesselId?: string; vesselLabel?: string };
 
 /** Resolve a lot/vessel observation target (shared by PANEL + BRIX). A blended or empty vessel throws so
@@ -309,6 +325,9 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
   const taskBuilds: TaskBuild[] = [];
   const plannedLotByVesselId = new Map<string, { id: string; code: string }>();
   const plannedVolumeDeltaByVesselId = new Map<string, number>();
+  // D14: resolve the tenant vocabulary once (only if a NOTE intent might name a Custom Log) so the assistant
+  // can author a tenant's record-only Custom Log by name. Skipped entirely when there are no NOTE intents.
+  const userVocab = draft.intents.some((i) => i.kind === "NOTE") ? await resolveTaskVocabulary() : null;
 
   for (const [idx, intent] of draft.intents.entries()) {
     const seq = idx + 1;
@@ -591,7 +610,12 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
     }
 
     if (intent.kind === "NOTE") {
-      taskBuilds.push({ taskType: "NOTE", title: intent.title, values: { ...(intent.note ? { note: intent.note } : {}) }, taskKey: randomUUID() });
+      // D14 custom-type fluency: if the note names one of the tenant's record-only Custom Logs, author THAT
+      // type. resolveTaskVocabulary re-asserts user types stay NOTE-shaped (never a governed op), so this can
+      // never let the assistant author a ledger/observation task from a user type. Otherwise a plain NOTE.
+      const userType = userVocab ? matchUserTaskType(userVocab, intent.title) : null;
+      const taskType = userType ?? "NOTE";
+      taskBuilds.push({ taskType, title: intent.title, values: { ...(intent.note ? { note: intent.note } : {}) }, taskKey: randomUUID() });
       tasks.push({ seq, kind: "NOTE", title: intent.title, summary: intent.note ?? intent.title, entities: [] });
       continue;
     }
@@ -599,7 +623,11 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
   return { tasks, taskBuilds };
 }
 
-async function buildInner(raw: unknown): Promise<WorkOrderProposal> {
+// Shared compute: resolve the NL draft to canonical builds + run the readiness engine ONCE. Callers decide
+// whether to gate the signed taskBuilds (the assistant commit path) or hand them back raw (the builder draft
+// path). `rawTaskBuilds` is the un-gated resolved set — safe to hydrate into the builder for editing because
+// createWorkOrderFromBuildsAction re-instantiates and re-runs the readiness gate server-side before persist.
+async function computeNlProposal(raw: unknown): Promise<{ proposal: WorkOrderProposal; rawTaskBuilds: TaskBuild[] }> {
   const draft = canonicalizeNlWorkOrderDraft(raw);
   validateNlWorkOrderMetadata(draft);
   const { tasks, taskBuilds } = await resolveDraftToTaskBuilds(draft);
@@ -614,7 +642,7 @@ async function buildInner(raw: unknown): Promise<WorkOrderProposal> {
     taskBuilds,
   });
   const ready = readiness.status === "ready";
-  return {
+  const proposal: WorkOrderProposal = {
     schemaVersion: 2,
     sourceText: draft.sourceText,
     title: draft.title,
@@ -631,11 +659,42 @@ async function buildInner(raw: unknown): Promise<WorkOrderProposal> {
     taskBuilds: ready ? taskBuilds : [],
     fingerprint: ready ? readiness.fingerprint : "",
   };
+  return { proposal, rawTaskBuilds: taskBuilds };
+}
+
+async function buildInner(raw: unknown): Promise<WorkOrderProposal> {
+  return (await computeNlProposal(raw)).proposal;
 }
 
 export async function buildNlWorkOrderProposal(raw: unknown, opts?: { tenantId?: string }): Promise<WorkOrderProposal> {
   if (opts?.tenantId) return runAsTenant(opts.tenantId, () => buildInner(raw));
   return buildInner(raw);
+}
+
+/** D14 draft-into-builder contract: resolve NL text to editable taskBuilds + readiness diagnostics WITHOUT
+ * the commit gate. Returns the raw resolved builds (even when the proposal isn't fully ready) so the builder
+ * can hydrate them as an editable draft; the user fixes anything unresolved and the create action re-runs the
+ * shared readiness gate. Vocabulary is tenant-resolved, so a named Custom Log resolves to its NOTE type. */
+export type NlBuilderDraft = {
+  status: WorkOrderProposal["status"];
+  title: string;
+  taskBuilds: TaskBuild[];
+  unresolved: WorkOrderProposal["unresolved"];
+  warnings: WorkOrderProposal["warnings"];
+};
+export async function draftNlWorkOrderForBuilder(raw: unknown, opts?: { tenantId?: string }): Promise<NlBuilderDraft> {
+  const run = async (): Promise<NlBuilderDraft> => {
+    const { proposal, rawTaskBuilds } = await computeNlProposal(raw);
+    return {
+      status: proposal.status,
+      title: proposal.title,
+      taskBuilds: rawTaskBuilds,
+      unresolved: proposal.unresolved,
+      warnings: proposal.warnings,
+    };
+  };
+  if (opts?.tenantId) return runAsTenant(opts.tenantId, run);
+  return run();
 }
 
 export function buildNlWorkOrderCommitArgs(proposal: WorkOrderProposal): NlWorkOrderCommitArgs {

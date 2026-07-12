@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Eyebrow, Badge } from "@/components/ui";
 import { fieldLabel, type ResolvedTaskVocabulary, type TaskTypeDef, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
-import { createWorkOrderFromBuildsAction } from "@/lib/work-orders/actions";
+import { createWorkOrderFromBuildsAction, draftWorkOrderFromTextAction } from "@/lib/work-orders/actions";
 import { previewWorkOrderReadinessAction } from "@/lib/work-orders/proposal-readiness-actions";
 import type { WorkOrderReadinessProposal } from "@/lib/work-orders/proposal-readiness";
 import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadinessPanel";
@@ -74,6 +74,10 @@ export function WorkOrderBuilderClient({
   const [dependsOn, setDependsOn] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+  // D14: the AI accelerator — describe the job, draft tasks into the builder, then edit before issuing.
+  const [describeText, setDescribeText] = React.useState("");
+  const [drafting, setDrafting] = React.useState(false);
+  const [draftNote, setDraftNote] = React.useState<string | null>(null);
 
   // Palette entries grouped by category, in a stable display order.
   const palette = React.useMemo(() => {
@@ -261,6 +265,31 @@ export function WorkOrderBuilderClient({
     });
   }
 
+  function draft() {
+    const text = describeText.trim();
+    if (!text) return;
+    setError(null); setDraftNote(null); setDrafting(true);
+    startTransition(async () => {
+      try {
+        const res = await draftWorkOrderFromTextAction({ text });
+        const builds = Array.isArray(res.taskBuilds) ? res.taskBuilds : [];
+        if (builds.length === 0) { setDraftNote("Couldn't turn that into tasks — try naming vessels/lots (e.g. \"rack T1 to T2\"), or add tasks from the palette."); return; }
+        const drafted: BuilderTask[] = builds.map((b) => ({ key: newKey(), taskType: b.taskType, title: b.title ?? "", values: (b.values ?? {}) as Record<string, unknown>, assigneeId: "", equipmentIds: [] }));
+        // Hydrate the builder: fresh group if empty, else append so we never wipe existing work.
+        setGroups((prev) => (prev.some((g) => g.length > 0) ? [...prev, drafted] : [drafted]));
+        // Adopt a suggested title only if the user hasn't typed one.
+        if (res.title) setTitle((prev) => prev.trim() ? prev : res.title);
+        const unresolved = Array.isArray(res.unresolved) ? res.unresolved : [];
+        const tail = unresolved.length > 0
+          ? ` ${unresolved.length} thing${unresolved.length === 1 ? "" : "s"} still need${unresolved.length === 1 ? "s" : ""} your input (${unresolved.map((u) => u.label).slice(0, 3).join(", ")}) — fix in the cards.`
+          : "";
+        setDraftNote(`Drafted ${drafted.length} task${drafted.length === 1 ? "" : "s"} — edit groups, assignees, and fields below, then create.${tail}`);
+        setDescribeText("");
+      } catch (e) { setError(e instanceof Error ? e.message : "Couldn't draft the work order."); }
+      finally { setDrafting(false); }
+    });
+  }
+
   const nonEmptyGroupCount = groups.filter((g) => g.length > 0).length;
 
   return (
@@ -316,6 +345,27 @@ export function WorkOrderBuilderClient({
             </div>
           </div>
         )}
+      </Card>
+
+      {/* D14: AI accelerator — describe the job, draft tasks into the builder, then edit before issuing. */}
+      <Card style={{ padding: 16, marginBottom: 16 }}>
+        <Eyebrow>Describe the job (optional)</Eyebrow>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 8px" }}>
+          Type it in plain English and we&apos;ll draft the tasks into the builder below. You stay in control — edit groups, assignees, and fields, then create.
+        </div>
+        <textarea
+          value={describeText}
+          onChange={(e) => setDescribeText(e.target.value)}
+          placeholder={'e.g. "Rack T1 to T2, then add 30 ppm SO2 to T2 and take a sample"'}
+          rows={3}
+          style={{ ...field, resize: "vertical", fontFamily: "inherit" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+          <Button type="button" variant="secondary" onClick={draft} disabled={drafting || pending || !describeText.trim()}>
+            {drafting ? "Drafting…" : "Draft it"}
+          </Button>
+          {draftNote && <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{draftNote}</span>}
+        </div>
       </Card>
 
       <div className="wob-main-grid" style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 16 }}>

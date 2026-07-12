@@ -260,6 +260,15 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "sample-pull WO tasks (real samples created on completion), not pull_sample",
   },
   {
+    utterance: "Work order to do a barrel weigh log on barrel 12",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Work order to do a barrel weigh log on barrel 12",
+      tasks: [{ kind: "NOTE", title: "Barrel weigh", note: "barrel 12" }],
+    },
+    note: "D14: a tenant's record-only Custom Log is authored as a NOTE intent; the NL resolver maps the title onto the tenant's user task-type (still NOTE-shaped — never a governed op)",
+  },
+  {
     utterance: "Mark the SO₂ addition on WO 142 done — only used 28 g",
     tool: "complete_task",
     args: { wo: 142, task: "SO₂ addition", amount: 28 },
