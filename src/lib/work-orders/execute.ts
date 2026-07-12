@@ -262,6 +262,15 @@ async function dispatchOperationTx(
       const abv = asNum(payload.abv);
       if (!(abv != null && abv > 0)) throw new ActionError("Enter the wine's alcohol by volume (%). ABV is required to classify the wine for TTB reporting.");
       const skuVintage = asNum(payload.skuVintage) ?? new Date().getFullYear();
+      // Plan 056: the ACTUAL packaging BoM consumed (materialId + eaches). Non-BOTTLE payloads / older
+      // work orders simply omit it → liquid-only COGS (unchanged). Malformed entries are dropped.
+      const packaging = Array.isArray(payload.packaging)
+        ? (payload.packaging as unknown[])
+            .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>) : null))
+            .filter((p): p is Record<string, unknown> => p != null)
+            .map((p) => ({ materialId: asStr(p.materialId) ?? "", qty: asNum(p.qty) ?? 0 }))
+            .filter((p) => p.materialId && p.qty > 0)
+        : undefined;
       const r = await runBottlingTx(tx, {
         vesselIds,
         destinationLocationId,
@@ -270,6 +279,7 @@ async function dispatchOperationTx(
         bottlesProduced,
         abv,
         date: new Date(),
+        packaging,
       }, actor);
       return { operationId: r.bottleOpId, message: `Bottled ${bottlesProduced} bottles of "${skuName} ${skuVintage}".` };
     }

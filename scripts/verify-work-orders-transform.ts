@@ -24,6 +24,7 @@ import { rejectTaskCore } from "@/lib/work-orders/approval";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { getWorkOrderPrintView } from "@/lib/work-orders/data";
 import { disconnectSystem } from "../src/lib/tenant/system";
+import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-wo-tf" };
@@ -79,6 +80,12 @@ async function scrub() {
   const skuIds = skus.map((s) => s.id);
   const runs = await prisma.bottlingRun.findMany({ where: { wineSkuId: { in: skuIds } }, select: { id: true } });
   const runIds = runs.map((r) => r.id);
+  // Plan 056: the accounting outbox rows the packaging snapshots (+ their reversing snapshots) emitted —
+  // deliveries FK→export event (RESTRICT), so drop deliveries first.
+  const exEvents = await prisma.costExportEvent.findMany({ where: { OR: [{ runId: { in: runIds } }, { skuId: { in: skuIds } }] }, select: { id: true } });
+  const exIds = exEvents.map((e) => e.id);
+  await prisma.accountingDelivery.deleteMany({ where: { costExportEventId: { in: exIds } } }).catch(() => {});
+  await prisma.costExportEvent.deleteMany({ where: { id: { in: exIds } } }).catch(() => {});
   await prisma.bottlingCostSnapshot.deleteMany({ where: { runId: { in: runIds } } }).catch(() => {});
   await prisma.stockMovement.deleteMany({ where: { bottlingRunId: { in: runIds } } }).catch(() => {});
   await prisma.bottledInventory.deleteMany({ where: { wineSkuId: { in: skuIds } } }).catch(() => {});
@@ -92,7 +99,14 @@ async function scrub() {
   await prisma.lotStateEvent.deleteMany({ where: { lotId: { in: lotIds } } }).catch(() => {});
   await prisma.lotTreatment.deleteMany({ where: { lotId: { in: lotIds } } }).catch(() => {});
   await prisma.lotLineage.deleteMany({ where: { OR: [{ parentLotId: { in: lotIds } }, { childLotId: { in: lotIds } }] } }).catch(() => {});
+  // Plan 056: packaging SupplyConsumption (FK→op + supplyLot, RESTRICT) must go BEFORE the op + lot delete.
+  await prisma.supplyConsumption.deleteMany({ where: { operationId: { in: opIds } } }).catch(() => {});
   await prisma.lotOperation.deleteMany({ where: { enteredBy: ACTOR.actorEmail } }).catch(() => {}); // cascades lines
+  // Plan 056: packaging materials + their supply lots (supplyLot FK→material RESTRICT → lots first).
+  const pkgMats = await prisma.cellarMaterial.findMany({ where: { name: { startsWith: "ZZWT" } }, select: { id: true } });
+  const pkgMatIds = pkgMats.map((m) => m.id);
+  await prisma.supplyLot.deleteMany({ where: { materialId: { in: pkgMatIds } } }).catch(() => {});
+  await prisma.cellarMaterial.deleteMany({ where: { id: { in: pkgMatIds } } }).catch(() => {});
   await prisma.vesselLot.deleteMany({ where: { lotId: { in: lotIds } } }).catch(() => {});
   await prisma.lotVineyard.deleteMany({ where: { lotId: { in: lotIds } } }).catch(() => {});
   await prisma.lot.deleteMany({ where: { id: { in: lotIds } } }).catch(() => {});
@@ -286,6 +300,66 @@ async function main() {
     assert(near(await lotVol(tankB, srcLotId), srcBefore), `the bottled wine was restored to the source tank (back to ${srcBefore} L)`);
     const invAfter = await prisma.bottledInventory.findFirst({ where: { wineSkuId: run.wineSkuId, locationId: bottleLoc.id }, select: { totalBottles: true } });
     assert((invAfter?.totalBottles ?? 0) === 0, "the 100 bottles were removed from finished goods on reversal");
+
+    // ── 7. BOTTLE with a PACKAGING BoM (Plan 056) → reserve on issue, deplete + capitalize on complete,
+    //       APPEND-ONLY reversal restores packaging stock on reject. ──
+    console.log("\n── 7. Bottle with packaging dry goods (Plan 056) ──");
+    const pkgSrcLotId = fractions[1].lotId; // the 400 L press fraction in tankC
+    const pkgSrcBefore = await lotVol(tankC, pkgSrcLotId);
+    assert(pkgSrcBefore > 100, `packaging-run source tank holds wine (${pkgSrcBefore} L)`);
+    // Costed packaging supplies (counted stock, eaches).
+    const glass = await prisma.cellarMaterial.create({ data: { name: "ZZWT Glass 750", normalizedKey: normalizeMaterialKey("ZZWT Glass 750"), kind: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
+    await prisma.supplyLot.create({ data: { materialId: glass.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.80" } });
+    const cork = await prisma.cellarMaterial.create({ data: { name: "ZZWT Cork", normalizedKey: normalizeMaterialKey("ZZWT Cork"), kind: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
+    await prisma.supplyLot.create({ data: { materialId: cork.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.10" } });
+    const glassOnHand = async () => Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: glass.id } })).qtyRemaining);
+    const corkOnHand = async () => Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: cork.id } })).qtyRemaining);
+
+    const pkgBoM = [{ materialId: glass.id, qty: 100 }, { materialId: cork.id, qty: 100 }];
+    const pkgWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWT packaging bottling",
+      tasks: [{ seq: 1, kind: "OPERATION", title: "Bottle w/ dry goods", opType: "BOTTLE", plannedPayload: { skuName: "ZZWT PkgEstate", skuVintage: 2026, packaging: pkgBoM } }],
+    });
+    await issueWorkOrderCore(ACTOR, { workOrderId: pkgWo.workOrderId });
+    // Reservation on issue: one advisory MATERIAL_QTY hold per planned packaging line.
+    const holds = await prisma.reservation.findMany({ where: { workOrderId: pkgWo.workOrderId, kind: "MATERIAL_QTY", status: "ACTIVE" } });
+    assert(holds.length === 2, `issuing reserved 2 packaging MATERIAL_QTY holds (got ${holds.length})`);
+
+    const pkgTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: pkgWo.workOrderId } });
+    const pkgDone = await completeTaskCore(ACTOR, {
+      taskId: pkgTask.id, commandId: "zzwt-pkg-bottle-1",
+      actualPayload: { vesselIds: [tankC], destinationLocationId: bottleLoc.id, skuName: "ZZWT PkgEstate", skuVintage: 2026, bottlesProduced: 100, abv: 13.5, packaging: pkgBoM },
+    });
+    assert(pkgDone.operationId != null, "packaging BOTTLE task wrote a ledger op");
+    const pkgBottleOpId = pkgDone.operationId!;
+    const pkgRunId = String((await meta(pkgBottleOpId)).runId);
+    // Stock drew down by the actual consumed.
+    assert((await glassOnHand()) === 100 && (await corkOnHand()) === 100, `packaging stock drew 200 → 100 each on completion (glass ${await glassOnHand()}, cork ${await corkOnHand()})`);
+    const pkgCons = await prisma.supplyConsumption.findMany({ where: { operationId: pkgBottleOpId, reversalOfConsumptionId: null } });
+    assert(pkgCons.length === 2, `two packaging SupplyConsumption rows on the bottle op (got ${pkgCons.length})`);
+    // Cost capitalized into the COGS snapshot's PACKAGING bucket.
+    const pkgSnap = await prisma.bottlingCostSnapshot.findFirstOrThrow({ where: { runId: pkgRunId, reversalOfSnapshotId: null } });
+    const pkgBd = pkgSnap.componentBreakdown as Record<string, number>;
+    assert(near(pkgBd.PACKAGING ?? 0, 90), `snapshot componentBreakdown.PACKAGING = $90 (100×$0.80 + 100×$0.10; got ${pkgBd.PACKAGING})`);
+    const pkgCostLines = await prisma.costLine.findMany({ where: { operationId: pkgBottleOpId, component: "PACKAGING", reversalOfCostLineId: null } });
+    assert(pkgCostLines.length === 2 && pkgCostLines.every((l) => l.lotId === null), "two PACKAGING CostLines (lotId null) on the bottle op");
+
+    // Reject → APPEND-ONLY reversal: packaging stock RESTORED, original snapshot kept, a reversing
+    // snapshot written, negating cost lines appended, and the run is NOT deleted.
+    const pkgRej = await rejectTaskCore(ADMIN, ACTOR, { taskId: pkgTask.id, reason: "recheck dry goods" });
+    assert(pkgRej.status === "REJECTED", "rejecting the packaging bottling moved it to REJECTED");
+    assert((await glassOnHand()) === 200 && (await corkOnHand()) === 200, `reversal RESTORED packaging stock 100 → 200 each (glass ${await glassOnHand()}, cork ${await corkOnHand()})`);
+    assert(near(await lotVol(tankC, pkgSrcLotId), pkgSrcBefore), `the bottled wine was restored to tankC (back to ${pkgSrcBefore} L)`);
+    const pkgRunStillThere = await prisma.bottlingRun.findUnique({ where: { id: pkgRunId }, select: { id: true } });
+    assert(pkgRunStillThere != null, "append-only: the bottling run is NOT hard-deleted on reversal");
+    const origStill = await prisma.bottlingCostSnapshot.findFirst({ where: { id: pkgSnap.id } });
+    assert(origStill != null, "append-only: the original COGS snapshot is kept immutable");
+    const revSnap = await prisma.bottlingCostSnapshot.findFirst({ where: { runId: pkgRunId, reversalOfSnapshotId: pkgSnap.id } });
+    assert(revSnap != null, "a reversing COGS snapshot (reversalOfSnapshotId) was written");
+    const negPkgLines = await prisma.costLine.findMany({ where: { reversalOfCostLineId: { not: null }, component: "PACKAGING" } });
+    assert(negPkgLines.length === 2 && negPkgLines.every((l) => Number(l.amount) < 0), `two negating PACKAGING CostLines appended (got ${negPkgLines.map((l) => Number(l.amount))})`);
+    const negPkgCons = await prisma.supplyConsumption.findMany({ where: { reversalOfConsumptionId: { not: null }, supplyLotId: { in: (await prisma.supplyLot.findMany({ where: { materialId: { in: [glass.id, cork.id] } }, select: { id: true } })).map((s) => s.id) } } });
+    assert(negPkgCons.length === 2 && negPkgCons.every((c) => Number(c.qty) < 0), "two negating packaging SupplyConsumption rows restore stock by identity");
 
     console.log(`\nALL WORK-ORDER-TRANSFORM CHECKS PASSED ✓  (${passed} assertions)`);
   });

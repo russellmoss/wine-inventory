@@ -61,7 +61,10 @@ export type BottlingSnapshotInput = {
   goodBottles: number;
   /** the consumed liquid cost, computed via computeConsumedLiquid BEFORE the BOTTLE op. */
   liquid: ConsumedLiquid;
-  packagingCost?: number; // PACKAGING SupplyLot draw-down (0 until the bottling BOM UI lands)
+  packagingCost?: number; // PACKAGING SupplyLot draw-down (Plan 056: Σ PACKAGING CostLines on the bottle op)
+  /** completeness of the packaging draw (Plan 056): PARTIAL/UNKNOWN when a lot lacked cost basis or stock
+   * ran short — taints the snapshot so the COGS reads "packaging cost incomplete — reconcile", never $0. */
+  packagingCompleteness?: CostBasisCompleteness;
   taxClass?: string | null;
 };
 
@@ -81,6 +84,7 @@ export async function writeBottlingCostSnapshot(
     liquidComponents: input.liquid.liquidComponents,
     liquidCompleteness: input.liquid.completeness,
     packagingCost: input.packagingCost ?? 0,
+    packagingCompleteness: input.packagingCompleteness ?? "KNOWN",
     costBasisAsOfOperationId: input.bottleOpId,
     policyVersion: settings?.costingPolicyVersion ?? 1,
     currency: settings?.currency ?? "USD",
