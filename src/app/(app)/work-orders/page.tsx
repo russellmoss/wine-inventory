@@ -1,4 +1,4 @@
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { getWorkOrderDashboard, getWorkOrderArchive, getWorkOrderPickers, listTemplatesWithSpec } from "@/lib/work-orders/data";
 import { parseArchiveFilters, parseOpenFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersClient } from "./WorkOrdersClient";
@@ -51,7 +51,7 @@ export default async function WorkOrdersPage({
   return (
     <WorkOrdersClient
       dashboard={dashboard}
-      isAdmin={user.role === "admin"}
+      isAdmin={isTenantAdminLike(user)}
       filters={openFilters}
       vessels={pickers.vessels}
       templates={templates.map((t) => ({ id: t.id, name: t.name }))}
