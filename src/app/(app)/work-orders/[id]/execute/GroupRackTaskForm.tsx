@@ -39,6 +39,12 @@ export function GroupRackTaskForm({ task, onDone }: { task: WorkOrderTaskView; o
     startTransition(async () => {
       try {
         await completeGroupRackBatchAction({ taskId: task.id, commandId, memberVesselIds: memberIds, perMemberVolumeL, lossL: Number.isFinite(lossL) && lossL > 0 ? lossL : undefined, note: note.trim() || undefined });
+        // router.refresh() re-fetches server data but preserves this client component's state — clear the
+        // selection + inputs so the next batch starts fresh (else the just-completed members stay "selected").
+        setSelected(new Set());
+        setVolumes({});
+        setLoss("");
+        setNote("");
         onDone();
       } catch (e) { setError(e instanceof Error ? e.message : "Couldn't record the batch."); }
     });
