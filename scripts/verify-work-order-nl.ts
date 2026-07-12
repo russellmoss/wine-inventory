@@ -4,6 +4,7 @@
  * Demo Winery only. This proves authoring creates and issues a WO with planned tasks, but does not write
  * LotOperation rows; ledger writes still wait for task completion.
  */
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
@@ -13,6 +14,9 @@ import { buildNlWorkOrderCommitArgs, buildNlWorkOrderProposal, assertFreshNlWork
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
+import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
+import { completeTaskCore, completeGroupRackBatchCore } from "@/lib/work-orders/execute";
+import { rejectGroupRackBatchCore } from "@/lib/work-orders/approval";
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-work-order-nl" };
@@ -29,8 +33,16 @@ const num = (d: unknown) => Number(d ?? 0);
 async function scrub() {
   const wos = await prisma.workOrder.findMany({ where: { title: { startsWith: "ZZNL" } }, select: { id: true } });
   const woIds = wos.map((w) => w.id);
+  const zzEquip = await prisma.equipmentAsset.findMany({ where: { name: { startsWith: "ZZNL" } }, select: { id: true } });
+  const zzEquipIds = zzEquip.map((e) => e.id);
+  const zzTasks = woIds.length ? await prisma.workOrderTask.findMany({ where: { workOrderId: { in: woIds } }, select: { id: true } }) : [];
+  const zzTaskIds = zzTasks.map((t) => t.id);
+  // Plan 055 U10: drop the advisory task↔equipment links first (they FK the tasks about to be deleted and
+  // the ZZNL equipment about to be removed), then the WOs, then the equipment.
+  await prisma.workOrderTaskEquipment.deleteMany({ where: { OR: [{ equipmentId: { in: zzEquipIds } }, { taskId: { in: zzTaskIds } }] } });
   await prisma.reservation.deleteMany({ where: { workOrderId: { in: woIds } } });
   await prisma.workOrder.deleteMany({ where: { id: { in: woIds } } });
+  await prisma.equipmentAsset.deleteMany({ where: { id: { in: zzEquipIds } } });
 
   const ops = await prisma.lotOperation.findMany({ where: { enteredBy: ACTOR.actorEmail }, select: { id: true } });
   const opIds = ops.map((op) => op.id);
@@ -167,6 +179,102 @@ async function main() {
     const pkgHolds = await prisma.reservation.findMany({ where: { workOrderId: pkgCreated.workOrderId, kind: "MATERIAL_QTY" } });
     assert(pkgHolds.length === 2 && pkgHolds.every((h) => num(h.qty) === 1200), `two MATERIAL_QTY holds (1200 eaches each) on issue (got ${pkgHolds.map((h) => num(h.qty))})`);
     assert((await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } })) === opsBeforeBottle, "authoring + issuing the bottling WO wrote NO ledger op (the BOTTLE op is written at execute)");
+
+    const vocab = await resolveTaskVocabulary();
+
+    // ── Plan 055 U3/U10: EQUIPMENT_SERVICE — author (equipment attaches) + complete (status flips, no op). ──
+    // The assistant commit routes through createWorkOrderFromBuildsAction (equipment attach lives inside it);
+    // this script drives the SAME cores it wraps (createWorkOrderCore + attachTaskEquipmentCore) — WORKORDER-1.
+    const press = await prisma.equipmentAsset.create({ data: { name: "ZZNL Basket Press", kind: "press", status: "available" } });
+    const opsBeforeEquip = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
+    const eqProposal = await buildNlWorkOrderProposal({
+      sourceText: "service the press and set it to maintenance",
+      title: "ZZNL equipment service",
+      tasks: [{ kind: "EQUIPMENT_SERVICE", equipmentId: press.id, setStatus: "maintenance" }],
+    });
+    assert(eqProposal.status === "ready", "EQUIPMENT_SERVICE proposal is ready (record-only, no vessel/lot/material)");
+    assert(eqProposal.taskBuilds.length === 1 && eqProposal.taskBuilds[0].taskType === "EQUIPMENT_SERVICE", "one EQUIPMENT_SERVICE task build");
+    const eqIds = eqProposal.taskBuilds[0].equipmentIds;
+    assert(Array.isArray(eqIds) && eqIds.length === 1 && eqIds[0] === press.id, "the resolved equipment id rides the task build's equipmentIds");
+    const eqArgs = buildNlWorkOrderCommitArgs(eqProposal);
+    await assertFreshNlWorkOrderProposal(eqArgs);
+    const eqTasks = instantiateTaskBuilds(eqArgs.taskBuilds, vocab);
+    const eqCreated = await createWorkOrderCore(ACTOR, { title: eqArgs.title, tasks: eqTasks });
+    const eqRows = await prisma.workOrderTask.findMany({ where: { workOrderId: eqCreated.workOrderId }, orderBy: { seq: "asc" }, select: { id: true, seq: true } });
+    for (const t of eqRows) {
+      const ids = eqArgs.taskBuilds[t.seq - 1]?.equipmentIds;
+      if (Array.isArray(ids) && ids.length > 0) await attachTaskEquipmentCore(t.id, ids);
+    }
+    await issueWorkOrderCore(ACTOR, { workOrderId: eqCreated.workOrderId });
+    const eqLink = await prisma.workOrderTaskEquipment.findFirst({ where: { taskId: eqRows[0].id, equipmentId: press.id } });
+    assert(!!eqLink, "the equipment is attached to the service task (WorkOrderTaskEquipment row)");
+    assert((await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } })) === opsBeforeEquip, "authoring + issuing the equipment-service WO wrote NO ledger op");
+    const eqDone = await completeTaskCore(ACTOR, { taskId: eqRows[0].id, commandId: randomUUID(), actualPayload: { setStatus: "maintenance" } });
+    assert(eqDone.status === "DONE" && eqDone.operationId === null, "completing the equipment-service task is DONE with NO ledger op (E16 record-only)");
+    const pressAfter = await prisma.equipmentAsset.findUniqueOrThrow({ where: { id: press.id } });
+    assert(pressAfter.status === "maintenance", "completion flipped the equipment status to maintenance");
+    assert((await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } })) === opsBeforeEquip, "equipment-service completion still wrote NO ledger op");
+
+    // ── Plan 055 U5/U6/U10: group_rack_batch cores — subset complete, D1 self-undo, D4 all-or-nothing. ──
+    const grSrc = await prisma.vessel.create({ data: { code: "ZZNL-GRT", type: "TANK", capacityL: 900 } });
+    await seedLotInVessel("ZZNL-GR-LOT", grSrc.id, 700);
+    const b1 = await prisma.vessel.create({ data: { code: "ZZNL-B1", type: "BARREL", capacityL: 225 } });
+    const b2 = await prisma.vessel.create({ data: { code: "ZZNL-B2", type: "BARREL", capacityL: 225 } });
+    const b3 = await prisma.vessel.create({ data: { code: "ZZNL-B3", type: "BARREL", capacityL: 225 } });
+    const grProposal = await buildNlWorkOrderProposal({
+      sourceText: "barrel down the tank into the three barrels",
+      title: "ZZNL group rack",
+      tasks: [{ kind: "BARREL_DOWN", from: "ZZNL-GRT", toGroup: "ZZNL-B1, ZZNL-B2, ZZNL-B3", drawL: 600 }],
+    });
+    assert(grProposal.status === "ready", "barrel-down proposal is ready");
+    const grArgs = buildNlWorkOrderCommitArgs(grProposal);
+    const grTasks = instantiateTaskBuilds(grArgs.taskBuilds, vocab);
+    const grCreated = await createWorkOrderCore(ACTOR, { title: grArgs.title, tasks: grTasks });
+    await issueWorkOrderCore(ACTOR, { workOrderId: grCreated.workOrderId });
+    const grTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: grCreated.workOrderId } });
+
+    // Complete a SUBSET (b1, b2) with a REAL user actor so D1's self-executor check has an id to match.
+    const memberUserId = (await prisma.member.findFirstOrThrow({ where: { organizationId: TENANT }, select: { userId: true } })).userId;
+    const grActor: LedgerActor = { actorUserId: memberUserId, actorEmail: ACTOR.actorEmail };
+    const batch1 = await completeGroupRackBatchCore(grActor, { taskId: grTask.id, commandId: randomUUID(), memberVesselIds: [b1.id, b2.id] });
+    assert(batch1.status === "IN_PROGRESS", "completing a subset (2 of 3 barrels) leaves the task IN_PROGRESS");
+
+    // D1: the SAME executor (a non-admin) may self-undo their own last batch while IN_PROGRESS.
+    const selfUser = { id: memberUserId, role: "user" };
+    const undo1 = await rejectGroupRackBatchCore(selfUser, grActor, { taskId: grTask.id });
+    assert(undo1.status === "PENDING", "D1: the same executor (non-admin) self-undoes the only batch → task back to PENDING");
+
+    // D1 negative: a DIFFERENT non-admin cannot undo someone else's batch.
+    const batch2 = await completeGroupRackBatchCore(grActor, { taskId: grTask.id, commandId: randomUUID(), memberVesselIds: [b1.id, b2.id] });
+    assert(batch2.status === "IN_PROGRESS", "re-completed the subset after the undo");
+    const denied = await rejectGroupRackBatchCore({ id: "zznl-not-the-executor", role: "user" }, grActor, { taskId: grTask.id }).catch((e) => e as Error);
+    assert(denied instanceof Error && /admin|person who recorded/i.test(denied.message), "D1: a different non-admin is refused the undo");
+
+    // D4: all-or-nothing — a batch mixing an already-done member (b1) with a pending one (b3) is rejected whole.
+    const d4 = await completeGroupRackBatchCore(grActor, { taskId: grTask.id, commandId: randomUUID(), memberVesselIds: [b1.id, b3.id] }).catch((e) => e as Error);
+    assert(d4 instanceof Error && /already recorded|aren't part of this task/i.test(d4.message), "D4: mixing a done member with a pending one rejects the whole batch (no partial write)");
+    const stillTwo = await prisma.workOrderTaskAttempt.count({ where: { taskId: grTask.id, status: { not: "REJECTED" } } });
+    assert(stillTwo === 1, "D4: the rejected batch wrote no new attempt (still one live batch)");
+
+    // Finish the last pending barrel cleanly → the whole task enters review.
+    const batch3 = await completeGroupRackBatchCore(grActor, { taskId: grTask.id, commandId: randomUUID(), memberVesselIds: [b3.id] });
+    assert(batch3.status === "PENDING_APPROVAL" || batch3.status === "APPROVED", "completing the final barrel moves the task into review");
+
+    // ── Plan 055 U7/U8/U10: per-task assignee + priority persist through the shared cores. ──
+    const apProposal = await buildNlWorkOrderProposal({
+      sourceText: "checklist assigned high priority",
+      title: "ZZNL assignee priority",
+      tasks: [{ kind: "NOTE", title: "ZZNL check the crush pad", assigneeId: memberUserId, priority: "HIGH" }],
+    });
+    assert(apProposal.status === "ready", "assignee/priority NOTE proposal is ready");
+    assert(apProposal.taskBuilds[0].assigneeId === memberUserId, "resolved assignee id lands on the task build");
+    assert(apProposal.taskBuilds[0].priority === "HIGH", "priority lands on the task build");
+    const apArgs = buildNlWorkOrderCommitArgs(apProposal);
+    const apTasks = instantiateTaskBuilds(apArgs.taskBuilds, vocab);
+    const apCreated = await createWorkOrderCore(ACTOR, { title: apArgs.title, tasks: apTasks });
+    const apTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: apCreated.workOrderId } });
+    assert(apTask.assigneeId === memberUserId, "per-task assignee id persisted on the WorkOrderTask");
+    assert(apTask.priority === "HIGH", "per-task priority persisted on the WorkOrderTask");
 
     console.log(`\nALL NL WORK-ORDER CHECKS PASSED (${passed} assertions)`);
   });
