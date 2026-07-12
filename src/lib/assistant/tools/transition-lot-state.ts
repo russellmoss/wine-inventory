@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { resolveLotTarget } from "../scope";
+import { resolveLotTargetOrChoice } from "../scope";
 import { transitionStateAction } from "@/lib/ferment/actions";
 import type { TransitionInput } from "@/lib/ferment/transition-core";
 
@@ -38,7 +38,9 @@ export const transitionLotStateTool: AssistantTool = {
     if (!["NONE", "ACTIVE", "DRY", "COMPLETE"].includes(to)) throw new Error("Set the target state (ACTIVE, DRY, or COMPLETE).");
     if (stage === "AF" && to === "COMPLETE") throw new Error("AF finishes at DRY, not COMPLETE. Use MLF for COMPLETE.");
     if (stage === "MLF" && to === "DRY") throw new Error("MLF finishes at COMPLETE, not DRY.");
-    const { lotId, lotCode } = await resolveLotTarget({ lot: input.lot, vessel: input.vessel });
+    const resolved = await resolveLotTargetOrChoice({ lot: input.lot, vessel: input.vessel }, "transition_lot_state", input as Record<string, unknown>);
+    if (resolved.kind === "choice") return resolved.choice;
+    const { lotId, lotCode } = resolved.row;
 
     const preview = `Mark ${stage} ${TO_LABEL[to]} on lot ${lotCode}.`;
     const token = signProposal("transition_lot_state", {

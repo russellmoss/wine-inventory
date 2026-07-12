@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { isTenantAdminLike, type AppUser } from "@/lib/access";
 import { parseVesselRef } from "@/lib/vessels/ref";
 import type { OperationType } from "@/lib/ledger/vocabulary";
+import { resolveOneOrChoice, type ResolveResult } from "./tools/resolve";
+import { signResume } from "./confirm";
 
 /**
  * Shared scoping for assistant read tools. Scoping is the handler's job, NEVER
@@ -196,44 +198,134 @@ export async function resolveVesselContents(text: string): Promise<VesselContent
 }
 
 /**
- * Resolve the ONE lot a per-lot record (chem panel, tasting note) attaches to — from a lot code OR a
- * vessel reference. Measurements/tasting attach to exactly one lot (never whole-vessel), so a blend
- * vessel is genuinely ambiguous: we list its lots and ask, rather than guessing (the one-lot invariant).
- * A lot code resolves exact-first, then a unique fuzzy contains; ambiguous/none throw a clear message.
+ * A candidate lot for attach-resolution, with an optional picker sublabel (a DISTINGUISHING detail so
+ * co-resident lots are tell-apart-able — volume is the load-bearing differentiator per the design review).
  */
-export async function resolveLotTarget(opts: { lot?: string; vessel?: string }): Promise<{ lotId: string; lotCode: string }> {
+type LotCandidate = { id: string; code: string; detail?: string };
+
+type LotResolution =
+  | { kind: "one"; lot: LotCandidate }
+  | { kind: "many"; lots: LotCandidate[]; ref: string; via: "lot" | "vessel"; vesselLabel?: string };
+
+/**
+ * SHARED resolution: a lot code OR a vessel reference → the candidate lot(s) + context. The two public
+ * wrappers below (resolveLotTarget = throw on ambiguity; resolveLotTargetOrChoice = clickable picker)
+ * differ ONLY in how they present ambiguity, so they can't drift. Measurements/tasting attach to exactly
+ * one lot (the one-lot invariant, VISION D2), so a multi-lot vessel is genuinely ambiguous → we surface
+ * every resident lot. Also handles the picker re-tap form "#<lotId>" (pins a lot by id, re-validated
+ * ACTIVE so a stale tap fails cleanly instead of writing to a lot that was drawn down/merged since).
+ */
+async function resolveLotCandidates(opts: { lot?: string; vessel?: string }): Promise<LotResolution> {
   const lotRef = opts.lot?.trim();
   if (lotRef) {
+    // A picker tap re-pins the lot by id ("#<lotId>"). Resolve exactly + prove still ACTIVE (stale guard).
+    if (lotRef.startsWith("#")) {
+      const pin = lotRef.slice(1).trim();
+      const row = pin ? await prisma.lot.findUnique({ where: { id: pin }, select: { id: true, code: true, status: true } }) : null;
+      if (!row || row.status !== "ACTIVE") throw new Error("That lot isn't available anymore — take the reading again.");
+      return { kind: "one", lot: { id: row.id, code: row.code } };
+    }
     const rows = await prisma.lot.findMany({
       where: { status: "ACTIVE", code: { contains: lotRef, mode: "insensitive" } },
       take: 10,
       select: { id: true, code: true },
     });
     const exact = rows.find((r) => r.code.toLowerCase() === lotRef.toLowerCase());
-    if (exact) return { lotId: exact.id, lotCode: exact.code };
-    if (rows.length === 1) return { lotId: rows[0].id, lotCode: rows[0].code };
-    if (rows.length > 1) {
-      throw new Error(`Several lots match "${opts.lot}": ${rows.map((r) => r.code).join(", ")}. Which one?`);
-    }
-    // Phase 1 (identity presentation) fallback: no current-code match — try cross-identifier search
-    // (displayName, historical codes via LotCodeEvent, legacy identifiers). Resolves to `id` first
-    // (NAMING-2), so a renamed or aliased lot is still findable by an old code or a legacy id.
+    if (exact) return { kind: "one", lot: { id: exact.id, code: exact.code } };
+    if (rows.length === 1) return { kind: "one", lot: { id: rows[0].id, code: rows[0].code } };
+    if (rows.length > 1) return { kind: "many", lots: rows.map((r) => ({ id: r.id, code: r.code })), ref: opts.lot!, via: "lot" };
+    // Phase 1 (identity presentation) fallback: no current-code match — cross-identifier search
+    // (displayName, historical codes via LotCodeEvent, legacy identifiers). Resolves to `id` first (NAMING-2).
     const { searchLotsByIdentifier } = await import("@/lib/lot/identify");
     const matches = await searchLotsByIdentifier(lotRef, { limit: 5 });
-    if (matches.length === 1) return { lotId: matches[0].lotId, lotCode: matches[0].currentCode };
+    if (matches.length === 1) return { kind: "one", lot: { id: matches[0].lotId, code: matches[0].currentCode } };
     if (matches.length > 1) {
-      const shown = matches.map((m) => (m.matchType === "current-code" ? m.currentCode : `${m.currentCode} (formerly ${m.matchContext})`));
-      throw new Error(`Several lots match "${opts.lot}": ${shown.join(", ")}. Which one?`);
+      return {
+        kind: "many",
+        lots: matches.map((m) => ({ id: m.lotId, code: m.matchType === "current-code" ? m.currentCode : `${m.currentCode} (formerly ${m.matchContext})` })),
+        ref: opts.lot!,
+        via: "lot",
+      };
     }
     throw new Error(`No active lot matches "${opts.lot}". Check the lot code, or name the vessel.`);
   }
   if (opts.vessel) {
-    const c = await resolveVesselContents(opts.vessel);
-    if (c.kind === "empty") throw new Error(`${c.vesselLabel} is empty — there's no lot to attach this to.`);
-    if (c.kind === "single") return { lotId: c.lot.id, lotCode: c.lot.code };
-    throw new Error(`${c.vesselLabel} holds a blend (${c.lots.map((l) => l.code).join(", ")}) — which lot is this for?`);
+    // Enriched vessel query (NOT resolveVesselContents — that stays {id,code} for its other callers):
+    // pull per-lot volume + vintage for the picker sublabel so co-resident lots are distinguishable.
+    const m = await matchVesselByText(opts.vessel);
+    const vessel = await prisma.vessel.findUnique({
+      where: { id: m.id },
+      select: {
+        code: true,
+        type: true,
+        vesselLots: { include: { lot: { select: { id: true, code: true, vintageYear: true } } } },
+      },
+    });
+    if (!vessel) throw new Error(`No ${m.type === "BARREL" ? "barrel" : "tank"} "${m.code}" exists.`);
+    const label = `${vessel.type === "BARREL" ? "Barrel" : "Tank"} ${vessel.code}`;
+    const lots: LotCandidate[] = vessel.vesselLots.map((vl) => ({
+      id: vl.lot.id,
+      code: vl.lot.code,
+      detail: [vl.lot.vintageYear ? String(vl.lot.vintageYear) : null, `${Number(vl.volumeL).toLocaleString()} L`].filter(Boolean).join(" · "),
+    }));
+    if (lots.length === 0) throw new Error(`${label} is empty — there's no wine to record a reading against.`);
+    if (lots.length === 1) return { kind: "one", lot: lots[0] };
+    // Curve continuity (design review): float the lot that got this vessel's MOST RECENT reading to the
+    // top and tag it, so a co-fermented tank's daily readings stay on one lot instead of fragmenting.
+    const last = await prisma.analysisPanel.findFirst({
+      where: { lotId: { in: lots.map((l) => l.id) }, voidedAt: null },
+      orderBy: { observedAt: "desc" },
+      select: { lotId: true },
+    });
+    if (last) {
+      const i = lots.findIndex((l) => l.id === last.lotId);
+      if (i > 0) lots.unshift(lots.splice(i, 1)[0]);
+      if (lots[0]?.id === last.lotId) lots[0].detail = [lots[0].detail, "last reading"].filter(Boolean).join(" · ");
+    }
+    return { kind: "many", lots, ref: opts.vessel, via: "vessel", vesselLabel: label };
   }
   throw new Error("Which lot (or vessel) is this for?");
+}
+
+/**
+ * Resolve the ONE lot a per-lot record (chem panel, tasting note) attaches to — from a lot code OR a
+ * vessel reference. Throws a clear message on ambiguity (the one-lot invariant). For the clickable-picker
+ * variant the assistant chat tools use, see resolveLotTargetOrChoice.
+ */
+export async function resolveLotTarget(opts: { lot?: string; vessel?: string }): Promise<{ lotId: string; lotCode: string }> {
+  const r = await resolveLotCandidates(opts);
+  if (r.kind === "one") return { lotId: r.lot.id, lotCode: r.lot.code };
+  if (r.via === "vessel") throw new Error(`${r.vesselLabel} holds a blend (${r.lots.map((l) => l.code).join(", ")}) — which lot is this for?`);
+  throw new Error(`Several lots match "${r.ref}": ${r.lots.map((l) => l.code).join(", ")}. Which one?`);
+}
+
+/**
+ * Like resolveLotTarget, but on a multi-lot vessel (or an ambiguous lot code) returns a clickable CHOICE
+ * (one option per candidate lot, id-pinned via signResume) instead of a text dead-end — so a co-fermented
+ * "one must" tank no longer blocks a reading. `toolName`/`resumeInput` re-drive the SAME tool with the
+ * chosen lot pinned ("#<lotId>"), producing the tool's normal confirm-card (never an auto-write). Every
+ * recorded row still attaches to exactly ONE lot (VISION D2 intact).
+ */
+export async function resolveLotTargetOrChoice(
+  opts: { lot?: string; vessel?: string },
+  toolName: string,
+  resumeInput: Record<string, unknown>,
+): Promise<ResolveResult<{ lotId: string; lotCode: string }>> {
+  const r = await resolveLotCandidates(opts);
+  if (r.kind === "one") return { kind: "one", row: { lotId: r.lot.id, lotCode: r.lot.code } };
+  const prompt =
+    r.via === "vessel"
+      ? `${r.vesselLabel} holds more than one lot — which lot did you sample?`
+      : `Several lots match "${r.ref}" — which one did you sample?`;
+  const res = resolveOneOrChoice(r.lots, {
+    prompt,
+    describe: (l) => l.code,
+    detail: (l) => l.detail,
+    // Re-pin the chosen lot by id and drop the vessel ref so the re-driven tool resolves the exact lot.
+    resume: (l) => signResume(toolName, { ...resumeInput, lot: `#${l.id}`, vessel: undefined }),
+    noneMsg: "There's no lot to attach this reading to.",
+  });
+  return res.kind === "one" ? { kind: "one", row: { lotId: res.row.id, lotCode: res.row.code } } : res;
 }
 
 export type ResolvedTask = { workOrderId: string; number: number; taskId: string; seq: number; title: string; opType: string | null; observationType: string | null; kind: string; status: string };
@@ -314,22 +406,30 @@ const OPEN_SAMPLE_STATUSES = ["PULLED", "SENT", "PENDING", "RESULT_RETURNED"] as
  * (a blend vessel asks which lot via resolveLotTarget). Terminal samples (attached/cancelled) are ignored.
  * Nothing open → a clear error telling the operator to pull one first.
  */
-export async function resolveOpenSample(opts: { sampleId?: string; vessel?: string; lot?: string }): Promise<{ sampleId: string; lotId: string; lotCode: string; status: string; source: string | null }> {
+export async function resolveOpenSample(
+  opts: { sampleId?: string; vessel?: string; lot?: string },
+  toolName: string,
+  resumeInput: Record<string, unknown>,
+): Promise<ResolveResult<{ sampleId: string; lotId: string; lotCode: string; status: string; source: string | null }>> {
   const shape = { id: true, lotId: true, status: true, source: true, lot: { select: { code: true } } } as const;
   if (opts.sampleId) {
     const s = await prisma.sample.findUnique({ where: { id: opts.sampleId }, select: shape });
     if (!s) throw new Error(`No sample "${opts.sampleId}" exists.`);
-    return { sampleId: s.id, lotId: s.lotId, lotCode: s.lot.code, status: s.status, source: s.source };
+    return { kind: "one", row: { sampleId: s.id, lotId: s.lotId, lotCode: s.lot.code, status: s.status, source: s.source } };
   }
   if (!opts.lot && !opts.vessel) throw new Error("Which sample? Give a vessel, a lot, or a sample id.");
-  const { lotId, lotCode } = await resolveLotTarget({ lot: opts.lot, vessel: opts.vessel });
+  // A multi-lot vessel surfaces the clickable lot picker (re-driving this tool with the lot pinned),
+  // instead of the old text throw — same one-must fix as the direct record tools.
+  const resolved = await resolveLotTargetOrChoice({ lot: opts.lot, vessel: opts.vessel }, toolName, resumeInput);
+  if (resolved.kind === "choice") return resolved;
+  const { lotId, lotCode } = resolved.row;
   const s = await prisma.sample.findFirst({
     where: { lotId, status: { in: [...OPEN_SAMPLE_STATUSES] } },
     orderBy: { pulledAt: "desc" },
     select: shape,
   });
   if (!s) throw new Error(`No open sample on lot ${lotCode} — pull one first.`);
-  return { sampleId: s.id, lotId: s.lotId, lotCode: s.lot.code, status: s.status, source: s.source };
+  return { kind: "one", row: { sampleId: s.id, lotId: s.lotId, lotCode: s.lot.code, status: s.status, source: s.source } };
 }
 
 /** A parsed work-order reference: pinned either by database id (cuid) or by human number. */

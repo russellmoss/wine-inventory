@@ -46,7 +46,9 @@ export const recordSampleResultsTool: AssistantTool = {
     const input = (rawInput ?? {}) as RawInput;
     const readings = collectReadings(input);
     if (readings.length === 0) throw new Error("Give at least one returned reading, e.g. free SO₂ 28 or TA 6.1.");
-    const sample = await resolveOpenSample({ sampleId: input.sampleId, vessel: input.vessel, lot: input.lot });
+    const r = await resolveOpenSample({ sampleId: input.sampleId, vessel: input.vessel, lot: input.lot }, "record_sample_results", input as Record<string, unknown>);
+    if (r.kind === "choice") return r.choice;
+    const sample = r.row;
     const readingStr = readings.map((r) => `${r.analyte} ${r.value}${r.unit ? ` ${r.unit}` : ""}`).join(", ");
     const preview = `Attach lab results (${readingStr}) to the sample on lot ${sample.lotCode}.`;
     const token = signProposal("record_sample_results", {

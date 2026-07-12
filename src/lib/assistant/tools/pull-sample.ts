@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { resolveLotTarget } from "../scope";
+import { resolveLotTargetOrChoice } from "../scope";
 import { pullSampleAction } from "@/lib/chemistry/actions";
 import type { PullSampleInput } from "@/lib/chemistry/samples";
 
@@ -32,7 +32,9 @@ export const pullSampleTool: AssistantTool = {
   },
   async run(_ctx, rawInput) {
     const input = (rawInput ?? {}) as RawInput;
-    const { lotId, lotCode } = await resolveLotTarget({ lot: input.lot, vessel: input.vessel });
+    const resolved = await resolveLotTargetOrChoice({ lot: input.lot, vessel: input.vessel }, "pull_sample", input as Record<string, unknown>);
+    if (resolved.kind === "choice") return resolved.choice;
+    const { lotId, lotCode } = resolved.row;
     const sendNow = input.sendNow === true || (input.sendNow == null && !!input.lab?.trim());
     const labClause = input.lab?.trim() ? ` and send to ${input.lab.trim()}` : sendNow ? " (sent)" : "";
     const preview = `Pull a sample from lot ${lotCode}${input.source?.trim() ? ` (${input.source.trim()})` : ""}${labClause}${input.expectedAt ? `, results expected ${input.expectedAt}` : ""}.`;

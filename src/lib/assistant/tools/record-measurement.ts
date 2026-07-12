@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { resolveLotTarget } from "../scope";
+import { resolveLotTargetOrChoice } from "../scope";
 import { recordMeasurementsAction } from "@/lib/chemistry/actions";
 import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
 
@@ -90,7 +90,9 @@ export const recordMeasurementTool: AssistantTool = {
     const input = (rawInput ?? {}) as RecordMeasurementRawInput;
     const readings = collectReadings(input);
     if (readings.length === 0) throw new Error("Give at least one reading, e.g. pH 3.4 or free SO₂ 28.");
-    const { lotId, lotCode } = await resolveLotTarget({ lot: input.lot, vessel: input.vessel });
+    const resolved = await resolveLotTargetOrChoice({ lot: input.lot, vessel: input.vessel }, "record_measurement", input as Record<string, unknown>);
+    if (resolved.kind === "choice") return resolved.choice;
+    const { lotId, lotCode } = resolved.row;
 
     const observedAt = input.observedAt ? String(input.observedAt) : null;
     const when = observedAt ? ` on ${observedAt}` : " today";
