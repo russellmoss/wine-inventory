@@ -54,15 +54,19 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     if (type === "block") return null;
     if (type === "material") {
       // Phase 034: category-filtered + fuzzy picker (replaces the flat <select>). Scope depends on the task.
+      // Span the full grid width (matches the WO builder + NewWorkOrderClient): the picker is a rich
+      // search + chips + list panel, not a single field, so it must fill its parent left-to-right rather
+      // than sit half-width in one 1fr column.
       return (
-        <label key={key} style={lbl}>{fieldLabel(key)}
+        <div key={key} style={{ gridColumn: "1 / -1" }}>
+          <div style={lbl}>{fieldLabel(key)}</div>
           <MaterialFilterPicker
             options={pickers.materials}
             value={String(cur)}
             onChange={(id) => set(key, id)}
             categoryScope={def ? materialScopeForTask(def) : undefined}
           />
-        </label>
+        </div>
       );
     }
     if (type === "vessel" || type === "lot") {
