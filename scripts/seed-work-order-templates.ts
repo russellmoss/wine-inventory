@@ -10,6 +10,7 @@
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "../src/lib/tenant/context";
 import { validateTemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { SYSTEM_TEMPLATES } from "@/lib/work-orders/system-templates";
 import { disconnectSystem } from "../src/lib/tenant/system";
 
@@ -18,7 +19,7 @@ const DEMO_ORG_ID = "org_demo_winery";
 async function main() {
   await runAsTenant(DEMO_ORG_ID, async () => {
     for (const t of SYSTEM_TEMPLATES) {
-      const v = validateTemplateSpec(t.spec);
+      const v = validateTemplateSpec(t.spec, await resolveTaskVocabulary());
       if (!v.ok) throw new Error(`Template ${t.code} is invalid: ${v.errors.join(" ")}`);
 
       const existing = await prisma.workOrderTemplate.findUnique({ where: { tenantId_code: { tenantId: DEMO_ORG_ID, code: t.code } }, select: { id: true, currentVersion: true } });

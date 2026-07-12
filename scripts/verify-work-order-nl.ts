@@ -11,6 +11,7 @@ import type { LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { buildNlWorkOrderCommitArgs, buildNlWorkOrderProposal, assertFreshNlWorkOrderProposal } from "@/lib/work-orders/nl-resolve";
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
 
 const TENANT = "org_demo_winery";
@@ -106,7 +107,7 @@ async function main() {
 
     const args = buildNlWorkOrderCommitArgs(proposal);
     await assertFreshNlWorkOrderProposal(args);
-    const tasks = instantiateTaskBuilds(args.taskBuilds);
+    const tasks = instantiateTaskBuilds(args.taskBuilds, await resolveTaskVocabulary());
     const created = await createWorkOrderCore(ACTOR, { title: args.title, tasks });
     const issued = await issueWorkOrderCore(ACTOR, { workOrderId: created.workOrderId });
     assert(issued.status === "ISSUED", "work order issued");

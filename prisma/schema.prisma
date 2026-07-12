@@ -3361,6 +3361,27 @@ model WorkOrder {
   @@map("work_order")
 }
 
+// Plan 053 A5: cross-order dependency ("finish WO-A before you start WO-B"). A directed edge: the
+// dependent `workOrderId` is WARNED at task start and HARD-BLOCKED from completion until every
+// `dependsOnWorkOrderId` (predecessor) is worker-complete (all its tasks worker-completed). Tenant-scoped
+// + RLS-isolated (Phase 12). Both endpoints carry a composite cross-tenant FK to work_order(tenantId, id)
+// in RAW SQL (K11 — no Prisma @relation), so an edge can never span tenants; ON DELETE CASCADE clears a
+// deleted WO's edges. Cycle prevention is enforced in the same tx as the insert (SF6).
+model WorkOrderDependency {
+  tenantId             String   @default("")
+  id                   String   @id @default(cuid())
+  workOrderId          String // the dependent WO (blocked by the predecessor)
+  dependsOnWorkOrderId String // the predecessor WO that must finish first
+  createdAt            DateTime @default(now())
+  createdById          String?
+  createdByEmail       String?
+
+  @@unique([tenantId, workOrderId, dependsOnWorkOrderId])
+  @@index([tenantId, workOrderId])
+  @@index([tenantId, dependsOnWorkOrderId])
+  @@map("work_order_dependency")
+}
+
 // One task in a work order. OPERATION tasks write a real immutable ledger op on completion (via an
 // attempt); OBSERVATION tasks write to the measurement store and go straight to DONE. `plannedPayload`
 // snapshots the planned inputs incl. the target RATE + basis (A3 — the amount is computed at open time
@@ -3372,6 +3393,7 @@ model WorkOrderTask {
   id               String              @id @default(cuid())
   workOrderId      String
   seq              Int // display + execution order within the WO
+  groupSeq         Int                 @default(0) // plan 053 A3: sequential-group index. Tasks share a group (run in parallel); a task may complete only once every task in a LOWER group is worker-completed. Positional → reject/reissue-safe, no task-dep edge table.
   kind             WorkOrderTaskKind
   status           WorkOrderTaskStatus @default(PENDING)
   title            String

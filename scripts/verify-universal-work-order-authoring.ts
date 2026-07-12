@@ -17,6 +17,7 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { buildNlWorkOrderCommitArgs, buildNlWorkOrderProposal, assertFreshNlWorkOrderProposal } from "@/lib/work-orders/nl-resolve";
 import { buildWorkOrderReadiness } from "@/lib/work-orders/proposal-readiness";
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore } from "@/lib/work-orders/execute";
 
@@ -188,7 +189,7 @@ async function main() {
     // ── Phase 9.4a: group barrel-down COMPLETION — one attempt, one balanced op, reversible as a unit ──
     const bdArgs = buildNlWorkOrderCommitArgs(bd);
     await assertFreshNlWorkOrderProposal(bdArgs);
-    const bdCreated = await createWorkOrderCore(ACTOR, { title: bdArgs.title, tasks: instantiateTaskBuilds(bdArgs.taskBuilds) });
+    const bdCreated = await createWorkOrderCore(ACTOR, { title: bdArgs.title, tasks: instantiateTaskBuilds(bdArgs.taskBuilds, await resolveTaskVocabulary()) });
     await issueWorkOrderCore(ACTOR, { workOrderId: bdCreated.workOrderId });
     const bdTask = (await prisma.workOrderTask.findMany({ where: { workOrderId: bdCreated.workOrderId } }))[0];
     assert(bdTask.opType === "RACK", "group-rack task persisted with opType RACK");
@@ -234,7 +235,7 @@ async function main() {
     assert(sampleProposal.status === "ready", "sample-pull proposal is ready");
     const sArgs = buildNlWorkOrderCommitArgs(sampleProposal);
     await assertFreshNlWorkOrderProposal(sArgs);
-    const created = await createWorkOrderCore(ACTOR, { title: sArgs.title, tasks: instantiateTaskBuilds(sArgs.taskBuilds) });
+    const created = await createWorkOrderCore(ACTOR, { title: sArgs.title, tasks: instantiateTaskBuilds(sArgs.taskBuilds, await resolveTaskVocabulary()) });
     await issueWorkOrderCore(ACTOR, { workOrderId: created.workOrderId });
     const sampleTask = (await prisma.workOrderTask.findMany({ where: { workOrderId: created.workOrderId } }))[0];
     assert(sampleTask.observationType === "SAMPLE_PULL", "issued a SAMPLE_PULL task");

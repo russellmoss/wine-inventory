@@ -64,22 +64,55 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
       ) : null}
       {error ? <div style={{ color: "var(--danger)", marginTop: 12, fontSize: 14 }}>{error}</div> : null}
 
+      {wo.dependsOn.length > 0 ? (
+        <Card style={{ marginTop: 14, padding: 14 }}>
+          <Eyebrow>Runs after</Eyebrow>
+          <div style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "4px 0 8px" }}>These work orders must be finished before this one can complete.</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {wo.dependsOn.map((d) => (
+              <Link key={d.id} href={`/work-orders/${d.id}`} style={{ textDecoration: "none" }}>
+                <Badge tone={statusTone(d.status)}>WO #{d.number} · {d.title}</Badge>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
       <section style={{ marginTop: 22 }}>
         <Eyebrow>Tasks ({wo.tasks.length})</Eyebrow>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-          {wo.tasks.map((t) => (
-            <Card key={t.id} padding="12px 14px">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ fontWeight: 600 }}>{t.seq}. {t.title}</div>
-                <Badge tone={statusTone(t.status)}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 3 }}>
-                {t.kind === "OPERATION" ? t.opType : t.kind === "NOTE" ? "checklist" : t.kind === "MAINTENANCE" ? `maintenance · ${t.activityType}` : t.observationType === "HARVEST_WEIGH_IN" ? "fruit weigh-in" : `observation · ${t.observationType}`}
-              </div>
-              {t.deviationReason ? <div style={{ fontSize: 13, color: "var(--warning, #b8860b)", marginTop: 6 }}>Deviation: {t.deviationReason}</div> : null}
-              {t.completionNote ? <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Note: {t.completionNote}</div> : null}
-            </Card>
-          ))}
+          {(() => {
+            const groups = new Map<number, typeof wo.tasks>();
+            for (const t of wo.tasks) {
+              const g = groups.get(t.groupSeq) ?? [];
+              g.push(t);
+              groups.set(t.groupSeq, g);
+            }
+            const ordered = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+            const multiGroup = ordered.length > 1;
+            const renderTask = (t: (typeof wo.tasks)[number]) => (
+              <Card key={t.id} padding="12px 14px">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 600 }}>{t.seq}. {t.title}</div>
+                  <Badge tone={statusTone(t.status)}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 3 }}>
+                  {t.kind === "OPERATION" ? t.opType : t.kind === "NOTE" ? "checklist" : t.kind === "MAINTENANCE" ? `maintenance · ${t.activityType}` : t.observationType === "HARVEST_WEIGH_IN" ? "fruit weigh-in" : `observation · ${t.observationType}`}
+                  {t.assigneeName ? ` · ${t.assigneeName}` : ""}
+                </div>
+                {t.deviationReason ? <div style={{ fontSize: 13, color: "var(--warning, #b8860b)", marginTop: 6 }}>Deviation: {t.deviationReason}</div> : null}
+                {t.completionNote ? <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Note: {t.completionNote}</div> : null}
+              </Card>
+            );
+            if (!multiGroup) return ordered.flatMap(([, tasks]) => tasks.map(renderTask));
+            return ordered.map(([groupSeq, tasks], gi) => (
+              <React.Fragment key={groupSeq}>
+                {gi > 0 ? <div style={{ fontSize: 11, color: "var(--text-muted)", paddingLeft: 2 }}>↓ then</div> : null}
+                <div style={{ fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>Group {gi + 1}{tasks.length > 1 ? " · runs in parallel" : ""}</div>
+                {tasks.map(renderTask)}
+              </React.Fragment>
+            ));
+          })()}
         </div>
       </section>
     </div>

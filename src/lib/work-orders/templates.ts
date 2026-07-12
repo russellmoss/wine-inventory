@@ -5,7 +5,8 @@ import { requireTenantId } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
-import { validateTemplateSpec, canonicalizeTemplateSpec, instantiateTasksFromSpec, instantiateTaskBuilds, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { validateTemplateSpec, canonicalizeTemplateSpec, instantiateTasksFromSpec, instantiateTaskBuilds, type TemplateSpec, type ResolvedTaskVocabulary } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderCore, type WorkOrderResult } from "@/lib/work-orders/lifecycle";
 
 // Versioned, clone-on-customize work-order templates (Phase 9 Unit 10). Typed-field spec (validated
@@ -18,10 +19,10 @@ export type TemplateResult = { templateId: string; version: number };
 
 /** Validate the (untrusted) client spec, then canonicalize to ONLY the known shape before persisting
  * (Codex/council: unknown keys are stripped server-side, never trusted). Throws on invalid. */
-function validateAndCanonicalize(spec: TemplateSpec): TemplateSpec {
-  const v = validateTemplateSpec(spec);
+function validateAndCanonicalize(spec: TemplateSpec, vocab: ResolvedTaskVocabulary): TemplateSpec {
+  const v = validateTemplateSpec(spec, vocab);
   if (!v.ok) throw new ActionError(`Invalid template: ${v.errors.join(" ")}`);
-  return canonicalizeTemplateSpec(spec);
+  return canonicalizeTemplateSpec(spec, vocab);
 }
 
 /** Derive a per-tenant stable code from the name: an uppercase slug + a short suffix, so two templates
@@ -41,7 +42,7 @@ export async function createTemplateCore(
   input: { code?: string; name: string; description?: string; category?: string; spec: TemplateSpec; recurringCadence?: string | null; isSystem?: boolean; clonedFromId?: string | null },
 ): Promise<TemplateResult> {
   if (!input.name?.trim()) throw new ActionError("A template needs a name.");
-  const spec = validateAndCanonicalize(input.spec);
+  const spec = validateAndCanonicalize(input.spec, await resolveTaskVocabulary());
   const explicitCode = input.code?.trim();
 
   for (let attempt = 0; ; attempt++) {
@@ -85,7 +86,7 @@ export async function createTemplateCore(
  * concurrent edit loses the @@unique([tenantId, templateId, version]) race → P2002, surfaced as a
  * friendly "reload" conflict rather than a raw error (council). */
 export async function updateTemplateSpecCore(actor: LedgerActor, input: { templateId: string; spec: TemplateSpec }): Promise<TemplateResult> {
-  const spec = validateAndCanonicalize(input.spec);
+  const spec = validateAndCanonicalize(input.spec, await resolveTaskVocabulary());
   try {
     return await runInTenantTx(async (tx) => {
       const tpl = await tx.workOrderTemplate.findUnique({ where: { id: input.templateId }, select: { id: true, currentVersion: true, isSystem: true } });
@@ -186,9 +187,10 @@ export async function createWorkOrderFromTemplateCore(
   if (!version) throw new ActionError("That template has no current version.");
 
   const spec = version.spec as unknown as TemplateSpec;
+  const vocab = await resolveTaskVocabulary();
   const tasks = input.taskBuilds && input.taskBuilds.length > 0
-    ? instantiateTaskBuilds(input.taskBuilds)
-    : instantiateTasksFromSpec(spec, input.perTaskOverrides);
+    ? instantiateTaskBuilds(input.taskBuilds, vocab)
+    : instantiateTasksFromSpec(spec, vocab, input.perTaskOverrides);
   if (tasks.length === 0) throw new ActionError("A work order needs at least one task.");
   const wo = await createWorkOrderCore(actor, {
     title: input.title?.trim() || tpl.name,

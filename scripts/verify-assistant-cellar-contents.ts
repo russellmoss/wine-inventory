@@ -10,6 +10,7 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { queryCellarContents } from "@/lib/cellar/contents-query";
 import { buildNlWorkOrderCommitArgs, buildNlWorkOrderProposal, assertFreshNlWorkOrderProposal } from "@/lib/work-orders/nl-resolve";
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore } from "@/lib/work-orders/execute";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -76,7 +77,7 @@ async function issueFromProposal(raw: unknown) {
   assert(proposal.status === "ready", "proposal is ready");
   const args = buildNlWorkOrderCommitArgs(proposal);
   await assertFreshNlWorkOrderProposal(args);
-  const created = await createWorkOrderCore(ACTOR, { title: args.title, tasks: instantiateTaskBuilds(args.taskBuilds) });
+  const created = await createWorkOrderCore(ACTOR, { title: args.title, tasks: instantiateTaskBuilds(args.taskBuilds, await resolveTaskVocabulary()) });
   const issued = await issueWorkOrderCore(ACTOR, { workOrderId: created.workOrderId });
   assert(issued.status === "ISSUED", "work order issued");
   return created.workOrderId;

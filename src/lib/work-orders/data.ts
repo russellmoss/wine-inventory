@@ -16,9 +16,12 @@ import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } 
 export type WorkOrderTaskView = {
   id: string;
   seq: number;
+  groupSeq: number; // plan 053: sequential-group index (tasks in a group run in parallel)
   kind: "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE";
   status: string;
   title: string;
+  assigneeId: string | null;
+  assigneeName: string | null; // resolved from assigneeId for display
   opType: string | null;
   observationType: string | null;
   activityType: string | null;
@@ -51,21 +54,27 @@ export type WorkOrderDetail = {
   issuedAt: string | null;
   startedByEmail: string | null;
   tasks: WorkOrderTaskView[];
+  // Plan 053 A5: cross-order prerequisites — this WO's tasks can't complete until these are done.
+  dependsOn: { id: string; number: number; title: string; status: string }[];
 };
 
 function taskView(t: {
-  id: string; seq: number; kind: string; status: string; title: string; opType: string | null;
+  id: string; seq: number; groupSeq: number; kind: string; status: string; title: string; opType: string | null;
   observationType: string | null; activityType: string | null; instructions: string | null; sourceVesselId: string | null;
-  destVesselId: string | null; lotId: string | null; materialId: string | null; blockId: string | null; assigneeEmail: string | null;
+  destVesselId: string | null; lotId: string | null; materialId: string | null; blockId: string | null;
+  assigneeId: string | null; assigneeEmail: string | null;
   dueAt: Date | null; plannedPayload: unknown; currentAttemptId: string | null; completionNote: string | null;
   deviationReason: string | null; startedByEmail: string | null;
-}): WorkOrderTaskView {
+}, assigneeName: string | null): WorkOrderTaskView {
   return {
     id: t.id,
     seq: t.seq,
+    groupSeq: t.groupSeq,
     kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE",
     status: t.status,
     title: t.title,
+    assigneeId: t.assigneeId,
+    assigneeName,
     opType: t.opType,
     observationType: t.observationType,
     activityType: t.activityType,
@@ -90,9 +99,18 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
   return runAsTenant(tenantId, async () => {
     const wo = await prisma.workOrder.findUnique({
       where: { id: workOrderId },
-      include: { tasks: { orderBy: { seq: "asc" } } },
+      include: { tasks: { orderBy: [{ groupSeq: "asc" }, { seq: "asc" }] } },
     });
     if (!wo) return null;
+    // Resolve per-task assignee ids → names for display (User is a global table).
+    const assigneeIds = [...new Set(wo.tasks.map((t) => t.assigneeId).filter((x): x is string => !!x))];
+    const users = assigneeIds.length ? await prisma.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true, email: true } }) : [];
+    const nameOf = new Map(users.map((u) => [u.id, u.name?.trim() || u.email || "Member"]));
+    // Plan 053 A5: this WO's cross-order prerequisites.
+    const depEdges = await prisma.workOrderDependency.findMany({ where: { workOrderId: wo.id }, select: { dependsOnWorkOrderId: true } });
+    const depWos = depEdges.length
+      ? await prisma.workOrder.findMany({ where: { id: { in: depEdges.map((d) => d.dependsOnWorkOrderId) } }, select: { id: true, number: true, title: true, status: true } })
+      : [];
     return {
       id: wo.id,
       number: wo.number,
@@ -106,7 +124,8 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       issuedByEmail: wo.issuedByEmail,
       issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null,
       startedByEmail: wo.startedByEmail,
-      tasks: wo.tasks.map(taskView),
+      tasks: wo.tasks.map((t) => taskView(t, t.assigneeId ? nameOf.get(t.assigneeId) ?? null : null)),
+      dependsOn: depWos.map((d) => ({ id: d.id, number: d.number, title: d.title, status: d.status })),
     };
   });
 }
@@ -486,6 +505,33 @@ export async function listTemplatesWithSpec(tenantId: string): Promise<{ id: str
       select: { id: true, name: true, isSystem: true, currentVersion: true, versions: { select: { version: true, spec: true } } },
     });
     return tpls.map((t) => ({ id: t.id, name: t.name, isSystem: t.isSystem, spec: t.versions.find((v) => v.version === t.currentVersion)?.spec ?? { tasks: [] } }));
+  });
+}
+
+/** Plan 053 A6: org members for the per-task assignee picker. `member` is a GLOBAL (non-tenant) table
+ * keyed by organizationId, so it is queried directly (not through the tenant RLS extension). */
+export type OrgMemberRow = { userId: string; name: string; email: string };
+export async function listOrgMembers(tenantId: string): Promise<OrgMemberRow[]> {
+  const members = await prisma.member.findMany({
+    where: { organizationId: tenantId },
+    select: { userId: true, user: { select: { name: true, email: true } } },
+    orderBy: { id: "asc" },
+  });
+  return members.map((m) => ({ userId: m.userId, name: m.user?.name?.trim() || m.user?.email || "Member", email: m.user?.email ?? "" }));
+}
+
+/** Plan 053 A6: candidate predecessor work orders for the "runs after" cross-order dependency picker —
+ * the tenant's non-terminal WOs (a finished/cancelled order isn't a useful prerequisite to add). */
+export type DependableWorkOrderRow = { id: string; number: number; title: string; status: string };
+export async function listDependableWorkOrders(tenantId: string): Promise<DependableWorkOrderRow[]> {
+  return runAsTenant(tenantId, async () => {
+    const wos = await prisma.workOrder.findMany({
+      where: { status: { in: ["DRAFT", "ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] } },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+      select: { id: true, number: true, title: true, status: true },
+    });
+    return wos.map((w) => ({ id: w.id, number: w.number, title: w.title, status: w.status }));
   });
 }
 

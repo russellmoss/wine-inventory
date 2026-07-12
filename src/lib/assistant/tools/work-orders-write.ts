@@ -6,6 +6,7 @@ import { entityPath } from "../routes";
 import { resolveVessel, type ResolvedVessel } from "../scope";
 import { CAP_KINDS, isCapKind, type CapKind } from "@/lib/cellar/treatments";
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
 
 // Plan 043: the assistant can ISSUE a cap-management work order by chat ("punch down tanks 3, 4, 5 this
@@ -122,7 +123,7 @@ export const commitIssueCapManagementWo: Committer = async (_user, args) => {
       ...(note ? { note } : {}),
     },
   }));
-  const tasks = instantiateTaskBuilds(builds);
+  const tasks = instantiateTaskBuilds(builds, await resolveTaskVocabulary());
 
   const created = await createWorkOrderAction({ title, tasks, assigneeEmail });
   await issueWorkOrderAction({ workOrderId: created.workOrderId });
