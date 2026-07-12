@@ -349,4 +349,19 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "a bulk-WINE cost node (D20) — NOT receive_supply (a material/expendable receipt) and NOT a calc",
   },
+  // ── Plan 055a: bottling authoring vs packaging-estimate read ──
+  {
+    utterance: "Make a work order to bottle tank 6 into 500 cases of the 2024 Estate Cab with our standard packaging",
+    tool: "propose_work_order",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "authoring a bottling WO (with packaging) is propose_work_order — NOT rack_wine/add_addition/remove_bottled_wine",
+  },
+  {
+    utterance: "How many corks and bottles do I need to bottle the Estate Cab into 500 cases?",
+    tool: "estimate_packaging_needs",
+    kind: "read",
+    maxToolCalls: 1,
+    note: "a packaging-quantity question is a READ estimate — never propose_work_order (no work is authored)",
+  },
 ];

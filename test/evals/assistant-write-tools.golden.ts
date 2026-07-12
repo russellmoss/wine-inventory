@@ -524,4 +524,33 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     },
     note: "feature request via file_feedback; kind='feature' maps to FEATURE_REQUEST",
   },
+  // Plan 055a: BOTTLE authoring with packaging dry-goods (source vessels / final count / ABV / destination
+  // are entered on the execute screen; authoring captures the SKU + estimated count + packaging BoM).
+  {
+    utterance: "Make a work order to bottle tank 6 into 500 cases of the 2024 Estate Cab with our standard packaging",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Make a work order to bottle tank 6 into 500 cases of the 2024 Estate Cab with our standard packaging",
+      tasks: [{ kind: "BOTTLE", vessel: "tank 6", skuName: "Estate Cab", skuVintage: 2024, cases: 500, standardPackaging: true }],
+    },
+    note: "standard → copy this SKU's last-run packaging BoM; source vessels/final count/ABV/destination at execute; no authoring ledger write",
+  },
+  {
+    utterance: "Bottle T6 into 6000 bottles of the 2024 Estate Cab, screwcap and estate front and back labels",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Bottle T6 into 6000 bottles of the 2024 Estate Cab, screwcap and estate front and back labels",
+      tasks: [{ kind: "BOTTLE", vessel: "T6", skuName: "Estate Cab", skuVintage: 2024, bottles: 6000, packaging: ["screwcap", "estate front label", "estate back label"] }],
+    },
+    note: "named packaging → resolve each PACKAGING material, factor auto-filled; ambiguous name → choice token",
+  },
+  {
+    utterance: "bottle tank 6 into the 2024 estate cab",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "bottle tank 6 into the 2024 estate cab",
+      tasks: [{ kind: "BOTTLE", vessel: "tank 6", skuName: "estate cab", skuVintage: 2024 }],
+    },
+    note: "terse, no packaging/count → author the BOTTLE task only; packaging + count set on the floor/builder",
+  },
 ];

@@ -213,3 +213,35 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
   });
 });
 
+
+describe("Plan 055a — BOTTLE authoring canonicalization", () => {
+  it("canonicalizes a structured BOTTLE intent with standard packaging", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "bottle it",
+      tasks: [{ kind: "BOTTLE", vessel: "tank 6", skuName: "Estate Cab", skuVintage: 2024, cases: 500, standardPackaging: true }],
+    });
+    expect(draft.intents).toEqual([
+      { kind: "BOTTLE", vessel: "tank 6", skuName: "Estate Cab", skuVintage: 2024, cases: 500, standardPackaging: true },
+    ]);
+  });
+
+  it("canonicalizes named packaging + bottles (aliases wine/vintage)", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "x",
+      tasks: [{ kind: "BOTTLE", wine: "Estate Cab", vintage: 2024, bottles: 6000, packaging: ["screwcap", "front label"] }],
+    });
+    expect(draft.intents[0]).toMatchObject({ kind: "BOTTLE", skuName: "Estate Cab", skuVintage: 2024, bottles: 6000, packaging: ["screwcap", "front label"] });
+  });
+
+  it("authoring-only: a BOTTLE with no sku/count/packaging is allowed (floor fills the rest)", () => {
+    const draft = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "BOTTLE", vessel: "T6" }] });
+    expect(draft.intents).toEqual([{ kind: "BOTTLE", vessel: "T6" }]);
+  });
+
+  it("parses the bottling utterance (cases + vintage + standard packaging)", () => {
+    const intents = parseWorkOrderUtteranceForEval("bottle tank 6 into 500 cases of the 2024 Estate Cab with our standard packaging");
+    expect(intents).toContainEqual(
+      expect.objectContaining({ kind: "BOTTLE", vessel: "tank 6", cases: 500, skuVintage: 2024, standardPackaging: true }),
+    );
+  });
+});

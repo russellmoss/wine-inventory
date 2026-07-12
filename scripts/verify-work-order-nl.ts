@@ -133,6 +133,41 @@ async function main() {
     }).catch((e) => e as Error);
     assert(blocked instanceof Error && /No additive|cannot be dosed|sanitizer/i.test(blocked.message), "non-doseable or missing sanitizer does not become a free-form material");
 
+    // ── Plan 055a: author a BOTTLE work order WITH its packaging BoM via NL (authoring only; the
+    //    execute→deplete→capitalize path is proven by verify:cost + verify:work-orders-transform). ──
+    const glass = await prisma.cellarMaterial.create({ data: { name: "ZZNL Glass 750", normalizedKey: "ZZNLGLASS750", kind: "PACKAGING", category: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
+    await prisma.supplyLot.create({ data: { materialId: glass.id, qtyReceived: 5000, qtyRemaining: 5000, stockUnit: "unit", unitCost: "0.80" } });
+    const cork = await prisma.cellarMaterial.create({ data: { name: "ZZNL Cork Natural", normalizedKey: "ZZNLCORKNATURAL", kind: "PACKAGING", category: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
+    await prisma.supplyLot.create({ data: { materialId: cork.id, qtyReceived: 5000, qtyRemaining: 5000, stockUnit: "unit", unitCost: "0.10" } });
+
+    const opsBeforeBottle = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
+    const pkgProposal = await buildNlWorkOrderProposal({
+      sourceText: "bottle it",
+      title: "ZZNL bottling with packaging",
+      tasks: [{ kind: "BOTTLE", vessel: "ZZNL-T12", skuName: "ZZNL Estate", skuVintage: 2026, cases: 100, packaging: ["ZZNL Glass", "ZZNL Cork"] }],
+    });
+    assert(pkgProposal.status === "ready", "BOTTLE proposal is ready (runtime coverage — no vessels/count/ABV needed to author)");
+    assert(pkgProposal.taskBuilds.length === 1 && pkgProposal.taskBuilds[0].taskType === "BOTTLE", "one BOTTLE task build");
+    const bv = pkgProposal.taskBuilds[0].values as { packagingBottles?: number; packaging?: { materialId: string; per: string; factor: number; qty: number }[] };
+    assert(bv.packagingBottles === 1200, `packagingBottles derived from 100 cases = 1200 (got ${bv.packagingBottles})`);
+    assert(Array.isArray(bv.packaging) && bv.packaging.length === 2, `two resolved packaging lines (got ${bv.packaging?.length})`);
+    assert(bv.packaging!.some((l) => l.materialId === glass.id && l.qty === 1200) && bv.packaging!.some((l) => l.materialId === cork.id && l.qty === 1200), "packaging lines carry the resolved material ids + derived qty (1200 each, per bottle ×1)");
+
+    const pkgArgs = buildNlWorkOrderCommitArgs(pkgProposal);
+    await assertFreshNlWorkOrderProposal(pkgArgs);
+    const pkgTasks = instantiateTaskBuilds(pkgArgs.taskBuilds, await resolveTaskVocabulary());
+    const pkgCreated = await createWorkOrderCore(ACTOR, { title: pkgArgs.title, tasks: pkgTasks });
+    const pkgIssued = await issueWorkOrderCore(ACTOR, { workOrderId: pkgCreated.workOrderId });
+    assert(pkgIssued.status === "ISSUED", "bottling work order issued");
+    const bottleTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: pkgCreated.workOrderId } });
+    assert(bottleTask.opType === "BOTTLE", "persisted task is a BOTTLE");
+    const pp = (bottleTask.plannedPayload ?? {}) as { skuName?: string; packagingBottles?: number; packaging?: unknown[] };
+    assert(pp.skuName === "ZZNL Estate" && pp.packagingBottles === 1200, "plannedPayload carries skuName + packagingBottles");
+    assert(Array.isArray(pp.packaging) && pp.packaging.length === 2, "plannedPayload.packaging persisted with 2 lines");
+    const pkgHolds = await prisma.reservation.findMany({ where: { workOrderId: pkgCreated.workOrderId, kind: "MATERIAL_QTY" } });
+    assert(pkgHolds.length === 2 && pkgHolds.every((h) => num(h.qty) === 1200), `two MATERIAL_QTY holds (1200 eaches each) on issue (got ${pkgHolds.map((h) => num(h.qty))})`);
+    assert((await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } })) === opsBeforeBottle, "authoring + issuing the bottling WO wrote NO ledger op (the BOTTLE op is written at execute)");
+
     console.log(`\nALL NL WORK-ORDER CHECKS PASSED (${passed} assertions)`);
   });
 }
