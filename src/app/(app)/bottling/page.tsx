@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { BottlingClient, type VesselOpt, type RunRow } from "./BottlingClient";
+import { materialDisplayName } from "@/lib/cellar/materials-shared";
+import type { MaterialPickerOption } from "@/components/work-orders/MaterialFilterPicker";
 
 export default async function BottlingPage() {
-  const [vessels, locations, runs] = await Promise.all([
+  const [vessels, locations, runs, packagingMaterials, packagingOnHand] = await Promise.all([
     prisma.vessel.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -10,6 +12,8 @@ export default async function BottlingPage() {
     }),
     prisma.location.findMany({ where: { isActive: true }, orderBy: [{ isSystem: "desc" }, { name: "asc" }], select: { id: true, name: true } }),
     prisma.bottlingRun.findMany({
+      // Plan 056: a reversed run (append-only) keeps its rows but carries a reversing snapshot — hide it.
+      where: { NOT: { costSnapshots: { some: { reversalOfSnapshotId: { not: null } } } } },
       orderBy: { createdAt: "desc" },
       take: 12,
       include: {
@@ -18,7 +22,18 @@ export default async function BottlingPage() {
         sources: { include: { variety: { select: { name: true } }, vineyard: { select: { name: true } } } },
       },
     }),
+    prisma.cellarMaterial.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, stockUnit: true, kind: true, category: true, subcategory: true, isStockTracked: true, genericName: true, brandName: true, preferGeneric: true },
+    }),
+    prisma.supplyLot.groupBy({ by: ["materialId"], where: { qtyRemaining: { gt: 0 } }, _sum: { qtyRemaining: true } }),
   ]);
+  const onHandByMaterial = new Map(packagingOnHand.map((g) => [g.materialId, Number(g._sum.qtyRemaining ?? 0)]));
+  const packagingOptions: MaterialPickerOption[] = packagingMaterials.map((m) => ({
+    id: m.id, label: materialDisplayName(m), unit: m.stockUnit, kind: m.kind, category: m.category, subcategory: m.subcategory,
+    onHand: m.isStockTracked ? (onHandByMaterial.get(m.id) ?? 0) : null,
+  }));
 
   const vesselOpts: VesselOpt[] = vessels
     .slice()
@@ -44,5 +59,5 @@ export default async function BottlingPage() {
     sources: r.sources.map((s) => `${s.variety?.name ?? "—"} · ${s.vineyard?.name ?? "—"} · ${s.vintage ?? "NV"}: ${Number(s.volumeConsumedL)} L`),
   }));
 
-  return <BottlingClient vessels={vesselOpts} locations={locations} runs={runRows} />;
+  return <BottlingClient vessels={vesselOpts} locations={locations} runs={runRows} packagingOptions={packagingOptions} />;
 }
