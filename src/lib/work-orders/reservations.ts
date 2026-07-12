@@ -17,6 +17,9 @@ type PlannedPayload = {
   volumeL?: number;
   plannedAmount?: number; // supply amount in plannedUnit (templates supply this; else no material hold)
   plannedUnit?: string;
+  // Plan 056: a BOTTLE task's planned packaging bill-of-materials (glass/cork/capsule/label/case). Each
+  // line reserves the planned quantity (in eaches) as an advisory MATERIAL_QTY hold on issue.
+  packaging?: { materialId?: string; qty?: number }[];
 };
 
 type ReservationIntent = {
@@ -61,6 +64,16 @@ export function reservationIntentsForTask(task: TaskForReservation): Reservation
   if (op === "ADDITION" || op === "FINING") {
     if (task.materialId && typeof p.plannedAmount === "number" && p.plannedAmount > 0) {
       intents.push({ kind: "MATERIAL_QTY", materialId: task.materialId, qty: p.plannedAmount, unit: p.plannedUnit });
+    }
+  }
+
+  // Plan 056: a BOTTLE task reserves each planned packaging line (materialId + planned eaches) as an
+  // advisory MATERIAL_QTY hold — the same lifecycle an addition's material hold uses (warn-not-block).
+  if (op === "BOTTLE" && Array.isArray(p.packaging)) {
+    for (const line of p.packaging) {
+      if (line && line.materialId && typeof line.qty === "number" && line.qty > 0) {
+        intents.push({ kind: "MATERIAL_QTY", materialId: line.materialId, qty: line.qty, unit: "unit" });
+      }
     }
   }
 
