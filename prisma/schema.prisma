@@ -274,6 +274,7 @@ model Location {
   name                  String
   isSystem              Boolean                 @default(false) // "Winery" = true
   isActive              Boolean                 @default(true)
+  kind                  String? // plan 053 B9: classification (cellar/warehouse/crush_pad/lab/bottling/external/other); validated string, nullable = unclassified
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
   bottledInventory      BottledInventory[]
@@ -3340,6 +3341,7 @@ model WorkOrder {
   estimatedDurationMin Int?
   scheduledStart       DateTime?
   scheduledEnd         DateTime?
+  locationId           String? // plan 053 B9: where the work happens (plain ref → location.id, resolved at runtime; K11/K12)
   autoFinalize      Boolean         @default(false) // auto-finalize self-executed work (decision 2)
   issuedAt          DateTime?
   issuedById        String?
@@ -3421,6 +3423,7 @@ model WorkOrderTask {
   estimatedDurationMin Int?
   scheduledStart       DateTime?
   scheduledEnd         DateTime?
+  locationId           String? // plan 053 B9: where this task happens (plain ref → location.id; K11/K12)
   plannedPayload   Json // snapshot of the planned inputs (target rate + basis, note, etc.)
   currentAttemptId String? // A4: the attempt currently owning this task's ledger op (plain scalar, no FK)
   completionNote   String?

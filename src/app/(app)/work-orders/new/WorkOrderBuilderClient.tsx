@@ -16,6 +16,7 @@ import { WORK_ORDER_PRIORITIES } from "@/lib/work-orders/planning";
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Member = { userId: string; name: string; email: string };
 type DependableWo = { id: string; number: number; title: string; status: string };
+type LocationRow = { id: string; name: string; kind: string | null };
 type BuilderTask = { key: string; taskType: string; title: string; values: Record<string, unknown>; assigneeId: string };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
@@ -51,11 +52,13 @@ export function WorkOrderBuilderClient({
   pickers,
   members,
   dependableWorkOrders,
+  locations,
   vocab,
 }: {
   pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] };
   members: Member[];
   dependableWorkOrders: DependableWo[];
+  locations: LocationRow[];
   vocab: ResolvedTaskVocabulary;
 }) {
   const router = useRouter();
@@ -63,6 +66,7 @@ export function WorkOrderBuilderClient({
   const [dueAt, setDueAt] = React.useState(todayLocal());
   const [leadEmail, setLeadEmail] = React.useState("");
   const [priority, setPriority] = React.useState("NORMAL");
+  const [locationId, setLocationId] = React.useState("");
   const [groups, setGroups] = React.useState<BuilderTask[][]>([[]]);
   const [dependsOn, setDependsOn] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
@@ -215,6 +219,7 @@ export function WorkOrderBuilderClient({
           title: title.trim() || undefined,
           assigneeEmail: leadEmail || null,
           priority,
+          locationId: locationId || null,
           // Parse the yyyy-mm-dd as LOCAL midnight (not UTC) so the due date doesn't shift a day back.
           dueAt: dueAt ? new Date(`${dueAt}T00:00:00`) : null,
           taskBuilds,
@@ -240,7 +245,7 @@ export function WorkOrderBuilderClient({
       </div>
 
       <Card style={{ padding: 16, marginBottom: 16 }}>
-        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
+        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12 }}>
           <label style={labelStyle}>Title
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Racking + topping — Block 12" />
           </label>
@@ -253,6 +258,12 @@ export function WorkOrderBuilderClient({
           <label style={labelStyle}>Priority
             <select style={field} value={priority} onChange={(e) => setPriority(e.target.value)}>
               {WORK_ORDER_PRIORITIES.map((p) => <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>)}
+            </select>
+          </label>
+          <label style={labelStyle}>Location
+            <select style={field} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+              <option value="">— none —</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </label>
           <label style={labelStyle}>Due

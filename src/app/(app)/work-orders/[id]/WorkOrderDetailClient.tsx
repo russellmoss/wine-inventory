@@ -35,6 +35,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: 0 }}>#{wo.number} · {wo.title}</h1>
           <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
             {wo.priority && wo.priority !== "NORMAL" ? `${wo.priority.charAt(0)}${wo.priority.slice(1).toLowerCase()} priority · ` : ""}
+            {wo.locationName ? `${wo.locationName} · ` : ""}
             {wo.assigneeEmail ? `Assigned to ${wo.assigneeEmail} · ` : ""}
             {wo.dueAt ? `Due ${new Date(wo.dueAt).toLocaleDateString()}` : "Unscheduled"}
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}

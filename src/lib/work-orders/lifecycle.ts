@@ -35,6 +35,7 @@ export type CreateTaskInput = {
   estimatedDurationMin?: number | null;
   scheduledStart?: Date | null;
   scheduledEnd?: Date | null;
+  locationId?: string | null; // plan 053 B9
   plannedPayload: Prisma.InputJsonValue;
 };
 
@@ -50,6 +51,7 @@ export type CreateWorkOrderInput = {
   estimatedDurationMin?: number | null;
   scheduledStart?: Date | null;
   scheduledEnd?: Date | null;
+  locationId?: string | null; // plan 053 B9
   autoFinalize?: boolean;
   templateVersionId?: string | null;
   tasks: CreateTaskInput[];
@@ -114,6 +116,7 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
         estimatedDurationMin: input.estimatedDurationMin ?? null,
         scheduledStart: input.scheduledStart ?? null,
         scheduledEnd: input.scheduledEnd ?? null,
+        locationId: input.locationId ?? null,
         autoFinalize: input.autoFinalize ?? false,
         templateVersionId: input.templateVersionId ?? null,
         tasks: {
@@ -141,6 +144,7 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
             estimatedDurationMin: t.estimatedDurationMin ?? null,
             scheduledStart: t.scheduledStart ?? null,
             scheduledEnd: t.scheduledEnd ?? null,
+            locationId: t.locationId ?? null,
             plannedPayload: t.plannedPayload,
           })),
         },

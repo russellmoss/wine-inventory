@@ -148,6 +148,7 @@ export const createWorkOrderFromBuildsAction = action(
       estimatedDurationMin?: number | null;
       scheduledStart?: Date | null;
       scheduledEnd?: Date | null;
+      locationId?: string | null;
       autoFinalize?: boolean;
       taskBuilds: TaskBuild[];
       dependsOnWorkOrderIds?: string[];
@@ -174,6 +175,7 @@ export const createWorkOrderFromBuildsAction = action(
       estimatedDurationMin,
       scheduledStart: input.scheduledStart ?? null,
       scheduledEnd: input.scheduledEnd ?? null,
+      locationId: input.locationId ?? null,
       autoFinalize: input.autoFinalize,
       tasks,
     });

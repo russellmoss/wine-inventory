@@ -50,6 +50,7 @@ export type WorkOrderDetail = {
   dueAt: string | null;
   scheduledFor: string | null;
   priority: string | null; // plan 053 B8
+  locationName: string | null; // plan 053 B9
   autoFinalize: boolean;
   issuedByEmail: string | null;
   issuedAt: string | null;
@@ -112,6 +113,8 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
     const depWos = depEdges.length
       ? await prisma.workOrder.findMany({ where: { id: { in: depEdges.map((d) => d.dependsOnWorkOrderId) } }, select: { id: true, number: true, title: true, status: true } })
       : [];
+    // Plan 053 B9: resolve the WO's location id → name for display.
+    const loc = wo.locationId ? await prisma.location.findUnique({ where: { id: wo.locationId }, select: { name: true } }) : null;
     return {
       id: wo.id,
       number: wo.number,
@@ -122,6 +125,7 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       dueAt: wo.dueAt ? wo.dueAt.toISOString() : null,
       scheduledFor: wo.scheduledFor ? wo.scheduledFor.toISOString() : null,
       priority: wo.priority,
+      locationName: loc?.name ?? null,
       autoFinalize: wo.autoFinalize,
       issuedByEmail: wo.issuedByEmail,
       issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null,
@@ -534,6 +538,19 @@ export async function listDependableWorkOrders(tenantId: string): Promise<Depend
       select: { id: true, number: true, title: true, status: true },
     });
     return wos.map((w) => ({ id: w.id, number: w.number, title: w.title, status: w.status }));
+  });
+}
+
+/** Plan 053 B9: active locations for the builder's location picker (+ their classification). */
+export type LocationRow = { id: string; name: string; kind: string | null };
+export async function listLocations(tenantId: string): Promise<LocationRow[]> {
+  return runAsTenant(tenantId, async () => {
+    const rows = await prisma.location.findMany({
+      where: { isActive: true },
+      orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, kind: true },
+    });
+    return rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind }));
   });
 }
 
