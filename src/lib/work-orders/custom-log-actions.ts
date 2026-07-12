@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { adminAction } from "@/lib/actions";
 import { createUserTaskTypeCore, updateUserTaskTypeCore, archiveUserTaskTypeCore, type CustomLogInput } from "@/lib/work-orders/custom-log";
+import { saveOverlayCore, clearOverlayCore, type OverlayInput } from "@/lib/work-orders/overlay-store";
 
 // Plan 053 C11: Custom Log authoring — admin/owner only (like template authoring). The resolver picks the
 // new/updated types up on the next request; revalidate the builder + task-types surfaces.
@@ -26,6 +27,19 @@ export const updateUserTaskTypeAction = adminAction(async ({ actor }, input: { i
 
 export const archiveUserTaskTypeAction = adminAction(async ({ actor }, input: { id: string; active: boolean }) => {
   const res = await archiveUserTaskTypeCore(actor, input);
+  revalidateCustomLogs();
+  return res;
+});
+
+// C12: built-in field overlays.
+export const saveOverlayAction = adminAction(async ({ actor }, input: OverlayInput) => {
+  const res = await saveOverlayCore(actor, input);
+  revalidateCustomLogs();
+  return res;
+});
+
+export const clearOverlayAction = adminAction(async ({ actor }, input: { baseTaskType: string }) => {
+  const res = await clearOverlayCore(actor, input);
   revalidateCustomLogs();
   return res;
 });

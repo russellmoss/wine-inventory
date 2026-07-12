@@ -3445,6 +3445,25 @@ model WorkOrderTaskType {
   @@map("work_order_task_type")
 }
 
+// Plan 053 C12: a tenant's DISPLAY customization of a BUILT-IN task type (hide/relabel/reorder fields).
+// Display + template-authoring only — never changes kind/opType and can only hide fields on a per-opType
+// HIDEABLE allowlist (assertOverlaySafe), so a governed core never loses a field it needs. One per built-in.
+model WorkOrderTaskTypeOverlay {
+  tenantId     String    @default("")
+  id           String    @id @default(cuid())
+  baseTaskType String // a built-in TASK_VOCABULARY key (e.g. "RACK")
+  hiddenFields String[]
+  relabels     Json      @default("{}") // Record<fieldKey, label>
+  fieldOrder   String[]
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, baseTaskType])
+  @@index([tenantId])
+  @@map("work_order_task_type_overlay")
+}
+
 // One task in a work order. OPERATION tasks write a real immutable ledger op on completion (via an
 // attempt); OBSERVATION tasks write to the measurement store and go straight to DONE. `plannedPayload`
 // snapshots the planned inputs incl. the target RATE + basis (A3 — the amount is computed at open time

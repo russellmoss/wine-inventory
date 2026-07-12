@@ -32,6 +32,9 @@ export type TaskTypeDef = {
    * stage). Drives stage-aware rendering + capture; the plain `fields` map above mirrors the keys so the
    * shared validate/canonicalize/instantiate engine still works. Undefined for built-ins. */
   customFields?: import("@/lib/work-orders/custom-log-fields").CustomLogFieldSpec[];
+  /** Plan 053 (C12): per-field display label overrides from a tenant overlay (key → label). Renderers
+   * prefer this over the default fieldLabel(key). Undefined for un-overlaid types. */
+  fieldLabels?: Record<string, string>;
 };
 
 /** Plan 053 (A1): the task-type map an authoring path validates/instantiates against. It is the built-in

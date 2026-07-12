@@ -163,12 +163,13 @@ export function WorkOrderBuilderClient({
   function renderField(groupIdx: number, task: BuilderTask, key: string, type: string) {
     const def = vocab[task.taskType];
     const current = task.values[key] ?? "";
+    const flabel = def?.fieldLabels?.[key] ?? fieldLabel(key); // C12: overlay relabel wins over the default
     if (type === "block") return null; // vineyard block target is chosen at run time (execute sub-form)
     if (type === "select") {
       const options = def?.fieldOptions?.[key] ?? [];
       return (
         <label key={key} style={labelStyle}>
-          {fieldLabel(key)}
+          {flabel}
           <select style={field} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value)}>
             <option value="">— pick —</option>
             {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -180,7 +181,7 @@ export function WorkOrderBuilderClient({
       const scope = def ? materialScopeForTask(def) : undefined;
       return (
         <div key={key} style={{ gridColumn: "1 / -1" }}>
-          <div style={labelStyle}>{fieldLabel(key)}</div>
+          <div style={labelStyle}>{flabel}</div>
           <MaterialFilterPicker options={pickers.materials} value={String(current)} onChange={(id) => setTaskValue(groupIdx, task.key, key, id)} categoryScope={scope} />
         </div>
       );
@@ -189,7 +190,7 @@ export function WorkOrderBuilderClient({
       const opts = type === "vessel" ? pickers.vessels : pickers.lots;
       return (
         <label key={key} style={labelStyle}>
-          {fieldLabel(key)}
+          {flabel}
           <select style={field} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value)}>
             <option value="">— pick —</option>
             {opts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
@@ -200,7 +201,7 @@ export function WorkOrderBuilderClient({
     if (type === "number") {
       return (
         <label key={key} style={labelStyle}>
-          {fieldLabel(key)}
+          {flabel}
           <input type="number" inputMode="decimal" step="any" style={field} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value === "" ? "" : Number(e.target.value))} />
         </label>
       );
@@ -208,7 +209,7 @@ export function WorkOrderBuilderClient({
     if (type === "date") {
       return (
         <label key={key} style={labelStyle}>
-          {fieldLabel(key)}
+          {flabel}
           <input type="date" style={field} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value)} />
         </label>
       );
@@ -217,21 +218,21 @@ export function WorkOrderBuilderClient({
       return (
         <label key={key} style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
           <input type="checkbox" checked={current === true} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.checked)} />
-          {fieldLabel(key)}
+          {flabel}
         </label>
       );
     }
     if (key === "note" || key === "instructions") {
       return (
         <label key={key} style={{ ...labelStyle, gridColumn: "1 / -1" }}>
-          {fieldLabel(key)}
+          {flabel}
           <textarea rows={2} style={{ ...field, minHeight: 56, resize: "vertical", lineHeight: 1.5 }} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value)} />
         </label>
       );
     }
     return (
       <label key={key} style={labelStyle}>
-        {fieldLabel(key)}
+        {flabel}
         <input type="text" style={field} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value)} />
       </label>
     );

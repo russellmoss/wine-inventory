@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantId, runAsTenant } from "@/lib/tenant/context";
 import { TASK_VOCABULARY, type ResolvedTaskVocabulary, type TaskTypeDef } from "@/lib/work-orders/template-vocabulary";
 import { customLogToTaskDef } from "@/lib/work-orders/custom-log-fields";
+import { applyOverlay, type OverlayRow } from "@/lib/work-orders/overlays";
 
 // Plan 053 (A1): the ONE place every authoring path (UI builder, template cores, assistant tools) gets its
 // task-type vocabulary. It returns the built-in TASK_VOCABULARY today; Phase C merges the current tenant's
@@ -23,14 +24,29 @@ export async function resolveTaskVocabulary(tenantId?: string): Promise<Resolved
   const tid = tenantId ?? getTenantId();
   if (!tid) return vocab; // no tenant context → built-ins only
 
-  const userTypes = await runAsTenant(tid, () =>
-    prisma.workOrderTaskType.findMany({ where: { archivedAt: null }, select: { code: true, label: true, fieldsJson: true } }),
+  const [userTypes, overlays] = await runAsTenant(tid, () =>
+    Promise.all([
+      prisma.workOrderTaskType.findMany({ where: { archivedAt: null }, select: { code: true, label: true, fieldsJson: true } }),
+      prisma.workOrderTaskTypeOverlay.findMany({ where: { archivedAt: null }, select: { baseTaskType: true, hiddenFields: true, relabels: true, fieldOrder: true } }),
+    ]),
   );
   for (const t of userTypes) {
     if (vocab[t.code]) continue; // never shadow a built-in — governed keys are sacrosanct
     const def = customLogToTaskDef({ label: t.label, fieldsJson: t.fieldsJson });
     assertUserTaskTypeSafe(def); // defense-in-depth: re-assert record-only on the resolve path
     vocab[t.code] = def;
+  }
+  // C12: apply display overlays to the matching BUILT-IN types (hide/relabel/reorder; never user types).
+  for (const o of overlays) {
+    const base = vocab[o.baseTaskType];
+    if (!base || base.isUserDefined) continue; // overlays only touch built-ins
+    const row: OverlayRow = {
+      baseTaskType: o.baseTaskType,
+      hiddenFields: Array.isArray(o.hiddenFields) ? o.hiddenFields : [],
+      relabels: (o.relabels ?? {}) as Record<string, string>,
+      fieldOrder: Array.isArray(o.fieldOrder) ? o.fieldOrder : [],
+    };
+    vocab[o.baseTaskType] = applyOverlay(base, row);
   }
   return vocab;
 }

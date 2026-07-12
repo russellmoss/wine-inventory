@@ -125,6 +125,8 @@ async function main() {
   // Plan 053 C11: a tenant-authored Custom Log type in tenant B. Isolation risk is a cross-tenant read of a
   // winery's custom task definitions.
   await owner.workOrderTaskType.upsert({ where: { id: "iso_wtt_b" }, update: {}, create: { id: "iso_wtt_b", tenantId: B, code: "ISO_LOG_B", label: "ISO Log B", fieldsJson: [{ key: "note", label: "Note", type: "text", stage: ["planning"] }] } });
+  // Plan 053 C12: a built-in field overlay in tenant B.
+  await owner.workOrderTaskTypeOverlay.upsert({ where: { id: "iso_ovl_b" }, update: {}, create: { id: "iso_ovl_b", tenantId: B, baseTaskType: "RACK", hiddenFields: ["note"], relabels: {}, fieldOrder: [] } });
   // Phase 9.1: a vessel + a vessel_activity_event per/into a tenant (the maintenance lane). Isolation risk
   // is a cross-tenant read of a winery's cleaning/setpoint activity + its overhead depletion ledger.
   await owner.vessel.upsert({ where: { id: "iso_vessel_b" }, update: {}, create: { id: "iso_vessel_b", tenantId: B, code: "ISO-TANK-B", type: "TANK", capacityL: "1000", updatedAt: now } });
@@ -346,6 +348,14 @@ async function main() {
       await asTenant(A, (db) => db.workOrderTaskType.create({ data: { id: "iso_wtt_x", tenantId: B, code: "ISO_LOG_X", label: "x", fieldsJson: [] } }));
     } catch { wttInsertRaised = true; }
     check("foreign-tenant work_order_task_type INSERT raises (WITH CHECK)", wttInsertRaised);
+    // Plan 053 C12: work_order_task_type_overlay isolation.
+    const aSeesOvlB = await asTenant(A, (db) => db.workOrderTaskTypeOverlay.findFirst({ where: { id: "iso_ovl_b" } }));
+    check("tenant A CANNOT see tenant B's work_order_task_type_overlay (RLS)", aSeesOvlB === null);
+    let ovlInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.workOrderTaskTypeOverlay.create({ data: { id: "iso_ovl_x", tenantId: B, baseTaskType: "RACK", hiddenFields: [], relabels: {}, fieldOrder: [] } }));
+    } catch { ovlInsertRaised = true; }
+    check("foreign-tenant work_order_task_type_overlay INSERT raises (WITH CHECK)", ovlInsertRaised);
 
     // 5i. Phase 9.1: vessel_activity_event + vessel_activity_supply_use tenant isolation (maintenance lane).
     const aSeesVaeB = await asTenant(A, (db) => db.vesselActivityEvent.findFirst({ where: { id: "iso_vae_b" } }));
@@ -479,6 +489,7 @@ async function main() {
     await owner.workOrderDependency.deleteMany({ where: { id: { in: ["iso_wodep_b", "iso_wodep_x", "iso_wodep_fk"] } } });
     await owner.workOrderTaskEquipment.deleteMany({ where: { id: { in: ["iso_wote_b", "iso_wote_fk"] } } });
     await owner.equipmentAsset.deleteMany({ where: { id: { in: ["iso_eq_b", "iso_eq_x"] } } });
+    await owner.workOrderTaskTypeOverlay.deleteMany({ where: { id: { in: ["iso_ovl_b", "iso_ovl_x"] } } });
     await owner.workOrderTaskType.deleteMany({ where: { id: { in: ["iso_wtt_b", "iso_wtt_x"] } } });
     await owner.workOrder.deleteMany({ where: { id: { in: ["iso_wo_a", "iso_wo_b", "iso_wo_bp", "iso_wo_x", "iso_wo_fk_a"] } } });
     await owner.commerce7Connection.deleteMany({ where: { id: { in: ["iso_c7_conn_a", "iso_c7_conn_b", "iso_c7_conn_x"] } } });
