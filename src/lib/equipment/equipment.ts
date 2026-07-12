@@ -84,6 +84,29 @@ export async function attachTaskEquipmentCore(taskId: string, equipmentIds: stri
   });
 }
 
+/** Plan 055 U3: fuzzy-match ACTIVE equipment by name for the assistant's EQUIPMENT_SERVICE authoring.
+ * Exact (normalized) match wins; otherwise a two-directional substring match. Returns the candidates so the
+ * tool layer can pin a unique hit, show a choice picker for several, or report none — it never invents an
+ * id. K12-safe (tenantId explicit). A `#<id>` ref pins that exact asset (survives a choice-token resume). */
+export async function findEquipmentByName(tenantId: string, ref: string): Promise<EquipmentRow[]> {
+  const all = await listEquipment(tenantId, { activeOnly: true });
+  const raw = ref.trim();
+  const idToken = raw.startsWith("#") ? raw.slice(1).replace(/-/g, "").toLowerCase() : null;
+  if (idToken) {
+    const pinned = all.find((e) => e.id.replace(/-/g, "").toLowerCase() === idToken);
+    return pinned ? [pinned] : [];
+  }
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const needle = norm(raw);
+  if (!needle) return [];
+  const exact = all.filter((e) => norm(e.name) === needle);
+  if (exact.length) return exact;
+  return all.filter((e) => {
+    const h = norm(e.name);
+    return h && (h.includes(needle) || needle.includes(h));
+  });
+}
+
 /** All equipment for a tenant (active first). K12-safe: tenantId explicit + runAsTenant. */
 export async function listEquipment(tenantId: string, opts?: { activeOnly?: boolean }): Promise<EquipmentRow[]> {
   return runAsTenant(tenantId, async () => {

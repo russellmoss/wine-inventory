@@ -12,6 +12,7 @@ import { guessPackagingFactor, theoreticalConsumption, type PackagingPlanLine } 
 import { TASK_VOCABULARY, type TaskBuild, type ResolvedTaskVocabulary } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { buildWorkOrderReadiness, assertFreshReadiness } from "@/lib/work-orders/proposal-readiness";
+import { normalizeWorkOrderPriority } from "@/lib/work-orders/planning";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import {
   canonicalizeNlWorkOrderDraft,
@@ -748,6 +749,33 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       continue;
     }
 
+    if (intent.kind === "EQUIPMENT_SERVICE") {
+      // Plan 055 U3: record-only service of a resolved EquipmentAsset (WORKORDER-1/-3: no vessel, no ledger,
+      // no cost). The equipment id is pinned by the tool layer (findScopedEquipment) and rides the TaskBuild's
+      // equipmentIds — attached by createWorkOrderFromBuildsAction after create (never in plannedPayload). In
+      // the builder-draft path (no tool resolution) the name is a display hint and the user attaches it
+      // visually. setStatus (optional) transitions the equipment on COMPLETION (E16), not at authoring.
+      const equipmentId = intent.equipmentId?.trim() || null;
+      const setStatus = intent.setStatus ? matchSelectValue("EQUIPMENT_SERVICE", "setStatus", intent.setStatus) : undefined;
+      const values = { ...(setStatus ? { setStatus } : {}), ...(intent.note ? { note: intent.note } : {}) };
+      taskBuilds.push({
+        taskType: "EQUIPMENT_SERVICE",
+        title: "Equipment service",
+        values,
+        ...(equipmentId ? { equipmentIds: [equipmentId] } : {}),
+        taskKey: randomUUID(),
+      });
+      const label = intent.equipment?.trim() || "the equipment";
+      tasks.push({
+        seq,
+        kind: "EQUIPMENT_SERVICE",
+        title: "Equipment service",
+        summary: `Service ${label}${setStatus ? ` and set it to ${setStatus}` : ""}${equipmentId ? "" : " — attach the equipment in the builder"}.`,
+        entities: [],
+      });
+      continue;
+    }
+
     if (intent.kind === "NOTE") {
       // D14 custom-type fluency: if the note names one of the tenant's record-only Custom Logs, author THAT
       // type. resolveTaskVocabulary re-asserts user types stay NOTE-shaped (never a governed op), so this can
@@ -759,6 +787,21 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       continue;
     }
   }
+
+  // Plan 055 U7/U8/D3: apply the cross-cutting per-task planning fields onto the aligned task builds (each
+  // intent produced exactly one build, in order). assigneeId is set only when the tool layer resolved a real
+  // User id (never a raw name — the TaskBuild contract requires a resolved id; an unresolved name inherits
+  // the order-level assignee). priority is validated (throws on a bad value); groupSeq carries the sequential
+  // group index. Each field is set only when present, so a resume that re-emits the same tasks preserves all.
+  draft.intents.forEach((intent, i) => {
+    const tb = taskBuilds[i];
+    if (!tb) return;
+    if (intent.assigneeId?.trim()) tb.assigneeId = intent.assigneeId.trim();
+    const priority = normalizeWorkOrderPriority(intent.priority ?? null);
+    if (priority) tb.priority = priority;
+    if (typeof intent.groupSeq === "number" && intent.groupSeq >= 0) tb.groupSeq = Math.round(intent.groupSeq);
+  });
+
   return { tasks, taskBuilds };
 }
 

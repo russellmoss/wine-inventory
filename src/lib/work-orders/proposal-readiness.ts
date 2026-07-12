@@ -565,6 +565,15 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       return;
     }
 
+    case "EQUIPMENT_SERVICE": {
+      // Plan 055 U3: record-only service of the attached EquipmentAsset — no vessel/lot/material, no ledger
+      // or cost effect. The equipment is attached via the TaskBuild's equipmentIds (not in `values`, so it's
+      // outside the readiness read model — the tool layer + builder guarantee it). Only the optional status
+      // transition is validated here; the status flip itself happens at COMPLETION (E16), not authoring.
+      validateSelect(ctx, seq, "EQUIPMENT_SERVICE", "setStatus", v.setStatus);
+      return;
+    }
+
     case "CRUSH": {
       runtime(ctx, seq, "CRUSH", "picks", "Harvest picks", "Harvest picks (with kg) are entered on the execute screen.");
       if (!str(v.destVesselId)) runtime(ctx, seq, "CRUSH", "destVesselId", "Destination vessel", "The destination vessel is entered on the execute screen.");

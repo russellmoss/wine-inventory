@@ -1,4 +1,5 @@
 import type { TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { EQUIPMENT_STATUSES } from "@/lib/equipment/vocab";
 
 // Phase 9.3 Unit 3: bumped 1 -> 2 when the assistant path moved onto the shared readiness engine. The
 // committer hard-rejects any non-current version (no silent upconversion); the 5-min token TTL bounds the
@@ -9,7 +10,14 @@ export const NL_WORK_ORDER_MAX_TASKS = 25;
 // Phase 9.3 Unit 4: maintenance kinds that share the {vessel, optional overhead supply} shape.
 export type NlMaintenanceKind = "CLEAN" | "SANITIZE" | "STEAM" | "OZONE" | "GAS" | "SO2" | "WET_STORAGE";
 
-export type NlWorkOrderIntent =
+// Plan 055 U7/U8/D3: cross-cutting per-task planning fields the assistant can set on ANY task kind —
+// per-task assignee (name/email → resolved User id at the tool layer), priority, and a same-WO sequential
+// group index. Intersected onto every intent below (a union ∩ TaskMeta distributes the optional fields to
+// each member) so the resolver can read them uniformly without a field on all ~18 variants. `assignee` is
+// the human ref (name/email); `assigneeId` is the User id pinned by the tool layer (never model-supplied).
+export type NlTaskMeta = { assignee?: string; assigneeId?: string; priority?: string; groupSeq?: number };
+
+export type NlWorkOrderIntent = (
   | { kind: "RACK"; from: string; to: string; drawL?: number; lossL?: number; rackType?: string; note?: string }
   | { kind: "TOPPING"; from: string; to: string; volumeL?: number; note?: string }
   | { kind: "ADDITION" | "FINING"; vessel: string; material: string; amount: number; unit: string; note?: string }
@@ -44,7 +52,12 @@ export type NlWorkOrderIntent =
   // comma/and list — expanded to a resolved, sorted member set in nl-resolve.
   | { kind: "BARREL_DOWN"; from: string; toGroup: string; drawL?: number; lossL?: number; note?: string }
   | { kind: "RACK_TO_TANK"; fromGroup: string; to: string; lossL?: number; note?: string }
-  | { kind: "NOTE"; title: string; note?: string };
+  // Plan 055 U3: service an EquipmentAsset (press/pump/filter…). `equipment` is the human ref; `equipmentId`
+  // is pinned by the tool layer (findScopedEquipment resolves it; ambiguous → choice token). `setStatus`
+  // optionally transitions the attached equipment on COMPLETION (validated against EQUIPMENT_STATUSES).
+  | { kind: "EQUIPMENT_SERVICE"; equipment?: string; equipmentId?: string; setStatus?: string; note?: string }
+  | { kind: "NOTE"; title: string; note?: string }
+) & NlTaskMeta;
 
 // Kinds whose only run-time target/inputs are captured on the execute screen (no propose-time resolution).
 export const NL_RUNTIME_KINDS = new Set<NlWorkOrderIntent["kind"]>(["CRUSH", "PRESS", "HARVEST_WEIGH_IN"]);
@@ -150,8 +163,34 @@ type RawIntent = Record<string, unknown>;
 const SUPPORTED = new Set([
   "RACK", "TOPPING", "ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT",
   "CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE",
-  "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL", "BOTTLE", "NOTE",
+  "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL", "BOTTLE", "EQUIPMENT_SERVICE", "NOTE",
 ]);
+
+/** Plan 055 U3: match a free-text equipment status ("in use", "Maintenance") to a canonical
+ * EQUIPMENT_STATUS, case/space/underscore-insensitive. Returns null when it isn't a known status so the
+ * canonicalizer can reject it (never silently drops a status the operator meant to set). */
+function matchEquipmentStatus(raw: string): string | null {
+  const n = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return (EQUIPMENT_STATUSES as readonly string[]).find((s) => s === n) ?? null;
+}
+
+/** Plan 055 U7/U8/D3: pull the cross-cutting per-task planning fields off a raw task. Values are carried
+ * onto the intent and applied to the TaskBuild in nl-resolve; the actual assignee id resolution + ambiguity
+ * picker happen at the tool layer (which has the tenant + signResume). Priority is validated in the resolver
+ * (normalizeWorkOrderPriority); here we just carry the trimmed string. groupSeq is a non-negative integer. */
+function parseTaskMeta(raw: RawIntent): NlTaskMeta {
+  const assignee = cleanString(raw.assignee) ?? cleanString(raw.assigneeName) ?? cleanString(raw.assigneeEmail);
+  const assigneeId = cleanString(raw.assigneeId);
+  const priority = cleanString(raw.priority);
+  const gs = finiteNumber(raw.groupSeq);
+  const groupSeq = gs != null && gs >= 0 ? Math.round(gs) : undefined;
+  return {
+    ...(assignee ? { assignee } : {}),
+    ...(assigneeId ? { assigneeId } : {}),
+    ...(priority ? { priority } : {}),
+    ...(groupSeq != null ? { groupSeq } : {}),
+  };
+}
 
 /** Parse a possibly-mixed packaging arg: an array of dry-goods names, or a "standard"/"usual" sentinel
  * string. Returns { standard } when the caller signalled the SKU's usual packaging, else the named list. */
@@ -478,11 +517,40 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       });
       continue;
     }
+    if (up === "EQUIPMENT_SERVICE") {
+      // Author-only: the equipment is resolved to an id at the tool layer (findScopedEquipment); an ambiguous
+      // name returns a choice picker. `equipmentId` is pinned there (or by a choice resume) and is never
+      // supplied by the model directly. setStatus is validated against the controlled EQUIPMENT_STATUSES.
+      const equipment = cleanString(raw.equipment) ?? cleanString(raw.equipmentName) ?? cleanString(raw.asset);
+      const equipmentId = cleanString(raw.equipmentId);
+      if (!equipment && !equipmentId) {
+        throw new Error("An equipment-service task needs the equipment to service (e.g. \"the basket press\").");
+      }
+      const setStatusRaw = cleanString(raw.setStatus) ?? cleanString(raw.status);
+      let setStatus: string | undefined;
+      if (setStatusRaw) {
+        const matched = matchEquipmentStatus(setStatusRaw);
+        if (!matched) throw new Error(`"${setStatusRaw}" is not a valid equipment status (allowed: ${EQUIPMENT_STATUSES.join(", ")}).`);
+        setStatus = matched;
+      }
+      intents.push({
+        kind: "EQUIPMENT_SERVICE",
+        ...(equipment ? { equipment } : {}),
+        ...(equipmentId ? { equipmentId } : {}),
+        ...(setStatus ? { setStatus } : {}),
+        ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+      });
+      continue;
+    }
     // NOTE (the only remaining SUPPORTED kind).
     const title = cleanString(raw.title);
     if (!title) throw new Error("A note task needs a title.");
     intents.push({ kind: "NOTE", title, ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
   }
+  // Plan 055 U7/U8/D3: apply the cross-cutting per-task planning fields. Each raw task maps 1:1 (in order)
+  // to the intent pushed for it, so a positional merge is exact. Only present fields are set (merge, never
+  // wipe) so a resume that re-emits the same tasks preserves assignee AND priority AND groupSeq.
+  intents.forEach((intent, i) => Object.assign(intent, parseTaskMeta(tasks[i])));
   return intents;
 }
 
