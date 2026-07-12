@@ -16,6 +16,7 @@ import { CrushTaskForm } from "./CrushTaskForm";
 import { PressTaskForm } from "./PressTaskForm";
 import { HarvestWeighInTaskForm } from "./HarvestWeighInTaskForm";
 import { BottlingTaskForm } from "./BottlingTaskForm";
+import { GroupRackTaskForm } from "./GroupRackTaskForm";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
@@ -286,6 +287,8 @@ export function ExecuteClient({ wo, pickers, crushData, pressData, weighInData, 
             // (picks, fractions) that don't fit the flat generic renderer — they get their own sub-forms.
             if (t.kind === "OPERATION" && t.opType === "CRUSH") return <CrushTaskForm key={t.id} task={t} data={crushData} onDone={() => router.refresh()} />;
             if (t.kind === "OPERATION" && t.opType === "PRESS") return <PressTaskForm key={t.id} task={t} data={pressData} onDone={() => router.refresh()} />;
+            // Plan 054: a group barrel-down / rack-to-tank task completes in per-member batches — its own sub-form.
+            if (t.kind === "OPERATION" && t.opType === "RACK" && t.groupRack) return <GroupRackTaskForm key={t.id} task={t} onDone={() => router.refresh()} />;
             // Plan 053 E15: bottling captures multi-vessel source + bottle count + ABV + destination — its own sub-form.
             if (t.kind === "OPERATION" && t.opType === "BOTTLE") return <BottlingTaskForm key={t.id} task={t} data={bottlingData} onDone={() => router.refresh()} />;
             // Plan 039: a fruit weigh-in captures a block + readings that don't fit the flat renderer — its own sub-form.
