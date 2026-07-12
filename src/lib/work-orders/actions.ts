@@ -25,6 +25,8 @@ import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { normalizeWorkOrderPriority, normalizeDurationMin } from "@/lib/work-orders/planning";
 import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
+import { draftNlWorkOrderForBuilder } from "@/lib/work-orders/nl-resolve";
+import { requireTenantId } from "@/lib/tenant/context";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
@@ -133,6 +135,26 @@ export const createWorkOrderFromTemplateAction = action(
     return res;
   },
 );
+
+/** Plan 053 D14: the AI accelerator behind the builder's "describe the job" box. Wraps the shared NL
+ * proposal engine and returns already vocab-resolved taskBuilds for the builder to HYDRATE as an editable
+ * draft. Read-only (no create/issue) — the builder submits through createWorkOrderFromBuildsAction after
+ * the user edits groups/assignees. Uses the tenant-resolved vocabulary, so a named Custom Log resolves. */
+export const draftWorkOrderFromTextAction = action(async (_ctx, input: { text: string }) => {
+  const text = String(input.text ?? "").trim();
+  if (!text) return { status: "empty" as const, taskBuilds: [] as TaskBuild[], title: "", unresolved: [], warnings: [] };
+  // Resolve against the tenant vocabulary (named Custom Logs resolve too) and hand back the EDITABLE builds
+  // even when not fully ready — the builder hydrates them, the user fixes anything, and the create action
+  // re-runs the shared readiness gate server-side. This is a read-only draft (no create/issue here).
+  const draft = await draftNlWorkOrderForBuilder({ sourceText: text }, { tenantId: requireTenantId() });
+  return {
+    status: draft.status,
+    title: draft.title,
+    taskBuilds: draft.taskBuilds,
+    unresolved: draft.unresolved,
+    warnings: draft.warnings,
+  };
+});
 
 /** Plan 053 A6: create a DRAFT work order from the palette builder — a flat TaskBuild[] carrying groupSeq
  * (sequential groups) + per-task assigneeId, with no template lock. Re-runs the shared readiness gate
