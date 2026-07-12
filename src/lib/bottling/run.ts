@@ -9,6 +9,9 @@ import type { LedgerLine } from "@/lib/ledger/math";
 import { nextLotCode } from "@/lib/lot/generate";
 import { materializeFinishedGoods, type MaterializeSource } from "@/lib/bottling/materialize";
 import { computeConsumedLiquid, writeBottlingCostSnapshot } from "@/lib/cost/cogs-write";
+import { consumePackagingTx } from "@/lib/cost/consume-packaging";
+import { negateCostForReversedOp } from "@/lib/cost/reverse";
+import { emitExportForSnapshot } from "@/lib/cost/export-emit";
 
 export type BottlingInput = {
   vesselIds: string[];
@@ -25,6 +28,10 @@ export type BottlingInput = {
   // method=TANK (+ optional style from the tank RS). Omitted ⇒ still wine (method null).
   method?: SparklingMethod;
   dosageStyle?: DosageStyle;
+  // Plan 056: the ACTUAL packaging consumed for this run (glass/cork/capsule/label/case), qty in each
+  // material's stock unit (eaches). Depletes stock + capitalizes into the finished-goods COGS
+  // (PACKAGING bucket) inside this same tx. Omitted/empty ⇒ liquid-only COGS (unchanged behaviour).
+  packaging?: { materialId: string; qty: number }[];
 };
 
 export type Actor = { actorUserId: string | null; actorEmail: string };
@@ -145,7 +152,17 @@ export async function runBottlingTx(tx: Prisma.TransactionClient, input: Bottlin
   // metadata; the ledger lines are unchanged.
   await tx.lotOperation.update({ where: { id: bottleOpId }, data: { metadata: { runId, abv } } });
 
-  // Phase 8 (Unit 6): freeze the per-run COGS snapshot (liquid + dry goods later / good bottles, D15).
+  // Plan 056: consume the ACTUAL packaging BoM in THIS tx (WORKORDER-1: the only path that draws + costs
+  // dry goods). Draws SupplyLot stock + writes PACKAGING CostLines on the bottle op; when the tenant
+  // does not capitalize packaging, stock still depletes but nothing lands in COGS. Runs AFTER the bottle
+  // op exists (cost lands on it) and BEFORE the snapshot (which reads the PACKAGING cost lines).
+  const appSettings = await tx.appSettings.findFirst({ select: { capitalizePackaging: true } });
+  const capitalizePackaging = appSettings?.capitalizePackaging ?? true;
+  const pkg = await consumePackagingTx(tx, { packaging: input.packaging ?? [], bottleOpId, capitalize: capitalizePackaging });
+
+  // Phase 8 (Unit 6): freeze the per-run COGS snapshot (liquid + dry goods / good bottles, D15). The
+  // packaging cost is the Σ of the PACKAGING CostLines just written (single source, asserted in the
+  // consumer); a short/unknown-cost packaging draw taints the snapshot completeness (never a silent $0).
   const runRow = await tx.bottlingRun.findUnique({ where: { id: runId }, select: { wineSkuId: true } });
   if (runRow) {
     await writeBottlingCostSnapshot(tx, {
@@ -155,6 +172,8 @@ export async function runBottlingTx(tx: Prisma.TransactionClient, input: Bottlin
       bottledAt: date,
       goodBottles: bottlesProduced,
       liquid,
+      packagingCost: capitalizePackaging ? pkg.packagingCost : 0,
+      packagingCompleteness: capitalizePackaging ? pkg.completeness : "KNOWN",
     });
   }
 
@@ -239,8 +258,9 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
     lines.push({ lotId, vesselId: s.vesselId, deltaL: vol });
     lines.push({ lotId, vesselId: null, deltaL: round2(-vol), reason: "seed" });
   }
+  let seedOpId: number | null = null;
   if (lines.length > 0) {
-    await writeLotOperation(tx, {
+    seedOpId = await writeLotOperation(tx, {
       type: "SEED",
       lines,
       actorUserId: actor.actorUserId,
@@ -253,16 +273,74 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
     });
   }
 
-  // Phase 8 (Unit 6/11): a full bottling undo negates its cost artifacts — delete the frozen COGS
-  // snapshot (its FK to the run is RESTRICT, so this must precede the run delete) and the op-level
-  // VARIANCE residual line, leaving cost neutral after the reversal.
-  const snaps = await tx.bottlingCostSnapshot.findMany({ where: { runId }, select: { costBasisAsOfOperationId: true } });
-  const bottleOpIds = snaps.map((s) => s.costBasisAsOfOperationId).filter((x): x is number => x != null);
-  if (bottleOpIds.length > 0) await tx.costLine.deleteMany({ where: { operationId: { in: bottleOpIds } } });
-  await tx.bottlingCostSnapshot.deleteMany({ where: { runId } });
-
-  await tx.stockMovement.deleteMany({ where: { bottlingRunId: runId } });
-  await tx.bottlingRun.delete({ where: { id: runId } }); // cascades sources
+  const correctsOpId = opts?.correctsOperationId ?? null;
+  if (correctsOpId != null) {
+    // Plan 056 (council D3/C4) — APPEND-ONLY reversal for the governed WO/timeline reject path. The COGS
+    // snapshot's export events (CostExportEvent / AccountingDelivery) are immutable and may already be
+    // POSTED, so hard-deleting the snapshot would orphan the ledger. Instead: keep the original snapshot
+    // immutable, write a REVERSING snapshot (reversalOfSnapshotId) whose export negates the original to
+    // zero (`:rev` mirror-image journal), and negate the bottle op's CostLines + restore the packaging
+    // SupplyLot stock by identity via the shared negateCostForReversedOp. Nothing is erased; the run
+    // stays (snapshot FK is RESTRICT) and is filtered from the active bottling list via its corrected
+    // BOTTLE op. (The standalone delete/edit path keeps the legacy hard-delete below until Phase 3.)
+    const correctionOpId = seedOpId ?? correctsOpId;
+    const snaps = await tx.bottlingCostSnapshot.findMany({
+      where: { runId, reversalOfSnapshotId: null },
+      select: {
+        id: true, skuId: true, taxClass: true, bottledAt: true, goodBottles: true, totalRunCost: true,
+        costPerBottle: true, currency: true, costBasisAsOfOperationId: true, componentBreakdown: true,
+        basisCompleteness: true, policyVersion: true, postingKey: true,
+      },
+    });
+    const bottleOpIds = new Set<number>();
+    for (const s of snaps) {
+      if (s.costBasisAsOfOperationId != null) bottleOpIds.add(s.costBasisAsOfOperationId);
+      const already = await tx.bottlingCostSnapshot.findFirst({ where: { reversalOfSnapshotId: s.id }, select: { id: true } });
+      if (already) continue; // idempotent: a re-reversal writes no second reversing snapshot
+      // The reversing snapshot mirrors the original's (positive) breakdown; the export seam negates it
+      // via isReversal (reversalOfSnapshotId set). Distinct postingKey so the per-tenant unique holds.
+      const rev = await tx.bottlingCostSnapshot.create({
+        data: {
+          runId,
+          skuId: s.skuId,
+          taxClass: s.taxClass,
+          bottledAt: s.bottledAt,
+          goodBottles: s.goodBottles,
+          totalRunCost: s.totalRunCost,
+          costPerBottle: s.costPerBottle,
+          currency: s.currency,
+          costBasisAsOfOperationId: correctionOpId,
+          componentBreakdown: s.componentBreakdown as Prisma.InputJsonValue,
+          basisCompleteness: s.basisCompleteness,
+          policyVersion: s.policyVersion,
+          postingKey: s.postingKey ? `${s.postingKey}:rev` : null,
+          sourceSnapshotId: s.id,
+          reversalOfSnapshotId: s.id,
+        },
+        select: { id: true },
+      });
+      await emitExportForSnapshot(rev.id, tx); // net-zero reversing journal (idempotent by postingKey)
+    }
+    // Negate the bottle op's CostLines (VARIANCE residual + PACKAGING) and restore the packaging
+    // SupplyConsumption stock by identity, on the correction (SEED) op — append-only, never mutates the
+    // originals. (The bottle op carries no liquid SupplyConsumption; liquid is restored via the SEED
+    // ledger lines above.)
+    const reversedOps = bottleOpIds.size > 0 ? [...bottleOpIds] : [correctsOpId];
+    for (const opId of reversedOps) await negateCostForReversedOp(tx, opId, correctionOpId);
+    // Physical finished-goods reversal: the bottles were already decremented above; drop the run's
+    // finished-goods StockMovements (not an accounting-ledger artifact). The run + snapshots persist.
+    await tx.stockMovement.deleteMany({ where: { bottlingRunId: runId } });
+  } else {
+    // Standalone delete/edit path (Plan 056 Phase 3 converts these to append-only) — legacy hard-delete.
+    // Reachable only for still-wine runs with NO packaging (standalone packaging authoring lands in
+    // Phase 3), so no packaging stock can leak here.
+    const snaps = await tx.bottlingCostSnapshot.findMany({ where: { runId }, select: { costBasisAsOfOperationId: true } });
+    const bottleOpIds = snaps.map((s) => s.costBasisAsOfOperationId).filter((x): x is number => x != null);
+    if (bottleOpIds.length > 0) await tx.costLine.deleteMany({ where: { operationId: { in: bottleOpIds } } });
+    await tx.bottlingCostSnapshot.deleteMany({ where: { runId } });
+    await tx.stockMovement.deleteMany({ where: { bottlingRunId: runId } });
+    await tx.bottlingRun.delete({ where: { id: runId } }); // cascades sources
+  }
 
   await writeAudit(tx, {
     ...actor,
