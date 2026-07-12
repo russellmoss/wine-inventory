@@ -25,6 +25,7 @@ import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore } from "@/lib/wor
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
 import { firstBlockingPriorTask } from "@/lib/work-orders/group-gating";
+import { assertPredecessorsDone, addWorkOrderDependencyCore, removeWorkOrderDependencyCore } from "@/lib/work-orders/wo-dependencies";
 import { prisma } from "@/lib/prisma";
 import { canManagerAccessVineyard, type AppUser } from "@/lib/access";
 import { ActionError } from "@/lib/action-error";
@@ -151,6 +152,21 @@ export const cancelWorkOrderAction = action(async ({ actor }, input: { workOrder
   return res;
 });
 
+// A5: cross-order dependencies. Open (like issue/assign/schedule); the completion gate does the enforcing.
+export const addWorkOrderDependencyAction = action(
+  async ({ actor }, input: { workOrderId: string; dependsOnWorkOrderId: string }) => {
+    const res = await addWorkOrderDependencyCore(actor, input);
+    revalidateWorkOrders(input.workOrderId);
+    return res;
+  },
+);
+
+export const removeWorkOrderDependencyAction = action(async ({ actor }, input: { id: string; workOrderId?: string }) => {
+  const res = await removeWorkOrderDependencyCore(actor, { id: input.id });
+  revalidateWorkOrders(input.workOrderId);
+  return res;
+});
+
 export const startTaskAction = action(async ({ actor }, input: { taskId: string }) => {
   const res = await startTaskCore(actor, input);
   revalidateWorkOrders();
@@ -181,8 +197,10 @@ async function prepareCompleteInput(user: AppUser, input: CompleteTaskInput): Pr
   await assertTaskDependenciesReady(input.taskId);
   const task = await prisma.workOrderTask.findUnique({
     where: { id: input.taskId },
-    select: { observationType: true, blockId: true, workOrder: { select: { autoFinalize: true } } },
+    select: { workOrderId: true, observationType: true, blockId: true, workOrder: { select: { autoFinalize: true } } },
   });
+  // A5: cross-order gate — a task can't complete until this WO's prerequisite work orders are done.
+  if (task) await assertPredecessorsDone(task.workOrderId);
   // Plan 039: a fruit weigh-in writes a HarvestPick to a vineyard block. Enforce the same D9 vineyard
   // membership the harvest form (requireBlockAccess) + assistant tool (findScopedBlocks) require — the
   // block picker already scopes the UI, so this closes the crafted-payload gap on the server.
