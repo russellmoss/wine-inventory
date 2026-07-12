@@ -1,8 +1,10 @@
 ---
 title: Assistant feedback/bug-report tool + weigh-in vineyard-block prefill
 type: feat
-status: completed
+status: shipped
 date: 2026-07-12
+shipped: 2026-07-12
+merged_pr: 137
 branch: feat/assistant-feedback-tool-weighin-block
 depth: standard
 units: 3
@@ -279,4 +281,27 @@ execute screen prefills the named block; crush task title names the lot. Run `np
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | -- | -- |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | -- | -- |
 
-**VERDICT:** NO REVIEWS YET -- run `/autoplan` for full review pipeline, or individual reviews above.
+**VERDICT:** SHIPPED — `/ship` pre-landing review (Claude + specialists) ran clean on the diff; no blocking findings.
+
+## Closeout (2026-07-12)
+
+**Status: SHIPPED and merged to `main`.** All three units delivered; optional Unit 3b (conversation-snapshot
+`debugContext`) consciously deferred.
+
+- **PR [#137](https://github.com/russellmoss/wine-inventory/pull/137)** — squash-merged to `main` as `2fc3a89`.
+  Units 1 (`file_feedback` tool + registry/committer wiring), 2 (golden evals), 3 (weigh-in block resolve +
+  prefill, CRUSH title stamp), plus the system-prompt "can file feedback" bullet.
+- **PR [#139](https://github.com/russellmoss/wine-inventory/pull/139)** — follow-up, squash-merged as `049c7b9`.
+  Removed a stale "not available yet" prompt line (tasting notes / additions / fermentation are all live tools)
+  that surfaced while wiring Unit 1's prompt change.
+
+**Proof at merge:** full suite 1800 passing + `npm run build` clean (post-merge with latest main),
+`verify:work-order-nl` (14) + `verify:naming` (25) green, CI green (`check` + `tenant-isolation`), and live
+in-app-browser QA in Demo Winery — bug filed from chat → confirm card → ticket under /help/feedback; WO
+authored naming "Block 1 — Pinot" → weigh-in execute screen pre-selected to that block; CRUSH title stamped.
+All QA fixtures cleaned up.
+
+**Deferred / follow-ups:** Unit 3b (conversation snapshot on tickets) if richer bug context is wanted later.
+
+_Note: the `branch:` field above (`feat/assistant-feedback-tool-weighin-block`) was the plan's suggested name;
+the work actually shipped from `claude/assistant-bug-reporting-tank-workflow-bcf27e`._
