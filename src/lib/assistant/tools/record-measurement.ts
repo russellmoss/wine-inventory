@@ -6,18 +6,23 @@ import { resolveLotTarget } from "../scope";
 import { recordMeasurementsAction } from "@/lib/chemistry/actions";
 import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
 
-// Assistant-coverage Wave 1 #2a — record a bench/lab CHEM PANEL (pH, TA, SO₂, …) against a LOT by chat.
-// Wraps recordMeasurementsAction → recordMeasurementsCore (no re-implemented chemistry, no db_*).
+// Assistant-coverage Wave 1 #2a — record a bench/lab CHEM PANEL (pH, TA, SO₂, sugar/Brix, …) against a
+// LOT by chat. Wraps recordMeasurementsAction → recordMeasurementsCore (no re-implemented chemistry,
+// no db_*).
 //
 // Decisions (interview 2026-07-05): attaches to exactly ONE lot (measurements are per-lot, never
 // whole-vessel — the one-lot invariant); a blend vessel is ambiguous → resolveLotTarget asks which lot.
 // Values are accepted as typed (no plausibility ceiling) and shown in the confirm card so a typo is
 // visible before confirming. This is NOT the block-ripeness Brix reading (that's log_brix, on a vineyard
-// block at harvest) — this is a cellar lot's chemistry.
+// block at harvest) — this is a cellar lot's chemistry, INCLUDING a mid-ferment sugar (Brix) reading on
+// fruit/juice/must that is already in a tank or barrel.
 
 // Seeded analytes → their canonical (analyte, default unit). Free-form analytes ride the `other` array.
 // Exported so the lab-sample results tool (record_sample_results) reuses the SAME analyte vocabulary.
+// `brix` is the cellar-side sugar reading (°Bx) for a lot in a vessel — distinct from log_brix, which is
+// the vineyard-block ripeness reading on fruit still on the vine.
 export const ANALYTES: Record<string, { analyte: string; unit: string }> = {
+  brix: { analyte: "Brix", unit: "°Bx" },
   pH: { analyte: "pH", unit: "" },
   ta: { analyte: "TA", unit: "g/L" },
   freeSO2: { analyte: "Free SO₂", unit: "mg/L" },
@@ -62,13 +67,13 @@ export const analyteProps = Object.fromEntries(
 export const recordMeasurementTool: AssistantTool = {
   name: "record_measurement",
   description:
-    "Record a bench/lab chemistry panel (pH, TA, free/total SO₂, VA, residual sugar, malic, alcohol, …) against a LOT. Use when the user reports lab/bench numbers for a wine lot. Give the lot by code (e.g. 'lot 24-CS-A') or the vessel (e.g. 'tank 5'); a blend vessel will ask which lot. This is NOT the vineyard-block ripeness Brix reading (that's log_brix). Does NOT save immediately — returns a preview to confirm.",
+    "Record a bench/lab chemistry or sugar reading (Brix/°Bx, pH, TA, free/total SO₂, VA, residual sugar, malic, alcohol, …) against a LOT in a vessel. Use when the user reports a reading for wine/juice/must that is ALREADY in a tank or barrel — including a mid-ferment SUGAR (Brix) reading on a fermenting lot. Give the lot by code (e.g. 'lot 24-CS-A') or the vessel (e.g. 'tank T4'); if the vessel holds more than one lot, the tool lists the lots and asks which one — relay that choice to the user. This is NOT the vineyard-block ripeness Brix reading on fruit still on the vine (that's log_brix). Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       lot: { type: "string", description: "Lot code, e.g. '24-CS-A'." },
-      vessel: { type: "string", description: "Vessel holding the lot, e.g. 'tank 5' or 'barrel 12' (resolved to its lot; a blend asks which)." },
+      vessel: { type: "string", description: "Vessel holding the lot, e.g. 'tank T4' or 'barrel 12' (resolved to its lot; a vessel with multiple lots asks which)." },
       ...analyteProps,
       other: {
         type: "array",
@@ -83,7 +88,7 @@ export const recordMeasurementTool: AssistantTool = {
   async run(_ctx, rawInput) {
     const input = (rawInput ?? {}) as RecordMeasurementRawInput;
     const readings = collectReadings(input);
-    if (readings.length === 0) throw new Error("Give at least one reading, e.g. pH 3.4 or free SO₂ 28.");
+    if (readings.length === 0) throw new Error("Give at least one reading, e.g. Brix 10.5, pH 3.4, or free SO₂ 28.");
     const { lotId, lotCode } = await resolveLotTarget({ lot: input.lot, vessel: input.vessel });
 
     const observedAt = input.observedAt ? String(input.observedAt) : null;

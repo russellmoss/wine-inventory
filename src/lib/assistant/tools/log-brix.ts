@@ -20,7 +20,7 @@ type LogBrixInput = {
 export const logBrixTool: AssistantTool = {
   name: "log_brix",
   description:
-    "Record a NEW Brix (sugar / ripeness) reading for a vineyard block. Use when the user wants to log, add, or record a Brix measurement. This does NOT save immediately — it returns a preview the user must confirm in the UI.",
+    "Record a NEW Brix (sugar / ripeness) reading for a VINEYARD BLOCK — i.e. fruit still on the vine during ripening / at harvest. Use ONLY when the user is tracking a block's ripeness in the vineyard. Do NOT use this for a reading taken on fruit/juice/must that is already in a tank or barrel (e.g. a mid-ferment sugar reading on a tank, or a bench reading on a fermenting lot): those are cellar lot readings — use record_measurement with the vessel/lot instead. This does NOT save immediately — it returns a preview the user must confirm in the UI.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -48,7 +48,7 @@ export const logBrixTool: AssistantTool = {
     });
     const block = resolveExactlyOne(blocks, {
       describe: (b) => `${b.label}${b.varietyName ? ` (${b.varietyName})` : ""} in ${b.vineyardName}`,
-      noneMsg: `No block matches that you can access (block "${input.block ?? "?"}"${input.variety ? `, variety "${input.variety}"` : ""}${input.vineyard ? `, vineyard "${input.vineyard}"` : ""}).`,
+      noneMsg: `No block matches that you can access (block "${input.block ?? "?"}"${input.variety ? `, variety "${input.variety}"` : ""}${input.vineyard ? `, vineyard "${input.vineyard}"` : ""}). If this reading is for fruit/juice already in a tank or barrel, record it against the vessel/lot with record_measurement instead.`,
       manyMsg: `Several blocks match`,
     });
 
