@@ -33,6 +33,7 @@ import { commitCreateWorkOrder } from "./tools/create-work-order";
 import { commitCompleteTask } from "./tools/complete-task";
 import { commitReviewTask } from "./tools/review-task";
 import { commitManageWorkOrder } from "./tools/manage-work-order";
+import { commitGroupRackBatch } from "./tools/group-rack-batch";
 import { commitTopUp } from "./tools/top-up";
 import { commitFilterVessel } from "./tools/filter-vessel";
 import { commitLogCapManagement } from "./tools/log-cap-management";
@@ -78,6 +79,7 @@ const COMMITTERS: Record<string, Committer> = {
   complete_task: commitCompleteTask,
   review_task: commitReviewTask,
   manage_work_order: commitManageWorkOrder,
+  group_rack_batch: commitGroupRackBatch,
   top_up: commitTopUp,
   filter_vessel: commitFilterVessel,
   log_cap_management: commitLogCapManagement,
