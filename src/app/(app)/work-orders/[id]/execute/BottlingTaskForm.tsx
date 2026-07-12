@@ -6,6 +6,7 @@ import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { BottlingTaskFormData } from "@/lib/bottling/bottling-task-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 import { consumedForBottles, suggestBottles, casesAndLoose } from "@/lib/bottling/draw";
+import { type PackagingPlanLine, theoreticalConsumption } from "@/lib/bottling/packaging-bom";
 
 // Plan 053 E15: the run-time bottling sub-form on the work-order execute screen. Pick the source vessels,
 // the bottle count, the measured ABV and the destination; the SAME completeTaskAction the generic executor
@@ -21,13 +22,23 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
   const vessels = data?.vessels ?? [];
   const locations = data?.locations ?? [];
 
+  // Plan 056: the planned packaging BoM (glass/cork/capsule/label/case + per-line factor) authored on the
+  // task. Actual consumption is DERIVED from the bottle count × factor; the crew edits only the variance.
+  const plannedPackaging = React.useMemo<PackagingPlanLine[]>(
+    () => (Array.isArray(planned.packaging) ? (planned.packaging as PackagingPlanLine[]).filter((l) => l && l.materialId) : []),
+    [planned.packaging],
+  );
+  const pkgOptById = React.useMemo(() => new Map((data?.packagingOptions ?? []).map((o) => [o.id, o])), [data?.packagingOptions]);
+
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [skuName, setSkuName] = React.useState(planned.skuName != null ? String(planned.skuName) : "");
   const [skuVintage, setSkuVintage] = React.useState(planned.skuVintage != null ? String(planned.skuVintage) : String(new Date().getFullYear()));
-  const [bottles, setBottles] = React.useState("");
+  const [bottles, setBottles] = React.useState(planned.packagingBottles != null ? String(planned.packagingBottles) : "");
   const [abv, setAbv] = React.useState("");
   const [destinationLocationId, setDestinationLocationId] = React.useState(locations[0]?.id ?? "");
   const [note, setNote] = React.useState("");
+  // Per-material ACTUAL override (blank/undefined ⇒ track the theoretical derived from the bottle count).
+  const [actualOverride, setActualOverride] = React.useState<Record<string, string>>({});
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
 
@@ -45,6 +56,18 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
   const suggested = suggestBottles(availableL);
   const { cases, loose } = casesAndLoose(bottleCount);
   const short = consumedL > availableL + 1e-9;
+
+  // Plan 056: per-line derived theoretical (bottles × factor) + resolved actual (override or theoretical).
+  const packagingRows = plannedPackaging.map((line) => {
+    const opt = pkgOptById.get(line.materialId);
+    const theoretical = theoreticalConsumption(line, bottleCount);
+    const ov = actualOverride[line.materialId];
+    const actual = ov !== undefined && ov !== "" ? Math.max(0, Math.floor(Number(ov) || 0)) : theoretical;
+    const onHand = opt?.onHand ?? null;
+    const shortStock = onHand != null && actual > onHand;
+    return { line, opt, theoretical, actual, onHand, shortStock };
+  });
+  const anyShortStock = packagingRows.some((r) => r.shortStock);
 
   function complete() {
     setError(null);
@@ -66,6 +89,9 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
       abv: abvNum,
       note: note.trim() || undefined,
     };
+    // Plan 056: the ACTUAL packaging consumed (materialId + eaches). Zero-qty lines are dropped.
+    const packaging = packagingRows.map((r) => ({ materialId: r.line.materialId, qty: r.actual })).filter((p) => p.qty > 0);
+    if (packaging.length > 0) actualPayload.packaging = packaging;
     startTransition(async () => {
       try {
         await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined });
@@ -130,6 +156,40 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
           </select>
         </label>
       </div>
+
+      {plannedPackaging.length > 0 ? (
+        <div style={{ marginTop: 16, border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 12, background: "var(--surface)" }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>Packaging consumed (dry goods)</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "2px 0 10px" }}>
+            Theoretical is derived from the bottle count. Adjust only for breakage or mangled labels.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {packagingRows.map((r) => (
+              <div key={r.line.materialId} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ flex: "1 1 150px", minWidth: 0, fontSize: 14, fontWeight: 500 }}>
+                  {r.opt?.label ?? "packaging item"}
+                  {r.onHand != null ? <span style={{ color: r.shortStock ? "var(--danger)" : "var(--text-muted)", fontWeight: 400, fontSize: 12 }}> · {Number(r.onHand).toLocaleString()}{r.opt?.unit ? ` ${r.opt.unit}` : ""} on hand</span> : null}
+                </span>
+                <span style={{ fontSize: 12.5, color: "var(--text-muted)", minWidth: 96 }}>Theoretical: {r.theoretical.toLocaleString()}</span>
+                <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  Actual
+                  <input
+                    type="number" inputMode="numeric" step="1" min="0"
+                    value={actualOverride[r.line.materialId] !== undefined ? actualOverride[r.line.materialId] : String(r.theoretical)}
+                    onChange={(e) => setActualOverride((prev) => ({ ...prev, [r.line.materialId]: e.target.value }))}
+                    style={{ ...big, width: 110, minHeight: 40, marginLeft: 6, borderColor: r.shortStock ? "var(--danger)" : "var(--border)" }}
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+          {anyShortStock ? (
+            <div style={{ marginTop: 10, fontSize: 13, color: "var(--danger)", border: "1px solid var(--danger)", borderRadius: "var(--radius-sm)", padding: "8px 10px" }}>
+              Packaging cost incomplete — one or more items exceed on-hand stock. Bottling will still proceed (stock draws to zero), but the finished-goods cost will be flagged for reconciliation. Receive the missing packaging to correct it.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <label style={{ ...lbl, marginTop: 12 }}>Note (optional)
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" style={big} />

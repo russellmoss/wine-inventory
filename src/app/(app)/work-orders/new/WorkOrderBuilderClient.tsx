@@ -10,7 +10,9 @@ import { previewWorkOrderReadinessAction } from "@/lib/work-orders/proposal-read
 import type { WorkOrderReadinessProposal } from "@/lib/work-orders/proposal-readiness";
 import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadinessPanel";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
+import { PackagingBoMEditor } from "@/components/work-orders/PackagingBoMEditor";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
+import type { PackagingPlanLine } from "@/lib/bottling/packaging-bom";
 import { WORK_ORDER_PRIORITIES } from "@/lib/work-orders/planning";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
@@ -418,6 +420,17 @@ export function WorkOrderBuilderClient({
                             {def?.hint && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>{def.hint}</div>}
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                               {def && Object.entries(def.fields).map(([key, type]) => renderField(gi, t, key, type))}
+                              {def?.opType === "BOTTLE" ? (
+                                <PackagingBoMEditor
+                                  options={pickers.materials}
+                                  lines={(t.values.packaging as PackagingPlanLine[]) ?? []}
+                                  bottles={Number(t.values.packagingBottles) || 0}
+                                  onChange={(nextLines, nextBottles) => {
+                                    setTaskValue(gi, t.key, "packaging", nextLines);
+                                    setTaskValue(gi, t.key, "packagingBottles", nextBottles);
+                                  }}
+                                />
+                              ) : null}
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
                               <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
