@@ -65,6 +65,41 @@ describe("A1 vocabulary injection", () => {
   });
 });
 
+describe("A2 payload class-split (ledger-safety hardening at instantiation)", () => {
+  it("strips framework discriminator keys from a GOVERNED task's payload", () => {
+    const [task] = instantiateTaskBuilds(
+      [{ taskType: "ADDITION", title: "Add", values: { materialId: "m1", amount: 5, doseUnit: "g/hL", opType: "HACK", kind: "NOTE" } }],
+      RESOLVED,
+    );
+    const p = task.plannedPayload as Record<string, unknown>;
+    expect(p.opType).toBeUndefined();
+    expect(p.kind).toBeUndefined();
+    expect(p.materialId).toBe("m1"); // legitimate field survives
+    expect(task.opType).toBe("ADDITION"); // the COLUMN still comes from the resolved def, not payload
+  });
+
+  it("preserves a governed transform's run-time payload keys (not in def.fields)", () => {
+    const [task] = instantiateTaskBuilds(
+      [{ taskType: "GROUP_RACK", title: "Barrel down", values: { groupRack: { direction: "DOWN" }, note: "x" } }],
+      RESOLVED,
+    );
+    const p = task.plannedPayload as Record<string, unknown>;
+    expect(p.groupRack).toEqual({ direction: "DOWN" });
+    expect(p.note).toBe("x");
+  });
+
+  it("keeps ONLY declared fields on a record-only Custom Log (closed set)", () => {
+    const [task] = instantiateTaskBuilds(
+      [{ taskType: "BARREL_WEIGH", title: "Weigh", values: { weight: 225, sneaky: "x", kind: "OPERATION" } }],
+      RESOLVED,
+    );
+    const p = task.plannedPayload as Record<string, unknown>;
+    expect(p.weight).toBe(225);
+    expect(p.sneaky).toBeUndefined();
+    expect(p.kind).toBeUndefined();
+  });
+});
+
 describe("A1 assertUserTaskTypeSafe (the record-only safety line)", () => {
   it("accepts a NOTE-kind record-only type", () => {
     expect(() => assertUserTaskTypeSafe(CUSTOM_WEIGH)).not.toThrow();

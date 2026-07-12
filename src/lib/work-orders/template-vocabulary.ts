@@ -1,5 +1,6 @@
 import type { OperationType, WorkOrderTaskKind } from "@prisma/client";
 import type { CreateTaskInput } from "@/lib/work-orders/lifecycle";
+import { sanitizeTaskPayload } from "@/lib/work-orders/payload-guard";
 import { FILTER_MEDIA, RACK_TYPES } from "@/lib/cellar/filtration-vocab";
 import { TEMP_UNITS, GAS_TYPES, SO2_METHODS } from "@/lib/cellar/vessel-activity-vocab";
 import { DOSE_UNIT_LABELS } from "@/lib/cellar/additions-math";
@@ -379,7 +380,9 @@ export function instantiateTaskBuilds(builds: TaskBuild[], vocab: ResolvedTaskVo
   return builds.map((b, i) => {
     const def = vocab[b.taskType];
     if (!def) throw new Error(`Unknown task type "${b.taskType}".`);
-    const payload = { ...b.values, ...(b.taskKey ? { taskKey: b.taskKey } : {}) };
+    // A2: strip framework-owned/discriminator keys (and, for Custom Logs, anything not declared) BEFORE
+    // the payload is persisted. taskKey is then re-applied by the framework, never taken from input.
+    const payload = { ...sanitizeTaskPayload(def, b.values), ...(b.taskKey ? { taskKey: b.taskKey } : {}) };
     const canon = canonicalColumns(b.taskType, payload);
     return {
       seq: i + 1,
@@ -403,7 +406,7 @@ export function instantiateTasksFromSpec(spec: TemplateSpec, vocab: ResolvedTask
   return spec.tasks.map((t, i) => {
     const def = vocab[t.taskType];
     if (!def) throw new Error(`Unknown task type "${t.taskType}".`);
-    const payload = { ...(t.defaults ?? {}), ...(perTaskOverrides?.[i] ?? {}) };
+    const payload = sanitizeTaskPayload(def, { ...(t.defaults ?? {}), ...(perTaskOverrides?.[i] ?? {}) });
     const canon = canonicalColumns(t.taskType, payload);
     return {
       seq: i + 1,
