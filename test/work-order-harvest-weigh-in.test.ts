@@ -1,11 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
   TASK_VOCABULARY,
-  validateTemplateSpec,
-  canonicalizeTemplateSpec,
-  instantiateTaskBuilds,
+  validateTemplateSpec as _validateTemplateSpec,
+  canonicalizeTemplateSpec as _canonicalizeTemplateSpec,
+  instantiateTaskBuilds as _instantiateTaskBuilds,
   type TemplateSpec,
 } from "@/lib/work-orders/template-vocabulary";
+
+// A1: inject the built-in vocabulary so existing call sites keep working (production requires it explicitly).
+const validateTemplateSpec = (spec: TemplateSpec) => _validateTemplateSpec(spec, TASK_VOCABULARY);
+const canonicalizeTemplateSpec = (spec: TemplateSpec) => _canonicalizeTemplateSpec(spec, TASK_VOCABULARY);
+const instantiateTaskBuilds = (builds: Parameters<typeof _instantiateTaskBuilds>[0]) =>
+  _instantiateTaskBuilds(builds, TASK_VOCABULARY);
 
 // Plan 039 Unit 8 (pure half): lock the HARVEST_WEIGH_IN vocabulary + that the block target canonicalizes
 // to the blockId column. The DB e2e (issue → complete → a HarvestPick exists, no ledger op) lives in

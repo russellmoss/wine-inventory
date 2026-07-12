@@ -24,7 +24,17 @@ export type TaskTypeDef = {
   fieldOptions?: Record<string, readonly string[]>;
   /** Optional one-line explainer shown above the fields on the form (e.g. how a dose rate is applied). */
   hint?: string;
+  /** Plan 053 (A1): true only for tenant-authored "Custom Logs" (record-only NOTE types). Built-ins are
+   * false/undefined. Governed (ledger/observation/maintenance) types are code-defined here forever. */
+  isUserDefined?: boolean;
 };
+
+/** Plan 053 (A1): the task-type map an authoring path validates/instantiates against. It is the built-in
+ * `TASK_VOCABULARY` MERGED with the current tenant's user-defined Custom Logs + field overlays, produced by
+ * `resolveTaskVocabulary(tenantId)`. Every write/instantiate path takes this EXPLICITLY (no default): a
+ * missing arg is a type error, not a silent fall back to built-ins that would strip user types. Read-only
+ * display helpers may still reference the `TASK_VOCABULARY` const directly. */
+export type ResolvedTaskVocabulary = Record<string, TaskTypeDef>;
 
 // Human-readable labels for the (otherwise camelCase) field keys — so the form reads "Rate", "Vessel",
 // "Material" instead of "rateValue", "vesselId", "materialId". Any key without an entry falls back to a
@@ -273,14 +283,15 @@ export type TemplateSpec = { tasks: TemplateTaskSpec[] };
 
 export type SpecValidation = { ok: boolean; errors: string[] };
 
-/** Validate a template spec against the vocabulary: known task types, known fields only. Pure. */
-export function validateTemplateSpec(spec: TemplateSpec): SpecValidation {
+/** Validate a template spec against the vocabulary: known task types, known fields only. Pure. The
+ * `vocab` is REQUIRED (A1): pass the tenant-resolved map so user-defined Custom Logs validate too. */
+export function validateTemplateSpec(spec: TemplateSpec, vocab: ResolvedTaskVocabulary): SpecValidation {
   const errors: string[] = [];
   if (!spec || !Array.isArray(spec.tasks) || spec.tasks.length === 0) {
     return { ok: false, errors: ["A template needs at least one task."] };
   }
   spec.tasks.forEach((t, i) => {
-    const def = TASK_VOCABULARY[t.taskType];
+    const def = vocab[t.taskType];
     if (!def) {
       errors.push(`Task ${i + 1}: unknown task type "${t.taskType}".`);
       return;
@@ -306,12 +317,13 @@ export function validateTemplateSpec(spec: TemplateSpec): SpecValidation {
 /** Canonicalize a spec to ONLY the known shape (Codex/council: the client `spec` is untrusted). Keeps
  * `{ taskType, title, instructions?, defaults }` per task and, within `defaults`, ONLY keys that are in
  * the task type's vocabulary — every other key is stripped. Unknown task types are dropped. Pure; call
- * AFTER validateTemplateSpec so the caller has already surfaced errors, then persist ONLY this object. */
-export function canonicalizeTemplateSpec(spec: TemplateSpec): TemplateSpec {
+ * AFTER validateTemplateSpec so the caller has already surfaced errors, then persist ONLY this object.
+ * `vocab` is REQUIRED (A1) so a user-defined task type is NOT dropped when resolved for the tenant. */
+export function canonicalizeTemplateSpec(spec: TemplateSpec, vocab: ResolvedTaskVocabulary): TemplateSpec {
   const tasks: TemplateTaskSpec[] = (spec?.tasks ?? [])
-    .filter((t) => t && TASK_VOCABULARY[t.taskType])
+    .filter((t) => t && vocab[t.taskType])
     .map((t) => {
-      const def = TASK_VOCABULARY[t.taskType];
+      const def = vocab[t.taskType];
       const cleanDefaults: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(t.defaults ?? {})) {
         if (key in def.fields && value !== undefined) cleanDefaults[key] = value;
@@ -363,9 +375,9 @@ export type TaskBuild = {
 
 /** Instantiate an explicit flat list of task builds into CreateTaskInput[] (validates each taskType +
  * derives canonical columns). Mirrors instantiateTasksFromSpec's per-task logic. */
-export function instantiateTaskBuilds(builds: TaskBuild[]): CreateTaskInput[] {
+export function instantiateTaskBuilds(builds: TaskBuild[], vocab: ResolvedTaskVocabulary): CreateTaskInput[] {
   return builds.map((b, i) => {
-    const def = TASK_VOCABULARY[b.taskType];
+    const def = vocab[b.taskType];
     if (!def) throw new Error(`Unknown task type "${b.taskType}".`);
     const payload = { ...b.values, ...(b.taskKey ? { taskKey: b.taskKey } : {}) };
     const canon = canonicalColumns(b.taskType, payload);
@@ -387,9 +399,9 @@ export function instantiateTaskBuilds(builds: TaskBuild[]): CreateTaskInput[] {
   });
 }
 
-export function instantiateTasksFromSpec(spec: TemplateSpec, perTaskOverrides?: Record<string, unknown>[]): CreateTaskInput[] {
+export function instantiateTasksFromSpec(spec: TemplateSpec, vocab: ResolvedTaskVocabulary, perTaskOverrides?: Record<string, unknown>[]): CreateTaskInput[] {
   return spec.tasks.map((t, i) => {
-    const def = TASK_VOCABULARY[t.taskType];
+    const def = vocab[t.taskType];
     if (!def) throw new Error(`Unknown task type "${t.taskType}".`);
     const payload = { ...(t.defaults ?? {}), ...(perTaskOverrides?.[i] ?? {}) };
     const canon = canonicalColumns(t.taskType, payload);

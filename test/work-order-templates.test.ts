@@ -1,9 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { validateTemplateSpec, instantiateTasksFromSpec, instantiateTaskBuilds, TASK_VOCABULARY, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import {
+  validateTemplateSpec as _validateTemplateSpec,
+  instantiateTasksFromSpec as _instantiateTasksFromSpec,
+  instantiateTaskBuilds as _instantiateTaskBuilds,
+  TASK_VOCABULARY,
+  type TemplateSpec,
+} from "@/lib/work-orders/template-vocabulary";
 import { SYSTEM_TEMPLATES } from "@/lib/work-orders/system-templates";
 import { coerceVesselActivityKind, isVesselActivityKind } from "@/lib/cellar/vessel-activity-vocab";
 import { isCapKind, CAP_LABELS } from "@/lib/cellar/cap-vocab";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
+
+// A1: production requires an explicit vocabulary (no silent default). These tests exercise the BUILT-IN
+// vocabulary, so thin wrappers inject TASK_VOCABULARY and keep the existing call sites unchanged.
+const validateTemplateSpec = (spec: TemplateSpec) => _validateTemplateSpec(spec, TASK_VOCABULARY);
+const instantiateTasksFromSpec = (spec: TemplateSpec, overrides?: Record<string, unknown>[]) =>
+  _instantiateTasksFromSpec(spec, TASK_VOCABULARY, overrides);
+const instantiateTaskBuilds = (builds: Parameters<typeof _instantiateTaskBuilds>[0]) =>
+  _instantiateTaskBuilds(builds, TASK_VOCABULARY);
 
 describe("validateTemplateSpec", () => {
   it("accepts a spec whose fields are all in the vocabulary", () => {

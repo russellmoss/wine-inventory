@@ -6,6 +6,7 @@ import { entityPath } from "../routes";
 import { resolveTemplateRef } from "./templates-read";
 import { resolveSpecMaterials, previewSpec } from "../template-context";
 import { validateTemplateSpec, type TemplateSpec } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { listMaterials } from "@/lib/cellar/materials";
 import { runAsTenant } from "@/lib/tenant/context";
 import {
@@ -74,7 +75,7 @@ async function prepareSpec(tenantId: string, raw: unknown): Promise<{ spec: Temp
     const list = unresolved.map((u) => `"${u.ref}" (block ${u.taskIndex + 1}, ${u.taskType})`).join(", ");
     throw new Error(`I couldn't match these materials in your catalog (or they can't be dosed in that block): ${list}. Add them under Expendables first, or use one that's stocked.`);
   }
-  const v = validateTemplateSpec(spec);
+  const v = validateTemplateSpec(spec, await runAsTenant(tenantId, () => resolveTaskVocabulary()));
   if (!v.ok) throw new Error(`That template isn't valid: ${v.errors.join(" ")}`);
   return { spec, preview: previewSpec(spec, materials) };
 }

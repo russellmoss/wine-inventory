@@ -93,7 +93,9 @@ export function TemplateEditorClient({
     if (blocks.length === 0) { setError("Add at least one block."); return; }
     if (blocks.length > MAX_BLOCKS) { setError(`Keep it under ${MAX_BLOCKS} blocks.`); return; }
     const spec = buildSpec();
-    const v = validateTemplateSpec(spec);
+    // Client-side pre-validation against the built-in vocabulary (A1). The server re-validates on save
+    // with the tenant-resolved vocabulary (custom logs), so this is a fast-feedback convenience only.
+    const v = validateTemplateSpec(spec, TASK_VOCABULARY);
     if (!v.ok) { setError(v.errors.join(" ")); return; }
     startTransition(async () => {
       try {

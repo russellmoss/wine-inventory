@@ -8,6 +8,7 @@ import { listMaterials } from "@/lib/cellar/materials";
 import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
 import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import {
   buildNlWorkOrderCommitArgs,
   buildNlWorkOrderProposal,
@@ -218,7 +219,7 @@ export const commitProposeWorkOrder: Committer = async (_user, rawArgs) => {
   if (args.taskBuilds.length === 0) throw new Error("This work-order proposal has no tasks.");
   await assertFreshNlWorkOrderProposal(args);
 
-  const tasks = instantiateTaskBuilds(args.taskBuilds);
+  const tasks = instantiateTaskBuilds(args.taskBuilds, await resolveTaskVocabulary());
   const created = await createWorkOrderAction({
     title: args.title,
     tasks,
