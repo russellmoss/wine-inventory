@@ -22,7 +22,7 @@ import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
 import { createStockMaterialCore, receiveSupplyCore, listMaterials } from "@/lib/cellar/materials";
 import { receiveBulkWineCostCore } from "@/lib/cost/receive";
 import { emitExportForSnapshot } from "@/lib/cost/export-emit";
-import { executeBottling } from "@/lib/bottling/run";
+import { executeBottling, deleteBottling } from "@/lib/bottling/run";
 import { getLotCost } from "@/lib/cost/cache";
 import { round2 } from "@/lib/bottling/draw";
 
@@ -357,6 +357,18 @@ async function main() {
   const pkgCostLines = await prisma.costLine.findMany({ where: { operationId: pkgSnap!.costBasisAsOfOperationId!, component: "PACKAGING" } });
   assert(pkgCostLines.length === 2 && pkgCostLines.every((l) => l.lotId === null), "two PACKAGING CostLines (lotId null) on the bottle op");
   assert(near(pkgCostLines.reduce((a, l) => a + Number(l.amount), 0), expectedPkgCost), "PACKAGING CostLines sum to the run's packaging cost (single source of truth)");
+
+  // Plan 056 Phase 3: the STANDALONE delete path is APPEND-ONLY too — restores packaging stock, keeps the
+  // run + original snapshot, and writes a reversing snapshot (never a hard-delete of an exported snapshot).
+  console.log("\n── STANDALONE bottling delete is APPEND-ONLY (Plan 056 Phase 3) ──");
+  const pkgRunId = pkgSnap!.runId;
+  await deleteBottling(pkgRunId, ACTOR);
+  const glassRestored = r2(Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: glass.id } })).qtyRemaining));
+  const corkRestored = r2(Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: cork.id } })).qtyRemaining));
+  assert(glassRestored === 200 && corkRestored === 200, `standalone delete RESTORED packaging stock 100 → 200 each (glass ${glassRestored}, cork ${corkRestored})`);
+  assert((await prisma.bottlingRun.findUnique({ where: { id: pkgRunId }, select: { id: true } })) != null, "append-only: standalone delete did NOT hard-delete the run");
+  assert((await prisma.bottlingCostSnapshot.findUnique({ where: { id: pkgSnap!.id } })) != null, "append-only: the original snapshot is kept immutable");
+  assert((await prisma.bottlingCostSnapshot.findFirst({ where: { runId: pkgRunId, reversalOfSnapshotId: pkgSnap!.id } })) != null, "a reversing snapshot was written on standalone delete");
 
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }

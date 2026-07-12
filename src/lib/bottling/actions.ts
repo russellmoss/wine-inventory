@@ -23,6 +23,22 @@ function parseAbv(raw: unknown): number {
   return Math.round(a * 100) / 100;
 }
 
+/** Plan 056: the packaging BoM is serialized to a JSON hidden field ([{materialId, qty}] in eaches).
+ * Malformed entries are dropped; absent/empty ⇒ liquid-only run (unchanged). */
+function parsePackaging(raw: unknown): { materialId: string; qty: number }[] | undefined {
+  if (typeof raw !== "string" || !raw) return undefined;
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return undefined;
+    const lines = arr
+      .map((p) => ({ materialId: String((p as Record<string, unknown>)?.materialId ?? ""), qty: Number((p as Record<string, unknown>)?.qty ?? 0) }))
+      .filter((p) => p.materialId && p.qty > 0);
+    return lines.length ? lines : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseInput(formData: FormData): BottlingInput {
   const dateStr = String(formData.get("date") ?? "");
   const date = dateStr ? new Date(dateStr) : new Date();
@@ -35,6 +51,7 @@ function parseInput(formData: FormData): BottlingInput {
     bottlesProduced: parseInt10(formData.get("bottlesProduced"), "Bottles produced"),
     abv: parseAbv(formData.get("abv")),
     date,
+    packaging: parsePackaging(formData.get("packaging")),
   };
 }
 

@@ -4,6 +4,9 @@ import React from "react";
 import { Card, Input, Button, Badge, Eyebrow, ConfirmButton } from "@/components/ui";
 import { createBottlingRun, editBottlingRun, deleteBottlingRun } from "@/lib/bottling/actions";
 import { suggestBottles, consumedForBottles, casesAndLoose } from "@/lib/bottling/draw";
+import { PackagingBoMEditor } from "@/components/work-orders/PackagingBoMEditor";
+import type { MaterialPickerOption } from "@/components/work-orders/MaterialFilterPicker";
+import { type PackagingPlanLine, theoreticalConsumption } from "@/lib/bottling/packaging-bom";
 
 export type VesselOpt = { id: string; code: string; type: "BARREL" | "TANK"; availableL: number; contents: string[] };
 export type LocOpt = { id: string; name: string };
@@ -28,13 +31,21 @@ const sel: React.CSSProperties = {
 type Initial = { vesselIds: string[]; skuName: string; skuVintage: number | ""; abv: number | ""; bottles: number | ""; destinationLocationId: string; date: string };
 
 function BottlingForm({
-  vessels, locations, initial, mode, onSubmit, onCancel, pending,
+  vessels, locations, packagingOptions, initial, mode, onSubmit, onCancel, pending,
 }: {
-  vessels: VesselOpt[]; locations: LocOpt[]; initial: Initial; mode: "create" | "edit";
+  vessels: VesselOpt[]; locations: LocOpt[]; packagingOptions: MaterialPickerOption[]; initial: Initial; mode: "create" | "edit";
   onSubmit: (fd: FormData) => void; onCancel?: () => void; pending: boolean;
 }) {
   const [picked, setPicked] = React.useState<string[]>(initial.vesselIds);
   const [bottles, setBottles] = React.useState<number | "">(initial.bottles);
+  // Plan 056: the packaging consumed on this run (glass/cork/capsule/label/case). Quantities derive from
+  // the bottle count × a per-line factor; actual eaches are recomputed at submit from the current count.
+  const [pkgLines, setPkgLines] = React.useState<PackagingPlanLine[]>([]);
+  const bottleCount = Number(bottles) || 0;
+  const packagingActuals = pkgLines
+    .filter((l) => l.materialId)
+    .map((l) => ({ materialId: l.materialId, qty: theoreticalConsumption(l, bottleCount) }))
+    .filter((p) => p.qty > 0);
 
   const availableL = Math.round(vessels.filter((v) => picked.includes(v.id)).reduce((a, v) => a + v.availableL, 0) * 100) / 100;
   const max = mode === "create" ? suggestBottles(availableL) : undefined;
@@ -92,6 +103,17 @@ function BottlingForm({
         </label>
         <Input label="Date" name="date" type="date" defaultValue={initial.date} style={{ flex: "0 1 170px" }} />
       </div>
+
+      {/* Plan 056: packaging dry goods consumed by this run → capitalized into the bottled-goods COGS. */}
+      <PackagingBoMEditor
+        options={packagingOptions}
+        lines={pkgLines}
+        bottles={bottleCount}
+        onChange={(lines) => setPkgLines(lines)}
+        showBottlesInput={false}
+      />
+      <input type="hidden" name="packaging" value={JSON.stringify(packagingActuals)} />
+
       <div style={{ display: "flex", gap: 10 }}>
         <Button type="submit" variant="primary" disabled={pending || picked.length === 0}>
           {pending ? "Working..." : mode === "create" ? "Record bottling run" : "Save changes"}
@@ -102,7 +124,7 @@ function BottlingForm({
   );
 }
 
-export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOpt[]; locations: LocOpt[]; runs: RunRow[] }) {
+export function BottlingClient({ vessels, locations, runs, packagingOptions }: { vessels: VesselOpt[]; locations: LocOpt[]; runs: RunRow[]; packagingOptions: MaterialPickerOption[] }) {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -134,7 +156,7 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
       ) : (
         <Card style={{ maxWidth: 640, marginBottom: 32 }}>
           <BottlingForm
-            vessels={withWine} locations={locations} mode="create" pending={pending}
+            vessels={withWine} locations={locations} packagingOptions={packagingOptions} mode="create" pending={pending}
             initial={{ vesselIds: [], skuName: "", skuVintage: "", abv: "", bottles: "", destinationLocationId: "", date: today }}
             onSubmit={(fd) => run(() => createBottlingRun(fd))}
           />
@@ -162,7 +184,7 @@ export function BottlingClient({ vessels, locations, runs }: { vessels: VesselOp
                 {editing ? (
                   <div style={{ marginTop: 14, borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}>
                     <BottlingForm
-                      vessels={vessels} locations={locations} mode="edit" pending={pending}
+                      vessels={vessels} locations={locations} packagingOptions={packagingOptions} mode="edit" pending={pending}
                       initial={{ vesselIds: r.vesselIds, skuName: r.skuName, skuVintage: r.skuVintage ?? "", abv: r.bottledAbv ?? "", bottles: r.bottlesProduced, destinationLocationId: r.destinationLocationId, date: r.date }}
                       onSubmit={(fd) => run(() => editBottlingRun(r.id, fd), () => setEditingId(null))}
                       onCancel={() => setEditingId(null)}

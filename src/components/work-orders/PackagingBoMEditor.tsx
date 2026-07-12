@@ -21,11 +21,15 @@ export function PackagingBoMEditor({
   lines,
   bottles,
   onChange,
+  showBottlesInput = true,
 }: {
   options: MaterialPickerOption[];
   lines: PackagingPlanLine[];
   bottles: number;
   onChange: (lines: PackagingPlanLine[], bottles: number) => void;
+  /** false ⇒ the caller owns the bottle count (standalone /bottling has its own "Bottles" field); the
+   * editor derives quantities from the passed `bottles` prop and hides its own planned-bottles input. */
+  showBottlesInput?: boolean;
 }) {
   const optById = React.useMemo(() => new Map(options.map((o) => [o.id, o])), [options]);
 
@@ -55,15 +59,17 @@ export function PackagingBoMEditor({
         Pick the glass, cork, capsule, labels and case boxes. Quantities are derived from the bottle count × a per-bottle or per-case factor — you only adjust for breakage at completion.
       </div>
 
-      <label style={{ ...lbl, maxWidth: 260 }}>Planned bottles (sizes the reservation)
-        <input
-          type="number" inputMode="numeric" step="1" min="0"
-          value={bottles > 0 ? String(bottles) : ""}
-          onChange={(e) => setBottles(e.target.value === "" ? 0 : Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-          placeholder="e.g. 1200"
-          style={numInput}
-        />
-      </label>
+      {showBottlesInput ? (
+        <label style={{ ...lbl, maxWidth: 260 }}>Planned bottles (sizes the reservation)
+          <input
+            type="number" inputMode="numeric" step="1" min="0"
+            value={bottles > 0 ? String(bottles) : ""}
+            onChange={(e) => setBottles(e.target.value === "" ? 0 : Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+            placeholder="e.g. 1200"
+            style={numInput}
+          />
+        </label>
+      ) : null}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
         {lines.length === 0 ? (
