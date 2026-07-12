@@ -114,6 +114,10 @@ async function main() {
   await owner.workOrder.upsert({ where: { id: "iso_wo_a" }, update: {}, create: { id: "iso_wo_a", tenantId: A, number: 90001, title: "ISO WO A", updatedAt: now } });
   await owner.workOrder.upsert({ where: { id: "iso_wo_b" }, update: {}, create: { id: "iso_wo_b", tenantId: B, number: 90002, title: "ISO WO B", updatedAt: now } });
   await owner.workOrderTask.upsert({ where: { id: "iso_wot_b" }, update: {}, create: { id: "iso_wot_b", tenantId: B, workOrderId: "iso_wo_b", seq: 1, kind: "OBSERVATION", title: "ISO task B", plannedPayload: {}, updatedAt: now } });
+  // Plan 053 A5/A7: a cross-order dependency edge in tenant B (iso_wo_b depends on iso_wo_bp). Isolation
+  // risk is a cross-tenant read of a winery's WO graph, and an edge whose endpoints span tenants.
+  await owner.workOrder.upsert({ where: { id: "iso_wo_bp" }, update: {}, create: { id: "iso_wo_bp", tenantId: B, number: 90005, title: "ISO WO B pred", updatedAt: now } });
+  await owner.workOrderDependency.upsert({ where: { id: "iso_wodep_b" }, update: {}, create: { id: "iso_wodep_b", tenantId: B, workOrderId: "iso_wo_b", dependsOnWorkOrderId: "iso_wo_bp" } });
   // Phase 9.1: a vessel + a vessel_activity_event per/into a tenant (the maintenance lane). Isolation risk
   // is a cross-tenant read of a winery's cleaning/setpoint activity + its overhead depletion ledger.
   await owner.vessel.upsert({ where: { id: "iso_vessel_b" }, update: {}, create: { id: "iso_vessel_b", tenantId: B, code: "ISO-TANK-B", type: "TANK", capacityL: "1000", updatedAt: now } });
@@ -297,6 +301,20 @@ async function main() {
       });
     } catch { woFkRaised = true; }
     check("WO task cross-tenant lot reference rejected (composite FK, K11)", woFkRaised);
+    // Plan 053 A5/A7: work_order_dependency isolation.
+    const aSeesDepB = await asTenant(A, (db) => db.workOrderDependency.findFirst({ where: { id: "iso_wodep_b" } }));
+    check("tenant A CANNOT see tenant B's work_order_dependency (RLS)", aSeesDepB === null);
+    let depInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.workOrderDependency.create({ data: { id: "iso_wodep_x", tenantId: B, workOrderId: "iso_wo_b", dependsOnWorkOrderId: "iso_wo_bp" } }));
+    } catch { depInsertRaised = true; }
+    check("foreign-tenant work_order_dependency INSERT raises (WITH CHECK)", depInsertRaised);
+    // An edge in A whose predecessor is B's WO must be rejected by the composite (tenantId, dependsOnWorkOrderId) FK.
+    let depFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.workOrderDependency.create({ data: { id: "iso_wodep_fk", tenantId: A, workOrderId: "iso_wo_a", dependsOnWorkOrderId: "iso_wo_b" } }));
+    } catch { depFkRaised = true; }
+    check("WO dependency cross-tenant reference rejected (composite FK)", depFkRaised);
 
     // 5i. Phase 9.1: vessel_activity_event + vessel_activity_supply_use tenant isolation (maintenance lane).
     const aSeesVaeB = await asTenant(A, (db) => db.vesselActivityEvent.findFirst({ where: { id: "iso_vae_b" } }));
@@ -426,8 +444,9 @@ async function main() {
     await owner.migrationEntityMapping.deleteMany({ where: { id: "iso_mig_entity_b" } });
     await owner.migrationImportBatch.deleteMany({ where: { id: { in: ["iso_mig_batch_b", "iso_mig_batch_a", "iso_mig_batch_x"] } } });
     await owner.vessel.deleteMany({ where: { id: "iso_vessel_b" } });
-    // Phase 9: tasks cascade with their work_order; delete WOs (both tenants + the negative-control rows).
-    await owner.workOrder.deleteMany({ where: { id: { in: ["iso_wo_a", "iso_wo_b", "iso_wo_x", "iso_wo_fk_a"] } } });
+    // Phase 9: tasks + dependency edges cascade with their work_order; delete WOs (both tenants + controls).
+    await owner.workOrderDependency.deleteMany({ where: { id: { in: ["iso_wodep_b", "iso_wodep_x", "iso_wodep_fk"] } } });
+    await owner.workOrder.deleteMany({ where: { id: { in: ["iso_wo_a", "iso_wo_b", "iso_wo_bp", "iso_wo_x", "iso_wo_fk_a"] } } });
     await owner.commerce7Connection.deleteMany({ where: { id: { in: ["iso_c7_conn_a", "iso_c7_conn_b", "iso_c7_conn_x"] } } });
     await owner.costExportEvent.deleteMany({ where: { id: "iso_cee_a" } });
     await owner.accountingConnection.deleteMany({ where: { id: { in: ["iso_acct_conn_a", "iso_acct_conn_b", "iso_acct_conn_x"] } } });
