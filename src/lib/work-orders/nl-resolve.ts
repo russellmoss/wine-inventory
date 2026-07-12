@@ -587,7 +587,12 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
     }
 
     if (intent.kind === "CLEAN" || intent.kind === "SANITIZE" || intent.kind === "STEAM" || intent.kind === "OZONE" || intent.kind === "GAS" || intent.kind === "SO2" || intent.kind === "WET_STORAGE") {
-      const vessel = await resolveVesselState(intent.vessel);
+      // Plan 060: a single vessel, OR a barrel group/range that fans out to one maintenance task per
+      // barrel. WORKORDER-3 holds per barrel — each fanned task is a record-only maintenance task, no
+      // ledger op, no cost. resolveGroupMembers returns an ordered, deduped set (or a relayable error).
+      const members = intent.vesselGroup
+        ? await resolveGroupMembers(intent.vesselGroup)
+        : [await resolveVesselState(intent.vessel!)];
       // Only keep fields this maintenance type actually declares — STEAM has no material/amount, OZONE only
       // duration, etc. Prevents leaking an unsupported (and un-costed) materialId into the task payload.
       const fields = TASK_VOCABULARY[intent.kind].fields;
@@ -595,8 +600,9 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       if (intent.material && "materialId" in fields) {
         material = matchMaterialByRef(await listMaterials(), intent.material, { scope: materialScopeForTask({ activityType: intent.kind }) });
       }
-      const candidate: Record<string, unknown> = {
-        vesselId: vessel.id,
+      const verb = TASK_LABELS[intent.kind];
+      // Group-wide fields resolved once; only vesselId varies per barrel.
+      const sharedCandidate: Record<string, unknown> = {
         ...(material ? { materialId: material.id } : {}),
         ...(intent.amount != null ? { amount: intent.amount } : {}),
         ...(intent.gasType ? { gasType: matchSelectValue(intent.kind, "gasType", intent.gasType) } : {}),
@@ -604,16 +610,19 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         ...(intent.durationMin != null ? { durationMin: intent.durationMin } : {}),
         ...(intent.note ? { note: intent.note } : {}),
       };
-      const values = Object.fromEntries(Object.entries(candidate).filter(([k]) => k in fields));
-      const verb = TASK_LABELS[intent.kind];
-      taskBuilds.push({ taskType: intent.kind, title: `${verb} ${vessel.label}`, values, taskKey: randomUUID() });
-      tasks.push({
-        seq,
-        kind: intent.kind,
-        title: verb,
-        summary: `${verb} ${vessel.label}${material ? ` with ${materialDisplayName(material)}` : ""}`,
-        entities: [{ role: "vessel", label: vessel.label, id: vessel.id }, ...(material ? [{ role: "supply", label: materialDisplayName(material), id: material.id }] : [])],
-      });
+      for (const vessel of members) {
+        const values = Object.fromEntries(
+          Object.entries({ vesselId: vessel.id, ...sharedCandidate }).filter(([k]) => k in fields),
+        );
+        taskBuilds.push({ taskType: intent.kind, title: `${verb} ${vessel.label}`, values, taskKey: randomUUID() });
+        tasks.push({
+          seq,
+          kind: intent.kind,
+          title: verb,
+          summary: `${verb} ${vessel.label}${material ? ` with ${materialDisplayName(material)}` : ""}`,
+          entities: [{ role: "vessel", label: vessel.label, id: vessel.id }, ...(material ? [{ role: "supply", label: materialDisplayName(material), id: material.id }] : [])],
+        });
+      }
       continue;
     }
 
