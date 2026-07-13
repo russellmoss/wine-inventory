@@ -22,3 +22,26 @@ export function planVesselReadingFanout(residentLotIds: string[], baseClientRequ
     perLot: residentLotIds.map((lotId) => ({ lotId, clientRequestId: `${vesselReadingGroupId}#${lotId}` })),
   };
 }
+
+/**
+ * The "physical reading" id for VESSEL-scoped dedup: the N fanned-out panels of one whole-tank
+ * reading share their group id, so coalesce(vesselReadingGroupId, id) collapses them to one; an
+ * ungrouped (legacy / single-lot) panel is its own. Used ONLY by vessel-scoped views (vessel History,
+ * /bulk trends, panel counts). LOT-scoped views must NOT dedup — each lot keeps its own panel/curve.
+ */
+export function physicalReadingKey(p: { id: string; vesselReadingGroupId: string | null }): string {
+  return p.vesselReadingGroupId ?? p.id;
+}
+
+/** Keep one representative row per physical reading (first wins). Vessel-scoped only (see above). */
+export function dedupeByPhysicalReading<T extends { id: string; vesselReadingGroupId: string | null }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    const k = physicalReadingKey(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+}
