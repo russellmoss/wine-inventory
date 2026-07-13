@@ -4,11 +4,13 @@ import React from "react";
 import { Card, Input, Button, Badge, Eyebrow } from "@/components/ui";
 import { createUser, resetUserPassword, setUserRole, setUserBanned, setUserVineyards, setComplianceReminderPref } from "@/lib/users/actions";
 
+export type UserRole = "user" | "admin" | "developer";
+
 export type UserRow = {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "user";
+  role: UserRole;
   banned: boolean;
   mustChangePassword: boolean;
   isSelf: boolean;
@@ -29,7 +31,21 @@ const selectStyle: React.CSSProperties = {
   color: "var(--text-primary)",
 };
 
-export function UsersClient({ users, vineyards }: { users: UserRow[]; vineyards: VineyardOption[] }) {
+const ROLE_TONE: Record<UserRole, "gold" | "maroon" | "neutral"> = {
+  developer: "maroon",
+  admin: "gold",
+  user: "neutral",
+};
+
+export function UsersClient({
+  users,
+  vineyards,
+  viewerIsDeveloper = false,
+}: {
+  users: UserRow[];
+  vineyards: VineyardOption[];
+  viewerIsDeveloper?: boolean;
+}) {
   const [error, setError] = React.useState<string | null>(null);
   const [secret, setSecret] = React.useState<{ email: string; tempPassword: string; emailed?: boolean } | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -90,6 +106,7 @@ export function UsersClient({ users, vineyards }: { users: UserRow[]; vineyards:
             <select name="role" defaultValue="user" style={{ ...selectStyle, height: 44 }}>
               <option value="user">User</option>
               <option value="admin">Admin</option>
+              {viewerIsDeveloper ? <option value="developer">Developer</option> : null}
             </select>
           </label>
           <Button type="submit" variant="primary" disabled={pending}>Create</Button>
@@ -116,7 +133,7 @@ export function UsersClient({ users, vineyards }: { users: UserRow[]; vineyards:
                   <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{u.email}</div>
                 </td>
                 <td style={{ padding: "12px 16px" }}>
-                  <Badge tone={u.role === "admin" ? "gold" : "neutral"} variant="soft">{u.role}</Badge>
+                  <Badge tone={ROLE_TONE[u.role]} variant="soft">{u.role}</Badge>
                 </td>
                 <td style={{ padding: "12px 16px" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 132, overflowY: "auto" }}>
@@ -163,11 +180,26 @@ export function UsersClient({ users, vineyards }: { users: UserRow[]; vineyards:
                 </td>
                 <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                   <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => resetUserPassword(u.id))}>reset pw</Button>
-                  {!u.isSelf ? (
+                  {/* A non-developer can't manage a developer account (server enforces this too). */}
+                  {!u.isSelf && (viewerIsDeveloper || u.role !== "developer") ? (
                     <>
-                      <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setUserRole(u.id, u.role === "admin" ? "user" : "admin"))}>
-                        make {u.role === "admin" ? "user" : "admin"}
-                      </Button>
+                      {viewerIsDeveloper ? (
+                        <select
+                          value={u.role}
+                          disabled={pending}
+                          aria-label={`Role for ${u.email}`}
+                          onChange={(e) => run(() => setUserRole(u.id, e.target.value as UserRole))}
+                          style={{ ...selectStyle, height: 30, fontSize: 13, marginRight: 6 }}
+                        >
+                          <option value="user">user</option>
+                          <option value="admin">admin</option>
+                          <option value="developer">developer</option>
+                        </select>
+                      ) : (
+                        <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setUserRole(u.id, u.role === "admin" ? "user" : "admin"))}>
+                          make {u.role === "admin" ? "user" : "admin"}
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setUserBanned(u.id, !u.banned))}>
                         {u.banned ? "reactivate" : "deactivate"}
                       </Button>
