@@ -27,4 +27,19 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "query_cellar_contents",
     args: { onlyPressable: true, form: "MUST" },
   },
+  {
+    utterance: "How much DAP do we have on hand?",
+    tool: "query_materials",
+    args: { search: "DAP" },
+  },
+  {
+    utterance: "List our cleaning and sanitizing supplies",
+    tool: "query_materials",
+    args: { category: "CLEANING_SANITIZING" },
+  },
+  {
+    utterance: "What expendables are we out of?",
+    tool: "query_materials",
+    args: { outOfStockOnly: true },
+  },
 ];

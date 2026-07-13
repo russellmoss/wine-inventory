@@ -95,6 +95,7 @@ import { logRiddlingTool } from "./tools/log-riddling";
 import { sparklingDisgorgeTool } from "./tools/sparkling-disgorge";
 import { recordBulkWineCostTool } from "./tools/record-bulk-wine-cost";
 import { fileFeedbackTool } from "./tools/file-feedback";
+import { queryMaterialsTool } from "./tools/query-materials";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -102,6 +103,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryRecentHarvestsTool,
   queryTransfersTool,
   queryCellarContentsTool,
+  queryMaterialsTool,
   estimatePackagingNeedsTool,
   queryVineyardStatusTool,
   queryFieldReportsTool,
