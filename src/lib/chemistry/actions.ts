@@ -6,9 +6,12 @@ import { searchTastingNotes, type TastingSearchRow } from "@/lib/lot/data";
 import { listVesselAnalyses, type VesselAnalyses } from "@/lib/chemistry/data";
 import {
   recordMeasurementsCore,
+  recordVesselReadingCore,
   voidPanelCore,
   type RecordMeasurementsInput,
   type RecordMeasurementsResult,
+  type RecordVesselReadingInput,
+  type RecordVesselReadingResult,
 } from "@/lib/chemistry/measurements";
 import {
   recordTastingNoteCore,
@@ -46,8 +49,17 @@ export const recordMeasurementsAction = action(
   },
 );
 
+/** Plan 060: record ONE reading across a whole vessel (fan-out to every co-resident lot). */
+export const recordVesselReadingAction = action(
+  async ({ actor }, input: RecordVesselReadingInput): Promise<RecordVesselReadingResult> => {
+    const res = await recordVesselReadingCore(actor, input);
+    revalidateRecordSurfaces();
+    return res;
+  },
+);
+
 /** Soft-delete a panel (the toast Undo + the lot-timeline Edit mode call this). */
-export const voidPanelAction = action(async ({ actor }, panelId: string): Promise<{ panelId: string }> => {
+export const voidPanelAction = action(async ({ actor }, panelId: string): Promise<{ panelId: string; voidedPanelIds: string[] }> => {
   const res = await voidPanelCore(actor, { panelId });
   revalidateRecordSurfaces();
   return res;
