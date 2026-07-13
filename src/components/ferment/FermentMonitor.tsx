@@ -50,7 +50,7 @@ function fmtWhen(iso: string): string {
 }
 
 let rowSeq = 0;
-type Entry = { key: number; when: string; sugar: string; ph: string; temp: string; editPanelId?: string };
+type Entry = { key: number; when: string; sugar: string; ph: string; temp: string; editPanelId?: string; editGroupId?: string | null };
 const blankEntry = (when?: string): Entry => ({ key: ++rowSeq, when: when ?? toLocalInput(new Date()), sugar: "", ph: "", temp: "" });
 
 export function FermentMonitor({
@@ -59,14 +59,23 @@ export function FermentMonitor({
   lotId,
   lotCode,
   materials = [],
+  residentLots = [],
 }: {
   vesselId: string;
   vesselCode: string;
   lotId: string;
   lotCode: string;
   materials?: CellarMaterialDTO[];
+  /** Plan 060: all lots co-resident in this vessel (incl. the selected one). >1 → offer whole-tank. */
+  residentLots?: { lotId: string; code: string }[];
 }) {
   const { pending, attention, syncing, capture } = useSync();
+  // Plan 060: on a multi-lot (co-ferment) tank, default to recording on the WHOLE tank — one reading
+  // fanned out to every co-resident lot — with an opt-out to just this lot. residentLots always
+  // includes the selected lot; fall back to [this lot] if the caller didn't pass the list.
+  const allLots = residentLots.length > 0 ? residentLots : [{ lotId, code: lotCode }];
+  const isMultiLot = allLots.length > 1;
+  const [scope, setScope] = React.useState<"tank" | "lot">(isMultiLot ? "tank" : "lot");
   const [series, setSeries] = React.useState<FermentSeries | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [optimistic, setOptimistic] = React.useState<FermentPoint[]>([]);
@@ -169,7 +178,18 @@ export function FermentMonitor({
           await voidPanelAction(e.editPanelId); // edit = void the old, then log the new (immutable)
           voidedPanelIds.push(e.editPanelId);
         }
-        await capture({ vesselId, lotId, occupancyToken: `${vesselId}:${lotId}`, deviceObservedAt: iso, readings });
+        // Plan 060 fan-out: record on the WHOLE tank when the user chose "whole tank" on a multi-lot
+        // vessel, OR when editing a reading that was itself a grouped whole-tank reading (voidPanelAction
+        // just voided the ENTIRE group, so we must re-log every lot or the other lots silently lose it).
+        const fanout = isMultiLot && (scope === "tank" || !!e.editGroupId);
+        if (fanout) {
+          const group = `vrg:${newId()}`;
+          for (const rl of allLots) {
+            await capture({ vesselId, lotId: rl.lotId, occupancyToken: `${vesselId}:${rl.lotId}`, deviceObservedAt: iso, readings, vesselReadingGroupId: group });
+          }
+        } else {
+          await capture({ vesselId, lotId, occupancyToken: `${vesselId}:${lotId}`, deviceObservedAt: iso, readings });
+        }
         newOptimistic.push({
           panelId: null,
           observedAt: iso,
@@ -204,10 +224,15 @@ export function FermentMonitor({
         ph: p.ph != null ? String(p.ph) : "",
         temp: p.temp != null ? String(p.temp) : "",
         editPanelId: panelId,
+        editGroupId: p.vesselReadingGroupId ?? null,
       },
     ]);
     setUnit("BRIX");
-    setOkMsg("Editing a reading — change the values and Log to replace it.");
+    setOkMsg(
+      p.vesselReadingGroupId
+        ? "Editing a whole-tank reading — Log replaces it on every co-fermenting lot."
+        : "Editing a reading — change the values and Log to replace it.",
+    );
   }
 
   async function advanceState(kind: "AF" | "MLF", to: string) {
@@ -320,6 +345,31 @@ export function FermentMonitor({
             </select>
           </label>
         </div>
+        {isMultiLot ? (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Record on</span>
+            <div role="radiogroup" aria-label="Record scope" style={{ display: "flex", gap: 6 }}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={scope === "tank"}
+                onClick={() => setScope("tank")}
+                style={{ ...field, width: "auto", minHeight: 40, cursor: "pointer", background: scope === "tank" ? "var(--surface-base)" : "var(--surface-raised)", borderColor: scope === "tank" ? "var(--accent)" : "var(--border-strong)", fontWeight: scope === "tank" ? 600 : 400 }}
+              >
+                Whole tank · {allLots.length} lots
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={scope === "lot"}
+                onClick={() => setScope("lot")}
+                style={{ ...field, width: "auto", minHeight: 40, cursor: "pointer", background: scope === "lot" ? "var(--surface-base)" : "var(--surface-raised)", borderColor: scope === "lot" ? "var(--accent)" : "var(--border-strong)", fontWeight: scope === "lot" ? 600 : 400 }}
+              >
+                Just {lotCode}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {entries.map((e) => (
           <div key={e.key} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
             <input type="datetime-local" value={e.when} onChange={(ev) => setEntry(e.key, { when: ev.target.value })} aria-label="Date and time" style={{ ...field, flex: "0 0 195px" }} />

@@ -282,7 +282,7 @@ export function CellarActions({
         </div>
       ) : null}
       {fermentLot ? (
-        <FermentMonitor key={fermentLot.lotId} vesselId={vessel.id} vesselCode={vessel.code} lotId={fermentLot.lotId} lotCode={fermentLot.code} materials={materials} />
+        <FermentMonitor key={fermentLot.lotId} vesselId={vessel.id} vesselCode={vessel.code} lotId={fermentLot.lotId} lotCode={fermentLot.code} materials={materials} residentLots={vessel.residentLots.map((l) => ({ lotId: l.lotId, code: l.code }))} />
       ) : (
         <p style={{ color: "var(--text-muted)", fontSize: 14 }}>This vessel is empty — nothing to monitor.</p>
       )}
