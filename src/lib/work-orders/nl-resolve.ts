@@ -53,6 +53,11 @@ type ResolvedVesselState = {
 
 const ROUND = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
 
+// Plan 061: cap a consolidated group maintenance task's member count. Completion records all members in ONE
+// Serializable tx, so this bounds the tx size + the overhead-SupplyLot lock window. Bigger ranges must be
+// split into multiple tasks (the range parser allows up to 300, which is too many for the all-at-once model).
+const GROUP_MAINTENANCE_MAX_MEMBERS = 60;
+
 /** Short verbs for the maintenance-lane task titles/summaries (display only). */
 const TASK_LABELS: Record<string, string> = {
   CLEAN: "Clean",
@@ -613,6 +618,11 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 
       if (intent.vesselGroup) {
         const members = await resolveGroupMembers(intent.vesselGroup); // ordered + deduped (or a relayable error)
+        // All-at-once completion writes N events in ONE tx; cap the range so that tx stays bounded (and
+        // doesn't hold the shared overhead SupplyLot lock too long). Bigger ranges must be split.
+        if (members.length > GROUP_MAINTENANCE_MAX_MEMBERS) {
+          throw new Error(`That's too many vessels for one maintenance task (${members.length}). Split it into groups of ${GROUP_MAINTENANCE_MAX_MEMBERS} or fewer.`);
+        }
         // `groupActivity` rides OUTSIDE the `k in fields` filter (it is not a declared field) — same as the
         // group-rack `groupRack` block. It survives sanitizeTaskPayload because maintenance defs are
         // governed built-ins. canonicalColumns leaves sourceVesselId/destVesselId null (no single vessel).

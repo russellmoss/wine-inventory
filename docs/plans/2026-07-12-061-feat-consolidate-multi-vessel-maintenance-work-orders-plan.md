@@ -204,4 +204,16 @@ None required — this is an internal refactor onto an existing, shipped pattern
 - Dangling-member (no FK) → **folded into Unit 2** (validate/skip).
 - Verdict RECONSIDER ("keep fan-out, group at the UI"): **noted, not adopted.** It does not satisfy the actual complaint (still N DB tasks, still blows `NL_WORK_ORDER_MAX_TASKS=25` for large ranges) and contradicts the shipped group-rack house pattern; the code-aware eng review confirms the one-task model is buildable and sound.
 
-**VERDICT:** BUILD WITH CHANGES — all code-verified findings folded in. The one open scoping call is Unit 3/Unit 4 undo (net-new path + UI): build it now, or defer undo and ship consolidation + completion (Units 1–2, 4-authoring, 5) first.
+**VERDICT:** BUILD WITH CHANGES — all code-verified findings folded in. Full scope chosen (incl. undo).
+
+### Pre-landing `/review` (post-build, on the committed diff)
+
+Two independent Claude specialists (correctness/concurrency/tenancy + adversarial red-team) reviewed the real diff. Codex skipped (worktree sandbox). No P0. Findings + resolutions:
+
+- **[P1] Missing tx timeout** on completion + undo (Prisma 5s default) → a large range would time out and become uncompletable. **Fixed:** raised `timeout` to 120s on both txns AND capped a group maintenance task at **60 members** at authoring (`GROUP_MAINTENANCE_MAX_MEMBERS`; bigger ranges get a "split" message). *User decision: cap at 60.*
+- **[P2] Undo was broken** — errored for the cellar hand who did the work (approver-only) and left a dead-end REJECTED task (REJECTED→DONE illegal). **Fixed (user decision: rework):** new `undoMaintenanceTaskCore` — self-undo (recorder) or admin, reverses all N events, **reopens to PENDING** (re-completable). Removed the maintenance branch from `rejectTaskCore`. Proven by `verify:group-maintenance` (undo → PENDING → re-complete → DONE).
+- **[P2] Readiness cost/ATP under-reported the supply draw by N** (used per-vessel dose, completion draws N×). **Fixed:** `validateGroupActivity` returns the member count; the estimate scales `amount × N`.
+- Verified sound (no change): atomicity (one Serializable tx, CAS rollback), idempotency (task-level `commandId` + per-member suffix), multi-tenancy (RLS-scoped reads), WORKORDER-3 (overhead-only, impossible to write CostLine/SupplyConsumption/LotOperation), dedup/inactive-member handling.
+
+Post-fix gates: `verify:group-maintenance` 23 · `verify:work-order-nl` 54 · unit 32 · tsc 0 · `next build` clean.
+Known non-e2e'd guard: the 60-member cap (would need 61 seeded vessels) — covered by code + tsc, not the e2e.

@@ -264,7 +264,9 @@ async function completeGroupMaintenanceTaskCore(
       summary: `Recorded ${kind.toLowerCase().replace(/_/g, " ")} on ${liveIds.length} vessels${skipMsg}${shortMsg}`,
     });
     return { attemptId: attempt.id, shortfall: totalShortfall, count: liveIds.length, skipped };
-  }, { isolationLevel: "Serializable" });
+    // Raised timeout (vs Prisma's 5s default): N members × ~7 round-trips each. The member count is capped
+    // at authoring (nl-resolve) so this tx stays well-bounded; the timeout is headroom for a cold pooler.
+  }, { isolationLevel: "Serializable", timeout: 120_000 });
 
   const bits = [
     result.skipped > 0 ? `${result.skipped} vessel${result.skipped === 1 ? "" : "s"} skipped (inactive).` : "",

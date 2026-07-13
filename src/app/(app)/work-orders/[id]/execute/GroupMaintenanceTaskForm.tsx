@@ -3,7 +3,7 @@
 import React from "react";
 import { Card, Button, Badge } from "@/components/ui";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
-import { completeTaskAction, rejectTaskAction } from "@/lib/work-orders/actions";
+import { completeTaskAction, undoMaintenanceTaskAction } from "@/lib/work-orders/actions";
 
 // Plan 061: run-time sub-form for a CONSOLIDATED group maintenance task (clean/sanitize/… a barrel range as
 // ONE task). All-at-once: one "Complete all N vessels" action records every member together (the backend
@@ -73,14 +73,14 @@ export function GroupMaintenanceTaskForm({ task, onDone }: { task: WorkOrderTask
 }
 
 // The done-state affordance: undo a completed group maintenance task (reverses every member's activity event
-// via the reject path). Reject requires approver authority — a non-approver sees the FORBIDDEN message.
+// and REOPENS the task so it can be re-done). Self-undo: the person who recorded it, or an admin/developer.
 export function GroupMaintenanceUndo({ task, onDone }: { task: WorkOrderTaskView; onDone: () => void }) {
   const [pendingTx, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
   function undo() {
     setError(null);
     startTransition(async () => {
-      try { await rejectTaskAction({ taskId: task.id, reason: "undo group maintenance" }); onDone(); }
+      try { await undoMaintenanceTaskAction({ taskId: task.id }); onDone(); }
       catch (e) { setError(e instanceof Error ? e.message : "Couldn't undo."); }
     });
   }

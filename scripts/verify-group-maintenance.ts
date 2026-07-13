@@ -16,7 +16,7 @@ import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore } from "@/lib/work-orders/execute";
-import { rejectTaskCore } from "@/lib/work-orders/approval";
+import { undoMaintenanceTaskCore } from "@/lib/work-orders/approval";
 import { parseGroupActivityPayload } from "@/lib/work-orders/group-activity";
 import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
 
@@ -112,14 +112,18 @@ async function main() {
     const lotAfter = await prisma.supplyLot.findFirstOrThrow({ where: { materialId: mat.id } });
     assert(Math.abs(num(lotAfter.qtyRemaining) - (100 - 4 * dose)) < 1e-6, `SupplyLot drawn to ${100 - 4 * dose} (got ${num(lotAfter.qtyRemaining)})`);
 
-    // 6. Undo (reject) reverses every member event and restores the stock.
+    // 6. Undo reverses every member event, restores stock, and REOPENS to PENDING (not a dead-end).
     const admin = { id: ACTOR.actorUserId ?? "verify-admin", role: "admin" };
-    const rejected = await rejectTaskCore(admin, ACTOR, { taskId: task.id, reason: "verify undo" });
-    assert(rejected.status === "REJECTED", "reject/undo returns REJECTED");
+    const undone = await undoMaintenanceTaskCore(admin, ACTOR, { taskId: task.id });
+    assert(undone.status === "PENDING", "undo reopens the task to PENDING (re-completable)");
     const liveAfter = await prisma.vesselActivityEvent.count({ where: { taskId: task.id, voidedAt: null } });
     assert(liveAfter === 0, `all member events voided after undo (got ${liveAfter} still live)`);
     const lotRestored = await prisma.supplyLot.findFirstOrThrow({ where: { materialId: mat.id } });
     assert(Math.abs(num(lotRestored.qtyRemaining) - 100) < 1e-6, `SupplyLot restored to 100 after undo (got ${num(lotRestored.qtyRemaining)})`);
+    // Re-complete after undo proves the reopen is NOT a dead-end (a REJECTED task would block REJECTED→DONE).
+    const redone = await completeTaskCore(ACTOR, { taskId: task.id, commandId: randomUUID() });
+    assert(redone.status === "DONE", "the reopened task completes again (no dead-end)");
+    assert((await prisma.vesselActivityEvent.count({ where: { taskId: task.id, voidedAt: null } })) === 4, "re-completion writes 4 fresh live events");
 
     // 7. Single-vessel maintenance is unchanged AND now rejectable (net-new: it was un-rejectable before 061).
     const single = await buildNlWorkOrderProposal({ sourceText: "clean ZZGM-B1", title: "ZZGM single clean", tasks: [{ kind: "CLEAN", vessel: "ZZGM-B1" }] });
@@ -130,8 +134,8 @@ async function main() {
     const sTask = await prisma.workOrderTask.findFirstOrThrow({ where: { workOrderId: sCreated.workOrderId } });
     const sDone = await completeTaskCore(ACTOR, { taskId: sTask.id, commandId: randomUUID() });
     assert(sDone.status === "DONE", "single-vessel maintenance completes to DONE");
-    const sRej = await rejectTaskCore(admin, ACTOR, { taskId: sTask.id, reason: "verify undo single" });
-    assert(sRej.status === "REJECTED", "single-vessel maintenance is now rejectable (net-new)");
+    const sUndo = await undoMaintenanceTaskCore(admin, ACTOR, { taskId: sTask.id });
+    assert(sUndo.status === "PENDING", "single-vessel maintenance can be undone → reopens to PENDING (net-new)");
     assert((await prisma.vesselActivityEvent.count({ where: { taskId: sTask.id, voidedAt: null } })) === 0, "single-vessel event voided after undo");
 
     await scrub();
