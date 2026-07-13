@@ -8,6 +8,15 @@ depth: standard
 units: 4
 ---
 
+> [!note] Superseded by plan 061 (2026-07-12)
+> The per-barrel **fan-out** decision below (one record-only task per barrel) was reversed by
+> [plan 061](2026-07-12-061-feat-consolidate-multi-vessel-maintenance-work-orders-plan.md) after a
+> winemaker reported the row clutter (and fan-out blew `NL_WORK_ORDER_MAX_TASKS=25` for large ranges).
+> 061 consolidates a group into ONE task carrying the members in `plannedPayload.groupActivity`, completing
+> all-at-once with one record-only `VesselActivityEvent` per member. 060's reasoning was right that a
+> *group-op wrapper* is wrong (maintenance has no ledger op) — but "one reviewable task" ≠ "one op." The
+> resolver, aliases, and WORKORDER-3 guarantees from 060 are retained; only the fan-out loop changed.
+
 ## Overview
 
 Let a winemaker author one maintenance work order that spans a barrel group/range by natural

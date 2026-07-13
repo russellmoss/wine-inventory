@@ -1,7 +1,7 @@
 ---
 title: Consolidate multi-vessel maintenance work orders — one task with N members, not one task per vessel
 type: feat
-status: draft
+status: completed
 date: 2026-07-12
 branch: claude/multi-vessel-work-orders-a650e5
 depth: deep
@@ -174,14 +174,14 @@ None required — this is an internal refactor onto an existing, shipped pattern
 
 ## Success Criteria
 
-- [ ] "clean and sanitize B1–B4" produces exactly **2** tasks (one CLEAN, one SANITIZE), each carrying 4 members — verified by `verify:work-order-nl`.
-- [ ] A single-vessel "clean T15" still produces one plain task, unchanged.
-- [ ] Completing a group maintenance task writes one `VesselActivityEvent` per member, each overhead-only (no `CostLine`/`SupplyConsumption`/`LotOperation`) — `verify:group-maintenance` + `verify:work-orders-enhancements` green.
-- [ ] Total overhead stock depletion for a consolidated task equals the pre-change per-barrel fan-out total.
-- [ ] Completing the task writes all N member events in one action, task → DONE; undo reverses all N.
-- [ ] Proposal card shows one row + member expander; execute screen drives complete-all + undo.
-- [ ] `verify:ai-native`, `verify:naming`, eval-coverage (D26/H8) all green; `assistant-coverage.md` regenerated, not hand-edited.
-- [ ] All existing tests pass; no regression in group-rack or single-vessel maintenance.
+- [x] "clean and sanitize B1–B4" produces exactly **2** tasks (one CLEAN, one SANITIZE), each carrying 4 members — verified by `verify:work-order-nl` (54 assertions).
+- [x] A single-vessel "clean T15" still produces one plain task, unchanged.
+- [x] Completing a group maintenance task writes one `VesselActivityEvent` per member, each overhead-only (no `CostLine`/`SupplyConsumption`/`LotOperation`) — `verify:group-maintenance` (21) + `verify:work-orders-enhancements` (44) green.
+- [x] Total overhead stock depletion for a consolidated task equals the pre-change per-barrel fan-out total (N × dose).
+- [x] Completing the task writes all N member events in one action, task → DONE; undo reverses all N (and single-vessel maintenance is now rejectable — a latent bug fixed).
+- [x] Proposal card shows one row + member expander (existing `members[]` renderer); execute screen drives complete-all + undo.
+- [x] `verify:ai-native`, `verify:naming` (25), `verify:invariants` (29) green; eval coverage unchanged (no new tool); `assistant-coverage.md` in sync.
+- [x] All existing tests pass (32 unit); tsc 0 errors; `next build` clean; no regression in group-rack or single-vessel maintenance.
 
 ## GSTACK REVIEW REPORT
 

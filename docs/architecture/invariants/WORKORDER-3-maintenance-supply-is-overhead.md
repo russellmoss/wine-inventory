@@ -24,6 +24,12 @@ tags:
 > routing it through the wine cost DAG would corrupt cost conservation (COST-1/COST-2). Depletion draws
 > stock to zero and reports a shortfall (E1) — it never drives `qtyRemaining` negative.
 
+The invariant is expressed **per event / per supply use, not per vessel**. Plan 061 lets a maintenance task
+span a barrel range as ONE consolidated task (members in `plannedPayload.groupActivity`); it holds unchanged
+because each member still gets its own `VesselActivityEvent` + overhead-only `VesselActivitySupplyUse`
+(never `SupplyConsumption`/`CostLine`/`LotOperation`), each event keyed by a distinct `${commandId}:${vesselId}`.
+Proven end-to-end by `npm run verify:group-maintenance` (N events, overhead-only, N × per-vessel dose, undo restores).
+
 **Guarded by:** `npm run verify:work-orders-enhancements` (asserts the overhead depletion writes zero
 `SupplyConsumption`/`CostLine` and leaves the wine roll-up unchanged, and that a reversal restores stock
 by identity).
