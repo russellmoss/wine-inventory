@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { DEVELOPER_HOME_ORG_ID } from "@/lib/access";
-import { ActionError } from "@/lib/actions";
+import { ActionError } from "@/lib/action-error";
 
 /**
  * Ensure a developer is a member of the Demo Winery sandbox tenant.
