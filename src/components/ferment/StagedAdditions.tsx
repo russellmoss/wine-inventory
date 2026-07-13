@@ -57,8 +57,11 @@ export function StagedAdditions({
 
   return (
     <div>
+      {/* Each staged addition: the material selection panel spans the full width on its own row,
+          then the kind / rate / basis controls sit BELOW it — so the picker table isn't scrunched
+          into the left half by the rate controls sitting to its right. */}
       {value.map((a) => (
-        <div key={a.key} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+        <div key={a.key} style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
           <MaterialPicker
             materials={materials}
             value={a.material}
@@ -68,20 +71,22 @@ export function StagedAdditions({
             defaultKind={a.kind}
             placeholder="product (yeast, O. oeni, bentonite…)"
             ariaLabel="Product"
-            style={{ flex: "1 1 200px" }}
+            style={{ width: "100%" }}
           />
-          <select value={a.kind} onChange={(e) => set(a.key, { kind: e.target.value as MaterialKind })} aria-label="Kind" style={{ ...field, width: 110 }}>
-            {MATERIAL_KINDS.map((k) => (
-              <option key={k} value={k}>{k.toLowerCase()}</option>
-            ))}
-          </select>
-          <input value={a.rate} onChange={(e) => set(a.key, { rate: e.target.value })} inputMode="decimal" placeholder="rate" aria-label="Rate" style={{ ...field, width: 70 }} />
-          <select value={a.basis} onChange={(e) => set(a.key, { basis: e.target.value as RateBasis })} aria-label="Basis" style={{ ...field, width: 108 }}>
-            {RATE_BASES.map((b) => (
-              <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>
-            ))}
-          </select>
-          <button onClick={() => remove(a.key)} aria-label="Remove addition" style={{ ...field, width: 36, cursor: "pointer", background: "var(--surface-base)" }}>×</button>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <select value={a.kind} onChange={(e) => set(a.key, { kind: e.target.value as MaterialKind })} aria-label="Kind" style={{ ...field, width: 110 }}>
+              {MATERIAL_KINDS.map((k) => (
+                <option key={k} value={k}>{k.toLowerCase()}</option>
+              ))}
+            </select>
+            <input value={a.rate} onChange={(e) => set(a.key, { rate: e.target.value })} inputMode="decimal" placeholder="rate" aria-label="Rate" style={{ ...field, width: 70 }} />
+            <select value={a.basis} onChange={(e) => set(a.key, { basis: e.target.value as RateBasis })} aria-label="Basis" style={{ ...field, width: 108 }}>
+              {RATE_BASES.map((b) => (
+                <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>
+              ))}
+            </select>
+            <button onClick={() => remove(a.key)} aria-label="Remove addition" style={{ ...field, width: 36, cursor: "pointer", background: "var(--surface-base)" }}>×</button>
+          </div>
         </div>
       ))}
       <button onClick={add} style={{ ...field, cursor: "pointer", background: "var(--surface-base)", paddingInline: 14 }}>+ product</button>

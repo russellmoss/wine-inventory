@@ -397,9 +397,12 @@ export function FermentMonitor({
       {loading && !series ? <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>Loading…</p> : <FermentChart points={chartPoints} />}
 
       {/* Additions — yeast / MLF culture / fining / tannin / SO₂ … (Phase 3 op; draws down stock in Phase 8) */}
+      {/* Layout: the material selection panel gets its own full-width row (it's a search+chips+list
+          panel, not a one-line control); the rate / kind / basis / note controls sit on the row BELOW
+          it so the picker table can spread across the modal instead of being scrunched to the left. */}
       <div style={{ border: "1px solid var(--border-subtle, #eee)", borderRadius: "var(--radius-md)", padding: 12, marginTop: 14 }}>
         <span style={lbl}>Additions — yeast, MLF culture, fining, tannin, SO₂…</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
           <MaterialPicker
             materials={materials}
             value={addMat}
@@ -413,23 +416,25 @@ export function FermentMonitor({
             defaultKind={addKind}
             placeholder="product (e.g. EC-1118, O. oeni, bentonite)"
             ariaLabel="Product"
-            style={{ flex: "1 1 200px" }}
+            style={{ width: "100%" }}
           />
-          <select value={addKind} onChange={(e) => setAddKind(e.target.value as MaterialKind)} aria-label="Kind" style={{ ...field, width: 120 }}>
-            {MATERIAL_KINDS.map((k) => (
-              <option key={k} value={k}>{k.toLowerCase()}</option>
-            ))}
-          </select>
-          <input value={addRate} onChange={(e) => setAddRate(e.target.value)} inputMode="decimal" placeholder="rate" aria-label="Rate" style={{ ...field, width: 72 }} />
-          <select value={addBasis} onChange={(e) => setAddBasis(e.target.value as RateBasis)} aria-label="Rate basis" style={{ ...field, width: 110 }}>
-            {RATE_BASES.map((b) => (
-              <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>
-            ))}
-          </select>
-          <input value={addNote} onChange={(e) => setAddNote(e.target.value)} placeholder="note" aria-label="Addition note" style={{ ...field, flex: "1 1 120px" }} />
-          <Button variant="secondary" size="sm" disabled={addBusy} onClick={() => void logAddition()} style={{ minHeight: 42 }}>
-            {addBusy ? "Adding…" : "Log addition"}
-          </Button>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <select value={addKind} onChange={(e) => setAddKind(e.target.value as MaterialKind)} aria-label="Kind" style={{ ...field, width: 120 }}>
+              {MATERIAL_KINDS.map((k) => (
+                <option key={k} value={k}>{k.toLowerCase()}</option>
+              ))}
+            </select>
+            <input value={addRate} onChange={(e) => setAddRate(e.target.value)} inputMode="decimal" placeholder="rate" aria-label="Rate" style={{ ...field, width: 72 }} />
+            <select value={addBasis} onChange={(e) => setAddBasis(e.target.value as RateBasis)} aria-label="Rate basis" style={{ ...field, width: 110 }}>
+              {RATE_BASES.map((b) => (
+                <option key={b} value={b}>{RATE_BASIS_LABELS[b]}</option>
+              ))}
+            </select>
+            <input value={addNote} onChange={(e) => setAddNote(e.target.value)} placeholder="note" aria-label="Addition note" style={{ ...field, flex: "1 1 120px" }} />
+            <Button variant="secondary" size="sm" disabled={addBusy} onClick={() => void logAddition()} style={{ minHeight: 42 }}>
+              {addBusy ? "Adding…" : "Log addition"}
+            </Button>
+          </div>
         </div>
         {series && series.additions.length > 0 ? (
           <ul style={{ listStyle: "none", padding: 0, margin: "10px 0 0", fontSize: 12.5, color: "var(--text-secondary)" }}>
