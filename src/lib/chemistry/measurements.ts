@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { ActionError } from "@/lib/action-error";
@@ -6,7 +7,8 @@ import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { CaptureMethod } from "@/lib/ledger/vocabulary";
 import { validateMeasurement, getAnalyte } from "@/lib/chemistry/analytes";
-import { resolveVesselLot } from "@/lib/chemistry/resolve-lot";
+import { resolveVesselLot, listResidentLots } from "@/lib/chemistry/resolve-lot";
+import { planVesselReadingFanout } from "@/lib/chemistry/fanout-plan";
 
 // Standalone analyte-panel records (Phase 4). A panel HEADER groups readings observed
 // together; a single bench reading is a 1-child panel. NOT a ledger op — no
@@ -64,6 +66,8 @@ export type InsertPanelInput = {
   captureMethod?: CaptureMethod;
   note?: string | null;
   clientRequestId?: string | null;
+  /** Plan 060 fan-out: ties the N single-lot panels of one physical vessel reading together. */
+  vesselReadingGroupId?: string | null;
 };
 
 /**
@@ -86,6 +90,7 @@ export async function insertPanelTx(
       captureMethod: input.captureMethod ?? "MANUAL",
       note: input.note?.trim() || null,
       clientRequestId: input.clientRequestId ?? null,
+      vesselReadingGroupId: input.vesselReadingGroupId ?? null,
     },
     select: { id: true },
   });
@@ -160,25 +165,153 @@ export async function recordMeasurementsCore(
   }
 }
 
-/** Soft-delete (void) a panel — the header carries the void, so all its readings drop atomically. */
-export async function voidPanelCore(actor: LedgerActor, input: { panelId: string }): Promise<{ panelId: string }> {
+// ── Plan 060: whole-tank reading fan-out ─────────────────────────────────────────────────
+// A single physical reading on a MULTI-LOT vessel (a co-ferment) writes ONE panel per co-resident
+// lot, all sharing a vesselReadingGroupId. VISION D2 intact — each panel is still single-lot; this
+// only GROUPS them so vessel-scoped views show one row while each lot keeps its own curve. The group
+// id + per-lot idempotency keys DERIVE from a stable base (the capture's clientRequestId), so a retry
+// or offline re-sync lands the SAME group and the (tenantId, vesselReadingGroupId, lotId) unique makes
+// each per-lot write a no-op on replay. NEVER used for sample RESULTS (this core takes no sampleId —
+// results inherit the sample's captured lot via recordMeasurementsCore). Single-lot vessel → the
+// normal single-lot path, no group.
+
+export type RecordVesselReadingInput = {
+  vesselId: string;
+  observedAt?: Date | string;
+  readings: ReadingInput[];
+  captureMethod?: CaptureMethod;
+  note?: string;
+  /** Stable base; the group id + per-lot keys derive from it (idempotent on retry / re-sync). */
+  clientRequestId?: string;
+};
+
+export type RecordVesselReadingResult = {
+  /** null when the vessel held a single lot (an ordinary, ungrouped panel was written). */
+  vesselReadingGroupId: string | null;
+  panels: { lotId: string; panelId: string; readingIds: string[] }[];
+};
+
+/**
+ * Record ONE reading against a whole vessel, fanning it out to every co-resident lot.
+ * 0 residents → typed empty error; 1 → the unchanged single-lot path (no group); >1 → fan out
+ * (one panel per lot, shared group id, atomic + idempotent).
+ */
+export async function recordVesselReadingCore(
+  actor: LedgerActor,
+  input: RecordVesselReadingInput,
+): Promise<RecordVesselReadingResult> {
+  const readings = normalizeReadings(input.readings);
+  const residents = await listResidentLots(input.vesselId);
+  if (residents.length === 0) {
+    throw new ActionError("That vessel is empty — there's no wine to record a reading against.");
+  }
+  const observedAt = toDate(input.observedAt);
+  const base = input.clientRequestId ?? randomUUID();
+
+  // Single-lot vessel: an ordinary reading, no group. Reuse the unchanged single-lot path.
+  if (residents.length === 1) {
+    const res = await recordMeasurementsCore(actor, {
+      lotId: residents[0].lotId,
+      vesselId: input.vesselId,
+      observedAt,
+      readings: input.readings,
+      captureMethod: input.captureMethod,
+      note: input.note,
+      clientRequestId: base,
+    });
+    return { vesselReadingGroupId: null, panels: [{ lotId: res.lotId, panelId: res.panelId, readingIds: res.readingIds }] };
+  }
+
+  const plan = planVesselReadingFanout(
+    residents.map((r) => r.lotId),
+    base,
+  );
+
+  // Idempotency: a retry with the same base re-hits the same group → return what's already there.
+  const preexisting = await prisma.analysisPanel.findMany({
+    where: { vesselReadingGroupId: plan.vesselReadingGroupId, voidedAt: null },
+    include: { readings: { select: { id: true } } },
+  });
+  if (preexisting.length > 0) {
+    return {
+      vesselReadingGroupId: plan.vesselReadingGroupId,
+      panels: preexisting.map((p) => ({ lotId: p.lotId, panelId: p.id, readingIds: p.readings.map((r) => r.id) })),
+    };
+  }
+
+  try {
+    const panels = await runInTenantTx(async (tx) => {
+      const out: { lotId: string; panelId: string; readingIds: string[] }[] = [];
+      for (const { lotId, clientRequestId } of plan.perLot) {
+        const r = await insertPanelTx(tx, actor, {
+          lotId,
+          vesselId: input.vesselId,
+          observedAt,
+          readings,
+          captureMethod: input.captureMethod,
+          note: input.note,
+          clientRequestId,
+          vesselReadingGroupId: plan.vesselReadingGroupId,
+        });
+        out.push({ lotId, panelId: r.panelId, readingIds: r.readingIds });
+      }
+      return out;
+    });
+    return { vesselReadingGroupId: plan.vesselReadingGroupId, panels };
+  } catch (e) {
+    // Lost the idempotency race — return the group the winner wrote.
+    if (isUniqueViolation(e)) {
+      const rows = await prisma.analysisPanel.findMany({
+        where: { vesselReadingGroupId: plan.vesselReadingGroupId, voidedAt: null },
+        include: { readings: { select: { id: true } } },
+      });
+      if (rows.length > 0) {
+        return {
+          vesselReadingGroupId: plan.vesselReadingGroupId,
+          panels: rows.map((p) => ({ lotId: p.lotId, panelId: p.id, readingIds: p.readings.map((r) => r.id) })),
+        };
+      }
+    }
+    throw e;
+  }
+}
+
+/**
+ * Soft-delete (void) a panel — the header carries the void, so all its readings drop atomically.
+ * Plan 060: a fanned-out whole-tank reading voids as a GROUP (void one → void every lot's copy) so
+ * the tank view and per-lot curves stay consistent. An ungrouped panel voids just itself.
+ */
+export async function voidPanelCore(
+  actor: LedgerActor,
+  input: { panelId: string },
+): Promise<{ panelId: string; voidedPanelIds: string[] }> {
   const panel = await prisma.analysisPanel.findUnique({ where: { id: input.panelId } });
   if (!panel) throw new ActionError("That analysis panel no longer exists.");
   if (panel.voidedAt) throw new ActionError("That analysis panel was already removed.");
-  await runInTenantTx(async (tx) => {
-    await tx.analysisPanel.update({
-      where: { id: input.panelId },
-      data: { voidedAt: new Date(), voidedById: actor.actorUserId },
-    });
-    await writeAudit(tx, {
-      ...actor,
-      action: "DELETE",
-      entityType: "AnalysisPanel",
-      entityId: input.panelId,
-      summary: `Removed analysis panel`,
-    });
+  const voidedPanelIds = await runInTenantTx(async (tx) => {
+    const targets = panel.vesselReadingGroupId
+      ? await tx.analysisPanel.findMany({
+          where: { vesselReadingGroupId: panel.vesselReadingGroupId, voidedAt: null },
+          select: { id: true },
+        })
+      : [{ id: input.panelId }];
+    const now = new Date();
+    for (const t of targets) {
+      await tx.analysisPanel.update({
+        where: { id: t.id },
+        data: { voidedAt: now, voidedById: actor.actorUserId },
+      });
+      await writeAudit(tx, {
+        ...actor,
+        action: "DELETE",
+        entityType: "AnalysisPanel",
+        entityId: t.id,
+        summary: panel.vesselReadingGroupId ? `Removed grouped vessel reading` : `Removed analysis panel`,
+      });
+    }
+    return targets.map((t) => t.id);
   });
-  return { panelId: input.panelId };
+  return { panelId: input.panelId, voidedPanelIds };
 }
 
 /** Detect a Prisma unique-constraint violation (P2002) without importing the error class. */

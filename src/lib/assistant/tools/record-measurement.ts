@@ -2,8 +2,8 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { resolveLotTargetOrChoice } from "../scope";
-import { recordMeasurementsAction } from "@/lib/chemistry/actions";
+import { resolveLotTargetOrChoice, resolveVesselContents } from "../scope";
+import { recordMeasurementsAction, recordVesselReadingAction } from "@/lib/chemistry/actions";
 import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
 
 // Assistant-coverage Wave 1 #2a — record a bench/lab CHEM PANEL (pH, TA, SO₂, …) against a LOT by chat.
@@ -68,7 +68,7 @@ export const analyteProps = Object.fromEntries(
 export const recordMeasurementTool: AssistantTool = {
   name: "record_measurement",
   description:
-    "Record a bench/lab reading (pH, TA, free/total SO₂, VA, residual sugar, malic, alcohol, and Brix/sugar) against a LOT. Use when the user reports numbers for wine or must that is ALREADY in a vessel — including a mid-ferment SUGAR/BRIX reading on a tank/barrel (pass it as `brix`). Give the lot by code (e.g. 'lot 24-CS-A') or the vessel (e.g. 'tank 5' / 'T4'); a vessel holding more than one lot will ask which lot. This is NOT the vineyard-block ripeness Brix reading on grapes still on the vine at harvest — that's log_brix. Does NOT save immediately — returns a preview to confirm.",
+    "Record a bench/lab reading (pH, TA, free/total SO₂, VA, residual sugar, malic, alcohol, and Brix/sugar) against a LOT or a whole vessel. Use when the user reports numbers for wine or must that is ALREADY in a vessel — including a mid-ferment SUGAR/BRIX reading on a tank/barrel (pass it as `brix`). Give the lot by code (e.g. 'lot 24-CS-A') OR the vessel (e.g. 'tank 5' / 'T4'). If a tank holds MORE THAN ONE lot (a co-ferment), naming the vessel records the reading on the WHOLE TANK — one reading fanned out to every co-resident lot (the winemaker does NOT have to pick a lot). To attach to just one lot instead, name that lot. This is NOT the vineyard-block ripeness Brix reading on grapes still on the vine at harvest — that's log_brix. Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -90,13 +90,40 @@ export const recordMeasurementTool: AssistantTool = {
     const input = (rawInput ?? {}) as RecordMeasurementRawInput;
     const readings = collectReadings(input);
     if (readings.length === 0) throw new Error("Give at least one reading, e.g. pH 3.4 or free SO₂ 28.");
-    const resolved = await resolveLotTargetOrChoice({ lot: input.lot, vessel: input.vessel }, "record_measurement", input as Record<string, unknown>);
-    if (resolved.kind === "choice") return resolved.choice;
-    const { lotId, lotCode } = resolved.row;
 
     const observedAt = input.observedAt ? String(input.observedAt) : null;
     const when = observedAt ? ` on ${observedAt}` : " today";
     const readingStr = readings.map((r) => `${r.analyte} ${r.value}${r.unit ? ` ${r.unit}` : ""}`).join(", ");
+
+    // Plan 060 whole-tank default: a bare VESSEL ref (no explicit lot) on a MULTI-LOT tank fans the
+    // reading out to every co-resident lot — no "which lot?" dead-end. The confirm card NAMES the lots
+    // so a wrong default (two different wines parked in one tank) is caught before the write. Naming a
+    // lot (input.lot, incl. the picker pin "#<id>") stays the single-lot path below.
+    if (input.vessel && !input.lot) {
+      const contents = await resolveVesselContents(input.vessel);
+      if (contents.kind === "empty") {
+        throw new Error(`${contents.vesselLabel} is empty — there's no wine to record a reading against.`);
+      }
+      if (contents.kind === "blend") {
+        const codes = contents.lots.map((l) => l.code).join(" + ");
+        const preview = `Record ${readingStr} on the whole ${contents.vesselLabel}${when} — all ${contents.lots.length} co-fermenting lots (${codes}). To record on just one lot instead, name that lot.`;
+        const token = signProposal("record_measurement", {
+          fanout: true,
+          vesselId: contents.vesselId,
+          vesselLabel: contents.vesselLabel,
+          lotCount: contents.lots.length,
+          readings,
+          ...(observedAt ? { observedAt } : {}),
+          ...(input.note ? { note: input.note } : {}),
+        });
+        return { needsConfirmation: true, preview, token };
+      }
+      // single-lot vessel → falls through to the single-lot resolution below
+    }
+
+    const resolved = await resolveLotTargetOrChoice({ lot: input.lot, vessel: input.vessel }, "record_measurement", input as Record<string, unknown>);
+    if (resolved.kind === "choice") return resolved.choice;
+    const { lotId, lotCode } = resolved.row;
     const preview = `Record ${readingStr} on lot ${lotCode}${when}.`;
     const token = signProposal("record_measurement", {
       lotId,
@@ -111,12 +138,20 @@ export const recordMeasurementTool: AssistantTool = {
 
 export const commitRecordMeasurement: Committer = async (_user, args) => {
   const readings = Array.isArray(args.readings) ? (args.readings as Reading[]) : [];
-  const input: RecordMeasurementsInput = {
-    lotId: String(args.lotId),
-    observedAt: args.observedAt ? new Date(String(args.observedAt)) : new Date(),
-    readings: readings.map((r) => ({ analyte: r.analyte, value: Number(r.value), unit: r.unit ?? "" })),
-    note: args.note == null ? undefined : String(args.note),
-  };
+  const observedAt = args.observedAt ? new Date(String(args.observedAt)) : new Date();
+  const note = args.note == null ? undefined : String(args.note);
+  const mapped = readings.map((r) => ({ analyte: r.analyte, value: Number(r.value), unit: r.unit ?? "" }));
+  const n = readings.length;
+  const plural = n === 1 ? "" : "s";
+
+  // Plan 060: whole-tank fan-out — one reading recorded against every co-resident lot.
+  if (args.fanout && args.vesselId) {
+    const res = await recordVesselReadingAction({ vesselId: String(args.vesselId), observedAt, readings: mapped, note });
+    const lots = res.panels.length;
+    return { message: `Recorded ${n} reading${plural} on the whole ${String(args.vesselLabel ?? "tank")} — ${lots} lot${lots === 1 ? "" : "s"}.` };
+  }
+
+  const input: RecordMeasurementsInput = { lotId: String(args.lotId), observedAt, readings: mapped, note };
   await recordMeasurementsAction(input);
-  return { message: `Recorded ${readings.length} reading${readings.length === 1 ? "" : "s"} on lot ${String(args.lotCode ?? "")}.` };
+  return { message: `Recorded ${n} reading${plural} on lot ${String(args.lotCode ?? "")}.` };
 };
