@@ -4,7 +4,7 @@ import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { resolveLotTargetOrChoice, resolveVesselContents } from "../scope";
 import { recordMeasurementsAction, recordVesselReadingAction } from "@/lib/chemistry/actions";
-import { getAnalyte } from "@/lib/chemistry/analytes";
+import { getAnalyte, resolveAnalyteKey } from "@/lib/chemistry/analytes";
 import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
 
 /** Human label for a reading in the confirm card — the registry label, falling back to the raw key. */
@@ -39,6 +39,9 @@ export const ANALYTES: Record<string, { analyte: string; unit: string; label: st
   rs: { analyte: "RS", unit: "g/L", label: "RS" },
   malic: { analyte: "MALIC", unit: "g/L", label: "Malic" },
   alcohol: { analyte: "ALCOHOL", unit: "% ABV", label: "Alcohol" },
+  // Fermentation temperature — one of the core mid-ferment readings (Brix + pH + temp), logged
+  // alongside sugar on a tank/barrel. Celsius is canonical (matches the registry TEMP defaultUnit).
+  temp: { analyte: "TEMP", unit: "°C", label: "Temp" },
   // Sugar/Brix on must or wine ALREADY in a vessel (mid-ferment tracking) — the cellar-lot reading, as
   // opposed to the vineyard-block ripeness Brix at harvest (log_brix). Lets a tank sugar reading attach
   // to the LOT instead of being misrouted to a block.
@@ -65,7 +68,14 @@ export function collectReadings(input: Partial<Record<keyof typeof ANALYTES, num
   if (Array.isArray(input.other)) {
     for (const o of input.other) {
       if (o && typeof o.analyte === "string" && o.analyte.trim() && typeof o.value === "number" && Number.isFinite(o.value)) {
-        readings.push({ analyte: o.analyte.trim(), value: o.value, unit: typeof o.unit === "string" ? o.unit : "" });
+        // Resolve a free-form analyte name to its canonical registry KEY so a label ("Temperature")
+        // or odd casing never hits the strict-key write validator. Only an analyte truly absent from
+        // the registry falls through as the raw string (which then surfaces a clear "Unknown analyte").
+        const key = resolveAnalyteKey(o.analyte) ?? o.analyte.trim();
+        const def = getAnalyte(key);
+        const provided = typeof o.unit === "string" ? o.unit : "";
+        const unit = def ? (def.units.includes(provided) ? provided : def.defaultUnit) : provided;
+        readings.push({ analyte: key, value: o.value, unit });
       }
     }
   }
