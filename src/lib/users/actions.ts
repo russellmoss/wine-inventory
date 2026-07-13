@@ -4,6 +4,14 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { adminAction, ActionError } from "@/lib/actions";
+import {
+  canAssignRole,
+  canManageDeveloperTarget,
+  canChangeOwnRole,
+  isAssignableRole,
+  type AssignableRole,
+} from "@/lib/access";
+import { ensureDeveloperHomeMembership } from "@/lib/users/ensure-developer-membership";
 import { hashPassword } from "@/lib/password";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { sendEmail, welcomeEmailHtml, passwordResetByAdminEmailHtml } from "@/lib/email";
@@ -31,17 +39,19 @@ function cleanEmail(raw: unknown): string {
   return email;
 }
 
-function cleanRole(raw: unknown): "admin" | "user" {
+function cleanRole(raw: unknown): AssignableRole {
   const role = String(raw ?? "user");
-  if (role !== "admin" && role !== "user") throw new ActionError("Role must be admin or user.");
+  if (!isAssignableRole(role)) throw new ActionError("Role must be user, admin, or developer.");
   return role;
 }
 
 /** Create a user with a generated temporary password. Returns it ONCE for the admin. */
-export const createUser = adminAction(async ({ actor }, formData: FormData): Promise<{ email: string; tempPassword: string; emailed: boolean }> => {
+export const createUser = adminAction(async ({ actor, user: me }, formData: FormData): Promise<{ email: string; tempPassword: string; emailed: boolean }> => {
   const email = cleanEmail(formData.get("email"));
   const name = String(formData.get("name") ?? "").trim() || email.split("@")[0];
   const role = cleanRole(formData.get("role"));
+  // Only an existing developer may mint a developer (adminAction lets any admin in here).
+  if (!canAssignRole(me, role)) throw new ActionError("Only a developer can create a developer user.", "FORBIDDEN");
   if (await prisma.user.findUnique({ where: { email } })) {
     throw new ActionError("A user with that email already exists.", "CONFLICT");
   }
@@ -65,6 +75,8 @@ export const createUser = adminAction(async ({ actor }, formData: FormData): Pro
     await tx.account.create({
       data: { id: crypto.randomUUID(), accountId: user.id, providerId: "credential", userId: user.id, password: hash, createdAt: now, updatedAt: now },
     });
+    // A developer must be a member of the Demo Winery home org to have a working session.
+    if (role === "developer") await ensureDeveloperHomeMembership(tx, user.id);
     await writeAudit(tx, {
       ...actor,
       action: "USER_CREATED",
@@ -99,13 +111,18 @@ export const resetUserPassword = adminAction(async ({ actor }, userId: string): 
   return { email: user.email, tempPassword: temp, emailed };
 });
 
-export const setUserRole = adminAction(async ({ actor, user: me }, userId: string, role: "admin" | "user") => {
+export const setUserRole = adminAction(async ({ actor, user: me }, userId: string, role: AssignableRole) => {
   const r = cleanRole(role);
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new ActionError("User not found.");
-  if (userId === me.id && r !== "admin") throw new ActionError("You can't remove your own admin role.");
+  // Only a developer may grant the developer role, or touch an account that already IS a developer.
+  if (!canAssignRole(me, r)) throw new ActionError("Only a developer can assign the developer role.", "FORBIDDEN");
+  if (!canManageDeveloperTarget(me, user.role)) throw new ActionError("Only a developer can change a developer's role.", "FORBIDDEN");
+  // No self-downgrade — a developer/admin can't strip their own privilege (last-developer lockout).
+  if (!canChangeOwnRole(me.role, r, userId === me.id)) throw new ActionError("You can't lower your own role.");
   await runInTenantTx(async (tx) => {
     await tx.user.update({ where: { id: userId }, data: { role: r } });
+    if (r === "developer") await ensureDeveloperHomeMembership(tx, userId);
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "User", entityId: userId, changes: diff({ role: user.role }, { role: r }), summary: summarize("UPDATE", "User", { label: user.email, changes: diff({ role: user.role }, { role: r }) }) });
   });
   revalidatePath(PATH);
@@ -184,6 +201,7 @@ export const setUserBanned = adminAction(async ({ actor, user: me }, userId: str
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new ActionError("User not found.");
   if (userId === me.id && banned) throw new ActionError("You can't deactivate your own account.");
+  if (!canManageDeveloperTarget(me, user.role)) throw new ActionError("Only a developer can deactivate a developer account.", "FORBIDDEN");
   await runInTenantTx(async (tx) => {
     await tx.user.update({ where: { id: userId }, data: { banned, banReason: banned ? "Deactivated by admin" : null } });
     if (banned) await tx.session.deleteMany({ where: { userId } });
