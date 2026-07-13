@@ -98,6 +98,25 @@ export function getAnalyte(key: string): AnalyteDef | undefined {
   return ANALYTES[key];
 }
 
+/**
+ * Resolve a free-form analyte name to its canonical registry KEY, or null if unknown.
+ * Accepts the exact key ("BRIX"), a differently-cased key ("brix", "Temp" → "TEMP"), or the
+ * display label ("Brix", "Temperature", "Free SO₂"). Used to normalize assistant/import input so a
+ * label never reaches the strict-key write validator (the "Unknown analyte" class of bug).
+ */
+export function resolveAnalyteKey(input: string): string | null {
+  const raw = (input ?? "").trim();
+  if (!raw) return null;
+  if (ANALYTES[raw]) return raw; // exact key
+  const upper = raw.toUpperCase();
+  if (ANALYTES[upper]) return upper; // case-insensitive key (brix → BRIX, temp → TEMP)
+  const lc = raw.toLowerCase();
+  for (const def of Object.values(ANALYTES)) {
+    if (def.label.toLowerCase() === lc) return def.key; // display label ("Temperature" → TEMP)
+  }
+  return null;
+}
+
 export type ValidationResult = { ok: true } | { ok: false; error: string };
 
 /**
