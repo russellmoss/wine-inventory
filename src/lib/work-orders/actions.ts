@@ -27,7 +27,7 @@ import { normalizeWorkOrderPriority, normalizeDurationMin } from "@/lib/work-ord
 import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
 import { draftNlWorkOrderForBuilder } from "@/lib/work-orders/nl-resolve";
 import { requireTenantId } from "@/lib/tenant/context";
-import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore, rejectGroupRackBatchCore } from "@/lib/work-orders/approval";
+import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore, rejectGroupRackBatchCore, undoMaintenanceTaskCore } from "@/lib/work-orders/approval";
 import { shouldAutoFinalize } from "@/lib/work-orders/authority";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
 import { firstBlockingPriorTask } from "@/lib/work-orders/group-gating";
@@ -366,6 +366,14 @@ export const completeGroupRackBatchAction = action(async ({ user, actor }, input
 /** Plan 054: undo the latest batch of an in-progress group-rack task (LIFO). Admin-only (canApprove). */
 export const rejectGroupRackBatchAction = action(async ({ user, actor }, input: { taskId: string; reason?: string }) => {
   const res = await rejectGroupRackBatchCore(user, actor, input);
+  revalidateWorkOrders(res.taskId);
+  return res;
+});
+
+/** Plan 061: undo a completed maintenance task (single-vessel or a consolidated group) — reverses every
+ * member's activity event and reopens the task. Self-undo (the recorder) or admin/developer. */
+export const undoMaintenanceTaskAction = action(async ({ user, actor }, input: { taskId: string }) => {
+  const res = await undoMaintenanceTaskCore(user, actor, input);
   revalidateWorkOrders(res.taskId);
   return res;
 });

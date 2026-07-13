@@ -254,7 +254,7 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
         { kind: "SANITIZE", vesselGroup: "B1-B4" },
       ],
     },
-    note: "plan 060: barrel maintenance across a range uses vesselGroup (fans to one task per barrel), never a range jammed into vessel",
+    note: "plan 061: barrel maintenance across a range uses vesselGroup (consolidates into ONE task carrying the range as members), never a range jammed into vessel",
   },
   {
     utterance: "Work order to filter T15 through 0.45 micron pads",

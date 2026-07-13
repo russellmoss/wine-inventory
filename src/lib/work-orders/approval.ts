@@ -5,6 +5,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
+import { reverseVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { canApprove, type ApproverUser } from "@/lib/work-orders/authority";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 
@@ -205,7 +206,7 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
 
   const task = await prisma.workOrderTask.findUnique({
     where: { id: input.taskId },
-    select: { id: true, status: true, currentAttemptId: true, workOrderId: true, observationType: true, blockId: true, plannedPayload: true },
+    select: { id: true, kind: true, status: true, currentAttemptId: true, workOrderId: true, observationType: true, blockId: true, plannedPayload: true },
   });
   if (!task) throw new ActionError("That task no longer exists.");
   if (!REJECTABLE_STATUSES.includes(task.status)) throw new ActionError("That task isn't completed or awaiting approval.", "CONFLICT");
@@ -259,6 +260,8 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
   if (!attempt) throw new ActionError("That task has no attempt to reject.", "CONFLICT");
 
   if (!attempt.operationId) {
+    // Maintenance (record-only, no ledger op) is undone via undoMaintenanceTaskCore below — NOT here. It
+    // auto-DONEs and never enters the review queue, so it doesn't belong in the reviewer reject path.
     if (task.observationType !== "HARVEST_WEIGH_IN" || task.status !== "DONE") {
       throw new ActionError("That task has no reversible ledger operation or harvest pick to back out.", "CONFLICT");
     }
@@ -420,4 +423,49 @@ export async function bulkApproveTasksCore(user: ApproverUser, actor: LedgerActo
     }
   }
   return { approved: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
+}
+
+/**
+ * Plan 061: UNDO a completed record-only maintenance task (single-vessel or a consolidated group). Reverses
+ * every VesselActivityEvent the current completion wrote and REOPENS the task to PENDING so it can be re-done
+ * — maintenance completes straight to DONE, so leaving it REJECTED would be a dead-end (REJECTED→DONE is not
+ * a legal transition). Auth mirrors the group-rack self-undo: an admin/developer OR the person who recorded
+ * the completion. This is the crew's "oops, undo that," NOT a reviewer action (maintenance never enters the
+ * review queue). One Serializable tx (raised timeout for large groups).
+ */
+export async function undoMaintenanceTaskCore(user: ApproverUser, actor: LedgerActor, input: { taskId: string }): Promise<ReviewResult> {
+  const task = await prisma.workOrderTask.findUnique({
+    where: { id: input.taskId },
+    select: { id: true, kind: true, status: true, currentAttemptId: true, workOrderId: true },
+  });
+  if (!task) throw new ActionError("That task no longer exists.");
+  if (task.kind !== "MAINTENANCE" || task.status !== "DONE") throw new ActionError("Only a completed maintenance task can be undone.", "CONFLICT");
+  if (!task.currentAttemptId) throw new ActionError("That task has no completion to undo.", "CONFLICT");
+  const currentAttemptId = task.currentAttemptId;
+
+  // Auth: admin/developer, OR the person who recorded this completion (self-undo — mirrors group-rack D1).
+  if (!canApprove(user).ok) {
+    const owner = await prisma.workOrderTaskAttempt.findUnique({ where: { id: currentAttemptId }, select: { completedById: true } });
+    if (!owner?.completedById || owner.completedById !== user.id) {
+      throw new ActionError("Only an admin (or the person who recorded it) can undo this maintenance.", "FORBIDDEN");
+    }
+  }
+
+  const events = await prisma.vesselActivityEvent.findMany({ where: { taskId: task.id, attemptId: currentAttemptId, voidedAt: null }, select: { id: true } });
+  return runInTenantTx(async (tx) => {
+    // Claim the task (A4) and REOPEN to PENDING (not REJECTED — a record-only task must stay re-completable).
+    const claimed = await tx.workOrderTask.updateMany({
+      where: { id: task.id, status: "DONE", currentAttemptId },
+      data: { status: "PENDING", currentAttemptId: null },
+    });
+    if (claimed.count === 0) throw new ActionError("That task was already changed. Refresh and try again.", "CONFLICT");
+    for (const e of events) await reverseVesselActivityTx(tx, actor, e.id);
+    await tx.workOrderTaskAttempt.update({
+      where: { id: currentAttemptId },
+      data: { status: "REJECTED", rejectedReason: "undo", reviewedAt: new Date(), reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail },
+    });
+    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Undid a maintenance task — reversed ${events.length} activity event${events.length === 1 ? "" : "s"} and reopened it` });
+    return { taskId: task.id, status: "PENDING", message: `Undone — ${events.length} activity record${events.length === 1 ? "" : "s"} reversed; the task is open again.` };
+  }, { isolationLevel: "Serializable", timeout: 120_000 });
 }

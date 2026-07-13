@@ -248,6 +248,21 @@ function requireVessel(ctx: Ctx, state: ReadinessLoadedState, seq: number, id: s
   return vessel;
 }
 
+/** Plan 061: a consolidated group maintenance task's target is its member set (in groupActivity), not a
+ * single vessel. Validates the members (present + exist + active). Returns the member count when the task
+ * IS a group (so the caller skips requireVessel AND scales the per-vessel supply draw by N); null for a
+ * plain single-vessel maintenance task. */
+function validateGroupActivity(ctx: Ctx, state: ReadinessLoadedState, seq: number, v: Record<string, unknown>): number | null {
+  const ga = v.groupActivity && typeof v.groupActivity === "object" && !Array.isArray(v.groupActivity) ? (v.groupActivity as Record<string, unknown>) : null;
+  if (!ga) return null;
+  const memberIds = Array.isArray(ga.memberVesselIds) ? (ga.memberVesselIds as unknown[]).filter((x): x is string => typeof x === "string" && !!x) : [];
+  if (memberIds.length === 0) { blocking(ctx, "empty_group", `Task #${seq}: the maintenance group has no members.`); return 0; }
+  const members = memberIds.map((id) => state.vesselsById.get(id)).filter((x): x is ReadinessVesselState => !!x);
+  if (members.length !== memberIds.length) blocking(ctx, "missing_vessel", `A vessel in task #${seq} no longer exists.`);
+  for (const m of members) if (!m.isActive) blocking(ctx, "inactive_vessel", `${m.label} is inactive.`);
+  return memberIds.length;
+}
+
 /** Validate a `select` field value against its task-type vocabulary options. */
 function validateSelect(ctx: Ctx, seq: number, taskType: string, field: string, value: unknown) {
   const def = TASK_VOCABULARY[taskType];
@@ -535,8 +550,12 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
     case "GAS":
     case "SO2":
     case "WET_STORAGE": {
-      const vessel = requireVessel(ctx, state, seq, str(v.vesselId), "target");
-      if (!vessel) return;
+      // Plan 061: a consolidated group task validates its members; a plain task requires a single vessel.
+      const groupCount = validateGroupActivity(ctx, state, seq, v);
+      if (groupCount === null) {
+        const vessel = requireVessel(ctx, state, seq, str(v.vesselId), "target");
+        if (!vessel) return;
+      }
       if (task.taskType === "GAS") validateSelect(ctx, seq, "GAS", "gasType", v.gasType);
       if (task.taskType === "SO2") validateSelect(ctx, seq, "SO2", "so2Method", v.so2Method);
       const materialId = str(v.materialId);
@@ -553,7 +572,11 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
           return;
         }
         const amount = numOrNull(v.amount);
-        const converted = amount != null && amount > 0 && material.stockUnit ? { qty: amount, unit: material.stockUnit } : null;
+        // Plan 061: `amount` is the PER-VESSEL dose. A consolidated group task depletes it for EACH member,
+        // so the estimate + ATP must reflect N × dose (else the proposal under-reports the draw by N and can
+        // say "enough sanitizer" when the range will run ~N× short). N=1 for a single-vessel task.
+        const drawFactor = groupCount ?? 1;
+        const converted = amount != null && amount > 0 && material.stockUnit ? { qty: amount * drawFactor, unit: material.stockUnit } : null;
         materialAtpAndCost(ctx, seq, material, converted, "overhead");
       }
       return;
@@ -561,7 +584,8 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
 
     case "STEAM":
     case "OZONE": {
-      requireVessel(ctx, state, seq, str(v.vesselId), "target");
+      // Plan 061: group task validates members; plain task requires a single vessel. (No supply to scale.)
+      if (validateGroupActivity(ctx, state, seq, v) === null) requireVessel(ctx, state, seq, str(v.vesselId), "target");
       return;
     }
 
@@ -699,6 +723,12 @@ function collectIds(taskBuilds: TaskBuild[]): { vesselIds: string[]; lotIds: str
         const arr = g[key];
         if (Array.isArray(arr)) for (const id of arr) if (typeof id === "string" && id) vesselIds.add(id);
       }
+    }
+    // Plan 061: a consolidated group maintenance task carries its members in groupActivity.memberVesselIds.
+    const ga = v.groupActivity;
+    if (ga && typeof ga === "object" && !Array.isArray(ga)) {
+      const arr = (ga as Record<string, unknown>).memberVesselIds;
+      if (Array.isArray(arr)) for (const id of arr) if (typeof id === "string" && id) vesselIds.add(id);
     }
     for (const key of ["lotId", "parentLotId"]) {
       const id = str(v[key]);
