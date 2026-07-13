@@ -135,3 +135,38 @@ describe("isRetryable classification", () => {
     expect(isRetryable("anything-else")).toBe(true);
   });
 });
+
+describe("plan 060 — whole-tank fan-out carries the group id through the outbox", () => {
+  const base: CaptureInput = {
+    vesselId: "v1",
+    lotId: "lotA",
+    occupancyToken: "v1:lotA",
+    deviceObservedAt: "2026-05-15T00:00:00.000Z",
+    readings: [{ analyte: "BRIX", value: 13, unit: "°Bx" }],
+  };
+  const clock = () => "2026-05-15T00:00:00.000Z";
+
+  it("buildCapture stamps vesselReadingGroupId on the panel when provided", () => {
+    let n = 0;
+    const cap = buildCapture({ ...base, vesselReadingGroupId: "vrg:r1" }, () => `id-${++n}`, clock);
+    expect(cap.panel.vesselReadingGroupId).toBe("vrg:r1");
+  });
+
+  it("defaults the group id to null for an ordinary single-lot capture", () => {
+    let n = 0;
+    const cap = buildCapture(base, () => `id-${++n}`, clock);
+    expect(cap.panel.vesselReadingGroupId).toBeNull();
+  });
+
+  it("N captures for one whole-tank reading share the group but keep distinct panel/command ids", () => {
+    let n = 0;
+    const idGen = () => `id-${++n}`;
+    const group = "vrg:r1";
+    const capA = buildCapture({ ...base, lotId: "lotA", vesselReadingGroupId: group }, idGen, clock);
+    const capB = buildCapture({ ...base, lotId: "lotB", vesselReadingGroupId: group }, idGen, clock);
+    expect(capA.panel.vesselReadingGroupId).toBe(group);
+    expect(capB.panel.vesselReadingGroupId).toBe(group);
+    expect(capA.panel.panelId).not.toBe(capB.panel.panelId);
+    expect(capA.panel.commandId).not.toBe(capB.panel.commandId);
+  });
+});

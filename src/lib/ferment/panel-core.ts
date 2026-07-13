@@ -21,6 +21,7 @@ export type SubmitPanelInput = {
   deviceObservedAt: string; // ISO
   readings: SubmitReading[];
   note?: string | null;
+  vesselReadingGroupId?: string | null; // plan 060: groups the N one-lot captures of a whole-tank reading
 };
 
 export type SubmitPanelResult =
@@ -69,6 +70,7 @@ export async function submitPanelCore(actor: Actor, input: SubmitPanelInput): Pr
           deviceObservedAt: observedAt,
           serverReceivedAt: new Date(),
           occupancyToken: input.occupancyToken,
+          vesselReadingGroupId: input.vesselReadingGroupId ?? null,
         },
       });
       await tx.analysisReading.createMany({
