@@ -21,15 +21,113 @@ import { GroupMaintenanceTaskForm, GroupMaintenanceUndo } from "./GroupMaintenan
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
+import { computeDoseTotal, convertDoseToStock } from "@/lib/cellar/additions-math";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
 // Dexie outbox uses). Not harvest-grade offline yet (Phase 28); online status is pinned via aria-live.
 
-type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null };
+type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION", CAP_MGMT: "CAP_MGMT" };
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
+
+// A clear "do this → to this → with this much" summary line for the read-only execution view.
+type SummaryRow = { label: string; value: string; strong?: boolean };
+
+function num(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
+  return null;
+}
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+/**
+ * Build the read-only "story" a cellarhand reads before acting. Resolves the planned payload's raw ids to
+ * human vessel/material labels and — for additions/finings — states the dose WITH ITS UNITS plus the
+ * computed total to weigh/measure out (from the vessel volume). If the addition was dictated as a %
+ * solution (e.g. "10% KMBS"), the total solution volume is stated too, so the crew knows how much liquid
+ * to actually add. Mirrors the printable work-order logic (data.ts getWorkOrderPrintView).
+ */
+function buildSummary(
+  task: WorkOrderTaskView,
+  def: (typeof TASK_VOCABULARY)[string] | undefined,
+  pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] },
+): { rows: SummaryRow[]; headline: string | null } {
+  const p = (task.plannedPayload ?? {}) as Record<string, unknown>;
+  const rows: SummaryRow[] = [];
+  const vLabel = (id?: string | null) => (id ? pickers.vessels.find((v) => v.id === id)?.label ?? null : null);
+  const mMat = (id?: string | null) => (id ? pickers.materials.find((m) => m.id === id) ?? null : null);
+  const lLabel = (id?: string | null) => (id ? pickers.lots.find((l) => l.id === id)?.label ?? null : null);
+  const vessel = (id?: string | null) => (id ? pickers.vessels.find((v) => v.id === id) ?? null : null);
+
+  const fromV = vLabel(str(p.fromVesselId) ?? task.sourceVesselId);
+  const toV = vLabel(str(p.toVesselId) ?? task.destVesselId);
+  const singleVId = str(p.vesselId) ?? task.destVesselId ?? task.sourceVesselId;
+  const singleV = vLabel(singleVId);
+  if (fromV && toV) { rows.push({ label: "From", value: fromV }); rows.push({ label: "To", value: toV, strong: true }); }
+  else if (singleV) rows.push({ label: "Vessel", value: singleV, strong: true });
+
+  const lotLabel = lLabel(str(p.lotId) ?? task.lotId);
+  if (lotLabel) rows.push({ label: "Lot", value: lotLabel });
+
+  const mat = mMat(str(p.materialId) ?? task.materialId);
+  if (mat) rows.push({ label: "Material", value: mat.label, strong: true });
+
+  let headline: string | null = null;
+
+  if (task.opType === "ADDITION" || task.opType === "FINING") {
+    const amount = num(p.amount);
+    const doseUnit = str(p.doseUnit);
+    const v = vessel(singleVId);
+    // Barrels dose against capacity (assumed full); tanks against current wine volume.
+    const vol = v ? (v.kind === "BARREL" ? Number(v.capacityL ?? v.volumeL ?? 0) : Number(v.volumeL ?? 0)) : 0;
+    if (amount != null && doseUnit) {
+      rows.push({ label: "Dose", value: `${amount} ${doseUnit}`, strong: true });
+      const est = computeDoseTotal(amount, doseUnit, vol);
+      if (est) {
+        const context = v?.kind === "BARREL" ? " (barrel full)" : vol > 0 ? ` (at ${vol.toLocaleString()} L)` : "";
+        rows.push({ label: "Total to add", value: `≈ ${est.total.toLocaleString()} ${est.unit}${context}`, strong: true });
+        // If the material is a % solution (e.g. a 10% KMBS solution), also state the volume of solution to
+        // pour: total active mass ÷ (percentActive/100), converted from grams to the material's stock unit.
+        const pct = num((mat as unknown as { percentActive?: unknown } | null)?.percentActive)
+          ?? num(p.percentActive)
+          ?? num(p.solutionPercent);
+        if (est.unit === "g" && pct != null && pct > 0 && pct < 100) {
+          const solutionMassG = est.total / (pct / 100); // grams of solution
+          const asStock = convertDoseToStock({ total: solutionMassG, unit: "g" }, mat?.unit ?? null);
+          if (asStock) rows.push({ label: "As solution", value: `≈ ${asStock.qty.toLocaleString()} ${asStock.unit} of ${pct}% solution`, strong: true });
+        }
+        headline = `Add ${est.total.toLocaleString()} ${est.unit}${mat ? ` of ${mat.label}` : ""}${singleV ? ` to ${singleV}` : ""}`;
+      }
+    } else if (amount != null) {
+      rows.push({ label: "Amount", value: mat?.unit ? `${amount} ${mat.unit}` : String(amount), strong: true });
+    }
+  } else if (task.kind === "MAINTENANCE") {
+    const amount = num(p.amount);
+    if (amount != null) rows.push({ label: "Amount", value: mat?.unit ? `${amount} ${mat.unit}` : String(amount) });
+    const technique = str(p.technique); if (technique) rows.push({ label: "Technique", value: technique });
+    const so2Method = str(p.so2Method); if (so2Method) rows.push({ label: "SO₂ method", value: so2Method });
+    const gasType = str(p.gasType); if (gasType) rows.push({ label: "Gas", value: gasType });
+    const durationMin = num(p.durationMin); if (durationMin != null) rows.push({ label: "Duration", value: `${durationMin} min` });
+    const target = num(p.targetValue); const tu = str(p.targetUnit);
+    if (target != null) rows.push({ label: "Target", value: tu ? `${target} ${tu}` : String(target) });
+  } else if (task.kind === "OPERATION") {
+    const technique = str(p.technique); if (technique) rows.push({ label: "Technique", value: technique });
+    const durationMin = num(p.durationMin); if (durationMin != null) rows.push({ label: "Duration", value: `${durationMin} min` });
+    const drawL = num(p.drawL); if (drawL != null) rows.push({ label: "Draw", value: `${drawL} L` });
+    const volumeL = num(p.volumeL); if (volumeL != null) rows.push({ label: "Volume", value: `${volumeL} L` });
+    const rackType = str(p.rackType); if (rackType) rows.push({ label: "Rack type", value: rackType });
+    const filterType = str(p.filterType); if (filterType) rows.push({ label: "Filter", value: filterType });
+    const micron = num(p.micron); if (micron != null) rows.push({ label: "Micron", value: `${micron} µm` });
+  }
+
+  if (task.instructions?.trim()) rows.push({ label: "Instructions", value: task.instructions.trim() });
+
+  return { rows, headline };
+}
 
 function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] }; onDone: () => void }) {
   const commandId = React.useMemo(() => crypto.randomUUID(), []);
@@ -45,6 +143,10 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
   const [note, setNote] = React.useState<string>("");
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
+  // Execution views must read as a clear "do this → to this → with this amount" story (bug: SO2 WO was a
+  // raw editable form with a material-picker panel). Show a read-only summary first; only reveal the
+  // editable fields once the crew explicitly taps "Edit".
+  const [editing, setEditing] = React.useState(false);
 
   function set(key: string, v: unknown) { setFields((p) => ({ ...p, [key]: v })); }
 
@@ -145,6 +247,8 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
   }
 
   const canStart = task.status === "PENDING";
+  const summary = buildSummary(task, def, pickers);
+  const isObservation = task.kind === "OBSERVATION";
   return (
     <Card style={{ padding: 18 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -153,15 +257,38 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 14px" }}>{task.kind === "OPERATION" ? task.opType : task.kind === "NOTE" ? "checklist" : task.kind === "MAINTENANCE" ? `maintenance · ${task.activityType}` : `observation · ${task.observationType}`}{def ? ` · ${def.label}` : ""}</div>
 
-      {def?.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 12 }}>{def.hint}</div> : null}
+      {/* Read-only story first: what to do, to which vessel, with how much (units + computed total). */}
+      {summary.headline ? (
+        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "10px 12px", marginBottom: 12 }}>{summary.headline}</div>
+      ) : null}
+      {summary.rows.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 14px", alignItems: "baseline", marginBottom: 12 }}>
+          {summary.rows.map((r, i) => (
+            <React.Fragment key={i}>
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{r.label}</div>
+              <div style={{ fontSize: r.strong ? 16 : 14.5, fontWeight: r.strong ? 600 : 400, color: "var(--text)" }}>{r.value}</div>
+            </React.Fragment>
+          ))}
+        </div>
+      ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        {def ? Object.entries(def.fields).filter(([k]) => k !== "note").map(([k, t]) => renderField(k, t)) : null}
-        {customFields.filter((f) => (f.stage ?? []).includes("execution")).map(renderCustomField)}
-        {task.kind === "OBSERVATION" ? (
-          <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
-        ) : null}
-      </div>
+      {def?.hint && editing ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 12 }}>{def.hint}</div> : null}
+
+      {/* The editable fields (incl. the material-picker panel) only appear once the crew taps Edit — or
+          always for observations, which capture a fresh reading rather than confirm a planned dose. */}
+      {editing || isObservation ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {def ? Object.entries(def.fields).filter(([k]) => k !== "note").map(([k, t]) => renderField(k, t)) : null}
+          {customFields.filter((f) => (f.stage ?? []).includes("execution")).map(renderCustomField)}
+          {isObservation ? (
+            <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
+          ) : null}
+        </div>
+      ) : (
+        <div style={{ marginBottom: 4 }}>
+          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Edit</Button>
+        </div>
+      )}
       <Textarea label="Note (optional)" minRows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. actual differed because…" style={{ marginTop: 12 }} />
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
