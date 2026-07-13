@@ -222,7 +222,8 @@ async function main() {
     const b2 = await prisma.vessel.create({ data: { code: "ZZNL-B2", type: "BARREL", capacityL: 225 } });
     const b3 = await prisma.vessel.create({ data: { code: "ZZNL-B3", type: "BARREL", capacityL: 225 } });
 
-    // ── Plan 060: maintenance across a barrel group/range fans out to one record-only task per barrel. ──
+    // ── Plan 061 (supersedes plan-060 fan-out): maintenance across a barrel group/range consolidates into
+    // ONE task carrying the member set in plannedPayload.groupActivity — NOT one task per barrel. ──
     const maintProposal = await buildNlWorkOrderProposal({
       sourceText: "clean and sanitize the three barrels",
       title: "ZZNL barrel maintenance group",
@@ -233,13 +234,17 @@ async function main() {
     });
     assert(maintProposal.status === "ready", "barrel-group maintenance proposal is ready");
     const maintTypes = maintProposal.taskBuilds.map((t) => t.taskType);
-    assert(maintTypes.filter((t) => t === "CLEAN").length === 3, `CLEAN fanned to 3 barrels (got ${maintTypes.filter((t) => t === "CLEAN").length})`);
-    assert(maintTypes.filter((t) => t === "SANITIZE").length === 3, `SANITIZE fanned to 3 barrels (got ${maintTypes.filter((t) => t === "SANITIZE").length})`);
-    assert(maintProposal.taskBuilds.length === 6, `two maintenance kinds × 3 barrels = 6 task builds (got ${maintProposal.taskBuilds.length})`);
-    const cleanVesselIds = new Set(maintProposal.taskBuilds.filter((t) => t.taskType === "CLEAN").map((t) => (t.values as { vesselId?: string }).vesselId));
-    assert(cleanVesselIds.size === 3 && cleanVesselIds.has(b1.id) && cleanVesselIds.has(b2.id) && cleanVesselIds.has(b3.id), "each fanned CLEAN task targets a distinct barrel (b1/b2/b3)");
+    assert(maintProposal.taskBuilds.length === 2, `two maintenance kinds consolidate to 2 tasks, not one-per-barrel (got ${maintProposal.taskBuilds.length})`);
+    assert(maintTypes.filter((t) => t === "CLEAN").length === 1, `CLEAN is ONE consolidated task (got ${maintTypes.filter((t) => t === "CLEAN").length})`);
+    assert(maintTypes.filter((t) => t === "SANITIZE").length === 1, `SANITIZE is ONE consolidated task (got ${maintTypes.filter((t) => t === "SANITIZE").length})`);
+    const cleanGa = (maintProposal.taskBuilds.find((t) => t.taskType === "CLEAN")!.values as { groupActivity?: { memberVesselIds?: string[] } }).groupActivity;
+    const cleanMembers = new Set(cleanGa?.memberVesselIds ?? []);
+    assert(cleanMembers.size === 3 && cleanMembers.has(b1.id) && cleanMembers.has(b2.id) && cleanMembers.has(b3.id), "the consolidated CLEAN task carries all 3 barrels as members (b1/b2/b3)");
+    // The consolidated task carries no single vessel column (members live in the payload).
+    assert((maintProposal.taskBuilds.find((t) => t.taskType === "CLEAN")!.values as { vesselId?: string }).vesselId === undefined, "the consolidated task has no single vesselId (members are in groupActivity)");
     const oneVessel = await buildNlWorkOrderProposal({ sourceText: "clean one barrel", title: "ZZNL one barrel", tasks: [{ kind: "CLEAN", vessel: "ZZNL-B1" }] });
-    assert(oneVessel.taskBuilds.length === 1 && oneVessel.taskBuilds[0].taskType === "CLEAN", "single-vessel maintenance still produces exactly one task");
+    assert(oneVessel.taskBuilds.length === 1 && oneVessel.taskBuilds[0].taskType === "CLEAN", "single-vessel maintenance still produces exactly one plain task");
+    assert((oneVessel.taskBuilds[0].values as { groupActivity?: unknown; vesselId?: string }).groupActivity === undefined && !!(oneVessel.taskBuilds[0].values as { vesselId?: string }).vesselId, "single-vessel maintenance keeps its vesselId and has NO groupActivity");
 
     const grProposal = await buildNlWorkOrderProposal({
       sourceText: "barrel down the tank into the three barrels",
