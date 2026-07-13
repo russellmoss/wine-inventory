@@ -148,7 +148,7 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     utterance: "Free SO₂ came in at 28 and total 95 on tank 5",
     tool: "record_measurement",
     args: { vessel: "tank 5", freeSO2: 28, totalSO2: 95 },
-    note: "vessel → its lot; a blend would ask which",
+    note: "vessel → its lot; a multi-lot tank records on the WHOLE tank (fan-out, plan 060) — never a which-lot dead-end",
   },
   {
     utterance: "Log 10.5 Brix on tank T4",
