@@ -1,7 +1,7 @@
 ---
 title: Fan-out a single vessel reading to all co-resident lots (multi-lot "one must" tank)
 type: feat
-status: core-shipped
+status: completed
 date: 2026-07-12
 branch: claude/tank-cofermenting-brix-logging-9009e1
 depth: standard
@@ -17,11 +17,11 @@ units: 6
 - [x] Unit 6 — vessel-scoped dedup (`coalesce(vesselReadingGroupId, id)`) in `listVesselAnalyses` + vessel History; lot-scoped views untouched.
 - [x] Standing proof: `verify:chemistry` section 7 (28/28), pure planner + dedup unit tests, full suite 1848 green, tsc + lint + verify:ai-native clean.
 
-**Deferred to a fast-follow PR (separate surfaces, not in the reported flow):**
-- [ ] Unit 4 — the non-assistant `/bulk` FermentMonitor *write* UI whole-tank selector (the READ side / trends is already deduped by Unit 6; the per-lot capture form is the remaining piece).
-- [ ] Unit 5 — offline Dexie outbox fan-out (expand-early: enqueue N one-lot captures). Offline capture on a multi-lot tank is an edge case; the online assistant + manual paths cover the reported need.
+**Also shipped in this PR (all 6 units complete):**
+- [x] Unit 5 — offline Dexie outbox fan-out (expand-early): `vesselReadingGroupId` threaded `CaptureInput → PendingPanel → submitPanelCore`; a whole-tank capture syncs as N one-lot captures sharing the group, per-lot residency still fail-closes. Proven by `verify-ferment` (37/37) + queue unit tests.
+- [x] Unit 4 — the `/bulk` FermentMonitor whole-tank selector: multi-lot tank defaults to "Whole tank · N lots" (opt-out to just this lot); editing a grouped reading re-logs the whole tank (group-atomic void safety). tsc + `next build` clean.
 
-Rationale: the reported bug (log one Brix on the whole multi-lot tank, via the assistant) is fully fixed and proven; 4+5 are adjacent write surfaces best shipped as a small, separately-reviewable follow-up.
+All 6 units done. Full suite 1851 green; `verify:chemistry` 28/28; `verify-ferment` 37/37; tsc + eslint + `verify:ai-native` + `next build` clean.
 
 ## Overview
 
