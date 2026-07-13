@@ -2066,6 +2066,13 @@ model AnalysisPanel {
   deviceObservedAt DateTime?
   serverReceivedAt DateTime?
   occupancyToken   String?
+  // Plan 060 fan-out: when ONE physical reading is taken on a multi-lot vessel (co-ferment),
+  // it writes one panel per co-resident lot, ALL sharing this id (VISION D2 intact — each panel
+  // still attaches to exactly one lot). Vessel-scoped views dedup by coalesce(vesselReadingGroupId, id);
+  // lot-scoped views are unaffected so each lot keeps its curve. NULL = ordinary single-lot reading.
+  // Derived deterministically from the capture's stable clientRequestId so retries/offline re-sync land
+  // the same group. The @@unique below makes fan-out idempotent + blocks divergent same-(group,lot) rows.
+  vesselReadingGroupId String?
   voidedAt         DateTime?
   voidedById       String?
   createdAt        DateTime          @default(now())
@@ -2075,8 +2082,12 @@ model AnalysisPanel {
   readings         AnalysisReading[]
 
   @@unique([tenantId, id])
+  // Fan-out idempotency + integrity: one panel per (group, lot). NULLs are distinct in Postgres
+  // unique indexes, so legacy/single-lot rows (null group) never collide — effectively partial.
+  @@unique([tenantId, vesselReadingGroupId, lotId])
   @@index([lotId, observedAt])
   @@index([vesselId])
+  @@index([vesselId, vesselReadingGroupId])
   @@index([sampleId])
   @@index([tenantId])
   @@map("analysis_panel")
