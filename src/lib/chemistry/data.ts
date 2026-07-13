@@ -55,7 +55,7 @@ export async function countOpenSamples(): Promise<number> {
 export type VesselAnalyses = {
   /** Flat readings (Decimal → number; date = epoch ms) for the filterable trend view. */
   readings: { analyte: string; value: number; unit: string; date: number }[];
-  /** Derived molecular SO₂ from the most recent panel that has both free SO₂ + pH. */
+  /** Derived molecular SO₂ from the latest free SO₂ + the pH current at that reading. */
   molecular: MolecularSO2 | null;
   molecularDateLabel: string | null;
   panelCount: number;
@@ -63,8 +63,16 @@ export type VesselAnalyses = {
 
 /**
  * A vessel's analysis history (non-voided panels recorded while it held wine), for the
- * per-vessel trends modal on /bulk. Scoped by the panel's `vesselId` snapshot. Molecular SO₂
- * is derived from the latest same-panel free SO₂ + pH (never stored).
+ * per-vessel trends modal on /bulk. Scoped by the panel's `vesselId` snapshot.
+ *
+ * Molecular SO₂ is DERIVED (never stored) from the LATEST free SO₂ paired with the pH that was
+ * current AT OR BEFORE that free-SO₂ reading. Free SO₂ is the quantity that moves (every addition
+ * changes it) while pH is slow-moving, so the antimicrobially-meaningful molecular value must track
+ * the newest free SO₂ — not sit frozen until the next panel happens to re-measure pH in one shot.
+ * We still only ever use REAL recorded values (we never invent a pH) and we never pair a free SO₂
+ * with a pH measured LATER (chronology is respected). When the latest free SO₂ panel also carries a
+ * pH, that same-panel pH is the most-recent-at-or-before one, so the strict same-panel case is
+ * preserved as a subset.
  */
 export async function listVesselAnalyses(vesselId: string): Promise<VesselAnalyses> {
   const rows = await prisma.analysisPanel.findMany({
@@ -79,19 +87,29 @@ export async function listVesselAnalyses(vesselId: string): Promise<VesselAnalys
   const readings = panels.flatMap((p) =>
     p.readings.map((r) => ({ analyte: r.analyte, value: Number(r.value), unit: r.unit, date: p.observedAt.getTime() })),
   );
+
+  // Walk chronologically, carrying the most-recent pH seen so far. The latest panel that carries a
+  // free SO₂ pairs it with that carried pH (i.e. the pH current at or before this free reading).
+  let latestFree: { value: number; observedAt: Date } | null = null;
+  let pHForLatestFree: number | null = null;
+  let runningPH: number | null = null;
+  for (const p of panels) {
+    const ph = p.readings.find((r) => r.analyte === "PH");
+    if (ph) runningPH = Number(ph.value);
+    const free = p.readings.find((r) => r.analyte === "FREE_SO2");
+    if (free) {
+      latestFree = { value: Number(free.value), observedAt: p.observedAt };
+      pHForLatestFree = runningPH; // pH current at/before this free reading (same-panel pH wins)
+    }
+  }
+
   let molecular: MolecularSO2 | null = null;
   let molecularDateLabel: string | null = null;
-  for (let i = panels.length - 1; i >= 0; i--) {
-    const p = panels[i];
-    const free = p.readings.find((r) => r.analyte === "FREE_SO2");
-    const ph = p.readings.find((r) => r.analyte === "PH");
-    if (free && ph) {
-      const m = molecularSO2({ freeSO2: Number(free.value), pH: Number(ph.value) });
-      if (m) {
-        molecular = m;
-        molecularDateLabel = p.observedAt.toISOString().slice(0, 10);
-        break;
-      }
+  if (latestFree && pHForLatestFree != null) {
+    const m = molecularSO2({ freeSO2: latestFree.value, pH: pHForLatestFree });
+    if (m) {
+      molecular = m;
+      molecularDateLabel = latestFree.observedAt.toISOString().slice(0, 10);
     }
   }
   return { readings, molecular, molecularDateLabel, panelCount: panels.length };
