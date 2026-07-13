@@ -68,6 +68,61 @@ export function isTenantAdminLike(user: RoleBearingUser | null): boolean {
 }
 
 /**
+ * The roles a user account may hold and that user management can assign. `developer` is the most
+ * powerful (admin-like in every tenant + cross-tenant support console); `admin` and `user` are the
+ * ordinary org-level roles. Stored as a free-form String on `User` — this is the code-level allow-list.
+ */
+export const ASSIGNABLE_ROLES = ["user", "admin", "developer"] as const;
+export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
+
+export function isAssignableRole(role: unknown): role is AssignableRole {
+  return typeof role === "string" && (ASSIGNABLE_ROLES as readonly string[]).includes(role);
+}
+
+/**
+ * Privilege rank, so we can reason about promotions vs demotions. developer > admin > user.
+ * Unknown/absent roles rank at the bottom.
+ */
+function roleRank(role: string | null | undefined): number {
+  if (role === "developer") return 3;
+  if (role === "admin") return 2;
+  return 1;
+}
+
+/**
+ * Can `actor` assign `targetRole` to some user? The developer role is SELF-REPLICATING: only an
+ * existing developer may grant it. A plain admin must never be able to mint a developer, because
+ * developer carries cross-tenant support reach — letting an admin grant it would be a privilege-
+ * escalation backdoor. Admins (and developers) may assign the ordinary admin/user roles.
+ * Pure + actor-aware so both the server action and the UI gate off the exact same rule.
+ */
+export function canAssignRole(actor: RoleBearingUser | null, targetRole: string): boolean {
+  if (!isAssignableRole(targetRole)) return false;
+  if (targetRole === "developer") return isDeveloper(actor);
+  return isTenantAdminLike(actor);
+}
+
+/**
+ * Only a developer may manage (change role / deactivate) an account that IS a developer — whether
+ * promoting, demoting, or banning it. Stops an ordinary admin from griefing or locking out the
+ * developer tier. `true` means the actor is allowed to manage this target.
+ */
+export function canManageDeveloperTarget(actor: RoleBearingUser | null, targetRole: string | null | undefined): boolean {
+  if (targetRole !== "developer") return true;
+  return isDeveloper(actor);
+}
+
+/**
+ * Guard the last-developer / self-downgrade lockout: a user may not LOWER their own privilege
+ * (e.g. a developer setting themselves back to admin/user, or an admin to user). Returns `true`
+ * when the self role change is allowed. Not-self is always allowed here (other guards apply).
+ */
+export function canChangeOwnRole(currentRole: string | null | undefined, targetRole: string, isSelf: boolean): boolean {
+  if (!isSelf) return true;
+  return roleRank(targetRole) >= roleRank(currentRole);
+}
+
+/**
  * Can this user act on the given vineyard? Admins reach any vineyard; a manager
  * (role "user") only vineyards in their membership SET (D9). Used server-side by
  * every field-note / harvest mutation + read to scope managers.
