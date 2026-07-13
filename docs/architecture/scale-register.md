@@ -156,6 +156,13 @@ TEMPLATE — copy this block for each new decision:
   `src/lib/{ledger,cost,transform,blend,compliance}` (caught by `verify:naming`'s static scan).
 - **Status:** 🟢 (built + guarded by `verify:naming`; winery-scale volumes)
 
+### Consolidated multi-vessel maintenance completes all members in ONE Serializable tx (plan 061)
+- **Choice:** a group MAINTENANCE task ("clean barrels 1–30") writes one `VesselActivityEvent` per member — and draws the shared overhead `SupplyLot` — inside a single `runInTenantTx` Serializable transaction, so the whole group is atomic and idempotent.
+- **Fine until:** the current hard cap `GROUP_MAINTENANCE_MAX_MEMBERS = 60` (bigger ranges must split into multiple tasks); members are lock-ordered by id so concurrent overlapping ranges can't deadlock.
+- **What breaks:** if that cap is ever raised, the tx grows — longer lock-hold on the overhead SupplyLot (serializes concurrent completions that share it), more retry pressure, and a bigger blast radius on a serialization abort. The undo path (`undoMaintenanceTaskCore`) reverses every event in one tx too, so it scales the same way.
+- **Tripwire:** the member cap being raised; group-maintenance completions timing out / serialization-retrying; contention on a hot overhead lot during a big barrel-shed cleaning day.
+- **Status:** 🟢 (bounded by the 60-member cap; barrel-shed scale today — chunk larger groups rather than lifting the cap).
+
 ### Bulk migration import publishes a whole batch through the ledger chokepoint (plan: migration/import)
 - **Choice:** onboarding import (`src/lib/migration/publish.ts`) writes REAL ledger ops for every seeded lot/position on sign-off, through the same `runLedgerWrite` SERIALIZABLE chokepoint as live cellar ops.
 - **Fine until:** a batch of a few hundred lots (a normal winery's back-book).

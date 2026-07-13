@@ -88,6 +88,11 @@ A natural-language assistant over the whole app, powered by `@anthropic-ai/sdk`.
 - **Writes require explicit confirmation:** `confirm.ts` + `commit.ts` (signed-token / single-use nonce).
 - `conversations.ts` / `history.ts` — persisted, shared across text + voice.
 - **Voice mode** reuses the *same* `/api/assistant` stream + tool loop (one brain); ElevenLabs does STT + TTS. Server key stays server-side.
+- **Reads the expendables/materials catalog (plan 055, #163):** `query_materials` (`tools/query-materials.ts`)
+  wraps `listMaterials` (on-hand across open `SupplyLot`s + weighted-avg cost, tenant-scoped) — the READ
+  counterpart to `create_material`/`receive_supply`/`adjust_inventory`, answering "how much DAP is left",
+  "what are we out of". Multi-lot ("one must") tanks: the assistant records on the whole tank rather than
+  asking "which lot" (fan-out, §13) and resolves free-form analyte names to chemistry registry KEYS.
 
 ### 7. Vineyard + maps — `src/lib/map/`, `src/lib/vineyard/`, `src/lib/harvest/`
 Satellite basemap (Esri keyless, or Google Map Tiles if keyed) with drawable blocks (`leaflet` +
@@ -201,6 +206,18 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
 - **Progressive group completion (plan 054):** a group barrel-down / rack-to-tank can finish in passes
   ("4 now, the rest tomorrow") — `group-rack-progress.ts`/`group-rack-select.ts` complete a subset as one
   reviewable task, per-batch op + LIFO reject, no schema (the attempt model is already N-op-capable).
+- **Consolidated multi-vessel maintenance (plan 061, supersedes the plan-060 per-barrel fan-out):** "clean
+  barrels 1–30" is now **ONE** consolidated MAINTENANCE task carrying its member set in
+  `plannedPayload.groupActivity` (`group-activity.ts`: `activityType` + ordered/deduped `memberVesselIds`
+  + `memberCodes`, JSON-only — no columns/join table, the group-rack tradeoff). Completion (`maintenance.ts`)
+  writes **one record-only `VesselActivityEvent` per member in ONE Serializable tx** — WORKORDER-3 still holds
+  per barrel (overhead-only supply use, no ledger op, no cost), each event keyed `${commandId}:${vesselId}`,
+  members ordered by id for a deadlock-free SupplyLot lock order. Member count is capped
+  (`GROUP_MAINTENANCE_MAX_MEMBERS = 60`) to bound the tx/lock window; bigger ranges split into multiple tasks.
+  Undo is a crew self-serve `undoMaintenanceTaskCore` (reverses every event + **reopens to PENDING**, since a
+  record-only task auto-DONEs and REJECTED→DONE isn't legal) — NOT a reviewer reject (maintenance never enters
+  the queue). Authored by NL (`nl-proposal.ts`/`nl-resolve.ts`: a barrel group/range → one consolidated task).
+  Proven by `npm run verify:group-maintenance` + `verify:work-order-nl`.
 - **Surfaces** (`src/app/(app)/work-orders/`): manager issue (`/new`), a **palette builder**, floor-first
   execution checklist (`/[id]/execute`, offline-tolerant via the Dexie outbox), review/approval queue
   (`/review`), printable WO (`/[id]/print` + `print.css`), template + task-type admin (`/templates`,
@@ -231,6 +248,21 @@ root cause, so the fixer is never fed a product-gap it can't fix. Support-tenant
 `developer/support-context.ts`. See [[security-register]] — the fence is the control that lets an autonomous
 agent touch `main` safely.
 
+### 13. Chemistry readings + whole-tank fan-out (plan 060) — `src/lib/chemistry/`
+An `AnalysisPanel` (+ `AnalysisReading` rows keyed to the analyte registry, `analytes.ts`) attaches to
+**exactly one lot** (VISION D2). When ONE physical reading is taken on a **multi-lot (co-ferment) vessel**,
+`fanout-plan.ts` fans it out to **one panel per co-resident lot**, all sharing a `vesselReadingGroupId` — so
+each lot keeps its own curve while the reading is entered once. The group id + per-lot idempotency keys are
+**derived deterministically** from the capture's stable `clientRequestId` (`vrg:${base}`, per-lot
+`${groupId}#${lotId}`), so a retry / offline re-sync lands the same group and the
+**`@@unique([tenantId, vesselReadingGroupId, lotId])`** makes each per-lot write a no-op on replay
+(NULLs distinct → legacy/single-lot panels never collide, effectively partial). **Vessel-scoped** views
+(vessel History, `/bulk` trends, panel counts) dedup by `coalesce(vesselReadingGroupId, id)`
+(`physicalReadingKey`/`dedupeByPhysicalReading`); **lot-scoped** views must NOT dedup. Additive nullable
+column, no backfill. Proven by `npm run verify:chemistry` + `test/chemistry-fanout.test.ts`. The assistant's
+`record_measurement` rides this path — it records on the whole multi-lot tank without asking "which lot"
+(plan 058/059) and resolves free-form analyte names to registry **keys** (temperature added, `analytes.ts`).
+
 ## How a typical write flows
 1. UI (or the assistant) calls a **server action** — or a **work-order task is completed**, which builds the same core input.
 2. The action runs inside the **tenant context** → Prisma auto-injects `tenantId`; **RLS** enforces it at Postgres.
@@ -238,4 +270,4 @@ agent touch `main` safely.
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-12 (plans 053–059; 115 Prisma models, ~3.75k schema lines): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented two previously-undocumented subsystems — **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, incl. the plan-059 `triageClass` disposition). Prior refresh 2026-07-05 (plan 043): cap management in work orders. Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-13 (plans 058–061): §13 **chemistry whole-tank fan-out** — one physical reading on a multi-lot (co-ferment) vessel fans out to one panel per co-resident lot sharing a deterministic `vesselReadingGroupId` (`AnalysisPanel.vesselReadingGroupId` + `@@unique([tenantId, vesselReadingGroupId, lotId])`, additive nullable, no backfill), vessel-scoped views dedup / lot-scoped keep their curve (060); §10 **consolidated multi-vessel maintenance** — "clean barrels 1–30" is ONE task carrying its member set in `plannedPayload.groupActivity`, N record-only events in one Serializable tx, crew self-undo reopens to PENDING (061, supersedes the 060 per-barrel fan-out); §6 assistant reads the **materials catalog** (`query_materials`, #163) + records on the whole multi-lot tank without asking "which lot" + resolves free-form analytes to registry keys (058/059). Prior refresh 2026-07-12 (plans 053–059): WO builder, equipment registry, migration/import (§11), feedback + developer auto-fix loop (§12). Ask Claude to refresh after each phase.*
