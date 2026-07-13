@@ -4,7 +4,13 @@ import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { resolveLotTargetOrChoice, resolveVesselContents } from "../scope";
 import { recordMeasurementsAction, recordVesselReadingAction } from "@/lib/chemistry/actions";
+import { getAnalyte } from "@/lib/chemistry/analytes";
 import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
+
+/** Human label for a reading in the confirm card — the registry label, falling back to the raw key. */
+function readingLabel(analyteKey: string): string {
+  return getAnalyte(analyteKey)?.label ?? analyteKey;
+}
 
 // Assistant-coverage Wave 1 #2a — record a bench/lab CHEM PANEL (pH, TA, SO₂, …) against a LOT by chat.
 // Wraps recordMeasurementsAction → recordMeasurementsCore (no re-implemented chemistry, no db_*).
@@ -19,19 +25,24 @@ import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
 
 // Seeded analytes → their canonical (analyte, default unit). Free-form analytes ride the `other` array.
 // Exported so the lab-sample results tool (record_sample_results) reuses the SAME analyte vocabulary.
-export const ANALYTES: Record<string, { analyte: string; unit: string }> = {
-  pH: { analyte: "pH", unit: "" },
-  ta: { analyte: "TA", unit: "g/L" },
-  freeSO2: { analyte: "Free SO₂", unit: "mg/L" },
-  totalSO2: { analyte: "Total SO₂", unit: "mg/L" },
-  va: { analyte: "VA", unit: "g/L" },
-  rs: { analyte: "RS", unit: "g/L" },
-  malic: { analyte: "Malic", unit: "g/L" },
-  alcohol: { analyte: "Alcohol", unit: "%" },
+// `analyte` MUST be the chemistry-registry KEY (src/lib/chemistry/analytes.ts) and `unit` MUST be
+// that analyte's defaultUnit — the write path validates strictly against the registry
+// (validateMeasurement → ANALYTES[key] + units.includes(unit)), so a display label like "Brix" or a
+// loose unit like "g/L" is rejected ("Unknown analyte"). `label` is the human string for the confirm
+// card only. Exported so record_sample_results reuses the SAME vocabulary.
+export const ANALYTES: Record<string, { analyte: string; unit: string; label: string }> = {
+  pH: { analyte: "PH", unit: "pH", label: "pH" },
+  ta: { analyte: "TA", unit: "g/L tartaric", label: "TA" },
+  freeSO2: { analyte: "FREE_SO2", unit: "mg/L", label: "Free SO₂" },
+  totalSO2: { analyte: "TOTAL_SO2", unit: "mg/L", label: "Total SO₂" },
+  va: { analyte: "VA", unit: "g/L acetic", label: "VA" },
+  rs: { analyte: "RS", unit: "g/L", label: "RS" },
+  malic: { analyte: "MALIC", unit: "g/L", label: "Malic" },
+  alcohol: { analyte: "ALCOHOL", unit: "% ABV", label: "Alcohol" },
   // Sugar/Brix on must or wine ALREADY in a vessel (mid-ferment tracking) — the cellar-lot reading, as
   // opposed to the vineyard-block ripeness Brix at harvest (log_brix). Lets a tank sugar reading attach
   // to the LOT instead of being misrouted to a block.
-  brix: { analyte: "Brix", unit: "°Bx" },
+  brix: { analyte: "BRIX", unit: "°Bx", label: "Brix" },
 };
 
 export type OtherReading = { analyte?: string; value?: number; unit?: string };
@@ -62,7 +73,7 @@ export function collectReadings(input: Partial<Record<keyof typeof ANALYTES, num
 }
 
 export const analyteProps = Object.fromEntries(
-  Object.entries(ANALYTES).map(([k, d]) => [k, { type: "number", description: `${d.analyte}${d.unit ? ` (${d.unit})` : ""}` }]),
+  Object.entries(ANALYTES).map(([k, d]) => [k, { type: "number", description: `${d.label}${d.unit ? ` (${d.unit})` : ""}` }]),
 );
 
 export const recordMeasurementTool: AssistantTool = {
@@ -93,7 +104,7 @@ export const recordMeasurementTool: AssistantTool = {
 
     const observedAt = input.observedAt ? String(input.observedAt) : null;
     const when = observedAt ? ` on ${observedAt}` : " today";
-    const readingStr = readings.map((r) => `${r.analyte} ${r.value}${r.unit ? ` ${r.unit}` : ""}`).join(", ");
+    const readingStr = readings.map((r) => `${readingLabel(r.analyte)} ${r.value}${r.unit ? ` ${r.unit}` : ""}`).join(", ");
 
     // Plan 060 whole-tank default: a bare VESSEL ref (no explicit lot) on a MULTI-LOT tank fans the
     // reading out to every co-resident lot — no "which lot?" dead-end. The confirm card NAMES the lots
