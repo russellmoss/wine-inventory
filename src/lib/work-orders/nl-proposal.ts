@@ -24,7 +24,10 @@ export type NlWorkOrderIntent = (
   | { kind: "FILTRATION"; vessel: string; filterType?: string; micron?: number; note?: string }
   | { kind: "CAP_MGMT"; vessel: string; technique?: string; durationMin?: number; note?: string }
   | { kind: "TEMP_SETPOINT"; vessel: string; targetValue?: number; targetUnit?: string; note?: string }
-  | { kind: NlMaintenanceKind; vessel: string; material?: string; amount?: number; gasType?: string; so2Method?: string; durationMin?: number; note?: string }
+  // A maintenance task targets EITHER a single `vessel` OR a `vesselGroup` (a range "B1-B4", a saved-group
+  // name, or a comma/and list) that fans out to one maintenance task per barrel in nl-resolve — symmetry
+  // with BARREL_DOWN/RACK_TO_TANK. Exactly one is set by canonicalizeRawIntents (group wins if both given).
+  | { kind: NlMaintenanceKind; vessel?: string; vesselGroup?: string; material?: string; amount?: number; gasType?: string; so2Method?: string; durationMin?: number; note?: string }
   // CRUSH process defaults (destemmed / crusher rollers on-off / % crushed / must temp / press cycle) are
   // template-settable "what" the assistant can bake in; the run-time inputs (picks, destination, measured
   // volume) are still entered on the execute screen. These prefill the crush sub-form via plannedPayload,
@@ -438,11 +441,14 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       continue;
     }
     if (NL_MAINTENANCE_KINDS.has(up)) {
-      const vessel = cleanString(raw.vessel) ?? lastRackDestination;
-      if (!vessel) throw new Error(`A ${up.toLowerCase()} task needs a vessel.`);
+      // Group/range aliases mirror the barrel-down read; a group fans out to one task per barrel in
+      // nl-resolve. A single vessel keeps the lastRackDestination fallback (only when no group is given).
+      const vesselGroup = cleanString(raw.vesselGroup) ?? cleanString(raw.group) ?? cleanString(raw.barrels) ?? cleanString(raw.vessels);
+      const vessel = cleanString(raw.vessel) ?? (vesselGroup ? null : lastRackDestination);
+      if (!vessel && !vesselGroup) throw new Error(`A ${up.toLowerCase()} task needs a vessel, or a barrel group/range (e.g. B1-B4).`);
       intents.push({
         kind: up as NlMaintenanceKind,
-        vessel,
+        ...(vesselGroup ? { vesselGroup } : { vessel: vessel! }),
         ...(cleanString(raw.material) ? { material: cleanString(raw.material)! } : {}),
         ...(positiveNumber(raw.amount) != null ? { amount: positiveNumber(raw.amount)! } : {}),
         ...(cleanString(raw.gasType) ? { gasType: cleanString(raw.gasType)! } : {}),

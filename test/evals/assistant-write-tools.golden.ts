@@ -245,6 +245,18 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "vessel cleaning/sanitizing is supported (in-scope maintenance)",
   },
   {
+    utterance: "Draft a work order to clean and sanitize barrels B1 through B4",
+    tool: "propose_work_order",
+    args: {
+      sourceText: "Draft a work order to clean and sanitize barrels B1 through B4",
+      tasks: [
+        { kind: "CLEAN", vesselGroup: "B1-B4" },
+        { kind: "SANITIZE", vesselGroup: "B1-B4" },
+      ],
+    },
+    note: "plan 060: barrel maintenance across a range uses vesselGroup (fans to one task per barrel), never a range jammed into vessel",
+  },
+  {
     utterance: "Work order to filter T15 through 0.45 micron pads",
     tool: "propose_work_order",
     args: {
