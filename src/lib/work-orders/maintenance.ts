@@ -7,6 +7,7 @@ import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 import { recordVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { coerceVesselActivityKind } from "@/lib/cellar/vessel-activity-vocab";
+import { parseGroupActivityPayload, orderedMemberIds, type GroupActivityPayload } from "@/lib/work-orders/group-activity";
 import { EQUIPMENT_STATUSES } from "@/lib/equipment/vocab";
 import type { CompleteTaskInput, CompleteTaskResult } from "@/lib/work-orders/execute";
 
@@ -73,6 +74,12 @@ export async function completeMaintenanceTaskCore(
       : "Equipment service recorded.";
     return { taskId: task.id, attemptId: result.attemptId, operationId: null, status: "DONE", duplicate: false, message: msg };
   }
+
+  // Plan 061: a consolidated group maintenance task carries N member vessels in plannedPayload.groupActivity.
+  // Complete ALL members at once — one record-only VesselActivityEvent per member (WORKORDER-3 per barrel),
+  // one shared attempt, task straight to DONE. No ledger op / no approval gate (same as the single lane).
+  const group = parseGroupActivityPayload(task.plannedPayload);
+  if (group) return completeGroupMaintenanceTaskCore(actor, input, group);
 
   const kind = coerceVesselActivityKind(task.activityType);
   const vesselId = task.destVesselId ?? task.sourceVesselId ?? asStr(merged.vesselId) ?? null;
@@ -158,4 +165,118 @@ export async function completeMaintenanceTaskCore(
 
   const warn = result.shortfall > 0 ? ` Warning: used ${result.shortfall} more than on record.` : "";
   return { taskId: task.id, attemptId: result.attemptId, operationId: null, status: "DONE", duplicate: false, message: `Maintenance recorded.${warn}` };
+}
+
+/**
+ * Plan 061: complete a CONSOLIDATED group maintenance task — one record-only VesselActivityEvent per member
+ * in ONE Serializable tx, task straight to DONE (no ledger op, no approval gate). Each member gets a distinct
+ * event commandId `${commandId}:${vesselId}` (the base attempt commandId is the task-level idempotency key;
+ * VesselActivityEvent.commandId is a global unique, so per-member suffixes never collide). `amount` is the
+ * per-vessel dose — N members deplete N × dose, matching the pre-consolidation fan-out total. Members are
+ * deduped + sorted (deadlock-free lock order on the shared overhead SupplyLot); a member decommissioned
+ * since authoring is skipped with a warning rather than crashing the whole completion (no FK on the JSON ids).
+ */
+async function completeGroupMaintenanceTaskCore(
+  actor: LedgerActor,
+  input: CompleteTaskInput & { task: WorkOrderTask },
+  group: GroupActivityPayload,
+): Promise<CompleteTaskResult> {
+  const { task } = input;
+  assertTaskTransition(task.status, "DONE");
+
+  const kind = coerceVesselActivityKind(task.activityType);
+  const planned = (task.plannedPayload ?? {}) as Record<string, unknown>;
+  const merged = { ...planned, ...(input.actualPayload ?? {}) };
+
+  const targetUnit =
+    kind === "GAS" ? asStr(merged.gasType) ?? null
+      : kind === "SO2" ? asStr(merged.so2Method) ?? null
+        : kind === "OZONE" ? "min"
+          : asStr(merged.targetUnit) ?? null;
+  const targetValue = kind === "OZONE" ? asNum(merged.durationMin) ?? null : asNum(merged.targetValue) ?? null;
+  const materialId = task.materialId ?? asStr(merged.materialId) ?? null;
+  const amount = asNum(merged.amount) ?? null;
+  const note = input.completionNote?.trim() || asStr(merged.note) || null;
+  const memberIds = orderedMemberIds(group.memberVesselIds);
+
+  const result = await runInTenantTx(async (tx) => {
+    // Validate members up front; a stale (decommissioned/removed) id is skipped, not fatal (no FK on JSON ids).
+    const vessels = await tx.vessel.findMany({ where: { id: { in: memberIds } }, select: { id: true, isActive: true } });
+    const activeIds = new Set(vessels.filter((v) => v.isActive).map((v) => v.id));
+    const liveIds = memberIds.filter((id) => activeIds.has(id));
+    const skipped = memberIds.length - liveIds.length;
+    if (liveIds.length === 0) throw new ActionError("None of this task's vessels are still active.");
+
+    const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
+    const attempt = await tx.workOrderTaskAttempt.create({
+      data: {
+        taskId: task.id,
+        seq,
+        commandId: input.commandId, // task-level idempotency (global unique) — the pre-check in completeTaskCore keys on this
+        status: "APPROVED", // no approval gate for maintenance
+        actualPayload: { ...merged, completedMemberVesselIds: liveIds } as Prisma.InputJsonValue,
+        operationId: null,
+        completionNote: input.completionNote?.trim() || null,
+        deviationReason: input.deviationReason?.trim() || null,
+        completedById: actor.actorUserId,
+        completedByEmail: actor.actorEmail,
+        reviewedAt: new Date(),
+        reviewedById: actor.actorUserId,
+        reviewedByEmail: actor.actorEmail,
+      },
+      select: { id: true },
+    });
+
+    let totalShortfall = 0;
+    for (const vesselId of liveIds) {
+      const { depletion } = await recordVesselActivityTx(tx, actor, {
+        vesselId,
+        kind,
+        taskId: task.id,
+        attemptId: attempt.id,
+        targetValue,
+        targetUnit,
+        achievedValue: null, // no per-vessel reading captured in all-at-once group completion
+        achievedUnit: null,
+        materialId,
+        amount, // per-vessel dose
+        note,
+        commandId: `${input.commandId}:${vesselId}`, // distinct per member (VesselActivityEvent.commandId is unique)
+      });
+      totalShortfall += depletion?.shortfall ?? 0;
+    }
+
+    // Same CAS guard as the single-vessel lane: a concurrent completion with a different commandId loses.
+    const claimed = await tx.workOrderTask.updateMany({
+      where: { id: task.id, status: task.status, currentAttemptId: task.currentAttemptId },
+      data: { status: "DONE", currentAttemptId: attempt.id, completionNote: input.completionNote?.trim() || null, deviationReason: input.deviationReason?.trim() || null },
+    });
+    if (claimed.count === 0) throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
+
+    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const skipMsg = skipped > 0 ? ` (${skipped} skipped — inactive)` : "";
+    const shortMsg = totalShortfall > 0 ? ` (used more than on record — ${totalShortfall} short of stock)` : "";
+    await writeAudit(tx, {
+      ...actor,
+      action: "STOCK_MOVEMENT",
+      entityType: "WorkOrderTask",
+      entityId: task.id,
+      summary: `Recorded ${kind.toLowerCase().replace(/_/g, " ")} on ${liveIds.length} vessels${skipMsg}${shortMsg}`,
+    });
+    return { attemptId: attempt.id, shortfall: totalShortfall, count: liveIds.length, skipped };
+  }, { isolationLevel: "Serializable" });
+
+  const bits = [
+    result.skipped > 0 ? `${result.skipped} vessel${result.skipped === 1 ? "" : "s"} skipped (inactive).` : "",
+    result.shortfall > 0 ? `Used ${result.shortfall} more than on record.` : "",
+  ].filter(Boolean);
+  const warn = bits.length ? ` ${bits.join(" ")}` : "";
+  return {
+    taskId: task.id,
+    attemptId: result.attemptId,
+    operationId: null,
+    status: "DONE",
+    duplicate: false,
+    message: `Maintenance recorded on ${result.count} vessel${result.count === 1 ? "" : "s"}.${warn}`,
+  };
 }

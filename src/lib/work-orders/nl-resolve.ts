@@ -587,12 +587,10 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
     }
 
     if (intent.kind === "CLEAN" || intent.kind === "SANITIZE" || intent.kind === "STEAM" || intent.kind === "OZONE" || intent.kind === "GAS" || intent.kind === "SO2" || intent.kind === "WET_STORAGE") {
-      // Plan 060: a single vessel, OR a barrel group/range that fans out to one maintenance task per
-      // barrel. WORKORDER-3 holds per barrel — each fanned task is a record-only maintenance task, no
-      // ledger op, no cost. resolveGroupMembers returns an ordered, deduped set (or a relayable error).
-      const members = intent.vesselGroup
-        ? await resolveGroupMembers(intent.vesselGroup)
-        : [await resolveVesselState(intent.vessel!)];
+      // Plan 061 (supersedes the plan-060 fan-out): a single vessel → one plain maintenance task; a barrel
+      // group/range → ONE consolidated task carrying the member set in plannedPayload.groupActivity (mirror
+      // of the group-rack payload block). Completion writes one record-only VesselActivityEvent per member,
+      // so WORKORDER-3 still holds per barrel — there is no ledger op and no cost either way.
       // Only keep fields this maintenance type actually declares — STEAM has no material/amount, OZONE only
       // duration, etc. Prevents leaking an unsupported (and un-costed) materialId into the task payload.
       const fields = TASK_VOCABULARY[intent.kind].fields;
@@ -601,7 +599,8 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         material = matchMaterialByRef(await listMaterials(), intent.material, { scope: materialScopeForTask({ activityType: intent.kind }) });
       }
       const verb = TASK_LABELS[intent.kind];
-      // Group-wide fields resolved once; only vesselId varies per barrel.
+      // Group-wide fields (material/dose/gas/so2/duration/note), filtered to the fields this kind declares.
+      // `vesselId` is NOT included here — a single task takes it, a group task carries members instead.
       const sharedCandidate: Record<string, unknown> = {
         ...(material ? { materialId: material.id } : {}),
         ...(intent.amount != null ? { amount: intent.amount } : {}),
@@ -610,7 +609,32 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         ...(intent.durationMin != null ? { durationMin: intent.durationMin } : {}),
         ...(intent.note ? { note: intent.note } : {}),
       };
-      for (const vessel of members) {
+      const sharedFiltered = Object.fromEntries(Object.entries(sharedCandidate).filter(([k]) => k in fields));
+
+      if (intent.vesselGroup) {
+        const members = await resolveGroupMembers(intent.vesselGroup); // ordered + deduped (or a relayable error)
+        // `groupActivity` rides OUTSIDE the `k in fields` filter (it is not a declared field) — same as the
+        // group-rack `groupRack` block. It survives sanitizeTaskPayload because maintenance defs are
+        // governed built-ins. canonicalColumns leaves sourceVesselId/destVesselId null (no single vessel).
+        const groupActivity = {
+          activityType: intent.kind,
+          memberVesselIds: members.map((m) => m.id),
+          memberCodes: members.map((m) => m.code),
+        };
+        const values = { groupActivity, ...sharedFiltered };
+        const span = members.length === 1 ? members[0].code : `${members[0].code}…${members.at(-1)!.code}`;
+        const noun = members.length === 1 ? "vessel" : "vessels";
+        taskBuilds.push({ taskType: intent.kind, title: `${verb} ${members.length} ${noun} (${span})`, values, taskKey: randomUUID() });
+        tasks.push({
+          seq,
+          kind: intent.kind,
+          title: verb,
+          summary: `${verb} ${members.length} ${noun} (${span})${material ? ` with ${materialDisplayName(material)}` : ""}`,
+          entities: material ? [{ role: "supply", label: materialDisplayName(material), id: material.id }] : [],
+          members: members.map((m) => ({ id: m.id, label: m.label, detail: `${m.volumeL}/${m.capacityL} L` })),
+        });
+      } else {
+        const vessel = await resolveVesselState(intent.vessel!);
         const values = Object.fromEntries(
           Object.entries({ vesselId: vessel.id, ...sharedCandidate }).filter(([k]) => k in fields),
         );

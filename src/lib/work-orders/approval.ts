@@ -5,6 +5,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
+import { reverseVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { canApprove, type ApproverUser } from "@/lib/work-orders/authority";
 import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
 
@@ -205,7 +206,7 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
 
   const task = await prisma.workOrderTask.findUnique({
     where: { id: input.taskId },
-    select: { id: true, status: true, currentAttemptId: true, workOrderId: true, observationType: true, blockId: true, plannedPayload: true },
+    select: { id: true, kind: true, status: true, currentAttemptId: true, workOrderId: true, observationType: true, blockId: true, plannedPayload: true },
   });
   if (!task) throw new ActionError("That task no longer exists.");
   if (!REJECTABLE_STATUSES.includes(task.status)) throw new ActionError("That task isn't completed or awaiting approval.", "CONFLICT");
@@ -259,6 +260,39 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
   if (!attempt) throw new ActionError("That task has no attempt to reject.", "CONFLICT");
 
   if (!attempt.operationId) {
+    // Plan 061: maintenance is record-only (no ledger op). Reject/undo = void every VesselActivityEvent the
+    // completion wrote — ONE for a single-vessel task, N for a consolidated group task — and restore the
+    // overhead supply each drew (reverseVesselActivityTx is idempotent: it claims voidedAt then negates the
+    // SupplyLot draws). Before 061 a DONE maintenance task fell through to the throw below and was un-rejectable.
+    if (task.kind === "MAINTENANCE" && task.status === "DONE") {
+      const events = await prisma.vesselActivityEvent.findMany({
+        where: { taskId: task.id, attemptId: currentAttemptId, voidedAt: null },
+        select: { id: true },
+      });
+      return runInTenantTx(async (tx) => {
+        // Claim the task (A4) so a concurrent review can't slip in mid-reversal.
+        const claimed = await tx.workOrderTask.updateMany({
+          where: { id: task.id, status: "DONE", currentAttemptId },
+          data: { status: "REJECTED" },
+        });
+        if (claimed.count === 0) throw new ActionError("That task was already reviewed or changed. Refresh and try again.", "CONFLICT");
+        for (const e of events) await reverseVesselActivityTx(tx, actor, e.id);
+        const now = new Date();
+        await tx.workOrderTaskAttempt.update({
+          where: { id: attempt.id },
+          data: { status: "REJECTED", rejectedReason: input.reason?.trim() || null, reviewedAt: now, reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail },
+        });
+        await bumpWorkOrderRollupTx(tx, task.workOrderId);
+        await writeAudit(tx, {
+          ...actor,
+          action: "UPDATE",
+          entityType: "WorkOrderTask",
+          entityId: task.id,
+          summary: `Rejected a maintenance task — reversed ${events.length} activity event${events.length === 1 ? "" : "s"}${input.reason ? `: ${input.reason}` : ""}`,
+        });
+        return { taskId: task.id, status: "REJECTED", message: `Rejected - ${events.length} activity record${events.length === 1 ? "" : "s"} reversed.` };
+      }, { isolationLevel: "Serializable" });
+    }
     if (task.observationType !== "HARVEST_WEIGH_IN" || task.status !== "DONE") {
       throw new ActionError("That task has no reversible ledger operation or harvest pick to back out.", "CONFLICT");
     }
