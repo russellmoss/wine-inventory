@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { getWorkOrderDetail } from "@/lib/work-orders/data";
 import { WorkOrderDetailClient } from "./WorkOrderDetailClient";
 
@@ -12,5 +12,5 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   if (!tenantId) return notFound();
   const wo = await getWorkOrderDetail(tenantId, id);
   if (!wo) return notFound();
-  return <WorkOrderDetailClient wo={wo} isAdmin={user.role === "admin"} />;
+  return <WorkOrderDetailClient wo={wo} isAdmin={isTenantAdminLike(user)} />;
 }
