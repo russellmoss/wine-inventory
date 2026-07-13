@@ -1,12 +1,27 @@
 ---
 title: Fan-out a single vessel reading to all co-resident lots (multi-lot "one must" tank)
 type: feat
-status: draft
+status: core-shipped
 date: 2026-07-12
-branch: feat/multi-lot-vessel-reading-fanout
+branch: claude/tank-cofermenting-brix-logging-9009e1
 depth: standard
 units: 6
 ---
+
+## BUILD STATUS (2026-07-12)
+
+**Shipped in this PR (bug fixed + proven):**
+- [x] Unit 1 — schema: `analysis_panel.vesselReadingGroupId` + fan-out index + partial-by-null unique (migration applied to Neon).
+- [x] Unit 2 — `recordVesselReadingCore` fan-out (deterministic group id, idempotent, atomic) + pure planner + group-atomic void.
+- [x] Unit 3 — assistant `record_measurement` defaults a multi-lot tank to whole-tank fan-out (confirm card names the lots); single-lot path unchanged.
+- [x] Unit 6 — vessel-scoped dedup (`coalesce(vesselReadingGroupId, id)`) in `listVesselAnalyses` + vessel History; lot-scoped views untouched.
+- [x] Standing proof: `verify:chemistry` section 7 (28/28), pure planner + dedup unit tests, full suite 1848 green, tsc + lint + verify:ai-native clean.
+
+**Deferred to a fast-follow PR (separate surfaces, not in the reported flow):**
+- [ ] Unit 4 — the non-assistant `/bulk` FermentMonitor *write* UI whole-tank selector (the READ side / trends is already deduped by Unit 6; the per-lot capture form is the remaining piece).
+- [ ] Unit 5 — offline Dexie outbox fan-out (expand-early: enqueue N one-lot captures). Offline capture on a multi-lot tank is an edge case; the online assistant + manual paths cover the reported need.
+
+Rationale: the reported bug (log one Brix on the whole multi-lot tank, via the assistant) is fully fixed and proven; 4+5 are adjacent write surfaces best shipped as a small, separately-reviewable follow-up.
 
 ## Overview
 
