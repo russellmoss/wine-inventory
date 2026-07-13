@@ -17,6 +17,7 @@ import { PressTaskForm } from "./PressTaskForm";
 import { HarvestWeighInTaskForm } from "./HarvestWeighInTaskForm";
 import { BottlingTaskForm } from "./BottlingTaskForm";
 import { GroupRackTaskForm } from "./GroupRackTaskForm";
+import { GroupMaintenanceTaskForm, GroupMaintenanceUndo } from "./GroupMaintenanceTaskForm";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
@@ -293,6 +294,9 @@ export function ExecuteClient({ wo, pickers, crushData, pressData, weighInData, 
             if (t.kind === "OPERATION" && t.opType === "PRESS") return <PressTaskForm key={t.id} task={t} data={pressData} onDone={() => router.refresh()} />;
             // Plan 054: a group barrel-down / rack-to-tank task completes in per-member batches — its own sub-form.
             if (t.kind === "OPERATION" && t.opType === "RACK" && t.groupRack) return <GroupRackTaskForm key={t.id} task={t} onDone={() => router.refresh()} />;
+            // Plan 061: a consolidated group maintenance task (clean/sanitize/… a barrel range) completes all
+            // members at once — its own sub-form (the generic flat renderer has no single vessel to bind).
+            if (t.kind === "MAINTENANCE" && t.groupActivity) return <GroupMaintenanceTaskForm key={t.id} task={t} onDone={() => router.refresh()} />;
             // Plan 053 E15: bottling captures multi-vessel source + bottle count + ABV + destination — its own sub-form.
             if (t.kind === "OPERATION" && t.opType === "BOTTLE") return <BottlingTaskForm key={t.id} task={t} data={bottlingData} onDone={() => router.refresh()} />;
             // Plan 039: a fruit weigh-in captures a block + readings that don't fit the flat renderer — its own sub-form.
@@ -307,9 +311,13 @@ export function ExecuteClient({ wo, pickers, crushData, pressData, weighInData, 
           <Eyebrow>Recorded</Eyebrow>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
             {done.map((t) => (
-              <Card key={t.id} padding="10px 14px" style={{ display: "flex", justifyContent: "space-between" }}>
+              <Card key={t.id} padding="10px 14px" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                 <span>{t.seq}. {t.title}</span>
-                <Badge tone={t.status === "APPROVED" || t.status === "DONE" ? "green" : t.status === "REJECTED" ? "red" : "maroon"}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                  {/* Plan 061: undo a completed group maintenance task (reverses every member's activity event). */}
+                  {t.kind === "MAINTENANCE" && t.groupActivity && t.status === "DONE" ? <GroupMaintenanceUndo task={t} onDone={() => router.refresh()} /> : null}
+                  <Badge tone={t.status === "APPROVED" || t.status === "DONE" ? "green" : t.status === "REJECTED" ? "red" : "maroon"}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
+                </span>
               </Card>
             ))}
           </div>

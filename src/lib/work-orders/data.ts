@@ -8,6 +8,7 @@ import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/li
 import { buildArchiveWhere, buildOpenWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilters, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
 import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { deriveGroupRackProgress, type BatchAttemptLite, type PlannedGroupRack } from "@/lib/work-orders/group-rack-progress";
+import { parseGroupActivityPayload } from "@/lib/work-orders/group-activity";
 
 // Read-side view-models for work orders (Phase 9). K12-safe: every reader takes tenantId as an EXPLICIT
 // argument and wraps its reads in runAsTenant — never reads the ALS tenant (so these stay correct even
@@ -31,6 +32,15 @@ export type GroupRackTaskView = {
   doneCount: number;
   pendingCount: number;
   allMembersDone: boolean;
+};
+
+// Plan 061: a consolidated group MAINTENANCE task's member set, for the execute sub-form. All-at-once —
+// no per-member progress (the whole range completes together), just the members + count. Codes ride in
+// the payload (stored at authoring), so this is a pure read with no extra DB hit.
+export type GroupActivityTaskView = {
+  activityType: string;
+  members: { vesselId: string; code: string }[];
+  count: number;
 };
 
 export type WorkOrderTaskView = {
@@ -60,6 +70,7 @@ export type WorkOrderTaskView = {
   deviationReason: string | null;
   startedByEmail: string | null;
   groupRack: GroupRackTaskView | null; // plan 054: set only for group barrel-down / rack-to-tank tasks
+  groupActivity: GroupActivityTaskView | null; // plan 061: set only for consolidated group maintenance tasks
 };
 
 export type WorkOrderDetail = {
@@ -90,12 +101,18 @@ function taskView(t: {
   dueAt: Date | null; plannedPayload: unknown; currentAttemptId: string | null; completionNote: string | null;
   deviationReason: string | null; startedByEmail: string | null;
 }, assigneeName: string | null, equipment: string[], groupRack: GroupRackTaskView | null = null): WorkOrderTaskView {
+  // Plan 061: a consolidated group maintenance task carries its members (+ codes) in plannedPayload — pure read.
+  const ga = parseGroupActivityPayload(t.plannedPayload);
+  const groupActivity: GroupActivityTaskView | null = ga
+    ? { activityType: ga.activityType, count: ga.memberVesselIds.length, members: ga.memberVesselIds.map((id, i) => ({ vesselId: id, code: ga.memberCodes[i] ?? id.slice(0, 6) })) }
+    : null;
   return {
     id: t.id,
     seq: t.seq,
     groupSeq: t.groupSeq,
     equipment,
     groupRack,
+    groupActivity,
     kind: t.kind as "OPERATION" | "OBSERVATION" | "MAINTENANCE" | "NOTE",
     status: t.status,
     title: t.title,
