@@ -21,6 +21,10 @@ export type CaptureInput = {
   deviceObservedAt: string; // ISO, the tablet clock at capture
   readings: ReadingInput[];
   note?: string; // sticky operator/context (a shared tablet has one login, many hands)
+  // Plan 060 fan-out: a whole-tank reading is captured as N one-lot captures (one per co-resident
+  // lot) that SHARE this group id (expand-early — the offline path stays one-lot-per-capture). Null
+  // for an ordinary single-lot capture. submitPanelCore stamps it on the panel; vessel views dedup by it.
+  vesselReadingGroupId?: string | null;
 };
 
 export type PendingReading = {
@@ -39,6 +43,7 @@ export type PendingPanel = {
   occupancyToken: string;
   deviceObservedAt: string;
   note: string | null;
+  vesselReadingGroupId: string | null; // plan 060: shared across a whole-tank reading's N captures
   status: PanelStatus;
   attempts: number;
   lastError: string | null;
@@ -69,6 +74,7 @@ export function buildCapture(input: CaptureInput, idGen: IdGen, clock: Clock = d
     occupancyToken: input.occupancyToken,
     deviceObservedAt: input.deviceObservedAt,
     note: input.note ?? null,
+    vesselReadingGroupId: input.vesselReadingGroupId ?? null,
     status: "pending",
     attempts: 0,
     lastError: null,
@@ -99,6 +105,7 @@ export function makeEditCapture(original: Capture, newReadings: ReadingInput[], 
       deviceObservedAt: clock(), // a re-capture observed now
       readings: newReadings,
       note: original.panel.note ?? undefined,
+      vesselReadingGroupId: original.panel.vesselReadingGroupId,
     },
     idGen,
     clock,

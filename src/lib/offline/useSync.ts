@@ -26,6 +26,7 @@ const submit: SubmitFn = async (panel, readings) => {
     occupancyToken: panel.occupancyToken,
     deviceObservedAt: panel.deviceObservedAt,
     note: panel.note,
+    vesselReadingGroupId: panel.vesselReadingGroupId,
     readings: readings.map((r) => ({ captureId: r.captureId, analyte: r.analyte, value: r.value, unit: r.unit })),
   });
   if (res.ok) return { ok: true, duplicate: res.duplicate };

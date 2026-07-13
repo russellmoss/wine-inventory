@@ -13,6 +13,7 @@ export type FermentPoint = {
   brix: number | null;
   ph: number | null;
   temp: number | null;
+  vesselReadingGroupId?: string | null; // plan 060: set when this point is part of a whole-tank reading
 };
 
 export type FermentAddition = {
@@ -45,7 +46,7 @@ export async function loadFermentSeries(lotId: string): Promise<FermentSeries | 
 
   const readings = await prisma.analysisReading.findMany({
     where: { analyte: { in: ["BRIX", "PH", "TEMP"] }, panel: { lotId, voidedAt: null } },
-    select: { analyte: true, value: true, panel: { select: { id: true, observedAt: true } } },
+    select: { analyte: true, value: true, panel: { select: { id: true, observedAt: true, vesselReadingGroupId: true } } },
     orderBy: { panel: { observedAt: "asc" } },
   });
 
@@ -53,7 +54,7 @@ export async function loadFermentSeries(lotId: string): Promise<FermentSeries | 
   const byPanel = new Map<string, FermentPoint>();
   for (const r of readings) {
     const key = r.panel.id;
-    const pt = byPanel.get(key) ?? { panelId: r.panel.id, observedAt: r.panel.observedAt.toISOString(), brix: null, ph: null, temp: null };
+    const pt = byPanel.get(key) ?? { panelId: r.panel.id, observedAt: r.panel.observedAt.toISOString(), brix: null, ph: null, temp: null, vesselReadingGroupId: r.panel.vesselReadingGroupId };
     if (r.analyte === "BRIX") pt.brix = Number(r.value);
     else if (r.analyte === "PH") pt.ph = Number(r.value);
     else if (r.analyte === "TEMP") pt.temp = Number(r.value);

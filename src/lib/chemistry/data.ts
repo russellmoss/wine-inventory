@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { molecularSO2, type MolecularSO2 } from "@/lib/chemistry/so2";
+import { dedupeByPhysicalReading } from "@/lib/chemistry/fanout-plan";
 
 // Read-side view-models for the Phase 4 samples surface. Open = non-terminal (still awaiting
 // a result / attach). Dates cross the boundary as ISO strings; there are no Decimals here.
@@ -66,11 +67,15 @@ export type VesselAnalyses = {
  * is derived from the latest same-panel free SO₂ + pH (never stored).
  */
 export async function listVesselAnalyses(vesselId: string): Promise<VesselAnalyses> {
-  const panels = await prisma.analysisPanel.findMany({
+  const rows = await prisma.analysisPanel.findMany({
     where: { vesselId, voidedAt: null },
     orderBy: { observedAt: "asc" },
     include: { readings: true },
   });
+  // Plan 060: a whole-tank reading fans out to one panel per co-resident lot, all sharing a
+  // vesselReadingGroupId. This is a VESSEL-scoped view, so collapse each group to ONE physical
+  // reading (identical readings across the group) — otherwise the trend + panelCount double-count.
+  const panels = dedupeByPhysicalReading(rows);
   const readings = panels.flatMap((p) =>
     p.readings.map((r) => ({ analyte: r.analyte, value: Number(r.value), unit: r.unit, date: p.observedAt.getTime() })),
   );

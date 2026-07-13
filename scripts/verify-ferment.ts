@@ -172,6 +172,17 @@ async function main() {
   const panelCount = await prisma.analysisPanel.count({ where: { clientRequestId: fixed.commandId } });
   assert(panelCount === 1, "the duplicate panel was NOT inserted twice");
 
+  // Plan 060: the offline-sync core stamps vesselReadingGroupId — a whole-tank reading syncs as N
+  // one-lot captures (one per co-resident lot) that all carry the shared group id.
+  const grpIds = { panelId: uid(), commandId: uid(), capBrix: uid(), capTemp: uid() };
+  const grp = await submitPanelCore(ACTOR, {
+    panelId: grpIds.panelId, commandId: grpIds.commandId, vesselId: tankRed, lotId: crush1.lotId, occupancyToken: occ,
+    deviceObservedAt: "2024-09-23T09:00:00Z", vesselReadingGroupId: "vrg:zz-offline-1",
+    readings: [{ captureId: grpIds.capBrix, analyte: "BRIX", value: 11.7, unit: "°Bx" }, { captureId: grpIds.capTemp, analyte: "TEMP", value: 26, unit: "°C" }],
+  });
+  const grpPanel = await prisma.analysisPanel.findUnique({ where: { id: grpIds.panelId }, select: { vesselReadingGroupId: true } });
+  assert(grp.ok && grpPanel?.vesselReadingGroupId === "vrg:zz-offline-1", "offline-sync core persists vesselReadingGroupId onto the panel (plan 060)");
+
   // A real drop CLEARS stuck (derived recompute).
   await panel("2024-09-24T08:00:00Z", 8.0, 25);
   assert((await stuckForLot(crush1.lotId, "ACTIVE")).stuck === false, "a real Brix drop clears the derived stuck signal");

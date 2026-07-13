@@ -17,6 +17,7 @@ import { reversibilityForOperation } from "@/lib/ledger/reverse";
 import { operationSupplementalNote } from "@/lib/cellar/edit-policy";
 import { operationDisplayLabel } from "@/lib/cellar/long-tail-metadata";
 import { currentOccupancyWindow } from "@/lib/vessel/occupancy";
+import { dedupeByPhysicalReading } from "@/lib/chemistry/fanout-plan";
 
 // ───────────────────────── Vessel History timeline loader (plan 045) ─────────────────────────
 // The per-VESSEL analogue of getLotDetail (src/lib/lot/data.ts). A vessel's "History" is a composed
@@ -227,7 +228,10 @@ export async function getVesselTimeline(vesselId: string): Promise<VesselTimelin
       }),
     );
 
-  const panelItems: NonOpItem[] = panels
+  // Plan 060: a whole-tank reading fans out to one panel per co-resident lot (shared
+  // vesselReadingGroupId). This is a VESSEL-scoped view → collapse each group to ONE timeline item
+  // (identical readings), so History shows one "recorded on the tank" row, not one row per lot.
+  const panelItems: NonOpItem[] = dedupeByPhysicalReading(panels)
     .filter((p) => afterStart(p.observedAt))
     .map((p) =>
       describeMeasurementPanel({
