@@ -146,3 +146,36 @@ describe("consumeMaterialCore (characterization — addition path)", () => {
     expect(calls.costLines[0]).toMatchObject({ amount: 0, basisCompleteness: "UNKNOWN" });
   });
 });
+
+describe("consumeMaterialCore — Plan 066: SO₂/KMBS active-fraction stock scaling", () => {
+  it("scales the stock draw + cost up by 1/activeFraction (18 g SO₂ → 31.25 g KMBS)", async () => {
+    // KMBS is 57.6% SO₂. An 18 g-SO₂ dose must draw 18/0.576 = 31.25 g of KMBS stock.
+    const { tx, calls } = makeTx({ material: GRAM, settings: WA, lots: [lot("a", 1000, 0.05, 1)] });
+    const res = await consumeMaterialCore(tx, {
+      operationId: 66,
+      materialId: "kmbs",
+      doseUnit: "g",
+      perLot: [{ lotId: "L1", amount: 18 }],
+      activeFraction: 0.576,
+    });
+    expect(res.drawn).toBe(31.25);
+    expect(calls.updates).toEqual([{ id: "a", decrement: 31.25 }]);
+    expect(calls.consumptions[0]).toMatchObject({ supplyLotId: "a", qty: 31.25, unitCost: 0.05, extendedCost: 1.5625 });
+    expect(calls.costLines[0]).toMatchObject({ lotId: "L1", component: "MATERIAL", amount: 1.5625 });
+  });
+
+  it("no activeFraction → unchanged (regression: draws the raw amount)", async () => {
+    const { tx, calls } = makeTx({ material: GRAM, settings: WA, lots: [lot("a", 1000, 0.05, 1)] });
+    const res = await consumeMaterialCore(tx, { operationId: 66, materialId: "m1", doseUnit: "g", perLot: [{ lotId: "L1", amount: 18 }] });
+    expect(res.drawn).toBe(18);
+    expect(calls.updates).toEqual([{ id: "a", decrement: 18 }]);
+  });
+
+  it("out-of-range activeFraction (0 or >1) is ignored → no scaling (safety)", async () => {
+    for (const bad of [0, -0.5, 1.5, Number.NaN]) {
+      const { tx } = makeTx({ material: GRAM, settings: WA, lots: [lot("a", 1000, 0.05, 1)] });
+      const res = await consumeMaterialCore(tx, { operationId: 66, materialId: "m1", doseUnit: "g", perLot: [{ lotId: "L1", amount: 18 }], activeFraction: bad });
+      expect(res.drawn).toBe(18);
+    }
+  });
+});

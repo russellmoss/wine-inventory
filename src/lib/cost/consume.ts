@@ -81,6 +81,14 @@ export type ConsumeInput = {
   doseUnit: "g" | "mL";
   /** one entry per dosed resident lot; amount is that lot's computedTotal in doseUnit. */
   perLot: ConsumePerLot[];
+  /**
+   * Active fraction of the dosed compound present in the STOCK material (0..1). When the perLot
+   * amounts are expressed as the delivered ACTIVE compound (e.g. grams of SO₂) but the stock is a
+   * carrier that is only partly that compound (e.g. KMBS is 57.6% SO₂), the stock draw + cost must
+   * be scaled UP by 1/activeFraction. Omit (or ≤0 / >1) for the normal case where the amounts are
+   * already the stock substance — no scaling. Caller decides when this applies (rate-based SO₂ dose).
+   */
+  activeFraction?: number;
 };
 
 export type ConsumeResult = {
@@ -115,7 +123,12 @@ export async function consumeMaterialCore(tx: Prisma.TransactionClient, input: C
     return { stockTracked: !!material?.isStockTracked, drawn: 0, shortfall: 0, totalCost: 0, completeness: "UNKNOWN" };
   }
 
-  const qtyInStock = round8(totalAmount * factor);
+  // Scale the stock draw up when the dose is an ACTIVE-compound mass and the stock is a partial
+  // carrier (KMBS: activeFraction 0.576 → draw SO₂/0.576 grams of KMBS). Guarded to (0,1]; anything
+  // else (undefined / 0 / >1 / NaN) means "amounts are already stock substance" → no scaling.
+  const af = input.activeFraction;
+  const activeDivisor = typeof af === "number" && Number.isFinite(af) && af > 0 && af <= 1 ? af : 1;
+  const qtyInStock = round8((totalAmount * factor) / activeDivisor);
 
   // DRY (Plan 056 Unit 1): the SupplyLot draw-down + SupplyConsumption write is the shared step.
   const plan = await depleteSupplyLotsTx(tx, {
