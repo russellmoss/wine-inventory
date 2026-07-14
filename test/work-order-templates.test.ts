@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   validateTemplateSpec as _validateTemplateSpec,
+  canonicalizeTemplateSpec as _canonicalizeTemplateSpec,
   instantiateTasksFromSpec as _instantiateTasksFromSpec,
   instantiateTaskBuilds as _instantiateTaskBuilds,
   TASK_VOCABULARY,
@@ -18,6 +19,7 @@ const instantiateTasksFromSpec = (spec: TemplateSpec, overrides?: Record<string,
   _instantiateTasksFromSpec(spec, TASK_VOCABULARY, overrides);
 const instantiateTaskBuilds = (builds: Parameters<typeof _instantiateTaskBuilds>[0]) =>
   _instantiateTaskBuilds(builds, TASK_VOCABULARY);
+const canonicalizeTemplateSpec = (spec: TemplateSpec) => _canonicalizeTemplateSpec(spec, TASK_VOCABULARY);
 
 describe("validateTemplateSpec", () => {
   it("accepts a spec whose fields are all in the vocabulary", () => {
@@ -82,6 +84,30 @@ describe("instantiateTasksFromSpec", () => {
       if (def.kind === "OPERATION") expect(def.opType, key).toBeTruthy();
       if (def.kind === "OBSERVATION") expect(def.observationType, key).toBeTruthy();
     }
+  });
+});
+
+describe("clone tolerates vocabulary drift (#79)", () => {
+  // A legacy tenant template stored an ADDITION with rateValue/rateBasis — valid when saved, but plan 036
+  // moved ADDITION to amount/doseUnit, so those fields left the vocabulary. Cloning re-persists the stored
+  // spec; strict re-validation used to hard-fail ("unknown field \"rateBasis\""). The clone path now
+  // canonicalizes trusted specs, which DROPS the drifted keys so the copy conforms to the current vocab.
+  const legacyStored: TemplateSpec = {
+    tasks: [{ taskType: "ADDITION", title: "Add SO2", defaults: { materialId: "m1", rateValue: 40, rateBasis: "MG_L" } }],
+  };
+
+  it("strict validation still rejects the drifted field (client authoring is unchanged)", () => {
+    const v = validateTemplateSpec(legacyStored);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain('unknown field "rateBasis"');
+  });
+
+  it("canonicalizing (the clone path) strips the drifted keys, then the spec validates clean", () => {
+    const clean = canonicalizeTemplateSpec(legacyStored);
+    expect(clean.tasks[0].defaults).toEqual({ materialId: "m1" });
+    expect(clean.tasks[0].defaults).not.toHaveProperty("rateBasis");
+    expect(clean.tasks[0].defaults).not.toHaveProperty("rateValue");
+    expect(validateTemplateSpec(clean).ok).toBe(true);
   });
 });
 
