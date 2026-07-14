@@ -131,7 +131,7 @@ async function main() {
 
   // Receive a costed, stock-tracked supply: 1000 g KMBS @ $0.05/g.
   const material = await prisma.cellarMaterial.create({
-    data: { name: "ZZCOST KMBS", normalizedKey: KMBS_KEY, kind: "SO2", isStockTracked: true, stockUnit: "g" },
+    data: { name: "ZZCOST KMBS", normalizedKey: KMBS_KEY, kind: "SO2", isStockTracked: true, stockUnit: "g", percentActive: "57.6" },
   });
   createdMaterialIds.push(material.id);
   await prisma.supplyLot.create({
@@ -139,34 +139,36 @@ async function main() {
   });
   console.log("  seeded TANK=450 L, received 1000 g KMBS @ $0.05/g");
 
-  // Unit 3: dose 40 ppm (MG_L) → 40 × 450 / 1000 = 18 g consumed; cost 18 × 0.05 = $0.90.
+  // Unit 3 (Plan 066): dose 40 ppm (MG_L) → 40 × 450 / 1000 = 18 g of SO₂ DELIVERED. KMBS is 57.6% SO₂
+  // (percentActive), so the STOCK DRAW is 18 / 0.576 = 31.25 g of KMBS; cost 31.25 × 0.05 = $1.5625.
   console.log("\n── ADDITION (40 ppm KMBS) draws down stock + records cost ──");
   const add = await addAdditionCore(ACTOR, { vesselId: tank.id, materialId: material.id, rateValue: 40, rateBasis: "MG_L" });
-  assert(add.computedTotal === 18 && add.computedUnit === "g", `40 ppm × 450 L = 18 g (got ${add.computedTotal} ${add.computedUnit})`);
+  // The recorded treatment stays the delivered SO₂ (physical truth), NOT the KMBS stock mass.
+  assert(add.computedTotal === 18 && add.computedUnit === "g", `40 ppm × 450 L = 18 g SO₂ delivered (got ${add.computedTotal} ${add.computedUnit})`);
 
   const supply = await prisma.supplyLot.findFirstOrThrow({ where: { materialId: material.id } });
-  assert(r2(Number(supply.qtyRemaining)) === 982, `SupplyLot drew down 1000 → 982 g (got ${Number(supply.qtyRemaining)})`);
+  assert(r2(Number(supply.qtyRemaining)) === 968.75, `SupplyLot drew down 1000 → 968.75 g KMBS (18/0.576) (got ${Number(supply.qtyRemaining)})`);
 
   const cons = await prisma.supplyConsumption.findMany({ where: { operationId: add.operationId } });
   assert(cons.length === 1, `one SupplyConsumption row (got ${cons.length})`);
-  assert(r2(Number(cons[0].qty)) === 18, `consumption qty = 18 g (got ${Number(cons[0].qty)})`);
-  assert(r2(Number(cons[0].extendedCost)) === 0.9, `extended cost = $0.90 (got ${Number(cons[0].extendedCost)})`);
+  assert(r2(Number(cons[0].qty)) === 31.25, `consumption qty = 31.25 g KMBS (got ${Number(cons[0].qty)})`);
+  assert(r2(Number(cons[0].extendedCost)) === 1.56, `extended cost = $1.56 (31.25 × 0.05) (got ${Number(cons[0].extendedCost)})`);
   assert(cons[0].basisCompleteness === "KNOWN", "consumption basis is KNOWN (unit cost was known)");
 
   const costLines = await prisma.costLine.findMany({ where: { operationId: add.operationId } });
   assert(costLines.length === 1 && costLines[0].component === "MATERIAL", "one MATERIAL CostLine written");
-  assert(r2(Number(costLines[0].amount)) === 0.9, `CostLine amount = $0.90 (got ${Number(costLines[0].amount)})`);
+  assert(r2(Number(costLines[0].amount)) === 1.56, `CostLine amount = $1.56 (got ${Number(costLines[0].amount)})`);
   assert(costLines[0].lotId === lotId, "CostLine attached to the dosed lot");
 
   // Unit 11: undo the addition → restore stock + negate cost by identity, append-only.
   console.log("\n── UNDO restores stock + negates cost (U11) ──");
   await correctOperationCore(ACTOR, { operationId: add.operationId });
   const supplyAfterUndo = await prisma.supplyLot.findFirstOrThrow({ where: { materialId: material.id } });
-  assert(r2(Number(supplyAfterUndo.qtyRemaining)) === 1000, `undo restored SupplyLot 982 → 1000 g (got ${Number(supplyAfterUndo.qtyRemaining)})`);
+  assert(r2(Number(supplyAfterUndo.qtyRemaining)) === 1000, `undo restored SupplyLot 968.75 → 1000 g (got ${Number(supplyAfterUndo.qtyRemaining)})`);
   const negCons = await prisma.supplyConsumption.findMany({ where: { reversalOfConsumptionId: { not: null }, supplyLot: { materialId: material.id } } });
-  assert(negCons.length === 1 && r2(Number(negCons[0].qty)) === -18, `a negating SupplyConsumption (−18 g) was appended (got ${negCons.map((c) => Number(c.qty))})`);
+  assert(negCons.length === 1 && r2(Number(negCons[0].qty)) === -31.25, `a negating SupplyConsumption (−31.25 g) was appended (got ${negCons.map((c) => Number(c.qty))})`);
   const negLines = await prisma.costLine.findMany({ where: { reversalOfCostLineId: { not: null }, lotId } });
-  assert(negLines.length === 1 && r2(Number(negLines[0].amount)) === -0.9, `a negating CostLine (−$0.90) was appended (got ${negLines.map((l) => Number(l.amount))})`);
+  assert(negLines.length === 1 && r2(Number(negLines[0].amount)) === -1.56, `a negating CostLine (−$1.56) was appended (got ${negLines.map((l) => Number(l.amount))})`);
   const lcAfterUndo = await getLotCost(lotId, { forceRecompute: true });
   assert(near(lcAfterUndo.totalCost, 0), `lot cost nets to $0 after undo (got ${lcAfterUndo.totalCost})`);
 
