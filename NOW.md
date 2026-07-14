@@ -20,9 +20,12 @@ chip, not into this session. Nothing parked right now._
 
 ## ✅ Done recently
 
-- **Plan 064 drafted** — bug-triage outcome notes: richer write-back (what+how / why+next)
-  + a visible outcome timeline in `/developer`. No schema (reuses `developerNotes`). 4 units.
-  `docs/plans/2026-07-14-064-feat-bug-triage-outcome-notes-plan.md`. **Awaiting approval** to `/work`.
+- **Plan 064 — bug-triage outcome notes — BUILT, PR #177 open.** Richer write-back
+  (what+how / why+next) in the global workflow + SKILL.md (out-of-repo), and a visible
+  outcome timeline + "Outcome" column + `resolvedAt` in `/developer`. New pure
+  `parseTriageNotes` (6 tests). No schema (reuses `developerNotes`). Green locally: tsc,
+  eslint, `next build`, vitest 6/6. `verify:naming` couldn't run (Neon unreachable) → CI.
+  Branch `claude/bug-triage-outcome-notes`. Remaining: CI green + browser QA on `/developer`.
 - Security #90 — cross-tenant user leak + account takeover. `src/lib/users/scope.ts` membership
   filter now scopes the `/users` page reads + all `users/actions.ts` mutators to the caller's
   effective tenant; `createUser` binds new users to the org; `resetUserPassword` gained the
@@ -38,7 +41,7 @@ chip, not into this session. Nothing parked right now._
 - **Plan 062 SO₂-solution dosing — Units 2–9** (Unit 1 shipped; branch
   `claude/so2-solution-dosing`). Fixes the ~1.74× KMBS under-dose bug.
 - Browser QA pass on Plan 063 (developer user type).
-- **Plan 064 — bug-triage outcome notes** (drafted, awaiting approval): `/work` the 4 units.
+- **Plan 064 — bug-triage outcome notes**: merge PR #177 once CI is green; browser-QA `/developer`.
 
 ---
-_Last updated: 2026-07-14 — Plan 064 (bug-triage outcome notes) drafted, awaiting approval._
+_Last updated: 2026-07-14 — Plan 064 (bug-triage outcome notes) BUILT + PR #177 open, green locally._
