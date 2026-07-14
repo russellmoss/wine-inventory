@@ -265,6 +265,24 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (built + guarded by `verify:tenant-isolation` + `user-scope` unit test; live-data proof
   on Bhutan/Demo).
 
+## Consolidated maintenance completion/undo — app-layer authorization + no new RLS surface (plan 061)
+- **What:** a multi-vessel maintenance task carries its member set in `plannedPayload.groupActivity` **JSON**
+  (no `work_order_task_member` table, no member columns) — so consolidation adds **no new tenant-scoped table
+  and no new RLS surface** (ADR 0004). The per-barrel historical record stays the real `VesselActivityEvent`
+  rows (each tenant-scoped + RLS'd). `undoMaintenanceTaskCore` (`approval.ts`) is authed to admin/developer
+  **OR** the person who recorded the completion (self-undo, mirroring group-rack D1) — it's a crew "undo,"
+  never a reviewer action (record-only maintenance auto-DONEs and never enters the review queue).
+- **Fan-out tenant safety (plan 060):** the new `AnalysisPanel.vesselReadingGroupId` is on an already
+  tenant-scoped + RLS'd table; the group id is derived from the caller's own `clientRequestId` and the
+  uniqueness key is per-tenant (`(tenantId, vesselReadingGroupId, lotId)`), so a fan-out can never write or
+  collide across tenants (tenantId is auto-injected + RLS-enforced). Additive nullable column — no auth/global
+  table touched.
+- **Tripwire:** a group-maintenance undo/complete path that skips `canApprove`/self-owner check; consolidation
+  ever migrating members into a real table WITHOUT the Phase-12 tenant checklist; a fan-out write that sets
+  `vesselReadingGroupId` from anything but the request-scoped plan.
+- **Status:** 🟢 (app-layer authz + JSON members = no new RLS surface; guarded by `verify:group-maintenance`
+  and the `analysis_panel` RLS policy + per-tenant unique).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_

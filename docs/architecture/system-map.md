@@ -139,6 +139,16 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   never a row edit). Approve/reject use compare-and-swap on `PENDING_APPROVAL`; a reject blocked by a later
   op (LEDGER-11) surfaces as a conflict. Authority is a minimal `authority.ts` (`canApprove`,
   admin + auto-finalize-self-executed; Phase-23-replaceable). Bulk approve segregates deviations.
+- **Multi-lot vessel readings (plan 060, `src/lib/chemistry/`):** one physical whole-tank reading on a
+  co-ferment/multi-lot vessel **fans out** to one `AnalysisPanel` per co-resident lot, all sharing a
+  `vesselReadingGroupId` (VISION D2 intact — each panel still attaches to exactly ONE lot, so each lot keeps
+  its own curve). The group id is derived **deterministically** from the capture's stable `clientRequestId`
+  (`planVesselReadingFanout` in `fanout-plan.ts`, DB-free + unit-tested), and a per-tenant
+  `@@unique([tenantId, vesselReadingGroupId, lotId])` makes the fan-out **idempotent** (a retry/offline
+  re-sync collides → P2002 → no-op). NULL group = an ordinary single-lot reading (NULLs are distinct in
+  Postgres uniques, so legacy rows never collide — effectively partial). **Vessel-scoped** views (vessel
+  History, `/bulk` trends, panel counts) dedup by `coalesce(vesselReadingGroupId, id)` over
+  `@@index([vesselId, vesselReadingGroupId])`; **lot-scoped** views must NOT dedup.
 - **Two other lanes:** OBSERVATION tasks (`observations.ts`) write chem/tasting/ferment readings directly,
   no gate. MAINTENANCE tasks (`vessel-activity.ts`, `maintenance.ts`) are LOTLESS — a `VesselActivityEvent`
   (+ optional OVERHEAD `VesselActivitySupplyUse`, WORKORDER-3). Kinds: temp-setpoint / clean / sanitize / steam /
@@ -157,6 +167,17 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   (cleaning, temp-setpoint, gas/blanket, filtration), and any sanitizer/gas consumed drains as **OVERHEAD**
   via append-only `VesselActivitySupplyUse` — never a wine `CostLine`/`SupplyConsumption`, kept out of the
   cost DAG (invariant **WORKORDER-3**; preserves COST-1/2 conservation).
+- **Multi-vessel maintenance consolidation (plan 061, ADR 0004):** "clean B1–B60" is now ONE reviewable
+  MAINTENANCE task carrying its member set in `plannedPayload.groupActivity`
+  (`{ activityType, memberVesselIds, memberCodes }` JSON — no columns, no join table, mirrors group-rack's
+  `groupRack`), instead of the old plan-060 fan-out to N record-only tasks (which also blew
+  `NL_WORK_ORDER_MAX_TASKS = 25`). Completion is **all-at-once**: one Serializable tx (`maintenance.ts`,
+  120s timeout for big ranges) writes one record-only `VesselActivityEvent` per member (each keyed
+  `${commandId}:${vesselId}`), task straight to DONE. Undo is `undoMaintenanceTaskCore` (`approval.ts`) —
+  reverses every member `VesselActivityEvent` and **reopens to PENDING** (record-only tasks stay
+  re-completable; REJECTED→DONE isn't legal), authed to admin/developer OR the recorder (self-undo, group-rack
+  parity). WORKORDER-3 holds **per event** (N members ⇒ N × per-vessel dose, overhead-only). Proof:
+  `npm run verify:group-maintenance`. The load-bearing rule: *one reviewable task ≠ one ledger op.*
 - **Reservation = advisory soft holds** (`reservations.ts`, `atp.ts`): issuing a WO allocates source volume /
   destination capacity / supply qty; `available-to-promise = on-hand − open allocations` **warns, never
   blocks**; the hard guarantee stays the ledger capacity/stock invariants at commit (**WORKORDER-2**).
@@ -238,4 +259,4 @@ agent touch `main` safely.
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-12 (plans 053–059; 115 Prisma models, ~3.75k schema lines): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented two previously-undocumented subsystems — **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, incl. the plan-059 `triageClass` disposition). Prior refresh 2026-07-05 (plan 043): cap management in work orders. Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-14 (plans 060–061; 115 Prisma models, ~3.77k schema lines): **multi-lot vessel-reading fan-out** — one whole-tank reading writes one `AnalysisPanel` per co-resident lot sharing a `vesselReadingGroupId` (per-tenant unique = idempotent; vessel-scoped dedup via `coalesce`), the one schema change this cycle (nullable column + two indexes, no RLS change); **multi-vessel maintenance consolidation** (ADR 0004) — "clean B1–B60" is ONE reviewable MAINTENANCE task with members in `plannedPayload.groupActivity`, all-at-once completion + `undoMaintenanceTaskCore`, WORKORDER-3 holds per-event. Prior refresh 2026-07-12 (plans 053–059): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, plan-059 `triageClass`). Ask Claude to refresh after each phase.*
