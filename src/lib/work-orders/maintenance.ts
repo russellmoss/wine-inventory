@@ -1,5 +1,6 @@
 import type { Prisma, WorkOrderTask } from "@prisma/client";
 import { runInTenantTx } from "@/lib/tenant/tx";
+import { withWriteRetry } from "@/lib/db/write-retry";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -39,7 +40,7 @@ export async function completeMaintenanceTaskCore(
   if (task.activityType === "EQUIPMENT_SERVICE") {
     const raw = asStr(merged.setStatus);
     const setStatus = raw && (EQUIPMENT_STATUSES as readonly string[]).includes(raw) ? raw : null;
-    const result = await runInTenantTx(async (tx) => {
+    const result = await withWriteRetry(() => runInTenantTx(async (tx) => {
       const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
       const attempt = await tx.workOrderTaskAttempt.create({
         data: {
@@ -68,7 +69,7 @@ export async function completeMaintenanceTaskCore(
       await bumpWorkOrderRollupTx(tx, task.workOrderId);
       await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Recorded equipment service${setStatus ? ` (${transitioned} set to ${setStatus})` : ""}` });
       return { attemptId: attempt.id, transitioned };
-    }, { isolationLevel: "Serializable" });
+    }, { isolationLevel: "Serializable" }), 5, "wo-maintenance:equipment-service");
     const msg = setStatus
       ? `Equipment service recorded — ${result.transitioned} asset${result.transitioned === 1 ? "" : "s"} set to ${setStatus}.`
       : "Equipment service recorded.";
@@ -101,9 +102,9 @@ export async function completeMaintenanceTaskCore(
 
   // SERIALIZABLE (matching the wine ledger path): the overhead depletion does read-then-decrement on
   // SupplyLot, so two concurrent maintenance completions drawing the SAME lot must serialize or one could
-  // drive qtyRemaining negative — which WORKORDER-3 / E1 forbid. A rare serialization conflict surfaces as
-  // a retryable error (the crew taps again), never corrupt stock.
-  const result = await runInTenantTx(async (tx) => {
+  // drive qtyRemaining negative — which WORKORDER-3 / E1 forbid. A rare serialization conflict is retried
+  // transparently by withWriteRetry (D18/H2), never corrupt stock.
+  const result = await withWriteRetry(() => runInTenantTx(async (tx) => {
     const seq = (await tx.workOrderTaskAttempt.count({ where: { taskId: task.id } })) + 1;
     const attempt = await tx.workOrderTaskAttempt.create({
       data: {
@@ -161,7 +162,7 @@ export async function completeMaintenanceTaskCore(
       summary: `Recorded ${kind.toLowerCase().replace(/_/g, " ")} on vessel${shortMsg}`,
     });
     return { attemptId: attempt.id, shortfall };
-  }, { isolationLevel: "Serializable" });
+  }, { isolationLevel: "Serializable" }), 5, "wo-maintenance:single");
 
   const warn = result.shortfall > 0 ? ` Warning: used ${result.shortfall} more than on record.` : "";
   return { taskId: task.id, attemptId: result.attemptId, operationId: null, status: "DONE", duplicate: false, message: `Maintenance recorded.${warn}` };
@@ -199,7 +200,7 @@ async function completeGroupMaintenanceTaskCore(
   const note = input.completionNote?.trim() || asStr(merged.note) || null;
   const memberIds = orderedMemberIds(group.memberVesselIds);
 
-  const result = await runInTenantTx(async (tx) => {
+  const result = await withWriteRetry(() => runInTenantTx(async (tx) => {
     // Validate members up front; a stale (decommissioned/removed) id is skipped, not fatal (no FK on JSON ids).
     const vessels = await tx.vessel.findMany({ where: { id: { in: memberIds } }, select: { id: true, isActive: true } });
     const activeIds = new Set(vessels.filter((v) => v.isActive).map((v) => v.id));
@@ -266,7 +267,7 @@ async function completeGroupMaintenanceTaskCore(
     return { attemptId: attempt.id, shortfall: totalShortfall, count: liveIds.length, skipped };
     // Raised timeout (vs Prisma's 5s default): N members × ~7 round-trips each. The member count is capped
     // at authoring (nl-resolve) so this tx stays well-bounded; the timeout is headroom for a cold pooler.
-  }, { isolationLevel: "Serializable", timeout: 120_000 });
+  }, { isolationLevel: "Serializable", timeout: 120_000 }), 5, "wo-maintenance:group");
 
   const bits = [
     result.skipped > 0 ? `${result.skipped} vessel${result.skipped === 1 ? "" : "s"} skipped (inactive).` : "",
