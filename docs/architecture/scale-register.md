@@ -49,8 +49,9 @@
 - **Choice:** lot state and cost are derived by walking the ledger rather than stored denormalized.
 - **Fine until:** lot lineage stays shallow/narrow.
 - **What breaks:** deep/wide lineage (many blends, long histories) makes a single lot's query slow.
-- **Tripwire:** a single lot timeline / cost rollup query exceeds a comfortable latency (watch in prod).
-- **Status:** 🟡 (fine now; candidate for a materialized rollup later)
+- **Mitigation (cost half, DONE):** the cost rollup is no longer recomputed on every read — `src/lib/cost/cache.ts` (`LotCostState`, Phase 8 Unit 5) is a **lazy, versioned materialization** of the DAG recompute (`cost/data.ts computeLotCost` stays the authority, D4). It's served from cache when fresh and refreshed **on read** only when the lot's max cost-affecting opId exceeds the cached watermark (`computedThroughOpId`) or the costing-policy version moved — deliberately NOT eagerly fanned out from `writeLotOperation` (that would turn one backdated correction into an O(descendants) SERIALIZABLE write; council/Codex Q1). So the tripwire below now only bites the **first** read after a cost-affecting change (recompute), or the **lot timeline** query, which is still walked on read (uncached).
+- **Tripwire:** a single lot timeline query — or the first cost read after a correction on a deep/wide lineage — exceeds a comfortable latency (watch in prod).
+- **Status:** 🟡 (cost rollup already materialized (lazy) via `LotCostState`; the lot timeline query remains compute-on-read and is the candidate for materialization next)
 
 ### Offline-first capture & sync — conflict resolution at scale (D25)
 - **Choice:** floor/vineyard capture works at zero connectivity (Phase-6 Dexie outbox today; Phase-28 adds the real op-log/CRDT sync with deterministic conflict resolution).

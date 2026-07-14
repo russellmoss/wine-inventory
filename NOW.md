@@ -20,6 +20,8 @@ chip, not into this session. Nothing parked right now._
 
 ## ✅ Done recently
 
+- Scale tripwire #166 — wrapped the 4 SERIALIZABLE work-order maintenance completion/undo
+  txns in `withWriteRetry`. **SHIPPED, PR #172 merged** (`28331fd`); issue closed.
 - Plan 063 developer user type (self-replicating) — **SHIPPED, PR #170 merged** (`1fda348`).
   Remaining: interactive browser QA only.
 
