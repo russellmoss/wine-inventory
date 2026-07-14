@@ -39,10 +39,17 @@ function generateTemplateCode(name: string, attempt: number): string {
  * concurrent creates of the same name can't livelock (Codex CRITICAL). */
 export async function createTemplateCore(
   actor: LedgerActor,
-  input: { code?: string; name: string; description?: string; category?: string; spec: TemplateSpec; recurringCadence?: string | null; isSystem?: boolean; clonedFromId?: string | null },
+  input: { code?: string; name: string; description?: string; category?: string; spec: TemplateSpec; recurringCadence?: string | null; isSystem?: boolean; clonedFromId?: string | null; trustSpec?: boolean },
 ): Promise<TemplateResult> {
   if (!input.name?.trim()) throw new ActionError("A template needs a name.");
-  const spec = validateAndCanonicalize(input.spec, await resolveTaskVocabulary());
+  const vocab = await resolveTaskVocabulary();
+  // Fresh client-authored specs are strict-validated (an unknown field is a typo to surface). But a
+  // CLONE/import re-persists an ALREADY-VALIDATED, stored spec, and the vocabulary can drift after a spec
+  // is saved (e.g. plan 036 moved ADDITION from rateValue/rateBasis to amount/doseUnit) — so re-running
+  // strict validation would hard-fail a legitimate clone (#79). For a trusted spec, canonicalize instead:
+  // it DROPS any drifted fields/task types so the copy conforms to the current vocabulary.
+  const spec = input.trustSpec ? canonicalizeTemplateSpec(input.spec, vocab) : validateAndCanonicalize(input.spec, vocab);
+  if (spec.tasks.length === 0) throw new ActionError("This template has no tasks to copy.");
   const explicitCode = input.code?.trim();
 
   for (let attempt = 0; ; attempt++) {
@@ -154,6 +161,9 @@ export async function cloneTemplateCore(actor: LedgerActor, input: { templateId:
     spec: currentSpec.spec as unknown as TemplateSpec,
     isSystem: false,
     clonedFromId: source.id,
+    // The source spec is trusted, already-persisted data — canonicalize (tolerate vocabulary drift)
+    // rather than strict-reject a field the vocabulary has since dropped (#79).
+    trustSpec: true,
   });
 }
 
