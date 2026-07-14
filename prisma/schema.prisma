@@ -908,6 +908,7 @@ model AssistantFeedback {
   developerNotes   String?
   triageClass      FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
   attachments      FeedbackAttachment[]
+  linearLinks      FeedbackLinearLink[]
 
   @@index([status, createdAt])
   @@index([conversationId])
@@ -946,6 +947,7 @@ model FeedbackTicket {
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
   attachments      FeedbackAttachment[]
+  linearLinks      FeedbackLinearLink[]
 
   @@index([tenantId, kind, status, createdAt])
   @@index([tenantId, severity, createdAt])
@@ -977,6 +979,29 @@ model FeedbackAttachment {
   @@index([tenantId, assistantFeedbackId])
   @@index([tenantId, createdAt])
   @@map("feedback_attachment")
+}
+
+model FeedbackLinearLink {
+  tenantId            String             @default("")
+  id                  String             @id @default(cuid())
+  ticketId            String?
+  assistantFeedbackId String?
+  linearIssueKey      String
+  linearIssueUrl      String
+  linkedByUserId      String
+  linkedAt            DateTime           @default(now())
+  version             Int                @default(1)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  ticket              FeedbackTicket?    @relation(fields: [tenantId, ticketId], references: [tenantId, id], onDelete: Cascade)
+  assistantFeedback   AssistantFeedback? @relation(fields: [tenantId, assistantFeedbackId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, ticketId])
+  @@unique([tenantId, assistantFeedbackId])
+  @@index([tenantId])
+  @@index([tenantId, linearIssueKey])
+  @@index([tenantId, linkedAt])
+  @@map("feedback_linear_link")
 }
 
 model AutomationRun {
