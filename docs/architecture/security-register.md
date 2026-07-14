@@ -240,6 +240,31 @@ TEMPLATE — copy for each new invariant / finding:
 - **Watch:** the fence allowlist IS the trust boundary — widening it into `src/lib/{ledger,cost,tenant,compliance,accounting,commerce}` or `prisma/` hands an autonomous agent the crown jewels. A green `feedback-domain-verify` proves the domain's own tests pass, NOT that a fix is complete — read the diff before trusting the gate.
 - **Status:** 🟡 (control in place + CI-gated; posture depends entirely on keeping the fence tight — see the plan-052 fence sync + the `/bug-triage` goalie).
 
+## User management is app-layer tenant-isolated (the GLOBAL-table exception) — #90
+- **What:** `User`/`Member`/`Organization` are GLOBAL, RLS-exempt tables (denylist in
+  `src/lib/tenant/models.ts`; Better Auth reads them pre-login). So — unlike every domain table — the
+  DB does NOT scope them by tenant. For user management, the app layer is the *only* isolation, via an
+  org-membership filter: `src/lib/users/scope.ts` (`memberOfTenant` / `tenantUserWhere`), keyed off the
+  caller's VERIFIED effective tenant (`supportOrganizationId ?? activeOrganizationId`), shared by the
+  Users page (reads) and all `src/lib/users/actions.ts` mutators (writes). `createUser` binds a new
+  non-developer to the creating admin's org with a `Member` row (developers land in the Demo home);
+  a cross-tenant target loads as "User not found." (never "forbidden") so ids can't be probed.
+- **History:** before this, `/users` ran an unscoped `user.findMany` (every tenant's accounts visible to
+  any admin) and every mutator loaded the target by bare `findUnique({id})` — so an admin at winery A
+  could reset/ban/re-role winery B's users (account takeover). Proven closed against live data + the two
+  isolation harnesses.
+- **Boundary:** `role`/`banned` remain GLOBAL flags on `User` (not per-`Member`). Today only developers
+  are multi-org, and the takeover-critical mutators (`setUserRole`/`setUserBanned`/`resetUserPassword`)
+  are additionally `canManageDeveloperTarget`-gated, so a plain admin can't touch a developer even when
+  they share an org. See TODOS.md ("Per-tenant user role/state") for the deeper model question.
+- **Tripwire:** a new user-management read/mutator that queries `User`/`Member` WITHOUT
+  `memberOfTenant`/`tenantUserWhere` (or an equivalent membership `where`); moving `User` off the
+  denylist; a `createUser`-style path that mints a user with no `Member` row (orphan → can't log in +
+  invisible to the scoped page). Covered by `test/user-scope.test.ts` (shape) + the user-management case
+  in `test/tenant-isolation.test.ts` / `scripts/verify-tenant-isolation.ts`.
+- **Status:** 🟢 (built + guarded by `verify:tenant-isolation` + `user-scope` unit test; live-data proof
+  on Bhutan/Demo).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_

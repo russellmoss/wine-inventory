@@ -11,6 +11,7 @@ import {
   isAssignableRole,
   type AssignableRole,
 } from "@/lib/access";
+import { tenantUserWhere } from "@/lib/users/scope";
 import { ensureDeveloperHomeMembership } from "@/lib/users/ensure-developer-membership";
 import { hashPassword } from "@/lib/password";
 import { writeAudit, summarize, diff } from "@/lib/audit";
@@ -45,6 +46,30 @@ function cleanRole(raw: unknown): AssignableRole {
   return role;
 }
 
+/**
+ * Load a user that belongs to the ACTOR'S tenant, or reject. `User`/`Member` are GLOBAL, RLS-exempt
+ * tables (auth needs them pre-login), so tenant isolation for user management is enforced HERE, in
+ * the app layer (#90): every mutation that takes a `userId` MUST prove that user is a member of the
+ * actor's org first, else an admin at winery A could reset/ban/re-role winery B's users. Throws
+ * "User not found." (NOT "forbidden") so a caller can't probe which user ids exist in other tenants.
+ * The select is a superset covering every caller's needs.
+ */
+async function requireTenantUser(userId: string, tenantId: string) {
+  const user = await prisma.user.findFirst({
+    where: tenantUserWhere(userId, tenantId),
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      banned: true,
+      vineyardMemberships: { select: { vineyardId: true } },
+    },
+  });
+  if (!user) throw new ActionError("User not found.");
+  return user;
+}
+
 /** Create a user with a generated temporary password. Returns it ONCE for the admin. */
 export const createUser = adminAction(async ({ actor, user: me }, formData: FormData): Promise<{ email: string; tempPassword: string; emailed: boolean }> => {
   const email = cleanEmail(formData.get("email"));
@@ -75,8 +100,12 @@ export const createUser = adminAction(async ({ actor, user: me }, formData: Form
     await tx.account.create({
       data: { id: crypto.randomUUID(), accountId: user.id, providerId: "credential", userId: user.id, password: hash, createdAt: now, updatedAt: now },
     });
-    // A developer must be a member of the Demo Winery home org to have a working session.
+    // #90: bind the new user to a tenant via a Member row — else they'd resolve to no active org
+    // (couldn't log in) and would be invisible to the tenant-scoped Users page. A developer lands in
+    // the Demo sandbox home (their cross-tenant reach is support-context, not real memberships);
+    // every other role joins the CREATING admin's org.
     if (role === "developer") await ensureDeveloperHomeMembership(tx, user.id);
+    else await tx.member.create({ data: { organizationId: actor.tenantId, userId: user.id, role: "member" } });
     await writeAudit(tx, {
       ...actor,
       action: "USER_CREATED",
@@ -92,9 +121,10 @@ export const createUser = adminAction(async ({ actor, user: me }, formData: Form
 });
 
 /** Reset a user's password to a fresh temporary one (forces change on next login). */
-export const resetUserPassword = adminAction(async ({ actor }, userId: string): Promise<{ email: string; tempPassword: string; emailed: boolean }> => {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new ActionError("User not found.");
+export const resetUserPassword = adminAction(async ({ actor, user: me }, userId: string): Promise<{ email: string; tempPassword: string; emailed: boolean }> => {
+  const user = await requireTenantUser(userId, actor.tenantId);
+  // Only a developer may reset a developer's password (parity with setUserRole/setUserBanned).
+  if (!canManageDeveloperTarget(me, user.role)) throw new ActionError("Only a developer can reset a developer's password.", "FORBIDDEN");
   const temp = tempPassword();
   const hash = await hashPassword(temp);
 
@@ -113,8 +143,7 @@ export const resetUserPassword = adminAction(async ({ actor }, userId: string): 
 
 export const setUserRole = adminAction(async ({ actor, user: me }, userId: string, role: AssignableRole) => {
   const r = cleanRole(role);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new ActionError("User not found.");
+  const user = await requireTenantUser(userId, actor.tenantId);
   // Only a developer may grant the developer role, or touch an account that already IS a developer.
   if (!canAssignRole(me, r)) throw new ActionError("Only a developer can assign the developer role.", "FORBIDDEN");
   if (!canManageDeveloperTarget(me, user.role)) throw new ActionError("Only a developer can change a developer's role.", "FORBIDDEN");
@@ -130,11 +159,7 @@ export const setUserRole = adminAction(async ({ actor, user: me }, userId: strin
 
 /** Replace a manager's vineyard MEMBERSHIP set (D9). Passing [] clears all memberships. */
 export const setUserVineyards = adminAction(async ({ actor }, userId: string, vineyardIds: string[]) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, vineyardMemberships: { select: { vineyardId: true } } },
-  });
-  if (!user) throw new ActionError("User not found.");
+  const user = await requireTenantUser(userId, actor.tenantId);
 
   // De-dupe + validate every requested vineyard exists.
   const want = Array.from(new Set(vineyardIds));
@@ -174,8 +199,7 @@ export const setUserVineyards = adminAction(async ({ actor }, userId: string, vi
  * composite [tenantId,userId] unique (tenantId is auto-injected on create by the tenant extension).
  */
 export const setComplianceReminderPref = adminAction(async ({ actor }, userId: string, enabled: boolean) => {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
-  if (!user) throw new ActionError("User not found.");
+  const user = await requireTenantUser(userId, actor.tenantId);
   await runInTenantTx(async (tx) => {
     const existing = await tx.complianceReminderPreference.findFirst({ where: { userId }, select: { id: true, remindersEnabled: true } });
     if (existing) {
@@ -198,8 +222,7 @@ export const setComplianceReminderPref = adminAction(async ({ actor }, userId: s
 
 /** Soft-delete: ban (or reinstate) a user. Banning revokes their sessions. */
 export const setUserBanned = adminAction(async ({ actor, user: me }, userId: string, banned: boolean) => {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new ActionError("User not found.");
+  const user = await requireTenantUser(userId, actor.tenantId);
   if (userId === me.id && banned) throw new ActionError("You can't deactivate your own account.");
   if (!canManageDeveloperTarget(me, user.role)) throw new ActionError("Only a developer can deactivate a developer account.", "FORBIDDEN");
   await runInTenantTx(async (tx) => {

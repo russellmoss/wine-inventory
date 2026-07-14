@@ -7,7 +7,7 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-Dev-workflow organization — establish `NOW.md` as the focus spine + wire its upkeep.
+Ship the #90 security fix — cross-tenant user-management leak/takeover (app-layer membership scoping).
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -20,6 +20,11 @@ chip, not into this session. Nothing parked right now._
 
 ## ✅ Done recently
 
+- Security #90 — cross-tenant user leak + account takeover. `src/lib/users/scope.ts` membership
+  filter now scopes the `/users` page reads + all `users/actions.ts` mutators to the caller's
+  effective tenant; `createUser` binds new users to the org; `resetUserPassword` gained the
+  developer-target guard. Proven closed on live Bhutan/Demo data + isolation harnesses. On branch
+  `claude/fix-90-cross-tenant-user-mgmt` → shipping now. Follow-up: TODOS "Per-tenant user role/state".
 - Scale tripwire #166 — wrapped the 4 SERIALIZABLE work-order maintenance completion/undo
   txns in `withWriteRetry`. **SHIPPED, PR #172 merged** (`28331fd`); issue closed.
 - Plan 063 developer user type (self-replicating) — **SHIPPED, PR #170 merged** (`1fda348`).
@@ -32,4 +37,4 @@ chip, not into this session. Nothing parked right now._
 - Browser QA pass on Plan 063 (developer user type).
 
 ---
-_Last updated: 2026-07-13 — creating the focus spine._
+_Last updated: 2026-07-13 — #90 cross-tenant user-management fix built + green, shipping._

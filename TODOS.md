@@ -2,6 +2,32 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## Per-tenant user role/state (role & banned on `Member`, not global `User`)
+
+**What:** Today `User.role` (`user`/`admin`/`developer`) and `User.banned` are GLOBAL flags. In a true
+multi-org world a user could be an admin in winery A and a plain user in winery B, or banned by A but
+active in B — impossible to express on the global `User` row. The clean model is to move tenant-specific
+role/state onto the `Member` join (Better Auth's org plugin already carries a per-`Member` `role`) and
+have `resolveTenantId`/access checks read the membership for the active org.
+
+**Why (raised in the #90 council review, Gemini):** the #90 fix scopes *who an admin can see/act on* to
+their org, but the *attributes being mutated* (`role`/`banned`/password) still live on the shared `User`
+record. It's safe **today** only because (a) `createUser` now binds each non-developer to exactly one
+org, so regular users are single-tenant, and (b) the only multi-org accounts are developers, who are
+`canManageDeveloperTarget`-gated against plain admins. The moment a non-developer legitimately belongs
+to two orgs (e.g. a real cross-winery invitation flow), a global role/ban mutation by one org's admin
+leaks into the other. Also flagged: `createUser`'s global-email uniqueness check reveals that an email
+exists in another tenant (minor admin-only enumeration) — an invitation flow would resolve both.
+
+**Scope / cons:** Non-trivial — touches `auth.ts` session hook, `dal.ts` `toAppUser`/`resolveActiveOrg`,
+`access.ts`, every `requireAdmin`/`adminAction` gate, and a data migration to seed `Member.role` from
+`User.role`. Do this as its own plan alongside (or before) building the end-user invitation/multi-org
+switcher (ROADMAP Phase 21a), not as a hotfix.
+
+**Context:** Deferred during the #90 security fix (cross-tenant user-management leak), 2026-07-13. The
+hotfix itself (app-layer membership scoping) shipped; this is the model-level follow-up. See
+[[security-register#User management is app-layer tenant-isolated]].
+
 ## Introduce a server-action / DB integration test harness
 
 **What:** Stand up a Vitest integration setup (test database + helpers) so server

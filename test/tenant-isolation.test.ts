@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { GLOBAL_MODELS } from "@/lib/tenant/models";
+import { memberOfTenant, tenantUserWhere } from "@/lib/users/scope";
 
 /**
  * Phase 12 — cross-tenant isolation, run AS THE app_rls role against a real DB. GATED: only runs
@@ -46,6 +47,10 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.organization.upsert({ where: { id: B }, update: {}, create: { id: B, name: "Iso Vitest B", slug: B } });
     await owner.user.upsert({ where: { id: "isov_voice_user_a" }, update: {}, create: { id: "isov_voice_user_a", name: "Voice A", email: "isov_voice_a@test" } });
     await owner.user.upsert({ where: { id: "isov_voice_user_b" }, update: {}, create: { id: "isov_voice_user_b", name: "Voice B", email: "isov_voice_b@test" } });
+    // #90: org memberships so the app-layer user-management scoping (User/Member are GLOBAL, no RLS)
+    // can be exercised — user A is a member of org A, user B a member of org B.
+    await owner.member.upsert({ where: { organizationId_userId: { organizationId: A, userId: "isov_voice_user_a" } }, update: {}, create: { organizationId: A, userId: "isov_voice_user_a", role: "member" } });
+    await owner.member.upsert({ where: { organizationId_userId: { organizationId: B, userId: "isov_voice_user_b" } }, update: {}, create: { organizationId: B, userId: "isov_voice_user_b", role: "member" } });
     const now = new Date();
     await owner.lot.upsert({ where: { id: "isov_a" }, update: {}, create: { id: "isov_a", code: "ISOV-A", tenantId: A, updatedAt: now } });
     await owner.lot.upsert({ where: { id: "isov_b" }, update: {}, create: { id: "isov_b", code: "ISOV-B", tenantId: B, updatedAt: now } });
@@ -111,6 +116,7 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.bond.deleteMany({ where: { id: { in: ["isov_bond_a", "isov_bond_b", "isov_bond_x"] } } }); // Phase 2: FK'd to org
     await owner.voicePreference.deleteMany({ where: { id: { in: ["isov_voice_pref_a", "isov_voice_pref_b", "isov_voice_pref_x"] } } });
     await owner.voiceProfile.deleteMany({ where: { id: { in: ["isov_voice_profile_a", "isov_voice_profile_b", "isov_voice_profile_x"] } } });
+    await owner.member.deleteMany({ where: { userId: { in: ["isov_voice_user_a", "isov_voice_user_b"] } } });
     await owner.user.deleteMany({ where: { id: { in: ["isov_voice_user_a", "isov_voice_user_b"] } } });
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
@@ -283,6 +289,18 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
   // and a tenant_isolation policy. Enumerated from Prisma's datamodel so a table added without its
   // RLS migration fails here — covers the newer Phase-8/14/reminder tables and every future one,
   // without a per-table fixture that would itself go stale. Read-only (config assertion).
+  it("user management is app-layer tenant-scoped (#90): membership WHERE excludes cross-tenant users", async () => {
+    // User/Member are GLOBAL (denylist, no RLS) so the DB won't scope them — the membership WHERE in
+    // src/lib/users/scope.ts is the ONLY isolation. Exercised against the DB via the owner client
+    // (RLS is irrelevant here); if `tenantUserWhere` ever regressed to a bare id lookup, the 2nd and
+    // 4th assertions below would flip.
+    expect(await owner.user.findFirst({ where: tenantUserWhere("isov_voice_user_a", A) })).not.toBeNull();
+    expect(await owner.user.findFirst({ where: tenantUserWhere("isov_voice_user_b", A) })).toBeNull(); // B's user, as A → invisible
+    const listA = (await owner.user.findMany({ where: memberOfTenant(A), select: { id: true } })).map((u) => u.id);
+    expect(listA).toContain("isov_voice_user_a");
+    expect(listA).not.toContain("isov_voice_user_b");
+  });
+
   it("every non-global table has RLS enabled + forced + a tenant_isolation policy (steps 6/9)", async () => {
     const expected = Prisma.dmmf.datamodel.models
       .filter((m) => !GLOBAL_MODELS.has(m.name))

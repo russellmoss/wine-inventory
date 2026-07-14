@@ -86,6 +86,12 @@ async function main() {
   await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Bhutan Wine Co", slug: A } });
   await owner.organization.upsert({ where: { id: B }, update: {}, create: { id: B, name: "Isolation Test B", slug: B } });
   const now = new Date();
+  // #90 app-layer user-management isolation: User/Member are GLOBAL (no RLS), so the membership WHERE
+  // in the app layer (src/lib/users/scope.ts) is the ONLY tenant scope. Seed a user+member per tenant.
+  await owner.user.upsert({ where: { id: "iso_um_user_a" }, update: {}, create: { id: "iso_um_user_a", name: "ISO User A", email: "iso_um_user_a@test" } });
+  await owner.user.upsert({ where: { id: "iso_um_user_b" }, update: {}, create: { id: "iso_um_user_b", name: "ISO User B", email: "iso_um_user_b@test" } });
+  await owner.member.upsert({ where: { organizationId_userId: { organizationId: A, userId: "iso_um_user_a" } }, update: {}, create: { organizationId: A, userId: "iso_um_user_a", role: "member" } });
+  await owner.member.upsert({ where: { organizationId_userId: { organizationId: B, userId: "iso_um_user_b" } }, update: {}, create: { organizationId: B, userId: "iso_um_user_b", role: "member" } });
   await owner.lot.upsert({ where: { id: "iso_lot_a" }, update: {}, create: { id: "iso_lot_a", code: "ISO-A", tenantId: A, updatedAt: now } });
   await owner.lot.upsert({ where: { id: "iso_lot_b" }, update: {}, create: { id: "iso_lot_b", code: "ISO-B", tenantId: B, updatedAt: now } });
   // Plan 029 raw-SQL fixtures: a vineyard+block+brix_log per tenant for the getLatestBrixByBlock path.
@@ -452,6 +458,16 @@ async function main() {
     } catch { migFkRaised = true; }
     check("migration_seed_position cross-tenant vessel reference rejected (composite FK)", migFkRaised);
 
+    // 5l. #90 app-layer user-management scoping (mirrors src/lib/users/scope.ts). User/Member are
+    // GLOBAL (no RLS) so isolation is the membership WHERE, not the DB — assert it excludes B's user.
+    // Uses the owner client on purpose (RLS is irrelevant for global tables); a regression to a bare
+    // { id } lookup would flip the 2nd + 3rd checks.
+    const umWhere = (userId: string, tenantId: string) => ({ id: userId, memberships: { some: { organizationId: tenantId } } });
+    check("user mgmt: A can load its own member user", (await owner.user.findFirst({ where: umWhere("iso_um_user_a", A) })) !== null);
+    check("user mgmt: A CANNOT load tenant B's user (membership WHERE)", (await owner.user.findFirst({ where: umWhere("iso_um_user_b", A) })) === null);
+    const umListA = (await owner.user.findMany({ where: { memberships: { some: { organizationId: A } } }, select: { id: true } })).map((u) => u.id);
+    check("user mgmt: A's user list excludes B's user", umListA.includes("iso_um_user_a") && !umListA.includes("iso_um_user_b"));
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -512,6 +528,9 @@ async function main() {
     await owner.lot.deleteMany({ where: { id: { in: ["iso_lot_a", "iso_lot_b", "iso_lot_x"] } } });
     // Phase 2: bonds are FK'd to organization → delete before org B drops.
     await owner.bond.deleteMany({ where: { id: { in: ["iso_bond_a", "iso_bond_b", "iso_bond_x"] } } });
+    // #90: member rows are FK'd to organization + user → delete before org B and the users drop.
+    await owner.member.deleteMany({ where: { userId: { in: ["iso_um_user_a", "iso_um_user_b"] } } });
+    await owner.user.deleteMany({ where: { id: { in: ["iso_um_user_a", "iso_um_user_b"] } } });
     await owner.organization.deleteMany({ where: { id: B } });
     await app.$disconnect();
     await owner.$disconnect();
