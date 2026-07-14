@@ -1,5 +1,24 @@
 @AGENTS.md
 
+## Focus spine — NOW.md (keep it current)
+
+`NOW.md` at the repo root is the **working-set spine**: the one file that answers "what is
+in flight right now, and what pulled me off it." It is short-horizon only — long-horizon
+lives in `ROADMAP.md`, parked ideas in `TODOS.md`, decisions in the context-ledger.
+
+Keep `NOW.md` current WITHOUT being asked. Update it at natural boundaries:
+- when the current objective changes or a plan unit finishes → update **🎯 Current objective**
+  and add a line under **✅ Done recently**;
+- when you detour mid-task → push a one-line entry onto the **🧵 Tangent stack** (LIFO), and
+  **pop it** when the detour resolves;
+- when an out-of-scope issue surfaces → route it to `TODOS.md` or a task chip and note it
+  under **🪝 Off-path**, do NOT silently start it;
+- stamp the `_Last updated_` line each time.
+
+Keep it under a screen — if it grows, the overflow belongs in `TODOS.md` or `ROADMAP.md`.
+A `SessionStart` hook reads this file back at the start of every session so work resumes
+cold. Do not make the user run a skill to maintain it; maintaining it is your job.
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill
