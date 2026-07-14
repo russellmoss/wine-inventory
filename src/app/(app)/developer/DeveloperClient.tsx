@@ -3,6 +3,7 @@
 import React from "react";
 import { Badge, Button, Card, Input, Textarea } from "@/components/ui";
 import type { DeveloperFeedbackData, DeveloperFeedbackItem, DeveloperTenantSummary } from "@/lib/developer/feedback";
+import { parseTriageNotes, type TriageNoteEntry } from "@/lib/developer/triage-notes";
 import {
   approveFeedbackAutomation,
   enterSupportTenant,
@@ -36,6 +37,61 @@ function DispositionBadge({ value }: { value: string | null }) {
   if (!value) return <Badge tone="neutral" variant="outline">Untriaged</Badge>;
   const meta = DISPOSITION_META.get(value);
   return <Badge tone={meta?.tone ?? "neutral"}>{meta?.label ?? value}</Badge>;
+}
+
+// The disposition token in a triage note is lowercase (`[defect]`); map it to the badge meta.
+function dispoToneFor(type: string | null): DispositionTone {
+  return (type ? DISPOSITION_META.get(type.toUpperCase())?.tone : undefined) ?? "neutral";
+}
+function fmtStamp(stamp: string | null): string {
+  if (!stamp) return "";
+  const t = Date.parse(stamp);
+  return Number.isNaN(t) ? stamp : new Date(t).toLocaleString();
+}
+
+// Backlog-row cell: the newest outcome, short, so you see what happened without opening the item.
+function OutcomePreview({ notes }: { notes: string | null }) {
+  const latest = parseTriageNotes(notes)[0];
+  if (!latest) return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+  const full = `${latest.type ? `[${latest.type}] ` : ""}${latest.text}`;
+  return (
+    <div style={{ maxWidth: 240 }} title={`${fmtStamp(latest.stamp)}${latest.stamp ? " · " : ""}${full}`}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span aria-hidden style={{ fontSize: 11 }}>{latest.source === "bug-triage" ? "🤖" : "📝"}</span>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12.5 }}>{full}</span>
+      </div>
+    </div>
+  );
+}
+
+// Item-editor panel: the full outcome/triage history, read-only, newest first.
+function OutcomeTimeline({ entries }: { entries: TriageNoteEntry[] }) {
+  if (entries.length === 0) {
+    return <p style={{ color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: 13, margin: 0 }}>No triage outcome recorded yet.</p>;
+  }
+  return (
+    <div style={{ display: "grid", gap: "var(--space-2)" }}>
+      {entries.map((e, i) => (
+        <div
+          key={i}
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-md)",
+            background: "var(--surface-sunken)",
+            padding: "var(--space-2) var(--space-3)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+            <Badge tone={e.source === "bug-triage" ? dispoToneFor(e.type) : "neutral"} variant={e.source === "bug-triage" ? "solid" : "outline"}>
+              {e.source === "bug-triage" ? (e.type ? DISPOSITION_META.get(e.type.toUpperCase())?.label ?? e.type : "bug-triage") : "You"}
+            </Badge>
+            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{fmtStamp(e.stamp)}</span>
+          </div>
+          <div style={{ fontFamily: "var(--font-body)", fontSize: 13.5, whiteSpace: "pre-wrap" }}>{e.text}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function ModeSelect({
@@ -225,13 +281,14 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
                 {th("Disposition", "triageClass")}
                 {th("Status", "status")}
                 {th("Automation", "automationStatus")}
+                {th("Outcome")}
                 {th("Actions")}
               </tr>
             </thead>
             <tbody>
               {shownItems.length === 0 ? (
                 <tr>
-                  <td style={{ ...cellStyle, color: "var(--text-muted)" }} colSpan={9}>
+                  <td style={{ ...cellStyle, color: "var(--text-muted)" }} colSpan={10}>
                     No items match the selected disposition.
                   </td>
                 </tr>
@@ -251,6 +308,7 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
                   <td style={cellStyle}><DispositionBadge value={item.triageClass} /></td>
                   <td style={cellStyle}>{item.status}</td>
                   <td style={cellStyle}>{item.automationStatus}</td>
+                  <td style={cellStyle}><OutcomePreview notes={item.developerNotes} /></td>
                   <td style={cellStyle}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <Button size="sm" variant="secondary" onClick={() => setEditing(item)}>Open</Button>
@@ -338,6 +396,7 @@ function ItemEditor({
   const [triageClass, setTriageClass] = React.useState(item.triageClass ?? "");
   const [status, setStatus] = React.useState(item.status);
   const [developerNotes, setDeveloperNotes] = React.useState(item.developerNotes ?? "");
+  const timeline = React.useMemo(() => parseTriageNotes(item.developerNotes), [item.developerNotes]);
   const key = `edit-${item.sourceType}-${item.id}`;
   return (
     <Card style={{ position: "fixed", inset: "6vh 4vw", zIndex: 40, overflow: "auto", boxShadow: "var(--shadow-xl)" }}>
@@ -353,6 +412,17 @@ function ItemEditor({
         {item.planMarkdown ? (
           <pre style={{ whiteSpace: "pre-wrap", background: "var(--surface-sunken)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", overflow: "auto" }}>{item.planMarkdown}</pre>
         ) : null}
+        <section style={{ display: "grid", gap: "var(--space-2)" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "var(--space-3)" }}>
+            <h3 style={{ fontFamily: "var(--font-heading)", fontWeight: 400, margin: 0, fontSize: 15 }}>Outcome / triage history</h3>
+            {item.resolvedAt ? (
+              <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: 12 }}>
+                Resolved {new Date(item.resolvedAt).toLocaleString()}
+              </span>
+            ) : null}
+          </div>
+          <OutcomeTimeline entries={timeline} />
+        </section>
         <div style={{ display: "grid", gridTemplateColumns: "140px 200px 180px 1fr", gap: "var(--space-3)", alignItems: "end" }}>
           <label style={{ display: "grid", gap: 6 }}>
             <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Severity</span>
@@ -373,7 +443,7 @@ function ItemEditor({
             </select>
           </label>
           <Input label="Status" value={status} onChange={(e) => setStatus(e.target.value)} />
-          <Textarea label="Developer notes" value={developerNotes} onChange={(e) => setDeveloperNotes(e.target.value)} minRows={3} />
+          <Textarea label="Add / edit notes" value={developerNotes} onChange={(e) => setDeveloperNotes(e.target.value)} minRows={3} />
         </div>
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           <Button

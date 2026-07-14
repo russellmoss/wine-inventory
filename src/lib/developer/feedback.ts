@@ -40,6 +40,7 @@ export type DeveloperFeedbackItem = {
   prUrl: string | null;
   planMarkdown: string | null;
   developerNotes: string | null;
+  resolvedAt: string | null; // ISO; set when the item was closed to RESOLVED (by triage or a human)
   attachmentCount: number;
   awaitingRunId: string | null;
 };
@@ -134,6 +135,7 @@ export async function getDeveloperFeedbackData(input: {
           prUrl: fb.prUrl,
           planMarkdown: fb.planMarkdown ? sanitizePlainText(fb.planMarkdown, 8000) : null,
           developerNotes: fb.developerNotes ? sanitizePlainText(fb.developerNotes, 4000) : null,
+          resolvedAt: fb.resolvedAt ? fb.resolvedAt.toISOString() : null,
           attachmentCount: fb.attachments.length,
           awaitingRunId: runBySource.get(`${FeedbackAutomationSource.ASSISTANT_FEEDBACK}:${fb.id}`) ?? null,
         });
@@ -159,6 +161,7 @@ export async function getDeveloperFeedbackData(input: {
           prUrl: ticket.prUrl,
           planMarkdown: ticket.planMarkdown ? sanitizePlainText(ticket.planMarkdown, 8000) : null,
           developerNotes: ticket.developerNotes ? sanitizePlainText(ticket.developerNotes, 4000) : null,
+          resolvedAt: ticket.resolvedAt ? ticket.resolvedAt.toISOString() : null,
           attachmentCount: ticket.attachments.length,
           awaitingRunId: runBySource.get(`${FeedbackAutomationSource.FEEDBACK_TICKET}:${ticket.id}`) ?? null,
         });
