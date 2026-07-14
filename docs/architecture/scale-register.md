@@ -164,5 +164,35 @@ TEMPLATE — copy this block for each new decision:
 - **Tripwire:** a publish that times out / retries repeatedly; import batches trending into the thousands of rows; publish latency climbing.
 - **Status:** 🟢 (winery back-book volumes today; if multi-vintage bulk imports get large, chunk the publish).
 
+### Multi-lot vessel-reading fan-out multiplies AnalysisPanel rows (plan 060, chemistry)
+- **Choice:** one physical whole-tank reading on a co-ferment vessel writes **N panels** (one per co-resident
+  lot), all sharing a `vesselReadingGroupId`, so `AnalysisPanel` row count scales with resident-lot count,
+  not with distinct readings. Vessel-scoped views re-collapse the N to one via
+  `coalesce(vesselReadingGroupId, id)`, backed by `@@index([vesselId, vesselReadingGroupId])`.
+- **Fine until:** a vessel holds only a handful of co-resident lots (the norm — a "one must" tank is a few
+  components), and vessel-history/trend queries stay bounded by `take`/date window.
+- **What breaks at scale:** a pathological vessel with many resident lots read frequently inflates panel rows
+  ~N×; a vessel-scoped dedup that forgot the index would sort-collapse a large row set in memory; a lot-scoped
+  view that WRONGLY deduped by group id would drop each co-resident lot's own curve (correctness, not just perf).
+- **Tripwire:** the `(vesselId, vesselReadingGroupId)` index dropped; a vessel-scoped reading query NOT using
+  `coalesce(vesselReadingGroupId, id)`; resident-lot counts per vessel trending high; a lot-scoped query
+  applying the vessel dedup.
+- **Status:** 🟢 (additive nullable column + two indexes; winery-scale co-ferment counts; guarded by the
+  `(tenantId, vesselReadingGroupId, lotId)` unique + `chemistry-fanout` test).
+
+### All-at-once multi-vessel maintenance completion is one Serializable tx over the member set (plan 061)
+- **Choice:** a consolidated maintenance task (`plannedPayload.groupActivity`, "clean B1–B60") completes in
+  ONE Serializable `runInTenantTx` that writes one `VesselActivityEvent` per member; undo reverses them in
+  one tx too. Timeout is raised to 120s and both are wrapped in `withWriteRetry` for the SERIALIZABLE churn.
+- **Fine until:** member sets of tens of barrels (a shed range) — the deliberate all-at-once choice (ADR 0004
+  rejected progressive per-batch completion as over-built for a record-only op).
+- **What breaks at scale:** a very large member set is a long single Serializable tx — lock-hold time + retry
+  pressure, and it materializes N events at once; `NL_WORK_ORDER_MAX_TASKS` no longer caps this path (it's one
+  task now), so an unbounded NL range could ask for a huge fan of events.
+- **Tripwire:** group-maintenance completion/undo timing out or retrying repeatedly; member counts trending
+  into the hundreds; the 120s timeout being hit.
+- **Status:** 🟢 (record-only, no ledger fold; barrel-range scale; proven by `verify:group-maintenance`. If
+  ranges get large, revisit the deferred progressive/per-batch completion).
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*
