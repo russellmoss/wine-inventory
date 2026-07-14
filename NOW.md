@@ -20,12 +20,10 @@ chip, not into this session. Nothing parked right now._
 
 ## ✅ Done recently
 
-- **Plan 064 — bug-triage outcome notes — BUILT, PR #177 open.** Richer write-back
-  (what+how / why+next) in the global workflow + SKILL.md (out-of-repo), and a visible
-  outcome timeline + "Outcome" column + `resolvedAt` in `/developer`. New pure
-  `parseTriageNotes` (6 tests). No schema (reuses `developerNotes`). Green locally: tsc,
-  eslint, `next build`, vitest 6/6. `verify:naming` couldn't run (Neon unreachable) → CI.
-  Branch `claude/bug-triage-outcome-notes`. Remaining: CI green + browser QA on `/developer`.
+- **Plan 064 — bug-triage outcome notes — SHIPPED, PR #177 merged** (`39abefa`). Richer
+  write-back (what+how / why+next) in the global workflow + SKILL.md (out-of-repo), and a
+  visible outcome timeline + "Outcome" column + `resolvedAt` in `/developer`. New pure
+  `parseTriageNotes` (6 tests). No schema (reuses `developerNotes`). Branch pruned; on main.
 - Security #90 — cross-tenant user leak + account takeover. `src/lib/users/scope.ts` membership
   filter now scopes the `/users` page reads + all `users/actions.ts` mutators to the caller's
   effective tenant; `createUser` binds new users to the org; `resetUserPassword` gained the
@@ -41,7 +39,11 @@ chip, not into this session. Nothing parked right now._
 - **Plan 062 SO₂-solution dosing — Units 2–9** (Unit 1 shipped; branch
   `claude/so2-solution-dosing`). Fixes the ~1.74× KMBS under-dose bug.
 - Browser QA pass on Plan 063 (developer user type).
-- **Plan 064 — bug-triage outcome notes**: merge PR #177 once CI is green; browser-QA `/developer`.
+- **Feedback log HTML-entity garbling** — `sanitizePlainText` double-encoded quotes/apostrophes
+  (`&#39;`/`&quot;`) for React text nodes; fixed on branch `claude/fix-feedback-html-entities`.
+- **Bug reported (larger, separate):** SO₂ addition work-order EXECUTION view is unclear —
+  shows a material-selection panel + bare "14" with no units, no computed total solution volume.
+  Execution views must read "do X to Y with Z amount", edit-gated behind an Edit button. Needs a plan.
 
 ---
-_Last updated: 2026-07-14 — Plan 064 (bug-triage outcome notes) BUILT + PR #177 open, green locally._
+_Last updated: 2026-07-14 — Plan 064 shipped (#177); fixing feedback HTML-entity garbling next._
