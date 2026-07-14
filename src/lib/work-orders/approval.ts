@@ -1,6 +1,7 @@
 import { Prisma, type WorkOrderTaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
+import { withWriteRetry } from "@/lib/db/write-retry";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -452,7 +453,7 @@ export async function undoMaintenanceTaskCore(user: ApproverUser, actor: LedgerA
   }
 
   const events = await prisma.vesselActivityEvent.findMany({ where: { taskId: task.id, attemptId: currentAttemptId, voidedAt: null }, select: { id: true } });
-  return runInTenantTx(async (tx) => {
+  return withWriteRetry(() => runInTenantTx(async (tx) => {
     // Claim the task (A4) and REOPEN to PENDING (not REJECTED — a record-only task must stay re-completable).
     const claimed = await tx.workOrderTask.updateMany({
       where: { id: task.id, status: "DONE", currentAttemptId },
@@ -467,5 +468,5 @@ export async function undoMaintenanceTaskCore(user: ApproverUser, actor: LedgerA
     await bumpWorkOrderRollupTx(tx, task.workOrderId);
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Undid a maintenance task — reversed ${events.length} activity event${events.length === 1 ? "" : "s"} and reopened it` });
     return { taskId: task.id, status: "PENDING", message: `Undone — ${events.length} activity record${events.length === 1 ? "" : "s"} reversed; the task is open again.` };
-  }, { isolationLevel: "Serializable", timeout: 120_000 });
+  }, { isolationLevel: "Serializable", timeout: 120_000 }), 5, "wo-maintenance:undo");
 }

@@ -6,7 +6,8 @@ import { Prisma } from "@prisma/client";
  * Prisma surfaces SQLSTATE 40001 (serialization failure under SERIALIZABLE) and 40P01 (deadlock) as
  * error code P2034. SSI aborts the losing transaction with NO automatic retry, so without this a
  * transient, correct-to-retry conflict becomes a user-facing 500. Every SERIALIZABLE write path — the
- * ledger chokepoint (`runLedgerWrite`), stock movements, and bottling — wraps its transaction in this.
+ * ledger chokepoint (`runLedgerWrite`), stock movements, bottling, and work-order maintenance
+ * completion/undo — wraps its transaction in this.
  *
  * Bounded (cap `attempts`) with full-jitter exponential backoff so a burst of conflicts doesn't
  * thundering-herd, and each retry is logged with a domain `label` so rising serialization contention is
