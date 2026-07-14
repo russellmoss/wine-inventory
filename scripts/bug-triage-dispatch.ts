@@ -2,7 +2,8 @@
  * Approve + dispatch ONE feedback AutomationRun — the exact state transition the
  * /developer "Approve" button performs:
  *   AWAITING_APPROVAL → QUEUED → RUNNING → repository_dispatch to the GitHub
- *   Actions fix/plan agent (feedback_bug_fix | assistant_feedback | feedback_plan).
+ *   Actions fix agent (feedback_bug_fix | assistant_feedback). PLAN routing uses
+ *   `triage:plan`, so an awaiting PLAN can never be mistaken for a fix here.
  *
  * Used by the /bug-triage skill to kick off a fix for a NEW bug it has triaged as
  * safe-to-attempt, without a human clicking Approve. It does NOT merge anything —
@@ -15,6 +16,7 @@
  * Requires GITHUB_REPOSITORY + GITHUB_DISPATCH_TOKEN in .env. If unset, the run is
  * left QUEUED with an error (same as the button) and this exits non-zero.
  */
+import { FeedbackAutomationKind } from "@prisma/client";
 import { approveAutomationRun, dispatchApprovedRun } from "../src/lib/feedback/automation";
 import { runAsSystem, disconnectSystem } from "../src/lib/tenant/system";
 
@@ -63,14 +65,19 @@ async function main() {
     process.exit(1);
   }
 
-  const run = await approveAutomationRun({ tenantId, runId, approverUserId });
+  const run = await approveAutomationRun({
+    tenantId,
+    runId,
+    approverUserId,
+    expectedKind: FeedbackAutomationKind.AGENTIC_FIX,
+  });
   if (!run) {
     console.log(
       JSON.stringify({
         ok: false,
         tenantId,
         runId,
-        error: "Run is not AWAITING_APPROVAL (already approved/dispatched, or wrong id/tenant).",
+        error: "Run is not an AWAITING_APPROVAL AGENTIC_FIX (already handled, wrong kind, id, or tenant).",
       }),
     );
     process.exit(1);
@@ -89,7 +96,7 @@ async function main() {
         approverUserId,
         dispatched,
         note: dispatched
-          ? "Dispatched to the GitHub Actions fix/plan agent (status → RUNNING)."
+          ? "Dispatched to the GitHub Actions fix agent (status → RUNNING)."
           : "Approved (QUEUED) but dispatch did not fire — check GITHUB_REPOSITORY / GITHUB_DISPATCH_TOKEN. It can still be dispatched from /developer.",
       },
       null,
