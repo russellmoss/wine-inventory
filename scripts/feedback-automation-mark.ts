@@ -23,6 +23,7 @@ async function main() {
       data: {
         status,
         completedAt: new Date(),
+        error: null,
         githubUrl: url,
         githubIssueNumber: run.kind === FeedbackAutomationKind.PLAN ? number : undefined,
         githubPrNumber: run.kind === FeedbackAutomationKind.AGENTIC_FIX ? number : undefined,

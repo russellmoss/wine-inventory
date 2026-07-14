@@ -38,13 +38,16 @@ async function main() {
     modeAtSubmission: i.modeAtSubmission,
     prUrl: i.prUrl,
     githubIssueUrl: i.githubIssueUrl, // where a PLANNED item's plan / a SKIPPED item's run log lives
-    // A PLAN_ONLY run stores its plan in the DB. Surface it (capped) so the triage goalie can
+    // A PLAN run stores its plan in the DB. Surface it (capped) so the triage goalie can
     // route it for review instead of blindly re-dispatching. planPresent lets a consumer branch
     // without paying for the snippet. Full plan lives in the DB + githubIssueUrl.
     planPresent: Boolean(i.planMarkdown),
     planMarkdown: i.planMarkdown ? i.planMarkdown.slice(0, 1500) : null,
     attachmentCount: i.attachmentCount, // screenshots the fix agent can see as vision
-    awaitingRunId: i.awaitingRunId, // non-null => an AutomationRun is AWAITING_APPROVAL and can be dispatched
+    awaitingRunId: i.awaitingRunId, // non-null => an AutomationRun is AWAITING_APPROVAL
+    awaitingRunKind: i.awaitingRunKind, // PLAN | AGENTIC_FIX; consumers must gate dispatch by this
+    activeRun: i.activeRun, // latest AWAITING_APPROVAL | QUEUED | RUNNING run, deterministically selected
+    automationConflict: i.automationConflict, // PRODUCT_GAP plus queued/running/PR-open fix work
     developerNotes: i.developerNotes, // carries a SKIPPED run's "why I declined" note back to triage
     open: ACTIONABLE_STATUSES.has(i.status),
   }));
@@ -65,6 +68,7 @@ async function main() {
   console.log(
     JSON.stringify(
       {
+        contractVersion: 2,
         generatedAt: new Date().toISOString(),
         shownTenants: data.shownTenants,
         totalTenants: data.totalTenants,
