@@ -1,7 +1,7 @@
 ---
 title: Clear, edit-gated work-order execution view — SO₂ additions tell "do X to Y with Z"
 type: feat
-status: draft
+status: completed
 date: 2026-07-14
 branch: claude/addition-execution-view-clarity
 depth: deep
