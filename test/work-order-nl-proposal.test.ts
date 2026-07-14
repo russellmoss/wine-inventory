@@ -50,6 +50,30 @@ describe("natural-language work-order proposal parser", () => {
   });
 });
 
+describe("Plan 065 — SO₂ addition captures the KMBS solution strength", () => {
+  it("parses 'as a 10% KMBS solution' from free text onto the addition intent", () => {
+    const intents = parseWorkOrderUtteranceForEval("add 14 ppm SO2 as a 10% KMBS solution to T4");
+    expect(intents).toEqual([
+      { kind: "ADDITION", vessel: "T4", material: "SO2", amount: 14, unit: "mg/L", solutionPercentKmbs: 10 },
+    ]);
+  });
+
+  it("carries solutionPercentKmbs through structured canonicalization", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "add 14 ppm SO2 as a 10% KMBS solution to tank 4",
+      tasks: [{ kind: "addition", vessel: "tank 4", material: "SO2", amount: "14", unit: "ppm", solutionPercentKmbs: 10 }],
+    });
+    expect(draft.intents).toEqual([
+      { kind: "ADDITION", vessel: "tank 4", material: "SO2", amount: 14, unit: "mg/L", solutionPercentKmbs: 10 },
+    ]);
+  });
+
+  it("omits solutionPercentKmbs when no solution strength is stated", () => {
+    const intents = parseWorkOrderUtteranceForEval("add 30 ppm SO2 to T15");
+    expect(intents).toEqual([{ kind: "ADDITION", vessel: "T15", material: "SO2", amount: 30, unit: "mg/L" }]);
+  });
+});
+
 describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
   it("canonicalizes maintenance / filtration / cap / temp / topping kinds", () => {
     const draft = canonicalizeNlWorkOrderDraft({
