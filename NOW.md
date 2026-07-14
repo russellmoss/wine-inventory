@@ -20,6 +20,9 @@ chip, not into this session. Nothing parked right now._
 
 ## ✅ Done recently
 
+- **Plan 064 drafted** — bug-triage outcome notes: richer write-back (what+how / why+next)
+  + a visible outcome timeline in `/developer`. No schema (reuses `developerNotes`). 4 units.
+  `docs/plans/2026-07-14-064-feat-bug-triage-outcome-notes-plan.md`. **Awaiting approval** to `/work`.
 - Security #90 — cross-tenant user leak + account takeover. `src/lib/users/scope.ts` membership
   filter now scopes the `/users` page reads + all `users/actions.ts` mutators to the caller's
   effective tenant; `createUser` binds new users to the org; `resetUserPassword` gained the
@@ -35,6 +38,7 @@ chip, not into this session. Nothing parked right now._
 - **Plan 062 SO₂-solution dosing — Units 2–9** (Unit 1 shipped; branch
   `claude/so2-solution-dosing`). Fixes the ~1.74× KMBS under-dose bug.
 - Browser QA pass on Plan 063 (developer user type).
+- **Plan 064 — bug-triage outcome notes** (drafted, awaiting approval): `/work` the 4 units.
 
 ---
-_Last updated: 2026-07-13 — #90 cross-tenant user-management fix built + green, shipping._
+_Last updated: 2026-07-14 — Plan 064 (bug-triage outcome notes) drafted, awaiting approval._
