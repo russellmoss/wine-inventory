@@ -16,6 +16,7 @@ import {
 import { upsertMaterialCore } from "@/lib/cellar/materials";
 import { materialDisplayName } from "@/lib/cellar/materials-shared";
 import { consumeMaterialCore } from "@/lib/cost/consume";
+import { KMBS_SO2_FRACTION } from "@/lib/winemaking-calc/so2";
 
 // Script-safe cores for volume-NEUTRAL material doses (Phase 3, Units 4–5). A neutral op
 // (ADDITION, FINING) is a LotOperation with NO volumetric lines — the chokepoint accepts a
@@ -203,6 +204,19 @@ export async function recordNeutralDoseTx(
     });
     ids.push(row.id);
   }
+  // Plan 066: an SO₂ dose specified as ppm (MG_L basis) computes `totalDose` as grams of SO₂, but the
+  // stock material (KMBS etc.) is only partly SO₂ — deplete/cost the stock mass = SO₂ grams ÷ active
+  // fraction. Only MG_L (ppm/mg/L) is an SO₂-target basis; g/hL, g/L are already grams of the substance,
+  // and absolute units (g/kg) carry no rate — those pass no activeFraction (unchanged). The fraction comes
+  // from the material's percentActive when set, else the canonical KMBS 0.576.
+  let activeFraction: number | undefined;
+  if (rowRate?.basis === "MG_L") {
+    const mat = await tx.cellarMaterial.findUnique({ where: { id: resolved.materialId }, select: { kind: true, percentActive: true } });
+    if (mat?.kind === "SO2") {
+      const pct = mat.percentActive != null ? Number(mat.percentActive) : null;
+      activeFraction = pct != null && pct > 0 && pct <= 100 ? pct / 100 : KMBS_SO2_FRACTION;
+    }
+  }
   // Phase 8 (Unit 3): draw down stock + record MATERIAL cost for this dose, in the SAME tx. No parallel
   // consumption path — the addition/fining op IS the consumption. Untracked/unknown-cost materials
   // record an UNKNOWN-cost line (D14 contagion), so physical dosing is unaffected.
@@ -211,6 +225,7 @@ export async function recordNeutralDoseTx(
     materialId: resolved.materialId,
     doseUnit: unit,
     perLot: perLot.map((p) => ({ lotId: p.lotId, amount: p.computedTotal })),
+    activeFraction,
   });
   await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "LotOperation", entityId: String(opId), summary });
 
