@@ -7,7 +7,7 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-Ship the #90 security fix — cross-tenant user-management leak/takeover (app-layer membership scoping).
+Ship Plan 065 — clear, edit-gated work-order execution view; SO₂ additions show computed KMBS-solution volume.
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -39,11 +39,12 @@ chip, not into this session. Nothing parked right now._
 - **Plan 062 SO₂-solution dosing — Units 2–9** (Unit 1 shipped; branch
   `claude/so2-solution-dosing`). Fixes the ~1.74× KMBS under-dose bug.
 - Browser QA pass on Plan 063 (developer user type).
-- **Feedback log HTML-entity garbling** — `sanitizePlainText` double-encoded quotes/apostrophes
-  (`&#39;`/`&quot;`) for React text nodes; fixed on branch `claude/fix-feedback-html-entities`.
-- **Bug reported (larger, separate):** SO₂ addition work-order EXECUTION view is unclear —
-  shows a material-selection panel + bare "14" with no units, no computed total solution volume.
-  Execution views must read "do X to Y with Z amount", edit-gated behind an Edit button. Needs a plan.
+- **Feedback log HTML-entity garbling** — SHIPPED #178 (`6bc2db1`).
+- **Plan 065 — SO₂ addition execution-view clarity — BUILT, shipping.** Execute view is now
+  summary-first + edit-gated ("Add 14 ppm SO₂ to Tank 4 → ≈ X L of 10% KMBS solution"); landed
+  `resolveSo2Dose` (×0.576) on main; captured solutionPercentKmbs through NL/assistant authoring;
+  new pure `buildTaskSummary`. Green locally: tsc, eslint, `next build`, vitest 1927. No schema.
+  Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-14 — Plan 064 shipped (#177); fixing feedback HTML-entity garbling next._
+_Last updated: 2026-07-14 — Plan 065 (SO₂ exec-view clarity) BUILT + green locally, shipping._

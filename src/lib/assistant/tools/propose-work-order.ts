@@ -338,6 +338,7 @@ export const proposeWorkOrderTool: AssistantTool = {
             material: { type: "string", description: "Existing material name. Additions must be doseable; maintenance supplies are overhead." },
             amount: { type: "number" },
             unit: { type: "string", enum: [...DOSE_UNITS] },
+            solutionPercentKmbs: { type: "number", description: "SO₂ ADDITION ONLY: when the SO₂ is dosed from a KMBS stock solution, the solution strength as the X in 'X% KMBS solution' (e.g. 10 for a 10% KMBS/metabisulfite solution). Lets the execute view compute the litres of solution to pour. Omit for neat-powder additions or non-SO₂ materials." },
             volumeL: { type: "number", description: "Top-up volume for TOPPING." },
             drawL: { type: "number" },
             lossL: { type: "number" },

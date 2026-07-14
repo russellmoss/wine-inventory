@@ -21,12 +21,13 @@ import { GroupMaintenanceTaskForm, GroupMaintenanceUndo } from "./GroupMaintenan
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
+import { buildTaskSummary } from "@/lib/work-orders/task-summary";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
 // Dexie outbox uses). Not harvest-grade offline yet (Phase 28); online status is pinned via aria-live.
 
-type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null };
+type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 const TASK_TYPE_BY_OP: Record<string, string> = { RACK: "RACK", ADDITION: "ADDITION", FINING: "FINING", TOPPING: "TOPPING", FILTRATION: "FILTRATION", CAP_MGMT: "CAP_MGMT" };
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
@@ -41,12 +42,27 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     : task.observationType === "PANEL" ? "PANEL" : "BRIX";
   const def = TASK_VOCABULARY[vocabKey ?? ""];
   const [fields, setFields] = React.useState<Record<string, unknown>>({ ...planned });
+  // Plan 065: the execute view opens as a clear read-only summary; Edit reveals the inputs.
+  const [editMode, setEditMode] = React.useState(false);
   const [readingValue, setReadingValue] = React.useState<string>("");
   const [note, setNote] = React.useState<string>("");
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
 
   function set(key: string, v: unknown) { setFields((p) => ({ ...p, [key]: v })); }
+
+  // The read-only "do X to Y with Z" story, computed from the LIVE edit state so it stays truthful
+  // while editing. SO₂ additions get a computed solution volume (see task-summary.ts).
+  const summary = React.useMemo(
+    () => buildTaskSummary(
+      { kind: task.kind, opType: task.opType, activityType: task.activityType, observationType: task.observationType, title: task.title, plannedPayload: fields, sourceVesselId: task.sourceVesselId, destVesselId: task.destVesselId, lotId: task.lotId, materialId: task.materialId },
+      pickers,
+    ),
+    [task, fields, pickers],
+  );
+  const isSo2Addition =
+    task.kind === "OPERATION" && (task.opType === "ADDITION" || task.opType === "FINING") &&
+    pickers.materials.find((m) => m.id === fields.materialId)?.kind === "SO2";
 
   function renderField(key: string, type: string) {
     const cur = fields[key] ?? "";
@@ -148,20 +164,44 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
   return (
     <Card style={{ padding: 18 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>{task.seq}. {task.title}</div>
+        <div style={{ fontWeight: 700, fontSize: 18 }}>{task.seq}. {summary.headline}</div>
         <Badge tone="gold">{task.status.replace(/_/g, " ").toLowerCase()}</Badge>
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 14px" }}>{task.kind === "OPERATION" ? task.opType : task.kind === "NOTE" ? "checklist" : task.kind === "MAINTENANCE" ? `maintenance · ${task.activityType}` : `observation · ${task.observationType}`}{def ? ` · ${def.label}` : ""}</div>
 
-      {def?.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 12 }}>{def.hint}</div> : null}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        {def ? Object.entries(def.fields).filter(([k]) => k !== "note").map(([k, t]) => renderField(k, t)) : null}
-        {customFields.filter((f) => (f.stage ?? []).includes("execution")).map(renderCustomField)}
-        {task.kind === "OBSERVATION" ? (
-          <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
-        ) : null}
-      </div>
+      {!editMode ? (
+        <>
+          {/* Plan 065: read-only summary — the clear "do this to this with this amount" story. */}
+          <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+            {summary.rows.length === 0 ? (
+              <div style={{ fontSize: 14, color: "var(--text-muted)" }}>No planned inputs — click Edit to record actuals.</div>
+            ) : summary.rows.map((r, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: r.emphasis ? 16 : 14.5 }}>
+                <span style={{ color: "var(--text-muted)" }}>{r.label}</span>
+                <span style={{ fontWeight: r.emphasis ? 700 : 500, textAlign: "right", color: r.emphasis ? "var(--wine-primary)" : "var(--text-primary)" }}>{r.value}</span>
+              </div>
+            ))}
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => setEditMode(true)} style={{ marginBottom: 4 }}>Edit</Button>
+        </>
+      ) : (
+        <>
+          {def?.hint ? <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px", marginBottom: 12 }}>{def.hint}</div> : null}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {def ? Object.entries(def.fields).filter(([k]) => k !== "note").map(([k, t]) => renderField(k, t)) : null}
+            {isSo2Addition ? (
+              <label key="solutionPercentKmbs" style={lbl}>Solution strength (% KMBS)
+                <input type="number" inputMode="decimal" step="any" style={big} placeholder="e.g. 10" value={String(fields.solutionPercentKmbs ?? "")} onChange={(e) => set("solutionPercentKmbs", e.target.value === "" ? "" : Number(e.target.value))} />
+              </label>
+            ) : null}
+            {customFields.filter((f) => (f.stage ?? []).includes("execution")).map(renderCustomField)}
+            {task.kind === "OBSERVATION" ? (
+              <label style={lbl}>{task.observationType ?? "reading"} value<input type="number" inputMode="decimal" step="any" style={big} value={readingValue} onChange={(e) => setReadingValue(e.target.value)} /></label>
+            ) : null}
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => setEditMode(false)} style={{ marginTop: 10 }}>Done editing</Button>
+        </>
+      )}
       <Textarea label="Note (optional)" minRows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. actual differed because…" style={{ marginTop: 12 }} />
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}

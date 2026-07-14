@@ -20,7 +20,7 @@ export type NlTaskMeta = { assignee?: string; assigneeId?: string; priority?: st
 export type NlWorkOrderIntent = (
   | { kind: "RACK"; from: string; to: string; drawL?: number; lossL?: number; rackType?: string; note?: string }
   | { kind: "TOPPING"; from: string; to: string; volumeL?: number; note?: string }
-  | { kind: "ADDITION" | "FINING"; vessel: string; material: string; amount: number; unit: string; note?: string }
+  | { kind: "ADDITION" | "FINING"; vessel: string; material: string; amount: number; unit: string; solutionPercentKmbs?: number; note?: string }
   | { kind: "FILTRATION"; vessel: string; filterType?: string; micron?: number; note?: string }
   | { kind: "CAP_MGMT"; vessel: string; technique?: string; durationMin?: number; note?: string }
   | { kind: "TEMP_SETPOINT"; vessel: string; targetValue?: number; targetUnit?: string; note?: string }
@@ -347,12 +347,14 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
         throw new Error(`${up === "FINING" ? "Fining" : "Addition"} needs a vessel, material, amount, and unit.`);
       }
       if (!DOSE_UNITS.has(unit) && !DOSE_UNITS.has(normalizeDoseUnit(unit))) throw new Error(`Unsupported dose unit "${unit}".`);
+      const solutionPercentKmbs = positiveNumber(raw.solutionPercentKmbs);
       intents.push({
         kind: up,
         vessel,
         material,
         amount,
         unit: normalizeDoseUnit(unit),
+        ...(solutionPercentKmbs != null ? { solutionPercentKmbs } : {}),
         ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
       });
       continue;
@@ -576,14 +578,21 @@ export function parseWorkOrderUtteranceForEval(sourceText: string): NlWorkOrderI
     currentVessel = to;
   }
 
+  // "as a 10% KMBS solution" / "10% metabisulfite solution" → the stock solution strength to dose from.
+  // Capture it, then strip the clause so it doesn't sit between the material and "to <vessel>" and
+  // break the addition match below.
+  const solutionClauseRe = /\b(?:as\s+(?:a\s+)?)?([0-9]+(?:\.[0-9]+)?)\s*%\s*(?:kmbs|k?ms\b|metabisulf[ai]te|sulfite)\s*(?:solution|stock)?/i;
+  const solutionMatch = text.match(solutionClauseRe);
+  const solutionPercentKmbs = solutionMatch ? Number(solutionMatch[1]) : undefined;
+  const additionText = text.replace(solutionClauseRe, " ");
   const additionRe = /\b(?:add|dose)\s+([0-9]+(?:\.[0-9]+)?)\s*(ppm|mg\/L|g\/hL|g\/L|mL\/L|g|kg|mL|L|oz|lb|fl oz|gal)\s+([a-z0-9 .#-]+?)(?:\s+(?:to|into|in|on)\s+([a-z0-9# -]+?))?(?:,|;|\band\b|$)/gi;
-  for (const match of text.matchAll(additionRe)) {
+  for (const match of additionText.matchAll(additionRe)) {
     const amount = Number(match[1]);
     const unit = normalizeDoseUnit(match[2]);
     const material = match[3].replace(/\b(?:and|then|pull|rack)\b.*$/i, "").trim();
     const vessel = match[4]?.trim() || currentVessel;
     if (material && vessel && Number.isFinite(amount)) {
-      intents.push({ kind: "ADDITION", vessel, material, amount, unit });
+      intents.push({ kind: "ADDITION", vessel, material, amount, unit, ...(solutionPercentKmbs != null && Number.isFinite(solutionPercentKmbs) ? { solutionPercentKmbs } : {}) });
     }
   }
 

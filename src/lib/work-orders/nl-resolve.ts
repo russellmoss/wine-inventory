@@ -514,6 +514,9 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         amount: intent.amount,
         doseUnit: unit,
         ...(converted ? { plannedAmount: converted.qty, plannedUnit: converted.unit } : {}),
+        // SO₂-as-KMBS-solution: carry the stock solution strength so the execute view can compute
+        // the litres of solution to pour (resolveSo2Dose) from the vessel's then-current volume.
+        ...(intent.solutionPercentKmbs != null ? { solutionPercentKmbs: intent.solutionPercentKmbs } : {}),
         ...(intent.note ? { note: intent.note } : {}),
       };
       taskBuilds.push({ taskType: intent.kind, title: `${intent.kind === "FINING" ? "Fine" : "Add"} ${materialLabel} to ${vessel.label}`, values, taskKey: randomUUID() });
