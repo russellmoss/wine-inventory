@@ -8,7 +8,6 @@ import type { CaptureMethod, OperationType } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import {
   computeAdditionTotal,
-  computeDoseTotal,
   resolveDoseUnit,
   RATE_BASIS_LABELS,
   type RateBasis,

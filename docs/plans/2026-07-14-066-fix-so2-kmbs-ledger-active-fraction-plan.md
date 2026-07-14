@@ -1,7 +1,7 @@
 ---
 title: Fix the SO₂/KMBS ledger under-depletion — apply the active fraction when booking stock
 type: fix
-status: draft
+status: completed
 date: 2026-07-14
 branch: claude/so2-kmbs-ledger-active-fraction
 depth: deep

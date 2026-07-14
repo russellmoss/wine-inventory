@@ -7,7 +7,7 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-Ship Plan 065 — clear, edit-gated work-order execution view; SO₂ additions show computed KMBS-solution volume.
+Ship Plan 066 — SO₂/KMBS ledger fix (book stock at the active fraction; end the ~1.74× under-dose). Eng-review PR.
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -20,6 +20,14 @@ chip, not into this session. Nothing parked right now._
 
 ## ✅ Done recently
 
+- **Plan 066 — SO₂/KMBS ledger active-fraction fix — BUILT, eng-review PR (no auto-merge).**
+  `consumeMaterialCore` gains an optional `activeFraction`; `recordNeutralDoseTx` passes it for
+  ppm/mg/L SO₂ doses so the stock draw + cost = SO₂g/0.576 (KMBS), while `LotTreatment.computedTotal`
+  stays delivered SO₂. Fraction from `percentActive` else 0.576. `verify:cost` flipped (31.25 g/$1.56)
+  + green; cost-consume unit tests; WORKORDER-3 + invariants green; ADR 0005; read-only under-booking
+  advisory. History NOT rewritten. Branch `claude/so2-kmbs-ledger-active-fraction`.
+- **Plan 065 — SO₂ addition execution-view clarity — SHIPPED, PR #179 merged** (`df6c6dc`); browser-QA'd.
+- **Feedback "SO2 work order unclear" — RESOLVED** (outcome note written; deeper money bug → Plan 066).
 - **Plan 064 — bug-triage outcome notes — SHIPPED, PR #177 merged** (`39abefa`). Richer
   write-back (what+how / why+next) in the global workflow + SKILL.md (out-of-repo), and a
   visible outcome timeline + "Outcome" column + `resolvedAt` in `/developer`. New pure
