@@ -5,6 +5,7 @@ import {
   FeedbackAutomationMode,
   FeedbackAutomationSource,
   FeedbackAutomationStatus,
+  FeedbackItemStatus,
   FeedbackTriageClass,
   FeedbackTicketKind,
   Prisma,
@@ -37,7 +38,9 @@ export function automationIdempotencyKey(input: {
   return `${input.tenantId}:${input.sourceType}:${input.sourceId}:${input.kind}:${input.attempt ?? 1}`;
 }
 
-export type DeveloperAutomationRun = Pick<AutomationRun, "id" | "kind" | "status">;
+export type DeveloperAutomationRun = Pick<AutomationRun, "id" | "kind" | "status" | "error"> & {
+  canRetryDispatch: boolean;
+};
 
 export type AutomationConflict = {
   code: "PRODUCT_GAP_WITH_ACTIVE_FIX";
@@ -72,6 +75,52 @@ const PLAN_ROUTING_SKIP_REASON = JSON.stringify({
 
 const GITHUB_DISPATCH_TIMEOUT_MS = 15_000;
 const PLAN_RUNNING_RECONCILIATION_MS = 60 * 60 * 1000;
+const DISPATCH_NOT_CONFIGURED =
+  "GitHub dispatch is not configured. Set GITHUB_REPOSITORY and GITHUB_DISPATCH_TOKEN.";
+const DISPATCH_REJECTED_PREFIX = "GitHub dispatch failed:";
+
+export function canRetryAutomationDispatch(
+  run: Pick<AutomationRun, "status" | "error">,
+): boolean {
+  return Boolean(
+    run.error &&
+      ((run.status === FeedbackAutomationStatus.QUEUED &&
+        run.error === DISPATCH_NOT_CONFIGURED) ||
+        (run.status === FeedbackAutomationStatus.FAILED &&
+          run.error.startsWith(DISPATCH_REJECTED_PREFIX))),
+  );
+}
+
+export function automationRetryMatchesRoute(
+  kind: FeedbackAutomationKind,
+  triageClass: FeedbackTriageClass | null,
+): boolean {
+  return !(
+    kind === FeedbackAutomationKind.AGENTIC_FIX &&
+    triageClass === FeedbackTriageClass.PRODUCT_GAP
+  );
+}
+
+function openAutomationSourceWhere(): Prisma.AutomationRunWhereInput {
+  return {
+    OR: [
+      {
+        sourceType: FeedbackAutomationSource.ASSISTANT_FEEDBACK,
+        assistantFeedback: { is: { status: { notIn: ["RESOLVED", "DISMISSED"] } } },
+      },
+      {
+        sourceType: FeedbackAutomationSource.FEEDBACK_TICKET,
+        ticket: {
+          is: {
+            status: {
+              notIn: [FeedbackItemStatus.RESOLVED, FeedbackItemStatus.DISMISSED],
+            },
+          },
+        },
+      },
+    ],
+  };
+}
 
 export function planRunNeedsReconciliation(
   run: Pick<AutomationRun, "kind" | "status" | "claimedAt" | "githubUrl">,
@@ -89,7 +138,7 @@ export function planRunNeedsReconciliation(
 
 export function deriveAutomationConflict(
   triageClass: FeedbackTriageClass | null,
-  run: DeveloperAutomationRun | null,
+  run: Pick<AutomationRun, "id" | "kind" | "status"> | null,
 ): AutomationConflict | null {
   if (
     triageClass !== FeedbackTriageClass.PRODUCT_GAP ||
@@ -129,6 +178,29 @@ async function updateSourceAutomationStatus(
     return;
   }
   await tx.feedbackTicket.update({ where: { id: source.sourceId }, data: { automationStatus: status } });
+}
+
+class ClosedFeedbackSourceError extends Error {}
+
+async function updateOpenSourceAutomationStatus(
+  tx: Prisma.TransactionClient,
+  source: FeedbackSource,
+  status: FeedbackAutomationStatus,
+) {
+  const updated =
+    source.sourceType === "ASSISTANT_FEEDBACK"
+      ? await tx.assistantFeedback.updateMany({
+          where: { id: source.sourceId, status: { notIn: ["RESOLVED", "DISMISSED"] } },
+          data: { automationStatus: status },
+        })
+      : await tx.feedbackTicket.updateMany({
+          where: {
+            id: source.sourceId,
+            status: { notIn: [FeedbackItemStatus.RESOLVED, FeedbackItemStatus.DISMISSED] },
+          },
+          data: { automationStatus: status },
+        });
+  if (updated.count !== 1) throw new ClosedFeedbackSourceError();
 }
 
 async function updateRunAndSourceAutomationStatus(input: {
@@ -217,7 +289,12 @@ export type EnsurePlanAutomationRunResult =
     }
   | {
       ok: false;
-      reason: "SOURCE_NOT_FOUND" | "SOURCE_NOT_PRODUCT_GAP" | "ACTIVE_FIX_CONFLICT" | "PLAN_RUN_TERMINAL";
+      reason:
+        | "SOURCE_NOT_FOUND"
+        | "SOURCE_CLOSED"
+        | "SOURCE_NOT_PRODUCT_GAP"
+        | "ACTIVE_FIX_CONFLICT"
+        | "PLAN_RUN_TERMINAL";
       conflict?: AutomationConflict;
       run?: AutomationRun;
     };
@@ -245,22 +322,40 @@ export async function ensurePlanAutomationRun(input: {
   sourceType: FeedbackAutomationSource;
   sourceId: string;
 }): Promise<EnsurePlanAutomationRunResult> {
-  return runAsTenant(input.tenantId, () =>
-    withWriteRetry(() => runInTenantTx(async (tx) => {
+  try {
+    return await runAsTenant(input.tenantId, () =>
+      withWriteRetry(() => runInTenantTx(async (tx) => {
       const source =
         input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
           ? await tx.assistantFeedback.findUnique({
               where: { id: input.sourceId },
-              select: { triageClass: true, developerNotes: true, developerNotesVersion: true },
+              select: {
+                status: true,
+                triageClass: true,
+                developerNotes: true,
+                developerNotesVersion: true,
+              },
             })
           : await tx.feedbackTicket.findUnique({
               where: { id: input.sourceId },
-              select: { triageClass: true, developerNotes: true, developerNotesVersion: true },
+              select: {
+                status: true,
+                triageClass: true,
+                developerNotes: true,
+                developerNotesVersion: true,
+              },
             });
       if (!source) return { ok: false, reason: "SOURCE_NOT_FOUND" };
+      if (source.status === "RESOLVED" || source.status === "DISMISSED") {
+        return { ok: false, reason: "SOURCE_CLOSED" };
+      }
       if (source.triageClass !== FeedbackTriageClass.PRODUCT_GAP) {
         return { ok: false, reason: "SOURCE_NOT_PRODUCT_GAP" };
       }
+      const feedbackSource: FeedbackSource =
+        input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
+          ? { sourceType: "ASSISTANT_FEEDBACK", sourceId: input.sourceId }
+          : { sourceType: "FEEDBACK_TICKET", sourceId: input.sourceId };
 
       const runs = await tx.automationRun.findMany({
         where: {
@@ -329,24 +424,12 @@ export async function ensurePlanAutomationRun(input: {
           REUSABLE_PLAN_STATUSES.has(run.status),
       );
       if (existingPlan) {
-        await updateSourceAutomationStatus(
-          tx,
-          input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
-            ? { sourceType: "ASSISTANT_FEEDBACK", sourceId: input.sourceId }
-            : { sourceType: "FEEDBACK_TICKET", sourceId: input.sourceId },
-          existingPlan.status,
-        );
+        await updateOpenSourceAutomationStatus(tx, feedbackSource, existingPlan.status);
         return { ok: true, run: existingPlan, skippedRunIds: awaitingFixes.map((run) => run.id) };
       }
       const terminalPlan = runs.find((run) => run.kind === FeedbackAutomationKind.PLAN);
       if (terminalPlan) {
-        await updateSourceAutomationStatus(
-          tx,
-          input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
-            ? { sourceType: "ASSISTANT_FEEDBACK", sourceId: input.sourceId }
-            : { sourceType: "FEEDBACK_TICKET", sourceId: input.sourceId },
-          terminalPlan.status,
-        );
+        await updateOpenSourceAutomationStatus(tx, feedbackSource, terminalPlan.status);
         return { ok: false, reason: "PLAN_RUN_TERMINAL", run: terminalPlan };
       }
 
@@ -372,16 +455,16 @@ export async function ensurePlanAutomationRun(input: {
           idempotencyKey,
         },
       });
-      await updateSourceAutomationStatus(
-        tx,
-        input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
-          ? { sourceType: "ASSISTANT_FEEDBACK", sourceId: input.sourceId }
-          : { sourceType: "FEEDBACK_TICKET", sourceId: input.sourceId },
-        run.status,
-      );
+      await updateOpenSourceAutomationStatus(tx, feedbackSource, run.status);
       return { ok: true, run, skippedRunIds: awaitingFixes.map((existing) => existing.id) };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }), 5, "feedback-plan-route"),
-  );
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }), 5, "feedback-plan-route"),
+    );
+  } catch (error) {
+    if (error instanceof ClosedFeedbackSourceError) {
+      return { ok: false, reason: "SOURCE_CLOSED" };
+    }
+    throw error;
+  }
 }
 
 export async function approveAutomationRun(input: {
@@ -389,6 +472,7 @@ export async function approveAutomationRun(input: {
   runId: string;
   approverUserId: string;
   expectedKind?: FeedbackAutomationKind;
+  onApproved?: (tx: Prisma.TransactionClient, run: AutomationRun) => Promise<unknown>;
 }) {
   return runAsTenant(input.tenantId, () =>
     runInTenantTx(async (tx) => {
@@ -398,6 +482,7 @@ export async function approveAutomationRun(input: {
           tenantId: input.tenantId,
           status: FeedbackAutomationStatus.AWAITING_APPROVAL,
           kind: input.expectedKind,
+          ...openAutomationSourceWhere(),
         },
         data: {
           status: FeedbackAutomationStatus.QUEUED,
@@ -414,8 +499,112 @@ export async function approveAutomationRun(input: {
           : { sourceType: "FEEDBACK_TICKET", sourceId: run.sourceId },
         FeedbackAutomationStatus.QUEUED,
       );
+      await input.onApproved?.(tx, run);
       return run;
     }),
+  );
+}
+
+export async function retryApprovedAutomationRun(input: {
+  tenantId: string;
+  runId: string;
+  onRetried?: (tx: Prisma.TransactionClient, run: AutomationRun) => Promise<unknown>;
+}) {
+  return runAsTenant(input.tenantId, () =>
+    withWriteRetry(() => runInTenantTx(async (tx) => {
+      const target = await tx.automationRun.findUnique({
+        where: { id: input.runId },
+        select: {
+          id: true,
+          tenantId: true,
+          sourceType: true,
+          sourceId: true,
+          kind: true,
+          status: true,
+          error: true,
+          approvedByUserId: true,
+          createdAt: true,
+        },
+      });
+      if (
+        !target ||
+        target.tenantId !== input.tenantId ||
+        !target.approvedByUserId ||
+        !canRetryAutomationDispatch(target)
+      ) {
+        return null;
+      }
+      const source =
+        target.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
+          ? await tx.assistantFeedback.findFirst({
+              where: { tenantId: input.tenantId, id: target.sourceId },
+              select: { status: true, triageClass: true },
+            })
+          : await tx.feedbackTicket.findFirst({
+              where: { tenantId: input.tenantId, id: target.sourceId },
+              select: { status: true, triageClass: true },
+            });
+      if (
+        !source ||
+        source.status === "RESOLVED" ||
+        source.status === "DISMISSED" ||
+        !automationRetryMatchesRoute(target.kind, source.triageClass)
+      ) {
+        return null;
+      }
+      const newerRun = await tx.automationRun.findFirst({
+        where: {
+          tenantId: input.tenantId,
+          sourceType: target.sourceType,
+          sourceId: target.sourceId,
+          OR: [
+            { createdAt: { gt: target.createdAt } },
+            { createdAt: target.createdAt, id: { gt: target.id } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (newerRun) return null;
+      const updated = await tx.automationRun.updateMany({
+        where: {
+          id: input.runId,
+          tenantId: input.tenantId,
+          approvedByUserId: { not: null },
+          AND: [
+            openAutomationSourceWhere(),
+            {
+              OR: [
+                {
+                  status: FeedbackAutomationStatus.QUEUED,
+                  error: DISPATCH_NOT_CONFIGURED,
+                },
+                {
+                  status: FeedbackAutomationStatus.FAILED,
+                  error: { startsWith: DISPATCH_REJECTED_PREFIX },
+                },
+              ],
+            },
+          ],
+        },
+        data: {
+          status: FeedbackAutomationStatus.QUEUED,
+          claimedAt: null,
+          completedAt: null,
+          error: null,
+        },
+      });
+      if (updated.count !== 1) return null;
+      const run = await tx.automationRun.findUniqueOrThrow({ where: { id: input.runId } });
+      await updateSourceAutomationStatus(
+        tx,
+        run.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
+          ? { sourceType: "ASSISTANT_FEEDBACK", sourceId: run.sourceId }
+          : { sourceType: "FEEDBACK_TICKET", sourceId: run.sourceId },
+        FeedbackAutomationStatus.QUEUED,
+      );
+      await input.onRetried?.(tx, run);
+      return run;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }), 5, "feedback-dispatch-retry"),
   );
 }
 
@@ -436,6 +625,99 @@ export async function claimAutomationRun(input: { tenantId: string; runId: strin
         FeedbackAutomationStatus.RUNNING,
       );
       return run;
+    }),
+  );
+}
+
+export async function completeAutomationRun(input: {
+  tenantId: string;
+  runId: string;
+  githubUrl: string;
+  githubNumber?: number;
+}) {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(input.githubUrl);
+  } catch {
+    throw new Error("Invalid GitHub artifact URL.");
+  }
+  if (
+    parsedUrl.protocol !== "https:" ||
+    parsedUrl.hostname !== "github.com" ||
+    parsedUrl.username ||
+    parsedUrl.password
+  ) {
+    throw new Error("Invalid GitHub artifact URL.");
+  }
+  if (
+    input.githubNumber !== undefined &&
+    (!Number.isInteger(input.githubNumber) || input.githubNumber < 1)
+  ) {
+    throw new Error("Invalid GitHub artifact number.");
+  }
+
+  return runAsTenant(input.tenantId, () =>
+    runInTenantTx(async (tx) => {
+      const run = await tx.automationRun.findFirst({
+        where: { id: input.runId, tenantId: input.tenantId },
+      });
+      if (!run) return null;
+      const status =
+        run.kind === FeedbackAutomationKind.PLAN
+          ? FeedbackAutomationStatus.PLANNED
+          : FeedbackAutomationStatus.PR_OPENED;
+      const completedAt = new Date();
+      await tx.automationRun.update({
+        where: { id: run.id },
+        data: {
+          status,
+          completedAt,
+          error: null,
+          githubUrl: parsedUrl.toString(),
+          githubIssueNumber:
+            run.kind === FeedbackAutomationKind.PLAN ? input.githubNumber : undefined,
+          githubPrNumber:
+            run.kind === FeedbackAutomationKind.AGENTIC_FIX ? input.githubNumber : undefined,
+        },
+      });
+      const sourceData =
+        run.kind === FeedbackAutomationKind.PLAN
+          ? { automationStatus: status, githubIssueUrl: parsedUrl.toString() }
+          : { automationStatus: status, prUrl: parsedUrl.toString() };
+      if (run.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK) {
+        const open = await tx.assistantFeedback.updateMany({
+          where: {
+            tenantId: input.tenantId,
+            id: run.sourceId,
+            status: { notIn: ["RESOLVED", "DISMISSED"] },
+          },
+          data: { ...sourceData, status: "TRIAGED" },
+        });
+        if (open.count === 0) {
+          await tx.assistantFeedback.updateMany({
+            where: { tenantId: input.tenantId, id: run.sourceId },
+            data: sourceData,
+          });
+        }
+      } else {
+        const open = await tx.feedbackTicket.updateMany({
+          where: {
+            tenantId: input.tenantId,
+            id: run.sourceId,
+            status: {
+              notIn: [FeedbackItemStatus.RESOLVED, FeedbackItemStatus.DISMISSED],
+            },
+          },
+          data: { ...sourceData, status: FeedbackItemStatus.TRIAGED },
+        });
+        if (open.count === 0) {
+          await tx.feedbackTicket.updateMany({
+            where: { tenantId: input.tenantId, id: run.sourceId },
+            data: sourceData,
+          });
+        }
+      }
+      return { runId: run.id, status, completedAt };
     }),
   );
 }
@@ -488,7 +770,7 @@ export async function dispatchApprovedRun(runId: string, tenantId: string): Prom
       run: claimed,
       status: FeedbackAutomationStatus.QUEUED,
       claimedAt: null,
-      error: "GitHub dispatch is not configured. Set GITHUB_REPOSITORY and GITHUB_DISPATCH_TOKEN.",
+      error: DISPATCH_NOT_CONFIGURED,
     });
     return false;
   }

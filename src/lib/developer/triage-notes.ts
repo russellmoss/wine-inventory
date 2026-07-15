@@ -13,7 +13,7 @@
  * to import into the client component.
  */
 
-export type TriageNoteSource = "bug-triage" | "human";
+export type TriageNoteSource = "bug-triage" | "developer" | "human";
 
 export type TriageNoteEntry = {
   /** ISO timestamp from the `[bug-triage <iso>]` stamp, or null for a human/unstamped entry. */
@@ -28,7 +28,7 @@ export type TriageNoteEntry = {
 
 const ENTRY_SEPARATOR = "\n\n---\n";
 // `[bug-triage 2026-07-14T12:34:56.789Z] rest` — capture the stamp, keep the rest.
-const STAMP_RE = /^\[bug-triage ([^\]]+)\]\s*/;
+const STAMP_RE = /^\[(bug-triage|developer) ([^\]]+)\]\s*/;
 // A leading disposition token like `[defect]` / `[model-behavior]` at the start of the body.
 const TYPE_RE = /^\[([a-z][a-z-]*)\]\s*/;
 
@@ -47,8 +47,10 @@ export function parseTriageNotes(developerNotes: string | null | undefined): Tri
     if (!chunk) continue;
 
     const stampMatch = chunk.match(STAMP_RE);
-    const source: TriageNoteSource = stampMatch ? "bug-triage" : "human";
-    const stamp = stampMatch ? stampMatch[1].trim() : null;
+    const source: TriageNoteSource = stampMatch
+      ? (stampMatch[1] as "bug-triage" | "developer")
+      : "human";
+    const stamp = stampMatch ? stampMatch[2].trim() : null;
     const afterStamp = stampMatch ? chunk.slice(stampMatch[0].length) : chunk;
 
     const typeMatch = afterStamp.match(TYPE_RE);

@@ -16,6 +16,17 @@ assignee, priority, or cycle data. No Linear API key, OAuth app, webhook secret,
 application environment variable is required. The `WIN` team identifier is a workspace
 convention, not app configuration.
 
+The complete two-developer operating procedure, Linear Free setup, source-of-truth table,
+Definition of Done, and 30-day pilot gate live in [Developer workflow](developer-workflow.md).
+
+## `/bug-triage` payload compatibility
+
+`npm run triage:list` emits payload `contractVersion: 2`. The installed `/bug-triage`
+consumer requires repository commit `d2b504f90616faaa06753632e2a8f3f7c0d6aecf` or newer and
+must branch on both `awaitingRunId` and `awaitingRunKind`. PRODUCT_GAP uses `npm run
+triage:plan`; eligible defects use the AGENTIC_FIX dispatcher. A queued/running wrong-kind
+run is a visible human conflict, never an automatic cancellation.
+
 ## Required env
 
 - `SEED_DEVELOPER_PASSWORD`: one-time temporary password for `npm run seed:developer`.
@@ -74,5 +85,14 @@ npm run verify:tenant-isolation
 4. Enter Demo Winery support view and confirm the sticky banner appears.
 5. Submit a bug from `/help/feedback` with a PNG/JPG attachment.
 6. Open the assistant, click `Report bug`, choose screenshot capture, preview it, and submit.
-7. Return to `/developer`, confirm the item appears, set severity/status/notes, and approve a pending run.
-8. Exit support view and confirm tenant pages return to the base Bhutan membership.
+7. Return to `/developer`; verify Inbox, Ready, Tracked, Closed, Automation, URL filters, and
+   exact Demo Winery paging.
+8. Open a Demo item. Confirm the evidence, triage, delivery, automation, and outcome regions
+   remain in-page and the URL deep link reopens the exact item.
+9. Copy a handoff and confirm it contains no actor email, debug context, Blob URL, filename, raw
+   plan Markdown, or signed URL.
+10. Reject a lookalike Linear URL, save a valid `linear.app` issue URL, and confirm the item remains
+    open while moving to Tracked.
+11. Resolve or dismiss with a 20+ character outcome and confirm the item remains open while moving
+    to Closed.
+12. Exit support view and confirm tenant pages return to the base membership.

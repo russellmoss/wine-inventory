@@ -5,6 +5,7 @@ import {
   FeedbackAutomationSource,
   FeedbackAutomationStatus,
   type FeedbackAutomationMode,
+  type FeedbackSeverity,
   type FeedbackTriageClass,
   Prisma,
 } from "@prisma/client";
@@ -25,6 +26,7 @@ import {
   type DeveloperQueue,
 } from "@/lib/developer/linear-links";
 import {
+  canRetryAutomationDispatch,
   deriveAutomationConflict,
   type AutomationConflict,
   type DeveloperAutomationRun,
@@ -73,6 +75,25 @@ export type DeveloperTenantSummary = {
   };
 };
 
+function defaultFeedbackModes(): DeveloperTenantSummary["modes"] {
+  return {
+    assistantFeedbackMode: "AGENTIC_FIX",
+    bugReportMode: "REPORT_ONLY",
+    featureRequestMode: "REPORT_ONLY",
+  };
+}
+
+export async function getDeveloperTenantSummary(
+  tenantId: string,
+): Promise<DeveloperTenantSummary | null> {
+  if (!validTenantId(tenantId)) return null;
+  const tenant = await prisma.organization.findUnique({
+    where: { id: tenantId },
+    select: { id: true, name: true, slug: true },
+  });
+  return tenant ? { ...tenant, modes: defaultFeedbackModes() } : null;
+}
+
 export type DeveloperFeedbackLinearLink = {
   id: string;
   linearIssueKey: string;
@@ -105,6 +126,7 @@ export type DeveloperFeedbackItem = {
   developerNotesVersion: number;
   resolvedAt: string | null;
   attachmentCount: number;
+  attachmentIds: string[];
   linearLink: DeveloperFeedbackLinearLink | null;
   awaitingRunId: string | null;
   awaitingRunKind: FeedbackAutomationKind | null;
@@ -204,12 +226,21 @@ async function loadAutomationFields(input: {
               FeedbackAutomationStatus.AWAITING_APPROVAL,
               FeedbackAutomationStatus.QUEUED,
               FeedbackAutomationStatus.RUNNING,
+              FeedbackAutomationStatus.PLANNED,
               FeedbackAutomationStatus.PR_OPENED,
+              FeedbackAutomationStatus.FAILED,
             ],
           },
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: { id: true, sourceType: true, sourceId: true, kind: true, status: true },
+        select: {
+          id: true,
+          sourceType: true,
+          sourceId: true,
+          kind: true,
+          status: true,
+          error: true,
+        },
       })
     : [];
 
@@ -218,16 +249,25 @@ async function loadAutomationFields(input: {
   const conflicts = new Map<string, DeveloperAutomationRun>();
   for (const run of runs) {
     const key = `${run.sourceType}:${run.sourceId}`;
+    const developerRun: DeveloperAutomationRun = {
+      id: run.id,
+      kind: run.kind,
+      status: run.status,
+      error: run.error,
+      canRetryDispatch: canRetryAutomationDispatch(run),
+    };
     if (run.status === FeedbackAutomationStatus.AWAITING_APPROVAL && !awaiting.has(key)) {
-      awaiting.set(key, run);
+      awaiting.set(key, developerRun);
     }
-    if (run.status !== FeedbackAutomationStatus.PR_OPENED && !active.has(key)) active.set(key, run);
+    if (!active.has(key)) {
+      active.set(key, developerRun);
+    }
     if (
       run.kind === FeedbackAutomationKind.AGENTIC_FIX &&
       run.status !== FeedbackAutomationStatus.AWAITING_APPROVAL &&
       !conflicts.has(key)
     ) {
-      conflicts.set(key, run);
+      conflicts.set(key, developerRun);
     }
   }
 
@@ -282,6 +322,7 @@ function mapAssistantFeedback(
     developerNotesVersion: feedback.developerNotesVersion,
     resolvedAt: feedback.resolvedAt?.toISOString() ?? null,
     attachmentCount: feedback.attachments.length,
+    attachmentIds: feedback.attachments.map((attachment) => attachment.id),
     linearLink: link,
     ...automation,
   });
@@ -317,6 +358,7 @@ function mapFeedbackTicket(
     developerNotesVersion: ticket.developerNotesVersion,
     resolvedAt: ticket.resolvedAt?.toISOString() ?? null,
     attachmentCount: ticket.attachments.length,
+    attachmentIds: ticket.attachments.map((attachment) => attachment.id),
     linearLink: link,
     ...automation,
   });
@@ -352,6 +394,10 @@ export async function getDeveloperFeedbackData(input: {
   text?: string;
   tenantOffset?: number;
   queue?: DeveloperQueue;
+  severity?: FeedbackSeverity | null;
+  triageClass?: FeedbackTriageClass | null;
+  includeItems?: boolean;
+  includeModes?: boolean;
 } = {}): Promise<DeveloperFeedbackData> {
   // Preserve the pre-queue console until PR C supplies a queue explicitly. This keeps the staged
   // rollout from hiding Ready/Tracked/Closed work between the backend and UI pull requests.
@@ -379,18 +425,27 @@ export async function getDeveloperFeedbackData(input: {
   const summaries: DeveloperTenantSummary[] = [];
   const items: DeveloperFeedbackItem[] = [];
   for (const tenant of tenants) {
+    if (input.includeItems === false && input.includeModes === false) {
+      summaries.push({ ...tenant, modes: defaultFeedbackModes() });
+      continue;
+    }
     await runAsTenant(tenant.id, async () => {
-      const settings = await prisma.appSettings.findFirst({
-        select: { assistantFeedbackMode: true, bugReportMode: true, featureRequestMode: true },
-      });
+      const settings =
+        input.includeModes === false
+          ? null
+          : await prisma.appSettings.findFirst({
+              select: {
+                assistantFeedbackMode: true,
+                bugReportMode: true,
+                featureRequestMode: true,
+              },
+            });
       summaries.push({
         ...tenant,
-        modes: {
-          assistantFeedbackMode: settings?.assistantFeedbackMode ?? "AGENTIC_FIX",
-          bugReportMode: settings?.bugReportMode ?? "REPORT_ONLY",
-          featureRequestMode: settings?.featureRequestMode ?? "REPORT_ONLY",
-        },
+        modes: settings ?? defaultFeedbackModes(),
       });
+
+      if (input.includeItems === false) return;
 
       const [feedback, tickets] = await Promise.all([
         prisma.assistantFeedback.findMany({
@@ -403,6 +458,8 @@ export async function getDeveloperFeedbackData(input: {
                   ]
                 : []),
               ...(textWhereForAssistant(input.text) ? [textWhereForAssistant(input.text)!] : []),
+              ...(input.severity ? [{ severity: input.severity }] : []),
+              ...(input.triageClass ? [{ triageClass: input.triageClass }] : []),
             ],
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -418,6 +475,8 @@ export async function getDeveloperFeedbackData(input: {
                   ]
                 : []),
               ...(textWhereForTicket(input.text) ? [textWhereForTicket(input.text)!] : []),
+              ...(input.severity ? [{ severity: input.severity }] : []),
+              ...(input.triageClass ? [{ triageClass: input.triageClass }] : []),
             ],
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -511,6 +570,9 @@ export async function getDeveloperTenantFeedbackPage(input: {
   assistantCursor?: string | null;
   ticketCursor?: string | null;
   pageSize?: number;
+  text?: string;
+  severity?: FeedbackSeverity | null;
+  triageClass?: FeedbackTriageClass | null;
 }): Promise<DeveloperTenantFeedbackPage> {
   await requireDeveloper();
   if (!validTenantId(input.tenantId) || !DEVELOPER_QUEUES.includes(input.queue)) {
@@ -547,6 +609,9 @@ export async function getDeveloperTenantFeedbackPage(input: {
             { rating: "down" },
             assistantQueueWhere,
             developerFeedbackCursorWhere(assistantCursor),
+            ...(textWhereForAssistant(input.text) ? [textWhereForAssistant(input.text)!] : []),
+            ...(input.severity ? [{ severity: input.severity }] : []),
+            ...(input.triageClass ? [{ triageClass: input.triageClass }] : []),
           ],
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -554,7 +619,15 @@ export async function getDeveloperTenantFeedbackPage(input: {
         include: assistantInclude,
       }),
       prisma.feedbackTicket.findMany({
-        where: { AND: [ticketQueueWhere, developerFeedbackCursorWhere(ticketCursor)] },
+        where: {
+          AND: [
+            ticketQueueWhere,
+            developerFeedbackCursorWhere(ticketCursor),
+            ...(textWhereForTicket(input.text) ? [textWhereForTicket(input.text)!] : []),
+            ...(input.severity ? [{ severity: input.severity }] : []),
+            ...(input.triageClass ? [{ triageClass: input.triageClass }] : []),
+          ],
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: pageSize + 1,
         include: ticketInclude,

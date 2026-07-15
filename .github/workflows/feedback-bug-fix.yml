@@ -70,4 +70,4 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
-        run: npx tsx scripts/feedback-automation-mark.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" "${{ steps.cpr.outputs.pull-request-url }}" "${{ steps.cpr.outputs.pull-request-number }}"
+        run: npx tsx --conditions=react-server scripts/feedback-automation-mark.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" "${{ steps.cpr.outputs.pull-request-url }}" "${{ steps.cpr.outputs.pull-request-number }}"

@@ -1,4 +1,5 @@
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
+import { join } from "path";
 import { createSupportTenantToken, verifySupportTenantToken } from "../src/lib/developer/support-context";
 import { sanitizePlainText, safeFilename } from "../src/lib/feedback/sanitize";
 import { validateAndStripImage } from "../src/lib/feedback/attachments";
@@ -20,7 +21,11 @@ check("support token is bound to developer user", verifySupportTenantToken(token
 // entity-encodes" (that only double-encoded quotes into &quot;/&#39; for the reader). Guard the
 // real thing: (a) the console never uses dangerouslySetInnerHTML, and (b) the sanitizer does not
 // mangle safe punctuation (regression guard for the double-encode bug).
-const developerConsole = readFileSync("src/app/(app)/developer/DeveloperClient.tsx", "utf8");
+const developerConsoleDir = "src/app/(app)/developer";
+const developerConsole = readdirSync(developerConsoleDir)
+  .filter((filename) => filename.endsWith(".tsx"))
+  .map((filename) => readFileSync(join(developerConsoleDir, filename), "utf8"))
+  .join("\n");
 check("feedback console renders text nodes only (no dangerouslySetInnerHTML)", !developerConsole.includes("dangerouslySetInnerHTML"));
 check(
   "sanitizePlainText does not HTML-encode safe punctuation (no double-encode)",

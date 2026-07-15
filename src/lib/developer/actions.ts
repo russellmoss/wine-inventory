@@ -5,8 +5,6 @@ import { revalidatePath } from "next/cache";
 import {
   FeedbackAutomationMode,
   FeedbackAutomationSource,
-  FeedbackSeverity,
-  FeedbackTriageClass,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireDeveloper } from "@/lib/dal";
@@ -19,11 +17,19 @@ import {
   SUPPORT_TENANT_TTL_MS,
   createSupportTenantToken,
 } from "@/lib/developer/support-context";
-import { approveAutomationRun, dispatchApprovedRun } from "@/lib/feedback/automation";
+import {
+  approveAutomationRun,
+  dispatchApprovedRun,
+  retryApprovedAutomationRun,
+} from "@/lib/feedback/automation";
 import { parseLinearIssueUrl } from "@/lib/developer/linear-links";
 import { linkFeedbackToLinearCore } from "@/lib/developer/linear-link-actions";
 import { parseLinkFeedbackToLinearInput } from "@/lib/developer/linear-link-input";
-import { updateFeedbackItemCore } from "@/lib/developer/feedback-item-actions";
+import {
+  closeFeedbackItemCore,
+  updateFeedbackItemCore,
+} from "@/lib/developer/feedback-item-actions";
+import { parseFeedbackItemUpdate } from "@/lib/developer/feedback-item-input";
 
 function asMode(value: string): FeedbackAutomationMode {
   if (
@@ -172,35 +178,33 @@ export async function saveTenantFeedbackModes(input: {
   revalidatePath("/developer");
 }
 
-export async function updateFeedbackItem(input: {
+export async function updateFeedbackItem(value: unknown) {
+  const developer = await requireDeveloper();
+  const input = parseFeedbackItemUpdate(value);
+  await updateFeedbackItemCore(
+    { id: developer.id, email: developer.email },
+    input,
+  );
+  revalidatePath("/developer");
+}
+
+export async function closeFeedbackItem(input: {
   tenantId: string;
   sourceType: "ASSISTANT_FEEDBACK" | "FEEDBACK_TICKET";
   id: string;
-  severity?: "P0" | "P1" | "P2" | "";
-  triageClass?: string; // "" clears to untriaged; a valid enum value sets the disposition
-  status?: string;
-  developerNotes?: string;
-  expectedNotesVersion?: number;
+  status: "RESOLVED" | "DISMISSED";
+  outcome: string;
+  expectedNotesVersion: number;
 }) {
   const developer = await requireDeveloper();
-  const tenantId = assertTenantId(input.tenantId);
-  const severity = input.severity ? (input.severity as FeedbackSeverity) : null;
-  const triageClass =
-    input.triageClass && input.triageClass in FeedbackTriageClass
-      ? (input.triageClass as FeedbackTriageClass)
-      : null;
-  const notes = typeof input.developerNotes === "string" ? input.developerNotes.slice(0, 5000) : undefined;
-  const sourceType = assertFeedbackSource(input.sourceType);
-  await updateFeedbackItemCore(
+  await closeFeedbackItemCore(
     { id: developer.id, email: developer.email },
     {
-      tenantId,
-      sourceType,
+      tenantId: assertTenantId(input.tenantId),
+      sourceType: assertFeedbackSource(input.sourceType),
       id: input.id,
-      severity,
-      triageClass,
       status: input.status,
-      developerNotes: notes,
+      outcome: input.outcome,
       expectedNotesVersion: input.expectedNotesVersion,
     },
   );
@@ -210,10 +214,11 @@ export async function updateFeedbackItem(input: {
 export async function approveFeedbackAutomation(input: { tenantId: string; runId: string }) {
   const developer = await requireDeveloper();
   const tenantId = assertTenantId(input.tenantId);
-  const run = await approveAutomationRun({ tenantId, runId: input.runId, approverUserId: developer.id });
-  if (!run) throw new ActionError("Automation run is not awaiting approval.", "VALIDATION");
-  await runAsTenant(tenantId, () =>
-    runInTenantTx((tx) =>
+  const run = await approveAutomationRun({
+    tenantId,
+    runId: input.runId,
+    approverUserId: developer.id,
+    onApproved: (tx) =>
       writeAudit(tx, {
         actorUserId: developer.id,
         actorEmail: developer.email,
@@ -223,8 +228,47 @@ export async function approveFeedbackAutomation(input: { tenantId: string; runId
         entityId: input.runId,
         summary: "Developer approved feedback automation",
       }),
-    ),
-  );
-  await dispatchApprovedRun(input.runId, tenantId);
+  });
+  if (!run) throw new ActionError("Automation run is not awaiting approval.", "VALIDATION");
+  const dispatched = await dispatchApprovedRun(input.runId, tenantId);
   revalidatePath("/developer");
+  return dispatched
+    ? { ok: true as const }
+    : {
+        ok: false as const,
+        message: "Automation was approved but GitHub dispatch did not start. Review the stored error before retrying.",
+      };
+}
+
+export async function retryFeedbackAutomation(input: { tenantId: string; runId: string }) {
+  const developer = await requireDeveloper();
+  const tenantId = assertTenantId(input.tenantId);
+  const run = await retryApprovedAutomationRun({
+    tenantId,
+    runId: input.runId,
+    onRetried: (tx) =>
+      writeAudit(tx, {
+        actorUserId: developer.id,
+        actorEmail: developer.email,
+        tenantId,
+        action: "UPDATE",
+        entityType: "AutomationRun",
+        entityId: input.runId,
+        summary: "Developer retried feedback automation dispatch",
+      }),
+  });
+  if (!run) {
+    return {
+      ok: false as const,
+      message: "This run is not eligible for a safe dispatch retry. Reload and review its state.",
+    };
+  }
+  const dispatched = await dispatchApprovedRun(input.runId, tenantId);
+  revalidatePath("/developer");
+  return dispatched
+    ? { ok: true as const }
+    : {
+        ok: false as const,
+        message: "GitHub dispatch still did not start. Review the updated error before retrying again.",
+      };
 }
