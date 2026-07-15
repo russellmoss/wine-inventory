@@ -7,15 +7,16 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 068 — user inbox / Gmail-like messaging — DONE, PR #191 OPEN for eng review** on branch
-`claude/user-inbox-messaging`. All 10 units built + committed + green (tsc, eslint, next build,
-verify:tenant-isolation, verify:inbox-isolation 11/11, verify:invariants 30/30,
-verify:work-orders-enhancements 44, verify:feedback-security, verify:naming) + live Demo-Winery DB
-exit-proofs. **Browser QA PASSED** (avatar badge lifecycle, all 4 buckets + filters, mark
-read/unread/mark-thread-read, DM thread render + compose send); 2 bugs found+fixed in QA (open-thread
-nav race; narrow-width grid overflow); QA fixtures cleaned up. **PR #191 is GOVERNED — awaiting eng
-review, do NOT auto-merge.** Next: eng review → merge. Dev server left running on :3000.
-GOTCHA locked: emit MUST use `createMany` not `create` (create's RETURNING trips the per-user SELECT policy).
+**Plan 068 — user inbox / Gmail-like messaging — DONE + /review applied, PR #191 OPEN for eng review**
+on branch `claude/user-inbox-messaging`. All 10 units built + browser-QA'd + green. `/review` ran 4
+specialists (security/RLS, correctness, migrations, maintainability) — no P0/P1; applied: DM write-side
+RLS policies (migration 120300), full WO_STATUS coverage (wired the 8 remaining bumpWorkOrderRollupTx
+callers), createMany-race fix in resolveOrCreateThreadTx, removed an `as unknown as` cast, +2 test files.
+All verifies still green (work-orders-enhancements 44, inbox-isolation 11/11, invariants 30/30,
+feedback-security, next build). **PR #191 is GOVERNED — awaiting eng review, do NOT auto-merge.**
+Dev server running on :3000. GOTCHA locked: emit MUST use `createMany` not `create`.
+NOTE: `git add -A` mistake polluted a commit with the invoice PDFs / 067 plan / council-feedback churn;
+force-pushed a clean inbox-only commit — those files are back untracked. NEVER `git add -A` on this repo.
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
