@@ -10,9 +10,10 @@ import {
 } from "@/lib/cellar/material-taxonomy";
 import { rankMaterials } from "@/lib/inventory/material-search";
 import {
-  MaterialForm, emptyMaterialForm, materialFormToInput, materialFormHasIdentity, materialToForm,
+  MaterialForm, emptyMaterialForm, materialFormToInput, materialFormReady, materialToForm,
   type MaterialFormValue,
 } from "@/components/cellar/MaterialForm";
+import type { VendorRow } from "@/lib/vendors/vendors-shared";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
 import { receiveSupplyAction, setMaterialActiveAction } from "@/lib/cost/actions";
 import { useCurrency } from "@/components/money/CurrencyProvider";
@@ -55,8 +56,10 @@ function useRunner() {
 /** The stored category for a material (fallback derives from kind for legacy rows). */
 const catOf = (m: CellarMaterialDTO): MaterialCategory => (m.category as MaterialCategory) ?? categoryOf(m.kind);
 
-export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[] }) {
+export function ExpendablesClient({ materials, vendors }: { materials: CellarMaterialDTO[]; vendors: VendorRow[] }) {
   const { error, pending, run } = useRunner();
+  const router = useRouter();
+  const refreshVendors = React.useCallback(() => router.refresh(), [router]);
   const [addOpen, setAddOpen] = React.useState(false);
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
@@ -246,6 +249,8 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
         pending={pending}
         run={run}
         familiesByCategory={familiesByCategory}
+        vendors={vendors}
+        onVendorCreated={refreshVendors}
         onClose={() => setAddOpen(false)}
       />
 
@@ -264,6 +269,8 @@ export function ExpendablesClient({ materials }: { materials: CellarMaterialDTO[
         pending={pending}
         run={run}
         familiesByCategory={familiesByCategory}
+        vendors={vendors}
+        onVendorCreated={refreshVendors}
         onClose={() => setEditId(null)}
       />
 
@@ -407,17 +414,21 @@ function AddExpendableModal({
   pending,
   run,
   familiesByCategory,
+  vendors,
+  onVendorCreated,
   onClose,
 }: {
   open: boolean;
   pending: boolean;
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
   familiesByCategory: Map<MaterialCategory, Set<string>>;
+  vendors: VendorRow[];
+  onVendorCreated: () => void;
   onClose: () => void;
 }) {
   const [form, setForm] = React.useState<MaterialFormValue>(emptyMaterialForm);
   const patch = (p: Partial<MaterialFormValue>) => setForm((f) => ({ ...f, ...p }));
-  const canSubmit = materialFormHasIdentity(form) && !pending;
+  const canSubmit = materialFormReady(form) && !pending;
 
   function submit() {
     if (!canSubmit) return;
@@ -428,7 +439,7 @@ function AddExpendableModal({
   return (
     <Modal open={open} onClose={onClose} title="Add expendable" subtitle="Product, purchase, and how it's tracked" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" />
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" vendors={vendors} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
@@ -445,19 +456,23 @@ function EditMaterialModal({
   pending,
   run,
   familiesByCategory,
+  vendors,
+  onVendorCreated,
   onClose,
 }: {
   material: CellarMaterialDTO | null;
   pending: boolean;
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
   familiesByCategory: Map<MaterialCategory, Set<string>>;
+  vendors: VendorRow[];
+  onVendorCreated: () => void;
   onClose: () => void;
 }) {
   const [form, setForm] = React.useState<MaterialFormValue>(() => (material ? materialToForm(material) : emptyMaterialForm));
   const patch = (p: Partial<MaterialFormValue>) => setForm((f) => ({ ...f, ...p }));
   const hasStock = (material?.onHand ?? 0) > 0;
   const allowCostEdit = !!material?.costCorrectable;
-  const canSubmit = !!material && materialFormHasIdentity(form) && !pending;
+  const canSubmit = !!material && materialFormReady(form) && !pending;
 
   function submit() {
     if (!material || !canSubmit) return;
@@ -469,7 +484,7 @@ function EditMaterialModal({
   return (
     <Modal open={!!material} onClose={onClose} title={material ? `Edit · ${materialDisplayName(material)}` : "Edit"} subtitle="Correct the item's setup details" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} />
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} vendors={vendors} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>

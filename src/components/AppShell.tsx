@@ -46,6 +46,7 @@ const SETUP: NavItem[] = [
   { href: "/locations", label: "Locations" },
   { href: "/reference", label: "Varieties & vineyards" },
   { href: "/setup/expendables", label: "Expendables" },
+  { href: "/setup/vendors", label: "Vendors" },
   { href: "/settings", label: "Settings", admin: true },
   { href: "/users", label: "Users", admin: true },
 ];
