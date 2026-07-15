@@ -14,7 +14,7 @@ export function WorkOrderDetailClient({ wo, isAdmin, members }: { wo: WorkOrderD
   const [error, setError] = React.useState<string | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
 
-  // Plan 069: admins/developers can set the Lead + reschedule inline. Mirror the backend status guards —
+  // Plan 070: admins/developers can set the Lead + reschedule inline. Mirror the backend status guards —
   // reassign is allowed only for DRAFT/ISSUED (lifecycle assignWorkOrderCore); reschedule for anything
   // except APPROVED/CANCELLED (scheduleWorkOrderCore).
   const canEditLead = wo.status === "DRAFT" || wo.status === "ISSUED";

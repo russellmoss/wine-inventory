@@ -110,7 +110,7 @@ async function main() {
     });
     assert(!!wo.workOrderId && wo.status === "DRAFT", "WO created in DRAFT with a number");
 
-    // ── Plan 069 (WORKORDER-5): the Lead is mandatory. A create with no Lead defaults to the creating
+    // ── Plan 070 (WORKORDER-5): the Lead is mandatory. A create with no Lead defaults to the creating
     // actor; an explicit Lead passes through unchanged. ──
     const woLead = await prisma.workOrder.findUniqueOrThrow({ where: { id: wo.workOrderId }, select: { assigneeEmail: true } });
     assert(woLead.assigneeEmail === ACTOR.actorEmail, "WORKORDER-5: a null Lead defaulted to the creating actor");

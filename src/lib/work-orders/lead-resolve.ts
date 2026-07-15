@@ -1,4 +1,4 @@
-// Plan 069: the work-order Lead (WorkOrder.assigneeEmail + assigneeId) is a MANDATORY invariant — every
+// Plan 070: the work-order Lead (WorkOrder.assigneeEmail + assigneeId) is a MANDATORY invariant — every
 // order has exactly one accountable owner. Per-task assignees stay optional. These are the two pure
 // decision functions behind that invariant, kept DB-free so they're unit-testable and reused by both the
 // create chokepoint (createWorkOrderCore) and the one-time backfill (scripts/backfill-work-order-lead.ts).

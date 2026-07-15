@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveCreateLead, resolveBackfillLead } from "@/lib/work-orders/lead-resolve";
 import { ActionError } from "@/lib/action-error";
 
-describe("resolveCreateLead (Plan 069 — mandatory Lead)", () => {
+describe("resolveCreateLead (Plan 070 — mandatory Lead)", () => {
   const actor = { actorUserId: "actor-1", actorEmail: "mike@bhutanwine.com" };
 
   it("passes an explicit email Lead through untouched", () => {
@@ -35,7 +35,7 @@ describe("resolveCreateLead (Plan 069 — mandatory Lead)", () => {
   });
 });
 
-describe("resolveBackfillLead (Plan 069 — smart backfill)", () => {
+describe("resolveBackfillLead (Plan 070 — smart backfill)", () => {
   it("uses the single distinct task assignee (the WO #27 case)", () => {
     expect(
       resolveBackfillLead({

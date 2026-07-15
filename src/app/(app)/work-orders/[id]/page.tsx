@@ -13,7 +13,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const wo = await getWorkOrderDetail(tenantId, id);
   if (!wo) return notFound();
   const isAdmin = isTenantAdminLike(user);
-  // Plan 069: admins/developers can set the Lead + reschedule from the detail page — load the member list
+  // Plan 070: admins/developers can set the Lead + reschedule from the detail page — load the member list
   // for the Lead picker only when the viewer can actually edit.
   const members = isAdmin ? await listOrgMembers(tenantId) : [];
   return <WorkOrderDetailClient wo={wo} isAdmin={isAdmin} members={members} />;

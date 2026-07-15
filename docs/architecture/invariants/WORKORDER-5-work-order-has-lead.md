@@ -4,7 +4,7 @@ group: work-orders
 severity: high
 enforcedBy: app-code
 verify: "npm run verify:work-orders"
-decision: "Plan 069"
+decision: "Plan 070"
 status: guarded
 appliesTo:
   - src/lib/work-orders/
@@ -23,7 +23,7 @@ tags:
 > the order-level owner, not a per-task assignment.
 
 **Guarded by:** `npm run verify:work-orders`
-**Decision:** Plan 069 — see [[INVARIANTS]] and [[system-map]].
+**Decision:** Plan 070 — see [[INVARIANTS]] and [[system-map]].
 **Applies to:** `src/lib/work-orders/`
 
 This note is the machine-readable face of the invariant. The narrative lives in [[INVARIANTS]]; the

@@ -238,7 +238,7 @@ single-task-assignee WO resolves to that user.
 `INVARIANTS.md` (add bullet under Work orders); `scripts/verify-work-orders.ts` (extend to assert the
 created WO has a non-null Lead, incl. the default-to-actor case).
 **Approach:** Write the note with frontmatter `id: WORKORDER-5`, `group: work-orders`, `severity: high`,
-`enforcedBy: app-code`, `decision: "Plan 069"`, `status: guarded`, `verify: "npm run verify:work-orders"`,
+`enforcedBy: app-code`, `decision: "Plan 070"`, `status: guarded`, `verify: "npm run verify:work-orders"`,
 `appliesTo: [src/lib/work-orders/]`. Extend the existing `verify-work-orders.ts` drive to (a) create a WO
 with no explicit Lead and assert the Lead defaulted to the actor, and (b) assert a null Lead is impossible.
 Add the narrative entry to `INVARIANTS.md`.

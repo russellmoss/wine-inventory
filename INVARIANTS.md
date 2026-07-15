@@ -187,7 +187,7 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   (`WorkOrderTaskTypeOverlay`) are display-only and `assertOverlaySafe` forbids hiding a field a governed core
   needs. Machine-readable note: [[WORKORDER-4-user-types-record-only]]. Guard: `npm run verify:user-types-record-only`.
 
-- **Every work order has a Lead (WORKORDER-5, Plan 069).**
+- **Every work order has a Lead (WORKORDER-5, Plan 070).**
   Every `WorkOrder` carries a non-null Lead (`assigneeEmail`, plus `assigneeId` when a real user is known) —
   the single person accountable for the order. The Lead is resolved at the one create chokepoint
   (`createWorkOrderCore` via `resolveCreateLead`): an explicit Lead passes through, otherwise it defaults to

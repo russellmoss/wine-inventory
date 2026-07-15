@@ -247,7 +247,7 @@ export function WorkOrderBuilderClient({
   function submit() {
     setError(null);
     if (taskBuilds.length === 0) { setError("Add at least one task."); return; }
-    // Plan 069: every work order must have a Lead. Guard here and store the chosen member's user id too.
+    // Plan 070: every work order must have a Lead. Guard here and store the chosen member's user id too.
     if (!leadEmail) { setError("A work order needs a lead — pick one above."); return; }
     const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
     startTransition(async () => {

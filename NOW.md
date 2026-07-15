@@ -29,7 +29,7 @@ builder, add an admin/developer detail-page Edit, backfill existing rows, guard 
 
 <details><summary>prev objective (shipped)</summary>
 
-Vendor management (Plan 069, PR #195) and inbox DM (#197) landed on main; Plan 068 inbox shipped (#191).
+Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 068 inbox shipped (#191).
 
 </details>
 
@@ -46,7 +46,7 @@ Vendor management (Plan 069, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
-- **Plan 069 — vendor management — BUILT (12 units) + reviewed + browser-QA'd; SHIPPING.**
+- **Plan 070 — vendor management — BUILT (12 units) + reviewed + browser-QA'd; SHIPPING.**
   Reused the existing (Phase 15 QBO) `Vendor` table + new `VendorContact` child (RLS + composite FK);
   `vendorId` on `CellarMaterial` + `SupplyLot`; backfill (Demo: 54 mats/106 lots, 0 nulls) with a seeded
   "Unknown" fallback; shared vendor cores (A/P find-or-create refactored to reuse); mandatory fuzzy
@@ -57,7 +57,7 @@ Vendor management (Plan 069, PR #195) and inbox DM (#197) landed on main; Plan 0
   Gates: tsc, 2034 vitest, lint, next build, verify:tenant-isolation (110/110 + vendor FK checks),
   eval:assistant, verify:naming — all green. Worktree made buildable (copied .env + npm ci).
 - **Plan 068 — user inbox / Gmail-like messaging — SHIPPED, PR #191 merged (`2a139dd`).** Merged into
-  this branch during the Plan 069 pre-ship merge (disjoint from vendor work).
+  this branch during the Plan 070 pre-ship merge (disjoint from vendor work).
 - **SO₂ ~1.74× dosing money bug — RECONCILED CLOSED (2026-07-15, no code change).** Investigated on a
   fresh branch off `origin/main`: the money-critical fix already shipped. Plan 066 (PR #180, `370b7b6`,
   MERGED) divides the stock draw by the active fraction in `consumeMaterialCore` (÷0.576); Plan 065

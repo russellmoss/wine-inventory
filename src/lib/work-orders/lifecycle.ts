@@ -143,7 +143,7 @@ export async function createWorkOrderCore(actor: LedgerActor, input: CreateWorkO
     if (t.kind === "MAINTENANCE" && !t.activityType) throw new ActionError(`Task "${t.title}" is a maintenance task but has no activity type.`);
   }
 
-  // Plan 069: the Lead (assigneeEmail + assigneeId) is a mandatory invariant on every WO. Resolve it at
+  // Plan 070: the Lead (assigneeEmail + assigneeId) is a mandatory invariant on every WO. Resolve it at
   // this single chokepoint — an explicit Lead passes through, otherwise it defaults to the creating actor
   // — so no creation path (builder, template, composer, recurring, assistant, generic) can produce a
   // Lead-less order. Fails fast here, before the number-retry tx loop.
