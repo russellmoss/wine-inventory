@@ -86,6 +86,29 @@ export type DirectMessageThreadDetail = {
   messages: DirectMessageDTO[];
 };
 
+// ── Buckets (live filtered views over existing WO/ticket tables — not stored inbox rows) ──
+
+export type WorkOrderFilter = "open" | "in-progress" | "completed";
+export type TicketFilter = "open" | "closed";
+
+export type MyWorkOrderRow = {
+  id: string;
+  number: number;
+  title: string;
+  status: string;
+  dueAt: string | null; // ISO
+  updatedAt: string; // ISO
+};
+
+export type MyTicketRow = {
+  id: string;
+  kind: string;
+  title: string;
+  status: string;
+  createdAt: string; // ISO
+  resolvedAt: string | null; // ISO
+};
+
 /** The maximum snippet length persisted on a notification (first N chars of an outcome note etc.). */
 export const NOTIFICATION_SNIPPET_MAX = 140;
 
