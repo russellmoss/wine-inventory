@@ -84,6 +84,18 @@ export async function attachTaskEquipmentCore(taskId: string, equipmentIds: stri
   });
 }
 
+/** Plan 071: set a task's advisory equipment links to EXACTLY `equipmentIds` — detach the ones no longer
+ * chosen, attach the new ones. Used by the WO edit path (the create path only ever appends). Advisory,
+ * never blocks. */
+export async function setTaskEquipmentCore(taskId: string, equipmentIds: string[]): Promise<void> {
+  const ids = [...new Set(equipmentIds.filter((x) => typeof x === "string" && x))];
+  requireTenantId(); // tenant scoping enforced by the extended client
+  await prisma.workOrderTaskEquipment.deleteMany({
+    where: { taskId, ...(ids.length ? { equipmentId: { notIn: ids } } : {}) },
+  });
+  if (ids.length) await attachTaskEquipmentCore(taskId, ids);
+}
+
 /** Plan 055 U3: fuzzy-match ACTIVE equipment by name for the assistant's EQUIPMENT_SERVICE authoring.
  * Exact (normalized) match wins; otherwise a two-directional substring match. Returns the candidates so the
  * tool layer can pin a unique hit, show a choice picker for several, or report none — it never invents an
