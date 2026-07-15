@@ -7,8 +7,9 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-Plan 069 vendor management — BUILT, reviewed (findings fixed), browser-QA'd on Demo, all gates green.
-SHIPPING now: merged `origin/main` (inbox #191), opening the PR. Branch `claude/expendables-vendor-management-f55df8`.
+Plan 069 vendor management — **SHIPPED, PR #195 OPEN** (base main; merged inbox #191). Reviewed +
+browser-QA'd, all gates green. Awaiting human review/merge. At deploy: run
+`scripts/backfill-material-vendors.ts` against production tenants (Bhutan not yet backfilled).
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -96,4 +97,4 @@ SHIPPING now: merged `origin/main` (inbox #191), opening the PR. Branch `claude/
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-15 — Plan 069 vendor management reviewed + browser-QA'd + all gates green; merged main (inbox #191), shipping the PR._
+_Last updated: 2026-07-15 — Plan 069 vendor management SHIPPED as PR #195 (open, base main); reviewed + browser-QA'd; all gates green. Deploy step: backfill script on prod tenants._
