@@ -906,15 +906,18 @@ model AssistantFeedback {
   resolvedAt       DateTime?
   resolvedByUserId String?
   developerNotes   String?
+  developerNotesVersion Int                    @default(1)
   triageClass      FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
   attachments      FeedbackAttachment[]
   linearLinks      FeedbackLinearLink[]
+  automationRuns   AutomationRun[]      @relation("AssistantFeedbackAutomationRuns")
 
   @@index([status, createdAt])
   @@index([conversationId])
   @@index([ratedMessageId])
   @@index([tenantId])
   @@index([tenantId, triageClass])
+  @@index([tenantId, rating, createdAt, id])
   @@unique([tenantId, id])
   @@map("assistant_feedback")
 }
@@ -943,16 +946,19 @@ model FeedbackTicket {
   resolvedAt       DateTime?
   resolvedByUserId String?
   developerNotes   String?
+  developerNotesVersion Int                    @default(1)
   triageClass      FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
   attachments      FeedbackAttachment[]
   linearLinks      FeedbackLinearLink[]
+  automationRuns   AutomationRun[]      @relation("FeedbackTicketAutomationRuns")
 
   @@index([tenantId, kind, status, createdAt])
   @@index([tenantId, severity, createdAt])
   @@index([tenantId, automationStatus, createdAt])
   @@index([tenantId, triageClass, createdAt])
+  @@index([tenantId, createdAt, id])
   @@unique([tenantId, id])
   @@map("feedback_ticket")
 }
@@ -1026,11 +1032,15 @@ model AutomationRun {
   error               String?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
+  ticket              FeedbackTicket?          @relation("FeedbackTicketAutomationRuns", fields: [tenantId, ticketId], references: [tenantId, id], onDelete: Cascade)
+  assistantFeedback   AssistantFeedback?       @relation("AssistantFeedbackAutomationRuns", fields: [tenantId, assistantFeedbackId], references: [tenantId, id], onDelete: Cascade)
 
   @@unique([idempotencyKey])
   @@unique([tenantId, sourceType, sourceId, kind, attempt])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, sourceType, sourceId])
+  @@index([tenantId, ticketId])
+  @@index([tenantId, assistantFeedbackId])
   @@map("automation_run")
 }
 

@@ -25,15 +25,6 @@ export type DeveloperQueueItem = {
   automationConflict?: unknown | null;
 };
 
-export type DeveloperQueueWhereContext = {
-  /**
-   * Conflict truth comes from AutomationRun, not either source table. Callers that
-   * have loaded active runs pass their bounded source ids so query and pure queue
-   * derivation use the same precedence without guessing from automationStatus.
-   */
-  conflictSourceIds?: readonly string[];
-};
-
 export type LinearIssueUrlParseResult =
   | { ok: true; linearIssueKey: string; normalizedUrl: string }
   | {
@@ -154,18 +145,36 @@ type QueueWhere = Record<string, unknown>;
 function queueWhere(
   sourceType: DeveloperFeedbackSource,
   queue: DeveloperQueue,
-  context: DeveloperQueueWhereContext,
 ): QueueWhere {
   const closed: QueueWhere = { status: { in: [...CLOSED_STATUSES] } };
-  const conflictIds = [...new Set(context.conflictSourceIds ?? [])];
-  const attention: QueueWhere = conflictIds.length
-    ? { OR: [{ automationStatus: "FAILED" }, { id: { in: conflictIds } }] }
-    : { automationStatus: "FAILED" };
+  const attention: QueueWhere = {
+    OR: [
+      { automationStatus: "FAILED" },
+      {
+        AND: [
+          { triageClass: "PRODUCT_GAP" },
+          {
+            automationRuns: {
+              some: {
+                kind: "AGENTIC_FIX",
+                status: { in: ["QUEUED", "RUNNING", "PR_OPENED"] },
+              },
+            },
+          },
+        ],
+      },
+    ],
+  };
   const tracked: QueueWhere = {
     OR: [
       { linearLinks: { some: {} } },
-      { prUrl: { not: null } },
-      { githubIssueUrl: { not: null } },
+      { AND: [{ prUrl: { not: null } }, { prUrl: { not: "" } }] },
+      {
+        AND: [
+          { githubIssueUrl: { not: null } },
+          { githubIssueUrl: { not: "" } },
+        ],
+      },
       { automationStatus: { in: [...TRACKED_AUTOMATION_STATUSES] } },
     ],
   };
@@ -227,24 +236,20 @@ function queueWhere(
 export function buildDeveloperQueueWhere(
   sourceType: "ASSISTANT_FEEDBACK",
   queue: DeveloperQueue,
-  context?: DeveloperQueueWhereContext,
 ): Prisma.AssistantFeedbackWhereInput;
 export function buildDeveloperQueueWhere(
   sourceType: "FEEDBACK_TICKET",
   queue: DeveloperQueue,
-  context?: DeveloperQueueWhereContext,
 ): Prisma.FeedbackTicketWhereInput;
 export function buildDeveloperQueueWhere(
   sourceType: DeveloperFeedbackSource,
   queue: DeveloperQueue,
-  context?: DeveloperQueueWhereContext,
 ): Prisma.AssistantFeedbackWhereInput | Prisma.FeedbackTicketWhereInput;
 export function buildDeveloperQueueWhere(
   sourceType: DeveloperFeedbackSource,
   queue: DeveloperQueue,
-  context: DeveloperQueueWhereContext = {},
 ): Prisma.AssistantFeedbackWhereInput | Prisma.FeedbackTicketWhereInput {
-  return queueWhere(sourceType, queue, context) as
+  return queueWhere(sourceType, queue) as
     | Prisma.AssistantFeedbackWhereInput
     | Prisma.FeedbackTicketWhereInput;
 }
@@ -342,7 +347,10 @@ export function buildFeedbackHandoffMarkdown(
   const severity = boundedMarkdown(item.severity || "Not set", 20);
   const disposition = boundedMarkdown(item.triageClass || "Untriaged", 40);
   const developerLink = trustedDeveloperLink(item, trustedAppBaseUrl);
-  const githubUrl = safeGitHubUrl(item.githubIssueUrl || item.githubRunUrl || item.prUrl);
+  const githubUrl =
+    [item.githubIssueUrl, item.githubRunUrl, item.prUrl]
+      .map(safeGitHubUrl)
+      .find((value): value is string => value !== null) ?? null;
   const hasGeneratedPlan = Boolean(
     item.planTitle ||
       item.planGeneratedAt ||

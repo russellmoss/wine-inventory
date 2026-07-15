@@ -63,6 +63,7 @@
     "verify:commerce7": "tsx --conditions=react-server --env-file=.env scripts/verify-commerce7.ts",
     "verify:feedback": "tsx --conditions=react-server scripts/verify-feedback.ts",
     "verify:feedback-routing": "tsx --conditions=react-server --env-file=.env scripts/verify-feedback-routing.ts",
+    "verify:developer-linear-link": "tsx --conditions=react-server --env-file=.env scripts/verify-developer-linear-link.ts",
     "verify:feedback-idempotency": "tsx --conditions=react-server scripts/verify-feedback-idempotency.ts",
     "verify:feedback-security": "tsx --conditions=react-server scripts/verify-feedback-security.ts",
     "verify:feedback-fence": "tsx --conditions=react-server scripts/verify-feedback-fence.ts",

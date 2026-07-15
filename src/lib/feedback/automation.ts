@@ -251,11 +251,11 @@ export async function ensurePlanAutomationRun(input: {
         input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
           ? await tx.assistantFeedback.findUnique({
               where: { id: input.sourceId },
-              select: { triageClass: true, developerNotes: true },
+              select: { triageClass: true, developerNotes: true, developerNotesVersion: true },
             })
           : await tx.feedbackTicket.findUnique({
               where: { id: input.sourceId },
-              select: { triageClass: true, developerNotes: true },
+              select: { triageClass: true, developerNotes: true, developerNotesVersion: true },
             });
       if (!source) return { ok: false, reason: "SOURCE_NOT_FOUND" };
       if (source.triageClass !== FeedbackTriageClass.PRODUCT_GAP) {
@@ -280,16 +280,28 @@ export async function ensurePlanAutomationRun(input: {
       if (conflict) {
         const developerNotes = mergeAutomationConflictNote(source.developerNotes, conflict, new Date());
         if (developerNotes !== source.developerNotes) {
+          let notesUpdated: { count: number };
           if (input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK) {
-            await tx.assistantFeedback.update({
-              where: { id: input.sourceId },
-              data: { developerNotes },
+            notesUpdated = await tx.assistantFeedback.updateMany({
+              where: {
+                tenantId: input.tenantId,
+                id: input.sourceId,
+                developerNotesVersion: source.developerNotesVersion,
+              },
+              data: { developerNotes, developerNotesVersion: { increment: 1 } },
             });
           } else {
-            await tx.feedbackTicket.update({
-              where: { id: input.sourceId },
-              data: { developerNotes },
+            notesUpdated = await tx.feedbackTicket.updateMany({
+              where: {
+                tenantId: input.tenantId,
+                id: input.sourceId,
+                developerNotesVersion: source.developerNotesVersion,
+              },
+              data: { developerNotes, developerNotesVersion: { increment: 1 } },
             });
+          }
+          if (notesUpdated.count !== 1) {
+            throw new Error("Feedback notes changed while recording an automation conflict.");
           }
         }
         return { ok: false, reason: "ACTIVE_FIX_CONFLICT", conflict };

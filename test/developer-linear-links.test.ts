@@ -9,12 +9,13 @@ import {
   promotionEligibility,
   type DeveloperFeedbackSource,
   type DeveloperQueueItem,
-  type DeveloperQueueWhereContext,
   type FeedbackHandoffItem,
 } from "@/lib/developer/linear-links";
+import { parseLinkFeedbackToLinearInput } from "@/lib/developer/linear-link-input";
 
 type QueueFixture = DeveloperQueueItem & {
   linearLinks: Array<{ linearIssueUrl: string }>;
+  automationRuns: Array<{ kind: string; status: string }>;
   severity?: string | null;
 };
 
@@ -26,11 +27,18 @@ function matchesScalar(actual: unknown, condition: unknown): boolean {
   if ("in" in filter && !(filter.in as unknown[]).includes(actual)) return false;
   if ("notIn" in filter && (filter.notIn as unknown[]).includes(actual)) return false;
   if ("not" in filter && actual === filter.not) return false;
-  if ("some" in filter) return Array.isArray(actual) && actual.length > 0;
+  if ("some" in filter) {
+    return (
+      Array.isArray(actual) &&
+      actual.some((entry) =>
+        matchesWhere(filter.some as Record<string, unknown>, entry as Record<string, unknown>),
+      )
+    );
+  }
   return true;
 }
 
-function matchesWhere(where: Record<string, unknown>, item: QueueFixture): boolean {
+function matchesWhere(where: Record<string, unknown>, item: Record<string, unknown>): boolean {
   return Object.entries(where).every(([key, condition]) => {
     if (key === "AND") {
       return (condition as Record<string, unknown>[]).every((part) => matchesWhere(part, item));
@@ -39,15 +47,15 @@ function matchesWhere(where: Record<string, unknown>, item: QueueFixture): boole
       return (condition as Record<string, unknown>[]).some((part) => matchesWhere(part, item));
     }
     if (key === "NOT") return !matchesWhere(condition as Record<string, unknown>, item);
-    return matchesScalar(item[key as keyof QueueFixture], condition);
+    return matchesScalar(item[key], condition);
   });
 }
 
-function matchingQueues(item: QueueFixture, context: DeveloperQueueWhereContext = {}) {
+function matchingQueues(item: QueueFixture) {
   return DEVELOPER_QUEUES.filter((queue) =>
     matchesWhere(
-      buildDeveloperQueueWhere(item.sourceType, queue, context) as Record<string, unknown>,
-      item,
+      buildDeveloperQueueWhere(item.sourceType, queue) as Record<string, unknown>,
+      item as unknown as Record<string, unknown>,
     ),
   );
 }
@@ -63,6 +71,7 @@ function fixture(
     automationStatus: "NOT_REQUESTED",
     triageClass: "DEFECT",
     linearLinks: [],
+    automationRuns: [],
     prUrl: null,
     githubIssueUrl: null,
     automationConflict: null,
@@ -116,6 +125,40 @@ describe("parseLinearIssueUrl", () => {
   });
 });
 
+describe("parseLinkFeedbackToLinearInput", () => {
+  it("normalizes optional action flags after validating the object shape", () => {
+    expect(
+      parseLinkFeedbackToLinearInput({
+        tenantId: "org_demo_winery",
+        sourceType: "FEEDBACK_TICKET",
+        id: "ticket_42",
+        linearUrl: "https://linear.app/wine/issue/WIN-42",
+      }),
+    ).toEqual({
+      tenantId: "org_demo_winery",
+      sourceType: "FEEDBACK_TICKET",
+      id: "ticket_42",
+      linearUrl: "https://linear.app/wine/issue/WIN-42",
+      expectedVersion: undefined,
+      replace: false,
+      confirmFanIn: false,
+    });
+  });
+
+  it.each([
+    null,
+    undefined,
+    42,
+    "payload",
+    [],
+    { tenantId: "org_demo_winery", sourceType: "FEEDBACK_TICKET", id: 42, linearUrl: "https://linear.app/wine/issue/WIN-42" },
+    { tenantId: "org_demo_winery", sourceType: "FEEDBACK_TICKET", id: "ticket_42", linearUrl: "https://linear.app/wine/issue/WIN-42", expectedVersion: 0 },
+    { tenantId: "org_demo_winery", sourceType: "FEEDBACK_TICKET", id: "ticket_42", linearUrl: "https://linear.app/wine/issue/WIN-42", replace: "yes" },
+  ])("rejects malformed or primitive Server Action payloads", (value) => {
+    expect(() => parseLinkFeedbackToLinearInput(value)).toThrow();
+  });
+});
+
 describe("developer queue derivation and Prisma where parity", () => {
   const fixtures: QueueFixture[] = [
     fixture("ASSISTANT_FEEDBACK", {
@@ -164,6 +207,13 @@ describe("developer queue derivation and Prisma where parity", () => {
       triageClass: null,
       githubIssueUrl: "https://github.com/acme/wine/issues/10",
     }),
+    fixture("FEEDBACK_TICKET", {
+      id: "ticket_empty_artifact_urls",
+      status: "TRIAGED",
+      triageClass: "DEFECT",
+      prUrl: "",
+      githubIssueUrl: "",
+    }),
   ];
 
   it.each(fixtures)("assigns $sourceType/$id to exactly one matching query", (item) => {
@@ -176,6 +226,7 @@ describe("developer queue derivation and Prisma where parity", () => {
     expect(deriveDeveloperQueue(fixtures[5])).toBe("INBOX");
     expect(deriveDeveloperQueue(fixtures[7])).toBe("TRACKED");
     expect(deriveDeveloperQueue(fixtures[6])).toBe("READY");
+    expect(deriveDeveloperQueue(fixtures[8])).toBe("READY");
 
     const conflict = fixture("FEEDBACK_TICKET", {
       id: "ticket_conflict",
@@ -184,10 +235,28 @@ describe("developer queue derivation and Prisma where parity", () => {
       automationStatus: "RUNNING",
       githubIssueUrl: "https://github.com/acme/wine/issues/11",
       automationConflict: { code: "PRODUCT_GAP_WITH_ACTIVE_FIX" },
+      automationRuns: [{ kind: "AGENTIC_FIX", status: "RUNNING" }],
     });
-    const context = { conflictSourceIds: [conflict.id] };
     expect(deriveDeveloperQueue(conflict)).toBe("INBOX");
-    expect(matchingQueues(conflict, context)).toEqual(["INBOX"]);
+    expect(matchingQueues(conflict)).toEqual(["INBOX"]);
+
+    const ordinaryFix = fixture("FEEDBACK_TICKET", {
+      id: "ticket_ordinary_fix",
+      triageClass: "DEFECT",
+      automationStatus: "RUNNING",
+      automationRuns: [{ kind: "AGENTIC_FIX", status: "RUNNING" }],
+    });
+    expect(deriveDeveloperQueue(ordinaryFix)).toBe("READY");
+    expect(matchingQueues(ordinaryFix)).toEqual(["READY"]);
+
+    const productPlan = fixture("FEEDBACK_TICKET", {
+      id: "ticket_product_plan",
+      triageClass: "PRODUCT_GAP",
+      automationStatus: "RUNNING",
+      automationRuns: [{ kind: "PLAN", status: "RUNNING" }],
+    });
+    expect(deriveDeveloperQueue(productPlan)).toBe("READY");
+    expect(matchingQueues(productPlan)).toEqual(["READY"]);
   });
 
   it("fails an unknown legacy assistant status safely into Inbox with a diagnostic", () => {
@@ -357,5 +426,20 @@ describe("buildFeedbackHandoffMarkdown", () => {
     expect(packet).not.toContain("github.com.evil.test");
     expect(packet).not.toContain("attacker.test");
     expect(packet).not.toContain("supportToken");
+  });
+
+  it("falls through an unsafe GitHub candidate to a later allowlisted work URL", () => {
+    const packet = buildFeedbackHandoffMarkdown(
+      {
+        ...sensitiveFixture,
+        githubIssueUrl: "https://github.com.evil.test/acme/wine/issues/42?token=PRIVATE",
+        githubRunUrl: null,
+        prUrl: "https://github.com/acme/wine/pull/43?private=ignored",
+      },
+      "https://wine.example.test",
+    );
+    expect(packet).toContain("https://github.com/acme/wine/pull/43");
+    expect(packet).not.toContain("github.com.evil.test");
+    expect(packet).not.toContain("private=ignored");
   });
 });

@@ -448,7 +448,10 @@ function ItemEditor({
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           <Button
             disabled={busy === key}
-            onClick={() => run(key, () => updateFeedbackItem({ tenantId: item.tenantId, sourceType: item.sourceType, id: item.id, severity: severity as "P0" | "P1" | "P2" | "", triageClass, status, developerNotes }))}
+            onClick={() => run(key, async () => {
+              await updateFeedbackItem({ tenantId: item.tenantId, sourceType: item.sourceType, id: item.id, severity: severity as "P0" | "P1" | "P2" | "", triageClass, status, developerNotes, expectedNotesVersion: item.developerNotesVersion });
+              onClose();
+            })}
           >
             Save item
           </Button>

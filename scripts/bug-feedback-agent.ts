@@ -270,7 +270,30 @@ App code lives under src/app/ (App Router pages/routes) and src/components/ (sha
 
     async function bail(note: string) {
       console.log(note);
-      await prisma.feedbackTicket.update({ where: { id: ticket!.id }, data: { developerNotes: note.slice(0, 1000) } });
+      const stamp = `[feedback-agent ${new Date().toISOString()}] ${note.slice(0, 1000)}`;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        const current = await prisma.feedbackTicket.findUnique({
+          where: { id: ticket!.id },
+          select: { developerNotes: true, developerNotesVersion: true },
+        });
+        if (!current) throw new Error("Bug ticket disappeared while recording the agent outcome.");
+        const developerNotes = (
+          current.developerNotes
+            ? `${stamp}\n\n---\n${current.developerNotes}`
+            : stamp
+        ).slice(0, 5000);
+        const updated = await prisma.feedbackTicket.updateMany({
+          where: {
+            id: ticket!.id,
+            developerNotesVersion: current.developerNotesVersion,
+          },
+          data: { developerNotes, developerNotesVersion: { increment: 1 } },
+        });
+        if (updated.count === 1) break;
+        if (attempt === 5) {
+          throw new Error("Bug ticket notes stayed busy; could not record the agent outcome safely.");
+        }
+      }
       setOutput("changed", "false");
     }
 
