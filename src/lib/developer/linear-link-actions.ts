@@ -102,8 +102,8 @@ function isP2002(error: unknown): boolean {
 }
 
 async function findSourceLink(input: LinkFeedbackToLinearCoreInput): Promise<StoredLink | null> {
-  return runAsTenant(input.tenantId, () =>
-    prisma.feedbackLinearLink.findFirst({
+  return runAsTenant(input.tenantId, async () =>
+    await prisma.feedbackLinearLink.findFirst({
       where:
         input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
           ? { tenantId: input.tenantId, assistantFeedbackId: input.id }
@@ -120,8 +120,8 @@ async function findSourceLink(input: LinkFeedbackToLinearCoreInput): Promise<Sto
 }
 
 async function countTenantLinks(tenantId: string, linearIssueKey: string): Promise<number> {
-  return runAsTenant(tenantId, () =>
-    prisma.feedbackLinearLink.count({ where: { tenantId, linearIssueKey } }),
+  return runAsTenant(tenantId, async () =>
+    await prisma.feedbackLinearLink.count({ where: { tenantId, linearIssueKey } }),
   );
 }
 
