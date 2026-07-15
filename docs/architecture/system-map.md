@@ -9,7 +9,7 @@
 - **Cellarhand** — the product's brand (renamed from "BWC Operating System"; assets in `design-system/assets/logos`, wired via `src/components/BrandMark.tsx` + `src/app/{icon.svg,apple-icon.png,manifest.ts}`).
 - **Next.js 16.2** (app router) + **React 19** + **TypeScript** — `src/app/…`
 - **Tailwind v4** — styling via design tokens (see [[DESIGN]]); `src/styles/print.css` for printable work orders.
-- **Prisma ORM → Neon serverless Postgres** — **115 models** in `prisma/schema.prisma` (~3.75k lines).
+- **Prisma ORM → Neon serverless Postgres** — **116 models** in `prisma/schema.prisma` (~3.8k lines).
 - **better-auth** — authentication (`@node-rs/argon2` for password hashing).
 - **Vercel** — hosting. `npm run build` runs `prisma migrate deploy` first, so **deploys apply migrations automatically**.
 - **Sentry** — error monitoring (`instrumentation.ts`, `sentry.*.config.ts`) → auto-opens GitHub issues.
@@ -68,6 +68,12 @@ The operations that change a lot's identity: `crush-core.ts` (`crushLotCore`), `
 Cost follows the wine. Fruit/supply cost attaches at crush and is carried, rolled up, and *negated on
 reversal* through the same operations as the ledger.
 - `rollup.ts`, `consume.ts`, `deplete.ts`, `cogs.ts`/`cogs-write.ts`, `policy.ts`, `reverse.ts`, `cache.ts`, `transfer.ts`.
+- **Active-fraction stock draw (plan 066, ADR 0005):** `consumeMaterialCore` takes an optional
+  `activeFraction` (0..1). When a dose amount is the delivered ACTIVE compound (e.g. grams of SO₂) but the
+  stock is a partial carrier (KMBS is 57.6% SO₂), the stock draw **and cost** scale up by `1/activeFraction`
+  (draw SO₂/0.576 g of KMBS) while `LotTreatment.computedTotal` stays the delivered SO₂. `recordNeutralDoseTx`
+  passes it for rate-based (ppm/mg/L) SO₂ doses; omit/≤0/>1 = amounts are already the stock substance (no
+  scaling). Conservation (COST-1) still holds — cost is drawn from stock, not created. Guarded by `verify:cost`.
 - Schema: `SupplyLot`, `CostLine`, `SupplyConsumption`, `OperationCostTransfer`, `LotCostState`, `BottlingCostSnapshot`.
 - **Packaging dry-goods (plan 056):** at bottling, packaging materials (glass/closures/labels/capsules)
   deplete from supply lots and **capitalize into a COGS PACKAGING bucket** via `consume-packaging.ts` +
@@ -251,6 +257,23 @@ disposition** (DEFECT | MODEL_BEHAVIOR | PRODUCT_GAP | NOT_A_BUG | UNCLEAR, plan
 root cause, so the fixer is never fed a product-gap it can't fix. Support-tenant impersonation via
 `developer/support-context.ts`. See [[security-register]] — the fence is the control that lets an autonomous
 agent touch `main` safely.
+- **Developer console workspace (plans 064–067):** `/developer` renders a four-queue workspace
+  (`developer/linear-links.ts` → INBOX | READY | TRACKED | CLOSED, derived from status + triageClass +
+  automationStatus) over BOTH sources. `workspace-query.ts` builds the exact per-queue loaders;
+  `feedback-pagination.ts` gives each source a signed **dual cursor** (`{createdAt,id}`, versioned) backed by
+  the new composite indexes (`assistant_feedback (tenantId,rating,createdAt,id)`,
+  `feedback_ticket (tenantId,createdAt,id)`). Triage write-back is a visible **outcome timeline** —
+  `feedback-outcome.ts` prepends sanitized dated entries into `developerNotes` (no schema), and a
+  `developerNotesVersion` column gives optimistic-concurrency protection on notes edits; `triage-notes.ts`
+  parses the structured what/how/why/next blocks.
+- **Linear handoff link (plan 067 PR B):** the tenant-scoped, RLS-isolated `FeedbackLinearLink` table links
+  ONE feedback source item (ticket XOR assistant-feedback, DB CHECK) to a Linear issue. `linear-links.ts`
+  **validates + sanitizes** the pasted Linear URL (`parseLinearIssueUrl`: https-only, host allowlist, no
+  credentials/port, issue-path shape) — **no Linear API credentials are used or stored**, it is a link only.
+  `linear-link-actions.ts` does conflict-safe link/replace with a `version` optimistic-lock and a
+  **fan-in confirmation** when the same Linear key already covers other source items. Per-tenant uniques
+  (`(tenantId,ticketId)`, `(tenantId,assistantFeedbackId)`) make each source linkable once; the browser-facing
+  workflow is PR C. Guarded by `verify:developer-linear-link`. See [[security-register]].
 
 ## How a typical write flows
 1. UI (or the assistant) calls a **server action** — or a **work-order task is completed**, which builds the same core input.
@@ -259,4 +282,4 @@ agent touch `main` safely.
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-14 (plans 060–061; 115 Prisma models, ~3.77k schema lines): **multi-lot vessel-reading fan-out** — one whole-tank reading writes one `AnalysisPanel` per co-resident lot sharing a `vesselReadingGroupId` (per-tenant unique = idempotent; vessel-scoped dedup via `coalesce`), the one schema change this cycle (nullable column + two indexes, no RLS change); **multi-vessel maintenance consolidation** (ADR 0004) — "clean B1–B60" is ONE reviewable MAINTENANCE task with members in `plannedPayload.groupActivity`, all-at-once completion + `undoMaintenanceTaskCore`, WORKORDER-3 holds per-event. Prior refresh 2026-07-12 (plans 053–059): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, plan-059 `triageClass`). Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-15 (plans 064–067 + 066; 116 Prisma models, ~3.8k schema lines): **developer console workspace** — a four-queue `/developer` (INBOX/READY/TRACKED/CLOSED) over both feedback sources with dual-cursor pagination (new composite indexes) and a visible outcome timeline (`developerNotesVersion` optimistic lock); **Linear handoff link** — the new tenant-scoped, RLS'd `FeedbackLinearLink` (one source item XOR the other, sanitized URL, NO Linear credentials, fan-in confirmation, `verify:developer-linear-link`); **cost active-fraction** (ADR 0005) — `consumeMaterialCore` scales the KMBS stock draw + cost by 1/0.576 for rate-based SO₂ doses while `computedTotal` stays delivered SO₂ (conservation intact). Prior refresh 2026-07-14 (plans 060–061; 115 models): **multi-lot vessel-reading fan-out** — one whole-tank reading writes one `AnalysisPanel` per co-resident lot sharing a `vesselReadingGroupId` (per-tenant unique = idempotent; vessel-scoped dedup via `coalesce`), the one schema change this cycle (nullable column + two indexes, no RLS change); **multi-vessel maintenance consolidation** (ADR 0004) — "clean B1–B60" is ONE reviewable MAINTENANCE task with members in `plannedPayload.groupActivity`, all-at-once completion + `undoMaintenanceTaskCore`, WORKORDER-3 holds per-event. Prior refresh 2026-07-12 (plans 053–059): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, plan-059 `triageClass`). Ask Claude to refresh after each phase.*

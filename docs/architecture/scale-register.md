@@ -194,5 +194,21 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟢 (record-only, no ledger fold; barrel-range scale; proven by `verify:group-maintenance`. If
   ranges get large, revisit the deferred progressive/per-batch completion).
 
+### Developer console queues paginate with per-source keyset cursors, not offset (plans 064–067)
+- **Choice:** `/developer` reads BOTH feedback sources per queue via signed dual cursors
+  (`feedback-pagination.ts`, `{createdAt,id}` keyset) backed by dedicated composite indexes
+  (`assistant_feedback (tenantId,rating,createdAt,id)`, `feedback_ticket (tenantId,createdAt,id)`), so a page
+  is an index range scan, not a growing OFFSET. `workspace-query.ts` builds the exact per-queue `where`.
+- **Fine until:** feedback volume per tenant grows large — keyset pagination stays flat where OFFSET would
+  degrade linearly.
+- **What breaks at scale:** the two sources are merged in the app after separate keyset reads, so a queue that
+  interleaves them must over-fetch/merge; a new queue filter NOT covered by a composite index would fall back to
+  a scan; the outcome timeline lives inside `developerNotes` text (no separate table), so very long-lived items
+  accumulate note text unbounded.
+- **Tripwire:** a developer-queue query using OFFSET or an unindexed `orderBy`; a queue predicate that isn't a
+  prefix of one of the composite indexes; `developerNotes` growing into the many-KB range on hot items.
+- **Status:** 🟢 (keyset + composite indexes; winery-scale feedback volumes; the Linear-link table is separately
+  RLS'd — see [[security-register]]).
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

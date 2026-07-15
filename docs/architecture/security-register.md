@@ -283,6 +283,25 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (app-layer authz + JSON members = no new RLS surface; guarded by `verify:group-maintenance`
   and the `analysis_panel` RLS policy + per-tenant unique).
 
+## Feedback → Linear handoff link — tenant-scoped, sanitized, credential-free (plan 067 PR B)
+- **What:** `FeedbackLinearLink` links a feedback source item to a Linear issue by **URL only** — the
+  server uses **no Linear API credentials and stores none** (unlike the QBO/Commerce7 seams). The pasted
+  URL runs through `parseLinearIssueUrl` (`developer/linear-links.ts`): https-only, host allowlist,
+  rejects embedded credentials / ports / non-issue paths, and the display text is `sanitizePlainText`'d —
+  so a crafted link can't smuggle a redirect, credentials, or markup into the console.
+- **Isolation:** the table follows the Phase-12 checklist verbatim — `tenantId @default("")` + FK →
+  `organization` ON DELETE RESTRICT, ENABLE + FORCE RLS + a `tenant_isolation` policy (USING **and** WITH
+  CHECK, fail-closed), app_rls DML grant, composite `(tenantId, refId)` FKs to both parent tables (ON
+  DELETE CASCADE), and per-tenant uniques. TENANT-1 holds; `verify:tenant-isolation` covers it.
+- **Concurrency:** link/replace is conflict-safe via a `version` optimistic lock; when a Linear key already
+  covers other source items the action requires an explicit **fan-in confirmation** rather than silently
+  fanning one issue across items. The browser-facing workflow is PR C.
+- **Tripwire:** a Linear (or any external-handoff) path that stores an API token/secret instead of a bare
+  link; a URL accepted without `parseLinearIssueUrl`; the fan-in confirmation bypassed; the table ever
+  losing its RLS policy or per-tenant uniques.
+- **Status:** 🟢 (built, credential-free by design; guarded by `verify:developer-linear-link` +
+  `verify:tenant-isolation`; DB/isolation proven).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_
