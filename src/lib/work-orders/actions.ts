@@ -24,7 +24,8 @@ import type { TemplateSpec, TaskBuild } from "@/lib/work-orders/template-vocabul
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { normalizeWorkOrderPriority, normalizeDurationMin } from "@/lib/work-orders/planning";
-import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
+import { attachTaskEquipmentCore, setTaskEquipmentCore } from "@/lib/equipment/equipment";
+import { updateWorkOrderCore, type UpdateTaskSlot } from "@/lib/work-orders/update-core";
 import { draftNlWorkOrderForBuilder } from "@/lib/work-orders/nl-resolve";
 import { requireTenantId } from "@/lib/tenant/context";
 import { approveTaskCore, rejectTaskCore, bulkApproveTasksCore, rejectGroupRackBatchCore, undoMaintenanceTaskCore } from "@/lib/work-orders/approval";
@@ -220,6 +221,94 @@ export const createWorkOrderFromBuildsAction = safeAction(
       }
     }
     revalidateWorkOrders(res.workOrderId);
+    return res;
+  },
+);
+
+/** Plan 071: edit an existing work order in place from the builder. `groups` is the full ordered layout —
+ * each task is either LOCKED (executed; only repositioned) or editable (its taskType/values/assignee/
+ * equipment). Only editable builds hit the readiness gate + get instantiated; the core refuses to touch a
+ * locked/executed task, re-syncs reservations for changed pending tasks (issued WOs), and keeps the status. */
+type EditTaskInput = {
+  existingTaskId?: string;
+  locked: boolean;
+  taskType: string;
+  title?: string;
+  values?: Record<string, unknown>;
+  assigneeId?: string | null;
+  equipmentIds?: string[];
+};
+export const updateWorkOrderFromBuildsAction = action(
+  async (
+    { actor },
+    input: {
+      workOrderId: string;
+      title?: string;
+      instructions?: string;
+      assigneeId?: string | null;
+      assigneeEmail?: string | null;
+      dueAt?: Date | null;
+      priority?: string | null;
+      locationId?: string | null;
+      groups: EditTaskInput[][];
+      dependsOnWorkOrderIds?: string[];
+      readinessFingerprint?: string | null;
+    },
+  ) => {
+    const groups = Array.isArray(input.groups) ? input.groups : [];
+    const flat = groups.flatMap((g, gi) => (Array.isArray(g) ? g.map((t) => ({ ...t, groupSeq: gi })) : []));
+    if (flat.length === 0) throw new ActionError("A work order needs at least one task.");
+    const priority = normalizeWorkOrderPriority(input.priority);
+
+    // Only the editable (non-locked) tasks are re-validated + instantiated; locked tasks keep their content.
+    const editable = flat.filter((t) => !t.locked);
+    const editableBuilds: TaskBuild[] = editable.map((t) => ({
+      taskType: t.taskType,
+      title: t.title,
+      values: t.values ?? {},
+      assigneeId: t.assigneeId ?? null,
+      groupSeq: t.groupSeq,
+    }));
+    await gateWorkOrderReadinessForWrite(
+      editableBuilds,
+      { source: "manual", title: input.title?.trim() || "Work order", assigneeEmail: input.assigneeEmail ?? null, dueDate: null },
+      input.readinessFingerprint,
+    );
+    const instantiated = instantiateTaskBuilds(editableBuilds, await resolveTaskVocabulary());
+
+    let ei = 0;
+    const slots: UpdateTaskSlot[] = flat.map((t, i) =>
+      t.locked
+        ? { existingTaskId: t.existingTaskId, locked: true, seq: i + 1, groupSeq: t.groupSeq }
+        : { existingTaskId: t.existingTaskId ?? undefined, locked: false, seq: i + 1, groupSeq: t.groupSeq, input: instantiated[ei++] },
+    );
+
+    const res = await updateWorkOrderCore(actor, {
+      workOrderId: input.workOrderId,
+      title: input.title,
+      instructions: input.instructions,
+      assigneeId: input.assigneeId ?? null,
+      assigneeEmail: input.assigneeEmail ?? null,
+      dueAt: input.dueAt ?? null,
+      priority,
+      locationId: input.locationId ?? null,
+      slots,
+    });
+
+    // Equipment: set the exact list per non-locked task (locked tasks untouched).
+    for (let i = 0; i < flat.length; i++) {
+      if (flat[i].locked) continue;
+      await setTaskEquipmentCore(res.taskIds[i], Array.isArray(flat[i].equipmentIds) ? flat[i].equipmentIds! : []);
+    }
+
+    // Dependencies: diff current edges vs desired.
+    const desired = new Set((input.dependsOnWorkOrderIds ?? []).filter((d) => d && d !== input.workOrderId));
+    const current = await prisma.workOrderDependency.findMany({ where: { workOrderId: input.workOrderId }, select: { id: true, dependsOnWorkOrderId: true } });
+    for (const edge of current) if (!desired.has(edge.dependsOnWorkOrderId)) await removeWorkOrderDependencyCore(actor, { id: edge.id });
+    const currentDeps = new Set(current.map((e) => e.dependsOnWorkOrderId));
+    for (const depId of desired) if (!currentDeps.has(depId)) await addWorkOrderDependencyCore(actor, { workOrderId: input.workOrderId, dependsOnWorkOrderId: depId });
+
+    revalidateWorkOrders(input.workOrderId);
     return res;
   },
 );
