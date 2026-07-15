@@ -43,6 +43,49 @@ export type ListNotificationsOpts = {
   cursor?: string;
 };
 
+// ── Direct messages ──────────────────────────────────────────────────────────
+
+/** A person you can start/continue a DM with (same-tenant, excludes yourself). */
+export type RecipientOption = { userId: string; email: string; name: string | null };
+
+/** A thread row in the DM list: the OTHER participant + last-message preview. */
+export type DirectMessageThreadSummary = {
+  threadId: string;
+  otherUserId: string;
+  otherEmail: string;
+  subject: string | null;
+  lastMessageAt: string; // ISO
+  preview: string | null;
+};
+
+/** One attachment on a DM (metadata only — the blob is served via the authed proxy route by id). */
+export type DirectMessageAttachmentDTO = {
+  id: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  width: number | null;
+  height: number | null;
+};
+
+export type DirectMessageDTO = {
+  id: string;
+  senderUserId: string;
+  senderEmail: string;
+  body: string;
+  createdAt: string; // ISO
+  mine: boolean;
+  attachments: DirectMessageAttachmentDTO[];
+};
+
+export type DirectMessageThreadDetail = {
+  threadId: string;
+  otherUserId: string;
+  otherEmail: string;
+  subject: string | null;
+  messages: DirectMessageDTO[];
+};
+
 /** The maximum snippet length persisted on a notification (first N chars of an outcome note etc.). */
 export const NOTIFICATION_SNIPPET_MAX = 140;
 
