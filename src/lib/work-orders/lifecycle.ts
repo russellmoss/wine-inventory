@@ -7,6 +7,46 @@ import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { assertWorkOrderTransition, rollUpWorkOrderStatus } from "@/lib/work-orders/status";
 import { reserveForWorkOrderTx, releaseReservationsForWorkOrderTx } from "@/lib/work-orders/reservations";
+import { emitNotificationTx, buildWorkOrderNotificationPayload } from "@/lib/inbox/notifications";
+
+/** Plan 068 Unit 5 — what a rollup recompute did, so a caller can emit a WO_STATUS notification from
+ *  its own tx WITHOUT the pure rollup taking an actor (council amendment 2). `changed` is true only
+ *  when the conditional UPDATE actually transitioned the row (amendment 3 — a real concurrency gate). */
+export type WorkOrderRollupChange = {
+  changed: boolean;
+  prev: string | null;
+  next: string | null;
+  number: number | null;
+  assigneeId: string | null;
+  assigneeEmail: string | null;
+};
+
+function humanizeWorkOrderStatus(status: string): string {
+  return status.toLowerCase().replace(/_/g, " ");
+}
+
+/** Emit a WO_STATUS notification to the current assignee for a real status transition. No-op when
+ *  nothing changed or the WO is unassigned; self-notification is suppressed inside emitNotificationTx.
+ *  Called by the status-changing lifecycle/approval cores with their own actor. */
+export async function emitWorkOrderStatusTx(
+  tx: Prisma.TransactionClient,
+  change: WorkOrderRollupChange,
+  actor: LedgerActor,
+  workOrderId: string,
+): Promise<void> {
+  if (!change.changed || !change.assigneeId || change.number == null || !change.next) return;
+  await emitNotificationTx(tx, {
+    recipientUserId: change.assigneeId,
+    recipientEmail: change.assigneeEmail ?? "",
+    ...buildWorkOrderNotificationPayload({
+      workOrderId,
+      workOrderNumber: change.number,
+      event: "status",
+      statusLabel: humanizeWorkOrderStatus(change.next),
+    }),
+    actor: { actorUserId: actor.actorUserId, actorEmail: actor.actorEmail },
+  });
+}
 
 // Script-safe cores for the work-order SHELL lifecycle (Phase 9 Unit 4): create (DRAFT) → issue
 // (assign/schedule/reserve) → start (D5 claim) → cancel. Guarded by the status machine (status.ts).
@@ -169,7 +209,7 @@ export async function issueWorkOrderCore(
   actor: LedgerActor,
   input: { workOrderId: string; validUntil?: Date },
 ): Promise<WorkOrderResult & { reservationWarnings: string[] }> {
-  const wo = await prisma.workOrder.findUnique({ where: { id: input.workOrderId }, select: { id: true, number: true, status: true } });
+  const wo = await prisma.workOrder.findUnique({ where: { id: input.workOrderId }, select: { id: true, number: true, status: true, assigneeId: true, assigneeEmail: true } });
   if (!wo) throw new ActionError("That work order no longer exists.");
   // Issue is DRAFT-only. assertWorkOrderTransition treats from===to as legal, so it would let an
   // already-ISSUED WO re-issue and double its reservations — guard on DRAFT explicitly.
@@ -190,6 +230,13 @@ export async function issueWorkOrderCore(
       entityId: wo.id,
       summary: `Issued work order #${wo.number}`,
     });
+    // Inbox hook (Unit 5): the DRAFT→ISSUED transition doesn't go through the rollup; notify directly.
+    await emitWorkOrderStatusTx(
+      tx,
+      { changed: true, prev: "DRAFT", next: "ISSUED", number: wo.number, assigneeId: wo.assigneeId, assigneeEmail: wo.assigneeEmail },
+      actor,
+      wo.id,
+    );
     return { updated, warnings };
   });
   return { workOrderId: result.updated.id, number: result.updated.number, status: result.updated.status, reservationWarnings: result.warnings };
@@ -212,6 +259,15 @@ export async function assignWorkOrderCore(
       select: { id: true, number: true, status: true },
     });
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrder", entityId: wo.id, summary: `Reassigned work order #${wo.number}` });
+    // Inbox hook (Unit 5): tell the NEW assignee the WO is theirs (self-assign is suppressed).
+    if (input.assigneeId) {
+      await emitNotificationTx(tx, {
+        recipientUserId: input.assigneeId,
+        recipientEmail: input.assigneeEmail ?? "",
+        ...buildWorkOrderNotificationPayload({ workOrderId: wo.id, workOrderNumber: wo.number, event: "assigned" }),
+        actor: { actorUserId: actor.actorUserId, actorEmail: actor.actorEmail },
+      });
+    }
     return row;
   });
   return { workOrderId: updated.id, number: updated.number, status: updated.status };
@@ -246,7 +302,7 @@ export async function scheduleWorkOrderCore(
  * finalized. Tasks that already wrote a real op keep their (immutable) op — cancelling the shell does
  * not reverse the ledger (reject does that, Unit 7). */
 export async function cancelWorkOrderCore(actor: LedgerActor, input: { workOrderId: string; reason?: string }): Promise<WorkOrderResult> {
-  const wo = await prisma.workOrder.findUnique({ where: { id: input.workOrderId }, select: { id: true, number: true, status: true } });
+  const wo = await prisma.workOrder.findUnique({ where: { id: input.workOrderId }, select: { id: true, number: true, status: true, assigneeId: true, assigneeEmail: true } });
   if (!wo) throw new ActionError("That work order no longer exists.");
   assertWorkOrderTransition(wo.status, "CANCELLED");
   const updated = await runInTenantTx(async (tx) => {
@@ -263,6 +319,13 @@ export async function cancelWorkOrderCore(actor: LedgerActor, input: { workOrder
       entityId: wo.id,
       summary: `Cancelled work order #${wo.number}${input.reason ? `: ${input.reason}` : ""}`,
     });
+    // Inbox hook (Unit 5): notify the assignee their WO was cancelled (self-cancel suppressed).
+    await emitWorkOrderStatusTx(
+      tx,
+      { changed: true, prev: wo.status, next: "CANCELLED", number: wo.number, assigneeId: wo.assigneeId, assigneeEmail: wo.assigneeEmail },
+      actor,
+      wo.id,
+    );
     return row;
   });
   return { workOrderId: updated.id, number: updated.number, status: updated.status };
@@ -281,7 +344,8 @@ export async function startTaskCore(actor: LedgerActor, input: { taskId: string 
       data: { status: "IN_PROGRESS", startedAt: now, startedById: actor.actorUserId, startedByEmail: actor.actorEmail },
       select: { id: true, status: true },
     });
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const change = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, change, actor, task.workOrderId);
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Started a task` });
     return row;
   });
@@ -289,16 +353,39 @@ export async function startTaskCore(actor: LedgerActor, input: { taskId: string 
 }
 
 /** Recompute + persist the shell status from the current task statuses (called after every task move).
- * In-tx; the caller owns the transaction. No-op when the rollup doesn't change the status. */
-export async function bumpWorkOrderRollupTx(tx: Prisma.TransactionClient, workOrderId: string): Promise<void> {
-  const wo = await tx.workOrder.findUnique({ where: { id: workOrderId }, select: { status: true, startedAt: true } });
-  if (!wo) return;
+ * In-tx; the caller owns the transaction. PURE of notification concerns (amendment 2): it RETURNS what
+ * changed so a caller can emit. No-op (changed:false) when the rollup doesn't change the status. */
+export async function bumpWorkOrderRollupTx(
+  tx: Prisma.TransactionClient,
+  workOrderId: string,
+): Promise<WorkOrderRollupChange> {
+  const wo = await tx.workOrder.findUnique({
+    where: { id: workOrderId },
+    select: { status: true, startedAt: true, number: true, assigneeId: true, assigneeEmail: true },
+  });
+  if (!wo) return { changed: false, prev: null, next: null, number: null, assigneeId: null, assigneeEmail: null };
+  const base = { prev: wo.status, number: wo.number, assigneeId: wo.assigneeId, assigneeEmail: wo.assigneeEmail };
   const tasks = await tx.workOrderTask.findMany({ where: { workOrderId }, select: { status: true } });
-  const next = rollUpWorkOrderStatus(wo.status, tasks.map((t) => t.status));
-  const data: Prisma.WorkOrderUpdateInput = {};
-  if (next !== wo.status) data.status = next;
+  const next = rollUpWorkOrderStatus(
+    wo.status,
+    tasks.map((t) => t.status),
+  );
+
+  if (next === wo.status) {
+    // No status transition. Preserve the original side effect: stamp startedAt if we're IN_PROGRESS
+    // without one. Not a "change" for notification purposes.
+    if (next === "IN_PROGRESS" && !wo.startedAt) {
+      await tx.workOrder.update({ where: { id: workOrderId }, data: { startedAt: new Date() } });
+    }
+    return { changed: false, next, ...base };
+  }
+
+  const data: Prisma.WorkOrderUpdateInput = { status: next };
   if (next === "IN_PROGRESS" && !wo.startedAt) data.startedAt = new Date();
   if (next === "APPROVED") data.completedAt = new Date();
   if (next !== "APPROVED" && wo.status === "APPROVED") data.completedAt = null;
-  if (Object.keys(data).length > 0) await tx.workOrder.update({ where: { id: workOrderId }, data });
+  // Conditional UPDATE gated on the observed status — the real concurrency barrier (amendment 3): only
+  // the tx that actually flips the row gets count===1, so emit-on-changed can't double-fire.
+  const res = await tx.workOrder.updateMany({ where: { id: workOrderId, status: wo.status }, data });
+  return { changed: res.count === 1, next, ...base };
 }

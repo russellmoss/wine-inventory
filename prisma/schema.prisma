@@ -3833,3 +3833,108 @@ model CalculationLog {
   @@index([tenantId, calculatorId, createdAt])
   @@map("calculation_log")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan 068 — User Inbox (Gmail-like in-app message center). Four tenant-scoped tables
+// (tenant RLS in the paired _inbox_rls migration; per-user RLS in _inbox_user_rls — Unit 1b).
+// Composite cross-tenant FKs are raw SQL (K11). recipient/sender/participant ids are plain
+// single-column FKs to the GLOBAL `user` table (no tenantId there). Deep links are DERIVED at
+// render from sourceType+sourceId — no stored href (council amendment 5).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum InboxCategory {
+  WORK_ORDER
+  TICKET
+  DIRECT_MESSAGE
+  SYSTEM
+}
+
+enum InboxKind {
+  TICKET_REPLY
+  TICKET_STATUS
+  WO_ASSIGNED
+  WO_STATUS
+  DIRECT_MESSAGE
+}
+
+// One discrete, read/unread-tracked event per row. `readAt IS NULL AND archivedAt IS NULL` = unread
+// (drives the avatar badge). `sourceId` is POLYMORPHIC (WO / ticket / DM thread) so it carries NO FK —
+// the reader must tombstone a dangling / no-longer-accessible source (council amendment 6).
+model InboxNotification {
+  tenantId        String        @default("")
+  id              String        @id @default(cuid())
+  recipientUserId String
+  recipientEmail  String
+  category        InboxCategory
+  kind            InboxKind
+  title           String
+  snippet         String
+  sourceType      String
+  sourceId        String
+  actorUserId     String?
+  actorEmail      String?
+  readAt          DateTime?
+  archivedAt      DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@unique([tenantId, id])
+  // Covering index for countUnreadInbox (recipient + readAt IS NULL + archivedAt IS NULL) — amendment 8.
+  @@index([tenantId, recipientUserId, readAt, archivedAt])
+  @@index([tenantId, recipientUserId, category, createdAt])
+  @@map("inbox_notification")
+}
+
+// 1:1 DM thread. Two participants stored directly (v1). Sorted-pair convention userAId < userBId
+// (enforced by DB CHECK in the schema migration — amendment 9) makes resolveOrCreateThread idempotent.
+model DirectMessageThread {
+  tenantId        String   @default("")
+  id              String   @id @default(cuid())
+  subject         String?
+  createdByUserId String
+  userAId         String
+  userAEmail      String
+  userBId         String
+  userBEmail      String
+  lastMessageAt   DateTime
+  createdAt       DateTime @default(now())
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, userAId, userBId])
+  @@index([tenantId, userAId, lastMessageAt])
+  @@index([tenantId, userBId, lastMessageAt])
+  @@map("direct_message_thread")
+}
+
+model DirectMessage {
+  tenantId     String   @default("")
+  id           String   @id @default(cuid())
+  threadId     String
+  senderUserId String
+  senderEmail  String
+  body         String
+  createdAt    DateTime @default(now())
+
+  @@unique([tenantId, id])
+  @@index([tenantId, threadId, createdAt])
+  @@map("direct_message")
+}
+
+// Mirrors FeedbackAttachment fields. blobUrl is SERVER-ONLY — never sent to the client; downloads
+// go through the authed proxy route /api/inbox/attachments/[id] (council amendment 1).
+model DirectMessageAttachment {
+  tenantId    String   @default("")
+  id          String   @id @default(cuid())
+  messageId   String
+  filename    String
+  contentType String
+  byteSize    Int
+  width       Int?
+  height      Int?
+  sha256      String
+  blobUrl     String
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, id])
+  @@index([tenantId, messageId])
+  @@map("direct_message_attachment")
+}

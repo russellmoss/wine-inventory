@@ -5,7 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { insertPanelTx, type ReadingInput } from "@/lib/chemistry/measurements";
 import { assertTaskTransition } from "@/lib/work-orders/status";
-import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
+import { bumpWorkOrderRollupTx, emitWorkOrderStatusTx } from "@/lib/work-orders/lifecycle";
 import type { CompleteTaskInput, CompleteTaskResult } from "@/lib/work-orders/execute";
 import { completeHarvestWeighInTaskCore } from "@/lib/work-orders/harvest-observations";
 import { completeSamplePullTaskCore } from "@/lib/work-orders/sample-task";
@@ -90,7 +90,8 @@ export async function completeObservationTaskCore(
     if (claimed.count === 0) {
       throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
     }
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const _woRollup = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, _woRollup, actor, task.workOrderId);
     await writeAudit(tx, {
       ...actor,
       action: "CREATE",

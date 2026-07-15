@@ -55,6 +55,7 @@
     "gen:assistant-coverage": "node scripts/verify-ai-native.mjs --write",
     "check:invariant-drift": "node scripts/check-invariant-drift.mjs",
     "verify:tenant-isolation": "tsx --env-file=.env scripts/verify-tenant-isolation.ts",
+    "verify:inbox-isolation": "tsx --env-file=.env scripts/verify-inbox-isolation.ts",
     "verify:accounting-refresh": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting-refresh.ts",
     "verify:accounting-reversal": "tsx --conditions=react-server scripts/verify-accounting-reversal.ts",
     "verify:accounting-idempotency": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting-idempotency.ts",

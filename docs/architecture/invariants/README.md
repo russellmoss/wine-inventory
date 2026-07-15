@@ -18,8 +18,9 @@ three things that run without you:
    governed code (`src/lib/{ledger,tenant,cost,compliance}`, `prisma/schema.prisma`, etc.).
 
 > [!tip] Adding an invariant
-> Drop a new `.md` here with the same frontmatter shape (copy any existing one - mind the LF
-> line endings; a CRLF file's frontmatter is silently skipped by the checker). If the guard
+> Drop a new `.md` here with the same frontmatter shape (copy any existing one). The checker
+> now normalizes CRLF→LF before parsing frontmatter (Plan 068 amendment 10), so a
+> Windows-authored note is no longer silently skipped. If the guard
 > already exists, set `verify:` to it (`npm run verify:xyz` or a `scripts/foo.ts` path) and
 > `status: guarded`, then run `npm run verify:invariants` to confirm it's covered. If you are
 > declaring an invariant ahead of its guard (governance-first), set `status: planned` (or
@@ -32,9 +33,10 @@ three things that run without you:
 
 ## Coverage snapshot
 
-**29 invariant notes: 28 guarded, 0 planned, 1 deferred.** The 28 guarded ones (ledger DB +
+**30 invariant notes: 29 guarded, 0 planned, 1 deferred.** The 29 guarded ones (ledger DB +
 pure + correction, tenancy, cost, compliance, work-orders, naming NAMING-1/2, bond +
-tax-class BOND-1/TAXCLASS-1/TAXPAID-1/AMEND-1, and migration MIGRATE-1) are asserted by
+tax-class BOND-1/TAXCLASS-1/TAXPAID-1/AMEND-1, migration MIGRATE-1, and the inbox
+INBOX-1 recipient-isolation guard `verify:inbox-isolation`) are asserted by
 `npm run verify:invariants` (100% of guarded notes have a live guard) and their frontmatter
 well-formedness by `npm run verify:invariant-frontmatter`. NAMING-1/2 flipped to `guarded`
 in **Phase 1** (guard `npm run verify:naming`); BOND-1/TAXCLASS-1/TAXPAID-1/AMEND-1 flipped

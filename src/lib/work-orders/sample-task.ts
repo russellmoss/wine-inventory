@@ -4,7 +4,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { assertTaskTransition } from "@/lib/work-orders/status";
-import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
+import { bumpWorkOrderRollupTx, emitWorkOrderStatusTx } from "@/lib/work-orders/lifecycle";
 import type { CompleteTaskInput, CompleteTaskResult } from "@/lib/work-orders/execute";
 import { createSampleTx, resolveSampleLotId } from "@/lib/chemistry/samples";
 
@@ -73,7 +73,8 @@ export async function completeSamplePullTaskCore(
     if (claimed.count === 0) {
       throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
     }
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const _woRollup = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, _woRollup, actor, task.workOrderId);
     await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Pulled sample ${sample.sampleId}` });
     return { attemptId: attempt.id };
   });

@@ -7,8 +7,8 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-Plan 069 vendor management — BUILT on `claude/expendables-vendor-management-f55df8` (12 units, all gates
-green). Next: interactive browser QA (authenticated pane), then `/review` + `/ship`.
+Plan 069 vendor management — BUILT, reviewed (findings fixed), browser-QA'd on Demo, all gates green.
+SHIPPING now: merged `origin/main` (inbox #191), opening the PR. Branch `claude/expendables-vendor-management-f55df8`.
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -16,19 +16,48 @@ green). Next: interactive browser QA (authenticated pane), then `/review` + `/sh
 
 ## 🪝 Off-path — do NOT do now
 
-_Anything that shows up mid-build and isn't the objective goes to `TODOS.md` or a task
-chip, not into this session. Nothing parked right now._
+- **Plan 062 Units 2/5 — liquid-solution booking (feature gap, NOT the money bug).** Booking a
+  *stocked liquid KMBS-solution material* by ppm currently books an UNKNOWN-cost line with no depletion
+  (no durable `so2SolutionPercentKmbs` field; `consumeMaterialCore` can't convert g→mL). Powder KMBS is
+  fully correct. Needs a governed schema change + eng review — separate plan when prioritized, not now.
 
 ## ✅ Done recently
 
-- **Plan 069 — vendor management — BUILT (12 units), branch `claude/expendables-vendor-management-f55df8`.**
+- **Plan 069 — vendor management — BUILT (12 units) + reviewed + browser-QA'd; SHIPPING.**
   Reused the existing (Phase 15 QBO) `Vendor` table + new `VendorContact` child (RLS + composite FK);
   `vendorId` on `CellarMaterial` + `SupplyLot`; backfill (Demo: 54 mats/106 lots, 0 nulls) with a seeded
   "Unknown" fallback; shared vendor cores (A/P find-or-create refactored to reuse); mandatory fuzzy
   `VendorPicker` with pinned "+ create new vendor" + URL autofill on Add/Edit expendable; `/setup/vendors`
-  CRUD; assistant `create_vendor` + `query_vendors` (golden gate green). Gates: tsc, 2034 vitest, lint,
-  next build, verify:tenant-isolation (110/110 + explicit vendor cross-tenant FK checks), eval:assistant —
-  all green. Worktree made buildable (copied .env + npm ci). Remaining: browser QA → review → ship.
+  CRUD; assistant `create_vendor` + `query_vendors` (golden gate green). `/review` fixed 5 findings
+  (no-vendor-reactivate wipe, restock-lot linkage, edit gate for legacy vendors, +2). Browser-QA'd on
+  Demo (mandatory picker, pinned create, URL autofill, inline create-and-select, Unknown editable).
+  Gates: tsc, 2034 vitest, lint, next build, verify:tenant-isolation (110/110 + vendor FK checks),
+  eval:assistant, verify:naming — all green. Worktree made buildable (copied .env + npm ci).
+- **Plan 068 — user inbox / Gmail-like messaging — SHIPPED, PR #191 merged (`2a139dd`).** Merged into
+  this branch during the Plan 069 pre-ship merge (disjoint from vendor work).
+- **SO₂ ~1.74× dosing money bug — RECONCILED CLOSED (2026-07-15, no code change).** Investigated on a
+  fresh branch off `origin/main`: the money-critical fix already shipped. Plan 066 (PR #180, `370b7b6`,
+  MERGED) divides the stock draw by the active fraction in `consumeMaterialCore` (÷0.576); Plan 065
+  (PR #179) landed `resolveSo2Dose` — used **display-only**, so no double-application. `verify:cost`
+  55/55 green (40 ppm × 450 L → 18 g SO₂ delivered, 31.25 g KMBS drawn, $1.56). Running `/work` on
+  Plan 062 would have DOUBLE-APPLIED 0.576 and re-broken `verify:cost` — deliberately did not.
+  Remaining Plan 062 scope (liquid-solution booking) is a feature gap → Off-path.
+
+- **Feedback cmrm5x3lq "vineyard identification" — SHIPPED, PR #190 merged; ticket RESOLVED.**
+  Assistant told admin Mike "the Bajo vineyard doesn't exist" — `resolveVineyards`
+  (`src/lib/assistant/scope.ts`) used a one-directional SQL `contains`, so the stored name
+  "Bajo" failed to match "Bajo Vineyard". Added pure `vineyardNameMatches` (two-directional,
+  mirrors `findScopedBlocks`), match in JS after untouched access scoping. Proven on live data
+  (scope preserved for non-admins) + tenant-isolation CI green; 7-case regression test;
+  assistant suite 25f/145t green. Reviewed (1 LOW note: 200-vineyard fetch cap, non-issue at
+  realistic counts). Also shipped the calculator display fix (PR #189, browser-QA'd).
+- **bug-triage `/bug-triage` dry-run RAN LIVE this session — REMEDIATED.** `args` reached the workflow
+  as a JSON *string*, so `args.dryRun` was `undefined` → `DRY_RUN=false`. It dispatched a real
+  `feedback_bug_fix` run (calculator display) + `feedback_plan` run (harvest-pick deletion), dismissed
+  the thumbs-down ticket, set 5 statuses. Nothing merged to `main`. All triage decisions were sound, so
+  kept (not rolled back). The calculator fix run completed → **PR #189 "fix: display" open for review**
+  (nothing to cancel). Vineyard ticket cmrm5x3lq updated to IN_PROGRESS/DEFECT + PR #190 note.
+  Hazard memory hardened ([[bug-triage-dryrun-args-gotcha]]) — burned twice now.
 - **Plan 067 PR A — agentic PLAN/FIX routing — SHIPPED, PR #181 merged** (`d2b504f`).
 - **Plan 067 PR B — Linear handoff core — BUILT, PR #183 open.** Tenant-scoped/RLS-protected
   feedback-to-Linear links, sanitized handoff rules, conflict-safe link/replace actions, exact loaders,
@@ -58,8 +87,6 @@ chip, not into this session. Nothing parked right now._
 
 ## ⏭️ Next up (candidates, not commitments)
 
-- **Plan 062 SO₂-solution dosing — Units 2–9** (Unit 1 shipped; branch
-  `claude/so2-solution-dosing`). Fixes the ~1.74× KMBS under-dose bug.
 - Browser QA pass on Plan 063 (developer user type).
 - **Feedback log HTML-entity garbling** — SHIPPED #178 (`6bc2db1`).
 - **Plan 065 — SO₂ addition execution-view clarity — BUILT, shipping.** Execute view is now
@@ -69,4 +96,4 @@ chip, not into this session. Nothing parked right now._
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-15 — Plan 069 vendor management built (12 units, all gates green); browser QA → review → ship next._
+_Last updated: 2026-07-15 — Plan 069 vendor management reviewed + browser-QA'd + all gates green; merged main (inbox #191), shipping the PR._

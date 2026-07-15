@@ -152,6 +152,8 @@ function SidebarContent({
   pendingWorkOrders,
   sparklingEnabled,
   complianceDeadlines,
+  inboxEnabled,
+  unreadMessages,
 }: {
   user: { name?: string | null; email: string; role?: string | null; supportOrganizationId?: string | null; supportOrganizationName?: string | null; supportExpiresAt?: string | null };
   isActive: (href: string) => boolean;
@@ -169,6 +171,8 @@ function SidebarContent({
   pendingWorkOrders: number;
   sparklingEnabled: boolean;
   complianceDeadlines: { count: number; urgent: boolean };
+  inboxEnabled: boolean;
+  unreadMessages: number;
 }) {
   const visibleSetup = SETUP.filter((s) => !s.admin || isAdmin);
   const wineryItems = sparklingEnabled ? [...WINERY, EN_TIRAGE_NAV] : WINERY;
@@ -207,12 +211,51 @@ function SidebarContent({
         <CollapsibleNavGroup label="Vineyards" items={VINEYARDS} open={vineyardsOpen} setOpen={setVineyardsOpen} isActive={isActive} onNavigate={onNavigate} />
         <CollapsibleNavGroup label="Setup" items={visibleSetup} open={setupOpen} setOpen={setSetupOpen} isActive={isActive} onNavigate={onNavigate} />
       </nav>
-      <div style={{ borderTop: "1px solid var(--border-strong)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-        <Avatar name={user.name || user.email} size={34} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
-          <button onClick={onSignOut} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)" }}>Sign out</button>
+      <div style={{ borderTop: "1px solid var(--border-strong)", padding: "14px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {inboxEnabled ? (
+            // Plan 068: the avatar becomes the "me" hub — a link into the inbox with a red unread badge.
+            <Link
+              href="/inbox"
+              onClick={onNavigate}
+              aria-label={unreadMessages > 0 ? `Inbox, ${unreadMessages} unread` : "Inbox"}
+              style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }}
+            >
+              <div style={{ position: "relative", flex: "none" }}>
+                <Avatar name={user.name || user.email} size={34} />
+                {unreadMessages > 0 ? (
+                  <span
+                    style={{
+                      ...badgePill,
+                      position: "absolute",
+                      top: -5,
+                      right: -6,
+                      minWidth: 16,
+                      height: 16,
+                      fontSize: 10,
+                      background: "var(--danger)",
+                      color: "#fff",
+                    }}
+                  >
+                    {unreadMessages > 9 ? "9+" : unreadMessages}
+                  </span>
+                ) : null}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Inbox{unreadMessages > 0 ? ` · ${unreadMessages > 9 ? "9+" : unreadMessages} new` : ""}</div>
+              </div>
+            </Link>
+          ) : (
+            <>
+              <Avatar name={user.name || user.email} size={34} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
+              </div>
+            </>
+          )}
         </div>
+        <button onClick={onSignOut} style={{ marginTop: 8, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)" }}>Sign out</button>
       </div>
     </>
   );
@@ -226,6 +269,8 @@ export function AppShell({
   sparklingEnabled = false,
   complianceDeadlines = { count: 0, urgent: false },
   voiceEnabled = false,
+  inboxEnabled = false,
+  unreadMessages = 0,
 }: {
   user: { name?: string | null; email: string; role?: string | null; supportOrganizationId?: string | null; supportOrganizationName?: string | null; supportExpiresAt?: string | null };
   children: React.ReactNode;
@@ -234,6 +279,8 @@ export function AppShell({
   sparklingEnabled?: boolean;
   complianceDeadlines?: { count: number; urgent: boolean };
   voiceEnabled?: boolean;
+  inboxEnabled?: boolean;
+  unreadMessages?: number;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -302,7 +349,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
       </aside>
 
       {/* Mobile drawer */}
@@ -311,7 +358,7 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
           </aside>
         </div>
       ) : null}

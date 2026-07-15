@@ -5,7 +5,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { assertTaskTransition } from "@/lib/work-orders/status";
-import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
+import { bumpWorkOrderRollupTx, emitWorkOrderStatusTx } from "@/lib/work-orders/lifecycle";
 import { recordVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { coerceVesselActivityKind } from "@/lib/cellar/vessel-activity-vocab";
 import { parseGroupActivityPayload, orderedMemberIds, type GroupActivityPayload } from "@/lib/work-orders/group-activity";
@@ -66,7 +66,8 @@ export async function completeMaintenanceTaskCore(
         data: { status: "DONE", currentAttemptId: attempt.id, completionNote: input.completionNote?.trim() || null, deviationReason: input.deviationReason?.trim() || null },
       });
       if (claimed.count === 0) throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
-      await bumpWorkOrderRollupTx(tx, task.workOrderId);
+      const _woRollup = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+      await emitWorkOrderStatusTx(tx, _woRollup, actor, task.workOrderId);
       await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Recorded equipment service${setStatus ? ` (${transitioned} set to ${setStatus})` : ""}` });
       return { attemptId: attempt.id, transitioned };
     }, { isolationLevel: "Serializable" }), 5, "wo-maintenance:equipment-service");
@@ -150,7 +151,8 @@ export async function completeMaintenanceTaskCore(
       throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
     }
 
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const _woRollup = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, _woRollup, actor, task.workOrderId);
     // D4: surface a stock shortfall as a soft warning (draw-to-zero already happened; nothing blocked).
     const shortfall = depletion?.shortfall ?? 0;
     const shortMsg = shortfall > 0 ? ` (used more than on record — ${shortfall} short of stock)` : "";
@@ -254,7 +256,8 @@ async function completeGroupMaintenanceTaskCore(
     });
     if (claimed.count === 0) throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
 
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const _woRollup = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, _woRollup, actor, task.workOrderId);
     const skipMsg = skipped > 0 ? ` (${skipped} skipped — inactive)` : "";
     const shortMsg = totalShortfall > 0 ? ` (used more than on record — ${totalShortfall} short of stock)` : "";
     await writeAudit(tx, {
