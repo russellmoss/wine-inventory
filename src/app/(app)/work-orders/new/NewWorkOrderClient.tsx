@@ -16,6 +16,7 @@ import { materialScopeForTask, type MaterialCategory } from "@/lib/cellar/materi
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
+type Member = { userId: string; name: string; email: string };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 };
@@ -66,6 +67,7 @@ function withLockedVessel(lockedVessel: { id: string; label: string } | undefine
 export function NewWorkOrderClient({
   templates,
   pickers,
+  members = [],
   initialTemplateId,
   // Plan 045 Unit 9 — LOCKED-VESSEL mode (default undefined ⇒ standalone /work-orders/new, byte-identical).
   // When set: every single-vessel task field is pre-filled to [lockedVessel.id] and rendered as a read-only
@@ -77,6 +79,7 @@ export function NewWorkOrderClient({
 }: {
   templates: Template[];
   pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] };
+  members?: Member[];
   initialTemplateId?: string;
   lockedVessel?: { id: string; label: string };
   onCreateAndIssue?: (input: Parameters<typeof createWorkOrderFromTemplateAction>[0]) => Promise<NewWorkOrderIssued>;
@@ -359,7 +362,14 @@ export function NewWorkOrderClient({
           <Input label="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={template?.name} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <label style={labelStyle}>Due date<input type="date" style={field} value={dueAt} onChange={(e) => setDueAt(e.target.value)} /></label>
-            <Input label="Assignee email (optional)" value={assigneeEmail} onChange={(e) => setAssigneeEmail(e.target.value)} />
+            {/* Pick the assignee from tenant members (value = email) so the backend can resolve it to a
+                real user id — a WO assigned by member drives their inbox bucket + notification. */}
+            <label style={labelStyle}>Assignee (optional)
+              <select style={field} value={assigneeEmail} onChange={(e) => setAssigneeEmail(e.target.value)}>
+                <option value="">— unassigned —</option>
+                {members.map((m) => <option key={m.userId} value={m.email}>{m.name}</option>)}
+              </select>
+            </label>
           </div>
           <Checkbox checked={autoFinalize} onChange={setAutoFinalize} label="Auto-finalize my own work (skip review when I complete it)" />
 
