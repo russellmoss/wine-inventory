@@ -71,10 +71,14 @@ export const prisma = base.$extends({
         // The ledger owns its interactive transaction + set_config (K5). Don't nest a batch tx.
         if (ctx?.skipWrap) return query(args);
 
-        // set_config as the FIRST statement in the same tx as the query. is_local=true -> scoped
-        // to this transaction (pooling-safe under PgBouncer). Bound param, never interpolated.
-        const [, result] = await base.$transaction([
+        // set_config as the FIRST statements in the same tx as the query. is_local=true -> scoped
+        // to this transaction (pooling-safe under PgBouncer). Bound params, never interpolated.
+        // Plan 068 Unit 1b: also set `app.user_id` (the acting user, or '' when absent) so per-user
+        // RLS on the inbox tables scopes owner-only reads. '' fails those policies closed and is a
+        // no-op for every table without a per-user policy.
+        const [, , result] = await base.$transaction([
           base.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`,
+          base.$executeRaw`SELECT set_config('app.user_id', ${ctx?.userId ?? ""}, true)`,
           query(args),
         ]);
         return result as unknown;

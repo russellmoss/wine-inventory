@@ -4,7 +4,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { assertTaskTransition } from "@/lib/work-orders/status";
-import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
+import { bumpWorkOrderRollupTx, emitWorkOrderStatusTx } from "@/lib/work-orders/lifecycle";
 import type { CompleteTaskInput, CompleteTaskResult } from "@/lib/work-orders/execute";
 
 // The checklist/note lane (plan 034): a NOTE task is a free-text checkable line that does NO inventory
@@ -55,7 +55,8 @@ export async function completeNoteTaskCore(
     if (claimed.count === 0) {
       throw new ActionError("That task was already completed by someone else. Refresh and try again.", "CONFLICT");
     }
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const _woRollup = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, _woRollup, actor, task.workOrderId);
     await writeAudit(tx, {
       ...actor,
       action: "UPDATE",

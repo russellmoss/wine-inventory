@@ -19,6 +19,7 @@ import { assertFeedbackStatusForSource } from "@/lib/developer/feedback-item-inp
 import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { withWriteRetry } from "@/lib/db/write-retry";
+import { emitNotificationTx, buildTicketNotificationPayload } from "@/lib/inbox/notifications";
 
 export type UpdateFeedbackItemCoreInput = {
   tenantId: string;
@@ -102,6 +103,11 @@ export async function updateFeedbackItemCore(
         }
       } else {
         const status = input.status;
+        // Prior status + submitter, for the change-gated inbox hook (Unit 4).
+        const prior = await tx.feedbackTicket.findFirst({
+          where: { tenantId: input.tenantId, id: input.id },
+          select: { status: true, actorUserId: true, actorEmail: true },
+        });
         const updated = await tx.feedbackTicket.updateMany({
           where: {
             tenantId: input.tenantId,
@@ -122,6 +128,21 @@ export async function updateFeedbackItemCore(
             "This item changed while you were editing. Reload and try again.",
             "CONFLICT",
           );
+        }
+        // Inbox hook: notify the submitter only when the STATUS actually changed (a triageClass/notes
+        // edit is internal and not submitter-relevant). Reached only when the version-gated update
+        // applied, so no double-emit. Self-edit is suppressed inside emitNotificationTx.
+        if (status && prior && status !== prior.status && prior.actorUserId) {
+          await emitNotificationTx(tx, {
+            recipientUserId: prior.actorUserId,
+            recipientEmail: prior.actorEmail ?? "",
+            ...buildTicketNotificationPayload({
+              ticketId: input.id,
+              hasReply: false,
+              statusLabel: status.toLowerCase().replace(/_/g, " "),
+            }),
+            actor: { actorUserId: actor.id, actorEmail: actor.email },
+          });
         }
       }
       await writeAudit(tx, {
@@ -284,6 +305,30 @@ export async function closeFeedbackItemCore(
             ? "Developer resolved feedback with outcome"
             : "Developer dismissed feedback with outcome",
       });
+      // Inbox hook (Unit 4): notify the ticket submitter that their ticket was closed with an outcome.
+      // Only FEEDBACK_TICKET with a known submitter; reached only when the version-gated update applied
+      // (count === 1 above), so a lost-version retry throws CONFLICT and never double-emits. Self-close
+      // (developer closing their own ticket) is suppressed inside emitNotificationTx.
+      if (input.sourceType === FeedbackAutomationSource.FEEDBACK_TICKET) {
+        // Typed fetch of the submitter (avoids casting the assistant|ticket union of `source`).
+        const submitter = await tx.feedbackTicket.findFirst({
+          where: { tenantId: input.tenantId, id: input.id },
+          select: { actorUserId: true, actorEmail: true },
+        });
+        if (submitter?.actorUserId) {
+          await emitNotificationTx(tx, {
+            recipientUserId: submitter.actorUserId,
+            recipientEmail: submitter.actorEmail ?? "",
+            ...buildTicketNotificationPayload({
+              ticketId: input.id,
+              hasReply: true, // a close always writes an outcome note (the reply)
+              statusLabel: input.status === "RESOLVED" ? "resolved" : "dismissed",
+              outcomeNote: parsedOutcome.value,
+            }),
+            actor: { actorUserId: actor.id, actorEmail: actor.email },
+          });
+        }
+      }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }), 5, "developer-feedback-close"),
   );
 }

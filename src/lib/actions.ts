@@ -52,8 +52,11 @@ export function action<TArgs extends unknown[], TResult>(
     const user = await getActionUser();
     const tenantId = resolveTenantId(user);
     // Run the whole handler inside the tenant context so every Prisma op is tenant-scoped (RLS).
-    return runAsTenant(tenantId, () =>
-      handler({ user, actor: { actorUserId: user.id, actorEmail: user.email, tenantId } }, ...args),
+    // Carry the acting user (Plan 068 Unit 1b) so `app.user_id` is set for per-user RLS on the inbox.
+    return runAsTenant(
+      tenantId,
+      () => handler({ user, actor: { actorUserId: user.id, actorEmail: user.email, tenantId } }, ...args),
+      { userId: user.id },
     );
   };
 }
@@ -65,8 +68,10 @@ export function adminAction<TArgs extends unknown[], TResult>(
   return async (...args: TArgs) => {
     const user = await getActionUser({ admin: true });
     const tenantId = resolveTenantId(user);
-    return runAsTenant(tenantId, () =>
-      handler({ user, actor: { actorUserId: user.id, actorEmail: user.email, tenantId } }, ...args),
+    return runAsTenant(
+      tenantId,
+      () => handler({ user, actor: { actorUserId: user.id, actorEmail: user.email, tenantId } }, ...args),
+      { userId: user.id },
     );
   };
 }
