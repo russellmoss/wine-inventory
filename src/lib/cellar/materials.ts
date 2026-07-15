@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
@@ -27,7 +28,7 @@ export type { MaterialIntakeInput, UpdateMaterialInput };
 const MATERIAL_DTO_SELECT = {
   id: true, name: true, kind: true, subcategory: true, category: true,
   genericName: true, brand: true, brandName: true, preferGeneric: true,
-  vendor: true, vendorUrl: true, packageAmount: true, packageUnit: true,
+  vendor: true, vendorUrl: true, vendorId: true, packageAmount: true, packageUnit: true,
   defaultBasis: true, percentActive: true,
 } as const;
 
@@ -55,6 +56,7 @@ function toDTO(r: {
   preferGeneric?: boolean | null;
   vendor?: string | null;
   vendorUrl?: string | null;
+  vendorId?: string | null;
   packageAmount?: unknown;
   packageUnit?: string | null;
   defaultBasis: string | null;
@@ -72,6 +74,7 @@ function toDTO(r: {
     preferGeneric: !!r.preferGeneric,
     vendor: r.vendor ?? null,
     vendorUrl: r.vendorUrl ?? null,
+    vendorId: r.vendorId ?? null,
     packageAmount: r.packageAmount == null ? null : Number(r.packageAmount),
     packageUnit: r.packageUnit ?? null,
     defaultBasis: (r.defaultBasis as RateBasis | null) ?? null,
@@ -131,6 +134,24 @@ export async function listMaterials(opts: { kind?: MaterialKind; category?: Mate
       openingLotCost: openingLotTotalCost(correctable),
     };
   });
+}
+
+/**
+ * Plan 069: resolve the legacy vendor/vendorUrl free-text columns from the MANAGED vendor (source of truth).
+ * When `vendorId` is set, the vendor must exist (in-tenant, RLS-scoped) and its name/url are mirrored for
+ * read-compat. When it's null, fall back to any free-text passed by non-UI callers. Returns all three so the
+ * caller writes a consistent triple.
+ */
+async function resolveVendorMirror(
+  tx: Prisma.TransactionClient,
+  vendorId: string | null | undefined,
+  fallbackVendor: string | null,
+  fallbackUrl: string | null,
+): Promise<{ vendorId: string | null; vendor: string | null; vendorUrl: string | null }> {
+  if (!vendorId) return { vendorId: null, vendor: fallbackVendor, vendorUrl: fallbackUrl };
+  const v = await tx.vendor.findUnique({ where: { id: vendorId }, select: { name: true, url: true } });
+  if (!v) throw new ActionError("That vendor no longer exists.", "VALIDATION");
+  return { vendorId, vendor: v.name, vendorUrl: v.url };
 }
 
 export type UpsertMaterialInput = MaterialIntakeInput;
@@ -233,10 +254,13 @@ export async function createStockMaterialCore(
       where: { kind: f.kind, normalizedKey: f.normalizedKey },
       select: { id: true },
     });
+    // Plan 069: the managed vendor is the source of truth. Mirror its name/url into the legacy free-text
+    // columns for read-compat; fall back to any free-text vendor when no vendorId is given (non-UI callers).
+    const mirror = await resolveVendorMirror(tx, f.vendorId, f.vendor, f.vendorUrl);
     // The rich-intake path sets the display/purchase metadata on both create and reactivate-update.
     const richData = {
       category: f.category, genericName: f.genericName, brand: f.brand, brandName: f.brandName,
-      preferGeneric: f.preferGeneric, vendor: f.vendor, vendorUrl: f.vendorUrl,
+      preferGeneric: f.preferGeneric, vendor: mirror.vendor, vendorUrl: mirror.vendorUrl, vendorId: mirror.vendorId,
       packageAmount: f.packageAmount, packageUnit: f.packageUnit, subcategory: f.subcategory,
       ...(f.defaultBasis ? { defaultBasis: f.defaultBasis } : {}),
       ...(f.percentActive != null ? { percentActive: f.percentActive } : {}),
@@ -259,7 +283,7 @@ export async function createStockMaterialCore(
     if (openingQty > 0) {
       const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true, currency: true } });
       const lot = await tx.supplyLot.create({
-        data: { materialId: material.id, qtyReceived: openingQty, qtyRemaining: openingQty, stockUnit, unitCost, currency: coerceCurrency(settings?.currency), policyVersion: settings?.costingPolicyVersion ?? 1, supplierNote: "Opening stock" },
+        data: { materialId: material.id, qtyReceived: openingQty, qtyRemaining: openingQty, stockUnit, unitCost, currency: coerceCurrency(settings?.currency), policyVersion: settings?.costingPolicyVersion ?? 1, supplierNote: "Opening stock", vendorId: mirror.vendorId },
         select: { id: true },
       });
       await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Opening stock ${openingQty} ${stockUnit} of "${f.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
@@ -306,10 +330,13 @@ export async function updateMaterialCore(
       }
     }
 
+    // Plan 069: mirror the managed vendor's name/url into the legacy columns (source of truth = vendorId).
+    const mirror = await resolveVendorMirror(tx, plan.fields.vendorId, plan.fields.vendor, plan.fields.vendorUrl);
+    const data = { ...plan.fields, vendor: mirror.vendor, vendorUrl: mirror.vendorUrl, vendorId: mirror.vendorId };
     const updated = await tx.cellarMaterial
       .update({
         where: { id },
-        data: plan.fields,
+        data,
         select: { ...MATERIAL_DTO_SELECT, isStockTracked: true, stockUnit: true, isActive: true },
       })
       .catch((e: unknown) => {
@@ -383,6 +410,7 @@ export type ReceiveSupplyInput = {
   // Phase 15 Unit 10 — optional A/P: a purchase-on-credit under a vendor becomes a QBO Bill.
   vendorName?: string | null;
   terms?: string | null; // e.g. "Net 30" — drives the Bill DueDate
+  vendorId?: string | null; // Plan 069: the managed vendor for this receipt (stamped on the lot; resolves vendorName for A/P)
 };
 
 /**
@@ -404,6 +432,14 @@ export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupply
       await tx.cellarMaterial.update({ where: { id: material.id }, data: { isStockTracked: true, stockUnit } });
     }
     const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true, currency: true } });
+    // Plan 069: a managed vendorId stamps the lot and (when no explicit vendorName is given) resolves the name
+    // so the A/P find-or-create dedups to the SAME vendor row.
+    let vendorName = input.vendorName ?? null;
+    if (input.vendorId) {
+      const vend = await tx.vendor.findUnique({ where: { id: input.vendorId }, select: { name: true } });
+      if (!vend) throw new Error("That vendor no longer exists.");
+      if (!vendorName) vendorName = vend.name;
+    }
     const lot = await tx.supplyLot.create({
       data: {
         materialId: material.id,
@@ -415,13 +451,14 @@ export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupply
         policyVersion: settings?.costingPolicyVersion ?? 1,
         lotCode: input.lotCode?.trim() || null,
         supplierNote: input.note?.trim() || null,
+        vendorId: input.vendorId ?? null,
       },
       select: { id: true },
     });
     await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Received ${qty} ${stockUnit} of "${material.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
     // Phase 15 Unit 10 — transactional outbox: a purchase-on-credit emits an A/P Bill export + delivery
     // in THIS tx. No-op unless a vendor + A/P accounts + a known cost are all present.
-    await emitApExportForReceipt(lot.id, { vendorName: input.vendorName, terms: input.terms }, tx);
+    await emitApExportForReceipt(lot.id, { vendorName, terms: input.terms }, tx);
     return { supplyLotId: lot.id };
   });
 }

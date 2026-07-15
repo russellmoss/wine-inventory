@@ -20,6 +20,7 @@ const material = (over: Partial<CellarMaterialDTO> = {}): CellarMaterialDTO => (
   preferGeneric: false,
   vendor: over.vendor ?? null,
   vendorUrl: null,
+  vendorId: null,
   packageAmount: null,
   packageUnit: null,
   defaultBasis: null,

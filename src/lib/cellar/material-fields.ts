@@ -22,8 +22,9 @@ export type MaterialIntakeInput = {
   subcategory?: string | null;
   defaultBasis?: string | null;
   percentActive?: number | null;
-  vendor?: string | null;
-  vendorUrl?: string | null;
+  vendor?: string | null; // LEGACY free-text (Plan 069: superseded by vendorId; mirrored from the vendor in the core)
+  vendorUrl?: string | null; // LEGACY free-text (Plan 069: superseded by the vendor's url)
+  vendorId?: string | null; // Plan 069: the managed vendor (source of truth); the core mirrors its name/url into the legacy cols
   packageAmount?: number | null;
   packageUnit?: string | null;
 };
@@ -79,6 +80,7 @@ export function deriveMaterialFields(input: MaterialIntakeInput) {
     preferGeneric: !!input.preferGeneric,
     vendor: trimOrNull(input.vendor),
     vendorUrl: normalizeVendorUrl(input.vendorUrl),
+    vendorId: input.vendorId ?? null,
     packageAmount,
     packageUnit: packageAmount != null ? trimOrNull(input.packageUnit) : null,
     subcategory: normalizeSubcategory(input.subcategory),
@@ -114,6 +116,7 @@ export type MaterialUpdateFields = {
   preferGeneric: boolean;
   vendor: string | null;
   vendorUrl: string | null;
+  vendorId: string | null;
   packageAmount: number | null;
   packageUnit: string | null;
   stockUnit: StockUnit;
@@ -184,6 +187,7 @@ export function planMaterialUpdate(
       preferGeneric: f.preferGeneric,
       vendor: f.vendor,
       vendorUrl: f.vendorUrl,
+      vendorId: f.vendorId,
       packageAmount: f.packageAmount,
       packageUnit: f.packageUnit,
       stockUnit,
