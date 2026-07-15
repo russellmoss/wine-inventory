@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { Badge, Button, Card, Eyebrow, Input } from "@/components/ui";
 import {
   CALCULATORS, SECTIONS, defaultInput, DomainError, isCalc,
@@ -40,6 +40,11 @@ export default function CalculatorClient({
   const [history, setHistory] = useState<CalcHistoryRow[]>(initialHistory);
   const [, startLogging] = useTransition();
 
+  // The right-hand calculator panel. On narrow viewports the grid stacks to a single column, so the
+  // panel renders below the whole menu — selecting an item far down the list would otherwise leave
+  // the result offscreen (users had to scroll up to find it). We scroll it into view on selection.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
   const selected = useMemo(() => CALCULATORS.find((c) => c.id === selectedId) ?? null, [selectedId]);
 
   const filtered = useMemo(() => {
@@ -55,6 +60,14 @@ export default function CalculatorClient({
     setResult(null);
     setError(null);
     setInputs(isCalc(d) ? defaultInput(d) : {});
+    // Only steer the viewport when the layout is stacked (single-column). On the wide side-by-side
+    // layout the panel is already visible next to the menu, so we leave scroll position untouched.
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      // Defer to the next frame so the newly-selected panel content is committed before scrolling.
+      requestAnimationFrame(() => {
+        panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   }
 
   function calculate() {
@@ -146,7 +159,7 @@ export default function CalculatorClient({
         </div>
 
         {/* Right: selected calculator */}
-        <div>
+        <div ref={panelRef} style={{ scrollMarginTop: "var(--space-4)" }}>
           {selected ? (
             isCalc(selected) ? (
               <CalcCard
