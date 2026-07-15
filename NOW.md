@@ -7,9 +7,31 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-Plan 069 vendor management — **SHIPPED, PR #195 OPEN** (base main; merged inbox #191). Reviewed +
-browser-QA'd, all gates green. Awaiting human review/merge. At deploy: run
-`scripts/backfill-material-vendors.ts` against production tenants (Bhutan not yet backfilled).
+**Work-order Lead → MANDATORY invariant + detail-page editability (Plan 070) — BUILT + rebased onto main, shipping.**
+Branch `claude/work-order-assignment-edit-276af4`, rebased onto `origin/main` AFTER vendor mgmt (#195) +
+inbox DM (#197) landed. Renumbered 069→**070** (vendor mgmt already took 069). 7 commits. Lead defaults to
+the actor at the single `createWorkOrderCore` chokepoint (covers all 6 create paths); builder requires a
+Lead + sends assigneeId; admin/dev detail-page Edit card (Lead + due date, reusing assign/schedule
+backends); backfill `scripts/backfill-work-order-lead.ts` (`runAsSystem`) fixes existing null-Lead WOs;
+WORKORDER-5 invariant + guard. Green pre-rebase (tsc, vitest 2050, verify:work-orders 38, verify:invariants
+31/31, next build); re-verifying post-rebase. **BEFORE DONE:** run the backfill against PROD (fixes WO #27
+→ russellmoss87@gmail.com); browser-QA the two UI surfaces.
+
+<details><summary>original directive + diagnosis</summary>
+
+User directive: every WO must ALWAYS have a WO-level Lead (`WorkOrder.assigneeEmail`); per-task assignees
+stay optional. Diagnosed WO #27: Mike set the *task* assignee to Russell (= `russellmoss87@gmail.com`, the
+only Russell) but left the WO-level "Lead" dropdown at "— unassigned —"; header + Print/PDF read only the
+Lead field → show "—". Fix: default the Lead to the actor at `createWorkOrderCore`, require it in the
+builder, add an admin/developer detail-page Edit, backfill existing rows, guard with WORKORDER-5.
+
+</details>
+
+<details><summary>prev objective (shipped)</summary>
+
+Vendor management (Plan 069, PR #195) and inbox DM (#197) landed on main; Plan 068 inbox shipped (#191).
+
+</details>
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -97,4 +119,4 @@ browser-QA'd, all gates green. Awaiting human review/merge. At deploy: run
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-15 — Plan 069 vendor management SHIPPED as PR #195 (open, base main); reviewed + browser-QA'd; all gates green. Deploy step: backfill script on prod tenants._
+_Last updated: 2026-07-15 — Plan 070 (WO mandatory Lead + editability) BUILT + rebased onto main (after vendor #195 + inbox #197); renumbered from 069. WO Lead mandatory (defaults to actor at createWorkOrderCore), builder requires it, admin/dev detail-page Edit, backfill script, WORKORDER-5 guard. Re-verifying post-rebase, then PR + merge. Pending: prod backfill (fixes #27) + browser-QA._
