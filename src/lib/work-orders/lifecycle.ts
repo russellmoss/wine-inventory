@@ -25,6 +25,27 @@ function humanizeWorkOrderStatus(status: string): string {
   return status.toLowerCase().replace(/_/g, " ");
 }
 
+/** Resolve a free-text assignee email to a tenant member's User id. The WO's canonical `assigneeId` is
+ *  what drives the inbox "my work orders" bucket (inbox/buckets.ts) AND the WO_STATUS / assignment inbox
+ *  notifications — a WO assigned only by an email STRING (assigneeId null) is invisible in both. Both WO
+ *  builders capture the assignee as an email, so resolve it here at the single write choke point (covers
+ *  the palette builder, the vessel-modal composer, the assistant, and NL authoring). Returns null when the
+ *  email matches no member of this tenant (a genuine external/unknown assignee stays email-only — never a
+ *  bad link). `member` is a GLOBAL table keyed by organizationId → queried directly, not RLS-scoped. */
+export async function resolveAssigneeIdByEmail(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  email: string | null | undefined,
+): Promise<string | null> {
+  const normalized = email?.trim();
+  if (!normalized) return null;
+  const member = await tx.member.findFirst({
+    where: { organizationId: tenantId, user: { email: { equals: normalized, mode: "insensitive" } } },
+    select: { userId: true },
+  });
+  return member?.userId ?? null;
+}
+
 /** Emit a WO_STATUS notification to the current assignee for a real status transition. No-op when
  *  nothing changed or the WO is unassigned; self-notification is suppressed inside emitNotificationTx.
  *  Called by the status-changing lifecycle/approval cores with their own actor. */
@@ -142,13 +163,16 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
   const created = await runInTenantTx(async (tx) => {
     const tenantId = requireTenantId();
     const number = await nextWorkOrderNumber(tx, tenantId);
+    // Resolve the free-text assignee email to a member's User id so the WO lands in the assignee's inbox
+    // bucket + gets a notification. An explicit assigneeId (NL/assistant path) always wins.
+    const assigneeId = input.assigneeId ?? (await resolveAssigneeIdByEmail(tx, tenantId, input.assigneeEmail));
     const wo = await tx.workOrder.create({
       data: {
         number,
         title: input.title.trim(),
         status: "DRAFT",
         instructions: input.instructions?.trim() || null,
-        assigneeId: input.assigneeId ?? null,
+        assigneeId,
         assigneeEmail: input.assigneeEmail ?? null,
         dueAt: input.dueAt ?? null,
         scheduledFor: input.scheduledFor ?? null,
@@ -253,16 +277,19 @@ export async function assignWorkOrderCore(
     throw new ActionError("You can only reassign a draft or issued work order.", "CONFLICT");
   }
   const updated = await runInTenantTx(async (tx) => {
+    // An explicit assigneeId wins; otherwise resolve the email to a member so the reassignment actually
+    // lands in that user's inbox bucket + fires the "assigned" notification (not just a display string).
+    const assigneeId = input.assigneeId ?? (await resolveAssigneeIdByEmail(tx, requireTenantId(), input.assigneeEmail));
     const row = await tx.workOrder.update({
       where: { id: wo.id },
-      data: { assigneeId: input.assigneeId, assigneeEmail: input.assigneeEmail },
+      data: { assigneeId, assigneeEmail: input.assigneeEmail },
       select: { id: true, number: true, status: true },
     });
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrder", entityId: wo.id, summary: `Reassigned work order #${wo.number}` });
     // Inbox hook (Unit 5): tell the NEW assignee the WO is theirs (self-assign is suppressed).
-    if (input.assigneeId) {
+    if (assigneeId) {
       await emitNotificationTx(tx, {
-        recipientUserId: input.assigneeId,
+        recipientUserId: assigneeId,
         recipientEmail: input.assigneeEmail ?? "",
         ...buildWorkOrderNotificationPayload({ workOrderId: wo.id, workOrderNumber: wo.number, event: "assigned" }),
         actor: { actorUserId: actor.actorUserId, actorEmail: actor.actorEmail },

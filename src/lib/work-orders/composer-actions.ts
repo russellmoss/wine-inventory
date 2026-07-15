@@ -1,7 +1,7 @@
 "use server";
 
 import { action } from "@/lib/actions";
-import { listTemplatesWithSpec, getWorkOrderPickers, type PickerOption } from "@/lib/work-orders/data";
+import { listTemplatesWithSpec, getWorkOrderPickers, listOrgMembers, type PickerOption, type OrgMemberRow } from "@/lib/work-orders/data";
 import { createWorkOrderFromTemplateCore } from "@/lib/work-orders/templates";
 import { issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
 import { gateWorkOrderReadinessForWrite } from "@/lib/work-orders/proposal-readiness";
@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 export type VesselWorkOrderComposerData = {
   templates: { id: string; name: string; isSystem: boolean; spec: unknown }[];
   pickers: { vessels: PickerOption[]; materials: PickerOption[]; lots: PickerOption[] };
+  members: OrgMemberRow[];
 };
 
 /** Composer data for the in-modal WO issuer: the same templates + pickers the standalone /work-orders/new
@@ -23,11 +24,12 @@ export type VesselWorkOrderComposerData = {
  * the tenant is taken from the verified session (K9), never the client. Read-only. */
 export const getVesselWorkOrderComposerData = action(
   async ({ actor }, _vesselId: string): Promise<VesselWorkOrderComposerData> => {
-    const [templates, pickers] = await Promise.all([
+    const [templates, pickers, members] = await Promise.all([
       listTemplatesWithSpec(actor.tenantId),
       getWorkOrderPickers(actor.tenantId),
+      listOrgMembers(actor.tenantId),
     ]);
-    return { templates, pickers };
+    return { templates, pickers, members };
   },
 );
 

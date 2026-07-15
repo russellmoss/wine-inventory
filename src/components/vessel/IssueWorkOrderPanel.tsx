@@ -135,6 +135,7 @@ export function IssueWorkOrderPanel({ vesselId, vesselLabel, onClose, onIssued }
     <NewWorkOrderClient
       templates={data.templates}
       pickers={data.pickers}
+      members={data.members}
       lockedVessel={{ id: vesselId, label: vesselLabel }}
       onCreateAndIssue={handleCreateAndIssue}
       onCancel={onClose}
