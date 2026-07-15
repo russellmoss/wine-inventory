@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React from "react";
-import { Badge, Eyebrow, Tabs } from "@/components/ui";
+import { Eyebrow, Tabs } from "@/components/ui";
 import type {
   DeveloperFeedbackData,
   DeveloperFeedbackItem,
@@ -17,6 +17,7 @@ import {
 import { DeveloperFilters } from "./DeveloperFilters";
 import { DeveloperQueueList } from "./DeveloperQueueList";
 import { TenantAutomationPanel } from "./TenantAutomationPanel";
+import { DeveloperItemDetail } from "./DeveloperItemDetail";
 import styles from "./developer.module.css";
 
 const WORK_VIEWS = [
@@ -36,43 +37,12 @@ function queueLabel(queue: DeveloperFeedbackItem["queue"]): string {
         : "Closed";
 }
 
-function SelectedSummary({ item }: { item: DeveloperFeedbackItem }) {
-  const headingRef = React.useRef<HTMLHeadingElement>(null);
-  React.useEffect(() => {
-    if (window.matchMedia("(max-width: 1099px)").matches) headingRef.current?.focus();
-  }, [item.id]);
-  return (
-    <article>
-      <h2 ref={headingRef} tabIndex={-1} className={styles.sectionHeading}>
-        {item.title}
-      </h2>
-      <p className={styles.subtle}>
-        {item.tenantName} · {item.kind} · {item.id}
-      </p>
-      <div className={styles.inlineActions} style={{ marginBlock: "var(--space-3)" }}>
-        <Badge tone={item.severity === "P0" ? "red" : "neutral"} variant="outline">
-          {item.severity ?? "Unset"}
-        </Badge>
-        <Badge tone="neutral" variant="outline">
-          {item.triageClass ?? "Untriaged"}
-        </Badge>
-        <Badge tone="neutral" variant="outline">
-          {item.status}
-        </Badge>
-      </div>
-      <p style={{ whiteSpace: "pre-wrap" }}>{item.body || "No problem statement supplied."}</p>
-      <p className={styles.subtle}>
-        Full evidence, triage, delivery, automation, and outcome controls follow in Unit 6.
-      </p>
-    </article>
-  );
-}
-
 export function DeveloperWorkspace({
   data,
   exactPage,
   query,
   selectedItem,
+  handoffPacket,
   selectedIsInCurrentList,
   notices,
 }: {
@@ -80,6 +50,7 @@ export function DeveloperWorkspace({
   exactPage: DeveloperTenantFeedbackPage | null;
   query: DeveloperWorkspaceQuery;
   selectedItem: DeveloperFeedbackItem | null;
+  handoffPacket: string;
   selectedIsInCurrentList: boolean;
   notices: string[];
 }) {
@@ -149,7 +120,11 @@ export function DeveloperWorkspace({
                     : `This item is now in ${queueLabel(selectedItem.queue)}.`}
                 </div>
               ) : null}
-              <SelectedSummary item={selectedItem} />
+              <DeveloperItemDetail
+                key={`${selectedItem.sourceType}:${selectedItem.id}:${selectedItem.developerNotesVersion}:${selectedItem.linearLink?.version ?? 0}`}
+                item={selectedItem}
+                handoffPacket={handoffPacket}
+              />
             </>
           ) : query.item ? (
             <div className={styles.emptyDetail} role="status">

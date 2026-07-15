@@ -13,7 +13,10 @@ import {
   getDeveloperTenantFeedbackPage,
 } from "@/lib/developer/feedback";
 import { linkFeedbackToLinearCore } from "@/lib/developer/linear-link-actions";
-import { updateFeedbackItemCore } from "@/lib/developer/feedback-item-actions";
+import {
+  closeFeedbackItemCore,
+  updateFeedbackItemCore,
+} from "@/lib/developer/feedback-item-actions";
 
 const ENABLED =
   process.env.TENANT_ISOLATION_DB === "1" &&
@@ -274,6 +277,65 @@ describe.skipIf(!ENABLED)("developer feedback database loaders", () => {
       const current = await owner.feedbackTicket.findUniqueOrThrow({ where: { id } });
       expect(current.developerNotes).toContain("Promoted to Linear WIN-98001");
       expect(current.developerNotes).toContain("legacy writer without a version increment");
+    } finally {
+      await owner.feedbackTicket.deleteMany({ where: { tenantId: TENANT, id } });
+    }
+  });
+
+  it("closes with a stamped outcome and rejects a stale concurrent close", async () => {
+    const id = "developer_loader_close_outcome";
+    await owner.feedbackTicket.create({
+      data: {
+        tenantId: TENANT,
+        id,
+        kind: "BUG_REPORT",
+        title: "Close outcome concurrency",
+        body: "A meaningful close must preserve history.",
+        actorEmail: "loader@demowinery.test",
+        modeAtSubmission: "REPORT_ONLY",
+        status: "TRIAGED",
+        triageClass: "DEFECT",
+        developerNotes: "Existing investigation note",
+      },
+    });
+    try {
+      const original = await owner.feedbackTicket.findUniqueOrThrow({ where: { id } });
+      await owner.feedbackTicket.update({
+        where: { id },
+        data: { developerNotes: "Concurrent developer note" },
+      });
+      await expect(
+        closeFeedbackItemCore(
+          { id: "developer-loader-vitest", email: "developer-loader@demowinery.test" },
+          {
+            tenantId: TENANT,
+            sourceType: "FEEDBACK_TICKET",
+            id,
+            status: "RESOLVED",
+            outcome: "Merged and verified the corrected close behavior.",
+            expectedNotesVersion: original.developerNotesVersion,
+          },
+        ),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+      const fresh = await owner.feedbackTicket.findUniqueOrThrow({ where: { id } });
+      await closeFeedbackItemCore(
+        { id: "developer-loader-vitest", email: "developer-loader@demowinery.test" },
+        {
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          id,
+          status: "RESOLVED",
+          outcome: "Merged and verified the corrected close behavior.",
+          expectedNotesVersion: fresh.developerNotesVersion,
+        },
+      );
+      const closed = await owner.feedbackTicket.findUniqueOrThrow({ where: { id } });
+      expect(closed.status).toBe("RESOLVED");
+      expect(closed.resolvedAt).not.toBeNull();
+      expect(closed.resolvedByUserId).toBe("developer-loader-vitest");
+      expect(closed.developerNotes).toContain("[developer");
+      expect(closed.developerNotes).toContain("Merged and verified");
+      expect(closed.developerNotes).toContain("Concurrent developer note");
     } finally {
       await owner.feedbackTicket.deleteMany({ where: { tenantId: TENANT, id } });
     }

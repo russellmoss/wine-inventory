@@ -272,6 +272,97 @@
   font-weight: 300;
 }
 
+.itemDetail {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.detailHeader h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-h3);
+  font-weight: 300;
+  overflow-wrap: anywhere;
+}
+
+.detailSection {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: var(--border-width) solid var(--border-default);
+}
+
+.detailSection h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-h4);
+  font-weight: 300;
+}
+
+.problemStatement,
+.timelineEntry p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.planPreview {
+  max-height: 320px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  padding: var(--space-3);
+  white-space: pre-wrap;
+  font: var(--text-caption)/var(--leading-normal) var(--font-mono);
+}
+
+.detailFields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.deliveryLinks,
+.timeline {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.privacyWarning,
+.confirmation {
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  padding: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-body-sm);
+}
+
+.confirmation p {
+  margin-top: 0;
+}
+
+.linkForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-2);
+}
+
+.timelineEntry {
+  display: grid;
+  gap: var(--space-1);
+  border-left: var(--border-width-strong) solid var(--border-strong);
+  padding-left: var(--space-3);
+}
+
 .skeletonRow {
   height: 52px;
   border-bottom: 1px solid var(--border-default);
@@ -333,6 +424,11 @@
   .snapshotCopy {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .detailFields,
+  .linkForm {
+    grid-template-columns: 1fr;
   }
 }
 

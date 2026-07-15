@@ -6,6 +6,7 @@ import {
   type DeveloperTenantFeedbackPage,
 } from "@/lib/developer/feedback";
 import { parseDeveloperWorkspaceQuery } from "@/lib/developer/workspace-query";
+import { buildFeedbackHandoffMarkdown } from "@/lib/developer/linear-links";
 import { DeveloperWorkspace } from "./DeveloperWorkspace";
 
 type DeveloperSearchParams = Record<string, string | string[] | undefined>;
@@ -75,6 +76,12 @@ export default async function DeveloperPage({
         (item) => item.id === selectedItem.id && item.sourceType === selectedItem.sourceType,
       )
     : false;
+  const handoffPacket = selectedItem
+    ? buildFeedbackHandoffMarkdown(
+        selectedItem,
+        process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+      )
+    : "";
 
   return (
     <DeveloperWorkspace
@@ -82,6 +89,7 @@ export default async function DeveloperPage({
       exactPage={exactPage}
       query={query}
       selectedItem={selectedItem}
+      handoffPacket={handoffPacket}
       selectedIsInCurrentList={selectedIsInCurrentList}
       notices={[
         ...(query.invalid.length

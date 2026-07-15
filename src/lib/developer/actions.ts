@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   FeedbackAutomationMode,
   FeedbackAutomationSource,
+  FeedbackItemStatus,
   FeedbackSeverity,
   FeedbackTriageClass,
 } from "@prisma/client";
@@ -23,7 +24,10 @@ import { approveAutomationRun, dispatchApprovedRun } from "@/lib/feedback/automa
 import { parseLinearIssueUrl } from "@/lib/developer/linear-links";
 import { linkFeedbackToLinearCore } from "@/lib/developer/linear-link-actions";
 import { parseLinkFeedbackToLinearInput } from "@/lib/developer/linear-link-input";
-import { updateFeedbackItemCore } from "@/lib/developer/feedback-item-actions";
+import {
+  closeFeedbackItemCore,
+  updateFeedbackItemCore,
+} from "@/lib/developer/feedback-item-actions";
 
 function asMode(value: string): FeedbackAutomationMode {
   if (
@@ -49,6 +53,14 @@ function assertFeedbackSource(value: string): FeedbackAutomationSource {
     return value;
   }
   throw new ActionError("Invalid feedback source.", "VALIDATION");
+}
+
+function asFeedbackStatus(value: string | undefined): FeedbackItemStatus | undefined {
+  if (value === undefined) return undefined;
+  if (Object.values(FeedbackItemStatus).includes(value as FeedbackItemStatus)) {
+    return value as FeedbackItemStatus;
+  }
+  throw new ActionError("Invalid feedback status.", "VALIDATION");
 }
 
 export async function linkFeedbackToLinear(value: unknown) {
@@ -199,8 +211,31 @@ export async function updateFeedbackItem(input: {
       id: input.id,
       severity,
       triageClass,
-      status: input.status,
+      status: asFeedbackStatus(input.status),
       developerNotes: notes,
+      expectedNotesVersion: input.expectedNotesVersion,
+    },
+  );
+  revalidatePath("/developer");
+}
+
+export async function closeFeedbackItem(input: {
+  tenantId: string;
+  sourceType: "ASSISTANT_FEEDBACK" | "FEEDBACK_TICKET";
+  id: string;
+  status: "RESOLVED" | "DISMISSED";
+  outcome: string;
+  expectedNotesVersion: number;
+}) {
+  const developer = await requireDeveloper();
+  await closeFeedbackItemCore(
+    { id: developer.id, email: developer.email },
+    {
+      tenantId: assertTenantId(input.tenantId),
+      sourceType: assertFeedbackSource(input.sourceType),
+      id: input.id,
+      status: input.status,
+      outcome: input.outcome,
       expectedNotesVersion: input.expectedNotesVersion,
     },
   );
