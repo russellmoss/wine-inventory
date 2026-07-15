@@ -110,6 +110,18 @@ async function main() {
     });
     assert(!!wo.workOrderId && wo.status === "DRAFT", "WO created in DRAFT with a number");
 
+    // ── Plan 069 (WORKORDER-5): the Lead is mandatory. A create with no Lead defaults to the creating
+    // actor; an explicit Lead passes through unchanged. ──
+    const woLead = await prisma.workOrder.findUniqueOrThrow({ where: { id: wo.workOrderId }, select: { assigneeEmail: true } });
+    assert(woLead.assigneeEmail === ACTOR.actorEmail, "WORKORDER-5: a null Lead defaulted to the creating actor");
+    const leadWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWO explicit lead",
+      assigneeEmail: "lead@zzwo.test",
+      tasks: [{ seq: 1, kind: "OBSERVATION", title: "Log Brix", observationType: "BRIX", lotId, destVesselId: src.id, plannedPayload: { vesselId: src.id, lotId } }],
+    });
+    const explicitLead = await prisma.workOrder.findUniqueOrThrow({ where: { id: leadWo.workOrderId }, select: { assigneeEmail: true } });
+    assert(explicitLead.assigneeEmail === "lead@zzwo.test", "WORKORDER-5: an explicit Lead passes through unchanged");
+
     const issued = await issueWorkOrderCore(ACTOR, { workOrderId: wo.workOrderId });
     assert(issued.status === "ISSUED", "WO issued");
     const reservations = await prisma.reservation.findMany({ where: { workOrderId: wo.workOrderId } });

@@ -147,7 +147,7 @@ The cost engine is a projection over the ledger; it never invents or loses money
   are WITHHELD, never partially posted (D14); a reversal negates amounts and links back. Reading
   `cost_export_event` IS the per-SKU/per-run export view (Phase 15 posts it, no reshape).
 
-## Work orders — Phase 9 / 9.1 (WORKORDER-1/2/3)
+## Work orders — Phase 9 / 9.1 (WORKORDER-1..5)
 The work-order engine writes through the SAME ledger + cost machinery, so its invariants are ledger-adjacent.
 Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
 [[WORKORDER-2-reservations-are-advisory]], [[WORKORDER-3-maintenance-supply-is-overhead]].
@@ -186,6 +186,17 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   persist AND on every resolve), and by the resolver's built-in-collision skip. Field overlays
   (`WorkOrderTaskTypeOverlay`) are display-only and `assertOverlaySafe` forbids hiding a field a governed core
   needs. Machine-readable note: [[WORKORDER-4-user-types-record-only]]. Guard: `npm run verify:user-types-record-only`.
+
+- **Every work order has a Lead (WORKORDER-5, Plan 069).**
+  Every `WorkOrder` carries a non-null Lead (`assigneeEmail`, plus `assigneeId` when a real user is known) —
+  the single person accountable for the order. The Lead is resolved at the one create chokepoint
+  (`createWorkOrderCore` via `resolveCreateLead`): an explicit Lead passes through, otherwise it defaults to
+  the creating actor, so no creation path (builder, template, composer, recurring, assistant, generic) can
+  produce a Lead-less order, and the header/print/dashboard always show an owner. Per-task assignees
+  (`WorkOrderTask.assigneeId`) stay OPTIONAL — the Lead is order-level, distinct from a per-task assignment.
+  Existing Lead-less orders were backfilled once (`scripts/backfill-work-order-lead.ts`: single task
+  assignee → issuer → tenant admin). Machine-readable note: [[WORKORDER-5-work-order-has-lead]].
+  Guard: `npm run verify:work-orders`.
 
 ## Compliance & migration invariants
 > Added in Phase 0 from the incumbent teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B.1(iv);
