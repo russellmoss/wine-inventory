@@ -23,10 +23,17 @@ export function buildTicketNotificationPayload(input: {
   outcomeNote?: string | null;
 }): BuiltPayload {
   const { ticketId, hasReply, statusLabel, outcomeNote } = input;
+  // A status transition (e.g. a close) titles by the new status; a pure reply with no status change
+  // titles as a reply. The outcome note (when present) is the snippet, else a status line.
+  const title = statusLabel
+    ? `Your ticket is now ${statusLabel}`
+    : hasReply
+      ? "New reply on your ticket"
+      : "Your ticket was updated";
   return {
     category: "TICKET",
     kind: hasReply ? "TICKET_REPLY" : "TICKET_STATUS",
-    title: hasReply ? "New reply on your ticket" : `Your ticket is now ${statusLabel ?? "updated"}`,
+    title,
     snippet: hasReply
       ? toSnippet(outcomeNote)
       : toSnippet(statusLabel ? `Status: ${statusLabel}` : "Your ticket was updated."),

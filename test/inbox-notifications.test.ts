@@ -58,6 +58,17 @@ describe("buildTicketNotificationPayload", () => {
     expect(p.title).toBe("Your ticket is now resolved");
     expect(p.snippet).toBe("Status: resolved");
   });
+  it("a close (reply + status) titles by status but keeps the outcome as a TICKET_REPLY snippet", () => {
+    const p = buildTicketNotificationPayload({
+      ticketId: "t3",
+      hasReply: true,
+      statusLabel: "resolved",
+      outcomeNote: "Shipped the fix.",
+    });
+    expect(p.kind).toBe("TICKET_REPLY");
+    expect(p.title).toBe("Your ticket is now resolved");
+    expect(p.snippet).toBe("Shipped the fix.");
+  });
 });
 
 describe("buildWorkOrderNotificationPayload", () => {
