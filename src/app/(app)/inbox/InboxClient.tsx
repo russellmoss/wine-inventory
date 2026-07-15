@@ -169,7 +169,10 @@ export function InboxClient(props: {
             </>
           ) : (
             <>
-              <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 13, color: "var(--text-muted)" }}>Conversations</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Conversations</span>
+                <Link href={inboxHref("dm")} style={{ fontSize: 12.5, color: "var(--text-accent)", textDecoration: "none" }}>+ New</Link>
+              </div>
               {props.threads.length === 0 ? <Empty label="No conversations yet." /> : props.threads.map((th) => (
                 <button key={th.threadId} onClick={() => openThread(th.threadId)} style={listRow(props.selectedThreadId === th.threadId, false)}>
                   <div style={{ color: "var(--text-primary)" }}>{th.otherEmail}</div>
@@ -183,10 +186,22 @@ export function InboxClient(props: {
         {/* ── Reader pane ── */}
         <div style={{ ...panel, padding: "var(--space-4)", minHeight: 400 }}>
           {props.bucket === "dm" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+            props.threadDetail ? (
+              // Open channel (Slack-style): the thread, with a reply box pinned below that sends
+              // straight to this person — no recipient picker.
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+                <div style={{ maxHeight: 380, overflowY: "auto" }}>
+                  <ThreadView thread={props.threadDetail} />
+                </div>
+                <ComposeMessage
+                  recipients={[]}
+                  fixedRecipient={{ userId: props.threadDetail.otherUserId, email: props.threadDetail.otherEmail }}
+                />
+              </div>
+            ) : (
+              // No channel open — start a new conversation (recipient picker).
               <ComposeMessage recipients={props.recipients} />
-              {props.threadDetail ? <ThreadView thread={props.threadDetail} /> : <p style={{ color: "var(--text-muted)" }}>Pick a conversation, or start a new one above.</p>}
-            </div>
+            )
           ) : selected ? (
             <Reader selected={selected} onMarkUnread={markUnread} />
           ) : (
