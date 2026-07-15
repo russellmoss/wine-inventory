@@ -21,7 +21,7 @@ import { memberOfTenant, tenantUserWhere } from "@/lib/users/scope";
  */
 const ENABLED = process.env.TENANT_ISOLATION_DB === "1" && !!process.env.DATABASE_URL_APP && !!process.env.DATABASE_URL_UNPOOLED;
 
-const A = "org_bhutan_wine_co";
+const A = "org_demo_winery";
 const B = "org_isolation_vitest_b";
 
 describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
@@ -41,10 +41,110 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
   beforeAll(async () => {
     owner = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_UNPOOLED } } });
     app = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_APP } } });
-    // Tenant A already exists in a real DB; on a fresh DB (CI) it must be created so the FK-bound
-    // fixtures below (tenantId = A) can insert. Idempotent — a no-op update against the real tenant.
-    await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Bhutan Wine Co", slug: A } });
+    // Tenant A is always the Demo Winery sandbox. Create it on a fresh CI DB so the FK-bound
+    // fixtures can insert; never write isolation fixtures into Bhutan Wine Co.
+    await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Demo Winery", slug: "demo-winery" } });
     await owner.organization.upsert({ where: { id: B }, update: {}, create: { id: B, name: "Iso Vitest B", slug: B } });
+    await owner.feedbackLinearLink.deleteMany({
+      where: {
+        id: {
+          in: [
+            "isov_linear_link_shared",
+            "isov_linear_link_cross",
+            "isov_linear_link_both",
+            "isov_linear_link_neither",
+            "isov_linear_link_duplicate",
+          ],
+        },
+      },
+    });
+    await owner.feedbackTicket.upsert({
+      where: { id: "isov_linear_ticket_a1" },
+      update: {},
+      create: {
+        id: "isov_linear_ticket_a1",
+        tenantId: A,
+        kind: "FEATURE_REQUEST",
+        title: "Linear isolation ticket A1",
+        body: "Demo fixture",
+        actorEmail: "isolation@demowinery.test",
+        modeAtSubmission: "REPORT_ONLY",
+      },
+    });
+    await owner.feedbackTicket.upsert({
+      where: { id: "isov_linear_ticket_a2" },
+      update: {},
+      create: {
+        id: "isov_linear_ticket_a2",
+        tenantId: A,
+        kind: "FEATURE_REQUEST",
+        title: "Linear isolation ticket A2",
+        body: "Demo fixture",
+        actorEmail: "isolation@demowinery.test",
+        modeAtSubmission: "REPORT_ONLY",
+      },
+    });
+    await owner.feedbackTicket.upsert({
+      where: { id: "isov_linear_ticket_b" },
+      update: {},
+      create: {
+        id: "isov_linear_ticket_b",
+        tenantId: B,
+        kind: "FEATURE_REQUEST",
+        title: "Linear isolation ticket B",
+        body: "Isolation fixture",
+        actorEmail: "isolation-b@test",
+        modeAtSubmission: "REPORT_ONLY",
+      },
+    });
+    await owner.assistantFeedback.upsert({
+      where: { id: "isov_linear_feedback_a" },
+      update: {},
+      create: {
+        id: "isov_linear_feedback_a",
+        tenantId: A,
+        rating: "down",
+        comment: "Demo fixture",
+        conversation: [],
+        actorEmail: "isolation@demowinery.test",
+      },
+    });
+    await owner.assistantFeedback.upsert({
+      where: { id: "isov_linear_feedback_b" },
+      update: {},
+      create: {
+        id: "isov_linear_feedback_b",
+        tenantId: B,
+        rating: "down",
+        comment: "Isolation fixture",
+        conversation: [],
+        actorEmail: "isolation-b@test",
+      },
+    });
+    await owner.feedbackLinearLink.upsert({
+      where: { id: "isov_linear_link_a" },
+      update: {},
+      create: {
+        id: "isov_linear_link_a",
+        tenantId: A,
+        ticketId: "isov_linear_ticket_a1",
+        linearIssueKey: "WIN-ISO-1",
+        linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-1/demo-fixture",
+        linkedByUserId: "isov_voice_user_a",
+      },
+    });
+    await owner.feedbackLinearLink.upsert({
+      where: { id: "isov_linear_link_b" },
+      update: {},
+      create: {
+        id: "isov_linear_link_b",
+        tenantId: B,
+        assistantFeedbackId: "isov_linear_feedback_b",
+        linearIssueKey: "WIN-ISO-2",
+        linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-2/isolation-fixture",
+        linkedByUserId: "isov_voice_user_b",
+      },
+    });
     await owner.user.upsert({ where: { id: "isov_voice_user_a" }, update: {}, create: { id: "isov_voice_user_a", name: "Voice A", email: "isov_voice_a@test" } });
     await owner.user.upsert({ where: { id: "isov_voice_user_b" }, update: {}, create: { id: "isov_voice_user_b", name: "Voice B", email: "isov_voice_b@test" } });
     // #90: org memberships so the app-layer user-management scoping (User/Member are GLOBAL, no RLS)
@@ -99,6 +199,27 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
   });
 
   afterAll(async () => {
+    await owner.feedbackLinearLink.deleteMany({
+      where: {
+        id: {
+          in: [
+            "isov_linear_link_a",
+            "isov_linear_link_b",
+            "isov_linear_link_shared",
+            "isov_linear_link_cross",
+            "isov_linear_link_both",
+            "isov_linear_link_neither",
+            "isov_linear_link_duplicate",
+          ],
+        },
+      },
+    });
+    await owner.feedbackTicket.deleteMany({
+      where: { id: { in: ["isov_linear_ticket_a1", "isov_linear_ticket_a2", "isov_linear_ticket_b"] } },
+    });
+    await owner.assistantFeedback.deleteMany({
+      where: { id: { in: ["isov_linear_feedback_a", "isov_linear_feedback_b"] } },
+    });
     await owner.lotCodeEvent.deleteMany({ where: { id: { in: ["isov_lce_b"] } } });
     await owner.lotIdentifier.deleteMany({ where: { id: { in: ["isov_li_a", "isov_li_b", "isov_li_x", "isov_li_k11"] } } });
     await owner.changeOfTaxClassEvent.deleteMany({ where: { id: { in: ["isov_ctc_b", "isov_ctc_k11"] } } }); // Phase 2: FK'd to lot
@@ -132,6 +253,90 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
 
   it("no context -> 0 rows (fail-closed)", async () => {
     expect(await app.lot.count()).toBe(0);
+    expect(await app.feedbackLinearLink.count()).toBe(0);
+  });
+
+  it("feedback_linear_link is tenant-isolated and enforces parent/link invariants", async () => {
+    expect(
+      await asTenant(A, (db) => db.feedbackLinearLink.findFirst({ where: { id: "isov_linear_link_a" } })),
+    ).not.toBeNull();
+    expect(
+      await asTenant(A, (db) => db.feedbackLinearLink.findFirst({ where: { id: "isov_linear_link_b" } })),
+    ).toBeNull();
+
+    await expect(
+      asTenant(A, (db) =>
+        db.feedbackLinearLink.create({
+          data: {
+            id: "isov_linear_link_cross",
+            tenantId: A,
+            ticketId: "isov_linear_ticket_b",
+            linearIssueKey: "WIN-ISO-X",
+            linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-X/cross-tenant",
+            linkedByUserId: "isov_voice_user_a",
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      asTenant(A, (db) =>
+        db.feedbackLinearLink.create({
+          data: {
+            id: "isov_linear_link_both",
+            tenantId: A,
+            ticketId: "isov_linear_ticket_a2",
+            assistantFeedbackId: "isov_linear_feedback_a",
+            linearIssueKey: "WIN-ISO-BOTH",
+            linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-BOTH/both-parents",
+            linkedByUserId: "isov_voice_user_a",
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      asTenant(A, (db) =>
+        db.feedbackLinearLink.create({
+          data: {
+            id: "isov_linear_link_neither",
+            tenantId: A,
+            linearIssueKey: "WIN-ISO-NONE",
+            linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-NONE/no-parent",
+            linkedByUserId: "isov_voice_user_a",
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      asTenant(A, (db) =>
+        db.feedbackLinearLink.create({
+          data: {
+            id: "isov_linear_link_duplicate",
+            tenantId: A,
+            ticketId: "isov_linear_ticket_a1",
+            linearIssueKey: "WIN-ISO-DUP",
+            linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-DUP/duplicate",
+            linkedByUserId: "isov_voice_user_a",
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const shared = await asTenant(A, (db) =>
+      db.feedbackLinearLink.create({
+        data: {
+          id: "isov_linear_link_shared",
+          tenantId: A,
+          ticketId: "isov_linear_ticket_a2",
+          linearIssueKey: "WIN-ISO-1",
+          linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-1/demo-fixture",
+          linkedByUserId: "isov_voice_user_a",
+        },
+      }),
+    );
+    expect(shared.linearIssueKey).toBe("WIN-ISO-1");
   });
 
   it("tenant A sees its own lot but not tenant B's", async () => {

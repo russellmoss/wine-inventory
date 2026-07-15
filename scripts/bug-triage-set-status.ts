@@ -85,32 +85,50 @@ async function main() {
   await runAsTenant(tenantId, () =>
     runInTenantTx(async (tx) => {
       if (sourceType === "ASSISTANT_FEEDBACK") {
-        const existing = await tx.assistantFeedback.findUniqueOrThrow({ where: { id }, select: { developerNotes: true } });
-        const developerNotes = mergeNotes(note, existing.developerNotes);
-        await tx.assistantFeedback.update({
+        const existing = await tx.assistantFeedback.findUniqueOrThrow({
           where: { id },
+          select: { developerNotes: true, developerNotesVersion: true },
+        });
+        const developerNotes = mergeNotes(note, existing.developerNotes);
+        const updated = await tx.assistantFeedback.updateMany({
+          where: { tenantId, id, developerNotesVersion: existing.developerNotesVersion },
           data: {
             // assistant feedback has no IN_PROGRESS state
             status: status !== "IN_PROGRESS" ? status : undefined,
             triageClass: triageClassValue,
             developerNotes,
+            ...(developerNotes !== undefined
+              ? { developerNotesVersion: { increment: 1 } }
+              : {}),
             resolvedAt: status === "RESOLVED" ? new Date() : undefined,
             resolvedByUserId: status === "RESOLVED" ? actor.id : undefined,
           },
         });
+        if (updated.count !== 1) {
+          throw new Error("Feedback notes changed during triage; rerun with the current item.");
+        }
       } else {
-        const existing = await tx.feedbackTicket.findUniqueOrThrow({ where: { id }, select: { developerNotes: true } });
-        const developerNotes = mergeNotes(note, existing.developerNotes);
-        await tx.feedbackTicket.update({
+        const existing = await tx.feedbackTicket.findUniqueOrThrow({
           where: { id },
+          select: { developerNotes: true, developerNotesVersion: true },
+        });
+        const developerNotes = mergeNotes(note, existing.developerNotes);
+        const updated = await tx.feedbackTicket.updateMany({
+          where: { tenantId, id, developerNotesVersion: existing.developerNotesVersion },
           data: {
             status: status as FeedbackItemStatus,
             triageClass: triageClassValue,
             developerNotes,
+            ...(developerNotes !== undefined
+              ? { developerNotesVersion: { increment: 1 } }
+              : {}),
             resolvedAt: status === "RESOLVED" ? new Date() : undefined,
             resolvedByUserId: status === "RESOLVED" ? actor.id : undefined,
           },
         });
+        if (updated.count !== 1) {
+          throw new Error("Feedback notes changed during triage; rerun with the current item.");
+        }
       }
       await writeAudit(tx, {
         actorUserId: actor.id,

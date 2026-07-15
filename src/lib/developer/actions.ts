@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import {
   FeedbackAutomationMode,
-  FeedbackItemStatus,
+  FeedbackAutomationSource,
   FeedbackSeverity,
   FeedbackTriageClass,
 } from "@prisma/client";
@@ -20,6 +20,10 @@ import {
   createSupportTenantToken,
 } from "@/lib/developer/support-context";
 import { approveAutomationRun, dispatchApprovedRun } from "@/lib/feedback/automation";
+import { parseLinearIssueUrl } from "@/lib/developer/linear-links";
+import { linkFeedbackToLinearCore } from "@/lib/developer/linear-link-actions";
+import { parseLinkFeedbackToLinearInput } from "@/lib/developer/linear-link-input";
+import { updateFeedbackItemCore } from "@/lib/developer/feedback-item-actions";
 
 function asMode(value: string): FeedbackAutomationMode {
   if (
@@ -35,6 +39,42 @@ function asMode(value: string): FeedbackAutomationMode {
 function assertTenantId(tenantId: string): string {
   if (!tenantId || tenantId.length > 160) throw new ActionError("Invalid tenant.", "VALIDATION");
   return tenantId;
+}
+
+function assertFeedbackSource(value: string): FeedbackAutomationSource {
+  if (
+    value === FeedbackAutomationSource.ASSISTANT_FEEDBACK ||
+    value === FeedbackAutomationSource.FEEDBACK_TICKET
+  ) {
+    return value;
+  }
+  throw new ActionError("Invalid feedback source.", "VALIDATION");
+}
+
+export async function linkFeedbackToLinear(value: unknown) {
+  const developer = await requireDeveloper();
+  const input = parseLinkFeedbackToLinearInput(value);
+  const tenantId = input.tenantId;
+  const sourceType = assertFeedbackSource(input.sourceType);
+  const id = input.id;
+  const parsed = parseLinearIssueUrl(input.linearUrl);
+  if (!parsed.ok) throw new ActionError(parsed.error.message, "VALIDATION");
+
+  const result = await linkFeedbackToLinearCore(
+    { id: developer.id, email: developer.email },
+    {
+      tenantId,
+      sourceType,
+      id,
+      linearIssueKey: parsed.linearIssueKey,
+      normalizedUrl: parsed.normalizedUrl,
+      replace: input.replace,
+      expectedVersion: input.expectedVersion,
+      confirmFanIn: input.confirmFanIn,
+    },
+  );
+  if (result.ok) revalidatePath("/developer");
+  return result;
 }
 
 export async function enterSupportTenant(tenantId: string) {
@@ -140,6 +180,7 @@ export async function updateFeedbackItem(input: {
   triageClass?: string; // "" clears to untriaged; a valid enum value sets the disposition
   status?: string;
   developerNotes?: string;
+  expectedNotesVersion?: number;
 }) {
   const developer = await requireDeveloper();
   const tenantId = assertTenantId(input.tenantId);
@@ -149,45 +190,19 @@ export async function updateFeedbackItem(input: {
       ? (input.triageClass as FeedbackTriageClass)
       : null;
   const notes = typeof input.developerNotes === "string" ? input.developerNotes.slice(0, 5000) : undefined;
-
-  await runAsTenant(tenantId, () =>
-    runInTenantTx(async (tx) => {
-      if (input.sourceType === "ASSISTANT_FEEDBACK") {
-        await tx.assistantFeedback.update({
-          where: { id: input.id },
-          data: {
-            severity,
-            triageClass,
-            developerNotes: notes,
-            status: input.status && input.status !== "IN_PROGRESS" ? input.status : undefined,
-            resolvedAt: input.status === "RESOLVED" ? new Date() : undefined,
-            resolvedByUserId: input.status === "RESOLVED" ? developer.id : undefined,
-          },
-        });
-      } else {
-        const status = input.status ? (input.status as FeedbackItemStatus) : undefined;
-        await tx.feedbackTicket.update({
-          where: { id: input.id },
-          data: {
-            severity,
-            triageClass,
-            developerNotes: notes,
-            status,
-            resolvedAt: status === FeedbackItemStatus.RESOLVED ? new Date() : undefined,
-            resolvedByUserId: status === FeedbackItemStatus.RESOLVED ? developer.id : undefined,
-          },
-        });
-      }
-      await writeAudit(tx, {
-        actorUserId: developer.id,
-        actorEmail: developer.email,
-        tenantId,
-        action: "UPDATE",
-        entityType: input.sourceType,
-        entityId: input.id,
-        summary: "Developer updated feedback item",
-      });
-    }),
+  const sourceType = assertFeedbackSource(input.sourceType);
+  await updateFeedbackItemCore(
+    { id: developer.id, email: developer.email },
+    {
+      tenantId,
+      sourceType,
+      id: input.id,
+      severity,
+      triageClass,
+      status: input.status,
+      developerNotes: notes,
+      expectedNotesVersion: input.expectedNotesVersion,
+    },
   );
   revalidatePath("/developer");
 }

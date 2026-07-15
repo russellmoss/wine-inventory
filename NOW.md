@@ -7,7 +7,7 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-Ship Plan 066 — SO₂/KMBS ledger fix (book stock at the active fraction; end the ~1.74× under-dose). Eng-review PR.
+Ship Plan 067 PR B — tenant-safe Linear handoff core; verify the PR preview and CI, then hold for review.
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -20,6 +20,11 @@ chip, not into this session. Nothing parked right now._
 
 ## ✅ Done recently
 
+- **Plan 067 PR A — agentic PLAN/FIX routing — SHIPPED, PR #181 merged** (`d2b504f`).
+- **Plan 067 PR B — Linear handoff core — BUILT, PR #183 open.** Tenant-scoped/RLS-protected
+  feedback-to-Linear links, sanitized handoff rules, conflict-safe link/replace actions, exact loaders,
+  dual-cursor pagination, notes-version concurrency protection, and DB/isolation verification. No
+  Linear API credentials are used; browser-facing workflow remains PR C.
 - **Plan 066 — SO₂/KMBS ledger active-fraction fix — BUILT, eng-review PR (no auto-merge).**
   `consumeMaterialCore` gains an optional `activeFraction`; `recordNeutralDoseTx` passes it for
   ppm/mg/L SO₂ doses so the stock draw + cost = SO₂g/0.576 (KMBS), while `LotTreatment.computedTotal`
@@ -55,4 +60,4 @@ chip, not into this session. Nothing parked right now._
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-14 — Plan 065 (SO₂ exec-view clarity) BUILT + green locally, shipping._
+_Last updated: 2026-07-14 — Plan 067 PR B built and open as PR #183; validating CI/preview before review._

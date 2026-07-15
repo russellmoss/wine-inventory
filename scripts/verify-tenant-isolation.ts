@@ -7,7 +7,7 @@
  *   owner  = DATABASE_URL_UNPOOLED (BYPASSRLS) — sets up + tears down cross-tenant fixtures.
  *   app    = DATABASE_URL_APP      (app_rls, NOBYPASSRLS) — the client under test; RLS applies.
  *
- * Tenant A = Bhutan (existing). Tenant B = a throwaway org created for the run and deleted after.
+ * Tenant A = Demo Winery (sandbox). Tenant B = a throwaway org created for the run and deleted after.
  * Every assertion is what a real request would do; a leak makes the script exit non-zero.
  *
  * TEETH: this only has teeth because `app` connects as app_rls. Point DATABASE_URL_APP at the
@@ -16,7 +16,7 @@
  */
 import { PrismaClient, Prisma } from "@prisma/client";
 
-const A = "org_bhutan_wine_co";
+const A = "org_demo_winery";
 const B = "org_isolation_test_b";
 
 // GLOBAL_MODELS (mirror of src/lib/tenant/models.ts): the Better Auth core + org-plugin tables are
@@ -80,11 +80,111 @@ async function main() {
   });
   check(`all ${expectedTables.length} non-global tables have RLS enabled+forced+tenant_isolation policy (steps 6/9)`, rlsMissing.length === 0, rlsMissing.length ? `missing/incomplete: ${rlsMissing.join(", ")}` : "");
 
-  // ── Setup (owner, bypasses RLS): tenant B + one lot per tenant. ──
-  // Tenant A exists in a real DB; on a fresh DB (CI) create it so the FK-bound fixtures can insert.
-  // Idempotent — a no-op update against the real tenant.
-  await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Bhutan Wine Co", slug: A } });
+  // ── Setup (owner, bypasses RLS): Demo Winery + tenant B fixtures. ──
+  // Tenant A is always the Demo Winery sandbox. Create it on a fresh CI DB; never write isolation
+  // fixtures into Bhutan Wine Co.
+  await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Demo Winery", slug: "demo-winery" } });
   await owner.organization.upsert({ where: { id: B }, update: {}, create: { id: B, name: "Isolation Test B", slug: B } });
+  await owner.feedbackLinearLink.deleteMany({
+    where: {
+      id: {
+        in: [
+          "iso_linear_link_shared",
+          "iso_linear_link_cross",
+          "iso_linear_link_both",
+          "iso_linear_link_neither",
+          "iso_linear_link_duplicate",
+        ],
+      },
+    },
+  });
+  await owner.feedbackTicket.upsert({
+    where: { id: "iso_linear_ticket_a1" },
+    update: {},
+    create: {
+      id: "iso_linear_ticket_a1",
+      tenantId: A,
+      kind: "FEATURE_REQUEST",
+      title: "Linear isolation ticket A1",
+      body: "Demo fixture",
+      actorEmail: "isolation@demowinery.test",
+      modeAtSubmission: "REPORT_ONLY",
+    },
+  });
+  await owner.feedbackTicket.upsert({
+    where: { id: "iso_linear_ticket_a2" },
+    update: {},
+    create: {
+      id: "iso_linear_ticket_a2",
+      tenantId: A,
+      kind: "FEATURE_REQUEST",
+      title: "Linear isolation ticket A2",
+      body: "Demo fixture",
+      actorEmail: "isolation@demowinery.test",
+      modeAtSubmission: "REPORT_ONLY",
+    },
+  });
+  await owner.feedbackTicket.upsert({
+    where: { id: "iso_linear_ticket_b" },
+    update: {},
+    create: {
+      id: "iso_linear_ticket_b",
+      tenantId: B,
+      kind: "FEATURE_REQUEST",
+      title: "Linear isolation ticket B",
+      body: "Isolation fixture",
+      actorEmail: "isolation-b@test",
+      modeAtSubmission: "REPORT_ONLY",
+    },
+  });
+  await owner.assistantFeedback.upsert({
+    where: { id: "iso_linear_feedback_a" },
+    update: {},
+    create: {
+      id: "iso_linear_feedback_a",
+      tenantId: A,
+      rating: "down",
+      comment: "Demo fixture",
+      conversation: [],
+      actorEmail: "isolation@demowinery.test",
+    },
+  });
+  await owner.assistantFeedback.upsert({
+    where: { id: "iso_linear_feedback_b" },
+    update: {},
+    create: {
+      id: "iso_linear_feedback_b",
+      tenantId: B,
+      rating: "down",
+      comment: "Isolation fixture",
+      conversation: [],
+      actorEmail: "isolation-b@test",
+    },
+  });
+  await owner.feedbackLinearLink.upsert({
+    where: { id: "iso_linear_link_a" },
+    update: {},
+    create: {
+      id: "iso_linear_link_a",
+      tenantId: A,
+      ticketId: "iso_linear_ticket_a1",
+      linearIssueKey: "WIN-ISO-1",
+      linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-1/demo-fixture",
+      linkedByUserId: "iso_um_user_a",
+    },
+  });
+  await owner.feedbackLinearLink.upsert({
+    where: { id: "iso_linear_link_b" },
+    update: {},
+    create: {
+      id: "iso_linear_link_b",
+      tenantId: B,
+      assistantFeedbackId: "iso_linear_feedback_b",
+      linearIssueKey: "WIN-ISO-2",
+      linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-2/isolation-fixture",
+      linkedByUserId: "iso_um_user_b",
+    },
+  });
   const now = new Date();
   // #90 app-layer user-management isolation: User/Member are GLOBAL (no RLS), so the membership WHERE
   // in the app layer (src/lib/users/scope.ts) is the ONLY tenant scope. Seed a user+member per tenant.
@@ -104,9 +204,8 @@ async function main() {
   // Phase 15: an accounting_connection (the token table) per tenant, plus a cost_export_event in A
   // (composite-FK target for the delivery-uniqueness check). DISCONNECTED + null tokens satisfies the
   // SEC-S5 CHECK; null realmId keeps the one-realm partial-unique out of the way.
-  // Tenant A (Bhutan) may already have a real CONNECTED QBO connection in a live DB — use XERO for the
-  // fixture so the (tenantId, provider) unique never collides with it. Provider is irrelevant to the
-  // isolation assertions; this row is a token-table stand-in + a delivery-FK target.
+  // Use XERO for tenant A so the fixture remains independent of any Demo QBO connection. Provider is
+  // irrelevant to the isolation assertions; this row is a token-table stand-in + delivery-FK target.
   await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_a" }, update: {}, create: { id: "iso_acct_conn_a", tenantId: A, provider: "XERO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
   await owner.accountingConnection.upsert({ where: { id: "iso_acct_conn_b" }, update: {}, create: { id: "iso_acct_conn_b", tenantId: B, provider: "QBO", status: "DISCONNECTED", environment: "sandbox", updatedAt: now } });
   await owner.costExportEvent.upsert({ where: { id: "iso_cee_a" }, update: {}, create: { id: "iso_cee_a", tenantId: A, postingKey: "iso:cee:a", sourceType: "SNAPSHOT", component: "FRUIT", amount: "1.00", debitAccount: "5000", creditAccount: "1400" } });
@@ -193,6 +292,114 @@ async function main() {
     // 1. Fail-closed: no tenant context -> 0 rows.
     const noCtx = await app.lot.count();
     check("no context -> 0 rows (fail-closed)", noCtx === 0, `saw ${noCtx}`);
+    const noCtxLinearLinks = await app.feedbackLinearLink.count();
+    check(
+      "feedback_linear_link with no context -> 0 rows (fail-closed)",
+      noCtxLinearLinks === 0,
+      `saw ${noCtxLinearLinks}`,
+    );
+
+    const aLinearLink = await asTenant(A, (db) =>
+      db.feedbackLinearLink.findFirst({ where: { id: "iso_linear_link_a" } }),
+    );
+    check("Demo Winery sees its own feedback_linear_link", aLinearLink?.tenantId === A);
+    const aSeesLinearLinkB = await asTenant(A, (db) =>
+      db.feedbackLinearLink.findFirst({ where: { id: "iso_linear_link_b" } }),
+    );
+    check("Demo Winery CANNOT see tenant B's feedback_linear_link", aSeesLinearLinkB === null);
+
+    let linearCrossTenantFkRaised = false;
+    try {
+      await asTenant(A, (db) =>
+        db.feedbackLinearLink.create({
+          data: {
+            id: "iso_linear_link_cross",
+            tenantId: A,
+            ticketId: "iso_linear_ticket_b",
+            linearIssueKey: "WIN-ISO-X",
+            linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-X/cross-tenant",
+            linkedByUserId: "iso_um_user_a",
+          },
+        }),
+      );
+    } catch {
+      linearCrossTenantFkRaised = true;
+    }
+    check("feedback_linear_link cross-tenant parent FK rejected", linearCrossTenantFkRaised);
+
+    let linearBothParentsRaised = false;
+    try {
+      await asTenant(A, (db) =>
+        db.feedbackLinearLink.create({
+          data: {
+            id: "iso_linear_link_both",
+            tenantId: A,
+            ticketId: "iso_linear_ticket_a2",
+            assistantFeedbackId: "iso_linear_feedback_a",
+            linearIssueKey: "WIN-ISO-BOTH",
+            linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-BOTH/both-parents",
+            linkedByUserId: "iso_um_user_a",
+          },
+        }),
+      );
+    } catch {
+      linearBothParentsRaised = true;
+    }
+    check("feedback_linear_link rejects both parents", linearBothParentsRaised);
+
+    let linearNoParentRaised = false;
+    try {
+      await asTenant(A, (db) =>
+        db.feedbackLinearLink.create({
+          data: {
+            id: "iso_linear_link_neither",
+            tenantId: A,
+            linearIssueKey: "WIN-ISO-NONE",
+            linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-NONE/no-parent",
+            linkedByUserId: "iso_um_user_a",
+          },
+        }),
+      );
+    } catch {
+      linearNoParentRaised = true;
+    }
+    check("feedback_linear_link rejects neither parent", linearNoParentRaised);
+
+    let duplicateLinearLinkRaised = false;
+    try {
+      await asTenant(A, (db) =>
+        db.feedbackLinearLink.create({
+          data: {
+            id: "iso_linear_link_duplicate",
+            tenantId: A,
+            ticketId: "iso_linear_ticket_a1",
+            linearIssueKey: "WIN-ISO-DUP",
+            linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-DUP/duplicate",
+            linkedByUserId: "iso_um_user_a",
+          },
+        }),
+      );
+    } catch {
+      duplicateLinearLinkRaised = true;
+    }
+    check("feedback_linear_link rejects a second active link for one source", duplicateLinearLinkRaised);
+
+    const sharedLinearIssue = await asTenant(A, (db) =>
+      db.feedbackLinearLink.create({
+        data: {
+          id: "iso_linear_link_shared",
+          tenantId: A,
+          ticketId: "iso_linear_ticket_a2",
+          linearIssueKey: "WIN-ISO-1",
+          linearIssueUrl: "https://linear.app/wine-inventory/issue/WIN-ISO-1/demo-fixture",
+          linkedByUserId: "iso_um_user_a",
+        },
+      }),
+    );
+    check(
+      "two source items may share one Linear issue key",
+      sharedLinearIssue.linearIssueKey === aLinearLink?.linearIssueKey,
+    );
 
     // 2. As tenant A: sees A's lot, NOT B's (RLS invisibility on SELECT).
     const aSeesOwn = await asTenant(A, (db) => db.lot.findFirst({ where: { id: "iso_lot_a" } }));
@@ -483,6 +690,27 @@ async function main() {
     check("same-tenant op line succeeds (positive control)", sameTenantOk);
   } finally {
     // ── Teardown (owner). ──
+    await owner.feedbackLinearLink.deleteMany({
+      where: {
+        id: {
+          in: [
+            "iso_linear_link_a",
+            "iso_linear_link_b",
+            "iso_linear_link_shared",
+            "iso_linear_link_cross",
+            "iso_linear_link_both",
+            "iso_linear_link_neither",
+            "iso_linear_link_duplicate",
+          ],
+        },
+      },
+    });
+    await owner.feedbackTicket.deleteMany({
+      where: { id: { in: ["iso_linear_ticket_a1", "iso_linear_ticket_a2", "iso_linear_ticket_b"] } },
+    });
+    await owner.assistantFeedback.deleteMany({
+      where: { id: { in: ["iso_linear_feedback_a", "iso_linear_feedback_b"] } },
+    });
     // Phase 15 first (delivery → connection/cost_export_event FK order; all before org B is removed).
     await owner.accountingDelivery.deleteMany({ where: { id: { in: ["iso_del_1", "iso_del_2"] } } });
     await owner.accountMapping.deleteMany({ where: { id: { in: ["iso_map_1", "iso_map_2"] } } });

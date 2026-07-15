@@ -189,6 +189,10 @@ jobs:
           TENANT_ISOLATION_DB: "1"
           # app_rls connects via PgBouncer (127.0.0.1:6432). pgbouncer=true tells Prisma to disable
           # prepared statements, which are unsupported under transaction pooling. THIS is the H1 proof.
+          DATABASE_URL: postgresql://app_rls:app_rls_ci_pw@127.0.0.1:6432/wine_ci?pgbouncer=true
           DATABASE_URL_APP: postgresql://app_rls:app_rls_ci_pw@127.0.0.1:6432/wine_ci?pgbouncer=true
           DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/wine_ci
-        run: npx vitest run test/tenant-isolation.test.ts
+        run: |
+          npx vitest run test/tenant-isolation.test.ts test/developer-feedback-db.test.ts
+      - name: Developer Linear handoff transaction proof (direct Postgres concurrency)
+        run: npx tsx --conditions=react-server scripts/verify-developer-linear-link.ts
