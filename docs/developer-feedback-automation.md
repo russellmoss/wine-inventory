@@ -3,6 +3,19 @@
 This feature adds tenant-scoped feedback automation for assistant thumbs-downs,
 bug reports, and feature requests.
 
+## Linear delivery handoff
+
+The Linear handoff keeps Wine Inventory as the private source of truth for feedback,
+tenant context, attachments, automation history, and reporter-facing outcomes. Linear
+is the human delivery queue after triage, while GitHub remains the source of truth for
+branches, pull requests, checks, reviews, and merges.
+
+V1 stores a tenant-scoped, server-validated Linear issue link and produces a bounded,
+sanitized handoff packet. It does not call the Linear API or mirror Linear status,
+assignee, priority, or cycle data. No Linear API key, OAuth app, webhook secret, or
+application environment variable is required. The `WIN` team identifier is a workspace
+convention, not app configuration.
+
 ## Required env
 
 - `SEED_DEVELOPER_PASSWORD`: one-time temporary password for `npm run seed:developer`.
@@ -44,6 +57,7 @@ npm run verify:feedback
 npm run verify:feedback-idempotency
 npm run verify:feedback-security
 npm run verify:feedback-fence
+npm run verify:developer-linear-link
 ```
 
 With database env configured:
