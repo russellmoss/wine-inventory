@@ -30,15 +30,19 @@ export async function resolveVineyards(
 ): Promise<{ id: string; name: string }[]> {
   const base = scopedVineyardWhere(user);
   if (base === null) return [];
-  const where: Prisma.VineyardWhereInput = name
-    ? { AND: [base, { name: { contains: name, mode: "insensitive" } }] }
-    : base;
-  return prisma.vineyard.findMany({
-    where,
+  // Scoping (`base`) is applied FIRST and is untouched here. With a name we then
+  // fuzzy-match in JS (two-directional, like findScopedBlocks) instead of a
+  // one-directional SQL `contains`, so a generic word the stored name omits —
+  // "Bajo Vineyard"/"the bajo vineyard" vs the stored "Bajo" — still resolves.
+  // This ONLY narrows within the vineyards the user can already access.
+  const rows = await prisma.vineyard.findMany({
+    where: base,
     orderBy: { name: "asc" },
-    take: 25,
+    take: name ? 200 : 25,
     select: { id: true, name: true },
   });
+  if (!name) return rows;
+  return rows.filter((v) => vineyardNameMatches(v.name, name)).slice(0, 25);
 }
 
 export type ScopedBlock = {
@@ -52,6 +56,20 @@ export type ScopedBlock = {
 /** Normalize a label/variety for fuzzy compare: drop parentheticals + punctuation. */
 function norm(s: string): string {
   return s.toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Two-directional fuzzy match between a STORED vineyard name and a user/model query:
+ * normalize both (drop parentheticals + punctuation, lowercase) and accept when either
+ * contains the other. This is why "Bajo Vineyard", "the bajo vineyard", and "bajo" all
+ * resolve to the stored "Bajo" — a one-directional SQL `contains` matches only the first.
+ * Pure and match-ONLY: never an access decision (callers scope BEFORE calling this).
+ */
+export function vineyardNameMatches(storedName: string, query: string): boolean {
+  const hay = norm(storedName);
+  const needle = norm(query);
+  if (hay === "" || needle === "") return false;
+  return hay === needle || hay.includes(needle) || needle.includes(hay);
 }
 
 /**
