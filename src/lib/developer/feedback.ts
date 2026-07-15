@@ -5,6 +5,7 @@ import {
   FeedbackAutomationSource,
   FeedbackAutomationStatus,
   type FeedbackAutomationMode,
+  type FeedbackSeverity,
   type FeedbackTriageClass,
   Prisma,
 } from "@prisma/client";
@@ -105,6 +106,7 @@ export type DeveloperFeedbackItem = {
   developerNotesVersion: number;
   resolvedAt: string | null;
   attachmentCount: number;
+  attachmentIds: string[];
   linearLink: DeveloperFeedbackLinearLink | null;
   awaitingRunId: string | null;
   awaitingRunKind: FeedbackAutomationKind | null;
@@ -282,6 +284,7 @@ function mapAssistantFeedback(
     developerNotesVersion: feedback.developerNotesVersion,
     resolvedAt: feedback.resolvedAt?.toISOString() ?? null,
     attachmentCount: feedback.attachments.length,
+    attachmentIds: feedback.attachments.map((attachment) => attachment.id),
     linearLink: link,
     ...automation,
   });
@@ -317,6 +320,7 @@ function mapFeedbackTicket(
     developerNotesVersion: ticket.developerNotesVersion,
     resolvedAt: ticket.resolvedAt?.toISOString() ?? null,
     attachmentCount: ticket.attachments.length,
+    attachmentIds: ticket.attachments.map((attachment) => attachment.id),
     linearLink: link,
     ...automation,
   });
@@ -352,6 +356,9 @@ export async function getDeveloperFeedbackData(input: {
   text?: string;
   tenantOffset?: number;
   queue?: DeveloperQueue;
+  severity?: FeedbackSeverity | null;
+  triageClass?: FeedbackTriageClass | null;
+  includeItems?: boolean;
 } = {}): Promise<DeveloperFeedbackData> {
   // Preserve the pre-queue console until PR C supplies a queue explicitly. This keeps the staged
   // rollout from hiding Ready/Tracked/Closed work between the backend and UI pull requests.
@@ -392,6 +399,8 @@ export async function getDeveloperFeedbackData(input: {
         },
       });
 
+      if (input.includeItems === false) return;
+
       const [feedback, tickets] = await Promise.all([
         prisma.assistantFeedback.findMany({
           where: {
@@ -403,6 +412,8 @@ export async function getDeveloperFeedbackData(input: {
                   ]
                 : []),
               ...(textWhereForAssistant(input.text) ? [textWhereForAssistant(input.text)!] : []),
+              ...(input.severity ? [{ severity: input.severity }] : []),
+              ...(input.triageClass ? [{ triageClass: input.triageClass }] : []),
             ],
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -418,6 +429,8 @@ export async function getDeveloperFeedbackData(input: {
                   ]
                 : []),
               ...(textWhereForTicket(input.text) ? [textWhereForTicket(input.text)!] : []),
+              ...(input.severity ? [{ severity: input.severity }] : []),
+              ...(input.triageClass ? [{ triageClass: input.triageClass }] : []),
             ],
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -511,6 +524,9 @@ export async function getDeveloperTenantFeedbackPage(input: {
   assistantCursor?: string | null;
   ticketCursor?: string | null;
   pageSize?: number;
+  text?: string;
+  severity?: FeedbackSeverity | null;
+  triageClass?: FeedbackTriageClass | null;
 }): Promise<DeveloperTenantFeedbackPage> {
   await requireDeveloper();
   if (!validTenantId(input.tenantId) || !DEVELOPER_QUEUES.includes(input.queue)) {
@@ -547,6 +563,9 @@ export async function getDeveloperTenantFeedbackPage(input: {
             { rating: "down" },
             assistantQueueWhere,
             developerFeedbackCursorWhere(assistantCursor),
+            ...(textWhereForAssistant(input.text) ? [textWhereForAssistant(input.text)!] : []),
+            ...(input.severity ? [{ severity: input.severity }] : []),
+            ...(input.triageClass ? [{ triageClass: input.triageClass }] : []),
           ],
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -554,7 +573,15 @@ export async function getDeveloperTenantFeedbackPage(input: {
         include: assistantInclude,
       }),
       prisma.feedbackTicket.findMany({
-        where: { AND: [ticketQueueWhere, developerFeedbackCursorWhere(ticketCursor)] },
+        where: {
+          AND: [
+            ticketQueueWhere,
+            developerFeedbackCursorWhere(ticketCursor),
+            ...(textWhereForTicket(input.text) ? [textWhereForTicket(input.text)!] : []),
+            ...(input.severity ? [{ severity: input.severity }] : []),
+            ...(input.triageClass ? [{ triageClass: input.triageClass }] : []),
+          ],
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: pageSize + 1,
         include: ticketInclude,
