@@ -98,7 +98,9 @@ function EditVendorModal({ vendor, onClose, onSaved }: { vendor: VendorRow | nul
   const patch = (p: Partial<VendorFormValue>) => setForm((f) => ({ ...f, ...p }));
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
-  const canSubmit = !!vendor && vendorFormValid(form) && !pending;
+  // Edit gate is name-only: an existing vendor may predate the name+phone+email create requirement
+  // (seeded "Unknown", A/P-created), and must stay editable.
+  const canSubmit = !!vendor && vendorFormValid(form, { requireContact: false }) && !pending;
 
   function submit() {
     if (!vendor || !canSubmit) return;

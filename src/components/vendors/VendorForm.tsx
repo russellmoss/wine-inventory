@@ -96,15 +96,18 @@ export function vendorFormToInput(v: VendorFormValue): VendorInput {
   };
 }
 
-/** UI submit gate: name + phone + email required, email must look valid. (DB is nullable; this is UI-only.) */
-export function vendorFormValid(v: VendorFormValue): boolean {
-  return (
-    v.name.trim().length > 0 &&
-    v.phone.trim().length > 0 &&
-    v.email.trim().length > 0 &&
-    isLikelyEmail(v.email) &&
-    v.contacts.every((c) => !c.email.trim() || isLikelyEmail(c.email))
-  );
+/**
+ * UI submit gate. On CREATE (`requireContact` default true) name + phone + email are required (email valid).
+ * On EDIT of an existing vendor, pass `requireContact: false` — legacy/seeded ("Unknown") and A/P-created
+ * vendors have no phone/email (the DB only requires a name), so an edit must not be blocked from completing
+ * or fixing them. Contact-row emails, when present, must always look valid.
+ */
+export function vendorFormValid(v: VendorFormValue, opts?: { requireContact?: boolean }): boolean {
+  const requireContact = opts?.requireContact ?? true;
+  const emailsOk = (!v.email.trim() || isLikelyEmail(v.email)) && v.contacts.every((c) => !c.email.trim() || isLikelyEmail(c.email));
+  if (!v.name.trim() || !emailsOk) return false;
+  if (requireContact) return v.phone.trim().length > 0 && v.email.trim().length > 0;
+  return true;
 }
 
 export function VendorForm({
@@ -115,6 +118,7 @@ export function VendorForm({
   onChange: (patch: Partial<VendorFormValue>) => void;
 }) {
   const termsListId = React.useId();
+  const primaryGroup = React.useId(); // scope the primary-contact radio group per form instance
   const emailInvalid = value.email.trim().length > 0 && !isLikelyEmail(value.email);
 
   const setContact = (i: number, patch: Partial<VendorContactFormValue>) =>
@@ -174,7 +178,7 @@ export function VendorForm({
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "var(--text-secondary)", cursor: "pointer" }}>
-                <input type="radio" name="vendor-primary-contact" checked={c.isPrimary} onChange={() => setPrimary(i)} />
+                <input type="radio" name={primaryGroup} checked={c.isPrimary} onChange={() => setPrimary(i)} />
                 Primary contact
               </label>
               <Button type="button" variant="ghost" size="sm" onClick={() => removeContact(i)}>Remove</Button>

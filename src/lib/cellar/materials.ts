@@ -4,6 +4,7 @@ import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import { ActionError } from "@/lib/action-error";
 import { emitApExportForReceipt } from "@/lib/accounting/ap-emit";
+import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { MaterialKind, RateBasis } from "@/lib/cellar/additions-math";
 import { STOCK_UNITS, coerceStockUnit, materialDisplayName, type StockUnit, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
@@ -256,11 +257,16 @@ export async function createStockMaterialCore(
     });
     // Plan 069: the managed vendor is the source of truth. Mirror its name/url into the legacy free-text
     // columns for read-compat; fall back to any free-text vendor when no vendorId is given (non-UI callers).
+    // Only WRITE the vendor triple when the caller actually supplied vendor info — otherwise a no-vendor
+    // create that reactivates an existing material (assistant create_material / MaterialPicker inline-create)
+    // would null out that material's existing managed vendor.
+    const hasVendorInput = f.vendorId != null || f.vendor != null;
     const mirror = await resolveVendorMirror(tx, f.vendorId, f.vendor, f.vendorUrl);
+    const vendorPatch = hasVendorInput ? { vendor: mirror.vendor, vendorUrl: mirror.vendorUrl, vendorId: mirror.vendorId } : {};
     // The rich-intake path sets the display/purchase metadata on both create and reactivate-update.
     const richData = {
       category: f.category, genericName: f.genericName, brand: f.brand, brandName: f.brandName,
-      preferGeneric: f.preferGeneric, vendor: mirror.vendor, vendorUrl: mirror.vendorUrl, vendorId: mirror.vendorId,
+      preferGeneric: f.preferGeneric, ...vendorPatch,
       packageAmount: f.packageAmount, packageUnit: f.packageUnit, subcategory: f.subcategory,
       ...(f.defaultBasis ? { defaultBasis: f.defaultBasis } : {}),
       ...(f.percentActive != null ? { percentActive: f.percentActive } : {}),
@@ -432,13 +438,18 @@ export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupply
       await tx.cellarMaterial.update({ where: { id: material.id }, data: { isStockTracked: true, stockUnit } });
     }
     const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true, currency: true } });
-    // Plan 069: a managed vendorId stamps the lot and (when no explicit vendorName is given) resolves the name
-    // so the A/P find-or-create dedups to the SAME vendor row.
-    let vendorName = input.vendorName ?? null;
-    if (input.vendorId) {
-      const vend = await tx.vendor.findUnique({ where: { id: input.vendorId }, select: { name: true } });
+    // Plan 069: resolve the managed vendor for BOTH the lot stamp AND the A/P Bill so they never diverge.
+    // A vendorId wins (its name drives A/P — ignore a conflicting caller vendorName); otherwise a free-text
+    // vendorName find-or-creates the managed vendor so restock lots link to it too (not just opening stock).
+    let vendorId = input.vendorId ?? null;
+    let vendorName = input.vendorName?.trim() || null;
+    if (vendorId) {
+      const vend = await tx.vendor.findUnique({ where: { id: vendorId }, select: { name: true } });
       if (!vend) throw new Error("That vendor no longer exists.");
-      if (!vendorName) vendorName = vend.name;
+      vendorName = vend.name; // vendorId is authoritative — the Bill posts under the same row the lot stamps
+    } else if (vendorName) {
+      const v = await findOrCreateVendorCore({ name: vendorName }, tx);
+      vendorId = v?.id ?? null;
     }
     const lot = await tx.supplyLot.create({
       data: {
@@ -451,7 +462,7 @@ export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupply
         policyVersion: settings?.costingPolicyVersion ?? 1,
         lotCode: input.lotCode?.trim() || null,
         supplierNote: input.note?.trim() || null,
-        vendorId: input.vendorId ?? null,
+        vendorId,
       },
       select: { id: true },
     });

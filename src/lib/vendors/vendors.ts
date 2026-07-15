@@ -170,18 +170,6 @@ export async function listVendors(opts?: { activeOnly?: boolean; tenantId?: stri
   return opts?.tenantId ? runAsTenant(opts.tenantId, run) : run();
 }
 
-/** One vendor + contacts by id (null if gone). Tenant-scoped by RLS + extension. */
-export async function getVendor(id: string): Promise<VendorRow | null> {
-  const r = await prisma.vendor.findUnique({ where: { id }, select: VENDOR_SELECT });
-  if (!r) return null;
-  const contacts = await prisma.vendorContact.findMany({
-    where: { vendorId: id },
-    orderBy: [{ isPrimary: "desc" }, { name: "asc" }],
-    select: CONTACT_SELECT,
-  });
-  return { ...r, contacts };
-}
-
 /** Fuzzy-match ACTIVE vendors by name for the assistant resolver (two-directional substring; `#id` pins).
  *  Never invents an id — returns candidates so the tool can pin one, show a choice, or report none. K12-safe. */
 export async function findVendorsByName(tenantId: string, ref: string): Promise<VendorRow[]> {
