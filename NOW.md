@@ -7,16 +7,17 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 068 — user inbox / Gmail-like messaging — BACKEND COMPLETE, UI remaining** on branch
-`claude/user-inbox-messaging` (off origin/main). DONE + committed + all green with live DB exit-proofs:
-Unit 1 (schema+RLS migrations), 1b (per-user RLS `app.user_id` GUC — core extension), 2 (notification
-core), 3 (DM core + shared blob + authed attachment route), 4 (governed ticket hooks), 5 (governed WO
-hooks), 9 (INBOX-1 invariant + verify:inbox-isolation 11/11 + CRLF checker fix + channel seam + ADR 0006).
-**REMAINING — need the USER's browser login for QA:** Unit 6 (avatar red unread badge, gate behind flag),
-7 (/inbox Gmail three-pane + buckets + tombstones), 8 (DM compose UI). Then `npx next build` + browser QA
-in Demo Winery. Do NOT auto-merge — PR + eng review (governed money-adjacent core).
+**Plan 068 — user inbox / Gmail-like messaging — ALL 10 UNITS BUILT, browser QA + PR remaining** on
+branch `claude/user-inbox-messaging` (off origin/main, 10 commits). Every unit DONE + committed + green:
+tsc, eslint, `next build` (/inbox + api routes compile), verify:tenant-isolation, verify:inbox-isolation
+(11/11), verify:invariants (30/30), verify:work-orders-enhancements (44), verify:feedback-security, plus
+live Demo-Winery DB exit-proofs for per-user RLS, DM send/notify, ticket & WO hooks. Units: 1 (schema+RLS),
+1b (per-user RLS `app.user_id` GUC — core extension), 2 (notif core), 3 (DM core + shared blob + authed
+route), 4 (governed ticket hooks), 5 (governed WO hooks), 6 (avatar red badge, flag-gated), 7 (/inbox
+Gmail 3-pane), 8 (DM compose), 9 (INBOX-1 + verify:inbox-isolation + CRLF fix + channel seam + ADR 0006).
+**REMAINING: (1) interactive browser QA in Demo Winery (needs USER login in the pane), (2) open PR for
+eng review — do NOT auto-merge (governed money-adjacent core).**
 GOTCHA locked: emit MUST use `createMany` not `create` (create's RETURNING trips the per-user SELECT policy).
-NOTE: I stopped the local `npm run dev` server (Prisma DLL lock during generate) — restart it for UI QA.
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
