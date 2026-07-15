@@ -26,7 +26,10 @@ const RED = "\x1b[31m", GRN = "\x1b[32m", YEL = "\x1b[33m", DIM = "\x1b[2m", RST
 
 // Minimal frontmatter reader for the fields this register controls.
 function frontmatter(md) {
-  const m = md.match(/^---\n([\s\S]*?)\n---/);
+  // Normalize CRLF → LF first: a Windows-authored note (\r\n) would otherwise fail the `---\n`
+  // match and be silently skipped — a guard that skips on CRLF is theater (council amendment 10).
+  const normalized = md.replace(/\r\n/g, "\n");
+  const m = normalized.match(/^---\n([\s\S]*?)\n---/);
   if (!m) return {};
   const out = {};
   for (const line of m[1].split("\n")) {
