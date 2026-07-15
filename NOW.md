@@ -7,7 +7,8 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-Ship Plan 067 PR B — tenant-safe Linear handoff core; verify the PR preview and CI, then hold for review.
+Plan 069 vendor management — BUILT on `claude/expendables-vendor-management-f55df8` (12 units, all gates
+green). Next: interactive browser QA (authenticated pane), then `/review` + `/ship`.
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -20,6 +21,14 @@ chip, not into this session. Nothing parked right now._
 
 ## ✅ Done recently
 
+- **Plan 069 — vendor management — BUILT (12 units), branch `claude/expendables-vendor-management-f55df8`.**
+  Reused the existing (Phase 15 QBO) `Vendor` table + new `VendorContact` child (RLS + composite FK);
+  `vendorId` on `CellarMaterial` + `SupplyLot`; backfill (Demo: 54 mats/106 lots, 0 nulls) with a seeded
+  "Unknown" fallback; shared vendor cores (A/P find-or-create refactored to reuse); mandatory fuzzy
+  `VendorPicker` with pinned "+ create new vendor" + URL autofill on Add/Edit expendable; `/setup/vendors`
+  CRUD; assistant `create_vendor` + `query_vendors` (golden gate green). Gates: tsc, 2034 vitest, lint,
+  next build, verify:tenant-isolation (110/110 + explicit vendor cross-tenant FK checks), eval:assistant —
+  all green. Worktree made buildable (copied .env + npm ci). Remaining: browser QA → review → ship.
 - **Plan 067 PR A — agentic PLAN/FIX routing — SHIPPED, PR #181 merged** (`d2b504f`).
 - **Plan 067 PR B — Linear handoff core — BUILT, PR #183 open.** Tenant-scoped/RLS-protected
   feedback-to-Linear links, sanitized handoff rules, conflict-safe link/replace actions, exact loaders,
@@ -60,4 +69,4 @@ chip, not into this session. Nothing parked right now._
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-14 — Plan 067 PR B built and open as PR #183; validating CI/preview before review._
+_Last updated: 2026-07-15 — Plan 069 vendor management built (12 units, all gates green); browser QA → review → ship next._
