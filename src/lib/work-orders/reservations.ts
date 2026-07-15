@@ -115,9 +115,50 @@ async function readAtpContext(
   return { supply: num(onHand._sum.qtyRemaining), alreadyReserved: num(other._sum.qty), label: material?.name ?? "a material" };
 }
 
+/** Create the ACTIVE reservations for ONE operation task's intents. Returns advisory warnings (never throws
+ * for a shortfall). validUntil defaults to (max(now, dueAt) + 7 days) so a past-due WO keeps its holds (A10). */
+export async function reserveForTaskTx(
+  tx: Prisma.TransactionClient,
+  task: TaskForReservation,
+  input: { workOrderId: string; validUntil?: Date },
+): Promise<string[]> {
+  const now = new Date();
+  const validUntil =
+    input.validUntil ??
+    new Date(Math.max(now.getTime(), task.dueAt?.getTime() ?? now.getTime()) + HOLD_DAYS_PAST_DUE * 86_400_000);
+  const warnings: string[] = [];
+  for (const intent of reservationIntentsForTask(task)) {
+    const ctx = await readAtpContext(tx, intent, input.workOrderId);
+    const advisory = evaluateAtp({
+      kind: intent.kind,
+      targetLabel: ctx.label,
+      supply: ctx.supply,
+      alreadyReserved: ctx.alreadyReserved,
+      requested: intent.qty,
+      unit: intent.unit,
+    });
+    const w = advisoryWarning(advisory);
+    if (w) warnings.push(w);
+    await tx.reservation.create({
+      data: {
+        workOrderId: input.workOrderId,
+        taskId: task.id,
+        kind: intent.kind,
+        status: "ACTIVE",
+        lotId: intent.lotId ?? null,
+        vesselId: intent.vesselId ?? null,
+        materialId: intent.materialId ?? null,
+        qty: intent.qty,
+        unit: intent.unit ?? null,
+        validUntil,
+      },
+    });
+  }
+  return warnings;
+}
+
 /** Create the soft reservations for a WO's operation tasks on issue. Returns advisory warnings (never
- * throws for a shortfall). validUntil defaults to (max(now, dueAt) + 7 days) so a past-due WO keeps its
- * holds (A10). */
+ * throws for a shortfall). */
 export async function reserveForWorkOrderTx(
   tx: Prisma.TransactionClient,
   input: { workOrderId: string; validUntil?: Date },
@@ -128,40 +169,20 @@ export async function reserveForWorkOrderTx(
   })) as TaskForReservation[];
 
   const warnings: string[] = [];
-  const now = new Date();
-  for (const task of tasks) {
-    const validUntil =
-      input.validUntil ??
-      new Date(Math.max(now.getTime(), (task.dueAt?.getTime() ?? now.getTime())) + HOLD_DAYS_PAST_DUE * 86_400_000);
-    for (const intent of reservationIntentsForTask(task)) {
-      const ctx = await readAtpContext(tx, intent, input.workOrderId);
-      const advisory = evaluateAtp({
-        kind: intent.kind,
-        targetLabel: ctx.label,
-        supply: ctx.supply,
-        alreadyReserved: ctx.alreadyReserved,
-        requested: intent.qty,
-        unit: intent.unit,
-      });
-      const w = advisoryWarning(advisory);
-      if (w) warnings.push(w);
-      await tx.reservation.create({
-        data: {
-          workOrderId: input.workOrderId,
-          taskId: task.id,
-          kind: intent.kind,
-          status: "ACTIVE",
-          lotId: intent.lotId ?? null,
-          vesselId: intent.vesselId ?? null,
-          materialId: intent.materialId ?? null,
-          qty: intent.qty,
-          unit: intent.unit ?? null,
-          validUntil,
-        },
-      });
-    }
-  }
+  for (const task of tasks) warnings.push(...(await reserveForTaskTx(tx, task, input)));
   return warnings;
+}
+
+/** Plan 071: re-sync ONE pending task's holds after an in-place edit — release its ACTIVE reservations and
+ * recreate them from the edited task's current intents. Never call reserveForWorkOrderTx on an already-issued
+ * WO (it would double-hold the untouched tasks); this per-task primitive is the safe one for editing. */
+export async function syncReservationsForTaskTx(
+  tx: Prisma.TransactionClient,
+  task: TaskForReservation,
+  input: { workOrderId: string; validUntil?: Date },
+): Promise<string[]> {
+  await releaseReservationsForTaskTx(tx, { taskId: task.id });
+  return reserveForTaskTx(tx, task, input);
 }
 
 /** Release (RELEASED) all ACTIVE reservations for a work order — on cancel or full completion. */
