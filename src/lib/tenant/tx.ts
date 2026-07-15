@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma, prismaBase } from "@/lib/prisma";
-import { requireTenantId, runWithTenantContext } from "@/lib/tenant/context";
+import { getContextUserId, requireTenantId, runWithTenantContext } from "@/lib/tenant/context";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 
 /**
@@ -19,9 +19,12 @@ export function runInTenantTx<T>(
   options?: { maxWait?: number; timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel },
 ): Promise<T> {
   const tenantId = requireTenantId();
-  return runWithTenantContext({ tenantId, skipWrap: true }, () =>
+  // Preserve the acting user across the new skipWrap context so per-user RLS (inbox) still applies.
+  const userId = getContextUserId();
+  return runWithTenantContext({ tenantId, userId, skipWrap: true }, () =>
     prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.user_id', ${userId ?? ""}, true)`;
       return fn(tx as unknown as Prisma.TransactionClient);
     }, options),
   );
@@ -54,8 +57,10 @@ export async function runInTenantRawTx<T>(
   // compute (~1s round-trips) doesn't expire mid-query with P2028. Env-overridable, caller can still
   // pass explicit options. Mirrors the ledger/verify timeout treatment.
   const timeout = options?.timeout ?? (Number(process.env.PRISMA_TX_TIMEOUT_MS) || 15_000);
+  const userId = getContextUserId();
   return prismaBase.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+    await tx.$executeRaw`SELECT set_config('app.user_id', ${userId ?? ""}, true)`;
     return fn(tx as unknown as Prisma.TransactionClient, tenantId);
   }, { ...options, timeout });
 }
