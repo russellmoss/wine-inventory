@@ -17,6 +17,12 @@ import {
   closeFeedbackItemCore,
   updateFeedbackItemCore,
 } from "@/lib/developer/feedback-item-actions";
+import {
+  approveAutomationRun,
+  completeAutomationRun,
+  ensurePlanAutomationRun,
+  retryApprovedAutomationRun,
+} from "@/lib/feedback/automation";
 
 const ENABLED =
   process.env.TENANT_ISOLATION_DB === "1" &&
@@ -336,6 +342,302 @@ describe.skipIf(!ENABLED)("developer feedback database loaders", () => {
       expect(closed.developerNotes).toContain("[developer");
       expect(closed.developerNotes).toContain("Merged and verified");
       expect(closed.developerNotes).toContain("Concurrent developer note");
+      await expect(
+        updateFeedbackItemCore(
+          { id: "developer-loader-vitest", email: "developer-loader@demowinery.test" },
+          {
+            tenantId: TENANT,
+            sourceType: "FEEDBACK_TICKET",
+            id,
+            severity: "P1",
+            triageClass: "DEFECT",
+            status: "TRIAGED",
+            expectedNotesVersion: fresh.developerNotesVersion,
+          },
+        ),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+      expect((await owner.feedbackTicket.findUniqueOrThrow({ where: { id } })).status).toBe(
+        "RESOLVED",
+      );
+    } finally {
+      await owner.feedbackTicket.deleteMany({ where: { tenantId: TENANT, id } });
+    }
+  });
+
+  it("skips pending automation on close and rejects approval for a closed source", async () => {
+    const id = "developer_loader_close_automation";
+    await owner.feedbackTicket.create({
+      data: {
+        tenantId: TENANT,
+        id,
+        kind: "BUG_REPORT",
+        title: "Close pending automation",
+        body: "Closing must prevent later dispatch.",
+        actorEmail: "loader@demowinery.test",
+        modeAtSubmission: "PLAN_MODE",
+        status: "TRIAGED",
+        triageClass: "DEFECT",
+        automationStatus: "AWAITING_APPROVAL",
+      },
+    });
+    try {
+      const ticket = await owner.feedbackTicket.findUniqueOrThrow({ where: { id } });
+      const pending = await owner.automationRun.create({
+        data: {
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          sourceId: id,
+          ticketId: id,
+          kind: "PLAN",
+          status: "AWAITING_APPROVAL",
+          idempotencyKey: `${TENANT}:${id}:pending`,
+        },
+      });
+      await closeFeedbackItemCore(
+        { id: "developer-loader-vitest", email: "developer-loader@demowinery.test" },
+        {
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          id,
+          status: "DISMISSED",
+          outcome: "Closed after review before any automation was dispatched.",
+          expectedNotesVersion: ticket.developerNotesVersion,
+        },
+      );
+      expect((await owner.automationRun.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe(
+        "SKIPPED",
+      );
+
+      const legacyAwaiting = await owner.automationRun.create({
+        data: {
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          sourceId: id,
+          ticketId: id,
+          kind: "AGENTIC_FIX",
+          status: "AWAITING_APPROVAL",
+          idempotencyKey: `${TENANT}:${id}:closed-parent`,
+        },
+      });
+      await expect(
+        approveAutomationRun({
+          tenantId: TENANT,
+          runId: legacyAwaiting.id,
+          approverUserId: "developer-loader-vitest",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      await owner.feedbackTicket.deleteMany({ where: { tenantId: TENANT, id } });
+    }
+  });
+
+  it("rolls approval back with its audit and rejects stale route retries", async () => {
+    const id = "developer_loader_automation_atomicity";
+    await owner.feedbackTicket.create({
+      data: {
+        tenantId: TENANT,
+        id,
+        kind: "BUG_REPORT",
+        title: "Automation transaction atomicity",
+        body: "Approval and audit must commit together.",
+        actorEmail: "loader@demowinery.test",
+        modeAtSubmission: "AGENTIC_FIX",
+        status: "TRIAGED",
+        triageClass: "DEFECT",
+        automationStatus: "AWAITING_APPROVAL",
+      },
+    });
+    try {
+      const awaiting = await owner.automationRun.create({
+        data: {
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          sourceId: id,
+          ticketId: id,
+          kind: "AGENTIC_FIX",
+          status: "AWAITING_APPROVAL",
+          idempotencyKey: `${TENANT}:${id}:audit-rollback`,
+          createdAt: new Date("2026-07-14T12:00:00.000Z"),
+        },
+      });
+      await expect(
+        approveAutomationRun({
+          tenantId: TENANT,
+          runId: awaiting.id,
+          approverUserId: "developer-loader-vitest",
+          onApproved: async () => {
+            throw new Error("injected audit failure");
+          },
+        }),
+      ).rejects.toThrow("injected audit failure");
+      expect((await owner.automationRun.findUniqueOrThrow({ where: { id: awaiting.id } })).status).toBe(
+        "AWAITING_APPROVAL",
+      );
+
+      await owner.feedbackTicket.update({
+        where: { id },
+        data: { triageClass: "PRODUCT_GAP", automationStatus: "PLANNED" },
+      });
+      await owner.automationRun.update({
+        where: { id: awaiting.id },
+        data: {
+          status: "FAILED",
+          approvedByUserId: "developer-loader-vitest",
+          approvedAt: new Date(),
+          error: "GitHub dispatch failed: 503",
+        },
+      });
+      await owner.automationRun.create({
+        data: {
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          sourceId: id,
+          ticketId: id,
+          kind: "PLAN",
+          status: "PLANNED",
+          idempotencyKey: `${TENANT}:${id}:newer-plan`,
+          createdAt: new Date("2026-07-14T12:01:00.000Z"),
+        },
+      });
+      await expect(
+        retryApprovedAutomationRun({ tenantId: TENANT, runId: awaiting.id }),
+      ).resolves.toBeNull();
+      expect((await owner.automationRun.findUniqueOrThrow({ where: { id: awaiting.id } })).status).toBe(
+        "FAILED",
+      );
+    } finally {
+      await owner.feedbackTicket.deleteMany({ where: { tenantId: TENANT, id } });
+    }
+  });
+
+  it("converges concurrent safe dispatch retries", async () => {
+    const id = "developer_loader_concurrent_retry";
+    await owner.feedbackTicket.create({
+      data: {
+        tenantId: TENANT,
+        id,
+        kind: "BUG_REPORT",
+        title: "Concurrent dispatch retry",
+        body: "Only one retry may requeue the run.",
+        actorEmail: "loader@demowinery.test",
+        modeAtSubmission: "AGENTIC_FIX",
+        status: "TRIAGED",
+        triageClass: "DEFECT",
+        automationStatus: "FAILED",
+      },
+    });
+    try {
+      const run = await owner.automationRun.create({
+        data: {
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          sourceId: id,
+          ticketId: id,
+          kind: "AGENTIC_FIX",
+          status: "FAILED",
+          approvedByUserId: "developer-loader-vitest",
+          approvedAt: new Date(),
+          error: "GitHub dispatch failed: 503",
+          idempotencyKey: `${TENANT}:${id}:concurrent-retry`,
+        },
+      });
+      const results = await Promise.all([
+        retryApprovedAutomationRun({ tenantId: TENANT, runId: run.id }),
+        retryApprovedAutomationRun({ tenantId: TENANT, runId: run.id }),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect((await owner.automationRun.findUniqueOrThrow({ where: { id: run.id } })).status).toBe(
+        "QUEUED",
+      );
+    } finally {
+      await owner.feedbackTicket.deleteMany({ where: { tenantId: TENANT, id } });
+    }
+  });
+
+  it("converges plan routing against closure without a dangling approval", async () => {
+    const id = "developer_loader_plan_close_race";
+    await owner.feedbackTicket.create({
+      data: {
+        tenantId: TENANT,
+        id,
+        kind: "FEATURE_REQUEST",
+        title: "Plan routing close race",
+        body: "A closed source cannot retain a pending plan.",
+        actorEmail: "loader@demowinery.test",
+        modeAtSubmission: "PLAN_MODE",
+        status: "TRIAGED",
+        triageClass: "PRODUCT_GAP",
+        automationStatus: "NOT_REQUESTED",
+      },
+    });
+    try {
+      const ticket = await owner.feedbackTicket.findUniqueOrThrow({ where: { id } });
+      const [closeResult] = await Promise.allSettled([
+        closeFeedbackItemCore(
+          { id: "developer-loader-vitest", email: "developer-loader@demowinery.test" },
+          {
+            tenantId: TENANT,
+            sourceType: "FEEDBACK_TICKET",
+            id,
+            status: "DISMISSED",
+            outcome: "Closed while plan routing was evaluated concurrently.",
+            expectedNotesVersion: ticket.developerNotesVersion,
+          },
+        ),
+        ensurePlanAutomationRun({
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          sourceId: id,
+        }),
+      ]);
+      expect(closeResult.status).toBe("fulfilled");
+      expect((await owner.feedbackTicket.findUniqueOrThrow({ where: { id } })).status).toBe(
+        "DISMISSED",
+      );
+      expect(
+        await owner.automationRun.count({
+          where: {
+            tenantId: TENANT,
+            sourceType: "FEEDBACK_TICKET",
+            sourceId: id,
+            status: { in: ["AWAITING_APPROVAL", "QUEUED", "RUNNING"] },
+          },
+        }),
+      ).toBe(0);
+      await expect(
+        ensurePlanAutomationRun({
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          sourceId: id,
+        }),
+      ).resolves.toMatchObject({ ok: false, reason: "SOURCE_CLOSED" });
+      const lateAcceptedRun = await owner.automationRun.create({
+        data: {
+          tenantId: TENANT,
+          sourceType: "FEEDBACK_TICKET",
+          sourceId: id,
+          ticketId: id,
+          kind: "AGENTIC_FIX",
+          status: "FAILED",
+          approvedByUserId: "developer-loader-vitest",
+          approvedAt: new Date(),
+          error: "GitHub dispatch outcome is unknown after a transport failure: timeout.",
+          idempotencyKey: `${TENANT}:${id}:late-accepted`,
+        },
+      });
+      await completeAutomationRun({
+        tenantId: TENANT,
+        runId: lateAcceptedRun.id,
+        githubUrl: "https://github.com/example/wine-inventory/pull/67",
+        githubNumber: 67,
+      });
+      const completedSource = await owner.feedbackTicket.findUniqueOrThrow({ where: { id } });
+      expect(completedSource.status).toBe("DISMISSED");
+      expect(completedSource.automationStatus).toBe("PR_OPENED");
+      expect(completedSource.prUrl).toBe("https://github.com/example/wine-inventory/pull/67");
+      expect(
+        (await owner.automationRun.findUniqueOrThrow({ where: { id: lateAcceptedRun.id } })).status,
+      ).toBe("PR_OPENED");
     } finally {
       await owner.feedbackTicket.deleteMany({ where: { tenantId: TENANT, id } });
     }

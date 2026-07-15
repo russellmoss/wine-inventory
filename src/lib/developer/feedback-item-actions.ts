@@ -1,8 +1,10 @@
 import "server-only";
 
 import {
+  FeedbackAutomationStatus,
   FeedbackAutomationSource,
   FeedbackItemStatus,
+  Prisma,
   type FeedbackSeverity,
   type FeedbackTriageClass,
 } from "@prisma/client";
@@ -13,8 +15,10 @@ import {
   prependDeveloperOutcomeNote,
   type DeveloperCloseStatus,
 } from "@/lib/developer/feedback-outcome";
+import { assertFeedbackStatusForSource } from "@/lib/developer/feedback-item-input";
 import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
+import { withWriteRetry } from "@/lib/db/write-retry";
 
 export type UpdateFeedbackItemCoreInput = {
   tenantId: string;
@@ -24,7 +28,7 @@ export type UpdateFeedbackItemCoreInput = {
   triageClass: FeedbackTriageClass | null;
   status?: FeedbackItemStatus;
   developerNotes?: string;
-  expectedNotesVersion?: number;
+  expectedNotesVersion: number;
 };
 
 export type DeveloperFeedbackActor = { id: string; email: string };
@@ -66,12 +70,10 @@ export async function updateFeedbackItemCore(
   ) {
     throw new ActionError("Close this item with a meaningful outcome.", "VALIDATION");
   }
+  assertFeedbackStatusForSource(input.sourceType, input.status);
   const notes = input.developerNotes?.slice(0, 5_000);
-  if (
-    notes !== undefined &&
-    (!Number.isInteger(input.expectedNotesVersion) || input.expectedNotesVersion! < 1)
-  ) {
-    throw new ActionError("Reload this feedback item before editing its notes.", "CONFLICT");
+  if (!Number.isInteger(input.expectedNotesVersion) || input.expectedNotesVersion < 1) {
+    throw new ActionError("Reload this feedback item before saving.", "CONFLICT");
   }
 
   await runAsTenant(input.tenantId, () =>
@@ -81,17 +83,14 @@ export async function updateFeedbackItemCore(
           where: {
             tenantId: input.tenantId,
             id: input.id,
-            ...(notes !== undefined
-              ? { developerNotesVersion: input.expectedNotesVersion }
-              : {}),
+            developerNotesVersion: input.expectedNotesVersion,
+            status: { notIn: ["RESOLVED", "DISMISSED"] },
           },
           data: {
             severity: input.severity,
             triageClass: input.triageClass,
             developerNotes: notes,
-            ...(notes !== undefined
-              ? { developerNotesVersion: { increment: 1 } }
-              : {}),
+            developerNotesVersion: { increment: 1 },
             status: input.status,
           },
         });
@@ -107,17 +106,14 @@ export async function updateFeedbackItemCore(
           where: {
             tenantId: input.tenantId,
             id: input.id,
-            ...(notes !== undefined
-              ? { developerNotesVersion: input.expectedNotesVersion }
-              : {}),
+            developerNotesVersion: input.expectedNotesVersion,
+            status: { notIn: [FeedbackItemStatus.RESOLVED, FeedbackItemStatus.DISMISSED] },
           },
           data: {
             severity: input.severity,
             triageClass: input.triageClass,
             developerNotes: notes,
-            ...(notes !== undefined
-              ? { developerNotesVersion: { increment: 1 } }
-              : {}),
+            developerNotesVersion: { increment: 1 },
             status,
           },
         });
@@ -165,7 +161,7 @@ export async function closeFeedbackItemCore(
   }
 
   await runAsTenant(input.tenantId, () =>
-    runInTenantTx(async (tx) => {
+    withWriteRetry(() => runInTenantTx(async (tx) => {
       const source =
         input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
           ? await tx.assistantFeedback.findFirst({
@@ -192,6 +188,42 @@ export async function closeFeedbackItemCore(
         resolvedAt: closedAt,
         resolvedByUserId: actor.id,
       } as const;
+      const skipPendingRuns = () =>
+        tx.automationRun.updateMany({
+          where: {
+            tenantId: input.tenantId,
+            sourceType: input.sourceType,
+            sourceId: input.id,
+            status: {
+              in: [
+                FeedbackAutomationStatus.AWAITING_APPROVAL,
+                FeedbackAutomationStatus.QUEUED,
+              ],
+            },
+          },
+          data: {
+            status: FeedbackAutomationStatus.SKIPPED,
+            completedAt: closedAt,
+            error: "Feedback item was closed before automation started.",
+          },
+        });
+      const countRunning = () =>
+        tx.automationRun.count({
+          where: {
+            tenantId: input.tenantId,
+            sourceType: input.sourceType,
+            sourceId: input.id,
+            status: FeedbackAutomationStatus.RUNNING,
+          },
+        });
+      const skippedBeforeClose = await skipPendingRuns();
+      const running = await countRunning();
+      if (running) {
+        throw new ActionError(
+          "Automation is currently running. Wait for it to finish before closing this item.",
+          "CONFLICT",
+        );
+      }
       const updated =
         input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK
           ? await tx.assistantFeedback.updateMany({
@@ -199,6 +231,7 @@ export async function closeFeedbackItemCore(
                 tenantId: input.tenantId,
                 id: input.id,
                 developerNotesVersion: input.expectedNotesVersion,
+                status: { notIn: ["RESOLVED", "DISMISSED"] },
               },
               data,
             })
@@ -207,6 +240,9 @@ export async function closeFeedbackItemCore(
                 tenantId: input.tenantId,
                 id: input.id,
                 developerNotesVersion: input.expectedNotesVersion,
+                status: {
+                  notIn: [FeedbackItemStatus.RESOLVED, FeedbackItemStatus.DISMISSED],
+                },
               },
               data,
             });
@@ -215,6 +251,26 @@ export async function closeFeedbackItemCore(
           "This item changed while you were closing it. Reload and try again.",
           "CONFLICT",
         );
+      }
+      const skippedAfterClose = await skipPendingRuns();
+      if (await countRunning()) {
+        throw new ActionError(
+          "Automation started while this item was closing. Reload and try again after it finishes.",
+          "CONFLICT",
+        );
+      }
+      if (skippedBeforeClose.count + skippedAfterClose.count > 0) {
+        if (input.sourceType === FeedbackAutomationSource.ASSISTANT_FEEDBACK) {
+          await tx.assistantFeedback.updateMany({
+            where: { tenantId: input.tenantId, id: input.id },
+            data: { automationStatus: FeedbackAutomationStatus.SKIPPED },
+          });
+        } else {
+          await tx.feedbackTicket.updateMany({
+            where: { tenantId: input.tenantId, id: input.id },
+            data: { automationStatus: FeedbackAutomationStatus.SKIPPED },
+          });
+        }
       }
       await writeAudit(tx, {
         actorUserId: actor.id,
@@ -228,6 +284,6 @@ export async function closeFeedbackItemCore(
             ? "Developer resolved feedback with outcome"
             : "Developer dismissed feedback with outcome",
       });
-    }),
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }), 5, "developer-feedback-close"),
   );
 }

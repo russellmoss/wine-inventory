@@ -10,6 +10,7 @@ import {
   enterSupportTenant,
   exitSupportTenant,
   linkFeedbackToLinear,
+  retryFeedbackAutomation,
   updateFeedbackItem,
 } from "@/lib/developer/actions";
 import { parseLinearIssueUrl, promotionEligibility } from "@/lib/developer/linear-links";
@@ -23,7 +24,8 @@ const DISPOSITIONS = [
   ["NOT_A_BUG", "Not a bug"],
   ["UNCLEAR", "Unclear"],
 ] as const;
-const OPEN_STATUSES = ["NEW", "TRIAGED", "IN_PROGRESS"] as const;
+const ASSISTANT_OPEN_STATUSES = ["NEW", "TRIAGED"] as const;
+const TICKET_OPEN_STATUSES = ["NEW", "TRIAGED", "IN_PROGRESS"] as const;
 
 type Message = { text: string; error: boolean };
 type LinkAttempt = { replace: boolean; expectedVersion?: number; confirmFanIn: boolean };
@@ -107,6 +109,10 @@ export function DeveloperItemDetail({
   const githubRunUrl = safeExternalUrl(item.githubRunUrl, "github.com");
   const prUrl = safeExternalUrl(item.prUrl, "github.com");
   const storedLinearUrl = safeExternalUrl(item.linearLink?.linearIssueUrl ?? null, "linear.app");
+  const openStatuses =
+    item.sourceType === "ASSISTANT_FEEDBACK"
+      ? ASSISTANT_OPEN_STATUSES
+      : TICKET_OPEN_STATUSES;
 
   React.useEffect(() => {
     if (window.matchMedia("(max-width: 1099px)").matches) headingRef.current?.focus();
@@ -212,6 +218,7 @@ export function DeveloperItemDetail({
         outcome,
         expectedNotesVersion: item.developerNotesVersion,
       });
+      setStatus(statusToSet);
       setMessage({ text: "Closed with outcome.", error: false });
       router.refresh();
     });
@@ -247,7 +254,7 @@ export function DeveloperItemDetail({
         {item.planTitle ? <p><strong>Generated plan:</strong> {item.planTitle}</p> : null}
         {item.planMarkdown ? (
           <details>
-            <summary>View private generated plan</summary>
+            <summary className={styles.detailSummary}>View private generated plan</summary>
             <pre className={styles.planPreview}>{item.planMarkdown}</pre>
           </details>
         ) : null}
@@ -314,8 +321,8 @@ export function DeveloperItemDetail({
           <label className={styles.field}>
             Status
             <select className={styles.control} value={status} disabled={isClosed} onChange={(event) => setStatus(event.target.value)}>
-              {!OPEN_STATUSES.includes(status as (typeof OPEN_STATUSES)[number]) ? <option value={status}>{status}</option> : null}
-              {OPEN_STATUSES.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
+              {!openStatuses.some((value) => value === status) ? <option value={status}>{status}</option> : null}
+              {openStatuses.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
             </select>
           </label>
         </div>
@@ -331,6 +338,7 @@ export function DeveloperItemDetail({
                 severity: severity as "P0" | "P1" | "P2" | "",
                 triageClass,
                 status,
+                expectedNotesVersion: item.developerNotesVersion,
               });
               setMessage({ text: "Triage saved.", error: false });
               router.refresh();
@@ -414,17 +422,43 @@ export function DeveloperItemDetail({
         {item.automationConflict ? <div className={styles.attention}>{item.automationConflict.message}</div> : null}
         <p><strong>State:</strong> {item.automationStatus.replaceAll("_", " ")}</p>
         {item.activeRun ? <p className={styles.subtle}>Active {item.activeRun.kind} run {item.activeRun.id} is {item.activeRun.status}.</p> : null}
-        {item.awaitingRunId ? (
+        {item.activeRun?.error ? <div className={styles.attention}>{item.activeRun.error}</div> : null}
+        {!isClosed && item.awaitingRunId ? (
           <Button
             size="sm"
             disabled={busy !== null}
             onClick={() => run("automation", async () => {
-              await approveFeedbackAutomation({ tenantId: item.tenantId, runId: item.awaitingRunId! });
-              setMessage({ text: `${item.awaitingRunKind === "PLAN" ? "Plan" : "Fix"} started.`, error: false });
+              const result = await approveFeedbackAutomation({ tenantId: item.tenantId, runId: item.awaitingRunId! });
+              setMessage({
+                text: result.ok
+                  ? `${item.awaitingRunKind === "PLAN" ? "Plan" : "Fix"} started.`
+                  : result.message,
+                error: !result.ok,
+              });
               router.refresh();
             })}
           >
             {busy === "automation" ? `Starting ${item.awaitingRunKind === "PLAN" ? "plan" : "fix"}…` : `Start ${item.awaitingRunKind === "PLAN" ? "plan" : "fix"}`}
+          </Button>
+        ) : null}
+        {!isClosed && item.activeRun?.canRetryDispatch ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy !== null}
+            onClick={() => run("automation-retry", async () => {
+              const result = await retryFeedbackAutomation({
+                tenantId: item.tenantId,
+                runId: item.activeRun!.id,
+              });
+              setMessage({
+                text: result.ok ? "GitHub dispatch retried." : result.message,
+                error: !result.ok,
+              });
+              router.refresh();
+            })}
+          >
+            {busy === "automation-retry" ? "Retrying dispatch…" : "Retry GitHub dispatch"}
           </Button>
         ) : null}
       </DetailSection>

@@ -59,7 +59,11 @@ function ItemLink({ item, query }: { item: DeveloperFeedbackItem; query: Develop
   });
   const current = query.source === item.sourceType && query.item === item.id;
   return (
-    <Link className={styles.queueLink} href={href} aria-current={current ? "page" : undefined}>
+    <Link
+      className={`${styles.queueLink} ${current ? styles.queueLinkSelected : ""}`}
+      href={href}
+      aria-current={current ? "page" : undefined}
+    >
       <span className={styles.itemTitle}>{item.title}</span>
       <span className={styles.itemMeta}>
         {item.tenantName} · {item.kind}
@@ -102,18 +106,30 @@ export function DeveloperQueueList({
           <thead>
             <tr>
               <th aria-sort={sort === "attention" ? "ascending" : "none"}>
-                <button className={styles.sortButton} type="button" onClick={() => setSort("attention")}>
-                  Attention
+                <button
+                  className={`${styles.sortButton} ${sort === "attention" ? styles.sortButtonActive : ""}`}
+                  type="button"
+                  onClick={() => setSort("attention")}
+                >
+                  Attention <span aria-hidden="true">{sort === "attention" ? "↑" : ""}</span>
                 </button>
               </th>
               <th aria-sort={sort === "item" ? "ascending" : "none"}>
-                <button className={styles.sortButton} type="button" onClick={() => setSort("item")}>
-                  Item and tenant
+                <button
+                  className={`${styles.sortButton} ${sort === "item" ? styles.sortButtonActive : ""}`}
+                  type="button"
+                  onClick={() => setSort("item")}
+                >
+                  Item and tenant <span aria-hidden="true">{sort === "item" ? "↑" : ""}</span>
                 </button>
               </th>
               <th aria-sort={sort === "createdAt" ? "descending" : "none"}>
-                <button className={styles.sortButton} type="button" onClick={() => setSort("createdAt")}>
-                  Next action and time
+                <button
+                  className={`${styles.sortButton} ${sort === "createdAt" ? styles.sortButtonActive : ""}`}
+                  type="button"
+                  onClick={() => setSort("createdAt")}
+                >
+                  Next action and time <span aria-hidden="true">{sort === "createdAt" ? "↓" : ""}</span>
                 </button>
               </th>
             </tr>

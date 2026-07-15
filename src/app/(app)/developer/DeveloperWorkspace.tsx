@@ -121,7 +121,7 @@ export function DeveloperWorkspace({
                 </div>
               ) : null}
               <DeveloperItemDetail
-                key={`${selectedItem.sourceType}:${selectedItem.id}:${selectedItem.developerNotesVersion}:${selectedItem.linearLink?.version ?? 0}`}
+                key={`${selectedItem.sourceType}:${selectedItem.id}`}
                 item={selectedItem}
                 handoffPacket={handoffPacket}
               />

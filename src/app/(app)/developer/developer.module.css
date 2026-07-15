@@ -4,6 +4,10 @@
   font-family: var(--font-body);
 }
 
+.workspace button {
+  min-height: 44px;
+}
+
 .header {
   display: grid;
   gap: var(--space-1);
@@ -66,13 +70,14 @@
 .control {
   width: 100%;
   min-width: 0;
-  height: 42px;
+  height: 44px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
   color: var(--text-primary);
   padding-inline: var(--space-2);
-  font: inherit;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
   font-weight: 400;
 }
 
@@ -93,6 +98,9 @@
 }
 
 .plainLink {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -100,7 +108,7 @@
 
 .buttonLink {
   display: inline-flex;
-  min-height: 42px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   border: var(--border-width) solid var(--border-strong);
@@ -182,6 +190,10 @@
 }
 
 .sortButton {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: var(--space-1);
   border: 0;
   background: transparent;
   color: inherit;
@@ -190,14 +202,25 @@
   font: inherit;
 }
 
+.sortButtonActive {
+  color: var(--accent);
+}
+
 .queueLink {
   display: block;
+  min-height: 44px;
   border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-2);
   color: var(--text-primary);
   text-decoration: none;
 }
 
 .queueLink:hover {
+  color: var(--accent);
+}
+
+.queueLinkSelected {
+  background: var(--surface-sunken);
   color: var(--accent);
 }
 
@@ -323,6 +346,13 @@
   font: var(--text-caption)/var(--leading-normal) var(--font-mono);
 }
 
+.detailSummary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  cursor: pointer;
+}
+
 .detailFields {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -390,6 +420,14 @@
   .hasSelection .queueRegion {
     display: none;
   }
+
+  .automationDesktop {
+    display: none;
+  }
+
+  .automationMobile {
+    display: block;
+  }
 }
 
 @media (max-width: 767px) {
@@ -411,13 +449,11 @@
     display: none;
   }
 
-  .tableWrap,
-  .automationDesktop {
+  .tableWrap {
     display: none;
   }
 
-  .mobileQueue,
-  .automationMobile {
+  .mobileQueue {
     display: block;
   }
 

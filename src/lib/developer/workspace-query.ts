@@ -32,6 +32,22 @@ export type DeveloperWorkspaceQuery = {
   invalid: string[];
 };
 
+export function withActiveDeveloperTenant<T extends { id: string }>(
+  tenants: T[],
+  activeTenant: T | null,
+): T[] {
+  return activeTenant && !tenants.some((tenant) => tenant.id === activeTenant.id)
+    ? [activeTenant, ...tenants]
+    : tenants;
+}
+
+export function shouldLoadActiveDeveloperTenant(input: {
+  tenantId: string | null;
+  view: DeveloperWorkspaceView;
+}): boolean {
+  return Boolean(input.tenantId) && input.view !== "automation";
+}
+
 type RawQuery = Record<string, string | string[] | undefined>;
 type QueryPatch = Partial<
   Omit<DeveloperWorkspaceQuery, "queue" | "invalid"> & {

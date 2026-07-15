@@ -2,9 +2,26 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeveloperWorkspaceHref,
   parseDeveloperWorkspaceQuery,
+  shouldLoadActiveDeveloperTenant,
+  withActiveDeveloperTenant,
 } from "@/lib/developer/workspace-query";
 
 describe("developer workspace query", () => {
+  it("keeps an exact deep-linked tenant available outside the bounded directory page", () => {
+    const loaded = [{ id: "org_alpha", name: "Alpha" }];
+    const active = { id: "org_zulu", name: "Zulu" };
+    expect(withActiveDeveloperTenant(loaded, active)).toEqual([active, ...loaded]);
+    expect(withActiveDeveloperTenant(loaded, loaded[0])).toBe(loaded);
+  });
+
+  it("never injects a default-mode exact tenant into Automation", () => {
+    expect(
+      shouldLoadActiveDeveloperTenant({ tenantId: "org_zulu", view: "automation" }),
+    ).toBe(false);
+    expect(shouldLoadActiveDeveloperTenant({ tenantId: "org_zulu", view: "inbox" })).toBe(
+      true,
+    );
+  });
   it("defaults to Inbox and accepts the shareable filter/deep-link contract", () => {
     expect(
       parseDeveloperWorkspaceQuery({

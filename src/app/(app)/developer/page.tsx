@@ -2,10 +2,15 @@ import { requireDeveloper } from "@/lib/dal";
 import {
   getDeveloperFeedbackData,
   getDeveloperFeedbackItem,
+  getDeveloperTenantSummary,
   getDeveloperTenantFeedbackPage,
   type DeveloperTenantFeedbackPage,
 } from "@/lib/developer/feedback";
-import { parseDeveloperWorkspaceQuery } from "@/lib/developer/workspace-query";
+import {
+  parseDeveloperWorkspaceQuery,
+  shouldLoadActiveDeveloperTenant,
+  withActiveDeveloperTenant,
+} from "@/lib/developer/workspace-query";
 import { buildFeedbackHandoffMarkdown } from "@/lib/developer/linear-links";
 import { DeveloperWorkspace } from "./DeveloperWorkspace";
 
@@ -25,7 +30,11 @@ export default async function DeveloperPage({
     severity: query.severity,
     triageClass: query.disposition,
     includeItems: !exactTenant && query.view !== "automation",
+    includeModes: query.view === "automation",
   });
+  const activeTenantPromise = shouldLoadActiveDeveloperTenant(query)
+    ? getDeveloperTenantSummary(query.tenantId!)
+    : Promise.resolve(null);
   const selectedItemPromise =
     query.tenantId && query.source && query.item
       ? getDeveloperFeedbackItem({
@@ -66,10 +75,12 @@ export default async function DeveloperPage({
     }
   }
 
-  const [shellData, selectedItem] = await Promise.all([
+  const [shellData, selectedItem, activeTenant] = await Promise.all([
     shellDataPromise,
     selectedItemPromise,
+    activeTenantPromise,
   ]);
+  const tenants = withActiveDeveloperTenant(shellData.tenants, activeTenant);
   const items = exactPage?.items ?? shellData.items;
   const selectedIsInCurrentList = selectedItem
     ? items.some(
@@ -85,7 +96,7 @@ export default async function DeveloperPage({
 
   return (
     <DeveloperWorkspace
-      data={{ ...shellData, items, loadedCount: items.length }}
+      data={{ ...shellData, tenants, items, loadedCount: items.length }}
       exactPage={exactPage}
       query={query}
       selectedItem={selectedItem}

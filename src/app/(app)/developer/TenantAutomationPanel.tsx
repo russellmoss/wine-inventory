@@ -16,14 +16,16 @@ function ModeSelect({
   value,
   onChange,
   label,
+  visibleLabel,
   allowAgentic = true,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
+  visibleLabel?: string;
   allowAgentic?: boolean;
 }) {
-  return (
+  const select = (
     <select
       className={styles.control}
       aria-label={label}
@@ -37,15 +39,22 @@ function ModeSelect({
       ))}
     </select>
   );
+
+  return visibleLabel ? (
+    <label className={styles.field}>
+      {visibleLabel}
+      {select}
+    </label>
+  ) : (
+    select
+  );
 }
 
 function TenantModeControls({
   tenant,
-  layout,
   announce,
 }: {
   tenant: DeveloperTenantSummary;
-  layout: "desktop" | "mobile";
   announce: (message: string, error?: boolean) => void;
 }) {
   const [assistantFeedbackMode, setAssistantFeedbackMode] = React.useState(
@@ -79,7 +88,7 @@ function TenantModeControls({
     }
   }
 
-  const controls = (
+  const controls = (layout: "desktop" | "mobile") => (
     <>
       {layout === "desktop" ? (
         <div>
@@ -89,6 +98,7 @@ function TenantModeControls({
       ) : null}
       <ModeSelect
         label={`${tenant.name} assistant thumbs-down mode`}
+        visibleLabel={layout === "mobile" ? "Assistant thumbs-down" : undefined}
         value={assistantFeedbackMode}
         onChange={(value) =>
           setAssistantFeedbackMode(value as typeof assistantFeedbackMode)
@@ -96,33 +106,53 @@ function TenantModeControls({
       />
       <ModeSelect
         label={`${tenant.name} bug report mode`}
+        visibleLabel={layout === "mobile" ? "Bug reports" : undefined}
         value={bugReportMode}
         onChange={(value) => setBugReportMode(value as typeof bugReportMode)}
       />
       <ModeSelect
         label={`${tenant.name} feature request mode`}
+        visibleLabel={layout === "mobile" ? "Feature requests" : undefined}
         value={featureRequestMode}
         onChange={(value) => setFeatureRequestMode(value as typeof featureRequestMode)}
         allowAgentic={false}
       />
-      <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => run("save")}>
-        {busy === "save" ? "Saving…" : "Save"}
+      <Button
+        size="sm"
+        variant="secondary"
+        aria-label={`Save ${tenant.name} automation settings`}
+        disabled={busy !== null}
+        onClick={() => run("save")}
+      >
+        {busy === "save" ? "Saving…" : layout === "mobile" ? "Save settings" : "Save"}
       </Button>
-      <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => run("support")}>
-        {busy === "support" ? "Entering…" : "Enter"}
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label={`Enter support view for ${tenant.name}`}
+        disabled={busy !== null}
+        onClick={() => run("support")}
+      >
+        {busy === "support" ? "Entering…" : layout === "mobile" ? "Enter support view" : "Enter"}
       </Button>
     </>
   );
 
-  if (layout === "desktop") return <div className={styles.automationRow}>{controls}</div>;
   return (
-    <Collapsible
-      title={tenant.name}
-      right={<span className={styles.itemId}>{tenant.id}</span>}
-      level="section"
-    >
-      <div className={styles.mobileAutomationFields}>{controls}</div>
-    </Collapsible>
+    <>
+      <div className={`${styles.automationRow} ${styles.automationDesktop}`}>
+        {controls("desktop")}
+      </div>
+      <div className={styles.automationMobile}>
+        <Collapsible
+          title={tenant.name}
+          right={<span className={styles.itemId}>{tenant.id}</span>}
+          level="section"
+        >
+          <div className={styles.mobileAutomationFields}>{controls("mobile")}</div>
+        </Collapsible>
+      </div>
+    </>
   );
 }
 
@@ -168,15 +198,10 @@ export function TenantAutomationPanel({ tenants }: { tenants: DeveloperTenantSum
           <span>Save</span>
           <span>Support</span>
         </div>
-        {filtered.map((tenant) => (
-          <TenantModeControls key={tenant.id} tenant={tenant} layout="desktop" announce={announce} />
-        ))}
       </div>
-      <div className={styles.automationMobile}>
-        {filtered.map((tenant) => (
-          <TenantModeControls key={tenant.id} tenant={tenant} layout="mobile" announce={announce} />
-        ))}
-      </div>
+      {filtered.map((tenant) => (
+        <TenantModeControls key={tenant.id} tenant={tenant} announce={announce} />
+      ))}
       {!filtered.length ? <div className={styles.emptyQueue}>No loaded tenant matches that search.</div> : null}
     </section>
   );

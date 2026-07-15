@@ -82,5 +82,5 @@ jobs:
         run: |
           npx tsx scripts/assistant-feedback-mark.ts "${{ steps.agent.outputs.feedbackId }}" "${{ steps.cpr.outputs.pull-request-url }}"
           if [ -n "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" ]; then
-            npx tsx scripts/feedback-automation-mark.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" "${{ steps.cpr.outputs.pull-request-url }}" "${{ steps.cpr.outputs.pull-request-number }}"
+            npx tsx --conditions=react-server scripts/feedback-automation-mark.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}" "${{ steps.cpr.outputs.pull-request-url }}" "${{ steps.cpr.outputs.pull-request-number }}"
           fi
