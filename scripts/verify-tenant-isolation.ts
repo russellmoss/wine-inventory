@@ -227,6 +227,10 @@ async function main() {
   // cross-tenant read of a winery's gear and a link whose endpoints span tenants.
   await owner.equipmentAsset.upsert({ where: { id: "iso_eq_b" }, update: {}, create: { id: "iso_eq_b", tenantId: B, name: "ISO Press B", kind: "press", updatedAt: now } });
   await owner.workOrderTaskEquipment.upsert({ where: { id: "iso_wote_b" }, update: {}, create: { id: "iso_wote_b", tenantId: B, taskId: "iso_wot_b", equipmentId: "iso_eq_b" } });
+  // Plan 069: a vendor + a vendor_contact in tenant B. Isolation risk is a cross-tenant read of a winery's
+  // suppliers/PII, and a contact/material/lot whose vendor spans tenants (composite (tenantId, vendorId) FK).
+  await owner.vendor.upsert({ where: { id: "iso_vendor_b" }, update: {}, create: { id: "iso_vendor_b", tenantId: B, name: "ISO Vendor B", updatedAt: now } });
+  await owner.vendorContact.upsert({ where: { id: "iso_vc_b" }, update: {}, create: { id: "iso_vc_b", tenantId: B, vendorId: "iso_vendor_b", name: "ISO Contact B", updatedAt: now } });
   // Plan 053 C11: a tenant-authored Custom Log type in tenant B. Isolation risk is a cross-tenant read of a
   // winery's custom task definitions.
   await owner.workOrderTaskType.upsert({ where: { id: "iso_wtt_b" }, update: {}, create: { id: "iso_wtt_b", tenantId: B, code: "ISO_LOG_B", label: "ISO Log B", fieldsJson: [{ key: "note", label: "Note", type: "text", stage: ["planning"] }] } });
@@ -553,6 +557,26 @@ async function main() {
       await asTenant(A, (db) => db.workOrderTaskEquipment.create({ data: { id: "iso_wote_fk", tenantId: A, taskId: "iso_wot_fk", equipmentId: "iso_eq_b" } }));
     } catch { woteFkRaised = true; }
     check("task↔equipment cross-tenant reference rejected (composite FK)", woteFkRaised);
+    // Plan 069: vendor + vendor_contact isolation + cross-tenant vendor FK rejects.
+    const aSeesVendorB = await asTenant(A, (db) => db.vendor.findFirst({ where: { id: "iso_vendor_b" } }));
+    check("tenant A CANNOT see tenant B's vendor (RLS)", aSeesVendorB === null);
+    const aSeesVcB = await asTenant(A, (db) => db.vendorContact.findFirst({ where: { id: "iso_vc_b" } }));
+    check("tenant A CANNOT see tenant B's vendor_contact (RLS)", aSeesVcB === null);
+    let vendorInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.vendor.create({ data: { id: "iso_vendor_x", tenantId: B, name: "ISO Vendor X", updatedAt: new Date() } }));
+    } catch { vendorInsertRaised = true; }
+    check("foreign-tenant vendor INSERT raises (WITH CHECK)", vendorInsertRaised);
+    let vcFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.vendorContact.create({ data: { id: "iso_vc_fk", tenantId: A, vendorId: "iso_vendor_b", name: "ISO VC FK", updatedAt: new Date() } }));
+    } catch { vcFkRaised = true; }
+    check("vendor_contact cross-tenant vendor reference rejected (composite FK, K11)", vcFkRaised);
+    let matVendorFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.cellarMaterial.create({ data: { id: "iso_mat_vfk", tenantId: A, name: "ISO Mat VFK", normalizedKey: "ISOMATVFK", kind: "OTHER", vendorId: "iso_vendor_b" } }));
+    } catch { matVendorFkRaised = true; }
+    check("cellar_material cross-tenant vendor reference rejected (composite FK, K11)", matVendorFkRaised);
     // Plan 053 C11: work_order_task_type isolation.
     const aSeesWttB = await asTenant(A, (db) => db.workOrderTaskType.findFirst({ where: { id: "iso_wtt_b" } }));
     check("tenant A CANNOT see tenant B's work_order_task_type (RLS)", aSeesWttB === null);
@@ -733,6 +757,10 @@ async function main() {
     await owner.workOrderDependency.deleteMany({ where: { id: { in: ["iso_wodep_b", "iso_wodep_x", "iso_wodep_fk"] } } });
     await owner.workOrderTaskEquipment.deleteMany({ where: { id: { in: ["iso_wote_b", "iso_wote_fk"] } } });
     await owner.equipmentAsset.deleteMany({ where: { id: { in: ["iso_eq_b", "iso_eq_x"] } } });
+    // Plan 069: vendor children (contacts, the FK-test material) before the vendors (ON DELETE RESTRICT).
+    await owner.vendorContact.deleteMany({ where: { id: { in: ["iso_vc_b", "iso_vc_fk"] } } });
+    await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_vfk" } });
+    await owner.vendor.deleteMany({ where: { id: { in: ["iso_vendor_b", "iso_vendor_x"] } } });
     await owner.workOrderTaskTypeOverlay.deleteMany({ where: { id: { in: ["iso_ovl_b", "iso_ovl_x"] } } });
     await owner.workOrderTaskType.deleteMany({ where: { id: { in: ["iso_wtt_b", "iso_wtt_x"] } } });
     await owner.workOrder.deleteMany({ where: { id: { in: ["iso_wo_a", "iso_wo_b", "iso_wo_bp", "iso_wo_x", "iso_wo_fk_a"] } } });
