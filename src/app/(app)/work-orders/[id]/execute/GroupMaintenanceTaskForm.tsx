@@ -81,7 +81,7 @@ export function GroupMaintenanceUndo({ task, onDone }: { task: WorkOrderTaskView
   function undo() {
     setError(null);
     startTransition(async () => {
-      try { await undoMaintenanceTaskAction({ taskId: task.id }); onDone(); }
+      try { unwrap(await undoMaintenanceTaskAction({ taskId: task.id })); onDone(); }
       catch (e) { setError(e instanceof Error ? e.message : "Couldn't undo."); }
     });
   }

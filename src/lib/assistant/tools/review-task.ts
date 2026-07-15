@@ -5,6 +5,7 @@ import { signProposal } from "../confirm";
 import { parseWorkOrderRef, resolveWorkOrderTask, type ResolvedTask } from "../scope";
 import { prisma } from "@/lib/prisma";
 import { approveTaskAction, rejectTaskAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Assistant-coverage Wave 1 #3c: manager review/revert for completed work-order tasks. Approval still
 // targets PENDING_APPROVAL. Reject/back-out can reverse a pending-review or approved ledger operation,
@@ -50,10 +51,10 @@ export const commitReviewTask: Committer = async (_user, args) => {
   const label = String(args.label ?? "the task");
   const woNumber = String(args.woNumber ?? "");
   if (args.decision === "reject") {
-    const res = await rejectTaskAction({ taskId, reason: args.reason == null ? undefined : String(args.reason) });
+    const res = unwrap(await rejectTaskAction({ taskId, reason: args.reason == null ? undefined : String(args.reason) }));
     return { message: `${res.message} (${label} on WO #${woNumber})` };
   }
-  await approveTaskAction({ taskId });
+  unwrap(await approveTaskAction({ taskId }));
   return { message: `Approved ${label} on WO #${woNumber}.` };
 };
 

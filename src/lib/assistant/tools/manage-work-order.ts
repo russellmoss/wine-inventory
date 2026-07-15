@@ -4,6 +4,7 @@ import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { resolveWorkOrder, resolveWorkOrderTask } from "../scope";
 import { startTaskAction, assignWorkOrderAction, scheduleWorkOrderAction, cancelWorkOrderAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Assistant-coverage Wave 1 #3c — work-order lifecycle in one discriminated tool (keeps the tool count
 // down): start a task, or assign / reschedule / cancel a work order. Wraps the existing lifecycle
@@ -69,17 +70,17 @@ export const commitManageWorkOrder: Committer = async (_user, args) => {
   const action = String(args.action);
   const woNumber = String(args.woNumber ?? "");
   if (action === "start") {
-    await startTaskAction({ taskId: String(args.taskId) });
+    unwrap(await startTaskAction({ taskId: String(args.taskId) }));
     return { message: `Started ${String(args.label ?? "the task")} on WO #${woNumber}.` };
   }
   if (action === "assign") {
-    await assignWorkOrderAction({ workOrderId: String(args.workOrderId), assigneeId: null, assigneeEmail: String(args.assigneeEmail) });
+    unwrap(await assignWorkOrderAction({ workOrderId: String(args.workOrderId), assigneeId: null, assigneeEmail: String(args.assigneeEmail) }));
     return { message: `Assigned WO #${woNumber} to ${String(args.assigneeEmail)}.` };
   }
   if (action === "schedule") {
-    await scheduleWorkOrderAction({ workOrderId: String(args.workOrderId), dueAt: args.dueDate ? new Date(String(args.dueDate)) : null });
+    unwrap(await scheduleWorkOrderAction({ workOrderId: String(args.workOrderId), dueAt: args.dueDate ? new Date(String(args.dueDate)) : null }));
     return { message: `Rescheduled WO #${woNumber} to ${String(args.dueDate)}.` };
   }
-  await cancelWorkOrderAction({ workOrderId: String(args.workOrderId), reason: args.reason == null ? undefined : String(args.reason) });
+  unwrap(await cancelWorkOrderAction({ workOrderId: String(args.workOrderId), reason: args.reason == null ? undefined : String(args.reason) }));
   return { message: `Cancelled WO #${woNumber}.` };
 };

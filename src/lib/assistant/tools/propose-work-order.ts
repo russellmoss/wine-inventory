@@ -9,6 +9,7 @@ import { findScopedBlocks, type ScopedBlock } from "../scope";
 import type { AppUser } from "@/lib/access";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { createWorkOrderFromBuildsAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import type { TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { findEquipmentByName, listEquipment, equipmentKindLabel, type EquipmentRow } from "@/lib/equipment/equipment";
 import { listOrgMembers, type OrgMemberRow } from "@/lib/work-orders/data";
@@ -475,16 +476,16 @@ export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
   const taskBuilds = tenantId ? await revalidateSignedIds(tenantId, args.taskBuilds) : args.taskBuilds;
   const taskCount = taskBuilds.length;
 
-  const created = await createWorkOrderFromBuildsAction({
+  const created = unwrap(await createWorkOrderFromBuildsAction({
     title: args.title,
     assigneeEmail: args.assigneeEmail,
     dueAt: dueAtFromCommitArgs(args),
     taskBuilds,
     readinessFingerprint: args.fingerprint,
-  });
+  }));
 
   try {
-    const issued = await issueWorkOrderAction({ workOrderId: created.workOrderId });
+    const issued = unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
     const warningSuffix =
       issued.reservationWarnings.length > 0 ? ` Warnings: ${issued.reservationWarnings.join(" ")}` : "";
     return {

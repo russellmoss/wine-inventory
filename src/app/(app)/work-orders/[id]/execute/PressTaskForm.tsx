@@ -162,7 +162,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        {canStart ? <Button size="lg" variant="secondary" disabled={pending} onClick={() => startTransition(async () => { await startTaskAction({ taskId: task.id }); })}>Start</Button> : null}
+        {canStart ? <Button size="lg" variant="secondary" disabled={pending} onClick={() => startTransition(async () => { unwrap(await startTaskAction({ taskId: task.id })); })}>Start</Button> : null}
         <Button size="lg" fullWidth disabled={pending} onClick={complete}>{pending ? "Pressing…" : op === "SAIGNEE" ? "Complete — record the bleed" : "Complete — record the press"}</Button>
       </div>
     </Card>

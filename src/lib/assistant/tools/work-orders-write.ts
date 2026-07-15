@@ -8,6 +8,7 @@ import { CAP_KINDS, isCapKind, type CapKind } from "@/lib/cellar/treatments";
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Plan 043: the assistant can ISSUE a cap-management work order by chat ("punch down tanks 3, 4, 5 this
 // afternoon"). Draft→confirm (D10): run() resolves the vessels + technique and returns a signed proposal;
@@ -125,8 +126,8 @@ export const commitIssueCapManagementWo: Committer = async (_user, args) => {
   }));
   const tasks = instantiateTaskBuilds(builds, await resolveTaskVocabulary());
 
-  const created = await createWorkOrderAction({ title, tasks, assigneeEmail });
-  await issueWorkOrderAction({ workOrderId: created.workOrderId });
+  const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail }));
+  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
 
   const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
   return {

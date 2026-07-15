@@ -4,6 +4,7 @@ import React from "react";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import { completeGroupRackBatchAction, rejectGroupRackBatchAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Plan 054 (Phase 9.4b): the run-time group barrel-down / rack-to-tank sub-form. A group-rack task keeps
 // ONE reviewable row but completes in batches — pick the members you filled/drained now, record them, and
@@ -38,7 +39,7 @@ export function GroupRackTaskForm({ task, onDone }: { task: WorkOrderTaskView; o
     const lossL = Number(loss);
     startTransition(async () => {
       try {
-        await completeGroupRackBatchAction({ taskId: task.id, commandId, memberVesselIds: memberIds, perMemberVolumeL, lossL: Number.isFinite(lossL) && lossL > 0 ? lossL : undefined, note: note.trim() || undefined });
+        unwrap(await completeGroupRackBatchAction({ taskId: task.id, commandId, memberVesselIds: memberIds, perMemberVolumeL, lossL: Number.isFinite(lossL) && lossL > 0 ? lossL : undefined, note: note.trim() || undefined }));
         // router.refresh() re-fetches server data but preserves this client component's state — clear the
         // selection + inputs so the next batch starts fresh (else the just-completed members stay "selected").
         setSelected(new Set());
@@ -53,7 +54,7 @@ export function GroupRackTaskForm({ task, onDone }: { task: WorkOrderTaskView; o
   function undoLast() {
     setError(null);
     startTransition(async () => {
-      try { await rejectGroupRackBatchAction({ taskId: task.id, reason: "undo last batch" }); onDone(); }
+      try { unwrap(await rejectGroupRackBatchAction({ taskId: task.id, reason: "undo last batch" })); onDone(); }
       catch (e) { setError(e instanceof Error ? e.message : "Couldn't undo the last batch."); }
     });
   }

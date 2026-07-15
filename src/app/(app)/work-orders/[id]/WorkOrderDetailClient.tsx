@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderDetail, OrgMemberRow } from "@/lib/work-orders/data";
 import { issueWorkOrderAction, cancelWorkOrderAction, assignWorkOrderAction, scheduleWorkOrderAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import { statusTone } from "@/lib/work-orders/status-badge";
 
 export function WorkOrderDetailClient({ wo, isAdmin, members }: { wo: WorkOrderDetail; isAdmin: boolean; members: OrgMemberRow[] }) {
@@ -32,10 +33,10 @@ export function WorkOrderDetailClient({ wo, isAdmin, members }: { wo: WorkOrderD
     const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
     act(async () => {
       if (canEditLead && leadEmail && leadEmail !== (wo.assigneeEmail ?? "")) {
-        await assignWorkOrderAction({ workOrderId: wo.id, assigneeId: leadUserId, assigneeEmail: leadEmail });
+        unwrap(await assignWorkOrderAction({ workOrderId: wo.id, assigneeId: leadUserId, assigneeEmail: leadEmail }));
       }
       if (canEditDue && dueDate !== currentDue) {
-        await scheduleWorkOrderAction({ workOrderId: wo.id, dueAt: dueDate ? new Date(`${dueDate}T00:00:00`) : null });
+        unwrap(await scheduleWorkOrderAction({ workOrderId: wo.id, dueAt: dueDate ? new Date(`${dueDate}T00:00:00`) : null }));
       }
       setEditing(false);
     });
@@ -76,7 +77,7 @@ export function WorkOrderDetailClient({ wo, isAdmin, members }: { wo: WorkOrderD
       {wo.instructions ? <Card style={{ marginTop: 14, padding: 14, fontSize: 14 }}>{wo.instructions}</Card> : null}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-        {wo.status === "DRAFT" ? <Button disabled={pending} onClick={() => act(() => issueWorkOrderAction({ workOrderId: wo.id }))}>Issue</Button> : null}
+        {wo.status === "DRAFT" ? <Button disabled={pending} onClick={() => act(() => issueWorkOrderAction({ workOrderId: wo.id }).then(unwrap))}>Issue</Button> : null}
         {(wo.status === "ISSUED" || wo.status === "IN_PROGRESS") ? (
           <Link href={`/work-orders/${wo.id}/execute`}><Button variant="secondary">Open execution view</Button></Link>
         ) : null}
@@ -84,7 +85,7 @@ export function WorkOrderDetailClient({ wo, isAdmin, members }: { wo: WorkOrderD
         <Link href={`/work-orders/${wo.id}/print`}><Button variant="secondary">Print / PDF</Button></Link>
         {showEdit ? <Button variant="secondary" onClick={() => setEditing((v) => !v)}>{editing ? "Close edit" : "Edit"}</Button> : null}
         {wo.status !== "APPROVED" && wo.status !== "CANCELLED" ? (
-          <Button variant="ghost" disabled={pending} onClick={() => act(() => cancelWorkOrderAction({ workOrderId: wo.id }))}>Cancel WO</Button>
+          <Button variant="ghost" disabled={pending} onClick={() => act(() => cancelWorkOrderAction({ workOrderId: wo.id }).then(unwrap))}>Cancel WO</Button>
         ) : null}
       </div>
 

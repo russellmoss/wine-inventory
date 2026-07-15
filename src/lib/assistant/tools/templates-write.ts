@@ -15,6 +15,7 @@ import {
   cloneTemplateAction,
   archiveTemplateAction,
 } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Phase 038: assistant WRITE tools for work-order template authoring. All admin-only (parity with the
 // template server actions) and all draft→confirm (D10): run() resolves + validates + previews and returns
@@ -112,12 +113,12 @@ export const createTemplateTool: AssistantTool = {
 };
 
 export const commitCreateTemplate: Committer = async (_user, args) => {
-  const res = await createTemplateAction({
+  const res = unwrap(await createTemplateAction({
     name: String(args.name),
     description: args.description == null ? undefined : String(args.description),
     category: args.category == null ? undefined : String(args.category),
     spec: args.spec as unknown as TemplateSpec,
-  });
+  }));
   const name = String(args.name);
   return {
     message: `Created template "${name}" (version ${res.version}).`,
@@ -153,7 +154,7 @@ export const updateTemplateSpecTool: AssistantTool = {
 };
 
 export const commitUpdateTemplateSpec: Committer = async (_user, args) => {
-  const res = await updateTemplateSpecAction({ templateId: String(args.templateId), spec: args.spec as unknown as TemplateSpec });
+  const res = unwrap(await updateTemplateSpecAction({ templateId: String(args.templateId), spec: args.spec as unknown as TemplateSpec }));
   return { message: `Updated "${String(args.name)}" to version ${res.version}.` };
 };
 
@@ -181,7 +182,7 @@ export const cloneTemplateTool: AssistantTool = {
 };
 
 export const commitCloneTemplate: Committer = async (_user, args) => {
-  const res = await cloneTemplateAction({ templateId: String(args.templateId), name: args.name == null ? undefined : String(args.name) });
+  const res = unwrap(await cloneTemplateAction({ templateId: String(args.templateId), name: args.name == null ? undefined : String(args.name) }));
   const label = args.name == null ? `${String(args.sourceName)} (copy)` : String(args.name);
   return {
     message: `Cloned "${String(args.sourceName)}" into an editable copy.`,
@@ -212,6 +213,6 @@ export const archiveTemplateTool: AssistantTool = {
 };
 
 export const commitArchiveTemplate: Committer = async (_user, args) => {
-  await archiveTemplateAction({ templateId: String(args.templateId) });
+  unwrap(await archiveTemplateAction({ templateId: String(args.templateId) }));
   return { message: `Archived "${String(args.name)}".` };
 };
