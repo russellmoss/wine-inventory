@@ -8,7 +8,7 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { reverseVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { canApprove, type ApproverUser } from "@/lib/work-orders/authority";
-import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
+import { bumpWorkOrderRollupTx, emitWorkOrderStatusTx } from "@/lib/work-orders/lifecycle";
 
 // Approve / finalize / reject for work-order OPERATION tasks (Phase 9 Unit 7). Approve = flip task +
 // attempt status (NO op mutation — the op was always real, WORKORDER-1). Reject = reverseOperationCore
@@ -139,7 +139,8 @@ async function reverseHarvestWeighInTx(
       reviewedByEmail: actor.actorEmail,
     },
   });
-  await bumpWorkOrderRollupTx(tx, input.task.workOrderId);
+  const finalizeRollup = await bumpWorkOrderRollupTx(tx, input.task.workOrderId);
+  await emitWorkOrderStatusTx(tx, finalizeRollup, actor, input.task.workOrderId);
   await writeAudit(tx, {
     ...actor,
     action: "UPDATE",
@@ -189,7 +190,8 @@ export async function approveTaskCore(user: ApproverUser, actor: LedgerActor, in
       where: { taskId: task.id, status: { not: "REJECTED" }, operationId: { not: null } },
       data: { status: "APPROVED", reviewedAt: now, reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail },
     });
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const rollupChange = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, rollupChange, actor, task.workOrderId);
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: isGroupRack && liveBatches.length > 1 ? `Approved a work-order task (${liveBatches.length} batches)` : `Approved a work-order task` });
     return { taskId: task.id, status: "APPROVED", message: "Approved." };
   });
@@ -246,7 +248,8 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
         }
       }
       await runInTenantTx(async (tx) => {
-        await bumpWorkOrderRollupTx(tx, task.workOrderId);
+        const rollupChange = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, rollupChange, actor, task.workOrderId);
         await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Rejected a group-rack task — reversed ${batches.length} batches${input.reason ? `: ${input.reason}` : ""}` });
       });
       return { taskId: task.id, status: "REJECTED", message: `Rejected - all ${batches.length} batches were reversed.` };
@@ -329,7 +332,8 @@ export async function rejectTaskCore(user: ApproverUser, actor: LedgerActor, inp
         reviewedByEmail: actor.actorEmail,
       },
     });
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const rollupChange = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, rollupChange, actor, task.workOrderId);
     await writeAudit(tx, {
       ...actor,
       action: "UPDATE",
@@ -400,7 +404,8 @@ export async function rejectGroupRackBatchCore(user: ApproverUser, actor: Ledger
       data: { status: nextStatus, currentAttemptId: remaining[0]?.id ?? null },
     });
     if (claimed.count === 0) throw new ActionError("That task changed while you were undoing a batch. Refresh and try again.", "CONFLICT");
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const rollupChange = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, rollupChange, actor, task.workOrderId);
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Undid the last group-rack batch (ledger reversed)${input.reason ? `: ${input.reason}` : ""}` });
     return { taskId: task.id, status: nextStatus, message: "Undid the last batch — its wine was returned to the source." };
   });
@@ -465,7 +470,8 @@ export async function undoMaintenanceTaskCore(user: ApproverUser, actor: LedgerA
       where: { id: currentAttemptId },
       data: { status: "REJECTED", rejectedReason: "undo", reviewedAt: new Date(), reviewedById: actor.actorUserId, reviewedByEmail: actor.actorEmail },
     });
-    await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    const rollupChange = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+    await emitWorkOrderStatusTx(tx, rollupChange, actor, task.workOrderId);
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrderTask", entityId: task.id, summary: `Undid a maintenance task — reversed ${events.length} activity event${events.length === 1 ? "" : "s"} and reopened it` });
     return { taskId: task.id, status: "PENDING", message: `Undone — ${events.length} activity record${events.length === 1 ? "" : "s"} reversed; the task is open again.` };
   }, { isolationLevel: "Serializable", timeout: 120_000 }), 5, "wo-maintenance:undo");
