@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenantId } from "@/lib/tenant/context";
+import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 
 // Phase 15 Unit 10 — the AP outbox. A supply RECEIPT (purchase-on-credit) emits an IMMUTABLE
 // ApExportEvent (ap:<supplyLotId>) + a PENDING Bill delivery, INSIDE the receipt tx (same transactional
@@ -43,12 +44,12 @@ export async function emitApExportForReceipt(
   const inv = settings?.apInventoryAccount ?? null;
   const ap = settings?.apPayableAccount ?? null;
 
-  // find-or-create the vendor (mutable PII table) when a name is given.
+  // find-or-create the vendor (mutable PII table) when a name is given. Shared with intake + backfill (Plan 069)
+  // so every path dedups vendors identically (one vendor per tenant+name).
   let vendorId: string | null = null;
   if (opts.vendorName?.trim()) {
-    const name = opts.vendorName.trim();
-    const existing = await db.vendor.findFirst({ where: { name }, select: { id: true } });
-    vendorId = existing?.id ?? (await db.vendor.create({ data: { name, terms: opts.terms?.trim() || null }, select: { id: true } })).id;
+    const v = await findOrCreateVendorCore({ name: opts.vendorName, terms: opts.terms }, db);
+    vendorId = v?.id ?? null;
   }
 
   const postable = unitCost != null && !!inv && !!ap && !!vendorId;

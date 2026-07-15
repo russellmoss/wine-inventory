@@ -619,4 +619,16 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { action: "undo", wo: 210 },
     note: "LIFO undo of the last recorded batch while the task is in progress (the executor or an admin)",
   },
+  {
+    utterance: "Add a new vendor called Scott Labs, Net 30, orders@scottlab.com",
+    tool: "create_vendor",
+    args: { name: "Scott Labs", terms: "Net 30", email: "orders@scottlab.com" },
+    note: "CREATE a managed vendor/supplier (Plan 069); name required, everything else optional",
+  },
+  {
+    utterance: "Create a vendor Gusmer Enterprises, phone 559-485-2692, PO required",
+    tool: "create_vendor",
+    args: { name: "Gusmer Enterprises", phone: "559-485-2692", poRequired: true },
+    note: "vendor with a PO-required flag; not a material — distinct from create_material",
+  },
 ];

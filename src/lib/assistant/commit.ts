@@ -62,6 +62,7 @@ import { commitLogRiddling } from "./tools/log-riddling";
 import { commitSparklingDisgorge } from "./tools/sparkling-disgorge";
 import { commitRecordBulkWineCost } from "./tools/record-bulk-wine-cost";
 import { commitFileFeedback } from "./tools/file-feedback";
+import { commitCreateVendor } from "./tools/create-vendor";
 
 // Static map of tool name -> committer. No side-effect registration, no import
 // cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
@@ -111,6 +112,7 @@ const COMMITTERS: Record<string, Committer> = {
   sparkling_disgorge: commitSparklingDisgorge,
   record_bulk_wine_cost: commitRecordBulkWineCost,
   file_feedback: commitFileFeedback,
+  create_vendor: commitCreateVendor,
 };
 
 /**

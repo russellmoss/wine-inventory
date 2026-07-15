@@ -11,6 +11,8 @@ import { costPerPackageUnit, deriveOpeningLot } from "@/lib/cost/intake-cost";
 import { closestMatch } from "@/lib/inventory/similarity";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials-shared";
+import { VendorPicker } from "@/components/vendors/VendorPicker";
+import type { VendorRow } from "@/lib/vendors/vendors-shared";
 
 // Phase 037: the base-data field block shared by the "Add expendable" and "Edit" modals — one definition so
 // the two can't drift. Controlled: the parent owns a MaterialFormValue and gets patches via onChange. Cost
@@ -34,8 +36,7 @@ export type MaterialFormValue = {
   brand: string;
   brandName: string;
   preferGeneric: boolean;
-  vendor: string;
-  vendorUrl: string;
+  vendorId: string | null; // Plan 069: the managed vendor (mandatory in the UI). URL autofills from it.
   category: MaterialCategory;
   family: string; // free-text display label; coerced to a kind server-side
   packageAmount: string;
@@ -44,7 +45,7 @@ export type MaterialFormValue = {
 };
 
 export const emptyMaterialForm: MaterialFormValue = {
-  genericName: "", brand: "", brandName: "", preferGeneric: true, vendor: "", vendorUrl: "",
+  genericName: "", brand: "", brandName: "", preferGeneric: true, vendorId: null,
   category: "ADDITIVE", family: "", packageAmount: "", packageUnit: "g", totalCost: "",
 };
 
@@ -61,8 +62,7 @@ export function materialToForm(m: CellarMaterialDTO): MaterialFormValue {
     brand: m.brand ?? "",
     brandName: m.brandName ?? "",
     preferGeneric: !!m.preferGeneric,
-    vendor: m.vendor ?? "",
-    vendorUrl: m.vendorUrl ?? "",
+    vendorId: m.vendorId ?? null,
     category: (m.category as MaterialCategory) ?? categoryOf(m.kind),
     family: familyLabel(m.kind),
     packageAmount: m.packageAmount != null ? String(m.packageAmount) : "",
@@ -71,7 +71,8 @@ export function materialToForm(m: CellarMaterialDTO): MaterialFormValue {
   };
 }
 
-/** Shared action payload (identity/taxonomy/supplier/purchase/stock unit). Create adds `totalCost` on top. */
+/** Shared action payload (identity/taxonomy/vendor/purchase/stock unit). Create adds `totalCost` on top.
+ *  Vendor is now the managed vendorId; the core mirrors its name/url into the legacy columns (Plan 069). */
 export function materialFormToInput(v: MaterialFormValue) {
   const amt = v.packageAmount.trim() !== "" ? Number(v.packageAmount) : null;
   return {
@@ -79,8 +80,7 @@ export function materialFormToInput(v: MaterialFormValue) {
     brand: v.brand.trim() || undefined,
     brandName: v.brandName.trim() || undefined,
     preferGeneric: v.preferGeneric,
-    vendor: v.vendor.trim() || undefined,
-    vendorUrl: v.vendorUrl.trim() || undefined,
+    vendorId: v.vendorId ?? undefined,
     category: v.category,
     kind: v.family.trim() || undefined, // family; server coerces built-in vs custom
     stockUnit: stockUnitFor(v.packageUnit),
@@ -89,9 +89,14 @@ export function materialFormToInput(v: MaterialFormValue) {
   };
 }
 
-/** Is the identity (product name) present? Add requires it to enable submit. */
+/** Is the identity (product name) present? */
 export function materialFormHasIdentity(v: MaterialFormValue): boolean {
   return v.genericName.trim() !== "" || v.brandName.trim() !== "";
+}
+
+/** Ready to submit? Identity present AND a vendor is chosen (Plan 069: vendor is mandatory in the UI). */
+export function materialFormReady(v: MaterialFormValue): boolean {
+  return materialFormHasIdentity(v) && !!v.vendorId;
 }
 
 export function MaterialForm({
@@ -99,6 +104,8 @@ export function MaterialForm({
   onChange,
   familiesByCategory,
   mode,
+  vendors,
+  onVendorCreated,
   hasStock = false,
   allowCostEdit = false,
 }: {
@@ -106,6 +113,10 @@ export function MaterialForm({
   onChange: (patch: Partial<MaterialFormValue>) => void;
   familiesByCategory: Map<MaterialCategory, Set<string>>;
   mode: "create" | "edit";
+  /** Plan 069: the tenant's vendors for the mandatory vendor picker. */
+  vendors: VendorRow[];
+  /** Called after an inline vendor create so the page can refresh its vendor list. */
+  onVendorCreated?: (vendor: { id: string; name: string }) => void;
   /** Edit mode: whether the material has stock on hand (drives the unit-change caution). */
   hasStock?: boolean;
   /** Edit mode: whether the opening-lot cost can be corrected here (single fully-unused lot). Shows the cost field. */
@@ -115,6 +126,7 @@ export function MaterialForm({
   const stockUnit = stockUnitFor(value.packageUnit);
   const familyListId = React.useId(); // unique per instance so Add + Edit datalists never collide
   const { symbol } = useCurrency();
+  const selectedVendor = React.useMemo(() => vendors.find((v) => v.id === value.vendorId) ?? null, [vendors, value.vendorId]);
 
   // Family suggestions: the built-ins for the chosen category + any existing families in it.
   const familyOptions = React.useMemo(() => {
@@ -180,9 +192,25 @@ export function MaterialForm({
           <Input label={mode === "create" ? "Total cost paid (optional)" : "Total cost paid"} value={value.totalCost} onChange={(e) => onChange({ totalCost: e.target.value })} inputMode="decimal" placeholder="e.g. 500" iconLeft={symbol} style={{ flex: "1 1 160px" }} />
         ) : null}
       </div>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Input label="Vendor (optional)" value={value.vendor} onChange={(e) => onChange({ vendor: e.target.value })} placeholder="e.g. Scott Labs" style={{ flex: "1 1 180px" }} />
-        <Input label="Vendor URL (optional)" value={value.vendorUrl} onChange={(e) => onChange({ vendorUrl: e.target.value })} placeholder="https://…" style={{ flex: "1 1 220px" }} />
+      {/* Vendor (mandatory) — fuzzy picker with inline create; URL autofills from the selected vendor. */}
+      <div style={{ ...col }}>
+        <span style={fieldLabelStyle}>Vendor</span>
+        <VendorPicker
+          vendors={vendors}
+          value={value.vendorId}
+          onSelect={(v) => onChange({ vendorId: v?.id ?? null })}
+          onVendorCreated={onVendorCreated}
+        />
+        {selectedVendor?.url ? (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            URL:{" "}
+            <a href={selectedVendor.url} target="_blank" rel="noreferrer" style={{ color: "var(--wine-primary)" }}>{selectedVendor.url}</a>
+          </span>
+        ) : value.vendorId ? (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No URL on file for this vendor.</span>
+        ) : (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Pick a vendor, or create a new one. Required.</span>
+        )}
       </div>
 
       {mode === "create" ? (

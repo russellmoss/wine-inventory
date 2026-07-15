@@ -42,4 +42,14 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "query_materials",
     args: { outOfStockOnly: true },
   },
+  {
+    utterance: "What vendors do we have?",
+    tool: "query_vendors",
+    args: {},
+  },
+  {
+    utterance: "Show me Scott Labs' contact info and terms",
+    tool: "query_vendors",
+    args: { search: "Scott Labs" },
+  },
 ];

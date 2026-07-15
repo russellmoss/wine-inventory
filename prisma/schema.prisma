@@ -881,85 +881,85 @@ model AssistantConfirmation {
 // `conversation` snapshots the transcript so the feedback-fix agent has context.
 // `status` tracks the improvement loop: NEW -> TRIAGED (agent opened a PR) -> ...
 model AssistantFeedback {
-  tenantId         String                   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id               String                   @id @default(cuid())
-  createdAt        DateTime                 @default(now())
-  rating           String // "up" | "down"
-  comment          String? // free-text "what was wrong" (UNTRUSTED input)
-  conversation     Json // [{ role, content }] transcript for context
-  conversationId   String?
-  ratedMessageId   String?
-  debugContext     Json?
-  actorUserId      String?
-  actorEmail       String
-  status           String                   @default("NEW") // NEW | TRIAGED | RESOLVED | DISMISSED
-  prUrl            String?
-  notes            String?
-  modeAtSubmission FeedbackAutomationMode   @default(AGENTIC_FIX)
-  automationStatus FeedbackAutomationStatus @default(NOT_REQUESTED)
-  severity         FeedbackSeverity?
-  githubIssueUrl   String?
-  githubRunUrl     String?
-  planMarkdown     String?
-  planTitle        String?
-  planGeneratedAt  DateTime?
-  resolvedAt       DateTime?
-  resolvedByUserId String?
-  developerNotes   String?
-  developerNotesVersion Int                    @default(1)
-  triageClass      FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
-  attachments      FeedbackAttachment[]
-  linearLinks      FeedbackLinearLink[]
-  automationRuns   AutomationRun[]      @relation("AssistantFeedbackAutomationRuns")
+  tenantId              String                   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id                    String                   @id @default(cuid())
+  createdAt             DateTime                 @default(now())
+  rating                String // "up" | "down"
+  comment               String? // free-text "what was wrong" (UNTRUSTED input)
+  conversation          Json // [{ role, content }] transcript for context
+  conversationId        String?
+  ratedMessageId        String?
+  debugContext          Json?
+  actorUserId           String?
+  actorEmail            String
+  status                String                   @default("NEW") // NEW | TRIAGED | RESOLVED | DISMISSED
+  prUrl                 String?
+  notes                 String?
+  modeAtSubmission      FeedbackAutomationMode   @default(AGENTIC_FIX)
+  automationStatus      FeedbackAutomationStatus @default(NOT_REQUESTED)
+  severity              FeedbackSeverity?
+  githubIssueUrl        String?
+  githubRunUrl          String?
+  planMarkdown          String?
+  planTitle             String?
+  planGeneratedAt       DateTime?
+  resolvedAt            DateTime?
+  resolvedByUserId      String?
+  developerNotes        String?
+  developerNotesVersion Int                      @default(1)
+  triageClass           FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
+  attachments           FeedbackAttachment[]
+  linearLinks           FeedbackLinearLink[]
+  automationRuns        AutomationRun[]          @relation("AssistantFeedbackAutomationRuns")
 
+  @@unique([tenantId, id])
   @@index([status, createdAt])
   @@index([conversationId])
   @@index([ratedMessageId])
   @@index([tenantId])
   @@index([tenantId, triageClass])
   @@index([tenantId, rating, createdAt, id])
-  @@unique([tenantId, id])
   @@map("assistant_feedback")
 }
 
 model FeedbackTicket {
-  tenantId         String                   @default("")
-  id               String                   @id @default(cuid())
-  kind             FeedbackTicketKind
-  title            String
-  body             String
-  pageUrl          String?
-  userAgent        String?
-  debugContext     Json?
-  actorUserId      String?
-  actorEmail       String
-  modeAtSubmission FeedbackAutomationMode
-  automationStatus FeedbackAutomationStatus @default(NOT_REQUESTED)
-  status           FeedbackItemStatus       @default(NEW)
-  severity         FeedbackSeverity?
-  githubIssueUrl   String?
-  githubRunUrl     String?
-  prUrl            String?
-  planMarkdown     String?
-  planTitle        String?
-  planGeneratedAt  DateTime?
-  resolvedAt       DateTime?
-  resolvedByUserId String?
-  developerNotes   String?
-  developerNotesVersion Int                    @default(1)
-  triageClass      FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
-  attachments      FeedbackAttachment[]
-  linearLinks      FeedbackLinearLink[]
-  automationRuns   AutomationRun[]      @relation("FeedbackTicketAutomationRuns")
+  tenantId              String                   @default("")
+  id                    String                   @id @default(cuid())
+  kind                  FeedbackTicketKind
+  title                 String
+  body                  String
+  pageUrl               String?
+  userAgent             String?
+  debugContext          Json?
+  actorUserId           String?
+  actorEmail            String
+  modeAtSubmission      FeedbackAutomationMode
+  automationStatus      FeedbackAutomationStatus @default(NOT_REQUESTED)
+  status                FeedbackItemStatus       @default(NEW)
+  severity              FeedbackSeverity?
+  githubIssueUrl        String?
+  githubRunUrl          String?
+  prUrl                 String?
+  planMarkdown          String?
+  planTitle             String?
+  planGeneratedAt       DateTime?
+  resolvedAt            DateTime?
+  resolvedByUserId      String?
+  developerNotes        String?
+  developerNotesVersion Int                      @default(1)
+  triageClass           FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  attachments           FeedbackAttachment[]
+  linearLinks           FeedbackLinearLink[]
+  automationRuns        AutomationRun[]          @relation("FeedbackTicketAutomationRuns")
 
+  @@unique([tenantId, id])
   @@index([tenantId, kind, status, createdAt])
   @@index([tenantId, severity, createdAt])
   @@index([tenantId, automationStatus, createdAt])
   @@index([tenantId, triageClass, createdAt])
   @@index([tenantId, createdAt, id])
-  @@unique([tenantId, id])
   @@map("feedback_ticket")
 }
 
@@ -1361,11 +1361,11 @@ enum LotOwnership {
 // getAppSettings(). `sparklingEnabled` gates the ENTIRE traditional-method UI/nav (K14,
 // default off) — backend enums/cores ship regardless and are inert when unused.
 model AppSettings {
-  tenantId                 String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  tenantId                 String                 @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   // Phase 12: per-org now (K10). One row per tenant (@@unique([tenantId])); read/written by
   // tenantId, not the old "singleton" id. id is a plain cuid so a 2nd org's row can't collide.
-  id                       String        @id @default(cuid())
-  sparklingEnabled         Boolean       @default(false)
+  id                       String                 @id @default(cuid())
+  sparklingEnabled         Boolean                @default(false)
   // Phase 8 (D5, D9, D17): per-tenant costing policy. `currency` (ISO code, default USD) heads every
   // cost row. `costingMethod` + `costingMethodEffectiveAt` set depletion order (WA default | FIFO); the
   // method actually used is STAMPED on each SupplyConsumption at write time so recompute is stable.
@@ -1373,15 +1373,15 @@ model AppSettings {
   // are ALWAYS capitalized (no toggle); the rest are recorded regardless and only the toggle gates
   // whether they roll up. `costingPolicyVersion` stamps every derived row so a toggle/method change
   // never re-values closed history (D17).
-  currency                 String        @default("USD")
-  costingMethod            CostingMethod @default(WEIGHTED_AVG)
+  currency                 String                 @default("USD")
+  costingMethod            CostingMethod          @default(WEIGHTED_AVG)
   costingMethodEffectiveAt DateTime?
-  capitalizeFruit          Boolean       @default(true)
-  capitalizeBarrel         Boolean       @default(true)
-  capitalizeLabor          Boolean       @default(false)
-  capitalizeOverhead       Boolean       @default(false)
-  capitalizePackaging      Boolean       @default(true)
-  costingPolicyVersion     Int           @default(1)
+  capitalizeFruit          Boolean                @default(true)
+  capitalizeBarrel         Boolean                @default(true)
+  capitalizeLabor          Boolean                @default(false)
+  capitalizeOverhead       Boolean                @default(false)
+  capitalizePackaging      Boolean                @default(true)
+  costingPolicyVersion     Int                    @default(1)
   // Phase 15 Unit 10 — supply-receipt A/P Bill accounts (winery-wide, not per-component): a receipt
   // posts DR inventory-asset / CR accounts-payable. Both unset → AP export is withheld (never posted).
   apInventoryAccount       String?
@@ -1398,7 +1398,7 @@ model AppSettings {
   assistantFeedbackMode    FeedbackAutomationMode @default(AGENTIC_FIX)
   bugReportMode            FeedbackAutomationMode @default(REPORT_ONLY)
   featureRequestMode       FeedbackAutomationMode @default(REPORT_ONLY)
-  updatedAt                DateTime      @updatedAt
+  updatedAt                DateTime               @updatedAt
 
   @@unique([tenantId])
   @@index([tenantId])
@@ -1988,8 +1988,9 @@ model CellarMaterial {
   brand          String? // manufacturer, e.g. "Lallemand"
   brandName      String? // product/brand name, e.g. "EC-1118"
   preferGeneric  Boolean        @default(false) // display toggle: show generic name instead of brand name
-  vendor         String? // where purchased
-  vendorUrl      String? // supplier/product URL
+  vendor         String? // LEGACY free-text "where purchased" (Plan 069: superseded by vendorId; kept for read-compat)
+  vendorUrl      String? // LEGACY free-text supplier/product URL (Plan 069: superseded by Vendor.url; kept for read-compat)
+  vendorId       String? // Plan 069: managed vendor — composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
   packageAmount  Decimal?       @db.Decimal(18, 6) // purchase package size AMOUNT (e.g. 100 for a 100-gallon drum)
   packageUnit    String? // purchase package UNIT of measure (e.g. gal, lb, mL — see src/lib/units/measure.ts)
   defaultBasis   String? // G_HL | MG_L | G_L | ML_L
@@ -2080,27 +2081,27 @@ enum TastingScoreScale {
 // voidedAt (so a panel voids ATOMICALLY — void the header, all readings drop). A returned
 // lab result is a panel with `sampleId` set. SO₂ pairing happens WITHIN one panel only.
 model AnalysisPanel {
-  tenantId         String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id               String            @id @default(cuid())
-  lotId            String
-  vesselId         String? // snapshot context (the vessel the lot sat in when measured)
-  sampleId         String? // set when this panel is a returned result for a Sample
-  observedAt       DateTime // when the wine was sampled/measured (time axis for trends)
-  enteredAt        DateTime          @default(now())
-  enteredById      String? // actor id snapshot (no FK; matches LotOperation.actorUserId)
-  enteredByEmail   String // durable provenance snapshot
-  captureMethod    CaptureMethod     @default(MANUAL)
-  note             String?
-  clientRequestId  String?           @unique // idempotency: a double-submit is a no-op (= the offline "panel" command key)
+  tenantId             String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id                   String            @id @default(cuid())
+  lotId                String
+  vesselId             String? // snapshot context (the vessel the lot sat in when measured)
+  sampleId             String? // set when this panel is a returned result for a Sample
+  observedAt           DateTime // when the wine was sampled/measured (time axis for trends)
+  enteredAt            DateTime          @default(now())
+  enteredById          String? // actor id snapshot (no FK; matches LotOperation.actorUserId)
+  enteredByEmail       String // durable provenance snapshot
+  captureMethod        CaptureMethod     @default(MANUAL)
+  note                 String?
+  clientRequestId      String?           @unique // idempotency: a double-submit is a no-op (= the offline "panel" command key)
   // Phase 6 offline capture (council S2/S5/S6): a Round row's Brix+temp commit as ONE atomic
   // panel. `deviceObservedAt` is the tablet clock at capture; `serverReceivedAt` is set on
   // insert; the stuck detector buckets by winery-tz. `occupancyToken` is the vessel's
   // resident-lot version at capture — validated against vessel-lot history as of observedAt so
   // a late offline sync can't attach a reading to the wrong lot. All nullable (chemistry
   // panels created online leave them null).
-  deviceObservedAt DateTime?
-  serverReceivedAt DateTime?
-  occupancyToken   String?
+  deviceObservedAt     DateTime?
+  serverReceivedAt     DateTime?
+  occupancyToken       String?
   // Plan 060 fan-out: when ONE physical reading is taken on a multi-lot vessel (co-ferment),
   // it writes one panel per co-resident lot, ALL sharing this id (VISION D2 intact — each panel
   // still attaches to exactly one lot). Vessel-scoped views dedup by coalesce(vesselReadingGroupId, id);
@@ -2108,13 +2109,13 @@ model AnalysisPanel {
   // Derived deterministically from the capture's stable clientRequestId so retries/offline re-sync land
   // the same group. The @@unique below makes fan-out idempotent + blocks divergent same-(group,lot) rows.
   vesselReadingGroupId String?
-  voidedAt         DateTime?
-  voidedById       String?
-  createdAt        DateTime          @default(now())
-  lot              Lot               @relation(fields: [lotId], references: [id], onDelete: Restrict)
-  vessel           Vessel?           @relation(fields: [vesselId], references: [id], onDelete: SetNull)
-  sample           Sample?           @relation(fields: [sampleId], references: [id], onDelete: SetNull)
-  readings         AnalysisReading[]
+  voidedAt             DateTime?
+  voidedById           String?
+  createdAt            DateTime          @default(now())
+  lot                  Lot               @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  vessel               Vessel?           @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  sample               Sample?           @relation(fields: [sampleId], references: [id], onDelete: SetNull)
+  readings             AnalysisReading[]
 
   @@unique([tenantId, id])
   // Fan-out idempotency + integrity: one panel per (group, lot). NULLs are distinct in Postgres
@@ -2405,8 +2406,8 @@ model MigrationImportBatch {
 }
 
 model MigrationSeedLot {
-  tenantId              String    @default("")
-  id                    String    @id @default(cuid())
+  tenantId              String   @default("")
+  id                    String   @id @default(cuid())
   importBatchId         String
   sourceLotKey          String
   sourceSystemId        String?
@@ -2421,11 +2422,11 @@ model MigrationSeedLot {
   originBlockName       String?
   originVarietyName     String?
   legacySnapshot        Json?
-  status                String    @default("READY")
+  status                String   @default("READY")
   resolvedCode          String?
   resolvedExistingLotId String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@unique([tenantId, importBatchId, sourceLotKey])
   @@unique([tenantId, id])
@@ -2435,23 +2436,23 @@ model MigrationSeedLot {
 }
 
 model MigrationSeedPosition {
-  tenantId             String    @default("")
-  id                   String    @id @default(cuid())
+  tenantId             String   @default("")
+  id                   String   @id @default(cuid())
   importBatchId        String
   seedLotId            String
   sourcePositionKey    String
   sourceVesselKey      String
   vesselId             String?
   vesselCode           String
-  accountType          String    @default("VESSEL")
-  volumeL              Decimal   @db.Decimal(10, 2)
+  accountType          String   @default("VESSEL")
+  volumeL              Decimal  @db.Decimal(10, 2)
   bondId               String?
-  costAmount           Decimal?  @db.Decimal(18, 8)
+  costAmount           Decimal? @db.Decimal(18, 8)
   costCurrency         String?
-  costCompleteness     String    @default("UNKNOWN")
+  costCompleteness     String   @default("UNKNOWN")
   publishedOperationId Int?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@unique([tenantId, importBatchId, sourcePositionKey])
   @@unique([tenantId, id])
@@ -2501,8 +2502,8 @@ model LegacyOperation {
 }
 
 model MigrationAnalysisPanel {
-  tenantId         String    @default("")
-  id               String    @id @default(cuid())
+  tenantId         String   @default("")
+  id               String   @id @default(cuid())
   importBatchId    String
   sourcePanelKey   String
   seedLotId        String
@@ -2512,8 +2513,8 @@ model MigrationAnalysisPanel {
   enteredByEmail   String?
   note             String?
   publishedPanelId String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([tenantId, importBatchId, sourcePanelKey])
   @@unique([tenantId, id])
@@ -2638,6 +2639,7 @@ model SupplyLot {
   receivedAt    DateTime            @default(now())
   lotCode       String? // supplier lot / PO reference
   supplierNote  String?
+  vendorId      String? // Plan 069: per-purchase vendor — composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
   policyVersion Int                 @default(1) // costing-policy version at receipt (D17)
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
@@ -3014,8 +3016,19 @@ model Vendor {
   tenantId         String   @default("")
   id               String   @id @default(cuid())
   name             String
-  terms            String? // payment terms, e.g. "Net 30" (drives Bill DueDate — U10)
+  terms            String? // payment terms, e.g. "Net 30" (drives Bill DueDate — U10) + "Pay at purchase"
   externalVendorId String? // QBO Vendor.Id cache (find-or-create — U10). PII stays here, never in events (D19)
+  // Plan 069: first-class vendor management. Contact + purchasing metadata, columns-only (RLS-neutral — the
+  // existing vendor tenant_isolation policy covers new columns). phone/email are REQUIRED in the setup UI but
+  // stay nullable at the DB so backfill + non-UI paths (A/P find-or-create, assistant) never hard-error.
+  phone            String? // primary phone
+  email            String? // primary email
+  contactName      String? // primary contact person
+  accountNumber    String? // our account number with this vendor
+  poRequired       Boolean  @default(false) // does this vendor require a PO?
+  url              String? // vendor website / product URL — autofills the expendables vendor-URL field
+  notes            String?
+  isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -3023,6 +3036,28 @@ model Vendor {
   @@unique([tenantId, id]) // composite-tenant-FK target for ap_export_event (K11)
   @@index([tenantId])
   @@map("vendor")
+}
+
+// Plan 069: additional contacts attached to a vendor (0..N, beyond the vendor's own core contact info).
+// Tenant-scoped + RLS-forced (Phase 12). `vendorId` is a PLAIN ref pinned by a composite (tenantId, vendorId)
+// FK in raw SQL (K11/K12) — NO Prisma relation (mirrors ap_export_event.vendorId / equipment_asset.locationId).
+model VendorContact {
+  tenantId  String   @default("")
+  id        String   @id @default(cuid())
+  vendorId  String // plain ref → vendor.id (composite-tenant FK in raw SQL, K11)
+  name      String
+  role      String? // e.g. "Sales rep", "Accounts payable"
+  phone     String?
+  mobile    String?
+  email     String?
+  isPrimary Boolean  @default(false) // at most one primary per vendor (enforced in the core)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, id]) // composite-tenant-FK target parity + K11
+  @@index([tenantId])
+  @@index([tenantId, vendorId])
+  @@map("vendor_contact")
 }
 
 model ApExportEvent {
@@ -3384,18 +3419,18 @@ enum ReservationKind {
 // source of truth for approval state (A5 — no separate approvalStatus column); timestamps + *ById/*ByEmail
 // carry provenance. `autoFinalize` = decision-2 config (admin approves; self-executed auto-finalizes).
 model WorkOrder {
-  tenantId          String          @default("")
-  id                String          @id @default(cuid())
-  number            Int // per-tenant human WO number (assigned on issue)
-  title             String
-  status            WorkOrderStatus @default(DRAFT)
-  templateVersionId String? // the version snapped onto this instance at issue (immutable thereafter)
-  instructions      String? // order-level notes (Unit 9)
+  tenantId             String          @default("")
+  id                   String          @id @default(cuid())
+  number               Int // per-tenant human WO number (assigned on issue)
+  title                String
+  status               WorkOrderStatus @default(DRAFT)
+  templateVersionId    String? // the version snapped onto this instance at issue (immutable thereafter)
+  instructions         String? // order-level notes (Unit 9)
   // Canonical query columns (A6) — the WO's default assignee + schedule; JSON stays a snapshot only.
-  assigneeId        String?
-  assigneeEmail     String?
-  dueAt             DateTime?
-  scheduledFor      DateTime?
+  assigneeId           String?
+  assigneeEmail        String?
+  dueAt                DateTime?
+  scheduledFor         DateTime?
   // Plan 053 B8: ERP planning fields (data capture only; no auto-scheduling). priority is a validated
   // string (LOW/NORMAL/HIGH/URGENT — no enum, Windows ALTER TYPE hazard); scheduledStart/End are a window.
   priority             String?
@@ -3403,20 +3438,20 @@ model WorkOrder {
   scheduledStart       DateTime?
   scheduledEnd         DateTime?
   locationId           String? // plan 053 B9: where the work happens (plain ref → location.id, resolved at runtime; K11/K12)
-  autoFinalize      Boolean         @default(false) // auto-finalize self-executed work (decision 2)
-  issuedAt          DateTime?
-  issuedById        String?
-  issuedByEmail     String?
-  startedAt         DateTime? // D5 live claim ("in progress by …")
-  startedById       String?
-  startedByEmail    String?
-  completedAt       DateTime?
-  approvedAt        DateTime?
-  approvedById      String?
-  approvedByEmail   String?
-  cancelledAt       DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  autoFinalize         Boolean         @default(false) // auto-finalize self-executed work (decision 2)
+  issuedAt             DateTime?
+  issuedById           String?
+  issuedByEmail        String?
+  startedAt            DateTime? // D5 live claim ("in progress by …")
+  startedById          String?
+  startedByEmail       String?
+  completedAt          DateTime?
+  approvedAt           DateTime?
+  approvedById         String?
+  approvedByEmail      String?
+  cancelledAt          DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
   tasks           WorkOrderTask[]
   reservations    Reservation[]
@@ -3532,42 +3567,42 @@ model WorkOrderTaskTypeOverlay {
 // for querying + composite FKs. `currentAttemptId` is the attempt owning the task's live op (A4); it is
 // a plain scalar (no FK) to avoid a cluster relation cycle — always set in the same tx as the attempt.
 model WorkOrderTask {
-  tenantId         String              @default("")
-  id               String              @id @default(cuid())
-  workOrderId      String
-  seq              Int // display + execution order within the WO
-  groupSeq         Int                 @default(0) // plan 053 A3: sequential-group index. Tasks share a group (run in parallel); a task may complete only once every task in a LOWER group is worker-completed. Positional → reject/reissue-safe, no task-dep edge table.
-  kind             WorkOrderTaskKind
-  status           WorkOrderTaskStatus @default(PENDING)
-  title            String
-  opType           OperationType? // set for OPERATION tasks (RACK/ADDITION/TOPPING/…); null for OBSERVATION
-  observationType  String? // set for OBSERVATION tasks (e.g. "BRIX", "TASTING"); null for OPERATION
-  activityType     String? // A3: set for MAINTENANCE tasks (TEMP_SETPOINT/CLEAN/SANITIZE/STEAM/GAS); validated String mirror of VesselActivityKind
-  instructions     String? // task-level notes (Unit 9)
+  tenantId             String              @default("")
+  id                   String              @id @default(cuid())
+  workOrderId          String
+  seq                  Int // display + execution order within the WO
+  groupSeq             Int                 @default(0) // plan 053 A3: sequential-group index. Tasks share a group (run in parallel); a task may complete only once every task in a LOWER group is worker-completed. Positional → reject/reissue-safe, no task-dep edge table.
+  kind                 WorkOrderTaskKind
+  status               WorkOrderTaskStatus @default(PENDING)
+  title                String
+  opType               OperationType? // set for OPERATION tasks (RACK/ADDITION/TOPPING/…); null for OBSERVATION
+  observationType      String? // set for OBSERVATION tasks (e.g. "BRIX", "TASTING"); null for OPERATION
+  activityType         String? // A3: set for MAINTENANCE tasks (TEMP_SETPOINT/CLEAN/SANITIZE/STEAM/GAS); validated String mirror of VesselActivityKind
+  instructions         String? // task-level notes (Unit 9)
   // Canonical query columns (A6) extracted from plannedPayload; composite-FK'd in raw SQL.
-  sourceVesselId   String?
-  destVesselId     String?
-  lotId            String?
-  materialId       String?
-  blockId          String? // plan 039: vineyard-block target for a HARVEST_WEIGH_IN observation (composite-FK'd in raw SQL)
-  assigneeId       String?
-  assigneeEmail    String?
-  dueAt            DateTime?
+  sourceVesselId       String?
+  destVesselId         String?
+  lotId                String?
+  materialId           String?
+  blockId              String? // plan 039: vineyard-block target for a HARVEST_WEIGH_IN observation (composite-FK'd in raw SQL)
+  assigneeId           String?
+  assigneeEmail        String?
+  dueAt                DateTime?
   // Plan 053 B8: per-task planning fields (data capture only). priority is a validated string.
   priority             String?
   estimatedDurationMin Int?
   scheduledStart       DateTime?
   scheduledEnd         DateTime?
   locationId           String? // plan 053 B9: where this task happens (plain ref → location.id; K11/K12)
-  plannedPayload   Json // snapshot of the planned inputs (target rate + basis, note, etc.)
-  currentAttemptId String? // A4: the attempt currently owning this task's ledger op (plain scalar, no FK)
-  completionNote   String?
-  deviationReason  String?
-  startedAt        DateTime? // D5 claim
-  startedById      String?
-  startedByEmail   String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  plannedPayload       Json // snapshot of the planned inputs (target rate + basis, note, etc.)
+  currentAttemptId     String? // A4: the attempt currently owning this task's ledger op (plain scalar, no FK)
+  completionNote       String?
+  deviationReason      String?
+  startedAt            DateTime? // D5 claim
+  startedById          String?
+  startedByEmail       String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   workOrder    WorkOrder              @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   attempts     WorkOrderTaskAttempt[]

@@ -21,6 +21,7 @@ const base: CellarMaterialDTO = {
   preferGeneric: false,
   vendor: null,
   vendorUrl: null,
+  vendorId: null,
   packageAmount: null,
   packageUnit: null,
   defaultBasis: null,

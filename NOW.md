@@ -7,16 +7,9 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 068 — user inbox / Gmail-like messaging — DONE + /review applied, PR #191 OPEN for eng review**
-on branch `claude/user-inbox-messaging`. All 10 units built + browser-QA'd + green. `/review` ran 4
-specialists (security/RLS, correctness, migrations, maintainability) — no P0/P1; applied: DM write-side
-RLS policies (migration 120300), full WO_STATUS coverage (wired the 8 remaining bumpWorkOrderRollupTx
-callers), createMany-race fix in resolveOrCreateThreadTx, removed an `as unknown as` cast, +2 test files.
-All verifies still green (work-orders-enhancements 44, inbox-isolation 11/11, invariants 30/30,
-feedback-security, next build). **PR #191 is GOVERNED — awaiting eng review, do NOT auto-merge.**
-Dev server running on :3000. GOTCHA locked: emit MUST use `createMany` not `create`.
-NOTE: `git add -A` mistake polluted a commit with the invoice PDFs / 067 plan / council-feedback churn;
-force-pushed a clean inbox-only commit — those files are back untracked. NEVER `git add -A` on this repo.
+Plan 069 vendor management — **SHIPPED, PR #195 OPEN** (base main; merged inbox #191). Reviewed +
+browser-QA'd, all gates green. Awaiting human review/merge. At deploy: run
+`scripts/backfill-material-vendors.ts` against production tenants (Bhutan not yet backfilled).
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
@@ -31,6 +24,18 @@ force-pushed a clean inbox-only commit — those files are back untracked. NEVER
 
 ## ✅ Done recently
 
+- **Plan 069 — vendor management — BUILT (12 units) + reviewed + browser-QA'd; SHIPPING.**
+  Reused the existing (Phase 15 QBO) `Vendor` table + new `VendorContact` child (RLS + composite FK);
+  `vendorId` on `CellarMaterial` + `SupplyLot`; backfill (Demo: 54 mats/106 lots, 0 nulls) with a seeded
+  "Unknown" fallback; shared vendor cores (A/P find-or-create refactored to reuse); mandatory fuzzy
+  `VendorPicker` with pinned "+ create new vendor" + URL autofill on Add/Edit expendable; `/setup/vendors`
+  CRUD; assistant `create_vendor` + `query_vendors` (golden gate green). `/review` fixed 5 findings
+  (no-vendor-reactivate wipe, restock-lot linkage, edit gate for legacy vendors, +2). Browser-QA'd on
+  Demo (mandatory picker, pinned create, URL autofill, inline create-and-select, Unknown editable).
+  Gates: tsc, 2034 vitest, lint, next build, verify:tenant-isolation (110/110 + vendor FK checks),
+  eval:assistant, verify:naming — all green. Worktree made buildable (copied .env + npm ci).
+- **Plan 068 — user inbox / Gmail-like messaging — SHIPPED, PR #191 merged (`2a139dd`).** Merged into
+  this branch during the Plan 069 pre-ship merge (disjoint from vendor work).
 - **SO₂ ~1.74× dosing money bug — RECONCILED CLOSED (2026-07-15, no code change).** Investigated on a
   fresh branch off `origin/main`: the money-critical fix already shipped. Plan 066 (PR #180, `370b7b6`,
   MERGED) divides the stock draw by the active fraction in `consumeMaterialCore` (÷0.576); Plan 065
@@ -39,16 +44,6 @@ force-pushed a clean inbox-only commit — those files are back untracked. NEVER
   Plan 062 would have DOUBLE-APPLIED 0.576 and re-broken `verify:cost` — deliberately did not.
   Remaining Plan 062 scope (liquid-solution booking) is a feature gap → Off-path.
 
-- **Plan 068 — user inbox / Gmail-like messaging — PLANNED + eng + council + CEO reviewed; QUEUED.**
-  CEO review: HOLD scope (full 10 units, DMs kept) but sequenced BEHIND the SO₂ money-bug line. Ready for
-  `/work docs/plans/2026-07-15-068-...` once 062/066 clear. Consider `/plan-design-review` before Unit 7.
-  Avatar-anchored inbox (red unread badge) with All / Work Orders / Tickets / Direct-messages buckets;
-  discrete `InboxNotification` rows drive unread, WO/Tickets buckets are live "mine-only" views, same-tenant
-  1:1 DMs with attachments. Eng review verified the tx piggyback is atomic + the WO rollup double-emit
-  guard; council (Codex+Gemini) added 10 consensus fixes (private-blob auth, rollup-returns-change-object,
-  idempotent-emit-on-write, DM org-membership validation, click-through tombstones, +5). User resolved 3
-  tensions → per-user RLS (`app.user_id` GUC, Unit 1b), keep email snapshots, lightweight DM rate-cap.
-  Plan file `docs/plans/2026-07-15-068-...`. Not yet built.
 - **Feedback cmrm5x3lq "vineyard identification" — SHIPPED, PR #190 merged; ticket RESOLVED.**
   Assistant told admin Mike "the Bajo vineyard doesn't exist" — `resolveVineyards`
   (`src/lib/assistant/scope.ts`) used a one-directional SQL `contains`, so the stored name
@@ -102,4 +97,4 @@ force-pushed a clean inbox-only commit — those files are back untracked. NEVER
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-15 — SO₂ ~1.74× money bug RECONCILED CLOSED (already fixed on main by #180+#179; verify:cost 55/55; no code change — Plan 062 /work would have double-applied 0.576). Objective pivots to Plan 068 (user inbox). Plan 062 liquid-solution booking → Off-path. Plan 067 PR B still open._
+_Last updated: 2026-07-15 — Plan 069 vendor management SHIPPED as PR #195 (open, base main); reviewed + browser-QA'd; all gates green. Deploy step: backfill script on prod tenants._

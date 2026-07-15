@@ -15,7 +15,7 @@ function mat(p: { id: string; name: string; kind: MaterialKind; category: string
   return {
     id: p.id, name: p.name, kind: p.kind, subcategory: null, category: p.category,
     genericName: p.genericName ?? null, brand: null, brandName: p.brandName ?? null,
-    preferGeneric: p.preferGeneric ?? false, vendor: null, vendorUrl: null,
+    preferGeneric: p.preferGeneric ?? false, vendor: null, vendorUrl: null, vendorId: null,
     packageAmount: null, packageUnit: null, defaultBasis: null, percentActive: null,
     isActive: p.isActive ?? true,
   };

@@ -19,8 +19,10 @@ export type CellarMaterialDTO = {
   brand: string | null;
   brandName: string | null;
   preferGeneric: boolean;
-  vendor: string | null;
-  vendorUrl: string | null;
+  vendor: string | null; // LEGACY free-text (mirrored from the vendor; Plan 069)
+  vendorUrl: string | null; // LEGACY free-text
+  /** Plan 069: the managed vendor (source of truth). Resolve display via the vendor list. */
+  vendorId: string | null;
   packageAmount: number | null;
   packageUnit: string | null;
   defaultBasis: RateBasis | null;

@@ -96,6 +96,8 @@ import { sparklingDisgorgeTool } from "./tools/sparkling-disgorge";
 import { recordBulkWineCostTool } from "./tools/record-bulk-wine-cost";
 import { fileFeedbackTool } from "./tools/file-feedback";
 import { queryMaterialsTool } from "./tools/query-materials";
+import { createVendorTool } from "./tools/create-vendor";
+import { queryVendorsTool } from "./tools/query-vendors";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -104,6 +106,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryTransfersTool,
   queryCellarContentsTool,
   queryMaterialsTool,
+  queryVendorsTool,
   estimatePackagingNeedsTool,
   queryVineyardStatusTool,
   queryFieldReportsTool,
@@ -154,6 +157,7 @@ const ALL_TOOLS: AssistantTool[] = [
   calcConvertTool,
   queryCalculationHistoryTool,
   createMaterialTool,
+  createVendorTool,
   receiveSupplyTool,
   setMaterialActiveTool,
   pullSampleTool,
