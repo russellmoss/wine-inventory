@@ -191,6 +191,11 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
     }
   }
 
+  function openEditor(item: DeveloperFeedbackItem) {
+    setError(null);
+    setEditing(item);
+  }
+
   return (
     <div style={{ display: "grid", gap: "var(--space-5)" }}>
       <div>
@@ -202,7 +207,7 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
         </p>
       </div>
 
-      {error ? <div style={{ color: "var(--danger)", fontFamily: "var(--font-body)" }}>{error}</div> : null}
+      {error && !editing ? <div role="alert" style={{ color: "var(--danger)", fontFamily: "var(--font-body)" }}>{error}</div> : null}
 
       <Card>
         <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, marginTop: 0 }}>Tenant automation</h2>
@@ -311,7 +316,7 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
                   <td style={cellStyle}><OutcomePreview notes={item.developerNotes} /></td>
                   <td style={cellStyle}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <Button size="sm" variant="secondary" onClick={() => setEditing(item)}>Open</Button>
+                      <Button size="sm" variant="secondary" onClick={() => openEditor(item)}>Open</Button>
                       {item.awaitingRunId ? (
                         <Button
                           size="sm"
@@ -331,7 +336,7 @@ export function DeveloperClient({ data }: { data: DeveloperFeedbackData }) {
       </Card>
 
       {editing ? (
-        <ItemEditor item={editing} busy={busy} run={run} onClose={() => setEditing(null)} />
+        <ItemEditor item={editing} busy={busy} error={error} run={run} onClose={() => setEditing(null)} />
       ) : null}
     </div>
   );
@@ -384,11 +389,13 @@ function TenantModes({
 function ItemEditor({
   item,
   busy,
+  error,
   run,
   onClose,
 }: {
   item: DeveloperFeedbackItem;
   busy: string | null;
+  error: string | null;
   run: (key: string, fn: () => Promise<void>) => void;
   onClose: () => void;
 }) {
@@ -445,6 +452,11 @@ function ItemEditor({
           <Input label="Status" value={status} onChange={(e) => setStatus(e.target.value)} />
           <Textarea label="Add / edit notes" value={developerNotes} onChange={(e) => setDeveloperNotes(e.target.value)} minRows={3} />
         </div>
+        {error ? (
+          <div role="alert" style={{ color: "var(--danger)", fontFamily: "var(--font-body)" }}>
+            {error}
+          </div>
+        ) : null}
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           <Button
             disabled={busy === key}
