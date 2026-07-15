@@ -247,10 +247,14 @@ export function WorkOrderBuilderClient({
   function submit() {
     setError(null);
     if (taskBuilds.length === 0) { setError("Add at least one task."); return; }
+    // Plan 070: every work order must have a Lead. Guard here and store the chosen member's user id too.
+    if (!leadEmail) { setError("A work order needs a lead — pick one above."); return; }
+    const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
     startTransition(async () => {
       try {
         const res = await createWorkOrderFromBuildsAction({
           title: title.trim() || undefined,
+          assigneeId: leadUserId,
           assigneeEmail: leadEmail || null,
           priority,
           locationId: locationId || null,
@@ -308,9 +312,9 @@ export function WorkOrderBuilderClient({
           <label style={labelStyle}>Title
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Racking + topping — Block 12" />
           </label>
-          <label style={labelStyle}>Lead
+          <label style={labelStyle}>Lead <span style={{ color: "var(--danger)" }}>*</span>
             <select style={field} value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)}>
-              <option value="">— unassigned —</option>
+              <option value="">— choose a lead —</option>
               {members.map((m) => <option key={m.userId} value={m.email}>{m.name}</option>)}
             </select>
           </label>
@@ -491,8 +495,8 @@ export function WorkOrderBuilderClient({
       {error && <div style={{ marginTop: 12, color: "var(--danger)", fontSize: 14 }}>{error}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-        <Button onClick={submit} disabled={pending || taskBuilds.length === 0}>
-          {pending ? "Creating…" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
+        <Button onClick={submit} disabled={pending || taskBuilds.length === 0 || !leadEmail}>
+          {pending ? "Creating…" : !leadEmail ? "Pick a lead to create" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
         </Button>
       </div>
     </div>
