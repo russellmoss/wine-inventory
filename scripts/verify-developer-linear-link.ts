@@ -59,8 +59,8 @@ async function settledPair<T>(first: Promise<T>, second: Promise<T>): Promise<[T
 }
 
 async function createTicket(label: string) {
-  const ticket = await runAsTenant(TENANT_ID, () =>
-    prisma.feedbackTicket.create({
+  const ticket = await runAsTenant(TENANT_ID, async () =>
+    await prisma.feedbackTicket.create({
       data: {
         kind: FeedbackTicketKind.FEATURE_REQUEST,
         title: `[linear verification] ${label}`,
@@ -77,8 +77,8 @@ async function createTicket(label: string) {
 }
 
 async function createAssistantFeedback(label: string) {
-  const feedback = await runAsTenant(TENANT_ID, () =>
-    prisma.assistantFeedback.create({
+  const feedback = await runAsTenant(TENANT_ID, async () =>
+    await prisma.assistantFeedback.create({
       data: {
         rating: "down",
         comment: `[linear verification] ${label}`,
@@ -235,8 +235,8 @@ async function main() {
     "fresh explicit replacement increments version",
     replaced.ok && replaced.replaced && replaced.link.version === 2,
   );
-  const replacementState = await runAsTenant(TENANT_ID, () =>
-    prisma.feedbackTicket.findUniqueOrThrow({ where: { id: firstTicket.id } }),
+  const replacementState = await runAsTenant(TENANT_ID, async () =>
+    await prisma.feedbackTicket.findUniqueOrThrow({ where: { id: firstTicket.id } }),
   );
   check(
     "replacement history retains the earlier entry",
@@ -278,8 +278,8 @@ async function main() {
       afterExistingLinkRead: sameUrlBarrier.wait,
     }),
   );
-  const raceCount = await runAsTenant(TENANT_ID, () =>
-    prisma.feedbackLinearLink.count({ where: { assistantFeedbackId: racingFeedback.id } }),
+  const raceCount = await runAsTenant(TENANT_ID, async () =>
+    await prisma.feedbackLinearLink.count({ where: { assistantFeedbackId: racingFeedback.id } }),
   );
   check(
     "same URL race converges on one link",
@@ -324,8 +324,8 @@ async function main() {
   const differentRaceConflicts = [differentResultA, differentResultB].filter(
     (result) => !result.ok && result.reason === "DIFFERENT_LINK",
   );
-  const differentRaceAudits = await runAsTenant(TENANT_ID, () =>
-    prisma.auditLog.count({
+  const differentRaceAudits = await runAsTenant(TENANT_ID, async () =>
+    await prisma.auditLog.count({
       where: {
         entityType: "FeedbackLinearLink",
         entityId: differentRaceState.links[0]?.id ?? "missing",
@@ -346,8 +346,8 @@ async function main() {
   );
 
   const staleEditorTicket = await createTicket("stale editor protection");
-  const staleEditorSnapshot = await runAsTenant(TENANT_ID, () =>
-    prisma.feedbackTicket.findUniqueOrThrow({ where: { id: staleEditorTicket.id } }),
+  const staleEditorSnapshot = await runAsTenant(TENANT_ID, async () =>
+    await prisma.feedbackTicket.findUniqueOrThrow({ where: { id: staleEditorTicket.id } }),
   );
   await linkFeedbackToLinearCore(
     ACTOR,
@@ -357,8 +357,8 @@ async function main() {
       key: "WIN-97006",
     }),
   );
-  const staleEditorWrite = await runAsTenant(TENANT_ID, () =>
-    prisma.feedbackTicket.updateMany({
+  const staleEditorWrite = await runAsTenant(TENANT_ID, async () =>
+    await prisma.feedbackTicket.updateMany({
       where: {
         tenantId: TENANT_ID,
         id: staleEditorTicket.id,
@@ -370,8 +370,8 @@ async function main() {
       },
     }),
   );
-  const staleEditorFinal = await runAsTenant(TENANT_ID, () =>
-    prisma.feedbackTicket.findUniqueOrThrow({ where: { id: staleEditorTicket.id } }),
+  const staleEditorFinal = await runAsTenant(TENANT_ID, async () =>
+    await prisma.feedbackTicket.findUniqueOrThrow({ where: { id: staleEditorTicket.id } }),
   );
   check(
     "stale editor cannot erase Linear handoff history",
