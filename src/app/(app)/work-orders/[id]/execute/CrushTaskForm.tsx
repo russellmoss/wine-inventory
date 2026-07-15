@@ -5,6 +5,7 @@ import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { CrushFormData } from "@/lib/ferment/crush-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Plan 035 Unit 5: the native run-time de-stem/crush sub-form on the work-order execute screen. Mirrors
 // the standalone CrushClient's field logic (block → picks with per-pick kg, destination vessel, measured
@@ -85,7 +86,7 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
 
     startTransition(async () => {
       try {
-        await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined });
+        unwrap(await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined }));
         onDone();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't record the crush.");

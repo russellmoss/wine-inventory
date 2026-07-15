@@ -5,6 +5,7 @@ import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { PressFormData } from "@/lib/ferment/press-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import { buildPressGuidance, initialPressFractionDestination, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
 
 // Plan 035 Unit 5: the native run-time press / saignée sub-form on the work-order execute screen. Mirrors
@@ -73,7 +74,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
 
     startTransition(async () => {
       try {
-        await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined });
+        unwrap(await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined }));
         onDone();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't record the press.");

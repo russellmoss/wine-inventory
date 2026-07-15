@@ -4,6 +4,7 @@ import React from "react";
 import { Card, Button, Badge } from "@/components/ui";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import { completeTaskAction, undoMaintenanceTaskAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Plan 061: run-time sub-form for a CONSOLIDATED group maintenance task (clean/sanitize/… a barrel range as
 // ONE task). All-at-once: one "Complete all N vessels" action records every member together (the backend
@@ -35,7 +36,7 @@ export function GroupMaintenanceTaskForm({ task, onDone }: { task: WorkOrderTask
     const commandId = crypto.randomUUID();
     startTransition(async () => {
       try {
-        await completeTaskAction({ taskId: task.id, commandId, completionNote: note.trim() || undefined });
+        unwrap(await completeTaskAction({ taskId: task.id, commandId, completionNote: note.trim() || undefined }));
         setNote("");
         onDone();
       } catch (e) { setError(e instanceof Error ? e.message : "Couldn't record the maintenance."); }

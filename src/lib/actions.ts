@@ -3,8 +3,10 @@ import { getCurrentUser } from "@/lib/dal";
 import { accessDecision, type AppUser } from "@/lib/access";
 import { ActionError } from "@/lib/action-error";
 import { runAsTenant } from "@/lib/tenant/context";
+import { settleAction, type ActionResult } from "@/lib/action-result";
 
 export { ActionError } from "@/lib/action-error";
+export type { ActionResult } from "@/lib/action-result";
 
 export type ActionCtx = {
   user: AppUser;
@@ -74,4 +76,26 @@ export function adminAction<TArgs extends unknown[], TResult>(
       { userId: user.id },
     );
   };
+}
+
+/**
+ * Like `action`, but SETTLES the result instead of throwing: a user-safe `ActionError` comes back as
+ * `{ ok:false, error, code }` (its message survives Next.js's production redaction, which turns EVERY
+ * thrown server-action error into an opaque "Server Components render" string); unexpected errors still
+ * throw → redacted + Sentry. Clients call `unwrap(...)` (from `@/lib/action-result`) to get the payload
+ * or re-throw the real message. Prefer this for any action whose failures are shown to the user.
+ */
+export function safeAction<TArgs extends unknown[], TResult>(
+  handler: (ctx: ActionCtx, ...args: TArgs) => Promise<TResult>,
+): (...args: TArgs) => Promise<ActionResult<TResult>> {
+  const run = action(handler);
+  return (...args: TArgs) => settleAction(() => run(...args));
+}
+
+/** Admin-only `safeAction`. */
+export function safeAdminAction<TArgs extends unknown[], TResult>(
+  handler: (ctx: ActionCtx, ...args: TArgs) => Promise<TResult>,
+): (...args: TArgs) => Promise<ActionResult<TResult>> {
+  const run = adminAction(handler);
+  return (...args: TArgs) => settleAction(() => run(...args));
 }

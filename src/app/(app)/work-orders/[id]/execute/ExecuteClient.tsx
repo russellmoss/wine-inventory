@@ -8,6 +8,7 @@ import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data"
 import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabulary";
 import type { CustomLogFieldSpec } from "@/lib/work-orders/custom-log-fields";
 import { startTaskAction, completeTaskAction, completeTasksBatchAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import type { CrushFormData } from "@/lib/ferment/crush-data";
 import type { PressFormData } from "@/lib/ferment/press-data";
 import type { HarvestWeighInFormData } from "@/lib/work-orders/harvest-weigh-in-data";
@@ -152,7 +153,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     }
     startTransition(async () => {
       try {
-        await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined });
+        unwrap(await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined }));
         onDone();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't record the task.");
