@@ -6,6 +6,7 @@ import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { HarvestWeighInFormData } from "@/lib/work-orders/harvest-weigh-in-data";
 import { toKg, type Unit } from "@/lib/harvest/units";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Plan 039 Unit 7: the run-time fruit-intake / weigh-in sub-form on the work-order execute screen. Mirrors
 // the CrushTaskForm pattern — a block picker (pre-filled if the task was issued against a block) plus the
@@ -57,7 +58,7 @@ export function HarvestWeighInTaskForm({ task, data, onDone }: { task: WorkOrder
 
     startTransition(async () => {
       try {
-        await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined });
+        unwrap(await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined }));
         onDone();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't record the weigh-in.");

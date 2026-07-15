@@ -5,6 +5,7 @@ import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { resolveWorkOrderTask, resolveVessel, type ResolvedTask } from "../scope";
 import { completeTaskAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import { loadCrushFormData } from "@/lib/ferment/crush-data";
 import { loadPressFormData } from "@/lib/ferment/press-data";
 
@@ -203,13 +204,17 @@ export const completeTaskTool: AssistantTool = {
 };
 
 export const commitCompleteTask: Committer = async (_user, args) => {
-  const res = await completeTaskAction({
-    taskId: String(args.taskId),
-    commandId: String(args.commandId),
-    actualPayload: (args.actualPayload as Record<string, unknown>) ?? {},
-    completionNote: args.note == null ? undefined : String(args.note),
-    deviationReason: args.reason == null ? undefined : String(args.reason),
-  });
+  // safeAction now returns a settled result; unwrap re-throws the user-safe ActionError on failure,
+  // preserving the prior throw-on-error contract this committer relied on.
+  const res = unwrap(
+    await completeTaskAction({
+      taskId: String(args.taskId),
+      commandId: String(args.commandId),
+      actualPayload: (args.actualPayload as Record<string, unknown>) ?? {},
+      completionNote: args.note == null ? undefined : String(args.note),
+      deviationReason: args.reason == null ? undefined : String(args.reason),
+    }),
+  );
   const status = res.status.replace(/_/g, " ").toLowerCase();
   return { message: `Completed ${String(args.label ?? "the task")} on WO #${String(args.woNumber ?? "")} (${status}).` };
 };

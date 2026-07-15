@@ -5,6 +5,7 @@ import { Card, Button, Badge } from "@/components/ui";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { BottlingTaskFormData } from "@/lib/bottling/bottling-task-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import { consumedForBottles, suggestBottles, casesAndLoose } from "@/lib/bottling/draw";
 import { type PackagingPlanLine, theoreticalConsumption } from "@/lib/bottling/packaging-bom";
 
@@ -94,7 +95,7 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
     if (packaging.length > 0) actualPayload.packaging = packaging;
     startTransition(async () => {
       try {
-        await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined });
+        unwrap(await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined }));
         onDone();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't record the bottling.");

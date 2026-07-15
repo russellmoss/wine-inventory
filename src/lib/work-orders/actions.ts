@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { action, adminAction } from "@/lib/actions";
+import { action, adminAction, safeAction } from "@/lib/actions";
 import {
   createWorkOrderCore,
   issueWorkOrderCore,
@@ -315,7 +315,11 @@ async function prepareCompleteInput(user: AppUser, input: CompleteTaskInput): Pr
 /** Complete a task (the floor-first "check it off"). OPERATION → real ledger op + PENDING_APPROVAL
  * attempt; OBSERVATION → direct log + DONE. Idempotent on commandId (offline-drain safe). Auto-finalize
  * (decision 2) is computed server-side from the WO flag + the completer's role — never client-trusted. */
-export const completeTaskAction = action(async ({ user, actor }, input: CompleteTaskInput) => {
+// safeAction (not action): a validation/conflict ActionError from the completion core (empty vessel,
+// stale press source, WORKORDER-3, "already completed", …) is a USER-facing message. Thrown, Next.js
+// would redact it in prod to an opaque "Server Components render" error (the reported WO-execute bug);
+// settled, it rides back as { ok:false } and the client `unwrap`s it into a clean message.
+export const completeTaskAction = safeAction(async ({ user, actor }, input: CompleteTaskInput) => {
   const res = await completeTaskCore(actor, await prepareCompleteInput(user, input));
   revalidateWorkOrders(res.taskId);
   return res;
