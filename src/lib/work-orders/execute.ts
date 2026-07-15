@@ -17,7 +17,7 @@ import { isPressableLotState } from "@/lib/ferment/press-data";
 import type { RateBasis } from "@/lib/cellar/additions-math";
 import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { assertTaskTransition } from "@/lib/work-orders/status";
-import { bumpWorkOrderRollupTx } from "@/lib/work-orders/lifecycle";
+import { bumpWorkOrderRollupTx, emitWorkOrderStatusTx } from "@/lib/work-orders/lifecycle";
 import { releaseReservationsForTaskTx } from "@/lib/work-orders/reservations";
 import { completeObservationTaskCore } from "@/lib/work-orders/observations";
 import { completeMaintenanceTaskCore } from "@/lib/work-orders/maintenance";
@@ -420,7 +420,8 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
       // The advisory hold is discharged — the real op committed the actual (reconciliation is
       // planned-vs-actual on the op/attempt). WORKORDER-2: the reservation was never the guarantee.
       await releaseReservationsForTaskTx(tx, { taskId: task.id });
-      await bumpWorkOrderRollupTx(tx, task.workOrderId);
+      const _woRollup = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+      await emitWorkOrderStatusTx(tx, _woRollup, actor, task.workOrderId);
       await writeAudit(tx, {
         ...actor,
         action: "STOCK_MOVEMENT",
@@ -597,7 +598,8 @@ export async function completeGroupRackBatchCore(actor: LedgerActor, input: Grou
       // Discharge the advisory holds only once the whole task is done (group racks carry no material
       // reservations today, so this is a no-op in practice — kept for parity + future-proofing).
       if (doneNow) await releaseReservationsForTaskTx(tx, { taskId: task.id });
-      await bumpWorkOrderRollupTx(tx, task.workOrderId);
+      const _woRollup = await bumpWorkOrderRollupTx(tx, task.workOrderId);
+      await emitWorkOrderStatusTx(tx, _woRollup, actor, task.workOrderId);
       await writeAudit(tx, {
         ...actor,
         action: "STOCK_MOVEMENT",

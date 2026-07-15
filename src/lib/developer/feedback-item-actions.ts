@@ -191,8 +191,7 @@ export async function closeFeedbackItemCore(
             })
           : await tx.feedbackTicket.findFirst({
               where: { tenantId: input.tenantId, id: input.id },
-              // Widened for the inbox hook: the submitter is the notification recipient (Unit 4).
-              select: { developerNotes: true, developerNotesVersion: true, actorUserId: true, actorEmail: true },
+              select: { developerNotes: true, developerNotesVersion: true },
             });
       if (!source) throw new ActionError("Feedback item not found.", "VALIDATION");
       const closedAt = new Date();
@@ -310,22 +309,25 @@ export async function closeFeedbackItemCore(
       // Only FEEDBACK_TICKET with a known submitter; reached only when the version-gated update applied
       // (count === 1 above), so a lost-version retry throws CONFLICT and never double-emits. Self-close
       // (developer closing their own ticket) is suppressed inside emitNotificationTx.
-      const ticketSubmitter =
-        input.sourceType === FeedbackAutomationSource.FEEDBACK_TICKET
-          ? (source as unknown as { actorUserId: string | null; actorEmail: string | null })
-          : null;
-      if (ticketSubmitter?.actorUserId) {
-        await emitNotificationTx(tx, {
-          recipientUserId: ticketSubmitter.actorUserId,
-          recipientEmail: ticketSubmitter.actorEmail ?? "",
-          ...buildTicketNotificationPayload({
-            ticketId: input.id,
-            hasReply: true, // a close always writes an outcome note (the reply)
-            statusLabel: input.status === "RESOLVED" ? "resolved" : "dismissed",
-            outcomeNote: parsedOutcome.value,
-          }),
-          actor: { actorUserId: actor.id, actorEmail: actor.email },
+      if (input.sourceType === FeedbackAutomationSource.FEEDBACK_TICKET) {
+        // Typed fetch of the submitter (avoids casting the assistant|ticket union of `source`).
+        const submitter = await tx.feedbackTicket.findFirst({
+          where: { tenantId: input.tenantId, id: input.id },
+          select: { actorUserId: true, actorEmail: true },
         });
+        if (submitter?.actorUserId) {
+          await emitNotificationTx(tx, {
+            recipientUserId: submitter.actorUserId,
+            recipientEmail: submitter.actorEmail ?? "",
+            ...buildTicketNotificationPayload({
+              ticketId: input.id,
+              hasReply: true, // a close always writes an outcome note (the reply)
+              statusLabel: input.status === "RESOLVED" ? "resolved" : "dismissed",
+              outcomeNote: parsedOutcome.value,
+            }),
+            actor: { actorUserId: actor.id, actorEmail: actor.email },
+          });
+        }
       }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }), 5, "developer-feedback-close"),
   );

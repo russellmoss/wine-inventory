@@ -102,6 +102,10 @@ describe("deriveNotificationHref", () => {
   it("returns null for an unknown source (reader tombstones it)", () => {
     expect(deriveNotificationHref("mystery", "x")).toBeNull();
   });
+  it("URL-encodes ids with special characters", () => {
+    expect(deriveNotificationHref("dm_thread", "a b&c")).toBe("/inbox?bucket=dm&thread=a%20b%26c");
+    expect(deriveNotificationHref("work_order", "id/with?chars")).toBe("/inbox?bucket=wo&wo=id%2Fwith%3Fchars");
+  });
 });
 
 describe("parseBucket / inboxHref", () => {

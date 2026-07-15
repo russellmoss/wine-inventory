@@ -48,12 +48,21 @@ async function resolveOrCreateThreadTx(
     select: { id: true },
   });
   if (existing) return existing.id;
-  // The creator is a participant, so the create's RETURNING passes the per-user thread policy.
-  const created = await tx.directMessageThread.create({
-    data: { tenantId, createdByUserId: me.id, ...pair, lastMessageAt: new Date() },
+  // Race-safe create: two users opening their first thread simultaneously would both miss the findFirst
+  // above; a plain create would then hit the @@unique([tenantId,userAId,userBId]) → P2002 → an aborted
+  // tx (no in-tx recovery) → a 500. createMany(skipDuplicates) emits INSERT … ON CONFLICT DO NOTHING,
+  // which waits on the loser's lock and then no-ops instead of aborting; the re-read returns whichever
+  // thread won. (No RETURNING either, so the restrictive per-user SELECT policy is never in play.)
+  await tx.directMessageThread.createMany({
+    data: [{ tenantId, createdByUserId: me.id, ...pair, lastMessageAt: new Date() }],
+    skipDuplicates: true,
+  });
+  const row = await tx.directMessageThread.findFirst({
+    where: { userAId: pair.userAId, userBId: pair.userBId },
     select: { id: true },
   });
-  return created.id;
+  if (!row) throw new ActionError("Could not open the conversation. Please try again.");
+  return row.id;
 }
 
 /**

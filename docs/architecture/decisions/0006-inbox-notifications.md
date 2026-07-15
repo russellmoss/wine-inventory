@@ -55,11 +55,12 @@ channels ship in v1.
 - **Accepted limitation — multi-org unread is per active org.** Unread is scoped to `effectiveTenantId`
   (matches the RLS/active-org model); a user in two wineries sees only the active org's unread until they
   switch. A cross-org aggregate would break tenant scoping.
-- **Accepted limitation — WO_STATUS from non-lifecycle task-move paths.** WO status notifications are wired
-  at the assign/issue/cancel/start/approval cores; task completions routed through other cores
-  (execute/maintenance/…) don't emit WO_STATUS in v1. The completer is usually the assignee (self-suppressed)
-  and reviewer approve/reject IS covered, so the gap is small. `bumpWorkOrderRollupTx` returns a change
-  descriptor (it stays pure — no actor threaded), so wiring the remaining callers later is additive.
+- **WO_STATUS coverage (completed in review).** `bumpWorkOrderRollupTx` returns a change descriptor and
+  stays pure (no actor threaded); EVERY caller emits WO_STATUS via `emitWorkOrderStatusTx` — the lifecycle
+  cores (assign/issue/cancel/start), the approval paths, AND the task-completion cores
+  (execute/maintenance/observations/sample-task/harvest/note). So any real status transition notifies the
+  assignee (self-suppressed when the actor is the assignee). Emit fires only on `change.changed` (the
+  conditional-`updateMany` gate), so no double-fire and no emit on a no-op rollup.
 
 Guards: `verify:inbox-isolation` (per-user), `verify:tenant-isolation` (cross-org, auto-covers the new
 tables), `verify:invariants` (INBOX-1 is guarded). Related: [[INBOX-1-recipient-isolation]],
