@@ -92,14 +92,18 @@ export function InboxClient(props: {
     startTransition(async () => { await markAllNotificationsReadAction(); router.refresh(); });
   }
   function openThread(threadId: string) {
-    router.push(inboxHref("dm") + `&thread=${encodeURIComponent(threadId)}`);
-    startTransition(async () => { await markThreadReadAction(threadId); router.refresh(); });
+    // Mark the thread's notifications read FIRST (server revalidates /inbox), THEN navigate — pushing
+    // and refreshing together races the fetch against the URL commit and the thread never opens.
+    startTransition(async () => {
+      await markThreadReadAction(threadId);
+      router.push(inboxHref("dm") + `&thread=${encodeURIComponent(threadId)}`);
+    });
   }
 
   return (
     <div style={{ padding: "var(--space-5)", maxWidth: 1200, margin: "0 auto" }}>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, marginBottom: "var(--space-4)" }}>Inbox</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "220px 320px 1fr", gap: "var(--space-4)", alignItems: "start" }}>
+      <div className="bw-inbox-grid" style={{ display: "grid", gridTemplateColumns: "minmax(160px, 200px) minmax(220px, 320px) 1fr", gap: "var(--space-4)", alignItems: "start" }}>
         {/* ── Bucket rail ── */}
         <nav style={{ ...panel, padding: 8, display: "flex", flexDirection: "column", gap: 2 }}>
           {BUCKETS.map((b) => (
