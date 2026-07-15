@@ -15,6 +15,7 @@ import {
 } from "@/lib/work-orders/group-rack-progress";
 import { selectGroupRackMembers, isAllRemainingExpr, type GroupRackMemberLite } from "@/lib/work-orders/group-rack-select";
 import { completeGroupRackBatchAction, rejectGroupRackBatchAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Plan 054 shipped progressive group-rack completion (complete a SUBSET of a barrel-down / rack-to-tank
 // task, or LIFO-undo the last batch). Plan 055 U5/U6 gives the assistant that reach: a discriminated
@@ -159,7 +160,7 @@ export const commitGroupRackBatch: Committer = async (_user, args) => {
   const woNumber = String(args.woNumber ?? "");
 
   if (action === "undo") {
-    const res = await rejectGroupRackBatchAction({ taskId, reason: args.reason == null ? undefined : String(args.reason) });
+    const res = unwrap(await rejectGroupRackBatchAction({ taskId, reason: args.reason == null ? undefined : String(args.reason) }));
     return {
       message: `Undid the last batch on WO #${woNumber} — its wine was returned to the source. The task is now ${String(res.status).replace(/_/g, " ").toLowerCase()}.`,
       navigate: { path: entityPath("workOrder", String(args.workOrderId ?? "")), label: `WO #${woNumber}` },
@@ -186,7 +187,7 @@ export const commitGroupRackBatch: Committer = async (_user, args) => {
     }
   }
 
-  const res = await completeGroupRackBatchAction({ taskId, commandId, memberVesselIds });
+  const res = unwrap(await completeGroupRackBatchAction({ taskId, commandId, memberVesselIds }));
   if (res.duplicate) {
     return { message: `That batch was already recorded on WO #${woNumber}.`, navigate: { path: entityPath("workOrder", taskId), label: `WO #${woNumber}` } };
   }

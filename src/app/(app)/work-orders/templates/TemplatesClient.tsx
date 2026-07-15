@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { TemplateListRow } from "@/lib/work-orders/data";
 import { cloneTemplateAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import { TemplatesTabs } from "./TemplatesTabs";
 
 // Plan 034 Unit 6: template list. Cards show name → system/custom badge → block count (NOT the internal
@@ -21,7 +22,7 @@ export function TemplatesClient({ templates, view, isAdmin }: { templates: Templ
     setBusyId(templateId);
     (async () => {
       try {
-        const res = await cloneTemplateAction({ templateId });
+        const res = unwrap(await cloneTemplateAction({ templateId }));
         router.push(`/work-orders/templates/${res.templateId}/edit`);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't clone that template.");

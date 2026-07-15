@@ -7,6 +7,7 @@ import { Card, Button, Badge, Eyebrow } from "@/components/ui";
 import type { TemplateDetail } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY, fieldLabel, type TemplateTaskSpec } from "@/lib/work-orders/template-vocabulary";
 import { cloneTemplateAction, archiveTemplateAction, unarchiveTemplateAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Plan 034 Unit 7: template detail — read-only block list (what the operator fills at run time), version
 // history, and the actions (Edit/Clone/Archive gated so system templates are Clone-only). The primary CTA
@@ -78,9 +79,9 @@ export function TemplateDetailClient({ template, isAdmin }: { template: Template
       {isAdmin ? (
         <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
           {!template.isSystem && !isArchived ? <Button size="sm" variant="secondary" onClick={() => router.push(`/work-orders/templates/${template.id}/edit`)}>Edit</Button> : null}
-          <Button size="sm" variant="secondary" disabled={busy === "clone"} onClick={() => run("clone", async () => { const res = await cloneTemplateAction({ templateId: template.id }); router.push(`/work-orders/templates/${res.templateId}/edit`); })}>{busy === "clone" ? "Cloning…" : "Clone"}</Button>
-          {!template.isSystem && !isArchived ? <Button size="sm" variant="ghost" disabled={busy === "archive"} onClick={() => run("archive", async () => { await archiveTemplateAction({ templateId: template.id }); router.push("/work-orders/templates"); })}>{busy === "archive" ? "Archiving…" : "Archive"}</Button> : null}
-          {!template.isSystem && isArchived ? <Button size="sm" variant="secondary" disabled={busy === "unarchive"} onClick={() => run("unarchive", async () => { await unarchiveTemplateAction({ templateId: template.id }); router.refresh(); })}>{busy === "unarchive" ? "Restoring…" : "Restore"}</Button> : null}
+          <Button size="sm" variant="secondary" disabled={busy === "clone"} onClick={() => run("clone", async () => { const res = unwrap(await cloneTemplateAction({ templateId: template.id })); router.push(`/work-orders/templates/${res.templateId}/edit`); })}>{busy === "clone" ? "Cloning…" : "Clone"}</Button>
+          {!template.isSystem && !isArchived ? <Button size="sm" variant="ghost" disabled={busy === "archive"} onClick={() => run("archive", async () => { unwrap(await archiveTemplateAction({ templateId: template.id })); router.push("/work-orders/templates"); })}>{busy === "archive" ? "Archiving…" : "Archive"}</Button> : null}
+          {!template.isSystem && isArchived ? <Button size="sm" variant="secondary" disabled={busy === "unarchive"} onClick={() => run("unarchive", async () => { unwrap(await unarchiveTemplateAction({ templateId: template.id })); router.refresh(); })}>{busy === "unarchive" ? "Restoring…" : "Restore"}</Button> : null}
         </div>
       ) : null}
 

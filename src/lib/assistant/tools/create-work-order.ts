@@ -5,6 +5,7 @@ import { signProposal } from "../confirm";
 import { resolveExactlyOne } from "./resolve";
 import { listWorkOrderTemplates } from "@/lib/work-orders/data";
 import { createWorkOrderFromTemplateAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Assistant-coverage Wave 1 #3a — create AND issue a work order from a template by chat. Wraps the
 // existing template + lifecycle cores (createWorkOrderFromTemplateAction → issueWorkOrderAction); no db_*.
@@ -64,13 +65,13 @@ export const createWorkOrderTool: AssistantTool = {
 };
 
 export const commitCreateWorkOrder: Committer = async (_user, args) => {
-  const created = await createWorkOrderFromTemplateAction({
+  const created = unwrap(await createWorkOrderFromTemplateAction({
     templateId: String(args.templateId),
     title: args.title == null ? undefined : String(args.title),
     assigneeEmail: args.assigneeEmail == null ? null : String(args.assigneeEmail),
     dueAt: args.dueDate ? new Date(String(args.dueDate)) : null,
-  });
-  await issueWorkOrderAction({ workOrderId: created.workOrderId });
+  }));
+  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
   return {
     message: `Created and issued work order #${created.number} from "${String(args.templateName ?? "template")}".`,
     navigate: { path: `/work-orders/${created.workOrderId}`, label: `View WO #${created.number}` },

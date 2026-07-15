@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Checkbox, Eyebrow } from "@/components/ui";
 import type { ReviewQueueItem } from "@/lib/work-orders/data";
 import { approveTaskAction, rejectTaskAction, bulkApproveTasksAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Deviation-first review (Phase 9 Unit 12, D3): variances are segregated + warning-colored; "select all"
 // only picks EXACT-match tasks (no significant deviation) — anti-rubber-stamp. Reject reverses the
@@ -67,12 +68,12 @@ export function ReviewClient({ queue }: { queue: ReviewQueueItem[] }) {
         {rejecting === q.taskId ? (
           <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
             <input style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)" }} placeholder="Reason for rejecting…" value={reason} onChange={(e) => setReason(e.target.value)} />
-            <Button variant="secondary" disabled={pending} onClick={() => run(() => rejectTaskAction({ taskId: q.taskId, reason: reason.trim() || undefined }))}>Confirm reject</Button>
+            <Button variant="secondary" disabled={pending} onClick={() => run(() => rejectTaskAction({ taskId: q.taskId, reason: reason.trim() || undefined }).then(unwrap))}>Confirm reject</Button>
             <Button variant="ghost" onClick={() => { setRejecting(null); setReason(""); }}>Cancel</Button>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <Button disabled={pending} onClick={() => run(() => approveTaskAction({ taskId: q.taskId }))}>Approve</Button>
+            <Button disabled={pending} onClick={() => run(() => approveTaskAction({ taskId: q.taskId }).then(unwrap))}>Approve</Button>
             <Button variant="ghost" disabled={pending} onClick={() => { setRejecting(q.taskId); setReason(""); }}>Reject (reverse)</Button>
           </div>
         )}
@@ -93,7 +94,7 @@ export function ReviewClient({ queue }: { queue: ReviewQueueItem[] }) {
           {exact.length > 0 ? (
             <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "12px 0" }}>
               <Button variant="secondary" onClick={selectAllExact}>Select all exact matches ({exact.length})</Button>
-              <Button disabled={pending || selected.size === 0} onClick={() => run(() => bulkApproveTasksAction({ taskIds: [...selected] }))}>Approve selected ({selected.size})</Button>
+              <Button disabled={pending || selected.size === 0} onClick={() => run(() => bulkApproveTasksAction({ taskIds: [...selected] }).then(unwrap))}>Approve selected ({selected.size})</Button>
             </div>
           ) : null}
 

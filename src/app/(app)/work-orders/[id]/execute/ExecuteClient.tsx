@@ -207,7 +207,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        {canStart ? <Button size="lg" variant="secondary" disabled={pending} onClick={() => startTransition(async () => { await startTaskAction({ taskId: task.id }); })}>Start</Button> : null}
+        {canStart ? <Button size="lg" variant="secondary" disabled={pending} onClick={() => startTransition(async () => { unwrap(await startTaskAction({ taskId: task.id })); })}>Start</Button> : null}
         <Button size="lg" fullWidth disabled={pending} onClick={complete}>{pending ? "Recording…" : "Complete — record it"}</Button>
       </div>
     </Card>
@@ -258,7 +258,7 @@ function BatchCapExecutor({ tasks, vessels, onDone }: { tasks: WorkOrderTaskView
     }));
     startTransition(async () => {
       try {
-        const res = await completeTasksBatchAction({ items });
+        const res = unwrap(await completeTasksBatchAction({ items }));
         if (res.failed > 0) {
           setFailures(res.results.filter((r) => !r.ok).map((r) => ({ taskId: r.taskId, error: r.error })));
         } else {

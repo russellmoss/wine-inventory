@@ -7,6 +7,7 @@ import { Card, Button, Input, Checkbox, Eyebrow, Badge } from "@/components/ui";
 import { TASK_VOCABULARY, fieldLabel, type TemplateSpec, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { computeDoseTotal, isRateUnit } from "@/lib/cellar/additions-math";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import { previewWorkOrderReadinessAction } from "@/lib/work-orders/proposal-readiness-actions";
 import type { WorkOrderReadinessProposal } from "@/lib/work-orders/proposal-readiness";
 import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadinessPanel";
@@ -332,7 +333,7 @@ export function NewWorkOrderClient({
           await onCreateAndIssue(payload);
           return;
         }
-        const res = await createWorkOrderFromTemplateAction(payload);
+        const res = unwrap(await createWorkOrderFromTemplateAction(payload));
         router.push(`/work-orders/${res.workOrderId}`);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't create the work order.");

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Input, Eyebrow, Badge } from "@/components/ui";
 import { fieldLabel, type ResolvedTaskVocabulary, type TaskTypeDef, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { createWorkOrderFromBuildsAction, draftWorkOrderFromTextAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import { previewWorkOrderReadinessAction } from "@/lib/work-orders/proposal-readiness-actions";
 import type { WorkOrderReadinessProposal } from "@/lib/work-orders/proposal-readiness";
 import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadinessPanel";
@@ -252,7 +253,7 @@ export function WorkOrderBuilderClient({
     const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
     startTransition(async () => {
       try {
-        const res = await createWorkOrderFromBuildsAction({
+        const res = unwrap(await createWorkOrderFromBuildsAction({
           title: title.trim() || undefined,
           assigneeId: leadUserId,
           assigneeEmail: leadEmail || null,
@@ -263,7 +264,7 @@ export function WorkOrderBuilderClient({
           taskBuilds,
           dependsOnWorkOrderIds: dependsOn,
           readinessFingerprint: readiness?.fingerprint ?? null,
-        });
+        }));
         router.push(`/work-orders/${res.workOrderId}`);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't create the work order.");

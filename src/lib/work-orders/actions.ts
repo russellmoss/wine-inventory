@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { action, adminAction, safeAction } from "@/lib/actions";
+import { action, safeAction, safeAdminAction } from "@/lib/actions";
 import {
   createWorkOrderCore,
   issueWorkOrderCore,
@@ -59,7 +59,7 @@ function revalidateTemplates(templateId?: string) {
   revalidatePath("/work-orders/new"); // the issue-from-template picker reads the template list
 }
 
-export const createTemplateAction = adminAction(
+export const createTemplateAction = safeAdminAction(
   async ({ actor }, input: { name: string; description?: string; category?: string; spec: TemplateSpec }) => {
     const res = await createTemplateCore(actor, input);
     revalidateTemplates(res.templateId);
@@ -67,37 +67,37 @@ export const createTemplateAction = adminAction(
   },
 );
 
-export const updateTemplateSpecAction = adminAction(async ({ actor }, input: { templateId: string; spec: TemplateSpec }) => {
+export const updateTemplateSpecAction = safeAdminAction(async ({ actor }, input: { templateId: string; spec: TemplateSpec }) => {
   const res = await updateTemplateSpecCore(actor, input);
   revalidateTemplates(res.templateId);
   return res;
 });
 
-export const cloneTemplateAction = adminAction(async ({ actor }, input: { templateId: string; name?: string }) => {
+export const cloneTemplateAction = safeAdminAction(async ({ actor }, input: { templateId: string; name?: string }) => {
   const res = await cloneTemplateCore(actor, input);
   revalidateTemplates(res.templateId);
   return res;
 });
 
-export const archiveTemplateAction = adminAction(async ({ actor }, input: { templateId: string }) => {
+export const archiveTemplateAction = safeAdminAction(async ({ actor }, input: { templateId: string }) => {
   const res = await archiveTemplateCore(actor, input);
   revalidateTemplates(res.templateId);
   return res;
 });
 
-export const unarchiveTemplateAction = adminAction(async ({ actor }, input: { templateId: string }) => {
+export const unarchiveTemplateAction = safeAdminAction(async ({ actor }, input: { templateId: string }) => {
   const res = await unarchiveTemplateCore(actor, input);
   revalidateTemplates(res.templateId);
   return res;
 });
 
-export const createWorkOrderAction = action(async ({ actor }, input: CreateWorkOrderInput) => {
+export const createWorkOrderAction = safeAction(async ({ actor }, input: CreateWorkOrderInput) => {
   const res = await createWorkOrderCore(actor, input);
   revalidateWorkOrders(res.workOrderId);
   return res;
 });
 
-export const issueWorkOrderAction = action(async ({ actor }, input: { workOrderId: string; validUntil?: Date }) => {
+export const issueWorkOrderAction = safeAction(async ({ actor }, input: { workOrderId: string; validUntil?: Date }) => {
   const res = await issueWorkOrderCore(actor, input);
   revalidateWorkOrders(res.workOrderId);
   return res;
@@ -107,7 +107,7 @@ export const issueWorkOrderAction = action(async ({ actor }, input: { workOrderI
  * Phase 9.3: when the client sends explicit taskBuilds, re-run the shared readiness engine server-side
  * immediately before writing and refuse on a true blocker (or stale state) — the write path is the last
  * authority, not the form. */
-export const createWorkOrderFromTemplateAction = action(
+export const createWorkOrderFromTemplateAction = safeAction(
   async (
     { actor },
     input: {
@@ -160,7 +160,7 @@ export const draftWorkOrderFromTextAction = action(async (_ctx, input: { text: s
 /** Plan 053 A6: create a DRAFT work order from the palette builder — a flat TaskBuild[] carrying groupSeq
  * (sequential groups) + per-task assigneeId, with no template lock. Re-runs the shared readiness gate
  * server-side, resolves the tenant vocabulary, instantiates, creates, then wires any WO->WO dependencies. */
-export const createWorkOrderFromBuildsAction = action(
+export const createWorkOrderFromBuildsAction = safeAction(
   async (
     { actor },
     input: {
@@ -224,7 +224,7 @@ export const createWorkOrderFromBuildsAction = action(
   },
 );
 
-export const assignWorkOrderAction = action(
+export const assignWorkOrderAction = safeAction(
   async ({ actor }, input: { workOrderId: string; assigneeId: string | null; assigneeEmail: string | null }) => {
     const res = await assignWorkOrderCore(actor, input);
     revalidateWorkOrders(res.workOrderId);
@@ -232,7 +232,7 @@ export const assignWorkOrderAction = action(
   },
 );
 
-export const scheduleWorkOrderAction = action(
+export const scheduleWorkOrderAction = safeAction(
   async ({ actor }, input: { workOrderId: string; dueAt?: Date | null; scheduledFor?: Date | null }) => {
     const res = await scheduleWorkOrderCore(actor, input);
     revalidateWorkOrders(res.workOrderId);
@@ -240,14 +240,14 @@ export const scheduleWorkOrderAction = action(
   },
 );
 
-export const cancelWorkOrderAction = action(async ({ actor }, input: { workOrderId: string; reason?: string }) => {
+export const cancelWorkOrderAction = safeAction(async ({ actor }, input: { workOrderId: string; reason?: string }) => {
   const res = await cancelWorkOrderCore(actor, input);
   revalidateWorkOrders(res.workOrderId);
   return res;
 });
 
 // A5: cross-order dependencies. Open (like issue/assign/schedule); the completion gate does the enforcing.
-export const addWorkOrderDependencyAction = action(
+export const addWorkOrderDependencyAction = safeAction(
   async ({ actor }, input: { workOrderId: string; dependsOnWorkOrderId: string }) => {
     const res = await addWorkOrderDependencyCore(actor, input);
     revalidateWorkOrders(input.workOrderId);
@@ -255,13 +255,13 @@ export const addWorkOrderDependencyAction = action(
   },
 );
 
-export const removeWorkOrderDependencyAction = action(async ({ actor }, input: { id: string; workOrderId?: string }) => {
+export const removeWorkOrderDependencyAction = safeAction(async ({ actor }, input: { id: string; workOrderId?: string }) => {
   const res = await removeWorkOrderDependencyCore(actor, { id: input.id });
   revalidateWorkOrders(input.workOrderId);
   return res;
 });
 
-export const startTaskAction = action(async ({ actor }, input: { taskId: string }) => {
+export const startTaskAction = safeAction(async ({ actor }, input: { taskId: string }) => {
   const res = await startTaskCore(actor, input);
   revalidateWorkOrders();
   return res;
@@ -329,7 +329,7 @@ export const completeTaskAction = safeAction(async ({ user, actor }, input: Comp
  * carries its OWN commandId (idempotency is per-attempt). Per-item pre-flight + autoFinalize; a partial
  * failure never aborts the rest (per-item pass/fail in the result). Revalidates once at the end. */
 const MAX_BATCH_COMPLETE = 100; // defense-in-depth: bound the per-request work (N sequential ledger txs)
-export const completeTasksBatchAction = action(async ({ user, actor }, input: { items: CompleteTaskInput[] }) => {
+export const completeTasksBatchAction = safeAction(async ({ user, actor }, input: { items: CompleteTaskInput[] }) => {
   if (!Array.isArray(input.items) || input.items.length === 0) throw new ActionError("No tasks to complete.");
   // Dedup by taskId: a task must be completed at most once per batch. Without this, a duplicated taskId
   // would complete on the first item then re-complete on the second (fresh commandId) — the completeTaskCore
@@ -344,7 +344,7 @@ export const completeTasksBatchAction = action(async ({ user, actor }, input: { 
 });
 
 /** Approve (finalize) a task. Admin-only (canApprove); no op mutation. */
-export const approveTaskAction = action(async ({ user, actor }, input: { taskId: string }) => {
+export const approveTaskAction = safeAction(async ({ user, actor }, input: { taskId: string }) => {
   const res = await approveTaskCore(user, actor, input);
   revalidateWorkOrders(res.taskId);
   return res;
@@ -352,7 +352,7 @@ export const approveTaskAction = action(async ({ user, actor }, input: { taskId:
 
 /** Reject a task — reverses its ledger op (plan-024). Surfaces the LEDGER-11 "undo dependents first"
  * conflict. Admin-only. */
-export const rejectTaskAction = action(async ({ user, actor }, input: { taskId: string; reason?: string }) => {
+export const rejectTaskAction = safeAction(async ({ user, actor }, input: { taskId: string; reason?: string }) => {
   const res = await rejectTaskCore(user, actor, input);
   revalidateWorkOrders(res.taskId);
   return res;
@@ -360,7 +360,7 @@ export const rejectTaskAction = action(async ({ user, actor }, input: { taskId: 
 
 /** Plan 054: complete a SUBSET of a group-rack task's members ("these 4 barrels now"). Runs the same
  * group/WO-dependency gating + server-side autoFinalize as a normal completion, then the batch core. */
-export const completeGroupRackBatchAction = action(async ({ user, actor }, input: GroupRackBatchInput) => {
+export const completeGroupRackBatchAction = safeAction(async ({ user, actor }, input: GroupRackBatchInput) => {
   await assertTaskDependenciesReady(input.taskId);
   const task = await prisma.workOrderTask.findUnique({ where: { id: input.taskId }, select: { workOrderId: true, workOrder: { select: { autoFinalize: true } } } });
   if (task) await assertPredecessorsDone(task.workOrderId);
@@ -371,7 +371,7 @@ export const completeGroupRackBatchAction = action(async ({ user, actor }, input
 });
 
 /** Plan 054: undo the latest batch of an in-progress group-rack task (LIFO). Admin-only (canApprove). */
-export const rejectGroupRackBatchAction = action(async ({ user, actor }, input: { taskId: string; reason?: string }) => {
+export const rejectGroupRackBatchAction = safeAction(async ({ user, actor }, input: { taskId: string; reason?: string }) => {
   const res = await rejectGroupRackBatchCore(user, actor, input);
   revalidateWorkOrders(res.taskId);
   return res;
@@ -379,14 +379,14 @@ export const rejectGroupRackBatchAction = action(async ({ user, actor }, input: 
 
 /** Plan 061: undo a completed maintenance task (single-vessel or a consolidated group) — reverses every
  * member's activity event and reopens the task. Self-undo (the recorder) or admin/developer. */
-export const undoMaintenanceTaskAction = action(async ({ user, actor }, input: { taskId: string }) => {
+export const undoMaintenanceTaskAction = safeAction(async ({ user, actor }, input: { taskId: string }) => {
   const res = await undoMaintenanceTaskCore(user, actor, input);
   revalidateWorkOrders(res.taskId);
   return res;
 });
 
 /** Bulk approve exact-match tasks (D3). Returns per-item results; a partial failure doesn't abort. */
-export const bulkApproveTasksAction = action(async ({ user, actor }, input: { taskIds: string[] }) => {
+export const bulkApproveTasksAction = safeAction(async ({ user, actor }, input: { taskIds: string[] }) => {
   const res = await bulkApproveTasksCore(user, actor, input);
   revalidateWorkOrders();
   return res;

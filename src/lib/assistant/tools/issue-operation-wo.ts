@@ -7,6 +7,7 @@ import { resolveVessel, type ResolvedVessel } from "../scope";
 import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { resolveDoseUnit } from "@/lib/cellar/additions-math";
 import { resolveAdditiveFrom } from "./additive-resolve";
@@ -176,8 +177,8 @@ export const commitIssueOperationWo: Committer = async (_user, args) => {
   if (builds.length === 0) throw new Error("This work order has no tasks.");
 
   const tasks = instantiateTaskBuilds(builds, await resolveTaskVocabulary());
-  const created = await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt });
-  await issueWorkOrderAction({ workOrderId: created.workOrderId });
+  const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt }));
+  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
 
   const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
   return {

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Input, Textarea, Eyebrow, Badge, Modal } from "@/components/ui";
 import { TASK_VOCABULARY, fieldLabel, validateTemplateSpec, type TemplateSpec, type TemplateTaskSpec, type FieldType } from "@/lib/work-orders/template-vocabulary";
 import { createTemplateAction, updateTemplateSpecAction } from "@/lib/work-orders/actions";
+import { unwrap } from "@/lib/action-result";
 
 // Plan 034 Unit 8: the structural builder. Compose blocks from the vocabulary (grouped picker), name +
 // order them, and set OPTIONAL "what" defaults (material/rate/unit/medium/gas) — NEVER vessels/lots (the
@@ -100,10 +101,10 @@ export function TemplateEditorClient({
     startTransition(async () => {
       try {
         if (mode === "create") {
-          const res = await createTemplateAction({ name: name.trim(), description: description.trim() || undefined, category: category.trim() || undefined, spec });
+          const res = unwrap(await createTemplateAction({ name: name.trim(), description: description.trim() || undefined, category: category.trim() || undefined, spec }));
           router.push(`/work-orders/templates/${res.templateId}`);
         } else if (templateId) {
-          await updateTemplateSpecAction({ templateId, spec });
+          unwrap(await updateTemplateSpecAction({ templateId, spec }));
           router.push(`/work-orders/templates/${templateId}`);
         }
       } catch (e) {
