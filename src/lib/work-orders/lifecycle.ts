@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { requireTenantId } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
+import { resolveCreateLead } from "@/lib/work-orders/lead-resolve";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { assertWorkOrderTransition, rollUpWorkOrderStatus } from "@/lib/work-orders/status";
@@ -142,10 +143,17 @@ export async function createWorkOrderCore(actor: LedgerActor, input: CreateWorkO
     if (t.kind === "MAINTENANCE" && !t.activityType) throw new ActionError(`Task "${t.title}" is a maintenance task but has no activity type.`);
   }
 
+  // Plan 069: the Lead (assigneeEmail + assigneeId) is a mandatory invariant on every WO. Resolve it at
+  // this single chokepoint — an explicit Lead passes through, otherwise it defaults to the creating actor
+  // — so no creation path (builder, template, composer, recurring, assistant, generic) can produce a
+  // Lead-less order. Fails fast here, before the number-retry tx loop.
+  const lead = resolveCreateLead(input, actor);
+  const inputWithLead: CreateWorkOrderInput = { ...input, assigneeId: lead.assigneeId, assigneeEmail: lead.assigneeEmail };
+
   // The per-tenant WO number is max+1 computed in-tx (not SERIALIZABLE), so two concurrent creates can
   // collide on @@unique([tenantId, number]) → P2002. withWriteRetry only retries P2034, so retry P2002
   // here (recomputes max+1 on the next attempt). Bounded; the unique is the real guard against dupes.
-  return withWorkOrderNumberRetry(() => createWorkOrderTx(actor, input));
+  return withWorkOrderNumberRetry(() => createWorkOrderTx(actor, inputWithLead));
 }
 
 async function withWorkOrderNumberRetry<T>(fn: () => Promise<T>): Promise<T> {

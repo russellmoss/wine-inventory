@@ -38,6 +38,7 @@ export type CreateAndIssueInput = {
   templateId: string;
   title?: string;
   instructions?: string;
+  assigneeId?: string | null;
   assigneeEmail?: string | null;
   dueAt?: Date | null;
   autoFinalize?: boolean;

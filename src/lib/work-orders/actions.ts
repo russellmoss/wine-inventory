@@ -114,6 +114,7 @@ export const createWorkOrderFromTemplateAction = action(
       templateId: string;
       title?: string;
       instructions?: string;
+      assigneeId?: string | null;
       assigneeEmail?: string | null;
       dueAt?: Date | null;
       autoFinalize?: boolean;
@@ -165,6 +166,7 @@ export const createWorkOrderFromBuildsAction = action(
     input: {
       title?: string;
       instructions?: string;
+      assigneeId?: string | null;
       assigneeEmail?: string | null;
       dueAt?: Date | null;
       priority?: string | null;
@@ -192,6 +194,7 @@ export const createWorkOrderFromBuildsAction = action(
     const res = await createWorkOrderCore(actor, {
       title: input.title?.trim() || "Work order",
       instructions: input.instructions,
+      assigneeId: input.assigneeId ?? null,
       assigneeEmail: input.assigneeEmail ?? null,
       dueAt: input.dueAt ?? null,
       priority,
