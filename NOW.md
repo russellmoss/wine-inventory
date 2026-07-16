@@ -7,15 +7,17 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Work-order Lead → MANDATORY invariant + detail-page editability (Plan 070) — BUILT + rebased onto main, shipping.**
-Branch `claude/work-order-assignment-edit-276af4`, rebased onto `origin/main` AFTER vendor mgmt (#195) +
-inbox DM (#197) landed. Renumbered 069→**070** (vendor mgmt already took 069). 7 commits. Lead defaults to
-the actor at the single `createWorkOrderCore` chokepoint (covers all 6 create paths); builder requires a
-Lead + sends assigneeId; admin/dev detail-page Edit card (Lead + due date, reusing assign/schedule
-backends); backfill `scripts/backfill-work-order-lead.ts` (`runAsSystem`) fixes existing null-Lead WOs;
-WORKORDER-5 invariant + guard. Green pre-rebase (tsc, vitest 2050, verify:work-orders 38, verify:invariants
-31/31, next build); re-verifying post-rebase. **BEFORE DONE:** run the backfill against PROD (fixes WO #27
-→ russellmoss87@gmail.com); browser-QA the two UI surfaces.
+**Full work-order editing — reopen in the builder, save in place (Plan 071) — BUILT, shipping.**
+Branch `claude/work-order-full-edit` (off `origin/main` 4b7d6f4). 8 commits. "Edit" on a WO detail page
+(admin/dev) opens `/work-orders/[id]/edit` — the full palette builder, pre-populated, Save updates the WO in
+place (same id/number/history). Every not-yet-executed task edits fully; executed tasks are locked read-only
+(reverse-to-edit, WORKORDER-6); the two GROUP types are locked with a "recreate/reverse" message (builder has
+no group authoring — documented follow-up). New pure reverse-mapper `task-to-build.ts`; `updateWorkOrderCore`
+(diffs pending tasks, re-syncs per-task reservations on issued WOs, keeps status); builder edit mode;
+setTaskEquipmentCore; WORKORDER-6 guard. Supersedes Plan 070's thin Lead/due card. Green: tsc, vitest 2086,
+verify:work-orders 43, verify:invariants 32/32, ai-native, `next build`. Follow-up: browser-QA the editor.
+Plan 070 (mandatory Lead) already SHIPPED (#210). Prior pending item: run `scripts/backfill-work-order-lead.ts`
+against PROD to fix existing null-Lead WOs incl. #27.
 
 <details><summary>original directive + diagnosis</summary>
 
@@ -119,4 +121,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-15 — Plan 070 (WO mandatory Lead + editability) BUILT + rebased onto main (after vendor #195 + inbox #197); renumbered from 069. WO Lead mandatory (defaults to actor at createWorkOrderCore), builder requires it, admin/dev detail-page Edit, backfill script, WORKORDER-5 guard. Re-verifying post-rebase, then PR + merge. Pending: prod backfill (fixes #27) + browser-QA._
+_Last updated: 2026-07-15 — Plan 071 (full WO editing — reopen in builder, save in place) BUILT on branch claude/work-order-full-edit (8 commits). Edit any not-yet-executed task; executed + group tasks locked (WORKORDER-6). All gates green (vitest 2086, verify:work-orders 43, next build). Next: /review + /ship. Plan 070 (mandatory Lead) shipped #210; prod Lead-backfill still pending (fixes #27)._
