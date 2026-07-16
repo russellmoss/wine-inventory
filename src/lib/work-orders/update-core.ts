@@ -72,12 +72,15 @@ export async function updateWorkOrderCore(actor: LedgerActor, input: UpdateWorkO
       if (!slot.locked && !slot.input) throw new ActionError("Internal: editable slot missing task content.");
     }
 
-    // Deletes: editable (PENDING) tasks the edit no longer includes.
+    // Deletes: editable (PENDING) tasks the edit no longer includes. Guard the delete on status="PENDING"
+    // (atomic) so a task a worker completed CONCURRENTLY (between the read above and here) is never deleted —
+    // that would cascade-delete its attempt and orphan the immutable op. count 0 → someone raced us.
     const referenced = new Set(input.slots.map((s) => s.existingTaskId).filter((x): x is string => !!x));
     for (const id of editableIds) {
       if (!referenced.has(id)) {
         await releaseReservationsForTaskTx(tx, { taskId: id });
-        await tx.workOrderTask.delete({ where: { id } });
+        const del = await tx.workOrderTask.deleteMany({ where: { id, status: "PENDING" } });
+        if (del.count === 0) throw new ActionError("A task changed while you were editing — reload and try again.", "CONFLICT");
       }
     }
 
@@ -111,7 +114,10 @@ export async function updateWorkOrderCore(actor: LedgerActor, input: UpdateWorkO
         plannedPayload: t.plannedPayload,
       };
       if (slot.existingTaskId) {
-        await tx.workOrderTask.update({ where: { id: slot.existingTaskId }, data });
+        // Atomic status guard (TOCTOU): only update a task that is STILL pending — never overwrite one a
+        // worker executed concurrently (which would corrupt its recorded op).
+        const upd = await tx.workOrderTask.updateMany({ where: { id: slot.existingTaskId, status: "PENDING" }, data });
+        if (upd.count === 0) throw new ActionError("A task was recorded while you were editing — reload and try again.", "CONFLICT");
         taskIds.push(slot.existingTaskId);
         toResync.push({ id: slot.existingTaskId, input: t });
       } else {
@@ -136,10 +142,12 @@ export async function updateWorkOrderCore(actor: LedgerActor, input: UpdateWorkO
       },
     });
 
-    // Reservations: only for an ISSUED WO (a DRAFT has none until issue). Re-sync each changed/new OPERATION
-    // task's advisory holds; deleted tasks were released above; locked tasks are untouched.
+    // Reservations exist once a WO is issued (DRAFT has none). A WO can be ISSUED, IN_PROGRESS, or
+    // PENDING_APPROVAL here (APPROVED/CANCELLED were refused up top) — all of those carry live holds, so
+    // re-sync any non-DRAFT WO. Re-sync each changed/new OPERATION task's holds; deleted tasks were released
+    // above; locked tasks are untouched.
     const reservationWarnings: string[] = [];
-    if (wo.status === "ISSUED") {
+    if (wo.status !== "DRAFT") {
       for (const { id, input: t } of toResync) {
         if (t.kind !== "OPERATION") continue;
         const w = await syncReservationsForTaskTx(

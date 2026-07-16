@@ -388,6 +388,8 @@ export function WorkOrderBuilderClient({
           <label style={labelStyle}>Lead <span style={{ color: "var(--danger)" }}>*</span>
             <select style={field} value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)}>
               <option value="">— choose a lead —</option>
+              {/* Editing: if the current lead is no longer an org member, keep it selectable so it isn't silently dropped. */}
+              {leadEmail && !members.some((m) => m.email === leadEmail) ? <option value={leadEmail}>{leadEmail} (current)</option> : null}
               {members.map((m) => <option key={m.userId} value={m.email}>{m.name}</option>)}
             </select>
           </label>
