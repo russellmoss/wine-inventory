@@ -436,7 +436,18 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
   }
 
   React.useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    // Pin to the newest message AFTER paint. A freshly-appended confirmation card must be fully in view:
+    // if it lands below the scroll fold, its Confirm/Cancel buttons are clipped and unclickable — the click
+    // hit-tests to the container behind them, so pressing Confirm silently does nothing and the write never
+    // dispatches (feedback #203). `behavior:"smooth"` is unreliable here — the rapid re-renders of streaming
+    // interrupt the animation and leave it short (measured landing at scrollTop 0 with a card below the
+    // fold). A rAF-deferred instant scroll reaches the true bottom every time.
+    const id = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
   }, [items, status]);
 
   function appendText(text: string) {
