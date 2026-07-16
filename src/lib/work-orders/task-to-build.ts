@@ -130,6 +130,7 @@ export function workOrderTasksToBuilds(
 
   for (const task of ordered) {
     const taskType = resolveTaskType(task, vocab, index);
+    const renderMode: TaskRenderMode = taskType ? renderModeFor(taskType, task.plannedPayload) : "fields";
     const editableStatus = isTaskEditable(task);
     let locked = false;
     let lockReason: string | null = null;
@@ -139,6 +140,11 @@ export function workOrderTasksToBuilds(
     } else if (!editableStatus) {
       locked = true;
       lockReason = "Already recorded — reverse it in the lot timeline to edit.";
+    } else if (renderMode === "group-form") {
+      // Group barrel-down/rack + multi-vessel maintenance carry a member-set payload the palette builder
+      // can't author. Lock them so the member set is preserved untouched; recreate/reverse to change it.
+      locked = true;
+      lockReason = "Group tasks (barrel-down/rack, multi-vessel maintenance) can't be edited in the builder yet — recreate or reverse to change the member set.";
     }
     if (locked) anyLocked = true;
 
@@ -150,7 +156,7 @@ export function workOrderTasksToBuilds(
       values: valuesFromPayload(task.plannedPayload),
       assigneeId: task.assigneeId ?? "",
       equipmentIds: equipmentByTask.get(task.id) ?? [],
-      renderMode: taskType ? renderModeFor(taskType, task.plannedPayload) : "fields",
+      renderMode,
       locked,
       lockReason,
     };

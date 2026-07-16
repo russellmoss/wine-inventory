@@ -67,6 +67,21 @@ describe("task-to-build reverse mapping (Plan 071)", () => {
     expect(renderModeFor("GROUP_RACK", groupRackRow.plannedPayload)).toBe("group-form");
   });
 
+  it("locks group-form tasks in the editor (member set preserved, not builder-authorable)", () => {
+    const groupRackRow: StoredTaskLite = {
+      id: "gr2", seq: 1, groupSeq: 0, kind: "OPERATION", status: "PENDING", title: "Barrel down",
+      opType: "RACK", observationType: null, activityType: null, assigneeId: null,
+      plannedPayload: { note: "x", groupRack: { direction: "BARREL_DOWN", members: ["b1"] } },
+    };
+    const { groups, anyLocked } = workOrderTasksToBuilds([groupRackRow], vocab, new Map());
+    expect(anyLocked).toBe(true);
+    expect(groups[0][0].locked).toBe(true);
+    expect(groups[0][0].renderMode).toBe("group-form");
+    expect(groups[0][0].lockReason).toMatch(/group/i);
+    // The member-set payload is preserved on the build so a pass-through save doesn't drop it.
+    expect(groups[0][0].values).toHaveProperty("groupRack");
+  });
+
   it("locks an executed (non-PENDING) task with a reason", () => {
     const stored = toStored({ taskType: "ADDITION", values: { vesselId: "v1", materialId: "m1", amount: 5, doseUnit: "g" } }, { status: "APPROVED" });
     expect(isTaskEditable(stored)).toBe(false);
