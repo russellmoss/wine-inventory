@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Eyebrow, Badge } from "@/components/ui";
 import { fieldLabel, type ResolvedTaskVocabulary, type TaskTypeDef, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
-import { createWorkOrderFromBuildsAction, draftWorkOrderFromTextAction } from "@/lib/work-orders/actions";
+import { createWorkOrderFromBuildsAction, updateWorkOrderFromBuildsAction, draftWorkOrderFromTextAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { previewWorkOrderReadinessAction } from "@/lib/work-orders/proposal-readiness-actions";
 import type { WorkOrderReadinessProposal } from "@/lib/work-orders/proposal-readiness";
@@ -21,7 +21,34 @@ type Member = { userId: string; name: string; email: string };
 type DependableWo = { id: string; number: number; title: string; status: string };
 type LocationRow = { id: string; name: string; kind: string | null };
 type EquipmentPick = { id: string; name: string; kind: string };
-type BuilderTask = { key: string; taskType: string; title: string; values: Record<string, unknown>; assigneeId: string; equipmentIds: string[] };
+type BuilderTask = {
+  key: string;
+  taskType: string;
+  title: string;
+  values: Record<string, unknown>;
+  assigneeId: string;
+  equipmentIds: string[];
+  // Plan 071 (edit mode): set when the task came from an existing WO. `locked` tasks are executed and
+  // rendered read-only (only the ledger can change them, via reverse). renderMode drives group-form types.
+  existingTaskId?: string;
+  locked?: boolean;
+  lockReason?: string | null;
+  renderMode?: "fields" | "group-form";
+};
+
+// Plan 071: when present, the builder runs in EDIT mode — pre-populated from an existing WO, Save updates
+// it in place. `groups` carries per-task existingTaskId/locked flags from the reverse-mapper.
+export type ExistingWorkOrderSeed = {
+  workOrderId: string;
+  status: string;
+  groups: BuilderTask[][];
+  title: string;
+  leadEmail: string;
+  priority: string;
+  locationId: string;
+  dueAt: string; // yyyy-mm-dd (or "")
+  dependsOn: string[];
+};
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 };
@@ -59,6 +86,7 @@ export function WorkOrderBuilderClient({
   locations,
   equipment,
   vocab,
+  existing,
 }: {
   pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] };
   members: Member[];
@@ -66,15 +94,17 @@ export function WorkOrderBuilderClient({
   locations: LocationRow[];
   equipment: EquipmentPick[];
   vocab: ResolvedTaskVocabulary;
+  existing?: ExistingWorkOrderSeed;
 }) {
   const router = useRouter();
-  const [title, setTitle] = React.useState("");
-  const [dueAt, setDueAt] = React.useState(todayLocal());
-  const [leadEmail, setLeadEmail] = React.useState("");
-  const [priority, setPriority] = React.useState("NORMAL");
-  const [locationId, setLocationId] = React.useState("");
-  const [groups, setGroups] = React.useState<BuilderTask[][]>([[]]);
-  const [dependsOn, setDependsOn] = React.useState<string[]>([]);
+  const isEdit = !!existing;
+  const [title, setTitle] = React.useState(existing?.title ?? "");
+  const [dueAt, setDueAt] = React.useState(existing ? existing.dueAt : todayLocal());
+  const [leadEmail, setLeadEmail] = React.useState(existing?.leadEmail ?? "");
+  const [priority, setPriority] = React.useState(existing?.priority || "NORMAL");
+  const [locationId, setLocationId] = React.useState(existing?.locationId ?? "");
+  const [groups, setGroups] = React.useState<BuilderTask[][]>(existing?.groups?.length ? existing.groups : [[]]);
+  const [dependsOn, setDependsOn] = React.useState<string[]>(existing?.dependsOn ?? []);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   // D14: the AI accelerator — describe the job, draft tasks into the builder, then edit before issuing.
@@ -137,6 +167,7 @@ export function WorkOrderBuilderClient({
     const builds: TaskBuild[] = [];
     nonEmpty.forEach((g, gi) => {
       for (const t of g) {
+        if (t.locked) continue; // locked (executed) tasks aren't re-validated or re-authored
         const def = vocab[t.taskType];
         builds.push({
           taskType: t.taskType,
@@ -245,12 +276,53 @@ export function WorkOrderBuilderClient({
     );
   }
 
+  // Total tasks + editable (non-locked) count — edit mode may have only locked tasks left.
+  const totalCount = React.useMemo(() => groups.reduce((n, g) => n + g.length, 0), [groups]);
+
   function submit() {
     setError(null);
-    if (taskBuilds.length === 0) { setError("Add at least one task."); return; }
-    // Plan 070: every work order must have a Lead. Guard here and store the chosen member's user id too.
+    // Plan 070: every work order must have a Lead.
     if (!leadEmail) { setError("A work order needs a lead — pick one above."); return; }
     const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
+    const dueDate = dueAt ? new Date(`${dueAt}T00:00:00`) : null;
+
+    if (isEdit && existing) {
+      if (totalCount === 0) { setError("A work order needs at least one task."); return; }
+      // Send the full ordered layout (locked + editable) so the server preserves order + never touches locked.
+      const editGroups = groups
+        .filter((g) => g.length > 0)
+        .map((g) => g.map((t) => ({
+          existingTaskId: t.existingTaskId,
+          locked: !!t.locked,
+          taskType: t.taskType,
+          title: t.title.trim() || undefined,
+          values: t.locked ? {} : cleanValues(t.values),
+          assigneeId: t.assigneeId || null,
+          equipmentIds: t.equipmentIds,
+        })));
+      startTransition(async () => {
+        try {
+          unwrap(await updateWorkOrderFromBuildsAction({
+            workOrderId: existing.workOrderId,
+            title: title.trim() || undefined,
+            assigneeId: leadUserId,
+            assigneeEmail: leadEmail || null,
+            priority,
+            locationId: locationId || null,
+            dueAt: dueDate,
+            groups: editGroups,
+            dependsOnWorkOrderIds: dependsOn,
+            readinessFingerprint: readiness?.fingerprint ?? null,
+          }));
+          router.push(`/work-orders/${existing.workOrderId}`);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Couldn't save the work order.");
+        }
+      });
+      return;
+    }
+
+    if (taskBuilds.length === 0) { setError("Add at least one task."); return; }
     startTransition(async () => {
       try {
         const res = unwrap(await createWorkOrderFromBuildsAction({
@@ -260,7 +332,7 @@ export function WorkOrderBuilderClient({
           priority,
           locationId: locationId || null,
           // Parse the yyyy-mm-dd as LOCAL midnight (not UTC) so the due date doesn't shift a day back.
-          dueAt: dueAt ? new Date(`${dueAt}T00:00:00`) : null,
+          dueAt: dueDate,
           taskBuilds,
           dependsOnWorkOrderIds: dependsOn,
           readinessFingerprint: readiness?.fingerprint ?? null,
@@ -304,7 +376,7 @@ export function WorkOrderBuilderClient({
       {/* Responsive: stack the header + palette/canvas grids on narrow viewports (phones/tablets). */}
       <style>{`@media (max-width: 760px){.wob-header-grid{grid-template-columns:1fr !important}.wob-main-grid{grid-template-columns:1fr !important}}`}</style>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 300, margin: 0 }}>New work order</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 300, margin: 0 }}>{isEdit ? "Edit work order" : "New work order"}</h1>
         <Link href="/work-orders"><Button variant="ghost">Cancel</Button></Link>
       </div>
 
@@ -415,6 +487,20 @@ export function WorkOrderBuilderClient({
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {g.map((t) => {
                         const def = vocab[t.taskType];
+                        if (t.locked) {
+                          // Executed task — read-only. The immutable ledger op (WORKORDER-1) can't be edited;
+                          // reverse it in the lot timeline to change it.
+                          return (
+                            <div key={t.key} style={{ border: "1px dashed var(--border)", borderRadius: "var(--radius-md)", padding: 10, background: "var(--paper-100)", opacity: 0.85 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <Badge tone="neutral" variant="soft">{def?.label ?? t.taskType}</Badge>
+                                <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{t.title || def?.label}</span>
+                                <Badge tone="neutral" variant="soft">🔒 recorded</Badge>
+                              </div>
+                              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 5 }}>{t.lockReason ?? "Already recorded — reverse it in the lot timeline to edit."}</div>
+                            </div>
+                          );
+                        }
                         return (
                           <div key={t.key} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 10, background: "var(--surface-raised)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -496,8 +582,8 @@ export function WorkOrderBuilderClient({
       {error && <div style={{ marginTop: 12, color: "var(--danger)", fontSize: 14 }}>{error}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-        <Button onClick={submit} disabled={pending || taskBuilds.length === 0 || !leadEmail}>
-          {pending ? "Creating…" : !leadEmail ? "Pick a lead to create" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
+        <Button onClick={submit} disabled={pending || (isEdit ? totalCount === 0 : taskBuilds.length === 0) || !leadEmail}>
+          {pending ? (isEdit ? "Saving…" : "Creating…") : !leadEmail ? "Pick a lead" : isEdit ? "Save changes" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
         </Button>
       </div>
     </div>
