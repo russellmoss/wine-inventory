@@ -238,7 +238,7 @@ type EditTaskInput = {
   assigneeId?: string | null;
   equipmentIds?: string[];
 };
-export const updateWorkOrderFromBuildsAction = action(
+export const updateWorkOrderFromBuildsAction = safeAction(
   async (
     { actor },
     input: {
