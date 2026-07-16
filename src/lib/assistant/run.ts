@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
+import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION } from "./overclaim-guard";
 import { type AssistantEvent, asProposal, asChoice, asNavigation } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
@@ -38,8 +39,13 @@ export async function runAssistant(opts: {
   // Accumulate everything streamed to the user so the caller can persist the
   // assistant turn. Mirrors what the UI renders (all text deltas concatenated).
   let assistantText = "";
+  // A confirmation card exists ONLY when a write tool actually emitted a proposal this run. We track that
+  // to deterministically catch the model over-claiming a write (feedback cmri7ympe: it said a bug report was
+  // "Done — review the card" without ever calling file_feedback, so nothing was filed).
+  let emittedProposal = false;
   const emit = (e: AssistantEvent) => {
     if (e.type === "text") assistantText += e.text;
+    if (e.type === "proposal") emittedProposal = true;
     send(e);
   };
 
@@ -236,6 +242,12 @@ export async function runAssistant(opts: {
       trace.stopReason = "error";
     }
   } finally {
+    // Deterministic backstop: if the model told the user a card exists / a write was done, but NO write tool
+    // emitted a proposal this run, the claim is false — correct it so the user isn't silently misled into
+    // thinking something was filed/changed (feedback cmri7ympe). The prompt rule alone is stochastic.
+    if (!emittedProposal && claimsWriteWithoutCard(assistantText)) {
+      emit({ type: "text", text: OVERCLAIM_CORRECTION });
+    }
     emit({ type: "done" });
   }
 

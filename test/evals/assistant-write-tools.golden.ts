@@ -533,6 +533,16 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "bug report composed from the conversation; all three fields are required",
   },
   {
+    utterance: "File that as a bug with the full conversation flow",
+    tool: "file_feedback",
+    args: {
+      kind: "bug",
+      title: "Mid-ferment tank sugar reading couldn't be recorded for a combined two-lot must",
+      body: "Tank T4 holds two MUST lots the crew treats as one combined must; recording a single bench Brix was blocked. Filed from the conversation flow.",
+    },
+    note: "the model must actually CALL file_feedback for 'file that bug' — not narrate a card without calling the tool (feedback cmri7ympe)",
+  },
+  {
     utterance: "File a feature request to let me pre-select a block on weigh-in tasks",
     tool: "file_feedback",
     args: {
