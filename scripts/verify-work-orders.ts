@@ -18,6 +18,9 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore, completeTasksBatchCore } from "@/lib/work-orders/execute";
 import { approveTaskCore, rejectTaskCore } from "@/lib/work-orders/approval";
+import { updateWorkOrderCore } from "@/lib/work-orders/update-core";
+import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
+import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-work-orders" };
@@ -262,6 +265,55 @@ async function main() {
     // Reject one cap task → reverseOperationCore voids the neutral op (WORKORDER-1 reject path).
     const capRejected = await rejectTaskCore(ADMIN, ACTOR, { taskId: capTasks[0].id, reason: "wrong technique" });
     assert(capRejected.status === "REJECTED", "a cap-management task can be rejected (op reversed)");
+
+    // ── Plan 071 (WORKORDER-6): editing a WO edits PENDING tasks + never mutates an executed task's op. ──
+    const editWo = await createWorkOrderCore(ACTOR, {
+      title: "ZZWO edit-in-place",
+      tasks: [
+        { seq: 1, kind: "OPERATION", title: "Rack for edit", opType: "RACK", sourceVesselId: src.id, destVesselId: dst.id, lotId, plannedPayload: { fromVesselId: src.id, toVesselId: dst.id, drawL: 5 } },
+        { seq: 2, kind: "OPERATION", title: "Add for edit", opType: "ADDITION", destVesselId: src.id, lotId, materialId: material.id, plannedPayload: { vesselId: src.id, lotId, materialId: material.id, amount: 5, doseUnit: "g", plannedAmount: 5, plannedUnit: "g" } },
+      ],
+    });
+    await issueWorkOrderCore(ACTOR, { workOrderId: editWo.workOrderId });
+    const [editRack, editAdd] = await prisma.workOrderTask.findMany({ where: { workOrderId: editWo.workOrderId }, orderBy: { seq: "asc" } });
+    const editRackDone = await completeTaskCore(ACTOR, { taskId: editRack.id, commandId: "zzwo-edit-rack", actualPayload: { drawL: 5 } });
+    assert(editRackDone.operationId != null, "edit-test: rack task executed (wrote a ledger op)");
+    const opsBeforeEdit = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
+    const rackBefore = await prisma.workOrderTask.findUniqueOrThrow({ where: { id: editRack.id }, select: { status: true, currentAttemptId: true } });
+
+    // Edit the still-PENDING addition (change its amount) while the rack is locked (executed).
+    const [addInput] = instantiateTaskBuilds(
+      [{ taskType: "ADDITION", title: "Add for edit — revised", values: { vesselId: src.id, lotId, materialId: material.id, amount: 9, doseUnit: "g", plannedAmount: 9, plannedUnit: "g" } }],
+      await resolveTaskVocabulary(),
+    );
+    await updateWorkOrderCore(ACTOR, {
+      workOrderId: editWo.workOrderId,
+      slots: [
+        { existingTaskId: editRack.id, locked: true, seq: 1, groupSeq: 0 },
+        { existingTaskId: editAdd.id, locked: false, seq: 2, groupSeq: 0, input: addInput },
+      ],
+    });
+    const opsAfterEdit = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
+    assert(opsAfterEdit === opsBeforeEdit, "WORKORDER-6: editing wrote NO new ledger op");
+    const rackAfter = await prisma.workOrderTask.findUniqueOrThrow({ where: { id: editRack.id }, select: { status: true, currentAttemptId: true } });
+    assert(rackAfter.status === rackBefore.status && rackAfter.currentAttemptId === rackBefore.currentAttemptId, "WORKORDER-6: executed task's status + op-owning attempt untouched by edit");
+    const addAfter = await prisma.workOrderTask.findUniqueOrThrow({ where: { id: editAdd.id }, select: { title: true, status: true } });
+    assert(addAfter.title === "Add for edit — revised" && addAfter.status === "PENDING", "WORKORDER-6: the pending task was updated in place");
+
+    // Editing the executed task must be REFUSED.
+    let editRefused = false;
+    try {
+      await updateWorkOrderCore(ACTOR, {
+        workOrderId: editWo.workOrderId,
+        slots: [
+          { existingTaskId: editRack.id, locked: false, seq: 1, groupSeq: 0, input: addInput },
+          { existingTaskId: editAdd.id, locked: false, seq: 2, groupSeq: 0, input: addInput },
+        ],
+      });
+    } catch {
+      editRefused = true;
+    }
+    assert(editRefused, "WORKORDER-6: editing an executed (non-PENDING) task is refused");
 
     console.log(`\nALL WORK-ORDER CHECKS PASSED ✓  (${passed} assertions)`);
   });

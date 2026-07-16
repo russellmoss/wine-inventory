@@ -416,6 +416,56 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
   });
 }
 
+// Plan 071: everything the edit page needs to reopen a WO in the builder — the WO scalars (incl. the
+// locationId the display read omits), the raw task rows for the reverse-mapper, its dependency edges, and
+// each task's advisory equipment ids. One tenant-scoped read.
+export type WorkOrderEditTaskRow = {
+  id: string; seq: number; groupSeq: number; kind: string; status: string; title: string;
+  opType: string | null; observationType: string | null; activityType: string | null;
+  assigneeId: string | null; plannedPayload: unknown;
+};
+export type WorkOrderEditData = {
+  id: string; number: number; status: string; title: string;
+  assigneeEmail: string | null; dueAt: string | null; priority: string | null; locationId: string | null;
+  dependsOn: string[];
+  tasks: WorkOrderEditTaskRow[];
+  equipmentByTask: Record<string, string[]>;
+};
+
+export async function getWorkOrderForEdit(tenantId: string, workOrderId: string): Promise<WorkOrderEditData | null> {
+  return runAsTenant(tenantId, async () => {
+    const wo = await prisma.workOrder.findUnique({
+      where: { id: workOrderId },
+      include: { tasks: { orderBy: [{ groupSeq: "asc" }, { seq: "asc" }] } },
+    });
+    if (!wo) return null;
+    const taskIds = wo.tasks.map((t) => t.id);
+    const [eqLinks, depEdges] = await Promise.all([
+      taskIds.length ? prisma.workOrderTaskEquipment.findMany({ where: { taskId: { in: taskIds } }, select: { taskId: true, equipmentId: true } }) : Promise.resolve([] as { taskId: string; equipmentId: string }[]),
+      prisma.workOrderDependency.findMany({ where: { workOrderId: wo.id }, select: { dependsOnWorkOrderId: true } }),
+    ]);
+    const equipmentByTask: Record<string, string[]> = {};
+    for (const l of eqLinks) (equipmentByTask[l.taskId] ??= []).push(l.equipmentId);
+    return {
+      id: wo.id,
+      number: wo.number,
+      status: wo.status,
+      title: wo.title,
+      assigneeEmail: wo.assigneeEmail,
+      dueAt: wo.dueAt ? wo.dueAt.toISOString() : null,
+      priority: wo.priority,
+      locationId: wo.locationId,
+      dependsOn: depEdges.map((d) => d.dependsOnWorkOrderId),
+      tasks: wo.tasks.map((t) => ({
+        id: t.id, seq: t.seq, groupSeq: t.groupSeq, kind: t.kind, status: t.status, title: t.title,
+        opType: t.opType, observationType: t.observationType, activityType: t.activityType,
+        assigneeId: t.assigneeId, plannedPayload: t.plannedPayload,
+      })),
+      equipmentByTask,
+    };
+  });
+}
+
 /** Count of work orders awaiting review (PENDING_APPROVAL) — the nav badge source. */
 export async function countPendingApprovalWorkOrders(tenantId: string): Promise<number> {
   return runAsTenant(tenantId, () => prisma.workOrder.count({ where: { status: "PENDING_APPROVAL" } }));

@@ -4,45 +4,19 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow } from "@/components/ui";
-import type { WorkOrderDetail, OrgMemberRow } from "@/lib/work-orders/data";
-import { issueWorkOrderAction, cancelWorkOrderAction, assignWorkOrderAction, scheduleWorkOrderAction } from "@/lib/work-orders/actions";
+import type { WorkOrderDetail } from "@/lib/work-orders/data";
+import { issueWorkOrderAction, cancelWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { statusTone } from "@/lib/work-orders/status-badge";
 
-export function WorkOrderDetailClient({ wo, isAdmin, members }: { wo: WorkOrderDetail; isAdmin: boolean; members: OrgMemberRow[] }) {
+export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; isAdmin: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
 
-  // Plan 070: admins/developers can set the Lead + reschedule inline. Mirror the backend status guards —
-  // reassign is allowed only for DRAFT/ISSUED (lifecycle assignWorkOrderCore); reschedule for anything
-  // except APPROVED/CANCELLED (scheduleWorkOrderCore).
-  const canEditLead = wo.status === "DRAFT" || wo.status === "ISSUED";
-  const canEditDue = wo.status !== "APPROVED" && wo.status !== "CANCELLED";
-  const showEdit = isAdmin && (canEditLead || canEditDue);
-  const currentDue = wo.dueAt ? wo.dueAt.slice(0, 10) : "";
-  const [editing, setEditing] = React.useState(false);
-  const [leadEmail, setLeadEmail] = React.useState(wo.assigneeEmail ?? "");
-  const [dueDate, setDueDate] = React.useState(currentDue);
-  const leadInMembers = members.some((m) => m.email === wo.assigneeEmail);
-
-  function saveEdits() {
-    setError(null);
-    if (canEditLead && !leadEmail) { setError("A work order needs a lead."); return; }
-    const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
-    act(async () => {
-      if (canEditLead && leadEmail && leadEmail !== (wo.assigneeEmail ?? "")) {
-        unwrap(await assignWorkOrderAction({ workOrderId: wo.id, assigneeId: leadUserId, assigneeEmail: leadEmail }));
-      }
-      if (canEditDue && dueDate !== currentDue) {
-        unwrap(await scheduleWorkOrderAction({ workOrderId: wo.id, dueAt: dueDate ? new Date(`${dueDate}T00:00:00`) : null }));
-      }
-      setEditing(false);
-    });
-  }
-
-  const editField: React.CSSProperties = { padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 14, background: "var(--surface)" };
+  // Plan 071: admin/developer can edit a WO in the full builder while it isn't finalized/cancelled.
+  const canEdit = isAdmin && wo.status !== "APPROVED" && wo.status !== "CANCELLED";
 
   function act(fn: () => Promise<{ reservationWarnings?: string[] } | unknown>) {
     setError(null);
@@ -83,37 +57,11 @@ export function WorkOrderDetailClient({ wo, isAdmin, members }: { wo: WorkOrderD
         ) : null}
         {isAdmin && wo.status === "PENDING_APPROVAL" ? <Link href="/work-orders/review"><Button variant="secondary">Go to review queue</Button></Link> : null}
         <Link href={`/work-orders/${wo.id}/print`}><Button variant="secondary">Print / PDF</Button></Link>
-        {showEdit ? <Button variant="secondary" onClick={() => setEditing((v) => !v)}>{editing ? "Close edit" : "Edit"}</Button> : null}
+        {canEdit ? <Link href={`/work-orders/${wo.id}/edit`}><Button variant="secondary">Edit</Button></Link> : null}
         {wo.status !== "APPROVED" && wo.status !== "CANCELLED" ? (
           <Button variant="ghost" disabled={pending} onClick={() => act(() => cancelWorkOrderAction({ workOrderId: wo.id }).then(unwrap))}>Cancel WO</Button>
         ) : null}
       </div>
-
-      {editing && showEdit ? (
-        <Card style={{ marginTop: 12, padding: 14 }}>
-          <Eyebrow>Edit work order</Eyebrow>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 10, alignItems: "flex-end" }}>
-            {canEditLead ? (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5, color: "var(--text-muted)" }}>
-                Lead
-                <select style={editField} value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)}>
-                  {/* If the current lead is no longer an org member, keep it selectable so we don't silently drop it. */}
-                  {wo.assigneeEmail && !leadInMembers ? <option value={wo.assigneeEmail}>{wo.assigneeEmail} (current)</option> : null}
-                  {members.map((m) => <option key={m.userId} value={m.email}>{m.name}</option>)}
-                </select>
-              </label>
-            ) : null}
-            {canEditDue ? (
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5, color: "var(--text-muted)" }}>
-                Due date
-                <input type="date" style={editField} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-              </label>
-            ) : null}
-            <Button disabled={pending} onClick={saveEdits}>{pending ? "Saving…" : "Save"}</Button>
-          </div>
-          {canEditLead ? null : <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>The lead can only be changed while a work order is a draft or issued.</div>}
-        </Card>
-      ) : null}
 
       {warnings.length > 0 ? (
         <Card style={{ marginTop: 12, padding: 14, borderColor: "var(--warning, #b8860b)" }}>

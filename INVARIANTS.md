@@ -147,7 +147,7 @@ The cost engine is a projection over the ledger; it never invents or loses money
   are WITHHELD, never partially posted (D14); a reversal negates amounts and links back. Reading
   `cost_export_event` IS the per-SKU/per-run export view (Phase 15 posts it, no reshape).
 
-## Work orders — Phase 9 / 9.1 (WORKORDER-1..5)
+## Work orders — Phase 9 / 9.1 (WORKORDER-1..6)
 The work-order engine writes through the SAME ledger + cost machinery, so its invariants are ledger-adjacent.
 Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
 [[WORKORDER-2-reservations-are-advisory]], [[WORKORDER-3-maintenance-supply-is-overhead]].
@@ -197,6 +197,14 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   Existing Lead-less orders were backfilled once (`scripts/backfill-work-order-lead.ts`: single task
   assignee → issuer → tenant admin). Machine-readable note: [[WORKORDER-5-work-order-has-lead]].
   Guard: `npm run verify:work-orders`.
+
+- **Editing a work order never mutates an executed task's ledger op (WORKORDER-6, Plan 071).**
+  In-place editing (`updateWorkOrderCore`, the builder's edit mode) only touches PENDING tasks — it may
+  update/add/remove/reassign/reorder them and re-sync their advisory reservations per task. An executed
+  task (non-PENDING; it owns an immutable op, WORKORDER-1) is LOCKED: reposition only, never change its
+  content/attempts/op or delete it. The core refuses an edit slot that targets a non-PENDING task as
+  editable; APPROVED/CANCELLED WOs can't be edited. Issued WOs stay issued. Machine-readable note:
+  [[WORKORDER-6-edit-never-mutates-executed-op]]. Guard: `npm run verify:work-orders`.
 
 ## Compliance & migration invariants
 > Added in Phase 0 from the incumbent teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B.1(iv);
