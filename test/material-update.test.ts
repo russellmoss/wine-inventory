@@ -77,9 +77,11 @@ describe("planMaterialUpdate — category is the stored cost-safety authority", 
     expect(plan.fields.category).toBe("CLEANING_SANITIZING");
   });
 
-  it("an unknown category coerces to OTHER (never silently doseable-by-accident)", () => {
+  it("an unknown category coerces to the non-doseable UNCLASSIFIED (Plan 072 — never doseable-by-accident)", () => {
+    // Pre-072 this fell back to OTHER, which is doseable — so a typo'd category could silently become
+    // doseable. It now sinks to UNCLASSIFIED (non-doseable) so an unrecognized import is safe by default.
     const plan = planMaterialUpdate(existingBentonite, { ...baseInput, category: "BOGUS" }, false);
-    expect(plan.fields.category).toBe("OTHER");
+    expect(plan.fields.category).toBe("UNCLASSIFIED");
   });
 });
 

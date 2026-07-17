@@ -40,6 +40,7 @@ const KIND_LABELS: Record<MaterialKind, string> = {
   CLEANING: "Cleaning agent",
   SANITIZER: "Sanitizer",
   PACKAGING: "Packaging",
+  EQUIPMENT: "Equipment / part",
   OTHER: "Other",
 };
 

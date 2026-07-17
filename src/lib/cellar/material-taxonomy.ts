@@ -16,6 +16,8 @@ export const MATERIAL_CATEGORIES = [
   "ADDITIVE",
   "CLEANING_SANITIZING",
   "PACKAGING",
+  "EQUIPMENT", // Plan 072: spare parts / fittings — a non-doseable stock home, never wine COGS
+  "UNCLASSIFIED", // Plan 072: safety sink for unrecognized category INPUT — non-doseable by default (never OTHER)
   "OTHER",
 ] as const;
 export type MaterialCategory = (typeof MATERIAL_CATEGORIES)[number];
@@ -24,6 +26,8 @@ export const CATEGORY_LABELS: Record<MaterialCategory, string> = {
   ADDITIVE: "Additives",
   CLEANING_SANITIZING: "Cleaning & Sanitizing",
   PACKAGING: "Packaging",
+  EQUIPMENT: "Equipment & Parts",
+  UNCLASSIFIED: "Unclassified",
   OTHER: "Other",
 };
 
@@ -43,6 +47,7 @@ const KIND_TO_CATEGORY: Record<MaterialKind, MaterialCategory> = {
   CLEANING: "CLEANING_SANITIZING",
   SANITIZER: "CLEANING_SANITIZING",
   PACKAGING: "PACKAGING",
+  EQUIPMENT: "EQUIPMENT",
   OTHER: "OTHER",
 };
 
@@ -62,6 +67,7 @@ const KIND_TO_SUBLABEL: Record<MaterialKind, string> = {
   CLEANING: "Cleaning",
   SANITIZER: "Sanitizer",
   PACKAGING: "Packaging",
+  EQUIPMENT: "Equipment / Parts",
   OTHER: "Other",
 };
 
@@ -126,12 +132,18 @@ export function effectiveSubcategory(material: { kind?: string | null; subcatego
 }
 
 /**
- * May a material of this CATEGORY be DOSED into wine (an ADDITION/FINING op)? False for cleaning/sanitizing
- * and packaging — dosing those would wrongly capitalize a non-additive into wine COGS (WORKORDER-3). This is
- * the server-side authority; it reads the STORED category so a user-invented family is routed correctly.
+ * May a material of this CATEGORY be DOSED into wine (an ADDITION/FINING op)? Dosing a non-additive would
+ * wrongly capitalize it into wine COGS (WORKORDER-3). This is the server-side authority; it reads the STORED
+ * category so a user-invented family is routed correctly.
+ *
+ * Plan 072 (council P1): this is an ALLOWLIST, not a denylist. Only the known-doseable set (`ADDITIVE`,
+ * `OTHER` — the exact set doseable pre-072) returns true; EVERYTHING ELSE is non-doseable by DEFAULT. A
+ * denylist on a free-text String column is doseable-by-default, so any typo / imported / admin-entered /
+ * future category string would silently pass through to wine COGS. Default-deny closes that: `EQUIPMENT`,
+ * `UNCLASSIFIED`, and any unrecognized string are non-doseable unless a human classifies them as an additive.
  */
 export function isDoseableCategory(category: MaterialCategory): boolean {
-  return category !== "CLEANING_SANITIZING" && category !== "PACKAGING";
+  return category === "ADDITIVE" || category === "OTHER";
 }
 
 /** Legacy convenience: doseability from a `kind` when the stored category isn't at hand (derives it). */
@@ -144,10 +156,15 @@ export function kindsForCategory(category: MaterialCategory): MaterialKind[] {
   return (MATERIAL_KINDS as readonly MaterialKind[]).filter((k) => KIND_TO_CATEGORY[k] === category);
 }
 
-/** Validate arbitrary input to a known category; unknown/empty → OTHER. */
+/**
+ * Validate arbitrary input to a known category. Plan 072 (ChatGPT #6): unknown/empty → `UNCLASSIFIED`, NOT
+ * `OTHER`. `OTHER` is doseable, so mapping a typo'd category (`"EQUIPMNET"`) to it would let an unrecognized
+ * import become doseable despite the allowlist. Routing unknowns to the non-doseable `UNCLASSIFIED` sink makes
+ * an unrecognized category safe-by-default — it simply can't be dosed until a human classifies it.
+ */
 export function coerceMaterialCategory(raw: unknown): MaterialCategory {
   const up = String(raw ?? "").trim().toUpperCase();
-  return (MATERIAL_CATEGORIES as readonly string[]).includes(up) ? (up as MaterialCategory) : "OTHER";
+  return (MATERIAL_CATEGORIES as readonly string[]).includes(up) ? (up as MaterialCategory) : "UNCLASSIFIED";
 }
 
 /**

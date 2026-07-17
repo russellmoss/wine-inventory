@@ -15,7 +15,7 @@ import { runBottlingTx } from "@/lib/bottling/run";
 import { deriveGroupRackProgress, type BatchAttemptLite, type GroupRackProgress, type PlannedGroupRack } from "@/lib/work-orders/group-rack-progress";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import type { RateBasis } from "@/lib/cellar/additions-math";
-import { categoryOf, isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { categoryOf, isDoseableCategory, CATEGORY_LABELS, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { assertTaskTransition } from "@/lib/work-orders/status";
 import { bumpWorkOrderRollupTx, emitWorkOrderStatusTx } from "@/lib/work-orders/lifecycle";
 import { releaseReservationsForTaskTx } from "@/lib/work-orders/reservations";
@@ -355,17 +355,20 @@ export async function completeTaskCore(actor: LedgerActor, input: CompleteTaskIn
       rateBasis: payload.rateBasis as RateBasis,
     }, cfg);
 
-    // WORKORDER-3 server-side guard: a dose must be an additive, never a cleaning/sanitizing or packaging
-    // supply (those would wrongly capitalize into wine COGS). The picker scopes this in the UI; enforce it
-    // here too so a crafted payload / a re-categorized material can't bypass it.
+    // WORKORDER-3 server-side guard: a dose must be an additive, never a cleaning/sanitizing, packaging,
+    // equipment, or unclassified supply (those would wrongly capitalize into wine COGS). The picker scopes
+    // this in the UI; enforce it here too so a crafted payload / a re-categorized material can't bypass it.
     if (resolvedMaterial) {
       const m = await prisma.cellarMaterial.findUnique({ where: { id: resolvedMaterial.materialId }, select: { kind: true, category: true } });
       // Phase 036: read the STORED category (fallback categoryOf(kind) for legacy rows) so a user-invented
       // family is routed correctly — a custom cleaning/packaging family isn't in the kind→category map.
+      // Plan 072: isDoseableCategory is now an allowlist, so EQUIPMENT / UNCLASSIFIED / any unknown category
+      // is non-doseable by default — label the rejection with the actual category, not a two-way guess.
       const cat = (m?.category as MaterialCategory | null) ?? categoryOf(m?.kind);
       if (!isDoseableCategory(cat)) {
+        const label = CATEGORY_LABELS[cat] ?? cat;
         throw new ActionError(
-          `A ${cat === "PACKAGING" ? "packaging" : "cleaning/sanitizing"} material can't be dosed into wine as ${task.opType === "FINING" ? "a fining" : "an addition"} (WORKORDER-3).`,
+          `A ${label} material can't be dosed into wine as ${task.opType === "FINING" ? "a fining" : "an addition"} (WORKORDER-3).`,
           "CONFLICT",
         );
       }

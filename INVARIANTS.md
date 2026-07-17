@@ -147,7 +147,7 @@ The cost engine is a projection over the ledger; it never invents or loses money
   are WITHHELD, never partially posted (D14); a reversal negates amounts and links back. Reading
   `cost_export_event` IS the per-SKU/per-run export view (Phase 15 posts it, no reshape).
 
-## Work orders — Phase 9 / 9.1 (WORKORDER-1..6)
+## Work orders — Phase 9 / 9.1 (WORKORDER-1..7)
 The work-order engine writes through the SAME ledger + cost machinery, so its invariants are ledger-adjacent.
 Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
 [[WORKORDER-2-reservations-are-advisory]], [[WORKORDER-3-maintenance-supply-is-overhead]].
@@ -205,6 +205,19 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   content/attempts/op or delete it. The core refuses an edit slot that targets a non-PENDING task as
   editable; APPROVED/CANCELLED WOs can't be edited. Issued WOs stay issued. Machine-readable note:
   [[WORKORDER-6-edit-never-mutates-executed-op]]. Guard: `npm run verify:work-orders`.
+
+- **EQUIPMENT + UNCLASSIFIED (and any unknown category) are non-doseable overhead, never wine COGS (WORKORDER-7, Plan 072).**
+  `isDoseableCategory` is a DEFAULT-DENY allowlist, not a denylist: only `ADDITIVE` and `OTHER` (the exact
+  set doseable pre-072) may be dosed into wine; `EQUIPMENT`, `UNCLASSIFIED`, `CLEANING_SANITIZING`,
+  `PACKAGING`, and any unrecognized/typo'd/imported String are non-doseable by default. Because
+  `MaterialCategory` is a free-text String column, a denylist was doseable-by-default — a new/garbage string
+  would silently capitalize into wine COGS (WORKORDER-3, COST-1/COST-2); the allowlist closes that.
+  Unrecognized category INPUT coerces to the non-doseable `UNCLASSIFIED` sink (never the doseable `OTHER`),
+  so an import can't become doseable via a typo. Plan 072's `EQUIPMENT` category is a stock home for spare
+  parts/fittings that can never be dosed. Transitively protects all WORKORDER-3 call-sites through the
+  execute seam (`src/lib/work-orders/execute.ts`). Machine-readable note:
+  [[WORKORDER-7-equipment-and-unclassified-never-doseable]]. Guard: `npm run verify:work-orders-enhancements`
+  (execute-seam guard) + the exhaustive allowlist snapshot in `test/material-cost-safety.test.ts`.
 
 ## Compliance & migration invariants
 > Added in Phase 0 from the incumbent teardown (`analysis/incumbent-teardown/SYNTHESIS.md` §B.1(iv);

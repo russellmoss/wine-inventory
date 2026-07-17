@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MATERIAL_KINDS } from "@/lib/cellar/additions-math";
-import { categoryOf, kindsForCategory, materialScopeForTask, isDoseableKind, isDoseableCategory, coerceFamily, familyLabel, BUILTIN_FAMILIES } from "@/lib/cellar/material-taxonomy";
+import { MATERIAL_CATEGORIES, categoryOf, kindsForCategory, materialScopeForTask, isDoseableKind, isDoseableCategory, coerceMaterialCategory, coerceFamily, familyLabel, BUILTIN_FAMILIES } from "@/lib/cellar/material-taxonomy";
 
 // Cost-safety guards for Phase 034. The design keeps new material kinds cost-inert:
 //  - consumeMaterialCore ALWAYS writes a MATERIAL cost line (never branches on kind), so a dosed SUGAR
@@ -99,10 +99,57 @@ describe("new kinds are cost-inert", () => {
     expect(BUILTIN_FAMILIES.some((f) => f.value === "OTHER")).toBe(false);
   });
 
-  it("SUGAR + PACKAGING are the only kinds added beyond the pre-034 set", () => {
+  it("SUGAR + PACKAGING + EQUIPMENT are the only kinds added beyond the pre-034 set", () => {
     // Guards against an accidental kind addition that would need a category mapping review.
     const pre034 = ["YEAST", "MLF", "SO2", "NUTRIENT", "ACID", "TANNIN", "FINING", "BENTONITE", "CHITOSAN", "ENZYME", "CLEANING", "SANITIZER", "OTHER"];
     const added = MATERIAL_KINDS.filter((k) => !pre034.includes(k));
-    expect([...added].sort()).toEqual(["PACKAGING", "SUGAR"]);
+    expect([...added].sort()).toEqual(["EQUIPMENT", "PACKAGING", "SUGAR"]);
+  });
+});
+
+// Plan 072: EQUIPMENT category + allowlist dose-safety. The load-bearing council fix is that
+// isDoseableCategory is a DEFAULT-DENY allowlist, not a denylist on a free-text String column — so a
+// typo / import / future category can never be doseable-by-default and slip into wine COGS.
+describe("Plan 072 — EQUIPMENT + default-deny dose safety (allowlist)", () => {
+  it("EQUIPMENT is its own category and is NON-doseable (never wine COGS)", () => {
+    expect(categoryOf("EQUIPMENT")).toBe("EQUIPMENT");
+    expect(isDoseableCategory("EQUIPMENT")).toBe(false);
+    expect(isDoseableKind("EQUIPMENT")).toBe(false);
+  });
+
+  it("UNCLASSIFIED (the unknown-input sink) is NON-doseable", () => {
+    expect(isDoseableCategory("UNCLASSIFIED")).toBe(false);
+  });
+
+  it("allowlist: an UNKNOWN/garbage category string is NON-doseable by default (the council fix)", () => {
+    // A denylist would let any of these through to wine COGS; the allowlist denies by default.
+    for (const bogus of ["WIDGET", "", "packaging ", "EQUIPMNET", "ADDITIVE "]) {
+      expect(isDoseableCategory(bogus as never)).toBe(false);
+    }
+  });
+
+  it("exhaustive snapshot: every known category's doseability is pinned (future categories opt IN explicitly)", () => {
+    const snapshot = Object.fromEntries(MATERIAL_CATEGORIES.map((c) => [c, isDoseableCategory(c)]));
+    expect(snapshot).toEqual({
+      ADDITIVE: true,
+      OTHER: true,
+      CLEANING_SANITIZING: false,
+      PACKAGING: false,
+      EQUIPMENT: false,
+      UNCLASSIFIED: false,
+    });
+    // Exactly two categories are doseable — adding a doseable category must be a deliberate edit here.
+    expect(MATERIAL_CATEGORIES.filter((c) => isDoseableCategory(c)).sort()).toEqual(["ADDITIVE", "OTHER"]);
+  });
+
+  it("a typo'd category coerces to the non-doseable UNCLASSIFIED, closing the OTHER coercion hole (#6)", () => {
+    expect(isDoseableCategory(coerceMaterialCategory("EQUIPMNET"))).toBe(false);
+    expect(isDoseableCategory(coerceMaterialCategory("random-import-string"))).toBe(false);
+  });
+
+  it("materialScopeForTask never admits EQUIPMENT into a doseable (ADDITION/FINING) picker", () => {
+    for (const opType of ["ADDITION", "FINING"]) {
+      expect(materialScopeForTask({ opType })).not.toContain("EQUIPMENT");
+    }
   });
 });
