@@ -137,6 +137,65 @@ export async function listMaterials(opts: { kind?: MaterialKind; category?: Mate
   });
 }
 
+// Plan 072 Unit 10 (read side): per-lot history for a material's detail panel — each SupplyLot with its
+// costed metadata, expiry (from a matched COA), and links to its source documents (via LotDocument). Assumes
+// a tenant context (called from an `action`, which runs inside runAsTenant), so plain prisma reads are
+// RLS-scoped. LotDocument has no Prisma relation (plain refs) → resolve the invoice rows in a second query.
+
+export type MaterialLotDoc = { ingestedInvoiceId: string; role: string; fileName: string; docType: string };
+export type MaterialLotRow = {
+  id: string;
+  lotCode: string | null;
+  receivedAt: string; // ISO
+  qtyReceived: number;
+  qtyRemaining: number;
+  stockUnit: string;
+  unitCost: number | null; // per stockUnit; null = unknown (D14)
+  currency: string;
+  expiresAt: string | null; // ISO, when a COA attached one
+  documents: MaterialLotDoc[];
+};
+
+export async function listMaterialLots(materialId: string): Promise<MaterialLotRow[]> {
+  const lots = await prisma.supplyLot.findMany({
+    where: { materialId },
+    orderBy: [{ receivedAt: "desc" }],
+    select: { id: true, lotCode: true, receivedAt: true, qtyReceived: true, qtyRemaining: true, stockUnit: true, unitCost: true, currency: true, expiresAt: true },
+  });
+  if (lots.length === 0) return [];
+
+  const links = await prisma.lotDocument.findMany({
+    where: { supplyLotId: { in: lots.map((l) => l.id) } },
+    select: { supplyLotId: true, ingestedInvoiceId: true, role: true },
+  });
+  const invIds = [...new Set(links.map((l) => l.ingestedInvoiceId))];
+  const invs = invIds.length
+    ? await prisma.ingestedInvoice.findMany({ where: { id: { in: invIds } }, select: { id: true, fileName: true, docType: true } })
+    : [];
+  const invById = new Map(invs.map((i) => [i.id, i]));
+  const docsByLot = new Map<string, MaterialLotDoc[]>();
+  for (const l of links) {
+    const inv = invById.get(l.ingestedInvoiceId);
+    if (!inv) continue;
+    const arr = docsByLot.get(l.supplyLotId) ?? [];
+    arr.push({ ingestedInvoiceId: l.ingestedInvoiceId, role: l.role, fileName: inv.fileName, docType: inv.docType });
+    docsByLot.set(l.supplyLotId, arr);
+  }
+
+  return lots.map((l) => ({
+    id: l.id,
+    lotCode: l.lotCode,
+    receivedAt: l.receivedAt.toISOString(),
+    qtyReceived: Number(l.qtyReceived),
+    qtyRemaining: Number(l.qtyRemaining),
+    stockUnit: l.stockUnit,
+    unitCost: l.unitCost == null ? null : Number(l.unitCost),
+    currency: l.currency,
+    expiresAt: l.expiresAt ? l.expiresAt.toISOString() : null,
+    documents: docsByLot.get(l.id) ?? [],
+  }));
+}
+
 /**
  * Plan 069: resolve the legacy vendor/vendorUrl free-text columns from the MANAGED vendor (source of truth).
  * When `vendorId` is set, the vendor must exist (in-tenant, RLS-scoped) and its name/url are mirrored for

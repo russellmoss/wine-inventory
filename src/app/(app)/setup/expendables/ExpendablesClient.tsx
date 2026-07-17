@@ -15,7 +15,9 @@ import {
 } from "@/components/cellar/MaterialForm";
 import type { VendorRow } from "@/lib/vendors/vendors-shared";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
-import { receiveSupplyAction, setMaterialActiveAction } from "@/lib/cost/actions";
+import { receiveSupplyAction, setMaterialActiveAction, listMaterialLotsAction } from "@/lib/cost/actions";
+import type { MaterialLotRow } from "@/lib/cellar/materials";
+import { lotExpiryStatus, expiryLabel, docRoleLabel } from "@/lib/cellar/lot-history";
 import { extractAndStageAction } from "@/lib/ingest/actions";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 
@@ -463,6 +465,8 @@ function MaterialDetailModal({
           {inactive ? <Badge tone="neutral" variant="soft">inactive</Badge> : <Badge tone="green" variant="soft">active</Badge>}
         </DetailRow>
 
+        {tracked ? <div style={{ marginTop: 12 }}><MaterialLotsPanel materialId={m.id} /></div> : null}
+
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 16 }}>
           <Button type="button" variant="ghost" disabled={pending} onClick={() => run(() => setMaterialActiveAction(m.id, inactive))}>
             {inactive ? "Reactivate" : "Deactivate"}
@@ -472,6 +476,78 @@ function MaterialDetailModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Plan 072 Unit 10 (read side): per-lot history — each SupplyLot with its costed metadata, expiry (from a
+// matched COA), and links to its source documents (invoice / COA). Lazily loads on first render; collapsed
+// by default so the detail modal stays compact. Foreign-currency + expired/near-expiry lots are flagged.
+function MaterialLotsPanel({ materialId }: { materialId: string }) {
+  const [lots, setLots] = React.useState<MaterialLotRow[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let live = true;
+    setLots(null);
+    setError(null);
+    listMaterialLotsAction(materialId)
+      .then((rows) => { if (live) setLots(rows); })
+      .catch(() => { if (live) setError("Couldn't load lot history."); });
+    return () => { live = false; };
+  }, [materialId]);
+
+  const now = new Date();
+  const count = lots?.length ?? 0;
+  const title = <span style={{ fontSize: 13.5, fontWeight: 600 }}>Lots {lots ? `(${count})` : ""}</span>;
+
+  return (
+    <Collapsible title={title} defaultOpen={false}>
+      {error ? (
+        <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>{error}</div>
+      ) : lots == null ? (
+        <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>Loading…</div>
+      ) : count === 0 ? (
+        <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>No lots received yet.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>
+          {lots.map((l) => {
+            const exp = lotExpiryStatus(l.expiresAt, now);
+            const received = new Date(l.receivedAt).toLocaleDateString();
+            return (
+              <div key={l.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{l.lotCode || "— (no lot code)"}</span>
+                  {exp ? (
+                    <Badge tone={exp.status === "expired" ? "red" : exp.status === "soon" ? "gold" : "green"} variant="soft">{expiryLabel(exp)}</Badge>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <span>Received {received}</span>
+                  <span><span style={num}>{l.qtyRemaining}</span> / {l.qtyReceived} {l.stockUnit} left</span>
+                  <span>{l.unitCost != null ? <>{l.unitCost} {l.currency}/{l.stockUnit}</> : "cost unknown"}</span>
+                </div>
+                {l.documents.length ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+                    {l.documents.map((d) => (
+                      <a
+                        key={`${d.ingestedInvoiceId}-${d.role}`}
+                        href={`/api/ingest/document?id=${encodeURIComponent(d.ingestedInvoiceId)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={d.fileName}
+                        style={{ fontSize: 12, color: "var(--wine-primary)", textDecoration: "underline" }}
+                      >
+                        {docRoleLabel(d.role)} ↗
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Collapsible>
   );
 }
 

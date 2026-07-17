@@ -19,7 +19,7 @@ import {
   applyIngestedInvoiceCore,
   type IngestDocumentInput,
 } from "@/lib/ingest/ingest-invoice-core";
-import { createStockMaterialCore } from "@/lib/cellar/materials";
+import { createStockMaterialCore, listMaterialLots } from "@/lib/cellar/materials";
 import { isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
 
@@ -270,6 +270,16 @@ async function main() {
         assert(lot!.expiresAt != null, "scenario 7: COA expiry attached to the matched lot (normalized lot no.)");
         const coaLink = await prisma.lotDocument.findFirst({ where: { supplyLotId: res.supplyLotIds[0], role: "COA" } });
         assert(coaLink != null, "scenario 7: COA provenance link written");
+
+        // read side (Unit 10): the material's lot-history read surfaces the expiry + INVOICE/COA doc links.
+        const enzymeLot = await prisma.supplyLot.findUnique({ where: { id: res.supplyLotIds[0] }, select: { materialId: true } });
+        const history = await listMaterialLots(enzymeLot!.materialId);
+        const hRow = history.find((h) => h.id === res.supplyLotIds[0]);
+        assert(hRow != null && hRow.expiresAt != null, "scenario 7: listMaterialLots surfaces the lot's expiry (read side)");
+        assert(
+          hRow!.documents.some((d) => d.role === "INVOICE") && hRow!.documents.some((d) => d.role === "COA"),
+          "scenario 7: listMaterialLots surfaces INVOICE + COA source-doc links (read side)",
+        );
       }
     });
   } finally {
