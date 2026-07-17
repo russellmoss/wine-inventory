@@ -232,6 +232,7 @@ export type CreateStockMaterialInput = MaterialIntakeInput & {
 export async function createStockMaterialCore(
   actor: LedgerActor,
   input: CreateStockMaterialInput,
+  injectedTx?: Prisma.TransactionClient,
 ): Promise<CellarMaterialDTO> {
   const f = deriveMaterialFields(input);
   const stockUnit = coerceStockUnit(input.stockUnit);
@@ -250,7 +251,7 @@ export async function createStockMaterialCore(
     }
   }
 
-  return runInTenantTx(async (tx) => {
+  const body = async (tx: Prisma.TransactionClient) => {
     const existing = await tx.cellarMaterial.findFirst({
       where: { kind: f.kind, normalizedKey: f.normalizedKey },
       select: { id: true },
@@ -296,7 +297,10 @@ export async function createStockMaterialCore(
     }
 
     return { ...toDTO(material), isStockTracked: true, stockUnit, onHand: openingQty };
-  });
+  };
+
+  // Plan 072: reuse an injected tx (invoice apply runs all lines in ONE transaction) or open our own.
+  return injectedTx ? body(injectedTx) : runInTenantTx(body);
 }
 
 /**
@@ -417,6 +421,9 @@ export type ReceiveSupplyInput = {
   vendorName?: string | null;
   terms?: string | null; // e.g. "Net 30" — drives the Bill DueDate
   vendorId?: string | null; // Plan 069: the managed vendor for this receipt (stamped on the lot; resolves vendorName for A/P)
+  vendorInvoiceNumber?: string | null; // Plan 072: supplier invoice # → stamped on the A/P event → QBO Bill PrivateNote
+  currency?: string | null; // Plan 072: stamp the lot in the invoice currency (no FX); defaults to the tenant currency
+  expiresAt?: Date | null; // Plan 072: batch/lot expiry (from a COA) — attached at receipt when known
 };
 
 /**
@@ -424,13 +431,21 @@ export type ReceiveSupplyInput = {
  * a SupplyLot (qtyReceived == qtyRemaining) in the material's stock unit, stamped with the tenant's
  * current costing-policy version (D17). Marks the material stock-tracked if it wasn't. Null unit cost is
  * unknown-cost (D14), not $0.
+ *
+ * Plan 072: accepts an optional injected `tx` so an invoice apply can run vendor find-or-create + every
+ * line's receipt + A/P emit in ONE interactive transaction (true all-or-nothing). With no injected tx it
+ * opens its own runInTenantTx exactly as before (existing call sites are unchanged).
  */
-export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupplyInput): Promise<{ supplyLotId: string }> {
+export async function receiveSupplyCore(
+  actor: LedgerActor,
+  input: ReceiveSupplyInput,
+  injectedTx?: Prisma.TransactionClient,
+): Promise<{ supplyLotId: string }> {
   const qty = Number(input.qty);
   if (!Number.isFinite(qty) || qty <= 0) throw new Error("Received quantity must be greater than zero.");
   const unitCost = input.unitCost != null && Number.isFinite(input.unitCost) && input.unitCost >= 0 ? input.unitCost : null;
 
-  return runInTenantTx(async (tx) => {
+  const body = async (tx: Prisma.TransactionClient) => {
     const material = await tx.cellarMaterial.findUnique({ where: { id: input.materialId }, select: { id: true, name: true, stockUnit: true, isStockTracked: true } });
     if (!material) throw new Error("Material not found.");
     const stockUnit = coerceStockUnit(material.stockUnit);
@@ -458,20 +473,25 @@ export async function receiveSupplyCore(actor: LedgerActor, input: ReceiveSupply
         qtyRemaining: qty,
         stockUnit,
         unitCost,
-        currency: coerceCurrency(settings?.currency),
+        // Plan 072: stamp the invoice currency as-is (no FX); default to the tenant currency for restock.
+        currency: input.currency?.trim() ? coerceCurrency(input.currency) : coerceCurrency(settings?.currency),
         policyVersion: settings?.costingPolicyVersion ?? 1,
         lotCode: input.lotCode?.trim() || null,
         supplierNote: input.note?.trim() || null,
+        expiresAt: input.expiresAt ?? null,
         vendorId,
       },
       select: { id: true },
     });
     await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Received ${qty} ${stockUnit} of "${material.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
     // Phase 15 Unit 10 — transactional outbox: a purchase-on-credit emits an A/P Bill export + delivery
-    // in THIS tx. No-op unless a vendor + A/P accounts + a known cost are all present.
-    await emitApExportForReceipt(lot.id, { vendorName, terms: input.terms }, tx);
+    // in THIS tx. No-op unless a vendor + A/P accounts + a known cost are all present. Plan 072 stamps the
+    // supplier invoice # on the event (→ QBO Bill PrivateNote).
+    await emitApExportForReceipt(lot.id, { vendorName, terms: input.terms, vendorInvoiceNumber: input.vendorInvoiceNumber }, tx);
     return { supplyLotId: lot.id };
-  });
+  };
+
+  return injectedTx ? body(injectedTx) : runInTenantTx(body);
 }
 
 /** Phase 8 (Unit 12): activate/deactivate a supply in the catalog (history-safe — never a hard delete). */

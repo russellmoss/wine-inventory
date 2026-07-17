@@ -149,7 +149,7 @@ async function postBill(
 ): Promise<void> {
   const ev = await prisma.apExportEvent.findUnique({
     where: { id: d.apExportEventId as string },
-    select: { postingKey: true, amount: true, debitAccount: true, receivedAt: true, dueDate: true, vendorId: true },
+    select: { postingKey: true, amount: true, debitAccount: true, receivedAt: true, dueDate: true, vendorId: true, vendorInvoiceNumber: true },
   });
   if (!ev || !ev.vendorId || !ev.debitAccount) {
     await finalize(d.id, { status: "FAILED", lastError: "AP export missing vendor or account" });
@@ -176,7 +176,9 @@ async function postBill(
       externalVendorId = await adapter.findOrCreateVendor(ctx, vendor.name);
       await runInTenantTx((tx) => tx.vendor.update({ where: { id: ev.vendorId as string }, data: { externalVendorId } }));
     }
-    const memo = `Cellarhand · Supply bill · ${vendor.name}`;
+    // Plan 072: carry the supplier invoice # in the memo (→ Bill PrivateNote) so a bookkeeper can find every
+    // per-lot Bill that belongs to one supplier invoice (searchable; the Bills stay separate rows).
+    const memo = `Cellarhand · Supply bill · ${vendor.name}${ev.vendorInvoiceNumber ? ` · Invoice ${ev.vendorInvoiceNumber}` : ""}`;
     const payload = buildBillPayload({ postingKey: ev.postingKey, amount: Number(ev.amount), debitAccount: ev.debitAccount, receivedAt: ev.receivedAt, dueDate: ev.dueDate, memo, lineDescription: memo }, externalVendorId);
     const result = await adapter.postBill(ctx, payload, docNumber);
     await finalize(d.id, { status: "POSTED", externalId: result.externalId, requestId: docNumber, verifiedAt: new Date(), lastError: null });
