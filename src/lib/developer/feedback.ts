@@ -10,7 +10,11 @@ import {
   Prisma,
 } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
-import { requireDeveloper } from "@/lib/dal";
+// requireDeveloper is imported lazily inside the two write/read-item functions below
+// (getDeveloperFeedbackItem / getDeveloperTenantFeedbackPage) so that the read-only
+// getDeveloperFeedbackData path — used by the `triage:list` CLI under
+// `--conditions=react-server` — does not eagerly load next/navigation via @/lib/dal,
+// which throws (React.createContext) in that non-RSC script context.
 import {
   decodeDeveloperFeedbackCursor,
   developerFeedbackCursorWhere,
@@ -527,6 +531,7 @@ export async function getDeveloperFeedbackItem(input: {
   sourceType: string;
   id: string;
 }): Promise<DeveloperFeedbackItem | null> {
+  const { requireDeveloper } = await import("@/lib/dal");
   await requireDeveloper();
   const parsedSource = sourceType(input.sourceType);
   if (!validTenantId(input.tenantId) || !validOpaqueId(input.id) || !parsedSource) return null;
@@ -574,6 +579,7 @@ export async function getDeveloperTenantFeedbackPage(input: {
   severity?: FeedbackSeverity | null;
   triageClass?: FeedbackTriageClass | null;
 }): Promise<DeveloperTenantFeedbackPage> {
+  const { requireDeveloper } = await import("@/lib/dal");
   await requireDeveloper();
   if (!validTenantId(input.tenantId) || !DEVELOPER_QUEUES.includes(input.queue)) {
     throw new ActionError("Invalid developer feedback page.", "VALIDATION");
