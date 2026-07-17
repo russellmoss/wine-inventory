@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -337,6 +338,161 @@ export async function applyIngestedInvoiceCore(
   } catch (e) {
     if (e instanceof ApplyAbort) return e.result;
     return { ok: false, error: e instanceof Error ? e.message : "Apply failed." };
+  }
+}
+
+// ── read: recent intakes (assistant visibility) ──
+
+export type RecentIntakeLot = { materialId: string; materialName: string; qty: number; stockUnit: string; unitCost: number | null };
+export type RecentIntake = {
+  id: string;
+  vendorName: string | null;
+  invoiceNumber: string | null;
+  docType: string;
+  status: string;
+  currency: string | null;
+  invoiceTotal: number | null;
+  createdAt: string;
+  appliedAt: string | null;
+  lots: RecentIntakeLot[]; // the lots this intake created (populated for applied invoices)
+};
+
+/**
+ * Recent ingested documents for the tenant (newest first) with, for APPLIED ones, the lots they created +
+ * the material each landed on. Assumes a tenant context (called from an assistant read tool / action → RLS).
+ */
+export async function listRecentIntakes(opts?: { limit?: number }): Promise<RecentIntake[]> {
+  const take = Math.min(Math.max(opts?.limit ?? 10, 1), 50);
+  const invs = await prisma.ingestedInvoice.findMany({
+    orderBy: { createdAt: "desc" },
+    take,
+    select: { id: true, vendorNameRaw: true, vendorInvoiceNumber: true, docType: true, status: true, currency: true, invoiceTotal: true, createdAt: true, appliedAt: true },
+  });
+  if (invs.length === 0) return [];
+
+  // Resolve created lots for the applied invoices in one pass.
+  const lines = await prisma.ingestedInvoiceLine.findMany({
+    where: { ingestedInvoiceId: { in: invs.map((i) => i.id) }, createdSupplyLotId: { not: null } },
+    select: { ingestedInvoiceId: true, createdSupplyLotId: true },
+  });
+  const lotIds = lines.map((l) => l.createdSupplyLotId).filter((x): x is string => !!x);
+  const lots = lotIds.length
+    ? await prisma.supplyLot.findMany({ where: { id: { in: lotIds } }, select: { id: true, materialId: true, qtyReceived: true, stockUnit: true, unitCost: true } })
+    : [];
+  const matIds = [...new Set(lots.map((l) => l.materialId))];
+  const mats = matIds.length ? await prisma.cellarMaterial.findMany({ where: { id: { in: matIds } }, select: { id: true, name: true } }) : [];
+  const matName = new Map(mats.map((m) => [m.id, m.name]));
+  const lotById = new Map(lots.map((l) => [l.id, l]));
+  const lotsByInvoice = new Map<string, RecentIntakeLot[]>();
+  for (const ln of lines) {
+    const lot = ln.createdSupplyLotId ? lotById.get(ln.createdSupplyLotId) : null;
+    if (!lot) continue;
+    const arr = lotsByInvoice.get(ln.ingestedInvoiceId) ?? [];
+    arr.push({ materialId: lot.materialId, materialName: matName.get(lot.materialId) ?? "?", qty: Number(lot.qtyReceived), stockUnit: lot.stockUnit, unitCost: lot.unitCost == null ? null : Number(lot.unitCost) });
+    lotsByInvoice.set(ln.ingestedInvoiceId, arr);
+  }
+
+  return invs.map((i) => ({
+    id: i.id,
+    vendorName: i.vendorNameRaw,
+    invoiceNumber: i.vendorInvoiceNumber,
+    docType: i.docType,
+    status: i.status,
+    currency: i.currency,
+    invoiceTotal: i.invoiceTotal == null ? null : Number(i.invoiceTotal),
+    createdAt: i.createdAt.toISOString(),
+    appliedAt: i.appliedAt ? i.appliedAt.toISOString() : null,
+    lots: lotsByInvoice.get(i.id) ?? [],
+  }));
+}
+
+// ── reverse an applied intake (governed money) ──
+
+export type ReverseResult =
+  | { ok: true; reversedLotIds: string[]; deletedMaterialIds: string[]; keptMaterialIds: string[]; apRemoved: number }
+  | { ok: false; error: string };
+
+/**
+ * Reverse an APPLIED ingested invoice: remove the lots + A/P it created and the materials it newly created,
+ * then discard the invoice. All-or-nothing in ONE tx. GUARDS (returns { ok:false } — never throws): the
+ * invoice must be `applied`; none of its lots may have downstream consumption; and no A/P may be posted to
+ * QBO (a posted bill must be reversed in QBO, not deleted). A material that pre-existed (an `existing` match,
+ * or one with other lots) is KEPT — only lots we created are removed from it; a material we created empty and
+ * that now has no lots is deleted (deactivated if a stray FK blocks it). The vendor is always kept (reusable).
+ */
+export async function reverseIngestedInvoiceCore(actor: LedgerActor, input: { ingestedInvoiceId: string }): Promise<ReverseResult> {
+  try {
+    return await runInTenantTx(async (tx) => {
+      const inv = await tx.ingestedInvoice.findUnique({ where: { id: input.ingestedInvoiceId }, select: { id: true, status: true, vendorInvoiceNumber: true } });
+      if (!inv) throw new ReverseAbort({ ok: false, error: "That intake isn't in this winery." });
+      if (inv.status !== "applied") throw new ReverseAbort({ ok: false, error: "Only an applied intake can be reversed." });
+
+      const lines = await tx.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: inv.id }, select: { createdSupplyLotId: true, matchDecision: true, matchedMaterialId: true } });
+      const lotIds = lines.map((l) => l.createdSupplyLotId).filter((x): x is string => !!x);
+      if (lotIds.length === 0) throw new ReverseAbort({ ok: false, error: "This intake created no lots to reverse." });
+
+      // Guard: no downstream consumption (reversing used stock would corrupt cost — COST-1/COST-2).
+      const consumed = await tx.supplyConsumption.count({ where: { supplyLotId: { in: lotIds } } });
+      if (consumed > 0) throw new ReverseAbort({ ok: false, error: "Some of this stock has already been used, so it can't be auto-reversed. Correct it per item instead." });
+
+      // Guard: no A/P bill already posted to QBO.
+      const evs = await tx.apExportEvent.findMany({ where: { supplyLotId: { in: lotIds } }, select: { id: true } });
+      const evIds = evs.map((e) => e.id);
+      const deliveries = evIds.length
+        ? await tx.accountingDelivery.findMany({ where: { apExportEventId: { in: evIds } }, select: { id: true, status: true, externalId: true } })
+        : [];
+      if (deliveries.some((d) => d.status === "POSTED" || d.externalId)) {
+        throw new ReverseAbort({ ok: false, error: "An A/P bill from this intake was already posted to QuickBooks. Reverse the bill in QuickBooks first, then discard the intake." });
+      }
+
+      const lots = await tx.supplyLot.findMany({ where: { id: { in: lotIds } }, select: { id: true, materialId: true } });
+      const matIds = [...new Set(lots.map((l) => l.materialId))];
+      // Materials created by this apply (a non-existing line) are candidates to delete; existing-match ones stay.
+      const createdMatIds = new Set(
+        lines.filter((l) => l.matchDecision !== "existing" && l.createdSupplyLotId)
+          .map((l) => lots.find((lot) => lot.id === l.createdSupplyLotId)?.materialId)
+          .filter((x): x is string => !!x),
+      );
+
+      // Remove A/P deliveries + events, provenance links, then the lots (SET NULLs line.createdSupplyLotId).
+      await tx.accountingDelivery.deleteMany({ where: { apExportEventId: { in: evIds } } });
+      await tx.apExportEvent.deleteMany({ where: { id: { in: evIds } } });
+      await tx.lotDocument.deleteMany({ where: { supplyLotId: { in: lotIds } } });
+      await tx.supplyLot.deleteMany({ where: { id: { in: lotIds } } });
+
+      const deletedMaterialIds: string[] = [];
+      const keptMaterialIds: string[] = [];
+      for (const mid of matIds) {
+        const remaining = await tx.supplyLot.count({ where: { materialId: mid } });
+        if (remaining === 0 && createdMatIds.has(mid)) {
+          try {
+            await tx.vendorMaterialCode.deleteMany({ where: { materialId: mid } });
+            await tx.cellarMaterial.delete({ where: { id: mid } });
+            deletedMaterialIds.push(mid);
+          } catch {
+            // A stray FK (shouldn't happen for a freshly-created material) → deactivate instead of deleting.
+            await tx.cellarMaterial.update({ where: { id: mid }, data: { isActive: false } });
+            keptMaterialIds.push(mid);
+          }
+        } else {
+          keptMaterialIds.push(mid);
+        }
+      }
+
+      await tx.ingestedInvoice.update({ where: { id: inv.id }, data: { status: "discarded", appliedAt: null } });
+      await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "IngestedInvoice", entityId: inv.id, summary: `Reversed intake ${inv.vendorInvoiceNumber ?? inv.id} — removed ${lotIds.length} lot(s), ${deletedMaterialIds.length} material(s), ${evIds.length} A/P` });
+
+      return { ok: true as const, reversedLotIds: lotIds, deletedMaterialIds, keptMaterialIds, apRemoved: evIds.length };
+    });
+  } catch (e) {
+    if (e instanceof ReverseAbort) return e.result;
+    return { ok: false, error: e instanceof Error ? e.message : "Reverse failed." };
+  }
+}
+
+class ReverseAbort extends Error {
+  constructor(public result: ReverseResult) {
+    super("reverse-abort");
   }
 }
 

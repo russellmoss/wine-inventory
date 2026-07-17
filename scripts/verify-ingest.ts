@@ -17,6 +17,8 @@ import {
   updateIngestedInvoiceLineCore,
   updateIngestedInvoiceCore,
   applyIngestedInvoiceCore,
+  reverseIngestedInvoiceCore,
+  listRecentIntakes,
   type IngestDocumentInput,
 } from "@/lib/ingest/ingest-invoice-core";
 import { createStockMaterialCore, listMaterialLots } from "@/lib/cellar/materials";
@@ -280,6 +282,71 @@ async function main() {
           hRow!.documents.some((d) => d.role === "INVOICE") && hRow!.documents.some((d) => d.role === "COA"),
           "scenario 7: listMaterialLots surfaces INVOICE + COA source-doc links (read side)",
         );
+      }
+
+      // ── Scenario 8: reverse an applied intake (assistant back-out) ──
+      {
+        const batch = `${PFX}-8-${Date.now()}`;
+        const d = doc({
+          vendor: { name: `${PFX} ReverseCo` },
+          invoiceNumber: "QA-REV-1",
+          invoiceTotal: 130,
+          charges: { shipping: 30 },
+          lines: [
+            { description: `${PFX} Rev Yeast`, qty: 500, unit: "g", unitPrice: 0.1, lineTotal: 50, lotNo: "QA-REV-L1" },
+            { description: `${PFX} Rev Acid`, qty: 500, unit: "g", unitPrice: 0.1, lineTotal: 50, lotNo: "QA-REV-L2" },
+          ],
+        });
+        const created = await createIngestedInvoiceCore(ACTOR, input("qa-rev.pdf", d, batch));
+        const invId = created.invoices[0].id;
+        const lines = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invId } });
+        for (const l of lines) await updateIngestedInvoiceLineCore(ACTOR, l.id, { matchDecision: "new", resolvedKind: "YEAST" });
+        const res = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(res.ok, "scenario 8: intake applies");
+        if (!res.ok) return;
+        const matIds = (await prisma.supplyLot.findMany({ where: { id: { in: res.supplyLotIds } }, select: { materialId: true } })).map((l) => l.materialId);
+
+        // the read tool sees it as applied with its created lots
+        const recent = await listRecentIntakes({ limit: 20 });
+        const seen = recent.find((r) => r.id === invId);
+        assert(seen != null && seen.status === "applied" && seen.lots.length === 2, "scenario 8: listRecentIntakes shows the applied intake + its 2 lots");
+
+        const rev = await reverseIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(rev.ok, "scenario 8: reverse succeeds");
+        if (!rev.ok) return;
+        assert((await prisma.supplyLot.count({ where: { id: { in: res.supplyLotIds } } })) === 0, "scenario 8: all created lots removed");
+        assert((await prisma.apExportEvent.count({ where: { supplyLotId: { in: res.supplyLotIds } } })) === 0, "scenario 8: all A/P events removed");
+        assert((await prisma.cellarMaterial.count({ where: { id: { in: matIds } } })) === 0, "scenario 8: the newly-created materials removed");
+        const after = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { status: true, appliedAt: true } });
+        assert(after?.status === "discarded" && after.appliedAt == null, "scenario 8: intake marked discarded");
+        const vendorKept = await prisma.vendor.findFirst({ where: { name: `${PFX} ReverseCo` } });
+        assert(vendorKept != null, "scenario 8: vendor kept (reusable)");
+
+        // reversing again (already discarded) is rejected
+        const again = await reverseIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(!again.ok, "scenario 8: reversing a non-applied intake is rejected");
+
+        // guard: an intake whose stock was consumed cannot be auto-reversed
+        const batch9 = `${PFX}-9-${Date.now()}`;
+        const d9 = doc({ vendor: { name: `${PFX} ConsumeCo` }, invoiceNumber: "QA-REV-2", invoiceTotal: 50, lines: [{ description: `${PFX} Consumed Yeast`, qty: 500, unit: "g", unitPrice: 0.1, lineTotal: 50, lotNo: "QA-REV-L3" }] });
+        const created9 = await createIngestedInvoiceCore(ACTOR, input("qa-rev2.pdf", d9, batch9));
+        const inv9 = created9.invoices[0].id;
+        const [l9] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: inv9 } });
+        await updateIngestedInvoiceLineCore(ACTOR, l9.id, { matchDecision: "new", resolvedKind: "YEAST" });
+        const res9 = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv9 });
+        assert(res9.ok, "scenario 9: intake applies");
+        if (!res9.ok) return;
+        // simulate downstream consumption of the lot (a dose) — insert a SupplyConsumption row directly
+        const lot9 = res9.supplyLotIds[0];
+        const anyOp = await prisma.lotOperation.findFirst({ select: { id: true } });
+        if (anyOp) {
+          await prisma.supplyConsumption.create({ data: { operationId: anyOp.id, supplyLotId: lot9, qty: 1, methodUsed: "WEIGHTED_AVG" } });
+          const blocked = await reverseIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv9 });
+          assert(!blocked.ok, "scenario 9: reversing consumed stock is blocked");
+          await prisma.supplyConsumption.deleteMany({ where: { supplyLotId: lot9 } });
+        }
+        // clean up scenario 9 via reverse now that consumption is gone
+        await reverseIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv9 });
       }
     });
   } finally {

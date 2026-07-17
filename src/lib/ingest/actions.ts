@@ -7,10 +7,12 @@ import {
   updateIngestedInvoiceLineCore,
   updateIngestedInvoiceCore,
   applyIngestedInvoiceCore,
+  reverseIngestedInvoiceCore,
   type IngestDocumentInput,
   type LinePatch,
   type InvoicePatch,
   type ApplyResult,
+  type ReverseResult,
 } from "@/lib/ingest/ingest-invoice-core";
 import { extractDocuments, type ExtractionInput } from "@/lib/ingest/extract-invoice";
 
@@ -50,6 +52,15 @@ export const updateIngestedInvoiceAction = action(async ({ actor }, id: string, 
 export const applyIngestedInvoiceAction = action(
   async ({ actor }, ingestedInvoiceId: string, opts?: { allowReconcileMismatch?: boolean; allowPartialAp?: boolean }): Promise<ApplyResult> => {
     const res = await applyIngestedInvoiceCore(actor, { ingestedInvoiceId, ...(opts ?? {}) });
+    revalidateIngest();
+    return res;
+  },
+);
+
+/** Reverse an applied intake — remove the lots + A/P + new materials it created, discard the invoice. */
+export const reverseIngestedInvoiceAction = action(
+  async ({ actor }, ingestedInvoiceId: string): Promise<ReverseResult> => {
+    const res = await reverseIngestedInvoiceCore(actor, { ingestedInvoiceId });
     revalidateIngest();
     return res;
   },

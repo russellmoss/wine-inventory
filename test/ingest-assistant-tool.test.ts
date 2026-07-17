@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ingestDocumentsTool } from "@/lib/assistant/tools/ingest-documents";
+import { reverseIntakeTool } from "@/lib/assistant/tools/reverse-intake";
+import { queryRecentIntakesTool } from "@/lib/assistant/tools/query-recent-intakes";
 
 // Plan 072 Unit 9: the assistant ingest tool PROPOSES (does not mutate) and routes to the review screen.
 // The extraction + apply are exercised end-to-end by verify:ingest; here we lock the tool's proposal contract.
@@ -32,5 +34,19 @@ describe("ingest_documents tool", () => {
 
   it("rejects when every ref is malformed (nothing to ingest)", async () => {
     await expect(ingestDocumentsTool.run(ctx, { files: [{ fileName: "x.pdf" }] })).rejects.toThrow(/upload/i);
+  });
+});
+
+describe("intake see/reverse tools", () => {
+  it("query_recent_intakes is a read tool", () => {
+    expect(queryRecentIntakesTool.kind).toBe("read");
+  });
+  it("reverse_intake is a write tool requiring an intake id", () => {
+    expect(reverseIntakeTool.kind).toBe("write");
+    expect(reverseIntakeTool.inputSchema.required).toContain("ingestedInvoiceId");
+  });
+  it("reverse_intake rejects a missing id before touching the DB", async () => {
+    await expect(reverseIntakeTool.run(ctx, {})).rejects.toThrow(/which intake/i);
+    await expect(reverseIntakeTool.run(ctx, { ingestedInvoiceId: "   " })).rejects.toThrow(/which intake/i);
   });
 });

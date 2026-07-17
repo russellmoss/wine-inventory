@@ -99,6 +99,8 @@ import { queryMaterialsTool } from "./tools/query-materials";
 import { createVendorTool } from "./tools/create-vendor";
 import { queryVendorsTool } from "./tools/query-vendors";
 import { ingestDocumentsTool } from "./tools/ingest-documents";
+import { queryRecentIntakesTool } from "./tools/query-recent-intakes";
+import { reverseIntakeTool } from "./tools/reverse-intake";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -160,6 +162,8 @@ const ALL_TOOLS: AssistantTool[] = [
   createMaterialTool,
   createVendorTool,
   ingestDocumentsTool,
+  queryRecentIntakesTool,
+  reverseIntakeTool,
   receiveSupplyTool,
   setMaterialActiveTool,
   pullSampleTool,
