@@ -7,8 +7,8 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Invoice/document ingestion → deterministic expendables & equipment intake (Plan 072) — BUILDING (`/work`).**
-Branch `claude/invoice-ingestion-intake-385010`. Units 1-7 + 9 + 12(STEP1-3) SHIPPED to the branch
+**Invoice/document ingestion → deterministic expendables & equipment intake (Plan 072) — BUILT (all 12 units), ready for `/ship`.**
+Branch `claude/invoice-ingestion-intake-385010`. All 12 units committed to the branch
 (committed, all gates green): U1 schema+migration (4 RLS staging/provenance tables + composite FKs, applied to
 Neon), U2 EQUIPMENT category + `isDoseableCategory` denylist→ALLOWLIST + `UNCLASSIFIED` sink (WORKORDER-7),
 U3 PDF-aware private blob + upload route, U4 extraction core (de-risking spike PASSED — `claude-opus-4-8`
@@ -17,10 +17,14 @@ allocator + UOM normalize (money-critical), U6 vendor-scoped dedup matcher, U7 a
 tx through the cost cores; proforma/reconciliation/concurrency gates; unified new+existing→receiveSupplyCore
 both emitting A/P stamped with invoice#; COA attach; tenant re-verify) — **proven by `verify:ingest` (31
 assertions) + `verify:cost` 55/55**, U9 assistant `ingest_documents` tool (verify:ai-native green), U12
-real-doc acceptance (STEP2 CI test 12/12 + STEP3 gated live script). **In flight:** U8 review UI (subagent),
-U10 provenance surfacing (write side done in U7; read side pending), U11 final sweep. **PENDING: human sign-off
-on the extraction snapshots (`qa/ingest-fixtures/SNAPSHOT-VERIFIED.md`) + browser-QA of U8 in Demo Winery.**
-Full vitest 2162 passing, 0 regressions. See:
+real-doc acceptance (STEP2 CI test 12/12 + STEP3 gated live script), U8 review screen (`+ Ingest invoice`
+launcher → upload → review; per-doc panels, dedup control, proforma gate, source-doc proxy, apply w/ inline
+needsAck; 17 model tests), U11 verify sweep. U10 write side + source-doc surfacing done; the per-lot
+expiry/provenance HISTORY panel is a scoped follow-up chip (display-only; data captured + proven).
+**GATES ALL GREEN:** tsc 0, next build clean, vitest 2179/0, verify:cost 55/55, verify:ingest 31,
+verify:ai-native / invariants / naming / parity / raw-sql / tenant-isolation / work-orders-enhancements.
+**PENDING before merge: human sign-off on the extraction snapshots (`qa/ingest-fixtures/SNAPSHOT-VERIFIED.md`)
++ browser-QA of the review screen in Demo Winery. Next: `/ship`.** See:
 `docs/plans/2026-07-17-072-feat-invoice-ingestion-intake-plan.md` (Deep, 12 units). `+ Ingest invoice`
 takes a mixed pile (PDF text/scanned + images), classifies each doc (invoice|proforma|coa|other), and routes
 only receipts into ONE human-reviewed screen per invoice; every write goes through existing cores
