@@ -24,6 +24,10 @@ export type ExtractedLine = {
   unitPrice?: number | null;
   lineTotal?: number | null;
   lotNo?: string | null;
+  // Plan 072: parsed name parts so the created material pre-fills brand / product / generic in the edit view.
+  brand?: string | null; // manufacturer, e.g. "Laffort", "AEB", "Lallemand"
+  productName?: string | null; // the product without the brand or pack size, e.g. "Fermoplus DAP Free"
+  genericName?: string | null; // common/chemical name if identifiable, e.g. "Diammonium phosphate (DAP)"
 };
 
 export type ExtractedCharges = {
@@ -59,26 +63,28 @@ export type ExtractionResult =
 // JSON Schema for the structured-output call. Kept intentionally lenient (only docType + lines required) so
 // a messy real-world invoice never fails the whole call on a missing optional field — the human review
 // screen catches gaps, and normalizeExtraction re-coerces defensively regardless.
+// Optional fields are plain single-type and simply NOT `required` — the model omits what it doesn't know and
+// normalizeExtraction coerces missing → null. (Do NOT use `["string","null"]` unions: Anthropic caps a schema
+// at 16 union-typed params, and this doc has far more optional fields than that.)
 export const INVOICE_EXTRACTION_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["docType", "lines"],
   properties: {
     docType: { type: "string", enum: ["invoice", "proforma", "coa", "other"] },
+    // Only the vendor NAME is used (find-or-create by name); keep the schema lean — Anthropic caps a schema at
+    // 24 optional params, and this doc is field-heavy.
     vendor: {
-      type: ["object", "null"],
+      type: "object",
       additionalProperties: false,
+      required: ["name"],
       properties: {
         name: { type: "string" },
-        address: { type: ["string", "null"] },
-        contactName: { type: ["string", "null"] },
-        phone: { type: ["string", "null"] },
-        email: { type: ["string", "null"] },
       },
     },
-    currency: { type: ["string", "null"], description: "ISO currency code (USD, EUR, …); one per document" },
-    invoiceNumber: { type: ["string", "null"] },
-    invoiceTotal: { type: ["number", "null"] },
+    currency: { type: "string", description: "ISO currency code (USD, EUR, …); one per document" },
+    invoiceNumber: { type: "string" },
+    invoiceTotal: { type: "number" },
     lines: {
       type: "array",
       items: {
@@ -87,36 +93,38 @@ export const INVOICE_EXTRACTION_SCHEMA = {
         required: ["description"],
         properties: {
           description: { type: "string" },
-          vendorItemCode: { type: ["string", "null"] },
-          qty: { type: ["number", "null"] },
-          unit: { type: ["string", "null"], description: "the billed unit of measure, e.g. 'kg', '25 kg', 'case', 'ea'" },
-          unitPrice: { type: ["number", "null"] },
-          lineTotal: { type: ["number", "null"] },
-          lotNo: { type: ["string", "null"] },
+          vendorItemCode: { type: "string" },
+          qty: { type: "number" },
+          unit: { type: "string", description: "the billed unit of measure, e.g. 'kg', '25 kg', 'case', 'ea'" },
+          unitPrice: { type: "number" },
+          lineTotal: { type: "number" },
+          lotNo: { type: "string" },
+          brand: { type: "string", description: "manufacturer parsed from the description, e.g. 'Laffort', 'AEB'" },
+          productName: { type: "string", description: "the product name without the brand or pack size, e.g. 'Fermoplus DAP Free'" },
+          genericName: { type: "string", description: "common/chemical name if identifiable, e.g. 'Diammonium phosphate (DAP)', 'Bentonite'" },
         },
       },
     },
     charges: {
-      type: ["object", "null"],
+      type: "object",
       additionalProperties: false,
       properties: {
-        shipping: { type: ["number", "null"] },
-        handling: { type: ["number", "null"] },
-        surcharge: { type: ["number", "null"] },
-        tax: { type: ["number", "null"] },
+        shipping: { type: "number" },
+        handling: { type: "number" },
+        surcharge: { type: "number" },
+        tax: { type: "number" },
       },
     },
     coa: {
-      type: ["object", "null"],
+      type: "object",
       additionalProperties: false,
       properties: {
-        lotNo: { type: ["string", "null"] },
-        expiry: { type: ["string", "null"], description: "ISO date if present" },
-        batch: { type: ["string", "null"] },
+        lotNo: { type: "string" },
+        expiry: { type: "string", description: "ISO date if present" },
+        batch: { type: "string" },
       },
     },
-    warnings: { type: ["array", "null"], items: { type: "string" }, description: "anomalies for human attention: mixed currency, illegible fields, ambiguous units" },
-    notes: { type: ["string", "null"] },
+    warnings: { type: "array", items: { type: "string" }, description: "anomalies for human attention: mixed currency, illegible fields, ambiguous units" },
   },
 } as const;
 
@@ -135,14 +143,25 @@ export const EXTRACTION_SYSTEM_PROMPT = [
   "- Numbers are numbers, never strings. If a price/quantity is absent or illegible, use null — NEVER invent 0.",
   "- Use ONE currency for the whole document (ISO code). If the document mixes currencies, still report the",
   "  dominant one and add a 'mixed currency' entry to warnings — never silently pick one.",
-  "- Capture each line's unit of measure verbatim in `unit` (e.g. 'kg', '25 kg', 'case', 'ea').",
+  "- For `unit`, give the PACK SIZE as amount + unit ('250 g', '5 kg', '1 L', '25 kg'). Read it from the",
+  "  product name/description when the billed unit is a bare 'Each'/'unit' but the name includes a size like",
+  "  '250G', '5KG', '1L' — e.g. 'AEB FERMOPLUS DAP FREE 5KG' billed 'Each' → unit '5 kg'. Only use a bare",
+  "  count unit ('unit') when there is genuinely no weight/volume size.",
+  "- For each line, ALSO split the description into name parts: `brand` (the manufacturer — Laffort, AEB,",
+  "  Lallemand, Scott, …), `productName` (the specific product WITHOUT the brand or pack size — e.g.",
+  "  'Fermoplus DAP Free', 'Lafazym Extract'), and `genericName` (the common/chemical name if you can identify",
+  "  it — e.g. 'Diammonium phosphate (DAP)', 'Bentonite', 'Pectolytic enzyme'). Use null for any you're unsure of.",
   "- Put shipping/handling/surcharge/tax into `charges` (not as line items).",
   "- For a coa document, fill `coa` with lotNo / expiry / batch.",
   "- Add any illegible or ambiguous field to `warnings` so a human can verify it.",
 ].join("\n");
 
 const EXTRACTION_USER_INSTRUCTION =
-  "Extract this document into the schema. Classify it, then pull the vendor, currency, invoice number, all line items (description, vendor item code, quantity, unit, unit price, line total, lot number), charges, and (for a COA) the lot/expiry/batch. Unknown numeric fields must be null, not 0.";
+  "Extract this document. Classify it, then pull the vendor name, currency, invoice number, invoice total, all " +
+  "line items (description, vendorItemCode, qty, unit, unitPrice, lineTotal, lotNo, and the parsed brand / " +
+  "productName / genericName), charges (shipping/handling/surcharge/tax), and (for a COA) the lot/expiry/batch. " +
+  "Omit any field you don't know (don't guess; never use 0 for an unknown number). Return ONLY a JSON object — " +
+  "no markdown, no prose.";
 
 // ── pure coercion ──
 
@@ -197,6 +216,9 @@ export function normalizeExtraction(raw: unknown): ExtractedDocument {
       unitPrice: num(l.unitPrice),
       lineTotal: num(l.lineTotal),
       lotNo: str(l.lotNo),
+      brand: str(l.brand),
+      productName: str(l.productName),
+      genericName: str(l.genericName),
     };
   }).filter((l) => l.description.length > 0 || l.qty != null || l.unitPrice != null);
 
@@ -237,10 +259,11 @@ export async function extractDocument(input: ExtractionInput, block?: DocumentBl
   }
   try {
     const { oneShotJson } = await import("@/lib/ai/one-shot");
+    // The shape is described to the model in the prompt (NOT enforced as an output_config grammar — that hits
+    // Anthropic's schema-complexity limits for this many fields). normalizeExtraction is the validation layer.
     const raw = await oneShotJson({
-      system: EXTRACTION_SYSTEM_PROMPT,
+      system: `${EXTRACTION_SYSTEM_PROMPT}\n\nReturn a JSON object matching this shape (omit unknown fields):\n${JSON.stringify(INVOICE_EXTRACTION_SCHEMA)}`,
       content: [docBlock, { type: "text", text: EXTRACTION_USER_INSTRUCTION }],
-      schema: INVOICE_EXTRACTION_SCHEMA as unknown as Record<string, unknown>,
     });
     return { ...input, ok: true, document: normalizeExtraction(raw) };
   } catch (e) {

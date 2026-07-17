@@ -10,9 +10,9 @@
       "docType": "coa",
       "vendor": {
         "name": "LAFFORT",
-        "address": "CS 61 611 - 33072 BORDEAUX CEDEX - FRANCE",
+        "address": null,
         "contactName": null,
-        "phone": "+33 (0) 556 86 53 04",
+        "phone": null,
         "email": null
       },
       "currency": null,
@@ -23,10 +23,13 @@
           "description": "LAFAZYM EXTRACT - B. 250G",
           "vendorItemCode": "LAFAZYEX0.25",
           "qty": null,
-          "unit": null,
+          "unit": "250 g",
           "unitPrice": null,
           "lineTotal": null,
-          "lotNo": "2230517"
+          "lotNo": "2230517",
+          "brand": "Laffort",
+          "productName": "Lafazym Extract",
+          "genericName": "Pectolytic enzyme"
         }
       ],
       "charges": null,
@@ -36,7 +39,7 @@
         "batch": "2230517"
       },
       "warnings": [],
-      "notes": "Certificate of Analysis for LAFAZYM EXTRACT - B. 250G. Consignee: CRUSH2CELLAR c/o SCOTT LABORATORIES, 214 W. Hancock St, Newberg, OR 97132. Compliant with EU regulation n°2019/934, Food Chemical Codex, and JECFA. Printed 10/05/24."
+      "notes": null
     }
   }
 }

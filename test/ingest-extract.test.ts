@@ -72,6 +72,16 @@ describe("normalizeExtraction — shape + vendor + coa + currency", () => {
   it("vendor with no name → null (can't intake a nameless vendor)", () => {
     expect(normalizeExtraction({ docType: "invoice", vendor: { address: "x" }, lines: [] }).vendor).toBeNull();
   });
+
+  it("parses per-line brand / product / generic names (pre-fill the material edit view)", () => {
+    const doc = normalizeExtraction({
+      docType: "invoice",
+      lines: [{ description: "AEB FERMOPLUS DAP FREE 5KG", brand: "AEB", productName: "Fermoplus DAP Free", genericName: "Diammonium phosphate (DAP)" }],
+    });
+    expect(doc.lines[0].brand).toBe("AEB");
+    expect(doc.lines[0].productName).toBe("Fermoplus DAP Free");
+    expect(doc.lines[0].genericName).toBe("Diammonium phosphate (DAP)");
+  });
 });
 
 describe("buildDocBlock", () => {

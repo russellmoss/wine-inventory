@@ -149,6 +149,10 @@ async function main() {
         const lot = await prisma.supplyLot.findUnique({ where: { id: res.supplyLotIds[0] } });
         assert(Number(lot!.qtyReceived) === 50000, `scenario 2: 2 × 25 kg → 50000 g (got ${lot!.qtyReceived})`);
         assert(Math.abs(Number(lot!.unitCost) - 0.002) < 1e-6, `scenario 2: per-g cost = 100/50000 = 0.002 (got ${lot!.unitCost})`);
+        // the created material is pre-filled from the intake: vendor + pack size (edit-view gap fix)
+        const mat = await prisma.cellarMaterial.findUnique({ where: { id: lot!.materialId }, select: { vendorId: true, packageAmount: true, packageUnit: true } });
+        assert(mat!.vendorId != null, "scenario 2: new material links the intake vendor");
+        assert(mat!.packageAmount != null && Number(mat!.packageAmount) === 25 && mat!.packageUnit === "kg", `scenario 2: new material pack size = 25 kg (got ${mat!.packageAmount} ${mat!.packageUnit})`);
       }
 
       // ── Scenario 3: proforma gate + EUR currency + EQUIPMENT non-doseable ──

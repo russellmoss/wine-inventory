@@ -26,7 +26,13 @@ export class OneShotError extends Error {
 export async function oneShotJson<T = unknown>(opts: {
   system: string;
   content: string | Anthropic.ContentBlockParam[];
-  schema: Record<string, unknown>;
+  /**
+   * Optional JSON Schema for `output_config` grammar enforcement. OMIT it for field-heavy shapes: Anthropic's
+   * json_schema grammar has hard complexity limits (union count, optional-param count, "too complex"), so a
+   * large extraction schema is rejected. Without it the model is prompted to return JSON and the caller
+   * validates (defensively) — the reliable path for big shapes.
+   */
+  schema?: Record<string, unknown>;
   maxTokens?: number;
   model?: string;
 }): Promise<T> {
@@ -41,7 +47,7 @@ export async function oneShotJson<T = unknown>(opts: {
       max_tokens: opts.maxTokens ?? 8192,
       system: opts.system,
       messages: [{ role: "user", content: opts.content }],
-      output_config: { format: { type: "json_schema", schema: opts.schema } },
+      ...(opts.schema ? { output_config: { format: { type: "json_schema", schema: opts.schema } } } : {}),
     });
   } catch (e) {
     throw new OneShotError(e instanceof Error ? e.message : "Model request failed.");
@@ -52,8 +58,10 @@ export async function oneShotJson<T = unknown>(opts: {
     .join("\n")
     .trim();
   if (!text) throw new OneShotError("Model returned an empty response.");
+  // Strip a markdown code fence if the model wrapped the JSON (only happens without grammar enforcement).
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   try {
-    return JSON.parse(text) as T;
+    return JSON.parse(cleaned) as T;
   } catch {
     throw new OneShotError("Model returned malformed JSON.");
   }

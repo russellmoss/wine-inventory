@@ -270,6 +270,10 @@ export async function applyIngestedInvoiceCore(
           materialId = m.id;
           stockUnit = coerceStockUnit(m.stockUnit);
         } else {
+          // Plan 072: pre-fill the created material's setup fields from the intake — the vendor (we always
+          // capture it), the AI-parsed brand/product/generic names, and the human-confirmed pack size — so the
+          // expendables edit view isn't blank after an ingest.
+          const ex = extracted?.lines?.[line.lineNo - 1];
           const created = await createStockMaterialCore(
             actor,
             {
@@ -278,11 +282,22 @@ export async function applyIngestedInvoiceCore(
               category: line.resolvedCategory ? coerceMaterialCategory(line.resolvedCategory) : undefined,
               stockUnit: stockUnitForNewLine(line.unitRaw),
               openingQty: 0, // create at ZERO stock; the receiveSupplyCore below emits the costed lot + A/P (unified path)
+              vendorId, // link the intake's vendor
+              genericName: ex?.genericName ?? null,
+              brand: ex?.brand ?? null,
+              brandName: ex?.productName ?? null,
             },
             tx,
           );
           materialId = created.id;
           stockUnit = coerceStockUnit(created.stockUnit);
+          // Store the human-confirmed pack size as the material's package metadata. NOT via the core's package
+          // path (which would seed a duplicate opening lot) — a direct metadata write; receiveSupplyCore below
+          // records the real stock. packageUnit stays the invoice unit ("kg"); stockUnit is the canonical unit.
+          const pk = parsePackagingUnit(line.unitRaw);
+          if (pk.amount > 0 && pk.unit) {
+            await tx.cellarMaterial.update({ where: { id: materialId }, data: { packageAmount: pk.amount, packageUnit: pk.unit } });
+          }
         }
 
         // normalize invoice qty/unit → stock qty + per-stock-unit landed cost. A cross-dimension unit is a
