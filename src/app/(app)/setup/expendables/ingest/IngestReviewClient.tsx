@@ -428,14 +428,16 @@ function LineRow({
   // ("250 g"), which the apply core normalizes. Red border flags a missing/invalid pack on an intaken line.
   const pack = packInputValues(line.unitRaw);
   const packInvalid = decision !== "skip" && !packFieldsValid(line.unitRaw);
-  const invalidStyle = packInvalid ? { borderColor: "var(--danger)" } : {};
+  // Always set the FULL `border` shorthand (never borderColor) on both fields — mixing shorthand +
+  // non-shorthand for the same property trips a React re-render warning when the invalid state toggles.
+  const packBorder = packInvalid ? "1px solid var(--danger)" : "1px solid var(--border-strong)";
   const unit = (
     <div style={{ display: "flex", gap: 4 }}>
-      <Input aria-label="Pack amount" value={pack.amount} disabled={disabled} inputMode="decimal" placeholder="amt"
-        style={{ width: 62, ...invalidStyle }}
-        onChange={(e) => onSaveLine(doc.id, line.id, { unitRaw: composePackUnitRaw(e.target.value, pack.unit) })} />
+      <input aria-label="Pack amount" value={pack.amount} disabled={disabled} inputMode="decimal" placeholder="amt"
+        onChange={(e) => onSaveLine(doc.id, line.id, { unitRaw: composePackUnitRaw(e.target.value, pack.unit) })}
+        style={{ width: 62, minWidth: 0, height: 40, padding: "0 8px", borderRadius: "var(--radius-md)", border: packBorder, background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)" }} />
       <select aria-label="Pack unit" value={pack.unit} disabled={disabled}
-        style={{ ...selectStyle, flex: 1, minWidth: 62, ...invalidStyle }}
+        style={{ ...selectStyle, flex: 1, minWidth: 62, border: packBorder }}
         onChange={(e) => onSaveLine(doc.id, line.id, { unitRaw: composePackUnitRaw(pack.amount, e.target.value) })}>
         <option value="">unit…</option>
         {PACK_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
