@@ -23,7 +23,8 @@ function line(over: Partial<ReviewLine> = {}): ReviewLine {
     descriptionRaw: over.descriptionRaw ?? "Widget",
     vendorItemCodeRaw: over.vendorItemCodeRaw ?? null,
     qty: over.qty ?? null,
-    unitRaw: over.unitRaw ?? null,
+    // Default to a valid pack size so tests not about the pack gate stay green; override with null to test it.
+    unitRaw: "unitRaw" in over ? (over.unitRaw ?? null) : "1 kg",
     unitPrice: over.unitPrice ?? null,
     lineTotal: over.lineTotal ?? null,
     lotNoRaw: over.lotNoRaw ?? null,
@@ -137,6 +138,40 @@ describe("canConfirmDoc", () => {
   });
   it("blocks an already-applied doc", () => {
     expect(canConfirmDoc(doc({ status: "applied", lines: [line()] })).ok).toBe(false);
+  });
+  it("blocks a receipt line with no/ambiguous pack size (the accounting-accuracy gate)", () => {
+    // The exact Crush2Cellar bug: extraction gave "Each" → must not confirm until amount+unit are set.
+    expect(canConfirmDoc(doc({ lines: [line({ unitRaw: "Each" })] })).ok).toBe(false);
+    expect(canConfirmDoc(doc({ lines: [line({ unitRaw: null })] })).ok).toBe(false);
+    expect(canConfirmDoc(doc({ lines: [line({ unitRaw: "kg" })] })).ok).toBe(false); // unit but no amount
+    expect(canConfirmDoc(doc({ lines: [line({ unitRaw: "250 g" })] })).ok).toBe(true); // amount + unit → ok
+    // a skipped line with a bad pack size does NOT block (it's not intaken)
+    expect(canConfirmDoc(doc({ lines: [line({ unitRaw: "Each", matchDecision: "skip" }), line({ lineNo: 2, unitRaw: "1 kg" })] })).ok).toBe(true);
+  });
+});
+
+describe("pack size (amount + unit) helpers", () => {
+  it("parsePackFields splits amount + unit strictly (bare count word → amount null)", async () => {
+    const { parsePackFields, packFieldsValid, packInputValues, composePackUnitRaw } = await import("@/app/(app)/setup/expendables/ingest/ingest-review-model");
+    expect(parsePackFields("250 g")).toEqual({ amount: 250, unit: "g" });
+    expect(parsePackFields("1 kg")).toEqual({ amount: 1, unit: "kg" });
+    expect(parsePackFields("Each")).toEqual({ amount: null, unit: "each" });
+    expect(parsePackFields(null)).toEqual({ amount: null, unit: "" });
+
+    expect(packFieldsValid("250 g")).toBe(true);
+    expect(packFieldsValid("2 mL")).toBe(true);
+    expect(packFieldsValid("Each")).toBe(false);
+    expect(packFieldsValid("kg")).toBe(false);
+    expect(packFieldsValid("0 g")).toBe(false);
+    expect(packFieldsValid("5 widgets")).toBe(false); // unrecognized unit
+
+    // prefill: a recognized unit shows; an ambiguous "Each" shows BLANK (must be chosen)
+    expect(packInputValues("250 g")).toEqual({ amount: "250", unit: "g" });
+    expect(packInputValues("Each")).toEqual({ amount: "", unit: "" });
+
+    expect(composePackUnitRaw("250", "g")).toBe("250 g");
+    expect(composePackUnitRaw("", "")).toBeNull();
+    expect(composePackUnitRaw("1", "kg")).toBe("1 kg");
   });
 });
 

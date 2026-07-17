@@ -58,6 +58,52 @@ export function isReceiptDoc(docType: ReviewDocType): boolean {
   return docType === "invoice" || docType === "proforma";
 }
 
+// ── pack size (amount + unit) — the accounting-accuracy fix ──
+// A line's `unitRaw` is a single "amount unit" string ("250 g", "1 kg") the apply core normalizes. Extraction
+// often gives an ambiguous bare "Each", which silently became "1 unit" — wrong stock + cost. The review screen
+// now captures an explicit Amount + a Unit dropdown, and Confirm is BLOCKED until BOTH are set for every
+// receipt line, so pack size is never guessed.
+
+export const PACK_UNITS = ["g", "kg", "mg", "oz", "lb", "mL", "L", "gal", "fl oz", "unit"] as const;
+export type PackUnit = (typeof PACK_UNITS)[number];
+
+/** Strict split of a `unitRaw` string into a pack amount + unit. Does NOT collapse "Each"/"ea" into a unit —
+ *  a bare count word yields {amount:null} so it fails validation and forces the human to enter a real size. */
+export function parsePackFields(unitRaw: string | null | undefined): { amount: number | null; unit: string } {
+  const s = String(unitRaw ?? "").trim();
+  const m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*(.*)$/);
+  if (!m) return { amount: null, unit: s.toLowerCase() };
+  const amount = Number(m[1]);
+  return { amount: Number.isFinite(amount) ? amount : null, unit: m[2].trim().toLowerCase() };
+}
+
+/** Match a parsed unit to a canonical PACK_UNITS value (case-insensitive), or null. */
+export function canonicalPackUnit(unit: string | null | undefined): PackUnit | null {
+  const u = String(unit ?? "").trim().toLowerCase();
+  return (PACK_UNITS as readonly string[]).find((p) => p.toLowerCase() === u) as PackUnit | undefined ?? null;
+}
+
+/** Is a line's pack size fully specified (amount > 0 AND a recognized unit)? The Confirm gate for a receipt. */
+export function packFieldsValid(unitRaw: string | null | undefined): boolean {
+  const { amount, unit } = parsePackFields(unitRaw);
+  return amount != null && amount > 0 && canonicalPackUnit(unit) != null;
+}
+
+/** Compose the stored `unitRaw` from the review screen's separate Amount + Unit inputs. Blank when neither. */
+export function composePackUnitRaw(amount: string | number | null | undefined, unit: string | null | undefined): string | null {
+  const a = amount == null ? "" : String(amount).trim();
+  const u = String(unit ?? "").trim();
+  return [a, u].filter(Boolean).join(" ") || null;
+}
+
+/** The Amount + Unit to PREFILL the two inputs from a stored `unitRaw` — but only prefill the unit when it's a
+ *  recognized pack unit, so an ambiguous "Each" shows blank and must be chosen (never silently accepted). */
+export function packInputValues(unitRaw: string | null | undefined): { amount: string; unit: string } {
+  const { amount, unit } = parsePackFields(unitRaw);
+  const canonical = canonicalPackUnit(unit);
+  return { amount: amount != null ? String(amount) : "", unit: canonical ?? "" };
+}
+
 /** The effective dedup decision for a line (undecided defaults to "new", mirroring the apply core). */
 export function effectiveDecision(line: Pick<ReviewLine, "matchDecision">): ReviewDecision {
   return line.matchDecision ?? "new";
@@ -114,6 +160,11 @@ export function canConfirmDoc(doc: Pick<ReviewDoc, "docType" | "landedReceipt" |
   for (const l of active) {
     if (effectiveDecision(l) === "existing" && !l.matchedMaterialId) {
       reasons.push(`Line ${l.lineNo} is set to "add to existing" but no material is chosen.`);
+    }
+    // Accounting-accuracy gate: every intaken line needs an explicit pack amount + unit (e.g. 250 g, 1 kg) so
+    // stock quantity and per-unit cost are correct — never a guessed "1 unit".
+    if (!packFieldsValid(l.unitRaw)) {
+      reasons.push(`Line ${l.lineNo} needs a pack amount and unit (e.g. 250 g, 1 kg) so stock + cost are accurate.`);
     }
   }
   return { ok: reasons.length === 0, reasons };

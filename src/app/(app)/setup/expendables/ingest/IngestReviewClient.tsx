@@ -16,6 +16,7 @@ import {
 import {
   isReceiptDoc, effectiveDecision, landedPreview, isForeignCurrency, canConfirmDoc,
   buildPrecommitSummary, summarySentence,
+  PACK_UNITS, packInputValues, composePackUnitRaw, packFieldsValid,
   type ReviewDoc, type ReviewLine, type ReviewDocType,
 } from "./ingest-review-model";
 
@@ -252,8 +253,8 @@ function ReceiptPanel({
       {/* line grid */}
       <div style={{ marginTop: 16 }}>
         {!narrow ? (
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(160px,2fr) 70px 90px 110px 110px minmax(200px,1.6fr) 110px", gap: 8, padding: "0 4px 6px", fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>
-            <span>Description</span><span>Qty</span><span>Unit</span><span>Unit price</span><span>Lot no.</span><span>Match</span><span style={{ textAlign: "right" }}>Landed</span>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(160px,2fr) 60px 140px 100px 100px minmax(190px,1.5fr) 100px", gap: 8, padding: "0 4px 6px", fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>
+            <span>Description</span><span>Qty</span><span>Pack size</span><span>Unit price</span><span>Lot no.</span><span>Match</span><span style={{ textAlign: "right" }}>Landed</span>
           </div>
         ) : null}
         <div style={{ display: "flex", flexDirection: "column", gap: narrow ? 12 : 4 }}>
@@ -422,7 +423,25 @@ function LineRow({
 
   const desc = <Input aria-label="Description" value={line.descriptionRaw} disabled={disabled} onChange={(e) => onSaveLine(doc.id, line.id, { descriptionRaw: e.target.value })} />;
   const qty = <Input aria-label="Quantity" value={line.qty ?? ""} disabled={disabled} inputMode="decimal" onChange={(e) => onSaveLine(doc.id, line.id, { qty: e.target.value.trim() === "" ? null : Number(e.target.value) })} />;
-  const unit = <Input aria-label="Unit" value={line.unitRaw ?? ""} disabled={disabled} placeholder="e.g. 25 kg" onChange={(e) => onSaveLine(doc.id, line.id, { unitRaw: e.target.value || null })} />;
+  // Pack size = an explicit Amount + Unit (dropdown), REQUIRED for a receipt line. Extraction's ambiguous
+  // "Each" shows blank, forcing a real size so stock qty + cost are never guessed. Composed into unitRaw
+  // ("250 g"), which the apply core normalizes. Red border flags a missing/invalid pack on an intaken line.
+  const pack = packInputValues(line.unitRaw);
+  const packInvalid = decision !== "skip" && !packFieldsValid(line.unitRaw);
+  const invalidStyle = packInvalid ? { borderColor: "var(--danger)" } : {};
+  const unit = (
+    <div style={{ display: "flex", gap: 4 }}>
+      <Input aria-label="Pack amount" value={pack.amount} disabled={disabled} inputMode="decimal" placeholder="amt"
+        style={{ width: 62, ...invalidStyle }}
+        onChange={(e) => onSaveLine(doc.id, line.id, { unitRaw: composePackUnitRaw(e.target.value, pack.unit) })} />
+      <select aria-label="Pack unit" value={pack.unit} disabled={disabled}
+        style={{ ...selectStyle, flex: 1, minWidth: 62, ...invalidStyle }}
+        onChange={(e) => onSaveLine(doc.id, line.id, { unitRaw: composePackUnitRaw(pack.amount, e.target.value) })}>
+        <option value="">unit…</option>
+        {PACK_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+      </select>
+    </div>
+  );
   const price = <Input aria-label="Unit price" value={line.unitPrice ?? ""} disabled={disabled} inputMode="decimal" iconLeft={symbol} onChange={(e) => onSaveLine(doc.id, line.id, { unitPrice: e.target.value.trim() === "" ? null : Number(e.target.value) })} />;
   const lot = <Input aria-label="Lot number" value={line.lotNoRaw ?? ""} disabled={disabled} onChange={(e) => onSaveLine(doc.id, line.id, { lotNoRaw: e.target.value || null })} />;
 
@@ -431,8 +450,8 @@ function LineRow({
       <div style={{ border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", padding: 12, opacity: decision === "skip" ? 0.6 : 1 }}>
         <div style={{ marginBottom: 8 }}><div style={fieldLabel}>Description</div>{desc}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Qty</div>{qty}</div>
-          <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Unit</div>{unit}</div>
+          <div style={{ flex: "1 1 70px" }}><div style={fieldLabel}>Qty</div>{qty}</div>
+          <div style={{ flex: "1 1 150px" }}><div style={fieldLabel}>Pack size</div>{unit}</div>
           <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Unit price</div>{price}</div>
           <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Lot no.</div>{lot}</div>
         </div>
@@ -446,7 +465,7 @@ function LineRow({
 
   return (
     <div style={{ opacity: decision === "skip" ? 0.6 : 1, padding: "6px 4px", borderTop: "1px solid var(--border-subtle, var(--border-strong))" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(160px,2fr) 70px 90px 110px 110px minmax(200px,1.6fr) 110px", gap: 8, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(160px,2fr) 60px 140px 100px 100px minmax(190px,1.5fr) 100px", gap: 8, alignItems: "center" }}>
         {desc}{qty}{unit}{price}{lot}
         <div>{dedupSelect}</div>
         <div style={{ textAlign: "right" }}>{landedCell}</div>
