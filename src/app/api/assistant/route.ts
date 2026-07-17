@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/dal";
-import { runAssistant, type ChatMessage } from "@/lib/assistant/run";
+import { runAssistant } from "@/lib/assistant/run";
+import { parseAndWindowMessages } from "@/lib/assistant/message-window";
 import type { AssistantEvent } from "@/lib/assistant/assistant-events";
 import type { Prisma } from "@prisma/client";
 import {
@@ -16,24 +17,6 @@ import { generateTitle } from "@/lib/assistant/title";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MAX_MESSAGES = 40;
-const MAX_CONTENT = 8000;
-
-function parseMessages(raw: unknown): ChatMessage[] | null {
-  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_MESSAGES) return null;
-  const out: ChatMessage[] = [];
-  for (const m of raw) {
-    if (!m || typeof m !== "object") return null;
-    const role = (m as { role?: unknown }).role;
-    const content = (m as { content?: unknown }).content;
-    if (role !== "user" && role !== "assistant") return null;
-    if (typeof content !== "string" || content.length === 0 || content.length > MAX_CONTENT) return null;
-    out.push({ role, content });
-  }
-  if (out[out.length - 1].role !== "user") return null; // must end on a user turn
-  return out;
-}
-
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user || user.banned || user.mustChangePassword) {
@@ -47,8 +30,9 @@ export async function POST(req: Request) {
     return Response.json({ error: "Bad request body." }, { status: 400 });
   }
 
-  const messages = parseMessages((body as { messages?: unknown })?.messages);
-  if (!messages) return Response.json({ error: "Invalid messages." }, { status: 400 });
+  const parsed = parseAndWindowMessages((body as { messages?: unknown })?.messages);
+  if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
+  const messages = parsed.messages;
 
   // Optional: resume an existing conversation. Validated for ownership below;
   // anything unrecognized is treated as a new conversation.
