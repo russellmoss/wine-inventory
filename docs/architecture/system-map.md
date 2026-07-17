@@ -9,7 +9,7 @@
 - **Cellarhand** — the product's brand (renamed from "BWC Operating System"; assets in `design-system/assets/logos`, wired via `src/components/BrandMark.tsx` + `src/app/{icon.svg,apple-icon.png,manifest.ts}`).
 - **Next.js 16.2** (app router) + **React 19** + **TypeScript** — `src/app/…`
 - **Tailwind v4** — styling via design tokens (see [[DESIGN]]); `src/styles/print.css` for printable work orders.
-- **Prisma ORM → Neon serverless Postgres** — **115 models** in `prisma/schema.prisma` (~3.75k lines).
+- **Prisma ORM → Neon serverless Postgres** — **121 models** in `prisma/schema.prisma` (~3.94k lines).
 - **better-auth** — authentication (`@node-rs/argon2` for password hashing).
 - **Vercel** — hosting. `npm run build` runs `prisma migrate deploy` first, so **deploys apply migrations automatically**.
 - **Sentry** — error monitoring (`instrumentation.ts`, `sentry.*.config.ts`) → auto-opens GitHub issues.
@@ -73,6 +73,12 @@ reversal* through the same operations as the ledger.
   deplete from supply lots and **capitalize into a COGS PACKAGING bucket** via `consume-packaging.ts` +
   `transfer.ts` — same conserve-and-negate discipline as fruit/additives (COST-1/2), reversed append-only
   when a bottling run is reversed. Bottling can run standalone (`/bottling`) or as a governed WO task.
+- **Active-fraction dosing (plan 066, ADR 0005):** when a dose is measured as the delivered ACTIVE
+  compound but the stock is a partial carrier (SO₂ dosed by ppm/mg-L, drawn from KMBS which is 57.6% SO₂),
+  `consumeMaterialCore` takes an optional `activeFraction` and scales the **stock draw + cost up by
+  1/fraction** (deliver 18 g SO₂ → draw 31.25 g KMBS). The dose snapshot (`LotTreatment.computedTotal`)
+  stays the delivered SO₂; conservation (COST-1) holds because draw and cost move together. Guarded by
+  `npm run verify:cost`.
 - Cost is computed largely on read (rollup) — a scale watch-item, see [[scale-register]].
 - **Currency (Phase 037):** one tenant-wide currency (`AppSettings.currency`, from {USD, EUR, NZD, AUD, ZAR, GBP}), set on the Settings "Cost accounting" card. It is a DISPLAY LABEL only — no FX conversion. The pure helper `src/lib/money/currency.ts` (`coerceCurrency`/`currencySymbol`/`formatMoney`) drives the symbol; `CurrencyProvider`/`useCurrency` (`src/components/money/`) push it into client cost inputs (symbol prefix via `Input iconLeft`) + displays, and `getTenantCurrency` feeds server pages. Each `SupplyLot` stamps the currency it was entered under, so changing the setting never re-values history. Orthogonal to `costingPolicyVersion` — a currency change does NOT bump it (D17). TTB excise `taxDollars` intentionally stays `$` (federal statutory USD).
 
@@ -206,7 +212,13 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   + the dose snapshot `LotTreatment.materialName`) shows the preferred name. Intake is the **Add-expendable
   modal** (`/setup/expendables`): generic/brand, vendor+URL, Category, family, and a purchase (package
   amount + unit + total cost) that `deriveOpeningLot` (`src/lib/cost/intake-cost.ts`) converts into the
-  canonical per-stock-unit cost. **Units** live in `src/lib/units/measure.ts` (mass g/mg/kg/oz/lb, volume
+  canonical per-stock-unit cost. **Vendor management (plans 069–070, `src/lib/vendors/`):** suppliers are
+  a first-class per-tenant registry — the existing Phase-15 QBO `Vendor` table + a new `VendorContact` child
+  (RLS + composite FK, Phase-12 checklist) — with `vendorId` FKs on `CellarMaterial` and `SupplyLot`.
+  Expendable intake/edit uses a **mandatory fuzzy `VendorPicker`** (`src/components/vendors/`) with a pinned
+  "+ create new vendor" + URL autofill; `/setup/vendors` is CRUD; the A/P find-or-create reuses the shared
+  vendor cores; a seeded "Unknown / Unspecified" fallback + `scripts/backfill-material-vendors.ts` map legacy
+  rows (0 nulls). The assistant can `create_vendor` / `query_vendors`. **Units** live in `src/lib/units/measure.ts` (mass g/mg/kg/oz/lb, volume
   mL/L/fl oz/gal, count) — imperial converts to the metric canonical at intake AND in the dose path
   (`DOSE_UNIT_LABELS`, `stockConversionFactor`); cross-dimension → UNKNOWN cost (D14), never $0. Adding a
   `MATERIAL_KIND` built-in is still a const edit; the Phase-036 fields are one columns-only migration.
@@ -222,11 +234,23 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
 - **Progressive group completion (plan 054):** a group barrel-down / rack-to-tank can finish in passes
   ("4 now, the rest tomorrow") — `group-rack-progress.ts`/`group-rack-select.ts` complete a subset as one
   reviewable task, per-batch op + LIFO reject, no schema (the attempt model is already N-op-capable).
-- **Surfaces** (`src/app/(app)/work-orders/`): manager issue (`/new`), a **palette builder**, floor-first
-  execution checklist (`/[id]/execute`, offline-tolerant via the Dexie outbox), review/approval queue
-  (`/review`), printable WO (`/[id]/print` + `print.css`), template + task-type admin (`/templates`,
-  `/task-types`), Open|Archive dashboard with a pending-count nav badge. Proven by `npm run verify:work-orders`
-  (+ `verify:work-orders-enhancements`); invariants WORKORDER-1/2/3/4.
+- **Mandatory Lead (plan 070, WORKORDER-5):** every `WorkOrder` has a non-null Lead (`assigneeEmail`,
+  plus `assigneeId` when a real user is known) — the one accountable owner, resolved at the single create
+  chokepoint (`createWorkOrderCore` via `lead-resolve.ts`'s `resolveCreateLead`: explicit Lead passes
+  through, else defaults to the creating actor), so no path (builder, template, composer, recurring,
+  assistant, generic) can produce a Lead-less order. Per-task `assigneeId` stays OPTIONAL. Existing null
+  rows are fixed by `scripts/backfill-work-order-lead.ts`.
+- **Full in-place editing (plan 071, WORKORDER-6):** "Edit" on a WO detail page (admin/developer) reopens
+  the WO in the palette builder pre-populated (`task-to-build.ts` reverse-maps tasks → builder rows), and
+  Save updates it in place — same id/number/history. `updateWorkOrderCore` diffs the PENDING tasks and
+  re-syncs their reservations, keeping status. Executed (any non-PENDING) tasks are LOCKED read-only (they
+  own an immutable ledger op — reverse-to-edit, WORKORDER-6); the two GROUP task types are also locked
+  (builder has no group authoring — documented follow-up). A finalized/CANCELLED WO can't be edited.
+- **Surfaces** (`src/app/(app)/work-orders/`): manager issue (`/new`), a **palette builder** (also `/[id]/edit`
+  for in-place editing), floor-first execution checklist (`/[id]/execute`, offline-tolerant via the Dexie
+  outbox), review/approval queue (`/review`), printable WO (`/[id]/print` + `print.css`), template + task-type
+  admin (`/templates`, `/task-types`), Open|Archive dashboard with a pending-count nav badge. Proven by
+  `npm run verify:work-orders` (+ `verify:work-orders-enhancements`); invariants WORKORDER-1/2/3/4/5/6.
 
 ### 11. Data migration / onboarding import — `src/lib/migration/`
 Batch-imports a winery's **existing** data (vintrace/innovint/CSV) so onboarding doesn't start from zero —
@@ -249,8 +273,26 @@ money/ledger/tenancy/audit — plan 052, gated by `verify:feedback-fence` + `fee
 `/developer` console + the `/bug-triage` skill work the backlog; each item carries a **`triageClass`
 disposition** (DEFECT | MODEL_BEHAVIOR | PRODUCT_GAP | NOT_A_BUG | UNCLEAR, plan 059) the goalie assigns from
 root cause, so the fixer is never fed a product-gap it can't fix. Support-tenant impersonation via
-`developer/support-context.ts`. See [[security-register]] — the fence is the control that lets an autonomous
-agent touch `main` safely.
+`developer/support-context.ts`. **Linear handoff (plan 067, `developer/linear-links.ts`):** a ticket can be
+linked to a Linear issue — tenant-scoped/RLS-protected `FeedbackLinearLink` rows, sanitized handoff payloads,
+conflict-safe link/replace actions, notes-version optimistic concurrency (no Linear API credentials used yet;
+this is the data seam, the browser-facing workflow is the follow-up). See [[security-register]] — the fence is
+the control that lets an autonomous agent touch `main` safely.
+
+### 13. Inbox — notifications + direct messages (Plan 068) — `src/lib/inbox/`
+A Gmail-like per-user inbox. Two halves: (1) **notifications** (`InboxNotification`) — a single choke point
+`emitNotificationTx` writes an in-app row from domain hooks (work-order assigned/status, ticket reply/status,
+DM, system), with a polymorphic **no-FK** `sourceType`/`sourceId` pointer and a DERIVED `href` (no stored URL);
+(2) **direct messages** (`DirectMessageThread`, `DirectMessage`, `DirectMessageAttachment`) — same-tenant
+person-to-person threads. A **channel seam** (`channels.ts`) ships the in-app channel now with an email channel
+as a documented no-op stub (realtime push deferred — the unread badge refreshes on navigation). Isolation is
+the strong part (invariant **INBOX-1**): RESTRICTIVE **per-user** RLS policies keyed on
+`current_setting('app.user_id', true)` AND-ed with `tenant_isolation` make a notification/DM readable ONLY by
+its recipient/thread-participant even within one tenant (a same-tenant actor may INSERT a notification FOR
+another user; reads/updates/deletes are owner-only; unset user id fails closed). App-layer `recipientUserId`
+predicates are defense in depth. Client-safe DTOs in `types.ts`; surfaces at `/inbox`
+(`InboxClient`/`ThreadView`/`ComposeMessage`) with a nav badge in `AppShell`. Proven by
+`npm run verify:inbox-isolation`. See [[security-register]].
 
 ## How a typical write flows
 1. UI (or the assistant) calls a **server action** — or a **work-order task is completed**, which builds the same core input.
@@ -259,4 +301,10 @@ agent touch `main` safely.
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-14 (plans 060–061; 115 Prisma models, ~3.77k schema lines): **multi-lot vessel-reading fan-out** — one whole-tank reading writes one `AnalysisPanel` per co-resident lot sharing a `vesselReadingGroupId` (per-tenant unique = idempotent; vessel-scoped dedup via `coalesce`), the one schema change this cycle (nullable column + two indexes, no RLS change); **multi-vessel maintenance consolidation** (ADR 0004) — "clean B1–B60" is ONE reviewable MAINTENANCE task with members in `plannedPayload.groupActivity`, all-at-once completion + `undoMaintenanceTaskCore`, WORKORDER-3 holds per-event. Prior refresh 2026-07-12 (plans 053–059): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, plan-059 `triageClass`). Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-17 (plans 066–071; 121 Prisma models, ~3.94k schema lines): **inbox** (§13) — per-user
+notifications + direct messages with a channel seam and RESTRICTIVE per-user RLS (INBOX-1); **vendor management**
+(§10) — first-class `Vendor`/`VendorContact` registry + `vendorId` on materials/supply lots + mandatory
+`VendorPicker`; **work-order mandatory Lead** (WORKORDER-5) + **full in-place editing** reopening the builder
+(WORKORDER-6, `update-core.ts`/`task-to-build.ts`); **SO₂/KMBS active-fraction dosing** (§4, ADR 0005) — draw +
+cost scaled by 1/fraction while the dose snapshot stays delivered SO₂; **Linear handoff** data seam on the
+developer loop (§12). Prior refresh 2026-07-14 (plans 060–061): **multi-lot vessel-reading fan-out** — one whole-tank reading writes one `AnalysisPanel` per co-resident lot sharing a `vesselReadingGroupId` (per-tenant unique = idempotent; vessel-scoped dedup via `coalesce`), the one schema change this cycle (nullable column + two indexes, no RLS change); **multi-vessel maintenance consolidation** (ADR 0004) — "clean B1–B60" is ONE reviewable MAINTENANCE task with members in `plannedPayload.groupActivity`, all-at-once completion + `undoMaintenanceTaskCore`, WORKORDER-3 holds per-event. Prior refresh 2026-07-12 (plans 053–059): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, plan-059 `triageClass`). Ask Claude to refresh after each phase.*

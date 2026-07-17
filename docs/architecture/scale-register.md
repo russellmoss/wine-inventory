@@ -194,5 +194,32 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟢 (record-only, no ledger fold; barrel-range scale; proven by `verify:group-maintenance`. If
   ranges get large, revisit the deferred progressive/per-batch completion).
 
+### Inbox notifications are one row per recipient per event (plan 068, inbox)
+- **Choice:** `emitNotificationTx` writes one `InboxNotification` row per recipient, inside the domain
+  event's own tx. A WO assigned to a Lead, a ticket reply, a DM each fan a row to each recipient; the unread
+  badge is a per-user count and the inbox list is a `(createdAt, id)` cursor page. In-app channel only (email
+  is a no-op stub; realtime push deferred — the badge refreshes on navigation).
+- **Fine until:** winery-scale user counts (tens of users) and per-user notification volumes that a cursored
+  list + unread count handle comfortably.
+- **What breaks at scale:** a broadcast-style event to many recipients multiplies rows per event; a hot unread
+  `count()` per page load and an ever-growing per-user backlog (no retention/archival job yet) inflate reads;
+  navigation-only badge refresh means staleness under heavy multi-device use.
+- **Tripwire:** unread-count latency climbing; notification rows per user trending into the thousands with no
+  prune/retention; a future fan-out to org-wide recipients; demand for realtime (SSE/websocket) push.
+- **Status:** 🟢 (per-user rows, cursored reads, in-app only; if volumes grow add retention + a count cache,
+  and wire the deferred email/realtime channels through the existing `channels.ts` seam).
+
+### Vendor picker fuzzy search loads the tenant's vendor set (plans 069–070, vendors)
+- **Choice:** the mandatory `VendorPicker` fuzzy-matches against the tenant's vendor registry (reusing the
+  `similarity` engine, no new dep); `Vendor`/`VendorContact` are per-tenant + RLS'd, with `vendorId` FKs on
+  `CellarMaterial`/`SupplyLot`.
+- **Fine until:** a normal winery's supplier list (tens to low-hundreds of vendors) — an in-memory fuzzy scan
+  is trivial at that size.
+- **What breaks at scale:** a tenant with thousands of vendors loaded for client-side fuzzy match inflates the
+  payload + scan; the A/P find-or-create doing a per-name lookup on a large set adds read pressure.
+- **Tripwire:** vendor counts per tenant trending into the thousands; picker payload/scan latency climbing.
+- **Status:** 🟢 (winery-scale supplier lists; if a tenant's vendor set gets large, move the fuzzy match
+  server-side / paginate the picker).
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

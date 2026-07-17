@@ -283,6 +283,36 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (app-layer authz + JSON members = no new RLS surface; guarded by `verify:group-maintenance`
   and the `analysis_panel` RLS policy + per-tenant unique).
 
+## Inbox: per-user RLS below the tenant fence (plan 068, INBOX-1)
+- **What:** notifications (`InboxNotification`) and direct messages (`DirectMessageThread`/`DirectMessage`/
+  `DirectMessageAttachment`) introduce a **second isolation dimension inside a tenant** — a message is
+  readable ONLY by its recipient/thread-participant, not by every same-tenant user. Enforced by
+  **RESTRICTIVE per-user RLS** policies keyed on `current_setting('app.user_id', true)` that AND with the
+  existing `tenant_isolation` policy: SELECT/UPDATE/DELETE are owner-only; INSERT is tenant-only (a
+  same-tenant actor may emit a notification FOR another user, but can never read it back). Unset `app.user_id`
+  **fails closed**. App-layer `recipientUserId` predicates on every read are defense in depth.
+- **Boundary / dependency:** correctness now depends on `app.user_id` being set on the connection for every
+  inbox read — a code path that reads inbox tables without the user id set gets **nothing** (fail-closed), which
+  is safe but will look like an empty inbox bug. The DM write policies (`..._inbox_dm_write_policies`) gate who
+  may append to a thread.
+- **Tripwire:** a new inbox read/mutator that doesn't run with `app.user_id` set; a policy on a new inbox table
+  that is PERMISSIVE (OR) instead of RESTRICTIVE (AND) with tenant_isolation; emitting a notification bypassing
+  `emitNotificationTx`; a polymorphic `sourceType/sourceId` treated as a trusted FK. Covered by
+  `npm run verify:inbox-isolation`.
+- **Status:** 🟢 (built + guarded by `verify:inbox-isolation`; the tenant dimension is auto-covered by
+  TENANT-1/`verify:tenant-isolation`).
+
+## Vendor registry + Linear handoff — new tenant-scoped surfaces on the Phase-12 checklist (plans 067, 069–070)
+- **What:** `VendorContact` (plans 069–070) and `FeedbackLinearLink` (plan 067) are new per-tenant tables added
+  to the Phase-12 checklist verbatim — composite FKs, per-tenant uniques, `ENABLE`+`FORCE` RLS with a
+  `tenant_isolation` policy (USING + WITH CHECK, fail-closed), and app_rls DML grants. The Linear handoff
+  **sanitizes** its payload before handing off and uses notes-version optimistic concurrency; **no Linear API
+  credentials are used yet** — it is the data seam only, so there is no outbound-secret surface to protect today.
+- **Tripwire:** a new vendor/link table or column that skips a step of the Phase-12 checklist (missing RLS,
+  non-composite cross-tenant FK, global unique not made per-tenant); wiring real Linear API credentials without
+  routing the secret through the envelope-encryption pattern used for QBO/Commerce7.
+- **Status:** 🟢 (built to the checklist; covered by `verify:tenant-isolation` + `verify:developer-linear-link`).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_
