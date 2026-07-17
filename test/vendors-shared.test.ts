@@ -5,6 +5,12 @@ import {
   normalizeVendorUrl,
   isLikelyEmail,
   matchVendorsByName,
+  validateVendorMerge,
+  vendorMergeErrorMessage,
+  resolveMergedExternalVendorId,
+  vendorHasBlockingReferences,
+  describeVendorUsage,
+  type VendorUsage,
 } from "@/lib/vendors/vendors-shared";
 
 describe("sanitizeVendor", () => {
@@ -94,5 +100,77 @@ describe("matchVendorsByName", () => {
   it("returns [] for no match / blank", () => {
     expect(matchVendorsByName(all, "zzz")).toEqual([]);
     expect(matchVendorsByName(all, "")).toEqual([]);
+  });
+});
+
+// ── Plan 072: merge / remove planning ──
+
+describe("validateVendorMerge", () => {
+  it("allows a normal loser→survivor merge", () => {
+    expect(validateVendorMerge({ loserId: "a", survivorId: "b" })).toBeNull();
+  });
+  it("rejects merging a vendor into itself", () => {
+    expect(validateVendorMerge({ loserId: "a", survivorId: "a" })).toBe("SAME_VENDOR");
+  });
+  it("rejects missing ids", () => {
+    expect(validateVendorMerge({ loserId: "", survivorId: "b" })).toBe("MISSING_LOSER");
+    expect(validateVendorMerge({ loserId: "a", survivorId: "  " })).toBe("MISSING_SURVIVOR");
+    expect(validateVendorMerge({ loserId: null, survivorId: undefined })).toBe("MISSING_LOSER");
+  });
+  it("refuses to make the Unknown fallback vendor a loser", () => {
+    expect(validateVendorMerge({ loserId: "unk", survivorId: "b", unknownVendorId: "unk" })).toBe("LOSER_IS_UNKNOWN");
+    // Unknown can still be the SURVIVOR (merge junk into it).
+    expect(validateVendorMerge({ loserId: "a", survivorId: "unk", unknownVendorId: "unk" })).toBeNull();
+  });
+  it("maps every error to a user-safe message", () => {
+    for (const e of ["SAME_VENDOR", "LOSER_IS_UNKNOWN", "MISSING_LOSER", "MISSING_SURVIVOR"] as const) {
+      expect(vendorMergeErrorMessage(e)).toMatch(/\S/);
+    }
+  });
+});
+
+describe("resolveMergedExternalVendorId", () => {
+  it("keeps the survivor's mapping when it has one", () => {
+    expect(resolveMergedExternalVendorId({ externalVendorId: "S1" }, { externalVendorId: null })).toEqual({
+      value: "S1", changed: false, conflict: false,
+    });
+  });
+  it("carries the loser's mapping forward when the survivor is unmapped", () => {
+    expect(resolveMergedExternalVendorId({ externalVendorId: null }, { externalVendorId: "L1" })).toEqual({
+      value: "L1", changed: true, conflict: false,
+    });
+  });
+  it("flags a conflict when both map to DIFFERENT QBO vendors (survivor wins, admin must ack)", () => {
+    expect(resolveMergedExternalVendorId({ externalVendorId: "S1" }, { externalVendorId: "L1" })).toEqual({
+      value: "S1", changed: false, conflict: true,
+    });
+  });
+  it("is not a conflict when both map to the SAME QBO vendor", () => {
+    expect(resolveMergedExternalVendorId({ externalVendorId: "X" }, { externalVendorId: "X" })).toEqual({
+      value: "X", changed: false, conflict: false,
+    });
+  });
+  it("treats blank/whitespace mappings as unmapped", () => {
+    expect(resolveMergedExternalVendorId({ externalVendorId: "  " }, { externalVendorId: "L1" })).toEqual({
+      value: "L1", changed: true, conflict: false,
+    });
+  });
+});
+
+describe("vendorHasBlockingReferences / describeVendorUsage", () => {
+  const zero: VendorUsage = { materials: 0, lots: 0, apEvents: 0, contacts: 0 };
+  it("contacts alone never block a removal (they cascade)", () => {
+    expect(vendorHasBlockingReferences({ ...zero, contacts: 3 })).toBe(false);
+  });
+  it("any material/lot/bill blocks a removal", () => {
+    expect(vendorHasBlockingReferences({ ...zero, materials: 1 })).toBe(true);
+    expect(vendorHasBlockingReferences({ ...zero, lots: 1 })).toBe(true);
+    expect(vendorHasBlockingReferences({ ...zero, apEvents: 1 })).toBe(true);
+  });
+  it("describes what will move, pluralizing correctly", () => {
+    expect(describeVendorUsage({ materials: 1, lots: 2, apEvents: 0, contacts: 1 })).toBe(
+      "1 material, 2 supply lots, 1 contact",
+    );
+    expect(describeVendorUsage(zero)).toBe("nothing");
   });
 });
