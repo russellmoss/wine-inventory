@@ -140,3 +140,63 @@ export async function putPrivateImage(
 export async function getPrivateBlob(blobUrl: string) {
   return get(blobUrl, { access: "private" });
 }
+
+// Plan 072 Unit 3 (invoice/document ingestion) — additive document intake on top of the image path.
+// Ingestion accepts a pile of PDFs AND images; PDFs are stored verbatim (never metadata-stripped —
+// stripping is an image-only concern and would corrupt a PDF), images reuse the validate+strip path.
+
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_DOCUMENTS_PER_REQUEST = 10;
+
+export type ValidatedDocument = {
+  bytes: Buffer;
+  contentType: "application/pdf" | "image/png" | "image/jpeg";
+  sha256: string;
+};
+
+/** True when the bytes begin with the "%PDF-" magic marker. */
+function isPdf(input: Buffer): boolean {
+  return input.length >= 5 && input.subarray(0, 5).toString("ascii") === "%PDF-";
+}
+
+/** Validate an ingestion document — a PDF (verbatim, size-capped, magic-byte checked) or a PNG/JPEG
+ *  image (reuses validateAndStripImage). `declaredType` is the client-supplied MIME hint; the actual
+ *  bytes are always the source of truth. Throws with a clear message on any rejection. */
+export function validateDocument(input: Buffer, declaredType?: string | null): ValidatedDocument {
+  const looksPdf = isPdf(input) || declaredType === "application/pdf";
+  if (looksPdf) {
+    // A PDF must actually be a PDF by magic bytes — a mismatched content-type hint can't smuggle
+    // arbitrary bytes past the guard.
+    if (!isPdf(input)) throw new Error("Only real PDF files are accepted.");
+    if (input.length === 0 || input.length > MAX_DOCUMENT_BYTES) {
+      throw new Error("PDF must be 10 MB or smaller.");
+    }
+    return {
+      bytes: input,
+      contentType: "application/pdf",
+      sha256: createHash("sha256").update(input).digest("hex"),
+    };
+  }
+  // Not a PDF → must be a real PNG/JPEG within the image caps (validateAndStripImage throws otherwise).
+  const image = validateAndStripImage(input);
+  return { bytes: image.bytes, contentType: image.contentType, sha256: image.sha256 };
+}
+
+/** Store a validated document as a PRIVATE blob under `<pathPrefix>/<tenantId>/…` and return its url
+ *  plus the content sha256 (the ingestion dedup guard keys on the sha). Server-only — the url is never
+ *  handed to the client; downloads go through an authed proxy route. */
+export async function putPrivateDocument(
+  pathPrefix: string,
+  tenantId: string,
+  safeName: string,
+  bytes: Buffer,
+  contentType: "application/pdf" | "image/png" | "image/jpeg",
+): Promise<{ url: string; sha256: string }> {
+  const ext = contentType === "application/pdf" ? "pdf" : contentType === "image/png" ? "png" : "jpg";
+  const blob = await put(
+    `${pathPrefix}/${tenantId}/${Date.now()}-${safeName.replace(/\.[^.]+$/, "")}.${ext}`,
+    bytes,
+    { access: "private", addRandomSuffix: true, contentType },
+  );
+  return { url: blob.url, sha256: createHash("sha256").update(bytes).digest("hex") };
+}
