@@ -98,6 +98,7 @@ import { fileFeedbackTool } from "./tools/file-feedback";
 import { queryMaterialsTool } from "./tools/query-materials";
 import { createVendorTool } from "./tools/create-vendor";
 import { queryVendorsTool } from "./tools/query-vendors";
+import { ingestDocumentsTool } from "./tools/ingest-documents";
 
 const ALL_TOOLS: AssistantTool[] = [
   queryBrixTool,
@@ -158,6 +159,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryCalculationHistoryTool,
   createMaterialTool,
   createVendorTool,
+  ingestDocumentsTool,
   receiveSupplyTool,
   setMaterialActiveTool,
   pullSampleTool,

@@ -32,6 +32,7 @@ const UNCOVERED_OK: Record<string, string> = {
   db_update: "generic CRUD catch-all",
   db_delete: "generic CRUD catch-all",
   save_field_report: "large structured form payload — evaluate via the field-report form flow, not a one-liner",
+  ingest_documents: "args are client-injected uploaded-blob references (not NL-derivable); the extraction + per-line review is exercised end-to-end by verify:ingest + the Unit 12 acceptance suite, not a one-liner utterance",
 };
 
 function schemaOf(tool: AssistantTool): { props: Record<string, { type?: string }>; required: string[] } {
