@@ -10,6 +10,7 @@ import {
   resolveMergedExternalVendorId,
   vendorHasBlockingReferences,
   describeVendorUsage,
+  findDuplicateVendorGroups,
   type VendorUsage,
 } from "@/lib/vendors/vendors-shared";
 
@@ -172,5 +173,38 @@ describe("vendorHasBlockingReferences / describeVendorUsage", () => {
       "1 material, 2 supply lots, 1 contact",
     );
     expect(describeVendorUsage(zero)).toBe("nothing");
+  });
+});
+
+describe("findDuplicateVendorGroups", () => {
+  it("groups a prefix/equal normalized-name family (Scott Labs ↔ Scott Laboratories)", () => {
+    const vendors = [
+      { id: "a", name: "Scott Labs" },
+      { id: "b", name: "Scott Laboratories" },
+      { id: "c", name: "Gusmer" },
+    ];
+    const groups = findDuplicateVendorGroups(vendors);
+    expect(groups.length).toBe(1);
+    expect(groups[0].map((v) => v.id).sort()).toEqual(["a", "b"]);
+  });
+  it("treats case/punctuation/whitespace as the same name", () => {
+    const groups = findDuplicateVendorGroups([
+      { id: "a", name: "BSG" },
+      { id: "b", name: "b.s.g." },
+    ]);
+    expect(groups[0].map((v) => v.id).sort()).toEqual(["a", "b"]);
+  });
+  it("returns no groups when every vendor is distinct", () => {
+    expect(findDuplicateVendorGroups([
+      { id: "a", name: "Scott Labs" },
+      { id: "b", name: "Gusmer" },
+    ])).toEqual([]);
+  });
+  it("does not group unrelated names that merely share a word", () => {
+    // "Lab Supply Co" and "Scott Labs" don't have a prefix relationship on normalized keys.
+    expect(findDuplicateVendorGroups([
+      { id: "a", name: "Scott Labs" },
+      { id: "b", name: "Lab Supply Co" },
+    ])).toEqual([]);
   });
 });

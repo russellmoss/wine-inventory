@@ -97,6 +97,7 @@ import { recordBulkWineCostTool } from "./tools/record-bulk-wine-cost";
 import { fileFeedbackTool } from "./tools/file-feedback";
 import { queryMaterialsTool } from "./tools/query-materials";
 import { createVendorTool } from "./tools/create-vendor";
+import { mergeVendorsTool } from "./tools/merge-vendors";
 import { queryVendorsTool } from "./tools/query-vendors";
 
 const ALL_TOOLS: AssistantTool[] = [
@@ -158,6 +159,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryCalculationHistoryTool,
   createMaterialTool,
   createVendorTool,
+  mergeVendorsTool,
   receiveSupplyTool,
   setMaterialActiveTool,
   pullSampleTool,

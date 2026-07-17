@@ -262,6 +262,53 @@ export function vendorHasBlockingReferences(usage: VendorUsage): boolean {
   return usage.materials > 0 || usage.lots > 0 || usage.apEvents > 0;
 }
 
+/** Length of the shared leading run of two strings. */
+function commonPrefixLen(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return i;
+}
+
+/**
+ * True when two normalized vendor names look like the same supplier under two spellings. Catches
+ * "Scott Labs" vs "Scott Laboratories" ("scottlabs" / "scottlaboratories" — NOT a clean prefix, since
+ * "Labs" adds an 's', so we use a shared-leading-run RATIO) and "Gusmer" vs "Gusmer Enterprises", while
+ * NOT matching "Scott Labs" vs "Scott Valley" (short shared run relative to length). Conservative — a
+ * hint, not an auto-merge. Pure.
+ */
+export function vendorNamesLookDuplicate(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const lcp = commonPrefixLen(a, b);
+  return lcp >= 4 && lcp >= 0.6 * Math.min(a.length, b.length);
+}
+
+/**
+ * Group ACTIVE vendors that look like duplicates of each other by normalized name (case/punctuation/
+ * whitespace-insensitive). Powers the assistant's "you may have duplicate vendors" hint. Pure; returns
+ * groups of 2+ (each vendor lands in at most one group, anchored on the first occurrence).
+ */
+export function findDuplicateVendorGroups<T extends { id: string; name: string }>(vendors: readonly T[]): T[][] {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const withKey = vendors.map((v) => ({ v, k: norm(v.name) })).filter((x) => x.k.length > 0);
+  const used = new Set<string>();
+  const groups: T[][] = [];
+  for (let i = 0; i < withKey.length; i++) {
+    if (used.has(withKey[i].v.id)) continue;
+    const group = [withKey[i].v];
+    for (let j = i + 1; j < withKey.length; j++) {
+      if (used.has(withKey[j].v.id)) continue;
+      if (vendorNamesLookDuplicate(withKey[i].k, withKey[j].k)) {
+        group.push(withKey[j].v);
+        used.add(withKey[j].v.id);
+      }
+    }
+    if (group.length > 1) { used.add(withKey[i].v.id); groups.push(group); }
+  }
+  return groups;
+}
+
 /** Human summary of what a merge will move, for the confirm preview / audit / assistant message. */
 export function describeVendorUsage(usage: VendorUsage): string {
   const parts: string[] = [];
