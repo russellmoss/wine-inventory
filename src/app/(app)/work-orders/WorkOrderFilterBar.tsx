@@ -16,12 +16,13 @@ const fld: React.CSSProperties = { height: 40, padding: "0 10px", border: "1px s
 const lbl: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 4 };
 
 export function WorkOrderFilterBar({
-  view, filters, vessels, templates, statuses, allLabel, resultCount,
+  view, filters, vessels, templates, locations, statuses, allLabel, resultCount,
 }: {
   view: "open" | "archive";
   filters: WorkOrderFilters;
   vessels: VesselOption[];
   templates: Template[];
+  locations: { id: string; name: string }[];
   statuses: readonly string[];
   allLabel: string;
   resultCount?: number;
@@ -59,6 +60,12 @@ export function WorkOrderFilterBar({
           <select style={fld} value={draft.templateId ?? ""} onChange={(e) => set("templateId", e.target.value)}>
             <option value="">Any template</option>
             {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+        <label style={lbl}>Location
+          <select style={fld} value={draft.locationId ?? ""} onChange={(e) => set("locationId", e.target.value)}>
+            <option value="">Any location</option>
+            {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </label>
         <label style={lbl}>Assignee<input type="text" style={fld} placeholder="email…" value={draft.assigneeEmail ?? ""} onChange={(e) => set("assigneeEmail", e.target.value)} /></label>

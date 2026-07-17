@@ -52,7 +52,7 @@ function Section({ title, items, tone }: { title: string; items: WorkOrderSummar
   );
 }
 
-export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [], templates = [] }: { dashboard: Dashboard; isAdmin: boolean; filters?: WorkOrderFilters; vessels?: VesselOption[]; templates?: { id: string; name: string }[] }) {
+export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [], templates = [], locations = [] }: { dashboard: Dashboard; isAdmin: boolean; filters?: WorkOrderFilters; vessels?: VesselOption[]; templates?: { id: string; name: string }[]; locations?: { id: string; name: string }[] }) {
   const { buckets, pendingApproval } = dashboard;
   const openCount = buckets.overdue.length + buckets.today.length + buckets.upcoming.length + buckets.unscheduled.length + pendingApproval.length;
   const isEmpty = openCount === 0;
@@ -73,7 +73,7 @@ export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [
 
       <div style={{ marginTop: 14 }}><WorkOrdersTabs active="open" /></div>
 
-      <WorkOrderFilterBar view="open" filters={filters} vessels={vessels} templates={templates} statuses={OPEN_STATUSES} allLabel="All open" resultCount={openCount} />
+      <WorkOrderFilterBar view="open" filters={filters} vessels={vessels} templates={templates} locations={locations} statuses={OPEN_STATUSES} allLabel="All open" resultCount={openCount} />
 
       {isEmpty ? (
         <Card style={{ marginTop: 24, textAlign: "center", padding: "48px 24px" }}>
