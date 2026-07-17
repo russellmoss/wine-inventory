@@ -7,17 +7,39 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Full work-order editing — reopen in the builder, save in place (Plan 071) — BUILT, shipping.**
-Branch `claude/work-order-full-edit` (off `origin/main` 4b7d6f4). 8 commits. "Edit" on a WO detail page
-(admin/dev) opens `/work-orders/[id]/edit` — the full palette builder, pre-populated, Save updates the WO in
-place (same id/number/history). Every not-yet-executed task edits fully; executed tasks are locked read-only
-(reverse-to-edit, WORKORDER-6); the two GROUP types are locked with a "recreate/reverse" message (builder has
-no group authoring — documented follow-up). New pure reverse-mapper `task-to-build.ts`; `updateWorkOrderCore`
-(diffs pending tasks, re-syncs per-task reservations on issued WOs, keeps status); builder edit mode;
-setTaskEquipmentCore; WORKORDER-6 guard. Supersedes Plan 070's thin Lead/due card. Green: tsc, vitest 2086,
-verify:work-orders 43, verify:invariants 32/32, ai-native, `next build`. Follow-up: browser-QA the editor.
-Plan 070 (mandatory Lead) already SHIPPED (#210). Prior pending item: run `scripts/backfill-work-order-lead.ts`
-against PROD to fix existing null-Lead WOs incl. #27.
+**Invoice/document ingestion → deterministic expendables & equipment intake (Plan 072) — BUILDING (`/work`).**
+Branch `claude/invoice-ingestion-intake-385010`. Units 1-7 + 9 + 12(STEP1-3) SHIPPED to the branch
+(committed, all gates green): U1 schema+migration (4 RLS staging/provenance tables + composite FKs, applied to
+Neon), U2 EQUIPMENT category + `isDoseableCategory` denylist→ALLOWLIST + `UNCLASSIFIED` sink (WORKORDER-7),
+U3 PDF-aware private blob + upload route, U4 extraction core (de-risking spike PASSED — `claude-opus-4-8`
+accepts native PDF `document` blocks; captured + verified all 8 real docs vs the plan matrix), U5 landed-cost
+allocator + UOM normalize (money-critical), U6 vendor-scoped dedup matcher, U7 atomic apply core (inject ONE
+tx through the cost cores; proforma/reconciliation/concurrency gates; unified new+existing→receiveSupplyCore
+both emitting A/P stamped with invoice#; COA attach; tenant re-verify) — **proven by `verify:ingest` (31
+assertions) + `verify:cost` 55/55**, U9 assistant `ingest_documents` tool (verify:ai-native green), U12
+real-doc acceptance (STEP2 CI test 12/12 + STEP3 gated live script). **In flight:** U8 review UI (subagent),
+U10 provenance surfacing (write side done in U7; read side pending), U11 final sweep. **PENDING: human sign-off
+on the extraction snapshots (`qa/ingest-fixtures/SNAPSHOT-VERIFIED.md`) + browser-QA of U8 in Demo Winery.**
+Full vitest 2162 passing, 0 regressions. See:
+`docs/plans/2026-07-17-072-feat-invoice-ingestion-intake-plan.md` (Deep, 12 units). `+ Ingest invoice`
+takes a mixed pile (PDF text/scanned + images), classifies each doc (invoice|proforma|coa|other), and routes
+only receipts into ONE human-reviewed screen per invoice; every write goes through existing cores
+(`createStockMaterialCore`/`receiveSupplyCore`/`findOrCreateVendorCore`). Decisions locked: Gmail = fast-follow
+(out of scope); new NON-DOSEABLE `EQUIPMENT` category (the load-bearing edit is `isDoseableCategory` denylist —
+protects WORKORDER-3); shipping allocated into per-unit landed cost (bakes into A/P, no separate line);
+one review screen/invoice; proforma prompts "is this a landed receipt?"; fuzzy-match + dedup guard vs existing
+expendables AND equipment; COA lot/expiry attach by Lot No.; private-blob provenance. Extraction = own
+server endpoint (one-shot `messages.create` json_schema, `claude-opus-4-8`, native `document`/`image` blocks)
+— NOT the text-only chat loop; DB staging (not the 5-min token) carries the batch. New schema: `vendorItemCode`
+on CellarMaterial, `expiresAt`+`sourceDocumentId` on SupplyLot, `vendorInvoiceNumber` on ApExportEvent,
+`IngestedInvoice`(+lines)/`LotDocument`/`VendorMaterialCode` staging (all RLS). **Reviewed FOUR ways (eng →
+council[Codex+Gemini] → design → ChatGPT outside voice); all findings folded; BUILD-READY.** Council reversed
+2 calls: inject ONE tx through cost cores (resumable-per-line was unsound); `isDoseableCategory` denylist→
+ALLOWLIST. ChatGPT caught 2 money-critical bugs the others missed: (#1 UOM — invoice qty≠stock qty, Unit 5
+now normalizes via convert/deriveOpeningLot; #2 A/P asymmetry — createStockMaterialCore emits no A/P, so
+unified path = create@0 then receiveSupplyCore for every line) + reconciliation gate, concurrency claim,
+UNCLASSIFIED non-doseable, LotDocument provenance. A/P (user, corrected QBO info): per-lot bills, invoice # as
+searchable PrivateNote memo (NOT grouped — QBO DocNumber is the per-lot idempotency key). Next: `/work`.
 
 <details><summary>original directive + diagnosis</summary>
 
@@ -48,6 +70,19 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **`/bug-triage` live run (2026-07-17) — 1 merged, 5 plans handed off, 3 to a human; 0 errors.**
+  First had to unbreak the tooling: `b0ea4f6` (feedback-workspace rebuild) added a top-level
+  `requireDeveloper` import to `feedback.ts`, and `dal.ts` eagerly imports `next/navigation` →
+  `React.createContext` crash under `triage:list`'s `--conditions=react-server`. Fix = lazy-import
+  in the 2 functions that use it → **PR #219 MERGED** (`1e624ec`). Main tree still carries the identical
+  1-liner uncommitted (harmless dup; reconciles when this branch picks up origin/main, or `git checkout` it).
+  Merged **PR #215** (expendables stock category, root-fix confirmed → Bhutan 👎 RESOLVED; residual gap:
+  no per-item storage-location field). Plans handed off for `/work`: WO filtering (#201, 2-report cluster —
+  ⚠️ `WorkOrderFilterBar.tsx` already dirty, maybe in flight), delete harvest pick (#188), 3rd-party sales
+  counterparty (#202), report builder + Excel (#199), Help/assistant consolidation (#214, P2). To human:
+  chat 400 "Invalid message" (real defect, out-of-fence `api/assistant/route.ts` — `/investigate`, do NOT
+  approve its queued AGENTIC_FIX), "Talk" voice (unclear, env pending — `/investigate`), bare "error
+  message" #204 (too vague — bounce/close).
 - **Plan 070 — vendor management — BUILT (12 units) + reviewed + browser-QA'd; SHIPPING.**
   Reused the existing (Phase 15 QBO) `Vendor` table + new `VendorContact` child (RLS + composite FK);
   `vendorId` on `CellarMaterial` + `SupplyLot`; backfill (Demo: 54 mats/106 lots, 0 nulls) with a seeded
@@ -121,4 +156,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-15 — Plan 071 (full WO editing — reopen in builder, save in place) BUILT on branch claude/work-order-full-edit (8 commits). Edit any not-yet-executed task; executed + group tasks locked (WORKORDER-6). All gates green (vitest 2086, verify:work-orders 43, next build). Next: /review + /ship. Plan 070 (mandatory Lead) shipped #210; prod Lead-backfill still pending (fixes #27)._
+_Last updated: 2026-07-17 — `/bug-triage` live run: merged PR #215, handed off 5 plans, queued 3 for human; unblocked triage:list via PR #219 (lazy-import fix). Prior: Plan 072 (invoice/document ingestion → expendables & equipment intake) PLANNED (Deep, 12 units) + REVIEWED 4 ways (eng → council[Codex+Gemini] → design → ChatGPT outside voice); all findings folded; BUILD-READY. Key fixes: inject-tx atomicity, allowlist dose-safety, UOM normalization (Unit 5, money-critical), unified A/P apply path, reconciliation + concurrency gates, Unit 12 real-doc acceptance suite (all 8 docs/invoice examples/ files). A/P = per-lot bills, invoice # as QBO PrivateNote memo. Next /work. Plan 071 (full WO editing) shipped #213 (f0be796)._
