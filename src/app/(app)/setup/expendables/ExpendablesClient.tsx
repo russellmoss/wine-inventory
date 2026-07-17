@@ -16,6 +16,7 @@ import {
 import type { VendorRow } from "@/lib/vendors/vendors-shared";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
 import { receiveSupplyAction, setMaterialActiveAction } from "@/lib/cost/actions";
+import { extractAndStageAction } from "@/lib/ingest/actions";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 
 // Phase 8/12 → 036 → 037: manage the supply catalog. Categories are collapsible + searchable; clicking a
@@ -150,9 +151,12 @@ export function ExpendablesClient({ materials, vendors }: { materials: CellarMat
             or deactivate it. Items in use can&rsquo;t be deleted, only deactivated.
           </p>
         </div>
-        <Button variant="primary" onClick={() => setAddOpen(true)} style={{ minHeight: 44, marginTop: 10 }}>
-          + Add expendable
-        </Button>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+          <IngestInvoiceLauncher />
+          <Button variant="primary" onClick={() => setAddOpen(true)} style={{ minHeight: 44, marginTop: 10 }}>
+            + Add expendable
+          </Button>
+        </div>
       </div>
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13, margin: "10px 0" }}>{error}</p> : null}
@@ -281,6 +285,68 @@ export function ExpendablesClient({ materials, vendors }: { materials: CellarMat
         run={run}
         onClose={() => setReceiveId(null)}
       />
+    </div>
+  );
+}
+
+// Plan 072 Unit 8 — the "+ Ingest invoice" entry: pick a pile of PDFs/images → upload them to the private
+// blob route → extract+stage them → land on the per-batch review screen. Degrades gracefully when the
+// upload route reports storage isn't configured (503) so the user is pointed to the manual add flow.
+function IngestInvoiceLauncher() {
+  const router = useRouter();
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [status, setStatus] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function onFiles(fileList: FileList | null) {
+    setError(null);
+    setStatus(null);
+    const files = fileList ? Array.from(fileList) : [];
+    if (files.length === 0) return;
+    setBusy(true);
+    try {
+      setStatus(`Uploading ${files.length} document${files.length === 1 ? "" : "s"}…`);
+      const form = new FormData();
+      for (const f of files) form.append("files", f);
+      const res = await fetch("/api/ingest/documents", { method: "POST", body: form });
+      if (res.status === 503) {
+        setError("Document ingestion isn't available (upload storage isn't configured). Add the item manually with “+ Add expendable”.");
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { files?: { blobUrl: string; mimeType: string; fileName: string; fileSha256?: string }[]; error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Upload failed.");
+        return;
+      }
+      const uploaded = data.files ?? [];
+      if (uploaded.length === 0) {
+        setError("No files were stored.");
+        return;
+      }
+      const batchId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `batch_${Date.now()}`;
+      setStatus(`Reading ${uploaded.length} document${uploaded.length === 1 ? "" : "s"}… this can take a moment.`);
+      await extractAndStageAction({
+        batchId,
+        files: uploaded.map((u) => ({ blobUrl: u.blobUrl, fileName: u.fileName, mimeType: u.mimeType, fileSha256: u.fileSha256 })),
+      });
+      router.push(`/setup/expendables/ingest?batch=${encodeURIComponent(batchId)}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ingestion failed.");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+      <input ref={inputRef} type="file" accept="application/pdf,image/png,image/jpeg" multiple hidden onChange={(e) => onFiles(e.target.files)} />
+      <Button variant="secondary" onClick={() => inputRef.current?.click()} disabled={busy} style={{ minHeight: 44, marginTop: 10 }}>
+        {busy ? "Working…" : "+ Ingest invoice"}
+      </Button>
+      {status ? <span style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 220 }}>{status}</span> : null}
+      {error ? <span style={{ fontSize: 12, color: "var(--danger)", maxWidth: 240 }}>{error}</span> : null}
     </div>
   );
 }
