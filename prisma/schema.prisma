@@ -2639,6 +2639,7 @@ model SupplyLot {
   receivedAt    DateTime            @default(now())
   lotCode       String? // supplier lot / PO reference
   supplierNote  String?
+  expiresAt     DateTime? // Plan 072: batch/lot expiry (attached from a COA by lot no.); nullable, RLS-neutral column add
   vendorId      String? // Plan 069: per-purchase vendor — composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
   policyVersion Int                 @default(1) // costing-policy version at receipt (D17)
   createdAt     DateTime            @default(now())
@@ -3065,6 +3066,7 @@ model ApExportEvent {
   id                        String                @id @default(cuid())
   postingKey                String // `ap:${supplyLotId}` (:rev) — per-tenant idempotent
   supplyLotId               String? // the receipt this AP event came from (traceability; no hard FK)
+  vendorInvoiceNumber       String? // Plan 072: supplier invoice # — carried to the QBO Bill's PrivateNote memo (searchable; per-lot bills stay separate). NOT a grouping/idempotency key. RLS-neutral column add.
   vendorId                  String? // composite-tenant FK -> vendor (raw SQL)
   amount                    Decimal               @db.Decimal(18, 8)
   debitAccount              String? // Inventory Asset (resolved at emit; null => withheld)
@@ -3110,6 +3112,121 @@ model AccountingDelivery {
   @@index([tenantId])
   @@index([tenantId, connectionId])
   @@map("accounting_delivery")
+}
+
+// ───────────────────────── Plan 072: invoice / document ingestion (staging + provenance) ─────────────────────────
+// Tenant-scoped, RLS-forced (Phase-12 pattern). A dropped pile of supplier docs is OCR/LLM-extracted into
+// these STAGING rows, human-reviewed on one screen, then applied through the existing material/vendor cores
+// (createStockMaterialCore / receiveSupplyCore / findOrCreateVendorCore) — nothing here touches the ledger
+// directly. Cross-tenant-risk refs (vendorId, materialId, supplyLotId, ingestedInvoiceId) are COMPOSITE
+// (tenantId, refId)→(tenantId, id) FKs in the migration raw SQL (K11) — plain String cols, NO Prisma
+// relation (mirrors ap_export_event.vendorId + the inbox tables; children queried explicitly). Money is
+// Decimal(18,8) (D9); NULL cost = UNKNOWN (D14), never $0.
+
+// One ingested document (header). docType routes it: only `invoice` (+ a landed `proforma`) is a receipt;
+// `coa`/`other` are stored for provenance but never intaken. `status` drives the apply state machine
+// (pending → applying → applied | discarded | held); the pending→applying compare-and-set is the concurrency
+// claim (one apply at a time, ChatGPT #4). `extractedJson` is the raw structured extraction (audit + reload).
+model IngestedInvoice {
+  tenantId            String    @default("")
+  id                  String    @id @default(cuid())
+  batchId             String // ingestion session id — scopes same-session COA↔invoice matching (Unit 10)
+  blobUrl             String // private Vercel Blob URL of the source document
+  fileName            String
+  mimeType            String
+  fileSha256          String? // exact-file duplicate guard (alongside vendor+invoice#); the blob helper computes it
+  docType             String // invoice | proforma | coa | other
+  status              String    @default("pending") // pending | applying | applied | discarded | held
+  currency            String? // one currency per document (mixed-currency rejected upstream); no FX conversion
+  vendorId            String? // composite-tenant FK → vendor (raw SQL, K11); resolved on apply
+  vendorNameRaw       String? // extracted vendor name before match/create
+  vendorInvoiceNumber String? // supplier invoice # — duplicate-upload guard on (vendor, invoice#)
+  invoiceTotal        Decimal?  @db.Decimal(18, 8) // extracted grand total — the reconciliation-gate target (Unit 7)
+  taxTotal            Decimal?  @db.Decimal(18, 8) // extracted tax — surfaced in the gate, excluded from capitalized landed cost
+  landedReceipt       Boolean? // proforma gate answer: true = goods physically received IN FULL → intake as a receipt
+  extractedJson       Json // full structured extraction result (audit + review reload)
+  createdBy           String // actor userId who uploaded/ingested
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  appliedAt           DateTime?
+
+  @@unique([tenantId, id]) // composite-tenant-FK target for ingested_invoice_line + lot_document (K11)
+  @@index([tenantId])
+  @@index([tenantId, batchId]) // same-session COA matching
+  @@index([tenantId, vendorId, vendorInvoiceNumber]) // duplicate-invoice soft-dedup lookup
+  @@index([tenantId, fileSha256]) // exact-file duplicate lookup
+  @@map("ingested_invoice")
+}
+
+// One extracted line of an ingested invoice (editable staging). `matchDecision` (new|existing|skip) + the
+// resolved fields carry the human's dedup + classification choices; `createdSupplyLotId` is a
+// belt-and-suspenders audit link written INSIDE the atomic apply tx (the apply is all-or-nothing via an
+// injected tx, NOT resumed off this marker — the marker-outside-tx design was unsound, council P1).
+model IngestedInvoiceLine {
+  tenantId           String   @default("")
+  id                 String   @id @default(cuid())
+  ingestedInvoiceId  String // composite-tenant FK → ingested_invoice (raw SQL, K11)
+  lineNo             Int
+  descriptionRaw     String
+  vendorItemCodeRaw  String?
+  qty                Decimal? @db.Decimal(18, 6)
+  unitRaw            String? // invoice UOM (e.g. "25 kg", "case") — normalized to the material's stock unit at apply (Unit 5)
+  unitPrice          Decimal? @db.Decimal(18, 8) // per invoice unit (NULL = unknown, D14 — never a fabricated $0)
+  lineTotal          Decimal? @db.Decimal(18, 8) // extracted line extended total (charge-allocation basis)
+  lotNoRaw           String? // supplier lot no. (→ SupplyLot.lotCode; the COA match key)
+  allocatedUnitCost  Decimal? @db.Decimal(18, 8) // per-stock-unit landed cost after charge allocation + UOM normalize (Unit 5)
+  matchDecision      String? // new | existing | skip (human dedup decision; null = undecided)
+  matchedMaterialId  String? // existing/backfill target — composite-tenant FK → cellar_material (raw SQL, K11)
+  resolvedKind       String? // material family for a `new` line
+  resolvedCategory   String? // material category for a `new` line (EQUIPMENT for parts)
+  createdSupplyLotId String? // audit: the SupplyLot this line created (set inside the atomic apply tx)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, ingestedInvoiceId, lineNo]) // stable line identity within an invoice
+  @@index([tenantId])
+  @@index([tenantId, ingestedInvoiceId])
+  @@map("ingested_invoice_line")
+}
+
+// Provenance join: links a created SupplyLot to its source document(s). A lot can carry its INVOICE plus
+// one-or-more COAs (role distinguishes). Powers the tenant-scoped "view source PDF" on the lot/material
+// history (Unit 10). Both refs are composite-tenant FKs (raw SQL, K11).
+model LotDocument {
+  tenantId          String   @default("")
+  id                String   @id @default(cuid())
+  supplyLotId       String // composite-tenant FK → supply_lot (raw SQL, K11)
+  ingestedInvoiceId String // composite-tenant FK → ingested_invoice (raw SQL, K11)
+  role              String // INVOICE | COA
+  createdAt         DateTime @default(now())
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, supplyLotId, ingestedInvoiceId, role]) // one link per (lot, doc, role)
+  @@index([tenantId])
+  @@index([tenantId, supplyLotId])
+  @@index([tenantId, ingestedInvoiceId])
+  @@map("lot_document")
+}
+
+// Vendor-scoped supplier item-code → material mapping (the re-order learning loop). The SAME material bought
+// from two vendors has two codes, so a code is unique per (tenant, vendor, code) — NEVER global. Backfilled
+// only on a human-confirmed `existing` match (Unit 7) so one bad OCR code can't poison future dedup. Both
+// refs are composite-tenant FKs (raw SQL, K11).
+model VendorMaterialCode {
+  tenantId   String   @default("")
+  id         String   @id @default(cuid())
+  vendorId   String // composite-tenant FK → vendor (raw SQL, K11)
+  materialId String // composite-tenant FK → cellar_material (raw SQL, K11)
+  code       String // supplier's item/catalog code for this material
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, vendorId, code]) // vendor-scoped code identity (dedup match key)
+  @@index([tenantId])
+  @@index([tenantId, materialId])
+  @@map("vendor_material_code")
 }
 
 // ───────────────────────── Phase 16: Commerce7 DTC/sales integration ─────────────────────────
