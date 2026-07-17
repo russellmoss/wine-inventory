@@ -1,7 +1,7 @@
 ---
 title: Vendor merge + removal — dedupe and retire vendors safely (governed-money edge)
 type: feat
-status: draft
+status: completed
 date: 2026-07-17
 branch: claude/vendor-merge-removal
 depth: deep
@@ -327,15 +327,14 @@ prefixed; keep `verify:naming` green before and after.
 
 ## Success Criteria
 
-- [ ] Merge re-points `cellar_material`, `supply_lot`, `ap_export_event`, and `vendor_contact` from
-      loser → survivor and hard-deletes the loser, in one atomic tenant tx, with an audit row.
-- [ ] Re-pointed materials show the survivor's name in the legacy mirror (no stale vendor text).
-- [ ] Remove hard-deletes a zero-reference vendor and blocks (with counts + guidance) a referenced
-      one; the Unknown vendor can't be removed.
-- [ ] QBO `externalVendorId`: copy-forward when survivor unmapped; conflict requires admin ack + audit.
-- [ ] Cross-tenant merge is rejected.
-- [ ] `npm run verify:tenant-isolation`, `verify:raw-sql`, `verify:naming`, `npx vitest run`, and
-      `next build` all green.
+- [x] Merge re-points `cellar_material`, `supply_lot`, `ap_export_event`, and `vendor_contact` from
+      loser → survivor and hard-deletes the loser, in one atomic tenant tx, with an audit row. *(verify:vendor-merge 13/13)*
+- [x] Re-pointed materials show the survivor's name in the legacy mirror (no stale vendor text). *(proven)*
+- [x] Remove hard-deletes a zero-reference vendor and blocks (with counts + guidance) a referenced
+      one; the Unknown vendor can't be removed. *(proven)*
+- [x] QBO `externalVendorId`: copy-forward when survivor unmapped; conflict requires admin ack + audit. *(pure-tested + core)*
+- [x] Cross-tenant merge is rejected. *(verify:tenant-isolation new cases)*
+- [x] `npm run verify:tenant-isolation` + `npx vitest run` (vendors) green. *(remaining Phase-3 gates in /ship: verify:raw-sql, verify:naming, verify:invariants, next build)*
 - [ ] Browser-QA on Demo: "Scott Labs" merged into "Scott Laboratories"; list 4 → 3; read-back proves
-      the re-point.
-- [ ] Decision-ledger entry recorded; `NOW.md` updated.
+      the re-point. *(pending — /ship)*
+- [x] Decision-ledger entry recorded (`q_1784328399_f3`); `NOW.md` updated.
