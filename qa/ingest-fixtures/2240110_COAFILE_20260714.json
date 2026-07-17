@@ -1,0 +1,44 @@
+{
+  "_verified": false,
+  "source": "2240110_COAFILE_20260714.pdf",
+  "result": {
+    "blobUrl": "local://2240110_COAFILE_20260714.pdf",
+    "fileName": "2240110_COAFILE_20260714.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "coa",
+      "vendor": {
+        "name": "LAFFORT",
+        "address": "CS 61 611 - 33072 BORDEAUX CEDEX - FRANCE",
+        "contactName": "Quality Department",
+        "phone": "+33 (0) 556 86 53 04",
+        "email": null
+      },
+      "currency": null,
+      "invoiceNumber": null,
+      "invoiceTotal": null,
+      "lines": [
+        {
+          "description": "POLYMUST PRESS (ex AF) - P. 1 KG",
+          "vendorItemCode": "POLYMUST-AF-1",
+          "qty": null,
+          "unit": null,
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2240110"
+        }
+      ],
+      "charges": null,
+      "coa": {
+        "lotNo": "2240110",
+        "expiry": "2027-01-10",
+        "batch": "2240110"
+      },
+      "warnings": [
+        "Best Before Date '10/01/27' interpreted as 2027-01-10 (DD/MM/YY); verify date format"
+      ],
+      "notes": "Certificate of Analysis compliant with EU regulation n°2019/934. Consignee: LAFFORT USA, INC., 1460 Cader Lane, Suite C, Petaluma, CA 94954, USA. Analysis specs: Humidity <12.5%, Total nitrogen >=5%, Arsenic <3 ppm, Iron <420 ppm, Lead <4.5 ppm, Mercury <1 ppm, Cadmium <1 ppm, Heavy metals (Pb) <10 ppm."
+    }
+  }
+}

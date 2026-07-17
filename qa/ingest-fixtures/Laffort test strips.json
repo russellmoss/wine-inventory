@@ -1,0 +1,43 @@
+{
+  "_verified": false,
+  "source": "Laffort test strips.pdf",
+  "result": {
+    "blobUrl": "local://Laffort test strips.pdf",
+    "fileName": "Laffort test strips.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "invoice",
+      "vendor": {
+        "name": "Laffort USA",
+        "address": "1460 Cader Lane, Suite C, Petaluma, CA 95954",
+        "contactName": "Laffort Customer Service",
+        "phone": "+1 (707) 775 4530",
+        "email": "ordersusa@laffort.com"
+      },
+      "currency": "USD",
+      "invoiceNumber": "S-O.152414",
+      "invoiceTotal": 479.52,
+      "lines": [
+        {
+          "description": "Sentia Titratable Acidity Test Strip",
+          "vendorItemCode": "SEN-TA-STRIP",
+          "qty": 3,
+          "unit": null,
+          "unitPrice": 137.5,
+          "lineTotal": 412.5,
+          "lotNo": null
+        }
+      ],
+      "charges": {
+        "shipping": 67.02,
+        "handling": null,
+        "surcharge": null,
+        "tax": 0
+      },
+      "coa": null,
+      "warnings": [],
+      "notes": "Order Date: Tuesday, July 14, 2026. Payment Method: Credit Card. Shipping Method: FedEx Standard Overnight. Sub-Total: $412.50."
+    }
+  }
+}

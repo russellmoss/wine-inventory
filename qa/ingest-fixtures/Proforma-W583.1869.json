@@ -1,0 +1,52 @@
+{
+  "_verified": false,
+  "source": "Proforma-W583.1869.pdf",
+  "result": {
+    "blobUrl": "local://Proforma-W583.1869.pdf",
+    "fileName": "Proforma-W583.1869.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "proforma",
+      "vendor": {
+        "name": "NexaParts B.V.",
+        "address": "Duurzaamheidstraat 33, 8094SC Hattemerbroek, Netherlands",
+        "contactName": null,
+        "phone": "+31 38 2024038",
+        "email": null
+      },
+      "currency": "EUR",
+      "invoiceNumber": "W583.1869",
+      "invoiceTotal": 767.16,
+      "lines": [
+        {
+          "description": "Dairy Fitting - DIN 11851 - Reducer - Liner x Male - DN40 x DN25 - Stainless Steel 316",
+          "vendorItemCode": "48325",
+          "qty": 6,
+          "unit": "ea",
+          "unitPrice": 86.57,
+          "lineTotal": 519.42,
+          "lotNo": null
+        },
+        {
+          "description": "Dairy Fitting - DIN 11851 - Reducer - Liner x Male - DN50 x DN40 - Stainless Steel 316",
+          "vendorItemCode": "48339",
+          "qty": 2,
+          "unit": "ea",
+          "unitPrice": 103.87,
+          "lineTotal": 207.74,
+          "lotNo": null
+        }
+      ],
+      "charges": {
+        "shipping": 40,
+        "handling": null,
+        "surcharge": null,
+        "tax": null
+      },
+      "coa": null,
+      "warnings": [],
+      "notes": "Payment terms: Payment in advance. Offer valid 14 days. Order date 10-07-2026."
+    }
+  }
+}

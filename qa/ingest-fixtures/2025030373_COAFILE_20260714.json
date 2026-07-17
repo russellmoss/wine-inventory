@@ -1,0 +1,89 @@
+{
+  "_verified": false,
+  "source": "2025030373_COAFILE_20260714.pdf",
+  "result": {
+    "blobUrl": "local://2025030373_COAFILE_20260714.pdf",
+    "fileName": "2025030373_COAFILE_20260714.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "coa",
+      "vendor": {
+        "name": "AEB Brazil",
+        "address": null,
+        "contactName": "Amanda Piovezan Freitas",
+        "phone": null,
+        "email": null
+      },
+      "currency": null,
+      "invoiceNumber": null,
+      "invoiceTotal": null,
+      "lines": [
+        {
+          "description": "FERMOPLUS DAP FREE - Physical appearance: Conform (Dark beige, fine powder)",
+          "vendorItemCode": "PTBR_1522",
+          "qty": null,
+          "unit": null,
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2025030373"
+        },
+        {
+          "description": "Bulk density: 0.48 g/mL (Range 0.45 - 0.55)",
+          "vendorItemCode": null,
+          "qty": 0.48,
+          "unit": "g/mL",
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2025030373"
+        },
+        {
+          "description": "Moisture: 4.77% (Range < 7.0)",
+          "vendorItemCode": null,
+          "qty": 4.77,
+          "unit": "%",
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2025030373"
+        },
+        {
+          "description": "pH in a solution 1%: 6.26 (Range 5.0 - 8.0)",
+          "vendorItemCode": null,
+          "qty": 6.26,
+          "unit": "Colog+",
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2025030373"
+        },
+        {
+          "description": "Heavy Metals (as lead): Conform (<20 mg/Kg)",
+          "vendorItemCode": null,
+          "qty": null,
+          "unit": "mg/Kg",
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2025030373"
+        },
+        {
+          "description": "Pathogens (as salmonella spp): Absence of growth (UFC/25 g)",
+          "vendorItemCode": null,
+          "qty": null,
+          "unit": "UFC/25 g",
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2025030373"
+        }
+      ],
+      "charges": null,
+      "coa": {
+        "lotNo": "2025030373",
+        "expiry": "2027-03-26",
+        "batch": "2025030373"
+      },
+      "warnings": [
+        "No pricing or invoice information present; document is a Compliance Data Sheet / Certificate of Analysis"
+      ],
+      "notes": "Product ID: FERMOPLUS DAP FREE, Specification: Complex products. Manufacturing date: 26.03.2025. Issued electronically 31.03.2025 by Amanda Piovezan Freitas (C.R.Q: IX09403040). Reference PTBR_1522."
+    }
+  }
+}

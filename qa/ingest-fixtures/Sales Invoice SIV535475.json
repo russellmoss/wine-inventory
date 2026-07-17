@@ -1,0 +1,70 @@
+{
+  "_verified": false,
+  "source": "Sales Invoice SIV535475.pdf",
+  "result": {
+    "blobUrl": "local://Sales Invoice SIV535475.pdf",
+    "fileName": "Sales Invoice SIV535475.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "invoice",
+      "vendor": {
+        "name": "Crush2Cellar LLC",
+        "address": "PO Box 35146, #43064, SEATTLE, WA 98124-5146, United States",
+        "contactName": null,
+        "phone": "(503) 537-1151",
+        "email": null
+      },
+      "currency": "USD",
+      "invoiceNumber": "SIV535475",
+      "invoiceTotal": 533.78,
+      "lines": [
+        {
+          "description": "LAFFORT LAFAZYM EXTRACT 250G",
+          "vendorItemCode": "LAFAZYMEXT",
+          "qty": 1,
+          "unit": "Each",
+          "unitPrice": 77.27,
+          "lineTotal": 77.27,
+          "lotNo": "2230517"
+        },
+        {
+          "description": "AEB FERMOPLUS DAP FREE 5KG",
+          "vendorItemCode": "3229",
+          "qty": 1,
+          "unit": "Each",
+          "unitPrice": 150,
+          "lineTotal": 150,
+          "lotNo": "2025030373"
+        },
+        {
+          "description": "LAFFORT MICROCOL ALPHA BENTONITE 1KG",
+          "vendorItemCode": "MICROALPH1",
+          "qty": 3,
+          "unit": "Each",
+          "unitPrice": 9.17,
+          "lineTotal": 27.51,
+          "lotNo": "2250423"
+        },
+        {
+          "description": "LAFFORT POLYMUST PRESS (AF) 1KG",
+          "vendorItemCode": "POLYMUSTAF",
+          "qty": 3,
+          "unit": "Each",
+          "unitPrice": 43.67,
+          "lineTotal": 131.01,
+          "lotNo": "2240110"
+        }
+      ],
+      "charges": {
+        "shipping": 147.99,
+        "handling": null,
+        "surcharge": 0,
+        "tax": 0
+      },
+      "coa": null,
+      "warnings": [],
+      "notes": "Marked PAID. Purch. Order No.: WEBORDER. Order No.: SL1955201. Payment Terms: CREDIT CARD. Ship To: MIke Juergens, 5781 Stoney Hill Rd, New Hope, PA 18938-5432."
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "_verified": false,
+  "source": "NexaParts General Terms and Conditions B2B.pdf",
+  "result": {
+    "blobUrl": "local://NexaParts General Terms and Conditions B2B.pdf",
+    "fileName": "NexaParts General Terms and Conditions B2B.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "other",
+      "vendor": {
+        "name": "NexaParts B.V.",
+        "address": "Duurzaamheidstraat 33, 8094SC Hattemerbroek, the Netherlands",
+        "contactName": null,
+        "phone": "+31 38 2024 038",
+        "email": "info@nexaparts.nl"
+      },
+      "currency": null,
+      "invoiceNumber": null,
+      "invoiceTotal": null,
+      "lines": [],
+      "charges": null,
+      "coa": null,
+      "warnings": [
+        "Document is General Terms and Conditions (B2B), not an invoice, proforma or COA",
+        "City spelled 'Hattemerbroek' on page 1 but 'Hattmerbroek' on page 4"
+      ],
+      "notes": "General Terms and Conditions document for NexaParts B.V. (B2B). No line items, prices, or invoice details present."
+    }
+  }
+}

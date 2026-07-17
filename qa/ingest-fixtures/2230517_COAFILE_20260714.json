@@ -1,0 +1,42 @@
+{
+  "_verified": false,
+  "source": "2230517_COAFILE_20260714.pdf",
+  "result": {
+    "blobUrl": "local://2230517_COAFILE_20260714.pdf",
+    "fileName": "2230517_COAFILE_20260714.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "coa",
+      "vendor": {
+        "name": "LAFFORT",
+        "address": "CS 61 611 - 33072 BORDEAUX CEDEX - FRANCE",
+        "contactName": null,
+        "phone": "+33 (0) 556 86 53 04",
+        "email": null
+      },
+      "currency": null,
+      "invoiceNumber": null,
+      "invoiceTotal": null,
+      "lines": [
+        {
+          "description": "LAFAZYM EXTRACT - B. 250G",
+          "vendorItemCode": "LAFAZYEX0.25",
+          "qty": null,
+          "unit": null,
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2230517"
+        }
+      ],
+      "charges": null,
+      "coa": {
+        "lotNo": "2230517",
+        "expiry": "2027-05-17",
+        "batch": "2230517"
+      },
+      "warnings": [],
+      "notes": "Certificate of Analysis for LAFAZYM EXTRACT - B. 250G. Consignee: CRUSH2CELLAR c/o SCOTT LABORATORIES, 214 W. Hancock St, Newberg, OR 97132. Compliant with EU regulation n°2019/934, Food Chemical Codex, and JECFA. Printed 10/05/24."
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "_verified": false,
+  "source": "crush to cellar.pdf",
+  "result": {
+    "blobUrl": "local://crush to cellar.pdf",
+    "fileName": "crush to cellar.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "invoice",
+      "vendor": {
+        "name": "Crush2Cellar",
+        "address": null,
+        "contactName": null,
+        "phone": "503-537-1151",
+        "email": "info@crush2cellar.com"
+      },
+      "currency": "USD",
+      "invoiceNumber": "SL1955201",
+      "invoiceTotal": 533.78,
+      "lines": [
+        {
+          "description": "Laffort Lafazym Extract (250g)",
+          "vendorItemCode": "LAFAZYMEXT",
+          "qty": 1,
+          "unit": "Each",
+          "unitPrice": 77.27,
+          "lineTotal": 77.27,
+          "lotNo": null
+        },
+        {
+          "description": "AEB Fermoplus DAP Free (5kg)",
+          "vendorItemCode": "3229",
+          "qty": 1,
+          "unit": "Each",
+          "unitPrice": 150,
+          "lineTotal": 150,
+          "lotNo": null
+        },
+        {
+          "description": "Laffort Microcol Alpha (1kg)",
+          "vendorItemCode": "MICROALPH1",
+          "qty": 3,
+          "unit": "Each",
+          "unitPrice": 9.17,
+          "lineTotal": 27.51,
+          "lotNo": null
+        },
+        {
+          "description": "Laffort Polymust Press (1kg)",
+          "vendorItemCode": "POLYMUSTAF",
+          "qty": 3,
+          "unit": "Each",
+          "unitPrice": 43.67,
+          "lineTotal": 131.01,
+          "lotNo": null
+        }
+      ],
+      "charges": {
+        "shipping": 147.99,
+        "handling": null,
+        "surcharge": null,
+        "tax": 0
+      },
+      "coa": null,
+      "warnings": [
+        "Document is an Order Confirmation email forwarded via Gmail; order number SL1955201 used as invoice number, no explicit invoice number present"
+      ],
+      "notes": "PO/Reference Number: WEBORDER. Shipping Method: FedEx 2 Day. Payment Method: Credit Card. Subtotal $385.79, Total Excl. Tax $533.78."
+    }
+  }
+}
