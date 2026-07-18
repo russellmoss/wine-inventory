@@ -22,6 +22,7 @@
     "seed:starter-materials": "tsx --conditions=react-server --env-file=.env scripts/seed-starter-materials.ts",
     "seed:demo-materials": "tsx --conditions=react-server --env-file=.env scripts/seed-demo-materials.ts",
     "seed:knowledge-sources": "tsx --conditions=react-server --env-file=.env scripts/seed-knowledge-sources.ts",
+    "crawl:source": "tsx --conditions=react-server --env-file=.env scripts/crawl-source.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
     "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",
@@ -107,12 +108,14 @@
     "@vercel/blob": "^2.4.1",
     "better-auth": "^1.6.18",
     "dexie": "^4.4.4",
+    "fast-xml-parser": "^5.10.1",
     "html-to-image": "^1.11.13",
     "leaflet": "^1.9.4",
     "next": "16.2.9",
     "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "robots-parser": "^3.0.1",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
