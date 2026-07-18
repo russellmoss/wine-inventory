@@ -11,6 +11,9 @@ import {
   vendorHasBlockingReferences,
   describeVendorUsage,
   findDuplicateVendorGroups,
+  nearDuplicateLevel,
+  findVendorNearMatches,
+  stripVendorCurrencySuffix,
   type VendorUsage,
 } from "@/lib/vendors/vendors-shared";
 
@@ -206,5 +209,105 @@ describe("findDuplicateVendorGroups", () => {
       { id: "a", name: "Scott Labs" },
       { id: "b", name: "Lab Supply Co" },
     ])).toEqual([]);
+  });
+  it("never groups the seeded Unknown fallback vendor", () => {
+    expect(findDuplicateVendorGroups([
+      { id: "a", name: "Unknown / Unspecified" },
+      { id: "b", name: "Unknown Cellars" },
+    ])).toEqual([]);
+  });
+});
+
+// ── Plan 074: near-duplicate vendor guard ──
+
+describe("stripVendorCurrencySuffix", () => {
+  it("strips a known trailing currency code in parens", () => {
+    expect(stripVendorCurrencySuffix("Acme (EUR)")).toEqual({ base: "Acme", had: true });
+    expect(stripVendorCurrencySuffix("Château Fée (GBP)")).toEqual({ base: "Château Fée", had: true });
+  });
+  it("leaves a non-currency parenthetical alone", () => {
+    expect(stripVendorCurrencySuffix("Acme (USA)")).toEqual({ base: "Acme (USA)", had: false });
+    expect(stripVendorCurrencySuffix("Acme")).toEqual({ base: "Acme", had: false });
+  });
+});
+
+describe("nearDuplicateLevel", () => {
+  it("HIGH: abbreviation/expansion (Scott Labs ↔ Scott Laboratories)", () => {
+    expect(nearDuplicateLevel("Scott Labs", "Scott Laboratories")).toBe("high");
+  });
+  it("HIGH: infix digit homophone (Crush2Cellar ↔ Crush to Cellar)", () => {
+    expect(nearDuplicateLevel("Crush2Cellar", "Crush to Cellar")).toBe("high");
+  });
+  it("HIGH: legal-suffix noise (Gusmer ↔ Gusmer Enterprises; Acme Corp ↔ acme)", () => {
+    expect(nearDuplicateLevel("Gusmer", "Gusmer Enterprises")).toBe("high");
+    expect(nearDuplicateLevel("Acme Corp", "acme")).toBe("high");
+  });
+  it("HIGH: ampersand vs 'and'", () => {
+    expect(nearDuplicateLevel("A & B Supply", "A and B Supply")).toBe("high");
+  });
+  it("HIGH: word order (ABC Supply ↔ Supply ABC) and punctuation (BSG ↔ b.s.g.)", () => {
+    expect(nearDuplicateLevel("ABC Supply", "Supply ABC")).toBe("high");
+    expect(nearDuplicateLevel("BSG", "b.s.g.")).toBe("high");
+  });
+  it("HIGH: identical up to case", () => {
+    expect(nearDuplicateLevel("Scott Labs", "scott labs")).toBe("high");
+  });
+  it("NULL: genuinely distinct suppliers", () => {
+    expect(nearDuplicateLevel("Scott Labs", "Scott Valley")).toBeNull();
+    expect(nearDuplicateLevel("Crush Cellars", "Crush Wine Co")).toBeNull();
+  });
+  it("NULL: a digit at a word edge is not a homophone (3M ↔ Three M Coatings)", () => {
+    expect(nearDuplicateLevel("3M", "Three M Coatings")).toBeNull();
+  });
+  it("NULL: differ ONLY by a currency suffix (same vendor — protects Plan 073 FX)", () => {
+    expect(nearDuplicateLevel("Acme", "Acme (EUR)")).toBeNull();
+    expect(nearDuplicateLevel("Acme (EUR)", "Acme (USD)")).toBeNull();
+  });
+  it("NULL: blank inputs", () => {
+    expect(nearDuplicateLevel("", "Acme")).toBeNull();
+    expect(nearDuplicateLevel("Acme", "")).toBeNull();
+  });
+
+  // Tuning: don't soft-block on a bare shared first word or a single-character surname difference.
+  it("does NOT soft-block (HIGH) a longer name sharing only a bare first word", () => {
+    expect(nearDuplicateLevel("Napa", "Napa Valley Barrel Co")).not.toBe("high");
+    expect(nearDuplicateLevel("Wine", "Wine Warehouse")).not.toBe("high");
+  });
+  it("does NOT soft-block one-character-different surnames (Bell/Ball, Hill/Hall)", () => {
+    expect(nearDuplicateLevel("Bell Wines", "Ball Wines")).not.toBe("high");
+    expect(nearDuplicateLevel("Hill Family", "Hall Family")).not.toBe("high");
+  });
+
+  // Unicode: accented + non-Latin names must still dedup (were a silent no-op before).
+  it("HIGH: accent-folded match (Château Fée ↔ Chateau Fee)", () => {
+    expect(nearDuplicateLevel("Château Fée", "Chateau Fee")).toBe("high");
+  });
+  it("HIGH: identical non-Latin (CJK) names match instead of degrading to null", () => {
+    expect(nearDuplicateLevel("李記酒莊", "李記酒莊")).toBe("high");
+    expect(nearDuplicateLevel("李記酒莊", "李記酒")).not.toBeNull(); // near-variant still surfaces
+  });
+});
+
+describe("findVendorNearMatches", () => {
+  const vendors = [
+    { id: "v1", name: "Scott Labs" },
+    { id: "v2", name: "Gusmer" },
+    { id: "v3", name: "Acme" },
+    { id: "unk", name: "Unknown / Unspecified" },
+  ];
+  it("returns the HIGH candidate for a near-dup name", () => {
+    const { high, medium } = findVendorNearMatches("Scott Laboratories", vendors);
+    expect(high.map((v) => v.id)).toEqual(["v1"]);
+    expect(medium.map((v) => v.id)).toEqual([]);
+  });
+  it("never surfaces the Unknown fallback vendor", () => {
+    expect(findVendorNearMatches("Unknown / Unspecified", vendors)).toEqual({ high: [], medium: [] });
+  });
+  it("does not flag a currency-suffixed variant against its base (Plan 073)", () => {
+    expect(findVendorNearMatches("Acme (EUR)", vendors).high.map((v) => v.id)).toEqual([]);
+  });
+  it("returns nothing for a blank name or an all-new name", () => {
+    expect(findVendorNearMatches("", vendors)).toEqual({ high: [], medium: [] });
+    expect(findVendorNearMatches("Totally New Vineyard Supply", vendors)).toEqual({ high: [], medium: [] });
   });
 });

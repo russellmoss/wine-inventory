@@ -15,6 +15,7 @@ import {
   resolveMergedExternalVendorId,
   vendorHasBlockingReferences,
   describeVendorUsage,
+  findVendorNearMatches,
   UNKNOWN_VENDOR_NAME,
   type VendorInput,
   type VendorRow,
@@ -170,6 +171,28 @@ async function countVendorUsage(db: Db, id: string): Promise<VendorUsage> {
  */
 export async function getVendorUsage(id: string, opts?: { tenantId?: string }): Promise<VendorUsage> {
   const run = () => countVendorUsage(asDb(), id);
+  return opts?.tenantId ? runAsTenant(opts.tenantId, run) : run();
+}
+
+export type VendorNearMatch = { id: string; name: string };
+
+/**
+ * Plan 074: banded near-duplicate matches for a candidate vendor `name` within the current tenant. Reads
+ * ACTIVE vendors and delegates to the pure `findVendorNearMatches` engine (which drops the Unknown fallback).
+ * Read-only, no audit — the create-time "did you mean?" guard for the interactive surfaces (setup modal +
+ * assistant). Automated find-or-create paths deliberately do NOT call this (can't prompt mid-bill-post).
+ * Pass opts.tenantId to wrap in runAsTenant (scripts / assistant, outside a request context).
+ */
+export async function getVendorNearMatchesCore(
+  name: string,
+  opts?: { tenantId?: string },
+): Promise<{ high: VendorNearMatch[]; medium: VendorNearMatch[] }> {
+  const run = async () => {
+    const ref = (name ?? "").trim();
+    if (!ref) return { high: [], medium: [] };
+    const vendors = await asDb().vendor.findMany({ where: { isActive: true }, select: { id: true, name: true } });
+    return findVendorNearMatches(ref, vendors);
+  };
   return opts?.tenantId ? runAsTenant(opts.tenantId, run) : run();
 }
 

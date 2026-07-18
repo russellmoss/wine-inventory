@@ -1,14 +1,17 @@
 import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
-import { signProposal } from "../confirm";
+import { signProposal, signResume } from "../confirm";
+import type { ChoiceRequest } from "../assistant-events";
 import { createVendorAction } from "@/lib/vendors/actions";
-import { findVendorsByName } from "@/lib/vendors/vendors";
+import { findVendorsByName, getVendorNearMatchesCore } from "@/lib/vendors/vendors";
 import type { VendorInput } from "@/lib/vendors/vendors-shared";
 
 // Plan 069 (Unit 11): create a NEW vendor/supplier, wrapping createVendorCore via createVendorAction. Pure
 // wrapper — no domain logic here. Dedups against existing vendors by name (refuses an exact duplicate so the
 // vendor list doesn't fragment). Does NOT create a material (use create_material). Returns a preview to confirm.
+// Plan 074: also catches NEAR-duplicates ("Scott Labs" vs "Scott Laboratories") and returns a CHOICE — use the
+// existing vendor, or create a new one anyway (a deterministic resume token that re-runs with createAnyway).
 
 type RawInput = {
   name?: string;
@@ -19,6 +22,8 @@ type RawInput = {
   poRequired?: boolean;
   terms?: string;
   url?: string;
+  /** Internal: set by the "create anyway" near-duplicate picker option to skip the near-dup guard. */
+  createAnyway?: boolean;
 };
 
 const s = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
@@ -51,12 +56,34 @@ export const createVendorTool: AssistantTool = {
     const input = (rawInput ?? {}) as RawInput;
     const name = s(input.name);
     if (!name) throw new Error("What's the vendor called?");
-    // Dedup: don't create a near-duplicate of an existing vendor (the whole point of managed vendors).
+    // Dedup: refuse an EXACT duplicate, and surface NEAR-duplicates as a choice (unless the user already
+    // chose "create anyway" via the picker). The whole point of managed vendors is one row per supplier.
     const tenantId = ctx.user.activeOrganizationId;
     if (tenantId) {
+      // An EXACT duplicate is ALWAYS refused — even on the "create anyway" bypass, and case-insensitively
+      // (the DB unique is case-sensitive, so this is the only guard against a case-variant dup).
       const existing = await findVendorsByName(tenantId, name);
       const exact = existing.find((v) => v.name.trim().toLowerCase() === name.toLowerCase());
       if (exact) throw new Error(`A vendor named "${exact.name}" already exists — no need to create it again.`);
+    }
+    if (tenantId && !input.createAnyway) {
+      const { high } = await getVendorNearMatchesCore(name, { tenantId });
+      if (high.length) {
+        // Re-run this tool with the SAME input + createAnyway to skip the guard (deterministic, no model loop).
+        const resumeAnyway = signResume("create_vendor", { ...input, name, createAnyway: true });
+        const choice: ChoiceRequest = {
+          needsChoice: true,
+          prompt: `You already have a vendor that looks like “${name}”. Use the existing one, or create a new vendor?`,
+          options: [
+            ...high.map((v) => ({
+              label: `Use existing “${v.name}”`,
+              send: `That's the same supplier — use the existing vendor “${v.name}”, don't create a duplicate.`,
+            })),
+            { label: `Create “${name}” as a new, separate vendor`, resume: resumeAnyway },
+          ],
+        };
+        return choice;
+      }
     }
     const bits = [s(input.terms) && `terms ${s(input.terms)}`, s(input.email), s(input.phone)].filter(Boolean);
     const preview = `Add vendor "${name}"${bits.length ? ` (${bits.join(", ")})` : ""} to the vendor list.`;

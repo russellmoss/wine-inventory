@@ -283,6 +283,23 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (app-layer authz + JSON members = no new RLS surface; guarded by `verify:group-maintenance`
   and the `analysis_panel` RLS policy + per-tenant unique).
 
+## Near-duplicate vendor guard is INTERACTIVE-only — automated create stays exact (plan 074)
+- **What:** the create-time near-duplicate guard (`findVendorNearMatches`/`nearDuplicateLevel` in
+  `vendors-shared.ts`, surfaced via `getVendorNearMatchesCore` → `checkVendorNearMatchesAction`) runs only on
+  the **interactive** create surfaces — the `/setup/vendors` modal and the assistant `create_vendor` tool. It
+  is **advisory** (a "did you mean?" soft-block, never an auto-merge; merge stays admin-gated, plan 072). The
+  **automated** find-or-create path (`findOrCreateVendorCore` → A/P bill emit, material intake, invoice ingest,
+  backfill) is DELIBERATELY left at exact-name match: you cannot interpose a human "did you mean?" mid
+  bill-post. So an automated path can still mint a near-dup ("Scott Labs" vs "Scott Laboratories"); that is a
+  known, accepted gap for this slice. Excludes the currency-suffix case ("Acme (EUR)", plan 073) and the
+  Unknown fallback from ever being flagged.
+- **Tripwire:** wiring `getVendorNearMatchesCore` (or any blocking guard) into `findOrCreateVendorCore` /
+  the A/P path (would block or prompt inside a governed-money write); making the guard auto-merge instead of
+  advisory; a future detective sweep (the intended closer of this gap) that auto-collapses vendors without the
+  admin-gated merge. Proof: `verify:vendor-dedupe` + `test/vendors-shared.test.ts` + `test/assistant-create-vendor-dedup.test.ts`.
+- **Status:** 🟢 (advisory read-side guard, no new RLS surface — reads existing tenant-scoped `vendor` rows;
+  the automated-path gap is documented and slated for the later agentic detective sweep).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_
