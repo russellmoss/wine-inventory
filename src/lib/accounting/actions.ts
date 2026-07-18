@@ -4,7 +4,7 @@ import type { CostComponent } from "@prisma/client";
 import { adminAction } from "@/lib/actions";
 import { disconnect } from "@/lib/accounting/connection";
 import { loadQboConfig } from "@/lib/accounting/qbo/config";
-import { listChartOfAccounts, saveAccountMappings, saveApAccounts, rankAccountsForRole, type AccountRole, type ApAccounts } from "@/lib/accounting/coa";
+import { listChartOfAccounts, saveAccountMappings, saveApAccounts, saveApPaymentAccounts, rankAccountsForRole, type AccountRole, type ApAccounts, type ApPaymentAccounts } from "@/lib/accounting/coa";
 import type { NormalizedAccount } from "@/lib/accounting/adapter";
 
 // Phase 15 Unit 4 — mutating accounting actions. Disconnect is a SERVER ACTION (not a raw POST route)
@@ -21,12 +21,14 @@ export const disconnectQuickBooks = adminAction(async (ctx) => {
 
 /** Load the connected company's chart of accounts, pre-ranked per role for the mapping pickers. */
 export const loadChartOfAccounts = adminAction(
-  async (): Promise<{ cost: NormalizedAccount[]; inventory: NormalizedAccount[]; payable: NormalizedAccount[] }> => {
+  async (): Promise<{ cost: NormalizedAccount[]; inventory: NormalizedAccount[]; payable: NormalizedAccount[]; all: NormalizedAccount[] }> => {
     const accounts = await listChartOfAccounts();
     return {
       cost: rankAccountsForRole(accounts, "cost" satisfies AccountRole),
       inventory: rankAccountsForRole(accounts, "inventory" satisfies AccountRole),
       payable: rankAccountsForRole(accounts, "payable" satisfies AccountRole),
+      // Plan 076: the full list for the pay-from pickers (the winery picks its own bank + credit-card account).
+      all: [...accounts].sort((a, b) => a.name.localeCompare(b.name)),
     };
   },
 );
@@ -34,6 +36,12 @@ export const loadChartOfAccounts = adminAction(
 /** Persist the winery-wide A/P Bill accounts (supply receipts → QBO Bill: DR inventory / CR A/P). */
 export const saveApBillAccounts = adminAction(async (_ctx, input: ApAccounts) => {
   await saveApAccounts(input);
+  return { ok: true as const };
+});
+
+/** Plan 076: persist the pay-from accounts a BillPayment draws on when an invoice is marked Paid. */
+export const saveApPaymentAccountsAction = adminAction(async (_ctx, input: ApPaymentAccounts) => {
+  await saveApPaymentAccounts(input);
   return { ok: true as const };
 });
 

@@ -64,7 +64,7 @@ type ApplyState = {
 const emptyApply: ApplyState = { pending: false, error: null, needsAck: null, acks: { reconcile: false, partial: false, duplicate: false }, result: null };
 
 export function IngestReviewClient({
-  batchId, docs: initial, candidates, vendors, baseCurrency, multiCurrencyEnabled, fxByDoc,
+  batchId, docs: initial, candidates, vendors, baseCurrency, multiCurrencyEnabled, fxByDoc, payFromOptions,
 }: {
   batchId: string;
   docs: ReviewDoc[];
@@ -74,6 +74,8 @@ export function IngestReviewClient({
   /** undefined = no connected QBO; true/false = the company's MultiCurrency flag (council #2). */
   multiCurrencyEnabled?: boolean | null;
   fxByDoc: Record<string, FxSuggestion>;
+  /** Plan 076: configured pay-from accounts for a Paid invoice (empty until set up in Settings). */
+  payFromOptions: { label: string; value: string }[];
 }) {
   const router = useRouter();
   const [docs, setDocs] = React.useState<ReviewDoc[]>(initial);
@@ -149,6 +151,7 @@ export function IngestReviewClient({
               baseCurrency={baseCurrency}
               multiCurrencyEnabled={multiCurrencyEnabled}
               fx={fxByDoc[doc.id]}
+              payFromOptions={payFromOptions}
               onSaveDoc={saveDoc}
               onSaveLine={saveLine}
               onApply={runApply}
@@ -176,7 +179,7 @@ export function IngestReviewClient({
 // ── one receipt (invoice / proforma) ──
 
 function ReceiptPanel({
-  doc, candidates, vendors, apply, baseCurrency, multiCurrencyEnabled, fx, onSaveDoc, onSaveLine, onApply,
+  doc, candidates, vendors, apply, baseCurrency, multiCurrencyEnabled, fx, payFromOptions, onSaveDoc, onSaveLine, onApply,
 }: {
   doc: ReviewDoc;
   candidates: MaterialCandidate[];
@@ -185,6 +188,7 @@ function ReceiptPanel({
   baseCurrency: string;
   multiCurrencyEnabled?: boolean | null;
   fx?: FxSuggestion;
+  payFromOptions: { label: string; value: string }[];
   onSaveDoc: (docId: string, patch: Parameters<typeof updateIngestedInvoiceAction>[1]) => void;
   onSaveLine: (docId: string, lineId: string, patch: Parameters<typeof updateIngestedInvoiceLineAction>[1]) => void;
   onApply: (doc: ReviewDoc, acks: ApplyState["acks"]) => void;
@@ -263,6 +267,47 @@ function ReceiptPanel({
             <Badge tone="gold" variant="soft">will create vendor</Badge>
           )}
         </div>
+      </div>
+
+      {/* Plan 076: A/P payment status — required before Confirm; syncs to QuickBooks (Outstanding = owed bill,
+          Paid = a recorded bill payment from the chosen account). */}
+      <div style={{ marginTop: 16, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={fieldLabel}>Payment status</div>
+          <select
+            aria-label="Payment status"
+            value={doc.paymentStatus ?? ""}
+            disabled={applied}
+            onChange={(e) => {
+              const v = e.target.value === "PAID" ? "PAID" : e.target.value === "OUTSTANDING" ? "OUTSTANDING" : null;
+              onSaveDoc(doc.id, v === "PAID" ? { paymentStatus: "PAID" } : { paymentStatus: v, paidFromAccount: null });
+            }}
+            style={selectStyle}
+          >
+            <option value="">Choose…</option>
+            <option value="OUTSTANDING">Outstanding (still to pay)</option>
+            <option value="PAID">Paid</option>
+          </select>
+        </div>
+        {doc.paymentStatus === "PAID" ? (
+          <div>
+            <div style={fieldLabel}>Paid from</div>
+            {payFromOptions.length > 0 ? (
+              <select
+                aria-label="Paid from account"
+                value={doc.paidFromAccount ?? ""}
+                disabled={applied}
+                onChange={(e) => onSaveDoc(doc.id, { paidFromAccount: e.target.value || null })}
+                style={selectStyle}
+              >
+                <option value="">Choose account…</option>
+                {payFromOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            ) : (
+              <Badge tone="gold" variant="soft">Set up payment accounts in Settings first</Badge>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {/* Plan 073: FX rate — a foreign invoice is converted to the base currency at this rate (editable). */}

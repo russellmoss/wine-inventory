@@ -140,6 +140,10 @@ export async function emitApExportForInvoice(
     currency: string; // the invoice (document) currency
     exchangeRate?: number | null; // home per 1 foreign; null when currency == home
     lines: ApBillLine[]; // priced lines only (each amount in the document currency)
+    // Plan 076: payment status carried onto the event so the poster records a QBO BillPayment when Paid.
+    paymentStatus?: "OUTSTANDING" | "PAID" | null;
+    paidFromAccount?: string | null;
+    paidAt?: Date | null;
   },
   dbArg?: Db,
 ): Promise<ApEmitResult> {
@@ -181,6 +185,9 @@ export async function emitApExportForInvoice(
         receivedAt: opts.receivedAt,
         dueDate: opts.dueDate ?? null,
         vendorInvoiceNumber: opts.vendorInvoiceNumber?.trim() || null,
+        paymentStatus: opts.paymentStatus ?? null,
+        paidFromAccount: opts.paidFromAccount ?? null,
+        paidAt: opts.paidAt ?? null,
       },
       select: { id: true },
     });

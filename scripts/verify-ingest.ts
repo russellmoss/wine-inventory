@@ -18,6 +18,7 @@ import {
   updateIngestedInvoiceCore,
   applyIngestedInvoiceCore,
   reverseIngestedInvoiceCore,
+  setInvoicePaymentStatusCore,
   listRecentIntakes,
   type IngestDocumentInput,
   type ApplyDeps,
@@ -477,6 +478,40 @@ async function main() {
         await createIngestedInvoiceCore(ACTOR, { batchId: batch, documents: [{ blobUrl: "local://sha-a.pdf", fileName: "sha-a.pdf", mimeType: "application/pdf", fileSha256: sha, document: fdoc }] });
         const cSha = await createIngestedInvoiceCore(ACTOR, { batchId: batch, documents: [{ blobUrl: "local://sha-b.pdf", fileName: "sha-b.pdf", mimeType: "application/pdf", fileSha256: sha, document: fdoc }] });
         assert(cSha.duplicates.some((x) => x.kind === "file-hash"), "scenario 11: re-upload of the exact same file flagged at stage (file-hash)");
+      }
+
+      // ── Scenario 12 (Plan 076): payment status flows to the aggregate A/P event + post-apply flip ──
+      {
+        const batch = `${PFX}-12-${Date.now()}`;
+        const d = doc({ vendor: { name: `${PFX} PayVendor` }, invoiceNumber: "QA-PAY-1", invoiceTotal: 60, lines: [{ description: `${PFX} Pay Yeast`, qty: 200, unit: "g", unitPrice: 0.3, lineTotal: 60, lotNo: "QA-PAY-L1" }] });
+        const c = await createIngestedInvoiceCore(ACTOR, input("qa-pay.pdf", d, batch));
+        const invId = c.invoices[0].id;
+        const [ln] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invId } });
+        await updateIngestedInvoiceLineCore(ACTOR, ln.id, { matchDecision: "new", resolvedKind: "YEAST" });
+        // mark PAID from a bank account BEFORE applying (the "paid at ingestion" flow).
+        await updateIngestedInvoiceCore(ACTOR, invId, { paymentStatus: "PAID", paidFromAccount: "QA-Bank" });
+        const res = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(res.ok, "scenario 12: paid invoice applies");
+        if (!res.ok) return;
+        const agg = await prisma.apExportEvent.findFirst({ where: { ingestedInvoiceId: invId }, select: { paymentStatus: true, paidFromAccount: true, paidAt: true } });
+        assert(agg!.paymentStatus === "PAID" && agg!.paidFromAccount === "QA-Bank" && agg!.paidAt != null, "scenario 12: payment status + pay-from + paidAt carried onto the aggregate A/P event");
+        const invAfter = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { paidAt: true } });
+        assert(invAfter!.paidAt != null, "scenario 12: invoice stamped paidAt on a paid apply");
+
+        // post-apply flip PAID→OUTSTANDING (no BillPayment posted yet → allowed) clears the payment fields.
+        const flip = await setInvoicePaymentStatusCore(ACTOR, { ingestedInvoiceId: invId, paymentStatus: "OUTSTANDING" });
+        assert(flip.ok, "scenario 12: flip to OUTSTANDING succeeds (no posted bill payment)");
+        const aggO = await prisma.apExportEvent.findFirst({ where: { ingestedInvoiceId: invId }, select: { paymentStatus: true, paidFromAccount: true } });
+        assert(aggO!.paymentStatus === "OUTSTANDING" && aggO!.paidFromAccount === null, "scenario 12: aggregate event flipped to OUTSTANDING, pay-from cleared");
+
+        // PAID without an account is rejected.
+        const noAcct = await setInvoicePaymentStatusCore(ACTOR, { ingestedInvoiceId: invId, paymentStatus: "PAID" });
+        assert(!noAcct.ok, "scenario 12: marking PAID without a pay-from account is rejected");
+
+        // a posted BillPayment (simulate paymentExternalId) blocks flipping back to OUTSTANDING.
+        await prisma.apExportEvent.updateMany({ where: { ingestedInvoiceId: invId }, data: { paymentStatus: "PAID", paidFromAccount: "QA-Bank", paymentExternalId: "QA-BP-1" } });
+        const guarded = await setInvoicePaymentStatusCore(ACTOR, { ingestedInvoiceId: invId, paymentStatus: "OUTSTANDING" });
+        assert(!guarded.ok, "scenario 12: can't flip to OUTSTANDING once a bill payment is recorded in QBO (void there first)");
       }
     });
   } finally {

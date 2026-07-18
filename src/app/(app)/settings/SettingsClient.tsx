@@ -47,6 +47,7 @@ export function SettingsClient({
   accounting,
   accountingMappings,
   accountingAp,
+  accountingApPayment,
   commerce7,
   voice,
 }: {
@@ -56,6 +57,7 @@ export function SettingsClient({
   accounting: ConnectionSummary | null;
   accountingMappings: AccountingMapping[];
   accountingAp: { apInventoryAccount: string | null; apPayableAccount: string | null };
+  accountingApPayment: { apPaymentBankAccount: string | null; apPaymentCardAccount: string | null };
   commerce7: Commerce7ConnectionSummary | null;
   voice: VoiceSettingsView;
 }) {
@@ -262,6 +264,7 @@ export function SettingsClient({
         homeCurrency={accounting?.homeCurrency ?? null}
         initialMappings={accountingMappings}
         initialAp={accountingAp}
+        initialApPayment={accountingApPayment}
       />
 
       {/* Phase 16 — Commerce7 DTC/sales connection + catalog/account mapping. */}

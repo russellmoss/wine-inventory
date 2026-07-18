@@ -186,6 +186,9 @@ export type InvoicePatch = Partial<{
   vendorNameRaw: string | null;
   vendorInvoiceNumber: string | null;
   status: "pending" | "discarded" | "held";
+  // Plan 076: the review-screen A/P payment choice. paidFromAccount is required (in the UI gate) when PAID.
+  paymentStatus: "OUTSTANDING" | "PAID" | null;
+  paidFromAccount: string | null;
   // Plan 073: the FX rate override (review screen, Unit 5). Editable ONLY while pending — the guard below
   // refuses edits once applied/in-flight, so a lot's rate can never diverge from its A/P (council #3).
   fxRate: number | null;
@@ -202,6 +205,44 @@ export async function updateIngestedInvoiceCore(actor: LedgerActor, ingestedInvo
     await tx.ingestedInvoice.update({ where: { id: ingestedInvoiceId }, data: { ...patch } });
     void actor;
   });
+}
+
+export type SetPaymentResult = { ok: true; paymentStatus: "OUTSTANDING" | "PAID" } | { ok: false; error: string };
+
+/**
+ * Plan 076 — set an invoice's A/P payment status AFTER apply (the common "I paid the card statement, now mark
+ * it paid" flow), syncing the aggregate A/P event so the poster records/stops a QBO BillPayment. Returns
+ * { ok:false } (never throws). Guards: PAID needs a pay-from account; and once the BillPayment is POSTED to
+ * QuickBooks (paymentExternalId set) it can't be flipped back to OUTSTANDING here — that's a void in QBO.
+ */
+export async function setInvoicePaymentStatusCore(
+  actor: LedgerActor,
+  input: { ingestedInvoiceId: string; paymentStatus: "OUTSTANDING" | "PAID"; paidFromAccount?: string | null },
+): Promise<SetPaymentResult> {
+  try {
+    return await runInTenantTx(async (tx) => {
+      const inv = await tx.ingestedInvoice.findUnique({ where: { id: input.ingestedInvoiceId }, select: { id: true } });
+      if (!inv) return { ok: false as const, error: "That invoice isn't in this winery." };
+      const paid = input.paymentStatus === "PAID";
+      if (paid && !input.paidFromAccount?.trim()) return { ok: false as const, error: "Choose which account paid it." };
+
+      const agg = await tx.apExportEvent.findFirst({ where: { postingKey: `apinv:${inv.id}` }, select: { id: true, paymentExternalId: true } });
+      if (!paid && agg?.paymentExternalId) {
+        return { ok: false as const, error: "This invoice's payment is already recorded in QuickBooks — void the bill payment there first, then mark it outstanding." };
+      }
+
+      const account = paid ? input.paidFromAccount!.trim() : null;
+      const when = paid ? new Date() : null;
+      await tx.ingestedInvoice.update({ where: { id: inv.id }, data: { paymentStatus: input.paymentStatus, paidFromAccount: account, paidAt: when } });
+      if (agg) {
+        await tx.apExportEvent.update({ where: { id: agg.id }, data: { paymentStatus: input.paymentStatus, paidFromAccount: account, paidAt: when } });
+      }
+      await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "IngestedInvoice", entityId: inv.id, summary: `Marked invoice payment ${input.paymentStatus}` });
+      return { ok: true as const, paymentStatus: input.paymentStatus };
+    });
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : "Failed to update payment status." };
+  }
 }
 
 // ── apply (governed, atomic) ──
@@ -252,7 +293,7 @@ export async function applyIngestedInvoiceCore(
 
       const invoice = await tx.ingestedInvoice.findUnique({
         where: { id: input.ingestedInvoiceId },
-        select: { id: true, docType: true, landedReceipt: true, currency: true, vendorNameRaw: true, vendorInvoiceNumber: true, fileSha256: true, invoiceTotal: true, taxTotal: true, extractedJson: true, fxRate: true, fxRateDate: true, fxRateSource: true },
+        select: { id: true, docType: true, landedReceipt: true, currency: true, vendorNameRaw: true, vendorInvoiceNumber: true, fileSha256: true, invoiceTotal: true, taxTotal: true, extractedJson: true, fxRate: true, fxRateDate: true, fxRateSource: true, paymentStatus: true, paidFromAccount: true },
       });
       if (!invoice) throw new ApplyAbort({ ok: false, error: "Invoice not found." });
 
@@ -493,6 +534,11 @@ export async function applyIngestedInvoiceCore(
           currency: isForeign ? invoiceCurrency : baseCurrency,
           exchangeRate: isForeign ? fxRate : null,
           lines: billLines,
+          // Plan 076: carry the payment status onto the aggregate event so the poster can record a QBO
+          // BillPayment when Paid. paidAt is stamped now for a Paid-at-ingestion invoice.
+          paymentStatus: invoice.paymentStatus ?? null,
+          paidFromAccount: invoice.paidFromAccount ?? null,
+          paidAt: invoice.paymentStatus === "PAID" ? new Date() : null,
         },
         tx,
       );
@@ -502,7 +548,7 @@ export async function applyIngestedInvoiceCore(
       // batch can't attach to the wrong stock). Read/surface side is Unit 10.
       await attachBatchCoas(tx, invoice.id, supplyLotIds);
 
-      await tx.ingestedInvoice.update({ where: { id: invoice.id }, data: { status: "applied", appliedAt: new Date(), vendorId } });
+      await tx.ingestedInvoice.update({ where: { id: invoice.id }, data: { status: "applied", appliedAt: new Date(), vendorId, ...(invoice.paymentStatus === "PAID" ? { paidAt: new Date() } : {}) } });
       await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "IngestedInvoice", entityId: invoice.id, summary: `Applied invoice ${invoice.vendorInvoiceNumber ?? invoice.id} — ${supplyLotIds.length} lot(s)${vendorId ? "" : ", no vendor"}` });
 
       return { ok: true as const, vendorId, supplyLotIds, apLineCount };
