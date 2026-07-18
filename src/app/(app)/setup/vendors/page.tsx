@@ -1,4 +1,4 @@
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { listVendors } from "@/lib/vendors/vendors";
 import { VendorsClient } from "./VendorsClient";
 
@@ -13,5 +13,7 @@ export default async function VendorsPage() {
   const tenantId = user.activeOrganizationId;
   if (!tenantId) return <div style={{ padding: 24 }}>Your account isn&apos;t attached to a winery.</div>;
   const vendors = await listVendors({ tenantId });
-  return <VendorsClient vendors={vendors} isAdmin={user.role === "admin" || user.role === "owner"} />;
+  // Merge/Remove (like Archive) are admin-like actions. Use the SAME gate the server actions enforce
+  // (isTenantAdminLike = admin OR developer) so a developer sees the buttons the adminAction already allows.
+  return <VendorsClient vendors={vendors} isAdmin={isTenantAdminLike(user)} />;
 }
