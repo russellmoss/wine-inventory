@@ -56,12 +56,12 @@ function useNarrow(): boolean {
 type ApplyState = {
   pending: boolean;
   error: string | null;
-  needsAck: "reconcile" | "partial-ap" | "fx-rate" | null;
-  acks: { reconcile: boolean; partial: boolean };
+  needsAck: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" | null;
+  acks: { reconcile: boolean; partial: boolean; duplicate: boolean };
   result: { supplyLotIds: string[]; apLineCount: number } | null;
 };
 
-const emptyApply: ApplyState = { pending: false, error: null, needsAck: null, acks: { reconcile: false, partial: false }, result: null };
+const emptyApply: ApplyState = { pending: false, error: null, needsAck: null, acks: { reconcile: false, partial: false, duplicate: false }, result: null };
 
 export function IngestReviewClient({
   batchId, docs: initial, candidates, vendors, baseCurrency, multiCurrencyEnabled, fxByDoc,
@@ -99,7 +99,7 @@ export function IngestReviewClient({
 
   const runApply = React.useCallback(async (doc: ReviewDoc, acks: ApplyState["acks"]) => {
     setApplyState((s) => ({ ...s, [doc.id]: { ...(s[doc.id] ?? emptyApply), acks, pending: true, error: null } }));
-    const res = await applyIngestedInvoiceAction(doc.id, { allowReconcileMismatch: acks.reconcile, allowPartialAp: acks.partial });
+    const res = await applyIngestedInvoiceAction(doc.id, { allowReconcileMismatch: acks.reconcile, allowPartialAp: acks.partial, allowDuplicate: acks.duplicate });
     if (res.ok) {
       patchDocLocal(doc.id, { status: "applied" });
       setApplyState((s) => ({ ...s, [doc.id]: { ...emptyApply, acks, result: { supplyLotIds: res.supplyLotIds, apLineCount: res.apLineCount } } }));
@@ -350,9 +350,23 @@ function ReceiptPanel({
                       onClick={() => onApply(doc, {
                         reconcile: apply.acks.reconcile || apply.needsAck === "reconcile",
                         partial: apply.acks.partial || apply.needsAck === "partial-ap",
+                        duplicate: apply.acks.duplicate,
                       })}
                     >
                       {apply.needsAck === "reconcile" ? "Apply inventory-only (totals don't reconcile)" : "Apply inventory-only (partial A/P)"}
+                    </Button>
+                  </div>
+                ) : null}
+                {/* Plan 076: hard duplicate gate — "detected as a duplicate, do you want to continue?" */}
+                {apply.needsAck === "duplicate" ? (
+                  <div style={{ marginTop: 10 }}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={apply.pending}
+                      onClick={() => onApply(doc, { reconcile: apply.acks.reconcile, partial: apply.acks.partial, duplicate: true })}
+                    >
+                      Yes, book it anyway (duplicate)
                     </Button>
                   </div>
                 ) : null}
@@ -363,7 +377,7 @@ function ReceiptPanel({
               <Button
                 variant="primary"
                 disabled={!gate.ok || apply.pending}
-                onClick={() => onApply(doc, { reconcile: false, partial: false })}
+                onClick={() => onApply(doc, { reconcile: false, partial: false, duplicate: false })}
               >
                 {apply.pending ? "Applying…" : "Confirm & intake"}
               </Button>

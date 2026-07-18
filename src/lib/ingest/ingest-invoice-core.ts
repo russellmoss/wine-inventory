@@ -35,9 +35,20 @@ export type IngestDocumentInput = {
   document: ExtractedDocument;
 };
 
+/** A detected possible-duplicate on a freshly-staged document (Plan 076). The human decides whether to
+ *  proceed; the apply-time guard (below) enforces it a second time before any goods/A/P are booked. */
+export type IngestDuplicate = {
+  ingestedInvoiceId: string; // the newly-staged doc that looks like a duplicate
+  fileName: string;
+  kind: "vendor-invoice" | "file-hash";
+  matchedInvoiceId: string; // the pre-existing invoice it matches
+  label: string; // human-readable explanation for the confirm modal
+};
+
 export type CreateIngestedResult = {
   invoices: { id: string; fileName: string; docType: string }[];
   warnings: string[];
+  duplicates: IngestDuplicate[];
 };
 
 // ── create staging ──
@@ -54,22 +65,33 @@ export async function createIngestedInvoiceCore(
   return runInTenantTx(async (tx) => {
     const invoices: CreateIngestedResult["invoices"] = [];
     const warnings: string[] = [];
+    const duplicates: IngestDuplicate[] = [];
 
     for (const d of input.documents) {
       const doc = d.document;
       const isReceipt = doc.docType === "invoice" || doc.docType === "proforma";
 
-      // Soft duplicate guard (council): same (vendorName, invoice#) or same exact file already staged/applied.
+      // Duplicate guard (Plan 076): same (vendorName, invoice#) or same exact file already staged/applied.
+      // Detection is non-destructive — the doc is always staged; the returned `duplicates` drive a confirm
+      // gate in the UI, and the apply-time guard re-checks before any goods/A/P are booked (the human decides).
+      let dupVendorId: string | null = null;
+      let dupFileId: string | null = null;
       if (doc.invoiceNumber && doc.vendor?.name) {
         const dup = await tx.ingestedInvoice.findFirst({
           where: { vendorNameRaw: doc.vendor.name, vendorInvoiceNumber: doc.invoiceNumber, status: { in: ["pending", "applying", "applied"] } },
           select: { id: true },
         });
-        if (dup) warnings.push(`"${d.fileName}": an invoice ${doc.invoiceNumber} from ${doc.vendor.name} is already in the queue — possible duplicate.`);
+        if (dup) {
+          dupVendorId = dup.id;
+          warnings.push(`"${d.fileName}": an invoice ${doc.invoiceNumber} from ${doc.vendor.name} is already in the queue — possible duplicate.`);
+        }
       }
       if (d.fileSha256) {
         const dupFile = await tx.ingestedInvoice.findFirst({ where: { fileSha256: d.fileSha256 }, select: { id: true } });
-        if (dupFile) warnings.push(`"${d.fileName}": this exact file was uploaded before — possible duplicate.`);
+        if (dupFile) {
+          dupFileId = dupFile.id;
+          warnings.push(`"${d.fileName}": this exact file was uploaded before — possible duplicate.`);
+        }
       }
 
       const invoice = await tx.ingestedInvoice.create({
@@ -116,11 +138,18 @@ export async function createIngestedInvoiceCore(
         }
       }
 
+      if (dupVendorId) {
+        duplicates.push({ ingestedInvoiceId: invoice.id, fileName: d.fileName, kind: "vendor-invoice", matchedInvoiceId: dupVendorId, label: `Invoice ${doc.invoiceNumber} from ${doc.vendor?.name} is already in the system.` });
+      }
+      if (dupFileId) {
+        duplicates.push({ ingestedInvoiceId: invoice.id, fileName: d.fileName, kind: "file-hash", matchedInvoiceId: dupFileId, label: `This exact file ("${d.fileName}") was uploaded before.` });
+      }
+
       await writeAudit(tx, { ...actor, action: "CREATE", entityType: "IngestedInvoice", entityId: invoice.id, summary: `Ingested "${d.fileName}" (${doc.docType})` });
       invoices.push({ id: invoice.id, fileName: d.fileName, docType: doc.docType });
     }
 
-    return { invoices, warnings };
+    return { invoices, warnings, duplicates };
   });
 }
 
@@ -178,7 +207,7 @@ export async function updateIngestedInvoiceCore(actor: LedgerActor, ingestedInvo
 
 export type ApplyResult =
   | { ok: true; vendorId: string | null; supplyLotIds: string[]; apLineCount: number }
-  | { ok: false; error: string; needsAck?: "reconcile" | "partial-ap" | "fx-rate" };
+  | { ok: false; error: string; needsAck?: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" };
 
 /** Plan 073: the FX rate resolver is injectable so tests can pin a deterministic rate (defaults to the real
  *  Frankfurter-backed service). The signature matches `getRate(base, foreign, at)`. */
@@ -208,7 +237,7 @@ function stockUnitForNewLine(unitRaw: string | null | undefined): string {
  */
 export async function applyIngestedInvoiceCore(
   actor: LedgerActor,
-  input: { ingestedInvoiceId: string; allowReconcileMismatch?: boolean; allowPartialAp?: boolean },
+  input: { ingestedInvoiceId: string; allowReconcileMismatch?: boolean; allowPartialAp?: boolean; allowDuplicate?: boolean },
   deps?: ApplyDeps,
 ): Promise<ApplyResult> {
   try {
@@ -222,9 +251,33 @@ export async function applyIngestedInvoiceCore(
 
       const invoice = await tx.ingestedInvoice.findUnique({
         where: { id: input.ingestedInvoiceId },
-        select: { id: true, docType: true, landedReceipt: true, currency: true, vendorNameRaw: true, vendorInvoiceNumber: true, invoiceTotal: true, taxTotal: true, extractedJson: true, fxRate: true, fxRateDate: true, fxRateSource: true },
+        select: { id: true, docType: true, landedReceipt: true, currency: true, vendorNameRaw: true, vendorInvoiceNumber: true, fileSha256: true, invoiceTotal: true, taxTotal: true, extractedJson: true, fxRate: true, fxRateDate: true, fxRateSource: true },
       });
       if (!invoice) throw new ApplyAbort({ ok: false, error: "Invoice not found." });
+
+      // (a2) duplicate guard (Plan 076) — refuse to book goods/A/P for an invoice that was ALREADY applied
+      // (same (vendor, invoice#) or the exact same file), unless the human explicitly acknowledged it. This is
+      // the hard backstop behind the stage-time detection: the confirm modal can be skipped, this can't.
+      if (!input.allowDuplicate) {
+        const dupOr: Prisma.IngestedInvoiceWhereInput[] = [];
+        if (invoice.vendorNameRaw && invoice.vendorInvoiceNumber) {
+          dupOr.push({ vendorNameRaw: invoice.vendorNameRaw, vendorInvoiceNumber: invoice.vendorInvoiceNumber });
+        }
+        if (invoice.fileSha256) dupOr.push({ fileSha256: invoice.fileSha256 });
+        if (dupOr.length > 0) {
+          const priorApplied = await tx.ingestedInvoice.findFirst({
+            where: { id: { not: invoice.id }, status: "applied", OR: dupOr },
+            select: { id: true, vendorInvoiceNumber: true },
+          });
+          if (priorApplied) {
+            throw new ApplyAbort({
+              ok: false,
+              needsAck: "duplicate",
+              error: `This looks like a duplicate — invoice ${priorApplied.vendorInvoiceNumber ?? priorApplied.id} was already applied. Confirm you want to book it again, or discard this one.`,
+            });
+          }
+        }
+      }
 
       // (b) doc-type + proforma gate
       if (invoice.docType !== "invoice" && invoice.docType !== "proforma") {

@@ -34,7 +34,7 @@ export const extractAndStageAction = action(async ({ actor }, input: { batchId: 
     if (r.ok) documents.push({ blobUrl: r.blobUrl, fileName: r.fileName, mimeType: r.mimeType, fileSha256: r.fileSha256, document: r.document });
     else failed.push({ fileName: r.fileName, error: r.error });
   }
-  const created = documents.length ? await createIngestedInvoiceCore(actor, { batchId: input.batchId, documents }) : { invoices: [], warnings: [] };
+  const created = documents.length ? await createIngestedInvoiceCore(actor, { batchId: input.batchId, documents }) : { invoices: [], warnings: [], duplicates: [] };
   revalidateIngest();
   return { ...created, failed };
 });
@@ -50,7 +50,7 @@ export const updateIngestedInvoiceAction = action(async ({ actor }, id: string, 
 });
 
 export const applyIngestedInvoiceAction = action(
-  async ({ actor }, ingestedInvoiceId: string, opts?: { allowReconcileMismatch?: boolean; allowPartialAp?: boolean }): Promise<ApplyResult> => {
+  async ({ actor }, ingestedInvoiceId: string, opts?: { allowReconcileMismatch?: boolean; allowPartialAp?: boolean; allowDuplicate?: boolean }): Promise<ApplyResult> => {
     const res = await applyIngestedInvoiceCore(actor, { ingestedInvoiceId, ...(opts ?? {}) });
     revalidateIngest();
     return res;

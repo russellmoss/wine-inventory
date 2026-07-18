@@ -431,6 +431,45 @@ async function main() {
         const lotOAgain = await prisma.supplyLot.findFirst({ where: { id: { in: ovRes.supplyLotIds } }, select: { unitCost: true } });
         assert(Number(lotOAgain!.unitCost) === beforeCost, "scenario 10c: inventory cost is historical — never revalued for FX (IAS 21)");
       }
+
+      // ── Scenario 11 (Plan 076): duplicate-invoice guard — detection at stage + hard gate at apply ──
+      {
+        const batch = `${PFX}-11-${Date.now()}`;
+        const mk = (n: number) => doc({ vendor: { name: `${PFX} DupVendor` }, invoiceNumber: "QA-DUP-1", invoiceTotal: 30, lines: [{ description: `${PFX} Dup Yeast`, qty: 100, unit: "g", unitPrice: 0.3, lineTotal: 30, lotNo: `QA-DUP-${n}` }] });
+
+        // first upload has no prior → not a duplicate; applies clean.
+        const c1 = await createIngestedInvoiceCore(ACTOR, input("qa-dup-1.pdf", mk(1), batch));
+        assert(c1.duplicates.length === 0, "scenario 11: first upload flags no duplicate");
+        const inv1 = c1.invoices[0].id;
+        const [ln1] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: inv1 } });
+        await updateIngestedInvoiceLineCore(ACTOR, ln1.id, { matchDecision: "new", resolvedKind: "YEAST" });
+        const r1 = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv1 });
+        assert(r1.ok, "scenario 11: first invoice applies");
+
+        // second upload with the SAME (vendor, invoice#) → flagged at stage time.
+        const c2 = await createIngestedInvoiceCore(ACTOR, input("qa-dup-2.pdf", mk(2), batch));
+        assert(c2.duplicates.some((x) => x.kind === "vendor-invoice"), "scenario 11: re-upload of (vendor, invoice#) flagged at stage (vendor-invoice)");
+        const inv2 = c2.invoices[0].id;
+        const [ln2] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: inv2 } });
+        await updateIngestedInvoiceLineCore(ACTOR, ln2.id, { matchDecision: "new", resolvedKind: "YEAST" });
+
+        // apply WITHOUT ack → hard-blocked; the tx rolls back so nothing is booked.
+        const blocked = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv2 });
+        assert(!blocked.ok && blocked.needsAck === "duplicate", "scenario 11: applying a duplicate is BLOCKED (needsAck=duplicate)");
+        const inv2mid = await prisma.ingestedInvoice.findUnique({ where: { id: inv2 }, select: { status: true } });
+        assert(inv2mid!.status === "pending", "scenario 11: blocked duplicate rolled back to pending — no goods/A/P booked");
+
+        // apply WITH the explicit acknowledgement → proceeds.
+        const ok2 = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv2, allowDuplicate: true });
+        assert(ok2.ok, "scenario 11: duplicate applies once acknowledged (allowDuplicate)");
+
+        // exact-file (fileSha256) duplicate is flagged at stage time too.
+        const sha = `qa-dup-sha-${Date.now()}`;
+        const fdoc = doc({ vendor: { name: `${PFX} ShaVendor` }, invoiceNumber: "QA-SHA-1", invoiceTotal: 10, lines: [{ description: `${PFX} Sha Line`, qty: 10, unit: "g", unitPrice: 1, lineTotal: 10 }] });
+        await createIngestedInvoiceCore(ACTOR, { batchId: batch, documents: [{ blobUrl: "local://sha-a.pdf", fileName: "sha-a.pdf", mimeType: "application/pdf", fileSha256: sha, document: fdoc }] });
+        const cSha = await createIngestedInvoiceCore(ACTOR, { batchId: batch, documents: [{ blobUrl: "local://sha-b.pdf", fileName: "sha-b.pdf", mimeType: "application/pdf", fileSha256: sha, document: fdoc }] });
+        assert(cSha.duplicates.some((x) => x.kind === "file-hash"), "scenario 11: re-upload of the exact same file flagged at stage (file-hash)");
+      }
     });
   } finally {
     // restore A/P accounts + clean up fixtures
