@@ -465,7 +465,7 @@ function MaterialDetailModal({
           {inactive ? <Badge tone="neutral" variant="soft">inactive</Badge> : <Badge tone="green" variant="soft">active</Badge>}
         </DetailRow>
 
-        {tracked ? <div style={{ marginTop: 12 }}><MaterialLotsPanel materialId={m.id} /></div> : null}
+        {tracked ? <div style={{ marginTop: 12 }}><MaterialLotsPanel key={m.id} materialId={m.id} /></div> : null}
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 16 }}>
           <Button type="button" variant="ghost" disabled={pending} onClick={() => run(() => setMaterialActiveAction(m.id, inactive))}>
@@ -486,10 +486,10 @@ function MaterialLotsPanel({ materialId }: { materialId: string }) {
   const [lots, setLots] = React.useState<MaterialLotRow[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
+  // The parent keys this panel by materialId, so it re-mounts (fresh null state) when the material changes —
+  // no synchronous setState reset inside the effect (that triggers a cascading re-render, flagged by lint).
   React.useEffect(() => {
     let live = true;
-    setLots(null);
-    setError(null);
     listMaterialLotsAction(materialId)
       .then((rows) => { if (live) setLots(rows); })
       .catch(() => { if (live) setError("Couldn't load lot history."); });
