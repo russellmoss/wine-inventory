@@ -8,6 +8,24 @@ depth: deep
 units: 13
 ---
 
+## Build Status (2026-07-18) — 11/13 units built + DB-proven; UI/CI deferred
+
+Branch `claude/bug-report-clarification-loop` (off fresh `origin/main`). Each unit verified against the
+live Demo DB (script proves the DB) + tsc + vitest green; 3 Neon migrations applied.
+
+**Built + proven:** U1 console ring buffer · U2 drain into both report paths + server clamp (round-trip
+proven) · U3 `<console_errors>` in fix agents (shared formatter, C-3 DRY) · U4 Cellarhand Support sender
+(no credential Account; Demo+Bhutan backfilled) · U5 `FeedbackClarification` + `AWAITING_CLARIFICATION` +
+RLS + partial-unique/CHECK (migrations applied; constraints proven) · U6 `requestClarificationCore`
+(persist-then-send C-3.1, insert-first C-3.2) · U7 cheap-LLM sufficiency gate (FIX-only, in-app, C-2/C-6) ·
+U9 reply-hook → answer + auto-re-dispatch / escalate (token routing, intent + round guards, C-3.6/8) ·
+U10 `<clarification_history>` on re-runs · U13 watchdog + TTL sweep cron · U11 `verify:feedback-clarification`
+end-to-end gate (11/11). All 9 council concurrency fixes folded in.
+
+**Deferred to a browser-QA / ship pass** (per user decision — need the dev server + a real CI run):
+U8 in-agent `request_clarification` tool + workflow YAML branch; U11 `/developer` clarification panel +
+My Reports "Needs your input" status chip (D-1); U12 assistant surfacing of open clarifications.
+
 ## Overview
 
 Two connected upgrades to the reported-bug pipeline. (1) When a user reports a bug, automatically
