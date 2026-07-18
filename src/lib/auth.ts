@@ -3,12 +3,43 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin, organization } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "./prisma";
-import { DEVELOPER_HOME_ORG_ID } from "./access";
+import { DEVELOPER_HOME_ORG_ID, clearsPasswordChangeGate } from "./access";
 import { hashPassword, verifyPassword } from "./password";
 import { sendEmail, resetPasswordEmailHtml } from "./email";
 
+/**
+ * Google "Sign in with Google" (login only — non-sensitive email/profile scopes, no Gmail access).
+ * Env-gated like the other optional integrations: unset creds → we register NO provider, so the
+ * feature is simply off (the login page hides its button behind NEXT_PUBLIC_GOOGLE_AUTH_ENABLED).
+ *
+ * `disableSignUp: true` is the load-bearing choice — Google login NEVER creates a user. It only
+ * links to an EXISTING account (see `account.accountLinking` below), so a Google sign-in whose email
+ * doesn't match an admin-created user is refused. This mirrors `emailAndPassword.disableSignUp` and
+ * keeps the "admins provision users" model intact: a linked user already has its org membership, so
+ * it never lands in the fail-closed tenant layer with no tenant.
+ */
+function googleSocialProviders() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return {};
+  return { google: { clientId, clientSecret, disableSignUp: true } };
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
+  socialProviders: googleSocialProviders(),
+  account: {
+    // Link a Google identity to the EXISTING user with the same email. Admin-created users are never
+    // email-verified in this app (there's no verification flow), and Google asserts the incoming email
+    // is verified, so we trust `google` and drop the local-verified requirement — otherwise linking is
+    // blocked and a valid user's Google login would be refused. `allowDifferentEmails` stays default
+    // (false): the Google email must equal the account email.
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["google"],
+      requireLocalEmailVerified: false,
+    },
+  },
   emailAndPassword: {
     enabled: true,
     // No self-service signup: admins create users (Milestone E).
@@ -49,6 +80,25 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24, // refresh daily
   },
   databaseHooks: {
+    account: {
+      create: {
+        // When a Google account links to a user, clear the change-password gate: an SSO user has no
+        // password to change and would otherwise be stranded on /change-password (accessDecision's
+        // `mustChangePassword` branch). User is a global/RLS-exempt table, so no tenant context is
+        // needed. Never block login on this — mirror the session.after audit swallow.
+        after: async (account) => {
+          if (!clearsPasswordChangeGate(account.providerId)) return;
+          try {
+            await prisma.user.update({
+              where: { id: account.userId },
+              data: { mustChangePassword: false, passwordChangedAt: new Date() },
+            });
+          } catch {
+            // swallow — the gate is a convenience, not a security boundary
+          }
+        },
+      },
+    },
     session: {
       create: {
         // Multi-tenancy (K2/K13): stamp the active organization onto the session at login so

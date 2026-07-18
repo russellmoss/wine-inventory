@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canAccessVineyard, canAccessLot, canManagerAccessVineyard, resolveActiveOrg, accessDecision, type AppUser } from "@/lib/access";
+import { canAccessVineyard, canAccessLot, canManagerAccessVineyard, resolveActiveOrg, accessDecision, clearsPasswordChangeGate, type AppUser } from "@/lib/access";
 
 const base: AppUser = {
   id: "u1",
@@ -103,6 +103,12 @@ describe("resolveActiveOrg (tenant resolution + K13 revalidation)", () => {
     expect(resolveActiveOrg([], "orgA")).toBeNull();
     expect(resolveActiveOrg([], null)).toBeNull();
   });
+  // Plan 074: Google sign-in must NOT change tenant resolution. A social login links to an existing
+  // admin-created user, whose membership is what resolveActiveOrg keys off — a no-membership user
+  // still resolves to null. (Re-assert the invariant lives unchanged next to the new feature.)
+  it("Google login changes nothing here: a no-membership user still resolves to null", () => {
+    expect(resolveActiveOrg([], "orgA")).toBeNull();
+  });
   it("prefers preferOrgId (developer -> Demo Winery) over earliest membership when no claim", () => {
     expect(resolveActiveOrg(["org_bhutan_wine_co", "org_demo_winery"], null, { preferOrgId: "org_demo_winery" })).toBe("org_demo_winery");
     expect(resolveActiveOrg(["org_bhutan_wine_co", "org_demo_winery"], undefined, { preferOrgId: "org_demo_winery" })).toBe("org_demo_winery");
@@ -112,6 +118,22 @@ describe("resolveActiveOrg (tenant resolution + K13 revalidation)", () => {
   });
   it("ignores preferOrgId when the user isn't a member of it", () => {
     expect(resolveActiveOrg(["org_bhutan_wine_co"], null, { preferOrgId: "org_demo_winery" })).toBe("org_bhutan_wine_co");
+  });
+});
+
+// Plan 074: when a Google account links, the auth hook (src/lib/auth.ts account.create.after) clears
+// the admin-set change-password gate — an SSO user has no password to change. A `credential` account
+// (admin-issued temp password) must KEEP the gate so the user still sets their own password.
+describe("clearsPasswordChangeGate (Google-link retires the change-password gate)", () => {
+  it("google link clears the gate", () => {
+    expect(clearsPasswordChangeGate("google")).toBe(true);
+  });
+  it("credential (admin temp password) keeps the gate", () => {
+    expect(clearsPasswordChangeGate("credential")).toBe(false);
+  });
+  it("any other provider keeps the gate (fail-safe default)", () => {
+    expect(clearsPasswordChangeGate("github")).toBe(false);
+    expect(clearsPasswordChangeGate("")).toBe(false);
   });
 });
 

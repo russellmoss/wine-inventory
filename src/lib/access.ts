@@ -44,6 +44,16 @@ export function resolveActiveOrg(
   return organizationIds[0] ?? null;
 }
 
+/**
+ * Does linking an account from this provider retire the admin-set change-password gate?
+ * A social/SSO user (Google) has no password to change, so linking clears the gate; a `credential`
+ * account (an admin-issued temp password) must KEEP it so the user still sets their own password.
+ * Pure so the Better Auth `account.create.after` hook (src/lib/auth.ts) stays thin and testable.
+ */
+export function clearsPasswordChangeGate(providerId: string): boolean {
+  return providerId === "google";
+}
+
 export function accessDecision(
   user: AppUser | null,
   opts: { requireAdmin?: boolean } = {},
