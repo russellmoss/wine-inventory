@@ -411,6 +411,9 @@ stubs FX) — no live QBO in CI.
 
 ## Build outcome (2026-07-18)
 
+> Renumbered from **076 → 078** at ship time (076 collided with a concurrent branch; 077 = the Google-signin
+> plan). Commit messages and code comments still say "Plan 076" — same work, just a unique plan-file number.
+
 All 11 units BUILT on branch `claude/invoice-ingestion-features-95d4df` (commits d79f6f4 → 75a13d7). Two
 RLS-neutral migrations applied to Neon: `20260718130000_ap_aggregate_invoice`, `20260718140000_ap_payment_status`.
 Remaining before relying on the DTC-style cash tie-out: **accountant sign-off** on the BillPayment GL direction +
