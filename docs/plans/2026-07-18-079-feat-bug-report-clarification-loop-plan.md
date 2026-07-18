@@ -8,7 +8,16 @@ depth: deep
 units: 13
 ---
 
-## Build Status (2026-07-18) — 11/13 units built + DB-proven; UI/CI deferred
+## Build Status (2026-07-18) — 13/13 units SHIPPED to main + browser-QA'd end-to-end
+
+Landed across four PRs: the backend spine (#276), the deferred UI surfaces (#281 = U11-UI + U12), the
+inventory-error sibling (#277), and finally the in-agent tool (**#282 = U8, `6ac7b0b`**). Each unit
+verified against the live Demo DB (script proves the DB) + tsc + eslint + vitest green; 3 Neon migrations
+applied. The complete loop was browser-QA'd in the in-app Claude browser: report → console auto-capture →
+sufficiency gate asks 3 questions → DM from "Cellarhand Support" with `[Ref: BUG-XXXX]` token → My Reports
+"Needs your input" chip → assistant nudge surfacing the open clarification → `/developer` panel (waiting →
+answered) → reply strips the ref token → attempt-2 re-dispatch. The multi-round loop guard
+(`MAX_CLARIFICATION_ROUNDS=2`) is now live (U8 provides round 2 from the in-agent tool).
 
 Branch `claude/bug-report-clarification-loop` (off fresh `origin/main`). Each unit verified against the
 live Demo DB (script proves the DB) + tsc + vitest green; 3 Neon migrations applied.
