@@ -6,7 +6,7 @@ import { listMaterials } from "@/lib/cellar/materials";
 import { listVendors } from "@/lib/vendors/vendors";
 import { categoryOf } from "@/lib/cellar/material-taxonomy";
 import { getRate } from "@/lib/money/fx/rate-service";
-import { coerceCurrency } from "@/lib/money/currency";
+import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
 import { isForeignCurrency } from "./ingest-review-model";
 import type { MaterialCandidate } from "@/lib/cellar/material-match";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
@@ -133,7 +133,13 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
         fxByDoc[r.id] = { rate: Number(r.fxRate), rateDate: r.fxRateDate ? r.fxRateDate.toISOString().slice(0, 10) : null, source: r.fxRateSource ?? "manual override" };
         return;
       }
-      const resolved = await getRate(baseCurrency, coerceCurrency(r.currency), new Date());
+      // An unsupported invoice currency can't be priced — surface null (Confirm blocks) rather than a fake 1.0.
+      const foreignCode = (r.currency ?? "").trim().toUpperCase();
+      if (!(SUPPORTED_CURRENCIES as readonly string[]).includes(foreignCode)) {
+        fxByDoc[r.id] = { rate: null, rateDate: null, source: null };
+        return;
+      }
+      const resolved = await getRate(baseCurrency, foreignCode, new Date());
       fxByDoc[r.id] = resolved.ok
         ? { rate: resolved.rate, rateDate: resolved.rateDate.toISOString().slice(0, 10), source: resolved.source }
         : { rate: null, rateDate: null, source: null };

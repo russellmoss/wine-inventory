@@ -9,7 +9,7 @@ import { allocateLandedCost, type InvoiceCharges } from "@/lib/ingest/landed-cos
 import { normalizeLineToStock, parsePackagingUnit } from "@/lib/ingest/normalize-line";
 import { convertToBase, round8 } from "@/lib/money/fx/convert";
 import { getRate, type ResolvedRate } from "@/lib/money/fx/rate-service";
-import { coerceCurrency } from "@/lib/money/currency";
+import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
 import { coerceStockUnit } from "@/lib/cellar/materials-shared";
 import { coerceFamily, coerceMaterialCategory, categoryOf } from "@/lib/cellar/material-taxonomy";
 import { dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
@@ -277,8 +277,20 @@ export async function applyIngestedInvoiceCore(
       // 1.0 or $0 (D14).
       const settings = await tx.appSettings.findFirst({ select: { currency: true } });
       const baseCurrency = coerceCurrency(settings?.currency);
-      const invoiceCurrency = currency ? coerceCurrency(currency) : baseCurrency;
-      const isForeign = invoiceCurrency !== baseCurrency;
+      // Use the RAW invoice currency for the foreign check — NOT coerceCurrency, which would silently map an
+      // unrecognized code (e.g. an OCR "CHF"/"JPY") to the base and book it 1:1 with no conversion (a foreign
+      // amount leaking into the roll-up at a fabricated 1.0 rate). An invoice currency that differs from base
+      // MUST be a supported code we can price; anything else FAILS LOUD (D14) rather than mis-booking.
+      const rawCurrency = currency?.trim().toUpperCase() || null;
+      const isForeign = rawCurrency != null && rawCurrency !== baseCurrency;
+      if (isForeign && !(SUPPORTED_CURRENCIES as readonly string[]).includes(rawCurrency)) {
+        throw new ApplyAbort({
+          ok: false,
+          needsAck: "fx-rate",
+          error: `Invoice currency "${rawCurrency}" isn't a supported currency for conversion (supported: ${SUPPORTED_CURRENCIES.join(", ")}). Fix the currency on the review screen before applying.`,
+        });
+      }
+      const invoiceCurrency = isForeign ? rawCurrency! : baseCurrency;
 
       let fxRate = 1;
       let fxRateDate: Date | null = null;

@@ -396,6 +396,16 @@ async function main() {
         const lMafter = await prisma.ingestedInvoiceLine.findUnique({ where: { id: lM.id }, select: { createdSupplyLotId: true } });
         assert(invMafter!.status === "pending" && lMafter!.createdSupplyLotId == null, "scenario 10a: blocked apply wrote nothing (invoice pending, no lot)");
 
+        // (a2) An UNSUPPORTED invoice currency (e.g. an OCR "CHF") must FAIL LOUD — never silently coerce to
+        // base and book 1:1 (that would leak a foreign amount into the roll-up at a fabricated 1.0 rate).
+        const dBad = doc({ currency: "CHF", vendor: { name: `${PFX} FxUnsupported` }, invoiceNumber: "QA-FX-CHF", invoiceTotal: 55, lines: [{ description: `${PFX} Franc Widget`, qty: 5, unit: "unit", unitPrice: 11, lineTotal: 55 }] });
+        const createdB = await createIngestedInvoiceCore(ACTOR, input("qa-fx-chf.pdf", dBad, batch));
+        const invB = createdB.invoices[0].id;
+        const [lB] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invB } });
+        await updateIngestedInvoiceLineCore(ACTOR, lB.id, { matchDecision: "new", resolvedKind: "OTHER", resolvedCategory: "OTHER" });
+        const badRes = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invB }, fxStub(1.2));
+        assert(!badRes.ok && badRes.needsAck === "fx-rate", "scenario 10a2: an unsupported invoice currency (CHF) FAILS LOUD, never books 1:1");
+
         // (b) A persisted manual OVERRIDE wins over the feed (contracted rate). €110 × 1.25 = $137.50 base.
         const dOv = doc({ currency: "EUR", vendor: { name: `${PFX} FxOverride` }, invoiceNumber: "QA-FX-OV", invoiceTotal: 110, lines: [{ description: `${PFX} Override Widget`, qty: 10, unit: "unit", unitPrice: 11, lineTotal: 110 }] });
         const createdO = await createIngestedInvoiceCore(ACTOR, input("qa-fx-ov.pdf", dOv, batch));
