@@ -7,7 +7,22 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — SHIPPING (PR #265).**
+**Empty-source stock-transfer error clarity (feedback `cmrquedll…`, plan #270) — SHIPPING (PR #277).**
+Branch `claude/empty-source-transfer-error-32d1a8`. Bug (Mike, `/inventory` → Move stock → Transfer): moving an
+item from a location holding none of it is correctly blocked, but the UI showed a generic **"an error occurred"** —
+because `moveStock` was a plain `action` and Next redacts a thrown `ActionError` in prod. Fix: `moveStock` → **`safeAction`**
+(settles to `{ok:false,error}`), `unwrap`ed at both call sites (Inventory form + assistant `adjust-inventory` committer,
+which relied on a throw). Plus `transferStock` now names the reason — empty source *"<item> can't be transferred from
+<loc> — there's no inventory there."* vs shortfall *"only N there, can't transfer M."* No schema. GREEN: tsc, eslint,
+vitest 55 (action-result/inventory/commerce7), verify:naming + verify:ai-native; DB proof on Demo (QA-* fixtures, cleaned).
+PENDING: CI green + squash-merge, then resolve ticket + DM Mike.
+_Note: worked in the session **worktree** (`.claude/worktrees/empty-source-transfer-error-32d1a8`) because the main
+checkout was live-in-use by a parallel session on `claude/expendables-category-taxonomy` — restored its pointer, edits
+isolated; tooling resolved node_modules upward + copied `.env`._
+
+<details><summary>prev objective — Ticket #188 harvest-pick + VineyardBlock cascade (SHIPPED PR #265)</summary>
+
+**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — SHIPPED (PR #265).**
 Branch `claude/harvest-vineyard-lib-295869`. Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data cleanup):
 couldn't delete blocks refused by dependent Brix/harvest records, and no path to delete a standalone harvest pick.
 (1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix`; hardened
@@ -15,7 +30,8 @@ couldn't delete blocks refused by dependent Brix/harvest records, and no path to
 (2) **Confirmed cascade in `db_delete`** — `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`; `VineyardBlock`
 cascades Brix + harvest records (+ discloses subblocks) but HARD-REFUSES crushed picks & keeps WO-task FK a hard wall.
 No schema. `/review` CLEAR (3 specialists, 0 critical). Merged origin/main; **vitest 2333/0**, tsc/eslint/ai-native green.
-PENDING (post-merge): live DB proof (runAsTenant Demo) + browser-QA.
+
+</details>
 
 <details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, SHIPPED PR #262)</summary>
 
@@ -299,4 +315,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
+_Last updated: 2026-07-18 — Empty-source stock-transfer error clarity (feedback cmrquedll…, plan #270) SHIPPING (PR #277): /inventory Move-stock Transfer from a location holding none of the item was blocked but showed a generic "an error occurred" — `moveStock` was a plain `action` so Next redacted the thrown ActionError in prod. Fix: `moveStock` → `safeAction` + `unwrap` at both call sites (Inventory form + assistant adjust-inventory committer); `transferStock` names the reason (empty "no inventory there" vs shortfall "only N there"). tsc/eslint/vitest-55/verify:naming/verify:ai-native green + DB proof on Demo (QA-* fixtures, cleaned). Worked in the session worktree (main checkout was live-in-use by a parallel session; restored its branch pointer). PENDING: CI green → squash-merge → resolve ticket + DM Mike. Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
