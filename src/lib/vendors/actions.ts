@@ -9,6 +9,7 @@ import {
   mergeVendorsCore,
   removeVendorCore,
   getVendorUsage,
+  getVendorNearMatchesCore,
   type VendorInput,
 } from "@/lib/vendors/vendors";
 import type { VendorUsage } from "@/lib/vendors/vendors-shared";
@@ -35,6 +36,12 @@ export const updateVendorAction = action(async ({ actor }, id: string, input: Ve
   const res = await updateVendorCore(actor, id, input);
   revalidateVendors();
   return res;
+});
+
+/** Plan 074: read-only near-duplicate check for a candidate name. Drives the create modal's "did you mean?"
+ *  guard. READY-USER gated (like create), returns banded candidates — no write, no revalidate. */
+export const checkVendorNearMatchesAction = action(async (_ctx, name: string) => {
+  return getVendorNearMatchesCore(name);
 });
 
 export const archiveVendorAction = adminAction(async ({ actor }, input: { id: string; active: boolean }) => {
