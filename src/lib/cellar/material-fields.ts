@@ -1,7 +1,7 @@
 import { cleanMaterialName, coerceRateBasis, normalizeMaterialKey } from "@/lib/cellar/material-normalize";
 import { coerceFamily, categoryOf, coerceMaterialCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { coerceStockUnit, type StockUnit } from "@/lib/cellar/materials-shared";
-import { dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
+import { dimensionOf, canonicalUnitFor, type ExtraUnits } from "@/lib/units/measure";
 import { round8 } from "@/lib/cost/rollup";
 import { ActionError } from "@/lib/action-error";
 
@@ -139,9 +139,11 @@ export function resolveUpdateStockUnit(opts: {
   currentStockUnit: string | null;
   packageUnit: string | null;
   requestedStockUnit?: string | null;
+  /** Plan 075: the tenant's custom-unit registry, so a custom packageUnit resolves to the right canonical unit. */
+  extraUnits?: ExtraUnits;
 }): StockUnit {
   if (opts.hasLots) return coerceStockUnit(opts.currentStockUnit);
-  const dim = opts.packageUnit ? dimensionOf(opts.packageUnit) : null;
+  const dim = opts.packageUnit ? dimensionOf(opts.packageUnit, opts.extraUnits) : null;
   if (dim) return canonicalUnitFor(dim);
   return coerceStockUnit(opts.requestedStockUnit ?? opts.currentStockUnit);
 }
@@ -156,11 +158,12 @@ export function planMaterialUpdate(
   existing: ExistingMaterialForUpdate,
   input: UpdateMaterialInput,
   hasLots: boolean,
+  extraUnits?: ExtraUnits,
 ): MaterialUpdatePlan {
   const f = deriveMaterialFields(input); // throws on empty identity
   if (hasLots && f.packageUnit) {
-    const newDim = dimensionOf(f.packageUnit);
-    const curDim = dimensionOf(existing.stockUnit);
+    const newDim = dimensionOf(f.packageUnit, extraUnits);
+    const curDim = dimensionOf(existing.stockUnit, extraUnits);
     if (newDim && curDim && newDim !== curDim) {
       throw new ActionError(
         "Can't change this item's unit of measure to a different kind (mass ↔ volume ↔ count) while it has stock on hand. Deplete or deactivate it first.",
@@ -173,6 +176,7 @@ export function planMaterialUpdate(
     currentStockUnit: existing.stockUnit,
     packageUnit: f.packageUnit,
     requestedStockUnit: input.stockUnit,
+    extraUnits,
   });
   const identityChanged = existing.kind !== f.kind || existing.normalizedKey !== f.normalizedKey;
   return {

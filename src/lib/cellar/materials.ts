@@ -20,6 +20,8 @@ import {
   type SupplyLotForCost,
 } from "@/lib/cellar/material-fields";
 import { deriveOpeningLot, weightedAvgUnitCost } from "@/lib/cost/intake-cost";
+import { loadCustomUnits } from "@/lib/units/custom-units";
+import { requireTenantId } from "@/lib/tenant/context";
 import { coerceCurrency } from "@/lib/money/currency";
 
 export { materialDisplayName };
@@ -299,18 +301,21 @@ export async function createStockMaterialCore(
     input.openingQty != null && Number.isFinite(input.openingQty) && input.openingQty > 0 ? input.openingQty : 0;
   let unitCost =
     input.unitCost != null && Number.isFinite(input.unitCost) && input.unitCost >= 0 ? input.unitCost : null;
-  // Phase 036: a package (amount+unit) seeds the opening lot in the canonical stock unit; total cost (when
-  // given) sets the per-stock-unit cost, else the lot is UNKNOWN-cost (D14) — never $0, and never a package
-  // with no on-hand. Overrides the raw openingQty/unitCost when it resolves.
-  if (f.packageAmount != null && f.packageUnit) {
-    const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost ?? null, stockUnit });
-    if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
-      openingQty = derived.qtyInStockUnit;
-      unitCost = derived.unitCost; // null when no cost given → UNKNOWN (D14), which is correct
-    }
-  }
 
   const body = async (tx: Prisma.TransactionClient) => {
+    // Phase 036: a package (amount+unit) seeds the opening lot in the canonical stock unit; total cost (when
+    // given) sets the per-stock-unit cost, else the lot is UNKNOWN-cost (D14) — never $0, and never a package
+    // with no on-hand. Overrides the raw openingQty/unitCost when it resolves. Plan 075: load the tenant's
+    // custom units (from the in-hand tx) so a custom packageUnit ("drum") still converts to canonical stock.
+    if (f.packageAmount != null && f.packageUnit) {
+      const extraUnits = await loadCustomUnits(tx, requireTenantId());
+      const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost ?? null, stockUnit, extraUnits });
+      if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
+        openingQty = derived.qtyInStockUnit;
+        unitCost = derived.unitCost; // null when no cost given → UNKNOWN (D14), which is correct
+      }
+    }
+
     const existing = await tx.cellarMaterial.findFirst({
       where: { kind: f.kind, normalizedKey: f.normalizedKey },
       select: { id: true },
@@ -384,7 +389,10 @@ export async function updateMaterialCore(
     if (!existing) throw new ActionError("Material not found.", "VALIDATION");
 
     const lotCount = await tx.supplyLot.count({ where: { materialId: id } });
-    const plan = planMaterialUpdate(existing, input, lotCount > 0);
+    // Plan 075: load the tenant's custom units so a custom packageUnit resolves its dimension (stock-unit
+    // derivation + the cross-dimension edit guard). Empty registry → identical to the built-in-only behavior.
+    const extraUnits = await loadCustomUnits(tx, requireTenantId());
+    const plan = planMaterialUpdate(existing, input, lotCount > 0, extraUnits);
 
     if (plan.identityChanged) {
       const clash = await tx.cellarMaterial.findFirst({

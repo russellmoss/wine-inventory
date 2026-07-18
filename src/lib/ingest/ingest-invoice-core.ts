@@ -13,7 +13,9 @@ import { getRate, type ResolvedRate } from "@/lib/money/fx/rate-service";
 import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
 import { coerceStockUnit } from "@/lib/cellar/materials-shared";
 import { coerceFamily, coerceMaterialCategory, categoryOf } from "@/lib/cellar/material-taxonomy";
-import { dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
+import { dimensionOf, canonicalUnitFor, type ExtraUnits } from "@/lib/units/measure";
+import { loadCustomUnits } from "@/lib/units/custom-units";
+import { requireTenantId } from "@/lib/tenant/context";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
 
 // Plan 072 Unit 7 (GOVERNED MONEY): persist extracted invoices as editable STAGING, then apply ONE invoice
@@ -263,10 +265,11 @@ class ApplyAbort extends Error {
 
 const RECON_EPS = 0.01;
 
-/** Derive a sensible canonical stock unit for a NEW material from the invoice line's unit. */
-function stockUnitForNewLine(unitRaw: string | null | undefined): string {
+/** Derive a sensible canonical stock unit for a NEW material from the invoice line's unit. A custom pack unit
+ *  ("drum"/"tote") resolves its dimension via the tenant registry so the material still stocks in canonical g/mL. */
+function stockUnitForNewLine(unitRaw: string | null | undefined, extraUnits?: ExtraUnits): string {
   const parsed = parsePackagingUnit(unitRaw);
-  const dim = dimensionOf(parsed.unit);
+  const dim = dimensionOf(parsed.unit, extraUnits);
   return dim ? canonicalUnitFor(dim) : coerceStockUnit(null); // count/unknown → the count default
 }
 
@@ -419,6 +422,10 @@ export async function applyIngestedInvoiceCore(
       const billLines: ApBillLine[] = []; // Plan 076: accumulate priced lines → ONE aggregate per-invoice Bill
       let apLineCount = 0;
 
+      // Plan 075: load the tenant's custom units ONCE (from the in-hand tx) so a line billed in a user-defined
+      // unit ("drum", "tote") converts to canonical stock. An empty/missing registry → today's behavior.
+      const extraUnits = await loadCustomUnits(tx, requireTenantId());
+
       for (let i = 0; i < receiptLines.length; i++) {
         const line = receiptLines[i];
         // `allocation` is in the invoice (foreign) currency. Convert the landed line total to BASE at the money
@@ -448,7 +455,7 @@ export async function applyIngestedInvoiceCore(
               name: line.descriptionRaw,
               kind: coerceFamily(line.resolvedKind),
               category: line.resolvedCategory ? coerceMaterialCategory(line.resolvedCategory) : undefined,
-              stockUnit: stockUnitForNewLine(line.unitRaw),
+              stockUnit: stockUnitForNewLine(line.unitRaw, extraUnits),
               openingQty: 0, // create at ZERO stock; the receiveSupplyCore below emits the costed lot + A/P (unified path)
               vendorId, // link the intake's vendor
               genericName: ex?.genericName ?? null,
@@ -470,7 +477,7 @@ export async function applyIngestedInvoiceCore(
 
         // normalize invoice qty/unit → stock qty + per-stock-unit landed cost. A cross-dimension unit is a
         // hard stop (never silently pass raw qty) — the human fixes the unit on the review screen.
-        const norm = normalizeLineToStock({ qty: line.qty != null ? Number(line.qty) : null, unit: line.unitRaw, landedLineTotal, stockUnit });
+        const norm = normalizeLineToStock({ qty: line.qty != null ? Number(line.qty) : null, unit: line.unitRaw, landedLineTotal, stockUnit, extraUnits });
         if (norm.stockQty == null) {
           throw new ApplyAbort({ ok: false, error: `Line ${line.lineNo} ("${line.descriptionRaw}"): can't convert "${line.unitRaw ?? "?"}" into ${stockUnit}. Fix the unit on the review screen.` });
         }

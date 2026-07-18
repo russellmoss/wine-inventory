@@ -14,6 +14,8 @@ export { Checkbox } from "./Checkbox";
 export type { CheckboxProps } from "./Checkbox";
 export { Eyebrow } from "./Eyebrow";
 export type { EyebrowProps } from "./Eyebrow";
+export { InfoHint } from "./InfoHint";
+export type { InfoHintProps } from "./InfoHint";
 export { Metric } from "./Metric";
 export type { MetricProps } from "./Metric";
 export { Quote } from "./Quote";

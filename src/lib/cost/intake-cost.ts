@@ -1,5 +1,5 @@
 import { round8 } from "@/lib/cost/rollup";
-import { convert } from "@/lib/units/measure";
+import { convert, type ExtraUnits } from "@/lib/units/measure";
 
 // Phase 036: pure intake cost math. Turns a purchase ("a 100-gallon drum for $X") into the canonical
 // per-stock-unit cost the cost engine already understands (SupplyLot.unitCost is per stockUnit), and
@@ -24,9 +24,11 @@ export function deriveOpeningLot(input: {
   packageUnit: string | null | undefined;
   totalCost: number | null | undefined;
   stockUnit: string | null | undefined;
+  /** Plan 075: the tenant's custom-unit registry, so a custom packageUnit ("drum") converts to canonical. */
+  extraUnits?: ExtraUnits;
 }): OpeningLot {
   const amount = Number(input.packageAmount);
-  const qty = Number.isFinite(amount) && amount > 0 ? convert(amount, input.packageUnit, input.stockUnit) : null;
+  const qty = Number.isFinite(amount) && amount > 0 ? convert(amount, input.packageUnit, input.stockUnit, input.extraUnits) : null;
   // null/undefined cost is UNKNOWN (D14), NOT $0 — Number(null) is 0, so guard on nullish first.
   const cost = input.totalCost == null ? NaN : Number(input.totalCost);
   const unitCost = qty != null && qty > 0 && Number.isFinite(cost) && cost >= 0 ? round8(cost / qty) : null;
@@ -67,11 +69,13 @@ export function costForUse(input: {
   useAmount: number | null | undefined;
   useUnit: string | null | undefined;
   stockUnit: string | null | undefined;
+  /** Plan 075: the tenant's custom-unit registry, so a custom useUnit converts to the stock unit. */
+  extraUnits?: ExtraUnits;
 }): number | null {
   if (input.unitCost == null || !Number.isFinite(input.unitCost)) return null;
   const amount = Number(input.useAmount);
   if (!Number.isFinite(amount) || amount < 0) return null;
-  const qty = convert(amount, input.useUnit, input.stockUnit);
+  const qty = convert(amount, input.useUnit, input.stockUnit, input.extraUnits);
   if (qty == null) return null;
   return round8(qty * input.unitCost);
 }

@@ -52,4 +52,9 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "query_vendors",
     args: { search: "Scott Labs" },
   },
+  {
+    utterance: "What custom units do we have?",
+    tool: "query_custom_units",
+    args: {},
+  },
 ];

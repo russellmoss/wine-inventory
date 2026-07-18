@@ -1,12 +1,16 @@
 "use client";
 
 import React from "react";
-import { Input, Checkbox } from "@/components/ui";
+import { Input, Checkbox, InfoHint } from "@/components/ui";
+import { UNIT_HINT } from "@/lib/units/field-hints";
 import {
   MATERIAL_CATEGORIES, CATEGORY_LABELS, BUILTIN_FAMILIES, familyLabel, categoryOf,
   type MaterialCategory,
 } from "@/lib/cellar/material-taxonomy";
-import { MEASURE_UNITS, dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
+import { MEASURE_UNITS, dimensionOf, canonicalUnitFor, type ExtraUnits } from "@/lib/units/measure";
+import { toExtraUnits } from "@/lib/units/custom-units";
+import { CreateUnitModal } from "@/components/units/CreateUnitModal";
+import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
 import { costPerPackageUnit, deriveOpeningLot } from "@/lib/cost/intake-cost";
 import { closestMatch } from "@/lib/inventory/similarity";
 import { useCurrency } from "@/components/money/CurrencyProvider";
@@ -49,9 +53,10 @@ export const emptyMaterialForm: MaterialFormValue = {
   category: "ADDITIVE", family: "", packageAmount: "", packageUnit: "g", totalCost: "",
 };
 
-/** The canonical stock unit implied by a package unit's dimension (gal→mL, lb→g, unit→unit; default g). */
-export function stockUnitFor(packageUnit: string): string {
-  const dim = dimensionOf(packageUnit);
+/** The canonical stock unit implied by a package unit's dimension (gal→mL, lb→g, unit→unit; default g).
+ *  A custom package unit resolves its dimension via the tenant registry (plan 075). */
+export function stockUnitFor(packageUnit: string, extraUnits?: ExtraUnits): string {
+  const dim = dimensionOf(packageUnit, extraUnits);
   return dim ? canonicalUnitFor(dim) : "g";
 }
 
@@ -108,6 +113,7 @@ export function MaterialForm({
   onVendorCreated,
   hasStock = false,
   allowCostEdit = false,
+  customUnits: initialCustomUnits = [],
 }: {
   value: MaterialFormValue;
   onChange: (patch: Partial<MaterialFormValue>) => void;
@@ -121,9 +127,15 @@ export function MaterialForm({
   hasStock?: boolean;
   /** Edit mode: whether the opening-lot cost can be corrected here (single fully-unused lot). Shows the cost field. */
   allowCostEdit?: boolean;
+  /** Plan 075: the tenant's user-defined units, selectable alongside the built-ins. */
+  customUnits?: CustomUnitRow[];
 }) {
   const showCost = mode === "create" || allowCostEdit;
-  const stockUnit = stockUnitFor(value.packageUnit);
+  // Plan 075: custom units are selectable as package units; a newly created one is appended locally.
+  const [customUnits, setCustomUnits] = React.useState<CustomUnitRow[]>(initialCustomUnits);
+  const [unitModalOpen, setUnitModalOpen] = React.useState(false);
+  const extraUnits = React.useMemo(() => toExtraUnits(customUnits), [customUnits]);
+  const stockUnit = stockUnitFor(value.packageUnit, extraUnits);
   const familyListId = React.useId(); // unique per instance so Add + Edit datalists never collide
   const { symbol } = useCurrency();
   const selectedVendor = React.useMemo(() => vendors.find((v) => v.id === value.vendorId) ?? null, [vendors, value.vendorId]);
@@ -138,7 +150,7 @@ export function MaterialForm({
   const amt = value.packageAmount.trim() !== "" ? Number(value.packageAmount) : null;
   const cost = value.totalCost.trim() !== "" ? Number(value.totalCost) : null;
   const perPackageUnit = costPerPackageUnit(cost, amt);
-  const opening = deriveOpeningLot({ packageAmount: amt, packageUnit: value.packageUnit, totalCost: cost, stockUnit });
+  const opening = deriveOpeningLot({ packageAmount: amt, packageUnit: value.packageUnit, totalCost: cost, stockUnit, extraUnits });
 
   // A near-duplicate family hint so "Fining"/"Finings" don't fragment.
   const famDupe = value.family.trim() && !familyOptions.some((f) => f.toLowerCase() === value.family.trim().toLowerCase())
@@ -183,9 +195,22 @@ export function MaterialForm({
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <Input label="Package size" value={value.packageAmount} onChange={(e) => onChange({ packageAmount: e.target.value })} inputMode="decimal" placeholder="e.g. 100" style={{ flex: "0 1 120px" }} />
         <label style={{ ...col, flex: "0 1 120px" }}>
-          <span style={fieldLabelStyle}>Unit</span>
-          <select value={value.packageUnit} onChange={(e) => onChange({ packageUnit: e.target.value })} style={controlStyle}>
+          <span style={{ ...fieldLabelStyle, display: "inline-flex", alignItems: "center", gap: 4 }}>Unit <InfoHint label={UNIT_HINT} ariaLabel="What is the unit?" /></span>
+          <select
+            value={value.packageUnit}
+            onChange={(e) => {
+              if (e.target.value === "__create__") { setUnitModalOpen(true); return; }
+              onChange({ packageUnit: e.target.value });
+            }}
+            style={controlStyle}
+          >
             {MEASURE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+            {customUnits.length > 0 ? (
+              <optgroup label="Your units">
+                {customUnits.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+              </optgroup>
+            ) : null}
+            <option value="__create__">+ Create unit…</option>
           </select>
         </label>
         {showCost ? (
@@ -230,6 +255,16 @@ export function MaterialForm({
           {hasStock ? " You can't switch its unit to a different kind (mass ↔ volume ↔ count) while it has stock." : ""}
         </p>
       )}
+
+      <CreateUnitModal
+        open={unitModalOpen}
+        onClose={() => setUnitModalOpen(false)}
+        onCreated={(unit) => {
+          setCustomUnits((prev) => (prev.some((u) => u.id === unit.id) ? prev : [...prev, unit]));
+          onChange({ packageUnit: unit.name });
+          setUnitModalOpen(false);
+        }}
+      />
     </div>
   );
 }
