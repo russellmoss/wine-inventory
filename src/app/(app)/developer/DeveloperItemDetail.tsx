@@ -423,6 +423,22 @@ export function DeveloperItemDetail({
         <p><strong>State:</strong> {item.automationStatus.replaceAll("_", " ")}</p>
         {item.activeRun ? <p className={styles.subtle}>Active {item.activeRun.kind} run {item.activeRun.id} is {item.activeRun.status}.</p> : null}
         {item.activeRun?.error ? <div className={styles.attention}>{item.activeRun.error}</div> : null}
+        {item.clarification ? (
+          // Plan 079 (U11): the clarification asked of the reporter + their answer.
+          <div style={{ marginTop: "var(--space-2)", padding: "var(--space-3)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", background: "var(--surface-sunken, var(--surface-raised))", display: "grid", gap: 6 }}>
+            <div style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+              Clarification {item.clarification.ref} · round {item.clarification.round} · {item.clarification.status.toLowerCase()}
+            </div>
+            <div><strong>Asked:</strong>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                {item.clarification.questions.split("\n").filter(Boolean).map((q, i) => <li key={i}>{q}</li>)}
+              </ul>
+            </div>
+            {item.clarification.answerBody
+              ? <div><strong>Reporter answered:</strong> {item.clarification.answerBody}</div>
+              : <div className={styles.subtle}>Waiting on the reporter&rsquo;s reply.</div>}
+          </div>
+        ) : null}
         {!isClosed && item.awaitingRunId ? (
           <Button
             size="sm"

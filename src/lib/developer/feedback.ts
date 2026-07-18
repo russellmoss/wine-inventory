@@ -138,6 +138,18 @@ export type DeveloperFeedbackItem = {
   automationConflict: AutomationConflict | null;
   queue: DeveloperQueue;
   queueDiagnostic: string | null;
+  // Plan 079 (U11): the latest clarification asked of the reporter (detail view only; null in lists).
+  clarification?: DeveloperClarification | null;
+};
+
+export type DeveloperClarification = {
+  ref: string;
+  questions: string;
+  answerBody: string | null;
+  round: number;
+  status: string; // OPEN | ANSWERED | CANCELLED
+  askedAt: string;
+  answeredAt: string | null;
 };
 
 export type DeveloperFeedbackData = {
@@ -549,11 +561,8 @@ export async function getDeveloperFeedbackItem(input: {
       });
       if (!row) return null;
       const automation = await loadAutomationFields({ assistantIds: [row.id], ticketIds: [] });
-      return mapAssistantFeedback(
-        row,
-        tenant,
-        automation("ASSISTANT_FEEDBACK", row.id, row.triageClass),
-      );
+      const clarification = await loadLatestClarification("ASSISTANT_FEEDBACK", row.id);
+      return { ...mapAssistantFeedback(row, tenant, automation("ASSISTANT_FEEDBACK", row.id, row.triageClass)), clarification };
     }
     const row = await prisma.feedbackTicket.findFirst({
       where: { tenantId: tenant.id, id: input.id },
@@ -561,12 +570,31 @@ export async function getDeveloperFeedbackItem(input: {
     });
     if (!row) return null;
     const automation = await loadAutomationFields({ assistantIds: [], ticketIds: [row.id] });
-    return mapFeedbackTicket(
-      row,
-      tenant,
-      automation("FEEDBACK_TICKET", row.id, row.triageClass),
-    );
+    const clarification = await loadLatestClarification("FEEDBACK_TICKET", row.id);
+    return { ...mapFeedbackTicket(row, tenant, automation("FEEDBACK_TICKET", row.id, row.triageClass)), clarification };
   });
+}
+
+/** The most recent clarification asked of the reporter for one source (detail view only). Tenant-scoped. */
+async function loadLatestClarification(
+  sourceType: DeveloperFeedbackSourceType,
+  sourceId: string,
+): Promise<DeveloperClarification | null> {
+  const c = await prisma.feedbackClarification.findFirst({
+    where: { sourceType, sourceId },
+    orderBy: { askedAt: "desc" },
+    select: { ref: true, questions: true, answerBody: true, round: true, status: true, askedAt: true, answeredAt: true },
+  });
+  if (!c) return null;
+  return {
+    ref: c.ref,
+    questions: sanitizePlainText(c.questions, 2_000),
+    answerBody: c.answerBody ? sanitizePlainText(c.answerBody, 6_000) : null,
+    round: c.round,
+    status: c.status,
+    askedAt: c.askedAt.toISOString(),
+    answeredAt: c.answeredAt?.toISOString() ?? null,
+  };
 }
 
 export async function getDeveloperTenantFeedbackPage(input: {

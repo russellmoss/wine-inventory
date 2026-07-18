@@ -459,3 +459,24 @@ export async function maybeClarifyOrDispatch(runId: string, tenantId: string): P
   // Couldn't ask (no reporter / already open) → fall back to dispatching.
   return { dispatched: await dispatchApprovedRun(runId, tenantId), asked: false };
 }
+
+// ── Unit 12: read the reporter's open clarifications (assistant nudge + My Reports) ──────────────
+
+export type OpenClarificationForUser = { id: string; ref: string; questions: string; dmThreadId: string | null; sourceType: "FEEDBACK_TICKET" | "ASSISTANT_FEEDBACK"; sourceId: string };
+
+/**
+ * The OPEN clarifications the given reporter still owes an answer on (Plan 079, Unit 12). Tenant-
+ * scoped, reporter-own. Usually 0-1; can be a few if they have several thin reports open at once.
+ */
+export async function listOpenClarificationsForUser(tenantId: string, userId: string): Promise<OpenClarificationForUser[]> {
+  if (!tenantId || !userId) return [];
+  return runAsTenant(tenantId, () =>
+    runInTenantTx((tx) =>
+      tx.feedbackClarification.findMany({
+        where: { reporterUserId: userId, status: FeedbackClarificationStatus.OPEN },
+        orderBy: { askedAt: "desc" },
+        select: { id: true, ref: true, questions: true, dmThreadId: true, sourceType: true, sourceId: true },
+      }),
+    ),
+  );
+}
