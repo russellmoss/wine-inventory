@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { casesAndLoose } from "@/lib/bottling/draw";
+import { operationalActivityWhere } from "@/lib/audit";
 import { Card, Eyebrow, Metric, Badge } from "@/components/ui";
 import { openDeadlinesForTenant } from "@/lib/compliance/reminders";
 import { deadlineWhen, deadlineBadgeTone, deadlineTitle } from "@/lib/compliance/deadline-display";
@@ -13,7 +14,9 @@ export default async function DashboardPage() {
     prisma.vesselComponent.aggregate({ _sum: { volumeL: true } }),
     prisma.bottledInventory.aggregate({ _sum: { totalBottles: true } }),
     prisma.finishedGoodInventory.aggregate({ _sum: { quantity: true } }),
-    prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 6 }),
+    // Leadership-facing feed: only winery operations, not developer/admin/auth noise
+    // (feedback cmrqpp88). Filter at the query level so `take` returns 6 meaningful rows.
+    prisma.auditLog.findMany({ where: operationalActivityWhere(), orderBy: { createdAt: "desc" }, take: 6 }),
   ]);
 
   const bulkL = Math.round(Number(bulk._sum.volumeL ?? 0) * 100) / 100;

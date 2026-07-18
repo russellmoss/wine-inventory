@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { diff, summarize } from "@/lib/audit";
+import {
+  diff,
+  summarize,
+  isOperationalActivity,
+  operationalActivityWhere,
+  NON_OPERATIONAL_AUDIT_ACTIONS,
+  NON_OPERATIONAL_AUDIT_ENTITY_TYPES,
+} from "@/lib/audit";
 
 describe("diff", () => {
   it("returns only changed fields", () => {
@@ -65,5 +72,50 @@ describe("summarize", () => {
   it("handles login + password events", () => {
     expect(summarize("LOGIN", "Session")).toBe("Signed in");
     expect(summarize("PASSWORD_CHANGE", "User")).toBe("Changed password");
+  });
+});
+
+describe("isOperationalActivity (dashboard leadership feed)", () => {
+  it("keeps winery operations", () => {
+    // The exact events leadership asked to still see (feedback cmrqpp88: "we bottled wine today").
+    expect(isOperationalActivity({ action: "BOTTLING", entityType: "BottlingRun" })).toBe(true);
+    expect(isOperationalActivity({ action: "STOCK_MOVEMENT", entityType: "LotOperation" })).toBe(true);
+    expect(isOperationalActivity({ action: "STOCK_MOVEMENT", entityType: "VesselTransfer" })).toBe(true);
+    expect(isOperationalActivity({ action: "UPDATE", entityType: "Lot" })).toBe(true);
+    expect(isOperationalActivity({ action: "BRIX_LOGGED", entityType: "BrixLog" })).toBe(true);
+    expect(isOperationalActivity({ action: "HARVEST_PICK_RECORDED", entityType: "HarvestPick" })).toBe(true);
+    expect(isOperationalActivity({ action: "CREATE", entityType: "WorkOrder" })).toBe(true);
+    expect(isOperationalActivity({ action: "CREATE", entityType: "SupplyLot" })).toBe(true);
+  });
+
+  it("hides bug-triage and developer/automation noise", () => {
+    expect(isOperationalActivity({ action: "UPDATE", entityType: "FEEDBACK_TICKET" })).toBe(false);
+    expect(isOperationalActivity({ action: "UPDATE", entityType: "ASSISTANT_FEEDBACK" })).toBe(false);
+    expect(isOperationalActivity({ action: "UPDATE", entityType: "AutomationRun" })).toBe(false);
+    expect(isOperationalActivity({ action: "IMPERSONATE", entityType: "Organization" })).toBe(false);
+  });
+
+  it("hides auth, user-admin, and config plumbing", () => {
+    expect(isOperationalActivity({ action: "LOGIN", entityType: "Session" })).toBe(false);
+    expect(isOperationalActivity({ action: "PASSWORD_CHANGE", entityType: "User" })).toBe(false);
+    expect(isOperationalActivity({ action: "USER_CREATED", entityType: "User" })).toBe(false);
+    expect(isOperationalActivity({ action: "UPDATE", entityType: "AppSettings" })).toBe(false);
+    expect(isOperationalActivity({ action: "CREATE", entityType: "DirectMessage" })).toBe(false);
+    expect(isOperationalActivity({ action: "CREATE", entityType: "WorkOrderTemplate" })).toBe(false);
+  });
+
+  it("hides anything in either denylist regardless of the other field", () => {
+    // A denied action on an otherwise-operational entity is still hidden.
+    expect(isOperationalActivity({ action: "IMPERSONATE", entityType: "Lot" })).toBe(false);
+    // A denied entity under a generic CRUD action is still hidden.
+    expect(isOperationalActivity({ action: "CREATE", entityType: "CustomUnit" })).toBe(false);
+  });
+});
+
+describe("operationalActivityWhere", () => {
+  it("mirrors the denylist constants (query filter can't drift from the predicate)", () => {
+    const where = operationalActivityWhere();
+    expect(where.action).toEqual({ notIn: [...NON_OPERATIONAL_AUDIT_ACTIONS] });
+    expect(where.entityType).toEqual({ notIn: [...NON_OPERATIONAL_AUDIT_ENTITY_TYPES] });
   });
 });
