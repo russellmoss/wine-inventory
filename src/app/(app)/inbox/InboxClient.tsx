@@ -85,6 +85,10 @@ export function InboxClient(props: {
     setSelected(n);
     if (!n.read) startTransition(async () => { await markNotificationsReadAction([n.id]); router.refresh(); });
   }
+  function openWorkOrder(w: MyWorkOrderRow) {
+    // Selecting a work order should open it directly — no second click in the reader pane.
+    router.push(`/work-orders/${w.id}`);
+  }
   function markUnread(id: string) {
     startTransition(async () => { await markNotificationsUnreadAction([id]); router.refresh(); });
   }
@@ -145,7 +149,7 @@ export function InboxClient(props: {
             <>
               <FilterChips bucket="wo" current={props.filter ?? "open"} options={[["open", "Open"], ["in-progress", "In progress"], ["completed", "Completed"]]} />
               {props.workOrders.length === 0 ? <Empty label="No work orders." /> : props.workOrders.map((w) => (
-                <button key={w.id} onClick={() => setSelected(w)} style={listRow(!!selected && "number" in selected && (selected as MyWorkOrderRow).id === w.id, false)}>
+                <button key={w.id} onClick={() => openWorkOrder(w)} style={listRow(false, false)}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                     <span style={{ color: "var(--text-primary)" }}>#{w.number} · {w.title}</span>
                     <StatusPill status={w.status} />
