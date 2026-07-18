@@ -1,7 +1,7 @@
 ---
 title: QBO → Cellarhand vendor pull + Cellarhand-side classification queue (QBO vendor sync, Slice 1)
 type: feat
-status: approved
+status: completed
 date: 2026-07-18
 branch: claude/qbo-vendor-pull
 depth: deep
@@ -308,15 +308,15 @@ mirroring `test/vendors-shared.test.ts`. **Integration/exit proof:** `verify:ven
 
 ## Success Criteria
 
-- [ ] Unit 1 spike pulls a real, paginated vendor count from Demo QBO with no error.
-- [ ] `VendorImportCandidate` exists with full RLS; `verify:tenant-isolation` green incl. its block.
-- [ ] Pull collapses `Acme`/`Acme (EUR)` to ONE candidate; skips already-`externalVendorId`-mapped vendors;
+- [x] Unit 1 spike pulls a real, paginated vendor count from Demo QBO with no error.
+- [x] `VendorImportCandidate` exists with full RLS; `verify:tenant-isolation` green incl. its block.
+- [x] Pull collapses `Acme`/`Acme (EUR)` to ONE candidate; skips already-`externalVendorId`-mapped vendors;
       suppresses rejected ones; sets `suggestedVendorId` on a HIGH name match.
-- [ ] Accept creates a `Vendor` with `externalVendorId`; reject suppresses; merge links onto a chosen vendor and
+- [x] Accept creates a `Vendor` with `externalVendorId`; reject suppresses; merge links onto a chosen vendor and
       is blocked on a conflicting externalVendorId.
-- [ ] Manual "Pull vendors from QBO" button + queue triage work on Demo (browser-QA'd).
-- [ ] `verify:vendor-import` green; `verify:naming` green; no assistant/`verify:ai-native` regression.
-- [ ] Cron (if included) 401s without the secret and pulls for Demo with it.
+- [x] Manual "Pull vendors from QBO" button + queue triage work on Demo (browser-QA'd).
+- [x] `verify:vendor-import` green; `verify:naming` green; no assistant/`verify:ai-native` regression.
+- [x] Cron (if included) 401s without the secret and pulls for Demo with it.
 
 ## Open Questions
 
