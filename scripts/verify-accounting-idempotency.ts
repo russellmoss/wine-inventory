@@ -26,8 +26,16 @@ function assert(cond: boolean, msg: string) {
   passed++;
 }
 
-/** A mock QBO adapter: records what it "posted" by DocNumber; can simulate a crash after accept. */
-function mockAdapter(state: { posted: Map<string, string>; crashOnce?: Set<string> }): AccountingAdapter {
+type MockState = {
+  posted: Map<string, string>;
+  crashOnce?: Set<string>;
+  bills?: Array<Record<string, unknown>>; // Plan 073: captured Bill payloads (currency assertions)
+  vendorCalls?: Array<{ name: string; currency?: string }>; // Plan 073: vendor resolutions
+};
+
+/** A mock QBO adapter: records what it "posted" by DocNumber; can simulate a crash after accept. Plan 073
+ *  implements the Bill + vendor path (previously notImpl) so the Bill idempotency proof can run offline. */
+function mockAdapter(state: MockState): AccountingAdapter {
   const notImpl = (): never => { throw new Error("not used in this harness"); };
   return {
     buildAuthorizeUrl: notImpl,
@@ -36,8 +44,22 @@ function mockAdapter(state: { posted: Map<string, string>; crashOnce?: Set<strin
     revoke: notImpl,
     getCompanyInfo: notImpl,
     listAccounts: notImpl,
-    findOrCreateVendor: notImpl,
-    postBill: notImpl,
+    async findOrCreateVendor(_ctx, name, currency): Promise<string> {
+      state.vendorCalls?.push({ name, currency });
+      // Distinct id per (name, currency) — a currency-scoped vendor is a distinct QBO vendor (council #4).
+      return currency ? `VENDOR-${name}-${currency}` : `VENDOR-${name}`;
+    },
+    async postBill(_ctx, payload, _requestId): Promise<PostResult> {
+      const docNumber = String((payload as { DocNumber?: string }).DocNumber ?? "");
+      state.bills?.push(payload);
+      const externalId = `BILL-${state.posted.size + 1}`;
+      state.posted.set(docNumber, externalId); // keyed by DocNumber, so findByDocNumber adopts on resume
+      if (state.crashOnce?.has(docNumber)) {
+        state.crashOnce.delete(docNumber);
+        throw new ProviderFault("transient", "simulated crash after QBO accepts the Bill, before finalize");
+      }
+      return { externalId, version: "0" };
+    },
     async findByDocNumber(_ctx, _type, docNumber): Promise<PostResult | null> {
       const id = state.posted.get(docNumber);
       return id ? { externalId: id, version: "0", docNumber } : null;
@@ -85,12 +107,34 @@ async function statusOf(id: string): Promise<string> {
   return d?.status ?? "MISSING";
 }
 
+/** Plan 073: seed a FOREIGN (EUR) A/P Bill delivery — a vendor + an ApExportEvent (foreign amount + rate) +
+ *  a PENDING Bill delivery — so the sweep drives the Bill path through the mock adapter. */
+async function seedBillDelivery(connectionId: string, key: string): Promise<{ deliveryId: string; vendorId: string }> {
+  return runInTenantTx(async (tx) => {
+    const vendor = await tx.vendor.create({ data: { name: `IDEM Bill Vendor ${key}`, currency: "EUR" }, select: { id: true } });
+    const ev = await tx.apExportEvent.create({
+      data: { postingKey: key, amount: 100, currency: "EUR", exchangeRate: 1.1, debitAccount: "1300-Inventory", creditAccount: "2000-AP", receivedAt: new Date(), vendorId: vendor.id },
+      select: { id: true },
+    });
+    const del = await tx.accountingDelivery.create({
+      data: { apExportEventId: ev.id, connectionId, objectType: "Bill", status: "PENDING" },
+      select: { id: true },
+    });
+    return { deliveryId: del.id, vendorId: vendor.id };
+  });
+}
+
 async function main() {
   await runAsTenant(TENANT, async () => {
     // Pre-clean any leftovers from an interrupted prior run so re-runs are idempotent.
     const stale = await prisma.costExportEvent.findMany({ where: { postingKey: { startsWith: "idem:" } }, select: { id: true } });
     await prisma.accountingDelivery.deleteMany({ where: { costExportEventId: { in: stale.map((e) => e.id) } } });
     await prisma.costExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
+    // Plan 073: the same for the Bill block's A/P events + deliveries + throwaway EUR vendors.
+    const staleAp = await prisma.apExportEvent.findMany({ where: { postingKey: { startsWith: "idem:" } }, select: { id: true } });
+    await prisma.accountingDelivery.deleteMany({ where: { apExportEventId: { in: staleAp.map((e) => e.id) } } });
+    await prisma.apExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
+    await prisma.vendor.deleteMany({ where: { name: { startsWith: "IDEM Bill Vendor" } } });
 
     // Reuse a CONNECTED connection READ-ONLY if one exists (never modify it); else stand up a throwaway
     // CONNECTED row (the DB CHECK allows CONNECTED with null tokens; the mock adapter never uses a real
@@ -104,6 +148,11 @@ async function main() {
           select: { id: true },
         })).id;
     _seedAccessCache(connectionId, "fake-access-token");
+
+    // Plan 073: for the Bill block, pin the connection to a USD home + Multicurrency ON (save prior + restore
+    // in finally) so the EUR bill posts deterministically regardless of the reused connection's real config.
+    const priorConn = await prisma.accountingConnection.findUnique({ where: { id: connectionId }, select: { homeCurrency: true, multiCurrencyEnabled: true } });
+    await prisma.accountingConnection.update({ where: { id: connectionId }, data: { homeCurrency: "USD", multiCurrencyEnabled: true } });
 
     try {
     console.log("── 1. transactional outbox atomicity: a rolled-back emit leaves NO rows ──");
@@ -156,12 +205,45 @@ async function main() {
     assert(statuses.every((s) => s === "POSTED"), `all 7 drained to POSTED over 3 ticks (${statuses.join(",")})`);
     assert(bState.posted.size === 7, `exactly 7 objects posted, none twice (got ${bState.posted.size})`);
 
+    console.log("\n── 6. Plan 073: a FOREIGN (EUR) A/P Bill posts once, currency-correct, and adopts on resume ──");
+    // 6a: a normal sweep posts the EUR bill exactly once, with a EUR vendor + CurrencyRef + ExchangeRate.
+    const b1 = await seedBillDelivery(connectionId, "idem:bill:1");
+    const billState: MockState = { posted: new Map(), crashOnce: new Set(), bills: [], vendorCalls: [] };
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(billState) });
+    assert((await statusOf(b1.deliveryId)) === "POSTED", "EUR bill delivery is POSTED after one sweep");
+    assert(billState.bills!.length === 1, "exactly one Bill was posted");
+    assert(billState.vendorCalls!.some((v) => v.currency === "EUR"), "vendor was resolved currency-scoped (EUR)");
+    const billPayload = billState.bills![0] as { CurrencyRef?: { value: string }; ExchangeRate?: number; Line: Array<{ Amount: number }> };
+    assert(billPayload.CurrencyRef?.value === "EUR", "Bill payload carries CurrencyRef EUR");
+    assert(billPayload.ExchangeRate === 1.1, `Bill payload carries ExchangeRate 1.1 (got ${billPayload.ExchangeRate})`);
+    assert(billPayload.Line[0].Amount === 100, "Bill line amount is the FOREIGN amount (100 EUR)");
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(billState) });
+    assert(billState.bills!.length === 1, "re-sweep posts no duplicate Bill");
+
+    // 6b: crash between accept and finalize → VERIFYING → adopt (no duplicate Bill).
+    const b2 = await seedBillDelivery(connectionId, "idem:bill:2");
+    const crashDoc = docNumberFor("idem:bill:2");
+    const billCrash: MockState = { posted: new Map(), crashOnce: new Set([crashDoc]), bills: [], vendorCalls: [] };
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(billCrash) });
+    assert((await statusOf(b2.deliveryId)) === "VERIFYING", "crashed EUR bill is VERIFYING (not lost)");
+    assert(billCrash.posted.size === 1, "QBO recorded exactly one Bill during the crash attempt");
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(billCrash) });
+    assert((await statusOf(b2.deliveryId)) === "POSTED", "resume adopts the existing Bill → POSTED");
+    assert(billCrash.posted.size === 1, "resume created NO duplicate Bill");
+
       console.log(`\nALL ${passed} IDEMPOTENCY ASSERTIONS PASSED`);
     } finally {
-      // ── cleanup ALWAYS (deliveries first — FK to cost_export_event is RESTRICT) ──
+      // ── cleanup ALWAYS (deliveries first — FK to the event rows is RESTRICT) ──
       const evs = await prisma.costExportEvent.findMany({ where: { postingKey: { startsWith: "idem:" } }, select: { id: true } });
       await prisma.accountingDelivery.deleteMany({ where: { costExportEventId: { in: evs.map((e) => e.id) } } });
       await prisma.costExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
+      // Plan 073: the Bill block's A/P events + deliveries + throwaway EUR vendors.
+      const apEvs = await prisma.apExportEvent.findMany({ where: { postingKey: { startsWith: "idem:" } }, select: { id: true } });
+      await prisma.accountingDelivery.deleteMany({ where: { apExportEventId: { in: apEvs.map((e) => e.id) } } });
+      await prisma.apExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
+      await prisma.vendor.deleteMany({ where: { name: { startsWith: "IDEM Bill Vendor" } } });
+      // Restore the connection's currency config (we pinned it for the Bill block).
+      await prisma.accountingConnection.update({ where: { id: connectionId }, data: { homeCurrency: priorConn?.homeCurrency ?? null, multiCurrencyEnabled: priorConn?.multiCurrencyEnabled ?? null } }).catch(() => {});
       if (createdConn) {
         await prisma.accountingDelivery.deleteMany({ where: { connectionId } });
         await prisma.accountingConnection.delete({ where: { id: connectionId } }).catch(() => {});
