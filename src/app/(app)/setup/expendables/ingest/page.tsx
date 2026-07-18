@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, Eyebrow, Button } from "@/components/ui";
 import { listMaterials } from "@/lib/cellar/materials";
 import { listVendors } from "@/lib/vendors/vendors";
+import { listCustomUnitsCore } from "@/lib/units/custom-unit-core";
 import { categoryOf } from "@/lib/cellar/material-taxonomy";
 import { getRate } from "@/lib/money/fx/rate-service";
 import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
@@ -45,12 +46,13 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
     );
   }
 
-  const [rows, materials, vendors, settings, qboConn] = await Promise.all([
+  const [rows, materials, vendors, settings, qboConn, customUnits] = await Promise.all([
     prisma.ingestedInvoice.findMany({ where: { batchId }, orderBy: { createdAt: "asc" } }),
     listMaterials({ includeInactive: false }),
     listVendors({ activeOnly: true }),
     prisma.appSettings.findFirst({ select: { currency: true } }),
     prisma.accountingConnection.findFirst({ where: { provider: "QBO", status: "CONNECTED" }, select: { multiCurrencyEnabled: true } }),
+    listCustomUnitsCore(), // Plan 075: the tenant's user-defined pack units
   ]);
   const baseCurrency = coerceCurrency(settings?.currency);
 
@@ -155,6 +157,7 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
       baseCurrency={baseCurrency}
       multiCurrencyEnabled={qboConn ? qboConn.multiCurrencyEnabled ?? null : undefined}
       fxByDoc={fxByDoc}
+      customUnits={customUnits}
     />
   );
 }
