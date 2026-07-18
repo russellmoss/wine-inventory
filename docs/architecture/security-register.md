@@ -319,6 +319,28 @@ TEMPLATE — copy for each new invariant / finding:
   + `test/qbo-vendor-pull.test.ts` + the isolation block.
 - **Status:** 🟢 (read-only QBO + advisory human-gated queue; new RLS table proven; enumerator SEC-C3 respected).
 
+## Cellarhand → QBO eager vendor push is OPT-IN, POST-COMMIT, home-currency-only; no new RLS surface (plan 077)
+- **What:** Slice 2 pushes a Cellarhand-created vendor INTO QuickBooks immediately (opt-in per tenant via
+  `AppSettings.pushVendorsToQbo`, default false). The push runs AFTER `createVendorCore` commits — never inside
+  its `runInTenantTx` (a multi-second QBO HTTP call under a held DB tx = Neon P2028). Fuzzy-matches against QBO
+  first (Slice-1 `listVendors` + Plan-074 `findVendorNearMatches`) and offers link-to-existing so it never
+  blind-creates a "Scott Labs"/"Scott Laboratories" dup in QBO. Only the HOME-currency vendor is pushed
+  (unsuffixed); foreign currency-scoped vendors ("Acme (EUR)", plan 073) stay LAZY at bill-post. Two new COLUMNS
+  only (`Vendor.syncStatus` plain string, `AppSettings.pushVendorsToQbo`) — no new table, RLS-neutral (existing
+  `tenant_isolation` policies cover new columns).
+- **RLS / tenancy:** the retry sweep (`runVendorSyncSweep`) + backfill enumerate orgs via the least-privilege
+  enumerator role (org list ONLY, never `accounting_connection` — SEC-C3); every per-tenant read/write is inside
+  `runAsTenant` (never a bare `prismaBase` read — 0 rows under RLS). Two local vendors resolving to one QBO id is
+  blocked by the Slice-1 `@@unique([tenantId, externalVendorId])` → P2002 → `syncStatus='conflict'` (surfaced,
+  never a 500). Server actions RETURN `{ok,error}` (prod redaction).
+- **Tripwire:** moving the push INSIDE `createVendorCore`'s tx (P2028); pushing suffixed foreign-currency vendors
+  eagerly (plan-073 double-currency corruption); making push always-on instead of opt-in; the sweep/backfill
+  reading `accounting_connection` as the enumerator; a blind create that skips the fuzzy pre-check (QBO dup).
+  Proof: `verify:vendor-sync` (link / idempotent / conflict / sweep-gating / opt-in round-trip on real DB;
+  `VERIFY_VENDOR_SYNC_LIVE=1` adds the live QBO push + pre-check) + `verify:tenant-isolation`.
+- **Status:** 🟢 (opt-in, post-commit, home-currency-only, column-add only — no new RLS table; unique guard +
+  conflict state proven; the lazy bill-post path remains the backstop).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_

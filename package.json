@@ -62,6 +62,7 @@
     "verify:vendor-merge": "tsx --env-file=.env scripts/verify-vendor-merge.ts",
     "verify:vendor-dedupe": "tsx --env-file=.env scripts/verify-vendor-dedupe.ts",
     "verify:vendor-import": "tsx --env-file=.env scripts/verify-vendor-import.ts",
+    "verify:vendor-sync": "tsx --conditions=react-server --env-file=.env scripts/verify-vendor-sync.ts",
     "verify:inbox-isolation": "tsx --env-file=.env scripts/verify-inbox-isolation.ts",
     "verify:accounting-refresh": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting-refresh.ts",
     "verify:accounting-reversal": "tsx --conditions=react-server scripts/verify-accounting-reversal.ts",
