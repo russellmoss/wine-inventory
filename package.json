@@ -107,16 +107,19 @@
     "@sentry/nextjs": "^10.63.0",
     "@vercel/blob": "^2.4.1",
     "better-auth": "^1.6.18",
+    "defuddle": "^0.19.1",
     "dexie": "^4.4.4",
     "fast-xml-parser": "^5.10.1",
     "html-to-image": "^1.11.13",
     "leaflet": "^1.9.4",
+    "linkedom": "^0.18.13",
     "next": "16.2.9",
     "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "robots-parser": "^3.0.1",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
