@@ -1,5 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { formatConsoleErrorsBlock, untrustedBlock } from "@/lib/feedback/prompt-blocks";
+import {
+  formatConsoleErrorsBlock,
+  formatClarificationHistoryBlock,
+  untrustedBlock,
+} from "@/lib/feedback/prompt-blocks";
+
+describe("formatClarificationHistoryBlock", () => {
+  it("is empty when nothing is answered", () => {
+    expect(formatClarificationHistoryBlock([])).toBe("");
+    expect(formatClarificationHistoryBlock([{ round: 1, questions: "What page?", answerBody: null }])).toBe("");
+    expect(formatClarificationHistoryBlock([{ round: 1, questions: "What page?", answerBody: "  " }])).toBe("");
+  });
+
+  it("renders answered turns as Q/A, ordered by round", () => {
+    const out = formatClarificationHistoryBlock([
+      { round: 2, questions: "Which browser?", answerBody: "Chrome" },
+      { round: 1, questions: "What page?\nAny error?", answerBody: "Bottling; a 500" },
+    ]);
+    expect(out.startsWith("<clarification_history>")).toBe(true);
+    expect(out).toContain("Q: What page?");
+    expect(out).toContain("Q: Any error?");
+    expect(out).toContain("A: Bottling; a 500");
+    // round 1 before round 2
+    expect(out.indexOf("What page?")).toBeLessThan(out.indexOf("Which browser?"));
+  });
+});
 
 describe("untrustedBlock", () => {
   it("wraps content in a tag", () => {

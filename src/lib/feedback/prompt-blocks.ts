@@ -46,3 +46,24 @@ export function formatConsoleErrorsBlock(debugContext: unknown, opts?: { maxChar
   }
   return untrustedBlock("console_errors", parts.join("\n\n").slice(0, maxChars));
 }
+
+export type ClarificationTurn = { round: number; questions: string | null; answerBody: string | null };
+
+/**
+ * Render a `<clarification_history>` block of prior Q&A the reporter answered (Plan 079, Unit 10),
+ * so a re-dispatched run is actually more specific. Rows are the source of truth (council C-3.9);
+ * this is built from them at read time. Both the questions and the answers are UNTRUSTED user text.
+ */
+export function formatClarificationHistoryBlock(turns: ClarificationTurn[], opts?: { maxChars?: number }): string {
+  const answered = turns.filter((t) => t.answerBody && t.answerBody.trim());
+  if (!answered.length) return "";
+  const maxChars = opts?.maxChars ?? 6000;
+  const body = answered
+    .sort((a, b) => a.round - b.round)
+    .map((t) => {
+      const qs = (t.questions ?? "").split("\n").filter(Boolean).map((q) => `Q: ${q}`).join("\n");
+      return `${qs}\nA: ${t.answerBody?.trim()}`;
+    })
+    .join("\n\n");
+  return untrustedBlock("clarification_history", body.slice(0, maxChars));
+}
