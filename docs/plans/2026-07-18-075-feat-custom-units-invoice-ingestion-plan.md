@@ -1,7 +1,7 @@
 ---
 title: Custom measurement units for material intake (+ "ton" built-in, qty/pack-size tooltips)
 type: feat
-status: draft
+status: completed
 date: 2026-07-18
 branch: claude/custom-units-invoice-a49844
 depth: deep
@@ -339,12 +339,16 @@ the `SupplyLot` back to prove it stored canonical grams at the right unit cost. 
 
 ## Success Criteria
 
-- [ ] `ton` converts correctly and is selectable in the manual form + invoice-review dropdowns.
-- [ ] A user can "+ Create unit" (weight/volume/count) at intake and immediately use it on a line.
-- [ ] Custom units persist per-tenant, RLS-isolated; `verify:tenant-isolation` green.
-- [ ] A partial consume of a custom-unit lot depletes + costs identically to a built-in unit; unresolved
-      custom → UNKNOWN cost, never fabricated; `verify:cost` green.
-- [ ] Qty and Pack-size tooltips show the concrete examples and match DESIGN.md.
-- [ ] Reserved-name and duplicate-name creates are rejected with a friendly error.
-- [ ] Assistant `create_custom_unit`/`query_custom_units` work; `verify:ai-native` + `verify:parity` green.
-- [ ] All tests pass; no regressions; `tsc --noEmit --incremental false` + `lint` clean.
+- [x] `ton` converts correctly and is selectable in the manual form + invoice-review dropdowns.
+- [x] A user can "+ Create unit" (weight/volume/count) at intake and immediately use it on a line.
+- [x] Custom units persist per-tenant, RLS-isolated; `verify:tenant-isolation` green.
+- [x] A partial consume of a custom-unit lot depletes + costs identically to a built-in unit; unresolved
+      custom → UNKNOWN cost, never fabricated; `verify:cost` green (55/55).
+- [x] Qty and Pack-size tooltips show the concrete examples and match DESIGN.md.
+- [x] Reserved-name and duplicate-name creates are rejected with a friendly error.
+- [x] Assistant `create_custom_unit`/`query_custom_units` work; `verify:ai-native` + `verify:parity` green.
+- [x] All tests pass (2292); no regressions; `tsc --noEmit --incremental false` + `lint` (0 errors) + `next build` clean.
+
+**Pending human step:** a live click-through on Demo Winery (needs interactive login — I never type
+passwords). Every layer below the UI is proven: DB (runAsTenant), money (`verify:cost`), RLS
+(`verify:tenant-isolation`), ingest (`verify:ingest`), plus tsc + full vitest + production build.
