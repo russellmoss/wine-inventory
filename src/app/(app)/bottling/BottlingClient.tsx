@@ -6,7 +6,13 @@ import { createBottlingRun, editBottlingRun, deleteBottlingRun } from "@/lib/bot
 import { suggestBottles, consumedForBottles, casesAndLoose } from "@/lib/bottling/draw";
 import { PackagingBoMEditor } from "@/components/work-orders/PackagingBoMEditor";
 import type { MaterialPickerOption } from "@/components/work-orders/MaterialFilterPicker";
-import { type PackagingPlanLine, theoreticalConsumption } from "@/lib/bottling/packaging-bom";
+import {
+  type PackagingPlanLine,
+  type PackagingRole,
+  theoreticalConsumption,
+  classifyPackagingRole,
+  missingRequiredPackaging,
+} from "@/lib/bottling/packaging-bom";
 
 export type VesselOpt = { id: string; code: string; type: "BARREL" | "TANK"; availableL: number; contents: string[] };
 export type LocOpt = { id: string; name: string };
@@ -47,6 +53,23 @@ function BottlingForm({
     .map((l) => ({ materialId: l.materialId, qty: theoreticalConsumption(l, bottleCount) }))
     .filter((p) => p.qty > 0);
 
+  // Every bottling run must consume a bottle, a closure (e.g. cork) and a label — a run can't ship
+  // without all three. Only lines with a picked material AND a positive derived quantity count toward
+  // the requirement; classify each by the material's name/kind into its mandatory role.
+  const optById = React.useMemo(() => new Map(packagingOptions.map((o) => [o.id, o])), [packagingOptions]);
+  const presentRoles = React.useMemo(() => {
+    const roles = new Set<PackagingRole>();
+    for (const l of pkgLines) {
+      if (!l.materialId) continue;
+      if (theoreticalConsumption(l, bottleCount) <= 0) continue;
+      const opt = optById.get(l.materialId);
+      const role = classifyPackagingRole(opt?.label, opt?.kind);
+      if (role) roles.add(role);
+    }
+    return roles;
+  }, [pkgLines, bottleCount, optById]);
+  const missingPackaging = missingRequiredPackaging(presentRoles);
+
   const availableL = Math.round(vessels.filter((v) => picked.includes(v.id)).reduce((a, v) => a + v.availableL, 0) * 100) / 100;
   const max = mode === "create" ? suggestBottles(availableL) : undefined;
   const consumed = consumedForBottles(Number(bottles) || 0);
@@ -56,8 +79,10 @@ function BottlingForm({
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   }
 
+  const blocked = pending || picked.length === 0 || missingPackaging.length > 0;
+
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (missingPackaging.length > 0) return; onSubmit(new FormData(e.currentTarget)); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {picked.map((id) => <input key={id} type="hidden" name="vesselIds" value={id} />)}
 
       <div>
@@ -114,8 +139,15 @@ function BottlingForm({
       />
       <input type="hidden" name="packaging" value={JSON.stringify(packagingActuals)} />
 
+      {/* Mandatory packaging: a bottle, a closure (e.g. cork) and a label are all required. */}
+      {missingPackaging.length > 0 ? (
+        <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>
+          Add {missingPackaging.map((m) => m.label).join(", ")} to the packaging before recording this run — every bottling run needs a bottle, a closure and a label.
+        </p>
+      ) : null}
+
       <div style={{ display: "flex", gap: 10 }}>
-        <Button type="submit" variant="primary" disabled={pending || picked.length === 0}>
+        <Button type="submit" variant="primary" disabled={blocked}>
           {pending ? "Working..." : mode === "create" ? "Record bottling run" : "Save changes"}
         </Button>
         {onCancel ? <Button type="button" variant="secondary" disabled={pending} onClick={onCancel}>Cancel</Button> : null}
