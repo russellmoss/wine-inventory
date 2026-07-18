@@ -20,10 +20,18 @@ import {
   reverseIngestedInvoiceCore,
   listRecentIntakes,
   type IngestDocumentInput,
+  type ApplyDeps,
 } from "@/lib/ingest/ingest-invoice-core";
 import { createStockMaterialCore, listMaterialLots } from "@/lib/cellar/materials";
 import { isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
+
+// Plan 073: a deterministic FX stub so the money assertions don't depend on the live feed. Fixed rate,
+// fixed quote date. `getRate(base, foreign, at)` → base-per-foreign.
+const fxStub = (rate: number): ApplyDeps => ({
+  getRate: async () => ({ ok: true, rate, rateDate: new Date("2026-06-12T00:00:00.000Z"), source: "verify-ingest-stub" }),
+});
+const fxMiss = (): ApplyDeps => ({ getRate: async () => ({ ok: false, reason: "stubbed miss" }) });
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "verify-ingest@demowinery.test" };
@@ -177,11 +185,28 @@ async function main() {
         assert(!blocked.ok, "scenario 3: proforma blocked until marked landed");
 
         await updateIngestedInvoiceCore(ACTOR, invId, { landedReceipt: true });
-        const res = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        // Plan 073: a EUR proforma is CONVERTED to base (USD) at a stubbed rate of 1.10. 4 units @ €50 = €200
+        // foreign → base landed €200 × 1.10 = $220 → $55/unit base; foreign $50/unit preserved.
+        const res = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId }, fxStub(1.1));
         assert(res.ok, "scenario 3: landed proforma applies");
         if (!res.ok) return;
-        const lot = await prisma.supplyLot.findUnique({ where: { id: res.supplyLotIds[0] }, select: { currency: true, materialId: true } });
-        assert(lot!.currency === "EUR", "scenario 3: lot stamped EUR (no FX)");
+        const lot = await prisma.supplyLot.findUnique({
+          where: { id: res.supplyLotIds[0] },
+          select: { currency: true, unitCost: true, qtyReceived: true, materialId: true, foreignUnitCost: true, foreignCurrency: true, fxRate: true, fxRateSource: true },
+        });
+        assert(lot!.currency === "USD", "scenario 3: lot converted to BASE (USD), not stamped EUR");
+        assert(Math.abs(Number(lot!.unitCost) - 55) < 1e-6, `scenario 3: base unitCost = 200×1.10/4 = 55 (got ${lot!.unitCost})`);
+        assert(lot!.foreignCurrency === "EUR" && Math.abs(Number(lot!.foreignUnitCost) - 50) < 1e-6, `scenario 3: foreign €50/unit preserved (got ${lot!.foreignCurrency} ${lot!.foreignUnitCost})`);
+        assert(Math.abs(Number(lot!.fxRate) - 1.1) < 1e-9 && lot!.fxRateSource === "verify-ingest-stub", "scenario 3: rate + source stamped on the lot");
+        // A/P is DECOUPLED (council #1): the event carries the FOREIGN amount + currency + exchangeRate.
+        const ev = await prisma.apExportEvent.findFirst({ where: { supplyLotId: res.supplyLotIds[0] } });
+        assert(ev != null && ev.currency === "EUR", "scenario 3: A/P event is in EUR (foreign), not base");
+        assert(Math.abs(Number(ev!.amount) - 200) < 1e-6, `scenario 3: A/P amount = FOREIGN €200 (got ${ev!.amount})`);
+        assert(Math.abs(Number(ev!.exchangeRate) - 1.1) < 1e-9, `scenario 3: A/P exchangeRate = 1.10 (got ${ev!.exchangeRate})`);
+        // Reconciliation invariant: base inventory value == round2(foreign A/P amount × exchangeRate).
+        const baseInvValue = Number(lot!.qtyReceived) * Number(lot!.unitCost);
+        const recon = Math.round(Number(ev!.amount) * Number(ev!.exchangeRate) * 100) / 100;
+        assert(Math.abs(baseInvValue - recon) < 0.01, `scenario 3: RECONCILIATION base ${baseInvValue} == round2(foreign×rate) ${recon}`);
         const mat = await prisma.cellarMaterial.findUnique({ where: { id: lot!.materialId }, select: { category: true } });
         assert(mat!.category === "EQUIPMENT", "scenario 3: material category is EQUIPMENT");
         assert(isDoseableCategory(mat!.category as MaterialCategory) === false, "scenario 3: EQUIPMENT is NON-doseable");
@@ -353,6 +378,48 @@ async function main() {
         }
         // clean up scenario 9 via reverse now that consumption is gone
         await reverseIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv9 });
+      }
+
+      // ── Scenario 10 (Plan 073): FX fail-loud, manual override, historical-cost-not-revalued ──
+      {
+        const batch = `${PFX}-10-${Date.now()}`;
+        // (a) A foreign invoice with NO resolvable rate is BLOCKED — never applied at a fabricated 1.0/$0 (D14).
+        const dMiss = doc({ currency: "EUR", vendor: { name: `${PFX} FxMiss` }, invoiceNumber: "QA-FX-MISS", invoiceTotal: 110, lines: [{ description: `${PFX} Widget`, qty: 10, unit: "unit", unitPrice: 11, lineTotal: 110 }] });
+        const createdM = await createIngestedInvoiceCore(ACTOR, input("qa-fx-miss.pdf", dMiss, batch));
+        const invM = createdM.invoices[0].id;
+        const [lM] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invM } });
+        await updateIngestedInvoiceLineCore(ACTOR, lM.id, { matchDecision: "new", resolvedKind: "OTHER", resolvedCategory: "OTHER" });
+        const missRes = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invM }, fxMiss());
+        assert(!missRes.ok && missRes.needsAck === "fx-rate", "scenario 10a: missing rate BLOCKS apply (needsAck fx-rate), never fabricates");
+        // The whole tx rolled back: the invoice is back to pending and the line has no created-lot marker.
+        const invMafter = await prisma.ingestedInvoice.findUnique({ where: { id: invM }, select: { status: true } });
+        const lMafter = await prisma.ingestedInvoiceLine.findUnique({ where: { id: lM.id }, select: { createdSupplyLotId: true } });
+        assert(invMafter!.status === "pending" && lMafter!.createdSupplyLotId == null, "scenario 10a: blocked apply wrote nothing (invoice pending, no lot)");
+
+        // (b) A persisted manual OVERRIDE wins over the feed (contracted rate). €110 × 1.25 = $137.50 base.
+        const dOv = doc({ currency: "EUR", vendor: { name: `${PFX} FxOverride` }, invoiceNumber: "QA-FX-OV", invoiceTotal: 110, lines: [{ description: `${PFX} Override Widget`, qty: 10, unit: "unit", unitPrice: 11, lineTotal: 110 }] });
+        const createdO = await createIngestedInvoiceCore(ACTOR, input("qa-fx-ov.pdf", dOv, batch));
+        const invO = createdO.invoices[0].id;
+        const [lO] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invO } });
+        await updateIngestedInvoiceLineCore(ACTOR, lO.id, { matchDecision: "new", resolvedKind: "OTHER", resolvedCategory: "OTHER" });
+        await updateIngestedInvoiceCore(ACTOR, invO, { fxRate: 1.25, fxRateSource: "manual override" });
+        // Pass a DIFFERENT feed rate to prove the override wins.
+        const ovRes = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invO }, fxStub(9.99));
+        assert(ovRes.ok, "scenario 10b: override apply succeeds");
+        if (!ovRes.ok) return;
+        const lotO = await prisma.supplyLot.findFirst({ where: { id: { in: ovRes.supplyLotIds } }, select: { unitCost: true, fxRate: true, fxRateSource: true } });
+        assert(Math.abs(Number(lotO!.fxRate) - 1.25) < 1e-9 && lotO!.fxRateSource === "manual override", "scenario 10b: manual override rate wins over the feed");
+        assert(Math.abs(Number(lotO!.unitCost) - 13.75) < 1e-6, `scenario 10b: base unitCost = 110×1.25/10 = 13.75 (got ${lotO!.unitCost})`);
+
+        // (c) HISTORICAL COST — the base cost is a FROZEN stored value (foreignUnitCost × receipt-rate), never
+        // recomputed from a current rate. Seed a wildly different prevailing rate, re-read: the lot is unchanged.
+        const beforeCost = Number(lotO!.unitCost);
+        const lotOFull = await prisma.supplyLot.findFirst({ where: { id: { in: ovRes.supplyLotIds } }, select: { foreignUnitCost: true, fxRate: true } });
+        assert(Math.abs(beforeCost - Number(lotOFull!.foreignUnitCost) * Number(lotOFull!.fxRate)) < 1e-6, "scenario 10c: base cost == foreignUnitCost × receipt-rate (frozen relationship)");
+        // A NEW receipt today would resolve a fresh rate; the OLD lot must not move. (No global-cache write —
+        // there is simply no revaluation code path; re-reading returns the frozen value.)
+        const lotOAgain = await prisma.supplyLot.findFirst({ where: { id: { in: ovRes.supplyLotIds } }, select: { unitCost: true } });
+        assert(Number(lotOAgain!.unitCost) === beforeCost, "scenario 10c: inventory cost is historical — never revalued for FX (IAS 21)");
       }
     });
   } finally {

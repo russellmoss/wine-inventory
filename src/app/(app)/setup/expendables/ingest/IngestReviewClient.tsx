@@ -52,7 +52,7 @@ function useNarrow(): boolean {
 type ApplyState = {
   pending: boolean;
   error: string | null;
-  needsAck: "reconcile" | "partial-ap" | null;
+  needsAck: "reconcile" | "partial-ap" | "fx-rate" | null;
   acks: { reconcile: boolean; partial: boolean };
   result: { supplyLotIds: string[]; apLineCount: number } | null;
 };
@@ -302,7 +302,8 @@ function ReceiptPanel({
             {apply.error ? (
               <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--danger)", background: "rgba(182,61,53,0.08)" }}>
                 <p style={{ fontSize: 13, color: "var(--danger)", margin: 0 }}>{apply.error}</p>
-                {apply.needsAck ? (
+                {/* Plan 073: the fx-rate block is resolved by entering a rate above (Unit 5), not an "inventory-only" ack. */}
+                {apply.needsAck === "reconcile" || apply.needsAck === "partial-ap" ? (
                   <div style={{ marginTop: 10 }}>
                     <Button
                       variant="secondary"
