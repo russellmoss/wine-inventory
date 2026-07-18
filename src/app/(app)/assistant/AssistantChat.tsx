@@ -11,6 +11,7 @@ import {
   type SearchResult,
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
+import { MAX_CONTENT, clampHistoryForSend } from "@/lib/assistant/message-window";
 import type { Caption } from "./voice/useVoiceSession";
 import { useDictation } from "./voice/useDictation";
 import { FeedbackTicketModal } from "./FeedbackTicketModal";
@@ -487,6 +488,10 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
   async function send(override?: string) {
     const text = (override ?? input).trim();
     if (!text || busy) return;
+    if (text.length > MAX_CONTENT) {
+      setError(`Message is too long (max ${MAX_CONTENT.toLocaleString()} characters). Please shorten it.`);
+      return;
+    }
     setError(null);
     if (override === undefined) setInput("");
     setNavPending(null); // a new turn cancels any in-flight auto-nav countdown
@@ -505,7 +510,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, conversationId }),
+        body: JSON.stringify({ messages: clampHistoryForSend(history), conversationId }),
       });
       if (!res.ok || !res.body) {
         const msg = await res.json().catch(() => null);

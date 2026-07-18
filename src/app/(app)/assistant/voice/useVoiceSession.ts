@@ -16,6 +16,7 @@ import {
 } from "@/lib/voice/focus";
 import type { VoiceSettingsView } from "@/lib/voice/settings-types";
 import { type AssistantEvent, parseEvent, isSafeInternalPath } from "@/lib/assistant/assistant-events";
+import { clampHistoryForSend } from "@/lib/assistant/message-window";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
 
@@ -250,7 +251,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         const res = await fetch("/api/assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: historyRef.current, conversationId: conversationIdRef.current }),
+          body: JSON.stringify({ messages: clampHistoryForSend(historyRef.current), conversationId: conversationIdRef.current }),
           signal: ac.signal,
         });
         if (!res.ok || !res.body) throw new Error("assistant request failed");
