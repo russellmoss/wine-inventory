@@ -7,19 +7,8 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Ticket #268 — self-assigned WO emitted no inbox notification + confusing "Issue" button — SHIPPING.**
-Branch `claude/work-order-inbox-emit-c163c0`. Feedback `cmrqtvwja000fij04rsn25z15` (Demo Winery). Two issues:
-(a) the WO detail "Issue" button was ambiguous (reads like "report a problem"; it actually flips DRAFT→ISSUED and
-opens execution); (b) **the real defect** — a self-assigned WO showed in the inbox WO bucket (assigneeId set) but
-produced NO inbox notification, because every emit path suppressed self-notifications AND the create path never
-emitted an assignment notification at all.
-Fix: new `allowSelfNotification` flag on `EmitNotificationInput` + pure `shouldEmitNotification` gate; emit a
-`WO_ASSIGNED` notification at the create chokepoint (`createWorkOrderCore`) to the resolved assignee **allowing
-self** (a WO you assigned yourself is a legit to-do), and mark the reassign emit self-aware too. `WO_STATUS`
-self-suppression is unchanged (scoped). Button → "Issue & open for execution" + a DRAFT helper line.
-6 files, in-fence (inbox + work-orders/lifecycle + WO detail client). tsc/eslint green; vitest 50/50 (4 new gate
-tests); **DB proof passed** (runAsTenant Demo: self-assign → `inbox.emit` fired + `WO_ASSIGNED` read back, WO_STATUS
-still suppressed, fixtures scrubbed). NEXT: /ship → merge → resolve ticket + DM reporter.
+**(between tasks)** — last shipped: Ticket #268 self-assign inbox notification + "Issue" button clarity, MERGED
+(PR #278, `6dc2d14`); ticket RESOLVED, reporter Mike DM'd. See ✅ Done recently. Awaiting the next request.
 
 <details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, SHIPPED PR #262)</summary>
 
@@ -193,6 +182,21 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **Ticket #268 — self-assigned WO emitted no inbox notification + confusing "Issue" button — SHIPPED + MERGED (PR #278, `6dc2d14`); ticket RESOLVED/DEFECT, reporter Mike (`mike@bhutanwine.com`) DM'd; remote branch pruned.**
+  Feedback `cmrqtvwja000fij04rsn25z15` (Demo Winery). (b, real defect) a WO you assigned yourself showed in the
+  inbox WO bucket (`assigneeId` resolved) but emitted NO notification — every WO emit path self-suppressed AND
+  `createWorkOrderCore` never emitted an assignment notification at all. Fix: opt-in `allowSelfNotification` on
+  `EmitNotificationInput` + pure `shouldEmitNotification` gate; emit `WO_ASSIGNED` at the create chokepoint to the
+  resolved assignee **allowing self** (reassign emit marked self-aware too). `WO_STATUS` self-suppression unchanged
+  (scoped). (a) DRAFT "Issue" button → "Issue & open for execution" + a helper line. 6 files, in-fence
+  ([inbox](src/lib/inbox) + [lifecycle.ts](src/lib/work-orders/lifecycle.ts) +
+  [WorkOrderDetailClient.tsx](src/app/(app)/work-orders/[id]/WorkOrderDetailClient.tsx)). tsc/eslint green, vitest
+  50/50 (4 new gate tests), **DB proof** (runAsTenant Demo: self-assign → `inbox.emit` fired + `WO_ASSIGNED` read
+  back via `listNotifications`, WO in `listMyWorkOrders`, no `WO_STATUS` self-notif; fixtures scrubbed).
+  GOTCHA: the main checkout was actively branch-switched by parallel sessions mid-task → captured my edits as a
+  patch, restored the main checkout, and built/tested/shipped from the ISOLATED worktree (junctioned `node_modules`
+  + copied `.env`). GOTCHA: a DM-from-script must run `runAsTenant(..., { userId: senderId })` — without the sender's
+  `app.user_id` GUC, the just-created DM thread is invisible to the RLS re-read → "Could not open the conversation."
 - **Ticket #188 — `delete_harvest_pick` + confirmed VineyardBlock cascade — MERGED (squash PR #265, 3eb512e); ticket RESOLVED.** (moved off Current.)
 - **Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2 display) — SHIPPED + MERGED (PR #274, 222fe63); ticket RESOLVED/DEFECT, reporter Mike DM'd; branch pruned.**
   Design-partner (Mike) report on `/inbox?bucket=wo`: "when I select a work order to view it, I shouldn't have to
@@ -304,4 +308,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Ticket #268 (feedback cmrqtvwja, Demo Winery) IN FLIGHT on `claude/work-order-inbox-emit-c163c0`: self-assigned WO emitted no inbox notification (real defect) + confusing "Issue" button. Fix = `allowSelfNotification` flag + pure `shouldEmitNotification` gate; emit WO_ASSIGNED at `createWorkOrderCore` allowing self; button → "Issue & open for execution" + DRAFT helper. tsc/eslint green, vitest 50/50 (4 new), DB proof passed (runAsTenant Demo self-assign → WO_ASSIGNED read back). → /ship next. Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
+_Last updated: 2026-07-18 — Ticket #268 (feedback cmrqtvwja, Demo Winery) SHIPPED + MERGED (PR #278 squash-merged to main, `6dc2d14`): self-assigned WO emitted no inbox notification (real defect) + confusing "Issue" button. Fix = `allowSelfNotification` flag + pure `shouldEmitNotification` gate; emit WO_ASSIGNED at `createWorkOrderCore` allowing self; button → "Issue & open for execution" + DRAFT helper. tsc/eslint green, vitest 50/50 (4 new), DB proof passed (runAsTenant Demo self-assign → WO_ASSIGNED read back); ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); remote branch pruned. Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
