@@ -3,7 +3,8 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge, Button, Input, Collapsible } from "@/components/ui";
+import { Card, Eyebrow, Badge, Button, Input, Collapsible, InfoHint } from "@/components/ui";
+import { QTY_HINT, PACK_SIZE_HINT } from "@/lib/units/field-hints";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 import {
   MATERIAL_CATEGORIES, CATEGORY_LABELS, BUILTIN_FAMILIES, type MaterialCategory,
@@ -290,7 +291,10 @@ function ReceiptPanel({
       <div style={{ marginTop: 16 }}>
         {!narrow ? (
           <div style={{ display: "grid", gridTemplateColumns: "minmax(160px,2fr) 60px 140px 100px 100px minmax(190px,1.5fr) 100px", gap: 8, padding: "0 4px 6px", fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>
-            <span>Description</span><span>Qty</span><span>Pack size</span><span>Unit price</span><span>Lot no.</span><span>Match</span><span style={{ textAlign: "right" }}>Landed</span>
+            <span>Description</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Qty <InfoHint label={QTY_HINT} ariaLabel="What does Qty mean?" /></span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Pack size <InfoHint label={PACK_SIZE_HINT} ariaLabel="What does Pack size mean?" /></span>
+            <span>Unit price</span><span>Lot no.</span><span>Match</span><span style={{ textAlign: "right" }}>Landed</span>
           </div>
         ) : null}
         <div style={{ display: "flex", flexDirection: "column", gap: narrow ? 12 : 4 }}>
@@ -565,8 +569,8 @@ function LineRow({
       <div style={{ border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", padding: 12, opacity: decision === "skip" ? 0.6 : 1 }}>
         <div style={{ marginBottom: 8 }}><div style={fieldLabel}>Description</div>{desc}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 70px" }}><div style={fieldLabel}>Qty</div>{qty}</div>
-          <div style={{ flex: "1 1 150px" }}><div style={fieldLabel}>Pack size</div>{unit}</div>
+          <div style={{ flex: "1 1 70px" }}><div style={{ ...fieldLabel, display: "inline-flex", alignItems: "center", gap: 4 }}>Qty <InfoHint label={QTY_HINT} ariaLabel="What does Qty mean?" /></div>{qty}</div>
+          <div style={{ flex: "1 1 150px" }}><div style={{ ...fieldLabel, display: "inline-flex", alignItems: "center", gap: 4 }}>Pack size <InfoHint label={PACK_SIZE_HINT} ariaLabel="What does Pack size mean?" /></div>{unit}</div>
           <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Unit price</div>{price}</div>
           <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Lot no.</div>{lot}</div>
         </div>

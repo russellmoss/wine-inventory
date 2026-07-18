@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Input, Checkbox } from "@/components/ui";
+import { Input, Checkbox, InfoHint } from "@/components/ui";
+import { UNIT_HINT } from "@/lib/units/field-hints";
 import {
   MATERIAL_CATEGORIES, CATEGORY_LABELS, BUILTIN_FAMILIES, familyLabel, categoryOf,
   type MaterialCategory,
@@ -183,7 +184,7 @@ export function MaterialForm({
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <Input label="Package size" value={value.packageAmount} onChange={(e) => onChange({ packageAmount: e.target.value })} inputMode="decimal" placeholder="e.g. 100" style={{ flex: "0 1 120px" }} />
         <label style={{ ...col, flex: "0 1 120px" }}>
-          <span style={fieldLabelStyle}>Unit</span>
+          <span style={{ ...fieldLabelStyle, display: "inline-flex", alignItems: "center", gap: 4 }}>Unit <InfoHint label={UNIT_HINT} ariaLabel="What is the unit?" /></span>
           <select value={value.packageUnit} onChange={(e) => onChange({ packageUnit: e.target.value })} style={controlStyle}>
             {MEASURE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
