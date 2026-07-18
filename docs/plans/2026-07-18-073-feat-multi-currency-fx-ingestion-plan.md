@@ -6,6 +6,7 @@ date: 2026-07-18
 branch: claude/multi-currency-fx-ingestion
 depth: deep
 units: 10
+status: completed
 ---
 
 ## Overview

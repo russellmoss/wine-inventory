@@ -7,25 +7,64 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Vendor merge + removal (Plan 072) — BUILT (9 units), gates green, ready for /review + /ship.**
-Branch `claude/vendor-merge-removal-72844c` (worktree; `.env`+`npm ci` copied in to make it buildable). Fills
-the back-half of Plan 069's promise ("no more Scott Labs vs Scott Laboratories dupes") that shipped no way to
-FIX existing dupes. **MERGE** re-points all 4 vendor references (cellar_material, supply_lot, ap_export_event,
-vendor_contact) loser→survivor in one `runInTenantTx`, re-derives the legacy material mirror, reconciles QBO
-`externalVendorId` (carry-forward, or CONFLICT unless acknowledged), hard-deletes the loser. **REMOVE** hard-
-deletes only an unreferenced vendor (else CONFLICT → archive/merge; Unknown fallback protected). Cores in
-`vendors.ts` (mergeVendorsCore/removeVendorCore/getVendorUsage); pure helpers + 24 tests in `vendors-shared.ts`;
-`safeAdminAction` actions; `/setup/vendors` Merge+Remove UI (MergeVendorModal w/ impact preview + QBO ack);
-assistant `merge_vendors` tool (adminOnly) + duplicate detection in `query_vendors` + golden case. Governed-money
-proof `scripts/verify-vendor-merge.ts` **13/13 on Demo (real DB)** + cross-tenant merge rejection in
-verify-tenant-isolation (all green). Decision recorded (ledger inbox `q_1784328399_f3`). Gates green: tsc,
-vitest (vendors-shared 24 + assistant structural eval), verify:tenant-isolation, lint. **Remaining: run the
-remaining Phase-3 gates (next build, verify:raw-sql/naming/invariants, ai-native) → /review → /ship + browser-QA.**
+**Multi-currency FX ingestion (Plan 073) — BUILT (all 10 units), gates green, ready for `/ship`.**
+Branch `claude/multi-currency-fx-ingestion` (off main; commits `fbf72c1`→HEAD, one per unit). A foreign-currency
+supplier invoice (the real €767.16 NexaParts proforma) is converted at ingestion at a **dated ECB rate**
+(Frankfurter, keyless — never the LLM; a missing rate FAILS LOUD, D14) so `SupplyLot.unitCost` is **always the
+tenant base currency** (single-currency roll-up) while the **A/P Bill posts to QBO in EUR** under a EUR vendor
+with `CurrencyRef` + `ExchangeRate`. The P0 the council caught (double-conversion) is fixed by **decoupling**:
+lot cost = BASE, `ApExportEvent` = FOREIGN amount + rate; reconciliation invariant `base == round2(foreign×rate)`.
+Units: U1 global `fx_rate` cache + FX columns (GLOBAL_MODELS allow-list); U2 FX rate service (Frankfurter + daily
+cache + pure convert, CET date, home-per-foreign); U3 base-currency admin/developer gate; U4 (MONEY) ingestion
+conversion + decoupled foreign A/P; U5 review-screen rate field/override + fail-loud gate + multicurrency warning;
+U6 QBO currency-scoped vendor (suffixed DisplayName + CurrencyRef); U7 foreign Bill (CurrencyRef/ExchangeRate) +
+MultiCurrencyEnabled read at connect + WITHHELD (not FAIL) when off; U8 offline Bill idempotency + **live EUR Bill
+round-trip PROVEN against the real QBO sandbox**; U9 **€767.16 e2e PROVEN in Cellarhand AND QBO**; U10 COST-4
+invariant + full gate sweep. **GATES ALL GREEN:** tsc 0, next build clean, vitest 2239/0, verify:cost 55,
+verify:ingest 61, verify:fx 15, verify:fx-e2e 17, verify:accounting 8 (live EUR bill), verify:accounting-idempotency
+22 (Bill path), verify:ai-native / invariants (34) / parity / raw-sql / naming / tenant-isolation. Prereq DONE: the
+user enabled Multicurrency on the QBO sandbox (irreversible); the Demo connection's `multiCurrencyEnabled` was
+backfilled from the live company. **Next: `/ship`.** See `docs/plans/2026-07-18-073-feat-multi-currency-fx-ingestion-plan.md`.
 
-<details><summary>prev objective (Plan 071 — shipped)</summary>
+<details><summary>prev objective — Plan 072 invoice ingestion (SHIPPED, PR #223, 24d7d35)</summary>
 
-Full work-order editing — reopen in the builder, save in place (Plan 071). BUILT on branch
-`claude/work-order-full-edit`. Plan 070 (mandatory Lead) SHIPPED (#210); prod null-Lead backfill (#27) pending.
+**Invoice/document ingestion → deterministic expendables & equipment intake (Plan 072) — SHIPPED to main.**
+Branch `claude/invoice-ingestion-intake-385010`. All 12 units committed to the branch
+(committed, all gates green): U1 schema+migration (4 RLS staging/provenance tables + composite FKs, applied to
+Neon), U2 EQUIPMENT category + `isDoseableCategory` denylist→ALLOWLIST + `UNCLASSIFIED` sink (WORKORDER-7),
+U3 PDF-aware private blob + upload route, U4 extraction core (de-risking spike PASSED — `claude-opus-4-8`
+accepts native PDF `document` blocks; captured + verified all 8 real docs vs the plan matrix), U5 landed-cost
+allocator + UOM normalize (money-critical), U6 vendor-scoped dedup matcher, U7 atomic apply core (inject ONE
+tx through the cost cores; proforma/reconciliation/concurrency gates; unified new+existing→receiveSupplyCore
+both emitting A/P stamped with invoice#; COA attach; tenant re-verify) — **proven by `verify:ingest` (31
+assertions) + `verify:cost` 55/55**, U9 assistant `ingest_documents` tool (verify:ai-native green), U12
+real-doc acceptance (STEP2 CI test 12/12 + STEP3 gated live script), U8 review screen (`+ Ingest invoice`
+launcher → upload → review; per-doc panels, dedup control, proforma gate, source-doc proxy, apply w/ inline
+needsAck; 17 model tests), U11 verify sweep. U10 write side + source-doc surfacing done; the per-lot
+expiry/provenance HISTORY panel is a scoped follow-up chip (display-only; data captured + proven).
+**GATES ALL GREEN:** tsc 0, next build clean, vitest 2179/0, verify:cost 55/55, verify:ingest 31,
+verify:ai-native / invariants / naming / parity / raw-sql / tenant-isolation / work-orders-enhancements.
+**PENDING before merge: human sign-off on the extraction snapshots (`qa/ingest-fixtures/SNAPSHOT-VERIFIED.md`)
++ browser-QA of the review screen in Demo Winery. Next: `/ship`.** See:
+`docs/plans/2026-07-17-072-feat-invoice-ingestion-intake-plan.md` (Deep, 12 units). `+ Ingest invoice`
+takes a mixed pile (PDF text/scanned + images), classifies each doc (invoice|proforma|coa|other), and routes
+only receipts into ONE human-reviewed screen per invoice; every write goes through existing cores
+(`createStockMaterialCore`/`receiveSupplyCore`/`findOrCreateVendorCore`). Decisions locked: Gmail = fast-follow
+(out of scope); new NON-DOSEABLE `EQUIPMENT` category (the load-bearing edit is `isDoseableCategory` denylist —
+protects WORKORDER-3); shipping allocated into per-unit landed cost (bakes into A/P, no separate line);
+one review screen/invoice; proforma prompts "is this a landed receipt?"; fuzzy-match + dedup guard vs existing
+expendables AND equipment; COA lot/expiry attach by Lot No.; private-blob provenance. Extraction = own
+server endpoint (one-shot `messages.create` json_schema, `claude-opus-4-8`, native `document`/`image` blocks)
+— NOT the text-only chat loop; DB staging (not the 5-min token) carries the batch. New schema: `vendorItemCode`
+on CellarMaterial, `expiresAt`+`sourceDocumentId` on SupplyLot, `vendorInvoiceNumber` on ApExportEvent,
+`IngestedInvoice`(+lines)/`LotDocument`/`VendorMaterialCode` staging (all RLS). **Reviewed FOUR ways (eng →
+council[Codex+Gemini] → design → ChatGPT outside voice); all findings folded; BUILD-READY.** Council reversed
+2 calls: inject ONE tx through cost cores (resumable-per-line was unsound); `isDoseableCategory` denylist→
+ALLOWLIST. ChatGPT caught 2 money-critical bugs the others missed: (#1 UOM — invoice qty≠stock qty, Unit 5
+now normalizes via convert/deriveOpeningLot; #2 A/P asymmetry — createStockMaterialCore emits no A/P, so
+unified path = create@0 then receiveSupplyCore for every line) + reconciliation gate, concurrency claim,
+UNCLASSIFIED non-doseable, LotDocument provenance. A/P (user, corrected QBO info): per-lot bills, invoice # as
+searchable PrivateNote memo (NOT grouped — QBO DocNumber is the per-lot idempotency key).
 
 </details>
 
@@ -58,6 +97,31 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **Chat "400 Invalid messages" defect (Bhutan cmrm9s97) — FIXED, PR #220 open; ticket closed-loop.**
+  `/investigate` root cause: the chat client sends the FULL conversation history every turn (no cap);
+  the server (`api/assistant/route.ts` `parseMessages`) hard-rejected with 400 once history passed 40
+  messages OR any turn passed 8000 chars — permanently bricking the conversation (a long assistant reply
+  poisoned every future send). NOT a regression (validation existed since `ffb9471`); latent scaling limit.
+  Fix = **window, don't reject**: new pure `src/lib/assistant/message-window.ts` (`parseAndWindowMessages`
+  keeps last 40, truncates over-long PRIOR turns, specific error only for a bad current msg, guarantees the
+  Anthropic shape) + `route.ts` uses it + both clients cap history sent + text client guards over-long input.
+  9-case regression test; assistant suite 158/158; tsc clean. Ticket → IN_PROGRESS/DEFECT + outcome note;
+  queued AGENTIC_FIX run neutralized (AWAITING_APPROVAL → SKIPPED, ticket automationStatus synced) so it
+  can't be dispatched. Related latent bug flagged (consecutive same-role after an errored turn → "Assistant
+  error"), left as a follow-up.
+- **`/bug-triage` live run (2026-07-17) — 1 merged, 5 plans handed off, 3 to a human; 0 errors.**
+  First had to unbreak the tooling: `b0ea4f6` (feedback-workspace rebuild) added a top-level
+  `requireDeveloper` import to `feedback.ts`, and `dal.ts` eagerly imports `next/navigation` →
+  `React.createContext` crash under `triage:list`'s `--conditions=react-server`. Fix = lazy-import
+  in the 2 functions that use it → **PR #219 MERGED** (`1e624ec`). Main tree still carries the identical
+  1-liner uncommitted (harmless dup; reconciles when this branch picks up origin/main, or `git checkout` it).
+  Merged **PR #215** (expendables stock category, root-fix confirmed → Bhutan 👎 RESOLVED; residual gap:
+  no per-item storage-location field). Plans handed off for `/work`: WO filtering (#201, 2-report cluster —
+  ⚠️ `WorkOrderFilterBar.tsx` already dirty, maybe in flight), delete harvest pick (#188), 3rd-party sales
+  counterparty (#202), report builder + Excel (#199), Help/assistant consolidation (#214, P2). To human:
+  chat 400 "Invalid message" (real defect, out-of-fence `api/assistant/route.ts` — `/investigate`, do NOT
+  approve its queued AGENTIC_FIX), "Talk" voice (unclear, env pending — `/investigate`), bare "error
+  message" #204 (too vague — bounce/close).
 - **Plan 070 — vendor management — BUILT (12 units) + reviewed + browser-QA'd; SHIPPING.**
   Reused the existing (Phase 15 QBO) `Vendor` table + new `VendorContact` child (RLS + composite FK);
   `vendorId` on `CellarMaterial` + `SupplyLot`; backfill (Demo: 54 mats/106 lots, 0 nulls) with a seeded
@@ -131,4 +195,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-17 — Plan 072 (vendor merge + removal) BUILT (9 units) on branch claude/vendor-merge-removal-72844c. MERGE re-points all 4 vendor FKs loser→survivor + hard-deletes loser; REMOVE guards referenced/Unknown vendors; assistant merge_vendors + dupe detection. Governed-money proof verify:vendor-merge 13/13 on Demo + cross-tenant merge rejection in verify:tenant-isolation. Decision ledger q_1784328399_f3. Next: finish Phase-3 gates → /review → /ship + browser-QA._
+_Last updated: 2026-07-18 — Plan 073 multi-currency FX ingestion BUILT (all 10 units) on `claude/multi-currency-fx-ingestion`; every gate green incl. a LIVE EUR Bill round-trip to the QBO sandbox + the real €767.16 proforma proven end-to-end in Cellarhand AND QBO; the P0 double-conversion bug (council) fixed by decoupling base inventory cost from the foreign A/P; COST-4 invariant added. Ready for `/ship`. Prior: chat "400 Invalid messages" defect FIXED (PR #220, history windowing) + Bhutan ticket cmrm9s97 closed-loop (IN_PROGRESS/DEFECT, AGENTIC_FIX skipped). `/bug-triage` live run: merged PR #215, handed off 5 plans, queued 3 for human; unblocked triage:list via PR #219 (lazy-import fix). Prior: Plan 072 (invoice/document ingestion → expendables & equipment intake) PLANNED (Deep, 12 units) + REVIEWED 4 ways (eng → council[Codex+Gemini] → design → ChatGPT outside voice); all findings folded; BUILD-READY. Key fixes: inject-tx atomicity, allowlist dose-safety, UOM normalization (Unit 5, money-critical), unified A/P apply path, reconciliation + concurrency gates, Unit 12 real-doc acceptance suite (all 8 docs/invoice examples/ files). A/P = per-lot bills, invoice # as QBO PrivateNote memo. Next /work. Plan 071 (full WO editing) shipped #213 (f0be796)._
