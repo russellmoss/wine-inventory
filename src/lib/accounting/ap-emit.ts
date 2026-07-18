@@ -35,7 +35,17 @@ export async function emitApExportForReceipt(
   const db = asDb(dbArg);
   const lot = await db.supplyLot.findUnique({
     where: { id: supplyLotId },
-    select: { id: true, qtyReceived: true, unitCost: true, createdAt: true },
+    select: {
+      id: true,
+      qtyReceived: true,
+      unitCost: true,
+      currency: true,
+      createdAt: true,
+      // Plan 073: the foreign figures decouple the A/P amount (FOREIGN) from the base inventory cost (council #1).
+      foreignUnitCost: true,
+      foreignCurrency: true,
+      fxRate: true,
+    },
   });
   if (!lot) return { emitted: 0, postable: false, reason: "supply lot not found" };
 
@@ -58,7 +68,16 @@ export async function emitApExportForReceipt(
     return { emitted: 0, postable: false, reason };
   }
 
-  const amount = Number((lot.qtyReceived as unknown as number) ?? 0) * (unitCost as number);
+  // Plan 073 (council #1 — DECOUPLED): a foreign-currency receipt posts its A/P in the FOREIGN currency —
+  // amount = qty × foreign unit cost, currency = the invoice currency, exchangeRate = base-per-foreign. QBO
+  // then derives the home GL = amount × ExchangeRate. Posting the BASE amount with a CurrencyRef would make
+  // QBO apply the rate a SECOND time (inflated GL). A base-currency receipt keeps amount == home, rate null.
+  const qtyReceived = Number((lot.qtyReceived as unknown as number) ?? 0);
+  const isForeign = lot.foreignUnitCost != null && lot.foreignCurrency != null && lot.fxRate != null;
+  const apUnitCost = isForeign ? Number(lot.foreignUnitCost) : (unitCost as number);
+  const apCurrency = isForeign ? (lot.foreignCurrency as string) : (lot.currency ?? settings?.currency ?? "USD");
+  const apExchangeRate = isForeign ? Number(lot.fxRate) : null;
+  const amount = qtyReceived * apUnitCost;
   const postingKey = `ap:${supplyLotId}`;
   const existing = await db.apExportEvent.findFirst({ where: { postingKey }, select: { id: true } });
   let eventId: string;
@@ -70,10 +89,11 @@ export async function emitApExportForReceipt(
         postingKey,
         supplyLotId,
         vendorId,
-        amount,
+        amount, // FOREIGN amount for a foreign receipt; home amount otherwise (council #1)
         debitAccount: inv, // Bill line account (inventory asset); QBO auto-credits A/P
         creditAccount: ap, // recorded for audit; the Bill posts A/P implicitly
-        currency: settings?.currency ?? "USD",
+        currency: apCurrency, // the document currency (EUR for a foreign bill)
+        exchangeRate: apExchangeRate, // base per 1 foreign; null when currency == home (council #5)
         receivedAt: lot.createdAt,
         dueDate: dueDateFrom(lot.createdAt, opts.terms),
         // Plan 072: supplier invoice # rides on the immutable event → the QBO Bill's PrivateNote memo

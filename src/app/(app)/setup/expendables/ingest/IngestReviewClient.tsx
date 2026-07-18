@@ -14,11 +14,15 @@ import {
   updateIngestedInvoiceLineAction, updateIngestedInvoiceAction, applyIngestedInvoiceAction,
 } from "@/lib/ingest/actions";
 import {
-  isReceiptDoc, effectiveDecision, landedPreview, isForeignCurrency, canConfirmDoc,
+  isReceiptDoc, effectiveDecision, landedPreview, isForeignCurrency, convertedPreview, canConfirmDoc,
   buildPrecommitSummary, summarySentence,
   PACK_UNITS, packInputValues, composePackUnitRaw, packFieldsValid,
   type ReviewDoc, type ReviewLine, type ReviewDocType,
 } from "./ingest-review-model";
+import { currencySymbol } from "@/lib/money/currency";
+
+/** Plan 073: per-doc FX suggestion the server resolved (persisted override or the dated feed). */
+export type FxSuggestion = { rate: number | null; rateDate: string | null; source: string | null };
 
 // Plan 072 Unit 8 — the human review screen for a batch of ingested documents. Receipts (invoice/proforma)
 // are the primary panels; COA/other collapse under "Supporting docs". Each line is editable, the dedup
@@ -52,7 +56,7 @@ function useNarrow(): boolean {
 type ApplyState = {
   pending: boolean;
   error: string | null;
-  needsAck: "reconcile" | "partial-ap" | null;
+  needsAck: "reconcile" | "partial-ap" | "fx-rate" | null;
   acks: { reconcile: boolean; partial: boolean };
   result: { supplyLotIds: string[]; apLineCount: number } | null;
 };
@@ -60,12 +64,16 @@ type ApplyState = {
 const emptyApply: ApplyState = { pending: false, error: null, needsAck: null, acks: { reconcile: false, partial: false }, result: null };
 
 export function IngestReviewClient({
-  batchId, docs: initial, candidates, vendors,
+  batchId, docs: initial, candidates, vendors, baseCurrency, multiCurrencyEnabled, fxByDoc,
 }: {
   batchId: string;
   docs: ReviewDoc[];
   candidates: MaterialCandidate[];
   vendors: VendorRow[];
+  baseCurrency: string;
+  /** undefined = no connected QBO; true/false = the company's MultiCurrency flag (council #2). */
+  multiCurrencyEnabled?: boolean | null;
+  fxByDoc: Record<string, FxSuggestion>;
 }) {
   const router = useRouter();
   const [docs, setDocs] = React.useState<ReviewDoc[]>(initial);
@@ -138,6 +146,9 @@ export function IngestReviewClient({
               candidates={candidates}
               vendors={vendors}
               apply={applyState[doc.id] ?? emptyApply}
+              baseCurrency={baseCurrency}
+              multiCurrencyEnabled={multiCurrencyEnabled}
+              fx={fxByDoc[doc.id]}
               onSaveDoc={saveDoc}
               onSaveLine={saveLine}
               onApply={runApply}
@@ -165,26 +176,35 @@ export function IngestReviewClient({
 // ── one receipt (invoice / proforma) ──
 
 function ReceiptPanel({
-  doc, candidates, vendors, apply, onSaveDoc, onSaveLine, onApply,
+  doc, candidates, vendors, apply, baseCurrency, multiCurrencyEnabled, fx, onSaveDoc, onSaveLine, onApply,
 }: {
   doc: ReviewDoc;
   candidates: MaterialCandidate[];
   vendors: VendorRow[];
   apply: ApplyState;
+  baseCurrency: string;
+  multiCurrencyEnabled?: boolean | null;
+  fx?: FxSuggestion;
   onSaveDoc: (docId: string, patch: Parameters<typeof updateIngestedInvoiceAction>[1]) => void;
   onSaveLine: (docId: string, lineId: string, patch: Parameters<typeof updateIngestedInvoiceLineAction>[1]) => void;
   onApply: (doc: ReviewDoc, acks: ApplyState["acks"]) => void;
 }) {
-  const { code: baseCurrency, symbol } = useCurrency();
+  const { symbol } = useCurrency();
   const [showSource, setShowSource] = React.useState(false);
   const narrow = useNarrow();
 
+  const foreign = isForeignCurrency(doc.currency, baseCurrency);
+  // Plan 073: the applied FX rate (base per 1 foreign) — seeded from the server (persisted override or the
+  // dated feed), editable here while pending. A foreign doc with no rate blocks Confirm (fail loud, D14).
+  const [rate, setRate] = React.useState<number | null>(fx?.rate ?? null);
+  const applied = doc.status === "applied";
+
   const vendorMatch = doc.vendorNameRaw ? matchVendorsByName(vendors, doc.vendorNameRaw)[0] ?? null : null;
   const resolvedVendorId = vendorMatch?.id ?? null;
-  const previews = landedPreview(doc);
-  const gate = canConfirmDoc(doc);
+  const previews = landedPreview(doc); // foreign (invoice-currency) landed totals
+  const basePreviews = convertedPreview(doc, baseCurrency, rate); // converted to base at `rate`
+  const gate = canConfirmDoc(doc, foreign ? { baseCurrency, rate } : undefined);
   const summary = buildPrecommitSummary(doc, { vendorExisting: !!vendorMatch });
-  const applied = doc.status === "applied";
 
   return (
     <Card padding="var(--space-5)">
@@ -245,6 +265,22 @@ function ReceiptPanel({
         </div>
       </div>
 
+      {/* Plan 073: FX rate — a foreign invoice is converted to the base currency at this rate (editable). */}
+      {foreign ? (
+        <FxRateBlock
+          docCurrency={doc.currency ?? ""}
+          baseCurrency={baseCurrency}
+          rate={rate}
+          fx={fx}
+          disabled={applied}
+          multiCurrencyEnabled={multiCurrencyEnabled}
+          onChange={(r) => {
+            setRate(r);
+            onSaveDoc(doc.id, { fxRate: r, fxRateSource: r != null ? "manual override" : null });
+          }}
+        />
+      ) : null}
+
       {/* proforma gate */}
       {doc.docType === "proforma" ? (
         <ProformaGate doc={doc} disabled={applied} onSaveDoc={onSaveDoc} />
@@ -267,7 +303,9 @@ function ReceiptPanel({
               disabled={applied}
               symbol={symbol}
               landed={previews[i]}
-              foreign={isForeignCurrency(doc.currency, baseCurrency)}
+              foreign={foreign}
+              foreignSymbol={currencySymbol(doc.currency)}
+              basePreview={basePreviews[i]}
               candidates={candidates}
               resolvedVendorId={resolvedVendorId}
               onSaveLine={onSaveLine}
@@ -302,7 +340,8 @@ function ReceiptPanel({
             {apply.error ? (
               <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--danger)", background: "rgba(182,61,53,0.08)" }}>
                 <p style={{ fontSize: 13, color: "var(--danger)", margin: 0 }}>{apply.error}</p>
-                {apply.needsAck ? (
+                {/* Plan 073: the fx-rate block is resolved by entering a rate above (Unit 5), not an "inventory-only" ack. */}
+                {apply.needsAck === "reconcile" || apply.needsAck === "partial-ap" ? (
                   <div style={{ marginTop: 10 }}>
                     <Button
                       variant="secondary"
@@ -362,10 +401,72 @@ function ProformaGate({
   );
 }
 
+// ── Plan 073: the foreign-currency exchange-rate control (converts the invoice to base at intake) ──
+
+function FxRateBlock({
+  docCurrency, baseCurrency, rate, fx, disabled, multiCurrencyEnabled, onChange,
+}: {
+  docCurrency: string;
+  baseCurrency: string;
+  rate: number | null;
+  fx?: FxSuggestion;
+  disabled: boolean;
+  multiCurrencyEnabled?: boolean | null;
+  onChange: (rate: number | null) => void;
+}) {
+  const [text, setText] = React.useState<string>(rate != null ? String(rate) : "");
+  const missing = !(rate != null && rate > 0);
+  const usingOverride = fx?.source === "manual override" || (fx?.rate !== rate && rate != null);
+
+  return (
+    <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: "var(--radius-md)", border: `1.5px solid ${missing ? "var(--wine-primary)" : "var(--border-strong)"}`, background: missing ? "var(--accent-soft)" : "var(--surface-raised)" }}>
+      <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 2px" }}>
+        Exchange rate — 1 {docCurrency.toUpperCase()} = ? {baseCurrency.toUpperCase()}
+      </p>
+      <p style={{ fontSize: 12.5, color: "var(--text-secondary)", margin: "0 0 10px", maxWidth: "60ch" }}>
+        This invoice is in {docCurrency.toUpperCase()}. It&rsquo;s converted to your base currency ({baseCurrency.toUpperCase()}) at
+        this rate when you intake it — inventory cost is stored in {baseCurrency.toUpperCase()}, the A/P bill posts in {docCurrency.toUpperCase()}.
+      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <Input
+          aria-label="Exchange rate"
+          value={text}
+          disabled={disabled}
+          inputMode="decimal"
+          style={{ maxWidth: 160 }}
+          onChange={(e) => {
+            const v = e.target.value;
+            setText(v);
+            const n = v.trim() === "" ? null : Number(v);
+            onChange(n != null && Number.isFinite(n) && n > 0 ? n : null);
+          }}
+          placeholder="e.g. 1.0850"
+        />
+        {fx?.rateDate && !usingOverride ? (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>ECB rate for {fx.rateDate}{fx.source ? ` · ${fx.source}` : ""}</span>
+        ) : usingOverride ? (
+          <Badge tone="gold" variant="soft">manual override</Badge>
+        ) : null}
+      </div>
+      {missing ? (
+        <p style={{ fontSize: 12.5, color: "var(--wine-primary)", margin: "10px 0 0" }}>
+          The FX feed had no rate for this invoice&rsquo;s date. Enter the rate to intake it — it won&rsquo;t apply without one.
+        </p>
+      ) : null}
+      {multiCurrencyEnabled === false ? (
+        <p style={{ fontSize: 12.5, color: "var(--maroon)", margin: "10px 0 0" }}>
+          Your connected QuickBooks company has <strong>Multicurrency turned off</strong>, so the {docCurrency.toUpperCase()} A/P
+          bill won&rsquo;t post there until you enable it. Inventory cost still converts + records correctly in {baseCurrency.toUpperCase()}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // ── one editable line ──
 
 function LineRow({
-  doc, line, narrow, disabled, symbol, landed, foreign, candidates, resolvedVendorId, onSaveLine,
+  doc, line, narrow, disabled, symbol, landed, foreign, foreignSymbol, basePreview, candidates, resolvedVendorId, onSaveLine,
 }: {
   doc: ReviewDoc;
   line: ReviewLine;
@@ -374,6 +475,9 @@ function LineRow({
   symbol: string;
   landed: number | null;
   foreign: boolean;
+  foreignSymbol: string;
+  /** Plan 073: the landed total converted to base at the doc rate (null = no rate yet). */
+  basePreview: number | null;
   candidates: MaterialCandidate[];
   resolvedVendorId: string | null;
   onSaveLine: (docId: string, lineId: string, patch: Parameters<typeof updateIngestedInvoiceLineAction>[1]) => void;
@@ -401,10 +505,19 @@ function LineRow({
     </select>
   );
 
+  // Plan 073: for a foreign line, show the FOREIGN landed total (with its own symbol) + the base conversion
+  // below it (≈ $Y at the doc rate; "—" until a rate is entered). A base-currency line is unchanged.
   const landedCell = (
-    <span style={{ ...num, fontSize: 13.5, color: landed == null ? "var(--text-muted)" : "var(--text-primary)" }}>
-      {landed == null ? "—" : `${symbol}${landed.toFixed(2)}`}
-      {foreign && landed != null ? <Badge tone="maroon" variant="soft" style={{ marginLeft: 6 }}>{doc.currency}</Badge> : null}
+    <span style={{ ...num, fontSize: 13.5, color: landed == null ? "var(--text-muted)" : "var(--text-primary)", display: "inline-flex", flexDirection: "column", alignItems: narrow ? "flex-start" : "flex-end" }}>
+      <span>
+        {landed == null ? "—" : `${foreign ? foreignSymbol : symbol}${landed.toFixed(2)}`}
+        {foreign && landed != null ? <Badge tone="maroon" variant="soft" style={{ marginLeft: 6 }}>{doc.currency}</Badge> : null}
+      </span>
+      {foreign && landed != null ? (
+        <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+          {basePreview == null ? `— ${symbol} (enter rate)` : `≈ ${symbol}${basePreview.toFixed(2)}`}
+        </span>
+      ) : null}
     </span>
   );
 

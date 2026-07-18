@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canAccessVineyard, canAccessLot, canManagerAccessVineyard, resolveActiveOrg, type AppUser } from "@/lib/access";
+import { canAccessVineyard, canAccessLot, canManagerAccessVineyard, resolveActiveOrg, accessDecision, type AppUser } from "@/lib/access";
 
 const base: AppUser = {
   id: "u1",
@@ -112,5 +112,24 @@ describe("resolveActiveOrg (tenant resolution + K13 revalidation)", () => {
   });
   it("ignores preferOrgId when the user isn't a member of it", () => {
     expect(resolveActiveOrg(["org_bhutan_wine_co"], null, { preferOrgId: "org_demo_winery" })).toBe("org_bhutan_wine_co");
+  });
+});
+
+// Plan 073 Unit 3: the base-currency write (saveCostSettings) is an adminAction → getActionUser({admin})
+// → accessDecision(requireAdmin). This pins the authority behind that gate: only admin + developer may
+// change the tenant base currency; a plain user is forbidden. (Currency itself never bumps the policy
+// version — proven in cost-policy.test.ts / saveCostSettings.)
+describe("base-currency gate (accessDecision requireAdmin — admin + developer only)", () => {
+  const admin: AppUser = { ...base, role: "admin" };
+  const developer: AppUser = { ...base, role: "developer" };
+  it("a plain user is forbidden from an admin-gated setting", () => {
+    expect(accessDecision(base, { requireAdmin: true })).toBe("forbidden");
+  });
+  it("admin and developer are allowed", () => {
+    expect(accessDecision(admin, { requireAdmin: true })).toBe("ok");
+    expect(accessDecision(developer, { requireAdmin: true })).toBe("ok");
+  });
+  it("an anonymous caller is sent to login, not silently allowed", () => {
+    expect(accessDecision(null, { requireAdmin: true })).toBe("login");
   });
 });

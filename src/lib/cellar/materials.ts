@@ -481,8 +481,15 @@ export type ReceiveSupplyInput = {
   terms?: string | null; // e.g. "Net 30" — drives the Bill DueDate
   vendorId?: string | null; // Plan 069: the managed vendor for this receipt (stamped on the lot; resolves vendorName for A/P)
   vendorInvoiceNumber?: string | null; // Plan 072: supplier invoice # → stamped on the A/P event → QBO Bill PrivateNote
-  currency?: string | null; // Plan 072: stamp the lot in the invoice currency (no FX); defaults to the tenant currency
+  currency?: string | null; // Plan 073: the lot's BASE currency (== tenant base). A foreign invoice is converted upstream; the lot always holds base.
   expiresAt?: Date | null; // Plan 072: batch/lot expiry (from a COA) — attached at receipt when known
+  // Plan 073: immutable foreign-invoice provenance stamped alongside the base cost (all null for a base-currency
+  // receipt). `unitCost` is ALWAYS base; these prove the source + drive the FOREIGN A/P amount (council #1).
+  foreignUnitCost?: number | null; // per-stock-unit cost in the invoice (foreign) currency
+  foreignCurrency?: string | null; // the invoice currency, e.g. "EUR"
+  fxRate?: number | null; // base per 1 foreign at receipt (unitCost == foreignUnitCost × fxRate)
+  fxRateDate?: Date | null; // the ECB quote date the rate was for
+  fxRateSource?: string | null; // "ECB via Frankfurter" | "manual override"
 };
 
 /**
@@ -532,8 +539,15 @@ export async function receiveSupplyCore(
         qtyRemaining: qty,
         stockUnit,
         unitCost,
-        // Plan 072: stamp the invoice currency as-is (no FX); default to the tenant currency for restock.
+        // Plan 073: the lot ALWAYS holds the BASE currency (the roll-up basis). A foreign invoice is converted
+        // upstream (ingest-invoice-core), which passes base `unitCost` + base `currency` + the foreign columns.
         currency: input.currency?.trim() ? coerceCurrency(input.currency) : coerceCurrency(settings?.currency),
+        // Immutable foreign-invoice provenance (null for a base-currency receipt) — audit only, never in the roll-up.
+        foreignUnitCost: input.foreignUnitCost != null && Number.isFinite(input.foreignUnitCost) && input.foreignUnitCost >= 0 ? input.foreignUnitCost : null,
+        foreignCurrency: input.foreignCurrency?.trim() ? coerceCurrency(input.foreignCurrency) : null,
+        fxRate: input.fxRate != null && Number.isFinite(input.fxRate) && input.fxRate > 0 ? input.fxRate : null,
+        fxRateDate: input.fxRateDate ?? null,
+        fxRateSource: input.fxRateSource?.trim() || null,
         policyVersion: settings?.costingPolicyVersion ?? 1,
         lotCode: input.lotCode?.trim() || null,
         supplierNote: input.note?.trim() || null,

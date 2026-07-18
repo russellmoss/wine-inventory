@@ -124,6 +124,16 @@ The cost engine is a projection over the ledger; it never invents or loses money
   deplete physical stock. Enforced at the single capitalization authority (`cost/data.ts`).
 - **The cache is a materialization, not the authority (D4).** `LotCostState` is a lazy, watermark-versioned
   cache of `computeLotCost`; `verify:cost` asserts cache == recompute.
+- **Inventory cost is ALWAYS stored in the tenant base currency, and never revalued for FX (COST-4, Plan 073).**
+  A foreign-currency supplier invoice is converted at ingestion at a dated ECB rate (never the LLM; a missing
+  rate fails loud, never a fabricated 1.0/$0 — D14), so `SupplyLot.unitCost` + `SupplyLot.currency` are always
+  the base currency and the roll-up is single-currency. The foreign amount + rate + rate-date + source are
+  preserved on the lot for audit but NEVER enter the roll-up. Inventory is a non-monetary asset carried at
+  historical cost (IAS 21): once received, a lot's base cost is frozen and a later rate change never revalues
+  it. The A/P is DECOUPLED — `ApExportEvent` stores the FOREIGN amount + `exchangeRate`, so QBO owns FX
+  gain/loss + revaluation and posts the bill in its own currency; the reconciliation invariant
+  `base inventory value == round2(foreign amount × exchangeRate)` ties the two. Proven by `verify:ingest`
+  (EUR scenario + reconciliation + historical-cost-not-revalued) and re-proven single-currency by `verify:cost`.
 
 ### Phase 8b — advanced cost (D7/D12/D18/D20)
 - **Barrel cost is fill-based accelerated + time×space (D7/U8).** A barrel amortizes over its useful life in

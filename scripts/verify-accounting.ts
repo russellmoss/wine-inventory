@@ -28,7 +28,7 @@ async function main() {
   await runAsTenant(TENANT, async () => {
     const conn = await prisma.accountingConnection.findFirst({
       where: { provider: "QBO", status: "CONNECTED" },
-      select: { id: true, companyName: true, externalRealmId: true },
+      select: { id: true, companyName: true, externalRealmId: true, homeCurrency: true, multiCurrencyEnabled: true },
     });
     if (!conn) {
       console.log("• Demo Winery has no CONNECTED QuickBooks company — connect the SANDBOX in Settings first.");
@@ -71,10 +71,83 @@ async function main() {
     await prisma.accountingDelivery.delete({ where: { id: delId } });
     await prisma.costExportEvent.deleteMany({ where: { postingKey: key } });
 
+    // ── Plan 073: live FOREIGN (EUR) Bill round-trip ──
+    await postLiveEurBill(conn);
+
     console.log(`\nALL ${passed} E2E ASSERTIONS PASSED (sandbox)`);
   });
   await prismaBase.$disconnect();
   process.exit(0);
+}
+
+/**
+ * Plan 073 — post a real EUR Bill to the sandbox + read it back. Skips gracefully unless the company has
+ * Multicurrency ON (an irreversible, manual prerequisite). Proves the FOREIGN A/P path end-to-end in QBO:
+ * CurrencyRef EUR + ExchangeRate + the foreign TotalAmt + our DocNumber, idempotent on re-post.
+ */
+async function postLiveEurBill(conn: { id: string; externalRealmId: string | null; homeCurrency: string | null; multiCurrencyEnabled: boolean | null }): Promise<void> {
+  console.log("\n── Plan 073: live EUR Bill round-trip ──");
+  if (conn.multiCurrencyEnabled !== true) {
+    console.log("• The connected QuickBooks company has Multicurrency OFF (or unknown) — skipping the live EUR Bill.");
+    console.log("  Enable Multicurrency in the sandbox company (Account and settings → Advanced → Currency), reconnect, then re-run.");
+    console.log("  The offline Bill idempotency + currency-correctness is proven by verify:accounting-idempotency.");
+    return;
+  }
+  const home = (conn.homeCurrency ?? "USD").toUpperCase();
+  if (home === "EUR") {
+    console.log("• The company's home currency is EUR — this proof needs a non-EUR home (e.g. USD) to exercise the foreign path. Skipping.");
+    return;
+  }
+
+  const { getValidAccessToken } = await import("@/lib/accounting/token");
+  const { QboClient } = await import("@/lib/accounting/qbo/client");
+  const inventoryAccount = await anyAssetAccount(conn.id, conn.externalRealmId!);
+
+  // Seed a EUR vendor + a EUR A/P event (foreign amount + rate) + a PENDING Bill delivery.
+  const key = `e2e:eur:${Date.now()}`;
+  const rate = 1.085;
+  const foreignAmount = 767.16;
+  const invoiceNo = `QA-EUR-${Date.now()}`;
+  const { delId, vendorId } = await runInTenantTx(async (tx) => {
+    const vendor = await tx.vendor.create({ data: { name: `QA EUR Vendor ${Date.now()}`, currency: "EUR" }, select: { id: true } });
+    const ev = await tx.apExportEvent.create({
+      data: { postingKey: key, amount: foreignAmount, currency: "EUR", exchangeRate: rate, debitAccount: inventoryAccount, creditAccount: inventoryAccount, receivedAt: new Date(), vendorId: vendor.id, vendorInvoiceNumber: invoiceNo },
+      select: { id: true },
+    });
+    const d = await tx.accountingDelivery.create({ data: { apExportEventId: ev.id, connectionId: conn.id, objectType: "Bill", status: "PENDING" }, select: { id: true } });
+    return { delId: d.id, vendorId: vendor.id };
+  });
+
+  await runAccountingPostSweep({ orgIds: [TENANT] });
+  const posted = await prisma.accountingDelivery.findUnique({ where: { id: delId }, select: { status: true, externalId: true } });
+  assert(posted?.status === "POSTED" && !!posted.externalId, `EUR Bill POSTED to the sandbox (externalId ${posted?.externalId})`);
+
+  if (posted?.externalId) {
+    // Read the real Bill back and assert the foreign fields.
+    const token = await getValidAccessToken(conn.id);
+    const ctx = { accessToken: token, realmId: conn.externalRealmId!, environment: "sandbox" as const };
+    const safe = posted.externalId.replace(/'/g, "''");
+    const r = await new QboClient().query<{ Bill?: Array<{ CurrencyRef?: { value?: string }; ExchangeRate?: number; TotalAmt?: number; DocNumber?: string; PrivateNote?: string }> }>(
+      ctx,
+      `SELECT * FROM Bill WHERE Id = '${safe}'`,
+    );
+    const bill = r.Bill?.[0];
+    assert(bill?.CurrencyRef?.value === "EUR", `read-back: Bill CurrencyRef == EUR (got ${bill?.CurrencyRef?.value})`);
+    assert(Number(bill?.ExchangeRate) === rate, `read-back: Bill ExchangeRate == ${rate} (got ${bill?.ExchangeRate})`);
+    assert(Math.abs(Number(bill?.TotalAmt) - foreignAmount) < 0.01, `read-back: Bill TotalAmt == €${foreignAmount} foreign (got ${bill?.TotalAmt})`);
+    assert(typeof bill?.PrivateNote === "string" && bill!.PrivateNote.includes(invoiceNo), "read-back: Bill PrivateNote carries the supplier invoice #");
+  }
+
+  // Idempotent re-post: a second sweep adopts, never duplicates.
+  const externalIdBefore = posted?.externalId;
+  await runAccountingPostSweep({ orgIds: [TENANT] });
+  const again = await prisma.accountingDelivery.findUnique({ where: { id: delId }, select: { status: true, externalId: true } });
+  assert(again?.status === "POSTED" && again.externalId === externalIdBefore, "re-sweep adopts the same EUR Bill (no duplicate)");
+
+  // cleanup local rows (the sandbox Bill + vendor remain as harmless test data)
+  await prisma.accountingDelivery.delete({ where: { id: delId } });
+  await prisma.apExportEvent.deleteMany({ where: { postingKey: key } });
+  await prisma.vendor.delete({ where: { id: vendorId } }).catch(() => {});
 }
 
 // Best-effort account pickers so the capstone can self-map on a fresh sandbox.

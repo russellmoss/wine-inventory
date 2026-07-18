@@ -25,6 +25,10 @@ export type ProviderCallContext = {
   accessToken: string;
   realmId: string;
   environment: ProviderEnvironment;
+  // Plan 073: per-connection currency facts, so the Bill path can decide foreign-vs-home + whether the
+  // company can even take a foreign bill — without an extra round-trip mid-sweep.
+  homeCurrency?: string; // the QBO company home currency (from getCompanyInfo / AccountingConnection)
+  multiCurrencyEnabled?: boolean | null; // Preferences.CurrencyPrefs.MultiCurrencyEnabled (council #2)
 };
 
 /** A chart-of-accounts entry, normalized. `accountKey` is the opaque id we persist in AccountMapping. */
@@ -122,15 +126,18 @@ export interface AccountingAdapter {
   refresh(refreshToken: string): Promise<OAuthTokens>;
   revoke(token: string): Promise<void>;
 
-  /** Canonical company id + display name + home currency, from a trusted endpoint (SEC-C2). */
-  getCompanyInfo(ctx: ProviderCallContext): Promise<{ companyName: string; homeCurrency: string; country?: string }>;
+  /** Canonical company id + display name + home currency + Plan 073 multicurrency flag, from a trusted
+   *  endpoint (SEC-C2). `multiCurrencyEnabled` is read at connect so a foreign bill is gated early (council #2). */
+  getCompanyInfo(ctx: ProviderCallContext): Promise<{ companyName: string; homeCurrency: string; country?: string; multiCurrencyEnabled: boolean }>;
   listAccounts(ctx: ProviderCallContext): Promise<NormalizedAccount[]>;
   /** Query-before-post: find an already-posted object by our idempotency DocNumber. Null if none. */
   findByDocNumber(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", docNumber: string): Promise<PostResult | null>;
   /** Reconcile read-back: fetch a posted object by its external Id. Null if it was deleted in the GL. */
   getById(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", externalId: string): Promise<PostResult | null>;
   postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string): Promise<PostResult>;
-  /** AP (Unit 10): find-or-create a vendor by name, then post a Bill (payload built provider-side). */
-  findOrCreateVendor(ctx: ProviderCallContext, name: string): Promise<string>;
+  /** AP (Unit 10): find-or-create a vendor by name, then post a Bill (payload built provider-side).
+   *  Plan 073: pass `currency` for a foreign (non-home) bill — the vendor is resolved currency-scoped
+   *  (a distinct QBO vendor with CurrencyRef set at creation), since a QBO vendor's currency is immutable. */
+  findOrCreateVendor(ctx: ProviderCallContext, name: string, currency?: string): Promise<string>;
   postBill(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string): Promise<PostResult>;
 }

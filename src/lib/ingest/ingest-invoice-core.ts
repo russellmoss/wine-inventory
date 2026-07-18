@@ -7,6 +7,9 @@ import { createStockMaterialCore, receiveSupplyCore } from "@/lib/cellar/materia
 import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 import { allocateLandedCost, type InvoiceCharges } from "@/lib/ingest/landed-cost";
 import { normalizeLineToStock, parsePackagingUnit } from "@/lib/ingest/normalize-line";
+import { convertToBase, round8 } from "@/lib/money/fx/convert";
+import { getRate, type ResolvedRate } from "@/lib/money/fx/rate-service";
+import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
 import { coerceStockUnit } from "@/lib/cellar/materials-shared";
 import { coerceFamily, coerceMaterialCategory, categoryOf } from "@/lib/cellar/material-taxonomy";
 import { dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
@@ -153,6 +156,11 @@ export type InvoicePatch = Partial<{
   vendorNameRaw: string | null;
   vendorInvoiceNumber: string | null;
   status: "pending" | "discarded" | "held";
+  // Plan 073: the FX rate override (review screen, Unit 5). Editable ONLY while pending — the guard below
+  // refuses edits once applied/in-flight, so a lot's rate can never diverge from its A/P (council #3).
+  fxRate: number | null;
+  fxRateDate: Date | null;
+  fxRateSource: string | null;
 }>;
 
 /** Record header-level review edits: reclassify docType, answer the proforma gate, fix vendor/currency. */
@@ -170,7 +178,11 @@ export async function updateIngestedInvoiceCore(actor: LedgerActor, ingestedInvo
 
 export type ApplyResult =
   | { ok: true; vendorId: string | null; supplyLotIds: string[]; apLineCount: number }
-  | { ok: false; error: string; needsAck?: "reconcile" | "partial-ap" };
+  | { ok: false; error: string; needsAck?: "reconcile" | "partial-ap" | "fx-rate" };
+
+/** Plan 073: the FX rate resolver is injectable so tests can pin a deterministic rate (defaults to the real
+ *  Frankfurter-backed service). The signature matches `getRate(base, foreign, at)`. */
+export type ApplyDeps = { getRate?: (base: string, foreign: string, at: Date) => Promise<ResolvedRate> };
 
 class ApplyAbort extends Error {
   constructor(public result: ApplyResult) {
@@ -197,6 +209,7 @@ function stockUnitForNewLine(unitRaw: string | null | undefined): string {
 export async function applyIngestedInvoiceCore(
   actor: LedgerActor,
   input: { ingestedInvoiceId: string; allowReconcileMismatch?: boolean; allowPartialAp?: boolean },
+  deps?: ApplyDeps,
 ): Promise<ApplyResult> {
   try {
     return await runInTenantTx(async (tx) => {
@@ -209,7 +222,7 @@ export async function applyIngestedInvoiceCore(
 
       const invoice = await tx.ingestedInvoice.findUnique({
         where: { id: input.ingestedInvoiceId },
-        select: { id: true, docType: true, landedReceipt: true, currency: true, vendorNameRaw: true, vendorInvoiceNumber: true, invoiceTotal: true, taxTotal: true, extractedJson: true },
+        select: { id: true, docType: true, landedReceipt: true, currency: true, vendorNameRaw: true, vendorInvoiceNumber: true, invoiceTotal: true, taxTotal: true, extractedJson: true, fxRate: true, fxRateDate: true, fxRateSource: true },
       });
       if (!invoice) throw new ApplyAbort({ ok: false, error: "Invoice not found." });
 
@@ -257,12 +270,66 @@ export async function applyIngestedInvoiceCore(
       const vendorId = vendor?.id ?? null;
       const currency = invoice.currency ?? null;
 
+      // ── Plan 073: FX resolution (foreign invoice → base). ONE rate for the whole invoice, at the ingestion
+      // (receipt) date, honoring a manual override persisted on the staging invoice (Unit 5). Every lot's
+      // `unitCost` is written in BASE so the roll-up is single-currency; the foreign figures + rate are stamped
+      // for audit and drive the FOREIGN A/P amount (council #1). A missing rate FAILS LOUD — never a fabricated
+      // 1.0 or $0 (D14).
+      const settings = await tx.appSettings.findFirst({ select: { currency: true } });
+      const baseCurrency = coerceCurrency(settings?.currency);
+      // Use the RAW invoice currency for the foreign check — NOT coerceCurrency, which would silently map an
+      // unrecognized code (e.g. an OCR "CHF"/"JPY") to the base and book it 1:1 with no conversion (a foreign
+      // amount leaking into the roll-up at a fabricated 1.0 rate). An invoice currency that differs from base
+      // MUST be a supported code we can price; anything else FAILS LOUD (D14) rather than mis-booking.
+      const rawCurrency = currency?.trim().toUpperCase() || null;
+      const isForeign = rawCurrency != null && rawCurrency !== baseCurrency;
+      if (isForeign && !(SUPPORTED_CURRENCIES as readonly string[]).includes(rawCurrency)) {
+        throw new ApplyAbort({
+          ok: false,
+          needsAck: "fx-rate",
+          error: `Invoice currency "${rawCurrency}" isn't a supported currency for conversion (supported: ${SUPPORTED_CURRENCIES.join(", ")}). Fix the currency on the review screen before applying.`,
+        });
+      }
+      const invoiceCurrency = isForeign ? rawCurrency! : baseCurrency;
+
+      let fxRate = 1;
+      let fxRateDate: Date | null = null;
+      let fxRateSource: string | null = null;
+      if (isForeign) {
+        const override = invoice.fxRate != null ? Number(invoice.fxRate) : null;
+        if (override != null && Number.isFinite(override) && override > 0) {
+          // A human override on the review screen wins (a contracted/booked rate).
+          fxRate = override;
+          fxRateDate = invoice.fxRateDate ?? new Date();
+          fxRateSource = invoice.fxRateSource?.trim() || "manual override";
+        } else {
+          const resolve = deps?.getRate ?? getRate;
+          const resolved = await resolve(baseCurrency, invoiceCurrency, new Date());
+          if (!resolved.ok) {
+            throw new ApplyAbort({
+              ok: false,
+              needsAck: "fx-rate",
+              error: `No exchange rate for ${invoiceCurrency}→${baseCurrency} on that date (${resolved.reason}). Enter the rate on the review screen, then apply.`,
+            });
+          }
+          fxRate = resolved.rate;
+          fxRateDate = resolved.rateDate;
+          fxRateSource = resolved.source;
+        }
+        // Snapshot the applied rate onto the staging invoice (audit + reload; locked once applied — council #3).
+        await tx.ingestedInvoice.update({ where: { id: invoice.id }, data: { baseCurrency, fxRate, fxRateDate, fxRateSource } });
+      }
+
       const supplyLotIds: string[] = [];
       let apLineCount = 0;
 
       for (let i = 0; i < receiptLines.length; i++) {
         const line = receiptLines[i];
-        const landedLineTotal = allocation[i].landedLineTotal;
+        // `allocation` is in the invoice (foreign) currency. Convert the landed line total to BASE at the money
+        // grain (round2) so the roll-up basis is single-currency + Σ base ties to QBO's derived GL (council #5).
+        const foreignLanded = allocation[i].landedLineTotal;
+        const landedLineTotal =
+          foreignLanded == null ? null : isForeign ? convertToBase(foreignLanded, fxRate, "cents") : foreignLanded;
 
         // resolve the material (tenant re-verified: a findUnique under RLS returns null for a foreign-tenant id).
         let materialId: string;
@@ -312,16 +379,26 @@ export async function applyIngestedInvoiceCore(
           throw new ApplyAbort({ ok: false, error: `Line ${line.lineNo} ("${line.descriptionRaw}"): can't convert "${line.unitRaw ?? "?"}" into ${stockUnit}. Fix the unit on the review screen.` });
         }
 
+        // Per-stock-unit cost in the FOREIGN currency (audit + the A/P amount) — derived from the same stockQty.
+        const foreignUnitCost =
+          isForeign && foreignLanded != null && norm.stockQty > 0 ? round8(foreignLanded / norm.stockQty) : null;
+
         const received = await receiveSupplyCore(
           actor,
           {
             materialId,
             qty: norm.stockQty,
-            unitCost: norm.unitCost,
+            unitCost: norm.unitCost, // BASE (converted) per-stock-unit cost — the roll-up basis
             lotCode: line.lotNoRaw,
             vendorId,
             vendorInvoiceNumber: invoice.vendorInvoiceNumber,
-            currency,
+            currency: baseCurrency, // the lot always holds base
+            // Plan 073: foreign provenance (null for a base-currency invoice) → drives the FOREIGN A/P (council #1)
+            foreignUnitCost,
+            foreignCurrency: isForeign ? invoiceCurrency : null,
+            fxRate: isForeign ? fxRate : null,
+            fxRateDate: isForeign ? fxRateDate : null,
+            fxRateSource: isForeign ? fxRateSource : null,
           },
           tx,
         );
