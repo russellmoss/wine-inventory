@@ -89,6 +89,42 @@ async function decrement(tx: Prisma.TransactionClient, kind: ItemKind, itemId: s
   return r.count > 0;
 }
 
+/** Read the current on-hand at a location (0 if the balance row doesn't exist). Failure-path only. */
+async function balanceAt(tx: Prisma.TransactionClient, kind: ItemKind, itemId: string, locationId: string): Promise<number> {
+  if (kind === "BOTTLED_WINE") {
+    const b = await tx.bottledInventory.findFirst({ where: { wineSkuId: itemId, locationId }, select: { totalBottles: true } });
+    return b?.totalBottles ?? 0;
+  }
+  const b = await tx.finishedGoodInventory.findFirst({ where: { finishedGoodId: itemId, locationId }, select: { quantity: true } });
+  return b?.quantity ?? 0;
+}
+
+/**
+ * Decrement the source or explain WHY it can't: an empty source ("no inventory there") reads very
+ * differently from a partial shortfall ("only N there"), and the reporter of the empty-source bug
+ * (feedback cmrquedll…) asked for the specific reason, not a generic block. On the failure path we
+ * read the balance to name it — `moveStock` is a `safeAction`, so this message reaches the client
+ * intact instead of being redacted to Next's opaque production error.
+ */
+async function decrementSourceOrExplain(
+  tx: Prisma.TransactionClient,
+  kind: ItemKind,
+  itemId: string,
+  locationId: string,
+  qty: number,
+  label: string,
+  locationName: string,
+): Promise<void> {
+  if (await decrement(tx, kind, itemId, locationId, qty)) return;
+  const have = await balanceAt(tx, kind, itemId, locationId);
+  throw new ActionError(
+    have <= 0
+      ? `${label} can't be transferred from ${locationName} — there's no inventory there.`
+      : `Not enough ${label} at ${locationName}: only ${have} ${UNIT(kind)} there, can't transfer ${qty}.`,
+    "CONFLICT",
+  );
+}
+
 async function locationActive(tx: Prisma.TransactionClient, id: string): Promise<{ name: string; isActive: boolean } | null> {
   return tx.location.findUnique({ where: { id }, select: { name: true, isActive: true } });
 }
@@ -188,13 +224,11 @@ export async function transferStock(kind: ItemKind, itemId: string, fromLocation
       // Touch rows in canonical (sorted) order to avoid A->B / B->A deadlocks.
       const decFirst = fromLocationId < toLocationId;
       if (decFirst) {
-        const ok = await decrement(tx, kind, itemId, fromLocationId, qty);
-        if (!ok) throw new ActionError(`Not enough stock at ${from.name} to transfer.`, "CONFLICT");
+        await decrementSourceOrExplain(tx, kind, itemId, fromLocationId, qty, label, from.name);
         await increment(tx, kind, itemId, toLocationId, qty);
       } else {
         await increment(tx, kind, itemId, toLocationId, qty);
-        const ok = await decrement(tx, kind, itemId, fromLocationId, qty);
-        if (!ok) throw new ActionError(`Not enough stock at ${from.name} to transfer.`, "CONFLICT");
+        await decrementSourceOrExplain(tx, kind, itemId, fromLocationId, qty, label, from.name);
       }
 
       await movementCreate(tx, kind, itemId, fromLocationId, "TRANSFER", -qty, ctx, reason, group);
