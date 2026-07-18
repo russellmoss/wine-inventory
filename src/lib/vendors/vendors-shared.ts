@@ -185,3 +185,136 @@ export function matchVendorsByName<T extends { id: string; name: string }>(all: 
     return h && (h.includes(needle) || needle.includes(h));
   });
 }
+
+// ── Merge / remove planning (Plan 072) — PURE logic shared by the cores, the UI preview, and tests ──
+
+/**
+ * Live reference counts for a vendor, across every table that points at it. Powers the merge impact
+ * preview ("N materials, M lots, K bills will move") and the remove guard. `contacts` is informational —
+ * contacts cascade on delete and never block a removal (see `vendorHasBlockingReferences`).
+ */
+export type VendorUsage = {
+  materials: number;
+  lots: number;
+  apEvents: number;
+  contacts: number;
+};
+
+export type VendorMergeError = "SAME_VENDOR" | "LOSER_IS_UNKNOWN" | "MISSING_LOSER" | "MISSING_SURVIVOR";
+
+/**
+ * Pure guard for a merge request. A merge reassigns every reference from the LOSER onto the SURVIVOR and
+ * then deletes the loser, so: the two must be distinct, both ids must be present, and the seeded
+ * "Unknown / Unspecified" fallback vendor (`unknownVendorId`, where null-vendor references live) can
+ * never be the loser. Returns the first error, or null when the merge is allowed.
+ */
+export function validateVendorMerge(input: {
+  loserId: string | null | undefined;
+  survivorId: string | null | undefined;
+  unknownVendorId?: string | null;
+}): VendorMergeError | null {
+  const loser = (input.loserId ?? "").trim();
+  const survivor = (input.survivorId ?? "").trim();
+  if (!loser) return "MISSING_LOSER";
+  if (!survivor) return "MISSING_SURVIVOR";
+  if (loser === survivor) return "SAME_VENDOR";
+  if (input.unknownVendorId && loser === input.unknownVendorId) return "LOSER_IS_UNKNOWN";
+  return null;
+}
+
+/** User-safe message for a merge validation error (the server maps these to ActionError). */
+export function vendorMergeErrorMessage(err: VendorMergeError): string {
+  switch (err) {
+    case "SAME_VENDOR":
+      return "Pick two different vendors to merge.";
+    case "LOSER_IS_UNKNOWN":
+      return "The “Unknown / Unspecified” vendor can't be merged away — it's the fallback for un-attributed purchases.";
+    case "MISSING_LOSER":
+    case "MISSING_SURVIVOR":
+      return "That vendor no longer exists.";
+  }
+}
+
+/**
+ * Reconcile the QBO `externalVendorId` cache when merging loser → survivor. The survivor's own mapping
+ * always wins. If the survivor has no mapping and the loser has one, carry it forward so future A/P
+ * posts still land on a mapped QBO vendor (`changed: true`). If BOTH map to DIFFERENT QBO vendors, that
+ * is a `conflict` the admin must acknowledge: a local merge does NOT merge the two QBO vendors, and
+ * already-posted bills stay in QBO under whichever vendor they posted to. Pure.
+ */
+export function resolveMergedExternalVendorId(
+  survivor: { externalVendorId: string | null },
+  loser: { externalVendorId: string | null },
+): { value: string | null; changed: boolean; conflict: boolean } {
+  const s = survivor.externalVendorId?.trim() || null;
+  const l = loser.externalVendorId?.trim() || null;
+  if (s && l && s !== l) return { value: s, changed: false, conflict: true };
+  if (!s && l) return { value: l, changed: true, conflict: false };
+  return { value: s, changed: false, conflict: false };
+}
+
+/**
+ * True when a vendor is referenced by real inventory/accounting rows (materials, supply lots, or A/P
+ * export events) and therefore can't be hard-removed — the caller should archive it or merge it into
+ * another vendor instead. Contacts alone don't block: they CASCADE-delete with the vendor.
+ */
+export function vendorHasBlockingReferences(usage: VendorUsage): boolean {
+  return usage.materials > 0 || usage.lots > 0 || usage.apEvents > 0;
+}
+
+/** Length of the shared leading run of two strings. */
+function commonPrefixLen(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return i;
+}
+
+/**
+ * True when two normalized vendor names look like the same supplier under two spellings. Catches
+ * "Scott Labs" vs "Scott Laboratories" ("scottlabs" / "scottlaboratories" — NOT a clean prefix, since
+ * "Labs" adds an 's', so we use a shared-leading-run RATIO) and "Gusmer" vs "Gusmer Enterprises", while
+ * NOT matching "Scott Labs" vs "Scott Valley" (short shared run relative to length). Conservative — a
+ * hint, not an auto-merge. Pure.
+ */
+export function vendorNamesLookDuplicate(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const lcp = commonPrefixLen(a, b);
+  return lcp >= 4 && lcp >= 0.6 * Math.min(a.length, b.length);
+}
+
+/**
+ * Group ACTIVE vendors that look like duplicates of each other by normalized name (case/punctuation/
+ * whitespace-insensitive). Powers the assistant's "you may have duplicate vendors" hint. Pure; returns
+ * groups of 2+ (each vendor lands in at most one group, anchored on the first occurrence).
+ */
+export function findDuplicateVendorGroups<T extends { id: string; name: string }>(vendors: readonly T[]): T[][] {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const withKey = vendors.map((v) => ({ v, k: norm(v.name) })).filter((x) => x.k.length > 0);
+  const used = new Set<string>();
+  const groups: T[][] = [];
+  for (let i = 0; i < withKey.length; i++) {
+    if (used.has(withKey[i].v.id)) continue;
+    const group = [withKey[i].v];
+    for (let j = i + 1; j < withKey.length; j++) {
+      if (used.has(withKey[j].v.id)) continue;
+      if (vendorNamesLookDuplicate(withKey[i].k, withKey[j].k)) {
+        group.push(withKey[j].v);
+        used.add(withKey[j].v.id);
+      }
+    }
+    if (group.length > 1) { used.add(withKey[i].v.id); groups.push(group); }
+  }
+  return groups;
+}
+
+/** Human summary of what a merge will move, for the confirm preview / audit / assistant message. */
+export function describeVendorUsage(usage: VendorUsage): string {
+  const parts: string[] = [];
+  if (usage.materials) parts.push(`${usage.materials} material${usage.materials === 1 ? "" : "s"}`);
+  if (usage.lots) parts.push(`${usage.lots} supply lot${usage.lots === 1 ? "" : "s"}`);
+  if (usage.apEvents) parts.push(`${usage.apEvents} A/P bill${usage.apEvents === 1 ? "" : "s"}`);
+  if (usage.contacts) parts.push(`${usage.contacts} contact${usage.contacts === 1 ? "" : "s"}`);
+  return parts.length ? parts.join(", ") : "nothing";
+}

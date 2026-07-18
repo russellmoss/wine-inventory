@@ -65,6 +65,7 @@ import { commitFileFeedback } from "./tools/file-feedback";
 import { commitCreateVendor } from "./tools/create-vendor";
 import { commitIngestDocuments } from "./tools/ingest-documents";
 import { commitReverseIntake } from "./tools/reverse-intake";
+import { commitMergeVendors } from "./tools/merge-vendors";
 
 // Static map of tool name -> committer. No side-effect registration, no import
 // cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
@@ -117,6 +118,7 @@ const COMMITTERS: Record<string, Committer> = {
   create_vendor: commitCreateVendor,
   ingest_documents: commitIngestDocuments,
   reverse_intake: commitReverseIntake,
+  merge_vendors: commitMergeVendors,
 };
 
 /**

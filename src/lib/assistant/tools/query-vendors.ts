@@ -2,6 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import { listVendors } from "@/lib/vendors/vendors";
 import { rankVendors } from "@/lib/inventory/vendor-search";
+import { findDuplicateVendorGroups } from "@/lib/vendors/vendors-shared";
 
 // Plan 069 (Unit 11): read the vendor/supplier list. Wraps listVendors (tenant-scoped via RLS + the Prisma
 // extension). The READ counterpart to create_vendor. Answers "what vendors do we have", "who do we buy X
@@ -17,8 +18,10 @@ export const queryVendorsTool: AssistantTool = {
   description:
     "Read the vendor/supplier list. Use for 'what vendors do we have', 'who do we buy bentonite from', " +
     "'show Scott Labs' phone/email', 'what are our terms with Gusmer', 'what's our account number with X'. " +
-    "Returns each vendor's contact info, payment terms, PO-required flag, website, and additional contacts. " +
-    "Read-only — to add a vendor use create_vendor.",
+    "Returns each vendor's contact info, payment terms, PO-required flag, website, and additional contacts, " +
+    "plus a `possibleDuplicates` list flagging vendors that look like the same supplier under two spellings " +
+    "(e.g. 'Scott Labs' vs 'Scott Laboratories'). Read-only — to add a vendor use create_vendor, to combine " +
+    "duplicates use merge_vendors.",
   kind: "read",
   inputSchema: {
     type: "object",
@@ -52,6 +55,12 @@ export const queryVendorsTool: AssistantTool = {
       contacts: v.contacts.map((c) => ({ name: c.name, role: c.role, phone: c.phone, mobile: c.mobile, email: c.email, isPrimary: c.isPrimary })),
     }));
 
-    return { count: vendors.length, totalMatched, truncated: totalMatched > vendors.length, vendors };
+    // Duplicate hint over the FULL active list (not just the filtered slice) so it's stable regardless of search.
+    const possibleDuplicates = findDuplicateVendorGroups(all.filter((v) => v.isActive)).map((g) => ({
+      names: g.map((v) => v.name),
+      ids: g.map((v) => v.id),
+    }));
+
+    return { count: vendors.length, totalMatched, truncated: totalMatched > vendors.length, vendors, possibleDuplicates };
   },
 };

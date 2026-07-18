@@ -10,10 +10,16 @@ import {
   sanitizeVendorContacts,
   normalizeVendorUrl,
   matchVendorsByName,
+  validateVendorMerge,
+  vendorMergeErrorMessage,
+  resolveMergedExternalVendorId,
+  vendorHasBlockingReferences,
+  describeVendorUsage,
   UNKNOWN_VENDOR_NAME,
   type VendorInput,
   type VendorRow,
   type VendorContactRow,
+  type VendorUsage,
 } from "@/lib/vendors/vendors-shared";
 
 // Plan 069: the managed-vendor data layer. Reuses the existing (Phase 15 QBO) `vendor` table + the new
@@ -140,6 +146,132 @@ export async function archiveVendorCore(actor: LedgerActor, id: string, active: 
     if (!existing) throw new ActionError("That vendor no longer exists.");
     await tx.vendor.update({ where: { id }, data: { isActive: active } });
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "Vendor", entityId: id, summary: active ? `Restored vendor ${existing.name}` : `Archived vendor ${existing.name}` });
+    return { id };
+  });
+}
+
+// ── Plan 072: vendor merge + removal ──
+
+/** Count every reference to a vendor (RLS-scoped). Shared inner used by the tx core + the public loader. */
+async function countVendorUsage(db: Db, id: string): Promise<VendorUsage> {
+  const [materials, lots, apEvents, contacts] = await Promise.all([
+    db.cellarMaterial.count({ where: { vendorId: id } }),
+    db.supplyLot.count({ where: { vendorId: id } }),
+    db.apExportEvent.count({ where: { vendorId: id } }),
+    db.vendorContact.count({ where: { vendorId: id } }),
+  ]);
+  return { materials, lots, apEvents, contacts };
+}
+
+/**
+ * How many materials, supply lots, A/P bills, and contacts point at this vendor. Powers the merge
+ * impact preview and the remove guard. Tenant scoping is automatic (RLS + extension); pass an explicit
+ * tenantId (wraps in runAsTenant) for scripts / the assistant outside a request context.
+ */
+export async function getVendorUsage(id: string, opts?: { tenantId?: string }): Promise<VendorUsage> {
+  const run = () => countVendorUsage(asDb(), id);
+  return opts?.tenantId ? runAsTenant(opts.tenantId, run) : run();
+}
+
+/**
+ * Merge the LOSER vendor into the SURVIVOR: re-point every reference (materials, supply lots, A/P export
+ * events, contacts) from loser → survivor, then hard-delete the loser. One atomic tenant tx, so it's
+ * all-or-nothing — a governed-money op (`ap_export_event` is the posted-bill reference, RESTRICT-guarded
+ * at the DB, which is exactly why we re-point rather than orphan). The event stays immutable: only its
+ * `vendorId` pointer moves, never amounts/accounts.
+ *
+ * QBO: the survivor's `externalVendorId` wins; if it's unmapped we carry the loser's forward. If BOTH
+ * map to DIFFERENT QBO vendors it's a conflict that requires `acknowledgeQboConflict` (a local merge
+ * does NOT merge the two QBO vendors — already-posted bills stay under the old one; recommend accountant
+ * review). The seeded "Unknown / Unspecified" fallback can never be the loser.
+ */
+export async function mergeVendorsCore(
+  actor: LedgerActor,
+  input: { loserId: string; survivorId: string; acknowledgeQboConflict?: boolean },
+): Promise<{ survivorId: string; moved: VendorUsage; qboConflictAcknowledged: boolean }> {
+  const { loserId, survivorId } = input;
+  const shapeErr = validateVendorMerge({ loserId, survivorId });
+  if (shapeErr) throw new ActionError(vendorMergeErrorMessage(shapeErr), "VALIDATION");
+
+  return runInTenantTx(async (tx) => {
+    const sel = { id: true, name: true, url: true, externalVendorId: true } as const;
+    const [loser, survivor] = await Promise.all([
+      tx.vendor.findUnique({ where: { id: loserId }, select: sel }),
+      tx.vendor.findUnique({ where: { id: survivorId }, select: sel }),
+    ]);
+    if (!loser || !survivor) throw new ActionError("That vendor no longer exists.", "VALIDATION");
+    if (loser.name === UNKNOWN_VENDOR_NAME) {
+      throw new ActionError(vendorMergeErrorMessage("LOSER_IS_UNKNOWN"), "VALIDATION");
+    }
+
+    const qbo = resolveMergedExternalVendorId(survivor, loser);
+    if (qbo.conflict && !input.acknowledgeQboConflict) {
+      throw new ActionError(
+        `"${loser.name}" and "${survivor.name}" are linked to different QuickBooks vendors. Merging locally ` +
+          `won't merge them in QuickBooks — already-posted bills stay under the old QuickBooks vendor. ` +
+          `Confirm you understand (and consider merging them in QuickBooks too) to proceed.`,
+        "CONFLICT",
+      );
+    }
+
+    const moved = await countVendorUsage(tx, loserId);
+
+    // Re-point + (for materials) re-derive the legacy vendor/vendorUrl mirror to the survivor in one pass.
+    await tx.cellarMaterial.updateMany({
+      where: { vendorId: loserId },
+      data: { vendorId: survivorId, vendor: survivor.name, vendorUrl: survivor.url },
+    });
+    await tx.supplyLot.updateMany({ where: { vendorId: loserId }, data: { vendorId: survivorId } });
+    await tx.apExportEvent.updateMany({ where: { vendorId: loserId }, data: { vendorId: survivorId } });
+    await tx.vendorContact.updateMany({ where: { vendorId: loserId }, data: { vendorId: survivorId } });
+
+    if (qbo.changed) {
+      await tx.vendor.update({ where: { id: survivorId }, data: { externalVendorId: qbo.value } });
+    }
+
+    await tx.vendor.delete({ where: { id: loserId } });
+
+    await writeAudit(tx, {
+      ...actor,
+      action: "DELETE",
+      entityType: "Vendor",
+      entityId: loserId,
+      summary:
+        `Merged vendor ${loser.name} → ${survivor.name} (moved ${describeVendorUsage(moved)})` +
+        (qbo.conflict ? " · QBO-mapping conflict acknowledged" : "") +
+        (qbo.changed ? " · carried QBO mapping forward" : ""),
+    });
+
+    return { survivorId, moved, qboConflictAcknowledged: qbo.conflict };
+  });
+}
+
+/**
+ * Hard-delete a vendor — but ONLY when nothing references it (its contacts CASCADE away with it). A
+ * vendor used by any material, supply lot, or A/P bill can't be deleted (the DB RESTRICTs it, which
+ * protects accounting history); we surface that as a clear CONFLICT telling the admin to archive or
+ * merge instead, never a raw 500. The seeded "Unknown / Unspecified" fallback can't be removed.
+ */
+export async function removeVendorCore(actor: LedgerActor, id: string): Promise<{ id: string }> {
+  return runInTenantTx(async (tx) => {
+    const existing = await tx.vendor.findUnique({ where: { id }, select: { id: true, name: true } });
+    if (!existing) throw new ActionError("That vendor no longer exists.", "VALIDATION");
+    if (existing.name === UNKNOWN_VENDOR_NAME) {
+      throw new ActionError(
+        "The “Unknown / Unspecified” vendor can't be removed — it's the fallback for un-attributed purchases.",
+        "CONFLICT",
+      );
+    }
+    const usage = await countVendorUsage(tx, id);
+    if (vendorHasBlockingReferences(usage)) {
+      throw new ActionError(
+        `"${existing.name}" is used by ${describeVendorUsage({ ...usage, contacts: 0 })} — archive it or ` +
+          `merge it into another vendor instead of removing it.`,
+        "CONFLICT",
+      );
+    }
+    await tx.vendor.delete({ where: { id } }); // contacts (if any) cascade
+    await writeAudit(tx, { ...actor, action: "DELETE", entityType: "Vendor", entityId: id, summary: `Removed vendor ${existing.name}` });
     return { id };
   });
 }

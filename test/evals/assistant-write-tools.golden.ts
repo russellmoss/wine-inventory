@@ -641,4 +641,10 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { name: "Gusmer Enterprises", phone: "559-485-2692", poRequired: true },
     note: "vendor with a PO-required flag; not a material — distinct from create_material",
   },
+  {
+    utterance: "Scott Labs and Scott Laboratories are the same vendor — merge Scott Labs into Scott Laboratories",
+    tool: "merge_vendors",
+    args: { keep: "Scott Laboratories", remove: "Scott Labs" },
+    note: "MERGE duplicate vendors (Plan 072); 'keep' is the survivor, 'remove' is the loser — distinct from create_vendor",
+  },
 ];
