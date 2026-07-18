@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { Modal, Button, Input } from "@/components/ui";
 import { convert, canonicalUnitFor, type MeasureDimension } from "@/lib/units/measure";
 import { createCustomUnitAction } from "@/lib/units/actions";
@@ -38,17 +38,8 @@ export function CreateUnitModal({ open, onClose, onCreated, initialName = "" }: 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Reset the transient fields whenever the modal (re)opens.
-  React.useEffect(() => {
-    if (open) {
-      setName(initialName);
-      setDimension("mass");
-      setAmount("1");
-      setRefUnit("kg");
-      setError(null);
-      setBusy(false);
-    }
-  }, [open, initialName]);
+  // No reset effect needed: Modal unmounts its children when closed, so this body remounts fresh (state
+  // re-initialized from props) on every open.
 
   function pickDimension(d: MeasureDimension) {
     setDimension(d);
