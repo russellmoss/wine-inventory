@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -104,9 +105,12 @@ export async function createCustomUnitCore(
   return injectedTx ? body(injectedTx) : runInTenantTx(body);
 }
 
-/** List the current tenant's custom units (name-sorted). Reuses an injected tx or opens its own. */
+/** List the current tenant's custom units (name-sorted). Reuses an injected tx when given; otherwise reads via
+ *  the extended `prisma` client (tenant resolved from the session), so it works in a server-component render
+ *  where there is no ALS tenant context — mirrors listMaterials/listVendors. */
 export async function listCustomUnitsCore(injectedTx?: Prisma.TransactionClient): Promise<CustomUnitRow[]> {
-  const run = async (tx: Prisma.TransactionClient) =>
-    (await tx.customUnit.findMany({ orderBy: { name: "asc" }, select: CU_SELECT })).map(toRow);
-  return injectedTx ? run(injectedTx) : runInTenantTx(run);
+  const rows = injectedTx
+    ? await injectedTx.customUnit.findMany({ orderBy: { name: "asc" }, select: CU_SELECT })
+    : await prisma.customUnit.findMany({ orderBy: { name: "asc" }, select: CU_SELECT });
+  return rows.map(toRow);
 }
