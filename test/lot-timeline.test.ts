@@ -62,12 +62,12 @@ describe("formatL", () => {
 });
 
 describe("describeOperation — summaries", () => {
-  it("SEED reads 'Seeded <vol> L into <vessel>'", () => {
+  it("SEED reads 'Filled <vessel> with <vol> L'", () => {
     const ev = describeOperation(op({ type: "SEED" }), [
       inVessel("14", 225, "BARREL"),
       external(-225, "seed"),
     ]);
-    expect(ev.summary).toBe("Seeded 225 L into Barrel 14");
+    expect(ev.summary).toBe("Filled Barrel 14 with 225 L");
     expect(ev.type).toBe("SEED");
   });
 
@@ -77,7 +77,7 @@ describe("describeOperation — summaries", () => {
       [inVessel("14", 225, "BARREL"), external(-225, "seed")],
       { legacyCutover: true },
     );
-    expect(ev.summary).toBe("Seeded 225 L into Barrel 14 at cutover (Day-Zero)");
+    expect(ev.summary).toBe("Filled Barrel 14 with 225 L at cutover (Day-Zero)");
   });
 
   it("RACK reads 'Racked <added> L from <src> to <dest>'", () => {
