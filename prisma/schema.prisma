@@ -1386,6 +1386,11 @@ model AppSettings {
   // posts DR inventory-asset / CR accounts-payable. Both unset → AP export is withheld (never posted).
   apInventoryAccount       String?
   apPayableAccount         String?
+  // Plan 076 — the pay-from accounts a BillPayment draws on when an invoice is marked Paid: a check/bank
+  // payment credits the bank account; a company-card payment credits the credit-card LIABILITY account
+  // (moves the debt from the vendor to the card). Either may be unset until first used.
+  apPaymentBankAccount     String?
+  apPaymentCardAccount     String?
   // Phase 16 Unit 1 — DTC (Commerce7) sales accounts (winery-wide, like AP): a settled DTC sale posts
   // DR undeposited-funds clearing / CR revenue + CR sales-tax-payable + CR shipping-income, with a
   // discount contra line. Revenue + clearing unset → the sales export is WITHHELD (never posted). Both
@@ -2977,6 +2982,14 @@ enum DeliveryStatus {
   DELETED_IN_GL
 }
 
+// Plan 076: A/P payment state for an ingested invoice / its aggregate bill. OUTSTANDING = a posted QBO Bill
+// with a full balance (shows as owed in A/P aging); PAID = a BillPayment recorded against the Bill from a
+// chosen pay-from account (zeroes the balance). Binary in v1; a partial payment reads back as still OUTSTANDING.
+enum ApPaymentStatus {
+  OUTSTANDING
+  PAID
+}
+
 model AccountingConnection {
   tenantId              String             @default("")
   id                    String             @id @default(cuid())
@@ -3099,6 +3112,10 @@ model ApExportEvent {
   supplyLotId               String? // the receipt this AP event came from (traceability; no hard FK)
   ingestedInvoiceId         String? // Plan 076: set on an AGGREGATE per-invoice event (one Bill per invoice); traceability, no hard FK (mirrors supplyLotId)
   billLinesJson             Json? // Plan 076: the QBO Bill's multiple lines for an aggregate event — [{ debitAccount, amount, description }] in the document currency (null = single-line legacy per-lot bill)
+  paymentStatus             ApPaymentStatus? // Plan 076: OUTSTANDING (owed) | PAID (a BillPayment recorded). null on legacy events.
+  paidFromAccount           String? // Plan 076: the QBO account the payment came from (bank or credit-card liability) — drives BillPayment
+  paidAt                    DateTime? // Plan 076: when marked paid (app-side or read back from QBO)
+  paymentExternalId         String? // Plan 076: the QBO BillPayment Id once posted (idempotency + reversal guard)
   vendorInvoiceNumber       String? // Plan 072: supplier invoice # — carried to the QBO Bill's PrivateNote memo (searchable; per-lot bills stay separate). NOT a grouping/idempotency key. RLS-neutral column add.
   vendorId                  String? // composite-tenant FK -> vendor (raw SQL)
   amount                    Decimal               @db.Decimal(18, 8) // Plan 073: the FOREIGN (document-currency) amount for a foreign bill — QBO derives the home GL = amount × exchangeRate (council #1, decoupled from SupplyLot base cost). Home-currency bills: amount == home amount, exchangeRate null.
@@ -3184,6 +3201,11 @@ model IngestedInvoice {
   invoiceTotal        Decimal?  @db.Decimal(18, 8) // extracted grand total — the reconciliation-gate target (Unit 7)
   taxTotal            Decimal?  @db.Decimal(18, 8) // extracted tax — surfaced in the gate, excluded from capitalized landed cost
   landedReceipt       Boolean? // proforma gate answer: true = goods physically received IN FULL → intake as a receipt
+  // Plan 076: A/P payment status chosen on the review screen (required before confirm) and carried to the
+  // aggregate A/P event → QBO. PAID records a BillPayment from paidFromAccount; OUTSTANDING posts the Bill only.
+  paymentStatus       ApPaymentStatus? // null until the human picks (gate blocks confirm)
+  paidFromAccount     String? // the QBO account the payment came from (required when PAID)
+  paidAt              DateTime? // when marked paid (app-side or read back from QBO)
   extractedJson       Json // full structured extraction result (audit + review reload)
   createdBy           String // actor userId who uploaded/ingested
   createdAt           DateTime  @default(now())
