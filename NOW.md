@@ -16,32 +16,53 @@ which relied on a throw). Plus `transferStock` now names the reason — empty so
 <loc> — there's no inventory there."* vs shortfall *"only N there, can't transfer M."* No schema. GREEN: tsc, eslint,
 vitest 55 (action-result/inventory/commerce7), verify:naming + verify:ai-native; DB proof on Demo (QA-* fixtures, cleaned).
 PENDING: CI green + squash-merge, then resolve ticket + DM Mike.
-_Note: worked in the session **worktree** (`.claude/worktrees/empty-source-transfer-error-32d1a8`) because the main
-checkout was live-in-use by a parallel session on `claude/expendables-category-taxonomy` — restored its pointer, edits
+_Note: worked in the session **worktree** because the main checkout was live-in-use by a parallel session — edits
 isolated; tooling resolved node_modules upward + copied `.env`._
 
-<details><summary>prev objective — Ticket #188 harvest-pick + VineyardBlock cascade (SHIPPED PR #265)</summary>
+<details><summary>prev objective — P0 bottling ABV range guard (SHIPPED PR #275)</summary>
 
-**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — SHIPPED (PR #265).**
-Branch `claude/harvest-vineyard-lib-295869`. Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data cleanup):
-couldn't delete blocks refused by dependent Brix/harvest records, and no path to delete a standalone harvest pick.
+**P0 bottling ABV range guard (feedback `cmrqtzlc1000kij049zm4me25` / #263, DEFECT) — SHIPPED, PR #275 merged (`c74ec98`).**
+Ticket RESOLVED + reporter (Mike, `mike@bhutanwine.com`) DM'd from Cellarhand Support. Branch pruned. Bug: the
+bottling flow accepted an absurd ABV (e.g. **140%**) with no upper bound → corrupt finished-goods/tax data.
+Fix: ABV is a %-by-volume, physically bounded to **(0, 100]** — new pure helper
+[abv-range.ts](src/lib/bottling/abv-range.ts) (`validateBottlingAbv` + constants + friendly messages), shared by
+client + server so wording matches. Server source of truth is `runBottlingTx`
+([run.ts:63](src/lib/bottling/run.ts)) — the single choke point every entry point routes through (standalone
+create/edit AND the WO BOTTLE task in `execute.ts`), so all paths are covered without touching the out-of-fence WO
+files. `parseAbv` ([actions.ts](src/lib/bottling/actions.ts)) validates at the action boundary for a fast message;
+[BottlingClient.tsx](src/app/(app)/bottling/BottlingClient.tsx) makes ABV controlled with an inline hint + `max` and
+blocks submit out of range. Ceiling is the physical max, NOT 24% — compliance tax-class intentionally captures >24%
+and flags it for review (`abv-over-24-review`), so rejecting at 24 would defeat that design. GREEN: unit 8/8
+([test/bottling-abv-range.test.ts](test/bottling-abv-range.test.ts)), verify:cost 55/55 (happy path intact), tsc +
+lint clean, verify:naming 25/25; CI check/review/tenant-isolation/GitGuardian all passed. Demo DB proof:
+`executeBottling(abv=140)` rejected with ZERO writes (no SKU/run, vessel untouched), `abv=13.5` still succeeds.
+
+</details>
+
+<details><summary>prev objective — Ticket #188 harvest-pick + VineyardBlock cascade delete (SHIPPED PR #265)</summary>
+
+**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — SHIPPED (PR #265, `3eb512e`).**
+Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data cleanup): couldn't delete blocks refused by dependent
+Brix/harvest records, and no path to delete a standalone harvest pick.
 (1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix`; hardened
 `deleteHarvestPick` refuses a crushed pick (`LotHarvestSource` Restrict; was a latent 500) + fixed audit action.
 (2) **Confirmed cascade in `db_delete`** — `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`; `VineyardBlock`
 cascades Brix + harvest records (+ discloses subblocks) but HARD-REFUSES crushed picks & keeps WO-task FK a hard wall.
-No schema. `/review` CLEAR (3 specialists, 0 critical). Merged origin/main; **vitest 2333/0**, tsc/eslint/ai-native green.
+No schema. `/review` CLEAR (3 specialists, 0 critical). vitest 2333/0, tsc/eslint/ai-native green.
 
 </details>
 
-<details><summary>prev objective — Ticket #268 self-assign WO inbox emit + "Issue" button (SHIPPED PR #278)</summary>
+<details><summary>prev objective — Ticket #268 self-assigned WO inbox emit + "Issue" button (SHIPPED PR #278)</summary>
 
-**Ticket #268 — self-assigned WO emitted no inbox notification + confusing "Issue" button — SHIPPED (PR #278 merged, `6dc2d14`).**
-Feedback `cmrqtvwja000fij04rsn25z15` (Demo Winery). Two issues: (a) the WO detail "Issue" button was ambiguous;
-(b) **the real defect** — a self-assigned WO showed in the inbox WO bucket but produced NO inbox notification (every
-emit path suppressed self-notifications AND create never emitted an assignment notification). Fix: `allowSelfNotification`
-flag on `EmitNotificationInput` + pure `shouldEmitNotification` gate; emit `WO_ASSIGNED` at the create chokepoint
-(`createWorkOrderCore`) allowing self; reassign emit self-aware too. `WO_STATUS` self-suppression unchanged. Button →
-"Issue & open for execution". vitest 50/50, DB proof passed.
+**Ticket #268 — self-assigned WO emitted no inbox notification + confusing "Issue" button — SHIPPED (PR #278, `6dc2d14`).**
+Feedback `cmrqtvwja000fij04rsn25z15` (Demo Winery). Two issues: (a) the WO detail "Issue" button was ambiguous
+(reads like "report a problem"; it actually flips DRAFT→ISSUED and opens execution); (b) **the real defect** — a
+self-assigned WO showed in the inbox WO bucket (assigneeId set) but produced NO inbox notification, because every emit
+path suppressed self-notifications AND the create path never emitted an assignment notification at all.
+Fix: new `allowSelfNotification` flag on `EmitNotificationInput` + pure `shouldEmitNotification` gate; emit a
+`WO_ASSIGNED` notification at the create chokepoint (`createWorkOrderCore`) to the resolved assignee **allowing self**,
+and mark the reassign emit self-aware too. `WO_STATUS` self-suppression unchanged. Button → "Issue & open for
+execution" + a DRAFT helper line. vitest 50/50 (4 new gate tests); DB proof passed.
 
 </details>
 
@@ -217,7 +238,14 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
-- **Ticket #188 — `delete_harvest_pick` + confirmed VineyardBlock cascade — MERGED (squash PR #265, 3eb512e); ticket RESOLVED.** (moved off Current.)
+- **P0 bottling ABV range guard (feedback cmrqtzlc…me25 / #263, DEFECT) — SHIPPED + MERGED (PR #275, c74ec98); ticket RESOLVED, reporter Mike DM'd; branch pruned.**
+  Bottling accepted an absurd ABV (140%) → corrupt finished-goods/tax data. Fix: server-enforced range **(0, 100]** in
+  `runBottlingTx` (the one choke point for standalone create/edit AND the WO BOTTLE task) via new shared pure helper
+  `src/lib/bottling/abv-range.ts`, + inline client hint/`max` in BottlingClient. Ceiling is the physical max (NOT 24% —
+  compliance intentionally captures >24 for review). unit 8/8, verify:cost 55/55, tsc/lint/naming green; Demo DB proof:
+  140% rejected with zero writes, 13.5% still succeeds.
+- **Ticket #268 — self-assigned WO inbox emit + "Issue" button clarity — SHIPPED + MERGED (PR #278, 6dc2d14); ticket RESOLVED.** (parallel session)
+- **Ticket #188 — `delete_harvest_pick` + confirmed VineyardBlock cascade — MERGED (squash PR #265, 3eb512e); ticket RESOLVED.**
 - **Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2 display) — SHIPPED + MERGED (PR #274, 222fe63); ticket RESOLVED/DEFECT, reporter Mike DM'd; branch pruned.**
   Design-partner (Mike) report on `/inbox?bucket=wo`: "when I select a work order to view it, I shouldn't have to
   select it again in the viewing box to open it." `/investigate` (via the real ticket `pageUrl`, not `/work-orders`)
@@ -328,4 +356,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Empty-source stock-transfer error clarity (feedback cmrquedll…, plan #270) SHIPPING (PR #277): /inventory Move-stock Transfer from a location holding none of the item was blocked but showed a generic "an error occurred" — `moveStock` was a plain `action` so Next redacted the thrown ActionError in prod. Fix: `moveStock` → `safeAction` + `unwrap` at both call sites (Inventory form + assistant adjust-inventory committer); `transferStock` names the reason (empty "no inventory there" vs shortfall "only N there"). tsc/eslint/vitest-55/verify:naming/verify:ai-native green + DB proof on Demo (QA-* fixtures, cleaned). Worked in the session worktree (main checkout was live-in-use by a parallel session; restored its branch pointer). PENDING: CI green → squash-merge → resolve ticket + DM Mike. Prior: Ticket #268 (feedback cmrqtvwja) self-assign WO inbox emit + "Issue" button — SHIPPED, PR #278 merged (6dc2d14). Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63); WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED (PR #262, ee851b8); P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
+_Last updated: 2026-07-18 — Empty-source stock-transfer error clarity (feedback cmrquedll…, plan #270) SHIPPING (PR #277): /inventory Move-stock Transfer from a location holding none of the item was blocked but showed a generic "an error occurred" — `moveStock` was a plain `action` so Next redacted the thrown ActionError in prod. Fix: `moveStock` → `safeAction` + `unwrap` at both call sites (Inventory form + assistant adjust-inventory committer); `transferStock` names the reason (empty "no inventory there" vs shortfall "only N there"). tsc/eslint/vitest-55/verify:naming/verify:ai-native green + DB proof on Demo (QA-* fixtures, cleaned). Worked in the session worktree (main checkout live-in-use by a parallel session). PENDING: CI green → squash-merge → resolve ticket + DM Mike. Prior: P0 bottling ABV range guard (feedback cmrqtzlc…me25 / #263, DEFECT) SHIPPED + MERGED (PR #275 squash-merged to main, c74ec98): bottling accepted an absurd ABV (140%) → corrupt finished-goods/tax data; fix is a server-enforced range (0, 100] in runBottlingTx (the one choke point for standalone create/edit AND the WO BOTTLE task) via new shared pure helper src/lib/bottling/abv-range.ts, + inline client hint/max in BottlingClient; ceiling is the physical max, NOT 24% (compliance intentionally captures >24 for tax review). unit 8/8, verify:cost 55/55, tsc/lint/verify:naming green; CI check/review/tenant-isolation/GitGuardian passed; Demo DB proof — 140% rejected with zero writes (no SKU/run, vessel untouched), 13.5% still succeeds; ticket → RESOLVED with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com) from Cellarhand Support; branch pruned. Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Also merged in parallel: Ticket #268 self-assigned WO inbox emit + "Issue" button clarity SHIPPED (PR #278, 6dc2d14). Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
