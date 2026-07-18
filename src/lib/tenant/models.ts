@@ -8,6 +8,11 @@
  * no tenantId column, no RLS, and NOT wrapped by the tenant extension. Better Auth queries these
  * DURING LOGIN, before any tenant is known; forcing them through tenant context (or throwing when
  * absent) would break authentication. Names are Prisma model names as passed to `$allOperations`.
+ *
+ * Plan 073: `FxRate` is also global — but a REFERENCE table, not an auth table. ECB FX rates are
+ * identical for every tenant, so the daily rate cache is shared (no tenantId, no RLS). It is listed
+ * here so the tenant extension passes it through untouched; the mirror in verify-tenant-isolation.ts
+ * keeps the RLS coverage guard in sync.
  */
 export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   "User",
@@ -17,6 +22,7 @@ export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   "Organization",
   "Member",
   "Invitation",
+  "FxRate",
 ]);
 
 export function isGlobalModel(model: string | undefined): boolean {

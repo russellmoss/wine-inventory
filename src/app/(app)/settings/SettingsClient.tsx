@@ -181,11 +181,11 @@ export function SettingsClient({
           How supply cost depletes and which cost components capitalize into cost-per-bottle. Turning a
           component off still records its cost — it just doesn&apos;t roll into the capitalized total.
           Changing the method or a capitalization toggle bumps the policy version; already-recorded history
-          keeps its old version and is never re-valued. (Currency is a display label — it never bumps the version.)
+          keeps its old version and is never re-valued. (Changing the base currency never bumps the version.)
         </p>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Currency</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Base currency</span>
           <select
             value={costForm.currency}
             onChange={(e) => setCostForm((f) => ({ ...f, currency: e.target.value as CostSettings["currency"] }))}
@@ -196,8 +196,10 @@ export function SettingsClient({
             ))}
           </select>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            The single currency shown across every cost field in the app. This is a display label only —
-            it doesn&apos;t convert amounts or bump the policy version, so existing cost history is untouched.
+            Your winery&apos;s functional currency — the single currency every cost figure is held and reported in.
+            A foreign-currency supplier invoice is converted to this currency at ingestion using the dated
+            exchange rate, so inventory cost stays in one currency. Changing it doesn&apos;t re-value existing
+            history or bump the policy version.
           </span>
         </label>
 

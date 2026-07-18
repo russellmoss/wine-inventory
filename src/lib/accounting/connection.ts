@@ -118,8 +118,9 @@ export async function storeConnection(input: {
   realmId: string;
   companyName: string;
   homeCurrency: string;
+  multiCurrencyEnabled?: boolean; // Plan 073: the company's MultiCurrency flag, read at connect (council #2)
 }): Promise<string> {
-  const { tenantId, environment, tokens, realmId, companyName, homeCurrency } = input;
+  const { tenantId, environment, tokens, realmId, companyName, homeCurrency, multiCurrencyEnabled } = input;
   const refreshTokenExpiresAt = tokens.refreshTokenExpiresInSec
     ? new Date(Date.now() + tokens.refreshTokenExpiresInSec * 1000)
     : null;
@@ -142,6 +143,7 @@ export async function storeConnection(input: {
         refreshTokenExpiresAt,
         scope: tokens.scope ?? QBO_SCOPE,
         homeCurrency,
+        multiCurrencyEnabled: multiCurrencyEnabled ?? null,
         companyName,
         connectedAt: new Date(),
       };

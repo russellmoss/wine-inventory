@@ -19,10 +19,11 @@ import { PrismaClient, Prisma } from "@prisma/client";
 const A = "org_demo_winery";
 const B = "org_isolation_test_b";
 
-// GLOBAL_MODELS (mirror of src/lib/tenant/models.ts): the Better Auth core + org-plugin tables are
-// the ONLY non-tenant tables — every other model must be RLS-isolated. Inlined so this exit-proof
-// script stays self-contained (no app-path imports).
-const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation"]);
+// GLOBAL_MODELS (mirror of src/lib/tenant/models.ts): the Better Auth core + org-plugin tables plus the
+// Plan-073 FxRate reference cache are the ONLY non-tenant tables — every other model must be RLS-isolated.
+// FxRate has no tenantId (ECB rates are the same for everyone); it's excluded from the RLS coverage guard
+// below exactly like the auth globals. Inlined so this exit-proof script stays self-contained.
+const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate"]);
 
 const OWNER_URL = process.env.DATABASE_URL_UNPOOLED;
 const APP_URL = process.env.DATABASE_URL_APP;

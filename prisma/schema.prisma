@@ -2634,8 +2634,14 @@ model SupplyLot {
   qtyReceived   Decimal             @db.Decimal(18, 6)
   qtyRemaining  Decimal             @db.Decimal(18, 6)
   stockUnit     String // snapshot of the unit these quantities are held in (g | kg | mL | L | unit …)
-  unitCost      Decimal?            @db.Decimal(18, 8) // per stockUnit; NULL = unknown cost (D14)
-  currency      String              @default("USD")
+  unitCost      Decimal?            @db.Decimal(18, 8) // per stockUnit; NULL = unknown cost (D14). Plan 073: ALWAYS in the tenant BASE currency — the roll-up basis; a foreign invoice is converted at receipt (never revalued).
+  currency      String              @default("USD") // Plan 073: the BASE currency (== tenant base); the foreign figures live below for audit only
+  // Plan 073: immutable foreign-invoice provenance (historical cost, IAS 21 — stored for audit/reversal, NEVER enters the roll-up). All null for a base-currency receipt.
+  foreignUnitCost   Decimal?        @db.Decimal(18, 8) // per stockUnit in the invoice (foreign) currency
+  foreignCurrency   String? // the invoice currency (e.g. "EUR")
+  fxRate            Decimal?        @db.Decimal(18, 8) // base per 1 foreign at receipt (unitCost == foreignUnitCost × fxRate)
+  fxRateDate        DateTime? // the ECB publication date the rate was for
+  fxRateSource      String? // e.g. "ECB via Frankfurter" or "manual override"
   receivedAt    DateTime            @default(now())
   lotCode       String? // supplier lot / PO reference
   supplierNote  String?
@@ -2984,6 +2990,7 @@ model AccountingConnection {
   scope                 String?
   tokenVersion          Int                @default(0) // CAS guard for serialized refresh (SEC-N4)
   homeCurrency          String? // QBO company home currency (multi-currency withhold — U6/U7)
+  multiCurrencyEnabled  Boolean? // Plan 073: Preferences.CurrencyPrefs.MultiCurrencyEnabled, read at connect (council #2). null = unknown/not-yet-read. A foreign Bill needs this true.
   companyName           String? // display only ("Connected to <company>") — non-secret, from CompanyInfo
   connectedAt           DateTime? // when the current CONNECTED link was established (display)
   createdAt             DateTime           @default(now())
@@ -2993,6 +3000,29 @@ model AccountingConnection {
   @@unique([tenantId, id]) // composite-tenant-FK target for accounting_delivery (K11)
   @@index([tenantId])
   @@map("accounting_connection")
+}
+
+// Plan 073: GLOBAL FX-rate cache — NOT tenant-scoped. ECB reference rates are identical for every tenant,
+// so this is a shared reference/lookup table (like a currency list): NO tenantId, NO RLS, NOT wrapped by
+// the tenant extension. It is added to GLOBAL_MODELS (src/lib/tenant/models.ts + the mirror in
+// scripts/verify-tenant-isolation.ts) so the extension passes it through untouched and the RLS coverage
+// guard skips it (a deliberate non-auth global — the only one besides the Better-Auth core). One row per
+// (base, quote, rateDate). `rate` is quote-per-1-base — HOME per 1 FOREIGN when fetched base=foreign,
+// quote=home (the QBO ExchangeRate convention, council #5), so no inversion anywhere. Money precision
+// Decimal(18,8) (D9). `rateDate` is the ECB publication day the feed actually used (may be a prior
+// business day for a weekend/holiday) — @db.Date so a late-day PST ingest can't create a "tomorrow" row.
+model FxRate {
+  id        String   @id @default(cuid())
+  base      String // the currency being priced (e.g. "EUR")
+  quote     String // the currency it is priced in (e.g. "USD") — rate is quote per 1 base
+  rateDate  DateTime @db.Date // the CET effective date this rate is used for (cache key); the rate value is the latest ECB publication on/before it. The true ECB quote date is returned by the service + stored on SupplyLot.fxRateDate for audit.
+  rate      Decimal  @db.Decimal(18, 8) // quote per 1 base
+  source    String // provenance, e.g. "ECB via Frankfurter"
+  fetchedAt DateTime @default(now())
+
+  @@unique([base, quote, rateDate])
+  @@index([base, quote])
+  @@map("fx_rate")
 }
 
 model OAuthState {
@@ -3017,6 +3047,7 @@ model Vendor {
   tenantId         String   @default("")
   id               String   @id @default(cuid())
   name             String
+  currency         String   @default("USD") // Plan 073: informational "currency we usually bill this vendor in" (backfilled USD). NOT the posting authority — the A/P bill's currency comes from ApExportEvent.currency, and the QBO vendor is resolved currency-scoped from THAT (currency-suffixed DisplayName + CurrencyRef), so one Vendor row can source bills in several currencies without a unique-key change (council #4 handled QBO-side).
   terms            String? // payment terms, e.g. "Net 30" (drives Bill DueDate — U10) + "Pay at purchase"
   externalVendorId String? // QBO Vendor.Id cache (find-or-create — U10). PII stays here, never in events (D19)
   // Plan 069: first-class vendor management. Contact + purchasing metadata, columns-only (RLS-neutral — the
@@ -3068,10 +3099,11 @@ model ApExportEvent {
   supplyLotId               String? // the receipt this AP event came from (traceability; no hard FK)
   vendorInvoiceNumber       String? // Plan 072: supplier invoice # — carried to the QBO Bill's PrivateNote memo (searchable; per-lot bills stay separate). NOT a grouping/idempotency key. RLS-neutral column add.
   vendorId                  String? // composite-tenant FK -> vendor (raw SQL)
-  amount                    Decimal               @db.Decimal(18, 8)
+  amount                    Decimal               @db.Decimal(18, 8) // Plan 073: the FOREIGN (document-currency) amount for a foreign bill — QBO derives the home GL = amount × exchangeRate (council #1, decoupled from SupplyLot base cost). Home-currency bills: amount == home amount, exchangeRate null.
   debitAccount              String? // Inventory Asset (resolved at emit; null => withheld)
   creditAccount             String? // Accounts Payable
-  currency                  String                @default("USD")
+  currency                  String                @default("USD") // the bill/document currency (EUR for a foreign bill)
+  exchangeRate              Decimal?              @db.Decimal(18, 8) // Plan 073: HOME per 1 FOREIGN (USD per 1 EUR) — the QBO Bill ExchangeRate. null when currency == home (council #5 direction).
   receivedAt                DateTime
   dueDate                   DateTime?
   reversalOfApExportEventId String?
@@ -3137,7 +3169,12 @@ model IngestedInvoice {
   fileSha256          String? // exact-file duplicate guard (alongside vendor+invoice#); the blob helper computes it
   docType             String // invoice | proforma | coa | other
   status              String    @default("pending") // pending | applying | applied | discarded | held
-  currency            String? // one currency per document (mixed-currency rejected upstream); no FX conversion
+  currency            String? // one currency per document (mixed-currency rejected upstream) — the invoice/foreign currency
+  // Plan 073: the FX rate applied at apply time (editable pre-apply on the review screen; locked once applied — council #3).
+  baseCurrency        String? // the tenant base currency the lines were converted TO (snapshot at apply)
+  fxRate              Decimal?  @db.Decimal(18, 8) // base per 1 foreign (manual override or the resolved ECB rate)
+  fxRateDate          DateTime? // the rate date used
+  fxRateSource        String? // "ECB via Frankfurter" | "manual override"
   vendorId            String? // composite-tenant FK → vendor (raw SQL, K11); resolved on apply
   vendorNameRaw       String? // extracted vendor name before match/create
   vendorInvoiceNumber String? // supplier invoice # — duplicate-upload guard on (vendor, invoice#)

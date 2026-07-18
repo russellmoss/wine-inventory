@@ -5,6 +5,9 @@ import { Card, Eyebrow, Button } from "@/components/ui";
 import { listMaterials } from "@/lib/cellar/materials";
 import { listVendors } from "@/lib/vendors/vendors";
 import { categoryOf } from "@/lib/cellar/material-taxonomy";
+import { getRate } from "@/lib/money/fx/rate-service";
+import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
+import { isForeignCurrency } from "./ingest-review-model";
 import type { MaterialCandidate } from "@/lib/cellar/material-match";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
 import { IngestReviewClient } from "./IngestReviewClient";
@@ -42,11 +45,14 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
     );
   }
 
-  const [rows, materials, vendors] = await Promise.all([
+  const [rows, materials, vendors, settings, qboConn] = await Promise.all([
     prisma.ingestedInvoice.findMany({ where: { batchId }, orderBy: { createdAt: "asc" } }),
     listMaterials({ includeInactive: false }),
     listVendors({ activeOnly: true }),
+    prisma.appSettings.findFirst({ select: { currency: true } }),
+    prisma.accountingConnection.findFirst({ where: { provider: "QBO", status: "CONNECTED" }, select: { multiCurrencyEnabled: true } }),
   ]);
+  const baseCurrency = coerceCurrency(settings?.currency);
 
   // Lines for all invoices in one query, grouped by invoice.
   const invoiceIds = rows.map((r) => r.id);
@@ -117,7 +123,38 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
     };
   });
 
+  // Plan 073: per-doc FX suggestion for a foreign invoice — a persisted manual override wins, else the dated
+  // feed (getRate caches daily). null = the feed had no rate → the client blocks Confirm until one is entered.
+  const fxByDoc: Record<string, { rate: number | null; rateDate: string | null; source: string | null }> = {};
+  await Promise.all(
+    rows.map(async (r) => {
+      if (!isForeignCurrency(r.currency, baseCurrency)) return;
+      if (r.fxRate != null) {
+        fxByDoc[r.id] = { rate: Number(r.fxRate), rateDate: r.fxRateDate ? r.fxRateDate.toISOString().slice(0, 10) : null, source: r.fxRateSource ?? "manual override" };
+        return;
+      }
+      // An unsupported invoice currency can't be priced — surface null (Confirm blocks) rather than a fake 1.0.
+      const foreignCode = (r.currency ?? "").trim().toUpperCase();
+      if (!(SUPPORTED_CURRENCIES as readonly string[]).includes(foreignCode)) {
+        fxByDoc[r.id] = { rate: null, rateDate: null, source: null };
+        return;
+      }
+      const resolved = await getRate(baseCurrency, foreignCode, new Date());
+      fxByDoc[r.id] = resolved.ok
+        ? { rate: resolved.rate, rateDate: resolved.rateDate.toISOString().slice(0, 10), source: resolved.source }
+        : { rate: null, rateDate: null, source: null };
+    }),
+  );
+
   return (
-    <IngestReviewClient batchId={batchId} docs={docs} candidates={candidates} vendors={vendors} />
+    <IngestReviewClient
+      batchId={batchId}
+      docs={docs}
+      candidates={candidates}
+      vendors={vendors}
+      baseCurrency={baseCurrency}
+      multiCurrencyEnabled={qboConn ? qboConn.multiCurrencyEnabled ?? null : undefined}
+      fxByDoc={fxByDoc}
+    />
   );
 }
