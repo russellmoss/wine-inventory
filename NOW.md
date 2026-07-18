@@ -7,6 +7,38 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Feedback #241 (cmrqpp88 "too much detail in dashboard") — dashboard Recent activity filtered to leadership-relevant events — BUILT, ready for /ship.**
+Branch `claude/work-241-page-tsx-5fdfdb` (commit 752c212). The leadership dashboard's Recent activity feed pulled the last 6
+audit rows indiscriminately, burying operational signal ("we bottled wine today") under bug-triage / dev-automation /
+auth-admin churn. Added a leadership-relevance classifier to [src/lib/audit.ts](src/lib/audit.ts) — denylist of
+non-operational entity types (`FEEDBACK_TICKET`, `ASSISTANT_FEEDBACK`, `AutomationRun`, `AppSettings`, `Session`, `User`,
+`VendorImportCandidate`, `DirectMessage`) + actions (`LOGIN`, `PASSWORD_*`, `USER_CREATED/DELETED`, `USER_VINEYARD_ASSIGNED`,
+`IMPERSONATE`) — exposed as a pure predicate `isOperationalAuditEntry` + a synced Prisma fragment `operationalAuditWhere`;
+[page.tsx](src/app/(app)/page.tsx) filters the feed at the DB. Denylist (not allowlist) so new operational events show by
+default. GREEN: tsc, eslint, vitest 15/15 (audit + assistant-audit). Proven on real prod data (Neon): prior 6th feed row
+"Developer approved feedback automation" drops out, replaced by a real work-order event. Next: `/review` then `/ship`.
+
+<details><summary>prev objective — Plan 076/078 invoice ingestion (SHIPPED, PR #246)</summary>
+
+**Plan 076/078 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — SHIPPED (PR #246 OPEN).**
+Branch `claude/invoice-ingestion-features-95d4df`; merged latest main (Plan 075 vendor-pull; resolved qbo/client.ts conflict).
+All gates green post-merge (vitest 2284, ingest 81, accounting-idempotency 33, invariants 35/35, next build). Live QBO
+pass + Demo browser-QA both DONE + user-confirmed. Only remaining: accountant sign-off on the BillPayment GL (not a
+merge blocker). Plan at
+[docs/plans/2026-07-18-076-…](docs/plans/2026-07-18-076-feat-invoice-qbo-bill-payment-status-plan.md).
+(1) Duplicate confirm gate — stage-time structured `duplicates` + upload modal ("continue?") + hard apply guard
+(`allowDuplicate`). (2) **One aggregate Bill per invoice** — `emitApExportForInvoice` (postingKey `apinv:<id>`,
+multi-line `billLinesJson`), per-lot emit suppressed via `skipApEmit`, multi-line `buildBillPayload`; new invariant
+AP-1. (3) Paid/Outstanding — schema on `IngestedInvoice`+`ApExportEvent`+AppSettings pay-from accounts, required
+review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPayment** poster pass (Check/CreditCard,
+exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
+migrations applied to Neon. **Live QBO-sandbox pass DONE + USER-CONFIRMED**; **Browser-QA on Demo DONE**. PENDING before
+prod trust: **accountant sign-off** on the BillPayment GL direction only.
+
+</details>
+
+<details><summary>prev objective — QBO vendor sync Slice 2 (Plan 077, BUILT on claude/qbo-vendor-eager-push)</summary>
+
 **QBO vendor sync Slice 2 — eager create-into-QBO (Plan 077) — BUILT (all 7 units), gates green, live-proven on Demo. Next: `/ship`.**
 Branch `claude/qbo-vendor-eager-push`. Final slice of the vendor-sync arc (Slice 0 #229 near-dup guard, Slice 1
 #231 pull queue). When an opted-in winery creates a vendor in Cellarhand it's pushed to QuickBooks immediately,
@@ -23,6 +55,8 @@ U4 modal link-vs-create wired through the setup page, U5 sweep+cron, U6 `/settin
 **Gates all green:** tsc, `verify:vendor-sync` (link/idempotent/conflict/sweep-gating/opt-in + LIVE push=synced,
 pre-check clean), verify:ai-native, verify:parity, verify:naming, verify:tenant-isolation, vendor vitest 61,
 lint 0 errors, `next build` clean (cron route registered). Plan: `docs/plans/2026-07-18-077-feat-qbo-vendor-eager-push-plan.md` (status: completed).
+
+</details>
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
@@ -207,4 +241,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — QBO vendor sync Slice 2 (eager create-into-QBO, Plan 077) BUILT all 7 units on claude/qbo-vendor-eager-push; opt-in post-commit home-currency push + QBO fuzzy pre-check (link-vs-create) + offline retry sweep/cron + conflict state; all gates green (verify:vendor-sync 5/5 + LIVE push=synced on Demo, tsc, ai-native, parity, naming, tenant-isolation, vitest 61, lint, next build). Next: /ship. Prior: Movable + growable assistant dock BUILT + browser-QA'd on Demo, shipping on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = historical default so it never shrinks below baseline), clamped on-screen, always opens at default + closing resets (no persistence). Expand-to-center mode unchanged. tsc + eslint green. Verified live: opens 440×513, grows, floors, moves, resets. Prior: Plan 073 multi-currency FX ingestion BUILT (10 units, all gates green, live EUR Bill + €767.16 e2e proven) ready for /ship on claude/multi-currency-fx-ingestion; Plan 072 invoice ingestion SHIPPED (#223), vendor merge/removal SHIPPED (#222)._
+_Last updated: 2026-07-18 — Feedback #241 (cmrqpp88) dashboard Recent-activity leadership filter BUILT (branch claude/work-241-page-tsx-5fdfdb, commit 752c212); denylist classifier in src/lib/audit.ts (isOperationalAuditEntry + operationalAuditWhere) + page.tsx DB filter, 15/15 audit tests, proven on real Neon data (AutomationRun noise row dropped). Ready for /review → /ship. Prior (origin/main): QBO vendor sync Slice 2 (Plan 077) BUILT on claude/qbo-vendor-eager-push, all gates green, next /ship. Prior: Plan 076 invoice ingestion (dupe gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P) SHIPPED PR #246; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._

@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { diff, summarize } from "@/lib/audit";
+import {
+  diff,
+  summarize,
+  isOperationalAuditEntry,
+  operationalAuditWhere,
+  NON_OPERATIONAL_AUDIT_ENTITY_TYPES,
+  NON_OPERATIONAL_AUDIT_ACTIONS,
+} from "@/lib/audit";
 
 describe("diff", () => {
   it("returns only changed fields", () => {
@@ -65,5 +72,45 @@ describe("summarize", () => {
   it("handles login + password events", () => {
     expect(summarize("LOGIN", "Session")).toBe("Signed in");
     expect(summarize("PASSWORD_CHANGE", "User")).toBe("Changed password");
+  });
+});
+
+describe("isOperationalAuditEntry (leadership dashboard filter, #241)", () => {
+  it("keeps operational winemaking activity", () => {
+    // The exact example from the feedback: "we bottled wine today".
+    expect(isOperationalAuditEntry({ action: "BOTTLING", entityType: "BottlingRun" })).toBe(true);
+    expect(isOperationalAuditEntry({ action: "STOCK_MOVEMENT", entityType: "LotOperation" })).toBe(true);
+    expect(isOperationalAuditEntry({ action: "STOCK_MOVEMENT", entityType: "BottledInventory" })).toBe(true);
+    expect(isOperationalAuditEntry({ action: "CREATE", entityType: "Lot" })).toBe(true);
+    expect(isOperationalAuditEntry({ action: "CREATE", entityType: "SupplyLot" })).toBe(true);
+    expect(isOperationalAuditEntry({ action: "HARVEST_PICK_RECORDED", entityType: "HarvestPick" })).toBe(true);
+    expect(isOperationalAuditEntry({ action: "CREATE", entityType: "WorkOrder" })).toBe(true);
+    expect(isOperationalAuditEntry({ action: "BRIX_LOGGED", entityType: "BrixLog" })).toBe(true);
+  });
+
+  it("hides bug-triage and developer-automation noise", () => {
+    expect(isOperationalAuditEntry({ action: "UPDATE", entityType: "FEEDBACK_TICKET" })).toBe(false);
+    expect(isOperationalAuditEntry({ action: "UPDATE", entityType: "ASSISTANT_FEEDBACK" })).toBe(false);
+    expect(isOperationalAuditEntry({ action: "UPDATE", entityType: "AutomationRun" })).toBe(false);
+  });
+
+  it("hides auth, security, and admin churn", () => {
+    expect(isOperationalAuditEntry({ action: "LOGIN", entityType: "Session" })).toBe(false);
+    expect(isOperationalAuditEntry({ action: "PASSWORD_CHANGE", entityType: "User" })).toBe(false);
+    expect(isOperationalAuditEntry({ action: "IMPERSONATE", entityType: "Organization" })).toBe(false);
+    expect(isOperationalAuditEntry({ action: "USER_CREATED", entityType: "User" })).toBe(false);
+    // A benign UPDATE on a denylisted entity type is still hidden (user admin, settings).
+    expect(isOperationalAuditEntry({ action: "UPDATE", entityType: "User" })).toBe(false);
+    expect(isOperationalAuditEntry({ action: "UPDATE", entityType: "AppSettings" })).toBe(false);
+  });
+
+  it("hides an operational-looking action on a denylisted entity type", () => {
+    // IMPERSONATE is a denylisted action even though Organization isn't a denylisted type.
+    expect(isOperationalAuditEntry({ action: "IMPERSONATE", entityType: "Organization" })).toBe(false);
+  });
+
+  it("stays in sync with the Prisma where fragment", () => {
+    expect(operationalAuditWhere.entityType).toEqual({ notIn: [...NON_OPERATIONAL_AUDIT_ENTITY_TYPES] });
+    expect(operationalAuditWhere.action).toEqual({ notIn: NON_OPERATIONAL_AUDIT_ACTIONS });
   });
 });
