@@ -33,6 +33,15 @@ export const INTERNAL = {
       "capability (record a chemistry panel on a lot) is covered by a different core+tool.",
     coveredBy: "record_measurement → recordMeasurementsCore",
   },
+  "src/lib/vendors/vendor-import-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "Plan 075 QBO vendor-import review-queue triage (accept / reject / merge-into-existing a pulled QBO " +
+      "vendor). An admin/developer maintenance surface driven visually from the /setup/vendors import queue, " +
+      "not a winemaker natural-language capability — batch triage over a list is a clicking flow, not a chat one. " +
+      "The first-class vendor capabilities (create / query / merge duplicates) already have assistant tools.",
+    coveredBy: "/setup/vendors vendor-import queue UI (accept/reject/merge actions)",
+  },
 };
 
 // Temporary — real gaps deferred with a tracked reason. Ratcheted by MAX_ALLOWED.

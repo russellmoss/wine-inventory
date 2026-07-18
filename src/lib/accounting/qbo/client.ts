@@ -20,6 +20,7 @@ import {
   type AccountingAdapter,
   type JournalEntryInput,
   type NormalizedAccount,
+  type NormalizedVendor,
   type OAuthTokens,
   type PostResult,
   type ProviderCallContext,
@@ -190,6 +191,28 @@ export class QboClient {
     }));
   }
 
+  /** Slice 1: pull EVERY vendor, active + inactive, via QBO's STARTPOSITION/MAXRESULTS paging (1-based
+   *  position, 1000/page — the query API's max). Loops until a short page; bounded by MAX_VENDOR_PAGES so a
+   *  runaway can't spin forever. Returns raw DisplayNames (the pull strips the Plan-073 " (CUR)" suffix). */
+  async listVendors(ctx: ProviderCallContext): Promise<NormalizedVendor[]> {
+    const PAGE = 1000;
+    const MAX_VENDOR_PAGES = 50; // 50k vendors is far beyond any real winery; a hard backstop
+    const out: NormalizedVendor[] = [];
+    for (let page = 0; page < MAX_VENDOR_PAGES; page++) {
+      const start = page * PAGE + 1; // QBO STARTPOSITION is 1-based
+      const r = await this.query<{ Vendor?: Array<Record<string, unknown>> }>(
+        ctx,
+        `SELECT * FROM Vendor STARTPOSITION ${start} MAXRESULTS ${PAGE}`,
+      );
+      const rows = r.Vendor ?? [];
+      for (const v of rows) {
+        out.push({ externalId: String(v.Id), name: String(v.DisplayName ?? ""), active: v.Active !== false });
+      }
+      if (rows.length < PAGE) break; // last page
+    }
+    return out;
+  }
+
   async findByDocNumber(
     ctx: ProviderCallContext,
     objectType: QboObjectType,
@@ -310,6 +333,9 @@ export class QboAdapter implements AccountingAdapter {
   }
   listAccounts(ctx: ProviderCallContext) {
     return this.client.listAccounts(ctx);
+  }
+  listVendors(ctx: ProviderCallContext) {
+    return this.client.listVendors(ctx);
   }
   findByDocNumber(ctx: ProviderCallContext, objectType: QboObjectType, docNumber: string) {
     return this.client.findByDocNumber(ctx, objectType, docNumber);

@@ -300,6 +300,25 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (advisory read-side guard, no new RLS surface — reads existing tenant-scoped `vendor` rows;
   the automated-path gap is documented and slated for the later agentic detective sweep).
 
+## QBO → Cellarhand vendor pull is READ-ONLY + human-gated; new tenant table `vendor_import_candidate` (plan 075)
+- **What:** Slice 1 pulls QBO vendors INTO Cellarhand (paginated `SELECT * FROM Vendor`) and lands unmatched
+  ones in a new tenant-scoped `vendor_import_candidate` review queue for human accept/reject/merge. Read-only
+  against QBO (the only writes are local `Vendor` + `vendor_import_candidate`); no auto-insert (advisory,
+  human-confirmed — same posture as Slice 0). `Vendor.externalVendorId` is the single source of truth for
+  "already synced" (audited writes only, via the accept/merge cores). Currency-variant QBO records
+  ("Acme (EUR)", plan 073) collapse to one candidate so PII/noise doesn't multiply.
+- **RLS / tenancy:** `vendor_import_candidate` follows the Phase-12 checklist verbatim (tenantId + FK →
+  organization RESTRICT + composite `(tenantId, suggestedVendorId)` → vendor K11 SET-NULL + RLS ENABLE/FORCE +
+  `tenant_isolation` USING+WITH CHECK + `GRANT app_rls` + the `DO $$` migration guard); covered by
+  `verify:tenant-isolation` (coverage guard + an explicit block). The optional poll cron enumerates orgs via the
+  least-privilege enumerator role (org list ONLY, never `accounting_connection` — SEC-C3); the per-tenant
+  `runAsTenant` block reads the connection + token, never a bare `prismaBase` read (would return 0 rows under RLS).
+- **Tripwire:** an auto-accept that inserts vendors without human review; a pull that writes back to QBO (this
+  slice must not); the cron reading `accounting_connection` as the enumerator instead of per-tenant; treating a
+  currency-suffixed record as a distinct supplier (floods the queue / fragments PII). Proof: `verify:vendor-import`
+  + `test/qbo-vendor-pull.test.ts` + the isolation block.
+- **Status:** 🟢 (read-only QBO + advisory human-gated queue; new RLS table proven; enumerator SEC-C3 respected).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_

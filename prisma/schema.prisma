@@ -3079,6 +3079,7 @@ model Vendor {
 
   @@unique([tenantId, name]) // find-or-create by name, no dupes per tenant
   @@unique([tenantId, id]) // composite-tenant-FK target for ap_export_event (K11)
+  @@unique([tenantId, externalVendorId]) // Plan 075: one QBO vendor ↔ one local vendor (NULLs are DISTINCT in PG, so unlinked vendors are unconstrained)
   @@index([tenantId])
   @@map("vendor")
 }
@@ -3103,6 +3104,30 @@ model VendorContact {
   @@index([tenantId])
   @@index([tenantId, vendorId])
   @@map("vendor_contact")
+}
+
+// Plan 075 (QBO vendor sync, Slice 1): the review queue for QBO vendors pulled in but not yet resolved to a local
+// Vendor. Every pulled QBO vendor is matched (by externalVendorId, else the Plan 074 fuzzy matcher); an
+// unmatched one lands here for a human to accept / reject / merge-into-existing. Currency-variant QBO records
+// ("Acme" / "Acme (EUR)", Plan 073) collapse into ONE candidate keyed on the stripped base name — the extra QBO
+// ids ride along in currencyVariantIds. Tenant-scoped + RLS (Phase 12); a composite (tenantId, suggestedVendorId)
+// FK pins any suggested match to a same-tenant vendor (K11). REJECTED rows are suppression tombstones (kept so a
+// re-pull doesn't re-surface them); accepted/merged candidates are DELETED (the link lives on Vendor.externalVendorId).
+model VendorImportCandidate {
+  tenantId           String   @default("")
+  id                 String   @id @default(cuid())
+  externalVendorId   String // QBO Vendor.Id — the canonical/base id of a collapsed currency-variant group
+  name               String // the collapsed base DisplayName (Plan 073 " (CUR)" suffix stripped)
+  suggestedVendorId  String? // a HIGH local match, if any (plain ref → vendor.id; composite FK in raw SQL, K11)
+  status             String   @default("PENDING") // PENDING | REJECTED (no enum — sidesteps the Windows ALTER TYPE rule)
+  currencyVariantIds String[] // every QBO id collapsed into this candidate (base + its " (CUR)" variants)
+  firstSeenAt        DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([tenantId, id]) // composite-tenant-FK target parity + K11
+  @@unique([tenantId, externalVendorId]) // idempotent upsert key for the pull (one candidate per QBO vendor)
+  @@index([tenantId])
+  @@map("vendor_import_candidate")
 }
 
 model ApExportEvent {
