@@ -1,9 +1,27 @@
+import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
-import { requireTenantId } from "@/lib/tenant/context";
+import { requireTenantId, runAsTenant } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import { ensureUnknownVendor } from "@/lib/vendors/vendors";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
+
+/** A pending review-queue row, serialized for the client. `suggestedVendorId` resolves to a name client-side
+ *  (the client already has the vendor list). `variantCount` > 1 means N currency-variant QBO records collapsed. */
+export type VendorImportCandidateDTO = { id: string; name: string; suggestedVendorId: string | null; variantCount: number };
+
+/** List PENDING import candidates (the review queue). Read-only; pass opts.tenantId to run outside a request. */
+export async function listVendorImportCandidates(opts?: { tenantId?: string }): Promise<VendorImportCandidateDTO[]> {
+  const run = async () => {
+    const rows = await prisma.vendorImportCandidate.findMany({
+      where: { status: "PENDING" },
+      select: { id: true, name: true, suggestedVendorId: true, currencyVariantIds: true },
+      orderBy: { name: "asc" },
+    });
+    return rows.map((r) => ({ id: r.id, name: r.name, suggestedVendorId: r.suggestedVendorId, variantCount: r.currencyVariantIds.length }));
+  };
+  return opts?.tenantId ? runAsTenant(opts.tenantId, run) : run();
+}
 
 // Plan 075 (QBO vendor sync, Slice 1) — the audited state transitions OFF the vendor_import_candidate review
 // queue. accept = create a local Vendor linked to the QBO id; reject = tombstone (suppresses future pulls);
