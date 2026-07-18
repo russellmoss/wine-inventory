@@ -284,10 +284,13 @@ Demo Winery (QA-* fixtures, cleaned up; controlled-input caveat: click ref then 
 - [x] "Scott Labs"/"Scott Laboratories" AND "Crush2Cellar"/"Crush to Cellar" are both flagged HIGH by
       the pure engine (unit tests green — 49/49 vendors-shared).
 - [x] "Acme" vs "Acme (EUR)" and the "Unknown / Unspecified" vendor are NEVER flagged.
-- [ ] Creating a near-dup in the `/setup/vendors` modal shows "did you mean?", with working
-      "use existing" and "create anyway" — **PENDING interactive browser-QA on Demo** (needs user login).
+- [x] Creating a near-dup in the `/setup/vendors` modal shows "did you mean?", with working
+      "use existing" and "create anyway" — **browser-QA'd on Demo**: "Scott Laboratories" surfaced Scott Labs;
+      "Crush to Cellar" surfaced Crush2Cellar (the homophone case the old matcher missed); create-anyway made
+      the 6th vendor, then Remove cleaned it up; Demo restored to 5.
 - [x] Assistant `create_vendor` returns a choice (not a silent create) on a near-dup (structural eval +
-      `test/assistant-create-vendor-dedup.test.ts` 4/4 green).
+      `test/assistant-create-vendor-dedup.test.ts` 4/4 green + a LIVE against-Demo round-trip:
+      run→choice→resume→proposal→commit, all passed).
 - [x] `npm run verify:vendor-dedupe` green (8/8); `verify:naming` (25) + `verify:tenant-isolation` green.
 - [x] All existing tests pass (2264 vitest); no schema change; tsc + lint (0 errors) + `next build` green.
 - [x] The intentionally-ungated automated create path is documented (security-register + verify script).
