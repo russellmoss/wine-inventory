@@ -78,8 +78,11 @@ export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [
       {isEmpty ? (
         <Card style={{ marginTop: 24, textAlign: "center", padding: "48px 24px" }}>
           <div style={{ fontSize: 17, fontWeight: 600 }}>{filtered ? "No matching open work orders" : "No open work orders"}</div>
-          <div style={{ color: "var(--text-muted)", marginTop: 6, marginBottom: 18 }}>{filtered ? "Try clearing the filters, or check the archive for finalized orders." : "Issue your first work order to tell the crew what to do — completing a task logs the operation for you."}</div>
-          <Link href="/work-orders/new"><Button>Issue your first work order</Button></Link>
+          <div style={{ color: "var(--text-muted)", marginTop: 6, marginBottom: 18 }}>{filtered ? "Try clearing the filters, or check the archive for finalized orders." : "Everything here is caught up. Finalized orders move to the Archive — start a new one when there's work to assign."}</div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link href="/work-orders/new"><Button>New work order</Button></Link>
+            {!filtered ? <Link href="/work-orders?view=archive"><Button variant="secondary">View archive</Button></Link> : null}
+          </div>
         </Card>
       ) : (
         <>
