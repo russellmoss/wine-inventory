@@ -7,21 +7,22 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Movable + growable assistant dock — BUILT + browser-QA'd on Demo, shipping now.**
-Branch `claude/assistant-widget-drag-resize-3c069b`. User ask: keep the assistant popup open but move it aside to
-see the screen, and drag a corner to make it bigger (never smaller). Frontend-only change to
-[AssistantDock.tsx](src/components/assistant/AssistantDock.tsx), one file. In the DOCKED state the panel is pinned
-by its **bottom-right** corner (right/bottom + width/height in React state). Dragging the **title bar** moves it;
-dragging the **top-left corner grip** grows it (bottom-right stays anchored → only grows toward open space). Floor
-size = the historical default `min(440,94vw) × min(620,80vh)` so it can't shrink below baseline; everything clamped
-on-screen. Always OPENS at the default place + size; drag/resize are ephemeral, so closing (×) + reopening is the
-"reset to default" gesture (no persistence). "Expand to center" mode unchanged (drag/resize disabled while
-expanded); drag mutates the DOM imperatively, committing on pointer-up so the heavy `AssistantChat` subtree
-doesn't re-render mid-drag. Verified live on Demo: opens 440×513, grows from top-left, floors at default, moves,
-resets on reopen. tsc + eslint green.
+**Plan 076 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — BUILT (11/11 units), all gates green, ready for `/ship`.**
+Branch `claude/invoice-ingestion-features-95d4df` (commits d79f6f4 → 75a13d7). Plan at
+[docs/plans/2026-07-18-076-…](docs/plans/2026-07-18-076-feat-invoice-qbo-bill-payment-status-plan.md).
+(1) Duplicate confirm gate — stage-time structured `duplicates` + upload modal ("continue?") + hard apply guard
+(`allowDuplicate`). (2) **One aggregate Bill per invoice** — `emitApExportForInvoice` (postingKey `apinv:<id>`,
+multi-line `billLinesJson`), per-lot emit suppressed via `skipApEmit`, multi-line `buildBillPayload`; new invariant
+AP-1. (3) Paid/Outstanding — schema on `IngestedInvoice`+`ApExportEvent`+AppSettings pay-from accounts, required
+review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPayment** poster pass (Check/CreditCard,
+exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
+migrations applied to Neon. GREEN: tsc, eslint, vitest 2276, next build, verify:ingest 81, verify:accounting 8,
+verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation. PENDING before
+prod trust: accountant sign-off on BillPayment GL + a live QBO-sandbox multi-line pass + browser-QA on Demo.
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
+- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo, shipping.** Branch `claude/assistant-widget-drag-resize-3c069b`. Drag title bar to move, top-left grip to grow (bottom-right anchored, floors at default); frontend-only in [AssistantDock.tsx](src/components/assistant/AssistantDock.tsx). tsc + eslint green.
 - **Plan 073 multi-currency FX ingestion — BUILT (10 units), gates green, ready for `/ship`** on branch
   `claude/multi-currency-fx-ingestion`. Foreign invoice → base-currency inventory at a dated ECB rate
   (Frankfurter, keyless) + EUR A/P Bill to QBO; P0 double-conversion fixed by decoupling (lot=base,
@@ -199,4 +200,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Movable + growable assistant dock BUILT + browser-QA'd on Demo, shipping on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = historical default so it never shrinks below baseline), clamped on-screen, always opens at default + closing resets (no persistence). Expand-to-center mode unchanged. tsc + eslint green. Verified live: opens 440×513, grows, floors, moves, resets. Prior: Plan 073 multi-currency FX ingestion BUILT (10 units, all gates green, live EUR Bill + €767.16 e2e proven) ready for /ship on claude/multi-currency-fx-ingestion; Plan 072 invoice ingestion SHIPPED (#223), vendor merge/removal SHIPPED (#222)._
+_Last updated: 2026-07-18 — Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
