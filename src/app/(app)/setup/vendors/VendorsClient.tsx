@@ -17,7 +17,7 @@ import type { VendorImportCandidateDTO } from "@/lib/vendors/vendor-import-core"
 
 // Plan 069: the vendor registry CRUD. Add/edit via the shared VendorForm (name/phone/email required + N
 // contacts). Archive/restore is admin-only. Fuzzy search over name/contact/email.
-export function VendorsClient({ vendors, isAdmin, importCandidates = [] }: { vendors: VendorRow[]; isAdmin: boolean; importCandidates?: VendorImportCandidateDTO[] }) {
+export function VendorsClient({ vendors, isAdmin, importCandidates = [], qboPushEnabled = false }: { vendors: VendorRow[]; isAdmin: boolean; importCandidates?: VendorImportCandidateDTO[]; qboPushEnabled?: boolean }) {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
   const [addOpen, setAddOpen] = React.useState(false);
@@ -150,6 +150,7 @@ export function VendorsClient({ vendors, isAdmin, importCandidates = [] }: { ven
         key={addOpen ? "add-open" : "add-closed"}
         open={addOpen}
         onClose={() => setAddOpen(false)}
+        qboPushEnabled={qboPushEnabled}
         onCreated={() => { setAddOpen(false); router.refresh(); }}
       />
 
