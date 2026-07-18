@@ -1366,6 +1366,7 @@ model AppSettings {
   // tenantId, not the old "singleton" id. id is a plain cuid so a 2nd org's row can't collide.
   id                       String                 @id @default(cuid())
   sparklingEnabled         Boolean                @default(false)
+  pushVendorsToQbo         Boolean                @default(false) // Plan 077: opt-in — eagerly create a QBO vendor when one is created in Cellarhand (off = author vendors in QBO, Slice 1's pull covers it)
   // Phase 8 (D5, D9, D17): per-tenant costing policy. `currency` (ISO code, default USD) heads every
   // cost row. `costingMethod` + `costingMethodEffectiveAt` set depletion order (WA default | FIFO); the
   // method actually used is STAMPED on each SupplyConsumption at write time so recompute is stable.
@@ -3050,6 +3051,7 @@ model Vendor {
   currency         String   @default("USD") // Plan 073: informational "currency we usually bill this vendor in" (backfilled USD). NOT the posting authority — the A/P bill's currency comes from ApExportEvent.currency, and the QBO vendor is resolved currency-scoped from THAT (currency-suffixed DisplayName + CurrencyRef), so one Vendor row can source bills in several currencies without a unique-key change (council #4 handled QBO-side).
   terms            String? // payment terms, e.g. "Net 30" (drives Bill DueDate — U10) + "Pay at purchase"
   externalVendorId String? // QBO Vendor.Id cache (find-or-create — U10). PII stays here, never in events (D19)
+  syncStatus       String   @default("synced") // Plan 077: synced | pending | conflict — eager QBO-push state. 'synced' = linked or doesn't need a push (existing rows); 'pending' = created, QBO push not yet done (offline → retry sweep); 'conflict' = the push hit the (tenantId, externalVendorId) unique.
   // Plan 069: first-class vendor management. Contact + purchasing metadata, columns-only (RLS-neutral — the
   // existing vendor tenant_isolation policy covers new columns). phone/email are REQUIRED in the setup UI but
   // stay nullable at the DB so backfill + non-UI paths (A/P find-or-create, assistant) never hard-error.
