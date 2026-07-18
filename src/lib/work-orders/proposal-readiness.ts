@@ -338,6 +338,14 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       const from = requireVessel(ctx, state, seq, str(v.fromVesselId), "source");
       const to = requireVessel(ctx, state, seq, str(v.toVesselId), "destination");
       if (!from || !to) return;
+      // Mirror the execution guard (rack-core.ts rackWineTx: `fromVesselId === toVesselId` is refused): a
+      // rack's source and destination must be different vessels. The builder previously only checked that
+      // each vessel exists + is active, so a same-vessel transfer SAVED but was guaranteed to fail (or be a
+      // no-op) at execute. Keyed on vessel id, exactly like the ledger tx — block it at author time.
+      if (from.id === to.id) {
+        blocking(ctx, "same_vessel", `Task #${seq}: a transfer's source and destination must be different vessels (both are ${from.label}).`);
+        return;
+      }
       // Account for volume already moved by EARLIER tasks in this proposal (parity with the ADDITION path),
       // so chained racks warn against the planned state, not the raw DB volume. Advisory only.
       const priorFrom = ctx.plannedVolumeDeltaByVesselId.get(from.id) ?? 0;
@@ -432,6 +440,12 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       const from = requireVessel(ctx, state, seq, str(v.fromVesselId), "source");
       const to = requireVessel(ctx, state, seq, str(v.toVesselId), "destination");
       if (!from || !to) return;
+      // Mirror the execution guard (topping.ts topVesselTx: `toVesselId === fromVesselId` is refused): a
+      // top-up's source keg and target vessel must differ. Same author-time sync fix as RACK above.
+      if (from.id === to.id) {
+        blocking(ctx, "same_vessel", `Task #${seq}: a top-up's source and target must be different vessels (both are ${from.label}).`);
+        return;
+      }
       const volumeL = numOrNull(v.volumeL);
       if (volumeL == null || volumeL <= 0) {
         runtime(ctx, seq, "TOPPING", "volumeL", "Top-up volume (L)", "The top-up volume is confirmed on the floor.");

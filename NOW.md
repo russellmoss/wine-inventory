@@ -7,43 +7,62 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — BUILT + REVIEWED, shipping.**
-Branch `claude/harvest-vineyard-lib-295869` (worktree). Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data
-cleanup): couldn't delete blocks refused by dependent Brix/harvest records, and no path to delete a standalone
-harvest pick. Commits `e6c3fd3`, `b525dce`, `4905577` (review fixes):
-(1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix` (block +
-weight/date → confirm). Hardened `deleteHarvestPick` action: refuses a pick already crushed into a lot
-(`LotHarvestSource` Restrict — was a latent 500 + lineage-erase) + fixed a copy-paste audit action; added
-`getBlockPicks`. Golden case added (H8/D26 gate).
-(2) **Confirmed cascade in the generic `db_delete` engine** — restrict children split into hard `blocked` vs
-opt-in `cascadableBlocked` (`relations.ts` + `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`).
-`VineyardBlock` opts in: cascades Brix readings + harvest records (records cascade their picks) + discloses
-subblocks, via new `src/lib/vineyard/block-delete.ts`, but **HARD-REFUSES if any pick is crushed** and keeps
-**work-order tasks a non-cascadable hard wall**. No schema change. `/review` CLEAR (3 specialists, 0 critical;
-2 informational auto-fixed). GATES GREEN: tsc 0, eslint 0, **full vitest 2311/0**, verify:ai-native, eval golden.
-PENDING (post-merge): live DB proof (runAsTenant Demo) + browser-QA. No plan-doc (issue #188 is a bug-triage stub).
+**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — SHIPPING (PR #265).**
+Branch `claude/harvest-vineyard-lib-295869`. Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data cleanup):
+couldn't delete blocks refused by dependent Brix/harvest records, and no path to delete a standalone harvest pick.
+(1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix`; hardened
+`deleteHarvestPick` refuses a crushed pick (`LotHarvestSource` Restrict; was a latent 500) + fixed audit action.
+(2) **Confirmed cascade in `db_delete`** — `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`; `VineyardBlock`
+cascades Brix + harvest records (+ discloses subblocks) but HARD-REFUSES crushed picks & keeps WO-task FK a hard wall.
+No schema. `/review` CLEAR (3 specialists, 0 critical). Merged origin/main; **vitest 2333/0**, tsc/eslint/ai-native green.
+PENDING (post-merge): live DB proof (runAsTenant Demo) + browser-QA.
 
-<details><summary>prev objective — P0 bottling no-cork guard (PR #242, branch claude/bottling-no-cork-guard-b316e0)</summary>
+<details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, ready to ship)</summary>
 
-**P0 bottling no-cork guard (feedback bug, PR #242) — BUILT + live-proven, ready to ship.**
-Branch `claude/bottling-no-cork-guard-b316e0`. Bug: "for all bottling runs we need mandatory a bottle, a closure
-(e.g. cork), and a label — I shouldn't be able to bottle Big Mike Big Red without a cork, but it let me." The
-automated PR #242 fixed it **client-only** (fragile). This supersedes it with a **server backstop at the two real
-write paths** + both UI mirrors + tests. (1) Pure classifier in
-[packaging-bom.ts](src/lib/bottling/packaging-bom.ts) — `classifyPackagingRole` (name/kind → bottle|closure|label;
-a capsule is deliberately NOT a closure), `missingRequiredPackaging`, `missingRolesForMaterials`. (2) Server guard
-[mandatory-packaging.ts](src/lib/bottling/mandatory-packaging.ts) `assertMandatoryPackaging(packaging, loadMaterials)`
-— wired into `createBottlingRun`/`editBottlingRun` ([actions.ts](src/lib/bottling/actions.ts), `prisma` loader) AND
-the WO BOTTLE task ([execute.ts](src/lib/work-orders/execute.ts), `tx` loader). Enforced at the **entry points, not
-`runBottlingTx`**. (3) UI mirrors in BottlingClient.tsx + BottlingTaskForm.tsx. **Live DB proof on Demo Winery**:
-corkless run REJECTED with zero partial writes; full run wrote 100 bottles + depleted cork 500→400; fixtures scrubbed.
-
-**Feedback #241 (cmrqpp88 "too much detail in dashboard") — dashboard Recent activity filtered — BUILT.**
-Branch `claude/work-241-page-tsx-5fdfdb` (commit 752c212). Leadership-relevance denylist classifier in
-[src/lib/audit.ts](src/lib/audit.ts) (`isOperationalAuditEntry` + synced `operationalAuditWhere`); page.tsx filters
-the feed at the DB. Denylist (not allowlist) so new operational events show by default. Proven on real prod data.
+**WO builder same-vessel transfer guard (feedback cmrqqm75b, P1 defect) — BUILT, gates green, ready to ship.**
+Branch `claude/wo-same-vessel-transfer-guard` (off origin/main). Bug: the WO builder let you author a transfer
+(RACK) whose source and destination are the SAME vessel; execution correctly refuses it, so a user could save a WO
+guaranteed to fail at execute — builder validation out of sync with the execution guard. `/investigate` confirmed
+root cause: execution refuses `fromVesselId === toVesselId` at [rack-core.ts:94](src/lib/vessels/rack-core.ts:94)
+(RACK) and [topping.ts:42](src/lib/cellar/topping.ts:42) (TOPPING), keyed on **vessel id**; but the shared builder
+validation core `readTask` in [proposal-readiness.ts](src/lib/work-orders/proposal-readiness.ts) only checked each
+vessel exists + is active, never source ≠ dest. Fix = mirror the guard: add a `blocking(ctx, "same_vessel", …)` in
+the RACK and TOPPING readiness cases (same-id short-circuit). Flows to BOTH surfaces automatically — the builder UI
+(`readiness.status === "blocked"` disables Create + shows the warning) AND the server write gate
+`gateWorkOrderReadinessForWrite` (refuses create/edit; `safeAction`→`settleAction` returns `{ok:false,error}`, no
+thrown ActionError). Execution guards kept as backstop, unchanged. GROUP_RACK deliberately untouched (execution
+silently filters self-members, not a reject). 4 regression tests in
+[test/work-order-readiness.test.ts](test/work-order-readiness.test.ts) (same-vessel RACK+TOPPING blocked, distinct
+vessels ready). GREEN: vitest 21/21 (readiness), tsc, eslint, verify:work-orders 43. Next: PR referencing the ticket.
 
 </details>
+
+<details><summary>prev objective — P0 bottling no-cork guard (SHIPPED, PR #259, a173e0a)</summary>
+
+**P0 bottling no-cork guard (feedback bug) — SHIPPED, PR #259 merged (`a173e0a`).**
+Superseded client-only PR #242 with a server backstop. Pure classifier in
+[packaging-bom.ts](src/lib/bottling/packaging-bom.ts) — `classifyPackagingRole` (name/kind → bottle|closure|label;
+a capsule is deliberately NOT a closure). Server guard
+[mandatory-packaging.ts](src/lib/bottling/mandatory-packaging.ts) `assertMandatoryPackaging(packaging, loadMaterials)`
+— wired into `createBottlingRun`/`editBottlingRun` ([actions.ts](src/lib/bottling/actions.ts)) AND the WO BOTTLE task
+([execute.ts](src/lib/work-orders/execute.ts)) at the entry points, not `runBottlingTx`. UI mirrors in
+[BottlingClient.tsx](src/app/(app)/bottling/BottlingClient.tsx) + BottlingTaskForm. Live Demo proof: corkless run
+REJECTED with zero partial writes; full run wrote 100 bottles + depleted cork 500→400.
+
+</details>
+
+<details><summary>prev objective — #241 dashboard Recent activity filter (BUILT)</summary>
+
+**Feedback #241 (cmrqpp88 "too much detail in dashboard") — dashboard Recent activity filtered to leadership-relevant events — BUILT, ready for /ship.**
+Branch `claude/work-241-page-tsx-5fdfdb` (commit 752c212). The leadership dashboard's Recent activity feed pulled the last 6
+audit rows indiscriminately, burying operational signal ("we bottled wine today") under bug-triage / dev-automation /
+auth-admin churn. Added a leadership-relevance classifier to [src/lib/audit.ts](src/lib/audit.ts) — denylist of
+non-operational entity types (`FEEDBACK_TICKET`, `ASSISTANT_FEEDBACK`, `AutomationRun`, `AppSettings`, `Session`, `User`,
+`VendorImportCandidate`, `DirectMessage`) + actions (`LOGIN`, `PASSWORD_*`, `USER_CREATED/DELETED`, `USER_VINEYARD_ASSIGNED`,
+`IMPERSONATE`) — exposed as a pure predicate `isOperationalAuditEntry` + a synced Prisma fragment `operationalAuditWhere`;
+[page.tsx](src/app/(app)/page.tsx) filters the feed at the DB. Denylist (not allowlist) so new operational events show by
+default. GREEN: tsc, eslint, vitest 15/15 (audit + assistant-audit). Proven on real prod data (Neon): prior 6th feed row
+"Developer approved feedback automation" drops out, replaced by a real work-order event. Next: `/review` then `/ship`.
 
 <details><summary>prev objective — Plan 076/078 invoice ingestion (SHIPPED, PR #246)</summary>
 
@@ -82,8 +101,6 @@ U4 modal link-vs-create wired through the setup page, U5 sweep+cron, U6 `/settin
 **Gates all green:** tsc, `verify:vendor-sync` (link/idempotent/conflict/sweep-gating/opt-in + LIVE push=synced,
 pre-check clean), verify:ai-native, verify:parity, verify:naming, verify:tenant-isolation, vendor vitest 61,
 lint 0 errors, `next build` clean (cron route registered). Plan: `docs/plans/2026-07-18-077-feat-qbo-vendor-eager-push-plan.md` (status: completed).
-
-</details>
 
 </details>
 
@@ -270,4 +287,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Ticket #188 (assistant delete_harvest_pick for standalone picks + user-confirmed VineyardBlock cascade delete) BUILT + REVIEWED (3 specialists, 0 critical; subblock-disclosure + coupling fixes) on branch claude/harvest-vineyard-lib-295869 (commits e6c3fd3, b525dce, 4905577); full vitest 2311/0, tsc/eslint/verify:ai-native/eval golden all green; no schema change. Shipping; live DB proof + browser-QA pending post-merge. Prior: P0 bottling no-cork guard BUILT + live-proven (claude/bottling-no-cork-guard-b316e0, supersedes PR #242); Feedback #241 dashboard filter BUILT; QBO vendor sync Slice 2 (Plan 077) BUILT; Plan 076 invoice ingestion SHIPPED (#246); Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) BUILT on branch claude/wo-same-vessel-transfer-guard; /investigate confirmed builder validation missed the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id); fix mirrors it as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests, vitest 21/21 + tsc + eslint + next build + verify:work-orders 43 green. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Feedback #241 dashboard Recent-activity filter BUILT; Plan 076 invoice ingestion SHIPPED (#246); Plan 072 ingestion SHIPPED (#223)._
