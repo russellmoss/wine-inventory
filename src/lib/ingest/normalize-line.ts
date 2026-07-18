@@ -1,4 +1,5 @@
 import { deriveOpeningLot } from "@/lib/cost/intake-cost";
+import type { ExtraUnits } from "@/lib/units/measure";
 
 // Plan 072 Unit 5 (MONEY-CRITICAL, pure): normalize an invoice line's quantity + landed cost into the
 // material's CANONICAL STOCK UNIT and a per-stock-unit cost — the #1 blocker ChatGPT flagged (invoice units
@@ -46,6 +47,8 @@ export function normalizeLineToStock(input: {
   unit: string | null | undefined;
   landedLineTotal: number | null | undefined;
   stockUnit: string | null | undefined;
+  /** Plan 075: the tenant's custom-unit registry, so a custom invoice UOM ("drum", "tote") converts to stock. */
+  extraUnits?: ExtraUnits;
 }): NormalizedLine {
   const qty = Number(input.qty);
   if (!Number.isFinite(qty) || qty <= 0) {
@@ -58,6 +61,7 @@ export function normalizeLineToStock(input: {
     packageUnit: parsed.unit,
     totalCost: input.landedLineTotal,
     stockUnit: input.stockUnit,
+    extraUnits: input.extraUnits,
   });
   const dimensionMismatch = packageAmount > 0 && lot.qtyInStockUnit == null;
   return { stockQty: lot.qtyInStockUnit, unitCost: lot.unitCost, dimensionMismatch };

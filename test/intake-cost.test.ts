@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { deriveOpeningLot, costPerPackageUnit, costForUse } from "@/lib/cost/intake-cost";
 import { round8 } from "@/lib/cost/rollup";
-import { convert } from "@/lib/units/measure";
+import { convert, type ExtraUnits } from "@/lib/units/measure";
+import { normalizeLineToStock } from "@/lib/ingest/normalize-line";
 
 describe("deriveOpeningLot", () => {
   it("1-gallon package for $10, stockUnit mL → qty in mL + per-mL cost", () => {
@@ -60,5 +61,36 @@ describe("costForUse", () => {
   it("unknown unit cost or cross-dimension use → null", () => {
     expect(costForUse({ unitCost: null, useAmount: 2, useUnit: "fl oz", stockUnit: "mL" })).toBeNull();
     expect(costForUse({ unitCost: 0.01, useAmount: 2, useUnit: "oz", stockUnit: "mL" })).toBeNull(); // mass use, volume stock
+  });
+});
+
+describe("custom units in intake cost (plan 075)", () => {
+  const extraUnits: ExtraUnits = {
+    drum: { dimension: "mass", perCanonical: 200000 }, // 200 kg / drum
+  };
+
+  it("a 'drum' (200 kg) invoice line costs correctly per canonical gram", () => {
+    // 2 drums for $400 → 400000 g at $0.001/g. Registry MUST be passed, else it falls to UNKNOWN.
+    const withReg = deriveOpeningLot({ packageAmount: 2, packageUnit: "drum", totalCost: 400, stockUnit: "g", extraUnits });
+    expect(withReg.qtyInStockUnit).toBe(400000);
+    expect(withReg.unitCost).toBe(round8(400 / 400000));
+  });
+
+  it("an UNRESOLVED custom unit degrades to UNKNOWN cost, never a fabricated number (D14)", () => {
+    const noReg = deriveOpeningLot({ packageAmount: 2, packageUnit: "drum", totalCost: 400, stockUnit: "g" });
+    expect(noReg.qtyInStockUnit).toBeNull();
+    expect(noReg.unitCost).toBeNull();
+  });
+
+  it("normalizeLineToStock converts a custom pack unit end-to-end", () => {
+    // invoice: 2 lines of "1 drum" each, landed $400 total → 400000 g at $0.001/g.
+    const norm = normalizeLineToStock({ qty: 2, unit: "drum", landedLineTotal: 400, stockUnit: "g", extraUnits });
+    expect(norm.stockQty).toBe(400000);
+    expect(norm.unitCost).toBe(round8(400 / 400000));
+    expect(norm.dimensionMismatch).toBe(false);
+    // without the registry the same line is a flagged mismatch (never a silent raw-qty pass-through).
+    const bad = normalizeLineToStock({ qty: 2, unit: "drum", landedLineTotal: 400, stockUnit: "g" });
+    expect(bad.stockQty).toBeNull();
+    expect(bad.dimensionMismatch).toBe(true);
   });
 });
