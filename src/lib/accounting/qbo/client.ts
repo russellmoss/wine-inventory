@@ -24,6 +24,7 @@ import {
   type PostResult,
   type ProviderCallContext,
   type ProviderFaultKind,
+  type QboObjectType,
 } from "@/lib/accounting/adapter";
 
 export type ClientDeps = {
@@ -191,7 +192,7 @@ export class QboClient {
 
   async findByDocNumber(
     ctx: ProviderCallContext,
-    objectType: "JournalEntry" | "Bill",
+    objectType: QboObjectType,
     docNumber: string,
   ): Promise<PostResult | null> {
     const safe = docNumber.replace(/'/g, "''"); // escape single quotes for the QBO query language
@@ -205,7 +206,7 @@ export class QboClient {
 
   async getById(
     ctx: ProviderCallContext,
-    objectType: "JournalEntry" | "Bill",
+    objectType: QboObjectType,
     externalId: string,
   ): Promise<PostResult | null> {
     const safe = externalId.replace(/'/g, "''");
@@ -255,6 +256,22 @@ export class QboClient {
     if (!bill?.Id) throw new ProviderFault("unknown", "QBO accepted the Bill but returned no Id.");
     return { externalId: bill.Id, version: bill.SyncToken, docNumber: bill.DocNumber };
   }
+
+  /** Plan 076: post a BillPayment (settles a Bill from the pay-from account). Zeroes the Bill's balance. */
+  async postBillPayment(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string): Promise<PostResult> {
+    const r = await this.request<{ BillPayment?: { Id: string; SyncToken: string; DocNumber?: string } }>(ctx, "POST", "billpayment", { params: { requestid: requestId }, body: payload });
+    const bp = r.BillPayment;
+    if (!bp?.Id) throw new ProviderFault("unknown", "QBO accepted the BillPayment but returned no Id.");
+    return { externalId: bp.Id, version: bp.SyncToken, docNumber: bp.DocNumber };
+  }
+
+  /** Plan 076: read a Bill's outstanding Balance (0 = paid). Null if the Bill is gone (deleted in the GL). */
+  async getBillBalance(ctx: ProviderCallContext, externalId: string): Promise<number | null> {
+    const safe = externalId.replace(/'/g, "''");
+    const r = await this.query<{ Bill?: Array<{ Id: string; Balance?: number }> }>(ctx, `SELECT Id, Balance FROM Bill WHERE Id = '${safe}'`);
+    const row = r.Bill?.[0];
+    return row ? Number(row.Balance ?? 0) : null;
+  }
 }
 
 /**
@@ -294,10 +311,10 @@ export class QboAdapter implements AccountingAdapter {
   listAccounts(ctx: ProviderCallContext) {
     return this.client.listAccounts(ctx);
   }
-  findByDocNumber(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", docNumber: string) {
+  findByDocNumber(ctx: ProviderCallContext, objectType: QboObjectType, docNumber: string) {
     return this.client.findByDocNumber(ctx, objectType, docNumber);
   }
-  getById(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", externalId: string) {
+  getById(ctx: ProviderCallContext, objectType: QboObjectType, externalId: string) {
     return this.client.getById(ctx, objectType, externalId);
   }
   postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string) {
@@ -308,5 +325,11 @@ export class QboAdapter implements AccountingAdapter {
   }
   postBill(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string) {
     return this.client.postBill(ctx, payload, requestId);
+  }
+  postBillPayment(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string) {
+    return this.client.postBillPayment(ctx, payload, requestId);
+  }
+  getBillBalance(ctx: ProviderCallContext, externalId: string) {
+    return this.client.getBillBalance(ctx, externalId);
   }
 }

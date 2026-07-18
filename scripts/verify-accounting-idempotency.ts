@@ -31,6 +31,9 @@ type MockState = {
   crashOnce?: Set<string>;
   bills?: Array<Record<string, unknown>>; // Plan 073: captured Bill payloads (currency assertions)
   vendorCalls?: Array<{ name: string; currency?: string }>; // Plan 073: vendor resolutions
+  billPayments?: Map<string, string>; // Plan 076: DocNumber → BillPayment externalId
+  billBalances?: Map<string, number>; // Plan 076: bill externalId → outstanding balance (0 once paid)
+  billPaymentPayloads?: Array<Record<string, unknown>>; // Plan 076: captured BillPayment payloads
 };
 
 /** A mock QBO adapter: records what it "posted" by DocNumber; can simulate a crash after accept. Plan 073
@@ -61,12 +64,27 @@ function mockAdapter(state: MockState): AccountingAdapter {
       return { externalId, version: "0" };
     },
     async findByDocNumber(_ctx, _type, docNumber): Promise<PostResult | null> {
-      const id = state.posted.get(docNumber);
+      const id = state.posted.get(docNumber) ?? state.billPayments?.get(docNumber);
       return id ? { externalId: id, version: "0", docNumber } : null;
     },
     async getById(_ctx, _type, externalId): Promise<PostResult | null> {
       for (const [, id] of state.posted) if (id === externalId) return { externalId, version: "0" };
       return null;
+    },
+    // Plan 076: record a BillPayment (keyed by DocNumber → adopt on resume) and zero the linked Bill's balance.
+    async postBillPayment(_ctx, payload, _requestId): Promise<PostResult> {
+      const docNumber = String((payload as { DocNumber?: string }).DocNumber ?? "");
+      state.billPaymentPayloads?.push(payload);
+      const externalId = `BP-${(state.billPayments?.size ?? 0) + 1}`;
+      state.billPayments?.set(docNumber, externalId);
+      const linked = (payload as { Line?: Array<{ LinkedTxn?: Array<{ TxnId?: string }> }> }).Line?.[0]?.LinkedTxn?.[0]?.TxnId;
+      if (linked && state.billBalances) state.billBalances.set(String(linked), 0);
+      return { externalId, version: "0" };
+    },
+    async getBillBalance(_ctx, externalId): Promise<number | null> {
+      const isPosted = [...state.posted.values()].includes(externalId);
+      if (!isPosted) return null;
+      return state.billBalances?.get(externalId) ?? 0;
     },
     async postJournalEntry(_ctx, input): Promise<PostResult> {
       const doc = input.postingKey; // harness keys posted by postingKey for readability
@@ -121,6 +139,26 @@ async function seedBillDelivery(connectionId: string, key: string): Promise<{ de
       select: { id: true },
     });
     return { deliveryId: del.id, vendorId: vendor.id };
+  });
+}
+
+/** Plan 076: seed a home-currency (USD) aggregate invoice bill marked PAID — a vendor + a PAID ApExportEvent
+ *  (ingestedInvoiceId + paidFromAccount) + a PENDING Bill delivery — so the sweep posts the Bill then records
+ *  a BillPayment. */
+async function seedPaidBillDelivery(connectionId: string, key: string, invoiceId: string): Promise<{ deliveryId: string; eventId: string }> {
+  return runInTenantTx(async (tx) => {
+    const vendor = await tx.vendor.create({ data: { name: `IDEM Bill Vendor ${key}`, currency: "USD" }, select: { id: true } });
+    const ev = await tx.apExportEvent.create({
+      data: {
+        postingKey: key, ingestedInvoiceId: invoiceId, amount: 60, currency: "USD",
+        debitAccount: "1300-Inventory", creditAccount: "2000-AP", receivedAt: new Date(), vendorId: vendor.id,
+        billLinesJson: [{ debitAccount: "1300-Inventory", amount: 60, description: "Paid line" }],
+        paymentStatus: "PAID", paidFromAccount: "1010-Bank", paidAt: new Date(),
+      },
+      select: { id: true },
+    });
+    const del = await tx.accountingDelivery.create({ data: { apExportEventId: ev.id, connectionId, objectType: "Bill", status: "PENDING" }, select: { id: true } });
+    return { deliveryId: del.id, eventId: ev.id };
   });
 }
 
@@ -241,6 +279,19 @@ async function main() {
     assert((await statusOf(b3.deliveryId)) === "WITHHELD", "base≠home bill is WITHHELD, not POSTED");
     assert(mmState.bills!.length === 0, "no Bill was posted to QBO on a currency mismatch");
     await prisma.accountingConnection.update({ where: { id: connectionId }, data: { homeCurrency: "USD" } }); // restore
+
+    console.log("\n── 8. Plan 076: a PAID invoice posts the Bill AND records a BillPayment exactly once ──");
+    const paid1 = await seedPaidBillDelivery(connectionId, "idem:apinv:paid:1", "idem-inv-paid-1");
+    const paidState: MockState = { posted: new Map(), bills: [], vendorCalls: [], billPayments: new Map(), billBalances: new Map(), billPaymentPayloads: [] };
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(paidState) });
+    assert((await statusOf(paid1.deliveryId)) === "POSTED", "paid invoice's Bill is POSTED");
+    assert(paidState.billPayments!.size === 1, "exactly one BillPayment recorded for the paid invoice");
+    const evAfter = await prisma.apExportEvent.findUnique({ where: { id: paid1.eventId }, select: { paymentExternalId: true } });
+    assert(!!evAfter?.paymentExternalId, "aggregate event stamped with the QBO BillPayment id");
+    const bp = paidState.billPaymentPayloads![0] as { Line: Array<{ LinkedTxn: Array<{ TxnId: string; TxnType: string }> }>; TotalAmt: number };
+    assert(bp.Line[0].LinkedTxn[0].TxnType === "Bill" && bp.TotalAmt === 60, "BillPayment links the Bill for the full amount (60)");
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(paidState) });
+    assert(paidState.billPayments!.size === 1, "re-sweep records NO duplicate BillPayment (exactly-once)");
 
       console.log(`\nALL ${passed} IDEMPOTENCY ASSERTIONS PASSED`);
     } finally {

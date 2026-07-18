@@ -131,13 +131,20 @@ export interface AccountingAdapter {
   getCompanyInfo(ctx: ProviderCallContext): Promise<{ companyName: string; homeCurrency: string; country?: string; multiCurrencyEnabled: boolean }>;
   listAccounts(ctx: ProviderCallContext): Promise<NormalizedAccount[]>;
   /** Query-before-post: find an already-posted object by our idempotency DocNumber. Null if none. */
-  findByDocNumber(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", docNumber: string): Promise<PostResult | null>;
+  findByDocNumber(ctx: ProviderCallContext, objectType: QboObjectType, docNumber: string): Promise<PostResult | null>;
   /** Reconcile read-back: fetch a posted object by its external Id. Null if it was deleted in the GL. */
-  getById(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", externalId: string): Promise<PostResult | null>;
+  getById(ctx: ProviderCallContext, objectType: QboObjectType, externalId: string): Promise<PostResult | null>;
   postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string): Promise<PostResult>;
   /** AP (Unit 10): find-or-create a vendor by name, then post a Bill (payload built provider-side).
    *  Plan 073: pass `currency` for a foreign (non-home) bill — the vendor is resolved currency-scoped
    *  (a distinct QBO vendor with CurrencyRef set at creation), since a QBO vendor's currency is immutable. */
   findOrCreateVendor(ctx: ProviderCallContext, name: string, currency?: string): Promise<string>;
   postBill(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string): Promise<PostResult>;
+  /** Plan 076: post a BillPayment (settles a Bill from the pay-from account). Payload built provider-side. */
+  postBillPayment(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string): Promise<PostResult>;
+  /** Plan 076: read a posted Bill's outstanding balance (0 = paid). Null if the Bill was deleted in the GL. */
+  getBillBalance(ctx: ProviderCallContext, externalId: string): Promise<number | null>;
 }
+
+/** The QBO object types we post + read back. */
+export type QboObjectType = "JournalEntry" | "Bill" | "BillPayment";
