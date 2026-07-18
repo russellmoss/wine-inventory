@@ -13,6 +13,7 @@ import { prisma, prismaBase } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { runAccountingPostSweep } from "@/lib/accounting/post-sweep";
+import { runAccountingReconcileSweep } from "@/lib/accounting/reconcile";
 import { _seedAccessCache, _clearAccessCache } from "@/lib/accounting/token";
 import { ProviderFault, type AccountingAdapter, type PostResult } from "@/lib/accounting/adapter";
 
@@ -293,6 +294,35 @@ async function main() {
     await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(paidState) });
     assert(paidState.billPayments!.size === 1, "re-sweep records NO duplicate BillPayment (exactly-once)");
 
+    console.log("\n── 9. Plan 076: reconcile reflects the QBO Bill Balance back into the app (two-way) ──");
+    // Seed an OUTSTANDING aggregate invoice bill already POSTED with an external Bill id, plus its invoice.
+    const reconInv = await runInTenantTx((tx) => tx.ingestedInvoice.create({
+      data: { batchId: "idem-recon", blobUrl: "local://x", fileName: "recon.pdf", mimeType: "application/pdf", docType: "invoice", status: "applied", extractedJson: {}, createdBy: "idem", paymentStatus: "OUTSTANDING" },
+      select: { id: true },
+    }));
+    const reconVendor = await runInTenantTx((tx) => tx.vendor.create({ data: { name: "IDEM Bill Vendor recon", currency: "USD" }, select: { id: true } }));
+    const reconEv = await runInTenantTx((tx) => tx.apExportEvent.create({
+      data: { postingKey: "idem:apinv:recon:1", ingestedInvoiceId: reconInv.id, amount: 60, currency: "USD", debitAccount: "1300", creditAccount: "2000", receivedAt: new Date(), vendorId: reconVendor.id, paymentStatus: "OUTSTANDING" },
+      select: { id: true },
+    }));
+    await runInTenantTx((tx) => tx.accountingDelivery.create({ data: { apExportEventId: reconEv.id, connectionId, objectType: "Bill", status: "POSTED", externalId: "BILL-RECON-1", verifiedAt: new Date(2000, 0, 1) } }));
+    // The bookkeeper paid it in QuickBooks → the Bill's balance is now 0.
+    const reconState: MockState = { posted: new Map([["doc-recon", "BILL-RECON-1"]]), billBalances: new Map([["BILL-RECON-1", 0]]) };
+    const rsum = await runAccountingReconcileSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(reconState) });
+    assert(rsum.paidReflected === 1, "reconcile reflected exactly one QBO-paid bill");
+    const evPaid = await prisma.apExportEvent.findUnique({ where: { id: reconEv.id }, select: { paymentStatus: true } });
+    const invPaid = await prisma.ingestedInvoice.findUnique({ where: { id: reconInv.id }, select: { paymentStatus: true } });
+    assert(evPaid?.paymentStatus === "PAID" && invPaid?.paymentStatus === "PAID", "a QBO balance of 0 flips the event + invoice to PAID in the app");
+
+    console.log("\n── 10. Plan 076: a balance>0 while the app says PAID surfaces a discrepancy (never silently flips) ──");
+    await runInTenantTx((tx) => tx.apExportEvent.update({ where: { id: reconEv.id }, data: { paymentStatus: "PAID", paymentExternalId: null } }));
+    await runInTenantTx((tx) => tx.ingestedInvoice.update({ where: { id: reconInv.id }, data: { paymentStatus: "PAID" } }));
+    const discState: MockState = { posted: new Map([["doc-recon", "BILL-RECON-1"]]), billBalances: new Map([["BILL-RECON-1", 60]]) };
+    const dsum = await runAccountingReconcileSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(discState) });
+    assert(dsum.paymentDiscrepancies === 1, "a paid-here / owed-in-QBO mismatch is surfaced as a discrepancy");
+    const evStill = await prisma.apExportEvent.findUnique({ where: { id: reconEv.id }, select: { paymentStatus: true } });
+    assert(evStill?.paymentStatus === "PAID", "the app status is NOT silently flipped on a discrepancy");
+
       console.log(`\nALL ${passed} IDEMPOTENCY ASSERTIONS PASSED`);
     } finally {
       // ── cleanup ALWAYS (deliveries first — FK to the event rows is RESTRICT) ──
@@ -304,6 +334,8 @@ async function main() {
       await prisma.accountingDelivery.deleteMany({ where: { apExportEventId: { in: apEvs.map((e) => e.id) } } });
       await prisma.apExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
       await prisma.vendor.deleteMany({ where: { name: { startsWith: "IDEM Bill Vendor" } } });
+      // Plan 076: the reconcile scenario's staged invoice.
+      await prisma.ingestedInvoice.deleteMany({ where: { batchId: "idem-recon" } });
       // Restore the connection's currency config (we pinned it for the Bill block).
       await prisma.accountingConnection.update({ where: { id: connectionId }, data: { homeCurrency: priorConn?.homeCurrency ?? null, multiCurrencyEnabled: priorConn?.multiCurrencyEnabled ?? null } }).catch(() => {});
       if (createdConn) {
