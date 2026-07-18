@@ -7,8 +7,11 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 076 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — BUILT (11/11 units), all gates green, ready for `/ship`.**
-Branch `claude/invoice-ingestion-features-95d4df` (commits d79f6f4 → 75a13d7). Plan at
+**Plan 076/078 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — SHIPPED (PR #246 OPEN).**
+Branch `claude/invoice-ingestion-features-95d4df`; merged latest main (Plan 075 vendor-pull; resolved qbo/client.ts conflict).
+All gates green post-merge (vitest 2284, ingest 81, accounting-idempotency 33, invariants 35/35, next build). Live QBO
+pass + Demo browser-QA both DONE + user-confirmed. Only remaining: accountant sign-off on the BillPayment GL (not a
+merge blocker). Plan at
 [docs/plans/2026-07-18-076-…](docs/plans/2026-07-18-076-feat-invoice-qbo-bill-payment-status-plan.md).
 (1) Duplicate confirm gate — stage-time structured `duplicates` + upload modal ("continue?") + hard apply guard
 (`allowDuplicate`). (2) **One aggregate Bill per invoice** — `emitApExportForInvoice` (postingKey `apinv:<id>`,
