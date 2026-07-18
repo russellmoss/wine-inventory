@@ -12,6 +12,7 @@ import {
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
 import { MAX_CONTENT, clampHistoryForSend } from "@/lib/assistant/message-window";
+import { drainConsoleBuffer } from "@/lib/observability/console-buffer";
 import type { Caption } from "./voice/useVoiceSession";
 import { useDictation } from "./voice/useDictation";
 import { FeedbackTicketModal } from "./FeedbackTicketModal";
@@ -429,6 +430,8 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           conversationId,
           ratedMessageId: rated?.kind === "text" && rated.role === "assistant" ? rated.id : undefined,
           messages: transcript,
+          // Console at 👎 time is only useful for a negative rating (Plan 079).
+          clientConsole: rating === "down" ? drainConsoleBuffer() : undefined,
         }),
       });
     } catch {

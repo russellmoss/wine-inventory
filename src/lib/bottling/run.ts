@@ -12,6 +12,7 @@ import { computeConsumedLiquid, writeBottlingCostSnapshot } from "@/lib/cost/cog
 import { consumePackagingTx } from "@/lib/cost/consume-packaging";
 import { negateCostForReversedOp } from "@/lib/cost/reverse";
 import { emitExportForSnapshot } from "@/lib/cost/export-emit";
+import { validateBottlingAbv } from "@/lib/bottling/abv-range";
 
 export type BottlingInput = {
   vesselIds: string[];
@@ -60,9 +61,13 @@ export async function runBottlingTx(tx: Prisma.TransactionClient, input: Bottlin
   const { vesselIds, destinationLocationId, skuName, skuVintage, bottlesProduced, date, method, dosageStyle, abv } = input;
   if (bottlesProduced < 1) throw new ActionError("Bottles produced must be at least 1.");
   if (!skuName) throw new ActionError("Give the bottled wine a name.");
-  // Phase 14 (Fork 1A / OV#6): ABV is required so the wine is classifiable for TTB. Reject ≤0;
-  // >24% is allowed but the tax-class derivation flags it for review.
-  if (!(abv > 0)) throw new ActionError("Enter the wine's alcohol by volume (%). ABV is required to classify the wine for TTB reporting.");
+  // Phase 14 (Fork 1A / OV#6): ABV is required so the wine is classifiable for TTB. Server source of
+  // truth for the range — rejects ≤0 (missing) and >100 (physically impossible, e.g. a 140% typo that
+  // corrupts the finished-goods/tax record); the 24–100 band is deliberately allowed so the tax-class
+  // derivation can flag it for review rather than drop the volume. Covers every entry point (standalone
+  // create/edit + the WO BOTTLE task) since they all bottle through here.
+  const abvError = validateBottlingAbv(abv);
+  if (abvError) throw new ActionError(abvError);
   const ids = [...new Set(vesselIds)].filter(Boolean);
   if (ids.length === 0) throw new ActionError("Pick at least one vessel.");
 

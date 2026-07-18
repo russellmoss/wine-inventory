@@ -2,6 +2,8 @@
 
 import React from "react";
 import { Badge, Button, Card, Input, Modal, Textarea } from "@/components/ui";
+import { drainConsoleBuffer, clearConsoleBuffer } from "@/lib/observability/console-buffer";
+import { DEBUG_CONTEXT_SCHEMA_VERSION } from "@/lib/feedback/debug-context";
 
 type Kind = "BUG_REPORT" | "FEATURE_REQUEST";
 type PendingImage = { file: File; previewUrl: string };
@@ -45,6 +47,9 @@ export function FeedbackForm({
     setWarnings([]);
     setResult(null);
     try {
+      // Snapshot the console at report time — the reporter is usually still on the
+      // screen where the bug happened, so the real error is right here (Plan 079).
+      const { consoleLog, clientErrors } = drainConsoleBuffer();
       const res = await fetch("/api/feedback/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -53,7 +58,12 @@ export function FeedbackForm({
           title,
           body,
           pageUrl: window.location.href,
-          debugContext: { schemaVersion: 1, source: compact ? "assistant-widget" : "help-page" },
+          debugContext: {
+            schemaVersion: DEBUG_CONTEXT_SCHEMA_VERSION,
+            source: compact ? "assistant-widget" : "help-page",
+            consoleLog,
+            clientErrors,
+          },
         }),
       });
       const data = await res.json();
@@ -77,6 +87,8 @@ export function FeedbackForm({
       setTitle("");
       setBody("");
       setFiles([]);
+      // Reset so a later report on a different screen doesn't carry these logs.
+      clearConsoleBuffer();
       onSubmitted?.(data.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");

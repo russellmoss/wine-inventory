@@ -33,6 +33,18 @@ No schema. `/review` CLEAR (3 specialists, 0 critical). Merged origin/main; **vi
 
 </details>
 
+<details><summary>prev objective — Ticket #268 self-assign WO inbox emit + "Issue" button (SHIPPED PR #278)</summary>
+
+**Ticket #268 — self-assigned WO emitted no inbox notification + confusing "Issue" button — SHIPPED (PR #278 merged, `6dc2d14`).**
+Feedback `cmrqtvwja000fij04rsn25z15` (Demo Winery). Two issues: (a) the WO detail "Issue" button was ambiguous;
+(b) **the real defect** — a self-assigned WO showed in the inbox WO bucket but produced NO inbox notification (every
+emit path suppressed self-notifications AND create never emitted an assignment notification). Fix: `allowSelfNotification`
+flag on `EmitNotificationInput` + pure `shouldEmitNotification` gate; emit `WO_ASSIGNED` at the create chokepoint
+(`createWorkOrderCore`) allowing self; reassign emit self-aware too. `WO_STATUS` self-suppression unchanged. Button →
+"Issue & open for execution". vitest 50/50, DB proof passed.
+
+</details>
+
 <details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, SHIPPED PR #262)</summary>
 
 **WO builder same-vessel transfer guard (feedback cmrqqm75b, P1 defect) — SHIPPED, PR #262 merged (`ee851b8`).**
@@ -205,6 +217,7 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **Ticket #188 — `delete_harvest_pick` + confirmed VineyardBlock cascade — MERGED (squash PR #265, 3eb512e); ticket RESOLVED.** (moved off Current.)
 - **Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2 display) — SHIPPED + MERGED (PR #274, 222fe63); ticket RESOLVED/DEFECT, reporter Mike DM'd; branch pruned.**
   Design-partner (Mike) report on `/inbox?bucket=wo`: "when I select a work order to view it, I shouldn't have to
   select it again in the viewing box to open it." `/investigate` (via the real ticket `pageUrl`, not `/work-orders`)
@@ -315,4 +328,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Empty-source stock-transfer error clarity (feedback cmrquedll…, plan #270) SHIPPING (PR #277): /inventory Move-stock Transfer from a location holding none of the item was blocked but showed a generic "an error occurred" — `moveStock` was a plain `action` so Next redacted the thrown ActionError in prod. Fix: `moveStock` → `safeAction` + `unwrap` at both call sites (Inventory form + assistant adjust-inventory committer); `transferStock` names the reason (empty "no inventory there" vs shortfall "only N there"). tsc/eslint/vitest-55/verify:naming/verify:ai-native green + DB proof on Demo (QA-* fixtures, cleaned). Worked in the session worktree (main checkout was live-in-use by a parallel session; restored its branch pointer). PENDING: CI green → squash-merge → resolve ticket + DM Mike. Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
+_Last updated: 2026-07-18 — Empty-source stock-transfer error clarity (feedback cmrquedll…, plan #270) SHIPPING (PR #277): /inventory Move-stock Transfer from a location holding none of the item was blocked but showed a generic "an error occurred" — `moveStock` was a plain `action` so Next redacted the thrown ActionError in prod. Fix: `moveStock` → `safeAction` + `unwrap` at both call sites (Inventory form + assistant adjust-inventory committer); `transferStock` names the reason (empty "no inventory there" vs shortfall "only N there"). tsc/eslint/vitest-55/verify:naming/verify:ai-native green + DB proof on Demo (QA-* fixtures, cleaned). Worked in the session worktree (main checkout was live-in-use by a parallel session; restored its branch pointer). PENDING: CI green → squash-merge → resolve ticket + DM Mike. Prior: Ticket #268 (feedback cmrqtvwja) self-assign WO inbox emit + "Issue" button — SHIPPED, PR #278 merged (6dc2d14). Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63); WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED (PR #262, ee851b8); P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._

@@ -13,6 +13,7 @@ import {
   classifyPackagingRole,
   missingRequiredPackaging,
 } from "@/lib/bottling/packaging-bom";
+import { validateBottlingAbv, MAX_BOTTLING_ABV } from "@/lib/bottling/abv-range";
 
 export type VesselOpt = { id: string; code: string; type: "BARREL" | "TANK"; availableL: number; contents: string[] };
 export type LocOpt = { id: string; name: string };
@@ -44,6 +45,10 @@ function BottlingForm({
 }) {
   const [picked, setPicked] = React.useState<string[]>(initial.vesselIds);
   const [bottles, setBottles] = React.useState<number | "">(initial.bottles);
+  // ABV is controlled so we can range-check inline (mirrors the server guard in runBottlingTx). An
+  // out-of-range value (missing or >100%) shows a friendly hint and blocks submit before any round-trip.
+  const [abv, setAbv] = React.useState<number | "">(initial.abv);
+  const abvError = abv === "" ? null : validateBottlingAbv(Number(abv));
   // Plan 056: the packaging consumed on this run (glass/cork/capsule/label/case). Quantities derive from
   // the bottle count × a per-line factor; actual eaches are recomputed at submit from the current count.
   const [pkgLines, setPkgLines] = React.useState<PackagingPlanLine[]>([]);
@@ -79,10 +84,10 @@ function BottlingForm({
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   }
 
-  const blocked = pending || picked.length === 0 || missingPackaging.length > 0;
+  const blocked = pending || picked.length === 0 || missingPackaging.length > 0 || abvError !== null;
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (missingPackaging.length > 0) return; onSubmit(new FormData(e.currentTarget)); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (missingPackaging.length > 0 || abvError !== null) return; onSubmit(new FormData(e.currentTarget)); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {picked.map((id) => <input key={id} type="hidden" name="vesselIds" value={id} />)}
 
       <div>
@@ -110,8 +115,9 @@ function BottlingForm({
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Input label="Wine name" name="skuName" defaultValue={initial.skuName} required style={{ flex: "1 1 200px" }} />
         <Input label="Vintage" name="skuVintage" type="number" defaultValue={initial.skuVintage} required style={{ flex: "0 1 110px" }} />
-        <Input label="ABV %" name="abv" type="number" step="0.1" min="0.1" defaultValue={initial.abv} required style={{ flex: "0 1 110px" }} title="Alcohol by volume — required for TTB tax classification" />
+        <Input label="ABV %" name="abv" type="number" step="0.1" min="0.1" max={MAX_BOTTLING_ABV} value={abv} onChange={(e) => setAbv(e.target.value === "" ? "" : Number(e.target.value))} required style={{ flex: "0 1 110px" }} title="Alcohol by volume — required for TTB tax classification" />
       </div>
+      {abvError ? <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{abvError}</p> : null}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ flex: "0 1 170px" }}>
           <Input label={max !== undefined ? `Bottles (max ${max})` : "Bottles"} name="bottlesProduced" type="number" min="1" max={max} value={bottles} onChange={(e) => setBottles(e.target.value === "" ? "" : Number(e.target.value))} required />

@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import type { CapturedConsoleEntry } from "@/lib/feedback/debug-context";
 import { sanitizeTraceValue } from "./trace";
 
 const MAX_MESSAGES = 60;
@@ -19,6 +20,10 @@ export type FeedbackDebugContext = {
   ratedMessageId?: string;
   window?: { start: number; end: number; total: number };
   ratedAssistantTrace?: unknown;
+  // Console captured client-side at the moment of the 👎 (Plan 079, Unit 2);
+  // merged in by the route without disturbing the server-built fields above.
+  consoleLog?: CapturedConsoleEntry[];
+  clientErrors?: CapturedConsoleEntry[];
 };
 
 type PersistedFeedbackMessage = {
