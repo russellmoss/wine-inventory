@@ -3,6 +3,7 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { getValidAccessToken } from "@/lib/accounting/token";
 import { QboAdapter } from "@/lib/accounting/qbo/client";
+import { listAllOrgIds, disconnectEnumerator } from "@/lib/accounting/enumerator";
 import type { ProviderCallContext } from "@/lib/accounting/adapter";
 import { findVendorNearMatches } from "@/lib/vendors/vendors-shared";
 
@@ -112,4 +113,49 @@ export async function getQboVendorMatchesCore(name: string, opts?: { tenantId?: 
     return { high: high.map((v) => ({ externalId: v.id, name: v.name })) };
   };
   return opts?.tenantId ? runAsTenant(opts.tenantId, run) : run();
+}
+
+const SWEEP_BATCH = 100; // bounded per-tenant per-run — winery vendor counts are small; a big backlog trickles across runs.
+
+export type VendorSyncSweepSummary = { tenants: number; opted: number; retried: number; synced: number; stillPending: number; conflicts: number; errors: number };
+
+/**
+ * Plan 077 Unit 5 — the offline retry sweep. A vendor created while QBO was unreachable is stamped
+ * syncStatus='pending'; this pushes it later, unattended. Enumerates every org (least-privilege enumerator, SEC-C3),
+ * per-tenant runAsTenant: skip tenants that haven't opted into push OR have no CONNECTED QBO connection, then
+ * re-push each pending vendor via the SAME idempotent pushVendorToQboCore (query-before-create → safe to retry; no
+ * claim/lease table needed). One vendor's failure stays pending and isolated; one tenant's failure doesn't abort
+ * the sweep. Best-effort backstop for the eager create path — the lazy bill-post path is the other backstop.
+ */
+export async function runVendorSyncSweep(deps?: { orgIds?: string[] }): Promise<VendorSyncSweepSummary> {
+  const orgIds = deps?.orgIds ?? (await listAllOrgIds());
+  const summary: VendorSyncSweepSummary = { tenants: orgIds.length, opted: 0, retried: 0, synced: 0, stillPending: 0, conflicts: 0, errors: 0 };
+  try {
+    for (const tenantId of orgIds) {
+      try {
+        await runAsTenant(tenantId, async () => {
+          const settings = await prisma.appSettings.findFirst({ select: { pushVendorsToQbo: true } });
+          if (!settings?.pushVendorsToQbo) return; // not opted in — leave pending vendors alone
+          const conn = await buildQboCtx();
+          if (!conn) return; // QBO offline for this tenant — try again next run
+          summary.opted++;
+          const pending = await prisma.vendor.findMany({
+            where: { syncStatus: "pending", externalVendorId: null },
+            select: { id: true },
+            take: SWEEP_BATCH,
+          });
+          for (const v of pending) {
+            summary.retried++;
+            const status = await pushVendorToQboCore(v.id); // already inside runAsTenant — no nested tenantId
+            if (status === "synced") summary.synced++;
+            else if (status === "conflict") summary.conflicts++;
+            else summary.stillPending++;
+          }
+        });
+      } catch { summary.errors++; }
+    }
+  } finally {
+    if (!deps?.orgIds) await disconnectEnumerator();
+  }
+  return summary;
 }
