@@ -29,7 +29,7 @@ export type ApEmitResult = { emitted: number; postable: boolean; reason?: string
  */
 export async function emitApExportForReceipt(
   supplyLotId: string,
-  opts: { vendorName?: string | null; terms?: string | null },
+  opts: { vendorName?: string | null; terms?: string | null; vendorInvoiceNumber?: string | null },
   dbArg?: Db,
 ): Promise<ApEmitResult> {
   const db = asDb(dbArg);
@@ -76,6 +76,9 @@ export async function emitApExportForReceipt(
         currency: settings?.currency ?? "USD",
         receivedAt: lot.createdAt,
         dueDate: dueDateFrom(lot.createdAt, opts.terms),
+        // Plan 072: supplier invoice # rides on the immutable event → the QBO Bill's PrivateNote memo
+        // (searchable). NOT a grouping/idempotency key — per-lot Bills stay separate (DocNumber = ap:<lotId>).
+        vendorInvoiceNumber: opts.vendorInvoiceNumber?.trim() || null,
       },
       select: { id: true },
     });

@@ -5,7 +5,9 @@ import { action } from "@/lib/actions";
 import {
   receiveSupplyCore,
   setMaterialActiveCore,
+  listMaterialLots,
   type ReceiveSupplyInput,
+  type MaterialLotRow,
 } from "@/lib/cellar/materials";
 import { receiveBulkWineCostCore, type ReceiveBulkWineCostInput } from "@/lib/cost/receive";
 
@@ -26,6 +28,14 @@ export const receiveSupplyAction = action(
     const res = await receiveSupplyCore(actor, input);
     revalidateStockSurfaces();
     return res;
+  },
+);
+
+/** Plan 072 Unit 10 (read side): per-lot history for a material's detail panel (lots + expiry + source docs).
+ *  Read-only; the `action` wrapper scopes it to the caller's tenant (RLS). */
+export const listMaterialLotsAction = action(
+  async (_ctx, materialId: string): Promise<MaterialLotRow[]> => {
+    return listMaterialLots(materialId);
   },
 );
 

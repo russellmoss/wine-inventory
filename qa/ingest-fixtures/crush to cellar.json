@@ -1,0 +1,82 @@
+{
+  "_verified": false,
+  "source": "crush to cellar.pdf",
+  "result": {
+    "blobUrl": "local://crush to cellar.pdf",
+    "fileName": "crush to cellar.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "invoice",
+      "vendor": {
+        "name": "Crush2Cellar",
+        "address": null,
+        "contactName": null,
+        "phone": null,
+        "email": null
+      },
+      "currency": "USD",
+      "invoiceNumber": "SL1955201",
+      "invoiceTotal": 533.78,
+      "lines": [
+        {
+          "description": "Laffort Lafazym Extract (250g)",
+          "vendorItemCode": "LAFAZYMEXT",
+          "qty": 1,
+          "unit": "250 g",
+          "unitPrice": 77.27,
+          "lineTotal": 77.27,
+          "lotNo": null,
+          "brand": "Laffort",
+          "productName": "Lafazym Extract",
+          "genericName": "Pectolytic enzyme"
+        },
+        {
+          "description": "AEB Fermoplus DAP Free (5kg)",
+          "vendorItemCode": "3229",
+          "qty": 1,
+          "unit": "5 kg",
+          "unitPrice": 150,
+          "lineTotal": 150,
+          "lotNo": null,
+          "brand": "AEB",
+          "productName": "Fermoplus DAP Free",
+          "genericName": null
+        },
+        {
+          "description": "Laffort Microcol Alpha (1kg)",
+          "vendorItemCode": "MICROALPH1",
+          "qty": 3,
+          "unit": "1 kg",
+          "unitPrice": 9.17,
+          "lineTotal": 27.51,
+          "lotNo": null,
+          "brand": "Laffort",
+          "productName": "Microcol Alpha",
+          "genericName": "Bentonite"
+        },
+        {
+          "description": "Laffort Polymust Press (1kg)",
+          "vendorItemCode": "POLYMUSTAF",
+          "qty": 3,
+          "unit": "1 kg",
+          "unitPrice": 43.67,
+          "lineTotal": 131.01,
+          "lotNo": null,
+          "brand": "Laffort",
+          "productName": "Polymust Press",
+          "genericName": null
+        }
+      ],
+      "charges": {
+        "shipping": 147.99,
+        "handling": null,
+        "surcharge": null,
+        "tax": 0
+      },
+      "coa": null,
+      "warnings": [],
+      "notes": null
+    }
+  }
+}

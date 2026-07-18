@@ -1,0 +1,47 @@
+{
+  "_verified": false,
+  "source": "2240110_COAFILE_20260714.pdf",
+  "result": {
+    "blobUrl": "local://2240110_COAFILE_20260714.pdf",
+    "fileName": "2240110_COAFILE_20260714.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "coa",
+      "vendor": {
+        "name": "LAFFORT",
+        "address": null,
+        "contactName": null,
+        "phone": null,
+        "email": null
+      },
+      "currency": null,
+      "invoiceNumber": null,
+      "invoiceTotal": null,
+      "lines": [
+        {
+          "description": "POLYMUST PRESS (ex AF) - P. 1 KG",
+          "vendorItemCode": "POLYMUST-AF-1",
+          "qty": null,
+          "unit": "1 kg",
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2240110",
+          "brand": "Laffort",
+          "productName": "Polymust Press",
+          "genericName": "Polyvinylpolypyrrolidone (PVPP) / plant protein"
+        }
+      ],
+      "charges": null,
+      "coa": {
+        "lotNo": "2240110",
+        "expiry": "2027-01-10",
+        "batch": "2240110"
+      },
+      "warnings": [
+        "Best Before Date '10/01/27' interpreted as 2027-01-10 (DD/MM/YY); verify date format"
+      ],
+      "notes": null
+    }
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "_verified": false,
+  "source": "Sales Invoice SIV535475.pdf",
+  "result": {
+    "blobUrl": "local://Sales Invoice SIV535475.pdf",
+    "fileName": "Sales Invoice SIV535475.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "invoice",
+      "vendor": {
+        "name": "Crush2Cellar LLC",
+        "address": null,
+        "contactName": null,
+        "phone": null,
+        "email": null
+      },
+      "currency": "USD",
+      "invoiceNumber": "SIV535475",
+      "invoiceTotal": 533.78,
+      "lines": [
+        {
+          "description": "LAFFORT LAFAZYM EXTRACT 250G",
+          "vendorItemCode": "LAFAZYMEXT",
+          "qty": 1,
+          "unit": "250 g",
+          "unitPrice": 77.27,
+          "lineTotal": 77.27,
+          "lotNo": "2230517",
+          "brand": "Laffort",
+          "productName": "Lafazym Extract",
+          "genericName": "Pectolytic enzyme"
+        },
+        {
+          "description": "AEB FERMOPLUS DAP FREE 5KG",
+          "vendorItemCode": "3229",
+          "qty": 1,
+          "unit": "5 kg",
+          "unitPrice": 150,
+          "lineTotal": 150,
+          "lotNo": "2025030373",
+          "brand": "AEB",
+          "productName": "Fermoplus DAP Free",
+          "genericName": "Yeast nutrient (DAP-free)"
+        },
+        {
+          "description": "LAFFORT MICROCOL ALPHA BENTONITE 1KG",
+          "vendorItemCode": "MICROALPH1",
+          "qty": 3,
+          "unit": "1 kg",
+          "unitPrice": 9.17,
+          "lineTotal": 27.51,
+          "lotNo": "2250423",
+          "brand": "Laffort",
+          "productName": "Microcol Alpha",
+          "genericName": "Bentonite"
+        },
+        {
+          "description": "LAFFORT POLYMUST PRESS (AF) 1KG",
+          "vendorItemCode": "POLYMUSTAF",
+          "qty": 3,
+          "unit": "1 kg",
+          "unitPrice": 43.67,
+          "lineTotal": 131.01,
+          "lotNo": "2240110",
+          "brand": "Laffort",
+          "productName": "Polymust Press (AF)",
+          "genericName": "Fining agent (PVPP/casein blend)"
+        }
+      ],
+      "charges": {
+        "shipping": 147.99,
+        "handling": null,
+        "surcharge": null,
+        "tax": 0
+      },
+      "coa": null,
+      "warnings": [
+        "Ship To name 'MIke Juergens' differs from Bill To/Sell To 'Bhutan Wine Company' — verify",
+        "Invoice stamped PAID / PAID FOR"
+      ],
+      "notes": null
+    }
+  }
+}

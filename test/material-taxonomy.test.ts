@@ -86,10 +86,14 @@ describe("kindsForCategory", () => {
 });
 
 describe("coerceMaterialCategory", () => {
-  it("accepts known categories, rejects unknown → OTHER", () => {
+  it("accepts known categories (incl. Plan 072 EQUIPMENT); routes unknown → UNCLASSIFIED (non-doseable), never OTHER", () => {
     expect(coerceMaterialCategory("ADDITIVE")).toBe("ADDITIVE");
     expect(coerceMaterialCategory("packaging")).toBe("PACKAGING");
-    expect(coerceMaterialCategory("bogus")).toBe("OTHER");
-    expect(coerceMaterialCategory(null)).toBe("OTHER");
+    expect(coerceMaterialCategory("equipment")).toBe("EQUIPMENT");
+    // ChatGPT #6: a typo'd/unknown category must NOT fall back to the doseable OTHER — it goes to the
+    // non-doseable UNCLASSIFIED sink so an unrecognized import can't be dosed into wine.
+    expect(coerceMaterialCategory("EQUIPMNET")).toBe("UNCLASSIFIED");
+    expect(coerceMaterialCategory("bogus")).toBe("UNCLASSIFIED");
+    expect(coerceMaterialCategory(null)).toBe("UNCLASSIFIED");
   });
 });

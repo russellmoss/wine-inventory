@@ -15,7 +15,10 @@ import {
 } from "@/components/cellar/MaterialForm";
 import type { VendorRow } from "@/lib/vendors/vendors-shared";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
-import { receiveSupplyAction, setMaterialActiveAction } from "@/lib/cost/actions";
+import { receiveSupplyAction, setMaterialActiveAction, listMaterialLotsAction } from "@/lib/cost/actions";
+import type { MaterialLotRow } from "@/lib/cellar/materials";
+import { lotExpiryStatus, expiryLabel, docRoleLabel } from "@/lib/cellar/lot-history";
+import { extractAndStageAction } from "@/lib/ingest/actions";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 
 // Phase 8/12 → 036 → 037: manage the supply catalog. Categories are collapsible + searchable; clicking a
@@ -150,9 +153,12 @@ export function ExpendablesClient({ materials, vendors }: { materials: CellarMat
             or deactivate it. Items in use can&rsquo;t be deleted, only deactivated.
           </p>
         </div>
-        <Button variant="primary" onClick={() => setAddOpen(true)} style={{ minHeight: 44, marginTop: 10 }}>
-          + Add expendable
-        </Button>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+          <IngestInvoiceLauncher />
+          <Button variant="primary" onClick={() => setAddOpen(true)} style={{ minHeight: 44, marginTop: 10 }}>
+            + Add expendable
+          </Button>
+        </div>
       </div>
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13, margin: "10px 0" }}>{error}</p> : null}
@@ -285,6 +291,68 @@ export function ExpendablesClient({ materials, vendors }: { materials: CellarMat
   );
 }
 
+// Plan 072 Unit 8 — the "+ Ingest invoice" entry: pick a pile of PDFs/images → upload them to the private
+// blob route → extract+stage them → land on the per-batch review screen. Degrades gracefully when the
+// upload route reports storage isn't configured (503) so the user is pointed to the manual add flow.
+function IngestInvoiceLauncher() {
+  const router = useRouter();
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [status, setStatus] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function onFiles(fileList: FileList | null) {
+    setError(null);
+    setStatus(null);
+    const files = fileList ? Array.from(fileList) : [];
+    if (files.length === 0) return;
+    setBusy(true);
+    try {
+      setStatus(`Uploading ${files.length} document${files.length === 1 ? "" : "s"}…`);
+      const form = new FormData();
+      for (const f of files) form.append("files", f);
+      const res = await fetch("/api/ingest/documents", { method: "POST", body: form });
+      if (res.status === 503) {
+        setError("Document ingestion isn't available (upload storage isn't configured). Add the item manually with “+ Add expendable”.");
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { files?: { blobUrl: string; mimeType: string; fileName: string; fileSha256?: string }[]; error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Upload failed.");
+        return;
+      }
+      const uploaded = data.files ?? [];
+      if (uploaded.length === 0) {
+        setError("No files were stored.");
+        return;
+      }
+      const batchId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `batch_${Date.now()}`;
+      setStatus(`Reading ${uploaded.length} document${uploaded.length === 1 ? "" : "s"}… this can take a moment.`);
+      await extractAndStageAction({
+        batchId,
+        files: uploaded.map((u) => ({ blobUrl: u.blobUrl, fileName: u.fileName, mimeType: u.mimeType, fileSha256: u.fileSha256 })),
+      });
+      router.push(`/setup/expendables/ingest?batch=${encodeURIComponent(batchId)}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ingestion failed.");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+      <input ref={inputRef} type="file" accept="application/pdf,image/png,image/jpeg" multiple hidden onChange={(e) => onFiles(e.target.files)} />
+      <Button variant="secondary" onClick={() => inputRef.current?.click()} disabled={busy} style={{ minHeight: 44, marginTop: 10 }}>
+        {busy ? "Working…" : "+ Ingest invoice"}
+      </Button>
+      {status ? <span style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 220 }}>{status}</span> : null}
+      {error ? <span style={{ fontSize: 12, color: "var(--danger)", maxWidth: 240 }}>{error}</span> : null}
+    </div>
+  );
+}
+
 function SupplyRow({ mat, onOpen }: { mat: CellarMaterialDTO; onOpen: () => void }) {
   const tracked = !!mat.isStockTracked;
   const out = tracked && (mat.onHand ?? 0) <= 0;
@@ -397,6 +465,8 @@ function MaterialDetailModal({
           {inactive ? <Badge tone="neutral" variant="soft">inactive</Badge> : <Badge tone="green" variant="soft">active</Badge>}
         </DetailRow>
 
+        {tracked ? <div style={{ marginTop: 12 }}><MaterialLotsPanel key={m.id} materialId={m.id} /></div> : null}
+
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 16 }}>
           <Button type="button" variant="ghost" disabled={pending} onClick={() => run(() => setMaterialActiveAction(m.id, inactive))}>
             {inactive ? "Reactivate" : "Deactivate"}
@@ -406,6 +476,78 @@ function MaterialDetailModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Plan 072 Unit 10 (read side): per-lot history — each SupplyLot with its costed metadata, expiry (from a
+// matched COA), and links to its source documents (invoice / COA). Lazily loads on first render; collapsed
+// by default so the detail modal stays compact. Foreign-currency + expired/near-expiry lots are flagged.
+function MaterialLotsPanel({ materialId }: { materialId: string }) {
+  const [lots, setLots] = React.useState<MaterialLotRow[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // The parent keys this panel by materialId, so it re-mounts (fresh null state) when the material changes —
+  // no synchronous setState reset inside the effect (that triggers a cascading re-render, flagged by lint).
+  React.useEffect(() => {
+    let live = true;
+    listMaterialLotsAction(materialId)
+      .then((rows) => { if (live) setLots(rows); })
+      .catch(() => { if (live) setError("Couldn't load lot history."); });
+    return () => { live = false; };
+  }, [materialId]);
+
+  const now = new Date();
+  const count = lots?.length ?? 0;
+  const title = <span style={{ fontSize: 13.5, fontWeight: 600 }}>Lots {lots ? `(${count})` : ""}</span>;
+
+  return (
+    <Collapsible title={title} defaultOpen={false}>
+      {error ? (
+        <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>{error}</div>
+      ) : lots == null ? (
+        <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>Loading…</div>
+      ) : count === 0 ? (
+        <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>No lots received yet.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>
+          {lots.map((l) => {
+            const exp = lotExpiryStatus(l.expiresAt, now);
+            const received = new Date(l.receivedAt).toLocaleDateString();
+            return (
+              <div key={l.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{l.lotCode || "— (no lot code)"}</span>
+                  {exp ? (
+                    <Badge tone={exp.status === "expired" ? "red" : exp.status === "soon" ? "gold" : "green"} variant="soft">{expiryLabel(exp)}</Badge>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <span>Received {received}</span>
+                  <span><span style={num}>{l.qtyRemaining}</span> / {l.qtyReceived} {l.stockUnit} left</span>
+                  <span>{l.unitCost != null ? <>{l.unitCost} {l.currency}/{l.stockUnit}</> : "cost unknown"}</span>
+                </div>
+                {l.documents.length ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+                    {l.documents.map((d) => (
+                      <a
+                        key={`${d.ingestedInvoiceId}-${d.role}`}
+                        href={`/api/ingest/document?id=${encodeURIComponent(d.ingestedInvoiceId)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={d.fileName}
+                        style={{ fontSize: 12, color: "var(--wine-primary)", textDecoration: "underline" }}
+                      >
+                        {docRoleLabel(d.role)} ↗
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Collapsible>
   );
 }
 

@@ -36,6 +36,7 @@ export const MATERIAL_KINDS = [
   "CLEANING", // Phase 9.1: cleaning chemical (proxycarb, caustic) — overhead, consumed by maintenance, never a wine COGS
   "SANITIZER", // Phase 9.1: sanitizer (PAA, ozone) — overhead, consumed by maintenance, never a wine COGS
   "PACKAGING", // Phase 034: dry goods (corks, capsules, bottles, labels) — organized in the catalog, NEVER dosed into wine
+  "EQUIPMENT", // Plan 072: spare parts / fittings (e.g. stainless clamps, gaskets) — a stock/supply home, NEVER dosed into wine or hit wine COGS
   "OTHER",
 ] as const;
 export type MaterialKind = (typeof MATERIAL_KINDS)[number];

@@ -1,0 +1,48 @@
+{
+  "_verified": false,
+  "source": "2025030373_COAFILE_20260714.pdf",
+  "result": {
+    "blobUrl": "local://2025030373_COAFILE_20260714.pdf",
+    "fileName": "2025030373_COAFILE_20260714.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "coa",
+      "vendor": {
+        "name": "AEB Brazil",
+        "address": null,
+        "contactName": null,
+        "phone": null,
+        "email": null
+      },
+      "currency": null,
+      "invoiceNumber": null,
+      "invoiceTotal": null,
+      "lines": [
+        {
+          "description": "FERMOPLUS DAP FREE",
+          "vendorItemCode": null,
+          "qty": null,
+          "unit": null,
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2025030373",
+          "brand": "AEB",
+          "productName": "Fermoplus DAP Free",
+          "genericName": "Diammonium phosphate (DAP)-free fermentation nutrient"
+        }
+      ],
+      "charges": null,
+      "coa": {
+        "lotNo": "2025030373",
+        "expiry": "2027-03-26",
+        "batch": "2025030373"
+      },
+      "warnings": [
+        "COA/Compliance Data Sheet — not a bill; no prices, currency, or invoice number present",
+        "genericName inferred from product name 'DAP FREE'; verify"
+      ],
+      "notes": null
+    }
+  }
+}

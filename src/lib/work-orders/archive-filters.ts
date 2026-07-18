@@ -12,6 +12,7 @@ export type WorkOrderFilters = {
   to?: string; // ISO date (<= end-of-day)
   assigneeEmail?: string;
   templateId?: string;
+  locationId?: string; // plan 053 B9: the WO's location (where the work happens)
   vesselIds?: string[]; // match tasks touching ANY of these vessels (source or dest)
   q?: string; // matches title (contains) or exact WO number
 };
@@ -36,6 +37,7 @@ export function parseWorkOrderFilters(params: Record<string, string | string[] |
     to: one(params.to),
     assigneeEmail: one(params.assigneeEmail),
     templateId: one(params.templateId),
+    locationId: one(params.locationId),
     vesselIds: vesselList.length ? vesselList : undefined,
     q: one(params.q),
   };
@@ -47,7 +49,7 @@ export const parseOpenFilters = (params: Record<string, string | string[] | unde
 /** Serialize filters back to a querystring (stable key order; blanks omitted). */
 export function serializeWorkOrderFilters(f: WorkOrderFilters): string {
   const sp = new URLSearchParams();
-  for (const key of ["status", "from", "to", "assigneeEmail", "templateId", "q"] as const) {
+  for (const key of ["status", "from", "to", "assigneeEmail", "templateId", "locationId", "q"] as const) {
     const v = f[key];
     if (v) sp.set(key, v);
   }
@@ -65,6 +67,7 @@ export type ArchiveWhere = Record<string, unknown>;
 function applyCommonFilters(where: ArchiveWhere, f: WorkOrderFilters): void {
   if (f.assigneeEmail) where.assigneeEmail = { contains: f.assigneeEmail, mode: "insensitive" };
   if (f.templateId) where.templateVersion = { templateId: f.templateId };
+  if (f.locationId) where.locationId = f.locationId;
   if (f.vesselIds?.length) where.tasks = { some: { OR: [{ destVesselId: { in: f.vesselIds } }, { sourceVesselId: { in: f.vesselIds } }] } };
   if (f.q) {
     const num = Number(f.q);

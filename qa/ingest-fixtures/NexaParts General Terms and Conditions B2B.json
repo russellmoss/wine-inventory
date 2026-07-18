@@ -1,0 +1,30 @@
+{
+  "_verified": false,
+  "source": "NexaParts General Terms and Conditions B2B.pdf",
+  "result": {
+    "blobUrl": "local://NexaParts General Terms and Conditions B2B.pdf",
+    "fileName": "NexaParts General Terms and Conditions B2B.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "other",
+      "vendor": {
+        "name": "NexaParts B.V.",
+        "address": null,
+        "contactName": null,
+        "phone": null,
+        "email": null
+      },
+      "currency": null,
+      "invoiceNumber": null,
+      "invoiceTotal": null,
+      "lines": [],
+      "charges": null,
+      "coa": null,
+      "warnings": [
+        "Document is a General Terms and Conditions (B2B) legal document, not an invoice/proforma/COA. No line items, prices, or invoice number present."
+      ],
+      "notes": null
+    }
+  }
+}

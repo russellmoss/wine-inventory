@@ -1,0 +1,45 @@
+{
+  "_verified": false,
+  "source": "2230517_COAFILE_20260714.pdf",
+  "result": {
+    "blobUrl": "local://2230517_COAFILE_20260714.pdf",
+    "fileName": "2230517_COAFILE_20260714.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "coa",
+      "vendor": {
+        "name": "LAFFORT",
+        "address": null,
+        "contactName": null,
+        "phone": null,
+        "email": null
+      },
+      "currency": null,
+      "invoiceNumber": null,
+      "invoiceTotal": null,
+      "lines": [
+        {
+          "description": "LAFAZYM EXTRACT - B. 250G",
+          "vendorItemCode": "LAFAZYEX0.25",
+          "qty": null,
+          "unit": "250 g",
+          "unitPrice": null,
+          "lineTotal": null,
+          "lotNo": "2230517",
+          "brand": "Laffort",
+          "productName": "Lafazym Extract",
+          "genericName": "Pectolytic enzyme"
+        }
+      ],
+      "charges": null,
+      "coa": {
+        "lotNo": "2230517",
+        "expiry": "2027-05-17",
+        "batch": "2230517"
+      },
+      "warnings": [],
+      "notes": null
+    }
+  }
+}

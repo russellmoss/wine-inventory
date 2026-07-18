@@ -1,0 +1,49 @@
+{
+  "_verified": false,
+  "source": "Laffort test strips.pdf",
+  "result": {
+    "blobUrl": "local://Laffort test strips.pdf",
+    "fileName": "Laffort test strips.pdf",
+    "mimeType": "application/pdf",
+    "ok": true,
+    "document": {
+      "docType": "invoice",
+      "vendor": {
+        "name": "Laffort USA",
+        "address": null,
+        "contactName": null,
+        "phone": null,
+        "email": null
+      },
+      "currency": "USD",
+      "invoiceNumber": "S-O.152414",
+      "invoiceTotal": 479.52,
+      "lines": [
+        {
+          "description": "Sentia Titratable Acidity Test Strip",
+          "vendorItemCode": "SEN-TA-STRIP",
+          "qty": 3,
+          "unit": "unit",
+          "unitPrice": 137.5,
+          "lineTotal": 412.5,
+          "lotNo": null,
+          "brand": "Laffort",
+          "productName": "Sentia Titratable Acidity Test Strip",
+          "genericName": null
+        }
+      ],
+      "charges": {
+        "shipping": 67.02,
+        "handling": null,
+        "surcharge": null,
+        "tax": 0
+      },
+      "coa": null,
+      "warnings": [
+        "Document is an order receipt/confirmation email forwarded via Gmail, not a formal invoice; Order Number S-O.152414 used as invoice number.",
+        "Test strips are sold in a pack/count; actual pack size not stated so unit left as generic 'unit'."
+      ],
+      "notes": null
+    }
+  }
+}

@@ -26,10 +26,10 @@ function fmtDate(iso: string | null): string {
 }
 
 export function ArchiveClient({
-  rows, total, page, pageSize, filters, vessels, templates,
+  rows, total, page, pageSize, filters, vessels, templates, locations,
 }: {
   rows: ArchiveRow[]; total: number; page: number; pageSize: number;
-  filters: ArchiveFilters; vessels: Picker[]; templates: Template[];
+  filters: ArchiveFilters; vessels: Picker[]; templates: Template[]; locations: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -53,7 +53,7 @@ export function ArchiveClient({
 
       <div style={{ marginTop: 14 }}><WorkOrdersTabs active="archive" /></div>
 
-      <WorkOrderFilterBar view="archive" filters={filters} vessels={vessels} templates={templates} statuses={ARCHIVE_STATUSES} allLabel="All finalized" resultCount={total} />
+      <WorkOrderFilterBar view="archive" filters={filters} vessels={vessels} templates={templates} locations={locations} statuses={ARCHIVE_STATUSES} allLabel="All finalized" resultCount={total} />
 
       {rows.length === 0 ? (
         <Card style={{ marginTop: 20, textAlign: "center", padding: "48px 24px" }}>
