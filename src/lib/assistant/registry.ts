@@ -32,6 +32,7 @@ export type AssistantTool = {
   run: (ctx: ToolContext, input: unknown) => Promise<unknown>;
 };
 
+import { searchKnowledgeBaseTool } from "./tools/search-knowledge-base";
 import { queryBrixTool } from "./tools/query-brix";
 import { queryYieldTool } from "./tools/query-yield";
 import { queryRecentHarvestsTool } from "./tools/query-recent-harvests";
@@ -107,6 +108,7 @@ import { queryRecentIntakesTool } from "./tools/query-recent-intakes";
 import { reverseIntakeTool } from "./tools/reverse-intake";
 
 const ALL_TOOLS: AssistantTool[] = [
+  searchKnowledgeBaseTool,
   queryBrixTool,
   queryYieldTool,
   queryRecentHarvestsTool,
