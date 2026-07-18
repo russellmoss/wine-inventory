@@ -109,6 +109,17 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **Feedback cmrqpp88 "too much detail in dashboard" (#241) — FIXED, committed on `claude/work-241-page-tsx-5b68dc` (d5aa4b4).**
+  Leadership uses the dashboard for a high-level company view, but the "Recent activity" feed dumped the raw
+  audit log — the 6 most-recent rows were bug-triage status flips, `AutomationRun` approvals, and support-view
+  `IMPERSONATE`, burying real ops like "we bottled wine today". Fix: denylist classifier in
+  [src/lib/audit.ts](src/lib/audit.ts) (`isOperationalActivity` + `operationalActivityWhere`, both derived from
+  the same two constant arrays so the Prisma filter and the predicate can't drift) applied at the QUERY level in
+  [page.tsx](src/app/(app)/page.tsx) (so `take: 6` returns 6 operational rows, not 6 rows of noise). Denylist by
+  design → new operational event types surface automatically. Proven end-to-end on Bhutan (before: 6/6 noise;
+  after: 6/6 materials-intake ops). 14/14 audit unit tests, tsc/eslint clean. NOTE: committed on the worktree
+  branch only (main checkout was occupied by a parallel bottling session — my edits fully backed out of it).
+  Next: `/ship`.
 - **Chat "400 Invalid messages" defect (Bhutan cmrm9s97) — FIXED, PR #220 open; ticket closed-loop.**
   `/investigate` root cause: the chat client sends the FULL conversation history every turn (no cap);
   the server (`api/assistant/route.ts` `parseMessages`) hard-rejected with 400 once history passed 40
@@ -207,4 +218,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — Feedback #241 (cmrqpp88 "too much detail in dashboard") FIXED on branch claude/work-241-page-tsx-5b68dc (d5aa4b4): denylist classifier in src/lib/audit.ts filters the dashboard Recent-activity feed to winery operations at the query level, hiding developer/admin/auth noise; 14/14 audit tests, before/after proven on Bhutan. Ready for /ship. // Prior — Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
