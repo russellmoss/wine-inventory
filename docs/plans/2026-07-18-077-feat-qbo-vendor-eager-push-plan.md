@@ -1,7 +1,7 @@
 ---
 title: Eager create-into-QBO from Cellarhand (QBO vendor sync, Slice 2 — final)
 type: feat
-status: approved
+status: completed
 date: 2026-07-18
 branch: claude/qbo-vendor-eager-push
 depth: deep

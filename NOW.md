@@ -7,20 +7,26 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Movable + growable assistant dock — BUILT + browser-QA'd on Demo, shipping now.**
-Branch `claude/assistant-widget-drag-resize-3c069b`. User ask: keep the assistant popup open but move it aside to
-see the screen, and drag a corner to make it bigger (never smaller). Frontend-only change to
-[AssistantDock.tsx](src/components/assistant/AssistantDock.tsx), one file. In the DOCKED state the panel is pinned
-by its **bottom-right** corner (right/bottom + width/height in React state). Dragging the **title bar** moves it;
-dragging the **top-left corner grip** grows it (bottom-right stays anchored → only grows toward open space). Floor
-size = the historical default `min(440,94vw) × min(620,80vh)` so it can't shrink below baseline; everything clamped
-on-screen. Always OPENS at the default place + size; drag/resize are ephemeral, so closing (×) + reopening is the
-"reset to default" gesture (no persistence). "Expand to center" mode unchanged (drag/resize disabled while
-expanded); drag mutates the DOM imperatively, committing on pointer-up so the heavy `AssistantChat` subtree
-doesn't re-render mid-drag. Verified live on Demo: opens 440×513, grows from top-left, floors at default, moves,
-resets on reopen. tsc + eslint green.
+**QBO vendor sync Slice 2 — eager create-into-QBO (Plan 077) — BUILT (all 7 units), gates green, live-proven on Demo. Next: `/ship`.**
+Branch `claude/qbo-vendor-eager-push`. Final slice of the vendor-sync arc (Slice 0 #229 near-dup guard, Slice 1
+#231 pull queue). When an opted-in winery creates a vendor in Cellarhand it's pushed to QuickBooks immediately,
+so an owner-operator never opens QBO. Push runs AFTER `createVendorCore` commits (never a DB tx across the QBO
+HTTP call — Neon P2028), home-currency only (foreign `(CUR)` vendors stay lazy at bill-post, Plan 073),
+idempotent (skip if already linked; `findOrCreateVendor` query-before-creates). Fuzzy-matches QBO first
+(Slice-1 `listVendors` + Plan-074 `findVendorNearMatches`) so it never mints "Scott Labs"/"Scott Laboratories"
+in QBO — the modal offers **link-to-existing** vs **create-new**. QBO offline → `syncStatus='pending'` + a retry
+sweep (`runVendorSyncSweep` + `/api/cron/qbo-vendor-sync`, 14:45 UTC). Two vendors → one QBO id → `conflict`
+(Slice-1 `@@unique`, not a 500). Opt-in per tenant (`AppSettings.pushVendorsToQbo`, default off; large wineries
+author in QBO). Units: U1 columns+migration (applied to Neon), U2 eager-push core, U3 fuzzy pre-check action,
+U4 modal link-vs-create wired through the setup page, U5 sweep+cron, U6 `/settings` toggle, U7 `verify:vendor-sync`
+(5/5 deterministic + live QBO push/pre-check under `VERIFY_VENDOR_SYNC_LIVE=1`) + backfill + security note.
+**Gates all green:** tsc, `verify:vendor-sync` (link/idempotent/conflict/sweep-gating/opt-in + LIVE push=synced,
+pre-check clean), verify:ai-native, verify:parity, verify:naming, verify:tenant-isolation, vendor vitest 61,
+lint 0 errors, `next build` clean (cron route registered). Plan: `docs/plans/2026-07-18-077-feat-qbo-vendor-eager-push-plan.md` (status: completed).
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
+
+- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo** on `claude/assistant-widget-drag-resize-3c069b`.
 
 - **Plan 073 multi-currency FX ingestion — BUILT (10 units), gates green, ready for `/ship`** on branch
   `claude/multi-currency-fx-ingestion`. Foreign invoice → base-currency inventory at a dated ECB rate
@@ -101,6 +107,8 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **QBO vendor sync Slices 0–2 — the full arc.** Slice 0 near-dup guard SHIPPED (#229), Slice 1 pull queue
+  SHIPPED (#231), Slice 2 eager push BUILT (Plan 077, all 7 units, live-proven on Demo) → `/ship` next.
 - **Chat "400 Invalid messages" defect (Bhutan cmrm9s97) — FIXED, PR #220 open; ticket closed-loop.**
   `/investigate` root cause: the chat client sends the FULL conversation history every turn (no cap);
   the server (`api/assistant/route.ts` `parseMessages`) hard-rejected with 400 once history passed 40
@@ -199,4 +207,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Movable + growable assistant dock BUILT + browser-QA'd on Demo, shipping on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = historical default so it never shrinks below baseline), clamped on-screen, always opens at default + closing resets (no persistence). Expand-to-center mode unchanged. tsc + eslint green. Verified live: opens 440×513, grows, floors, moves, resets. Prior: Plan 073 multi-currency FX ingestion BUILT (10 units, all gates green, live EUR Bill + €767.16 e2e proven) ready for /ship on claude/multi-currency-fx-ingestion; Plan 072 invoice ingestion SHIPPED (#223), vendor merge/removal SHIPPED (#222)._
+_Last updated: 2026-07-18 — QBO vendor sync Slice 2 (eager create-into-QBO, Plan 077) BUILT all 7 units on claude/qbo-vendor-eager-push; opt-in post-commit home-currency push + QBO fuzzy pre-check (link-vs-create) + offline retry sweep/cron + conflict state; all gates green (verify:vendor-sync 5/5 + LIVE push=synced on Demo, tsc, ai-native, parity, naming, tenant-isolation, vitest 61, lint, next build). Next: /ship. Prior: Movable + growable assistant dock BUILT + browser-QA'd on Demo, shipping on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = historical default so it never shrinks below baseline), clamped on-screen, always opens at default + closing resets (no persistence). Expand-to-center mode unchanged. tsc + eslint green. Verified live: opens 440×513, grows, floors, moves, resets. Prior: Plan 073 multi-currency FX ingestion BUILT (10 units, all gates green, live EUR Bill + €767.16 e2e proven) ready for /ship on claude/multi-currency-fx-ingestion; Plan 072 invoice ingestion SHIPPED (#223), vendor merge/removal SHIPPED (#222)._
