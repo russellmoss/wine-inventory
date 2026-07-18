@@ -64,7 +64,7 @@ export function isReceiptDoc(docType: ReviewDocType): boolean {
 // now captures an explicit Amount + a Unit dropdown, and Confirm is BLOCKED until BOTH are set for every
 // receipt line, so pack size is never guessed.
 
-export const PACK_UNITS = ["g", "kg", "mg", "oz", "lb", "mL", "L", "gal", "fl oz", "unit"] as const;
+export const PACK_UNITS = ["g", "kg", "mg", "oz", "lb", "ton", "mL", "L", "gal", "fl oz", "unit"] as const;
 export type PackUnit = (typeof PACK_UNITS)[number];
 
 /** Strict split of a `unitRaw` string into a pack amount + unit. Does NOT collapse "Each"/"ea" into a unit —

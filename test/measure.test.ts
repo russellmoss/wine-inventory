@@ -36,6 +36,18 @@ describe("convert (same-dimension only)", () => {
     expect(convert(16, "oz", "lb")).toBe(1);
   });
 
+  it("ton is the US short ton (2000 lb), not the metric tonne", () => {
+    expect(convert(1, "ton", "g")).toBe(907184.74);
+    expect(convert(1, "ton", "kg")).toBe(907.18474);
+    expect(convert(1, "ton", "lb")).toBe(2000);
+    expect(resolveUnit("tons")).toBe("ton");
+    expect(dimensionOf("ton")).toBe("mass");
+    // the ambiguous metric spellings must NOT silently resolve to the short ton
+    expect(resolveUnit("tonne")).toBeNull();
+    expect(resolveUnit("mt")).toBeNull();
+    expect(resolveUnit("t")).toBeNull();
+  });
+
   it("volume conversions (US gallon / fl oz)", () => {
     expect(convert(1, "L", "mL")).toBe(1000);
     expect(convert(1, "gal", "mL")).toBe(3785.411784);
@@ -84,5 +96,6 @@ describe("MEASURE_UNITS", () => {
     expect(MEASURE_UNITS).toContain("fl oz");
     expect(MEASURE_UNITS).toContain("g");
     expect(MEASURE_UNITS).toContain("unit");
+    expect(MEASURE_UNITS).toContain("ton");
   });
 });

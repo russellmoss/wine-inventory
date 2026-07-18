@@ -175,6 +175,13 @@ describe("pack size (amount + unit) helpers", () => {
     expect(composePackUnitRaw("", "")).toBeNull();
     expect(composePackUnitRaw("1", "kg")).toBe("1 kg");
   });
+
+  it("accepts a ton pack unit (fruit / bulk goods)", async () => {
+    const { PACK_UNITS, packFieldsValid, canonicalPackUnit } = await import("@/app/(app)/setup/expendables/ingest/ingest-review-model");
+    expect(PACK_UNITS).toContain("ton");
+    expect(canonicalPackUnit("ton")).toBe("ton");
+    expect(packFieldsValid("2 ton")).toBe(true);
+  });
 });
 
 describe("buildPrecommitSummary", () => {

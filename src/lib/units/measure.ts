@@ -19,6 +19,10 @@ const UNITS: Record<string, { dimension: MeasureDimension; perCanonical: number 
   kg: { dimension: "mass", perCanonical: 1000 },
   oz: { dimension: "mass", perCanonical: 28.349523125 },
   lb: { dimension: "mass", perCanonical: 453.59237 },
+  // US short ton = 2000 lb (consistent with the US-customary oz/lb/gal factors above). NOT the metric
+  // tonne (1,000,000 g) — the two differ by ~10%, so "tonne"/"mt" are intentionally left unresolved
+  // (→ null → UNKNOWN cost, never a silent 10% money error) rather than aliased onto this.
+  ton: { dimension: "mass", perCanonical: 907184.74 },
   // volume → canonical millilitres
   mL: { dimension: "volume", perCanonical: 1 },
   L: { dimension: "volume", perCanonical: 1000 },
@@ -42,6 +46,7 @@ const ALIASES: Record<string, string> = {
   gram: "g", grams: "g", gramme: "g", grammes: "g",
   kilogram: "kg", kilograms: "kg", kilo: "kg", kilos: "kg",
   milligram: "mg", milligrams: "mg",
+  tons: "ton", // US short ton; "tonne"/"mt"/bare "t" deliberately NOT mapped (metric ≠ short)
   units: "unit", ea: "unit", each: "unit", count: "unit",
 };
 
