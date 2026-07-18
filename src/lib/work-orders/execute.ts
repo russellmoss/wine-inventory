@@ -12,6 +12,7 @@ import { recordNeutralDoseTx, resolveDoseMaterial, ADDITION_CONFIG, FINING_CONFI
 import { crushLotTx, type CrushPickInput } from "@/lib/transform/crush-core";
 import { pressLotTx, type PressFractionInput } from "@/lib/transform/press-core";
 import { runBottlingTx } from "@/lib/bottling/run";
+import { assertMandatoryPackaging, MANDATORY_PACKAGING_SELECT } from "@/lib/bottling/mandatory-packaging";
 import { deriveGroupRackProgress, type BatchAttemptLite, type GroupRackProgress, type PlannedGroupRack } from "@/lib/work-orders/group-rack-progress";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import type { RateBasis } from "@/lib/cellar/additions-math";
@@ -271,6 +272,11 @@ async function dispatchOperationTx(
             .map((p) => ({ materialId: asStr(p.materialId) ?? "", qty: asNum(p.qty) ?? 0 }))
             .filter((p) => p.materialId && p.qty > 0)
         : undefined;
+      // P0: a bottling run must consume a bottle, a closure (e.g. cork) and a label — server backstop for
+      // the execute-form guard, covering a WO template that authored an incomplete (or no) packaging BoM.
+      await assertMandatoryPackaging(packaging, (mids) =>
+        tx.cellarMaterial.findMany({ where: { id: { in: mids } }, select: MANDATORY_PACKAGING_SELECT }),
+      );
       const r = await runBottlingTx(tx, {
         vesselIds,
         destinationLocationId,

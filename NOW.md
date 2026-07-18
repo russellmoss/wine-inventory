@@ -7,6 +7,26 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**P0 bottling no-cork guard (feedback bug, PR #242) — BUILT + live-proven, ready to ship.**
+Branch `claude/bottling-no-cork-guard-b316e0`. Bug: "for all bottling runs we need mandatory a bottle, a closure
+(e.g. cork), and a label — I shouldn't be able to bottle Big Mike Big Red without a cork, but it let me." The
+automated PR #242 fixed it **client-only** (fragile). This supersedes it with a **server backstop at the two real
+write paths** + both UI mirrors + tests. (1) Pure classifier in
+[packaging-bom.ts](src/lib/bottling/packaging-bom.ts) — `classifyPackagingRole` (name/kind → bottle|closure|label;
+a capsule is deliberately NOT a closure), `missingRequiredPackaging`, `missingRolesForMaterials`. (2) Server guard
+[mandatory-packaging.ts](src/lib/bottling/mandatory-packaging.ts) `assertMandatoryPackaging(packaging, loadMaterials)`
+— wired into `createBottlingRun`/`editBottlingRun` ([actions.ts](src/lib/bottling/actions.ts), `prisma` loader) AND
+the WO BOTTLE task ([execute.ts](src/lib/work-orders/execute.ts), `tx` loader) so a crafted submit / assistant / a
+WO template with no packaging BoM can't slip a corkless run past. Enforced at the **entry points, not `runBottlingTx`**,
+deliberately — so the ~10 verify/seed fixtures that bottle directly don't need churn (core write path untouched).
+(3) UI mirrors in [BottlingClient.tsx](src/app/(app)/bottling/BottlingClient.tsx) (blocks submit + names what's
+missing) and [BottlingTaskForm.tsx](src/app/(app)/work-orders/[id]/execute/BottlingTaskForm.tsx). GREEN: tsc, eslint,
+vitest (32 bottling: 6 guard + role classification), verify:cost 55, verify:work-orders 43, verify:naming 25,
+verify:parity/ai-native/invariants/tripwires. **Live DB proof on Demo Winery**: corkless run REJECTED with zero
+partial writes; full (bottle+cork+label) run wrote 100 bottles + depleted cork stock 500→400; fixtures scrubbed.
+
+<details><summary>prev objective — #241 dashboard Recent activity filter (BUILT)</summary>
+
 **Feedback #241 (cmrqpp88 "too much detail in dashboard") — dashboard Recent activity filtered to leadership-relevant events — BUILT, ready for /ship.**
 Branch `claude/work-241-page-tsx-5fdfdb` (commit 752c212). The leadership dashboard's Recent activity feed pulled the last 6
 audit rows indiscriminately, burying operational signal ("we bottled wine today") under bug-triage / dev-automation /
@@ -241,4 +261,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Feedback #241 (cmrqpp88) dashboard Recent-activity leadership filter BUILT (branch claude/work-241-page-tsx-5fdfdb, commit 752c212); denylist classifier in src/lib/audit.ts (isOperationalAuditEntry + operationalAuditWhere) + page.tsx DB filter, 15/15 audit tests, proven on real Neon data (AutomationRun noise row dropped). Ready for /review → /ship. Prior (origin/main): QBO vendor sync Slice 2 (Plan 077) BUILT on claude/qbo-vendor-eager-push, all gates green, next /ship. Prior: Plan 076 invoice ingestion (dupe gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P) SHIPPED PR #246; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — P0 bottling no-cork guard (mandatory bottle+closure+label) BUILT + live-proven on branch claude/bottling-no-cork-guard-b316e0, supersedes client-only PR #242; server backstop at createBottlingRun/editBottlingRun + WO BOTTLE task, UI mirrors, 32 bottling tests + verify:cost 55/work-orders 43/naming/parity/ai-native/invariants green, Demo-Winery live proof (corkless rejected w/ 0 writes, full run wrote 100 bottles + depleted cork). Prior: Feedback #241 dashboard Recent-activity leadership filter BUILT (claude/work-241-page-tsx-5fdfdb); QBO vendor sync Slice 2 (Plan 077) BUILT; Plan 076 invoice ingestion SHIPPED (#246); Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
