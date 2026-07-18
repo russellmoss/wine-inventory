@@ -43,18 +43,22 @@ export function VendorsClient({ vendors, isAdmin, importCandidates = [] }: { ven
   function pull() {
     setError(null); setPullMsg(null);
     startTransition(async () => {
-      const res = await pullVendorsFromQboAction();
-      if (res.ok) { setPullMsg(`Pulled ${res.data.pulled} from QuickBooks — ${res.data.candidates} to review, ${res.data.skippedSynced} already linked.`); router.refresh(); }
-      else setError(res.error);
+      try {
+        const res = await pullVendorsFromQboAction();
+        if (res.ok) { setPullMsg(`Pulled ${res.data.pulled} from QuickBooks — ${res.data.candidates} to review, ${res.data.skippedSynced} already linked.`); router.refresh(); }
+        else setError(res.error);
+      } catch { setError("Couldn't reach QuickBooks — check the connection and try again."); }
     });
   }
 
   function resolveCandidate(id: string, act: (id: string) => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
     startTransition(async () => {
-      const res = await act(id);
-      if (res.ok) router.refresh();
-      else setError(res.error ?? "Couldn't update that candidate.");
+      try {
+        const res = await act(id);
+        if (res.ok) router.refresh();
+        else setError(res.error ?? "Couldn't update that candidate.");
+      } catch { setError("Something went wrong — please try again."); }
     });
   }
 

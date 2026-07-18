@@ -3066,6 +3066,7 @@ model Vendor {
 
   @@unique([tenantId, name]) // find-or-create by name, no dupes per tenant
   @@unique([tenantId, id]) // composite-tenant-FK target for ap_export_event (K11)
+  @@unique([tenantId, externalVendorId]) // Plan 075: one QBO vendor ↔ one local vendor (NULLs are DISTINCT in PG, so unlinked vendors are unconstrained)
   @@index([tenantId])
   @@map("vendor")
 }

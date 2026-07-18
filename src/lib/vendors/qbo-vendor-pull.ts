@@ -38,31 +38,30 @@ export async function pullQboVendorsForTenant(tenantId: string): Promise<VendorP
       homeCurrency: conn.homeCurrency ?? "USD",
       multiCurrencyEnabled: conn.multiCurrencyEnabled,
     };
-    const qbo = await new QboAdapter().listVendors(ctx);
+    const qbo = await new QboAdapter().listVendors(ctx); // network — OUTSIDE the tx
 
-    // ALL local vendors (incl. archived) — an archived vendor can still hold an externalVendorId, so it must
-    // count as "synced" (else its QBO record re-surfaces forever). findVendorNearMatches skips the Unknown fallback.
-    const existing = await prisma.vendor.findMany({ select: { id: true, name: true, externalVendorId: true } });
-    const rejected = await prisma.vendorImportCandidate.findMany({
-      where: { status: "REJECTED" },
-      select: { externalVendorId: true, currencyVariantIds: true },
-    });
-    const rejectedIds = new Set<string>();
-    for (const r of rejected) {
-      rejectedIds.add(r.externalVendorId);
-      for (const v of r.currencyVariantIds) rejectedIds.add(v);
-    }
-
-    const { candidates, skippedSynced, skippedRejected } = reconcileQboVendors(
-      qbo.map((v) => ({ externalId: v.externalId, name: v.name, active: v.active })),
-      existing,
-      rejectedIds,
-    );
-
-    const syncedIds = existing.map((v) => v.externalVendorId).filter((x): x is string => !!x);
-
-    await runInTenantTx(async (tx) => {
+    // Read → reconcile → upsert → sweep all inside ONE tx, against a consistent snapshot: a concurrent
+    // accept/merge (which deletes the candidate + links the vendor) is then either fully seen or fully unseen,
+    // so it can't transiently resurface an already-resolved candidate (review finding).
+    const result = await runInTenantTx(async (tx) => {
       const tid = requireTenantId();
+      // ALL local vendors (incl. archived) — an archived vendor can still hold an externalVendorId, so it must
+      // count as "synced" (else its QBO record re-surfaces forever). findVendorNearMatches skips the Unknown fallback.
+      const existing = await tx.vendor.findMany({ select: { id: true, name: true, externalVendorId: true } });
+      const rejected = await tx.vendorImportCandidate.findMany({ where: { status: "REJECTED" }, select: { externalVendorId: true, currencyVariantIds: true } });
+      const rejectedIds = new Set<string>();
+      for (const r of rejected) {
+        rejectedIds.add(r.externalVendorId);
+        for (const v of r.currencyVariantIds) rejectedIds.add(v);
+      }
+
+      const { candidates, skippedSynced, skippedRejected } = reconcileQboVendors(
+        qbo.map((v) => ({ externalId: v.externalId, name: v.name, active: v.active })),
+        existing,
+        rejectedIds,
+      );
+
+      const currentKeys = candidates.map((c) => c.externalVendorId);
       for (const c of candidates) {
         await tx.vendorImportCandidate.upsert({
           where: { tenantId_externalVendorId: { tenantId: tid, externalVendorId: c.externalVendorId } },
@@ -76,13 +75,15 @@ export async function pullQboVendorsForTenant(tenantId: string): Promise<VendorP
           },
         });
       }
-      // Sweep stale PENDING candidates that got linked since the last pull (accepted via another path).
-      if (syncedIds.length) {
-        await tx.vendorImportCandidate.deleteMany({ where: { status: "PENDING", externalVendorId: { in: syncedIds } } });
-      }
+      // FULL reconcile: the PENDING queue after a pull == exactly this pull's candidates. Deleting PENDING rows
+      // not in `currentKeys` drops the stale ones a "delete-synced-only" sweep would orphan — a canonical-id
+      // flip when a base vendor appears after its "(CUR)" variant, a QBO rename/delete, or a now-synced supplier.
+      await tx.vendorImportCandidate.deleteMany({ where: { status: "PENDING", externalVendorId: { notIn: currentKeys } } });
+
+      return { pulled: qbo.length, candidates: candidates.length, skippedSynced, skippedRejected };
     });
 
-    return { ok: true, pulled: qbo.length, candidates: candidates.length, skippedSynced, skippedRejected };
+    return { ok: true, ...result };
   });
 }
 

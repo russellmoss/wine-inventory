@@ -61,6 +61,19 @@ async function main() {
       let conflictBlocked = false, conflictMsg = "";
       try { await mergeCandidateIntoVendorCore(ACTOR, c4.id, target.id); } catch (e) { conflictBlocked = errCode(e) === "CONFLICT"; conflictMsg = errMsg(e); }
       check("merge into a vendor already linked to a DIFFERENT QBO vendor is blocked (CONFLICT)", conflictBlocked, conflictMsg);
+
+      // ── The (tenantId, externalVendorId) unique: two local vendors can't link to the SAME QBO id (review fix). ──
+      const linked = await prisma.vendor.create({ data: { name: `${TAG} Already Linked`, externalVendorId: `${TAG}-QBO-9`, updatedAt: new Date() }, select: { id: true } });
+      vendorIds.push(linked.id);
+      const c5 = await prisma.vendorImportCandidate.create({ data: { name: `${TAG} Dup Link Co`, externalVendorId: `${TAG}-QBO-9`, currencyVariantIds: [`${TAG}-QBO-9`], updatedAt: new Date() }, select: { id: true } });
+      let acceptDupBlocked = false;
+      try { await acceptCandidateCore(ACTOR, c5.id); } catch (e) { acceptDupBlocked = errCode(e) === "CONFLICT"; }
+      check("accept is blocked when that QBO id is already linked to another vendor (unique)", acceptDupBlocked);
+      const other = await prisma.vendor.create({ data: { name: `${TAG} Other`, updatedAt: new Date() }, select: { id: true } });
+      vendorIds.push(other.id);
+      let mergeDupBlocked = false;
+      try { await mergeCandidateIntoVendorCore(ACTOR, c5.id, other.id); } catch (e) { mergeDupBlocked = errCode(e) === "CONFLICT"; }
+      check("merge is blocked when that QBO id is already linked to another vendor (unique)", mergeDupBlocked);
     } finally {
       const tryDel = async (fn: () => Promise<unknown>) => { try { await fn(); } catch { /* gone */ } };
       await tryDel(() => prisma.vendorImportCandidate.deleteMany({ where: { externalVendorId: { startsWith: `${TAG}-QBO-` } } }));
