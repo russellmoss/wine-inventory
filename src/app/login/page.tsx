@@ -122,8 +122,8 @@ function LoginForm() {
           <>
             {googleError ? (
               <p style={{ color: "var(--danger)", fontSize: 13.5, margin: "16px 0 0" }}>
-                We couldn&apos;t sign you in with Google. If your account isn&apos;t set up in Cellarhand
-                yet, ask your admin to add you, then try again.
+                We couldn&apos;t complete Google sign-in. If your account isn&apos;t set up in Cellarhand
+                yet, ask your admin to add you. Otherwise, try again.
               </p>
             ) : null}
             <div

@@ -29,14 +29,16 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   socialProviders: googleSocialProviders(),
   account: {
-    // Link a Google identity to the EXISTING user with the same email. Admin-created users are never
-    // email-verified in this app (there's no verification flow), and Google asserts the incoming email
-    // is verified, so we trust `google` and drop the local-verified requirement — otherwise linking is
-    // blocked and a valid user's Google login would be refused. `allowDifferentEmails` stays default
-    // (false): the Google email must equal the account email.
+    // Link a Google identity to the EXISTING user with the same email. We keep google OUT of
+    // `trustedProviders` on purpose: trusting the provider would SUPPRESS Better Auth's check on the
+    // INCOMING Google email (link-account.mjs), letting a Google-asserted-UNVERIFIED email link. Left
+    // untrusted, linking still requires Google to assert the incoming email is verified (real Gmail
+    // always is). `requireLocalEmailVerified: false` is a deliberate robustness margin: today
+    // admin-created users are already emailVerified:true (users/actions.ts, seed.ts), so it's
+    // belt-and-braces, but it also lets any legacy/edge user whose LOCAL flag is false still adopt
+    // Google. `allowDifferentEmails` stays default (false): the Google email must equal the account email.
     accountLinking: {
       enabled: true,
-      trustedProviders: ["google"],
       requireLocalEmailVerified: false,
     },
   },
@@ -82,17 +84,32 @@ export const auth = betterAuth({
   databaseHooks: {
     account: {
       create: {
-        // When a Google account links to a user, clear the change-password gate: an SSO user has no
-        // password to change and would otherwise be stranded on /change-password (accessDecision's
-        // `mustChangePassword` branch). User is a global/RLS-exempt table, so no tenant context is
-        // needed. Never block login on this — mirror the session.after audit swallow.
+        // When a Google account links to a user: (1) clear the change-password gate — an SSO user has
+        // no password to change and would otherwise be stranded on /change-password (accessDecision's
+        // `mustChangePassword` branch); (2) if they were STILL on the admin-issued temp password
+        // (mustChangePassword was true), retire it by nulling the `credential` account's password, so
+        // an emailed temp can't linger forever as an alternate credential. A user who was already on
+        // their own chosen password (gate already cleared) keeps it. User/Account are global/RLS-exempt
+        // tables, so no tenant context is needed. Never block login on this — mirror the session.after
+        // audit swallow.
         after: async (account) => {
           if (!clearsPasswordChangeGate(account.providerId)) return;
           try {
+            const user = await prisma.user.findUnique({
+              where: { id: account.userId },
+              select: { mustChangePassword: true },
+            });
             await prisma.user.update({
               where: { id: account.userId },
               data: { mustChangePassword: false, passwordChangedAt: new Date() },
             });
+            // Only retire a still-unchanged admin temp password — never a password the user chose.
+            if (user?.mustChangePassword) {
+              await prisma.account.updateMany({
+                where: { userId: account.userId, providerId: "credential" },
+                data: { password: null },
+              });
+            }
           } catch {
             // swallow — the gate is a convenience, not a security boundary
           }
