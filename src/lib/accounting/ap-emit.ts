@@ -117,3 +117,84 @@ export async function emitApExportForReceipt(
   }
   return { emitted: existing ? 0 : 1, postable: true };
 }
+
+/** One QBO Bill line for an aggregate per-invoice event — an inventory-account debit in the document currency. */
+export type ApBillLine = { amount: number; description?: string | null };
+
+/**
+ * Plan 076 — emit ONE aggregate A/P event (+ PENDING Bill delivery) for a whole ingested invoice, so it
+ * posts as a SINGLE multi-line QBO Bill (DocNumber = apinv:<invoiceId>) instead of N per-lot bills. Called
+ * once at the end of an invoice apply, after every line's lot exists (the caller passes skipApEmit to
+ * receiveSupplyCore so the per-lot path doesn't also emit). Idempotent by postingKey. Withheld (no emit) when
+ * there are no priced lines, the A/P accounts are unset, or there's no vendor — exactly like the per-lot path.
+ * FX is DECOUPLED (council #1): `amount`/line amounts are the DOCUMENT (foreign) currency; QBO derives the
+ * home GL = amount × exchangeRate. A base-currency invoice passes currency=base, exchangeRate=null.
+ */
+export async function emitApExportForInvoice(
+  ingestedInvoiceId: string,
+  opts: {
+    vendorId: string | null;
+    vendorInvoiceNumber?: string | null;
+    receivedAt: Date;
+    dueDate?: Date | null;
+    currency: string; // the invoice (document) currency
+    exchangeRate?: number | null; // home per 1 foreign; null when currency == home
+    lines: ApBillLine[]; // priced lines only (each amount in the document currency)
+  },
+  dbArg?: Db,
+): Promise<ApEmitResult> {
+  const db = asDb(dbArg);
+  const settings = await db.appSettings.findFirst({ select: { apInventoryAccount: true, apPayableAccount: true } });
+  const inv = settings?.apInventoryAccount ?? null;
+  const ap = settings?.apPayableAccount ?? null;
+
+  const pricedLines = opts.lines.filter((l) => Number.isFinite(l.amount) && Number(l.amount) > 0);
+  const postable = pricedLines.length > 0 && !!inv && !!ap && !!opts.vendorId;
+  if (!postable) {
+    const reason = pricedLines.length === 0 ? "no priced lines" : !inv || !ap ? "A/P accounts are not configured" : "no vendor on the invoice";
+    return { emitted: 0, postable: false, reason };
+  }
+
+  const amount = pricedLines.reduce((a, l) => a + Number(l.amount), 0);
+  // Every line debits the same inventory-asset account today (single configured account); the JSON preserves
+  // per-line amounts + descriptions so the QBO Bill shows the invoice's lines, not one collapsed total.
+  const billLines = pricedLines.map((l) => ({ debitAccount: inv as string, amount: Number(l.amount), description: l.description ?? null }));
+  const exRate = opts.exchangeRate != null && Number.isFinite(opts.exchangeRate) && opts.exchangeRate > 0 ? opts.exchangeRate : null;
+
+  const postingKey = `apinv:${ingestedInvoiceId}`;
+  const existing = await db.apExportEvent.findFirst({ where: { postingKey }, select: { id: true } });
+  let eventId: string;
+  if (existing) {
+    eventId = existing.id;
+  } else {
+    const created = await db.apExportEvent.create({
+      data: {
+        postingKey,
+        ingestedInvoiceId,
+        vendorId: opts.vendorId,
+        amount, // DOCUMENT-currency total (foreign for a foreign invoice; QBO derives home GL)
+        debitAccount: inv, // inventory asset (also carried per-line in billLinesJson)
+        creditAccount: ap, // recorded for audit; the Bill posts A/P implicitly
+        currency: opts.currency,
+        exchangeRate: exRate,
+        billLinesJson: billLines as unknown as Prisma.InputJsonValue,
+        receivedAt: opts.receivedAt,
+        dueDate: opts.dueDate ?? null,
+        vendorInvoiceNumber: opts.vendorInvoiceNumber?.trim() || null,
+      },
+      select: { id: true },
+    });
+    eventId = created.id;
+  }
+
+  const conn = await db.accountingConnection.findFirst({ where: { provider: "QBO", status: "CONNECTED" }, select: { id: true } });
+  if (conn) {
+    const tenantId = requireTenantId();
+    await db.accountingDelivery.upsert({
+      where: { tenantId_apExportEventId: { tenantId, apExportEventId: eventId } },
+      create: { apExportEventId: eventId, connectionId: conn.id, objectType: "Bill", status: "PENDING" },
+      update: {},
+    });
+  }
+  return { emitted: existing ? 0 : 1, postable: true };
+}

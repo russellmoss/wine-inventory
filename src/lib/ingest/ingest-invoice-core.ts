@@ -4,6 +4,7 @@ import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { createStockMaterialCore, receiveSupplyCore } from "@/lib/cellar/materials";
+import { emitApExportForInvoice, type ApBillLine } from "@/lib/accounting/ap-emit";
 import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 import { allocateLandedCost, type InvoiceCharges } from "@/lib/ingest/landed-cost";
 import { normalizeLineToStock, parsePackagingUnit } from "@/lib/ingest/normalize-line";
@@ -374,6 +375,7 @@ export async function applyIngestedInvoiceCore(
       }
 
       const supplyLotIds: string[] = [];
+      const billLines: ApBillLine[] = []; // Plan 076: accumulate priced lines → ONE aggregate per-invoice Bill
       let apLineCount = 0;
 
       for (let i = 0; i < receiptLines.length; i++) {
@@ -452,11 +454,15 @@ export async function applyIngestedInvoiceCore(
             fxRate: isForeign ? fxRate : null,
             fxRateDate: isForeign ? fxRateDate : null,
             fxRateSource: isForeign ? fxRateSource : null,
+            skipApEmit: true, // Plan 076: the aggregate per-invoice emit (below) owns the A/P — not per lot
           },
           tx,
         );
         supplyLotIds.push(received.supplyLotId);
         if (norm.unitCost != null) apLineCount++;
+        // `allocation` (→ foreignLanded) is in the invoice document currency — the A/P bill-line amount.
+        // Priced lines only; an unknown-cost line contributes no A/P (partial-A/P, already acked above).
+        if (foreignLanded != null) billLines.push({ amount: foreignLanded, description: line.descriptionRaw });
 
         // persist the audit marker + allocated cost on the staged line.
         await tx.ingestedInvoiceLine.update({ where: { id: line.id }, data: { createdSupplyLotId: received.supplyLotId, allocatedUnitCost: norm.unitCost } });
@@ -474,6 +480,22 @@ export async function applyIngestedInvoiceCore(
           }
         }
       }
+
+      // Plan 076: ONE aggregate A/P event → ONE multi-line QBO Bill for the whole invoice (apinv:<id>),
+      // instead of N per-lot bills. DECOUPLED FX: line amounts are the document currency; QBO derives the home
+      // GL. No-op when there's no vendor / no A/P accounts / no priced lines (partial-A/P is already acked).
+      await emitApExportForInvoice(
+        invoice.id,
+        {
+          vendorId,
+          vendorInvoiceNumber: invoice.vendorInvoiceNumber,
+          receivedAt: new Date(),
+          currency: isForeign ? invoiceCurrency : baseCurrency,
+          exchangeRate: isForeign ? fxRate : null,
+          lines: billLines,
+        },
+        tx,
+      );
 
       // COA attach: within the SAME ingestion batch, match a COA's lot no. to a created lot's lotCode and set
       // expiry + a COA provenance link. Constrained to same batch (council P3 — a colliding lot no. in another
@@ -585,8 +607,9 @@ export async function reverseIngestedInvoiceCore(actor: LedgerActor, input: { in
       const consumed = await tx.supplyConsumption.count({ where: { supplyLotId: { in: lotIds } } });
       if (consumed > 0) throw new ReverseAbort({ ok: false, error: "Some of this stock has already been used, so it can't be auto-reversed. Correct it per item instead." });
 
-      // Guard: no A/P bill already posted to QBO.
-      const evs = await tx.apExportEvent.findMany({ where: { supplyLotId: { in: lotIds } }, select: { id: true } });
+      // Guard: no A/P bill already posted to QBO. Plan 076: the aggregate per-invoice event has no supplyLotId
+      // (it's keyed by ingestedInvoiceId), so match BOTH shapes — per-lot (legacy) and aggregate.
+      const evs = await tx.apExportEvent.findMany({ where: { OR: [{ supplyLotId: { in: lotIds } }, { ingestedInvoiceId: inv.id }] }, select: { id: true } });
       const evIds = evs.map((e) => e.id);
       const deliveries = evIds.length
         ? await tx.accountingDelivery.findMany({ where: { apExportEventId: { in: evIds } }, select: { id: true, status: true, externalId: true } })

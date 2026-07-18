@@ -126,11 +126,18 @@ async function main() {
         assert(Number(l1.qtyReceived) === 1000, "scenario 1: line 1 stock qty = 1000 g");
         assert(lots.every((l) => l.currency === "USD"), "scenario 1: lots stamped USD");
 
-        const evs = await prisma.apExportEvent.findMany({ where: { supplyLotId: { in: res.supplyLotIds } } });
-        assert(evs.length === 2, `scenario 1: both NEW-material lines emit an A/P bill (got ${evs.length})`);
-        assert(evs.every((e) => e.vendorInvoiceNumber === "QA-SIV-1"), "scenario 1: A/P events stamped with the invoice #");
-        const evByLot = new Map(evs.map((e) => [e.supplyLotId, e]));
-        assert(Math.abs(Number(evByLot.get(l1.id)!.amount) - 387.57) < 0.01, "scenario 1: A/P amount = qty × landed unitCost (387.57)");
+        // Plan 076: ONE aggregate A/P event per invoice (not per lot), multi-line, keyed apinv:<invoiceId>.
+        const perLot = await prisma.apExportEvent.findMany({ where: { supplyLotId: { in: res.supplyLotIds } } });
+        assert(perLot.length === 0, `scenario 1: NO per-lot A/P events — the aggregate owns A/P (got ${perLot.length})`);
+        const evs = await prisma.apExportEvent.findMany({ where: { ingestedInvoiceId: invId } });
+        assert(evs.length === 1, `scenario 1: exactly ONE aggregate A/P bill for the invoice (got ${evs.length})`);
+        const agg = evs[0];
+        assert(agg.postingKey === `apinv:${invId}`, "scenario 1: aggregate event keyed apinv:<invoiceId>");
+        assert(agg.vendorInvoiceNumber === "QA-SIV-1", "scenario 1: aggregate A/P stamped with the invoice #");
+        const bl = (agg.billLinesJson as { amount: number; debitAccount: string }[] | null) ?? [];
+        assert(bl.length === 2, `scenario 1: aggregate carries 2 bill lines (got ${bl.length})`);
+        assert(Math.abs(Number(agg.amount) - 485.79) < 0.02, `scenario 1: aggregate amount = Σ landed lines (387.57 + 98.22 = 485.79, got ${agg.amount})`);
+        assert(Math.abs(Number(bl[0].amount) - 387.57) < 0.02 && Math.abs(Number(bl[1].amount) - 98.22) < 0.02, "scenario 1: bill lines carry the per-line landed amounts");
 
         const inv = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { status: true } });
         assert(inv?.status === "applied", "scenario 1: invoice marked applied");
@@ -198,8 +205,8 @@ async function main() {
         assert(Math.abs(Number(lot!.unitCost) - 55) < 1e-6, `scenario 3: base unitCost = 200×1.10/4 = 55 (got ${lot!.unitCost})`);
         assert(lot!.foreignCurrency === "EUR" && Math.abs(Number(lot!.foreignUnitCost) - 50) < 1e-6, `scenario 3: foreign €50/unit preserved (got ${lot!.foreignCurrency} ${lot!.foreignUnitCost})`);
         assert(Math.abs(Number(lot!.fxRate) - 1.1) < 1e-9 && lot!.fxRateSource === "verify-ingest-stub", "scenario 3: rate + source stamped on the lot");
-        // A/P is DECOUPLED (council #1): the event carries the FOREIGN amount + currency + exchangeRate.
-        const ev = await prisma.apExportEvent.findFirst({ where: { supplyLotId: res.supplyLotIds[0] } });
+        // A/P is DECOUPLED (council #1): the aggregate event carries the FOREIGN amount + currency + exchangeRate.
+        const ev = await prisma.apExportEvent.findFirst({ where: { ingestedInvoiceId: invId } });
         assert(ev != null && ev.currency === "EUR", "scenario 3: A/P event is in EUR (foreign), not base");
         assert(Math.abs(Number(ev!.amount) - 200) < 1e-6, `scenario 3: A/P amount = FOREIGN €200 (got ${ev!.amount})`);
         assert(Math.abs(Number(ev!.exchangeRate) - 1.1) < 1e-9, `scenario 3: A/P exchangeRate = 1.10 (got ${ev!.exchangeRate})`);
@@ -346,7 +353,8 @@ async function main() {
         assert(rev.ok, "scenario 8: reverse succeeds");
         if (!rev.ok) return;
         assert((await prisma.supplyLot.count({ where: { id: { in: res.supplyLotIds } } })) === 0, "scenario 8: all created lots removed");
-        assert((await prisma.apExportEvent.count({ where: { supplyLotId: { in: res.supplyLotIds } } })) === 0, "scenario 8: all A/P events removed");
+        // Plan 076: the aggregate per-invoice A/P event (+ its delivery) is removed on reverse.
+        assert((await prisma.apExportEvent.count({ where: { ingestedInvoiceId: invId } })) === 0, "scenario 8: aggregate A/P event removed");
         assert((await prisma.cellarMaterial.count({ where: { id: { in: matIds } } })) === 0, "scenario 8: the newly-created materials removed");
         const after = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { status: true, appliedAt: true } });
         assert(after?.status === "discarded" && after.appliedAt == null, "scenario 8: intake marked discarded");
