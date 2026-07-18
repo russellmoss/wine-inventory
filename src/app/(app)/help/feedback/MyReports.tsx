@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Badge, Card } from "@/components/ui";
 import { reporterStatus } from "@/lib/feedback/reporter-status";
 import type { MyReport } from "@/lib/feedback/my-reports";
@@ -52,7 +53,32 @@ export function MyReports({ reports }: { reports: MyReport[] }) {
                       {r.resolvedAt ? ` · Updated ${formatDate(r.resolvedAt)}` : ""}
                     </span>
                   </div>
-                  <Badge tone={badge.tone}>{badge.label}</Badge>
+                  {r.needsInput ? (
+                    // Plan 079 D-1: the team asked a question and is waiting — point the reporter at their inbox.
+                    <Link
+                      href="/inbox?bucket=dm"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 10px",
+                        borderRadius: "var(--radius-pill, 999px)",
+                        border: "1px solid var(--accent)",
+                        background: "var(--accent-soft, var(--surface-raised))",
+                        color: "var(--accent)",
+                        fontFamily: "var(--font-body)",
+                        fontSize: "var(--text-body-sm)",
+                        fontWeight: "var(--weight-medium)" as unknown as number,
+                        textDecoration: "none",
+                        whiteSpace: "nowrap",
+                        minHeight: 32,
+                      }}
+                    >
+                      Needs your input — check your inbox →
+                    </Link>
+                  ) : (
+                    <Badge tone={badge.tone}>{badge.label}</Badge>
+                  )}
                 </div>
               );
             })}
