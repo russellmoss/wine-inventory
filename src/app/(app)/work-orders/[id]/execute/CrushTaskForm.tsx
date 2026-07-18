@@ -16,10 +16,23 @@ import { unwrap } from "@/lib/action-result";
 //
 // v1 SCOPE: a SINGLE destination vessel (the core supports destinations[] multi-dest; the WO sub-form can
 // add a split later). The whole-cluster direct-press path is out of scope (use the standalone /ferment/press).
+//
+// Projected-volume gate: from the selected picks' total kilograms we project the expected must volume using
+// a standard press yield (L per tonne of fruit) and PREFILL the measured-volume field with it. The operator
+// may overwrite it with the actual production. If the measured volume differs from the projection by more
+// than PROJECTION_VARIANCE_PCT, completion is BLOCKED until a reason is logged — the reason rides to the
+// server as the attempt's deviationReason, so a large yield variance is reviewed + approved (not silent).
 
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 const toggle = (on: boolean): React.CSSProperties => ({ ...big, cursor: "pointer", background: on ? "var(--accent)" : "var(--surface)", color: on ? "#fff" : "var(--text-primary)", border: on ? "none" : "1px solid var(--border)", flex: 1 });
+
+// Standard whole-must press yield: ~650 L of must per tonne (1000 kg) of destemmed fruit is a common
+// planning figure across red/white varietals. Used only to PROJECT an expected volume the operator can
+// overwrite; it is never sent to the server (the server records the measured volume the operator confirms).
+const DEFAULT_YIELD_L_PER_TONNE = 650;
+// Beyond this relative gap between projected and measured volume, require a logged reason + review.
+const PROJECTION_VARIANCE_PCT = 10;
 
 export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView; data: CrushFormData | null; onDone: () => void }) {
   const commandId = React.useMemo(() => crypto.randomUUID(), []);
@@ -37,12 +50,16 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const dest = vessels.find((v) => v.id === destVesselId);
   const [mode, setMode] = React.useState<"NEW" | "ADD">("NEW");
   const [addLotId, setAddLotId] = React.useState("");
+  // When the operator hasn't typed a measured volume yet, we show the PROJECTION (derived from kg). Once
+  // they touch the field we respect their entry verbatim (empty included) — projection stops overwriting it.
   const [outputL, setOutputL] = React.useState("");
+  const [outputTouched, setOutputTouched] = React.useState(false);
   const [destemmed, setDestemmed] = React.useState(String(planned.destemmed ?? "true") !== "false");
   const [crusherOn, setCrusherOn] = React.useState(String(planned.crusherOn ?? "true") !== "false");
   const [crushedPct, setCrushedPct] = React.useState(planned.crushedPct != null ? String(planned.crushedPct) : "100");
   const [mustTemp, setMustTemp] = React.useState(planned.mustTempC != null ? String(planned.mustTempC) : "");
   const [note, setNote] = React.useState("");
+  const [varianceReason, setVarianceReason] = React.useState("");
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
 
@@ -53,8 +70,18 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
     .map((p) => ({ pick: p, kg: Number(consumedFor(p.pickId, p.remainingKg)) }))
     .filter((x) => x.kg > 0);
   const totalKg = selectedPicks.reduce((a, x) => a + x.kg, 0);
-  const outL = Number(outputL) || 0;
+
+  // Projected must volume from the selected fruit weight (kg → tonnes × yield). Overwritable.
+  const projectedL = totalKg > 0 ? Math.round((totalKg / 1000) * DEFAULT_YIELD_L_PER_TONNE) : null;
+  // The value shown in the measured field: the operator's entry once touched, else the live projection.
+  const shownOutput = outputTouched ? outputL : projectedL != null ? String(projectedL) : "";
+  const outL = Number(shownOutput) || 0;
   const yieldLPerTonne = totalKg > 0 && outL > 0 ? Math.round((outL / totalKg) * 1000 * 100) / 100 : null;
+
+  // Variance of the measured volume vs the projection, and whether it crosses the review threshold.
+  const variancePct = projectedL != null && projectedL > 0 && outL > 0 ? Math.abs((outL - projectedL) / projectedL) * 100 : null;
+  const overVariance = variancePct != null && variancePct > PROJECTION_VARIANCE_PCT;
+  const needsReason = overVariance && !varianceReason.trim();
 
   function complete() {
     setError(null);
@@ -64,6 +91,10 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
     if (effMode === "ADD" && !addLotId) return setError("Pick the must lot to add into.");
     for (const { pick, kg } of selectedPicks) {
       if (kg > pick.remainingKg + 1e-6) return setError(`Pick ${pick.pickDate}: only ${pick.remainingKg} kg remain.`);
+    }
+    // Block a large yield variance unless the operator logs a reason (→ review + approval).
+    if (overVariance && !varianceReason.trim()) {
+      return setError(`Measured volume is ${Math.round(variancePct!)}% off the projected ${projectedL} L (limit ${PROJECTION_VARIANCE_PCT}%). Log a reason to submit for review.`);
     }
     const actualPayload: Record<string, unknown> = {
       picks: selectedPicks.map((x) => ({ pickId: x.pick.pickId, consumedKg: x.kg })),
@@ -84,9 +115,11 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
     // Carry a template-set whole-cluster press cycle default through (crush's optional press program).
     if (planned.pressCycle != null && String(planned.pressCycle).trim()) actualPayload.pressCycle = String(planned.pressCycle);
 
+    const deviationReason = overVariance ? `Yield variance ${Math.round(variancePct!)}% (measured ${outL} L vs projected ${projectedL} L): ${varianceReason.trim()}` : undefined;
+
     startTransition(async () => {
       try {
-        unwrap(await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined }));
+        unwrap(await completeTaskAction({ taskId: task.id, commandId, actualPayload, completionNote: note.trim() || undefined, deviationReason }));
         onDone();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't record the crush.");
@@ -150,12 +183,24 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
           </select>
         </label>
         <label style={lbl}>Measured must (L)
-          <input value={outputL} onChange={(e) => setOutputL(e.target.value)} inputMode="decimal" placeholder="e.g. 2350" style={big} />
+          <input value={shownOutput} onChange={(e) => { setOutputTouched(true); setOutputL(e.target.value); }} inputMode="decimal" placeholder={projectedL != null ? `projected ${projectedL}` : "e.g. 2350"} style={big} />
         </label>
         <label style={lbl}>Must temp °C
           <input value={mustTemp} onChange={(e) => setMustTemp(e.target.value)} inputMode="decimal" placeholder="optional" style={big} />
         </label>
       </div>
+
+      {projectedL != null ? (
+        <div style={{ fontSize: 12.5, color: overVariance ? "var(--danger)" : "var(--text-muted)", marginTop: 6 }}>
+          Projected {projectedL} L from {Math.round(totalKg)} kg (≈{DEFAULT_YIELD_L_PER_TONNE} L/t){variancePct != null ? ` · measured is ${Math.round(variancePct)}% off` : ""}. Overwrite with the actual production if it differs.
+        </div>
+      ) : null}
+
+      {overVariance ? (
+        <label style={{ ...lbl, marginTop: 10 }}>Reason for &gt;{PROJECTION_VARIANCE_PCT}% variance (required — routed for review)
+          <input value={varianceReason} onChange={(e) => setVarianceReason(e.target.value)} placeholder="e.g. heavy press, split batch, meter re-read" aria-label="Reason for yield variance" style={big} />
+        </label>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: crusherOn ? "1fr 1fr 1fr" : "1fr 1fr", gap: 12, marginTop: 12 }}>
         <div>
@@ -192,7 +237,7 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         {canStart ? <Button size="lg" variant="secondary" disabled={pending} onClick={() => startTransition(async () => { unwrap(await startTaskAction({ taskId: task.id })); })}>Start</Button> : null}
-        <Button size="lg" fullWidth disabled={pending} onClick={complete}>{pending ? "De-stemming…" : "Complete — record the crush"}</Button>
+        <Button size="lg" fullWidth disabled={pending || needsReason} onClick={complete}>{pending ? "De-stemming…" : needsReason ? "Log a variance reason to continue" : "Complete — record the crush"}</Button>
       </div>
     </Card>
   );
