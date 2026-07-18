@@ -235,6 +235,7 @@ async function main() {
   // Plan 075: a tenant-authored custom_unit in tenant B. Isolation risk is a cross-tenant read of a winery's
   // unit registry (a custom unit feeds cost math, so a leak could mis-price the other tenant's intake).
   await owner.customUnit.upsert({ where: { id: "iso_cu_b" }, update: {}, create: { id: "iso_cu_b", tenantId: B, name: "ISO Drum B", normalizedName: "iso drum b", dimension: "mass", perCanonical: "200000", updatedAt: now } });
+  await owner.vendorImportCandidate.upsert({ where: { id: "iso_vic_b" }, update: {}, create: { id: "iso_vic_b", tenantId: B, externalVendorId: "QBO_ISO_B_1", name: "ISO Import Candidate B", updatedAt: now } });
   // Plan 053 C11: a tenant-authored Custom Log type in tenant B. Isolation risk is a cross-tenant read of a
   // winery's custom task definitions.
   await owner.workOrderTaskType.upsert({ where: { id: "iso_wtt_b" }, update: {}, create: { id: "iso_wtt_b", tenantId: B, code: "ISO_LOG_B", label: "ISO Log B", fieldsJson: [{ key: "note", label: "Note", type: "text", stage: ["planning"] }] } });
@@ -576,6 +577,23 @@ async function main() {
       await asTenant(A, (db) => db.vendorContact.create({ data: { id: "iso_vc_fk", tenantId: A, vendorId: "iso_vendor_b", name: "ISO VC FK", updatedAt: new Date() } }));
     } catch { vcFkRaised = true; }
     check("vendor_contact cross-tenant vendor reference rejected (composite FK, K11)", vcFkRaised);
+    // Plan 075: vendor_import_candidate isolation + cross-tenant suggested-vendor FK reject.
+    const aSeesVicB = await asTenant(A, (db) => db.vendorImportCandidate.findFirst({ where: { id: "iso_vic_b" } }));
+    check("tenant A CANNOT see tenant B's vendor_import_candidate (RLS)", aSeesVicB === null);
+    let vicInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.vendorImportCandidate.create({ data: { id: "iso_vic_x", tenantId: B, externalVendorId: "QBO_ISO_X", name: "ISO VIC X", updatedAt: new Date() } }));
+    } catch { vicInsertRaised = true; }
+    check("foreign-tenant vendor_import_candidate INSERT raises (WITH CHECK)", vicInsertRaised);
+    let vicFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.vendorImportCandidate.create({ data: { id: "iso_vic_fk", tenantId: A, externalVendorId: "QBO_ISO_FK", name: "ISO VIC FK", suggestedVendorId: "iso_vendor_b", updatedAt: new Date() } }));
+    } catch { vicFkRaised = true; }
+    check("vendor_import_candidate cross-tenant suggested-vendor reference rejected (composite FK, K11)", vicFkRaised);
+    const vicCrossUpd = await asTenant(A, (db) => db.vendorImportCandidate.updateMany({ where: { id: "iso_vic_b" }, data: { status: "REJECTED" } }));
+    check("cross-tenant vendor_import_candidate UPDATE affects 0 rows", vicCrossUpd.count === 0, `count=${vicCrossUpd.count}`);
+    const vicCrossDel = await asTenant(A, (db) => db.vendorImportCandidate.deleteMany({ where: { id: "iso_vic_b" } }));
+    check("cross-tenant vendor_import_candidate DELETE affects 0 rows", vicCrossDel.count === 0, `count=${vicCrossDel.count}`);
     let matVendorFkRaised = false;
     try {
       await asTenant(A, (db) => db.cellarMaterial.create({ data: { id: "iso_mat_vfk", tenantId: A, name: "ISO Mat VFK", normalizedKey: "ISOMATVFK", kind: "OTHER", vendorId: "iso_vendor_b" } }));
@@ -777,6 +795,7 @@ async function main() {
     await owner.workOrderTaskEquipment.deleteMany({ where: { id: { in: ["iso_wote_b", "iso_wote_fk"] } } });
     await owner.equipmentAsset.deleteMany({ where: { id: { in: ["iso_eq_b", "iso_eq_x"] } } });
     // Plan 069: vendor children (contacts, the FK-test material) before the vendors (ON DELETE RESTRICT).
+    await owner.vendorImportCandidate.deleteMany({ where: { id: { in: ["iso_vic_b", "iso_vic_x", "iso_vic_fk"] } } });
     await owner.vendorContact.deleteMany({ where: { id: { in: ["iso_vc_b", "iso_vc_fk"] } } });
     await owner.customUnit.deleteMany({ where: { id: { in: ["iso_cu_b", "iso_cu_x"] } } });
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_vfk" } });

@@ -45,7 +45,7 @@ function mockQbo(state: { posted: Map<string, string> }): AccountingAdapter {
   const notImpl = (): never => { throw new Error("not used"); };
   return {
     buildAuthorizeUrl: notImpl, exchangeCode: notImpl, refresh: notImpl, revoke: notImpl,
-    getCompanyInfo: notImpl, listAccounts: notImpl, findOrCreateVendor: notImpl, postBill: notImpl,
+    getCompanyInfo: notImpl, listAccounts: notImpl, listVendors: notImpl, findOrCreateVendor: notImpl, postBill: notImpl,
     async findByDocNumber(_c, _t, docNumber) { const id = state.posted.get(docNumber); return id ? { externalId: id, version: "0", docNumber } : null; },
     async getById() { return null; },
     async postJournalEntry(_c, input): Promise<PostResult> { const doc = docNumberFor(input.postingKey); const id = `EXT-${state.posted.size + 1}`; state.posted.set(doc, id); return { externalId: id, version: "0" }; },
