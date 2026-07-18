@@ -231,6 +231,17 @@ async function main() {
     assert((await statusOf(b2.deliveryId)) === "POSTED", "resume adopts the existing Bill → POSTED");
     assert(billCrash.posted.size === 1, "resume created NO duplicate Bill");
 
+    console.log("\n── 7. Plan 073 hardening: a base-currency ≠ QBO-home-currency mismatch WITHHELDs (never mis-posts) ──");
+    // Demo Winery's base currency is USD; pretend this QBO company's home is NZD → the pinned rate's base
+    // would not match QBO's home, so the bill must be WITHHELD (not posted at the wrong currency/rate).
+    await prisma.accountingConnection.update({ where: { id: connectionId }, data: { homeCurrency: "NZD" } });
+    const b3 = await seedBillDelivery(connectionId, "idem:bill:3");
+    const mmState: MockState = { posted: new Map(), bills: [], vendorCalls: [] };
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(mmState) });
+    assert((await statusOf(b3.deliveryId)) === "WITHHELD", "base≠home bill is WITHHELD, not POSTED");
+    assert(mmState.bills!.length === 0, "no Bill was posted to QBO on a currency mismatch");
+    await prisma.accountingConnection.update({ where: { id: connectionId }, data: { homeCurrency: "USD" } }); // restore
+
       console.log(`\nALL ${passed} IDEMPOTENCY ASSERTIONS PASSED`);
     } finally {
       // ── cleanup ALWAYS (deliveries first — FK to the event rows is RESTRICT) ──

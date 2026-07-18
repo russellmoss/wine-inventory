@@ -7,6 +7,8 @@ import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import { COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
 import { coerceCurrency } from "@/lib/money/currency";
+import { ActionError } from "@/lib/action-error";
+import { baseHomeCurrencyMismatch, baseHomeMismatchMessage } from "@/lib/accounting/currency-guard";
 
 // Phase 7 (K14): toggle the winery-level sparkling capability. Admin-only; audited. Revalidates
 // the layout so the gated nav (En Tirage) appears/disappears immediately.
@@ -91,6 +93,12 @@ export const saveCostSettings = adminAction(
 
       // Currency is a label, not a costing policy input — persisted here but excluded from policyChanged (D17).
       const currency = coerceCurrency(input.currency);
+      // Plan 073 hardening: the base currency MUST match a connected QBO company's home currency, or foreign
+      // A/P bills would post with the wrong currency/rate. Block a change that would break that alignment.
+      const qbo = await tx.accountingConnection.findFirst({ where: { provider: "QBO", status: "CONNECTED" }, select: { homeCurrency: true } });
+      if (qbo && baseHomeCurrencyMismatch(currency, qbo.homeCurrency)) {
+        throw new ActionError(baseHomeMismatchMessage(currency, qbo.homeCurrency ?? ""), "CONFLICT");
+      }
       const data = {
         currency,
         costingMethod: input.costingMethod,

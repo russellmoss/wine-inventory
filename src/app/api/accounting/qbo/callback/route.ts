@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/dal";
 import { accessDecision } from "@/lib/access";
 import { runAsTenant } from "@/lib/tenant/context";
+import { prisma } from "@/lib/prisma";
 import { loadQboConfig } from "@/lib/accounting/qbo/config";
 import { QboAdapter } from "@/lib/accounting/qbo/client";
 import { consumeState, storeConnection } from "@/lib/accounting/connection";
+import { coerceCurrency } from "@/lib/money/currency";
+import { baseHomeCurrencyMismatch, baseHomeMismatchMessage } from "@/lib/accounting/currency-guard";
 
 // Phase 15 Unit 4 — the OAuth callback. Consumes the single-use state (SEC-C1), re-checks admin at
 // consume time (SEC-C1), exchanges the code with the stored PKCE verifier + allowlisted redirect_uri,
@@ -52,6 +55,17 @@ export async function GET(req: Request) {
     // never store it. That confirmation IS the canonical derivation.
     const ctx = { accessToken: tokens.accessToken, realmId: realmIdHint, environment: cfg.environment };
     const company = await adapter.getCompanyInfo(ctx);
+
+    // Plan 073 hardening: refuse to connect a QuickBooks company whose HOME currency ≠ the tenant's BASE
+    // currency. The A/P path pins ExchangeRate as base-per-foreign and posts foreign bills against the QBO
+    // home; that only holds when base == home. Rejecting here (before we store) prevents a mis-currency ledger.
+    const base = await runAsTenant(tenantId, async () => {
+      const s = await prisma.appSettings.findFirst({ select: { currency: true } });
+      return coerceCurrency(s?.currency);
+    });
+    if (baseHomeCurrencyMismatch(base, company.homeCurrency)) {
+      return settings(`qbo_error=${encodeURIComponent(baseHomeMismatchMessage(base, company.homeCurrency))}`);
+    }
 
     await runAsTenant(tenantId, () =>
       storeConnection({

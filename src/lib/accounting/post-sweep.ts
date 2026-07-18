@@ -8,6 +8,8 @@ import { QboAdapter, docNumberFor } from "@/lib/accounting/qbo/client";
 import { buildJournalFromExport, buildSalesDeltaJournal } from "@/lib/accounting/qbo/journal";
 import { componentLabel } from "@/lib/accounting/components";
 import { buildBillPayload } from "@/lib/accounting/qbo/bill";
+import { baseHomeCurrencyMismatch } from "@/lib/accounting/currency-guard";
+import { coerceCurrency } from "@/lib/money/currency";
 import { emitExportForSnapshot } from "@/lib/cost/export-emit";
 import { ProviderFault, type AccountingAdapter, type ProviderCallContext } from "@/lib/accounting/adapter";
 
@@ -162,6 +164,16 @@ async function postBill(
   const homeCurrency = (ctx.homeCurrency ?? "USD").toUpperCase();
   const billCurrency = (ev.currency ?? homeCurrency).toUpperCase();
   const isForeign = billCurrency !== homeCurrency;
+
+  // Plan 073 hardening (runtime backstop): the connect-time + base-change guards keep base == QBO home, but
+  // if a connection somehow drifted (base changed after connect, legacy row), posting would use a rate whose
+  // base ≠ QBO's home — a wrong-currency GL. WITHHELD it (never post a mis-currency bill) until they realign.
+  const tenantBase = coerceCurrency((await prisma.appSettings.findFirst({ select: { currency: true } }))?.currency);
+  if (baseHomeCurrencyMismatch(tenantBase, homeCurrency)) {
+    await finalize(d.id, { status: "WITHHELD", lastError: `Base currency ${tenantBase} doesn't match the QuickBooks home currency ${homeCurrency} — align them in Settings, then re-emit.` });
+    summary.withheld++;
+    return;
+  }
 
   // Plan 073 (council #2): if the QBO company has Multicurrency OFF, a foreign bill CAN'T post — WITHHELD
   // (not FAILED), so it's held until the user enables it + re-emits, never a silent terminal failure. The
