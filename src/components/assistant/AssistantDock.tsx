@@ -12,10 +12,72 @@ import { usePrefersReducedMotion } from "@/components/ui/Collapsible";
 // first open to preserve chat state, we pass `active={open}` so the chat force-closes any live voice
 // session when the dock collapses — otherwise the mic/audio loop would keep running invisibly.
 // Reduced-motion aware; Escape closes; focus is managed for a11y.
+//
+// Movable + growable (assistant-widget-drag-resize): in the DOCKED (non-expanded) state the panel is
+// pinned by its BOTTOM-RIGHT corner (CSS right/bottom + width/height). Dragging the title bar moves it
+// (adjusts right/bottom); dragging the TOP-LEFT corner handle grows it (adjusts width/height while the
+// bottom-right stays anchored — so it only ever grows toward open screen space). Floor size = the old
+// default (440×620, or the viewport if smaller) so it can grow but never shrink below the baseline.
+// Everything is clamped on-screen. The dock always OPENS at the original default place + size, and drag/
+// resize changes are ephemeral for that open session — closing (×) and reopening snaps it back to default,
+// which is the easy "reset" gesture. The "expand to center" focus mode is unchanged; drag/resize are
+// disabled while expanded. During a drag we mutate the panel DOM imperatively and only commit to React
+// state on pointer-up, so the heavy AssistantChat subtree doesn't re-render mid-drag.
 
 const AssistantChat = React.lazy(() =>
   import("@/app/(app)/assistant/AssistantChat").then((m) => ({ default: m.AssistantChat })),
 );
+
+const DOCK_MARGIN = 12; // keep this much gap between the panel and the viewport edges
+// The historical opening size: capped at the viewport like the old CSS (width min(440,94vw), height
+// min(620,80vh)) so the dock opens IDENTICALLY to before. This size is also the resize floor.
+const BASE_W = 440;
+const BASE_H = 620;
+
+type DockRect = { right: number; bottom: number; width: number; height: number };
+
+const clampNum = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
+
+// The default opening rect — pinned bottom-right at 24px, sized like the old CSS (min(440,94vw) ×
+// min(620,80vh)), so the dock opens exactly as it always has. Also the resize floor. Client-only.
+function defaultDockRect(): DockRect {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  return {
+    right: 24,
+    bottom: 24,
+    width: Math.min(BASE_W, vw * 0.94),
+    height: Math.min(BASE_H, vh * 0.8),
+  };
+}
+
+// Minimum size = the default opening size (so it can grow but never shrink below how it opened).
+function minDockSize(): { w: number; h: number } {
+  const d = defaultDockRect();
+  return { w: d.width, h: d.height };
+}
+
+// Keep the panel fully on-screen and within [min, viewport] for size. Reads live window dims — client only.
+function clampDockRect(r: DockRect): DockRect {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const { w: minW, h: minH } = minDockSize();
+  const maxW = Math.max(minW, vw - 2 * DOCK_MARGIN);
+  const maxH = Math.max(minH, vh - 2 * DOCK_MARGIN);
+  const width = clampNum(r.width, minW, maxW);
+  const height = clampNum(r.height, minH, maxH);
+  const right = clampNum(r.right, DOCK_MARGIN, Math.max(DOCK_MARGIN, vw - width - DOCK_MARGIN));
+  const bottom = clampNum(r.bottom, DOCK_MARGIN, Math.max(DOCK_MARGIN, vh - height - DOCK_MARGIN));
+  return { right, bottom, width, height };
+}
+
+function applyRect(el: HTMLElement | null, r: DockRect) {
+  if (!el) return;
+  el.style.right = `${r.right}px`;
+  el.style.bottom = `${r.bottom}px`;
+  el.style.width = `${r.width}px`;
+  el.style.height = `${r.height}px`;
+}
 
 export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: string; voiceEnabled?: boolean }) {
   const pathname = usePathname();
@@ -24,9 +86,33 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
   const [open, setOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const [everOpened, setEverOpened] = React.useState(false);
+  // Position/size of the docked panel, pinned by its bottom-right corner. Starts at the static default
+  // (SSR-safe — no window); reset to the viewport-aware default every time the dock opens (see openDock),
+  // so it always opens where/how it used to and closing is the reset.
+  const [rect, setRect] = React.useState<DockRect>({ right: 24, bottom: 24, width: BASE_W, height: BASE_H });
   const fabRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const mounted = React.useRef(false);
+  // Live rect during a drag (kept out of React state so the chat subtree doesn't re-render each move).
+  const liveRect = React.useRef<DockRect>(rect);
+  const dragState = React.useRef<
+    { mode: "move" | "resize"; startX: number; startY: number; start: DockRect } | null
+  >(null);
+
+  // Keep the live-rect ref in sync with committed state (but never stomp it mid-drag).
+  React.useEffect(() => {
+    if (!dragState.current) liveRect.current = rect;
+  }, [rect]);
+
+  // Re-clamp if the window shrinks so the panel can't end up off-screen or larger than the viewport.
+  React.useEffect(() => {
+    const onResize = () => {
+      if (dragState.current) return;
+      setRect((r) => clampDockRect(r));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Manage focus on genuine open/close transitions only — NOT on initial mount (else the FAB would steal
   // focus on every page load). Focus into the panel on open; return it to the FAB when the user closes.
@@ -51,12 +137,60 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
     return () => window.removeEventListener("keydown", onKey);
   }, [expanded, open]);
 
+  // --- Drag to move / drag-corner to grow -------------------------------------------------------------
+  // Shared pointer loop. `move` shifts the bottom-right anchor (right/bottom); `resize` grows width/height
+  // from the top-left corner (bottom-right stays pinned). We write to the DOM imperatively for a smooth
+  // drag and commit to state + localStorage once, on pointer-up.
+  const beginDrag = React.useCallback(
+    (mode: "move" | "resize", e: React.PointerEvent) => {
+      if (expanded) return; // free positioning only applies to the docked state
+      e.preventDefault();
+      dragState.current = { mode, startX: e.clientX, startY: e.clientY, start: { ...liveRect.current } };
+
+      const onMove = (ev: PointerEvent) => {
+        const ds = dragState.current;
+        if (!ds) return;
+        const dx = ev.clientX - ds.startX;
+        const dy = ev.clientY - ds.startY;
+        const next =
+          ds.mode === "move"
+            ? { ...ds.start, right: ds.start.right - dx, bottom: ds.start.bottom - dy }
+            : { ...ds.start, width: ds.start.width - dx, height: ds.start.height - dy };
+        const clamped = clampDockRect(next);
+        liveRect.current = clamped;
+        applyRect(panelRef.current, clamped);
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.style.userSelect = "";
+        if (!dragState.current) return;
+        dragState.current = null;
+        setRect(liveRect.current); // commit the drag; ephemeral — reset on next open, not persisted
+      };
+
+      document.body.style.userSelect = "none";
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [expanded],
+  );
+
+  const onHeaderPointerDown = (e: React.PointerEvent) => {
+    // Don't start a move when the pointer lands on a header control (enlarge / close).
+    if ((e.target as HTMLElement).closest("button")) return;
+    if (e.button !== 0) return;
+    beginDrag("move", e);
+  };
+
   // The full-page assistant lives at /assistant — don't stack a dock on top of it.
   if (pathname === "/assistant" || pathname.startsWith("/assistant/")) return null;
 
   const openDock = () => {
     setEverOpened(true);
     setExpanded(false);
+    // Always open at the original default place + size — closing then reopening is the "reset" gesture.
+    setRect(defaultDockRect());
     setOpen(true);
   };
 
@@ -75,10 +209,10 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
         transform: "translate(-50%, -50%)",
       }
     : {
-        right: "var(--space-5)",
-        bottom: "var(--space-5)",
-        width: "min(440px, 94vw)",
-        height: "min(620px, 80vh)",
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
         transform: open ? "none" : "translateY(8px)",
       };
 
@@ -142,7 +276,33 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
               transition,
             }}
           >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--space-3) var(--space-4)", borderBottom: "1px solid var(--border-strong)", flex: "none" }}>
+          {/* Top-left corner resize grip — drag outward (up/left) to grow; docked state only. */}
+          {!expanded ? (
+            <div
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                beginDrag("resize", e);
+              }}
+              aria-hidden="true"
+              title="Drag to resize"
+              style={{
+                position: "absolute", top: 0, left: 0, width: 20, height: 20, zIndex: 2,
+                cursor: "nwse-resize", touchAction: "none",
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" style={{ display: "block" }}>
+                <path d="M4 10 L4 4 L10 4 M4 4 L9 9" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          ) : null}
+          <div
+            onPointerDown={expanded ? undefined : onHeaderPointerDown}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "var(--space-3) var(--space-4)", borderBottom: "1px solid var(--border-strong)", flex: "none",
+              cursor: expanded ? "default" : "move", touchAction: expanded ? "auto" : "none", userSelect: "none",
+            }}
+          >
             <span id={titleId} style={{ fontFamily: "var(--font-heading)", fontWeight: 500, fontSize: 15, color: "var(--text-primary)" }}>Assistant</span>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button

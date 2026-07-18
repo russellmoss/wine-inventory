@@ -7,24 +7,28 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Multi-currency FX ingestion (Plan 073) — BUILT (all 10 units), gates green, ready for `/ship`.**
-Branch `claude/multi-currency-fx-ingestion` (off main; commits `fbf72c1`→HEAD, one per unit). A foreign-currency
-supplier invoice (the real €767.16 NexaParts proforma) is converted at ingestion at a **dated ECB rate**
-(Frankfurter, keyless — never the LLM; a missing rate FAILS LOUD, D14) so `SupplyLot.unitCost` is **always the
-tenant base currency** (single-currency roll-up) while the **A/P Bill posts to QBO in EUR** under a EUR vendor
-with `CurrencyRef` + `ExchangeRate`. The P0 the council caught (double-conversion) is fixed by **decoupling**:
-lot cost = BASE, `ApExportEvent` = FOREIGN amount + rate; reconciliation invariant `base == round2(foreign×rate)`.
-Units: U1 global `fx_rate` cache + FX columns (GLOBAL_MODELS allow-list); U2 FX rate service (Frankfurter + daily
-cache + pure convert, CET date, home-per-foreign); U3 base-currency admin/developer gate; U4 (MONEY) ingestion
-conversion + decoupled foreign A/P; U5 review-screen rate field/override + fail-loud gate + multicurrency warning;
-U6 QBO currency-scoped vendor (suffixed DisplayName + CurrencyRef); U7 foreign Bill (CurrencyRef/ExchangeRate) +
-MultiCurrencyEnabled read at connect + WITHHELD (not FAIL) when off; U8 offline Bill idempotency + **live EUR Bill
-round-trip PROVEN against the real QBO sandbox**; U9 **€767.16 e2e PROVEN in Cellarhand AND QBO**; U10 COST-4
-invariant + full gate sweep. **GATES ALL GREEN:** tsc 0, next build clean, vitest 2239/0, verify:cost 55,
-verify:ingest 61, verify:fx 15, verify:fx-e2e 17, verify:accounting 8 (live EUR bill), verify:accounting-idempotency
-22 (Bill path), verify:ai-native / invariants (34) / parity / raw-sql / naming / tenant-isolation. Prereq DONE: the
-user enabled Multicurrency on the QBO sandbox (irreversible); the Demo connection's `multiCurrencyEnabled` was
-backfilled from the live company. **Next: `/ship`.** See `docs/plans/2026-07-18-073-feat-multi-currency-fx-ingestion-plan.md`.
+**Movable + growable assistant dock — BUILT + browser-QA'd on Demo, shipping now.**
+Branch `claude/assistant-widget-drag-resize-3c069b`. User ask: keep the assistant popup open but move it aside to
+see the screen, and drag a corner to make it bigger (never smaller). Frontend-only change to
+[AssistantDock.tsx](src/components/assistant/AssistantDock.tsx), one file. In the DOCKED state the panel is pinned
+by its **bottom-right** corner (right/bottom + width/height in React state). Dragging the **title bar** moves it;
+dragging the **top-left corner grip** grows it (bottom-right stays anchored → only grows toward open space). Floor
+size = the historical default `min(440,94vw) × min(620,80vh)` so it can't shrink below baseline; everything clamped
+on-screen. Always OPENS at the default place + size; drag/resize are ephemeral, so closing (×) + reopening is the
+"reset to default" gesture (no persistence). "Expand to center" mode unchanged (drag/resize disabled while
+expanded); drag mutates the DOM imperatively, committing on pointer-up so the heavy `AssistantChat` subtree
+doesn't re-render mid-drag. Verified live on Demo: opens 440×513, grows from top-left, floors at default, moves,
+resets on reopen. tsc + eslint green.
+
+<details><summary>prev objectives (on their own branches / shipped)</summary>
+
+- **Plan 073 multi-currency FX ingestion — BUILT (10 units), gates green, ready for `/ship`** on branch
+  `claude/multi-currency-fx-ingestion`. Foreign invoice → base-currency inventory at a dated ECB rate
+  (Frankfurter, keyless) + EUR A/P Bill to QBO; P0 double-conversion fixed by decoupling (lot=base,
+  `ApExportEvent`=foreign+rate). Live EUR Bill + €767.16 e2e proven in Cellarhand AND QBO.
+- **Plan 072 invoice/document ingestion — SHIPPED (PR #223, 24d7d35).** Vendor merge + removal — SHIPPED (#222).
+
+</details>
 
 <details><summary>prev objective — Plan 072 invoice ingestion (SHIPPED, PR #223, 24d7d35)</summary>
 
@@ -195,4 +199,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Plan 073 multi-currency FX ingestion BUILT (all 10 units) on `claude/multi-currency-fx-ingestion`; every gate green incl. a LIVE EUR Bill round-trip to the QBO sandbox + the real €767.16 proforma proven end-to-end in Cellarhand AND QBO; the P0 double-conversion bug (council) fixed by decoupling base inventory cost from the foreign A/P; COST-4 invariant added. Ready for `/ship`. Prior: chat "400 Invalid messages" defect FIXED (PR #220, history windowing) + Bhutan ticket cmrm9s97 closed-loop (IN_PROGRESS/DEFECT, AGENTIC_FIX skipped). `/bug-triage` live run: merged PR #215, handed off 5 plans, queued 3 for human; unblocked triage:list via PR #219 (lazy-import fix). Prior: Plan 072 (invoice/document ingestion → expendables & equipment intake) PLANNED (Deep, 12 units) + REVIEWED 4 ways (eng → council[Codex+Gemini] → design → ChatGPT outside voice); all findings folded; BUILD-READY. Key fixes: inject-tx atomicity, allowlist dose-safety, UOM normalization (Unit 5, money-critical), unified A/P apply path, reconciliation + concurrency gates, Unit 12 real-doc acceptance suite (all 8 docs/invoice examples/ files). A/P = per-lot bills, invoice # as QBO PrivateNote memo. Next /work. Plan 071 (full WO editing) shipped #213 (f0be796)._
+_Last updated: 2026-07-18 — Movable + growable assistant dock BUILT + browser-QA'd on Demo, shipping on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = historical default so it never shrinks below baseline), clamped on-screen, always opens at default + closing resets (no persistence). Expand-to-center mode unchanged. tsc + eslint green. Verified live: opens 440×513, grows, floors, moves, resets. Prior: Plan 073 multi-currency FX ingestion BUILT (10 units, all gates green, live EUR Bill + €767.16 e2e proven) ready for /ship on claude/multi-currency-fx-ingestion; Plan 072 invoice ingestion SHIPPED (#223), vendor merge/removal SHIPPED (#222)._
