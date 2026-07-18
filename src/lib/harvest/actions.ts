@@ -226,22 +226,34 @@ export const addHarvestPick = action(
   },
 );
 
-/** Delete a mis-entered pick (scope-checked through its record's vineyard). */
+/** Delete a mis-entered pick (scope-checked through its record's vineyard). Refuses if the pick has
+ *  already been (partially) crushed into a lot — LotHarvestSource is onDelete: Restrict, so a raw delete
+ *  would 500, and erasing it would strand that lot's fruit lineage. Reverse the crush first. */
 export const deleteHarvestPick = action(async ({ actor }, pickId: string): Promise<void> => {
   const pick = await prisma.harvestPick.findUnique({
     where: { id: pickId },
-    select: { id: true, harvestRecord: { select: { vineyardId: true } } },
+    select: {
+      id: true,
+      harvestRecord: { select: { vineyardId: true } },
+      _count: { select: { crushSources: true } },
+    },
   });
   if (!pick) throw new ActionError("Pick not found.");
   const user = await getActionUser();
   if (!canManagerAccessVineyard(user, pick.harvestRecord.vineyardId)) {
     throw new ActionError("You can only work with your assigned vineyard.", "FORBIDDEN");
   }
+  if (pick._count.crushSources > 0) {
+    throw new ActionError(
+      "That pick has already been crushed into a lot. Reverse the crush first, then delete the pick.",
+      "CONFLICT",
+    );
+  }
   await runInTenantTx(async (tx) => {
     await tx.harvestPick.delete({ where: { id: pickId } });
     await writeAudit(tx, {
       ...actor,
-      action: "HARVEST_PICK_RECORDED",
+      action: "DELETE",
       entityType: "HarvestPick",
       entityId: pickId,
       summary: `Deleted a harvest pick`,
@@ -249,6 +261,26 @@ export const deleteHarvestPick = action(async ({ actor }, pickId: string): Promi
   });
   revalidatePath(PATH);
 });
+
+/** All picks for one block (newest first), scope-checked. Feeds the assistant's delete_harvest_pick
+ *  resolver (narrow by weight/date). Mirrors getBlockBrixHistory. */
+export async function getBlockPicks(blockId: string): Promise<PickDTO[]> {
+  await requireBlockAccess(blockId);
+  const rows = await prisma.harvestPick.findMany({
+    where: { harvestRecord: { blockId } },
+    orderBy: [{ pickDate: "desc" }, { id: "desc" }],
+    select: { id: true, pickDate: true, weightKg: true, brixAtPick: true, phAtPick: true, taAtPick: true, createdByEmail: true },
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    pickDate: p.pickDate.toISOString().slice(0, 10),
+    weightKg: p.weightKg.toNumber(),
+    brixAtPick: p.brixAtPick != null ? p.brixAtPick.toNumber() : null,
+    phAtPick: p.phAtPick != null ? p.phAtPick.toNumber() : null,
+    taAtPick: p.taAtPick != null ? p.taAtPick.toNumber() : null,
+    createdByEmail: p.createdByEmail,
+  }));
+}
 
 // ───────────────────────── Reads (Decimal -> number at the edge) ─────────────────────────
 
