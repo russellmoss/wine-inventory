@@ -232,6 +232,9 @@ async function main() {
   // suppliers/PII, and a contact/material/lot whose vendor spans tenants (composite (tenantId, vendorId) FK).
   await owner.vendor.upsert({ where: { id: "iso_vendor_b" }, update: {}, create: { id: "iso_vendor_b", tenantId: B, name: "ISO Vendor B", updatedAt: now } });
   await owner.vendorContact.upsert({ where: { id: "iso_vc_b" }, update: {}, create: { id: "iso_vc_b", tenantId: B, vendorId: "iso_vendor_b", name: "ISO Contact B", updatedAt: now } });
+  // Plan 075: a tenant-authored custom_unit in tenant B. Isolation risk is a cross-tenant read of a winery's
+  // unit registry (a custom unit feeds cost math, so a leak could mis-price the other tenant's intake).
+  await owner.customUnit.upsert({ where: { id: "iso_cu_b" }, update: {}, create: { id: "iso_cu_b", tenantId: B, name: "ISO Drum B", normalizedName: "iso drum b", dimension: "mass", perCanonical: "200000", updatedAt: now } });
   // Plan 053 C11: a tenant-authored Custom Log type in tenant B. Isolation risk is a cross-tenant read of a
   // winery's custom task definitions.
   await owner.workOrderTaskType.upsert({ where: { id: "iso_wtt_b" }, update: {}, create: { id: "iso_wtt_b", tenantId: B, code: "ISO_LOG_B", label: "ISO Log B", fieldsJson: [{ key: "note", label: "Note", type: "text", stage: ["planning"] }] } });
@@ -585,6 +588,14 @@ async function main() {
     check("cross-tenant vendor UPDATE affects 0 rows (merge can't touch another tenant's vendor)", vendorCrossUpd.count === 0, `count=${vendorCrossUpd.count}`);
     const vendorCrossDel = await asTenant(A, (db) => db.vendor.deleteMany({ where: { id: "iso_vendor_b" } }));
     check("cross-tenant vendor DELETE affects 0 rows (merge can't retire another tenant's vendor)", vendorCrossDel.count === 0, `count=${vendorCrossDel.count}`);
+    // Plan 075: custom_unit isolation (RLS read + WITH CHECK insert). A leaked unit could mis-price intake.
+    const aSeesCuB = await asTenant(A, (db) => db.customUnit.findFirst({ where: { id: "iso_cu_b" } }));
+    check("tenant A CANNOT see tenant B's custom_unit (RLS)", aSeesCuB === null);
+    let cuInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.customUnit.create({ data: { id: "iso_cu_x", tenantId: B, name: "ISO Drum X", normalizedName: "iso drum x", dimension: "mass", perCanonical: "200000", updatedAt: new Date() } }));
+    } catch { cuInsertRaised = true; }
+    check("foreign-tenant custom_unit INSERT raises (WITH CHECK)", cuInsertRaised);
     // Plan 053 C11: work_order_task_type isolation.
     const aSeesWttB = await asTenant(A, (db) => db.workOrderTaskType.findFirst({ where: { id: "iso_wtt_b" } }));
     check("tenant A CANNOT see tenant B's work_order_task_type (RLS)", aSeesWttB === null);
@@ -767,6 +778,7 @@ async function main() {
     await owner.equipmentAsset.deleteMany({ where: { id: { in: ["iso_eq_b", "iso_eq_x"] } } });
     // Plan 069: vendor children (contacts, the FK-test material) before the vendors (ON DELETE RESTRICT).
     await owner.vendorContact.deleteMany({ where: { id: { in: ["iso_vc_b", "iso_vc_fk"] } } });
+    await owner.customUnit.deleteMany({ where: { id: { in: ["iso_cu_b", "iso_cu_x"] } } });
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_vfk" } });
     await owner.vendor.deleteMany({ where: { id: { in: ["iso_vendor_b", "iso_vendor_x"] } } });
     await owner.workOrderTaskTypeOverlay.deleteMany({ where: { id: { in: ["iso_ovl_b", "iso_ovl_x"] } } });

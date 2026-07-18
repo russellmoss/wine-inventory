@@ -3092,6 +3092,31 @@ model VendorContact {
   @@map("vendor_contact")
 }
 
+// Plan 075: user-defined measurement units, per tenant. A custom unit is structurally identical to a
+// built-in (src/lib/units/measure.ts): a `dimension` (mass|volume|count) + a `perCanonical` factor — how
+// many canonical base units (g / mL / count) one of this unit is worth. Weight/volume units MUST carry a
+// real factor because portions get consumed via convert(); count units default to 1. Custom units live at
+// the INTAKE/display boundary ONLY — stored stock stays canonical (g/mL/unit), so the cost core and
+// coerceStockUnit are untouched. Tenant-scoped + RLS-forced (Phase 12). `normalizedName` is the lowercased
+// de-dupe/lookup key. No cross-table FK (units aren't referenced by id — materials store the unit STRING).
+model CustomUnit {
+  tenantId       String   @default("")
+  id             String   @id @default(cuid())
+  name           String // as the user typed it, e.g. "drum", "tote", "roll"
+  normalizedName String // lowercased/trimmed lookup + de-dupe key
+  dimension      String // "mass" | "volume" | "count" (MeasureDimension)
+  perCanonical   Decimal // canonical base units per 1 of this unit (g / mL / count); always > 0
+  label          String? // optional display label (defaults to name in the UI)
+  createdBy      String? // user id who created it (audit; nullable for backfill / non-UI paths)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, normalizedName]) // one unit name per tenant — the find-or-reject-dupes key
+  @@unique([tenantId, id]) // composite-tenant-FK target parity (K11)
+  @@index([tenantId])
+  @@map("custom_unit")
+}
+
 model ApExportEvent {
   tenantId                  String                @default("")
   id                        String                @id @default(cuid())
