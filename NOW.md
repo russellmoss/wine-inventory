@@ -17,8 +17,11 @@ AP-1. (3) Paid/Outstanding — schema on `IngestedInvoice`+`ApExportEvent`+AppSe
 review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPayment** poster pass (Check/CreditCard,
 exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
 migrations applied to Neon. GREEN: tsc, eslint, vitest 2276, next build, verify:ingest 81, verify:accounting 8,
-verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation. PENDING before
-prod trust: accountant sign-off on BillPayment GL + a live QBO-sandbox multi-line pass + browser-QA on Demo.
+verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation.
+**Live QBO-sandbox pass DONE** (`verify:plan076-live`: real 2-line Bill Id 166 $385.79 + BillPayment Id 167 →
+Balance $0.00). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
+fire, duplicate gate "book it anyway" fires with nothing booked, Settings pay-from pickers populate from live QBO
+COA). PENDING before prod trust: **accountant sign-off** on the BillPayment GL direction only.
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
