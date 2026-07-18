@@ -47,6 +47,7 @@ import { logBrixTool } from "./tools/log-brix";
 import { deleteBrixTool } from "./tools/delete-brix";
 import { setYieldEstimateTool } from "./tools/set-yield-estimate";
 import { logHarvestPickTool } from "./tools/log-harvest-pick";
+import { deleteHarvestPickTool } from "./tools/delete-harvest-pick";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
 import { rackWineTool } from "./tools/rack-wine";
 import { addAdditionTool } from "./tools/add-addition";
@@ -123,6 +124,7 @@ const ALL_TOOLS: AssistantTool[] = [
   deleteBrixTool,
   setYieldEstimateTool,
   logHarvestPickTool,
+  deleteHarvestPickTool,
   adjustInventoryTool,
   rackWineTool,
   addAdditionTool,

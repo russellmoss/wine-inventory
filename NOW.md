@@ -7,6 +7,18 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — SHIPPING (PR #265).**
+Branch `claude/harvest-vineyard-lib-295869`. Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data cleanup):
+couldn't delete blocks refused by dependent Brix/harvest records, and no path to delete a standalone harvest pick.
+(1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix`; hardened
+`deleteHarvestPick` refuses a crushed pick (`LotHarvestSource` Restrict; was a latent 500) + fixed audit action.
+(2) **Confirmed cascade in `db_delete`** — `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`; `VineyardBlock`
+cascades Brix + harvest records (+ discloses subblocks) but HARD-REFUSES crushed picks & keeps WO-task FK a hard wall.
+No schema. `/review` CLEAR (3 specialists, 0 critical). Merged origin/main; **vitest 2333/0**, tsc/eslint/ai-native green.
+PENDING (post-merge): live DB proof (runAsTenant Demo) + browser-QA.
+
+<details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, ready to ship)</summary>
+
 **WO builder same-vessel transfer guard (feedback cmrqqm75b, P1 defect) — BUILT, gates green, ready to ship.**
 Branch `claude/wo-same-vessel-transfer-guard` (off origin/main). Bug: the WO builder let you author a transfer
 (RACK) whose source and destination are the SAME vessel; execution correctly refuses it, so a user could save a WO
@@ -22,6 +34,8 @@ thrown ActionError). Execution guards kept as backstop, unchanged. GROUP_RACK de
 silently filters self-members, not a reject). 4 regression tests in
 [test/work-order-readiness.test.ts](test/work-order-readiness.test.ts) (same-vessel RACK+TOPPING blocked, distinct
 vessels ready). GREEN: vitest 21/21 (readiness), tsc, eslint, verify:work-orders 43. Next: PR referencing the ticket.
+
+</details>
 
 <details><summary>prev objective — P0 bottling no-cork guard (SHIPPED, PR #259, a173e0a)</summary>
 

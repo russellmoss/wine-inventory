@@ -5,6 +5,7 @@ import type { AppUser } from "@/lib/access";
 import { findScopedBlocks, resolveVineyards } from "./scope";
 import type { FieldSpec, ValidatedValues } from "./fields";
 import { resolveExactlyOne } from "./tools/resolve";
+import { assertBlockCascadeSafe, cascadeDeleteBlockChildrenTx } from "@/lib/vineyard/block-delete";
 
 /**
  * Entity registry for the generic CRUD layer — the single source of truth for
@@ -20,6 +21,9 @@ export type RelationSpec = {
   label: string; // human plural, e.g. "Brix readings"
   kind: RelationKind;
   count: (id: string) => Promise<number>;
+  /** restrict-only: a USER-CONFIRMED cascade (EntityConfig.cascadeRestrict) may remove this child, so
+   *  db_delete offers a cascade instead of a hard refusal. Omit → this restrict child stays a hard wall. */
+  cascadable?: boolean;
 };
 
 export type EntityRow = { id: string; label: string; vineyardId: string | null };
@@ -36,6 +40,15 @@ export type EntityConfig = {
   relations: RelationSpec[];
   /** Delete the row within a transaction (audit handled by the committer). */
   del: (tx: Prisma.TransactionClient, id: string) => Promise<void>;
+  /** Opt-in confirmed cascade: when `cascadable` restrict-children block the delete, db_delete offers a
+   *  destructive cascade instead of refusing. `assertSafe` (read-only) throws a friendly ActionError if
+   *  the cascade is unsafe (e.g. would strand lineage) — run at preview AND commit. `run` deletes the
+   *  cascadable restrict-children within the tx, BEFORE the row itself. Entities WITHOUT this keep the
+   *  hard refusal, so a restrict wall is only ever crossed where an entity explicitly allows it. */
+  cascadeRestrict?: {
+    assertSafe: (id: string) => Promise<void>;
+    run: (tx: Prisma.TransactionClient, id: string) => Promise<void>;
+  };
 
   // ── Optional create/update support (db_create / db_update) ──
   /** Fields accepted on create (validated by fields.ts; FK names resolved in buildCreate). */
@@ -75,13 +88,25 @@ const vineyardBlock: EntityConfig = {
     return { id: row.id, label: `${row.blockLabel ?? "(unlabeled)"} in ${row.vineyard.name}`, vineyardId: row.vineyardId };
   },
   relations: [
-    // BrixLog.block and HarvestRecord.block are onDelete: Restrict — a block with
-    // either cannot be deleted until those are removed.
-    { label: "Brix readings", kind: "restrict", count: (id) => prisma.brixLog.count({ where: { blockId: id } }) },
-    { label: "harvest records", kind: "restrict", count: (id) => prisma.harvestRecord.count({ where: { blockId: id } }) },
+    // BrixLog.block and HarvestRecord.block are onDelete: Restrict — a block with either cannot be
+    // deleted until those are removed. They are `cascadable`: the user-confirmed cascade below can wipe
+    // this vineyard-owned harvest history (ticket #188 test-data cleanup).
+    { label: "Brix readings", kind: "restrict", cascadable: true, count: (id) => prisma.brixLog.count({ where: { blockId: id } }) },
+    { label: "harvest records", kind: "restrict", cascadable: true, count: (id) => prisma.harvestRecord.count({ where: { blockId: id } }) },
+    // work_order_task.blockId is onDelete: Restrict too, but a work order is NOT vineyard-owned harvest
+    // data — never cascade-delete crew/operational records. Left non-cascadable so it stays a hard wall.
+    { label: "work-order tasks", kind: "restrict", count: (id) => prisma.workOrderTask.count({ where: { blockId: id } }) },
+    // Subblocks are onDelete: Cascade (they vanish with the block row). Listed so the confirmed-cascade
+    // preview DISCLOSES them — before this entity was cascadable, a block with harvest history could
+    // never be deleted, so subblocks never silently disappeared; now they can, so say so.
+    { label: "subblocks", kind: "cascade", count: (id) => prisma.vineyardSubblock.count({ where: { blockId: id } }) },
   ],
   async del(tx, id) {
     await tx.vineyardBlock.delete({ where: { id } });
+  },
+  cascadeRestrict: {
+    assertSafe: (id) => assertBlockCascadeSafe(id),
+    run: (tx, id) => cascadeDeleteBlockChildrenTx(tx, id),
   },
   editable: [
     { name: "blockLabel", type: "string", min: 1, max: 80, description: "Block label, e.g. 'Block 2'." },
