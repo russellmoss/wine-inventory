@@ -4,7 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Badge, Button } from "@/components/ui";
 import { MAPPABLE_COMPONENTS } from "@/lib/accounting/components";
-import { loadChartOfAccounts, saveComponentMappings, saveApBillAccounts } from "@/lib/accounting/actions";
+import { loadChartOfAccounts, saveComponentMappings, saveApBillAccounts, saveApPaymentAccountsAction } from "@/lib/accounting/actions";
 import type { NormalizedAccount } from "@/lib/accounting/adapter";
 
 // Phase 15 Unit 6 — guided account mapping. Business roles, never Debit/Credit (Gemini). Gated on a
@@ -61,18 +61,23 @@ export function AccountMappingCard({
   homeCurrency,
   initialMappings,
   initialAp,
+  initialApPayment,
 }: {
   connected: boolean;
   homeCurrency: string | null;
   initialMappings: Mapping[];
   initialAp: { apInventoryAccount: string | null; apPayableAccount: string | null };
+  initialApPayment: { apPaymentBankAccount: string | null; apPaymentCardAccount: string | null };
 }) {
   const router = useRouter();
   const [mappings, setMappings] = React.useState<Mapping[]>(initialMappings);
   const [cost, setCost] = React.useState<NormalizedAccount[] | null>(null);
   const [inventory, setInventory] = React.useState<NormalizedAccount[] | null>(null);
   const [payable, setPayable] = React.useState<NormalizedAccount[] | null>(null);
+  const [allAccounts, setAllAccounts] = React.useState<NormalizedAccount[] | null>(null);
   const [ap, setAp] = React.useState(initialAp);
+  const [apPay, setApPay] = React.useState(initialApPayment);
+  const [apPayMsg, setApPayMsg] = React.useState<string | null>(null);
   const [apMsg, setApMsg] = React.useState<string | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -87,10 +92,11 @@ export function AccountMappingCard({
       setLoading(true);
       setLoadError(null);
       try {
-        const { cost, inventory, payable } = await loadChartOfAccounts();
+        const { cost, inventory, payable, all } = await loadChartOfAccounts();
         setCost(cost);
         setInventory(inventory);
         setPayable(payable);
+        setAllAccounts(all);
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : "Couldn't load your chart of accounts.");
       } finally {
@@ -113,6 +119,20 @@ export function AccountMappingCard({
     });
   }
   const apHalf = Boolean(ap.apInventoryAccount) !== Boolean(ap.apPayableAccount);
+
+  function saveApPay() {
+    setApPayMsg(null);
+    setSaveErr(null);
+    startTransition(async () => {
+      try {
+        await saveApPaymentAccountsAction(apPay);
+        setApPayMsg("Saved.");
+        router.refresh();
+      } catch (e) {
+        setSaveErr(e instanceof Error ? e.message : "Couldn't save the payment accounts.");
+      }
+    });
+  }
 
   React.useEffect(() => {
     if (connected) fetchCoa();
@@ -253,6 +273,39 @@ export function AccountMappingCard({
               </Button>
               {apHalf && <span style={{ color: "var(--danger)", fontSize: 13 }}>Set both accounts (or clear both).</span>}
               {apMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{apMsg}</span>}
+            </div>
+          </div>
+
+          {/* Plan 076 — pay-from accounts: when an invoice is marked Paid, a bill payment is recorded in
+              QuickBooks from one of these (check → bank; company card → the card's liability account). */}
+          <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 16 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 500, marginBottom: 4 }}>Invoice payment accounts</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 10, maxWidth: "52ch" }}>
+              When you mark an ingested invoice as Paid, we record the bill payment in QuickBooks so it stops
+              showing as owed. Choose the account the money comes from — your bank/checking for a check, or your
+              company credit-card account for a card payment. Set whichever you use.
+            </div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <AccountSelect
+                id="ap-pay-bank"
+                label="Bank / checking account"
+                value={apPay.apPaymentBankAccount}
+                accounts={allAccounts ?? []}
+                onChange={(v) => { setApPay((a) => ({ ...a, apPaymentBankAccount: v })); setApPayMsg(null); }}
+              />
+              <AccountSelect
+                id="ap-pay-card"
+                label="Company credit-card account"
+                value={apPay.apPaymentCardAccount}
+                accounts={allAccounts ?? []}
+                onChange={(v) => { setApPay((a) => ({ ...a, apPaymentCardAccount: v })); setApPayMsg(null); }}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+              <Button variant="secondary" onClick={saveApPay} disabled={pending}>
+                {pending ? "Saving…" : "Save payment accounts"}
+              </Button>
+              {apPayMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{apPayMsg}</span>}
             </div>
           </div>
         </>

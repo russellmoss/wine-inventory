@@ -48,6 +48,7 @@ export function SettingsClient({
   accounting,
   accountingMappings,
   accountingAp,
+  accountingApPayment,
   commerce7,
   voice,
 }: {
@@ -58,6 +59,7 @@ export function SettingsClient({
   accounting: ConnectionSummary | null;
   accountingMappings: AccountingMapping[];
   accountingAp: { apInventoryAccount: string | null; apPayableAccount: string | null };
+  accountingApPayment: { apPaymentBankAccount: string | null; apPaymentCardAccount: string | null };
   commerce7: Commerce7ConnectionSummary | null;
   voice: VoiceSettingsView;
 }) {
@@ -279,6 +281,7 @@ export function SettingsClient({
         homeCurrency={accounting?.homeCurrency ?? null}
         initialMappings={accountingMappings}
         initialAp={accountingAp}
+        initialApPayment={accountingApPayment}
       />
 
       {/* Plan 077 — opt-in: eagerly push a Cellarhand-created vendor to QuickBooks (fuzzy-matched, no dupes). */}

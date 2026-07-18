@@ -14,11 +14,13 @@ import {
   type MaterialFormValue,
 } from "@/components/cellar/MaterialForm";
 import type { VendorRow } from "@/lib/vendors/vendors-shared";
+import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
 import { receiveSupplyAction, setMaterialActiveAction, listMaterialLotsAction } from "@/lib/cost/actions";
 import type { MaterialLotRow } from "@/lib/cellar/materials";
 import { lotExpiryStatus, expiryLabel, docRoleLabel } from "@/lib/cellar/lot-history";
-import { extractAndStageAction } from "@/lib/ingest/actions";
+import { extractAndStageAction, updateIngestedInvoiceAction } from "@/lib/ingest/actions";
+import type { IngestDuplicate } from "@/lib/ingest/ingest-invoice-core";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 
 // Phase 8/12 → 036 → 037: manage the supply catalog. Categories are collapsible + searchable; clicking a
@@ -59,7 +61,7 @@ function useRunner() {
 /** The stored category for a material (fallback derives from kind for legacy rows). */
 const catOf = (m: CellarMaterialDTO): MaterialCategory => (m.category as MaterialCategory) ?? categoryOf(m.kind);
 
-export function ExpendablesClient({ materials, vendors }: { materials: CellarMaterialDTO[]; vendors: VendorRow[] }) {
+export function ExpendablesClient({ materials, vendors, customUnits = [] }: { materials: CellarMaterialDTO[]; vendors: VendorRow[]; customUnits?: CustomUnitRow[] }) {
   const { error, pending, run } = useRunner();
   const router = useRouter();
   const refreshVendors = React.useCallback(() => router.refresh(), [router]);
@@ -256,6 +258,7 @@ export function ExpendablesClient({ materials, vendors }: { materials: CellarMat
         run={run}
         familiesByCategory={familiesByCategory}
         vendors={vendors}
+        customUnits={customUnits}
         onVendorCreated={refreshVendors}
         onClose={() => setAddOpen(false)}
       />
@@ -276,6 +279,7 @@ export function ExpendablesClient({ materials, vendors }: { materials: CellarMat
         run={run}
         familiesByCategory={familiesByCategory}
         vendors={vendors}
+        customUnits={customUnits}
         onVendorCreated={refreshVendors}
         onClose={() => setEditId(null)}
       />
@@ -300,6 +304,13 @@ function IngestInvoiceLauncher() {
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  // Plan 076: when staging detects a possible duplicate, hold here and ask before navigating on.
+  const [dupPrompt, setDupPrompt] = React.useState<{ batchId: string; items: IngestDuplicate[] } | null>(null);
+  const [dupBusy, setDupBusy] = React.useState(false);
+
+  const goToReview = React.useCallback((batchId: string) => {
+    router.push(`/setup/expendables/ingest?batch=${encodeURIComponent(batchId)}`);
+  }, [router]);
 
   async function onFiles(fileList: FileList | null) {
     setError(null);
@@ -328,11 +339,17 @@ function IngestInvoiceLauncher() {
       }
       const batchId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `batch_${Date.now()}`;
       setStatus(`Reading ${uploaded.length} document${uploaded.length === 1 ? "" : "s"}… this can take a moment.`);
-      await extractAndStageAction({
+      const staged = await extractAndStageAction({
         batchId,
         files: uploaded.map((u) => ({ blobUrl: u.blobUrl, fileName: u.fileName, mimeType: u.mimeType, fileSha256: u.fileSha256 })),
       });
-      router.push(`/setup/expendables/ingest?batch=${encodeURIComponent(batchId)}`);
+      // Plan 076: if any staged doc looks like a duplicate, warn before proceeding (the human decides).
+      if (staged.duplicates && staged.duplicates.length > 0) {
+        setStatus(null);
+        setDupPrompt({ batchId, items: staged.duplicates });
+        return;
+      }
+      goToReview(batchId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ingestion failed.");
     } finally {
@@ -349,6 +366,54 @@ function IngestInvoiceLauncher() {
       </Button>
       {status ? <span style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 220 }}>{status}</span> : null}
       {error ? <span style={{ fontSize: 12, color: "var(--danger)", maxWidth: 240 }}>{error}</span> : null}
+
+      <Modal
+        open={dupPrompt != null}
+        onClose={() => { if (!dupBusy) setDupPrompt(null); }}
+        title="This looks like a duplicate invoice"
+        subtitle="Do you want to continue?"
+        maxWidth={520}
+      >
+        {dupPrompt ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 6 }}>
+              {dupPrompt.items.map((d, i) => <li key={i}>{d.label}</li>)}
+            </ul>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
+              Continuing keeps {dupPrompt.items.length === 1 ? "it" : "them"} in the review queue — you can still discard {dupPrompt.items.length === 1 ? "it" : "any"} there, and nothing is booked to inventory or QuickBooks until you Confirm.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <Button
+                variant="ghost"
+                disabled={dupBusy}
+                onClick={async () => {
+                  if (!dupPrompt) return;
+                  setDupBusy(true);
+                  try {
+                    // Discard just the flagged duplicates; the rest of the batch still goes to review.
+                    const ids = [...new Set(dupPrompt.items.map((d) => d.ingestedInvoiceId))];
+                    await Promise.all(ids.map((id) => updateIngestedInvoiceAction(id, { status: "discarded" }).catch(() => undefined)));
+                    const batchId = dupPrompt.batchId;
+                    setDupPrompt(null);
+                    goToReview(batchId);
+                  } finally {
+                    setDupBusy(false);
+                  }
+                }}
+              >
+                {dupBusy ? "Discarding…" : "Discard duplicate"}
+              </Button>
+              <Button
+                variant="primary"
+                disabled={dupBusy}
+                onClick={() => { const b = dupPrompt.batchId; setDupPrompt(null); goToReview(b); }}
+              >
+                Continue to review
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -557,6 +622,7 @@ function AddExpendableModal({
   run,
   familiesByCategory,
   vendors,
+  customUnits,
   onVendorCreated,
   onClose,
 }: {
@@ -565,6 +631,7 @@ function AddExpendableModal({
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
   familiesByCategory: Map<MaterialCategory, Set<string>>;
   vendors: VendorRow[];
+  customUnits: CustomUnitRow[];
   onVendorCreated: () => void;
   onClose: () => void;
 }) {
@@ -581,7 +648,7 @@ function AddExpendableModal({
   return (
     <Modal open={open} onClose={onClose} title="Add expendable" subtitle="Product, purchase, and how it's tracked" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" vendors={vendors} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" vendors={vendors} customUnits={customUnits} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
@@ -599,6 +666,7 @@ function EditMaterialModal({
   run,
   familiesByCategory,
   vendors,
+  customUnits,
   onVendorCreated,
   onClose,
 }: {
@@ -607,6 +675,7 @@ function EditMaterialModal({
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
   familiesByCategory: Map<MaterialCategory, Set<string>>;
   vendors: VendorRow[];
+  customUnits: CustomUnitRow[];
   onVendorCreated: () => void;
   onClose: () => void;
 }) {
@@ -626,7 +695,7 @@ function EditMaterialModal({
   return (
     <Modal open={!!material} onClose={onClose} title={material ? `Edit · ${materialDisplayName(material)}` : "Edit"} subtitle="Correct the item's setup details" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} vendors={vendors} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} vendors={vendors} customUnits={customUnits} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>

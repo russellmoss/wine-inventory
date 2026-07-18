@@ -49,6 +49,7 @@ function mockQbo(state: { posted: Map<string, string> }): AccountingAdapter {
     async findByDocNumber(_c, _t, docNumber) { const id = state.posted.get(docNumber); return id ? { externalId: id, version: "0", docNumber } : null; },
     async getById() { return null; },
     async postJournalEntry(_c, input): Promise<PostResult> { const doc = docNumberFor(input.postingKey); const id = `EXT-${state.posted.size + 1}`; state.posted.set(doc, id); return { externalId: id, version: "0" }; },
+    postBillPayment: notImpl, getBillBalance: notImpl,
   };
 }
 

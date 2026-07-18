@@ -63,7 +63,14 @@ export type VesselAnalyses = {
 
 /**
  * A vessel's analysis history (non-voided panels recorded while it held wine), for the
- * per-vessel trends modal on /bulk. Scoped by the panel's `vesselId` snapshot.
+ * per-vessel trends modal on /bulk.
+ *
+ * Sourcing (bugfix): a panel surfaces here if EITHER (a) it carries this vessel's `vesselId`
+ * snapshot, OR (b) it has NO vessel snapshot but belongs to a lot currently resident in this
+ * vessel. Case (b) is what the FermentMonitor history above the trends already shows (it sources
+ * by lotId), so without it a reading logged without a vessel snapshot appeared in the ferment
+ * history yet left the "All analyses over time" section reading "No analyses logged". A panel that
+ * carries a DIFFERENT vessel's snapshot is still excluded — that reading was taken elsewhere.
  *
  * Molecular SO₂ is DERIVED (never stored) from the LATEST free SO₂ paired with the pH that was
  * current AT OR BEFORE that free-SO₂ reading. Free SO₂ is the quantity that moves (every addition
@@ -75,8 +82,19 @@ export type VesselAnalyses = {
  * preserved as a subset.
  */
 export async function listVesselAnalyses(vesselId: string): Promise<VesselAnalyses> {
+  // Lots currently resident in the vessel — used to also pick up panels that were logged without a
+  // vessel snapshot but belong to this vessel's wine (see the sourcing note above).
+  const residents = await prisma.vesselLot.findMany({ where: { vesselId }, select: { lotId: true } });
+  const residentLotIds = residents.map((r) => r.lotId);
+
   const rows = await prisma.analysisPanel.findMany({
-    where: { vesselId, voidedAt: null },
+    where: {
+      voidedAt: null,
+      OR: [
+        { vesselId },
+        ...(residentLotIds.length ? [{ vesselId: null, lotId: { in: residentLotIds } }] : []),
+      ],
+    },
     orderBy: { observedAt: "asc" },
     include: { readings: true },
   });

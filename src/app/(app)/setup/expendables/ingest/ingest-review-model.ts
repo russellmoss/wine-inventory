@@ -31,6 +31,8 @@ export type ReviewLine = {
 
 export type ReviewDocType = "invoice" | "proforma" | "coa" | "other";
 export type ReviewStatus = "pending" | "applying" | "applied" | "discarded" | "held";
+/** Plan 076: mirrors the ApPaymentStatus enum (kept as a local literal — this module stays prisma-free). */
+export type PaymentStatus = "OUTSTANDING" | "PAID";
 
 /** A staged document (one source file) as the review client sees it. */
 export type ReviewDoc = {
@@ -46,6 +48,9 @@ export type ReviewDoc = {
   invoiceTotal: number | null;
   taxTotal: number | null;
   landedReceipt: boolean | null;
+  /** Plan 076: the A/P payment status the human must pick before Confirm, + the pay-from account when Paid. */
+  paymentStatus: PaymentStatus | null;
+  paidFromAccount: string | null;
   /** Charges + warnings pulled out of the stored extractedJson by the loader. */
   charges: InvoiceCharges | null;
   warnings: string[];
@@ -64,7 +69,7 @@ export function isReceiptDoc(docType: ReviewDocType): boolean {
 // now captures an explicit Amount + a Unit dropdown, and Confirm is BLOCKED until BOTH are set for every
 // receipt line, so pack size is never guessed.
 
-export const PACK_UNITS = ["g", "kg", "mg", "oz", "lb", "mL", "L", "gal", "fl oz", "unit"] as const;
+export const PACK_UNITS = ["g", "kg", "mg", "oz", "lb", "ton", "mL", "L", "gal", "fl oz", "unit"] as const;
 export type PackUnit = (typeof PACK_UNITS)[number];
 
 /** Strict split of a `unitRaw` string into a pack amount + unit. Does NOT collapse "Each"/"ea" into a unit —
@@ -77,16 +82,20 @@ export function parsePackFields(unitRaw: string | null | undefined): { amount: n
   return { amount: Number.isFinite(amount) ? amount : null, unit: m[2].trim().toLowerCase() };
 }
 
-/** Match a parsed unit to a canonical PACK_UNITS value (case-insensitive), or null. */
-export function canonicalPackUnit(unit: string | null | undefined): PackUnit | null {
+/** Match a parsed unit to a recognized pack unit (case-insensitive) — a built-in PACK_UNITS value OR one of the
+ *  tenant's custom unit names (plan 075). Returns the canonical/original spelling to prefill the dropdown, or null. */
+export function canonicalPackUnit(unit: string | null | undefined, extraUnitNames: readonly string[] = []): string | null {
   const u = String(unit ?? "").trim().toLowerCase();
-  return (PACK_UNITS as readonly string[]).find((p) => p.toLowerCase() === u) as PackUnit | undefined ?? null;
+  const builtin = (PACK_UNITS as readonly string[]).find((p) => p.toLowerCase() === u);
+  if (builtin) return builtin;
+  return extraUnitNames.find((n) => n.trim().toLowerCase() === u) ?? null;
 }
 
-/** Is a line's pack size fully specified (amount > 0 AND a recognized unit)? The Confirm gate for a receipt. */
-export function packFieldsValid(unitRaw: string | null | undefined): boolean {
+/** Is a line's pack size fully specified (amount > 0 AND a recognized unit)? The Confirm gate for a receipt.
+ *  A custom unit name (plan 075) counts as recognized when passed in `extraUnitNames`. */
+export function packFieldsValid(unitRaw: string | null | undefined, extraUnitNames: readonly string[] = []): boolean {
   const { amount, unit } = parsePackFields(unitRaw);
-  return amount != null && amount > 0 && canonicalPackUnit(unit) != null;
+  return amount != null && amount > 0 && canonicalPackUnit(unit, extraUnitNames) != null;
 }
 
 /** Compose the stored `unitRaw` from the review screen's separate Amount + Unit inputs. Blank when neither. */
@@ -98,9 +107,9 @@ export function composePackUnitRaw(amount: string | number | null | undefined, u
 
 /** The Amount + Unit to PREFILL the two inputs from a stored `unitRaw` — but only prefill the unit when it's a
  *  recognized pack unit, so an ambiguous "Each" shows blank and must be chosen (never silently accepted). */
-export function packInputValues(unitRaw: string | null | undefined): { amount: string; unit: string } {
+export function packInputValues(unitRaw: string | null | undefined, extraUnitNames: readonly string[] = []): { amount: string; unit: string } {
   const { amount, unit } = parsePackFields(unitRaw);
-  const canonical = canonicalPackUnit(unit);
+  const canonical = canonicalPackUnit(unit, extraUnitNames);
   return { amount: amount != null ? String(amount) : "", unit: canonical ?? "" };
 }
 
@@ -167,8 +176,9 @@ export type ConfirmGate = { ok: boolean; reasons: string[] };
  * "add to existing" line must have actually chosen a material. Returns the blocking reasons for the UI.
  */
 export function canConfirmDoc(
-  doc: Pick<ReviewDoc, "docType" | "landedReceipt" | "lines" | "status" | "currency">,
+  doc: Pick<ReviewDoc, "docType" | "landedReceipt" | "lines" | "status" | "currency" | "paymentStatus" | "paidFromAccount">,
   fx?: { baseCurrency: string | null; rate: number | null },
+  extraUnitNames: readonly string[] = [],
 ): ConfirmGate {
   const reasons: string[] = [];
   if (doc.status === "applied") return { ok: false, reasons: ["This invoice has already been applied."] };
@@ -176,6 +186,13 @@ export function canConfirmDoc(
   if (!isReceiptDoc(doc.docType)) {
     reasons.push("Only an invoice (or a landed proforma) can be applied — reclassify it as an invoice to intake it.");
     return { ok: false, reasons };
+  }
+  // Plan 076: the human must record whether this invoice is already Paid or still Outstanding (it syncs to
+  // QuickBooks' A/P). A Paid invoice also needs the account the money came from (drives the QBO BillPayment).
+  if (!doc.paymentStatus) {
+    reasons.push("Choose whether this invoice is Paid or still Outstanding.");
+  } else if (doc.paymentStatus === "PAID" && !doc.paidFromAccount?.trim()) {
+    reasons.push("Choose which account paid it — a Paid invoice records a bill payment in QuickBooks.");
   }
   // Plan 073: a foreign-currency receipt with no usable rate can't be applied — the money would be wrong (D14).
   if (fx && needsFxRate(doc.currency ?? null, fx.baseCurrency, fx.rate)) {
@@ -194,7 +211,7 @@ export function canConfirmDoc(
     }
     // Accounting-accuracy gate: every intaken line needs an explicit pack amount + unit (e.g. 250 g, 1 kg) so
     // stock quantity and per-unit cost are correct — never a guessed "1 unit".
-    if (!packFieldsValid(l.unitRaw)) {
+    if (!packFieldsValid(l.unitRaw, extraUnitNames)) {
       reasons.push(`Line ${l.lineNo} needs a pack amount and unit (e.g. 250 g, 1 kg) so stock + cost are accurate.`);
     }
   }

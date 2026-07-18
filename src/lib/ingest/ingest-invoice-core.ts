@@ -4,6 +4,7 @@ import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { createStockMaterialCore, receiveSupplyCore } from "@/lib/cellar/materials";
+import { emitApExportForInvoice, type ApBillLine } from "@/lib/accounting/ap-emit";
 import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 import { allocateLandedCost, type InvoiceCharges } from "@/lib/ingest/landed-cost";
 import { normalizeLineToStock, parsePackagingUnit } from "@/lib/ingest/normalize-line";
@@ -12,7 +13,9 @@ import { getRate, type ResolvedRate } from "@/lib/money/fx/rate-service";
 import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
 import { coerceStockUnit } from "@/lib/cellar/materials-shared";
 import { coerceFamily, coerceMaterialCategory, categoryOf } from "@/lib/cellar/material-taxonomy";
-import { dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
+import { dimensionOf, canonicalUnitFor, type ExtraUnits } from "@/lib/units/measure";
+import { loadCustomUnits } from "@/lib/units/custom-units";
+import { requireTenantId } from "@/lib/tenant/context";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
 
 // Plan 072 Unit 7 (GOVERNED MONEY): persist extracted invoices as editable STAGING, then apply ONE invoice
@@ -35,9 +38,20 @@ export type IngestDocumentInput = {
   document: ExtractedDocument;
 };
 
+/** A detected possible-duplicate on a freshly-staged document (Plan 076). The human decides whether to
+ *  proceed; the apply-time guard (below) enforces it a second time before any goods/A/P are booked. */
+export type IngestDuplicate = {
+  ingestedInvoiceId: string; // the newly-staged doc that looks like a duplicate
+  fileName: string;
+  kind: "vendor-invoice" | "file-hash";
+  matchedInvoiceId: string; // the pre-existing invoice it matches
+  label: string; // human-readable explanation for the confirm modal
+};
+
 export type CreateIngestedResult = {
   invoices: { id: string; fileName: string; docType: string }[];
   warnings: string[];
+  duplicates: IngestDuplicate[];
 };
 
 // ── create staging ──
@@ -54,22 +68,33 @@ export async function createIngestedInvoiceCore(
   return runInTenantTx(async (tx) => {
     const invoices: CreateIngestedResult["invoices"] = [];
     const warnings: string[] = [];
+    const duplicates: IngestDuplicate[] = [];
 
     for (const d of input.documents) {
       const doc = d.document;
       const isReceipt = doc.docType === "invoice" || doc.docType === "proforma";
 
-      // Soft duplicate guard (council): same (vendorName, invoice#) or same exact file already staged/applied.
+      // Duplicate guard (Plan 076): same (vendorName, invoice#) or same exact file already staged/applied.
+      // Detection is non-destructive — the doc is always staged; the returned `duplicates` drive a confirm
+      // gate in the UI, and the apply-time guard re-checks before any goods/A/P are booked (the human decides).
+      let dupVendorId: string | null = null;
+      let dupFileId: string | null = null;
       if (doc.invoiceNumber && doc.vendor?.name) {
         const dup = await tx.ingestedInvoice.findFirst({
           where: { vendorNameRaw: doc.vendor.name, vendorInvoiceNumber: doc.invoiceNumber, status: { in: ["pending", "applying", "applied"] } },
           select: { id: true },
         });
-        if (dup) warnings.push(`"${d.fileName}": an invoice ${doc.invoiceNumber} from ${doc.vendor.name} is already in the queue — possible duplicate.`);
+        if (dup) {
+          dupVendorId = dup.id;
+          warnings.push(`"${d.fileName}": an invoice ${doc.invoiceNumber} from ${doc.vendor.name} is already in the queue — possible duplicate.`);
+        }
       }
       if (d.fileSha256) {
         const dupFile = await tx.ingestedInvoice.findFirst({ where: { fileSha256: d.fileSha256 }, select: { id: true } });
-        if (dupFile) warnings.push(`"${d.fileName}": this exact file was uploaded before — possible duplicate.`);
+        if (dupFile) {
+          dupFileId = dupFile.id;
+          warnings.push(`"${d.fileName}": this exact file was uploaded before — possible duplicate.`);
+        }
       }
 
       const invoice = await tx.ingestedInvoice.create({
@@ -116,11 +141,18 @@ export async function createIngestedInvoiceCore(
         }
       }
 
+      if (dupVendorId) {
+        duplicates.push({ ingestedInvoiceId: invoice.id, fileName: d.fileName, kind: "vendor-invoice", matchedInvoiceId: dupVendorId, label: `Invoice ${doc.invoiceNumber} from ${doc.vendor?.name} is already in the system.` });
+      }
+      if (dupFileId) {
+        duplicates.push({ ingestedInvoiceId: invoice.id, fileName: d.fileName, kind: "file-hash", matchedInvoiceId: dupFileId, label: `This exact file ("${d.fileName}") was uploaded before.` });
+      }
+
       await writeAudit(tx, { ...actor, action: "CREATE", entityType: "IngestedInvoice", entityId: invoice.id, summary: `Ingested "${d.fileName}" (${doc.docType})` });
       invoices.push({ id: invoice.id, fileName: d.fileName, docType: doc.docType });
     }
 
-    return { invoices, warnings };
+    return { invoices, warnings, duplicates };
   });
 }
 
@@ -156,6 +188,9 @@ export type InvoicePatch = Partial<{
   vendorNameRaw: string | null;
   vendorInvoiceNumber: string | null;
   status: "pending" | "discarded" | "held";
+  // Plan 076: the review-screen A/P payment choice. paidFromAccount is required (in the UI gate) when PAID.
+  paymentStatus: "OUTSTANDING" | "PAID" | null;
+  paidFromAccount: string | null;
   // Plan 073: the FX rate override (review screen, Unit 5). Editable ONLY while pending — the guard below
   // refuses edits once applied/in-flight, so a lot's rate can never diverge from its A/P (council #3).
   fxRate: number | null;
@@ -174,11 +209,49 @@ export async function updateIngestedInvoiceCore(actor: LedgerActor, ingestedInvo
   });
 }
 
+export type SetPaymentResult = { ok: true; paymentStatus: "OUTSTANDING" | "PAID" } | { ok: false; error: string };
+
+/**
+ * Plan 076 — set an invoice's A/P payment status AFTER apply (the common "I paid the card statement, now mark
+ * it paid" flow), syncing the aggregate A/P event so the poster records/stops a QBO BillPayment. Returns
+ * { ok:false } (never throws). Guards: PAID needs a pay-from account; and once the BillPayment is POSTED to
+ * QuickBooks (paymentExternalId set) it can't be flipped back to OUTSTANDING here — that's a void in QBO.
+ */
+export async function setInvoicePaymentStatusCore(
+  actor: LedgerActor,
+  input: { ingestedInvoiceId: string; paymentStatus: "OUTSTANDING" | "PAID"; paidFromAccount?: string | null },
+): Promise<SetPaymentResult> {
+  try {
+    return await runInTenantTx(async (tx) => {
+      const inv = await tx.ingestedInvoice.findUnique({ where: { id: input.ingestedInvoiceId }, select: { id: true } });
+      if (!inv) return { ok: false as const, error: "That invoice isn't in this winery." };
+      const paid = input.paymentStatus === "PAID";
+      if (paid && !input.paidFromAccount?.trim()) return { ok: false as const, error: "Choose which account paid it." };
+
+      const agg = await tx.apExportEvent.findFirst({ where: { postingKey: `apinv:${inv.id}` }, select: { id: true, paymentExternalId: true } });
+      if (!paid && agg?.paymentExternalId) {
+        return { ok: false as const, error: "This invoice's payment is already recorded in QuickBooks — void the bill payment there first, then mark it outstanding." };
+      }
+
+      const account = paid ? input.paidFromAccount!.trim() : null;
+      const when = paid ? new Date() : null;
+      await tx.ingestedInvoice.update({ where: { id: inv.id }, data: { paymentStatus: input.paymentStatus, paidFromAccount: account, paidAt: when } });
+      if (agg) {
+        await tx.apExportEvent.update({ where: { id: agg.id }, data: { paymentStatus: input.paymentStatus, paidFromAccount: account, paidAt: when } });
+      }
+      await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "IngestedInvoice", entityId: inv.id, summary: `Marked invoice payment ${input.paymentStatus}` });
+      return { ok: true as const, paymentStatus: input.paymentStatus };
+    });
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : "Failed to update payment status." };
+  }
+}
+
 // ── apply (governed, atomic) ──
 
 export type ApplyResult =
   | { ok: true; vendorId: string | null; supplyLotIds: string[]; apLineCount: number }
-  | { ok: false; error: string; needsAck?: "reconcile" | "partial-ap" | "fx-rate" };
+  | { ok: false; error: string; needsAck?: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" };
 
 /** Plan 073: the FX rate resolver is injectable so tests can pin a deterministic rate (defaults to the real
  *  Frankfurter-backed service). The signature matches `getRate(base, foreign, at)`. */
@@ -192,10 +265,11 @@ class ApplyAbort extends Error {
 
 const RECON_EPS = 0.01;
 
-/** Derive a sensible canonical stock unit for a NEW material from the invoice line's unit. */
-function stockUnitForNewLine(unitRaw: string | null | undefined): string {
+/** Derive a sensible canonical stock unit for a NEW material from the invoice line's unit. A custom pack unit
+ *  ("drum"/"tote") resolves its dimension via the tenant registry so the material still stocks in canonical g/mL. */
+function stockUnitForNewLine(unitRaw: string | null | undefined, extraUnits?: ExtraUnits): string {
   const parsed = parsePackagingUnit(unitRaw);
-  const dim = dimensionOf(parsed.unit);
+  const dim = dimensionOf(parsed.unit, extraUnits);
   return dim ? canonicalUnitFor(dim) : coerceStockUnit(null); // count/unknown → the count default
 }
 
@@ -208,7 +282,7 @@ function stockUnitForNewLine(unitRaw: string | null | undefined): string {
  */
 export async function applyIngestedInvoiceCore(
   actor: LedgerActor,
-  input: { ingestedInvoiceId: string; allowReconcileMismatch?: boolean; allowPartialAp?: boolean },
+  input: { ingestedInvoiceId: string; allowReconcileMismatch?: boolean; allowPartialAp?: boolean; allowDuplicate?: boolean },
   deps?: ApplyDeps,
 ): Promise<ApplyResult> {
   try {
@@ -222,9 +296,33 @@ export async function applyIngestedInvoiceCore(
 
       const invoice = await tx.ingestedInvoice.findUnique({
         where: { id: input.ingestedInvoiceId },
-        select: { id: true, docType: true, landedReceipt: true, currency: true, vendorNameRaw: true, vendorInvoiceNumber: true, invoiceTotal: true, taxTotal: true, extractedJson: true, fxRate: true, fxRateDate: true, fxRateSource: true },
+        select: { id: true, docType: true, landedReceipt: true, currency: true, vendorNameRaw: true, vendorInvoiceNumber: true, fileSha256: true, invoiceTotal: true, taxTotal: true, extractedJson: true, fxRate: true, fxRateDate: true, fxRateSource: true, paymentStatus: true, paidFromAccount: true },
       });
       if (!invoice) throw new ApplyAbort({ ok: false, error: "Invoice not found." });
+
+      // (a2) duplicate guard (Plan 076) — refuse to book goods/A/P for an invoice that was ALREADY applied
+      // (same (vendor, invoice#) or the exact same file), unless the human explicitly acknowledged it. This is
+      // the hard backstop behind the stage-time detection: the confirm modal can be skipped, this can't.
+      if (!input.allowDuplicate) {
+        const dupOr: Prisma.IngestedInvoiceWhereInput[] = [];
+        if (invoice.vendorNameRaw && invoice.vendorInvoiceNumber) {
+          dupOr.push({ vendorNameRaw: invoice.vendorNameRaw, vendorInvoiceNumber: invoice.vendorInvoiceNumber });
+        }
+        if (invoice.fileSha256) dupOr.push({ fileSha256: invoice.fileSha256 });
+        if (dupOr.length > 0) {
+          const priorApplied = await tx.ingestedInvoice.findFirst({
+            where: { id: { not: invoice.id }, status: "applied", OR: dupOr },
+            select: { id: true, vendorInvoiceNumber: true },
+          });
+          if (priorApplied) {
+            throw new ApplyAbort({
+              ok: false,
+              needsAck: "duplicate",
+              error: `This looks like a duplicate — invoice ${priorApplied.vendorInvoiceNumber ?? priorApplied.id} was already applied. Confirm you want to book it again, or discard this one.`,
+            });
+          }
+        }
+      }
 
       // (b) doc-type + proforma gate
       if (invoice.docType !== "invoice" && invoice.docType !== "proforma") {
@@ -321,7 +419,12 @@ export async function applyIngestedInvoiceCore(
       }
 
       const supplyLotIds: string[] = [];
+      const billLines: ApBillLine[] = []; // Plan 076: accumulate priced lines → ONE aggregate per-invoice Bill
       let apLineCount = 0;
+
+      // Plan 075: load the tenant's custom units ONCE (from the in-hand tx) so a line billed in a user-defined
+      // unit ("drum", "tote") converts to canonical stock. An empty/missing registry → today's behavior.
+      const extraUnits = await loadCustomUnits(tx, requireTenantId());
 
       for (let i = 0; i < receiptLines.length; i++) {
         const line = receiptLines[i];
@@ -352,7 +455,7 @@ export async function applyIngestedInvoiceCore(
               name: line.descriptionRaw,
               kind: coerceFamily(line.resolvedKind),
               category: line.resolvedCategory ? coerceMaterialCategory(line.resolvedCategory) : undefined,
-              stockUnit: stockUnitForNewLine(line.unitRaw),
+              stockUnit: stockUnitForNewLine(line.unitRaw, extraUnits),
               openingQty: 0, // create at ZERO stock; the receiveSupplyCore below emits the costed lot + A/P (unified path)
               vendorId, // link the intake's vendor
               genericName: ex?.genericName ?? null,
@@ -374,7 +477,7 @@ export async function applyIngestedInvoiceCore(
 
         // normalize invoice qty/unit → stock qty + per-stock-unit landed cost. A cross-dimension unit is a
         // hard stop (never silently pass raw qty) — the human fixes the unit on the review screen.
-        const norm = normalizeLineToStock({ qty: line.qty != null ? Number(line.qty) : null, unit: line.unitRaw, landedLineTotal, stockUnit });
+        const norm = normalizeLineToStock({ qty: line.qty != null ? Number(line.qty) : null, unit: line.unitRaw, landedLineTotal, stockUnit, extraUnits });
         if (norm.stockQty == null) {
           throw new ApplyAbort({ ok: false, error: `Line ${line.lineNo} ("${line.descriptionRaw}"): can't convert "${line.unitRaw ?? "?"}" into ${stockUnit}. Fix the unit on the review screen.` });
         }
@@ -399,11 +502,15 @@ export async function applyIngestedInvoiceCore(
             fxRate: isForeign ? fxRate : null,
             fxRateDate: isForeign ? fxRateDate : null,
             fxRateSource: isForeign ? fxRateSource : null,
+            skipApEmit: true, // Plan 076: the aggregate per-invoice emit (below) owns the A/P — not per lot
           },
           tx,
         );
         supplyLotIds.push(received.supplyLotId);
         if (norm.unitCost != null) apLineCount++;
+        // `allocation` (→ foreignLanded) is in the invoice document currency — the A/P bill-line amount.
+        // Priced lines only; an unknown-cost line contributes no A/P (partial-A/P, already acked above).
+        if (foreignLanded != null) billLines.push({ amount: foreignLanded, description: line.descriptionRaw });
 
         // persist the audit marker + allocated cost on the staged line.
         await tx.ingestedInvoiceLine.update({ where: { id: line.id }, data: { createdSupplyLotId: received.supplyLotId, allocatedUnitCost: norm.unitCost } });
@@ -422,12 +529,33 @@ export async function applyIngestedInvoiceCore(
         }
       }
 
+      // Plan 076: ONE aggregate A/P event → ONE multi-line QBO Bill for the whole invoice (apinv:<id>),
+      // instead of N per-lot bills. DECOUPLED FX: line amounts are the document currency; QBO derives the home
+      // GL. No-op when there's no vendor / no A/P accounts / no priced lines (partial-A/P is already acked).
+      await emitApExportForInvoice(
+        invoice.id,
+        {
+          vendorId,
+          vendorInvoiceNumber: invoice.vendorInvoiceNumber,
+          receivedAt: new Date(),
+          currency: isForeign ? invoiceCurrency : baseCurrency,
+          exchangeRate: isForeign ? fxRate : null,
+          lines: billLines,
+          // Plan 076: carry the payment status onto the aggregate event so the poster can record a QBO
+          // BillPayment when Paid. paidAt is stamped now for a Paid-at-ingestion invoice.
+          paymentStatus: invoice.paymentStatus ?? null,
+          paidFromAccount: invoice.paidFromAccount ?? null,
+          paidAt: invoice.paymentStatus === "PAID" ? new Date() : null,
+        },
+        tx,
+      );
+
       // COA attach: within the SAME ingestion batch, match a COA's lot no. to a created lot's lotCode and set
       // expiry + a COA provenance link. Constrained to same batch (council P3 — a colliding lot no. in another
       // batch can't attach to the wrong stock). Read/surface side is Unit 10.
       await attachBatchCoas(tx, invoice.id, supplyLotIds);
 
-      await tx.ingestedInvoice.update({ where: { id: invoice.id }, data: { status: "applied", appliedAt: new Date(), vendorId } });
+      await tx.ingestedInvoice.update({ where: { id: invoice.id }, data: { status: "applied", appliedAt: new Date(), vendorId, ...(invoice.paymentStatus === "PAID" ? { paidAt: new Date() } : {}) } });
       await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "IngestedInvoice", entityId: invoice.id, summary: `Applied invoice ${invoice.vendorInvoiceNumber ?? invoice.id} — ${supplyLotIds.length} lot(s)${vendorId ? "" : ", no vendor"}` });
 
       return { ok: true as const, vendorId, supplyLotIds, apLineCount };
@@ -449,6 +577,7 @@ export type RecentIntake = {
   status: string;
   currency: string | null;
   invoiceTotal: number | null;
+  paymentStatus: "OUTSTANDING" | "PAID" | null; // Plan 076: A/P payment status (null = not yet chosen)
   createdAt: string;
   appliedAt: string | null;
   lots: RecentIntakeLot[]; // the lots this intake created (populated for applied invoices)
@@ -463,7 +592,7 @@ export async function listRecentIntakes(opts?: { limit?: number }): Promise<Rece
   const invs = await prisma.ingestedInvoice.findMany({
     orderBy: { createdAt: "desc" },
     take,
-    select: { id: true, vendorNameRaw: true, vendorInvoiceNumber: true, docType: true, status: true, currency: true, invoiceTotal: true, createdAt: true, appliedAt: true },
+    select: { id: true, vendorNameRaw: true, vendorInvoiceNumber: true, docType: true, status: true, currency: true, invoiceTotal: true, paymentStatus: true, createdAt: true, appliedAt: true },
   });
   if (invs.length === 0) return [];
 
@@ -497,6 +626,7 @@ export async function listRecentIntakes(opts?: { limit?: number }): Promise<Rece
     status: i.status,
     currency: i.currency,
     invoiceTotal: i.invoiceTotal == null ? null : Number(i.invoiceTotal),
+    paymentStatus: (i.paymentStatus as "OUTSTANDING" | "PAID" | null) ?? null,
     createdAt: i.createdAt.toISOString(),
     appliedAt: i.appliedAt ? i.appliedAt.toISOString() : null,
     lots: lotsByInvoice.get(i.id) ?? [],
@@ -532,12 +662,17 @@ export async function reverseIngestedInvoiceCore(actor: LedgerActor, input: { in
       const consumed = await tx.supplyConsumption.count({ where: { supplyLotId: { in: lotIds } } });
       if (consumed > 0) throw new ReverseAbort({ ok: false, error: "Some of this stock has already been used, so it can't be auto-reversed. Correct it per item instead." });
 
-      // Guard: no A/P bill already posted to QBO.
-      const evs = await tx.apExportEvent.findMany({ where: { supplyLotId: { in: lotIds } }, select: { id: true } });
+      // Guard: no A/P bill already posted to QBO. Plan 076: the aggregate per-invoice event has no supplyLotId
+      // (it's keyed by ingestedInvoiceId), so match BOTH shapes — per-lot (legacy) and aggregate.
+      const evs = await tx.apExportEvent.findMany({ where: { OR: [{ supplyLotId: { in: lotIds } }, { ingestedInvoiceId: inv.id }] }, select: { id: true, paymentExternalId: true } });
       const evIds = evs.map((e) => e.id);
       const deliveries = evIds.length
         ? await tx.accountingDelivery.findMany({ where: { apExportEventId: { in: evIds } }, select: { id: true, status: true, externalId: true } })
         : [];
+      // Plan 076: a recorded bill payment is a downstream QBO object of its own — void it there first.
+      if (evs.some((e) => e.paymentExternalId)) {
+        throw new ReverseAbort({ ok: false, error: "This invoice is marked paid in QuickBooks — void the bill payment there first, then reverse the bill, before discarding the intake." });
+      }
       if (deliveries.some((d) => d.status === "POSTED" || d.externalId)) {
         throw new ReverseAbort({ ok: false, error: "An A/P bill from this intake was already posted to QuickBooks. Reverse the bill in QuickBooks first, then discard the intake." });
       }

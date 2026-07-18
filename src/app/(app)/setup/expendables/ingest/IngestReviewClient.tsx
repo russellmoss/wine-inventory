@@ -3,7 +3,10 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge, Button, Input, Collapsible } from "@/components/ui";
+import { Card, Eyebrow, Badge, Button, Input, Collapsible, InfoHint } from "@/components/ui";
+import { QTY_HINT, PACK_SIZE_HINT } from "@/lib/units/field-hints";
+import { CreateUnitModal } from "@/components/units/CreateUnitModal";
+import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 import {
   MATERIAL_CATEGORIES, CATEGORY_LABELS, BUILTIN_FAMILIES, type MaterialCategory,
@@ -56,15 +59,15 @@ function useNarrow(): boolean {
 type ApplyState = {
   pending: boolean;
   error: string | null;
-  needsAck: "reconcile" | "partial-ap" | "fx-rate" | null;
-  acks: { reconcile: boolean; partial: boolean };
+  needsAck: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" | null;
+  acks: { reconcile: boolean; partial: boolean; duplicate: boolean };
   result: { supplyLotIds: string[]; apLineCount: number } | null;
 };
 
-const emptyApply: ApplyState = { pending: false, error: null, needsAck: null, acks: { reconcile: false, partial: false }, result: null };
+const emptyApply: ApplyState = { pending: false, error: null, needsAck: null, acks: { reconcile: false, partial: false, duplicate: false }, result: null };
 
 export function IngestReviewClient({
-  batchId, docs: initial, candidates, vendors, baseCurrency, multiCurrencyEnabled, fxByDoc,
+  batchId, docs: initial, candidates, vendors, baseCurrency, multiCurrencyEnabled, fxByDoc, payFromOptions, customUnits: initialCustomUnits = [],
 }: {
   batchId: string;
   docs: ReviewDoc[];
@@ -74,10 +77,20 @@ export function IngestReviewClient({
   /** undefined = no connected QBO; true/false = the company's MultiCurrency flag (council #2). */
   multiCurrencyEnabled?: boolean | null;
   fxByDoc: Record<string, FxSuggestion>;
+  /** Plan 076: configured pay-from accounts for a Paid invoice (empty until set up in Settings). */
+  payFromOptions: { label: string; value: string }[];
+  /** Plan 075: the tenant's user-defined units, selectable as pack units alongside the built-ins. */
+  customUnits?: CustomUnitRow[];
 }) {
   const router = useRouter();
   const [docs, setDocs] = React.useState<ReviewDoc[]>(initial);
   const [applyState, setApplyState] = React.useState<Record<string, ApplyState>>({});
+  // Plan 075: the tenant's custom units (name-list drives the pack-unit dropdown + Confirm gate). A newly
+  // created unit is appended locally so it's immediately selectable without a page reload.
+  const [customUnits, setCustomUnits] = React.useState<CustomUnitRow[]>(initialCustomUnits);
+  const customUnitNames = React.useMemo(() => customUnits.map((u) => u.name), [customUnits]);
+  const [unitModal, setUnitModal] = React.useState<{ docId: string; lineId: string; amount: string; name?: string } | null>(null);
+  const openUnitModal = React.useCallback((docId: string, lineId: string, amount: string, name?: string) => setUnitModal({ docId, lineId, amount, name }), []);
 
   const patchDocLocal = React.useCallback((docId: string, patch: Partial<ReviewDoc>) => {
     setDocs((prev) => prev.map((d) => (d.id === docId ? { ...d, ...patch } : d)));
@@ -99,7 +112,7 @@ export function IngestReviewClient({
 
   const runApply = React.useCallback(async (doc: ReviewDoc, acks: ApplyState["acks"]) => {
     setApplyState((s) => ({ ...s, [doc.id]: { ...(s[doc.id] ?? emptyApply), acks, pending: true, error: null } }));
-    const res = await applyIngestedInvoiceAction(doc.id, { allowReconcileMismatch: acks.reconcile, allowPartialAp: acks.partial });
+    const res = await applyIngestedInvoiceAction(doc.id, { allowReconcileMismatch: acks.reconcile, allowPartialAp: acks.partial, allowDuplicate: acks.duplicate });
     if (res.ok) {
       patchDocLocal(doc.id, { status: "applied" });
       setApplyState((s) => ({ ...s, [doc.id]: { ...emptyApply, acks, result: { supplyLotIds: res.supplyLotIds, apLineCount: res.apLineCount } } }));
@@ -149,9 +162,12 @@ export function IngestReviewClient({
               baseCurrency={baseCurrency}
               multiCurrencyEnabled={multiCurrencyEnabled}
               fx={fxByDoc[doc.id]}
+              payFromOptions={payFromOptions}
               onSaveDoc={saveDoc}
               onSaveLine={saveLine}
               onApply={runApply}
+              customUnitNames={customUnitNames}
+              onCreateUnit={openUnitModal}
             />
           ))}
 
@@ -169,6 +185,17 @@ export function IngestReviewClient({
         </div>
       )}
       <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 18 }}>Batch {batchId}</p>
+
+      <CreateUnitModal
+        open={unitModal != null}
+        initialName={unitModal?.name}
+        onClose={() => setUnitModal(null)}
+        onCreated={(unit) => {
+          setCustomUnits((prev) => (prev.some((u) => u.id === unit.id) ? prev : [...prev, unit]));
+          if (unitModal) saveLine(unitModal.docId, unitModal.lineId, { unitRaw: composePackUnitRaw(unitModal.amount, unit.name) });
+          setUnitModal(null);
+        }}
+      />
     </div>
   );
 }
@@ -176,7 +203,7 @@ export function IngestReviewClient({
 // ── one receipt (invoice / proforma) ──
 
 function ReceiptPanel({
-  doc, candidates, vendors, apply, baseCurrency, multiCurrencyEnabled, fx, onSaveDoc, onSaveLine, onApply,
+  doc, candidates, vendors, apply, baseCurrency, multiCurrencyEnabled, fx, payFromOptions, onSaveDoc, onSaveLine, onApply, customUnitNames, onCreateUnit,
 }: {
   doc: ReviewDoc;
   candidates: MaterialCandidate[];
@@ -185,9 +212,12 @@ function ReceiptPanel({
   baseCurrency: string;
   multiCurrencyEnabled?: boolean | null;
   fx?: FxSuggestion;
+  payFromOptions: { label: string; value: string }[];
   onSaveDoc: (docId: string, patch: Parameters<typeof updateIngestedInvoiceAction>[1]) => void;
   onSaveLine: (docId: string, lineId: string, patch: Parameters<typeof updateIngestedInvoiceLineAction>[1]) => void;
   onApply: (doc: ReviewDoc, acks: ApplyState["acks"]) => void;
+  customUnitNames: readonly string[];
+  onCreateUnit: (docId: string, lineId: string, amount: string, name?: string) => void;
 }) {
   const { symbol } = useCurrency();
   const [showSource, setShowSource] = React.useState(false);
@@ -203,7 +233,7 @@ function ReceiptPanel({
   const resolvedVendorId = vendorMatch?.id ?? null;
   const previews = landedPreview(doc); // foreign (invoice-currency) landed totals
   const basePreviews = convertedPreview(doc, baseCurrency, rate); // converted to base at `rate`
-  const gate = canConfirmDoc(doc, foreign ? { baseCurrency, rate } : undefined);
+  const gate = canConfirmDoc(doc, foreign ? { baseCurrency, rate } : undefined, customUnitNames);
   const summary = buildPrecommitSummary(doc, { vendorExisting: !!vendorMatch });
 
   return (
@@ -265,6 +295,47 @@ function ReceiptPanel({
         </div>
       </div>
 
+      {/* Plan 076: A/P payment status — required before Confirm; syncs to QuickBooks (Outstanding = owed bill,
+          Paid = a recorded bill payment from the chosen account). */}
+      <div style={{ marginTop: 16, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={fieldLabel}>Payment status</div>
+          <select
+            aria-label="Payment status"
+            value={doc.paymentStatus ?? ""}
+            disabled={applied}
+            onChange={(e) => {
+              const v = e.target.value === "PAID" ? "PAID" : e.target.value === "OUTSTANDING" ? "OUTSTANDING" : null;
+              onSaveDoc(doc.id, v === "PAID" ? { paymentStatus: "PAID" } : { paymentStatus: v, paidFromAccount: null });
+            }}
+            style={selectStyle}
+          >
+            <option value="">Choose…</option>
+            <option value="OUTSTANDING">Outstanding (still to pay)</option>
+            <option value="PAID">Paid</option>
+          </select>
+        </div>
+        {doc.paymentStatus === "PAID" ? (
+          <div>
+            <div style={fieldLabel}>Paid from</div>
+            {payFromOptions.length > 0 ? (
+              <select
+                aria-label="Paid from account"
+                value={doc.paidFromAccount ?? ""}
+                disabled={applied}
+                onChange={(e) => onSaveDoc(doc.id, { paidFromAccount: e.target.value || null })}
+                style={selectStyle}
+              >
+                <option value="">Choose account…</option>
+                {payFromOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            ) : (
+              <Badge tone="gold" variant="soft">Set up payment accounts in Settings first</Badge>
+            )}
+          </div>
+        ) : null}
+      </div>
+
       {/* Plan 073: FX rate — a foreign invoice is converted to the base currency at this rate (editable). */}
       {foreign ? (
         <FxRateBlock
@@ -290,7 +361,10 @@ function ReceiptPanel({
       <div style={{ marginTop: 16 }}>
         {!narrow ? (
           <div style={{ display: "grid", gridTemplateColumns: "minmax(160px,2fr) 60px 140px 100px 100px minmax(190px,1.5fr) 100px", gap: 8, padding: "0 4px 6px", fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>
-            <span>Description</span><span>Qty</span><span>Pack size</span><span>Unit price</span><span>Lot no.</span><span>Match</span><span style={{ textAlign: "right" }}>Landed</span>
+            <span>Description</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Qty <InfoHint label={QTY_HINT} ariaLabel="What does Qty mean?" /></span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Pack size <InfoHint label={PACK_SIZE_HINT} ariaLabel="What does Pack size mean?" /></span>
+            <span>Unit price</span><span>Lot no.</span><span>Match</span><span style={{ textAlign: "right" }}>Landed</span>
           </div>
         ) : null}
         <div style={{ display: "flex", flexDirection: "column", gap: narrow ? 12 : 4 }}>
@@ -309,6 +383,8 @@ function ReceiptPanel({
               candidates={candidates}
               resolvedVendorId={resolvedVendorId}
               onSaveLine={onSaveLine}
+              customUnitNames={customUnitNames}
+              onCreateUnit={onCreateUnit}
             />
           ))}
           {doc.lines.length === 0 ? (
@@ -350,9 +426,23 @@ function ReceiptPanel({
                       onClick={() => onApply(doc, {
                         reconcile: apply.acks.reconcile || apply.needsAck === "reconcile",
                         partial: apply.acks.partial || apply.needsAck === "partial-ap",
+                        duplicate: apply.acks.duplicate,
                       })}
                     >
                       {apply.needsAck === "reconcile" ? "Apply inventory-only (totals don't reconcile)" : "Apply inventory-only (partial A/P)"}
+                    </Button>
+                  </div>
+                ) : null}
+                {/* Plan 076: hard duplicate gate — "detected as a duplicate, do you want to continue?" */}
+                {apply.needsAck === "duplicate" ? (
+                  <div style={{ marginTop: 10 }}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={apply.pending}
+                      onClick={() => onApply(doc, { reconcile: apply.acks.reconcile, partial: apply.acks.partial, duplicate: true })}
+                    >
+                      Yes, book it anyway (duplicate)
                     </Button>
                   </div>
                 ) : null}
@@ -363,7 +453,7 @@ function ReceiptPanel({
               <Button
                 variant="primary"
                 disabled={!gate.ok || apply.pending}
-                onClick={() => onApply(doc, { reconcile: false, partial: false })}
+                onClick={() => onApply(doc, { reconcile: false, partial: false, duplicate: false })}
               >
                 {apply.pending ? "Applying…" : "Confirm & intake"}
               </Button>
@@ -466,7 +556,7 @@ function FxRateBlock({
 // ── one editable line ──
 
 function LineRow({
-  doc, line, narrow, disabled, symbol, landed, foreign, foreignSymbol, basePreview, candidates, resolvedVendorId, onSaveLine,
+  doc, line, narrow, disabled, symbol, landed, foreign, foreignSymbol, basePreview, candidates, resolvedVendorId, onSaveLine, customUnitNames, onCreateUnit,
 }: {
   doc: ReviewDoc;
   line: ReviewLine;
@@ -481,6 +571,8 @@ function LineRow({
   candidates: MaterialCandidate[];
   resolvedVendorId: string | null;
   onSaveLine: (docId: string, lineId: string, patch: Parameters<typeof updateIngestedInvoiceLineAction>[1]) => void;
+  customUnitNames: readonly string[];
+  onCreateUnit: (docId: string, lineId: string, amount: string, name?: string) => void;
 }) {
   const decision = effectiveDecision(line);
   const matches = React.useMemo(
@@ -539,8 +631,8 @@ function LineRow({
   // Pack size = an explicit Amount + Unit (dropdown), REQUIRED for a receipt line. Extraction's ambiguous
   // "Each" shows blank, forcing a real size so stock qty + cost are never guessed. Composed into unitRaw
   // ("250 g"), which the apply core normalizes. Red border flags a missing/invalid pack on an intaken line.
-  const pack = packInputValues(line.unitRaw);
-  const packInvalid = decision !== "skip" && !packFieldsValid(line.unitRaw);
+  const pack = packInputValues(line.unitRaw, customUnitNames);
+  const packInvalid = decision !== "skip" && !packFieldsValid(line.unitRaw, customUnitNames);
   // Always set the FULL `border` shorthand (never borderColor) on both fields — mixing shorthand +
   // non-shorthand for the same property trips a React re-render warning when the invalid state toggles.
   const packBorder = packInvalid ? "1px solid var(--danger)" : "1px solid var(--border-strong)";
@@ -551,9 +643,18 @@ function LineRow({
         style={{ width: 62, minWidth: 0, height: 40, padding: "0 8px", borderRadius: "var(--radius-md)", border: packBorder, background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)" }} />
       <select aria-label="Pack unit" value={pack.unit} disabled={disabled}
         style={{ ...selectStyle, flex: 1, minWidth: 62, border: packBorder }}
-        onChange={(e) => onSaveLine(doc.id, line.id, { unitRaw: composePackUnitRaw(pack.amount, e.target.value) })}>
+        onChange={(e) => {
+          if (e.target.value === "__create__") { onCreateUnit(doc.id, line.id, pack.amount); return; }
+          onSaveLine(doc.id, line.id, { unitRaw: composePackUnitRaw(pack.amount, e.target.value) });
+        }}>
         <option value="">unit…</option>
         {PACK_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+        {customUnitNames.length > 0 ? (
+          <optgroup label="Your units">
+            {customUnitNames.map((u) => <option key={u} value={u}>{u}</option>)}
+          </optgroup>
+        ) : null}
+        <option value="__create__">+ Create unit…</option>
       </select>
     </div>
   );
@@ -565,8 +666,8 @@ function LineRow({
       <div style={{ border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", padding: 12, opacity: decision === "skip" ? 0.6 : 1 }}>
         <div style={{ marginBottom: 8 }}><div style={fieldLabel}>Description</div>{desc}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 70px" }}><div style={fieldLabel}>Qty</div>{qty}</div>
-          <div style={{ flex: "1 1 150px" }}><div style={fieldLabel}>Pack size</div>{unit}</div>
+          <div style={{ flex: "1 1 70px" }}><div style={{ ...fieldLabel, display: "inline-flex", alignItems: "center", gap: 4 }}>Qty <InfoHint label={QTY_HINT} ariaLabel="What does Qty mean?" /></div>{qty}</div>
+          <div style={{ flex: "1 1 150px" }}><div style={{ ...fieldLabel, display: "inline-flex", alignItems: "center", gap: 4 }}>Pack size <InfoHint label={PACK_SIZE_HINT} ariaLabel="What does Pack size mean?" /></div>{unit}</div>
           <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Unit price</div>{price}</div>
           <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Lot no.</div>{lot}</div>
         </div>

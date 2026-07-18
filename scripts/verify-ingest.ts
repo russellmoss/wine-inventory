@@ -18,6 +18,7 @@ import {
   updateIngestedInvoiceCore,
   applyIngestedInvoiceCore,
   reverseIngestedInvoiceCore,
+  setInvoicePaymentStatusCore,
   listRecentIntakes,
   type IngestDocumentInput,
   type ApplyDeps,
@@ -126,11 +127,18 @@ async function main() {
         assert(Number(l1.qtyReceived) === 1000, "scenario 1: line 1 stock qty = 1000 g");
         assert(lots.every((l) => l.currency === "USD"), "scenario 1: lots stamped USD");
 
-        const evs = await prisma.apExportEvent.findMany({ where: { supplyLotId: { in: res.supplyLotIds } } });
-        assert(evs.length === 2, `scenario 1: both NEW-material lines emit an A/P bill (got ${evs.length})`);
-        assert(evs.every((e) => e.vendorInvoiceNumber === "QA-SIV-1"), "scenario 1: A/P events stamped with the invoice #");
-        const evByLot = new Map(evs.map((e) => [e.supplyLotId, e]));
-        assert(Math.abs(Number(evByLot.get(l1.id)!.amount) - 387.57) < 0.01, "scenario 1: A/P amount = qty × landed unitCost (387.57)");
+        // Plan 076: ONE aggregate A/P event per invoice (not per lot), multi-line, keyed apinv:<invoiceId>.
+        const perLot = await prisma.apExportEvent.findMany({ where: { supplyLotId: { in: res.supplyLotIds } } });
+        assert(perLot.length === 0, `scenario 1: NO per-lot A/P events — the aggregate owns A/P (got ${perLot.length})`);
+        const evs = await prisma.apExportEvent.findMany({ where: { ingestedInvoiceId: invId } });
+        assert(evs.length === 1, `scenario 1: exactly ONE aggregate A/P bill for the invoice (got ${evs.length})`);
+        const agg = evs[0];
+        assert(agg.postingKey === `apinv:${invId}`, "scenario 1: aggregate event keyed apinv:<invoiceId>");
+        assert(agg.vendorInvoiceNumber === "QA-SIV-1", "scenario 1: aggregate A/P stamped with the invoice #");
+        const bl = (agg.billLinesJson as { amount: number; debitAccount: string }[] | null) ?? [];
+        assert(bl.length === 2, `scenario 1: aggregate carries 2 bill lines (got ${bl.length})`);
+        assert(Math.abs(Number(agg.amount) - 485.79) < 0.02, `scenario 1: aggregate amount = Σ landed lines (387.57 + 98.22 = 485.79, got ${agg.amount})`);
+        assert(Math.abs(Number(bl[0].amount) - 387.57) < 0.02 && Math.abs(Number(bl[1].amount) - 98.22) < 0.02, "scenario 1: bill lines carry the per-line landed amounts");
 
         const inv = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { status: true } });
         assert(inv?.status === "applied", "scenario 1: invoice marked applied");
@@ -198,8 +206,8 @@ async function main() {
         assert(Math.abs(Number(lot!.unitCost) - 55) < 1e-6, `scenario 3: base unitCost = 200×1.10/4 = 55 (got ${lot!.unitCost})`);
         assert(lot!.foreignCurrency === "EUR" && Math.abs(Number(lot!.foreignUnitCost) - 50) < 1e-6, `scenario 3: foreign €50/unit preserved (got ${lot!.foreignCurrency} ${lot!.foreignUnitCost})`);
         assert(Math.abs(Number(lot!.fxRate) - 1.1) < 1e-9 && lot!.fxRateSource === "verify-ingest-stub", "scenario 3: rate + source stamped on the lot");
-        // A/P is DECOUPLED (council #1): the event carries the FOREIGN amount + currency + exchangeRate.
-        const ev = await prisma.apExportEvent.findFirst({ where: { supplyLotId: res.supplyLotIds[0] } });
+        // A/P is DECOUPLED (council #1): the aggregate event carries the FOREIGN amount + currency + exchangeRate.
+        const ev = await prisma.apExportEvent.findFirst({ where: { ingestedInvoiceId: invId } });
         assert(ev != null && ev.currency === "EUR", "scenario 3: A/P event is in EUR (foreign), not base");
         assert(Math.abs(Number(ev!.amount) - 200) < 1e-6, `scenario 3: A/P amount = FOREIGN €200 (got ${ev!.amount})`);
         assert(Math.abs(Number(ev!.exchangeRate) - 1.1) < 1e-9, `scenario 3: A/P exchangeRate = 1.10 (got ${ev!.exchangeRate})`);
@@ -346,7 +354,8 @@ async function main() {
         assert(rev.ok, "scenario 8: reverse succeeds");
         if (!rev.ok) return;
         assert((await prisma.supplyLot.count({ where: { id: { in: res.supplyLotIds } } })) === 0, "scenario 8: all created lots removed");
-        assert((await prisma.apExportEvent.count({ where: { supplyLotId: { in: res.supplyLotIds } } })) === 0, "scenario 8: all A/P events removed");
+        // Plan 076: the aggregate per-invoice A/P event (+ its delivery) is removed on reverse.
+        assert((await prisma.apExportEvent.count({ where: { ingestedInvoiceId: invId } })) === 0, "scenario 8: aggregate A/P event removed");
         assert((await prisma.cellarMaterial.count({ where: { id: { in: matIds } } })) === 0, "scenario 8: the newly-created materials removed");
         const after = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { status: true, appliedAt: true } });
         assert(after?.status === "discarded" && after.appliedAt == null, "scenario 8: intake marked discarded");
@@ -430,6 +439,83 @@ async function main() {
         // there is simply no revaluation code path; re-reading returns the frozen value.)
         const lotOAgain = await prisma.supplyLot.findFirst({ where: { id: { in: ovRes.supplyLotIds } }, select: { unitCost: true } });
         assert(Number(lotOAgain!.unitCost) === beforeCost, "scenario 10c: inventory cost is historical — never revalued for FX (IAS 21)");
+      }
+
+      // ── Scenario 11 (Plan 076): duplicate-invoice guard — detection at stage + hard gate at apply ──
+      {
+        const batch = `${PFX}-11-${Date.now()}`;
+        const mk = (n: number) => doc({ vendor: { name: `${PFX} DupVendor` }, invoiceNumber: "QA-DUP-1", invoiceTotal: 30, lines: [{ description: `${PFX} Dup Yeast`, qty: 100, unit: "g", unitPrice: 0.3, lineTotal: 30, lotNo: `QA-DUP-${n}` }] });
+
+        // first upload has no prior → not a duplicate; applies clean.
+        const c1 = await createIngestedInvoiceCore(ACTOR, input("qa-dup-1.pdf", mk(1), batch));
+        assert(c1.duplicates.length === 0, "scenario 11: first upload flags no duplicate");
+        const inv1 = c1.invoices[0].id;
+        const [ln1] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: inv1 } });
+        await updateIngestedInvoiceLineCore(ACTOR, ln1.id, { matchDecision: "new", resolvedKind: "YEAST" });
+        const r1 = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv1 });
+        assert(r1.ok, "scenario 11: first invoice applies");
+
+        // second upload with the SAME (vendor, invoice#) → flagged at stage time.
+        const c2 = await createIngestedInvoiceCore(ACTOR, input("qa-dup-2.pdf", mk(2), batch));
+        assert(c2.duplicates.some((x) => x.kind === "vendor-invoice"), "scenario 11: re-upload of (vendor, invoice#) flagged at stage (vendor-invoice)");
+        const inv2 = c2.invoices[0].id;
+        const [ln2] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: inv2 } });
+        await updateIngestedInvoiceLineCore(ACTOR, ln2.id, { matchDecision: "new", resolvedKind: "YEAST" });
+
+        // apply WITHOUT ack → hard-blocked; the tx rolls back so nothing is booked.
+        const blocked = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv2 });
+        assert(!blocked.ok && blocked.needsAck === "duplicate", "scenario 11: applying a duplicate is BLOCKED (needsAck=duplicate)");
+        const inv2mid = await prisma.ingestedInvoice.findUnique({ where: { id: inv2 }, select: { status: true } });
+        assert(inv2mid!.status === "pending", "scenario 11: blocked duplicate rolled back to pending — no goods/A/P booked");
+
+        // apply WITH the explicit acknowledgement → proceeds.
+        const ok2 = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: inv2, allowDuplicate: true });
+        assert(ok2.ok, "scenario 11: duplicate applies once acknowledged (allowDuplicate)");
+
+        // exact-file (fileSha256) duplicate is flagged at stage time too.
+        const sha = `qa-dup-sha-${Date.now()}`;
+        const fdoc = doc({ vendor: { name: `${PFX} ShaVendor` }, invoiceNumber: "QA-SHA-1", invoiceTotal: 10, lines: [{ description: `${PFX} Sha Line`, qty: 10, unit: "g", unitPrice: 1, lineTotal: 10 }] });
+        await createIngestedInvoiceCore(ACTOR, { batchId: batch, documents: [{ blobUrl: "local://sha-a.pdf", fileName: "sha-a.pdf", mimeType: "application/pdf", fileSha256: sha, document: fdoc }] });
+        const cSha = await createIngestedInvoiceCore(ACTOR, { batchId: batch, documents: [{ blobUrl: "local://sha-b.pdf", fileName: "sha-b.pdf", mimeType: "application/pdf", fileSha256: sha, document: fdoc }] });
+        assert(cSha.duplicates.some((x) => x.kind === "file-hash"), "scenario 11: re-upload of the exact same file flagged at stage (file-hash)");
+      }
+
+      // ── Scenario 12 (Plan 076): payment status flows to the aggregate A/P event + post-apply flip ──
+      {
+        const batch = `${PFX}-12-${Date.now()}`;
+        const d = doc({ vendor: { name: `${PFX} PayVendor` }, invoiceNumber: "QA-PAY-1", invoiceTotal: 60, lines: [{ description: `${PFX} Pay Yeast`, qty: 200, unit: "g", unitPrice: 0.3, lineTotal: 60, lotNo: "QA-PAY-L1" }] });
+        const c = await createIngestedInvoiceCore(ACTOR, input("qa-pay.pdf", d, batch));
+        const invId = c.invoices[0].id;
+        const [ln] = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invId } });
+        await updateIngestedInvoiceLineCore(ACTOR, ln.id, { matchDecision: "new", resolvedKind: "YEAST" });
+        // mark PAID from a bank account BEFORE applying (the "paid at ingestion" flow).
+        await updateIngestedInvoiceCore(ACTOR, invId, { paymentStatus: "PAID", paidFromAccount: "QA-Bank" });
+        const res = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(res.ok, "scenario 12: paid invoice applies");
+        if (!res.ok) return;
+        const agg = await prisma.apExportEvent.findFirst({ where: { ingestedInvoiceId: invId }, select: { paymentStatus: true, paidFromAccount: true, paidAt: true } });
+        assert(agg!.paymentStatus === "PAID" && agg!.paidFromAccount === "QA-Bank" && agg!.paidAt != null, "scenario 12: payment status + pay-from + paidAt carried onto the aggregate A/P event");
+        const invAfter = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { paidAt: true } });
+        assert(invAfter!.paidAt != null, "scenario 12: invoice stamped paidAt on a paid apply");
+
+        // post-apply flip PAID→OUTSTANDING (no BillPayment posted yet → allowed) clears the payment fields.
+        const flip = await setInvoicePaymentStatusCore(ACTOR, { ingestedInvoiceId: invId, paymentStatus: "OUTSTANDING" });
+        assert(flip.ok, "scenario 12: flip to OUTSTANDING succeeds (no posted bill payment)");
+        const aggO = await prisma.apExportEvent.findFirst({ where: { ingestedInvoiceId: invId }, select: { paymentStatus: true, paidFromAccount: true } });
+        assert(aggO!.paymentStatus === "OUTSTANDING" && aggO!.paidFromAccount === null, "scenario 12: aggregate event flipped to OUTSTANDING, pay-from cleared");
+
+        // PAID without an account is rejected.
+        const noAcct = await setInvoicePaymentStatusCore(ACTOR, { ingestedInvoiceId: invId, paymentStatus: "PAID" });
+        assert(!noAcct.ok, "scenario 12: marking PAID without a pay-from account is rejected");
+
+        // a posted BillPayment (simulate paymentExternalId) blocks flipping back to OUTSTANDING.
+        await prisma.apExportEvent.updateMany({ where: { ingestedInvoiceId: invId }, data: { paymentStatus: "PAID", paidFromAccount: "QA-Bank", paymentExternalId: "QA-BP-1" } });
+        const guarded = await setInvoicePaymentStatusCore(ACTOR, { ingestedInvoiceId: invId, paymentStatus: "OUTSTANDING" });
+        assert(!guarded.ok, "scenario 12: can't flip to OUTSTANDING once a bill payment is recorded in QBO (void there first)");
+
+        // and reversing a PAID invoice is blocked until the bill payment is voided in QBO.
+        const revPaid = await reverseIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(!revPaid.ok && /paid in QuickBooks/.test(revPaid.error), "scenario 12: reversing a paid invoice is blocked (void the bill payment first)");
       }
     });
   } finally {

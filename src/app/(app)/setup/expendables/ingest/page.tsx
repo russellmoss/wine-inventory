@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, Eyebrow, Button } from "@/components/ui";
 import { listMaterials } from "@/lib/cellar/materials";
 import { listVendors } from "@/lib/vendors/vendors";
+import { listCustomUnitsCore } from "@/lib/units/custom-unit-core";
 import { categoryOf } from "@/lib/cellar/material-taxonomy";
 import { getRate } from "@/lib/money/fx/rate-service";
 import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
@@ -45,14 +46,20 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
     );
   }
 
-  const [rows, materials, vendors, settings, qboConn] = await Promise.all([
+  const [rows, materials, vendors, settings, qboConn, customUnits] = await Promise.all([
     prisma.ingestedInvoice.findMany({ where: { batchId }, orderBy: { createdAt: "asc" } }),
     listMaterials({ includeInactive: false }),
     listVendors({ activeOnly: true }),
-    prisma.appSettings.findFirst({ select: { currency: true } }),
+    prisma.appSettings.findFirst({ select: { currency: true, apPaymentBankAccount: true, apPaymentCardAccount: true } }),
     prisma.accountingConnection.findFirst({ where: { provider: "QBO", status: "CONNECTED" }, select: { multiCurrencyEnabled: true } }),
+    listCustomUnitsCore(), // Plan 075: the tenant's user-defined pack units
   ]);
   const baseCurrency = coerceCurrency(settings?.currency);
+  // Plan 076: pay-from options for a Paid invoice (drives the QBO BillPayment). Only configured accounts appear.
+  const payFromOptions: { label: string; value: string }[] = [
+    ...(settings?.apPaymentBankAccount ? [{ label: "Bank / check", value: settings.apPaymentBankAccount }] : []),
+    ...(settings?.apPaymentCardAccount ? [{ label: "Company credit card", value: settings.apPaymentCardAccount }] : []),
+  ];
 
   // Lines for all invoices in one query, grouped by invoice.
   const invoiceIds = rows.map((r) => r.id);
@@ -116,6 +123,8 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
       invoiceTotal: numOrNull(r.invoiceTotal),
       taxTotal: numOrNull(r.taxTotal),
       landedReceipt: r.landedReceipt,
+      paymentStatus: (r.paymentStatus as "OUTSTANDING" | "PAID" | null) ?? null,
+      paidFromAccount: r.paidFromAccount,
       charges: extracted?.charges ?? null,
       warnings: Array.isArray(extracted?.warnings) ? extracted!.warnings : [],
       coaLotNo: extracted?.coa?.lotNo ?? null,
@@ -155,6 +164,8 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
       baseCurrency={baseCurrency}
       multiCurrencyEnabled={qboConn ? qboConn.multiCurrencyEnabled ?? null : undefined}
       fxByDoc={fxByDoc}
+      payFromOptions={payFromOptions}
+      customUnits={customUnits}
     />
   );
 }

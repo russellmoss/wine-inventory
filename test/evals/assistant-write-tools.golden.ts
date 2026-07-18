@@ -647,4 +647,16 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { keep: "Scott Laboratories", remove: "Scott Labs" },
     note: "MERGE duplicate vendors (Plan 072); 'keep' is the survivor, 'remove' is the loser — distinct from create_vendor",
   },
+  {
+    utterance: "Add a unit called drum that's 200 kg",
+    tool: "create_custom_unit",
+    args: { name: "drum", dimension: "mass", amount: 200, referenceUnit: "kg" },
+    note: "CREATE a user-defined unit (Plan 075); mass with a reference unit → converted to canonical grams. Not a material.",
+  },
+  {
+    utterance: "Make a roll unit — 500 labels per roll",
+    tool: "create_custom_unit",
+    args: { name: "roll", dimension: "count", amount: 500 },
+    note: "a COUNT custom unit; amount is base items per package, no reference unit",
+  },
 ];

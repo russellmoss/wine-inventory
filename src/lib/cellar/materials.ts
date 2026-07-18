@@ -20,6 +20,8 @@ import {
   type SupplyLotForCost,
 } from "@/lib/cellar/material-fields";
 import { deriveOpeningLot, weightedAvgUnitCost } from "@/lib/cost/intake-cost";
+import { loadCustomUnits } from "@/lib/units/custom-units";
+import { requireTenantId } from "@/lib/tenant/context";
 import { coerceCurrency } from "@/lib/money/currency";
 
 export { materialDisplayName };
@@ -299,18 +301,21 @@ export async function createStockMaterialCore(
     input.openingQty != null && Number.isFinite(input.openingQty) && input.openingQty > 0 ? input.openingQty : 0;
   let unitCost =
     input.unitCost != null && Number.isFinite(input.unitCost) && input.unitCost >= 0 ? input.unitCost : null;
-  // Phase 036: a package (amount+unit) seeds the opening lot in the canonical stock unit; total cost (when
-  // given) sets the per-stock-unit cost, else the lot is UNKNOWN-cost (D14) — never $0, and never a package
-  // with no on-hand. Overrides the raw openingQty/unitCost when it resolves.
-  if (f.packageAmount != null && f.packageUnit) {
-    const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost ?? null, stockUnit });
-    if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
-      openingQty = derived.qtyInStockUnit;
-      unitCost = derived.unitCost; // null when no cost given → UNKNOWN (D14), which is correct
-    }
-  }
 
   const body = async (tx: Prisma.TransactionClient) => {
+    // Phase 036: a package (amount+unit) seeds the opening lot in the canonical stock unit; total cost (when
+    // given) sets the per-stock-unit cost, else the lot is UNKNOWN-cost (D14) — never $0, and never a package
+    // with no on-hand. Overrides the raw openingQty/unitCost when it resolves. Plan 075: load the tenant's
+    // custom units (from the in-hand tx) so a custom packageUnit ("drum") still converts to canonical stock.
+    if (f.packageAmount != null && f.packageUnit) {
+      const extraUnits = await loadCustomUnits(tx, requireTenantId());
+      const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost ?? null, stockUnit, extraUnits });
+      if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
+        openingQty = derived.qtyInStockUnit;
+        unitCost = derived.unitCost; // null when no cost given → UNKNOWN (D14), which is correct
+      }
+    }
+
     const existing = await tx.cellarMaterial.findFirst({
       where: { kind: f.kind, normalizedKey: f.normalizedKey },
       select: { id: true },
@@ -384,7 +389,10 @@ export async function updateMaterialCore(
     if (!existing) throw new ActionError("Material not found.", "VALIDATION");
 
     const lotCount = await tx.supplyLot.count({ where: { materialId: id } });
-    const plan = planMaterialUpdate(existing, input, lotCount > 0);
+    // Plan 075: load the tenant's custom units so a custom packageUnit resolves its dimension (stock-unit
+    // derivation + the cross-dimension edit guard). Empty registry → identical to the built-in-only behavior.
+    const extraUnits = await loadCustomUnits(tx, requireTenantId());
+    const plan = planMaterialUpdate(existing, input, lotCount > 0, extraUnits);
 
     if (plan.identityChanged) {
       const clash = await tx.cellarMaterial.findFirst({
@@ -490,6 +498,10 @@ export type ReceiveSupplyInput = {
   fxRate?: number | null; // base per 1 foreign at receipt (unitCost == foreignUnitCost × fxRate)
   fxRateDate?: Date | null; // the ECB quote date the rate was for
   fxRateSource?: string | null; // "ECB via Frankfurter" | "manual override"
+  // Plan 076: suppress the per-lot A/P emit for this receipt. Invoice ingestion sets this so ONE aggregate
+  // per-invoice Bill owns the A/P (emitApExportForInvoice) instead of N per-lot bills. Non-ingest receipts
+  // (manual intake) leave it unset and keep the per-lot emit unchanged.
+  skipApEmit?: boolean;
 };
 
 /**
@@ -559,8 +571,11 @@ export async function receiveSupplyCore(
     await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Received ${qty} ${stockUnit} of "${material.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
     // Phase 15 Unit 10 — transactional outbox: a purchase-on-credit emits an A/P Bill export + delivery
     // in THIS tx. No-op unless a vendor + A/P accounts + a known cost are all present. Plan 072 stamps the
-    // supplier invoice # on the event (→ QBO Bill PrivateNote).
-    await emitApExportForReceipt(lot.id, { vendorName, terms: input.terms, vendorInvoiceNumber: input.vendorInvoiceNumber }, tx);
+    // supplier invoice # on the event (→ QBO Bill PrivateNote). Plan 076: skipped for invoice ingestion, where
+    // ONE aggregate per-invoice Bill (emitApExportForInvoice) owns the A/P instead of N per-lot bills.
+    if (!input.skipApEmit) {
+      await emitApExportForReceipt(lot.id, { vendorName, terms: input.terms, vendorInvoiceNumber: input.vendorInvoiceNumber }, tx);
+    }
     return { supplyLotId: lot.id };
   };
 
