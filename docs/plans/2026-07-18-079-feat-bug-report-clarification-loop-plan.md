@@ -26,6 +26,17 @@ end-to-end gate (11/11). All 9 council concurrency fixes folded in.
 U8 in-agent `request_clarification` tool + workflow YAML branch; U11 `/developer` clarification panel +
 My Reports "Needs your input" status chip (D-1); U12 assistant surfacing of open clarifications.
 
+**Reviewed** (eng+council pre-build, then /review specialists+adversarial on the code): 4 CRITICALs +
+hardening fixed and re-proven (see commit "pre-landing review fixes"). Two known items carried forward:
+- The multi-round loop guard (`MAX_CLARIFICATION_ROUNDS=2` + `countClarificationRounds`) is **inert until
+  U8 lands** — as built the system does exactly ONE clarification round (pre-flight gate on attempt 1;
+  the reply re-dispatches straight to CI). Round 2 would come from the deferred in-agent tool. Safe (the
+  cap can't be exceeded), but the "loop" is single-round for now. Wire the cap when U8 is built.
+- The Cellarhand Support user is non-authenticatable via the missing credential Account + `disableSignUp`;
+  its only theoretical activation is self-service password reset, blocked today only because
+  `@cellarhand.system` is an unroutable TLD. Low priority follow-up: hard-refuse the reserved address in
+  the password-reset path (auth.ts) if that domain ever becomes real.
+
 ## Overview
 
 Two connected upgrades to the reported-bug pipeline. (1) When a user reports a bug, automatically
