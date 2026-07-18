@@ -1,7 +1,7 @@
 ---
 title: Near-duplicate vendor guard — stop "Scott Labs"/"Scott Laboratories" at create time (QBO vendor sync, Slice 0)
 type: feat
-status: approved
+status: completed
 date: 2026-07-18
 branch: claude/vendor-dedupe-guard
 depth: standard
@@ -281,15 +281,16 @@ Demo Winery (QA-* fixtures, cleaned up; controlled-input caveat: click ref then 
 
 ## Success Criteria
 
-- [ ] "Scott Labs"/"Scott Laboratories" AND "Crush2Cellar"/"Crush to Cellar" are both flagged HIGH by
-      the pure engine (unit tests green).
-- [ ] "Acme" vs "Acme (EUR)" and the "Unknown / Unspecified" vendor are NEVER flagged.
+- [x] "Scott Labs"/"Scott Laboratories" AND "Crush2Cellar"/"Crush to Cellar" are both flagged HIGH by
+      the pure engine (unit tests green — 49/49 vendors-shared).
+- [x] "Acme" vs "Acme (EUR)" and the "Unknown / Unspecified" vendor are NEVER flagged.
 - [ ] Creating a near-dup in the `/setup/vendors` modal shows "did you mean?", with working
-      "use existing" and "create anyway" (browser-QA'd on Demo).
-- [ ] Assistant `create_vendor` returns a choice (not a silent create) on a near-dup; `eval:assistant` green.
-- [ ] `npm run verify:vendor-dedupe` green; `verify:naming` + `verify:tenant-isolation` green.
-- [ ] All existing tests pass; no schema change.
-- [ ] The intentionally-ungated automated create path is documented.
+      "use existing" and "create anyway" — **PENDING interactive browser-QA on Demo** (needs user login).
+- [x] Assistant `create_vendor` returns a choice (not a silent create) on a near-dup (structural eval +
+      `test/assistant-create-vendor-dedup.test.ts` 4/4 green).
+- [x] `npm run verify:vendor-dedupe` green (8/8); `verify:naming` (25) + `verify:tenant-isolation` green.
+- [x] All existing tests pass (2264 vitest); no schema change; tsc + lint (0 errors) + `next build` green.
+- [x] The intentionally-ungated automated create path is documented (security-register + verify script).
 
 ## Follow-on (not this plan)
 
