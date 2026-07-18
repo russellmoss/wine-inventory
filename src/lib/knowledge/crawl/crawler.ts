@@ -22,6 +22,7 @@ export interface CrawledDoc {
   sourceKey: string;
   canonicalUrl: string;
   contentType: DetectedType;
+  contentHash: string;
   bytes: Buffer;
 }
 
@@ -203,7 +204,7 @@ export async function crawlSource(
     if (opts.onDocument) {
       await opts.onDocument({
         documentId: document.id, sourceId, sourceKey, canonicalUrl: item.url,
-        contentType: res.contentType, bytes: res.bytes,
+        contentType: res.contentType, contentHash, bytes: res.bytes,
       });
     }
   }

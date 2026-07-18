@@ -3120,9 +3120,10 @@ model KnowledgeDocument {
   publishedAt      DateTime?
   etag             String?
   lastModifiedHttp String?
-  status           String    @default("active") // active | withdrawn (tombstoned, kept for audit)
-  activeRevision   Int       @default(0) // retrieval reads only chunks at this revision
-  withdrawnAt      DateTime?
+  status             String    @default("active") // active | withdrawn (tombstoned, kept for audit)
+  activeRevision     Int       @default(0) // retrieval reads only chunks at this revision
+  indexedContentHash String? // contentHash the active chunk-set was built from (idempotency: skip re-embed if unchanged)
+  withdrawnAt        DateTime?
   firstSeenAt      DateTime  @default(now())
   lastSeenAt       DateTime  @default(now())
   lastVerifiedAt   DateTime  @default(now())
