@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import { parseVesselRef } from "@/lib/vessels/ref";
+import { casesAndLoose } from "@/lib/bottling/draw";
 
 export type CellarContentsQuery = {
   vessel?: string;
@@ -12,6 +13,7 @@ export type CellarContentsQuery = {
   vintage?: number;
   form?: "FRUIT" | "MUST" | "JUICE" | "WINE" | "BOTTLED_IN_PROCESS" | "FINISHED" | "BULK" | "BOTTLED" | string;
   vesselType?: "TANK" | "BARREL";
+  location?: string;
   onlyNonEmpty?: boolean;
   onlyPressable?: boolean;
   limit?: number;
@@ -38,6 +40,28 @@ export type CellarContentsResult = {
     }[];
   }[];
   emptyMatches: number;
+  truncated: boolean;
+};
+
+export type BottledInventoryQuery = {
+  item?: string;
+  vintage?: number;
+  location?: string;
+  kind?: "BOTTLED_WINE" | "FINISHED_GOOD";
+  limit?: number;
+};
+
+export type BottledInventoryResult = {
+  rows: {
+    kind: "BOTTLED_WINE" | "FINISHED_GOOD";
+    item: string;
+    vintage: number | null;
+    location: string;
+    bottles: number;
+    cases: number;
+    loose: number;
+    detail: string;
+  }[];
   truncated: boolean;
 };
 
@@ -97,6 +121,14 @@ function normalizeForm(form: CellarContentsQuery["form"]): "FRUIT" | "MUST" | "J
   if (up === "BOTTLED") return "FINISHED";
   if (up === "FRUIT" || up === "MUST" || up === "JUICE" || up === "WINE" || up === "BOTTLED_IN_PROCESS" || up === "FINISHED") return up;
   return null;
+}
+
+/** True when a form filter is asking about packaged/finished-goods on-hand inventory
+ *  (BOTTLED / FINISHED), which lives in the inventory tables, not in a vessel. */
+export function isBottledInventoryForm(form: CellarContentsQuery["form"]): boolean {
+  if (!form) return false;
+  const up = form.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  return up === "BOTTLED" || up === "FINISHED";
 }
 
 async function idsForNameSearch(model: "variety" | "vineyard", name: string): Promise<string[]> {
@@ -260,4 +292,88 @@ export async function queryCellarContents(raw: CellarContentsQuery): Promise<Cel
   }
 
   return { vessels, emptyMatches, truncated };
+}
+
+/**
+ * Read on-hand PACKAGED inventory — bottled wine (BottledInventory) and finished
+ * goods (FinishedGoodInventory) — by item and/or location. This is the counterpart
+ * to queryCellarContents for anything that has left the tank and is sitting as
+ * cases/bottles at a location (e.g. "how many cases of Big Mike Big Red are in the
+ * tasting room"). Read-only, tenant-scoped via RLS + the Prisma extension. Only
+ * positive on-hand balances are returned.
+ */
+export async function queryBottledInventory(raw: BottledInventoryQuery): Promise<BottledInventoryResult> {
+  const query = raw ?? {};
+  const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)));
+  const item = clean(query.item);
+  const locationName = clean(query.location);
+  const wantWine = query.kind !== "FINISHED_GOOD";
+  const wantGood = query.kind !== "BOTTLED_WINE";
+
+  const locationFilter = locationName
+    ? { location: { name: { contains: locationName, mode: "insensitive" as const } } }
+    : {};
+
+  const [bottled, goods] = await Promise.all([
+    wantWine
+      ? prisma.bottledInventory.findMany({
+          where: {
+            totalBottles: { gt: 0 },
+            ...locationFilter,
+            ...(item ? { wineSku: { name: { contains: item, mode: "insensitive" } } } : {}),
+            ...(query.vintage != null ? { wineSku: { is: { vintage: query.vintage, ...(item ? { name: { contains: item, mode: "insensitive" } } : {}) } } } : {}),
+          },
+          take: limit + 1,
+          orderBy: [{ location: { name: "asc" } }],
+          include: {
+            wineSku: { select: { name: true, vintage: true } },
+            location: { select: { name: true } },
+          },
+        })
+      : Promise.resolve([]),
+    wantGood
+      ? prisma.finishedGoodInventory.findMany({
+          where: {
+            quantity: { gt: 0 },
+            ...locationFilter,
+            ...(item ? { finishedGood: { name: { contains: item, mode: "insensitive" } } } : {}),
+          },
+          take: limit + 1,
+          orderBy: [{ location: { name: "asc" } }],
+          include: {
+            finishedGood: { select: { name: true } },
+            location: { select: { name: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const rows: BottledInventoryResult["rows"] = [
+    ...bottled.map((b) => {
+      const { cases, loose } = casesAndLoose(b.totalBottles);
+      return {
+        kind: "BOTTLED_WINE" as const,
+        item: `${b.wineSku.name} ${b.wineSku.vintage}`,
+        vintage: b.wineSku.vintage,
+        location: b.location.name,
+        bottles: b.totalBottles,
+        cases,
+        loose,
+        detail: `${cases}c + ${loose}`,
+      };
+    }),
+    ...goods.map((g) => ({
+      kind: "FINISHED_GOOD" as const,
+      item: g.finishedGood.name,
+      vintage: null,
+      location: g.location.name,
+      bottles: g.quantity,
+      cases: 0,
+      loose: g.quantity,
+      detail: "",
+    })),
+  ].sort((a, b) => a.item.localeCompare(b.item) || a.location.localeCompare(b.location));
+
+  const truncated = rows.length > limit;
+  return { rows: rows.slice(0, limit), truncated };
 }
