@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { action } from "@/lib/actions";
 import { sendDirectMessageCore } from "@/lib/inbox/direct-messages";
 import { advanceClarificationFromReply } from "@/lib/feedback/clarification";
@@ -11,13 +12,16 @@ export const sendDirectMessageAction = action(
   async (ctx, input: { recipientUserId: string; body: string }): Promise<{ threadId: string; messageId: string }> => {
     const res = await sendDirectMessageCore(ctx.actor, input);
     // Plan 079 (U9): if this message answers an open clarification, close the loop and re-dispatch.
-    // Best-effort + explicit tenantId; never lets a feedback side-effect break sending a DM.
-    await advanceClarificationFromReply({
-      tenantId: ctx.actor.tenantId,
-      threadId: res.threadId,
-      senderUserId: ctx.actor.actorUserId,
-      body: input.body,
-    });
+    // Run it AFTER the response (the re-dispatch does a GitHub fetch with a 15s timeout — never make a
+    // reporter's "send" click wait on it). Best-effort + explicit tenantId; can't break sending a DM.
+    after(() =>
+      advanceClarificationFromReply({
+        tenantId: ctx.actor.tenantId,
+        threadId: res.threadId,
+        senderUserId: ctx.actor.actorUserId,
+        body: input.body,
+      }),
+    );
     revalidatePath("/inbox");
     return res;
   },

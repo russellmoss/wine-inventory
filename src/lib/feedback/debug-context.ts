@@ -25,20 +25,19 @@ export type ConsoleCapture = {
   clientErrors?: CapturedConsoleEntry[];
 };
 
-function clampEntries(raw: unknown): CapturedConsoleEntry[] | undefined {
+function clampEntries(raw: unknown, budget: { remaining: number }): CapturedConsoleEntry[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: CapturedConsoleEntry[] = [];
-  let total = 0;
   for (const item of raw) {
-    if (out.length >= MAX_CONSOLE_ENTRIES) break;
+    if (out.length >= MAX_CONSOLE_ENTRIES || budget.remaining <= 0) break;
     if (!item || typeof item !== "object") continue;
     const level = (item as Record<string, unknown>).level;
     const ts = (item as Record<string, unknown>).ts;
     const message = (item as Record<string, unknown>).message;
     if (typeof level !== "string" || typeof message !== "string") continue;
     const msg = message.slice(0, MAX_CONSOLE_MESSAGE_CHARS);
-    total += msg.length;
-    if (total > MAX_CONSOLE_TOTAL_CHARS) break;
+    if (msg.length > budget.remaining) break;
+    budget.remaining -= msg.length;
     out.push({
       level: level.slice(0, 40),
       ts: typeof ts === "number" && Number.isFinite(ts) ? ts : 0,
@@ -56,8 +55,11 @@ export function clampConsoleCapture(input: unknown): ConsoleCapture {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
   const rec = input as Record<string, unknown>;
   const capture: ConsoleCapture = {};
-  const consoleLog = clampEntries(rec.consoleLog);
-  const clientErrors = clampEntries(rec.clientErrors);
+  // One shared char budget across BOTH arrays (not per-array) so MAX_CONSOLE_TOTAL_CHARS is a real
+  // global cap. Errors first — they're the higher-signal lines.
+  const budget = { remaining: MAX_CONSOLE_TOTAL_CHARS };
+  const clientErrors = clampEntries(rec.clientErrors, budget);
+  const consoleLog = clampEntries(rec.consoleLog, budget);
   if (consoleLog) capture.consoleLog = consoleLog;
   if (clientErrors) capture.clientErrors = clientErrors;
   return capture;

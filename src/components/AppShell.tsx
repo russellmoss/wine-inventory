@@ -9,6 +9,7 @@ import { isTenantAdminLike } from "@/lib/access";
 import { Avatar, Button } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
+import { clearConsoleBuffer } from "@/lib/observability/console-buffer";
 
 type NavItem = { href: string; label: string; admin?: boolean; developer?: boolean; badge?: number };
 
@@ -320,6 +321,8 @@ export function AppShell({
   }
 
   async function handleSignOut() {
+    // Clear the captured console so the next user on a shared device can't inherit it (Plan 079 C-4).
+    clearConsoleBuffer();
     await signOut();
     router.push("/login");
     router.refresh();

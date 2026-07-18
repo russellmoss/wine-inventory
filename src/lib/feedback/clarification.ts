@@ -191,6 +191,20 @@ export function parseRefToken(body: string): string | null {
   return m ? m[0].toUpperCase() : null;
 }
 
+/**
+ * Strip the routing ref from a reply so the intent check + stored answer read as the user's actual
+ * words. Matches the formats the DM actually emits — `(Ref: BUG-XXXX …)`, `[Ref: BUG-XXXX]` — plus a
+ * bare `BUG-XXXX`. (The DM copy uses parentheses; the earlier strip only matched square brackets.)
+ */
+export function stripRefToken(body: string): string {
+  return body
+    .replace(/[[(]\s*ref:\s*BUG-[A-HJ-NP-Z2-9]{4}[^)\]]*[)\]]/gi, "")
+    .replace(/\bref:\s*BUG-[A-HJ-NP-Z2-9]{4}\b/gi, "")
+    .replace(/\bBUG-[A-HJ-NP-Z2-9]{4}\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 const TRIVIAL_ANSWER = /^(idk|dunno|no|nope|not sure|n\/?a|yes|ok|k|maybe|\?+)\.?$/i;
 
 /**
@@ -228,7 +242,7 @@ async function escalateClarificationToHuman(
   );
 }
 
-async function redispatchAfterClarification(
+export async function redispatchAfterClarification(
   tenantId: string,
   source: FeedbackSource,
   prevRunId: string | null,
@@ -273,10 +287,22 @@ async function redispatchAfterClarification(
   );
   if (!newRun) return; // REPORT_ONLY / feature-request → nothing to dispatch
 
-  // Auto-approve the re-run (user decision after council) + point the source at it.
-  await approveAutomationRun({ tenantId, runId: newRun.id, approverUserId: support.userId });
+  // Auto-approve the re-run (user decision after council). Bail if it wasn't approvable (e.g. the
+  // idempotency key already resolved to a non-AWAITING run) so we never point the source at an
+  // unapproved run.
+  const approved = await approveAutomationRun({ tenantId, runId: newRun.id, approverUserId: support.userId });
+  if (!approved) return;
+
+  // Point the source at the new run AND retire the superseded parked run so it can't dangle at
+  // AWAITING_CLARIFICATION or be re-selected by the watchdog.
   await runAsTenant(tenantId, () =>
     runInTenantTx(async (tx) => {
+      if (prevRunId && prevRunId !== newRun.id) {
+        await tx.automationRun.updateMany({
+          where: { id: prevRunId, status: FeedbackAutomationStatus.AWAITING_CLARIFICATION },
+          data: { status: FeedbackAutomationStatus.SKIPPED, completedAt: new Date(), error: "superseded by clarification re-dispatch" },
+        });
+      }
       const data = { currentAutomationRunId: newRun.id };
       if (source.sourceType === "FEEDBACK_TICKET") await tx.feedbackTicket.update({ where: { id: source.sourceId }, data });
       else await tx.assistantFeedback.update({ where: { id: source.sourceId }, data });
@@ -309,25 +335,29 @@ export async function advanceClarificationFromReply(input: {
     );
     if (!open.length) return; // ordinary DM, not a clarification reply
 
-    // Route the reply: prefer the [Ref] token; else if exactly one is open, use it; else ask for the ref.
+    // Route the reply: prefer the [Ref] token; if it doesn't match (typo / stale) but there's exactly
+    // one open clarification, fall back to it rather than silently dropping the reply; only when there
+    // are multiple open and no usable token do we nudge for the code.
     const token = parseRefToken(input.body);
-    const target = token ? open.find((c) => c.ref === token) : open.length === 1 ? open[0] : undefined;
+    let target = token ? open.find((c) => c.ref === token) : undefined;
+    if (!target && open.length === 1) target = open[0];
     if (!target) {
-      if (!token && open.length > 1) {
-        const support = await ensureSupportSenderForTenant(input.tenantId);
-        const refs = open.map((c) => c.ref).join(", ");
-        await runAsTenant(
-          input.tenantId,
-          () =>
-            sendDirectMessageCore(
-              { actorUserId: support.userId, actorEmail: support.email },
-              { recipientUserId: input.senderUserId, body: `Thanks! You have a few open questions (${refs}). Please include the code in [brackets] so I route your answer to the right bug.` },
-            ),
-          { userId: support.userId },
-        );
-      }
+      const support = await ensureSupportSenderForTenant(input.tenantId);
+      const refs = open.map((c) => c.ref).join(", ");
+      await runAsTenant(
+        input.tenantId,
+        () =>
+          sendDirectMessageCore(
+            { actorUserId: support.userId, actorEmail: support.email },
+            { recipientUserId: input.senderUserId, body: `Thanks! You have a few open questions (${refs}). Please include the code in [brackets] so I route your answer to the right one.` },
+          ),
+        { userId: support.userId },
+      );
       return;
     }
+
+    // The user's actual words, with the routing token stripped (stored + intent-checked).
+    const answerText = stripRefToken(input.body);
 
     const source: FeedbackSource =
       target.sourceType === "FEEDBACK_TICKET"
@@ -341,7 +371,7 @@ export async function advanceClarificationFromReply(input: {
           where: { id: target.id, status: FeedbackClarificationStatus.OPEN },
           data: {
             status: FeedbackClarificationStatus.ANSWERED,
-            answerBody: input.body.slice(0, MAX_ANSWER_CHARS),
+            answerBody: (answerText || input.body).slice(0, MAX_ANSWER_CHARS),
             answeredAt: new Date(),
             answeredByUserId: input.senderUserId,
           },
@@ -350,8 +380,6 @@ export async function advanceClarificationFromReply(input: {
     );
     if (answered.count !== 1) return; // someone/something else already answered
 
-    // Intent check on the answer TEXT only — strip the routing token so "idk [Ref: BUG-X]" reads as "idk".
-    const answerText = input.body.replace(/\[?\s*ref:\s*BUG-[A-HJ-NP-Z2-9]{4}\s*\]?/i, "").trim();
     if (!isSubstantiveAnswer(answerText)) {
       await escalateClarificationToHuman(input.tenantId, source, target.automationRunId, "non-substantive reply");
       return;

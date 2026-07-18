@@ -7,9 +7,20 @@ import type { CapturedConsoleEntry } from "./debug-context";
 // unit-tested; used by scripts/bug-feedback-agent.ts + scripts/assistant-feedback-agent.ts
 // (and, later, the clarification-history block in Unit 10).
 
-/** Wrap content in an XML-ish tag. Callers frame these as untrusted data. */
+// The block tag names an attacker in a reporter answer / console message could try to forge to break
+// out of their block. Defanged (see below) so untrusted content can't close or open one.
+const BLOCK_TAGS =
+  "console_errors|clarification_history|debug_context|bug_title|bug_description|page_url|user_feedback|conversation_transcript";
+const BLOCK_TAG_RE = new RegExp(`<\\s*/?\\s*(?:${BLOCK_TAGS})\\s*>`, "gi");
+
+/**
+ * Wrap content in an XML-ish tag. Callers frame these as untrusted data. Any forged block delimiter
+ * INSIDE the content (e.g. a reporter answer containing `</clarification_history>`) is neutralized so
+ * it can't close/inject a block in the fix-agent prompt (security review hardening).
+ */
 export function untrustedBlock(tag: string, content: string): string {
-  return `<${tag}>\n${content}\n</${tag}>`;
+  const safe = content.replace(BLOCK_TAG_RE, (m) => m.replace(/</g, "‹").replace(/>/g, "›"));
+  return `<${tag}>\n${safe}\n</${tag}>`;
 }
 
 function readConsoleEntries(value: unknown): CapturedConsoleEntry[] {

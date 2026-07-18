@@ -54,7 +54,7 @@ export function redactString(input: string): string {
     .replace(/\b(?:bearer)\s+[A-Za-z0-9._~+/-]{12,}=*/gi, "Bearer [redacted-token]")
     .replace(/\b(?:sk|pk|rk)_[A-Za-z0-9_]{12,}/g, "[redacted-key]")
     .replace(
-      /\b(password|passwd|pwd|secret|token|api[_-]?key|authorization|auth)\b(\s*[:=]\s*)("?)[^\s"',;]+\3/gi,
+      /\b(password|passwd|pwd|secret|token|api[_-]?key|authorization|auth|cookie|session|sessionid|sid|csrf|xsrf|access[_-]?token|refresh[_-]?token)\b(\s*[:=]\s*)("?)[^\s"',;]+\3/gi,
       "$1$2[redacted]",
     );
 }

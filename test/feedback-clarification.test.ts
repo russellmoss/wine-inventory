@@ -4,7 +4,27 @@ import {
   buildClarificationDmBody,
   parseRefToken,
   isSubstantiveAnswer,
+  stripRefToken,
 } from "@/lib/feedback/clarification";
+
+describe("stripRefToken", () => {
+  it("strips the parenthesized DM format the copy actually emits", () => {
+    expect(stripRefToken("It's on the bottling page (Ref: BUG-7Q2F — keep this)")).toBe(
+      "It's on the bottling page",
+    );
+  });
+  it("strips the bracketed format and a bare token", () => {
+    expect(stripRefToken("on save [Ref: BUG-7Q2F]")).toBe("on save");
+    expect(stripRefToken("BUG-7Q2F it crashes")).toBe("it crashes");
+  });
+  it("a reply that is only the token strips to empty (→ non-substantive)", () => {
+    expect(stripRefToken("BUG-7Q2F")).toBe("");
+    expect(isSubstantiveAnswer(stripRefToken("[Ref: BUG-7Q2F]"))).toBe(false);
+  });
+  it("leaves ordinary text untouched", () => {
+    expect(stripRefToken("crashes when I click save on tank 4")).toBe("crashes when I click save on tank 4");
+  });
+});
 
 describe("parseRefToken", () => {
   it("extracts the ref token case-insensitively", () => {
