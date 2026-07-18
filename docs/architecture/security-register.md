@@ -341,6 +341,30 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (opt-in, post-commit, home-currency-only, column-add only — no new RLS table; unique guard +
   conflict state proven; the lazy bill-post path remains the backstop).
 
+## Knowledge-base RAG: GLOBAL corpus (no RLS) + app-code entitlement + untrusted crawled content (plan 079)
+- **What:** the crawled winemaking corpus is GLOBAL (no `tenantId`, no RLS) — a shared reference library.
+  Per-winery access is a tenant-scoped `knowledge_source_subscription` (full Phase-12 RLS). Because the
+  corpus has NO row-level security, source entitlement is enforced in APPLICATION CODE: retrieval filters
+  the global chunks to the tenant's enabled sources (empty set ⇒ zero rows, fail-closed), and the citation
+  redirect route `/kb/source/<id>` MUST re-resolve the caller's tenant and re-check the subscription per
+  request (a guessable global id would otherwise be an authz bypass — council C2).
+- **Untrusted content:** crawled HTML/PDF text is DATA, never instructions (prompt-injection surface), and
+  the bigger real harm is extraction error (a dropped decimal → wrong dose). The KB tool quotes numeric
+  dose/temp/limit phrases VERBATIM from the source + tells the user to verify, defers ALL math to the
+  existing calculators (`calc_so2`/`calc_sugar`), and crawled titles are escaped + length-limited before
+  they reach Markdown/the redirect route.
+- **Crawler boundary:** SSRF controls (allowlist-only hosts, private-IP rejection, redirect-host checks,
+  size/timeout/page-count caps); cross-domain link following only INTO allowlisted domains; the re-crawl
+  loop opens a PR/issue and never auto-writes prod content. It runs as owner (`runAsSystem`); a narrower
+  maintenance role is a deferred follow-up (acceptable for v1 because the loop is human-gated).
+- **Tripwire:** the citation route redirecting without the per-request subscription recheck; retrieval
+  dropping the enabled-source filter (or degrading empty→all); a numeric answer paraphrased instead of
+  quoted; the crawler following a link to a non-allowlisted domain or fetching a private IP; owner creds
+  used by anything that writes prod content without a human gate. Proof: `verify:knowledge-base` +
+  `verify:tenant-isolation`; see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]].
+- **Status:** 🟡 (v1 slice in progress — subscription RLS proven; app-code entitlement + citation recheck +
+  numeric guardrail land with Units 6–8; owner-role crawler is a watched follow-up).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_

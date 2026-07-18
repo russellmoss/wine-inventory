@@ -194,5 +194,23 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟢 (record-only, no ledger fold; barrel-range scale; proven by `verify:group-maintenance`. If
   ranges get large, revisit the deferred progressive/per-batch completion).
 
+### Knowledge-base RAG corpus is GLOBAL + hybrid-retrieved; no ANN index in v1 (plan 079)
+- **Choice:** the crawled winemaking corpus (`knowledge_document`/`knowledge_chunk` + friends) is GLOBAL
+  reference data (crawled once, shared by all tenants — like `fx_rate`), retrieved via HYBRID search: dense
+  pgvector cosine (`embedding <=> $1::vector`, `Unsupported("vector(1024)")`, raw SQL) fused by RRF with a
+  generated `tsvector` GIN lexical arm. Retrieval filters the global chunk pool to a tenant's enabled
+  sources; empty enabled-set ⇒ zero rows (fail-closed). **No HNSW/IVFFlat index in v1** — an exact
+  sequential scan over a few-thousand chunks is single-digit ms and 100% recall.
+- **Fine until:** the corpus is in the hundreds–low-thousands of chunks (AWRI + Wine Australia); the
+  per-query vector distance + tsvector rank stay cheap; re-embed happens on a change-detected subset.
+- **What breaks at scale:** past ~tens of thousands of chunks the exact vector scan gets linear-slow →
+  needs an HNSW index (`vector_cosine_ops`), built AFTER data load (never on an empty table); a very large
+  enabled-source set widens the `sourceId = ANY(...)` filter; a full re-embed (model swap) is an O(corpus)
+  backfill; MMR/RRF over a huge candidate set costs CPU if `k` isn't bounded.
+- **Tripwire:** vector queries trending into tens of ms; chunk counts crossing ~10k; a re-embed job
+  scanning the whole corpus on every run instead of the changed subset; retrieval `LIMIT k` unbounded.
+- **Status:** 🟢 (global shared corpus; exact scan at winery+AWRI scale; HNSW is a documented later add;
+  guarded by `verify:knowledge-base` + `verify:tenant-isolation`; see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]]).
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

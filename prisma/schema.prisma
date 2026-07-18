@@ -3039,6 +3039,158 @@ model FxRate {
   @@map("fx_rate")
 }
 
+// ───────────────────────── Knowledge base — RAG corpus (Plan 079) ─────────────────────────
+// GLOBAL reference corpus (like FxRate): trusted public winemaking/viticulture sources, crawled +
+// maintained ONCE and shared by all tenants. These tables have NO tenantId and NO RLS; they are listed
+// in GLOBAL_MODELS (src/lib/tenant/models.ts) and mirrored in scripts/verify-tenant-isolation.ts so the
+// RLS-coverage guard skips them. Per-winery control is the ONE tenant-scoped table below,
+// KnowledgeSourceSubscription (full Phase-12 RLS). Document identity is deliberately split (council C3):
+//   KnowledgeBlob        = byte-level dedup (one row per contentHash; the same PDF from many URLs = one blob)
+//   KnowledgeDocument    = one LOGICAL document per (source, canonicalUrl); carries provenance + revision
+//   KnowledgeUrlObservation = every URL a document was seen at (aliases/mirrors) — provenance, not identity
+// The vector + tsvector columns are Unsupported() and written via raw SQL (hybrid retrieval, Unit 6).
+
+model KnowledgeSource {
+  id             String   @id @default(cuid())
+  key            String   @unique // stable slug, e.g. "awri"
+  publisher      String // display name, e.g. "AWRI"
+  homeDomain     String   @unique // e.g. "awri.com.au"
+  tier           Int // 1 = peer-reviewed / official extension, 2 = reputable trade, 3 = other
+  license        String // reuse/provenance note (we store paraphrasable text + a link back)
+  seedRoots      String[] // sitemap/section roots to crawl
+  allowPrefixes  String[] // path prefixes permitted
+  denyPrefixes   String[] // path prefixes refused (e.g. paywalled sections)
+  crawlCadence   String   @default("weekly")
+  defaultEnabled Boolean  @default(true) // tenants get this unless a subscription row overrides
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  documents KnowledgeDocument[]
+
+  @@map("knowledge_source")
+}
+
+model TrustedDomain {
+  id        String   @id @default(cuid())
+  domain    String   @unique // crawler follows links only INTO these domains
+  sourceKey String? // optional link to a KnowledgeSource.key
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@map("trusted_domain")
+}
+
+model CandidateSource {
+  id                String   @id @default(cuid())
+  domain            String   @unique // discovered but not allowlisted — queued for human promotion
+  discoveredFromUrl String
+  firstSeenAt       DateTime @default(now())
+  lastSeenAt        DateTime @default(now())
+  timesSeen         Int      @default(1)
+  status            String   @default("pending") // pending | promoted | rejected
+
+  @@map("candidate_source")
+}
+
+model KnowledgeBlob {
+  id          String   @id @default(cuid())
+  contentHash String   @unique // sha256 of the fetched bytes
+  contentType String
+  byteSize    Int
+  blobUrl     String? // private Vercel Blob snapshot for audit / re-extract
+  firstSeenAt DateTime @default(now())
+
+  documents KnowledgeDocument[]
+
+  @@map("knowledge_blob")
+}
+
+model KnowledgeDocument {
+  id               String    @id @default(cuid())
+  sourceId         String
+  canonicalUrl     String
+  blobId           String?
+  canonicalTitle   String?
+  publisher        String
+  tier             Int
+  license          String
+  contentType      String
+  sitemapLastmod   DateTime?
+  publishedAt      DateTime?
+  etag             String?
+  lastModifiedHttp String?
+  status           String    @default("active") // active | withdrawn (tombstoned, kept for audit)
+  activeRevision   Int       @default(0) // retrieval reads only chunks at this revision
+  withdrawnAt      DateTime?
+  firstSeenAt      DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  lastVerifiedAt   DateTime  @default(now())
+  retrievedAt      DateTime  @default(now())
+
+  source       KnowledgeSource           @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  blob         KnowledgeBlob?            @relation(fields: [blobId], references: [id], onDelete: SetNull)
+  observations KnowledgeUrlObservation[]
+  chunks       KnowledgeChunk[]
+
+  @@unique([sourceId, canonicalUrl])
+  @@index([sourceId, status])
+  @@index([status])
+  @@map("knowledge_document")
+}
+
+model KnowledgeUrlObservation {
+  id          String   @id @default(cuid())
+  documentId  String
+  url         String   @unique
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("knowledge_url_observation")
+}
+
+model KnowledgeChunk {
+  id             String                       @id // deterministic: sha256(documentId + revision + ordinal + text)
+  documentId     String
+  revision       Int
+  ordinal        Int
+  sectionPath    String // breadcrumb, e.g. "Winemaking > Brett > Sanitation"
+  text           String                       @db.Text
+  tokenCount     Int
+  embedding      Unsupported("vector(1024)")? // dense arm; written via raw SQL (Unit 5)
+  searchVector   Unsupported("tsvector")?     @map("search_vector") // lexical arm; GENERATED in SQL
+  embeddingModel String? // e.g. "voyage-4"
+  embeddingDim   Int? // 1024 (committed v1)
+  embeddedAt     DateTime?
+  createdAt      DateTime                     @default(now())
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, revision, ordinal])
+  @@index([documentId, revision])
+  @@index([searchVector], type: Gin)
+  @@map("knowledge_chunk")
+}
+
+// TENANT-scoped (full Phase-12 RLS): which GLOBAL sources are active in a winery's assistant. Absent row
+// => fall back to KnowledgeSource.defaultEnabled. sourceId FK is a plain FK to the global knowledge_source.
+model KnowledgeSourceSubscription {
+  tenantId  String   @default("") // Phase 12 tenant scope; FK + RLS at the DB level
+  id        String   @id @default(cuid())
+  sourceId  String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, sourceId])
+  @@index([tenantId])
+  @@index([sourceId])
+  @@map("knowledge_source_subscription")
+}
+
 model OAuthState {
   tenantId     String             @default("")
   id           String             @id @default(cuid())
