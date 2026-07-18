@@ -22,6 +22,7 @@ import {
   dispatchApprovedRun,
   retryApprovedAutomationRun,
 } from "@/lib/feedback/automation";
+import { maybeClarifyOrDispatch } from "@/lib/feedback/clarification";
 import { parseLinearIssueUrl } from "@/lib/developer/linear-links";
 import { linkFeedbackToLinearCore } from "@/lib/developer/linear-link-actions";
 import { parseLinkFeedbackToLinearInput } from "@/lib/developer/linear-link-input";
@@ -230,8 +231,11 @@ export async function approveFeedbackAutomation(input: { tenantId: string; runId
       }),
   });
   if (!run) throw new ActionError("Automation run is not awaiting approval.", "VALIDATION");
-  const dispatched = await dispatchApprovedRun(input.runId, tenantId);
+  // Plan 079 (U7): pre-flight sufficiency gate — a thin AGENTIC_FIX report asks the reporter for
+  // details (in-app) instead of dispatching; everything else dispatches as before.
+  const { dispatched, asked } = await maybeClarifyOrDispatch(input.runId, tenantId);
   revalidatePath("/developer");
+  if (asked) return { ok: true as const, message: "Report needs more detail — asked the reporter and paused for their reply." };
   return dispatched
     ? { ok: true as const }
     : {

@@ -12,6 +12,7 @@ import {
   dispatchApprovedRun,
   type FeedbackSource,
 } from "@/lib/feedback/automation";
+import { assessSufficiency } from "@/lib/feedback/sufficiency";
 
 // Plan 079, Unit 6: ask a bug reporter for missing details.
 //
@@ -365,4 +366,68 @@ export async function advanceClarificationFromReply(input: {
     // Never break sending a DM because a feedback side-effect failed.
     console.error("advanceClarificationFromReply failed (non-fatal):", e);
   }
+}
+
+// ── Unit 7: pre-flight gate — ask (in-app) or dispatch, at developer-approval time ──────────────
+
+function sourceFromRun(run: { sourceType: "FEEDBACK_TICKET" | "ASSISTANT_FEEDBACK"; sourceId: string }): FeedbackSource {
+  return run.sourceType === "FEEDBACK_TICKET"
+    ? { sourceType: "FEEDBACK_TICKET", sourceId: run.sourceId }
+    : { sourceType: "ASSISTANT_FEEDBACK", sourceId: run.sourceId };
+}
+
+async function countClarificationRounds(tenantId: string, source: FeedbackSource): Promise<number> {
+  return runAsTenant(tenantId, () =>
+    runInTenantTx((tx) =>
+      tx.feedbackClarification.count({ where: { sourceType: source.sourceType, sourceId: source.sourceId } }),
+    ),
+  );
+}
+
+export type GateResult = { dispatched: boolean; asked: boolean };
+
+/**
+ * At developer-approval time: for an AGENTIC_FIX first attempt with rounds left, run the cheap in-app
+ * sufficiency check (council C-2, C-6 FIX-only + in-app). If the report is too thin, ask the reporter
+ * (park at AWAITING_CLARIFICATION) instead of dispatching; otherwise dispatch as before. PLAN runs,
+ * re-runs (attempt>1), and round-exhausted sources always dispatch straight through. Never throws the
+ * gate's own errors past dispatch — a gate failure falls back to dispatching.
+ */
+export async function maybeClarifyOrDispatch(runId: string, tenantId: string): Promise<GateResult> {
+  const run = await runAsTenant(tenantId, () =>
+    runInTenantTx((tx) =>
+      tx.automationRun.findUnique({ where: { id: runId }, select: { kind: true, attempt: true, sourceType: true, sourceId: true } }),
+    ),
+  );
+  if (!run) return { dispatched: false, asked: false };
+
+  const source = sourceFromRun(run);
+  // C-6: only AGENTIC_FIX gets the gate; re-runs (attempt>1) already carry the reporter's answer.
+  if (run.kind !== "AGENTIC_FIX" || run.attempt > 1) {
+    return { dispatched: await dispatchApprovedRun(runId, tenantId), asked: false };
+  }
+  if ((await countClarificationRounds(tenantId, source)) >= MAX_CLARIFICATION_ROUNDS) {
+    return { dispatched: await dispatchApprovedRun(runId, tenantId), asked: false };
+  }
+
+  let suff: { sufficient: boolean; questions: string[] };
+  try {
+    suff = await assessSufficiency(tenantId, source);
+  } catch {
+    suff = { sufficient: true, questions: [] }; // fail-open → dispatch
+  }
+  if (suff.sufficient || suff.questions.length === 0) {
+    return { dispatched: await dispatchApprovedRun(runId, tenantId), asked: false };
+  }
+
+  const asked = await requestClarificationCore({
+    tenantId,
+    source,
+    automationRunId: runId,
+    round: 1,
+    questions: suff.questions,
+  });
+  if (asked.ok) return { dispatched: false, asked: true };
+  // Couldn't ask (no reporter / already open) → fall back to dispatching.
+  return { dispatched: await dispatchApprovedRun(runId, tenantId), asked: false };
 }
