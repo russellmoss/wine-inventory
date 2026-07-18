@@ -45,11 +45,12 @@ describe("tenant context (AsyncLocalStorage)", () => {
 });
 
 describe("global-model denylist (K3)", () => {
-  it("marks exactly the auth + org tables as global", () => {
+  it("marks exactly the auth + org tables plus the FxRate reference cache as global", () => {
     expect([...GLOBAL_MODELS].sort()).toEqual(
-      ["Account", "Invitation", "Member", "Organization", "Session", "User", "Verification"].sort(),
+      // Plan 073: FxRate is a shared, non-tenant ECB rate cache (reference table, not auth).
+      ["Account", "FxRate", "Invitation", "Member", "Organization", "Session", "User", "Verification"].sort(),
     );
-    for (const m of ["User", "Session", "Organization", "Member", "Invitation"]) expect(isGlobalModel(m)).toBe(true);
+    for (const m of ["User", "Session", "Organization", "Member", "Invitation", "FxRate"]) expect(isGlobalModel(m)).toBe(true);
     for (const m of ["Lot", "Vessel", "AppSettings", "AuditLog"]) expect(isGlobalModel(m)).toBe(false);
   });
 });
