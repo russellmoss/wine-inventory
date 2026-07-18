@@ -232,6 +232,14 @@ enum FeedbackAutomationStatus {
   PR_OPENED
   FAILED
   SKIPPED
+  AWAITING_CLARIFICATION // Plan 079: parked waiting on the reporter's answer to a clarification DM
+}
+
+// Plan 079: lifecycle of one clarification round asked of a bug reporter.
+enum FeedbackClarificationStatus {
+  OPEN
+  ANSWERED
+  CANCELLED
 }
 
 enum FeedbackAttachmentCaptureSource {
@@ -908,9 +916,11 @@ model AssistantFeedback {
   developerNotes        String?
   developerNotesVersion Int                      @default(1)
   triageClass           FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
+  currentAutomationRunId String? // Plan 079: the run whose status this row mirrors (multiple runs can exist across clarification rounds)
   attachments           FeedbackAttachment[]
   linearLinks           FeedbackLinearLink[]
   automationRuns        AutomationRun[]          @relation("AssistantFeedbackAutomationRuns")
+  clarifications        FeedbackClarification[]
 
   @@unique([tenantId, id])
   @@index([status, createdAt])
@@ -948,11 +958,13 @@ model FeedbackTicket {
   developerNotes        String?
   developerNotesVersion Int                      @default(1)
   triageClass           FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
+  currentAutomationRunId String? // Plan 079: the run whose status this row mirrors (multiple runs across clarification rounds)
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
   attachments           FeedbackAttachment[]
   linearLinks           FeedbackLinearLink[]
   automationRuns        AutomationRun[]          @relation("FeedbackTicketAutomationRuns")
+  clarifications        FeedbackClarification[]
 
   @@unique([tenantId, id])
   @@index([tenantId, kind, status, createdAt])
@@ -1008,6 +1020,47 @@ model FeedbackLinearLink {
   @@index([tenantId, linearIssueKey])
   @@index([tenantId, linkedAt])
   @@map("feedback_linear_link")
+}
+
+// Plan 079: one clarification round asked of a bug reporter when a report is too
+// thin to act on. Polymorphic over both feedback source types (mirrors AutomationRun /
+// FeedbackAttachment). The DB adds (raw SQL in the migration): a partial unique so at
+// most ONE clarification is OPEN per source (council C-1), and a CHECK that exactly one
+// of ticketId/assistantFeedbackId is set and matches sourceType.
+model FeedbackClarification {
+  tenantId            String                      @default("")
+  id                  String                      @id @default(cuid())
+  sourceType          FeedbackAutomationSource
+  sourceId            String
+  ticketId            String?
+  assistantFeedbackId String?
+  automationRunId     String? // the run this clarification parked (workflow-retry idempotency via the unique below)
+  round               Int                         @default(1) // clarification round, distinct from AutomationRun.attempt (council C-3.3)
+  ref                 String // short human-facing token in the DM, e.g. "BUG-7Q2F" (council C-1 reply routing)
+  reporterUserId      String // who we asked (denormalized for listing + reply fallback)
+  dmThreadId          String?
+  dmMessageId         String?
+  questions           String // the questions we asked (may be UNTRUSTED once answered)
+  askedByUserId       String // the Cellarhand Support sender
+  askedAt             DateTime                    @default(now())
+  status              FeedbackClarificationStatus @default(OPEN)
+  answerBody          String? // the reporter's reply (UNTRUSTED)
+  answeredAt          DateTime?
+  answeredByUserId    String?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  ticket              FeedbackTicket?             @relation(fields: [tenantId, ticketId], references: [tenantId, id], onDelete: Cascade)
+  assistantFeedback   AssistantFeedback?          @relation(fields: [tenantId, assistantFeedbackId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, ref])
+  @@unique([tenantId, automationRunId]) // one clarification per run (council C-1); multiple NULLs allowed
+  @@index([tenantId, sourceType, sourceId, askedAt]) // source history
+  @@index([tenantId, dmThreadId, status]) // reply-hook lookup (council C-3.8)
+  @@index([tenantId, reporterUserId, status]) // per-reporter open listing (assistant nudge / My Reports)
+  @@index([tenantId, ticketId])
+  @@index([tenantId, assistantFeedbackId])
+  @@map("feedback_clarification")
 }
 
 model AutomationRun {
