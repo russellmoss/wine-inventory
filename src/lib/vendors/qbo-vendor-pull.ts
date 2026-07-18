@@ -3,6 +3,7 @@ import { runAsTenant, requireTenantId } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { getValidAccessToken } from "@/lib/accounting/token";
 import { QboAdapter } from "@/lib/accounting/qbo/client";
+import { listAllOrgIds, disconnectEnumerator } from "@/lib/accounting/enumerator";
 import type { ProviderCallContext } from "@/lib/accounting/adapter";
 import { reconcileQboVendors } from "@/lib/vendors/qbo-vendor-pull-shared";
 
@@ -83,4 +84,29 @@ export async function pullQboVendorsForTenant(tenantId: string): Promise<VendorP
 
     return { ok: true, pulled: qbo.length, candidates: candidates.length, skippedSynced, skippedRejected };
   });
+}
+
+export type VendorPullSweepSummary = { tenants: number; connected: number; pulled: number; candidates: number; errors: number };
+
+/**
+ * Plan 075 Unit 7 (optional): the scheduled poll sweep. Enumerates every org (via the least-privilege
+ * enumerator role — it only reads `organization`, never the connection, SEC-C3), then pulls per tenant through
+ * `pullQboVendorsForTenant` (which reads the connection + token inside its own `runAsTenant`). A tenant with no
+ * CONNECTED QBO connection is silently skipped. One tenant's failure doesn't abort the sweep. The manual pull
+ * button (Units 5-6) is the primary path; this just keeps bookkeeper-added vendors trickling in.
+ */
+export async function runQboVendorPullSweep(deps?: { orgIds?: string[] }): Promise<VendorPullSweepSummary> {
+  const orgIds = deps?.orgIds ?? (await listAllOrgIds());
+  const summary: VendorPullSweepSummary = { tenants: orgIds.length, connected: 0, pulled: 0, candidates: 0, errors: 0 };
+  try {
+    for (const tenantId of orgIds) {
+      try {
+        const res = await pullQboVendorsForTenant(tenantId);
+        if (res.ok) { summary.connected++; summary.pulled += res.pulled; summary.candidates += res.candidates; }
+      } catch { summary.errors++; }
+    }
+  } finally {
+    if (!deps?.orgIds) await disconnectEnumerator();
+  }
+  return summary;
 }

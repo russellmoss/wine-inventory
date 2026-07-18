@@ -25,6 +25,10 @@
     {
       "path": "/api/cron/commerce7-inventory",
       "schedule": "15 14 * * *"
+    },
+    {
+      "path": "/api/cron/qbo-vendor-poll",
+      "schedule": "30 14 * * *"
     }
   ]
 }
