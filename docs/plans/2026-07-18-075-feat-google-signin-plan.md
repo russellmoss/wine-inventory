@@ -1,7 +1,7 @@
 ---
 title: Sign in with Google (Better Auth social login, no self-provision)
 type: feat
-status: built (live OAuth QA pending — needs real Google creds)
+status: built + reviewed + match-QA'd live (see Review & QA outcome at end)
 date: 2026-07-18
 branch: claude/google-signin-oauth
 depth: standard
@@ -272,3 +272,32 @@ Confirm persistence with a `runAsSystem` read of the `account` + `user` rows.
 - [x] `npx tsc --noEmit`, `eslint`, and `vitest` (38 tests) green; `verify:raw-sql` guard green.
 - [x] `.env.example` + AGENTS.md cover Google Cloud Console redirect URIs and clarify no Workspace /
       no Gmail-read scope.
+
+## Review & QA outcome (2026-07-18)
+
+**Live QA (dev, Demo tenant):** Match path proven end-to-end — an existing admin-created user
+(`russellmoss87@gmail.com`) signed in with Google → `account` row `google` linked → landed on the
+dashboard (no change-password gate) → LOGIN audit row written. No-match refusal message verified via
+the `?error=` render; the refusal itself is Better Auth's built-in `disableSignUp`. Full no-match
+round-trip still wants a second unprovisioned Gmail (deferred).
+
+**Two independent reviewers (security + correctness) traced Better Auth 1.6.18 source.** Core mechanics
+confirmed sound: `disableSignUp` refusal is not bypassable; the `account.create.after` hook can't be
+abused (fires only after a verified-email OAuth round-trip, and the admin `createUser` credential path
+bypasses Better Auth hooks entirely); no secret reaches the client bundle; `User`/`Account` are global
+so the hook's writes need no tenant context. Changes applied from the review:
+
+- **Removed `trustedProviders: ["google"]`** from `accountLinking`. Trusting the provider SUPPRESSES
+  Better Auth's check on the *incoming* Google email (would allow a Google-asserted-unverified email to
+  link). Left untrusted, linking still requires Google to assert the incoming email is verified. Kept
+  `requireLocalEmailVerified: false` as a robustness margin (admin users are already `emailVerified:true`,
+  so it's belt-and-braces + covers any legacy user whose local flag is false).
+- **Temp-password retirement (was a deferred risk, now DONE):** the hook now nulls the `credential`
+  account's password when the user was still on the admin-issued temp (mustChangePassword was true), so
+  an emailed temp can't linger as a permanent alternate credential. A user who already chose their own
+  password keeps it. *Not live-tested* (needs a temp-password user + matching Gmail); logic is
+  straightforward and gated on `mustChangePassword`.
+- Corrected the (factually wrong) justification comment; softened the refusal copy to also cover a
+  cancelled consent; removed a tautological test.
+
+**Gates:** `tsc --noEmit`, `eslint`, `vitest` (37), `verify:raw-sql` all green.
