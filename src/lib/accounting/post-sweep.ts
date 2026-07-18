@@ -152,7 +152,7 @@ async function postBill(
 ): Promise<void> {
   const ev = await prisma.apExportEvent.findUnique({
     where: { id: d.apExportEventId as string },
-    select: { postingKey: true, amount: true, debitAccount: true, receivedAt: true, dueDate: true, vendorId: true, vendorInvoiceNumber: true, currency: true, exchangeRate: true },
+    select: { postingKey: true, amount: true, debitAccount: true, billLinesJson: true, receivedAt: true, dueDate: true, vendorId: true, vendorInvoiceNumber: true, currency: true, exchangeRate: true },
   });
   if (!ev || !ev.vendorId || !ev.debitAccount) {
     await finalize(d.id, { status: "FAILED", lastError: "AP export missing vendor or account" });
@@ -213,11 +213,20 @@ async function postBill(
     // Plan 072: carry the supplier invoice # in the memo (→ Bill PrivateNote) so a bookkeeper can find every
     // per-lot Bill that belongs to one supplier invoice (searchable; the Bills stay separate rows).
     const memo = `Cellarhand · Supply bill · ${vendor.name}${ev.vendorInvoiceNumber ? ` · Invoice ${ev.vendorInvoiceNumber}` : ""}`;
+    // Plan 076: an aggregate per-invoice event carries billLinesJson → a multi-line QBO Bill (one line per
+    // invoice line). A legacy per-lot event has no billLinesJson → the single-line fallback (unchanged).
+    const rawLines = Array.isArray(ev.billLinesJson) ? (ev.billLinesJson as Array<{ debitAccount?: string; amount?: number; description?: string | null }>) : null;
+    const lines = rawLines?.length
+      ? rawLines
+          .filter((l) => l.debitAccount && Number.isFinite(Number(l.amount)))
+          .map((l) => ({ account: l.debitAccount as string, amount: Number(l.amount), description: l.description ?? null }))
+      : null;
     const payload = buildBillPayload(
       {
         postingKey: ev.postingKey,
         amount: Number(ev.amount), // the document-currency (foreign) amount for a foreign bill
         debitAccount: ev.debitAccount,
+        lines,
         receivedAt: ev.receivedAt,
         dueDate: ev.dueDate,
         memo,

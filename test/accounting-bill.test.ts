@@ -35,8 +35,33 @@ describe("buildBillPayload", () => {
     expect("DueDate" in p).toBe(false);
   });
 
-  it("throws if the inventory account is missing", () => {
-    expect(() => buildBillPayload({ ...ev, debitAccount: null }, "V1")).toThrow(/no inventory account/);
+  it("throws if there are no lines and no inventory account", () => {
+    expect(() => buildBillPayload({ ...ev, debitAccount: null }, "V1")).toThrow(/no bill lines/);
+  });
+
+  // Plan 076: an aggregate per-invoice event supplies `lines` → one QBO Line per invoice line (same or
+  // different GL accounts). QBO sums the lines into the Bill total; we never send an explicit total.
+  it("builds a multi-line Bill from aggregate lines", () => {
+    const p = buildBillPayload({
+      ...ev,
+      postingKey: "apinv:inv_9",
+      lines: [
+        { account: "1300-Inventory", amount: 387.57, description: "Yeast EC1118" },
+        { account: "1300-Inventory", amount: 98.22, description: "Bentonite" },
+      ],
+    }, "V-9") as { DocNumber: string; Line: Array<{ Amount: number; Description?: string; AccountBasedExpenseLineDetail: { AccountRef: { value: string } } }> };
+    expect(p.DocNumber).toBe(docNumberFor("apinv:inv_9"));
+    expect(p.Line).toHaveLength(2);
+    expect(p.Line[0].Amount).toBe(387.57);
+    expect(p.Line[0].Description).toBe("Yeast EC1118");
+    expect(p.Line[1].Amount).toBe(98.22);
+    expect(p.Line.every((l) => l.AccountBasedExpenseLineDetail.AccountRef.value === "1300-Inventory")).toBe(true);
+    expect("TotalAmt" in (p as Record<string, unknown>)).toBe(false); // QBO derives the total from the lines
+  });
+
+  it("rounds line amounts to cents", () => {
+    const p = buildBillPayload({ ...ev, lines: [{ account: "1300", amount: 10.005 }] }, "V1") as { Line: Array<{ Amount: number }> };
+    expect(p.Line[0].Amount).toBe(10.01);
   });
 
   // Plan 073: a foreign bill carries CurrencyRef + the pinned ExchangeRate (home per 1 foreign); the line
