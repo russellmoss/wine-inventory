@@ -43,6 +43,14 @@ export type NormalizedAccount = {
   active: boolean;
 };
 
+/** A QBO Vendor, normalized for the Slice-1 pull. `externalId` is the QBO Vendor.Id (→ `Vendor.externalVendorId`);
+ *  `name` is the raw DisplayName (may carry a Plan-073 " (CUR)" currency suffix — the pull strips + collapses it). */
+export type NormalizedVendor = {
+  externalId: string; // QBO Vendor.Id
+  name: string; // QBO DisplayName (raw, suffix included)
+  active: boolean; // QBO Vendor.Active
+};
+
 export type Posting = "Debit" | "Credit";
 
 /** One balanced-journal line. Amount is ALWAYS positive; direction is `posting`. */
@@ -130,6 +138,8 @@ export interface AccountingAdapter {
    *  endpoint (SEC-C2). `multiCurrencyEnabled` is read at connect so a foreign bill is gated early (council #2). */
   getCompanyInfo(ctx: ProviderCallContext): Promise<{ companyName: string; homeCurrency: string; country?: string; multiCurrencyEnabled: boolean }>;
   listAccounts(ctx: ProviderCallContext): Promise<NormalizedAccount[]>;
+  /** Slice 1: pull ALL vendors (paginated STARTPOSITION/MAXRESULTS), active and inactive. */
+  listVendors(ctx: ProviderCallContext): Promise<NormalizedVendor[]>;
   /** Query-before-post: find an already-posted object by our idempotency DocNumber. Null if none. */
   findByDocNumber(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", docNumber: string): Promise<PostResult | null>;
   /** Reconcile read-back: fetch a posted object by its external Id. Null if it was deleted in the GL. */
