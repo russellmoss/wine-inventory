@@ -7,6 +7,19 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Feedback #241 (cmrqpp88 "too much detail in dashboard") — dashboard Recent activity filtered to leadership-relevant events — BUILT, ready for /ship.**
+Branch `claude/work-241-page-tsx-5fdfdb` (commit 752c212). The leadership dashboard's Recent activity feed pulled the last 6
+audit rows indiscriminately, burying operational signal ("we bottled wine today") under bug-triage / dev-automation /
+auth-admin churn. Added a leadership-relevance classifier to [src/lib/audit.ts](src/lib/audit.ts) — denylist of
+non-operational entity types (`FEEDBACK_TICKET`, `ASSISTANT_FEEDBACK`, `AutomationRun`, `AppSettings`, `Session`, `User`,
+`VendorImportCandidate`, `DirectMessage`) + actions (`LOGIN`, `PASSWORD_*`, `USER_CREATED/DELETED`, `USER_VINEYARD_ASSIGNED`,
+`IMPERSONATE`) — exposed as a pure predicate `isOperationalAuditEntry` + a synced Prisma fragment `operationalAuditWhere`;
+[page.tsx](src/app/(app)/page.tsx) filters the feed at the DB. Denylist (not allowlist) so new operational events show by
+default. GREEN: tsc, eslint, vitest 15/15 (audit + assistant-audit). Proven on real prod data (Neon): prior 6th feed row
+"Developer approved feedback automation" drops out, replaced by a real work-order event. Next: `/review` then `/ship`.
+
+<details><summary>prev objective — Plan 076/078 invoice ingestion (SHIPPED, PR #246)</summary>
+
 **Plan 076/078 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — SHIPPED (PR #246 OPEN).**
 Branch `claude/invoice-ingestion-features-95d4df`; merged latest main (Plan 075 vendor-pull; resolved qbo/client.ts conflict).
 All gates green post-merge (vitest 2284, ingest 81, accounting-idempotency 33, invariants 35/35, next build). Live QBO
@@ -19,13 +32,10 @@ multi-line `billLinesJson`), per-lot emit suppressed via `skipApEmit`, multi-lin
 AP-1. (3) Paid/Outstanding — schema on `IngestedInvoice`+`ApExportEvent`+AppSettings pay-from accounts, required
 review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPayment** poster pass (Check/CreditCard,
 exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
-migrations applied to Neon. GREEN: tsc, eslint, vitest 2276, next build, verify:ingest 81, verify:accounting 8,
-verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation.
-**Live QBO-sandbox pass DONE + USER-CONFIRMED in QBO UI** (`verify:plan076-live`: real 2-line Bill Id 166 $385.79
-+ BillPayment Id 167 → Balance $0.00; user's Claude-browser check confirmed 2 lines, memo invoice #, status PAID,
-$385.79 payment from Checking bank account). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
-fire, duplicate gate "book it anyway" fires with nothing booked, Settings pay-from pickers populate from live QBO
-COA). PENDING before prod trust: **accountant sign-off** on the BillPayment GL direction only.
+migrations applied to Neon. **Live QBO-sandbox pass DONE + USER-CONFIRMED**; **Browser-QA on Demo DONE**. PENDING before
+prod trust: **accountant sign-off** on the BillPayment GL direction only.
+
+</details>
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
@@ -207,4 +217,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — Feedback #241 (cmrqpp88) dashboard Recent-activity leadership filter BUILT (branch claude/work-241-page-tsx-5fdfdb, commit 752c212); denylist classifier in src/lib/audit.ts (isOperationalAuditEntry + operationalAuditWhere) + page.tsx DB filter, 15/15 audit tests, proven on real Neon data (AutomationRun noise row dropped). Ready for /review → /ship. Prior: Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
