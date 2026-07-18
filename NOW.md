@@ -18,8 +18,9 @@ review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPay
 exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
 migrations applied to Neon. GREEN: tsc, eslint, vitest 2276, next build, verify:ingest 81, verify:accounting 8,
 verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation.
-**Live QBO-sandbox pass DONE** (`verify:plan076-live`: real 2-line Bill Id 166 $385.79 + BillPayment Id 167 →
-Balance $0.00). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
+**Live QBO-sandbox pass DONE + USER-CONFIRMED in QBO UI** (`verify:plan076-live`: real 2-line Bill Id 166 $385.79
++ BillPayment Id 167 → Balance $0.00; user's Claude-browser check confirmed 2 lines, memo invoice #, status PAID,
+$385.79 payment from Checking bank account). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
 fire, duplicate gate "book it anyway" fires with nothing booked, Settings pay-from pickers populate from live QBO
 COA). PENDING before prod trust: **accountant sign-off** on the BillPayment GL direction only.
 
