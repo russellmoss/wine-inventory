@@ -44,6 +44,7 @@ function mockAdapter(state: MockState): AccountingAdapter {
     revoke: notImpl,
     getCompanyInfo: notImpl,
     listAccounts: notImpl,
+    listVendors: notImpl,
     async findOrCreateVendor(_ctx, name, currency): Promise<string> {
       state.vendorCalls?.push({ name, currency });
       // Distinct id per (name, currency) — a currency-scoped vendor is a distinct QBO vendor (council #4).
