@@ -100,7 +100,15 @@ export function WorkOrderBuilderClient({
   const isEdit = !!existing;
   const [title, setTitle] = React.useState(existing?.title ?? "");
   const [dueAt, setDueAt] = React.useState(existing ? existing.dueAt : todayLocal());
-  const [leadEmail, setLeadEmail] = React.useState(existing?.leadEmail ?? "");
+  // Plan 070: the Lead is chosen by the STABLE member userId — a member's email can be blank or duplicated,
+  // so keying the picker on email would drop a valid selection ("pick a lead" after clearly choosing one).
+  // In edit mode we may seed a lead who is no longer a member (email only, no userId) — keep that too.
+  const seededLead = existing ? members.find((m) => m.email === existing.leadEmail) : undefined;
+  const [leadUserId, setLeadUserId] = React.useState(seededLead?.userId ?? "");
+  const [leadEmailFallback] = React.useState(existing?.leadEmail ?? "");
+  // The effective lead email: from the selected member, or (edit mode) the seeded lead who left the org.
+  const selectedMember = members.find((m) => m.userId === leadUserId);
+  const leadEmail = selectedMember?.email || (leadUserId === "" && !seededLead ? leadEmailFallback : "") || leadEmailFallback && leadUserId === "" ? leadEmailFallback : selectedMember?.email ?? "";
   const [priority, setPriority] = React.useState(existing?.priority || "NORMAL");
   const [locationId, setLocationId] = React.useState(existing?.locationId ?? "");
   const [groups, setGroups] = React.useState<BuilderTask[][]>(existing?.groups?.length ? existing.groups : [[]]);
@@ -111,6 +119,17 @@ export function WorkOrderBuilderClient({
   const [describeText, setDescribeText] = React.useState("");
   const [drafting, setDrafting] = React.useState(false);
   const [draftNote, setDraftNote] = React.useState<string | null>(null);
+
+  // The effective lead (userId + email), resolving the edit-mode "lead left the org" case (email-only).
+  const effectiveLead = React.useMemo<{ userId: string | null; email: string }>(() => {
+    if (selectedMember) return { userId: selectedMember.userId, email: selectedMember.email };
+    // Edit-mode seed whose lead is no longer a member: keep the email, no userId.
+    if (existing && leadUserId === "" && leadEmailFallback && !members.some((m) => m.email === leadEmailFallback)) {
+      return { userId: null, email: leadEmailFallback };
+    }
+    return { userId: null, email: "" };
+  }, [selectedMember, existing, leadUserId, leadEmailFallback, members]);
+  const hasLead = !!effectiveLead.email;
 
   // Palette entries grouped by category, in a stable display order.
   const palette = React.useMemo(() => {
@@ -191,12 +210,12 @@ export function WorkOrderBuilderClient({
     const handle = setTimeout(async () => {
       if (taskBuilds.length === 0) { if (req === reqRef.current) setReadiness(null); return; }
       try {
-        const res = await previewWorkOrderReadinessAction({ source: "manual", title: title || "Work order", assigneeEmail: leadEmail || null, dueDate: dueAt || null, taskBuilds });
+        const res = await previewWorkOrderReadinessAction({ source: "manual", title: title || "Work order", assigneeEmail: effectiveLead.email || null, dueDate: dueAt || null, taskBuilds });
         if (req === reqRef.current) setReadiness(res);
       } catch { /* preview is best-effort */ }
     }, 350);
     return () => clearTimeout(handle);
-  }, [taskBuilds, title, leadEmail, dueAt]);
+  }, [taskBuilds, title, effectiveLead.email, dueAt]);
 
   function renderField(groupIdx: number, task: BuilderTask, key: string, type: string) {
     const def = vocab[task.taskType];
@@ -282,8 +301,9 @@ export function WorkOrderBuilderClient({
   function submit() {
     setError(null);
     // Plan 070: every work order must have a Lead.
-    if (!leadEmail) { setError("A work order needs a lead — pick one above."); return; }
-    const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
+    if (!hasLead) { setError("A work order needs a lead — pick one above."); return; }
+    const leadUserIdResolved = effectiveLead.userId;
+    const leadEmailResolved = effectiveLead.email;
     const dueDate = dueAt ? new Date(`${dueAt}T00:00:00`) : null;
 
     if (isEdit && existing) {
@@ -305,8 +325,8 @@ export function WorkOrderBuilderClient({
           unwrap(await updateWorkOrderFromBuildsAction({
             workOrderId: existing.workOrderId,
             title: title.trim() || undefined,
-            assigneeId: leadUserId,
-            assigneeEmail: leadEmail || null,
+            assigneeId: leadUserIdResolved,
+            assigneeEmail: leadEmailResolved || null,
             priority,
             locationId: locationId || null,
             dueAt: dueDate,
@@ -327,8 +347,8 @@ export function WorkOrderBuilderClient({
       try {
         const res = unwrap(await createWorkOrderFromBuildsAction({
           title: title.trim() || undefined,
-          assigneeId: leadUserId,
-          assigneeEmail: leadEmail || null,
+          assigneeId: leadUserIdResolved,
+          assigneeEmail: leadEmailResolved || null,
           priority,
           locationId: locationId || null,
           // Parse the yyyy-mm-dd as LOCAL midnight (not UTC) so the due date doesn't shift a day back.
@@ -386,11 +406,14 @@ export function WorkOrderBuilderClient({
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Racking + topping — Block 12" />
           </label>
           <label style={labelStyle}>Lead <span style={{ color: "var(--danger)" }}>*</span>
-            <select style={field} value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)}>
+            {/* Keyed on userId (stable + always present) — a member's email can be blank/duplicated. */}
+            <select style={field} value={leadUserId} onChange={(e) => setLeadUserId(e.target.value)}>
               <option value="">— choose a lead —</option>
               {/* Editing: if the current lead is no longer an org member, keep it selectable so it isn't silently dropped. */}
-              {leadEmail && !members.some((m) => m.email === leadEmail) ? <option value={leadEmail}>{leadEmail} (current)</option> : null}
-              {members.map((m) => <option key={m.userId} value={m.email}>{m.name}</option>)}
+              {existing && leadUserId === "" && leadEmailFallback && !members.some((m) => m.email === leadEmailFallback)
+                ? <option value="">{leadEmailFallback} (current)</option>
+                : null}
+              {members.map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
             </select>
           </label>
           <label style={labelStyle}>Priority
@@ -584,8 +607,8 @@ export function WorkOrderBuilderClient({
       {error && <div style={{ marginTop: 12, color: "var(--danger)", fontSize: 14 }}>{error}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-        <Button onClick={submit} disabled={pending || (isEdit ? totalCount === 0 : taskBuilds.length === 0) || !leadEmail}>
-          {pending ? (isEdit ? "Saving…" : "Creating…") : !leadEmail ? "Pick a lead" : isEdit ? "Save changes" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
+        <Button onClick={submit} disabled={pending || (isEdit ? totalCount === 0 : taskBuilds.length === 0) || !hasLead}>
+          {pending ? (isEdit ? "Saving…" : "Creating…") : !hasLead ? "Pick a lead" : isEdit ? "Save changes" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
         </Button>
       </div>
     </div>
