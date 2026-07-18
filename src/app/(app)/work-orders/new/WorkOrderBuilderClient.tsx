@@ -370,6 +370,11 @@ export function WorkOrderBuilderClient({
   }
 
   const nonEmptyGroupCount = groups.filter((g) => g.length > 0).length;
+  // The submit button is gated on: (a) having at least one authored task, and (b) a chosen Lead (Plan 070).
+  // The readiness panel can read "Ready to issue" while the button stays disabled because a Lead hasn't been
+  // picked — surface that reason inline next to the button so the disabled state is understandable.
+  const hasTasks = isEdit ? totalCount > 0 : taskBuilds.length > 0;
+  const needsLead = !leadEmail;
 
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 4px" }}>
@@ -583,9 +588,17 @@ export function WorkOrderBuilderClient({
 
       {error && <div style={{ marginTop: 12, color: "var(--danger)", fontSize: 14 }}>{error}</div>}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-        <Button onClick={submit} disabled={pending || (isEdit ? totalCount === 0 : taskBuilds.length === 0) || !leadEmail}>
-          {pending ? (isEdit ? "Saving…" : "Creating…") : !leadEmail ? "Pick a lead" : isEdit ? "Save changes" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, marginTop: 16 }}>
+        {/* Explain why the create button is disabled even when readiness reads "Ready to issue": a Lead is
+            still required (Plan 070). Without this, users see "ready" but a faded button and think the
+            create button is missing. */}
+        {hasTasks && needsLead ? (
+          <div style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+            Pick a <strong>Lead</strong> above to enable <em>Create work order</em>.
+          </div>
+        ) : null}
+        <Button onClick={submit} disabled={pending || !hasTasks || needsLead}>
+          {pending ? (isEdit ? "Saving…" : "Creating…") : needsLead ? "Pick a lead" : isEdit ? "Save changes" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
         </Button>
       </div>
     </div>
