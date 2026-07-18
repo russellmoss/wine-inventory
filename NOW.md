@@ -7,6 +7,24 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — BUILT, ready for `/review` + `/ship`.**
+Branch `claude/harvest-vineyard-lib-295869` (worktree). Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data
+cleanup): couldn't delete blocks refused by dependent Brix/harvest records, and no path to delete a standalone
+harvest pick. Two commits (`e6c3fd3`, `b525dce`):
+(1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix` (block +
+weight/date → confirm). Hardened `deleteHarvestPick` action: refuses a pick already crushed into a lot
+(`LotHarvestSource` Restrict — was a latent 500 + lineage-erase) + fixed a copy-paste audit action; added
+`getBlockPicks`. Golden case added (H8/D26 gate).
+(2) **Confirmed cascade in the generic `db_delete` engine** — restrict children split into hard `blocked` vs
+opt-in `cascadableBlocked` (`relations.ts` + `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`).
+`VineyardBlock` opts in: cascades Brix readings + harvest records (records cascade their picks) via new
+`src/lib/vineyard/block-delete.ts`, but **HARD-REFUSES if any pick is crushed** and keeps **work-order tasks a
+non-cascadable hard wall**. No schema change. GATES GREEN: tsc 0, eslint 0, **full vitest 2311/0**,
+verify:ai-native, eval golden coverage. PENDING: `/review`, live DB proof (runAsTenant Demo) + browser-QA, `next build` in CI.
+No plan-doc (issue #188 is a bug-triage stub); do not edit the GitHub issue.
+
+<details><summary>prev objective — Plan 076/078 invoice ingestion (SHIPPED, PR #246)</summary>
+
 **Plan 076/078 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — SHIPPED (PR #246 OPEN).**
 Branch `claude/invoice-ingestion-features-95d4df`; merged latest main (Plan 075 vendor-pull; resolved qbo/client.ts conflict).
 All gates green post-merge (vitest 2284, ingest 81, accounting-idempotency 33, invariants 35/35, next build). Live QBO
@@ -26,6 +44,8 @@ verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-nat
 $385.79 payment from Checking bank account). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
 fire, duplicate gate "book it anyway" fires with nothing booked, Settings pay-from pickers populate from live QBO
 COA). PENDING before prod trust: **accountant sign-off** on the BillPayment GL direction only.
+
+</details>
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
@@ -207,4 +227,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — Ticket #188 (assistant delete_harvest_pick for standalone picks + user-confirmed VineyardBlock cascade delete) BUILT on branch claude/harvest-vineyard-lib-295869 (commits e6c3fd3, b525dce); full vitest 2311/0, tsc/eslint/verify:ai-native/eval golden all green; no schema change. Ready for /review + /ship; live DB proof + browser-QA pending. Prior: Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
