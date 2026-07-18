@@ -7,7 +7,7 @@ import type { BottlingTaskFormData } from "@/lib/bottling/bottling-task-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { consumedForBottles, suggestBottles, casesAndLoose } from "@/lib/bottling/draw";
-import { type PackagingPlanLine, theoreticalConsumption } from "@/lib/bottling/packaging-bom";
+import { type PackagingPlanLine, type PackagingRole, theoreticalConsumption, classifyPackagingRole, missingRequiredPackaging } from "@/lib/bottling/packaging-bom";
 
 // Plan 053 E15: the run-time bottling sub-form on the work-order execute screen. Pick the source vessels,
 // the bottle count, the measured ABV and the destination; the SAME completeTaskAction the generic executor
@@ -69,6 +69,16 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
     return { line, opt, theoretical, actual, onHand, shortStock };
   });
   const anyShortStock = packagingRows.some((r) => r.shortStock);
+  // Mandatory packaging (server-enforced in runBottlingTx) — a bottle, a closure (e.g. cork) and a label
+  // are all required. Classify the actual-consumed lines (positive qty) and surface what's missing before
+  // submit so the crew isn't bounced by an opaque server error.
+  const presentRoles = new Set<PackagingRole>();
+  for (const r of packagingRows) {
+    if (r.actual <= 0) continue;
+    const role = classifyPackagingRole(r.opt?.label, r.opt?.kind);
+    if (role) presentRoles.add(role);
+  }
+  const missingPackaging = missingRequiredPackaging(presentRoles);
 
   function complete() {
     setError(null);
@@ -80,6 +90,7 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
     if (!(abvNum > 0)) return setError("Enter the wine's alcohol by volume (%) — required to classify the wine for TTB.");
     if (!destinationLocationId) return setError("Pick a destination location for the bottles.");
     if (short) return setError(`Not enough wine: ${bottleCount} bottles need ${consumedL} L but only ${availableL} L is selected.`);
+    if (missingPackaging.length > 0) return setError(`Add ${missingPackaging.map((m) => m.label).join(", ")} to the packaging — every bottling run needs a bottle, a closure and a label.`);
 
     const actualPayload: Record<string, unknown> = {
       vesselIds,

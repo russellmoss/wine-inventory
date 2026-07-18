@@ -7,25 +7,34 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 076/078 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — SHIPPED (PR #246 OPEN).**
-Branch `claude/invoice-ingestion-features-95d4df`; merged latest main (Plan 075 vendor-pull; resolved qbo/client.ts conflict).
-All gates green post-merge (vitest 2284, ingest 81, accounting-idempotency 33, invariants 35/35, next build). Live QBO
-pass + Demo browser-QA both DONE + user-confirmed. Only remaining: accountant sign-off on the BillPayment GL (not a
-merge blocker). Plan at
+**P0 bottling no-cork guard (feedback bug, PR #242) — BUILT + live-proven, ready to ship.**
+Branch `claude/bottling-no-cork-guard-b316e0`. Bug: "for all bottling runs we need mandatory a bottle, a closure
+(e.g. cork), and a label — I shouldn't be able to bottle Big Mike Big Red without a cork, but it let me." The
+automated PR #242 fixed it **client-only** (fragile). This supersedes it with a **server backstop at the two real
+write paths** + both UI mirrors + tests. (1) Pure classifier in
+[packaging-bom.ts](src/lib/bottling/packaging-bom.ts) — `classifyPackagingRole` (name/kind → bottle|closure|label;
+a capsule is deliberately NOT a closure), `missingRequiredPackaging`, `missingRolesForMaterials`. (2) Server guard
+[mandatory-packaging.ts](src/lib/bottling/mandatory-packaging.ts) `assertMandatoryPackaging(packaging, loadMaterials)`
+— wired into `createBottlingRun`/`editBottlingRun` ([actions.ts](src/lib/bottling/actions.ts), `prisma` loader) AND
+the WO BOTTLE task ([execute.ts](src/lib/work-orders/execute.ts), `tx` loader) so a crafted submit / assistant / a
+WO template with no packaging BoM can't slip a corkless run past. Enforced at the **entry points, not `runBottlingTx`**,
+deliberately — so the ~10 verify/seed fixtures that bottle directly don't need churn (core write path untouched).
+(3) UI mirrors in [BottlingClient.tsx](src/app/(app)/bottling/BottlingClient.tsx) (blocks submit + names what's
+missing) and [BottlingTaskForm.tsx](src/app/(app)/work-orders/[id]/execute/BottlingTaskForm.tsx). GREEN: tsc, eslint,
+vitest (32 bottling: 6 guard + role classification), verify:cost 55, verify:work-orders 43, verify:naming 25,
+verify:parity/ai-native/invariants/tripwires. **Live DB proof on Demo Winery**: corkless run REJECTED with zero
+partial writes; full (bottle+cork+label) run wrote 100 bottles + depleted cork stock 500→400; fixtures scrubbed.
+
+<details><summary>prev objective — Plan 076/078 invoice ingestion (SHIPPED, PR #246)</summary>
+
+**Plan 076/078 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — SHIPPED (PR #246).**
+Branch `claude/invoice-ingestion-features-95d4df`. Live QBO pass + Demo browser-QA both DONE + user-confirmed. Only
+remaining: accountant sign-off on the BillPayment GL. (1) Duplicate confirm gate. (2) One aggregate Bill per invoice
+(`emitApExportForInvoice`, `apinv:<id>`, invariant AP-1). (3) Paid/Outstanding via QBO BillPayment (two-way, Balance
+read-back). Two RLS-neutral Neon migrations. See
 [docs/plans/2026-07-18-076-…](docs/plans/2026-07-18-076-feat-invoice-qbo-bill-payment-status-plan.md).
-(1) Duplicate confirm gate — stage-time structured `duplicates` + upload modal ("continue?") + hard apply guard
-(`allowDuplicate`). (2) **One aggregate Bill per invoice** — `emitApExportForInvoice` (postingKey `apinv:<id>`,
-multi-line `billLinesJson`), per-lot emit suppressed via `skipApEmit`, multi-line `buildBillPayload`; new invariant
-AP-1. (3) Paid/Outstanding — schema on `IngestedInvoice`+`ApExportEvent`+AppSettings pay-from accounts, required
-review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPayment** poster pass (Check/CreditCard,
-exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
-migrations applied to Neon. GREEN: tsc, eslint, vitest 2276, next build, verify:ingest 81, verify:accounting 8,
-verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation.
-**Live QBO-sandbox pass DONE + USER-CONFIRMED in QBO UI** (`verify:plan076-live`: real 2-line Bill Id 166 $385.79
-+ BillPayment Id 167 → Balance $0.00; user's Claude-browser check confirmed 2 lines, memo invoice #, status PAID,
-$385.79 payment from Checking bank account). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
-fire, duplicate gate "book it anyway" fires with nothing booked, Settings pay-from pickers populate from live QBO
-COA). PENDING before prod trust: **accountant sign-off** on the BillPayment GL direction only.
+
+</details>
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
@@ -207,4 +216,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — P0 bottling no-cork guard (mandatory bottle+closure+label) BUILT + live-proven on branch claude/bottling-no-cork-guard-b316e0, supersedes client-only PR #242; server backstop at createBottlingRun/editBottlingRun + WO BOTTLE task, UI mirrors, 32 bottling tests + verify:cost 55/work-orders 43/naming/parity/ai-native/invariants green, Demo-Winery live proof (corkless rejected w/ 0 writes, full run wrote 100 bottles + depleted cork). Prior: Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
