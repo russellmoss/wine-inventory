@@ -142,27 +142,32 @@ export class QboClient {
     return (r.QueryResponse ?? ({} as T)) as T;
   }
 
-  async getCompanyInfo(ctx: ProviderCallContext): Promise<{ companyName: string; homeCurrency: string; country?: string }> {
+  async getCompanyInfo(ctx: ProviderCallContext): Promise<{ companyName: string; homeCurrency: string; country?: string; multiCurrencyEnabled: boolean }> {
     const info = await this.request<{ CompanyInfo?: { CompanyName?: string; Country?: string } }>(
       ctx,
       "GET",
       `companyinfo/${ctx.realmId}`,
     );
-    // Home currency lives in Preferences (CurrencyPrefs.HomeCurrency); default USD if single-currency.
+    // Home currency + the multicurrency flag both live in Preferences.CurrencyPrefs. Plan 073 reads
+    // MultiCurrencyEnabled at connect (council #2) so a foreign bill is gated EARLY, not at post time.
     let homeCurrency = "USD";
+    let multiCurrencyEnabled = false;
     try {
-      const prefs = await this.query<{ Preferences?: Array<{ CurrencyPrefs?: { HomeCurrency?: { value?: string } } }> }>(
+      const prefs = await this.query<{ Preferences?: Array<{ CurrencyPrefs?: { HomeCurrency?: { value?: string }; MultiCurrencyEnabled?: boolean } }> }>(
         ctx,
         "SELECT * FROM Preferences",
       );
-      homeCurrency = prefs.Preferences?.[0]?.CurrencyPrefs?.HomeCurrency?.value || "USD";
+      const cp = prefs.Preferences?.[0]?.CurrencyPrefs;
+      homeCurrency = cp?.HomeCurrency?.value || "USD";
+      multiCurrencyEnabled = cp?.MultiCurrencyEnabled === true;
     } catch {
-      // Preferences read is best-effort; a missing value just defaults to USD.
+      // Preferences read is best-effort; a missing value just defaults to USD / multicurrency off.
     }
     return {
       companyName: info.CompanyInfo?.CompanyName ?? "QuickBooks company",
       country: info.CompanyInfo?.Country,
       homeCurrency,
+      multiCurrencyEnabled,
     };
   }
 

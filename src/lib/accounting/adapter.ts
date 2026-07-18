@@ -126,8 +126,9 @@ export interface AccountingAdapter {
   refresh(refreshToken: string): Promise<OAuthTokens>;
   revoke(token: string): Promise<void>;
 
-  /** Canonical company id + display name + home currency, from a trusted endpoint (SEC-C2). */
-  getCompanyInfo(ctx: ProviderCallContext): Promise<{ companyName: string; homeCurrency: string; country?: string }>;
+  /** Canonical company id + display name + home currency + Plan 073 multicurrency flag, from a trusted
+   *  endpoint (SEC-C2). `multiCurrencyEnabled` is read at connect so a foreign bill is gated early (council #2). */
+  getCompanyInfo(ctx: ProviderCallContext): Promise<{ companyName: string; homeCurrency: string; country?: string; multiCurrencyEnabled: boolean }>;
   listAccounts(ctx: ProviderCallContext): Promise<NormalizedAccount[]>;
   /** Query-before-post: find an already-posted object by our idempotency DocNumber. Null if none. */
   findByDocNumber(ctx: ProviderCallContext, objectType: "JournalEntry" | "Bill", docNumber: string): Promise<PostResult | null>;

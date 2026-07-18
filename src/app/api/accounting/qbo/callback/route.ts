@@ -61,6 +61,7 @@ export async function GET(req: Request) {
         realmId: realmIdHint,
         companyName: company.companyName,
         homeCurrency: company.homeCurrency,
+        multiCurrencyEnabled: company.multiCurrencyEnabled, // Plan 073: read at connect (council #2)
       }),
     );
     // No dead-end (ux-principle #2): land on the mapping step.
