@@ -7,17 +7,27 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Full work-order editing — reopen in the builder, save in place (Plan 071) — BUILT, shipping.**
-Branch `claude/work-order-full-edit` (off `origin/main` 4b7d6f4). 8 commits. "Edit" on a WO detail page
-(admin/dev) opens `/work-orders/[id]/edit` — the full palette builder, pre-populated, Save updates the WO in
-place (same id/number/history). Every not-yet-executed task edits fully; executed tasks are locked read-only
-(reverse-to-edit, WORKORDER-6); the two GROUP types are locked with a "recreate/reverse" message (builder has
-no group authoring — documented follow-up). New pure reverse-mapper `task-to-build.ts`; `updateWorkOrderCore`
-(diffs pending tasks, re-syncs per-task reservations on issued WOs, keeps status); builder edit mode;
-setTaskEquipmentCore; WORKORDER-6 guard. Supersedes Plan 070's thin Lead/due card. Green: tsc, vitest 2086,
-verify:work-orders 43, verify:invariants 32/32, ai-native, `next build`. Follow-up: browser-QA the editor.
-Plan 070 (mandatory Lead) already SHIPPED (#210). Prior pending item: run `scripts/backfill-work-order-lead.ts`
-against PROD to fix existing null-Lead WOs incl. #27.
+**Vendor merge + removal (Plan 072) — BUILT (9 units), gates green, ready for /review + /ship.**
+Branch `claude/vendor-merge-removal-72844c` (worktree; `.env`+`npm ci` copied in to make it buildable). Fills
+the back-half of Plan 069's promise ("no more Scott Labs vs Scott Laboratories dupes") that shipped no way to
+FIX existing dupes. **MERGE** re-points all 4 vendor references (cellar_material, supply_lot, ap_export_event,
+vendor_contact) loser→survivor in one `runInTenantTx`, re-derives the legacy material mirror, reconciles QBO
+`externalVendorId` (carry-forward, or CONFLICT unless acknowledged), hard-deletes the loser. **REMOVE** hard-
+deletes only an unreferenced vendor (else CONFLICT → archive/merge; Unknown fallback protected). Cores in
+`vendors.ts` (mergeVendorsCore/removeVendorCore/getVendorUsage); pure helpers + 24 tests in `vendors-shared.ts`;
+`safeAdminAction` actions; `/setup/vendors` Merge+Remove UI (MergeVendorModal w/ impact preview + QBO ack);
+assistant `merge_vendors` tool (adminOnly) + duplicate detection in `query_vendors` + golden case. Governed-money
+proof `scripts/verify-vendor-merge.ts` **13/13 on Demo (real DB)** + cross-tenant merge rejection in
+verify-tenant-isolation (all green). Decision recorded (ledger inbox `q_1784328399_f3`). Gates green: tsc,
+vitest (vendors-shared 24 + assistant structural eval), verify:tenant-isolation, lint. **Remaining: run the
+remaining Phase-3 gates (next build, verify:raw-sql/naming/invariants, ai-native) → /review → /ship + browser-QA.**
+
+<details><summary>prev objective (Plan 071 — shipped)</summary>
+
+Full work-order editing — reopen in the builder, save in place (Plan 071). BUILT on branch
+`claude/work-order-full-edit`. Plan 070 (mandatory Lead) SHIPPED (#210); prod null-Lead backfill (#27) pending.
+
+</details>
 
 <details><summary>original directive + diagnosis</summary>
 
@@ -121,4 +131,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-15 — Plan 071 (full WO editing — reopen in builder, save in place) BUILT on branch claude/work-order-full-edit (8 commits). Edit any not-yet-executed task; executed + group tasks locked (WORKORDER-6). All gates green (vitest 2086, verify:work-orders 43, next build). Next: /review + /ship. Plan 070 (mandatory Lead) shipped #210; prod Lead-backfill still pending (fixes #27)._
+_Last updated: 2026-07-17 — Plan 072 (vendor merge + removal) BUILT (9 units) on branch claude/vendor-merge-removal-72844c. MERGE re-points all 4 vendor FKs loser→survivor + hard-deletes loser; REMOVE guards referenced/Unknown vendors; assistant merge_vendors + dupe detection. Governed-money proof verify:vendor-merge 13/13 on Demo + cross-tenant merge rejection in verify:tenant-isolation. Decision ledger q_1784328399_f3. Next: finish Phase-3 gates → /review → /ship + browser-QA._

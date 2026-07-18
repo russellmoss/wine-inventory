@@ -577,6 +577,13 @@ async function main() {
       await asTenant(A, (db) => db.cellarMaterial.create({ data: { id: "iso_mat_vfk", tenantId: A, name: "ISO Mat VFK", normalizedKey: "ISOMATVFK", kind: "OTHER", vendorId: "iso_vendor_b" } }));
     } catch { matVendorFkRaised = true; }
     check("cellar_material cross-tenant vendor reference rejected (composite FK, K11)", matVendorFkRaised);
+    // Plan 072: a vendor MERGE re-points references then deletes the loser — both are same-tenant-only.
+    // Prove tenant A can neither retire nor rewrite tenant B's vendor (RLS filters it → 0 rows affected),
+    // so a merge can never reach across tenants.
+    const vendorCrossUpd = await asTenant(A, (db) => db.vendor.updateMany({ where: { id: "iso_vendor_b" }, data: { name: "iso hijack" } }));
+    check("cross-tenant vendor UPDATE affects 0 rows (merge can't touch another tenant's vendor)", vendorCrossUpd.count === 0, `count=${vendorCrossUpd.count}`);
+    const vendorCrossDel = await asTenant(A, (db) => db.vendor.deleteMany({ where: { id: "iso_vendor_b" } }));
+    check("cross-tenant vendor DELETE affects 0 rows (merge can't retire another tenant's vendor)", vendorCrossDel.count === 0, `count=${vendorCrossDel.count}`);
     // Plan 053 C11: work_order_task_type isolation.
     const aSeesWttB = await asTenant(A, (db) => db.workOrderTaskType.findFirst({ where: { id: "iso_wtt_b" } }));
     check("tenant A CANNOT see tenant B's work_order_task_type (RLS)", aSeesWttB === null);

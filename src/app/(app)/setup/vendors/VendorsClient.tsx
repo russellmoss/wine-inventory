@@ -4,8 +4,9 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Badge, Eyebrow, Modal } from "@/components/ui";
 import { CreateVendorModal } from "@/components/vendors/CreateVendorModal";
+import { MergeVendorModal } from "@/components/vendors/MergeVendorModal";
 import { VendorForm, vendorToForm, vendorFormToInput, vendorFormValid, type VendorFormValue } from "@/components/vendors/VendorForm";
-import { updateVendorAction, archiveVendorAction } from "@/lib/vendors/actions";
+import { updateVendorAction, archiveVendorAction, removeVendorAction } from "@/lib/vendors/actions";
 import { rankVendors } from "@/lib/inventory/vendor-search";
 import type { VendorRow } from "@/lib/vendors/vendors-shared";
 
@@ -16,6 +17,8 @@ export function VendorsClient({ vendors, isAdmin }: { vendors: VendorRow[]; isAd
   const [query, setQuery] = React.useState("");
   const [addOpen, setAddOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<VendorRow | null>(null);
+  const [merging, setMerging] = React.useState<VendorRow | null>(null);
+  const [removing, setRemoving] = React.useState<VendorRow | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
 
@@ -67,7 +70,9 @@ export function VendorsClient({ vendors, isAdmin }: { vendors: VendorRow[]; isAd
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Button variant="ghost" onClick={() => setEditing(v)}>Edit</Button>
+                    {isAdmin ? <Button variant="ghost" disabled={pending} onClick={() => setMerging(v)}>Merge</Button> : null}
                     {isAdmin ? <Button variant="ghost" disabled={pending} onClick={() => toggleActive(v)}>{v.isActive ? "Archive" : "Restore"}</Button> : null}
+                    {isAdmin ? <Button variant="ghost" disabled={pending} onClick={() => setRemoving(v)}>Remove</Button> : null}
                   </div>
                 </div>
               </Card>
@@ -89,7 +94,58 @@ export function VendorsClient({ vendors, isAdmin }: { vendors: VendorRow[]; isAd
         onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); router.refresh(); }}
       />
+
+      <MergeVendorModal
+        key={merging?.id ?? "merge-none"}
+        loser={merging}
+        vendors={vendors}
+        onClose={() => setMerging(null)}
+        onMerged={() => { setMerging(null); router.refresh(); }}
+      />
+
+      <RemoveVendorModal
+        key={removing?.id ?? "remove-none"}
+        vendor={removing}
+        onClose={() => setRemoving(null)}
+        onRemoved={() => { setRemoving(null); router.refresh(); }}
+      />
     </div>
+  );
+}
+
+// Plan 072: confirm a hard-delete. removeVendorAction blocks (CONFLICT) when the vendor is still
+// referenced by materials/lots/bills — we surface that message inline so the admin can Cancel and
+// choose Merge or Archive instead.
+function RemoveVendorModal({ vendor, onClose, onRemoved }: { vendor: VendorRow | null; onClose: () => void; onRemoved: () => void }) {
+  const [error, setError] = React.useState<string | null>(null);
+  const [pending, startTransition] = React.useTransition();
+
+  function submit() {
+    if (!vendor) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await removeVendorAction(vendor.id);
+      if (res.ok) onRemoved();
+      else setError(res.error);
+    });
+  }
+
+  return (
+    <Modal open={!!vendor} onClose={onClose} title={vendor ? `Remove · ${vendor.name}` : "Remove vendor"} maxWidth="min(480px, 96vw)">
+      {vendor ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ fontSize: 13.5, color: "var(--text-primary)", margin: 0 }}>
+            Permanently remove <strong>{vendor.name}</strong>? This can&apos;t be undone. A vendor that&apos;s still used
+            by any material, supply lot, or bill can&apos;t be removed — merge or archive it instead.
+          </p>
+          {error ? <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p> : null}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
+            <Button type="button" variant="primary" onClick={submit} disabled={pending} style={{ background: "var(--danger)", borderColor: "var(--danger)" }}>{pending ? "Removing…" : "Remove"}</Button>
+          </div>
+        </div>
+      ) : null}
+    </Modal>
   );
 }
 
