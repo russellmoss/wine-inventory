@@ -194,5 +194,28 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟢 (record-only, no ledger fold; barrel-range scale; proven by `verify:group-maintenance`. If
   ranges get large, revisit the deferred progressive/per-batch completion).
 
+### Vendor merge re-points all references in one Serializable-ish tx (plan 072)
+- **Choice:** merging two vendors re-points every vendor FK (`cellar_material`, `supply_lot`,
+  `ap_export_event`, `vendor_contact`) loser→survivor inside ONE `runInTenantTx`, then hard-deletes the loser.
+- **Fine until:** a duplicate vendor has a normal winery's worth of supply lots / A/P events (tens–hundreds).
+- **What breaks at scale:** a vendor with a very large reference footprint (thousands of supply lots + A/P
+  events) makes the re-point `updateMany` set + delete a long transaction — lock-hold + retry pressure on the
+  tenant tx. Merge is a rare, human-initiated maintenance action, so this is low-frequency.
+- **Tripwire:** a merge that times out or retries repeatedly; per-vendor reference counts trending into the
+  thousands. **Escape hatch (not built):** chunk the re-point across batches.
+- **Status:** 🟢 (winery-scale vendor footprints; rare admin action; proven by `verify:vendor-merge`).
+
+### Invoice ingestion = LLM extraction → editable staging → one-tx apply (plan 072)
+- **Choice:** uploaded documents are extracted by an LLM and persisted as editable `IngestedInvoice`(+lines)
+  staging; **apply** runs ONE invoice through the cost cores in a single interactive tx (all lines + vendor +
+  A/P atomic). The old resumable per-line marker was removed as unsound.
+- **Fine until:** invoices of a normal line count (tens of lines) applied one at a time by a human.
+- **What breaks at scale:** a pathologically large invoice (hundreds of lines) is one long apply tx
+  (lock-hold + retry, and it materializes all line writes at once); many documents extracted in a batch drive
+  LLM cost/latency; staging rows (`IngestedInvoice`/`Line`, `LotDocument`) accumulate append-only until pruned.
+- **Tripwire:** an apply approaching `LEDGER_TX_TIMEOUT_MS`; line counts per invoice trending high; staging
+  tables growing without a prune; extraction latency/cost per batch climbing.
+- **Status:** 🟢 (winery-scale invoices, human-paced apply; proven by `verify:ingest`).
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

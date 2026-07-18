@@ -283,6 +283,37 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (app-layer authz + JSON members = no new RLS surface; guarded by `verify:group-maintenance`
   and the `analysis_panel` RLS policy + per-tenant unique).
 
+## Inbox notifications + DMs are isolated per-user, not just per-tenant (plan 068, INBOX-1)
+- **What:** `InboxNotification` / `DirectMessageThread` / `DirectMessage` / `DirectMessageAttachment` are
+  tenant-scoped to the Phase-12 checklist AND carry a second, per-**user** boundary: a notification is
+  readable only by its recipient, a DM only by a thread participant — **even within the same tenant**.
+  Enforced by **RESTRICTIVE per-user RLS policies** keyed on `current_setting('app.user_id', true)` that AND
+  with `tenant_isolation`; an unset `app.user_id` fails closed. The emit path is INSERT-tenant-only (a
+  same-tenant actor may create a notification FOR another user); reads/updates/deletes are owner-only. Every
+  inbox read also carries an app-layer `recipientUserId`/participant predicate as defense in depth.
+- **Tripwire:** an inbox read that omits the recipient/participant predicate; a per-user RLS policy dropped or
+  made PERMISSIVE (would fall back to tenant-wide visibility); `app.user_id` set outside the request tx; an
+  UPDATE/DELETE policy that isn't owner-scoped. Covered by `npm run verify:inbox-isolation`.
+- **Status:** 🟢 (DB per-user RLS + app predicate; guarded by `verify:inbox-isolation` + `verify:tenant-isolation`)
+
+## Vendor merge re-points money references in one tx; ingestion applies through the cost cores (plan 072)
+- **What:** vendor **merge** re-points every vendor reference (`cellar_material`, `supply_lot`,
+  `ap_export_event`, `vendor_contact`) loser→survivor inside ONE `runInTenantTx`, reconciles the QBO
+  `externalVendorId` (carry-forward, or a CONFLICT that must be explicitly acknowledged before overwrite),
+  then hard-deletes the loser — no half-merged money state, and a cross-tenant merge is rejected. Vendor
+  **remove** hard-deletes only an unreferenced vendor (the Unknown fallback is protected). Invoice
+  **ingestion** never writes the ledger directly: an apply runs one staged invoice through the existing
+  `createStockMaterialCore` / `receiveSupplyCore` / `findOrCreateVendorCore` in a SINGLE injected tx, so
+  lines + vendor + A/P commit or roll back together (the old resumable per-line marker was unsound and was
+  removed). Uploaded document blobs + extracted text are **untrusted input** — the apply is human-reviewed
+  staging, and merge/remove are `safeAdminAction`-gated.
+- **Tripwire:** a vendor reference table added without being re-pointed by merge (an orphaned money FK); a
+  merge/remove that isn't admin-gated or skips the cross-tenant guard; a QBO `externalVendorId` overwrite
+  without the CONFLICT acknowledgement; an ingestion apply that writes a lot/A-P outside the core tx (the
+  duplicate-on-crash failure mode). Covered by `npm run verify:vendor-merge` + `verify:ingest` +
+  `verify:tenant-isolation`.
+- **Status:** 🟢 (governed money stays inside the cores + one tx; guarded by the verify scripts)
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_
