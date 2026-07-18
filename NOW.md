@@ -17,10 +17,10 @@ cascades Brix + harvest records (+ discloses subblocks) but HARD-REFUSES crushed
 No schema. `/review` CLEAR (3 specialists, 0 critical). Merged origin/main; **vitest 2333/0**, tsc/eslint/ai-native green.
 PENDING (post-merge): live DB proof (runAsTenant Demo) + browser-QA.
 
-<details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, ready to ship)</summary>
+<details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, SHIPPED PR #262)</summary>
 
-**WO builder same-vessel transfer guard (feedback cmrqqm75b, P1 defect) — BUILT, gates green, ready to ship.**
-Branch `claude/wo-same-vessel-transfer-guard` (off origin/main). Bug: the WO builder let you author a transfer
+**WO builder same-vessel transfer guard (feedback cmrqqm75b, P1 defect) — SHIPPED, PR #262 merged (`ee851b8`).**
+Ticket RESOLVED/DEFECT + issuer (Mike) DM'd. Branch pruned. Bug: the WO builder let you author a transfer
 (RACK) whose source and destination are the SAME vessel; execution correctly refuses it, so a user could save a WO
 guaranteed to fail at execute — builder validation out of sync with the execution guard. `/investigate` confirmed
 root cause: execution refuses `fromVesselId === toVesselId` at [rack-core.ts:94](src/lib/vessels/rack-core.ts:94)
@@ -33,7 +33,9 @@ the RACK and TOPPING readiness cases (same-id short-circuit). Flows to BOTH surf
 thrown ActionError). Execution guards kept as backstop, unchanged. GROUP_RACK deliberately untouched (execution
 silently filters self-members, not a reject). 4 regression tests in
 [test/work-order-readiness.test.ts](test/work-order-readiness.test.ts) (same-vessel RACK+TOPPING blocked, distinct
-vessels ready). GREEN: vitest 21/21 (readiness), tsc, eslint, verify:work-orders 43. Next: PR referencing the ticket.
+vessels ready). GREEN at merge: vitest 21/21 (readiness), tsc, eslint, next build, verify:work-orders 43; CI
+(check + tenant-isolation + GitGuardian + Vercel) all passed. Closed the loop: ticket → RESOLVED/DEFECT with a
+write-back note, and a resolution DM sent to the issuer (Mike, `mike@bhutanwine.com`).
 
 </details>
 
@@ -287,4 +289,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) BUILT on branch claude/wo-same-vessel-transfer-guard; /investigate confirmed builder validation missed the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id); fix mirrors it as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests, vitest 21/21 + tsc + eslint + next build + verify:work-orders 43 green. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Feedback #241 dashboard Recent-activity filter BUILT; Plan 076 invoice ingestion SHIPPED (#246); Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
