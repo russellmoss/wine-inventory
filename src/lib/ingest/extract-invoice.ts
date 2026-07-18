@@ -28,6 +28,7 @@ export type ExtractedLine = {
   brand?: string | null; // manufacturer, e.g. "Laffort", "AEB", "Lallemand"
   productName?: string | null; // the product without the brand or pack size, e.g. "Fermoplus DAP Free"
   genericName?: string | null; // common/chemical name if identifiable, e.g. "Diammonium phosphate (DAP)"
+  family?: string | null; // suggested material family/kind (YEAST, NUTRIENT, ENZYME, BENTONITE, EQUIPMENT, …) → pre-selects family + category
 };
 
 export type ExtractedCharges = {
@@ -102,6 +103,7 @@ export const INVOICE_EXTRACTION_SCHEMA = {
           brand: { type: "string", description: "manufacturer parsed from the description, e.g. 'Laffort', 'AEB'" },
           productName: { type: "string", description: "the product name without the brand or pack size, e.g. 'Fermoplus DAP Free'" },
           genericName: { type: "string", description: "common/chemical name if identifiable, e.g. 'Diammonium phosphate (DAP)', 'Bentonite'" },
+          family: { type: "string", enum: ["YEAST", "MLF", "SO2", "NUTRIENT", "ACID", "SUGAR", "TANNIN", "FINING", "BENTONITE", "CHITOSAN", "ENZYME", "CLEANING", "SANITIZER", "PACKAGING", "EQUIPMENT", "OTHER"], description: "best-fit material family" },
         },
       },
     },
@@ -151,6 +153,11 @@ export const EXTRACTION_SYSTEM_PROMPT = [
   "  Lallemand, Scott, …), `productName` (the specific product WITHOUT the brand or pack size — e.g.",
   "  'Fermoplus DAP Free', 'Lafazym Extract'), and `genericName` (the common/chemical name if you can identify",
   "  it — e.g. 'Diammonium phosphate (DAP)', 'Bentonite', 'Pectolytic enzyme'). Use null for any you're unsure of.",
+  "- For each line, ALSO suggest the winemaking `family` — the best fit from: YEAST, MLF (malolactic bacteria),",
+  "  SO2, NUTRIENT (yeast nutrient / DAP), ACID, SUGAR, TANNIN, FINING (fining agent — PVPP, isinglass, gelatin),",
+  "  BENTONITE, CHITOSAN, ENZYME (pectolytic/other enzyme), CLEANING (cleaning chemical), SANITIZER,",
+  "  PACKAGING (corks/bottles/labels/capsules/cases), EQUIPMENT (spare parts, fittings, gaskets), or OTHER.",
+  "  Pick the single best family; use OTHER only if none fit.",
   "- Put shipping/handling/surcharge/tax into `charges` (not as line items).",
   "- For a coa document, fill `coa` with lotNo / expiry / batch.",
   "- Add any illegible or ambiguous field to `warnings` so a human can verify it.",
@@ -219,6 +226,7 @@ export function normalizeExtraction(raw: unknown): ExtractedDocument {
       brand: str(l.brand),
       productName: str(l.productName),
       genericName: str(l.genericName),
+      family: str(l.family),
     };
   }).filter((l) => l.description.length > 0 || l.qty != null || l.unitPrice != null);
 

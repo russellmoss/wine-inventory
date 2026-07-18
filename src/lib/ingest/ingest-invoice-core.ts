@@ -8,7 +8,7 @@ import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 import { allocateLandedCost, type InvoiceCharges } from "@/lib/ingest/landed-cost";
 import { normalizeLineToStock, parsePackagingUnit } from "@/lib/ingest/normalize-line";
 import { coerceStockUnit } from "@/lib/cellar/materials-shared";
-import { coerceFamily, coerceMaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { coerceFamily, coerceMaterialCategory, categoryOf } from "@/lib/cellar/material-taxonomy";
 import { dimensionOf, canonicalUnitFor } from "@/lib/units/measure";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
 
@@ -92,6 +92,9 @@ export async function createIngestedInvoiceCore(
       if (isReceipt) {
         for (let i = 0; i < doc.lines.length; i++) {
           const ln = doc.lines[i];
+          // Plan 072: pre-select the family + category from the AI's suggestion (category derived from the
+          // family so it's always consistent + cost-safe). The human can still change either on the review.
+          const suggestedKind = ln.family ? coerceFamily(ln.family) : null;
           await tx.ingestedInvoiceLine.create({
             data: {
               ingestedInvoiceId: invoice.id,
@@ -103,6 +106,8 @@ export async function createIngestedInvoiceCore(
               unitPrice: ln.unitPrice ?? null,
               lineTotal: ln.lineTotal ?? null,
               lotNoRaw: ln.lotNo ?? null,
+              resolvedKind: suggestedKind,
+              resolvedCategory: suggestedKind ? categoryOf(suggestedKind) : null,
             },
           });
         }

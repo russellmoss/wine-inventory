@@ -90,13 +90,15 @@ async function main() {
           invoiceTotal: 385.79 + 100, // goods 385.79 + shipping 100
           charges: { shipping: 100 },
           lines: [
-            { description: `${PFX} Yeast EC1118`, qty: 1000, unit: "g", unitPrice: 0.30779, lineTotal: 307.79, lotNo: "QA-LOT-1" },
+            { description: `${PFX} Yeast EC1118`, qty: 1000, unit: "g", unitPrice: 0.30779, lineTotal: 307.79, lotNo: "QA-LOT-1", family: "YEAST" },
             { description: `${PFX} Bentonite`, qty: 1000, unit: "g", unitPrice: 0.078, lineTotal: 78.0, lotNo: "QA-LOT-2" },
           ],
         });
         const created = await createIngestedInvoiceCore(ACTOR, input("qa-inv-1.pdf", d, batch));
         const invId = created.invoices[0].id;
         const lines = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invId }, orderBy: { lineNo: "asc" } });
+        // AI family suggestion pre-selects family + derived category on the staged line (auto-selected in review)
+        assert(lines[0].resolvedKind === "YEAST" && lines[0].resolvedCategory === "ADDITIVE", `scenario 1: extracted family pre-selects kind+category (got ${lines[0].resolvedKind}/${lines[0].resolvedCategory})`);
         for (const l of lines) await updateIngestedInvoiceLineCore(ACTOR, l.id, { matchDecision: "new", resolvedKind: "YEAST" });
 
         const res = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
