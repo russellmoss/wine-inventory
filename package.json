@@ -21,6 +21,7 @@
     "seed:work-order-templates": "tsx --conditions=react-server --env-file=.env scripts/seed-work-order-templates.ts",
     "seed:starter-materials": "tsx --conditions=react-server --env-file=.env scripts/seed-starter-materials.ts",
     "seed:demo-materials": "tsx --conditions=react-server --env-file=.env scripts/seed-demo-materials.ts",
+    "seed:knowledge-sources": "tsx --conditions=react-server --env-file=.env scripts/seed-knowledge-sources.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
     "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",
