@@ -31,6 +31,8 @@ export type ReviewLine = {
 
 export type ReviewDocType = "invoice" | "proforma" | "coa" | "other";
 export type ReviewStatus = "pending" | "applying" | "applied" | "discarded" | "held";
+/** Plan 076: mirrors the ApPaymentStatus enum (kept as a local literal — this module stays prisma-free). */
+export type PaymentStatus = "OUTSTANDING" | "PAID";
 
 /** A staged document (one source file) as the review client sees it. */
 export type ReviewDoc = {
@@ -46,6 +48,9 @@ export type ReviewDoc = {
   invoiceTotal: number | null;
   taxTotal: number | null;
   landedReceipt: boolean | null;
+  /** Plan 076: the A/P payment status the human must pick before Confirm, + the pay-from account when Paid. */
+  paymentStatus: PaymentStatus | null;
+  paidFromAccount: string | null;
   /** Charges + warnings pulled out of the stored extractedJson by the loader. */
   charges: InvoiceCharges | null;
   warnings: string[];
@@ -171,7 +176,7 @@ export type ConfirmGate = { ok: boolean; reasons: string[] };
  * "add to existing" line must have actually chosen a material. Returns the blocking reasons for the UI.
  */
 export function canConfirmDoc(
-  doc: Pick<ReviewDoc, "docType" | "landedReceipt" | "lines" | "status" | "currency">,
+  doc: Pick<ReviewDoc, "docType" | "landedReceipt" | "lines" | "status" | "currency" | "paymentStatus" | "paidFromAccount">,
   fx?: { baseCurrency: string | null; rate: number | null },
   extraUnitNames: readonly string[] = [],
 ): ConfirmGate {
@@ -181,6 +186,13 @@ export function canConfirmDoc(
   if (!isReceiptDoc(doc.docType)) {
     reasons.push("Only an invoice (or a landed proforma) can be applied — reclassify it as an invoice to intake it.");
     return { ok: false, reasons };
+  }
+  // Plan 076: the human must record whether this invoice is already Paid or still Outstanding (it syncs to
+  // QuickBooks' A/P). A Paid invoice also needs the account the money came from (drives the QBO BillPayment).
+  if (!doc.paymentStatus) {
+    reasons.push("Choose whether this invoice is Paid or still Outstanding.");
+  } else if (doc.paymentStatus === "PAID" && !doc.paidFromAccount?.trim()) {
+    reasons.push("Choose which account paid it — a Paid invoice records a bill payment in QuickBooks.");
   }
   // Plan 073: a foreign-currency receipt with no usable rate can't be applied — the money would be wrong (D14).
   if (fx && needsFxRate(doc.currency ?? null, fx.baseCurrency, fx.rate)) {

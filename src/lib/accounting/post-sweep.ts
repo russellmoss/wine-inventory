@@ -8,6 +8,7 @@ import { QboAdapter, docNumberFor } from "@/lib/accounting/qbo/client";
 import { buildJournalFromExport, buildSalesDeltaJournal } from "@/lib/accounting/qbo/journal";
 import { componentLabel } from "@/lib/accounting/components";
 import { buildBillPayload } from "@/lib/accounting/qbo/bill";
+import { buildBillPaymentPayload } from "@/lib/accounting/qbo/bill-payment";
 import { baseHomeCurrencyMismatch } from "@/lib/accounting/currency-guard";
 import { coerceCurrency } from "@/lib/money/currency";
 import { emitExportForSnapshot } from "@/lib/cost/export-emit";
@@ -40,6 +41,8 @@ export type PostSweepSummary = {
   verifying: number;
   failed: number;
   withheld: number; // Plan 073: foreign bills held because QBO Multicurrency is off (not a failure)
+  billPaymentsPosted: number; // Plan 076: BillPayments recorded for Paid invoices
+  billPaymentsAdopted: number; // Plan 076: BillPayments already present in QBO (query-before-post)
   needsReauth: number;
 };
 
@@ -82,6 +85,70 @@ async function claimBatch(): Promise<string[]> {
 
 async function finalize(id: string, data: Record<string, unknown>): Promise<void> {
   await runInTenantTx((tx) => tx.accountingDelivery.update({ where: { id }, data }));
+}
+
+/**
+ * Plan 076 — record a QBO BillPayment for every POSTED aggregate Bill whose invoice is marked PAID and hasn't
+ * been paid yet (paymentExternalId null). Runs AFTER the main sweep so the Bill has an externalId; handles both
+ * "paid at ingestion" (bill just posted) and "marked paid later" (bill posted earlier). Query-before-post by
+ * pay:<invoiceId> DocNumber → exactly-once. Bounded. A transient/validation fault leaves it for the next sweep.
+ */
+async function postPendingBillPayments(adapter: AccountingAdapter, ctx: ProviderCallContext, summary: PostSweepSummary): Promise<void> {
+  const settings = await prisma.appSettings.findFirst({ select: { apPaymentCardAccount: true } });
+  const cardAcct = settings?.apPaymentCardAccount ?? null;
+  const homeCurrency = (ctx.homeCurrency ?? "USD").toUpperCase();
+
+  const deliveries = await prisma.accountingDelivery.findMany({
+    where: { objectType: "Bill", status: "POSTED", externalId: { not: null } },
+    select: { id: true, externalId: true, apExportEventId: true },
+    take: BATCH,
+  });
+  const evIds = deliveries.map((d) => d.apExportEventId).filter((x): x is string => !!x);
+  if (evIds.length === 0) return;
+  const events = await prisma.apExportEvent.findMany({
+    where: { id: { in: evIds }, paymentStatus: "PAID", paymentExternalId: null, paidFromAccount: { not: null } },
+    select: { id: true, ingestedInvoiceId: true, vendorId: true, amount: true, currency: true, exchangeRate: true, paidFromAccount: true, receivedAt: true, paidAt: true },
+  });
+  if (events.length === 0) return;
+  const evById = new Map(events.map((e) => [e.id, e]));
+
+  for (const d of deliveries) {
+    const ev = d.apExportEventId ? evById.get(d.apExportEventId) : null;
+    if (!ev || !ev.vendorId || !ev.paidFromAccount) continue;
+    const vendor = await prisma.vendor.findUnique({ where: { id: ev.vendorId }, select: { externalVendorId: true } });
+    if (!vendor?.externalVendorId) continue; // the Bill post caches this; absent → skip, next sweep retries
+
+    // The company card pays from the credit-card liability account; anything else is a bank check.
+    const payType: "Check" | "CreditCard" = cardAcct && ev.paidFromAccount === cardAcct ? "CreditCard" : "Check";
+    const billCurrency = (ev.currency ?? homeCurrency).toUpperCase();
+    const isForeign = billCurrency !== homeCurrency;
+    const postingKey = `pay:${ev.ingestedInvoiceId ?? ev.id}`;
+    const docNumber = docNumberFor(postingKey);
+    try {
+      const existing = await adapter.findByDocNumber(ctx, "BillPayment", docNumber);
+      if (existing) {
+        await runInTenantTx((tx) => tx.apExportEvent.update({ where: { id: ev.id }, data: { paymentExternalId: existing.externalId } }));
+        summary.billPaymentsAdopted++;
+        continue;
+      }
+      const payload = buildBillPaymentPayload({
+        postingKey,
+        vendorExternalId: vendor.externalVendorId,
+        billExternalId: d.externalId as string,
+        amount: Number(ev.amount),
+        payType,
+        payFromAccount: ev.paidFromAccount,
+        txnDate: ev.paidAt ?? ev.receivedAt,
+        currency: isForeign ? billCurrency : null,
+        exchangeRate: isForeign && ev.exchangeRate != null ? Number(ev.exchangeRate) : null,
+      });
+      const result = await adapter.postBillPayment(ctx, payload, docNumber);
+      await runInTenantTx((tx) => tx.apExportEvent.update({ where: { id: ev.id }, data: { paymentExternalId: result.externalId } }));
+      summary.billPaymentsPosted++;
+    } catch {
+      // transient/validation fault — leave paymentExternalId null so the next sweep retries.
+    }
+  }
 }
 
 /** Post one COGS/inventory JournalEntry delivery. Query-before-post makes it exactly-once. */
@@ -152,7 +219,7 @@ async function postBill(
 ): Promise<void> {
   const ev = await prisma.apExportEvent.findUnique({
     where: { id: d.apExportEventId as string },
-    select: { postingKey: true, amount: true, debitAccount: true, receivedAt: true, dueDate: true, vendorId: true, vendorInvoiceNumber: true, currency: true, exchangeRate: true },
+    select: { postingKey: true, amount: true, debitAccount: true, billLinesJson: true, receivedAt: true, dueDate: true, vendorId: true, vendorInvoiceNumber: true, currency: true, exchangeRate: true },
   });
   if (!ev || !ev.vendorId || !ev.debitAccount) {
     await finalize(d.id, { status: "FAILED", lastError: "AP export missing vendor or account" });
@@ -213,11 +280,20 @@ async function postBill(
     // Plan 072: carry the supplier invoice # in the memo (→ Bill PrivateNote) so a bookkeeper can find every
     // per-lot Bill that belongs to one supplier invoice (searchable; the Bills stay separate rows).
     const memo = `Cellarhand · Supply bill · ${vendor.name}${ev.vendorInvoiceNumber ? ` · Invoice ${ev.vendorInvoiceNumber}` : ""}`;
+    // Plan 076: an aggregate per-invoice event carries billLinesJson → a multi-line QBO Bill (one line per
+    // invoice line). A legacy per-lot event has no billLinesJson → the single-line fallback (unchanged).
+    const rawLines = Array.isArray(ev.billLinesJson) ? (ev.billLinesJson as Array<{ debitAccount?: string; amount?: number; description?: string | null }>) : null;
+    const lines = rawLines?.length
+      ? rawLines
+          .filter((l) => l.debitAccount && Number.isFinite(Number(l.amount)))
+          .map((l) => ({ account: l.debitAccount as string, amount: Number(l.amount), description: l.description ?? null }))
+      : null;
     const payload = buildBillPayload(
       {
         postingKey: ev.postingKey,
         amount: Number(ev.amount), // the document-currency (foreign) amount for a foreign bill
         debitAccount: ev.debitAccount,
+        lines,
         receivedAt: ev.receivedAt,
         dueDate: ev.dueDate,
         memo,
@@ -355,7 +431,7 @@ async function reEmitPostableSales(): Promise<number> {
 
 export async function runAccountingPostSweep(deps?: PostSweepDeps): Promise<PostSweepSummary> {
   const orgIds = deps?.orgIds ?? (await listAllOrgIds());
-  const summary: PostSweepSummary = { orgs: orgIds.length, connected: 0, reEmitted: 0, claimed: 0, posted: 0, adopted: 0, verifying: 0, failed: 0, withheld: 0, needsReauth: 0 };
+  const summary: PostSweepSummary = { orgs: orgIds.length, connected: 0, reEmitted: 0, claimed: 0, posted: 0, adopted: 0, verifying: 0, failed: 0, withheld: 0, billPaymentsPosted: 0, billPaymentsAdopted: 0, needsReauth: 0 };
 
   try {
     for (const tenantId of orgIds) {
@@ -413,6 +489,14 @@ export async function runAccountingPostSweep(deps?: PostSweepDeps): Promise<Post
             await finalize(d.id, { status: "VERIFYING", lastError: e instanceof Error ? e.message : "post failed" });
             summary.verifying++;
           }
+        }
+
+        // Plan 076: record QBO BillPayments for POSTED bills whose invoice is marked Paid (both the just-posted
+        // ones and any marked paid since a prior sweep). Off the claim loop — it reads POSTED deliveries directly.
+        try {
+          await postPendingBillPayments(adapter, ctx, summary);
+        } catch {
+          // never let a payment-pass error abort the tenant sweep; the next run retries.
         }
       });
     }

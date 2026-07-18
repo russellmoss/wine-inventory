@@ -96,3 +96,22 @@ export async function saveApAccounts(input: ApAccounts): Promise<void> {
     }
   });
 }
+
+// Plan 076 — the pay-from accounts a BillPayment draws on when an invoice is marked Paid: a check pays from
+// the bank account; a company-card payment pays from the credit-card LIABILITY account (moving the debt to the
+// card). Each is independent (unlike the AP pair) — set whichever the winery uses.
+export type ApPaymentAccounts = { apPaymentBankAccount: string | null; apPaymentCardAccount: string | null };
+
+export async function getApPaymentAccounts(): Promise<ApPaymentAccounts> {
+  const s = await prisma.appSettings.findFirst({ select: { apPaymentBankAccount: true, apPaymentCardAccount: true } });
+  return { apPaymentBankAccount: s?.apPaymentBankAccount ?? null, apPaymentCardAccount: s?.apPaymentCardAccount ?? null };
+}
+
+export async function saveApPaymentAccounts(input: ApPaymentAccounts): Promise<void> {
+  await runInTenantTx(async (tx) => {
+    const existing = await tx.appSettings.findFirst({ select: { id: true } });
+    const data = { apPaymentBankAccount: input.apPaymentBankAccount || null, apPaymentCardAccount: input.apPaymentCardAccount || null };
+    if (existing) await tx.appSettings.update({ where: { id: existing.id }, data });
+    else await tx.appSettings.create({ data });
+  });
+}

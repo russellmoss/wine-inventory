@@ -498,6 +498,10 @@ export type ReceiveSupplyInput = {
   fxRate?: number | null; // base per 1 foreign at receipt (unitCost == foreignUnitCost × fxRate)
   fxRateDate?: Date | null; // the ECB quote date the rate was for
   fxRateSource?: string | null; // "ECB via Frankfurter" | "manual override"
+  // Plan 076: suppress the per-lot A/P emit for this receipt. Invoice ingestion sets this so ONE aggregate
+  // per-invoice Bill owns the A/P (emitApExportForInvoice) instead of N per-lot bills. Non-ingest receipts
+  // (manual intake) leave it unset and keep the per-lot emit unchanged.
+  skipApEmit?: boolean;
 };
 
 /**
@@ -567,8 +571,11 @@ export async function receiveSupplyCore(
     await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Received ${qty} ${stockUnit} of "${material.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
     // Phase 15 Unit 10 — transactional outbox: a purchase-on-credit emits an A/P Bill export + delivery
     // in THIS tx. No-op unless a vendor + A/P accounts + a known cost are all present. Plan 072 stamps the
-    // supplier invoice # on the event (→ QBO Bill PrivateNote).
-    await emitApExportForReceipt(lot.id, { vendorName, terms: input.terms, vendorInvoiceNumber: input.vendorInvoiceNumber }, tx);
+    // supplier invoice # on the event (→ QBO Bill PrivateNote). Plan 076: skipped for invoice ingestion, where
+    // ONE aggregate per-invoice Bill (emitApExportForInvoice) owns the A/P instead of N per-lot bills.
+    if (!input.skipApEmit) {
+      await emitApExportForReceipt(lot.id, { vendorName, terms: input.terms, vendorInvoiceNumber: input.vendorInvoiceNumber }, tx);
+    }
     return { supplyLotId: lot.id };
   };
 

@@ -29,7 +29,9 @@ export async function getAccountingDashboard(): Promise<AccountingDashboard> {
     getConnectionSummary(),
     prisma.accountingDelivery.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.accountingDelivery.findMany({
-      where: { status: { in: ["FAILED", "DELETED_IN_GL"] } },
+      // FAILED / DELETED_IN_GL, plus Plan 076 payment discrepancies (a POSTED bill the reconcile flagged with
+      // a lastError — e.g. "marked Paid here but QuickBooks still shows a balance").
+      where: { OR: [{ status: { in: ["FAILED", "DELETED_IN_GL"] } }, { status: "POSTED", lastError: { not: null } }] },
       select: { id: true, status: true, lastError: true, externalId: true, objectType: true, updatedAt: true },
       orderBy: { updatedAt: "desc" },
       take: 50,

@@ -8,11 +8,13 @@ import {
   updateIngestedInvoiceCore,
   applyIngestedInvoiceCore,
   reverseIngestedInvoiceCore,
+  setInvoicePaymentStatusCore,
   type IngestDocumentInput,
   type LinePatch,
   type InvoicePatch,
   type ApplyResult,
   type ReverseResult,
+  type SetPaymentResult,
 } from "@/lib/ingest/ingest-invoice-core";
 import { extractDocuments, type ExtractionInput } from "@/lib/ingest/extract-invoice";
 
@@ -34,7 +36,7 @@ export const extractAndStageAction = action(async ({ actor }, input: { batchId: 
     if (r.ok) documents.push({ blobUrl: r.blobUrl, fileName: r.fileName, mimeType: r.mimeType, fileSha256: r.fileSha256, document: r.document });
     else failed.push({ fileName: r.fileName, error: r.error });
   }
-  const created = documents.length ? await createIngestedInvoiceCore(actor, { batchId: input.batchId, documents }) : { invoices: [], warnings: [] };
+  const created = documents.length ? await createIngestedInvoiceCore(actor, { batchId: input.batchId, documents }) : { invoices: [], warnings: [], duplicates: [] };
   revalidateIngest();
   return { ...created, failed };
 });
@@ -50,8 +52,17 @@ export const updateIngestedInvoiceAction = action(async ({ actor }, id: string, 
 });
 
 export const applyIngestedInvoiceAction = action(
-  async ({ actor }, ingestedInvoiceId: string, opts?: { allowReconcileMismatch?: boolean; allowPartialAp?: boolean }): Promise<ApplyResult> => {
+  async ({ actor }, ingestedInvoiceId: string, opts?: { allowReconcileMismatch?: boolean; allowPartialAp?: boolean; allowDuplicate?: boolean }): Promise<ApplyResult> => {
     const res = await applyIngestedInvoiceCore(actor, { ingestedInvoiceId, ...(opts ?? {}) });
+    revalidateIngest();
+    return res;
+  },
+);
+
+/** Plan 076: set an invoice's A/P payment status (Paid/Outstanding) after apply — syncs to QBO via the poster. */
+export const setInvoicePaymentStatusAction = action(
+  async ({ actor }, ingestedInvoiceId: string, paymentStatus: "OUTSTANDING" | "PAID", paidFromAccount?: string | null): Promise<SetPaymentResult> => {
+    const res = await setInvoicePaymentStatusCore(actor, { ingestedInvoiceId, paymentStatus, paidFromAccount });
     revalidateIngest();
     return res;
   },

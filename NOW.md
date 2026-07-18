@@ -7,33 +7,29 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 075 custom measurement units for material intake — BUILT (8 units, all gates green), ready for `/ship`.**
-Branch `claude/custom-units-invoice-a49844`. User ask: at invoice ingest, let them "+ Create unit" beyond the
-built-ins (define a unit's dimension weight/volume/count + how big one is), add `ton`, and clarify qty vs
-pack-size. Core insight: a custom unit == a built-in == `{dimension, perCanonical}`; everything funnels through the
-one pure `measure.ts::convert()` which fails SAFE (unknown→null→UNKNOWN cost, never wrong $). Money-safe boundary:
-custom units live at intake/display ONLY; stored stock + the cost core stay canonical (g/mL/unit), so
-`coerceStockUnit` + consume path are untouched. Units: (1) `ton` = US short ton 907184.74 g (NOT metric tonne —
-left unresolved to avoid a silent 10% error); (2) `CustomUnit` per-tenant RLS table (copied Vendor template,
-`verify:tenant-isolation` green); (3) `measure.ts` gains optional `extraUnits` param + `custom-units.ts`
-loader; (4) threaded `extraUnits` through the intake cost seams (`deriveOpeningLot`/`normalizeLineToStock`/ingest
-apply/create+update material cores) — `verify:cost` 55/55, `verify:ingest` 62; (5) `createCustomUnitCore` +
-actions (rejects reserved names/dupes, returns `{ok,error}`); (6) qty/pack-size/unit tooltips (`InfoHint`,
-token-driven); (7) `CreateUnitModal` + merged dropdowns on BOTH the invoice-review pack-unit select and the manual
-expendables Unit select (pure model teaches Confirm gate about custom names); (8) `create_custom_unit` +
-`query_custom_units` assistant tools (goldens, `verify:ai-native` gap closed). Gates: tsc 0, `next build` clean,
-vitest 2292/0, lint 0 errors, cost/ingest/tenant-isolation/ai-native/parity/naming all green. **Browser-QA'd live
-on Demo** (both the manual expendables form + the ingest review screen: ton, tooltips, "+ Create unit" modal
-create→appears→auto-selects, "Tracked in g", reserved-name reject; fixture cleaned up). QA caught + fixed one bug:
-`listCustomUnitsCore` used `runInTenantTx` (needs ALS) → 500 in a server-component render → now reads via the
-extended `prisma` like `listMaterials`. **Ready for `/ship`.**
+**Plan 076/078 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — SHIPPED (PR #246 OPEN).**
+Branch `claude/invoice-ingestion-features-95d4df`; merged latest main (Plan 075 vendor-pull; resolved qbo/client.ts conflict).
+All gates green post-merge (vitest 2284, ingest 81, accounting-idempotency 33, invariants 35/35, next build). Live QBO
+pass + Demo browser-QA both DONE + user-confirmed. Only remaining: accountant sign-off on the BillPayment GL (not a
+merge blocker). Plan at
+[docs/plans/2026-07-18-076-…](docs/plans/2026-07-18-076-feat-invoice-qbo-bill-payment-status-plan.md).
+(1) Duplicate confirm gate — stage-time structured `duplicates` + upload modal ("continue?") + hard apply guard
+(`allowDuplicate`). (2) **One aggregate Bill per invoice** — `emitApExportForInvoice` (postingKey `apinv:<id>`,
+multi-line `billLinesJson`), per-lot emit suppressed via `skipApEmit`, multi-line `buildBillPayload`; new invariant
+AP-1. (3) Paid/Outstanding — schema on `IngestedInvoice`+`ApExportEvent`+AppSettings pay-from accounts, required
+review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPayment** poster pass (Check/CreditCard,
+exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
+migrations applied to Neon. GREEN: tsc, eslint, vitest 2276, next build, verify:ingest 81, verify:accounting 8,
+verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation.
+**Live QBO-sandbox pass DONE + USER-CONFIRMED in QBO UI** (`verify:plan076-live`: real 2-line Bill Id 166 $385.79
++ BillPayment Id 167 → Balance $0.00; user's Claude-browser check confirmed 2 lines, memo invoice #, status PAID,
+$385.79 payment from Checking bank account). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
+fire, duplicate gate "book it anyway" fires with nothing booked, Settings pay-from pickers populate from live QBO
+COA). PENDING before prod trust: **accountant sign-off** on the BillPayment GL direction only.
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
-- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo (branch `claude/assistant-widget-drag-resize-3c069b`).**
-  Drag the title bar to move, top-left grip to grow (bottom-right anchored, floors at the historical default), opens
-  at default + resets on reopen; one-file frontend change to `AssistantDock.tsx`.
-
+- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo, shipping.** Branch `claude/assistant-widget-drag-resize-3c069b`. Drag title bar to move, top-left grip to grow (bottom-right anchored, floors at default); frontend-only in [AssistantDock.tsx](src/components/assistant/AssistantDock.tsx). tsc + eslint green.
 - **Plan 073 multi-currency FX ingestion — BUILT (10 units), gates green, ready for `/ship`** on branch
   `claude/multi-currency-fx-ingestion`. Foreign invoice → base-currency inventory at a dated ECB rate
   (Frankfurter, keyless) + EUR A/P Bill to QBO; P0 double-conversion fixed by decoupling (lot=base,
@@ -211,4 +207,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Plan 075 custom measurement units for material intake BUILT (8 units) on branch claude/custom-units-invoice-a49844, all gates green (tsc 0, next build, vitest 2292, verify:cost 55/verify:ingest 62/tenant-isolation/ai-native/parity/naming), ready for /ship; pending only a live Demo click-through (interactive login). Custom unit == built-in == {dimension, perCanonical}; money-safe because custom units live at the intake boundary only and everything funnels through the fail-safe measure.ts::convert(). Prior: Movable + growable assistant dock BUILT + browser-QA'd on Demo, shipping on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = historical default so it never shrinks below baseline), clamped on-screen, always opens at default + closing resets (no persistence). Expand-to-center mode unchanged. tsc + eslint green. Verified live: opens 440×513, grows, floors, moves, resets. Prior: Plan 073 multi-currency FX ingestion BUILT (10 units, all gates green, live EUR Bill + €767.16 e2e proven) ready for /ship on claude/multi-currency-fx-ingestion; Plan 072 invoice ingestion SHIPPED (#223), vendor merge/removal SHIPPED (#222)._
+_Last updated: 2026-07-18 — Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._

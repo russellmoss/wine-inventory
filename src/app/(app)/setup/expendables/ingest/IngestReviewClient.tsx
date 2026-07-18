@@ -59,15 +59,15 @@ function useNarrow(): boolean {
 type ApplyState = {
   pending: boolean;
   error: string | null;
-  needsAck: "reconcile" | "partial-ap" | "fx-rate" | null;
-  acks: { reconcile: boolean; partial: boolean };
+  needsAck: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" | null;
+  acks: { reconcile: boolean; partial: boolean; duplicate: boolean };
   result: { supplyLotIds: string[]; apLineCount: number } | null;
 };
 
-const emptyApply: ApplyState = { pending: false, error: null, needsAck: null, acks: { reconcile: false, partial: false }, result: null };
+const emptyApply: ApplyState = { pending: false, error: null, needsAck: null, acks: { reconcile: false, partial: false, duplicate: false }, result: null };
 
 export function IngestReviewClient({
-  batchId, docs: initial, candidates, vendors, baseCurrency, multiCurrencyEnabled, fxByDoc, customUnits: initialCustomUnits = [],
+  batchId, docs: initial, candidates, vendors, baseCurrency, multiCurrencyEnabled, fxByDoc, payFromOptions, customUnits: initialCustomUnits = [],
 }: {
   batchId: string;
   docs: ReviewDoc[];
@@ -77,6 +77,8 @@ export function IngestReviewClient({
   /** undefined = no connected QBO; true/false = the company's MultiCurrency flag (council #2). */
   multiCurrencyEnabled?: boolean | null;
   fxByDoc: Record<string, FxSuggestion>;
+  /** Plan 076: configured pay-from accounts for a Paid invoice (empty until set up in Settings). */
+  payFromOptions: { label: string; value: string }[];
   /** Plan 075: the tenant's user-defined units, selectable as pack units alongside the built-ins. */
   customUnits?: CustomUnitRow[];
 }) {
@@ -110,7 +112,7 @@ export function IngestReviewClient({
 
   const runApply = React.useCallback(async (doc: ReviewDoc, acks: ApplyState["acks"]) => {
     setApplyState((s) => ({ ...s, [doc.id]: { ...(s[doc.id] ?? emptyApply), acks, pending: true, error: null } }));
-    const res = await applyIngestedInvoiceAction(doc.id, { allowReconcileMismatch: acks.reconcile, allowPartialAp: acks.partial });
+    const res = await applyIngestedInvoiceAction(doc.id, { allowReconcileMismatch: acks.reconcile, allowPartialAp: acks.partial, allowDuplicate: acks.duplicate });
     if (res.ok) {
       patchDocLocal(doc.id, { status: "applied" });
       setApplyState((s) => ({ ...s, [doc.id]: { ...emptyApply, acks, result: { supplyLotIds: res.supplyLotIds, apLineCount: res.apLineCount } } }));
@@ -160,6 +162,7 @@ export function IngestReviewClient({
               baseCurrency={baseCurrency}
               multiCurrencyEnabled={multiCurrencyEnabled}
               fx={fxByDoc[doc.id]}
+              payFromOptions={payFromOptions}
               onSaveDoc={saveDoc}
               onSaveLine={saveLine}
               onApply={runApply}
@@ -200,7 +203,7 @@ export function IngestReviewClient({
 // ── one receipt (invoice / proforma) ──
 
 function ReceiptPanel({
-  doc, candidates, vendors, apply, baseCurrency, multiCurrencyEnabled, fx, onSaveDoc, onSaveLine, onApply, customUnitNames, onCreateUnit,
+  doc, candidates, vendors, apply, baseCurrency, multiCurrencyEnabled, fx, payFromOptions, onSaveDoc, onSaveLine, onApply, customUnitNames, onCreateUnit,
 }: {
   doc: ReviewDoc;
   candidates: MaterialCandidate[];
@@ -209,6 +212,7 @@ function ReceiptPanel({
   baseCurrency: string;
   multiCurrencyEnabled?: boolean | null;
   fx?: FxSuggestion;
+  payFromOptions: { label: string; value: string }[];
   onSaveDoc: (docId: string, patch: Parameters<typeof updateIngestedInvoiceAction>[1]) => void;
   onSaveLine: (docId: string, lineId: string, patch: Parameters<typeof updateIngestedInvoiceLineAction>[1]) => void;
   onApply: (doc: ReviewDoc, acks: ApplyState["acks"]) => void;
@@ -289,6 +293,47 @@ function ReceiptPanel({
             <Badge tone="gold" variant="soft">will create vendor</Badge>
           )}
         </div>
+      </div>
+
+      {/* Plan 076: A/P payment status — required before Confirm; syncs to QuickBooks (Outstanding = owed bill,
+          Paid = a recorded bill payment from the chosen account). */}
+      <div style={{ marginTop: 16, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={fieldLabel}>Payment status</div>
+          <select
+            aria-label="Payment status"
+            value={doc.paymentStatus ?? ""}
+            disabled={applied}
+            onChange={(e) => {
+              const v = e.target.value === "PAID" ? "PAID" : e.target.value === "OUTSTANDING" ? "OUTSTANDING" : null;
+              onSaveDoc(doc.id, v === "PAID" ? { paymentStatus: "PAID" } : { paymentStatus: v, paidFromAccount: null });
+            }}
+            style={selectStyle}
+          >
+            <option value="">Choose…</option>
+            <option value="OUTSTANDING">Outstanding (still to pay)</option>
+            <option value="PAID">Paid</option>
+          </select>
+        </div>
+        {doc.paymentStatus === "PAID" ? (
+          <div>
+            <div style={fieldLabel}>Paid from</div>
+            {payFromOptions.length > 0 ? (
+              <select
+                aria-label="Paid from account"
+                value={doc.paidFromAccount ?? ""}
+                disabled={applied}
+                onChange={(e) => onSaveDoc(doc.id, { paidFromAccount: e.target.value || null })}
+                style={selectStyle}
+              >
+                <option value="">Choose account…</option>
+                {payFromOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            ) : (
+              <Badge tone="gold" variant="soft">Set up payment accounts in Settings first</Badge>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {/* Plan 073: FX rate — a foreign invoice is converted to the base currency at this rate (editable). */}
@@ -381,9 +426,23 @@ function ReceiptPanel({
                       onClick={() => onApply(doc, {
                         reconcile: apply.acks.reconcile || apply.needsAck === "reconcile",
                         partial: apply.acks.partial || apply.needsAck === "partial-ap",
+                        duplicate: apply.acks.duplicate,
                       })}
                     >
                       {apply.needsAck === "reconcile" ? "Apply inventory-only (totals don't reconcile)" : "Apply inventory-only (partial A/P)"}
+                    </Button>
+                  </div>
+                ) : null}
+                {/* Plan 076: hard duplicate gate — "detected as a duplicate, do you want to continue?" */}
+                {apply.needsAck === "duplicate" ? (
+                  <div style={{ marginTop: 10 }}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={apply.pending}
+                      onClick={() => onApply(doc, { reconcile: apply.acks.reconcile, partial: apply.acks.partial, duplicate: true })}
+                    >
+                      Yes, book it anyway (duplicate)
                     </Button>
                   </div>
                 ) : null}
@@ -394,7 +453,7 @@ function ReceiptPanel({
               <Button
                 variant="primary"
                 disabled={!gate.ok || apply.pending}
-                onClick={() => onApply(doc, { reconcile: false, partial: false })}
+                onClick={() => onApply(doc, { reconcile: false, partial: false, duplicate: false })}
               >
                 {apply.pending ? "Applying…" : "Confirm & intake"}
               </Button>

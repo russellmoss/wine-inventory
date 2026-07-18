@@ -67,6 +67,7 @@
     "verify:accounting-reversal": "tsx --conditions=react-server scripts/verify-accounting-reversal.ts",
     "verify:accounting-idempotency": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting-idempotency.ts",
     "verify:accounting": "tsx --conditions=react-server --env-file=.env scripts/verify-accounting.ts",
+    "verify:plan076-live": "tsx --conditions=react-server --env-file=.env scripts/verify-plan076-live.ts",
     "verify:commerce7-idempotency": "tsx --conditions=react-server --env-file=.env scripts/verify-commerce7-idempotency.ts",
     "verify:commerce7": "tsx --conditions=react-server --env-file=.env scripts/verify-commerce7.ts",
     "verify:feedback": "tsx --conditions=react-server scripts/verify-feedback.ts",

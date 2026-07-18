@@ -19,7 +19,8 @@ import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/ac
 import { receiveSupplyAction, setMaterialActiveAction, listMaterialLotsAction } from "@/lib/cost/actions";
 import type { MaterialLotRow } from "@/lib/cellar/materials";
 import { lotExpiryStatus, expiryLabel, docRoleLabel } from "@/lib/cellar/lot-history";
-import { extractAndStageAction } from "@/lib/ingest/actions";
+import { extractAndStageAction, updateIngestedInvoiceAction } from "@/lib/ingest/actions";
+import type { IngestDuplicate } from "@/lib/ingest/ingest-invoice-core";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 
 // Phase 8/12 → 036 → 037: manage the supply catalog. Categories are collapsible + searchable; clicking a
@@ -303,6 +304,13 @@ function IngestInvoiceLauncher() {
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  // Plan 076: when staging detects a possible duplicate, hold here and ask before navigating on.
+  const [dupPrompt, setDupPrompt] = React.useState<{ batchId: string; items: IngestDuplicate[] } | null>(null);
+  const [dupBusy, setDupBusy] = React.useState(false);
+
+  const goToReview = React.useCallback((batchId: string) => {
+    router.push(`/setup/expendables/ingest?batch=${encodeURIComponent(batchId)}`);
+  }, [router]);
 
   async function onFiles(fileList: FileList | null) {
     setError(null);
@@ -331,11 +339,17 @@ function IngestInvoiceLauncher() {
       }
       const batchId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `batch_${Date.now()}`;
       setStatus(`Reading ${uploaded.length} document${uploaded.length === 1 ? "" : "s"}… this can take a moment.`);
-      await extractAndStageAction({
+      const staged = await extractAndStageAction({
         batchId,
         files: uploaded.map((u) => ({ blobUrl: u.blobUrl, fileName: u.fileName, mimeType: u.mimeType, fileSha256: u.fileSha256 })),
       });
-      router.push(`/setup/expendables/ingest?batch=${encodeURIComponent(batchId)}`);
+      // Plan 076: if any staged doc looks like a duplicate, warn before proceeding (the human decides).
+      if (staged.duplicates && staged.duplicates.length > 0) {
+        setStatus(null);
+        setDupPrompt({ batchId, items: staged.duplicates });
+        return;
+      }
+      goToReview(batchId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ingestion failed.");
     } finally {
@@ -352,6 +366,54 @@ function IngestInvoiceLauncher() {
       </Button>
       {status ? <span style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 220 }}>{status}</span> : null}
       {error ? <span style={{ fontSize: 12, color: "var(--danger)", maxWidth: 240 }}>{error}</span> : null}
+
+      <Modal
+        open={dupPrompt != null}
+        onClose={() => { if (!dupBusy) setDupPrompt(null); }}
+        title="This looks like a duplicate invoice"
+        subtitle="Do you want to continue?"
+        maxWidth={520}
+      >
+        {dupPrompt ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 6 }}>
+              {dupPrompt.items.map((d, i) => <li key={i}>{d.label}</li>)}
+            </ul>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
+              Continuing keeps {dupPrompt.items.length === 1 ? "it" : "them"} in the review queue — you can still discard {dupPrompt.items.length === 1 ? "it" : "any"} there, and nothing is booked to inventory or QuickBooks until you Confirm.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <Button
+                variant="ghost"
+                disabled={dupBusy}
+                onClick={async () => {
+                  if (!dupPrompt) return;
+                  setDupBusy(true);
+                  try {
+                    // Discard just the flagged duplicates; the rest of the batch still goes to review.
+                    const ids = [...new Set(dupPrompt.items.map((d) => d.ingestedInvoiceId))];
+                    await Promise.all(ids.map((id) => updateIngestedInvoiceAction(id, { status: "discarded" }).catch(() => undefined)));
+                    const batchId = dupPrompt.batchId;
+                    setDupPrompt(null);
+                    goToReview(batchId);
+                  } finally {
+                    setDupBusy(false);
+                  }
+                }}
+              >
+                {dupBusy ? "Discarding…" : "Discard duplicate"}
+              </Button>
+              <Button
+                variant="primary"
+                disabled={dupBusy}
+                onClick={() => { const b = dupPrompt.batchId; setDupPrompt(null); goToReview(b); }}
+              >
+                Continue to review
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

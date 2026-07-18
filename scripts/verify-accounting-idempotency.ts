@@ -13,6 +13,7 @@ import { prisma, prismaBase } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { runAccountingPostSweep } from "@/lib/accounting/post-sweep";
+import { runAccountingReconcileSweep } from "@/lib/accounting/reconcile";
 import { _seedAccessCache, _clearAccessCache } from "@/lib/accounting/token";
 import { ProviderFault, type AccountingAdapter, type PostResult } from "@/lib/accounting/adapter";
 
@@ -31,6 +32,9 @@ type MockState = {
   crashOnce?: Set<string>;
   bills?: Array<Record<string, unknown>>; // Plan 073: captured Bill payloads (currency assertions)
   vendorCalls?: Array<{ name: string; currency?: string }>; // Plan 073: vendor resolutions
+  billPayments?: Map<string, string>; // Plan 076: DocNumber → BillPayment externalId
+  billBalances?: Map<string, number>; // Plan 076: bill externalId → outstanding balance (0 once paid)
+  billPaymentPayloads?: Array<Record<string, unknown>>; // Plan 076: captured BillPayment payloads
 };
 
 /** A mock QBO adapter: records what it "posted" by DocNumber; can simulate a crash after accept. Plan 073
@@ -62,12 +66,27 @@ function mockAdapter(state: MockState): AccountingAdapter {
       return { externalId, version: "0" };
     },
     async findByDocNumber(_ctx, _type, docNumber): Promise<PostResult | null> {
-      const id = state.posted.get(docNumber);
+      const id = state.posted.get(docNumber) ?? state.billPayments?.get(docNumber);
       return id ? { externalId: id, version: "0", docNumber } : null;
     },
     async getById(_ctx, _type, externalId): Promise<PostResult | null> {
       for (const [, id] of state.posted) if (id === externalId) return { externalId, version: "0" };
       return null;
+    },
+    // Plan 076: record a BillPayment (keyed by DocNumber → adopt on resume) and zero the linked Bill's balance.
+    async postBillPayment(_ctx, payload, _requestId): Promise<PostResult> {
+      const docNumber = String((payload as { DocNumber?: string }).DocNumber ?? "");
+      state.billPaymentPayloads?.push(payload);
+      const externalId = `BP-${(state.billPayments?.size ?? 0) + 1}`;
+      state.billPayments?.set(docNumber, externalId);
+      const linked = (payload as { Line?: Array<{ LinkedTxn?: Array<{ TxnId?: string }> }> }).Line?.[0]?.LinkedTxn?.[0]?.TxnId;
+      if (linked && state.billBalances) state.billBalances.set(String(linked), 0);
+      return { externalId, version: "0" };
+    },
+    async getBillBalance(_ctx, externalId): Promise<number | null> {
+      const isPosted = [...state.posted.values()].includes(externalId);
+      if (!isPosted) return null;
+      return state.billBalances?.get(externalId) ?? 0;
     },
     async postJournalEntry(_ctx, input): Promise<PostResult> {
       const doc = input.postingKey; // harness keys posted by postingKey for readability
@@ -122,6 +141,26 @@ async function seedBillDelivery(connectionId: string, key: string): Promise<{ de
       select: { id: true },
     });
     return { deliveryId: del.id, vendorId: vendor.id };
+  });
+}
+
+/** Plan 076: seed a home-currency (USD) aggregate invoice bill marked PAID — a vendor + a PAID ApExportEvent
+ *  (ingestedInvoiceId + paidFromAccount) + a PENDING Bill delivery — so the sweep posts the Bill then records
+ *  a BillPayment. */
+async function seedPaidBillDelivery(connectionId: string, key: string, invoiceId: string): Promise<{ deliveryId: string; eventId: string }> {
+  return runInTenantTx(async (tx) => {
+    const vendor = await tx.vendor.create({ data: { name: `IDEM Bill Vendor ${key}`, currency: "USD" }, select: { id: true } });
+    const ev = await tx.apExportEvent.create({
+      data: {
+        postingKey: key, ingestedInvoiceId: invoiceId, amount: 60, currency: "USD",
+        debitAccount: "1300-Inventory", creditAccount: "2000-AP", receivedAt: new Date(), vendorId: vendor.id,
+        billLinesJson: [{ debitAccount: "1300-Inventory", amount: 60, description: "Paid line" }],
+        paymentStatus: "PAID", paidFromAccount: "1010-Bank", paidAt: new Date(),
+      },
+      select: { id: true },
+    });
+    const del = await tx.accountingDelivery.create({ data: { apExportEventId: ev.id, connectionId, objectType: "Bill", status: "PENDING" }, select: { id: true } });
+    return { deliveryId: del.id, eventId: ev.id };
   });
 }
 
@@ -243,6 +282,48 @@ async function main() {
     assert(mmState.bills!.length === 0, "no Bill was posted to QBO on a currency mismatch");
     await prisma.accountingConnection.update({ where: { id: connectionId }, data: { homeCurrency: "USD" } }); // restore
 
+    console.log("\n── 8. Plan 076: a PAID invoice posts the Bill AND records a BillPayment exactly once ──");
+    const paid1 = await seedPaidBillDelivery(connectionId, "idem:apinv:paid:1", "idem-inv-paid-1");
+    const paidState: MockState = { posted: new Map(), bills: [], vendorCalls: [], billPayments: new Map(), billBalances: new Map(), billPaymentPayloads: [] };
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(paidState) });
+    assert((await statusOf(paid1.deliveryId)) === "POSTED", "paid invoice's Bill is POSTED");
+    assert(paidState.billPayments!.size === 1, "exactly one BillPayment recorded for the paid invoice");
+    const evAfter = await prisma.apExportEvent.findUnique({ where: { id: paid1.eventId }, select: { paymentExternalId: true } });
+    assert(!!evAfter?.paymentExternalId, "aggregate event stamped with the QBO BillPayment id");
+    const bp = paidState.billPaymentPayloads![0] as { Line: Array<{ LinkedTxn: Array<{ TxnId: string; TxnType: string }> }>; TotalAmt: number };
+    assert(bp.Line[0].LinkedTxn[0].TxnType === "Bill" && bp.TotalAmt === 60, "BillPayment links the Bill for the full amount (60)");
+    await runAccountingPostSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(paidState) });
+    assert(paidState.billPayments!.size === 1, "re-sweep records NO duplicate BillPayment (exactly-once)");
+
+    console.log("\n── 9. Plan 076: reconcile reflects the QBO Bill Balance back into the app (two-way) ──");
+    // Seed an OUTSTANDING aggregate invoice bill already POSTED with an external Bill id, plus its invoice.
+    const reconInv = await runInTenantTx((tx) => tx.ingestedInvoice.create({
+      data: { batchId: "idem-recon", blobUrl: "local://x", fileName: "recon.pdf", mimeType: "application/pdf", docType: "invoice", status: "applied", extractedJson: {}, createdBy: "idem", paymentStatus: "OUTSTANDING" },
+      select: { id: true },
+    }));
+    const reconVendor = await runInTenantTx((tx) => tx.vendor.create({ data: { name: "IDEM Bill Vendor recon", currency: "USD" }, select: { id: true } }));
+    const reconEv = await runInTenantTx((tx) => tx.apExportEvent.create({
+      data: { postingKey: "idem:apinv:recon:1", ingestedInvoiceId: reconInv.id, amount: 60, currency: "USD", debitAccount: "1300", creditAccount: "2000", receivedAt: new Date(), vendorId: reconVendor.id, paymentStatus: "OUTSTANDING" },
+      select: { id: true },
+    }));
+    await runInTenantTx((tx) => tx.accountingDelivery.create({ data: { apExportEventId: reconEv.id, connectionId, objectType: "Bill", status: "POSTED", externalId: "BILL-RECON-1", verifiedAt: new Date(2000, 0, 1) } }));
+    // The bookkeeper paid it in QuickBooks → the Bill's balance is now 0.
+    const reconState: MockState = { posted: new Map([["doc-recon", "BILL-RECON-1"]]), billBalances: new Map([["BILL-RECON-1", 0]]) };
+    const rsum = await runAccountingReconcileSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(reconState) });
+    assert(rsum.paidReflected === 1, "reconcile reflected exactly one QBO-paid bill");
+    const evPaid = await prisma.apExportEvent.findUnique({ where: { id: reconEv.id }, select: { paymentStatus: true } });
+    const invPaid = await prisma.ingestedInvoice.findUnique({ where: { id: reconInv.id }, select: { paymentStatus: true } });
+    assert(evPaid?.paymentStatus === "PAID" && invPaid?.paymentStatus === "PAID", "a QBO balance of 0 flips the event + invoice to PAID in the app");
+
+    console.log("\n── 10. Plan 076: a balance>0 while the app says PAID surfaces a discrepancy (never silently flips) ──");
+    await runInTenantTx((tx) => tx.apExportEvent.update({ where: { id: reconEv.id }, data: { paymentStatus: "PAID", paymentExternalId: null } }));
+    await runInTenantTx((tx) => tx.ingestedInvoice.update({ where: { id: reconInv.id }, data: { paymentStatus: "PAID" } }));
+    const discState: MockState = { posted: new Map([["doc-recon", "BILL-RECON-1"]]), billBalances: new Map([["BILL-RECON-1", 60]]) };
+    const dsum = await runAccountingReconcileSweep({ orgIds: [TENANT], adapterFactory: () => mockAdapter(discState) });
+    assert(dsum.paymentDiscrepancies === 1, "a paid-here / owed-in-QBO mismatch is surfaced as a discrepancy");
+    const evStill = await prisma.apExportEvent.findUnique({ where: { id: reconEv.id }, select: { paymentStatus: true } });
+    assert(evStill?.paymentStatus === "PAID", "the app status is NOT silently flipped on a discrepancy");
+
       console.log(`\nALL ${passed} IDEMPOTENCY ASSERTIONS PASSED`);
     } finally {
       // ── cleanup ALWAYS (deliveries first — FK to the event rows is RESTRICT) ──
@@ -254,6 +335,8 @@ async function main() {
       await prisma.accountingDelivery.deleteMany({ where: { apExportEventId: { in: apEvs.map((e) => e.id) } } });
       await prisma.apExportEvent.deleteMany({ where: { postingKey: { startsWith: "idem:" } } });
       await prisma.vendor.deleteMany({ where: { name: { startsWith: "IDEM Bill Vendor" } } });
+      // Plan 076: the reconcile scenario's staged invoice.
+      await prisma.ingestedInvoice.deleteMany({ where: { batchId: "idem-recon" } });
       // Restore the connection's currency config (we pinned it for the Bill block).
       await prisma.accountingConnection.update({ where: { id: connectionId }, data: { homeCurrency: priorConn?.homeCurrency ?? null, multiCurrencyEnabled: priorConn?.multiCurrencyEnabled ?? null } }).catch(() => {});
       if (createdConn) {

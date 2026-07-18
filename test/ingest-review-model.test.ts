@@ -53,6 +53,9 @@ function doc(over: Partial<ReviewDoc> = {}): ReviewDoc {
     invoiceTotal: over.invoiceTotal ?? null,
     taxTotal: over.taxTotal ?? null,
     landedReceipt: over.landedReceipt ?? null,
+    // Plan 076: default to a chosen status so tests not about the payment gate stay green.
+    paymentStatus: "paymentStatus" in over ? (over.paymentStatus ?? null) : "OUTSTANDING",
+    paidFromAccount: over.paidFromAccount ?? null,
     charges: over.charges ?? null,
     warnings: over.warnings ?? [],
     coaLotNo: over.coaLotNo ?? null,
@@ -149,6 +152,16 @@ describe("canConfirmDoc", () => {
     expect(canConfirmDoc(doc({ lines: [line({ unitRaw: "250 g" })] })).ok).toBe(true); // amount + unit → ok
     // a skipped line with a bad pack size does NOT block (it's not intaken)
     expect(canConfirmDoc(doc({ lines: [line({ unitRaw: "Each", matchDecision: "skip" }), line({ lineNo: 2, unitRaw: "1 kg" })] })).ok).toBe(true);
+  });
+  it("Plan 076: blocks until a payment status is chosen", () => {
+    const g = canConfirmDoc(doc({ paymentStatus: null, lines: [line()] }));
+    expect(g.ok).toBe(false);
+    expect(g.reasons.some((r) => /Paid or still Outstanding/.test(r))).toBe(true);
+  });
+  it("Plan 076: a Paid invoice needs a pay-from account", () => {
+    expect(canConfirmDoc(doc({ paymentStatus: "PAID", paidFromAccount: null, lines: [line()] })).ok).toBe(false);
+    expect(canConfirmDoc(doc({ paymentStatus: "PAID", paidFromAccount: "1010-Checking", lines: [line()] })).ok).toBe(true);
+    expect(canConfirmDoc(doc({ paymentStatus: "OUTSTANDING", lines: [line()] })).ok).toBe(true);
   });
 });
 

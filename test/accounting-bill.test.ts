@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildBillPayload } from "@/lib/accounting/qbo/bill";
+import { buildBillPaymentPayload } from "@/lib/accounting/qbo/bill-payment";
 import { docNumberFor, QboClient } from "@/lib/accounting/qbo/client";
 import type { ProviderCallContext } from "@/lib/accounting/adapter";
 
@@ -35,8 +36,33 @@ describe("buildBillPayload", () => {
     expect("DueDate" in p).toBe(false);
   });
 
-  it("throws if the inventory account is missing", () => {
-    expect(() => buildBillPayload({ ...ev, debitAccount: null }, "V1")).toThrow(/no inventory account/);
+  it("throws if there are no lines and no inventory account", () => {
+    expect(() => buildBillPayload({ ...ev, debitAccount: null }, "V1")).toThrow(/no bill lines/);
+  });
+
+  // Plan 076: an aggregate per-invoice event supplies `lines` → one QBO Line per invoice line (same or
+  // different GL accounts). QBO sums the lines into the Bill total; we never send an explicit total.
+  it("builds a multi-line Bill from aggregate lines", () => {
+    const p = buildBillPayload({
+      ...ev,
+      postingKey: "apinv:inv_9",
+      lines: [
+        { account: "1300-Inventory", amount: 387.57, description: "Yeast EC1118" },
+        { account: "1300-Inventory", amount: 98.22, description: "Bentonite" },
+      ],
+    }, "V-9") as { DocNumber: string; Line: Array<{ Amount: number; Description?: string; AccountBasedExpenseLineDetail: { AccountRef: { value: string } } }> };
+    expect(p.DocNumber).toBe(docNumberFor("apinv:inv_9"));
+    expect(p.Line).toHaveLength(2);
+    expect(p.Line[0].Amount).toBe(387.57);
+    expect(p.Line[0].Description).toBe("Yeast EC1118");
+    expect(p.Line[1].Amount).toBe(98.22);
+    expect(p.Line.every((l) => l.AccountBasedExpenseLineDetail.AccountRef.value === "1300-Inventory")).toBe(true);
+    expect("TotalAmt" in (p as Record<string, unknown>)).toBe(false); // QBO derives the total from the lines
+  });
+
+  it("rounds line amounts to cents", () => {
+    const p = buildBillPayload({ ...ev, lines: [{ account: "1300", amount: 10.005 }] }, "V1") as { Line: Array<{ Amount: number }> };
+    expect(p.Line[0].Amount).toBe(10.01);
   });
 
   // Plan 073: a foreign bill carries CurrencyRef + the pinned ExchangeRate (home per 1 foreign); the line
@@ -60,6 +86,49 @@ describe("buildBillPayload", () => {
     const p = buildBillPayload({ ...ev, currency: "EUR", exchangeRate: null }, "V-EUR") as Record<string, unknown>;
     expect(p.CurrencyRef).toEqual({ value: "EUR" });
     expect("ExchangeRate" in p).toBe(false);
+  });
+});
+
+// Plan 076 — the QBO BillPayment that settles an aggregate invoice Bill (LinkedTxn to the Bill; pay-from
+// account credited: bank for a check, credit-card liability for a card).
+describe("buildBillPaymentPayload", () => {
+  const base = {
+    postingKey: "pay:inv_9",
+    vendorExternalId: "V-9",
+    billExternalId: "BILL-42",
+    amount: 485.79,
+    payFromAccount: "1010-Checking",
+    txnDate: new Date("2026-07-10T00:00:00Z"),
+  } as const;
+
+  it("a check payment links the Bill and pays from the bank account", () => {
+    const p = buildBillPaymentPayload({ ...base, payType: "Check" }) as {
+      DocNumber: string; TotalAmt: number; PayType: string;
+      CheckPayment: { BankAccountRef: { value: string } };
+      Line: Array<{ Amount: number; LinkedTxn: Array<{ TxnId: string; TxnType: string }> }>;
+    };
+    expect(p.DocNumber).toBe(docNumberFor("pay:inv_9"));
+    expect(p.PayType).toBe("Check");
+    expect(p.TotalAmt).toBe(485.79);
+    expect(p.CheckPayment.BankAccountRef.value).toBe("1010-Checking");
+    expect(p.Line[0].LinkedTxn[0]).toEqual({ TxnId: "BILL-42", TxnType: "Bill" });
+    expect(p.Line[0].Amount).toBe(485.79);
+  });
+
+  it("a credit-card payment pays from the card liability account", () => {
+    const p = buildBillPaymentPayload({ ...base, payType: "CreditCard", payFromAccount: "2100-Card" }) as {
+      PayType: string; CreditCardPayment: { CCAccountRef: { value: string } };
+    };
+    expect(p.PayType).toBe("CreditCard");
+    expect(p.CreditCardPayment.CCAccountRef.value).toBe("2100-Card");
+  });
+
+  it("a foreign payment carries CurrencyRef + ExchangeRate", () => {
+    const p = buildBillPaymentPayload({ ...base, payType: "Check", amount: 767.16, currency: "EUR", exchangeRate: 1.085 }) as {
+      CurrencyRef: { value: string }; ExchangeRate: number;
+    };
+    expect(p.CurrencyRef).toEqual({ value: "EUR" });
+    expect(p.ExchangeRate).toBe(1.085);
   });
 });
 

@@ -55,6 +55,7 @@ function mockQbo(state: { posted: Map<string, string>; crashOnce?: Set<string> }
       if (state.crashOnce?.has(input.postingKey)) { state.crashOnce.delete(input.postingKey); throw new ProviderFault("transient", "simulated crash after accept"); }
       return { externalId, version: "0" };
     },
+    postBillPayment: notImpl, getBillBalance: notImpl,
   };
 }
 
