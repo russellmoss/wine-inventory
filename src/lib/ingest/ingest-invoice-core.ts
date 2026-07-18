@@ -570,6 +570,7 @@ export type RecentIntake = {
   status: string;
   currency: string | null;
   invoiceTotal: number | null;
+  paymentStatus: "OUTSTANDING" | "PAID" | null; // Plan 076: A/P payment status (null = not yet chosen)
   createdAt: string;
   appliedAt: string | null;
   lots: RecentIntakeLot[]; // the lots this intake created (populated for applied invoices)
@@ -584,7 +585,7 @@ export async function listRecentIntakes(opts?: { limit?: number }): Promise<Rece
   const invs = await prisma.ingestedInvoice.findMany({
     orderBy: { createdAt: "desc" },
     take,
-    select: { id: true, vendorNameRaw: true, vendorInvoiceNumber: true, docType: true, status: true, currency: true, invoiceTotal: true, createdAt: true, appliedAt: true },
+    select: { id: true, vendorNameRaw: true, vendorInvoiceNumber: true, docType: true, status: true, currency: true, invoiceTotal: true, paymentStatus: true, createdAt: true, appliedAt: true },
   });
   if (invs.length === 0) return [];
 
@@ -618,6 +619,7 @@ export async function listRecentIntakes(opts?: { limit?: number }): Promise<Rece
     status: i.status,
     currency: i.currency,
     invoiceTotal: i.invoiceTotal == null ? null : Number(i.invoiceTotal),
+    paymentStatus: (i.paymentStatus as "OUTSTANDING" | "PAID" | null) ?? null,
     createdAt: i.createdAt.toISOString(),
     appliedAt: i.appliedAt ? i.appliedAt.toISOString() : null,
     lots: lotsByInvoice.get(i.id) ?? [],
@@ -655,11 +657,15 @@ export async function reverseIngestedInvoiceCore(actor: LedgerActor, input: { in
 
       // Guard: no A/P bill already posted to QBO. Plan 076: the aggregate per-invoice event has no supplyLotId
       // (it's keyed by ingestedInvoiceId), so match BOTH shapes — per-lot (legacy) and aggregate.
-      const evs = await tx.apExportEvent.findMany({ where: { OR: [{ supplyLotId: { in: lotIds } }, { ingestedInvoiceId: inv.id }] }, select: { id: true } });
+      const evs = await tx.apExportEvent.findMany({ where: { OR: [{ supplyLotId: { in: lotIds } }, { ingestedInvoiceId: inv.id }] }, select: { id: true, paymentExternalId: true } });
       const evIds = evs.map((e) => e.id);
       const deliveries = evIds.length
         ? await tx.accountingDelivery.findMany({ where: { apExportEventId: { in: evIds } }, select: { id: true, status: true, externalId: true } })
         : [];
+      // Plan 076: a recorded bill payment is a downstream QBO object of its own — void it there first.
+      if (evs.some((e) => e.paymentExternalId)) {
+        throw new ReverseAbort({ ok: false, error: "This invoice is marked paid in QuickBooks — void the bill payment there first, then reverse the bill, before discarding the intake." });
+      }
       if (deliveries.some((d) => d.status === "POSTED" || d.externalId)) {
         throw new ReverseAbort({ ok: false, error: "An A/P bill from this intake was already posted to QuickBooks. Reverse the bill in QuickBooks first, then discard the intake." });
       }

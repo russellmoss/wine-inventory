@@ -512,6 +512,10 @@ async function main() {
         await prisma.apExportEvent.updateMany({ where: { ingestedInvoiceId: invId }, data: { paymentStatus: "PAID", paidFromAccount: "QA-Bank", paymentExternalId: "QA-BP-1" } });
         const guarded = await setInvoicePaymentStatusCore(ACTOR, { ingestedInvoiceId: invId, paymentStatus: "OUTSTANDING" });
         assert(!guarded.ok, "scenario 12: can't flip to OUTSTANDING once a bill payment is recorded in QBO (void there first)");
+
+        // and reversing a PAID invoice is blocked until the bill payment is voided in QBO.
+        const revPaid = await reverseIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(!revPaid.ok && /paid in QuickBooks/.test(revPaid.error), "scenario 12: reversing a paid invoice is blocked (void the bill payment first)");
       }
     });
   } finally {
