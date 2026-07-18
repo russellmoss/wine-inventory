@@ -141,6 +141,56 @@ describe("computeWorkOrderReadiness — RACK", () => {
     expect(p.status).toBe("blocked");
     expect(p.warnings.some((w) => w.code === "missing_vessel")).toBe(true);
   });
+
+  // Ticket cmrqqm75b0000jr04hylrfmvc: the builder let you author a transfer whose source === destination,
+  // but execution (rack-core.ts rackWineTx) refuses it — a WO guaranteed to fail at execute. The builder
+  // validation now mirrors that guard: same vessel → blocked at author time.
+  it("blocks a same-vessel rack (source === destination)", () => {
+    const state = makeState({
+      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 500, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 500, updatedAt: "x", taxAbvOverride: null }] })]]),
+    });
+    const p = computeWorkOrderReadiness(input([{ taskType: "RACK", values: { fromVesselId: "v1", toVesselId: "v1" } }]), state);
+    expect(p.status).toBe("blocked");
+    expect(p.warnings.some((w) => w.code === "same_vessel")).toBe(true);
+    // The rack never got to plan a fill/diff — it short-circuits like the execution guard does.
+    expect(p.diff.rows).toHaveLength(0);
+  });
+
+  it("does not flag same_vessel when source and destination differ", () => {
+    const state = makeState({
+      vesselsById: new Map([
+        ["v1", vessel({ id: "v1", code: "T1", volumeL: 300, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
+        ["v2", vessel({ id: "v2", code: "T2", capacityL: 1000, volumeL: 0 })],
+      ]),
+    });
+    const p = computeWorkOrderReadiness(input([{ taskType: "RACK", values: { fromVesselId: "v1", toVesselId: "v2" } }]), state);
+    expect(p.warnings.some((w) => w.code === "same_vessel")).toBe(false);
+    expect(p.status).toBe("ready");
+  });
+});
+
+describe("computeWorkOrderReadiness — TOPPING", () => {
+  // Same class of bug as RACK: topping.ts topVesselTx refuses `toVesselId === fromVesselId`. The builder
+  // mirrors it so a same-vessel top-up can't be saved either.
+  it("blocks a same-vessel top-up (source === target)", () => {
+    const state = makeState({
+      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 400, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 400, updatedAt: "x", taxAbvOverride: null }] })]]),
+    });
+    const p = computeWorkOrderReadiness(input([{ taskType: "TOPPING", values: { fromVesselId: "v1", toVesselId: "v1", volumeL: 5 } }]), state);
+    expect(p.status).toBe("blocked");
+    expect(p.warnings.some((w) => w.code === "same_vessel")).toBe(true);
+  });
+
+  it("does not flag same_vessel when source and target differ", () => {
+    const state = makeState({
+      vesselsById: new Map([
+        ["v1", vessel({ id: "v1", code: "T1", volumeL: 400, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 400, updatedAt: "x", taxAbvOverride: null }] })],
+        ["v2", vessel({ id: "v2", code: "T2", capacityL: 1000, volumeL: 500 })],
+      ]),
+    });
+    const p = computeWorkOrderReadiness(input([{ taskType: "TOPPING", values: { fromVesselId: "v1", toVesselId: "v2", volumeL: 5 } }]), state);
+    expect(p.warnings.some((w) => w.code === "same_vessel")).toBe(false);
+  });
 });
 
 describe("computeWorkOrderReadiness — ADDITION / FINING", () => {
