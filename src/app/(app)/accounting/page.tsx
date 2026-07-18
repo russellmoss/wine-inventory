@@ -25,7 +25,10 @@ const STATUS_META: Record<string, { tone: "green" | "blue" | "gold" | "red" | "n
   DELETED_IN_GL: { tone: "neutral", label: "Deleted in QuickBooks" },
 };
 
-const ORDER = ["POSTED", "PENDING", "IN_FLIGHT", "VERIFYING", "FAILED", "DELETED_IN_GL"];
+// Every displayable status, in the order shown. WITHHELD (held for a config fix, e.g. a currency /
+// multicurrency mismatch) must be listed here or held items silently vanish from the queue and the
+// empty-state check falsely reports "nothing to sync".
+const ORDER = ["POSTED", "PENDING", "IN_FLIGHT", "VERIFYING", "WITHHELD", "FAILED", "DELETED_IN_GL"];
 
 export default async function AccountingPage() {
   await requireAdmin();
@@ -33,7 +36,7 @@ export default async function AccountingPage() {
   const money = (n: number) => formatMoney(n, currency);
   const connected = connection?.status === "CONNECTED";
   const c7Connected = c7.connection?.status === "CONNECTED";
-  const C7_ORDER = ["POSTED", "PENDING", "IN_FLIGHT", "VERIFYING", "FAILED", "DELETED_IN_GL"];
+  const C7_ORDER = ["POSTED", "PENDING", "IN_FLIGHT", "VERIFYING", "WITHHELD", "FAILED", "DELETED_IN_GL"];
 
   return (
     <div>
