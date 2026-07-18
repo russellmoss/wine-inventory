@@ -1,5 +1,32 @@
 import { describe, it, expect } from "vitest";
-import { makeClarificationRef, buildClarificationDmBody } from "@/lib/feedback/clarification";
+import {
+  makeClarificationRef,
+  buildClarificationDmBody,
+  parseRefToken,
+  isSubstantiveAnswer,
+} from "@/lib/feedback/clarification";
+
+describe("parseRefToken", () => {
+  it("extracts the ref token case-insensitively", () => {
+    expect(parseRefToken("it broke on bottling [Ref: BUG-7Q2F] thanks")).toBe("BUG-7Q2F");
+    expect(parseRefToken("bug-njaf here's what happened")).toBe("BUG-NJAF");
+  });
+  it("returns null when no token present", () => {
+    expect(parseRefToken("no code here")).toBeNull();
+    expect(parseRefToken("BUG-12")).toBeNull(); // too short / ambiguous digits excluded
+  });
+});
+
+describe("isSubstantiveAnswer", () => {
+  it("rejects trivial / too-short replies", () => {
+    for (const s of ["idk", "no", "not sure", "n/a", "ok", "?", "  dunno "]) {
+      expect(isSubstantiveAnswer(s)).toBe(false);
+    }
+  });
+  it("accepts a real answer", () => {
+    expect(isSubstantiveAnswer("It's on the bottling page, console showed a 500")).toBe(true);
+  });
+});
 
 describe("makeClarificationRef", () => {
   it("is BUG- + 4 unambiguous chars", () => {
