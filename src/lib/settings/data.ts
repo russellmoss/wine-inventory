@@ -50,6 +50,13 @@ export async function getTenantCurrency(): Promise<CurrencyCode> {
   return coerceCurrency(s?.currency);
 }
 
+/** Plan 077: per-tenant opt-in — eagerly create a QBO vendor when one is created in Cellarhand (default off;
+ *  off means vendors are authored in QBO and Slice 1's pull brings them in). */
+export async function getPushVendorsToQbo(): Promise<boolean> {
+  const s = await prisma.appSettings.findFirst({ select: { pushVendorsToQbo: true } });
+  return s?.pushVendorsToQbo ?? false;
+}
+
 // Phase 8 (Unit 2): the per-tenant costing policy. Falls back to COST_SETTINGS_DEFAULTS when the
 // row doesn't exist yet, so cost roll-up works before the operator ever visits the settings screen.
 export async function getCostSettings(): Promise<CostSettings> {
