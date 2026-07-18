@@ -29,12 +29,18 @@ export async function assertBlockCascadeSafe(blockId: string): Promise<void> {
 
 /** Delete the block's cascadable restrict-children inside the caller's tx (re-guarding under the tx so a
  *  crush that landed between preview and commit still fails closed). Deleting each HarvestRecord cascades
- *  its HarvestPicks at the DB level (HarvestPick.harvestRecord is onDelete: Cascade). */
+ *  its HarvestPicks at the DB level (HarvestPick.harvestRecord is onDelete: Cascade).
+ *
+ *  MUST stay in lock-step with the `cascadable: true` relations on the VineyardBlock entity
+ *  (src/lib/assistant/entities.ts): the db_delete preview promises to delete exactly those children via
+ *  `formatEffectGroups(effects.cascadableBlocked)`, so every cascadable restrict-child listed there must be
+ *  removed here — otherwise the block's own delete FK-500s at commit. Today: Brix readings + harvest
+ *  records (records cascade their picks). If you mark another restrict child `cascadable`, delete it here too. */
 export async function cascadeDeleteBlockChildrenTx(
   tx: Prisma.TransactionClient,
   blockId: string,
 ): Promise<void> {
   if ((await crushedPickCount(tx, blockId)) > 0) throw new ActionError(CRUSHED_MSG, "CONFLICT");
-  await tx.brixLog.deleteMany({ where: { blockId } });
-  await tx.harvestRecord.deleteMany({ where: { blockId } });
+  await tx.brixLog.deleteMany({ where: { blockId } }); // cascadable relation: "Brix readings"
+  await tx.harvestRecord.deleteMany({ where: { blockId } }); // cascadable relation: "harvest records" (picks cascade)
 }

@@ -96,6 +96,10 @@ const vineyardBlock: EntityConfig = {
     // work_order_task.blockId is onDelete: Restrict too, but a work order is NOT vineyard-owned harvest
     // data — never cascade-delete crew/operational records. Left non-cascadable so it stays a hard wall.
     { label: "work-order tasks", kind: "restrict", count: (id) => prisma.workOrderTask.count({ where: { blockId: id } }) },
+    // Subblocks are onDelete: Cascade (they vanish with the block row). Listed so the confirmed-cascade
+    // preview DISCLOSES them — before this entity was cascadable, a block with harvest history could
+    // never be deleted, so subblocks never silently disappeared; now they can, so say so.
+    { label: "subblocks", kind: "cascade", count: (id) => prisma.vineyardSubblock.count({ where: { blockId: id } }) },
   ],
   async del(tx, id) {
     await tx.vineyardBlock.delete({ where: { id } });
