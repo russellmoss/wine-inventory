@@ -8,8 +8,10 @@ import { createVendorAction, checkVendorNearMatchesAction } from "@/lib/vendors/
 // Plan 069: the inline "+ create new vendor" modal used by the VendorPicker (expendables intake) and anywhere
 // a vendor must be created on the fly. On save it calls createVendorAction and hands the new { id, name } back
 // to the opener so the picker can select it immediately. State resets via a `key` remount in the parent.
-// Plan 074: before creating, it checks for near-duplicate vendors ("Scott Labs" vs "Scott Laboratories") and,
-// if any, shows a "did you mean?" panel — the user picks the existing vendor or creates anyway. Advisory only.
+// Plan 074: as the name is typed it checks for near-duplicate vendors and bands the result:
+//   • HIGH ("Scott Labs" vs "Scott Laboratories") — SOFT-BLOCK: a "use the existing one / create anyway" panel.
+//   • MEDIUM (weaker, e.g. shares a word) — a LIGHT, non-blocking hint; the normal Create button still creates
+//     in one click. Mirrors the assistant, which only acts on HIGH. Advisory only — never an auto-merge.
 type NearMatch = { id: string; name: string };
 
 export function CreateVendorModal({
@@ -30,11 +32,23 @@ export function CreateVendorModal({
   const [pending, startTransition] = React.useTransition();
   const canSubmit = vendorFormValid(form) && !pending;
 
-  // Editing the name invalidates any near-match panel already shown (it was for the old name).
+  // Editing the name invalidates any near-match result already shown (it was for the old name).
   const patch = (p: Partial<VendorFormValue>) => {
     if (p.name !== undefined) setMatches(null);
     setForm((f) => ({ ...f, ...p }));
   };
+
+  // Proactively check for near-dups as the name is typed (debounced), so the HIGH panel / MEDIUM hint is
+  // already on screen before the user clicks Create — MEDIUM never costs an extra click. Advisory: ignore errors.
+  React.useEffect(() => {
+    const name = form.name.trim();
+    if (!name) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      checkVendorNearMatchesAction(name).then((r) => { if (!cancelled) setMatches(r); }).catch(() => {});
+    }, 450);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [form.name]);
 
   function doCreate() {
     const name = form.name.trim();
@@ -49,30 +63,34 @@ export function CreateVendorModal({
     });
   }
 
-  // Primary "Create vendor" click: check for near-dups first; if any, surface the panel instead of creating.
+  // Primary "Create vendor" click: authoritative near-dup check. A HIGH match soft-blocks (shows the panel);
+  // a MEDIUM-only match or no match creates directly — one click.
   function submit() {
     if (!canSubmit) return;
     setError(null);
     startTransition(async () => {
       try {
         const res = await checkVendorNearMatchesAction(form.name.trim());
-        if (res.high.length || res.medium.length) setMatches(res);
-        else doCreate();
-      } catch {
-        // If the check itself fails, don't block creation — the guard is advisory.
+        setMatches(res);
+        if (res.high.length) return; // HIGH → wait for the user's use-existing / create-anyway decision
         doCreate();
+      } catch {
+        doCreate(); // the guard is advisory — a failed check never blocks creation
       }
     });
   }
 
-  const hasMatches = !!matches && (matches.high.length > 0 || matches.medium.length > 0);
+  const highMatches = matches?.high ?? [];
+  const mediumMatches = matches?.medium ?? [];
+  const softBlocked = highMatches.length > 0;
 
   return (
     <Modal open={open} onClose={onClose} title="New vendor" subtitle="Name, phone, and email are required" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <VendorForm value={form} onChange={patch} />
 
-        {hasMatches ? (
+        {softBlocked ? (
+          // HIGH — soft-block: strong panel, use an existing vendor or create anyway.
           <div
             style={{
               border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
@@ -83,7 +101,7 @@ export function CreateVendorModal({
               This looks like a vendor you already have. Use the existing one?
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {[...matches!.high, ...matches!.medium].map((m) => (
+              {highMatches.map((m) => (
                 <button
                   key={m.id}
                   type="button"
@@ -104,19 +122,41 @@ export function CreateVendorModal({
               Or, if “{form.name.trim()}” really is a different vendor, create it anyway.
             </p>
           </div>
+        ) : mediumMatches.length > 0 ? (
+          // MEDIUM — light, non-blocking hint. The normal Create button still creates in one click.
+          <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            Similar existing{mediumMatches.length > 1 ? " vendors" : " vendor"}:{" "}
+            {mediumMatches.map((m, i) => (
+              <React.Fragment key={m.id}>
+                {i > 0 ? ", " : ""}
+                <button
+                  type="button"
+                  onClick={() => onCreated({ id: m.id, name: m.name })}
+                  disabled={pending}
+                  style={{
+                    padding: 0, border: "none", background: "none", cursor: pending ? "default" : "pointer",
+                    color: "var(--wine-primary)", fontWeight: 600, fontSize: 12, fontFamily: "inherit",
+                  }}
+                >
+                  {m.name}
+                </button>
+              </React.Fragment>
+            ))}
+            . Create below if this is a different one.
+          </p>
         ) : null}
 
         {error ? <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p> : null}
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
-          {hasMatches ? (
+          {softBlocked ? (
             <Button type="button" variant="primary" onClick={doCreate} disabled={!canSubmit}>
               {pending ? "Creating…" : `Create “${form.name.trim()}” anyway`}
             </Button>
           ) : (
             <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
-              {pending ? "Checking…" : "Create vendor"}
+              {pending ? "Working…" : "Create vendor"}
             </Button>
           )}
         </div>
