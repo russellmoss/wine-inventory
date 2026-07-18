@@ -3015,7 +3015,7 @@ model FxRate {
   id        String   @id @default(cuid())
   base      String // the currency being priced (e.g. "EUR")
   quote     String // the currency it is priced in (e.g. "USD") — rate is quote per 1 base
-  rateDate  DateTime @db.Date // ECB publication date the rate is for
+  rateDate  DateTime @db.Date // the CET effective date this rate is used for (cache key); the rate value is the latest ECB publication on/before it. The true ECB quote date is returned by the service + stored on SupplyLot.fxRateDate for audit.
   rate      Decimal  @db.Decimal(18, 8) // quote per 1 base
   source    String // provenance, e.g. "ECB via Frankfurter"
   fetchedAt DateTime @default(now())

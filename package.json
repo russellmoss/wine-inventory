@@ -47,6 +47,8 @@
     "verify:group-rack-progressive": "tsx --conditions=react-server --env-file=.env scripts/verify-group-rack-progressive.ts",
     "verify:naming": "tsx --env-file=.env scripts/verify-naming.ts",
     "verify:ingest": "tsx --conditions=react-server --env-file=.env scripts/verify-ingest.ts",
+    "verify:fx": "tsx --conditions=react-server --env-file=.env scripts/verify-fx.ts",
+    "verify:fx-live": "tsx --conditions=react-server --env-file=.env scripts/verify-fx-live.ts",
     "verify:raw-sql": "tsx scripts/check-raw-sql-tenant-safety.ts",
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",
     "verify:invariant-frontmatter": "node scripts/verify-invariant-frontmatter.mjs",
