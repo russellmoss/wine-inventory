@@ -3095,8 +3095,10 @@ model VendorContact {
 model ApExportEvent {
   tenantId                  String                @default("")
   id                        String                @id @default(cuid())
-  postingKey                String // `ap:${supplyLotId}` (:rev) — per-tenant idempotent
+  postingKey                String // `ap:${supplyLotId}` (:rev) — or Plan 076 `apinv:${ingestedInvoiceId}` for a whole-invoice aggregate bill — per-tenant idempotent
   supplyLotId               String? // the receipt this AP event came from (traceability; no hard FK)
+  ingestedInvoiceId         String? // Plan 076: set on an AGGREGATE per-invoice event (one Bill per invoice); traceability, no hard FK (mirrors supplyLotId)
+  billLinesJson             Json? // Plan 076: the QBO Bill's multiple lines for an aggregate event — [{ debitAccount, amount, description }] in the document currency (null = single-line legacy per-lot bill)
   vendorInvoiceNumber       String? // Plan 072: supplier invoice # — carried to the QBO Bill's PrivateNote memo (searchable; per-lot bills stay separate). NOT a grouping/idempotency key. RLS-neutral column add.
   vendorId                  String? // composite-tenant FK -> vendor (raw SQL)
   amount                    Decimal               @db.Decimal(18, 8) // Plan 073: the FOREIGN (document-currency) amount for a foreign bill — QBO derives the home GL = amount × exchangeRate (council #1, decoupled from SupplyLot base cost). Home-currency bills: amount == home amount, exchangeRate null.
@@ -3114,6 +3116,7 @@ model ApExportEvent {
   @@unique([tenantId, id]) // composite-tenant-FK target for accounting_delivery (K11)
   @@index([tenantId])
   @@index([tenantId, supplyLotId])
+  @@index([tenantId, ingestedInvoiceId]) // Plan 076: fetch the aggregate event for an invoice
   @@map("ap_export_event")
 }
 
