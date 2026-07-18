@@ -22,8 +22,11 @@ actions (rejects reserved names/dupes, returns `{ok,error}`); (6) qty/pack-size/
 token-driven); (7) `CreateUnitModal` + merged dropdowns on BOTH the invoice-review pack-unit select and the manual
 expendables Unit select (pure model teaches Confirm gate about custom names); (8) `create_custom_unit` +
 `query_custom_units` assistant tools (goldens, `verify:ai-native` gap closed). Gates: tsc 0, `next build` clean,
-vitest 2292/0, lint 0 errors, cost/ingest/tenant-isolation/ai-native/parity/naming all green. DB happy-path proven
-via `runAsTenant`. **PENDING: live Demo click-through (needs interactive login).** Next: `/ship`.
+vitest 2292/0, lint 0 errors, cost/ingest/tenant-isolation/ai-native/parity/naming all green. **Browser-QA'd live
+on Demo** (both the manual expendables form + the ingest review screen: ton, tooltips, "+ Create unit" modal
+create→appears→auto-selects, "Tracked in g", reserved-name reject; fixture cleaned up). QA caught + fixed one bug:
+`listCustomUnitsCore` used `runInTenantTx` (needs ALS) → 500 in a server-component render → now reads via the
+extended `prisma` like `listMaterials`. **Ready for `/ship`.**
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 

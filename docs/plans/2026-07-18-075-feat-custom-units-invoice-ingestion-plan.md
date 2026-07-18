@@ -349,6 +349,11 @@ the `SupplyLot` back to prove it stored canonical grams at the right unit cost. 
 - [x] Assistant `create_custom_unit`/`query_custom_units` work; `verify:ai-native` + `verify:parity` green.
 - [x] All tests pass (2292); no regressions; `tsc --noEmit --incremental false` + `lint` (0 errors) + `next build` clean.
 
-**Pending human step:** a live click-through on Demo Winery (needs interactive login — I never type
-passwords). Every layer below the UI is proven: DB (runAsTenant), money (`verify:cost`), RLS
-(`verify:tenant-isolation`), ingest (`verify:ingest`), plus tsc + full vitest + production build.
+**Browser QA — DONE (Demo Winery, in-app Claude browser).** Verified live on both surfaces: the manual
+"Add expendable" form and the invoice-ingest review screen. Confirmed: `ton` in the unit dropdowns; the
+Unit tooltip (UNIT_HINT) + Qty/Pack-size tooltips render the concrete examples; "+ Create unit…" opens the
+modal; creating "drum = 200 kg" persists, appears under a "Your units" optgroup, and auto-selects; the
+custom unit derived the correct canonical stock unit ("Tracked in g"); a custom unit shows in the ingest
+pack-unit dropdown too; the reserved-name guard rejects "kg" with a friendly message. QA fixture cleaned up.
+**Bug the QA caught + fixed:** `listCustomUnitsCore` used `runInTenantTx` (needs ALS tenant), which 500'd in
+a server-component render — switched to the extended `prisma` client like `listMaterials`.
