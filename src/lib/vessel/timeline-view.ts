@@ -84,7 +84,7 @@ export function chipLabel(item: TimelineItem): string {
 }
 
 const OP_CHIP_LABEL: Record<string, string> = {
-  SEED: "Seed",
+  SEED: "Fill",
   RACK: "Rack",
   TOPPING: "Topping",
   FILTRATION: "Filtration",

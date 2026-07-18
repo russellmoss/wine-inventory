@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Input, Button } from "@/components/ui";
 import { AddressFields } from "@/components/address/AddressFields";
 import type { AddressParts } from "@/lib/address/format";
-import { setSparklingEnabled, saveCostSettings } from "@/lib/settings/actions";
+import { setSparklingEnabled, saveCostSettings, setPushVendorsToQbo } from "@/lib/settings/actions";
 import type { CostSettings } from "@/lib/cost/policy";
 import { SUPPORTED_CURRENCIES, CURRENCY_LABELS } from "@/lib/money/currency";
 import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
@@ -42,6 +42,7 @@ const CAPITALIZATION_TOGGLES: { key: keyof CostSettings; label: string; hint: st
 
 export function SettingsClient({
   sparklingEnabled,
+  pushVendorsToQbo,
   cost,
   complianceProfile,
   accounting,
@@ -52,6 +53,7 @@ export function SettingsClient({
   voice,
 }: {
   sparklingEnabled: boolean;
+  pushVendorsToQbo: boolean;
   cost: CostSettings;
   complianceProfile: ComplianceProfileFields;
   accounting: ConnectionSummary | null;
@@ -63,6 +65,7 @@ export function SettingsClient({
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
+  const [pushVendors, setPushVendors] = React.useState(pushVendorsToQbo);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [profileMsg, setProfileMsg] = React.useState<string | null>(null);
@@ -109,6 +112,20 @@ export function SettingsClient({
         router.refresh(); // reveal/hide the gated nav + routes
       } catch (e) {
         setEnabled(!next);
+        setError(e instanceof Error ? e.message : "Couldn't save that setting.");
+      }
+    });
+  }
+
+  function togglePushVendors(next: boolean) {
+    setError(null);
+    setPushVendors(next); // optimistic
+    startTransition(async () => {
+      try {
+        await setPushVendorsToQbo(next);
+        router.refresh();
+      } catch (e) {
+        setPushVendors(!next);
         setError(e instanceof Error ? e.message : "Couldn't save that setting.");
       }
     });
@@ -266,6 +283,38 @@ export function SettingsClient({
         initialAp={accountingAp}
         initialApPayment={accountingApPayment}
       />
+
+      {/* Plan 077 — opt-in: eagerly push a Cellarhand-created vendor to QuickBooks (fuzzy-matched, no dupes). */}
+      <Card style={{ maxWidth: 560, marginTop: 12 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, justifyContent: "space-between" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>Push new vendors to QuickBooks</h2>
+              <Badge tone={pushVendors ? "gold" : "neutral"}>{pushVendors ? "On" : "Off"}</Badge>
+            </div>
+            <p style={{ color: "var(--text-secondary)", margin: "6px 0 0", fontSize: 14.5, maxWidth: "48ch" }}>
+              When you add a vendor in Cellarhand, create it in QuickBooks right away. It checks QuickBooks first,
+              so it never makes a duplicate. Off by default — leave it off if you manage vendors in QuickBooks.
+              {accounting?.status !== "CONNECTED" ? " Connect QuickBooks above to enable." : ""}
+            </p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={pushVendors}
+            aria-label="Toggle eager QuickBooks vendor push"
+            disabled={pending || accounting?.status !== "CONNECTED"}
+            onClick={() => togglePushVendors(!pushVendors)}
+            style={{
+              flexShrink: 0, width: 56, height: 32, minWidth: 44, borderRadius: "var(--radius-pill)",
+              border: "1px solid var(--border-strong)", background: pushVendors ? "var(--accent)" : "var(--surface-sunken)",
+              opacity: accounting?.status !== "CONNECTED" ? 0.5 : 1, cursor: accounting?.status !== "CONNECTED" ? "not-allowed" : "pointer",
+              position: "relative", transition: "background 120ms",
+            }}
+          >
+            <span style={{ position: "absolute", top: 3, left: pushVendors ? 27 : 3, width: 24, height: 24, borderRadius: "50%", background: "var(--surface-raised)", boxShadow: "0 1px 2px rgba(0,0,0,0.2)", transition: "left 120ms" }} />
+          </button>
+        </div>
+      </Card>
 
       {/* Phase 16 — Commerce7 DTC/sales connection + catalog/account mapping. */}
       <Commerce7ConnectionCard commerce7={commerce7} />

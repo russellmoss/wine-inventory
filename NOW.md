@@ -7,21 +7,43 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — BUILT, ready for `/review` + `/ship`.**
+**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — BUILT + REVIEWED, shipping.**
 Branch `claude/harvest-vineyard-lib-295869` (worktree). Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data
 cleanup): couldn't delete blocks refused by dependent Brix/harvest records, and no path to delete a standalone
-harvest pick. Two commits (`e6c3fd3`, `b525dce`):
+harvest pick. Commits `e6c3fd3`, `b525dce`, `4905577` (review fixes):
 (1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix` (block +
 weight/date → confirm). Hardened `deleteHarvestPick` action: refuses a pick already crushed into a lot
 (`LotHarvestSource` Restrict — was a latent 500 + lineage-erase) + fixed a copy-paste audit action; added
 `getBlockPicks`. Golden case added (H8/D26 gate).
 (2) **Confirmed cascade in the generic `db_delete` engine** — restrict children split into hard `blocked` vs
 opt-in `cascadableBlocked` (`relations.ts` + `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`).
-`VineyardBlock` opts in: cascades Brix readings + harvest records (records cascade their picks) via new
-`src/lib/vineyard/block-delete.ts`, but **HARD-REFUSES if any pick is crushed** and keeps **work-order tasks a
-non-cascadable hard wall**. No schema change. GATES GREEN: tsc 0, eslint 0, **full vitest 2311/0**,
-verify:ai-native, eval golden coverage. PENDING: `/review`, live DB proof (runAsTenant Demo) + browser-QA, `next build` in CI.
-No plan-doc (issue #188 is a bug-triage stub); do not edit the GitHub issue.
+`VineyardBlock` opts in: cascades Brix readings + harvest records (records cascade their picks) + discloses
+subblocks, via new `src/lib/vineyard/block-delete.ts`, but **HARD-REFUSES if any pick is crushed** and keeps
+**work-order tasks a non-cascadable hard wall**. No schema change. `/review` CLEAR (3 specialists, 0 critical;
+2 informational auto-fixed). GATES GREEN: tsc 0, eslint 0, **full vitest 2311/0**, verify:ai-native, eval golden.
+PENDING (post-merge): live DB proof (runAsTenant Demo) + browser-QA. No plan-doc (issue #188 is a bug-triage stub).
+
+<details><summary>prev objective — P0 bottling no-cork guard (PR #242, branch claude/bottling-no-cork-guard-b316e0)</summary>
+
+**P0 bottling no-cork guard (feedback bug, PR #242) — BUILT + live-proven, ready to ship.**
+Branch `claude/bottling-no-cork-guard-b316e0`. Bug: "for all bottling runs we need mandatory a bottle, a closure
+(e.g. cork), and a label — I shouldn't be able to bottle Big Mike Big Red without a cork, but it let me." The
+automated PR #242 fixed it **client-only** (fragile). This supersedes it with a **server backstop at the two real
+write paths** + both UI mirrors + tests. (1) Pure classifier in
+[packaging-bom.ts](src/lib/bottling/packaging-bom.ts) — `classifyPackagingRole` (name/kind → bottle|closure|label;
+a capsule is deliberately NOT a closure), `missingRequiredPackaging`, `missingRolesForMaterials`. (2) Server guard
+[mandatory-packaging.ts](src/lib/bottling/mandatory-packaging.ts) `assertMandatoryPackaging(packaging, loadMaterials)`
+— wired into `createBottlingRun`/`editBottlingRun` ([actions.ts](src/lib/bottling/actions.ts), `prisma` loader) AND
+the WO BOTTLE task ([execute.ts](src/lib/work-orders/execute.ts), `tx` loader). Enforced at the **entry points, not
+`runBottlingTx`**. (3) UI mirrors in BottlingClient.tsx + BottlingTaskForm.tsx. **Live DB proof on Demo Winery**:
+corkless run REJECTED with zero partial writes; full run wrote 100 bottles + depleted cork 500→400; fixtures scrubbed.
+
+**Feedback #241 (cmrqpp88 "too much detail in dashboard") — dashboard Recent activity filtered — BUILT.**
+Branch `claude/work-241-page-tsx-5fdfdb` (commit 752c212). Leadership-relevance denylist classifier in
+[src/lib/audit.ts](src/lib/audit.ts) (`isOperationalAuditEntry` + synced `operationalAuditWhere`); page.tsx filters
+the feed at the DB. Denylist (not allowlist) so new operational events show by default. Proven on real prod data.
+
+</details>
 
 <details><summary>prev objective — Plan 076/078 invoice ingestion (SHIPPED, PR #246)</summary>
 
@@ -37,19 +59,38 @@ multi-line `billLinesJson`), per-lot emit suppressed via `skipApEmit`, multi-lin
 AP-1. (3) Paid/Outstanding — schema on `IngestedInvoice`+`ApExportEvent`+AppSettings pay-from accounts, required
 review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPayment** poster pass (Check/CreditCard,
 exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
-migrations applied to Neon. GREEN: tsc, eslint, vitest 2276, next build, verify:ingest 81, verify:accounting 8,
-verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation.
-**Live QBO-sandbox pass DONE + USER-CONFIRMED in QBO UI** (`verify:plan076-live`: real 2-line Bill Id 166 $385.79
-+ BillPayment Id 167 → Balance $0.00; user's Claude-browser check confirmed 2 lines, memo invoice #, status PAID,
-$385.79 payment from Checking bank account). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
-fire, duplicate gate "book it anyway" fires with nothing booked, Settings pay-from pickers populate from live QBO
-COA). PENDING before prod trust: **accountant sign-off** on the BillPayment GL direction only.
+migrations applied to Neon. **Live QBO-sandbox pass DONE + USER-CONFIRMED**; **Browser-QA on Demo DONE**. PENDING before
+prod trust: **accountant sign-off** on the BillPayment GL direction only.
+
+</details>
+
+<details><summary>prev objective — QBO vendor sync Slice 2 (Plan 077, BUILT on claude/qbo-vendor-eager-push)</summary>
+
+**QBO vendor sync Slice 2 — eager create-into-QBO (Plan 077) — BUILT (all 7 units), gates green, live-proven on Demo. Next: `/ship`.**
+Branch `claude/qbo-vendor-eager-push`. Final slice of the vendor-sync arc (Slice 0 #229 near-dup guard, Slice 1
+#231 pull queue). When an opted-in winery creates a vendor in Cellarhand it's pushed to QuickBooks immediately,
+so an owner-operator never opens QBO. Push runs AFTER `createVendorCore` commits (never a DB tx across the QBO
+HTTP call — Neon P2028), home-currency only (foreign `(CUR)` vendors stay lazy at bill-post, Plan 073),
+idempotent (skip if already linked; `findOrCreateVendor` query-before-creates). Fuzzy-matches QBO first
+(Slice-1 `listVendors` + Plan-074 `findVendorNearMatches`) so it never mints "Scott Labs"/"Scott Laboratories"
+in QBO — the modal offers **link-to-existing** vs **create-new**. QBO offline → `syncStatus='pending'` + a retry
+sweep (`runVendorSyncSweep` + `/api/cron/qbo-vendor-sync`, 14:45 UTC). Two vendors → one QBO id → `conflict`
+(Slice-1 `@@unique`, not a 500). Opt-in per tenant (`AppSettings.pushVendorsToQbo`, default off; large wineries
+author in QBO). Units: U1 columns+migration (applied to Neon), U2 eager-push core, U3 fuzzy pre-check action,
+U4 modal link-vs-create wired through the setup page, U5 sweep+cron, U6 `/settings` toggle, U7 `verify:vendor-sync`
+(5/5 deterministic + live QBO push/pre-check under `VERIFY_VENDOR_SYNC_LIVE=1`) + backfill + security note.
+**Gates all green:** tsc, `verify:vendor-sync` (link/idempotent/conflict/sweep-gating/opt-in + LIVE push=synced,
+pre-check clean), verify:ai-native, verify:parity, verify:naming, verify:tenant-isolation, vendor vitest 61,
+lint 0 errors, `next build` clean (cron route registered). Plan: `docs/plans/2026-07-18-077-feat-qbo-vendor-eager-push-plan.md` (status: completed).
+
+</details>
 
 </details>
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
-- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo, shipping.** Branch `claude/assistant-widget-drag-resize-3c069b`. Drag title bar to move, top-left grip to grow (bottom-right anchored, floors at default); frontend-only in [AssistantDock.tsx](src/components/assistant/AssistantDock.tsx). tsc + eslint green.
+- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo** on `claude/assistant-widget-drag-resize-3c069b`.
+
 - **Plan 073 multi-currency FX ingestion — BUILT (10 units), gates green, ready for `/ship`** on branch
   `claude/multi-currency-fx-ingestion`. Foreign invoice → base-currency inventory at a dated ECB rate
   (Frankfurter, keyless) + EUR A/P Bill to QBO; P0 double-conversion fixed by decoupling (lot=base,
@@ -129,6 +170,8 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **QBO vendor sync Slices 0–2 — the full arc.** Slice 0 near-dup guard SHIPPED (#229), Slice 1 pull queue
+  SHIPPED (#231), Slice 2 eager push BUILT (Plan 077, all 7 units, live-proven on Demo) → `/ship` next.
 - **Chat "400 Invalid messages" defect (Bhutan cmrm9s97) — FIXED, PR #220 open; ticket closed-loop.**
   `/investigate` root cause: the chat client sends the FULL conversation history every turn (no cap);
   the server (`api/assistant/route.ts` `parseMessages`) hard-rejected with 400 once history passed 40
@@ -227,4 +270,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Ticket #188 (assistant delete_harvest_pick for standalone picks + user-confirmed VineyardBlock cascade delete) BUILT on branch claude/harvest-vineyard-lib-295869 (commits e6c3fd3, b525dce); full vitest 2311/0, tsc/eslint/verify:ai-native/eval golden all green; no schema change. Ready for /review + /ship; live DB proof + browser-QA pending. Prior: Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — Ticket #188 (assistant delete_harvest_pick for standalone picks + user-confirmed VineyardBlock cascade delete) BUILT + REVIEWED (3 specialists, 0 critical; subblock-disclosure + coupling fixes) on branch claude/harvest-vineyard-lib-295869 (commits e6c3fd3, b525dce, 4905577); full vitest 2311/0, tsc/eslint/verify:ai-native/eval golden all green; no schema change. Shipping; live DB proof + browser-QA pending post-merge. Prior: P0 bottling no-cork guard BUILT + live-proven (claude/bottling-no-cork-guard-b316e0, supersedes PR #242); Feedback #241 dashboard filter BUILT; QBO vendor sync Slice 2 (Plan 077) BUILT; Plan 076 invoice ingestion SHIPPED (#246); Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._

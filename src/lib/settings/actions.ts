@@ -27,6 +27,21 @@ export const setSparklingEnabled = adminAction(async ({ actor }, enabled: boolea
   return { sparklingEnabled: enabled };
 });
 
+// Plan 077: toggle the eager QBO vendor push (a vendor created in Cellarhand is pushed to QBO immediately).
+// Admin-only; audited. Revalidates settings.
+export const setPushVendorsToQbo = adminAction(async ({ actor }, enabled: boolean): Promise<{ pushVendorsToQbo: boolean }> => {
+  await runInTenantTx(async (tx) => {
+    await tx.appSettings.upsert({
+      where: { tenantId: actor.tenantId },
+      update: { pushVendorsToQbo: enabled },
+      create: { pushVendorsToQbo: enabled }, // tenantId auto-injected; id defaults to a cuid
+    });
+    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "AppSettings", entityId: actor.tenantId, summary: `Eager QBO vendor push ${enabled ? "enabled" : "disabled"}` });
+  });
+  revalidatePath("/settings");
+  return { pushVendorsToQbo: enabled };
+});
+
 // Phase 8 (Unit 9, D5/D17): save the per-tenant costing policy — method + which components capitalize.
 // Admin-only; audited. The roll-up (Unit 4) already consults these via `isComponentCapitalized` /
 // `resolveMethodAt`, so persisting here is what makes a toggle change move cost-per-bottle.

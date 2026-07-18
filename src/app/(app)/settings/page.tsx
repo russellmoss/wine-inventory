@@ -1,4 +1,4 @@
-import { getAppSettings, getCostSettings } from "@/lib/settings/data";
+import { getAppSettings, getCostSettings, getPushVendorsToQbo } from "@/lib/settings/data";
 import { requireReadyUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { asOpsCadence, asReturnCadence } from "@/lib/compliance/types";
@@ -12,7 +12,7 @@ export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const user = await requireReadyUser();
-  const [settings, cost, profile, accounting, accountingMappings, accountingAp, accountingApPayment, commerce7, voice] = await Promise.all([
+  const [settings, cost, profile, accounting, accountingMappings, accountingAp, accountingApPayment, commerce7, voice, pushVendorsToQbo] = await Promise.all([
     getAppSettings(),
     getCostSettings(),
     prisma.complianceProfile.findFirst(),
@@ -22,10 +22,12 @@ export default async function SettingsPage() {
     getApPaymentAccounts(),
     getCommerce7Summary(),
     getVoiceSettingsForUser(user.id),
+    getPushVendorsToQbo(),
   ]);
   return (
     <SettingsClient
       sparklingEnabled={settings.sparklingEnabled}
+      pushVendorsToQbo={pushVendorsToQbo}
       cost={cost}
       accounting={accounting}
       accountingMappings={accountingMappings}
