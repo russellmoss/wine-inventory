@@ -7,23 +7,35 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**P0 bottling no-cork guard (feedback bug, PR #242) — BUILT + live-proven, ready to ship.**
-Branch `claude/bottling-no-cork-guard-b316e0`. Bug: "for all bottling runs we need mandatory a bottle, a closure
-(e.g. cork), and a label — I shouldn't be able to bottle Big Mike Big Red without a cork, but it let me." The
-automated PR #242 fixed it **client-only** (fragile). This supersedes it with a **server backstop at the two real
-write paths** + both UI mirrors + tests. (1) Pure classifier in
+**WO builder same-vessel transfer guard (feedback cmrqqm75b, P1 defect) — BUILT, gates green, ready to ship.**
+Branch `claude/wo-same-vessel-transfer-guard` (off origin/main). Bug: the WO builder let you author a transfer
+(RACK) whose source and destination are the SAME vessel; execution correctly refuses it, so a user could save a WO
+guaranteed to fail at execute — builder validation out of sync with the execution guard. `/investigate` confirmed
+root cause: execution refuses `fromVesselId === toVesselId` at [rack-core.ts:94](src/lib/vessels/rack-core.ts:94)
+(RACK) and [topping.ts:42](src/lib/cellar/topping.ts:42) (TOPPING), keyed on **vessel id**; but the shared builder
+validation core `readTask` in [proposal-readiness.ts](src/lib/work-orders/proposal-readiness.ts) only checked each
+vessel exists + is active, never source ≠ dest. Fix = mirror the guard: add a `blocking(ctx, "same_vessel", …)` in
+the RACK and TOPPING readiness cases (same-id short-circuit). Flows to BOTH surfaces automatically — the builder UI
+(`readiness.status === "blocked"` disables Create + shows the warning) AND the server write gate
+`gateWorkOrderReadinessForWrite` (refuses create/edit; `safeAction`→`settleAction` returns `{ok:false,error}`, no
+thrown ActionError). Execution guards kept as backstop, unchanged. GROUP_RACK deliberately untouched (execution
+silently filters self-members, not a reject). 4 regression tests in
+[test/work-order-readiness.test.ts](test/work-order-readiness.test.ts) (same-vessel RACK+TOPPING blocked, distinct
+vessels ready). GREEN: vitest 21/21 (readiness), tsc, eslint, verify:work-orders 43. Next: PR referencing the ticket.
+
+<details><summary>prev objective — P0 bottling no-cork guard (SHIPPED, PR #259, a173e0a)</summary>
+
+**P0 bottling no-cork guard (feedback bug) — SHIPPED, PR #259 merged (`a173e0a`).**
+Superseded client-only PR #242 with a server backstop. Pure classifier in
 [packaging-bom.ts](src/lib/bottling/packaging-bom.ts) — `classifyPackagingRole` (name/kind → bottle|closure|label;
-a capsule is deliberately NOT a closure), `missingRequiredPackaging`, `missingRolesForMaterials`. (2) Server guard
+a capsule is deliberately NOT a closure). Server guard
 [mandatory-packaging.ts](src/lib/bottling/mandatory-packaging.ts) `assertMandatoryPackaging(packaging, loadMaterials)`
-— wired into `createBottlingRun`/`editBottlingRun` ([actions.ts](src/lib/bottling/actions.ts), `prisma` loader) AND
-the WO BOTTLE task ([execute.ts](src/lib/work-orders/execute.ts), `tx` loader) so a crafted submit / assistant / a
-WO template with no packaging BoM can't slip a corkless run past. Enforced at the **entry points, not `runBottlingTx`**,
-deliberately — so the ~10 verify/seed fixtures that bottle directly don't need churn (core write path untouched).
-(3) UI mirrors in [BottlingClient.tsx](src/app/(app)/bottling/BottlingClient.tsx) (blocks submit + names what's
-missing) and [BottlingTaskForm.tsx](src/app/(app)/work-orders/[id]/execute/BottlingTaskForm.tsx). GREEN: tsc, eslint,
-vitest (32 bottling: 6 guard + role classification), verify:cost 55, verify:work-orders 43, verify:naming 25,
-verify:parity/ai-native/invariants/tripwires. **Live DB proof on Demo Winery**: corkless run REJECTED with zero
-partial writes; full (bottle+cork+label) run wrote 100 bottles + depleted cork stock 500→400; fixtures scrubbed.
+— wired into `createBottlingRun`/`editBottlingRun` ([actions.ts](src/lib/bottling/actions.ts)) AND the WO BOTTLE task
+([execute.ts](src/lib/work-orders/execute.ts)) at the entry points, not `runBottlingTx`. UI mirrors in
+[BottlingClient.tsx](src/app/(app)/bottling/BottlingClient.tsx) + BottlingTaskForm. Live Demo proof: corkless run
+REJECTED with zero partial writes; full run wrote 100 bottles + depleted cork 500→400.
+
+</details>
 
 <details><summary>prev objective — #241 dashboard Recent activity filter (BUILT)</summary>
 
@@ -261,4 +273,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — P0 bottling no-cork guard (mandatory bottle+closure+label) BUILT + live-proven on branch claude/bottling-no-cork-guard-b316e0, supersedes client-only PR #242; server backstop at createBottlingRun/editBottlingRun + WO BOTTLE task, UI mirrors, 32 bottling tests + verify:cost 55/work-orders 43/naming/parity/ai-native/invariants green, Demo-Winery live proof (corkless rejected w/ 0 writes, full run wrote 100 bottles + depleted cork). Prior: Feedback #241 dashboard Recent-activity leadership filter BUILT (claude/work-241-page-tsx-5fdfdb); QBO vendor sync Slice 2 (Plan 077) BUILT; Plan 076 invoice ingestion SHIPPED (#246); Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-18 — WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) BUILT on branch claude/wo-same-vessel-transfer-guard; /investigate confirmed builder validation missed the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id); fix mirrors it as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests, vitest 21/21 + tsc + eslint + next build + verify:work-orders 43 green. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Feedback #241 dashboard Recent-activity filter BUILT; Plan 076 invoice ingestion SHIPPED (#246); Plan 072 ingestion SHIPPED (#223)._
