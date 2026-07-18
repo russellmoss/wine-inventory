@@ -7,20 +7,27 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Vendor merge + removal (Plan 072) — BUILT (9 units), gates green, ready for /review + /ship.**
-Branch `claude/vendor-merge-removal-72844c` (worktree; `.env`+`npm ci` copied in to make it buildable). Fills
-the back-half of Plan 069's promise ("no more Scott Labs vs Scott Laboratories dupes") that shipped no way to
-FIX existing dupes. **MERGE** re-points all 4 vendor references (cellar_material, supply_lot, ap_export_event,
-vendor_contact) loser→survivor in one `runInTenantTx`, re-derives the legacy material mirror, reconciles QBO
-`externalVendorId` (carry-forward, or CONFLICT unless acknowledged), hard-deletes the loser. **REMOVE** hard-
-deletes only an unreferenced vendor (else CONFLICT → archive/merge; Unknown fallback protected). Cores in
-`vendors.ts` (mergeVendorsCore/removeVendorCore/getVendorUsage); pure helpers + 24 tests in `vendors-shared.ts`;
-`safeAdminAction` actions; `/setup/vendors` Merge+Remove UI (MergeVendorModal w/ impact preview + QBO ack);
-assistant `merge_vendors` tool (adminOnly) + duplicate detection in `query_vendors` + golden case. Governed-money
-proof `scripts/verify-vendor-merge.ts` **13/13 on Demo (real DB)** + cross-tenant merge rejection in
-verify-tenant-isolation (all green). Decision recorded (ledger inbox `q_1784328399_f3`). Gates green: tsc,
-vitest (vendors-shared 24 + assistant structural eval), verify:tenant-isolation, lint. **Remaining: run the
-remaining Phase-3 gates (next build, verify:raw-sql/naming/invariants, ai-native) → /review → /ship + browser-QA.**
+**Movable + growable assistant dock — BUILT, tsc+lint green, ready for browser-QA + /ship.**
+Branch `claude/assistant-widget-drag-resize-3c069b` (worktree; `node_modules` junctioned to main for tsc/lint).
+User ask: keep the assistant popup open but move it aside to see the screen, and drag a corner to make it
+bigger (never smaller). Frontend-only change to [AssistantDock.tsx](src/components/assistant/AssistantDock.tsx),
+one file. In the DOCKED state the panel is pinned by its **bottom-right** corner (CSS right/bottom + width/height
+in px, in React state). Dragging the **title bar** moves it (adjusts right/bottom); dragging the **top-left
+corner grip** grows it (adjusts width/height, bottom-right stays anchored → only grows toward open space). Floor
+size = old default 440×620 (or viewport if smaller) so it can't shrink below baseline; everything clamped
+on-screen; rect persisted to `localStorage` (`cellarhand:assistant-dock-rect`). Drag mutates the DOM imperatively
+and commits to state on pointer-up, so the heavy `AssistantChat` subtree doesn't re-render mid-drag. The existing
+"expand to center" focus mode is unchanged (drag/resize disabled while expanded). **Remaining: browser-QA the
+drag/resize interaction on Demo → /review → /ship.**
+
+<details><summary>prev objective (Plan 072 vendor merge — ready to ship on its own branch)</summary>
+
+Vendor merge + removal (Plan 072) — BUILT (9 units), gates green, on branch `claude/vendor-merge-removal-72844c`.
+MERGE re-points all 4 vendor FKs loser→survivor + hard-deletes loser; REMOVE guards referenced/Unknown vendors;
+assistant `merge_vendors` + dupe detection. `verify:vendor-merge` 13/13 on Demo. Decision ledger `q_1784328399_f3`.
+Remaining: finish Phase-3 gates → /review → /ship + browser-QA.
+
+</details>
 
 <details><summary>prev objective (Plan 071 — shipped)</summary>
 
@@ -131,4 +138,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-17 — Plan 072 (vendor merge + removal) BUILT (9 units) on branch claude/vendor-merge-removal-72844c. MERGE re-points all 4 vendor FKs loser→survivor + hard-deletes loser; REMOVE guards referenced/Unknown vendors; assistant merge_vendors + dupe detection. Governed-money proof verify:vendor-merge 13/13 on Demo + cross-tenant merge rejection in verify:tenant-isolation. Decision ledger q_1784328399_f3. Next: finish Phase-3 gates → /review → /ship + browser-QA._
+_Last updated: 2026-07-18 — Movable + growable assistant dock BUILT on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = old 440×620 default so it never shrinks below baseline), clamped on-screen + persisted to localStorage. Expand-to-center mode unchanged. tsc + eslint green. Next: browser-QA the drag/resize → /review → /ship._
