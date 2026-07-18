@@ -68,7 +68,7 @@ export function InboxClient(props: {
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
-  const [selected, setSelected] = React.useState<InboxNotificationDTO | MyWorkOrderRow | MyTicketRow | null>(null);
+  const [selected, setSelected] = React.useState<InboxNotificationDTO | MyTicketRow | null>(null);
 
   // Reset the reader selection when the bucket/filter changes — React's sanctioned "adjust state during
   // render" pattern (matches AppShell), not an effect.
@@ -145,13 +145,15 @@ export function InboxClient(props: {
             <>
               <FilterChips bucket="wo" current={props.filter ?? "open"} options={[["open", "Open"], ["in-progress", "In progress"], ["completed", "Completed"]]} />
               {props.workOrders.length === 0 ? <Empty label="No work orders." /> : props.workOrders.map((w) => (
-                <button key={w.id} onClick={() => setSelected(w)} style={listRow(!!selected && "number" in selected && (selected as MyWorkOrderRow).id === w.id, false)}>
+                // Selecting a work order opens it directly on its detail page — no second "Open" step in
+                // the reader pane (matches the DM bucket and the /work-orders list cards, both navigate on click).
+                <Link key={w.id} href={`/work-orders/${w.id}`} style={{ ...listRow(false, false), color: "inherit", textDecoration: "none" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                     <span style={{ color: "var(--text-primary)" }}>#{w.number} · {w.title}</span>
                     <StatusPill status={w.status} />
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Updated {fmt(w.updatedAt)}{w.dueAt ? ` · due ${fmt(w.dueAt)}` : ""}</div>
-                </button>
+                </Link>
               ))}
             </>
           ) : props.bucket === "tickets" ? (
@@ -231,7 +233,7 @@ function FilterChips({ bucket, current, options }: { bucket: InboxBucket; curren
   );
 }
 
-function Reader({ selected, onMarkUnread }: { selected: InboxNotificationDTO | MyWorkOrderRow | MyTicketRow; onMarkUnread: (id: string) => void }) {
+function Reader({ selected, onMarkUnread }: { selected: InboxNotificationDTO | MyTicketRow; onMarkUnread: (id: string) => void }) {
   // Notification (has category + href).
   if ("category" in selected) {
     const n = selected;
@@ -252,19 +254,7 @@ function Reader({ selected, onMarkUnread }: { selected: InboxNotificationDTO | M
       </div>
     );
   }
-  // Work order (has number).
-  if ("number" in selected) {
-    const w = selected;
-    return (
-      <div>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Work order #{w.number}</h2>
-        <p style={{ marginTop: 4 }}>{w.title}</p>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{w.status.replace(/_/g, " ").toLowerCase()} · updated {fmt(w.updatedAt)}</div>
-        <Link href={`/work-orders/${w.id}`} style={{ ...chip(false), display: "inline-block", marginTop: "var(--space-3)" }}>Open work order</Link>
-      </div>
-    );
-  }
-  // Ticket.
+  // Ticket. (Work orders open directly on their detail page from the list — no reader stub.)
   const t = selected;
   return (
     <div>
