@@ -225,13 +225,21 @@ export class QboClient {
     return { externalId: je.Id, version: je.SyncToken, docNumber: je.DocNumber };
   }
 
-  /** Find a QBO Vendor by exact display name, else create it. Returns the QBO Vendor.Id. (Unit 10) */
-  async findOrCreateVendor(ctx: ProviderCallContext, name: string): Promise<string> {
-    const safe = name.replace(/'/g, "''");
+  /** Find a QBO Vendor by exact display name, else create it. Returns the QBO Vendor.Id. (Unit 10)
+   *  Plan 073: when `currency` is given (a foreign, non-home bill), resolve a CURRENCY-SCOPED vendor — a
+   *  QBO vendor's currency is fixed at creation and a foreign Bill must reference a vendor whose currency
+   *  matches. QBO DisplayName is globally unique per company, so a foreign vendor gets a currency-suffixed
+   *  DisplayName ("Acme (EUR)") distinct from the home "Acme", and CurrencyRef pins its currency. The
+   *  query-before-create keeps it idempotent (a re-post finds the existing currency-scoped vendor). */
+  async findOrCreateVendor(ctx: ProviderCallContext, name: string, currency?: string): Promise<string> {
+    const displayName = currency ? `${name} (${currency.toUpperCase()})` : name;
+    const safe = displayName.replace(/'/g, "''");
     const found = await this.query<{ Vendor?: Array<{ Id: string }> }>(ctx, `SELECT Id FROM Vendor WHERE DisplayName = '${safe}'`);
     const hit = found.Vendor?.[0]?.Id;
     if (hit) return hit;
-    const created = await this.request<{ Vendor?: { Id: string } }>(ctx, "POST", "vendor", { body: { DisplayName: name } });
+    const body: Record<string, unknown> = { DisplayName: displayName };
+    if (currency) body.CurrencyRef = { value: currency.toUpperCase() };
+    const created = await this.request<{ Vendor?: { Id: string } }>(ctx, "POST", "vendor", { body });
     if (!created.Vendor?.Id) throw new ProviderFault("unknown", "QBO created a Vendor but returned no Id.");
     return created.Vendor.Id;
   }
@@ -290,8 +298,8 @@ export class QboAdapter implements AccountingAdapter {
   postJournalEntry(ctx: ProviderCallContext, input: JournalEntryInput, requestId: string) {
     return this.client.postJournalEntry(ctx, input, requestId);
   }
-  findOrCreateVendor(ctx: ProviderCallContext, name: string) {
-    return this.client.findOrCreateVendor(ctx, name);
+  findOrCreateVendor(ctx: ProviderCallContext, name: string, currency?: string) {
+    return this.client.findOrCreateVendor(ctx, name, currency);
   }
   postBill(ctx: ProviderCallContext, payload: Record<string, unknown>, requestId: string) {
     return this.client.postBill(ctx, payload, requestId);

@@ -3047,7 +3047,7 @@ model Vendor {
   tenantId         String   @default("")
   id               String   @id @default(cuid())
   name             String
-  currency         String   @default("USD") // Plan 073: the vendor's transaction currency (the currency of the QBO vendor + its bills). Backfilled to USD (both live tenants are USD-base). U6 swaps @@unique([tenantId,name]) → ([tenantId,name,currency]) alongside currency-scoped resolution.
+  currency         String   @default("USD") // Plan 073: informational "currency we usually bill this vendor in" (backfilled USD). NOT the posting authority — the A/P bill's currency comes from ApExportEvent.currency, and the QBO vendor is resolved currency-scoped from THAT (currency-suffixed DisplayName + CurrencyRef), so one Vendor row can source bills in several currencies without a unique-key change (council #4 handled QBO-side).
   terms            String? // payment terms, e.g. "Net 30" (drives Bill DueDate — U10) + "Pay at purchase"
   externalVendorId String? // QBO Vendor.Id cache (find-or-create — U10). PII stays here, never in events (D19)
   // Plan 069: first-class vendor management. Contact + purchasing metadata, columns-only (RLS-neutral — the

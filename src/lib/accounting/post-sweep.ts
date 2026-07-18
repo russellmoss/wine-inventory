@@ -149,13 +149,18 @@ async function postBill(
 ): Promise<void> {
   const ev = await prisma.apExportEvent.findUnique({
     where: { id: d.apExportEventId as string },
-    select: { postingKey: true, amount: true, debitAccount: true, receivedAt: true, dueDate: true, vendorId: true, vendorInvoiceNumber: true },
+    select: { postingKey: true, amount: true, debitAccount: true, receivedAt: true, dueDate: true, vendorId: true, vendorInvoiceNumber: true, currency: true, exchangeRate: true },
   });
   if (!ev || !ev.vendorId || !ev.debitAccount) {
     await finalize(d.id, { status: "FAILED", lastError: "AP export missing vendor or account" });
     summary.failed++;
     return;
   }
+  // Plan 073: is this a FOREIGN bill (document currency ≠ QBO home)? A foreign bill needs a currency-scoped
+  // vendor + CurrencyRef + ExchangeRate; a home-currency bill keeps the single-currency path unchanged.
+  const homeCurrency = (ctx.homeCurrency ?? "USD").toUpperCase();
+  const billCurrency = (ev.currency ?? homeCurrency).toUpperCase();
+  const isForeign = billCurrency !== homeCurrency;
   const docNumber = docNumberFor(ev.postingKey);
   try {
     const existing = await adapter.findByDocNumber(ctx, "Bill", docNumber);
@@ -164,17 +169,24 @@ async function postBill(
       summary.adopted++;
       return;
     }
-    // Resolve the QBO vendor, caching its external id on the Vendor row.
+    // Resolve the QBO vendor. A HOME-currency bill caches the external id on the Vendor row (single vendor).
+    // A FOREIGN bill resolves a CURRENCY-SCOPED vendor fresh each time (query-before-create is idempotent) —
+    // the single externalVendorId column is the home vendor and must NOT be reused for a foreign bill
+    // (its currency wouldn't match), so one supplier billed in 2 currencies maps to 2 QBO vendors (council #4).
     const vendor = await prisma.vendor.findUnique({ where: { id: ev.vendorId }, select: { name: true, externalVendorId: true } });
     if (!vendor) {
       await finalize(d.id, { status: "FAILED", lastError: "vendor row missing" });
       summary.failed++;
       return;
     }
-    let externalVendorId = vendor.externalVendorId;
-    if (!externalVendorId) {
-      externalVendorId = await adapter.findOrCreateVendor(ctx, vendor.name);
-      await runInTenantTx((tx) => tx.vendor.update({ where: { id: ev.vendorId as string }, data: { externalVendorId } }));
+    let externalVendorId: string;
+    if (isForeign) {
+      externalVendorId = await adapter.findOrCreateVendor(ctx, vendor.name, billCurrency);
+    } else {
+      externalVendorId = vendor.externalVendorId ?? (await adapter.findOrCreateVendor(ctx, vendor.name));
+      if (!vendor.externalVendorId) {
+        await runInTenantTx((tx) => tx.vendor.update({ where: { id: ev.vendorId as string }, data: { externalVendorId } }));
+      }
     }
     // Plan 072: carry the supplier invoice # in the memo (→ Bill PrivateNote) so a bookkeeper can find every
     // per-lot Bill that belongs to one supplier invoice (searchable; the Bills stay separate rows).
@@ -301,7 +313,7 @@ export async function runAccountingPostSweep(deps?: PostSweepDeps): Promise<Post
       await runAsTenant(tenantId, async () => {
         const conn = await prisma.accountingConnection.findFirst({
           where: { provider: "QBO", status: "CONNECTED" },
-          select: { id: true, externalRealmId: true, environment: true },
+          select: { id: true, externalRealmId: true, environment: true, homeCurrency: true, multiCurrencyEnabled: true },
         });
         if (!conn || !conn.externalRealmId) return;
         summary.connected++;
@@ -327,7 +339,13 @@ export async function runAccountingPostSweep(deps?: PostSweepDeps): Promise<Post
           }
           throw e;
         }
-        const ctx: ProviderCallContext = { accessToken, realmId: conn.externalRealmId, environment: conn.environment as ProviderCallContext["environment"] };
+        const ctx: ProviderCallContext = {
+          accessToken,
+          realmId: conn.externalRealmId,
+          environment: conn.environment as ProviderCallContext["environment"],
+          homeCurrency: conn.homeCurrency ?? "USD",
+          multiCurrencyEnabled: conn.multiCurrencyEnabled,
+        };
         const adapter = deps?.adapterFactory ? deps.adapterFactory() : new QboAdapter();
 
         const claimed = await prisma.accountingDelivery.findMany({
