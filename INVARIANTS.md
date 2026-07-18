@@ -134,6 +134,13 @@ The cost engine is a projection over the ledger; it never invents or loses money
   gain/loss + revaluation and posts the bill in its own currency; the reconciliation invariant
   `base inventory value == round2(foreign amount × exchangeRate)` ties the two. Proven by `verify:ingest`
   (EUR scenario + reconciliation + historical-cost-not-revalued) and re-proven single-currency by `verify:cost`.
+- **An ingested invoice emits its A/P exactly once, as ONE aggregate invoice-level event — never a per-lot
+  event (AP-1, Plan 076).** Invoice ingestion passes `skipApEmit` to `receiveSupplyCore` so the per-lot emit is
+  suppressed, then calls `emitApExportForInvoice` once after all lots exist — one `ApExportEvent`
+  (`postingKey = apinv:<invoiceId>`, multi-line `billLinesJson`) → one multi-line QBO Bill. This keeps a
+  supplier invoice a single payable in QuickBooks (no duplicate-DocNumber collision, QBO err 6140) and gives
+  payment status one balance to track. Manual (non-ingest) receipts keep the per-lot path unchanged. Proven by
+  `verify:ingest` (scenario 1: exactly one aggregate event + zero per-lot events for an applied invoice).
 
 ### Phase 8b — advanced cost (D7/D12/D18/D20)
 - **Barrel cost is fill-based accelerated + time×space (D7/U8).** A barrel amortizes over its useful life in
