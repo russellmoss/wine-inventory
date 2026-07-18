@@ -5,6 +5,8 @@ import {
   lineSubtotal,
   landedPreview,
   isForeignCurrency,
+  convertedPreview,
+  needsFxRate,
   canConfirmDoc,
   buildPrecommitSummary,
   summarySentence,
@@ -219,5 +221,47 @@ describe("buildPrecommitSummary", () => {
     expect(text).toMatch(/1 restock/);
     expect(text).toMatch(/2 A\/P bills/);
     expect(text).toMatch(/total 450.00 USD/);
+  });
+});
+
+// Plan 073: the review-screen FX helpers — converted preview + the fail-loud rate gate.
+describe("convertedPreview (Plan 073)", () => {
+  const eurDoc = doc({
+    currency: "EUR",
+    lines: [line({ id: "a", lineNo: 1, qty: 10, unitPrice: 11, lineTotal: 110 })],
+  });
+  it("converts a foreign doc's landed preview to base at the rate (round2)", () => {
+    // €110 × 1.25 = 137.50 base
+    expect(convertedPreview(eurDoc, "USD", 1.25)).toEqual([137.5]);
+  });
+  it("returns the un-converted (foreign) preview when the rate is missing", () => {
+    expect(convertedPreview(eurDoc, "USD", null)).toEqual([110]);
+  });
+  it("a base-currency doc is never converted (rate ignored)", () => {
+    const usd = doc({ currency: "USD", lines: [line({ qty: 10, unitPrice: 11, lineTotal: 110 })] });
+    expect(convertedPreview(usd, "USD", 1.25)).toEqual([110]);
+  });
+});
+
+describe("needsFxRate + canConfirmDoc FX gate (Plan 073)", () => {
+  it("a foreign doc with no rate needs one; with a positive rate it doesn't", () => {
+    expect(needsFxRate("EUR", "USD", null)).toBe(true);
+    expect(needsFxRate("EUR", "USD", 0)).toBe(true);
+    expect(needsFxRate("EUR", "USD", 1.1)).toBe(false);
+    expect(needsFxRate("USD", "USD", null)).toBe(false); // base doc never needs a rate
+  });
+
+  it("Confirm is BLOCKED for a foreign doc with no rate, and cleared once a rate is supplied", () => {
+    const eur = doc({ currency: "EUR", lines: [line({ qty: 1, unitPrice: 10, lineTotal: 10 })] });
+    const blocked = canConfirmDoc(eur, { baseCurrency: "USD", rate: null });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.reasons.some((r) => /exchange rate/i.test(r))).toBe(true);
+    const okGate = canConfirmDoc(eur, { baseCurrency: "USD", rate: 1.1 });
+    expect(okGate.ok).toBe(true);
+  });
+
+  it("without the fx arg the gate is unchanged (base-currency callers unaffected)", () => {
+    const usd = doc({ currency: "USD", lines: [line({ qty: 1, unitPrice: 10, lineTotal: 10 })] });
+    expect(canConfirmDoc(usd).ok).toBe(true);
   });
 });

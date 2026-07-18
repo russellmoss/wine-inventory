@@ -129,10 +129,34 @@ export function landedPreview(doc: Pick<ReviewDoc, "lines" | "charges">): (numbe
   return allocation.map((a) => a.landedLineTotal);
 }
 
-/** Is this line billed in a currency different from the winery's base currency? (No FX — just a flag.) */
+/** Is this line billed in a currency different from the winery's base currency? */
 export function isForeignCurrency(docCurrency: string | null, baseCurrency: string | null): boolean {
   if (!docCurrency || !baseCurrency) return false;
   return docCurrency.trim().toUpperCase() !== baseCurrency.trim().toUpperCase();
+}
+
+/**
+ * Plan 073: the per-line landed preview CONVERTED to the base currency at `rate` (base per 1 foreign), in
+ * doc order. For a base-currency doc (or a null rate) this is the un-converted preview — the screen shows the
+ * foreign figure until a rate is entered. `rate` mirrors the apply core's money grain (round2 cents).
+ */
+export function convertedPreview(
+  doc: Pick<ReviewDoc, "lines" | "charges" | "currency">,
+  baseCurrency: string | null,
+  rate: number | null,
+): (number | null)[] {
+  const foreign = landedPreview(doc);
+  if (!isForeignCurrency(doc.currency ?? null, baseCurrency) || rate == null || !(rate > 0)) return foreign;
+  return foreign.map((f) => (f == null ? null : Math.round(f * rate * 100) / 100));
+}
+
+/**
+ * Plan 073: does this doc need an exchange rate the review screen hasn't got? True when the doc is in a
+ * foreign currency AND no usable rate (feed-suggested or manual override) is available. This is the fail-loud
+ * gate — a foreign invoice can't be applied without a rate (D14), never at a fabricated 1.0.
+ */
+export function needsFxRate(docCurrency: string | null, baseCurrency: string | null, rate: number | null): boolean {
+  return isForeignCurrency(docCurrency, baseCurrency) && !(rate != null && Number.isFinite(rate) && rate > 0);
 }
 
 export type ConfirmGate = { ok: boolean; reasons: string[] };
@@ -142,13 +166,20 @@ export type ConfirmGate = { ok: boolean; reasons: string[] };
  * marked as a landed receipt (the un-pre-checked gate); there must be at least one non-skip line; and every
  * "add to existing" line must have actually chosen a material. Returns the blocking reasons for the UI.
  */
-export function canConfirmDoc(doc: Pick<ReviewDoc, "docType" | "landedReceipt" | "lines" | "status">): ConfirmGate {
+export function canConfirmDoc(
+  doc: Pick<ReviewDoc, "docType" | "landedReceipt" | "lines" | "status" | "currency">,
+  fx?: { baseCurrency: string | null; rate: number | null },
+): ConfirmGate {
   const reasons: string[] = [];
   if (doc.status === "applied") return { ok: false, reasons: ["This invoice has already been applied."] };
   if (doc.status === "applying") return { ok: false, reasons: ["This invoice is being applied."] };
   if (!isReceiptDoc(doc.docType)) {
     reasons.push("Only an invoice (or a landed proforma) can be applied — reclassify it as an invoice to intake it.");
     return { ok: false, reasons };
+  }
+  // Plan 073: a foreign-currency receipt with no usable rate can't be applied — the money would be wrong (D14).
+  if (fx && needsFxRate(doc.currency ?? null, fx.baseCurrency, fx.rate)) {
+    reasons.push("Enter the exchange rate — the FX feed had none for this invoice's date.");
   }
   if (doc.docType === "proforma" && doc.landedReceipt !== true) {
     reasons.push("Answer the landed-receipt question — Yes means the goods were physically received in full.");
