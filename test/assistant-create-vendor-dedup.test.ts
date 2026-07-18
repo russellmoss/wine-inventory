@@ -41,11 +41,17 @@ describe("create_vendor near-duplicate guard", () => {
     expect(anyway?.resume).toContain('"createAnyway":true'); // resume re-runs with the bypass flag
   });
 
-  it("bypasses the guard and proposes when createAnyway is set (no loop)", async () => {
+  it("bypasses the NEAR-dup guard and proposes when createAnyway is set (no loop)", async () => {
+    mocks.findVendorsByName.mockResolvedValue([]); // exact-dup check always runs now, even with createAnyway
     const out = (await createVendorTool.run(ctx, { name: "Scott Laboratories", createAnyway: true })) as Out;
     expect(out.needsConfirmation).toBe(true);
     expect(out.needsChoice).toBeUndefined();
-    expect(mocks.getVendorNearMatchesCore).not.toHaveBeenCalled();
+    expect(mocks.getVendorNearMatchesCore).not.toHaveBeenCalled(); // near-check skipped
+  });
+
+  it("still refuses an EXACT duplicate even with createAnyway set (case-variant dup guard)", async () => {
+    mocks.findVendorsByName.mockResolvedValue([{ id: "v1", name: "Scott Labs" }]);
+    await expect(createVendorTool.run(ctx, { name: "scott labs", createAnyway: true })).rejects.toThrow(/already exists/i);
   });
 
   it("still hard-refuses an EXACT duplicate before ever checking near-matches", async () => {

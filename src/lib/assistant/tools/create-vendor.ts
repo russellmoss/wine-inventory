@@ -59,10 +59,14 @@ export const createVendorTool: AssistantTool = {
     // Dedup: refuse an EXACT duplicate, and surface NEAR-duplicates as a choice (unless the user already
     // chose "create anyway" via the picker). The whole point of managed vendors is one row per supplier.
     const tenantId = ctx.user.activeOrganizationId;
-    if (tenantId && !input.createAnyway) {
+    if (tenantId) {
+      // An EXACT duplicate is ALWAYS refused — even on the "create anyway" bypass, and case-insensitively
+      // (the DB unique is case-sensitive, so this is the only guard against a case-variant dup).
       const existing = await findVendorsByName(tenantId, name);
       const exact = existing.find((v) => v.name.trim().toLowerCase() === name.toLowerCase());
       if (exact) throw new Error(`A vendor named "${exact.name}" already exists — no need to create it again.`);
+    }
+    if (tenantId && !input.createAnyway) {
       const { high } = await getVendorNearMatchesCore(name, { tenantId });
       if (high.length) {
         // Re-run this tool with the SAME input + createAnyway to skip the guard (deterministic, no model loop).

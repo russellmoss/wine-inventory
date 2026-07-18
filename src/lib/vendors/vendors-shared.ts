@@ -300,29 +300,34 @@ export function stripVendorCurrencySuffix(name: string): { base: string; had: bo
   return { base: name.trim(), had: false };
 }
 
-/** Canonical token list for comparison: currency-stripped, &→and, infix-homophone, legal-suffix-dropped,
- *  synonym-folded, punctuation-split. Falls back to the pre-drop tokens if dropping legal words empties it
- *  (a vendor literally named "Company" keeps its token). Pure. */
+/** Canonical token list for comparison: accent-folded (Château→Chateau), currency-stripped, &→and,
+ *  infix-homophone, legal-suffix-dropped, synonym-folded, UNICODE-punctuation-split (so accented and
+ *  non-Latin/CJK names tokenize instead of degrading to empty). Falls back to the pre-drop tokens if
+ *  dropping legal words empties it (a vendor literally named "Company" keeps its token). Pure. */
 function vendorNameTokens(name: string): string[] {
-  let s = stripVendorCurrencySuffix(name).base.toLowerCase();
+  let s = stripVendorCurrencySuffix(name).base
+    .normalize("NFKD").replace(/\p{Diacritic}/gu, "") // fold accents so "Château" ≈ "Chateau"
+    .toLowerCase();
   s = s.replace(/&/g, " and ");
   for (const [d, word] of Object.entries(DIGIT_HOMOPHONES)) {
-    s = s.replace(new RegExp(`(?<=[a-z])${d}(?=[a-z])`, "g"), word);
+    s = s.replace(new RegExp(`(?<=\\p{L})${d}(?=\\p{L})`, "gu"), word);
   }
-  const raw = s.split(/[^a-z0-9]+/).filter(Boolean).map((t) => TOKEN_SYNONYMS[t] ?? t);
+  const raw = s.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map((t) => TOKEN_SYNONYMS[t] ?? t);
   const dropped = raw.filter((t) => !LEGAL_SUFFIX_TOKENS.has(t));
   return dropped.length ? dropped : raw;
 }
 
-/** Order-sensitive + order-insensitive canonical keys for a name. */
-function vendorNameKeys(name: string): { ordered: string; sorted: string } {
+/** Order-sensitive + order-insensitive canonical keys for a name, plus the token count. */
+function vendorNameKeys(name: string): { ordered: string; sorted: string; count: number } {
   const tokens = vendorNameTokens(name);
-  return { ordered: tokens.join(""), sorted: [...tokens].sort().join("") };
+  return { ordered: tokens.join(""), sorted: [...tokens].sort().join(""), count: tokens.length };
 }
 
 export type VendorMatchLevel = "high" | "medium" | null;
 
-const HIGH_SIM = 0.86; // edit-distance floor for a HIGH (soft-block) match
+const HIGH_SIM = 0.91; // edit-distance floor for a HIGH (soft-block) match — above 0.90 so a single
+                       // one-character difference in a short two-word name ("Hill Family"/"Hall Family",
+                       // 1 edit / 10 chars = 0.90) lands in MEDIUM; longer names with a typo still clear it
 const MED_SIM = 0.74; // …and for a MEDIUM (suggestion) match
 
 /**
@@ -344,9 +349,14 @@ export function nearDuplicateLevel(a: string, b: string): VendorMatchLevel {
   if (!ka.ordered || !kb.ordered) return null;
   if (ka.ordered === kb.ordered || ka.sorted === kb.sorted) return "high";
 
-  // Abbreviation-by-truncation with a shared leading run ("Gusmer"/"Gusmer Ent…", clipped names).
+  // Abbreviation-by-truncation with a shared leading run ("Scott Analytical"/"Scott Analytics"). Gated on
+  // the shorter side having ≥2 tokens so a bare first word ("Napa" vs "Napa Valley Barrel Co") does NOT
+  // soft-block — that lands in MEDIUM via edit-similarity instead. Single-token exact-key matches (Gusmer /
+  // Gusmer Enterprises, once the legal suffix is dropped) are already caught by the equal-key check above.
   const lcp = commonPrefixLen(ka.ordered, kb.ordered);
-  if (lcp >= 4 && lcp >= 0.6 * Math.min(ka.ordered.length, kb.ordered.length)) return "high";
+  if (lcp >= 4 && lcp >= 0.6 * Math.min(ka.ordered.length, kb.ordered.length) && Math.min(ka.count, kb.count) >= 2) {
+    return "high";
+  }
 
   const s = Math.max(similarity(ka.ordered, kb.ordered), similarity(ka.sorted, kb.sorted));
   if (s >= HIGH_SIM) return "high";
@@ -373,7 +383,7 @@ export function findVendorNearMatches<T extends { id: string; name: string }>(
 ): { high: T[]; medium: T[] } {
   const high: T[] = [];
   const medium: T[] = [];
-  const ref = (name ?? "").trim();
+  const ref = (name ?? "").trim().slice(0, 200); // cap: bound the O(candidate·stored) edit-distance work
   if (!ref) return { high, medium };
   for (const v of vendors) {
     if (!v?.name || v.name === UNKNOWN_VENDOR_NAME) continue;

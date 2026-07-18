@@ -267,6 +267,25 @@ describe("nearDuplicateLevel", () => {
     expect(nearDuplicateLevel("", "Acme")).toBeNull();
     expect(nearDuplicateLevel("Acme", "")).toBeNull();
   });
+
+  // Tuning: don't soft-block on a bare shared first word or a single-character surname difference.
+  it("does NOT soft-block (HIGH) a longer name sharing only a bare first word", () => {
+    expect(nearDuplicateLevel("Napa", "Napa Valley Barrel Co")).not.toBe("high");
+    expect(nearDuplicateLevel("Wine", "Wine Warehouse")).not.toBe("high");
+  });
+  it("does NOT soft-block one-character-different surnames (Bell/Ball, Hill/Hall)", () => {
+    expect(nearDuplicateLevel("Bell Wines", "Ball Wines")).not.toBe("high");
+    expect(nearDuplicateLevel("Hill Family", "Hall Family")).not.toBe("high");
+  });
+
+  // Unicode: accented + non-Latin names must still dedup (were a silent no-op before).
+  it("HIGH: accent-folded match (Château Fée ↔ Chateau Fee)", () => {
+    expect(nearDuplicateLevel("Château Fée", "Chateau Fee")).toBe("high");
+  });
+  it("HIGH: identical non-Latin (CJK) names match instead of degrading to null", () => {
+    expect(nearDuplicateLevel("李記酒莊", "李記酒莊")).toBe("high");
+    expect(nearDuplicateLevel("李記酒莊", "李記酒")).not.toBeNull(); // near-variant still surfaces
+  });
 });
 
 describe("findVendorNearMatches", () => {
