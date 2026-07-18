@@ -93,6 +93,23 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["summary", "edits"],
     },
   },
+  {
+    name: "request_clarification",
+    description:
+      "Use this INSTEAD of apply_fix when the feedback is too vague to know what went wrong even after investigating — ask the user 1-3 specific questions (what they expected, what the assistant got wrong, what they were trying to do) rather than guessing. Prefer a real fix; only ask when genuinely blocked. NEVER call this after apply_fix in the same run.",
+    input_schema: {
+      type: "object",
+      properties: {
+        reason: { type: "string", description: "Why you can't fix it yet (1-2 sentences)." },
+        questions: {
+          type: "array",
+          items: { type: "string" },
+          description: "1-3 short, specific questions for the user.",
+        },
+      },
+      required: ["reason", "questions"],
+    },
+  },
 ];
 
 function runTool(name: string, input: Record<string, unknown>): string {
@@ -157,8 +174,9 @@ CRITICAL SAFETY RULES:
 - Never weaken authentication, authorization, vineyard scoping, input validation, or the confirm-before-write flow. Never touch secrets, env, prisma schema/migrations, or CI workflows.
 - Prefer the smallest change that addresses the feedback — often a prompt, tool description, or resolution tweak in src/lib/assistant/.
 - If you cannot fix it safely and confidently, call apply_fix with an empty edits array and explain why.
+- If the feedback is too VAGUE to know what actually went wrong even after investigating, call request_clarification with 1-3 specific questions for the user INSTEAD of guessing. Strongly prefer a real fix; only ask when genuinely blocked. Never call request_clarification after apply_fix.
 
-Investigate with list_dir/read_file, then call apply_fix exactly once with the full new contents of each changed file.`;
+Investigate with list_dir/read_file, then call apply_fix exactly once with the full new contents of each changed file — or request_clarification if you're blocked on missing detail.`;
 
 async function main() {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -223,8 +241,9 @@ The assistant's code lives under src/lib/assistant/ (tools, prompt, run loop, re
       },
     ];
     let fix: FixResult | null = null;
+    let clarification: { reason: string; questions: string[] } | null = null;
 
-    for (let turn = 0; turn < MAX_TURNS && !fix; turn++) {
+    for (let turn = 0; turn < MAX_TURNS && !fix && !clarification; turn++) {
       const res = await client.messages.create({
         model: MODEL,
         max_tokens: 16_000,
@@ -243,6 +262,11 @@ The assistant's code lives under src/lib/assistant/ (tools, prompt, run loop, re
         if (block.name === "apply_fix") {
           fix = block.input as FixResult;
           results.push({ type: "tool_result", tool_use_id: block.id, content: "received" });
+        } else if (block.name === "request_clarification" && !fix) {
+          const input = block.input as { reason?: unknown; questions?: unknown };
+          const questions = Array.isArray(input.questions) ? input.questions.map((q) => String(q)).filter(Boolean).slice(0, 3) : [];
+          clarification = { reason: String(input.reason ?? ""), questions };
+          results.push({ type: "tool_result", tool_use_id: block.id, content: "received" });
         } else {
           results.push({
             type: "tool_result",
@@ -252,6 +276,20 @@ The assistant's code lives under src/lib/assistant/ (tools, prompt, run loop, re
         }
       }
       messages.push({ role: "user", content: results });
+    }
+
+    // Plan 079 U8: the model asked the user for detail instead of guessing → write the request for
+    // the workflow's clarification step; open no PR. apply_fix takes precedence if both happened.
+    if (!fix && clarification && clarification.questions.length) {
+      writeFileSync(
+        join(ROOT, ".feedback-clarification.json"),
+        JSON.stringify({ questions: clarification.questions, reason: clarification.reason }),
+        "utf8",
+      );
+      setOutput("clarification_requested", "true");
+      setOutput("changed", "false");
+      console.log(`Requested clarification: ${clarification.questions.join(" | ")}`);
+      return;
     }
 
     if (!fix || fix.edits.length === 0) {
