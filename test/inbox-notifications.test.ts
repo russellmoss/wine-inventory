@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   shouldSuppressSelfNotification,
+  shouldEmitNotification,
   buildTicketNotificationPayload,
   buildWorkOrderNotificationPayload,
   toNotificationDTO,
@@ -19,6 +20,23 @@ describe("shouldSuppressSelfNotification", () => {
   it("does not suppress when there is no actor (system event)", () => {
     expect(shouldSuppressSelfNotification("u1", null)).toBe(false);
     expect(shouldSuppressSelfNotification("u1", undefined)).toBe(false);
+  });
+});
+
+describe("shouldEmitNotification", () => {
+  it("suppresses a self-action by default (allowSelf off)", () => {
+    expect(shouldEmitNotification("u1", "u1")).toBe(false);
+  });
+  it("emits a self-action when allowSelf is on (self-assigned WO → my inbox)", () => {
+    expect(shouldEmitNotification("u1", "u1", true)).toBe(true);
+  });
+  it("always emits to a different recipient, regardless of allowSelf", () => {
+    expect(shouldEmitNotification("u1", "u2")).toBe(true);
+    expect(shouldEmitNotification("u1", "u2", true)).toBe(true);
+  });
+  it("emits a system event (no actor)", () => {
+    expect(shouldEmitNotification("u1", null)).toBe(true);
+    expect(shouldEmitNotification("u1", undefined)).toBe(true);
   });
 });
 

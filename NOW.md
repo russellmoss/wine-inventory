@@ -7,15 +7,19 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — SHIPPING (PR #265).**
-Branch `claude/harvest-vineyard-lib-295869`. Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data cleanup):
-couldn't delete blocks refused by dependent Brix/harvest records, and no path to delete a standalone harvest pick.
-(1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix`; hardened
-`deleteHarvestPick` refuses a crushed pick (`LotHarvestSource` Restrict; was a latent 500) + fixed audit action.
-(2) **Confirmed cascade in `db_delete`** — `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`; `VineyardBlock`
-cascades Brix + harvest records (+ discloses subblocks) but HARD-REFUSES crushed picks & keeps WO-task FK a hard wall.
-No schema. `/review` CLEAR (3 specialists, 0 critical). Merged origin/main; **vitest 2333/0**, tsc/eslint/ai-native green.
-PENDING (post-merge): live DB proof (runAsTenant Demo) + browser-QA.
+**Ticket #268 — self-assigned WO emitted no inbox notification + confusing "Issue" button — SHIPPING.**
+Branch `claude/work-order-inbox-emit-c163c0`. Feedback `cmrqtvwja000fij04rsn25z15` (Demo Winery). Two issues:
+(a) the WO detail "Issue" button was ambiguous (reads like "report a problem"; it actually flips DRAFT→ISSUED and
+opens execution); (b) **the real defect** — a self-assigned WO showed in the inbox WO bucket (assigneeId set) but
+produced NO inbox notification, because every emit path suppressed self-notifications AND the create path never
+emitted an assignment notification at all.
+Fix: new `allowSelfNotification` flag on `EmitNotificationInput` + pure `shouldEmitNotification` gate; emit a
+`WO_ASSIGNED` notification at the create chokepoint (`createWorkOrderCore`) to the resolved assignee **allowing
+self** (a WO you assigned yourself is a legit to-do), and mark the reassign emit self-aware too. `WO_STATUS`
+self-suppression is unchanged (scoped). Button → "Issue & open for execution" + a DRAFT helper line.
+6 files, in-fence (inbox + work-orders/lifecycle + WO detail client). tsc/eslint green; vitest 50/50 (4 new gate
+tests); **DB proof passed** (runAsTenant Demo: self-assign → `inbox.emit` fired + `WO_ASSIGNED` read back, WO_STATUS
+still suppressed, fixtures scrubbed). NEXT: /ship → merge → resolve ticket + DM reporter.
 
 <details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, SHIPPED PR #262)</summary>
 
@@ -189,6 +193,7 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **Ticket #188 — `delete_harvest_pick` + confirmed VineyardBlock cascade — MERGED (squash PR #265, 3eb512e); ticket RESOLVED.** (moved off Current.)
 - **Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2 display) — SHIPPED + MERGED (PR #274, 222fe63); ticket RESOLVED/DEFECT, reporter Mike DM'd; branch pruned.**
   Design-partner (Mike) report on `/inbox?bucket=wo`: "when I select a work order to view it, I shouldn't have to
   select it again in the viewing box to open it." `/investigate` (via the real ticket `pageUrl`, not `/work-orders`)
@@ -299,4 +304,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._
+_Last updated: 2026-07-18 — Ticket #268 (feedback cmrqtvwja, Demo Winery) IN FLIGHT on `claude/work-order-inbox-emit-c163c0`: self-assigned WO emitted no inbox notification (real defect) + confusing "Issue" button. Fix = `allowSelfNotification` flag + pure `shouldEmitNotification` gate; emit WO_ASSIGNED at `createWorkOrderCore` allowing self; button → "Issue & open for execution" + DRAFT helper. tsc/eslint green, vitest 50/50 (4 new), DB proof passed (runAsTenant Demo self-assign → WO_ASSIGNED read back). → /ship next. Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._

@@ -230,6 +230,19 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
       entityId: wo.id,
       summary: `Drafted work order #${wo.number}: ${input.title.trim()}`,
     });
+    // Inbox hook (Unit 5): a new WO with a resolved Lead lands in that person's inbox as a WO_ASSIGNED
+    // notification — including one you assigned to yourself (allowSelfNotification), which the WO bucket
+    // already surfaced but which produced no notification before. Skipped when the Lead didn't resolve to
+    // a member (email-only external assignee → no user to notify).
+    if (assigneeId) {
+      await emitNotificationTx(tx, {
+        recipientUserId: assigneeId,
+        recipientEmail: input.assigneeEmail ?? "",
+        ...buildWorkOrderNotificationPayload({ workOrderId: wo.id, workOrderNumber: wo.number, event: "assigned" }),
+        actor: { actorUserId: actor.actorUserId, actorEmail: actor.actorEmail },
+        allowSelfNotification: true,
+      });
+    }
     return wo;
   });
   return { workOrderId: created.id, number: created.number, status: created.status };
@@ -294,13 +307,16 @@ export async function assignWorkOrderCore(
       select: { id: true, number: true, status: true },
     });
     await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "WorkOrder", entityId: wo.id, summary: `Reassigned work order #${wo.number}` });
-    // Inbox hook (Unit 5): tell the NEW assignee the WO is theirs (self-assign is suppressed).
+    // Inbox hook (Unit 5): tell the NEW assignee the WO is theirs — including a self-reassignment
+    // (allowSelfNotification), consistent with the create path: an assignment you made to yourself is a
+    // to-do you want in your inbox, not noise.
     if (assigneeId) {
       await emitNotificationTx(tx, {
         recipientUserId: assigneeId,
         recipientEmail: input.assigneeEmail ?? "",
         ...buildWorkOrderNotificationPayload({ workOrderId: wo.id, workOrderNumber: wo.number, event: "assigned" }),
         actor: { actorUserId: actor.actorUserId, actorEmail: actor.actorEmail },
+        allowSelfNotification: true,
       });
     }
     return row;
