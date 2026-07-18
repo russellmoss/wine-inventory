@@ -1,6 +1,7 @@
 import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { listVendors } from "@/lib/vendors/vendors";
 import { listVendorImportCandidates } from "@/lib/vendors/vendor-import-core";
+import { getPushVendorsToQbo } from "@/lib/settings/data";
 import { VendorsClient } from "./VendorsClient";
 
 export const dynamic = "force-dynamic";
@@ -18,5 +19,6 @@ export default async function VendorsPage() {
   const vendors = await listVendors({ tenantId });
   // The import queue + pull are admin/developer-only (same gate the actions enforce).
   const importCandidates = isAdmin ? await listVendorImportCandidates({ tenantId }) : [];
-  return <VendorsClient vendors={vendors} isAdmin={isAdmin} importCandidates={importCandidates} />;
+  const qboPushEnabled = await getPushVendorsToQbo(); // Plan 077: drives the create modal's QBO link-vs-create step
+  return <VendorsClient vendors={vendors} isAdmin={isAdmin} importCandidates={importCandidates} qboPushEnabled={qboPushEnabled} />;
 }
