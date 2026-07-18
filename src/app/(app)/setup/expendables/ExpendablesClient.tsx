@@ -14,6 +14,7 @@ import {
   type MaterialFormValue,
 } from "@/components/cellar/MaterialForm";
 import type { VendorRow } from "@/lib/vendors/vendors-shared";
+import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
 import { receiveSupplyAction, setMaterialActiveAction, listMaterialLotsAction } from "@/lib/cost/actions";
 import type { MaterialLotRow } from "@/lib/cellar/materials";
@@ -59,7 +60,7 @@ function useRunner() {
 /** The stored category for a material (fallback derives from kind for legacy rows). */
 const catOf = (m: CellarMaterialDTO): MaterialCategory => (m.category as MaterialCategory) ?? categoryOf(m.kind);
 
-export function ExpendablesClient({ materials, vendors }: { materials: CellarMaterialDTO[]; vendors: VendorRow[] }) {
+export function ExpendablesClient({ materials, vendors, customUnits = [] }: { materials: CellarMaterialDTO[]; vendors: VendorRow[]; customUnits?: CustomUnitRow[] }) {
   const { error, pending, run } = useRunner();
   const router = useRouter();
   const refreshVendors = React.useCallback(() => router.refresh(), [router]);
@@ -256,6 +257,7 @@ export function ExpendablesClient({ materials, vendors }: { materials: CellarMat
         run={run}
         familiesByCategory={familiesByCategory}
         vendors={vendors}
+        customUnits={customUnits}
         onVendorCreated={refreshVendors}
         onClose={() => setAddOpen(false)}
       />
@@ -276,6 +278,7 @@ export function ExpendablesClient({ materials, vendors }: { materials: CellarMat
         run={run}
         familiesByCategory={familiesByCategory}
         vendors={vendors}
+        customUnits={customUnits}
         onVendorCreated={refreshVendors}
         onClose={() => setEditId(null)}
       />
@@ -557,6 +560,7 @@ function AddExpendableModal({
   run,
   familiesByCategory,
   vendors,
+  customUnits,
   onVendorCreated,
   onClose,
 }: {
@@ -565,6 +569,7 @@ function AddExpendableModal({
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
   familiesByCategory: Map<MaterialCategory, Set<string>>;
   vendors: VendorRow[];
+  customUnits: CustomUnitRow[];
   onVendorCreated: () => void;
   onClose: () => void;
 }) {
@@ -581,7 +586,7 @@ function AddExpendableModal({
   return (
     <Modal open={open} onClose={onClose} title="Add expendable" subtitle="Product, purchase, and how it's tracked" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" vendors={vendors} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" vendors={vendors} customUnits={customUnits} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
@@ -599,6 +604,7 @@ function EditMaterialModal({
   run,
   familiesByCategory,
   vendors,
+  customUnits,
   onVendorCreated,
   onClose,
 }: {
@@ -607,6 +613,7 @@ function EditMaterialModal({
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
   familiesByCategory: Map<MaterialCategory, Set<string>>;
   vendors: VendorRow[];
+  customUnits: CustomUnitRow[];
   onVendorCreated: () => void;
   onClose: () => void;
 }) {
@@ -626,7 +633,7 @@ function EditMaterialModal({
   return (
     <Modal open={!!material} onClose={onClose} title={material ? `Edit · ${materialDisplayName(material)}` : "Edit"} subtitle="Correct the item's setup details" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} vendors={vendors} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} vendors={vendors} customUnits={customUnits} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>

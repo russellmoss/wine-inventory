@@ -7,20 +7,32 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Movable + growable assistant dock — BUILT + browser-QA'd on Demo, shipping now.**
-Branch `claude/assistant-widget-drag-resize-3c069b`. User ask: keep the assistant popup open but move it aside to
-see the screen, and drag a corner to make it bigger (never smaller). Frontend-only change to
-[AssistantDock.tsx](src/components/assistant/AssistantDock.tsx), one file. In the DOCKED state the panel is pinned
-by its **bottom-right** corner (right/bottom + width/height in React state). Dragging the **title bar** moves it;
-dragging the **top-left corner grip** grows it (bottom-right stays anchored → only grows toward open space). Floor
-size = the historical default `min(440,94vw) × min(620,80vh)` so it can't shrink below baseline; everything clamped
-on-screen. Always OPENS at the default place + size; drag/resize are ephemeral, so closing (×) + reopening is the
-"reset to default" gesture (no persistence). "Expand to center" mode unchanged (drag/resize disabled while
-expanded); drag mutates the DOM imperatively, committing on pointer-up so the heavy `AssistantChat` subtree
-doesn't re-render mid-drag. Verified live on Demo: opens 440×513, grows from top-left, floors at default, moves,
-resets on reopen. tsc + eslint green.
+**Plan 075 custom measurement units for material intake — BUILT (8 units, all gates green), ready for `/ship`.**
+Branch `claude/custom-units-invoice-a49844`. User ask: at invoice ingest, let them "+ Create unit" beyond the
+built-ins (define a unit's dimension weight/volume/count + how big one is), add `ton`, and clarify qty vs
+pack-size. Core insight: a custom unit == a built-in == `{dimension, perCanonical}`; everything funnels through the
+one pure `measure.ts::convert()` which fails SAFE (unknown→null→UNKNOWN cost, never wrong $). Money-safe boundary:
+custom units live at intake/display ONLY; stored stock + the cost core stay canonical (g/mL/unit), so
+`coerceStockUnit` + consume path are untouched. Units: (1) `ton` = US short ton 907184.74 g (NOT metric tonne —
+left unresolved to avoid a silent 10% error); (2) `CustomUnit` per-tenant RLS table (copied Vendor template,
+`verify:tenant-isolation` green); (3) `measure.ts` gains optional `extraUnits` param + `custom-units.ts`
+loader; (4) threaded `extraUnits` through the intake cost seams (`deriveOpeningLot`/`normalizeLineToStock`/ingest
+apply/create+update material cores) — `verify:cost` 55/55, `verify:ingest` 62; (5) `createCustomUnitCore` +
+actions (rejects reserved names/dupes, returns `{ok,error}`); (6) qty/pack-size/unit tooltips (`InfoHint`,
+token-driven); (7) `CreateUnitModal` + merged dropdowns on BOTH the invoice-review pack-unit select and the manual
+expendables Unit select (pure model teaches Confirm gate about custom names); (8) `create_custom_unit` +
+`query_custom_units` assistant tools (goldens, `verify:ai-native` gap closed). Gates: tsc 0, `next build` clean,
+vitest 2292/0, lint 0 errors, cost/ingest/tenant-isolation/ai-native/parity/naming all green. **Browser-QA'd live
+on Demo** (both the manual expendables form + the ingest review screen: ton, tooltips, "+ Create unit" modal
+create→appears→auto-selects, "Tracked in g", reserved-name reject; fixture cleaned up). QA caught + fixed one bug:
+`listCustomUnitsCore` used `runInTenantTx` (needs ALS) → 500 in a server-component render → now reads via the
+extended `prisma` like `listMaterials`. **Ready for `/ship`.**
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
+
+- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo (branch `claude/assistant-widget-drag-resize-3c069b`).**
+  Drag the title bar to move, top-left grip to grow (bottom-right anchored, floors at the historical default), opens
+  at default + resets on reopen; one-file frontend change to `AssistantDock.tsx`.
 
 - **Plan 073 multi-currency FX ingestion — BUILT (10 units), gates green, ready for `/ship`** on branch
   `claude/multi-currency-fx-ingestion`. Foreign invoice → base-currency inventory at a dated ECB rate
@@ -199,4 +211,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Movable + growable assistant dock BUILT + browser-QA'd on Demo, shipping on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = historical default so it never shrinks below baseline), clamped on-screen, always opens at default + closing resets (no persistence). Expand-to-center mode unchanged. tsc + eslint green. Verified live: opens 440×513, grows, floors, moves, resets. Prior: Plan 073 multi-currency FX ingestion BUILT (10 units, all gates green, live EUR Bill + €767.16 e2e proven) ready for /ship on claude/multi-currency-fx-ingestion; Plan 072 invoice ingestion SHIPPED (#223), vendor merge/removal SHIPPED (#222)._
+_Last updated: 2026-07-18 — Plan 075 custom measurement units for material intake BUILT (8 units) on branch claude/custom-units-invoice-a49844, all gates green (tsc 0, next build, vitest 2292, verify:cost 55/verify:ingest 62/tenant-isolation/ai-native/parity/naming), ready for /ship; pending only a live Demo click-through (interactive login). Custom unit == built-in == {dimension, perCanonical}; money-safe because custom units live at the intake boundary only and everything funnels through the fail-safe measure.ts::convert(). Prior: Movable + growable assistant dock BUILT + browser-QA'd on Demo, shipping on branch claude/assistant-widget-drag-resize-3c069b. One-file frontend change to AssistantDock.tsx: drag the title bar to move, drag the top-left corner grip to grow (bottom-right anchored, floor = historical default so it never shrinks below baseline), clamped on-screen, always opens at default + closing resets (no persistence). Expand-to-center mode unchanged. tsc + eslint green. Verified live: opens 440×513, grows, floors, moves, resets. Prior: Plan 073 multi-currency FX ingestion BUILT (10 units, all gates green, live EUR Bill + €767.16 e2e proven) ready for /ship on claude/multi-currency-fx-ingestion; Plan 072 invoice ingestion SHIPPED (#223), vendor merge/removal SHIPPED (#222)._

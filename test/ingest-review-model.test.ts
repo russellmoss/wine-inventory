@@ -175,6 +175,27 @@ describe("pack size (amount + unit) helpers", () => {
     expect(composePackUnitRaw("", "")).toBeNull();
     expect(composePackUnitRaw("1", "kg")).toBe("1 kg");
   });
+
+  it("accepts a ton pack unit (fruit / bulk goods)", async () => {
+    const { PACK_UNITS, packFieldsValid, canonicalPackUnit } = await import("@/app/(app)/setup/expendables/ingest/ingest-review-model");
+    expect(PACK_UNITS).toContain("ton");
+    expect(canonicalPackUnit("ton")).toBe("ton");
+    expect(packFieldsValid("2 ton")).toBe(true);
+  });
+
+  it("accepts a tenant custom unit as a pack unit (plan 075)", async () => {
+    const { packFieldsValid, canonicalPackUnit, packInputValues } = await import("@/app/(app)/setup/expendables/ingest/ingest-review-model");
+    const custom = ["Drum", "roll"];
+    // Not recognized without the custom list...
+    expect(packFieldsValid("1 drum")).toBe(false);
+    expect(canonicalPackUnit("drum")).toBeNull();
+    // ...recognized (case-insensitive) once the tenant's units are passed.
+    expect(canonicalPackUnit("drum", custom)).toBe("Drum");
+    expect(packFieldsValid("1 Drum", custom)).toBe(true);
+    expect(packInputValues("2 roll", custom)).toEqual({ amount: "2", unit: "roll" });
+    // an unknown custom is still rejected (never silently valid).
+    expect(packFieldsValid("1 barrel", custom)).toBe(false);
+  });
 });
 
 describe("buildPrecommitSummary", () => {
