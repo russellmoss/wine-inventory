@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { ingestDocumentsTool } from "@/lib/assistant/tools/ingest-documents";
+
+// signProposal (the confirm-token HMAC) needs BETTER_AUTH_SECRET; CI doesn't provide it, so supply a dummy
+// (mirrors test/assistant-confirm.test.ts / assistant-choice.test.ts). We only assert the token is present.
+beforeAll(() => {
+  process.env.BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || "test-secret-for-ingest-tool-spec";
+});
 import { reverseIntakeTool } from "@/lib/assistant/tools/reverse-intake";
 import { queryRecentIntakesTool } from "@/lib/assistant/tools/query-recent-intakes";
 
