@@ -1,0 +1,86 @@
+name: Knowledge Re-crawl
+
+# LOOP 5 — Knowledge-base freshness (Plan 079 Unit 12). See docs/AUTOMATION.md.
+# Weekly, re-crawls the active knowledge sources: conditional GET (304 = no re-embed), changed pages
+# re-embed into a new revision with an atomic flip, new pages are added, and pages that 404 are
+# tombstoned (status='withdrawn', kept for audit, excluded from retrieval). Mutates the GLOBAL corpus
+# ONLY — no tenant data — via the owner connection; opens a GitHub ISSUE with the run summary. It NEVER
+# touches code and NEVER merges main. Reversible + self-correcting (a re-reached doc goes active again).
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # 09:00 UTC every Monday
+  workflow_dispatch:
+    inputs:
+      max_docs:
+        description: 'Cap documents processed (smoke run). Blank = full corpus.'
+        required: false
+        default: ''
+
+# Single-flight: never let two re-crawls mutate the corpus at once (revision races, double fetches).
+concurrency:
+  group: knowledge-recrawl
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  recrawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180  # full corpus crawl (~1k docs, polite 1s/fetch) + existence checks
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: Write .env (owner connection + Voyage key)
+        env:
+          DB_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+        run: |
+          {
+            printf 'DATABASE_URL_UNPOOLED=%s\n' "$DB_UNPOOLED"
+            printf 'DATABASE_URL=%s\n' "$DB_UNPOOLED"
+            printf 'VOYAGE_API_KEY=%s\n' "$VOYAGE_API_KEY"
+          } > .env
+
+      - name: Re-crawl the knowledge corpus
+        id: recrawl
+        env:
+          KB_MAX_DOCS: ${{ github.event.inputs.max_docs }}
+        run: |
+          set -o pipefail
+          npm run --silent recrawl:knowledge 2>&1 | tee recrawl.log
+          # Pull the machine-readable summary line the script prints.
+          grep '::KB_RECRAWL_SUMMARY::' recrawl.log | sed 's/.*::KB_RECRAWL_SUMMARY:://' | tail -1 > summary.json || true
+          [ -s summary.json ] || echo '{"error":"no summary emitted — see the run log"}' > summary.json
+          echo "summary=$(cat summary.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Open freshness issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DATE=$(date -u +%F)
+          {
+            echo "Automated knowledge-base re-crawl (Plan 079 Unit 12). Mutates the GLOBAL corpus only; never merges code."
+            echo ""
+            echo '```json'
+            cat summary.json
+            echo '```'
+            echo ""
+            echo "Review: any **withdrawn** docs (a source removed the page?) and **newCandidateDomains** (new trusted-source candidates queued to CandidateSource). Re-embeds and tombstones are reversible."
+          } > issue-body.md
+          gh issue create \
+            --title "KB re-crawl $DATE" \
+            --body-file issue-body.md \
+            --label knowledge-base || true
