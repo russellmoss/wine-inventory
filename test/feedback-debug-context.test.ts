@@ -23,7 +23,7 @@ describe("clampDebugContext", () => {
       consoleLog: [entry("hi")],
       clientErrors: [entry("boom", "error")],
     }) as Record<string, unknown>;
-    expect(out.schemaVersion).toBe(2);
+    expect(out.schemaVersion).toBe(DEBUG_CONTEXT_SCHEMA_VERSION);
     expect(out.source).toBe("help-page");
     expect(out.consoleLog).toEqual([entry("hi")]);
     expect(out.clientErrors).toEqual([entry("boom", "error")]);
