@@ -32,6 +32,7 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
       "/industry_support/winemaking_resources/",
       "/industry_support/viticulture/",
       "/information_services/fact-sheets/",
+      "/wp-content/uploads/", // the PDF fact sheets, reached by following links from fact-sheet pages
     ],
     denyPrefixes: [
       "/information_services/technical_review/latest_issue/", // paywalled Technical Review (robots-disallowed)

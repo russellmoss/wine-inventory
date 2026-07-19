@@ -23,6 +23,7 @@
     "seed:demo-materials": "tsx --conditions=react-server --env-file=.env scripts/seed-demo-materials.ts",
     "seed:knowledge-sources": "tsx --conditions=react-server --env-file=.env scripts/seed-knowledge-sources.ts",
     "crawl:source": "tsx --conditions=react-server --env-file=.env scripts/crawl-source.ts",
+    "crawl:corpus": "tsx --conditions=react-server --env-file=.env scripts/crawl-corpus.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",

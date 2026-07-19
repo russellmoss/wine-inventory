@@ -7,7 +7,7 @@
 
 import crypto from "node:crypto";
 import { runAsSystem } from "@/lib/tenant/system";
-import { findSourceConfig, TRUSTED_DOMAIN_SET, type KnowledgeSourceConfig } from "../config";
+import { findSourceConfig, TRUSTED_DOMAIN_SET, TRUSTED_DOMAINS, type KnowledgeSourceConfig } from "../config";
 import { collectSitemapUrls, type SitemapUrl } from "./sitemap";
 import { isAllowedByRobots, getCrawlDelayMs } from "./robots";
 import { fetchDocument, type DetectedType, type FetchResult } from "./fetcher";
@@ -193,6 +193,163 @@ export async function crawlSource(
   }
   summary.candidates = candidateDomains.size;
   return summary;
+}
+
+export interface FollowCrawlResult {
+  summaries: Record<string, CrawlSummary>;
+  totalDocuments: number;
+  candidateDomains: number;
+  hitCap: boolean;
+}
+
+/**
+ * Multi-source crawl WITH link-following. Seeds from each source's sitemap + roots, then follows
+ * outbound links: a link into a trusted domain that maps to one of the sources being crawled is
+ * enqueued and routed to THAT source (so AWRI's link to Wine Australia becomes a Wine Australia doc,
+ * reaching what AWRI references); a link into a non-allowlisted domain is queued as a CandidateSource.
+ * This is how we get "AWRI + the sources AWRI references" and reach the /wp-content PDF fact sheets that
+ * aren't in the sitemap. Bounded by maxDocs. Host allowlist + robots + SSRF + per-host politeness apply.
+ */
+export async function crawlWithFollowing(
+  sourceKeys: string[],
+  opts: { maxDocs?: number; delayMs?: number; onDocument?: (doc: CrawledDoc) => Promise<void> } = {},
+): Promise<FollowCrawlResult> {
+  const maxDocs = opts.maxDocs ?? 3000;
+  const delayMs = opts.delayMs ?? DEFAULT_DELAY_MS;
+  const throttle = new HostThrottle();
+
+  // domain -> { sourceId, sourceKey, cfg } for the sources we're crawling (incl. www + apex + trusted list)
+  const domainToSource = new Map<string, { sourceId: string; sourceKey: string; cfg: KnowledgeSourceConfig }>();
+  const summaries: Record<string, CrawlSummary> = {};
+  for (const key of sourceKeys) {
+    const cfg = findSourceConfig(key);
+    if (!cfg) throw new Error(`unknown source: ${key}`);
+    const row = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key } }));
+    if (!row) throw new Error(`source ${key} not seeded — run: npm run seed:knowledge-sources`);
+    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, errors: 0, candidates: 0 };
+    const entry = { sourceId: row.id, sourceKey: key, cfg };
+    domainToSource.set(cfg.homeDomain.toLowerCase(), entry);
+    domainToSource.set(`www.${cfg.homeDomain}`.toLowerCase(), entry);
+    for (const d of TRUSTED_DOMAINS) if (d.sourceKey === key) domainToSource.set(d.domain.toLowerCase(), entry);
+  }
+  const crawlableHost = (h: string) => domainToSource.has(h.toLowerCase());
+  const resolveTarget = (url: string) => {
+    try {
+      return domainToSource.get(new URL(url).hostname.toLowerCase()) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const pathAllowedFor = (cfg: KnowledgeSourceConfig, url: string) => {
+    let p: string;
+    try {
+      p = new URL(url).pathname;
+    } catch {
+      return false;
+    }
+    if (cfg.denyPrefixes.some((x) => p.startsWith(x))) return false;
+    return cfg.allowPrefixes.some((x) => p.startsWith(x));
+  };
+
+  const visited = new Set<string>();
+  const queued = new Set<string>();
+  const queue: string[] = [];
+  const enqueue = (rawUrl: string) => {
+    const url = rawUrl.split("#")[0];
+    if (queued.has(url) || visited.has(url)) return;
+    const tgt = resolveTarget(url);
+    if (!tgt || !pathAllowedFor(tgt.cfg, url)) return;
+    queued.add(url);
+    queue.push(url);
+  };
+
+  // seed: each source's roots + sitemap URLs
+  for (const key of sourceKeys) {
+    const cfg = findSourceConfig(key)!;
+    for (const root of cfg.seedRoots) enqueue(root);
+    const seedOrigin = new URL(cfg.seedRoots[0]).origin;
+    for (const sm of [`${seedOrigin}/sitemap_index.xml`, `${seedOrigin}/sitemap.xml`]) {
+      const urls = await collectSitemapUrls(sm, crawlableHost);
+      if (urls.length) {
+        for (const u of urls) enqueue(u.loc);
+        break;
+      }
+    }
+  }
+  for (const key of sourceKeys) summaries[key].discovered = queue.filter((u) => resolveTarget(u)?.sourceKey === key).length;
+
+  const candidateDomains = new Map<string, string>();
+  let processed = 0;
+  let head = 0;
+  let hitCap = false;
+  while (head < queue.length) {
+    if (processed >= maxDocs) { hitCap = true; break; }
+    const url = queue[head++];
+    if (visited.has(url)) continue;
+    visited.add(url);
+    const tgt = resolveTarget(url);
+    if (!tgt) continue;
+    const s = summaries[tgt.sourceKey];
+    const host = new URL(url).host;
+
+    let robotsOk = true;
+    try {
+      robotsOk = await isAllowedByRobots(url, crawlableHost);
+    } catch {
+      robotsOk = true;
+    }
+    if (!robotsOk) { s.skippedRobots++; continue; }
+    const delay = Math.max(delayMs, await getCrawlDelayMs(new URL(url).origin, crawlableHost).catch(() => 0));
+    await throttle.wait(host, delay);
+
+    const existing = await runAsSystem((db) =>
+      db.knowledgeDocument.findUnique({
+        where: { sourceId_canonicalUrl: { sourceId: tgt.sourceId, canonicalUrl: url } },
+        select: { id: true, etag: true, lastModifiedHttp: true },
+      }),
+    );
+    let res;
+    try {
+      res = await fetchDocument(url, { etag: existing?.etag ?? null, lastModified: existing?.lastModifiedHttp ?? null, isAllowedHost: crawlableHost });
+    } catch {
+      s.errors++;
+      continue;
+    }
+    processed++;
+    s.fetched++;
+    if (res.notModified) {
+      s.notModified++;
+      if (existing) await runAsSystem((db) => db.knowledgeDocument.update({ where: { id: existing.id }, data: { lastVerifiedAt: new Date(), lastSeenAt: new Date() } }));
+      // still follow links from a not-modified HTML page? we don't have the body; rely on the sitemap seed.
+      continue;
+    }
+    if (res.contentType === "other") { s.skippedType++; continue; }
+
+    const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
+    const document = await persistDocument(tgt.sourceId, tgt.cfg, url, undefined, res, contentHash);
+    s.documents++;
+
+    if (res.contentType === "html") {
+      const gated = gateLinks(extractLinks(res.bytes.toString("utf8"), res.finalUrl), res.finalUrl);
+      for (const link of gated.followable) enqueue(link); // trusted-domain links -> crawl (routed to their source)
+      for (const c of gated.candidateDomains) if (!candidateDomains.has(c.domain)) candidateDomains.set(c.domain, c.fromUrl);
+    }
+
+    if (opts.onDocument) {
+      await opts.onDocument({ documentId: document.id, sourceId: tgt.sourceId, sourceKey: tgt.sourceKey, canonicalUrl: url, contentType: res.contentType, contentHash, bytes: res.bytes });
+    }
+  }
+
+  for (const [domain, fromUrl] of candidateDomains) {
+    await runAsSystem((db) =>
+      db.candidateSource.upsert({
+        where: { domain },
+        update: { lastSeenAt: new Date(), timesSeen: { increment: 1 } },
+        create: { domain, discoveredFromUrl: fromUrl },
+      }),
+    );
+  }
+  return { summaries, totalDocuments: processed, candidateDomains: candidateDomains.size, hitCap };
 }
 
 /** Upsert the identity-split rows for one fetched document (shared by crawlSource + crawlUrls). */
