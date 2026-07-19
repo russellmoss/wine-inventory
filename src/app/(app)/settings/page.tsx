@@ -6,6 +6,7 @@ import { getConnectionSummary } from "@/lib/accounting/connection";
 import { getAccountMappings, getApAccounts, getApPaymentAccounts } from "@/lib/accounting/coa";
 import { getConnectionSummary as getCommerce7Summary } from "@/lib/commerce/connection";
 import { getVoiceSettingsForUser } from "@/lib/voice/profile";
+import { listSourceSettings } from "@/lib/knowledge/subscriptions";
 import { SettingsClient } from "./SettingsClient";
 
 export const metadata = { title: "Settings" };
@@ -13,7 +14,7 @@ export const metadata = { title: "Settings" };
 export default async function SettingsPage() {
   const user = await requireReadyUser();
   await requireActiveTenant();
-  const [settings, cost, profile, accounting, accountingMappings, accountingAp, accountingApPayment, commerce7, voice, pushVendorsToQbo] = await Promise.all([
+  const [settings, cost, profile, accounting, accountingMappings, accountingAp, accountingApPayment, commerce7, voice, pushVendorsToQbo, knowledgeSources] = await Promise.all([
     getAppSettings(),
     getCostSettings(),
     prisma.complianceProfile.findFirst(),
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
     getCommerce7Summary(),
     getVoiceSettingsForUser(user.id),
     getPushVendorsToQbo(),
+    listSourceSettings(),
   ]);
   return (
     <SettingsClient
@@ -36,6 +38,7 @@ export default async function SettingsPage() {
       accountingApPayment={accountingApPayment}
       commerce7={commerce7}
       voice={voice}
+      knowledgeSources={knowledgeSources}
       complianceProfile={{
         ein: profile?.ein ?? "",
         registryNumber: profile?.registryNumber ?? "",
