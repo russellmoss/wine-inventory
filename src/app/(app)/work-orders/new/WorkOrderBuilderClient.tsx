@@ -101,6 +101,7 @@ export function WorkOrderBuilderClient({
   const [title, setTitle] = React.useState(existing?.title ?? "");
   const [dueAt, setDueAt] = React.useState(existing ? existing.dueAt : todayLocal());
   const [leadEmail, setLeadEmail] = React.useState(existing?.leadEmail ?? "");
+  const leadRef = React.useRef<HTMLSelectElement>(null);
   const [priority, setPriority] = React.useState(existing?.priority || "NORMAL");
   const [locationId, setLocationId] = React.useState(existing?.locationId ?? "");
   const [groups, setGroups] = React.useState<BuilderTask[][]>(existing?.groups?.length ? existing.groups : [[]]);
@@ -282,7 +283,7 @@ export function WorkOrderBuilderClient({
   function submit() {
     setError(null);
     // Plan 070: every work order must have a Lead.
-    if (!leadEmail) { setError("A work order needs a lead — pick one above."); return; }
+    if (!leadEmail) { setError("A work order needs a lead — pick one at the top (a task’s assignee isn’t the WO lead)."); leadRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); leadRef.current?.focus(); return; }
     const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
     const dueDate = dueAt ? new Date(`${dueAt}T00:00:00`) : null;
 
@@ -391,7 +392,7 @@ export function WorkOrderBuilderClient({
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Racking + topping — Block 12" />
           </label>
           <label style={labelStyle}>Lead <span style={{ color: "var(--danger)" }}>*</span>
-            <select style={field} value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)}>
+            <select ref={leadRef} style={{ ...field, ...(hasTasks && needsLead ? { borderColor: "var(--danger)" } : {}) }} value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)}>
               <option value="">— choose a lead —</option>
               {/* Editing: if the current lead is no longer an org member, keep it selectable so it isn't silently dropped. */}
               {leadEmail && !members.some((m) => m.email === leadEmail) ? <option value={leadEmail}>{leadEmail} (current)</option> : null}
@@ -534,7 +535,7 @@ export function WorkOrderBuilderClient({
                               <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
                                 Assignee
                                 <select style={{ ...field, width: "auto", padding: "4px 8px" }} value={t.assigneeId} onChange={(e) => updateTask(gi, t.key, { assigneeId: e.target.value })}>
-                                  <option value="">— lead —</option>
+                                  <option value="">— defaults to lead —</option>
                                   {members.map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
                                 </select>
                               </label>
@@ -593,11 +594,11 @@ export function WorkOrderBuilderClient({
             still required (Plan 070). Without this, users see "ready" but a faded button and think the
             create button is missing. */}
         {hasTasks && needsLead ? (
-          <div style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
-            Pick a <strong>Lead</strong> above to enable <em>Create work order</em>.
+          <div style={{ fontSize: 12.5, color: "var(--danger)" }}>
+            Set the <strong>Lead</strong> at the top — a task’s assignee isn’t the work order’s lead.
           </div>
         ) : null}
-        <Button onClick={submit} disabled={pending || !hasTasks || needsLead}>
+        <Button onClick={submit} disabled={pending || !hasTasks}>
           {pending ? (isEdit ? "Saving…" : "Creating…") : needsLead ? "Pick a lead" : isEdit ? "Save changes" : `Create work order${nonEmptyGroupCount > 1 ? ` (${nonEmptyGroupCount} groups)` : ""}`}
         </Button>
       </div>
