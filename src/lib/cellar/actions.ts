@@ -1,7 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { action } from "@/lib/actions";
+import { action, safeAction } from "@/lib/actions";
+import {
+  receiveConsumableCore,
+  adjustConsumableCore,
+  transferConsumableCore,
+  type ReceiveConsumableInput,
+  type AdjustConsumableInput,
+  type TransferConsumableInput,
+} from "@/lib/cellar/material-stock-core";
 import {
   addAdditionCore,
   addFiningCore,
@@ -100,6 +108,42 @@ export const updateMaterialAction = action(
     revalidatePath("/ferment/process");
     revalidatePath("/inventory");
     return dto;
+  },
+);
+
+// ── Plan 080 U2b: per-location consumable stock moves (Receive / Adjust / Transfer) ──
+// `safeAction`, not `action`: a move can be legitimately blocked (shortfall, inactive location) and the
+// user needs the SPECIFIC reason — a thrown ActionError is redacted to Next's opaque prod error, so these
+// SETTLE the reason to the client (mirrors inventory `moveStock`). Callers `unwrap(...)` the result.
+
+function revalidateConsumableSurfaces() {
+  revalidatePath("/inventory");
+  revalidatePath("/setup/expendables");
+}
+
+/** Receive a costed consumable lot into a specific location (+ per-lot A/P unless suppressed). */
+export const receiveConsumableAction = safeAction(
+  async ({ actor }, input: ReceiveConsumableInput): Promise<{ supplyLotId: string }> => {
+    const res = await receiveConsumableCore(actor, input);
+    revalidateConsumableSurfaces();
+    return res;
+  },
+);
+
+/** Adjust a consumable's on-hand at a location by a signed delta (blocks a negative below stock). */
+export const adjustConsumableAction = safeAction(
+  async ({ actor }, input: AdjustConsumableInput): Promise<void> => {
+    await adjustConsumableCore(actor, input);
+    revalidateConsumableSurfaces();
+  },
+);
+
+/** Transfer a consumable between locations by FIFO lot-split (blocks on a shortfall). */
+export const transferConsumableAction = safeAction(
+  async ({ actor }, input: TransferConsumableInput): Promise<{ transferGroupId: string; splitLots: number }> => {
+    const res = await transferConsumableCore(actor, input);
+    revalidateConsumableSurfaces();
+    return res;
   },
 );
 
