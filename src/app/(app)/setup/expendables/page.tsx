@@ -1,18 +1,11 @@
-import { listMaterials } from "@/lib/cellar/materials";
-import { listVendors } from "@/lib/vendors/vendors";
-import { listCustomUnitsCore } from "@/lib/units/custom-unit-core";
-import { ExpendablesClient } from "./ExpendablesClient";
+import { permanentRedirect } from "next/navigation";
 
-export const metadata = { title: "Expendables" };
+export const dynamic = "force-dynamic";
 
-// Phase 8 (Unit 12): the supply catalog + stock management surface. Includes inactive materials so they
-// can be reactivated (history-safe). On-hand is summed over open SupplyLots (listMaterials). Plan 069:
-// also loads active vendors for the mandatory vendor picker in the add/edit modal.
-export default async function ExpendablesPage() {
-  const [materials, vendors, customUnits] = await Promise.all([
-    listMaterials({ includeInactive: true }),
-    listVendors({ activeOnly: true }),
-    listCustomUnitsCore(),
-  ]);
-  return <ExpendablesClient materials={materials} vendors={vendors} customUnits={customUnits} />;
+// Plan 080 U6: consumables folded into the unified Inventory page (/inventory?section=consumables).
+// Kept as a PERMANENT redirect rather than deleted — this path is reachable from bookmarks, older
+// assistant `navigate` payloads, revalidatePath() calls in the cellar/ingest actions, and the ingest
+// review screen's back-links. A 404 on any of those would read as data loss to the operator.
+export default async function ExpendablesRedirect(): Promise<never> {
+  permanentRedirect("/inventory?section=consumables");
 }

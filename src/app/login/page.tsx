@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "@/lib/auth-client";
 import { Card, Input, Button } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
+import { safeReturnPath } from "@/lib/auth/return-path";
 
 export default function LoginPage() {
   return (
@@ -42,7 +43,7 @@ function LoginForm() {
       setError(error.message || "Sign in failed. Check your email and password.");
       return;
     }
-    router.push(params.get("from") || "/");
+    router.push(safeReturnPath(params.get("from")));
     router.refresh();
   }
 
@@ -53,7 +54,7 @@ function LoginForm() {
     // on failure to errorCallbackURL with an `error` param (read as `googleError` above).
     await signIn.social({
       provider: "google",
-      callbackURL: params.get("from") || "/",
+      callbackURL: safeReturnPath(params.get("from")),
       errorCallbackURL: "/login",
     });
   }

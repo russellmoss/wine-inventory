@@ -16,7 +16,11 @@ export default function proxy(request: NextRequest) {
   const sessionCookie = getSessionCookie(request);
   if (!sessionCookie) {
     const url = new URL("/login", request.url);
-    if (pathname !== "/") url.searchParams.set("from", pathname);
+    // Plan 080 U6: keep the SEARCH string too. `/inventory?section=consumables` is a real addressable
+    // surface now, so a path-only `from` silently dropped a logged-out user onto the default tab.
+    // Sanitized at the point of use by safeReturnPath (the login page), never trusted raw.
+    const target = pathname + request.nextUrl.search;
+    if (target !== "/") url.searchParams.set("from", target);
     const response = NextResponse.redirect(url);
     // Fail closed: no session means no basis for full-fidelity replay capture, so drop the hint
     // rather than letting a stale "full" survive a logout / session switch (Plan 080 Unit 6).
