@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/dal";
+import { requireAdmin, requireActiveTenant } from "@/lib/dal";
 import { isAssignableRole, isDeveloper } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { memberOfTenant } from "@/lib/users/scope";
@@ -6,6 +6,7 @@ import { UsersClient, type UserRow } from "./UsersClient";
 
 export default async function UsersPage() {
   const me = await requireAdmin();
+  await requireActiveTenant();
   const viewerIsDeveloper = isDeveloper(me);
   // #90: `User`/`Member` are GLOBAL, RLS-exempt auth tables, so the DB does NOT scope them by tenant —
   // an unscoped `user.findMany` leaks every winery's accounts. Scope to the viewer's effective tenant

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { Card, Eyebrow, Button } from "@/components/ui";
 import { listMaterials } from "@/lib/cellar/materials";
@@ -25,6 +25,7 @@ const numOrNull = (v: unknown): number | null => (v == null ? null : Number(v));
 
 export default async function IngestReviewPage({ searchParams }: { searchParams: Promise<{ batch?: string }> }) {
   await requireReadyUser();
+  await requireActiveTenant();
   const batchId = (await searchParams).batch?.trim() ?? "";
 
   if (!batchId) {

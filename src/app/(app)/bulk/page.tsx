@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireActiveTenant } from "@/lib/dal";
 import { classifyBlend } from "@/lib/bulk/blend";
 import { computeFill } from "@/lib/vessels/fill";
 import { listMaterials } from "@/lib/cellar/materials";
@@ -6,6 +7,7 @@ import { listGroups } from "@/lib/vessels/groups";
 import { BulkClient, type VesselWithContents, type Option, type BlockOption, type SubblockOption } from "./BulkClient";
 
 export default async function BulkPage() {
+  await requireActiveTenant();
   const [vessels, varieties, vineyards, blocks, subblocks, materials, groups] = await Promise.all([
     prisma.vessel.findMany({
       where: { isActive: true },
