@@ -6,6 +6,8 @@ import { Badge, Button, Card, Input, Modal, Textarea } from "@/components/ui";
 import { drainConsoleBuffer, clearConsoleBuffer } from "@/lib/observability/console-buffer";
 import { DEBUG_CONTEXT_SCHEMA_VERSION, buildNarrative, appendNarrativeDigest } from "@/lib/feedback/debug-context";
 import { captureReplayLink, SENTRY_ORG_SLUG } from "@/lib/observability/sentry-replay";
+import { drainInteractionTrail, clearInteractionTrail } from "@/lib/observability/interaction-buffer";
+import { getActiveHuntId } from "@/lib/observability/break-mode";
 
 type Kind = "BUG_REPORT" | "FEATURE_REQUEST";
 type PendingImage = { file: File; previewUrl: string };
@@ -62,6 +64,11 @@ export function FeedbackForm({
       // body so existing triage/LLM paths see it without knowing the debugContext shape (Plan 080 U5).
       const narrative = kind === "BUG_REPORT" ? buildNarrative(doing, expected, actual) : undefined;
       const bodyToSend = appendNarrativeDigest(body, narrative);
+      // Break Mode hunt trail (Plan 080 Unit 10). Empty/no-op unless a hunt is running, and it is
+      // the durable machine-readable repro: quota- and replay-retention-independent, so /bug-triage
+      // can read the sequence of actions even after the Sentry replay ages out.
+      const huntId = getActiveHuntId();
+      const { interactionTrail, networkTrail } = drainInteractionTrail();
       const res = await fetch("/api/feedback/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,6 +85,9 @@ export function FeedbackForm({
             ...(replayId ? { replayId } : {}),
             ...(replayUrl ? { replayUrl } : {}),
             ...(narrative ? { narrative } : {}),
+            ...(huntId ? { huntId } : {}),
+            ...(interactionTrail.length ? { interactionTrail } : {}),
+            ...(networkTrail.length ? { networkTrail } : {}),
           },
         }),
       });
@@ -105,8 +115,9 @@ export function FeedbackForm({
       setExpected("");
       setActual("");
       setFiles([]);
-      // Reset so a later report on a different screen doesn't carry these logs.
+      // Reset so a later report on a different screen doesn't carry these logs / this trail.
       clearConsoleBuffer();
+      clearInteractionTrail();
       onSubmitted?.(data.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
