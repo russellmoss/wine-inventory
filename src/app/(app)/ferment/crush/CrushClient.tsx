@@ -39,6 +39,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
   const [outputL, setOutputL] = React.useState("");
   const [crusherOn, setCrusherOn] = React.useState(true);
   const [crushedPct, setCrushedPct] = React.useState("100");
+  const [wholeClusterPct, setWholeClusterPct] = React.useState("0");
   const [mustTemp, setMustTemp] = React.useState("");
   const [note, setNote] = React.useState("");
   const [additions, setAdditions] = React.useState<StagedAddition[]>([]);
@@ -58,11 +59,16 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
   const outL = Number(outputL) || 0;
   const yieldLPerTonne = totalKg > 0 && outL > 0 ? Math.round((outL / totalKg) * 1000 * 100) / 100 : null;
 
+  // Whole-cluster fraction of the must (rest is destemmed/crushed). Only meaningful for a NEW
+  // single-origin lot; ADD mode is folding fruit into an existing lot's own composition.
+  const wcPct = Math.max(0, Math.min(100, Number(wholeClusterPct) || 0));
+
   async function submit() {
     setError("");
     if (selectedPicks.length === 0) return setError("Enter consumed kg for at least one pick.");
     if (!(outL > 0)) return setError("Enter the measured must volume (liters).");
     if (effMode === "ADD" && !addLotId) return setError("Pick the must lot to add into.");
+    if (effMode === "NEW" && !(wcPct >= 0 && wcPct <= 100)) return setError("Whole-cluster % must be between 0 and 100.");
     // Over-consume guard (UI-side; the core re-checks against live LotHarvestSource).
     for (const { pick, kg } of selectedPicks) {
       if (kg > pick.remainingKg + 1e-6) return setError(`Pick ${pick.pickDate}: only ${pick.remainingKg} kg remain.`);
@@ -76,7 +82,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
         outputVolumeL: outL,
         target:
           effMode === "NEW"
-            ? { mode: "NEW", varietyId: block?.varietyId ?? null, vintage: block!.vintageYear }
+            ? { mode: "NEW", varietyId: block?.varietyId ?? null, vintage: block!.vintageYear, wholeClusterPct: wcPct > 0 ? wcPct : null }
             : { mode: "ADD", lotId: addLotId },
         crusherOn,
         crushedPct: crusherOn ? Number(crushedPct) || 100 : undefined,
@@ -185,6 +191,16 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
         </div>
       </div>
 
+      {/* Whole-cluster fraction: some fruit goes into the tank as intact clusters (stems on) while
+          the rest is destemmed/crushed — e.g. 30% whole cluster, 70% destemmed. NEW-lot only; when
+          adding into an existing lot the composition already belongs to that lot. */}
+      {effMode === "NEW" ? (
+        <div style={{ marginTop: 16, maxWidth: 320 }}>
+          <label style={label}>% whole cluster (rest destemmed/crushed)</label>
+          <input value={wholeClusterPct} onChange={(e) => setWholeClusterPct(e.target.value)} inputMode="decimal" placeholder="0" aria-label="Percent whole cluster" style={{ ...field, width: "100%" }} />
+        </div>
+      ) : null}
+
       <div style={{ marginTop: 16 }}>
         <label style={label}>Note</label>
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" style={{ ...field, width: "100%" }} />
@@ -215,6 +231,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
           {" · "}
           {totalKg > 0 ? `${Math.round(totalKg * 1000) / 1000} kg` : "no picks"}
           {yieldLPerTonne != null ? ` → ${outL} L (${yieldLPerTonne} L/t)` : ""}
+          {effMode === "NEW" && wcPct > 0 ? ` · ${wcPct}% whole cluster` : ""}
         </div>
         <button onClick={() => void submit()} disabled={busy} style={{ ...field, cursor: "pointer", background: "var(--accent)", color: "#fff", border: "none", paddingInline: 20 }}>
           {busy ? "De-stemming…" : "De-stem"}
