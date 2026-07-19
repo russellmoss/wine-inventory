@@ -398,6 +398,27 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ⏭️ Next up (candidates, not commitments)
 
+- **"Break Mode" — dev-only high-fidelity bug capture — PHASE 1 BUILT (080); Phase 2 not started.**
+  Phase 1 (units 1–5) built on `claude/enhanced-bug-reporting-network-cc8b6f` (this worktree; main was
+  occupied): debugContext v3 clamp; pure buildReplayUrl/captureReplayLink/safeSentryReplayUrl; link the
+  Sentry replay at bug-report submit; "Open Sentry replay" in /developer; narrative prompt
+  (doing/expected/actual). 6 commits, tsc+eslint clean, vitest 2471 passed (24 new). No DB needed. NEXT:
+  `/review` → `/ship` Phase 1. Phase 2 (units 6–11: middleware fidelity cookie + Sentry server-side scrub,
+  session-mode replay + auto-off, tenant-risk-colored indicator, AI trail) needs the MAIN checkout — do
+  after Phase 1 ships. Plan: [docs/plans/2026-07-19-080-feat-break-mode-bug-capture-plan.md](docs/plans/2026-07-19-080-feat-break-mode-bug-capture-plan.md).
+  Eng review locked 2 decisions: (1) keep network bodies but "do it right" — Next MIDDLEWARE sets the
+  `cbh_replay_fidelity` cookie (no middleware existed; layout render can't set cookies) + Sentry server-side
+  data-scrubbing is the REAL enforcement belt (cookie is client-writable, only a default); (2) Break Mode uses
+  session-mode replay + AUTO-OFF timeout + stop-on-hide to bound free-plan quota. Test-plan artifact written.
+  Reuse the Sentry Session Replay already shipped (link `replayId` into `debugContext`, don't build a capture
+  engine); dev-only toggle uses on-demand replay (`start`/`flush`) + a durable interaction+network-metadata
+  trail for /bug-triage's AI; sandbox-only body/DOM detail (real tenants masked/metadata-only); free-plan
+  quota-viable (flush ≈1 replay per filed report). Phase 1 (units 1–5) = link the replay + narrative prompt
+  (ships alone, all users); Phase 2 (units 6–11) = full break mode. WATCH: init-time fidelity via a
+  `cbh_replay_fidelity` hint cookie (instrumentation-client runs pre-auth) — the load-bearing sandbox-only guard.
+  Plan: [docs/plans/2026-07-19-080-feat-break-mode-bug-capture-plan.md](docs/plans/2026-07-19-080-feat-break-mode-bug-capture-plan.md).
+  Design doc: `~/.rstack/projects/wine-inventory/russe-…-design-20260719-142556.md`. ASSIGNMENT before build:
+  confirm exact Sentry free-plan replay cap (Settings → Subscription). Next: eng-review → /work Phase 1.
 - Browser QA pass on Plan 063 (developer user type).
 - **Feedback log HTML-entity garbling** — SHIPPED #178 (`6bc2db1`).
 - **Plan 065 — SO₂ addition execution-view clarity — BUILT, shipping.** Execute view is now
