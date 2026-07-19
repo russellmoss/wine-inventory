@@ -1,9 +1,11 @@
 "use client";
 
 import React from "react";
+import * as Sentry from "@sentry/nextjs";
 import { Badge, Button, Card, Input, Modal, Textarea } from "@/components/ui";
 import { drainConsoleBuffer, clearConsoleBuffer } from "@/lib/observability/console-buffer";
 import { DEBUG_CONTEXT_SCHEMA_VERSION } from "@/lib/feedback/debug-context";
+import { captureReplayLink, SENTRY_ORG_SLUG } from "@/lib/observability/sentry-replay";
 
 type Kind = "BUG_REPORT" | "FEATURE_REQUEST";
 type PendingImage = { file: File; previewUrl: string };
@@ -50,6 +52,8 @@ export function FeedbackForm({
       // Snapshot the console at report time — the reporter is usually still on the
       // screen where the bug happened, so the real error is right here (Plan 079).
       const { consoleLog, clientErrors } = drainConsoleBuffer();
+      // Link the Sentry replay (if one is recording) so triage can rewind the session (Plan 080).
+      const { replayId, replayUrl } = await captureReplayLink(Sentry.getReplay(), SENTRY_ORG_SLUG);
       const res = await fetch("/api/feedback/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -63,6 +67,8 @@ export function FeedbackForm({
             source: compact ? "assistant-widget" : "help-page",
             consoleLog,
             clientErrors,
+            ...(replayId ? { replayId } : {}),
+            ...(replayUrl ? { replayUrl } : {}),
           },
         }),
       });

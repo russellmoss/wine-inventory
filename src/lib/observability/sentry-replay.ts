@@ -18,3 +18,29 @@ export function buildReplayUrl(orgSlug: string | undefined, replayId: string | u
   if (!orgSlug || !replayId) return undefined;
   return `https://${orgSlug}.sentry.io/replays/${replayId}/`;
 }
+
+/** The slice of the Sentry Replay integration we depend on. Kept minimal so it's fakeable in tests. */
+export type MinimalReplay = {
+  getReplayId: () => string | undefined;
+  flush: () => Promise<void>;
+};
+
+/**
+ * Resolve the replay link for a bug report. `flush()` is awaited so the segment uploads BEFORE
+ * the report is submitted; any error (no replay, stalled/failed flush) resolves to {} so the
+ * report never blocks on it (Plan 080 Unit 3, eng-review flush-rejection guard). Pure given the
+ * injected replay + org slug — no SDK, no env.
+ */
+export async function captureReplayLink(
+  replay: MinimalReplay | undefined | null,
+  orgSlug: string,
+): Promise<{ replayId?: string; replayUrl?: string }> {
+  try {
+    const replayId = replay?.getReplayId();
+    if (!replay || !replayId) return {};
+    await replay.flush();
+    return { replayId, replayUrl: buildReplayUrl(orgSlug, replayId) };
+  } catch {
+    return {};
+  }
+}
