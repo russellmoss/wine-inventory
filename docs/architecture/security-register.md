@@ -354,16 +354,25 @@ TEMPLATE — copy for each new invariant / finding:
   existing calculators (`calc_so2`/`calc_sugar`), and crawled titles are escaped + length-limited before
   they reach Markdown/the redirect route.
 - **Crawler boundary:** SSRF controls (allowlist-only hosts, private-IP rejection, redirect-host checks,
-  size/timeout/page-count caps); cross-domain link following only INTO allowlisted domains; the re-crawl
-  loop opens a PR/issue and never auto-writes prod content. It runs as owner (`runAsSystem`); a narrower
-  maintenance role is a deferred follow-up (acceptable for v1 because the loop is human-gated).
+  size/timeout/page-count caps); cross-domain link following only INTO allowlisted domains. The weekly
+  re-crawl loop (`knowledge-recrawl.yml` → `scripts/recrawl-knowledge.ts`, Unit 12) DOES write — but ONLY
+  the GLOBAL reference corpus, never tenant/financial data — and every write is additive + reversible +
+  self-correcting (changed pages re-embed into a new revision behind an atomic flip; a 404 tombstones to
+  `status='withdrawn'` but keeps the rows; a re-reached doc flips back to `active`). It opens a GitHub
+  issue as the audit trail and never touches code / never merges `main`. It runs as owner
+  (`runAsSystem`, needs `BYPASSRLS` to write the global tables); a narrower write role is a deferred
+  follow-up (acceptable for v1: global reference data only, no tenant reach, single-flight, reversible).
+  The tombstone pass is gated to COMPLETE crawls (a capped/incomplete run can't distinguish "removed"
+  from "not yet reached", so it self-suppresses rather than risk a wrong withdrawal).
 - **Tripwire:** the citation route redirecting without the per-request subscription recheck; retrieval
   dropping the enabled-source filter (or degrading empty→all); a numeric answer paraphrased instead of
   quoted; the crawler following a link to a non-allowlisted domain or fetching a private IP; owner creds
-  used by anything that writes prod content without a human gate. Proof: `verify:knowledge-base` +
+  used to write TENANT/financial content (the re-crawl writing the global reference corpus is expected);
+  the tombstone pass running on a capped/incomplete crawl. Proof: `verify:knowledge-base` +
   `verify:tenant-isolation`; see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]].
-- **Status:** 🟡 (v1 slice in progress — subscription RLS proven; app-code entitlement + citation recheck +
-  numeric guardrail land with Units 6–8; owner-role crawler is a watched follow-up).
+- **Status:** 🟢 (shipped to main PR #285; Units 1–10 + 12 built — subscription RLS proven, app-code
+  entitlement + citation recheck + numeric guardrail live, re-crawl freshness loop live; owner write-role
+  narrowing + per-tenant subscription UI (Unit 11) are watched follow-ups).
 
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->

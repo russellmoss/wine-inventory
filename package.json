@@ -25,6 +25,7 @@
     "crawl:source": "tsx --conditions=react-server --env-file=.env scripts/crawl-source.ts",
     "crawl:corpus": "tsx --conditions=react-server --env-file=.env scripts/crawl-corpus.ts",
     "crawl:wa-media": "tsx --conditions=react-server --env-file=.env scripts/crawl-wa-media.ts",
+    "recrawl:knowledge": "tsx --conditions=react-server --env-file=.env scripts/recrawl-knowledge.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
