@@ -58,31 +58,47 @@ export async function indexDocument(input: {
   const chunks = chunkMarkdown(extracted.markdown, extracted.title);
   if (chunks.length === 0) return { chunks: 0, skipped: "empty" };
 
-  const vectors = await embedTexts(chunks.map((c) => c.text), { inputType: "document" });
-  const newRevision = doc.activeRevision + 1;
+  // Embed OUTSIDE the transaction (network call — never hold a DB tx across it), then validate each
+  // embedding to a pgvector literal before opening the tx.
+  const embedded = await embedTexts(chunks.map((c) => c.text), { inputType: "document" });
+  const vectors = embedded.map((v) => toVectorLiteral(v));
 
+  // Truly atomic write: one interactive transaction, doc row locked FOR UPDATE, the new revision derived
+  // INSIDE the tx from the locked activeRevision (so concurrent indexers can't collide), any partial rows
+  // from a prior crashed attempt cleared first, then insert -> flip activeRevision -> prune old — all or
+  // nothing. A crash rolls back, so retrieval (revision = activeRevision) never sees a mixed revision.
   await runAsSystem(async (db) => {
-    for (let i = 0; i < chunks.length; i++) {
-      const c = chunks[i];
-      const id = chunkId(input.documentId, newRevision, c.ordinal, c.text);
-      const lit = toVectorLiteral(vectors[i]);
-      await db.$executeRaw`
-        INSERT INTO "knowledge_chunk"
-          ("id", "documentId", "revision", "ordinal", "sectionPath", "text", "tokenCount",
-           "embedding", "embeddingModel", "embeddingDim", "embeddedAt", "createdAt")
-        VALUES (${id}, ${input.documentId}, ${newRevision}, ${c.ordinal}, ${c.sectionPath}, ${c.text},
-                ${c.tokenCount}, ${lit}::vector, ${KB_EMBEDDING_MODEL}, ${KB_EMBEDDING_DIM}, now(), now())
-        ON CONFLICT ("id") DO NOTHING`;
-    }
-    // atomic flip: retrieval reads only chunks at activeRevision, so this switches the whole doc at once
-    await db.knowledgeDocument.update({
-      where: { id: input.documentId },
-      data: { activeRevision: newRevision, indexedContentHash: input.contentHash },
-    });
-    // prune superseded revisions
-    await db.knowledgeChunk.deleteMany({
-      where: { documentId: input.documentId, revision: { not: newRevision } },
-    });
+    await db.$transaction(
+      async (tx) => {
+        const locked = await tx.$queryRaw<{ activeRevision: number }[]>`
+          SELECT "activeRevision" FROM "knowledge_document" WHERE "id" = ${input.documentId} FOR UPDATE`;
+        const currentRev = locked[0]?.activeRevision ?? doc.activeRevision;
+        const newRevision = currentRev + 1;
+
+        // clear any leftover rows at the target revision (a prior attempt that crashed before flip)
+        await tx.knowledgeChunk.deleteMany({ where: { documentId: input.documentId, revision: newRevision } });
+
+        for (let i = 0; i < chunks.length; i++) {
+          const c = chunks[i];
+          const id = chunkId(input.documentId, newRevision, c.ordinal, c.text);
+          await tx.$executeRaw`
+            INSERT INTO "knowledge_chunk"
+              ("id", "documentId", "revision", "ordinal", "sectionPath", "text", "tokenCount",
+               "embedding", "embeddingModel", "embeddingDim", "embeddedAt", "createdAt")
+            VALUES (${id}, ${input.documentId}, ${newRevision}, ${c.ordinal}, ${c.sectionPath}, ${c.text},
+                    ${c.tokenCount}, ${vectors[i]}::vector, ${KB_EMBEDDING_MODEL}, ${KB_EMBEDDING_DIM}, now(), now())
+            ON CONFLICT ("id") DO NOTHING`;
+        }
+        await tx.knowledgeDocument.update({
+          where: { id: input.documentId },
+          data: { activeRevision: newRevision, indexedContentHash: input.contentHash },
+        });
+        await tx.knowledgeChunk.deleteMany({
+          where: { documentId: input.documentId, revision: { not: newRevision } },
+        });
+      },
+      { timeout: 60_000 },
+    );
   });
 
   return { chunks: chunks.length, skipped: false };

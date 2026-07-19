@@ -6,6 +6,18 @@
 
 import { prisma } from "@/lib/prisma";
 import { resolveEnabledSourceIds } from "./subscriptions";
+import { TRUSTED_DOMAIN_SET } from "./config";
+
+// Defense-in-depth against a stored open redirect: the crawler only persists docs from allowlisted hosts,
+// but re-validate the target is an http(s) URL on a trusted host before ever 302-ing a user out.
+function isTrustedRedirectUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return (u.protocol === "https:" || u.protocol === "http:") && TRUSTED_DOMAIN_SET.has(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
 
 export type CitationResolution =
   | { kind: "redirect"; url: string }
@@ -39,9 +51,12 @@ export async function resolveCitation(tenantId: string, documentId: string): Pro
   const enabled = await resolveEnabledSourceIds(tenantId);
   if (!enabled.includes(doc.sourceId)) return { kind: "notfound" };
 
-  if (doc.status === "active") return { kind: "redirect", url: doc.canonicalUrl };
+  if (doc.status === "active" && isTrustedRedirectUrl(doc.canonicalUrl)) {
+    return { kind: "redirect", url: doc.canonicalUrl };
+  }
 
-  // withdrawn -> tombstone with the archived text from the active-revision chunks (breadcrumb stripped)
+  // withdrawn — OR an active doc whose stored URL isn't a trusted http(s) target (shouldn't happen) —
+  // falls through to the tombstone with the archived text from the active-revision chunks (breadcrumb stripped)
   const chunks = await prisma.knowledgeChunk.findMany({
     where: { documentId, revision: doc.activeRevision },
     orderBy: { ordinal: "asc" },
