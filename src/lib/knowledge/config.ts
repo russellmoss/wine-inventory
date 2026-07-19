@@ -142,6 +142,28 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     defaultEnabled: true,
   },
   {
+    key: "osu-extension",
+    publisher: "OSU Extension (Oregon State University)",
+    homeDomain: "extension.oregonstate.edu",
+    tier: 1,
+    license:
+      "OSU Extension Service public content — reference use with citation + link back (robots signals use=reference, ai-train=no; we do reference-use RAG, not training).",
+    // Operator-directed + WINE/GRAPES ONLY. The wine articles live in a flat /catalog/ namespace shared
+    // with ~4k unrelated pubs AND with beer/cider/spirits, so NOT prefix-crawlable. scripts/crawl-osu-
+    // extension.ts fetches the two ALLOWED wine topic hubs (/crop-production/wine-grapes viticulture +
+    // /food/wine-beer winemaking), extracts the /catalog/ + wine-grapes + economics-PDF links, and keeps
+    // ONLY wine/grape content (positive wine/grape keyword required; beer/cider/spirits/hops/mead excluded).
+    // The full /topic/.../resources listing is robots-disallowed + JS-rendered, so we stay on the hubs.
+    // robots '*' = Allow: / and our UA (CellarhandKnowledgeBot) is not on their named training-crawler
+    // blocklist (ClaudeBot/GPTBot/CCBot); no Crawl-delay declared, so we self-throttle.
+    seedRoots: ["https://extension.oregonstate.edu/crop-production/wine-grapes"],
+    allowPrefixes: ["/catalog/", "/crop-production/wine-grapes/", "/sites/"],
+    denyPrefixes: ["/topic/", "/es/", "/search", "/video/", "/podcast"],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
+  {
     key: "scott-labs",
     publisher: "Scott Laboratories",
     homeDomain: "scottlab.com",
@@ -172,6 +194,7 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   { domain: "www.wineaustralia.com", sourceKey: "wine-australia" },
   { domain: "wine.wsu.edu", sourceKey: "wsu" },
   { domain: "ir.library.oregonstate.edu", sourceKey: "osu-owri" },
+  { domain: "extension.oregonstate.edu", sourceKey: "osu-extension" },
   { domain: "scottlab.com", sourceKey: "scott-labs" },
 ];
 

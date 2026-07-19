@@ -375,9 +375,14 @@ TEMPLATE — copy for each new invariant / finding:
   via `crawl-owri.ts`, which walks the ungated collection listing for `/downloads/` links and never touches
   the JS-challenge-gated `/concern/` item pages). Our fetcher UA is `CellarhandKnowledgeBot`, subject to the
   robots `*` group (which permits OSU's `/collections/` + `/downloads/`); the OSU `ClaudeBot Disallow` targets
-  Anthropic's training crawler, a different agent. We DELIBERATELY did NOT add the OSU **Extension** site
-  (extension.oregonstate.edu): it blocks ClaudeBot + signals `ai-train=no` + Cloudflare-403s, AND its wine
-  articles share a flat `/catalog/` namespace with ~4k unrelated pubs + beer/cider/spirits (no clean filter).
+  Anthropic's training crawler, a different agent. The OSU **Extension** site (extension.oregonstate.edu)
+  is also a curated `osu-extension` source (WINE/GRAPES ONLY): its robots is `User-agent: * → Allow: /`
+  and blocks only NAMED training crawlers (ClaudeBot/GPTBot/CCBot) with `ai-train=no,use=reference` — our
+  UA is permitted and we do reference-use RAG (cite + link back), not training. Because the wine articles
+  live in a flat `/catalog/` namespace shared with ~4k unrelated pubs + beer/cider/spirits,
+  `crawl-osu-extension.ts` enumerates the two wine hubs + the sitemap and keeps ONLY wine/grape URLs
+  (positive wine/grape keyword required, off-topic crops + beverages + academic-program pages excluded;
+  dry-run reviewable). We stay off the robots-clean-but-JS-rendered `/topic/.../resources` listings.
 - **Tripwire:** the citation route redirecting without the per-request subscription recheck; retrieval
   dropping the enabled-source filter (or degrading empty→all); a numeric answer paraphrased instead of
   quoted; the crawler following a link to a non-allowlisted domain or fetching a private IP; owner creds
