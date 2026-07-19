@@ -368,6 +368,25 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     crawlCadence: "manual",
     defaultEnabled: true,
   },
+  {
+    key: "ets",
+    publisher: "ETS Laboratories",
+    homeDomain: "etslabs.com",
+    tier: 2, // commercial wine-analysis lab — but method-reference content (phenolics, microbiology, TCA), not product marketing.
+    license:
+      "ETS Laboratories technical publications — reference use with citation + link back; commercial analysis-lab method reference.",
+    // NOT a crawl: etslabs.com/library is a JS-rendered React SPA with no PDFs and no server HTML. All 50
+    // publications come from ONE public JSON endpoint (webapi.etslabs.com/cms/publications.json), each with
+    // the full article HTML in a `content` field. scripts/crawl-ets.ts ingests that endpoint (skipping the 2
+    // Biofuel Production items + disabled records); citations link to the /publications/publication/<id> page.
+    // Issuu (issuu.com/etslabs) is deliberately NOT ingested — image-based flipbooks, no extractable text.
+    seedRoots: ["https://www.etslabs.com/library"],
+    allowPrefixes: ["/publications/"],
+    denyPrefixes: [],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
 ];
 
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
@@ -399,6 +418,9 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   { domain: "www.laffort.com", sourceKey: "laffort" },
   { domain: "enartis.com", sourceKey: "enartis" },
   { domain: "www.enartis.com", sourceKey: "enartis" },
+  { domain: "etslabs.com", sourceKey: "ets" },
+  { domain: "www.etslabs.com", sourceKey: "ets" },
+  { domain: "webapi.etslabs.com", sourceKey: "ets" }, // the JSON data host that crawl-ets.ts reads
 ];
 
 /** Set of trusted hostnames for O(1) gate checks (lowercased). */
