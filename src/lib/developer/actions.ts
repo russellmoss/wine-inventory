@@ -12,6 +12,7 @@ import { ActionError } from "@/lib/action-error";
 import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
+import { syncReplayFidelity } from "@/lib/observability/replay-fidelity";
 import {
   SUPPORT_TENANT_COOKIE,
   SUPPORT_TENANT_TTL_MS,
@@ -118,6 +119,9 @@ export async function enterSupportTenant(tenantId: string) {
       }),
     ),
   );
+  // Entering a support tenant changes the effective tenant, so the replay-fidelity hint must be
+  // re-resolved (a real customer tenant must drop to masked). Plan 080 Unit 6.
+  await syncReplayFidelity();
   revalidatePath("/", "layout");
 }
 
@@ -141,6 +145,8 @@ export async function exitSupportTenant() {
     );
   }
   (await cookies()).delete(SUPPORT_TENANT_COOKIE);
+  // Back to the developer's home tenant — re-resolve fidelity (Plan 080 Unit 6).
+  await syncReplayFidelity();
   revalidatePath("/", "layout");
 }
 

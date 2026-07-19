@@ -1,5 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildReplayUrl, captureReplayLink, safeSentryReplayUrl } from "@/lib/observability/sentry-replay";
+import {
+  buildReplayUrl,
+  captureReplayLink,
+  safeSentryReplayUrl,
+  resolveReplayFidelity,
+  parseReplayFidelity,
+  readReplayFidelityFromCookieString,
+  buildReplayOptions,
+  REPLAY_FIDELITY_COOKIE,
+} from "@/lib/observability/sentry-replay";
+
+const SANDBOX = "org_demo_winery";
+const REAL_TENANT = "org_bhutan_wine_co";
 
 describe("buildReplayUrl", () => {
   it("builds the expected deep-link", () => {
@@ -68,5 +80,78 @@ describe("safeSentryReplayUrl", () => {
     expect(safeSentryReplayUrl(null)).toBeNull();
     expect(safeSentryReplayUrl("nope")).toBeNull();
     expect(safeSentryReplayUrl({ replayUrl: "not a url" })).toBeNull();
+  });
+});
+
+describe("resolveReplayFidelity — TENANCY GUARD (Plan 080 Unit 6/11)", () => {
+  it("grants full fidelity ONLY to a developer in the sandbox tenant", () => {
+    expect(
+      resolveReplayFidelity({ role: "developer", effectiveTenantId: SANDBOX, sandboxTenantId: SANDBOX }),
+    ).toBe("full");
+  });
+
+  it("NEVER grants full fidelity in a real customer tenant, even for a developer", () => {
+    expect(
+      resolveReplayFidelity({ role: "developer", effectiveTenantId: REAL_TENANT, sandboxTenantId: SANDBOX }),
+    ).toBe("masked");
+  });
+
+  it("never grants full fidelity to non-developer roles, even in the sandbox", () => {
+    for (const role of ["user", "admin", null, undefined, ""]) {
+      expect(
+        resolveReplayFidelity({ role, effectiveTenantId: SANDBOX, sandboxTenantId: SANDBOX }),
+      ).toBe("masked");
+    }
+  });
+
+  it("fails closed when the tenant is unknown", () => {
+    expect(
+      resolveReplayFidelity({ role: "developer", effectiveTenantId: null, sandboxTenantId: SANDBOX }),
+    ).toBe("masked");
+  });
+});
+
+describe("parseReplayFidelity / readReplayFidelityFromCookieString", () => {
+  it("only the exact string 'full' yields full; everything else fails closed", () => {
+    expect(parseReplayFidelity("full")).toBe("full");
+    for (const raw of ["masked", "FULL", "true", "1", "", null, undefined, "full "]) {
+      expect(parseReplayFidelity(raw)).toBe("masked");
+    }
+  });
+
+  it("reads the fidelity cookie out of a document.cookie string", () => {
+    expect(readReplayFidelityFromCookieString(`a=1; ${REPLAY_FIDELITY_COOKIE}=full; b=2`)).toBe("full");
+    expect(readReplayFidelityFromCookieString(`a=1; ${REPLAY_FIDELITY_COOKIE}=masked`)).toBe("masked");
+  });
+
+  it("fails closed when the cookie is absent or the string is empty", () => {
+    expect(readReplayFidelityFromCookieString("a=1; b=2")).toBe("masked");
+    expect(readReplayFidelityFromCookieString("")).toBe("masked");
+    expect(readReplayFidelityFromCookieString(undefined)).toBe("masked");
+  });
+});
+
+describe("buildReplayOptions — masking always on, bodies sandbox-only", () => {
+  it("masked: masking on, NO network body capture", () => {
+    const opts = buildReplayOptions("masked", "https://app.example.com");
+    expect(opts.maskAllText).toBe(true);
+    expect(opts.blockAllMedia).toBe(true);
+    expect(opts.networkDetailAllowUrls).toBeUndefined();
+  });
+
+  it("full: masking still on, plus same-origin /api body capture", () => {
+    const opts = buildReplayOptions("full", "https://app.example.com");
+    expect(opts.maskAllText).toBe(true);
+    expect(opts.blockAllMedia).toBe(true);
+    expect(opts.networkDetailAllowUrls).toEqual(["https://app.example.com/api"]);
+  });
+
+  it("a real-tenant session can never produce body capture end-to-end", () => {
+    const fidelity = resolveReplayFidelity({
+      role: "developer",
+      effectiveTenantId: REAL_TENANT,
+      sandboxTenantId: SANDBOX,
+    });
+    expect(buildReplayOptions(fidelity, "https://app.example.com").networkDetailAllowUrls).toBeUndefined();
   });
 });

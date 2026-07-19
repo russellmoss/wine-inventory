@@ -10,6 +10,64 @@
  */
 export const SENTRY_ORG_SLUG = process.env.NEXT_PUBLIC_SENTRY_ORG_SLUG || "bhutan-wine";
 
+// ---------------------------------------------------------------------------
+// Replay fidelity (Plan 080 Phase 2, Units 6-7)
+//
+// Sentry's replayIntegration options (maskAllText / blockAllMedia /
+// networkDetailAllowUrls) are INIT-TIME only, and instrumentation-client.ts boots before auth is
+// known. So the server writes a non-httpOnly hint cookie holding ONLY this enum (no PII), which
+// init reads synchronously. The cookie is a client-side DEFAULT, not the guarantee: it is
+// client-writable, so the real enforcement is Sentry's server-side data-scrubbing at ingest.
+// Everything here fails CLOSED to "masked".
+// ---------------------------------------------------------------------------
+
+export const REPLAY_FIDELITY_COOKIE = "cbh_replay_fidelity";
+
+/** "full" = sandbox tenant, network bodies allowed. "masked" = everything else (safe default). */
+export type ReplayFidelity = "full" | "masked";
+
+/**
+ * Decide capture fidelity from role + effective tenant. Full fidelity requires BOTH a developer
+ * role AND the sandbox tenant; anything else (unknown role, real customer tenant, missing values)
+ * is masked. Pure.
+ */
+export function resolveReplayFidelity(input: {
+  role?: string | null;
+  effectiveTenantId?: string | null;
+  sandboxTenantId: string;
+}): ReplayFidelity {
+  if (input.role !== "developer") return "masked";
+  if (!input.effectiveTenantId || input.effectiveTenantId !== input.sandboxTenantId) return "masked";
+  return "full";
+}
+
+/** Coerce any raw cookie value to a known fidelity, failing closed. Pure. */
+export function parseReplayFidelity(raw: string | null | undefined): ReplayFidelity {
+  return raw === "full" ? "full" : "masked";
+}
+
+/**
+ * Read the fidelity from a raw `document.cookie` string. Fails closed when absent/garbled.
+ * Pure so init-time behavior is unit-testable without a DOM.
+ */
+export function readReplayFidelityFromCookieString(cookieString: string | undefined): ReplayFidelity {
+  if (!cookieString) return "masked";
+  for (const part of cookieString.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === REPLAY_FIDELITY_COOKIE) return parseReplayFidelity(rest.join("="));
+  }
+  return "masked";
+}
+
+/** The replay integration options for a fidelity. Masking is ALWAYS on; bodies only when full. Pure. */
+export function buildReplayOptions(
+  fidelity: ReplayFidelity,
+  origin: string,
+): { maskAllText: true; blockAllMedia: true; networkDetailAllowUrls?: string[] } {
+  const base = { maskAllText: true, blockAllMedia: true } as const;
+  return fidelity === "full" ? { ...base, networkDetailAllowUrls: [`${origin}/api`] } : { ...base };
+}
+
 /**
  * Build a Sentry replay deep-link. Returns undefined when either input is missing so callers
  * can simply omit the link rather than emit a broken URL. Pure — no env, no SDK.
