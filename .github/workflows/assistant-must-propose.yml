@@ -1,0 +1,105 @@
+name: Assistant MUST_PROPOSE eval
+
+# LOOP — assistant card-emission regression net (plan 081 U9).
+#
+# When a user asks the assistant for a WRITE, a confirmation card must reach the screen: Ready if
+# everything resolved, Draft if it did not. Prose is a failure. This was measured at 2-in-7 on
+# 2026-07-19 and shipped past 99 existing golden cases, because the existing eval sends
+# `tool_choice: {type:"any"}` — it FORCES a tool call and then asks which tool, so it structurally
+# cannot see "no tool was called".
+#
+# Nightly, real model, `tool_choice` OMITTED, each case run N times for a pass RATE. Opens a GitHub
+# ISSUE on regression. NEVER auto-merges and never blocks a PR — the behaviour is stochastic, so a
+# single bad sample must not gate a human's work. See docs/AUTOMATION.md.
+
+on:
+  schedule:
+    - cron: '0 8 * * *'   # 08:00 UTC nightly
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 'Samples per case (higher = tighter rate, more tokens)'
+        required: false
+        default: '5'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    # Gated on the key: a fork or a secret-less environment skips cleanly rather than failing red.
+    if: ${{ github.repository_owner != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run the MUST_PROPOSE eval
+        id: eval
+        continue-on-error: true          # a failure opens an issue; it does not fail the repo
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ASSISTANT_EVAL: '1'
+          ASSISTANT_EVAL_RUNS: ${{ github.event.inputs.runs || '5' }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY not set — skipping the LLM half."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set -o pipefail
+          npm run eval:assistant-must-propose 2>&1 | tee eval-output.txt
+
+      - name: Open an issue on regression
+        if: ${{ steps.eval.outcome == 'failure' && steps.eval.outputs.skipped != 'true' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let output = '';
+            try { output = fs.readFileSync('eval-output.txt', 'utf8'); } catch { output = '(no output captured)'; }
+            const rates = output.split('\n').filter((l) => l.includes('[MUST_PROPOSE]') || l.includes('[MUST_NOT_PROPOSE]'));
+            const body = [
+              'The nightly MUST_PROPOSE eval regressed. A user asked the assistant for a write and no',
+              'confirmation card was emitted — the failure mode reported four times by the design partner',
+              '(#203, #205, #206, cmrs4vasg) and measured at 2-in-7 before plan 081.',
+              '',
+              '**Observed rates**',
+              '```',
+              rates.join('\n') || '(no rate lines found — the run may have failed before the cases)',
+              '```',
+              '',
+              'Likely causes, in the order worth checking:',
+              '- a change to `src/lib/assistant/prompt.ts` (rules 40/45 were the original contradiction)',
+              '- a change to `propose_work_order`\'s tool description or input schema',
+              '- a model version change',
+              '- the Draft path in `src/lib/assistant/tools/propose-work-order.ts` no longer returning a draft',
+              '',
+              'This is stochastic: re-run the workflow before concluding, and compare rates rather than',
+              'pass/fail. Full log: ' + `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'assistant-eval',
+            });
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: 'Assistant MUST_PROPOSE eval regressed — a write request produced no card',
+                labels: ['assistant-eval', 'bug'],
+                body,
+              });
+            }
