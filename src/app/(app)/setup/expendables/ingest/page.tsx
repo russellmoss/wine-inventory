@@ -89,6 +89,56 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
     vendorCodes: codesByMaterial.get(m.id) ?? [],
   }));
 
+  // Duplicate flag (bug fix): the ingest-time duplicate guard only produces a transient batch-level warning
+  // on the upload flow — it never reaches THIS review surface, so a suspected duplicate wasn't flagged where
+  // the human actually resolves each document. Recompute it here per doc and surface it in the same
+  // "Flagged for review" panel: another ingested invoice (OUTSIDE this batch, still live — pending / applying
+  // / applied) with the same (vendor, invoice #), or the exact same file hash, is a possible duplicate.
+  // Tenant-scoped via the RLS-bound prisma extension. Advisory only — it never blocks the human's decision.
+  const dupWarningsByDoc = new Map<string, string[]>();
+  await Promise.all(
+    rows.map(async (r) => {
+      // Only receipts can be intaken twice; skip discarded/held docs that are no longer candidates.
+      if (r.status === "discarded") return;
+      const warns: string[] = [];
+
+      if (r.vendorNameRaw && r.vendorInvoiceNumber) {
+        const dup = await prisma.ingestedInvoice.findFirst({
+          where: {
+            id: { not: r.id },
+            batchId: { not: batchId },
+            vendorNameRaw: r.vendorNameRaw,
+            vendorInvoiceNumber: r.vendorInvoiceNumber,
+            status: { in: ["pending", "applying", "applied"] },
+          },
+          select: { id: true },
+        });
+        if (dup) {
+          warns.push(
+            `Possible duplicate — an invoice ${r.vendorInvoiceNumber} from ${r.vendorNameRaw} has already been entered. Verify before confirming.`,
+          );
+        }
+      }
+
+      if (r.fileSha256) {
+        const dupFile = await prisma.ingestedInvoice.findFirst({
+          where: {
+            id: { not: r.id },
+            batchId: { not: batchId },
+            fileSha256: r.fileSha256,
+            status: { in: ["pending", "applying", "applied"] },
+          },
+          select: { id: true },
+        });
+        if (dupFile && warns.length === 0) {
+          warns.push("Possible duplicate — this exact file has already been ingested. Verify before confirming.");
+        }
+      }
+
+      if (warns.length) dupWarningsByDoc.set(r.id, warns);
+    }),
+  );
+
   // Serialize the staging rows into the pure-model DTO the client edits (Decimals → numbers; charges +
   // warnings + COA lot no. lifted out of the stored extraction).
   const docs: ReviewDoc[] = rows.map((r) => {
@@ -110,6 +160,9 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
       allocatedUnitCost: numOrNull(l.allocatedUnitCost),
       createdSupplyLotId: l.createdSupplyLotId,
     }));
+    // Duplicate warnings lead (most actionable), then the extraction's own anomaly warnings.
+    const dupWarns = dupWarningsByDoc.get(r.id) ?? [];
+    const extractionWarns = Array.isArray(extracted?.warnings) ? extracted!.warnings : [];
     return {
       id: r.id,
       batchId: r.batchId,
@@ -126,7 +179,7 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
       paymentStatus: (r.paymentStatus as "OUTSTANDING" | "PAID" | null) ?? null,
       paidFromAccount: r.paidFromAccount,
       charges: extracted?.charges ?? null,
-      warnings: Array.isArray(extracted?.warnings) ? extracted!.warnings : [],
+      warnings: [...dupWarns, ...extractionWarns],
       coaLotNo: extracted?.coa?.lotNo ?? null,
       lines,
     };
