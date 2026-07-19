@@ -35,30 +35,62 @@ const ARTICLE = `<!DOCTYPE html><html><head><title>Barrel sanitation against Bre
 <footer>Copyright AWRI. All rights reserved.</footer>
 </body></html>`;
 
-describe("HTML extraction (Defuddle -> markdown)", () => {
-  it("extracts the title and article body, dropping nav/footer boilerplate", async () => {
-    const { title, markdown, wordCount } = await extractHtml(ARTICLE, "https://www.awri.com.au/x/");
-    expect(title.toLowerCase()).toContain("barrel sanitation");
-    expect(markdown.toLowerCase()).toContain("reverse osmosis");
-    expect(wordCount).toBeGreaterThan(20);
-  });
+/**
+ * Vitest's 5s default is not enough for the Defuddle-backed cases when the FULL suite is running.
+ *
+ * Measured on an idle machine: the one-off dynamic `import("defuddle/node")` (which pulls in linkedom to
+ * build a DOM) costs ~119ms, the first extraction ~200ms, and every later extraction ~9ms. That is ~320ms
+ * of genuine work — but a full `vitest run` saturates the CPU across 250+ files, and under that contention
+ * the first Defuddle case was observed taking ~7.9s and timing out, while passing in ~680ms in isolation.
+ *
+ * So this is wall-clock contention, NOT a hang and NOT a logic bug — nothing is being masked. The ceiling is
+ * kept well above the observed worst case but far below "forever", so a real hang or a genuine performance
+ * regression in the extractor still fails the suite. Do not "optimize" this by shrinking ARTICLE: the cost is
+ * module load, not fixture size, and the nav/footer boilerplate is exactly what the first assertion checks.
+ */
+const DEFUDDLE_TIMEOUT_MS = 30_000;
 
-  it("preserves the table's numeric cell values (dose/limit safety)", async () => {
-    const { markdown } = await extractHtml(ARTICLE, "https://www.awri.com.au/x/");
-    // whether rendered as a markdown table or linearized, the numbers must survive
-    for (const v of ["70", "85", "30", "15"]) {
-      expect(markdown).toContain(v);
-    }
-  });
+describe("HTML extraction (Defuddle -> markdown)", () => {
+  it(
+    "extracts the title and article body, dropping nav/footer boilerplate",
+    async () => {
+      const { title, markdown, wordCount } = await extractHtml(ARTICLE, "https://www.awri.com.au/x/");
+      expect(title.toLowerCase()).toContain("barrel sanitation");
+      expect(markdown.toLowerCase()).toContain("reverse osmosis");
+      expect(wordCount).toBeGreaterThan(20);
+      // the boilerplate the extractor exists to strip must be gone (this is why ARTICLE carries nav/footer)
+      expect(markdown.toLowerCase()).not.toContain("all rights reserved");
+      expect(markdown.toLowerCase()).not.toContain("href=\"/about\"");
+    },
+    DEFUDDLE_TIMEOUT_MS,
+  );
+
+  it(
+    "preserves the table's numeric cell values (dose/limit safety)",
+    async () => {
+      const { markdown } = await extractHtml(ARTICLE, "https://www.awri.com.au/x/");
+      // whether rendered as a markdown table or linearized, the numbers must survive
+      for (const v of ["70", "85", "30", "15"]) {
+        expect(markdown).toContain(v);
+      }
+    },
+    DEFUDDLE_TIMEOUT_MS,
+  );
 });
 
 describe("extraction routing", () => {
-  it("routes html content type through Defuddle", async () => {
-    const doc = await extractDocument(Buffer.from(ARTICLE, "utf8"), "html", "https://www.awri.com.au/x/");
-    expect(doc.kind).toBe("html");
-    expect(doc.lowConfidence).toBe(false);
-    expect(doc.markdown.toLowerCase()).toContain("brett");
-  });
+  // Also Defuddle-backed, and test order is not guaranteed — whichever case runs first in the worker pays
+  // the cold linkedom import, so this one needs the same ceiling.
+  it(
+    "routes html content type through Defuddle",
+    async () => {
+      const doc = await extractDocument(Buffer.from(ARTICLE, "utf8"), "html", "https://www.awri.com.au/x/");
+      expect(doc.kind).toBe("html");
+      expect(doc.lowConfidence).toBe(false);
+      expect(doc.markdown.toLowerCase()).toContain("brett");
+    },
+    DEFUDDLE_TIMEOUT_MS,
+  );
 
   it("rejects an unsupported content type", async () => {
     await expect(
