@@ -2,6 +2,23 @@ import { describe, it, expect } from "vitest";
 import { classifyContentType } from "@/lib/knowledge/crawl/fetcher";
 import { isPrivateAddress } from "@/lib/knowledge/crawl/ssrf";
 import { extractLinks, gateLinks, hostIsTrusted } from "@/lib/knowledge/crawl/link-gate";
+import { normalizeCrawlUrl } from "@/lib/knowledge/crawl/crawler";
+
+describe("normalizeCrawlUrl (dedup link-followed URL variants)", () => {
+  it("strips a trailing slash after a file-extension segment (dup of the file)", () => {
+    expect(normalizeCrawlUrl("https://wine.wsu.edu/documents/2026/03/grape-rust-mites.pdf/")).toBe(
+      "https://wine.wsu.edu/documents/2026/03/grape-rust-mites.pdf",
+    );
+  });
+  it("leaves directory-style trailing slashes intact (AWRI relies on them)", () => {
+    expect(normalizeCrawlUrl("https://www.awri.com.au/industry_support/winemaking_resources/")).toBe(
+      "https://www.awri.com.au/industry_support/winemaking_resources/",
+    );
+  });
+  it("drops the #fragment and preserves the query string", () => {
+    expect(normalizeCrawlUrl("https://x.test/a.pdf/?v=2#frag")).toBe("https://x.test/a.pdf?v=2");
+  });
+});
 
 describe("content-type detection (by header, not URL extension)", () => {
   it("classifies a getmedia GUID ?ext=.pdf served as application/pdf as PDF", () => {

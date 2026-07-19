@@ -19,7 +19,7 @@
 import { crawlWithFollowing } from "@/lib/knowledge/crawl/crawler";
 import { indexDocument } from "@/lib/knowledge/index-documents";
 import { fetchDocument } from "@/lib/knowledge/crawl/fetcher";
-import { TRUSTED_DOMAIN_SET } from "@/lib/knowledge/config";
+import { TRUSTED_DOMAIN_SET, findSourceConfig } from "@/lib/knowledge/config";
 import { runAsSystem, disconnectSystem } from "@/lib/tenant/system";
 
 const isAllowedHost = (h: string) => TRUSTED_DOMAIN_SET.has(h.toLowerCase());
@@ -27,9 +27,19 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const runStart = new Date();
-  const active = await runAsSystem((db) => db.knowledgeSource.findMany({ where: { active: true }, select: { key: true } }));
-  const keys = active.map((a) => a.key);
-  console.log(`recrawl:knowledge — active sources [${keys.join(", ")}], started ${runStart.toISOString()}`);
+  const active = await runAsSystem((db) =>
+    db.knowledgeSource.findMany({ where: { active: true }, select: { id: true, key: true } }),
+  );
+  // Curated sources (autoCrawl === false) are populated by dedicated operator scripts (a curated URL list
+  // or a paginated listing walk that path-prefix filtering can't express). Exclude them from BOTH the
+  // link-following crawl AND the tombstone existence-check — the weekly loop would otherwise choke on them
+  // (slow crawl-delays, big PDFs) and can't re-discover their curated URLs anyway. They stay fresh by an
+  // operator re-running their script.
+  const autoSources = active.filter((s) => findSourceConfig(s.key)?.autoCrawl !== false);
+  const keys = autoSources.map((a) => a.key);
+  const autoSourceIds = autoSources.map((a) => a.id);
+  const curatedKeys = active.filter((s) => findSourceConfig(s.key)?.autoCrawl === false).map((s) => s.key);
+  console.log(`recrawl:knowledge — auto sources [${keys.join(", ")}]${curatedKeys.length ? `, skipping curated [${curatedKeys.join(", ")}]` : ""}, started ${runStart.toISOString()}`);
 
   // 1. Freshness re-crawl.
   let reEmbedded = 0;
@@ -65,7 +75,9 @@ async function main() {
     ? []
     : await runAsSystem((db) =>
         db.knowledgeDocument.findMany({
-          where: { status: "active", lastVerifiedAt: { lt: runStart } },
+          // Only auto-crawl sources: a curated source's docs are never "reached" by this crawl, so
+          // existence-checking them here would tombstone/refetch the whole curated set every week.
+          where: { status: "active", lastVerifiedAt: { lt: runStart }, sourceId: { in: autoSourceIds } },
           select: { id: true, canonicalUrl: true },
         }),
       );
