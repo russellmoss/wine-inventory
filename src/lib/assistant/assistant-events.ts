@@ -50,6 +50,21 @@ export function isSafeInternalPath(path: unknown): path is string {
  */
 export type ChoiceOption = { label: string; sublabel?: string; resume?: string; send?: string };
 
+/**
+ * Split a streaming NDJSON buffer into complete lines plus the unterminated remainder.
+ *
+ * Callers append each decoded chunk to `rest` and re-split. When the stream ends they must dispatch
+ * whatever `rest` still holds: a line is only complete once its "\n" arrives, so a stream that ends
+ * without a trailing newline (truncation, an aborted response, a serverless timeout) would otherwise
+ * drop its final event on the floor — and that event can be a `proposal`, i.e. a confirmation card the
+ * user never sees. Shared by both stream consumers so they cannot drift.
+ */
+export function splitNdjsonLines(buffer: string): { lines: string[]; rest: string } {
+  const parts = buffer.split("\n");
+  const rest = parts.pop() ?? "";
+  return { lines: parts, rest };
+}
+
 /** Parse one NDJSON line into an AssistantEvent, or null if unparseable/invalid. */
 export function parseEvent(line: string): AssistantEvent | null {
   const trimmed = line.trim();

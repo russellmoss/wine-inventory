@@ -1,5 +1,49 @@
 import { describe, it, expect } from "vitest";
-import { isSafeInternalPath, parseEvent, asProposal, asNavigation } from "@/lib/assistant/assistant-events";
+import { isSafeInternalPath, parseEvent, asProposal, asNavigation, splitNdjsonLines } from "@/lib/assistant/assistant-events";
+
+// Plan 081 U2: a line is only complete once its "\n" arrives. Both stream consumers used to
+// `break` on stream-end and discard whatever the buffer still held, so a truncated final chunk
+// silently dropped its event — and that event can be a `proposal`, i.e. a card the user never sees.
+describe("splitNdjsonLines (NDJSON framing)", () => {
+  it("returns complete lines and holds the unterminated remainder", () => {
+    expect(splitNdjsonLines('{"type":"text"}\n{"type":"done"}\n')).toEqual({
+      lines: ['{"type":"text"}', '{"type":"done"}'],
+      rest: "",
+    });
+  });
+
+  it("keeps a partial trailing line in rest rather than emitting it", () => {
+    const { lines, rest } = splitNdjsonLines('{"type":"text"}\n{"type":"propo');
+    expect(lines).toEqual(['{"type":"text"}']);
+    expect(rest).toBe('{"type":"propo');
+  });
+
+  it("survives a chunk boundary mid-line across successive calls", () => {
+    let buffer = "";
+    const seen: string[] = [];
+    for (const chunk of ['{"type":"pro', 'posal","token":"t"}\n{"type":"do', 'ne"}\n']) {
+      buffer += chunk;
+      const { lines, rest } = splitNdjsonLines(buffer);
+      buffer = rest;
+      seen.push(...lines);
+    }
+    expect(seen).toEqual(['{"type":"proposal","token":"t"}', '{"type":"done"}']);
+    expect(buffer).toBe("");
+  });
+
+  it("leaves a final newline-less line recoverable by the caller's end-of-stream flush", () => {
+    const { lines, rest } = splitNdjsonLines('{"type":"proposal","token":"t"}');
+    expect(lines).toEqual([]);
+    expect(rest).toBe('{"type":"proposal","token":"t"}'); // caller MUST dispatch this on `done`
+    expect(parseEvent(rest)).toMatchObject({ type: "proposal" }); // ...and it parses fine
+  });
+
+  it("does not emit an empty line for a trailing newline", () => {
+    const { lines, rest } = splitNdjsonLines('{"type":"done"}\n');
+    expect(lines).toEqual(['{"type":"done"}']);
+    expect(rest).toBe("");
+  });
+});
 
 describe("isSafeInternalPath", () => {
   it("accepts same-origin relative paths (incl. query strings)", () => {

@@ -4,7 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 import { Markdown } from "./Markdown";
-import { type AssistantEvent, parseEvent, isSafeInternalPath } from "@/lib/assistant/assistant-events";
+import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import {
   ConversationSidebar,
   type ConversationSummary,
@@ -548,18 +548,33 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         }
       };
 
+      const dispatchLine = (line: string) => {
+        const evt = parseEvent(line);
+        if (evt) {
+          handle(evt);
+        } else if (line.trim() && process.env.NODE_ENV !== "production") {
+          // Never silently swallow a line we could not parse — that is how a dropped card stays invisible.
+          console.warn("[assistant] unparseable stream line", line.slice(0, 200));
+        }
+      };
+      // A line is only dispatched once its terminating newline arrives. If the stream ends without
+      // one (truncation, an aborted response), the residual buffer used to be dropped on `break` —
+      // silently losing whatever it held, up to and including a proposal. Flush it at the end.
+      const drainLines = () => {
+        const { lines, rest } = splitNdjsonLines(buffer);
+        buffer = rest;
+        for (const line of lines) dispatchLine(line);
+      };
+
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, nl);
-          buffer = buffer.slice(nl + 1);
-          const evt = parseEvent(line);
-          if (evt) handle(evt);
-        }
+        drainLines();
       }
+      buffer += decoder.decode(); // flush any multi-byte remainder held by the streaming decoder
+      drainLines();
+      if (buffer.trim()) dispatchLine(buffer);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
