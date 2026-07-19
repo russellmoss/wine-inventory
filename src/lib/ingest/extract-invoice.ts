@@ -53,6 +53,14 @@ export type ExtractedDocument = {
   coa: ExtractedCoa | null;
   warnings: string[];
   notes: string | null;
+  // Plan 080 U4: HUMAN-supplied fields the extractor never produces (it can't know either). They ride in
+  // `extractedJson` so the manual-entry path needs no schema change, and the apply reads them back.
+  /** Destination location for every lot this invoice creates. null → the tenant's system "Winery" location. */
+  locationId?: string | null;
+  /** Invoice date as typed by the human (ISO). There is no `invoiceDate` column; this preserves it for audit. */
+  invoiceDate?: string | null;
+  /** true when this document was typed in by hand rather than extracted from a file (no blob to preview). */
+  manualEntry?: boolean;
 };
 
 export type ExtractionInput = { blobUrl: string; fileName: string; mimeType: string; fileSha256?: string | null };

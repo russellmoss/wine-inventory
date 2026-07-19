@@ -49,6 +49,13 @@ try {
     "src/lib/accounting/",
     "src/lib/commerce/",
     "src/lib/auth",
+    // Plan 080 U13a — these were MISSING despite the invariants naming them: the consumable stock/cost
+    // cores (COST-1/COST-2, WORKORDER-3/7), invoice ingestion + the aggregate A/P bill (AP-1, COST-4), and
+    // costed equipment. Editing them injected no invariant context, which is exactly the blind spot the
+    // register exists to close.
+    "src/lib/cellar/",
+    "src/lib/ingest/",
+    "src/lib/equipment/",
   ];
 
   const raw = readFileSync(0, "utf8");

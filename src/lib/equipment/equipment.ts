@@ -4,7 +4,8 @@ import { runAsTenant, requireTenantId } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
-import { EQUIPMENT_KINDS, EQUIPMENT_STATUSES, type EquipmentKind, type EquipmentStatus, type EquipmentRow } from "@/lib/equipment/vocab";
+import { type EquipmentRow } from "@/lib/equipment/vocab";
+import { normalizeEquipmentKind, normalizeEquipmentStatus, createEquipmentAssetCore } from "@/lib/equipment/equipment-core";
 
 // Plan 053 B10: the equipment registry (presses, filters, pumps…) + its advisory link to work-order tasks.
 // kind/status are VALIDATED STRINGS (no Prisma enum). Referenced equipment is advisory (WORKORDER-2):
@@ -14,36 +15,19 @@ import { EQUIPMENT_KINDS, EQUIPMENT_STATUSES, type EquipmentKind, type Equipment
 export { EQUIPMENT_KINDS, EQUIPMENT_STATUSES, equipmentKindLabel } from "@/lib/equipment/vocab";
 export type { EquipmentKind, EquipmentStatus, EquipmentRow } from "@/lib/equipment/vocab";
 
-export function normalizeEquipmentKind(v: unknown): EquipmentKind {
-  if (typeof v === "string" && (EQUIPMENT_KINDS as readonly string[]).includes(v)) return v as EquipmentKind;
-  throw new ActionError(`Invalid equipment kind "${String(v)}" (allowed: ${EQUIPMENT_KINDS.join(", ")}).`);
-}
-export function normalizeEquipmentStatus(v: unknown): EquipmentStatus {
-  if (v == null || v === "") return "available";
-  if (typeof v === "string" && (EQUIPMENT_STATUSES as readonly string[]).includes(v)) return v as EquipmentStatus;
-  throw new ActionError(`Invalid equipment status "${String(v)}" (allowed: ${EQUIPMENT_STATUSES.join(", ")}).`);
-}
+// Plan 080 U3: kind/status normalization + the (now costed) creation path live in equipment-core.ts so there
+// is ONE way to mint an asset. Re-exported here so every existing call site keeps importing from equipment.ts.
+export { normalizeEquipmentKind, normalizeEquipmentStatus, createEquipmentAssetCore, createEquipmentAssetsFromInvoiceCore } from "@/lib/equipment/equipment-core";
+export type { CreateEquipmentAssetInput, EquipmentCostInput } from "@/lib/equipment/equipment-core";
 
 export type EquipmentInput = { name: string; kind: string; status?: string | null; locationId?: string | null; notes?: string | null };
 
+/**
+ * Create an UNCOSTED equipment asset (the plain registry path). Thin delegate to `createEquipmentAssetCore`
+ * so the uncosted and costed paths can never drift; pass cost fields to that core directly to capitalize one.
+ */
 export async function createEquipmentCore(actor: LedgerActor, input: EquipmentInput): Promise<{ id: string }> {
-  if (!input.name?.trim()) throw new ActionError("Equipment needs a name.");
-  const kind = normalizeEquipmentKind(input.kind);
-  const status = normalizeEquipmentStatus(input.status);
-  try {
-    return await runInTenantTx(async (tx) => {
-      const tenantId = requireTenantId();
-      const row = await tx.equipmentAsset.create({
-        data: { tenantId, name: input.name.trim(), kind, status, locationId: input.locationId || null, notes: input.notes?.trim() || null },
-        select: { id: true },
-      });
-      await writeAudit(tx, { ...actor, action: "CREATE", entityType: "EquipmentAsset", entityId: row.id, summary: `Added equipment ${input.name.trim()}` });
-      return { id: row.id };
-    });
-  } catch (e) {
-    if (e && typeof e === "object" && (e as { code?: string }).code === "P2002") throw new ActionError(`Equipment "${input.name.trim()}" already exists.`, "CONFLICT");
-    throw e;
-  }
+  return createEquipmentAssetCore(actor, input);
 }
 
 export async function updateEquipmentCore(actor: LedgerActor, input: { id: string } & Partial<EquipmentInput>): Promise<{ id: string }> {

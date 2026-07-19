@@ -1,6 +1,22 @@
-import { describe, it, expect } from "vitest";
-import { extractHtml } from "@/lib/knowledge/extract/html";
+import { beforeAll, describe, it, expect } from "vitest";
+import { extractHtml, loadDefuddle } from "@/lib/knowledge/extract/html";
 import { extractDocument, sanitizeText } from "@/lib/knowledge/extract";
+
+// Warm the extraction stack BEFORE any test runs.
+//
+// `defuddle/node` is ESM-only and pulls in linkedom to build a DOM. On an idle machine the module
+// load costs ~100ms and the FIRST parse another ~175ms; every parse after that is ~7ms. This suite
+// runs alongside ~260 other files in parallel workers, and under that CPU contention the cold path
+// could blow past vitest's 5s per-test default — which is why the first test here failed
+// intermittently with "Test timed out in 5000ms" while passing in isolation and on re-run.
+//
+// Doing a throwaway load + parse in a hook with its own generous budget moves BOTH one-time costs
+// off the per-test clock, so every test below hits the ~7ms warm path. This is the fix for the
+// flake, not a timeout bump: no test's own budget was changed.
+beforeAll(async () => {
+  await loadDefuddle();
+  await extractHtml("<html><head><title>warmup</title></head><body><p>warmup</p></body></html>", "https://warmup.invalid/");
+}, 60_000);
 
 describe("sanitizeText (Postgres NUL/control-byte safety)", () => {
   it("strips NUL and other C0 control bytes but keeps tab/newline/CR and normal text", () => {

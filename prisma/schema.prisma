@@ -303,6 +303,10 @@ model Location {
   bottledLotStates      BottledLotState[] // Phase 7: en-tirage bottle lots physically stored here
 
   @@unique([tenantId, name])
+  // Plan 080 U13a: composite-tenant-FK target (K11). supply_lot + material_movement reference a Location,
+  // which is a cross-tenant-risk FK (Phase-12 checklist step 5) — without this unique those FKs can only be
+  // simple `-> location(id)`, which does NOT stop a lot in tenant B pointing at tenant A's location.
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("location")
 }
@@ -2730,6 +2734,13 @@ model SupplyLot {
   supplierNote  String?
   expiresAt     DateTime? // Plan 072: batch/lot expiry (attached from a COA by lot no.); nullable, RLS-neutral column add
   vendorId      String? // Plan 069: per-purchase vendor — composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
+  // Plan 080 U1: physical location of this lot. Nullable through the expand phase (backfill → SET NOT NULL in a
+  // later migration once all writers set it — council S7). Composite-tenant FK (tenantId,locationId)→location(tenantId,id)
+  // in raw SQL (K11), NO Prisma relation (mirrors vendorId) so Location's back-relations stay untouched.
+  locationId    String?
+  // Plan 080 U1: transfer lineage. When a transfer SPLITS a lot, the destination lot points back at the source lot
+  // here; provenance (LotDocument/expiry) is derived TRANSITIVELY through this edge (council S2 — never row-copy).
+  splitFromLotId String?
   policyVersion Int                 @default(1) // costing-policy version at receipt (D17)
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
@@ -2739,7 +2750,36 @@ model SupplyLot {
   @@unique([tenantId, id]) // composite-tenant-FK target for supply_consumption (K11)
   @@index([tenantId])
   @@index([tenantId, materialId, receivedAt]) // FIFO / on-hand scan (partial WHERE qtyRemaining>0 added in SQL)
+  @@index([tenantId, locationId]) // Plan 080 U1: per-location filters
+  @@index([tenantId, materialId, locationId, receivedAt, id]) // Plan 080 U1: per-location FIFO scan, deterministic (receivedAt,id) tiebreak
   @@map("supply_lot")
+}
+
+// Plan 080 U1: append-only per-location movement ledger for consumables (mirrors StockMovement for wine).
+// Every RECEIVE / ADJUST / TRANSFER / CONSUME of a material at a location writes one row. `deltaQty` is SIGNED
+// (negative for a draw / the out-leg of a transfer). A transfer pairs its two legs via `transferGroupId`.
+// Tenant-scoped + RLS (Phase-12). Composite-tenant FKs (tenantId,materialId)/(tenantId,locationId)/(tenantId,supplyLotId)
+// in raw SQL (K11 — council S3); `kind` is a validated string CHECK-constrained to the four values.
+model MaterialMovement {
+  tenantId        String   @default("")
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  createdById     String?
+  createdByEmail  String
+  materialId      String
+  locationId      String
+  kind            String // RECEIVE | ADJUST | TRANSFER | CONSUME (CHECK-constrained in SQL)
+  deltaQty        Decimal  @db.Decimal(18, 6) // signed
+  supplyLotId     String? // the lot drawn/created, when applicable
+  transferGroupId String? // pairs the two legs of a transfer
+  reason          String?
+
+  @@unique([tenantId, id]) // composite-tenant-FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, materialId, locationId])
+  @@index([tenantId, transferGroupId])
+  @@index([tenantId, createdAt])
+  @@map("material_movement")
 }
 
 // Direct absorbed cost on an op, tagged by component (D2, D16). The append-only money artifact the
@@ -3959,12 +3999,26 @@ model EquipmentAsset {
   locationId String? // plain ref → location.id (K11/K12)
   notes      String?
   isActive   Boolean  @default(true)
+  // Plan 080 U3: acquisition cost + invoice provenance (all nullable — existing assets stay uncosted; a
+  // capitalized asset is a FIXED ASSET, never dosed: EQUIPMENT stays non-doseable, WORKORDER-7).
+  // `purchaseCostBase` is ALWAYS the tenant BASE currency (the roll-up basis, COST-4); the foreign quintet
+  // below mirrors SupplyLot exactly — immutable historical provenance (IAS 21), audit only, never revalued.
+  purchaseCostBase    Decimal?  @db.Decimal(18, 8)
+  currency            String?   @default("USD") // the BASE currency stamp for purchaseCostBase
+  foreignPurchaseCost Decimal?  @db.Decimal(18, 8) // the price in the invoice (foreign) currency
+  foreignCurrency     String? // e.g. "EUR"
+  fxRate              Decimal?  @db.Decimal(18, 8) // base per 1 foreign at purchase (base == foreign × fxRate)
+  fxRateDate          DateTime? // the ECB quote date the rate was for
+  fxRateSource        String? // e.g. "ECB via Frankfurter" | "manual override"
+  purchaseDate        DateTime?
+  vendorId            String? // Plan 069/080: composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@unique([tenantId, name])
   @@unique([tenantId, id]) // composite-FK target for work_order_task_equipment
   @@index([tenantId])
+  @@index([tenantId, vendorId]) // Plan 080 U3: per-vendor asset lookups
   @@map("equipment_asset")
 }
 

@@ -24,6 +24,7 @@ import {
   type ApplyDeps,
 } from "@/lib/ingest/ingest-invoice-core";
 import { createStockMaterialCore, listMaterialLots } from "@/lib/cellar/materials";
+import { createManualInvoiceCore, MANUAL_INVOICE_MIME } from "@/lib/ingest/manual-invoice-core";
 import { isDoseableCategory, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
 
@@ -54,7 +55,13 @@ function input(fileName: string, document: ExtractedDocument, batchId: string): 
 
 async function cleanup() {
   await runAsTenant(TENANT, async () => {
-    const invs = await prisma.ingestedInvoice.findMany({ where: { batchId: { startsWith: PFX } }, select: { id: true } });
+    // Match on the vendor name too, NOT just batchId: a manual entry (Plan 080 U4) mints its OWN batchId, so a
+    // batchId-only sweep would leave it behind and the (vendor, invoice#) duplicate guard would then fail the
+    // NEXT run's apply.
+    const invs = await prisma.ingestedInvoice.findMany({
+      where: { OR: [{ batchId: { startsWith: PFX } }, { vendorNameRaw: { startsWith: PFX } }] },
+      select: { id: true },
+    });
     const invIds = invs.map((i) => i.id);
     const mats = await prisma.cellarMaterial.findMany({ where: { name: { startsWith: PFX } }, select: { id: true } });
     const matIds = mats.map((m) => m.id);
@@ -74,6 +81,9 @@ async function cleanup() {
     await prisma.ingestedInvoice.deleteMany({ where: { id: { in: invIds } } });
     await prisma.cellarMaterial.deleteMany({ where: { OR: [{ id: { in: matIds } }, { vendorId: { in: vendIds } }] } });
     await prisma.vendor.deleteMany({ where: { id: { in: vendIds } } });
+    // Plan 080 U4: the manual-invoice scenario creates a QA destination Location. It must go LAST — supply_lot
+    // FKs to it ON DELETE RESTRICT, so it is only deletable once the lots above are gone.
+    await prisma.location.deleteMany({ where: { name: { startsWith: PFX } } });
     await prisma.auditLog.deleteMany({ where: { actorEmail: ACTOR.actorEmail } });
   });
 }
@@ -516,6 +526,81 @@ async function main() {
         // and reversing a PAID invoice is blocked until the bill payment is voided in QBO.
         const revPaid = await reverseIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
         assert(!revPaid.ok && /paid in QuickBooks/.test(revPaid.error), "scenario 12: reversing a paid invoice is blocked (void the bill payment first)");
+      }
+
+      // ── Scenario 13 (Plan 080 U4): a MANUALLY-TYPED invoice applies identically to an extracted one ──
+      // The whole point of routing manual entry through createIngestedInvoiceCore/applyIngestedInvoiceCore is
+      // that A/P stays ONE aggregate bill (AP-1) and landed cost is computed by the same code. This proves it
+      // end-to-end, and that the human-chosen destination location actually lands on the created lots.
+      {
+        const loc = await prisma.location.create({ data: { name: `${PFX} Manual Store ${Date.now()}`, isActive: true }, select: { id: true, name: true } });
+
+        const staged = await createManualInvoiceCore(ACTOR, {
+          vendorName: `${PFX} Manual Vendor`,
+          invoiceNumber: "QA-MAN-1",
+          invoiceDate: new Date("2026-07-19T00:00:00.000Z"),
+          currency: "USD",
+          invoiceTotal: 385.79 + 100,
+          locationId: loc.id,
+          charges: { shipping: 100 },
+          // deliberately the SAME numbers as scenario 1 so the money must come out identical
+          lines: [
+            { description: `${PFX} Manual Yeast`, qty: 1000, unit: "g", unitPrice: 0.30779, lineTotal: 307.79, lotNo: "QA-MAN-LOT-1" },
+            { description: `${PFX} Manual Bentonite`, qty: 1000, unit: "g", unitPrice: 0.078, lineTotal: 78.0, lotNo: "QA-MAN-LOT-2" },
+          ],
+        });
+        const invId = staged.invoiceId;
+
+        const inv0 = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { docType: true, mimeType: true, fileSha256: true, vendorNameRaw: true, vendorInvoiceNumber: true } });
+        assert(inv0!.docType === "invoice", "scenario 13: manual entry stages as a normal invoice document");
+        assert(inv0!.mimeType === MANUAL_INVOICE_MIME, "scenario 13: manual entry carries the manual mime marker");
+        assert(inv0!.fileSha256 === null, "scenario 13: manual entry has NO file hash (else every manual entry would collide on the file-dup guard)");
+        assert(inv0!.vendorInvoiceNumber === "QA-MAN-1", "scenario 13: supplier invoice # captured for the (vendor, invoice#) duplicate guard");
+
+        const mLines = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invId }, orderBy: { lineNo: "asc" } });
+        assert(mLines.length === 2, `scenario 13: 2 staged lines (got ${mLines.length})`);
+        for (const l of mLines) await updateIngestedInvoiceLineCore(ACTOR, l.id, { matchDecision: "new", resolvedKind: "YEAST" });
+
+        const res = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(res.ok, "scenario 13: manual invoice applies");
+        if (!res.ok) return;
+        assert(res.supplyLotIds.length === 2, "scenario 13: 2 supply lots created");
+
+        const mLots = await prisma.supplyLot.findMany({ where: { id: { in: res.supplyLotIds } }, orderBy: { lotCode: "asc" } });
+        // Plan 080: the goods land where the HUMAN said, not at the default system location.
+        assert(mLots.every((l) => l.locationId === loc.id), `scenario 13: both lots landed at the chosen location "${loc.name}"`);
+        // Identical landed cost to scenario 1 — same freight split by the same allocator, no manual-path math.
+        const [ml1, ml2] = mLots;
+        assert(Math.abs(Number(ml1.unitCost) - 0.38757) < 1e-5, `scenario 13: manual line 1 freight-inclusive unitCost == the extracted path's 0.38757 (got ${ml1.unitCost})`);
+        assert(Math.abs(Number(ml2.unitCost) - 0.09822) < 1e-5, `scenario 13: manual line 2 freight-inclusive unitCost == the extracted path's 0.09822 (got ${ml2.unitCost})`);
+
+        // AP-1: ONE aggregate bill for the invoice, never N per-lot bills.
+        const perLot = await prisma.apExportEvent.findMany({ where: { supplyLotId: { in: res.supplyLotIds } }, select: { id: true } });
+        assert(perLot.length === 0, `scenario 13: NO per-lot A/P events — the aggregate owns A/P (got ${perLot.length})`);
+        const mEvs = await prisma.apExportEvent.findMany({ where: { ingestedInvoiceId: invId } });
+        assert(mEvs.length === 1, `scenario 13: exactly ONE aggregate A/P bill (AP-1) for the manual invoice (got ${mEvs.length})`);
+        const mAgg = mEvs[0];
+        assert(mAgg.postingKey === `apinv:${invId}`, "scenario 13: aggregate keyed apinv:<invoiceId>, same as the extracted path");
+        assert(Math.abs(Number(mAgg.amount) - 485.79) < 0.02, `scenario 13: aggregate amount matches the extracted path exactly (485.79, got ${mAgg.amount})`);
+        const mBl = (mAgg.billLinesJson as { amount: number }[] | null) ?? [];
+        assert(mBl.length === 2, `scenario 13: aggregate carries one bill line per invoice line (got ${mBl.length})`);
+        assert(Math.abs(Number(mBl[0].amount) - 387.57) < 0.02 && Math.abs(Number(mBl[1].amount) - 98.22) < 0.02, "scenario 13: manual bill lines carry the SAME per-line landed amounts as the extracted path");
+
+        // The human-only fields survive in extractedJson (no columns exist for them).
+        const inv1 = await prisma.ingestedInvoice.findUnique({ where: { id: invId }, select: { extractedJson: true, status: true } });
+        const ej = inv1!.extractedJson as unknown as ExtractedDocument;
+        assert(inv1!.status === "applied", "scenario 13: manual invoice marked applied");
+        assert(ej.manualEntry === true && ej.locationId === loc.id && ej.invoiceDate === "2026-07-19T00:00:00.000Z", "scenario 13: manual-entry marker + chosen location + invoice date preserved in extractedJson");
+
+        // Wave-1 scope gate (council C6): a non-material target is refused, not silently booked as a consumable.
+        let refused = false;
+        try {
+          await createManualInvoiceCore(ACTOR, { vendorName: `${PFX} Manual Vendor`, locationId: loc.id, lines: [{ description: `${PFX} Pump`, targetKind: "EQUIPMENT_ASSET" }] });
+        } catch {
+          refused = true;
+        }
+        assert(refused, "scenario 13: a non-MATERIAL line is refused until Wave 3 (council C6)");
+        // NOTE: the QA location is removed by cleanup() (after the lots that FK to it), not here.
       }
     });
   } finally {
