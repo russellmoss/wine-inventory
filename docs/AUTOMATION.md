@@ -20,7 +20,7 @@ You stay in control; the loops just make sure the work *starts itself*.
 | 2 | **Security sweep** | GitHub Actions | weekly + on sensitive-path push + manual | GitHub **issue** if tenant/RLS/auth/secret drift found |
 | 3 | **Scale tripwire** | GitHub Actions | weekly + manual | GitHub **issue** if a `scale-register` tripwire is approaching |
 | 4 | **UX consistency** | GitHub Actions | on PRs touching UI + manual | PR review comments vs `ux-principles.md` |
-| 5 | **Knowledge re-crawl** | GitHub Actions | weekly + manual | refreshes the GLOBAL knowledge corpus (re-embed changed / add new / tombstone 404s); GitHub **issue** with the run summary |
+| 5 | **Knowledge re-crawl** | GitHub Actions | monthly + manual | refreshes the GLOBAL knowledge corpus (re-embed changed / add new / tombstone 404s); GitHub **issue** with the run summary |
 
 Workflow files live in `.github/workflows/`. The local hook is `.githooks/post-commit`.
 
