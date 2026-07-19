@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runAsTenant, requireTenantId } from "@/lib/tenant/context";
 import { type EmitNotificationInput, type InboxNotificationDTO, type ListNotificationsOpts } from "@/lib/inbox/types";
-import { shouldSuppressSelfNotification, toNotificationDTO } from "@/lib/inbox/payloads";
+import { shouldEmitNotification, toNotificationDTO } from "@/lib/inbox/payloads";
 
 // Plan 068 Unit 2 — the inbox notification core: emit / list / count-unread / read-state. Every write
 // goes through emitNotificationTx (the single choke point) so a future email channel is a drop-in
@@ -11,6 +11,7 @@ import { shouldSuppressSelfNotification, toNotificationDTO } from "@/lib/inbox/p
 // per-user RLS (Unit 1b) — defense in depth. The pure payload builders live in ./payloads.
 export {
   shouldSuppressSelfNotification,
+  shouldEmitNotification,
   buildTicketNotificationPayload,
   buildWorkOrderNotificationPayload,
   toNotificationDTO,
@@ -21,13 +22,14 @@ const DEFAULT_LIST_LIMIT = 50;
 // ── Emit (single choke point — piggybacks on the caller's tx) ────────────────
 
 /**
- * Insert one notification inside the caller-provided tx. Self-notifications are suppressed. Uses
- * createMany (NOT create): create's INSERT…RETURNING is checked against the restrictive per-user
- * SELECT policy and would reject a row destined for another user (Unit 1b). Emit is fire-and-forget
- * (no id returned). tenantId is set explicitly (mirrors the equipment createMany precedent).
+ * Insert one notification inside the caller-provided tx. Self-notifications are suppressed unless the
+ * caller opts in (`allowSelfNotification` — e.g. a WO you assigned to yourself). Uses createMany (NOT
+ * create): create's INSERT…RETURNING is checked against the restrictive per-user SELECT policy and would
+ * reject a row destined for another user (Unit 1b). Emit is fire-and-forget (no id returned). tenantId is
+ * set explicitly (mirrors the equipment createMany precedent).
  */
 export async function emitNotificationTx(tx: Prisma.TransactionClient, input: EmitNotificationInput): Promise<void> {
-  if (shouldSuppressSelfNotification(input.recipientUserId, input.actor?.actorUserId)) return;
+  if (!shouldEmitNotification(input.recipientUserId, input.actor?.actorUserId, input.allowSelfNotification)) return;
   const tenantId = requireTenantId();
   await tx.inboxNotification.createMany({
     data: [

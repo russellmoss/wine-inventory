@@ -94,6 +94,21 @@ function SafeLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+// Knowledge-base citation links (/kb/source/<id>) resolve to an EXTERNAL source (they 302 out to AWRI /
+// Wine Australia). Open them in a NEW tab so the winemaker never loses their place in Cellarhand.
+function CitationLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ color: "var(--accent)", textDecoration: "underline" }}
+    >
+      {label}
+    </a>
+  );
+}
+
 function renderInline(text: string): React.ReactNode[] {
   const parts = text.split(INLINE);
   return parts.map((part, i) => {
@@ -103,7 +118,11 @@ function renderInline(text: string): React.ReactNode[] {
       const href = link[2];
       // Only same-origin "/" paths become links; anything else renders as plain
       // text (blocks javascript:, http(s)://, //off-site, backslash tricks).
-      if (isSafeInternalPath(href)) return <SafeLink key={i} href={href} label={label} />;
+      if (isSafeInternalPath(href)) {
+        // Citations (/kb/source/<id>) redirect out to the source — open in a new tab, don't leave the app.
+        if (href.startsWith("/kb/source/")) return <CitationLink key={i} href={href} label={label} />;
+        return <SafeLink key={i} href={href} label={label} />;
+      }
       return <React.Fragment key={i}>{label}</React.Fragment>;
     }
     if (part.startsWith("**") && part.endsWith("**")) {

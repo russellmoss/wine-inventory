@@ -7,6 +7,7 @@ import {
   type FeedbackConversationMessage,
 } from "@/lib/assistant/feedback-snapshot";
 import { getFeedbackAutomationModes } from "@/lib/settings/data";
+import { clampConsoleCapture } from "@/lib/feedback/debug-context";
 import { recordAutomationGate } from "@/lib/feedback/automation";
 import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
@@ -63,6 +64,13 @@ export async function POST(req: Request) {
     conversation = parseClientConversation((body as { messages?: unknown })?.messages);
   }
   if (!conversation) return Response.json({ error: "Invalid conversation." }, { status: 400 });
+
+  // Merge console captured client-side at 👎 time, without disturbing the
+  // server-built trace/window fields (Plan 079, Unit 2).
+  const capture = clampConsoleCapture((body as { clientConsole?: unknown })?.clientConsole);
+  if (capture.consoleLog || capture.clientErrors) {
+    debugContext = { ...debugContext, ...capture };
+  }
 
   const modes = await runAsTenant(tenantId, () => getFeedbackAutomationModes());
   const modeAtSubmission =

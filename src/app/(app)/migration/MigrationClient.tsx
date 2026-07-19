@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
-import { Badge, Button, Card, Eyebrow, Tabs } from "@/components/ui";
+import { Badge, Button, Card, Eyebrow, Tabs, LocalTime } from "@/components/ui";
 import {
   acceptReconciliationItemAction,
   confirmMigrationEntityMappingAction,
@@ -77,7 +77,7 @@ const statusTone: Record<string, "neutral" | "gold" | "green" | "blue" | "red"> 
 };
 
 function shortDate(value: string | null | undefined) {
-  return value ? new Date(value).toLocaleDateString() : "-";
+  return value ? <LocalTime value={value} mode="date" /> : "-";
 }
 
 function RowAction({ label, run, variant = "secondary" }: { label: string; run: () => Promise<unknown>; variant?: "primary" | "secondary" | "ghost" }) {

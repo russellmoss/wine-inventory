@@ -3,7 +3,7 @@
 import React from "react";
 import { Modal, Button } from "@/components/ui";
 import { VendorForm, emptyVendorForm, vendorFormToInput, vendorFormValid, type VendorFormValue } from "@/components/vendors/VendorForm";
-import { createVendorAction, checkVendorNearMatchesAction } from "@/lib/vendors/actions";
+import { createVendorAction, checkVendorNearMatchesAction, checkQboVendorMatchesAction } from "@/lib/vendors/actions";
 
 // Plan 069: the inline "+ create new vendor" modal used by the VendorPicker (expendables intake) and anywhere
 // a vendor must be created on the fly. On save it calls createVendorAction and hands the new { id, name } back
@@ -14,27 +14,33 @@ import { createVendorAction, checkVendorNearMatchesAction } from "@/lib/vendors/
 //     in one click. Mirrors the assistant, which only acts on HIGH. Advisory only — never an auto-merge.
 type NearMatch = { id: string; name: string };
 
+type QboMatch = { externalId: string; name: string };
+
 export function CreateVendorModal({
   open,
   onClose,
   initialName = "",
   onCreated,
+  qboPushEnabled = false,
 }: {
   open: boolean;
   onClose: () => void;
   /** Prefill the name from the picker's typed query. */
   initialName?: string;
   onCreated: (vendor: { id: string; name: string }) => void;
+  /** Plan 077: when the tenant opted into eager QBO push, check QBO for a matching vendor before creating. */
+  qboPushEnabled?: boolean;
 }) {
   const [form, setForm] = React.useState<VendorFormValue>({ ...emptyVendorForm, name: initialName });
   const [error, setError] = React.useState<string | null>(null);
   const [matches, setMatches] = React.useState<{ high: NearMatch[]; medium: NearMatch[] } | null>(null);
+  const [qboMatches, setQboMatches] = React.useState<QboMatch[] | null>(null);
   const [pending, startTransition] = React.useTransition();
   const canSubmit = vendorFormValid(form) && !pending;
 
   // Editing the name invalidates any near-match result already shown (it was for the old name).
   const patch = (p: Partial<VendorFormValue>) => {
-    if (p.name !== undefined) setMatches(null);
+    if (p.name !== undefined) { setMatches(null); setQboMatches(null); }
     setForm((f) => ({ ...f, ...p }));
   };
 
@@ -50,12 +56,18 @@ export function CreateVendorModal({
     return () => { cancelled = true; clearTimeout(t); };
   }, [form.name]);
 
-  function doCreate() {
+  // Create the vendor. When the tenant opted into eager QBO push, first check QBO for a same-supplier match and
+  // offer to LINK instead of duplicating (opts.linkExternalId / opts.qboConfirmed skip the re-check).
+  function doCreate(opts?: { linkExternalId?: string; qboConfirmed?: boolean }) {
     const name = form.name.trim();
     setError(null);
     startTransition(async () => {
       try {
-        const res = await createVendorAction(vendorFormToInput(form));
+        if (qboPushEnabled && !opts?.linkExternalId && !opts?.qboConfirmed) {
+          const qbo = await checkQboVendorMatchesAction(name).catch(() => ({ high: [] as QboMatch[] }));
+          if (qbo.high.length) { setQboMatches(qbo.high); return; } // show the "same vendor in QBO?" panel
+        }
+        const res = await createVendorAction(vendorFormToInput(form), opts?.linkExternalId ? { qboLinkExternalId: opts.linkExternalId } : undefined);
         onCreated({ id: res.id, name });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't create that vendor.");
@@ -63,8 +75,8 @@ export function CreateVendorModal({
     });
   }
 
-  // Primary "Create vendor" click: authoritative near-dup check. A HIGH match soft-blocks (shows the panel);
-  // a MEDIUM-only match or no match creates directly — one click.
+  // Primary "Create vendor" click: authoritative LOCAL near-dup check. A HIGH match soft-blocks (shows the panel);
+  // otherwise doCreate() runs (which layers the QBO check when push is enabled).
   function submit() {
     if (!canSubmit) return;
     setError(null);
@@ -72,7 +84,7 @@ export function CreateVendorModal({
       try {
         const res = await checkVendorNearMatchesAction(form.name.trim());
         setMatches(res);
-        if (res.high.length) return; // HIGH → wait for the user's use-existing / create-anyway decision
+        if (res.high.length) return; // local HIGH → wait for the user's use-existing / create-anyway decision
         doCreate();
       } catch {
         doCreate(); // the guard is advisory — a failed check never blocks creation
@@ -83,6 +95,7 @@ export function CreateVendorModal({
   const highMatches = matches?.high ?? [];
   const mediumMatches = matches?.medium ?? [];
   const softBlocked = highMatches.length > 0;
+  const qboBlocked = (qboMatches?.length ?? 0) > 0;
 
   return (
     <Modal open={open} onClose={onClose} title="New vendor" subtitle="Name, phone, and email are required" maxWidth="min(620px, 96vw)">
@@ -122,6 +135,39 @@ export function CreateVendorModal({
               Or, if “{form.name.trim()}” really is a different vendor, create it anyway.
             </p>
           </div>
+        ) : qboBlocked ? (
+          // Plan 077 — QBO has a same-looking vendor: link to it instead of making a duplicate in QuickBooks.
+          <div
+            style={{
+              border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
+              background: "var(--surface-sunken, rgba(0,0,0,0.03))", padding: 12, display: "flex", flexDirection: "column", gap: 10,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+              QuickBooks already has a vendor that looks like this. Link to it?
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {(qboMatches ?? []).map((m) => (
+                <button
+                  key={m.externalId}
+                  type="button"
+                  onClick={() => doCreate({ linkExternalId: m.externalId })}
+                  disabled={pending}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", textAlign: "left",
+                    padding: "9px 12px", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm, 6px)",
+                    background: "var(--surface-raised)", cursor: pending ? "default" : "pointer", color: "var(--text-primary)", fontSize: 14,
+                  }}
+                >
+                  <span style={{ fontWeight: 500 }}>{m.name}</span>
+                  <span style={{ fontSize: 12, color: "var(--wine-primary)", fontWeight: 600 }}>Link to this →</span>
+                </button>
+              ))}
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
+              Or, if “{form.name.trim()}” really is a different vendor, create it in QuickBooks anyway.
+            </p>
+          </div>
         ) : mediumMatches.length > 0 ? (
           // MEDIUM — light, non-blocking hint. The normal Create button still creates in one click.
           <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
@@ -151,8 +197,12 @@ export function CreateVendorModal({
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           {softBlocked ? (
-            <Button type="button" variant="primary" onClick={doCreate} disabled={!canSubmit}>
-              {pending ? "Creating…" : `Create “${form.name.trim()}” anyway`}
+            <Button type="button" variant="primary" onClick={() => doCreate()} disabled={!canSubmit}>
+              {pending ? "Working…" : `Create “${form.name.trim()}” anyway`}
+            </Button>
+          ) : qboBlocked ? (
+            <Button type="button" variant="primary" onClick={() => doCreate({ qboConfirmed: true })} disabled={!canSubmit}>
+              {pending ? "Creating…" : `Create new in QuickBooks anyway`}
             </Button>
           ) : (
             <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>

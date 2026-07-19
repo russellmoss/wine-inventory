@@ -319,6 +319,80 @@ TEMPLATE — copy for each new invariant / finding:
   + `test/qbo-vendor-pull.test.ts` + the isolation block.
 - **Status:** 🟢 (read-only QBO + advisory human-gated queue; new RLS table proven; enumerator SEC-C3 respected).
 
+## Cellarhand → QBO eager vendor push is OPT-IN, POST-COMMIT, home-currency-only; no new RLS surface (plan 077)
+- **What:** Slice 2 pushes a Cellarhand-created vendor INTO QuickBooks immediately (opt-in per tenant via
+  `AppSettings.pushVendorsToQbo`, default false). The push runs AFTER `createVendorCore` commits — never inside
+  its `runInTenantTx` (a multi-second QBO HTTP call under a held DB tx = Neon P2028). Fuzzy-matches against QBO
+  first (Slice-1 `listVendors` + Plan-074 `findVendorNearMatches`) and offers link-to-existing so it never
+  blind-creates a "Scott Labs"/"Scott Laboratories" dup in QBO. Only the HOME-currency vendor is pushed
+  (unsuffixed); foreign currency-scoped vendors ("Acme (EUR)", plan 073) stay LAZY at bill-post. Two new COLUMNS
+  only (`Vendor.syncStatus` plain string, `AppSettings.pushVendorsToQbo`) — no new table, RLS-neutral (existing
+  `tenant_isolation` policies cover new columns).
+- **RLS / tenancy:** the retry sweep (`runVendorSyncSweep`) + backfill enumerate orgs via the least-privilege
+  enumerator role (org list ONLY, never `accounting_connection` — SEC-C3); every per-tenant read/write is inside
+  `runAsTenant` (never a bare `prismaBase` read — 0 rows under RLS). Two local vendors resolving to one QBO id is
+  blocked by the Slice-1 `@@unique([tenantId, externalVendorId])` → P2002 → `syncStatus='conflict'` (surfaced,
+  never a 500). Server actions RETURN `{ok,error}` (prod redaction).
+- **Tripwire:** moving the push INSIDE `createVendorCore`'s tx (P2028); pushing suffixed foreign-currency vendors
+  eagerly (plan-073 double-currency corruption); making push always-on instead of opt-in; the sweep/backfill
+  reading `accounting_connection` as the enumerator; a blind create that skips the fuzzy pre-check (QBO dup).
+  Proof: `verify:vendor-sync` (link / idempotent / conflict / sweep-gating / opt-in round-trip on real DB;
+  `VERIFY_VENDOR_SYNC_LIVE=1` adds the live QBO push + pre-check) + `verify:tenant-isolation`.
+- **Status:** 🟢 (opt-in, post-commit, home-currency-only, column-add only — no new RLS table; unique guard +
+  conflict state proven; the lazy bill-post path remains the backstop).
+
+## Knowledge-base RAG: GLOBAL corpus (no RLS) + app-code entitlement + untrusted crawled content (plan 079)
+- **What:** the crawled winemaking corpus is GLOBAL (no `tenantId`, no RLS) — a shared reference library.
+  Per-winery access is a tenant-scoped `knowledge_source_subscription` (full Phase-12 RLS). Because the
+  corpus has NO row-level security, source entitlement is enforced in APPLICATION CODE: retrieval filters
+  the global chunks to the tenant's enabled sources (empty set ⇒ zero rows, fail-closed), and the citation
+  redirect route `/kb/source/<id>` MUST re-resolve the caller's tenant and re-check the subscription per
+  request (a guessable global id would otherwise be an authz bypass — council C2).
+- **Untrusted content:** crawled HTML/PDF text is DATA, never instructions (prompt-injection surface), and
+  the bigger real harm is extraction error (a dropped decimal → wrong dose). The KB tool quotes numeric
+  dose/temp/limit phrases VERBATIM from the source + tells the user to verify, defers ALL math to the
+  existing calculators (`calc_so2`/`calc_sugar`), and crawled titles are escaped + length-limited before
+  they reach Markdown/the redirect route.
+- **Crawler boundary:** SSRF controls (allowlist-only hosts, private-IP rejection, redirect-host checks,
+  size/timeout/page-count caps); cross-domain link following only INTO allowlisted domains. The weekly
+  re-crawl loop (`knowledge-recrawl.yml` → `scripts/recrawl-knowledge.ts`, Unit 12) DOES write — but ONLY
+  the GLOBAL reference corpus, never tenant/financial data — and every write is additive + reversible +
+  self-correcting (changed pages re-embed into a new revision behind an atomic flip; a 404 tombstones to
+  `status='withdrawn'` but keeps the rows; a re-reached doc flips back to `active`). It opens a GitHub
+  issue as the audit trail and never touches code / never merges `main`. It runs as owner
+  (`runAsSystem`, needs `BYPASSRLS` to write the global tables); a narrower write role is a deferred
+  follow-up (acceptable for v1: global reference data only, no tenant reach, single-flight, reversible).
+  The tombstone pass is gated to COMPLETE crawls (a capped/incomplete run can't distinguish "removed"
+  from "not yet reached", so it self-suppresses rather than risk a wrong withdrawal).
+- **Source onboarding + robots posture:** every source is `KNOWLEDGE_SOURCES`-registered with its host in
+  `TRUSTED_DOMAINS` (the crawl boundary). Sources are one of two kinds: **auto-crawl** (sitemap +
+  link-following, e.g. AWRI/WA/WSU — WSU declares its non-standard `/wp-sitemap.xml` via `sitemapUrls`), or
+  **curated** (`autoCrawl:false` — a dedicated operator script; excluded from the weekly loop so it can't
+  choke on slow crawl-delays / undiscoverable URLs). Curated adds: `scott-labs` (a VENDOR, tier 2 — its
+  `/learn/` articles are bare root slugs intermixed with products + cider/beer/spirits, NOT prefix-separable,
+  so `crawl-scott-labs.ts` fetches the winemaking handbook PDF + a curated wine-article allow-list; license
+  note flags brand/dosage specifics as vendor-sourced) and `osu-owri` (Oregon Wine Research Institute PDFs
+  via `crawl-owri.ts`, which walks the ungated collection listing for `/downloads/` links and never touches
+  the JS-challenge-gated `/concern/` item pages). Our fetcher UA is `CellarhandKnowledgeBot`, subject to the
+  robots `*` group (which permits OSU's `/collections/` + `/downloads/`); the OSU `ClaudeBot Disallow` targets
+  Anthropic's training crawler, a different agent. The OSU **Extension** site (extension.oregonstate.edu)
+  is also a curated `osu-extension` source (WINE/GRAPES ONLY): its robots is `User-agent: * → Allow: /`
+  and blocks only NAMED training crawlers (ClaudeBot/GPTBot/CCBot) with `ai-train=no,use=reference` — our
+  UA is permitted and we do reference-use RAG (cite + link back), not training. Because the wine articles
+  live in a flat `/catalog/` namespace shared with ~4k unrelated pubs + beer/cider/spirits,
+  `crawl-osu-extension.ts` enumerates the two wine hubs + the sitemap and keeps ONLY wine/grape URLs
+  (positive wine/grape keyword required, off-topic crops + beverages + academic-program pages excluded;
+  dry-run reviewable). We stay off the robots-clean-but-JS-rendered `/topic/.../resources` listings.
+- **Tripwire:** the citation route redirecting without the per-request subscription recheck; retrieval
+  dropping the enabled-source filter (or degrading empty→all); a numeric answer paraphrased instead of
+  quoted; the crawler following a link to a non-allowlisted domain or fetching a private IP; owner creds
+  used to write TENANT/financial content (the re-crawl writing the global reference corpus is expected);
+  the tombstone pass running on a capped/incomplete crawl. Proof: `verify:knowledge-base` +
+  `verify:tenant-isolation`; see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]].
+- **Status:** 🟢 (shipped to main PR #285; Units 1–10 + 12 built — subscription RLS proven, app-code
+  entitlement + citation recheck + numeric guardrail live, re-crawl freshness loop live; owner write-role
+  narrowing + per-tenant subscription UI (Unit 11) are watched follow-ups).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_

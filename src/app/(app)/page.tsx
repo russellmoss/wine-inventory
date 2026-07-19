@@ -1,19 +1,23 @@
 import Link from "next/link";
-import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { Card, Eyebrow, Metric, Badge } from "@/components/ui";
 import { openDeadlinesForTenant } from "@/lib/compliance/reminders";
 import { deadlineWhen, deadlineBadgeTone, deadlineTitle } from "@/lib/compliance/deadline-display";
+import { operationalAuditWhere } from "@/lib/audit";
 
 export default async function DashboardPage() {
   const user = await requireReadyUser();
+  await requireActiveTenant();
 
   const [bulk, bottled, goods, recent] = await Promise.all([
     prisma.vesselComponent.aggregate({ _sum: { volumeL: true } }),
     prisma.bottledInventory.aggregate({ _sum: { totalBottles: true } }),
     prisma.finishedGoodInventory.aggregate({ _sum: { quantity: true } }),
-    prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 6 }),
+    // Leadership dashboard: show high-level company activity only, not dev/auth/admin
+    // noise (bug triage, automation, logins, settings). See operationalAuditWhere. (#241)
+    prisma.auditLog.findMany({ where: operationalAuditWhere, orderBy: { createdAt: "desc" }, take: 6 }),
   ]);
 
   const bulkL = Math.round(Number(bulk._sum.volumeL ?? 0) * 100) / 100;

@@ -6,6 +6,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { getFeedbackAutomationModes } from "@/lib/settings/data";
+import { clampDebugContext } from "@/lib/feedback/debug-context";
 import { recordAutomationGate } from "@/lib/feedback/automation";
 import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
@@ -47,7 +48,9 @@ export async function createFeedbackTicket(input: CreateFeedbackTicketInput) {
           body,
           pageUrl: input.pageUrl?.slice(0, 1000) || null,
           userAgent: input.userAgent?.slice(0, 1000) || null,
-          debugContext: input.debugContext ?? undefined,
+          // Defensive re-clamp (route already clamps for the HTTP path; this guards
+          // any other caller — e.g. the assistant file_feedback committer).
+          debugContext: clampDebugContext(input.debugContext) ?? undefined,
           actorUserId: input.actorUserId ?? null,
           actorEmail: input.actorEmail,
           modeAtSubmission,

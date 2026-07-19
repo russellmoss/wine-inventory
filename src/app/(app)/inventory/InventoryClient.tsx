@@ -4,6 +4,7 @@ import React from "react";
 import { Card, Input, Button, Badge, Eyebrow, ConfirmButton, ExportCsvButton } from "@/components/ui";
 import type { ItemKind } from "@/lib/stock/movements";
 import { createCategory, createWineSku, createGood, moveStock, updateOnHand, deleteOnHand } from "@/lib/inventory/actions";
+import { unwrap } from "@/lib/action-result";
 import { ImportCsvModal } from "./ImportCsvModal";
 
 export type Cat = { id: string; name: string };
@@ -131,7 +132,7 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
               ))}
             </div>
             <form
-              onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => moveStock(new FormData(f)), f); }}
+              onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(async () => { unwrap(await moveStock(new FormData(f))); }, f); }}
               style={{ display: "flex", flexDirection: "column", gap: 10 }}
             >
               <input type="hidden" name="kind" value={selKind} />

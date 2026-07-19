@@ -1,4 +1,4 @@
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
 import type { Prisma } from "@prisma/client";
@@ -15,6 +15,7 @@ const inputStyle: React.CSSProperties = {
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<{ entityType?: string; actor?: string }> }) {
   await requireReadyUser();
+  await requireActiveTenant();
   const sp = await searchParams;
   const entityType = (sp.entityType ?? "").trim();
   const actor = (sp.actor ?? "").trim();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canAccessVineyard, canAccessLot, canManagerAccessVineyard, resolveActiveOrg, accessDecision, type AppUser } from "@/lib/access";
+import { canAccessVineyard, canAccessLot, canManagerAccessVineyard, resolveActiveOrg, accessDecision, clearsPasswordChangeGate, type AppUser } from "@/lib/access";
 
 const base: AppUser = {
   id: "u1",
@@ -112,6 +112,22 @@ describe("resolveActiveOrg (tenant resolution + K13 revalidation)", () => {
   });
   it("ignores preferOrgId when the user isn't a member of it", () => {
     expect(resolveActiveOrg(["org_bhutan_wine_co"], null, { preferOrgId: "org_demo_winery" })).toBe("org_bhutan_wine_co");
+  });
+});
+
+// Plan 074: when a Google account links, the auth hook (src/lib/auth.ts account.create.after) clears
+// the admin-set change-password gate — an SSO user has no password to change. A `credential` account
+// (admin-issued temp password) must KEEP the gate so the user still sets their own password.
+describe("clearsPasswordChangeGate (Google-link retires the change-password gate)", () => {
+  it("google link clears the gate", () => {
+    expect(clearsPasswordChangeGate("google")).toBe(true);
+  });
+  it("credential (admin temp password) keeps the gate", () => {
+    expect(clearsPasswordChangeGate("credential")).toBe(false);
+  });
+  it("any other provider keeps the gate (fail-safe default)", () => {
+    expect(clearsPasswordChangeGate("github")).toBe(false);
+    expect(clearsPasswordChangeGate("")).toBe(false);
   });
 });
 

@@ -32,6 +32,7 @@ export type AssistantTool = {
   run: (ctx: ToolContext, input: unknown) => Promise<unknown>;
 };
 
+import { searchKnowledgeBaseTool } from "./tools/search-knowledge-base";
 import { queryBrixTool } from "./tools/query-brix";
 import { queryYieldTool } from "./tools/query-yield";
 import { queryRecentHarvestsTool } from "./tools/query-recent-harvests";
@@ -47,6 +48,7 @@ import { logBrixTool } from "./tools/log-brix";
 import { deleteBrixTool } from "./tools/delete-brix";
 import { setYieldEstimateTool } from "./tools/set-yield-estimate";
 import { logHarvestPickTool } from "./tools/log-harvest-pick";
+import { deleteHarvestPickTool } from "./tools/delete-harvest-pick";
 import { adjustInventoryTool } from "./tools/adjust-inventory";
 import { rackWineTool } from "./tools/rack-wine";
 import { addAdditionTool } from "./tools/add-addition";
@@ -106,6 +108,7 @@ import { queryRecentIntakesTool } from "./tools/query-recent-intakes";
 import { reverseIntakeTool } from "./tools/reverse-intake";
 
 const ALL_TOOLS: AssistantTool[] = [
+  searchKnowledgeBaseTool,
   queryBrixTool,
   queryYieldTool,
   queryRecentHarvestsTool,
@@ -123,6 +126,7 @@ const ALL_TOOLS: AssistantTool[] = [
   deleteBrixTool,
   setYieldEstimateTool,
   logHarvestPickTool,
+  deleteHarvestPickTool,
   adjustInventoryTool,
   rackWineTool,
   addAdditionTool,

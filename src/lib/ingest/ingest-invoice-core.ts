@@ -117,14 +117,16 @@ export async function createIngestedInvoiceCore(
         select: { id: true },
       });
 
-      if (isReceipt) {
-        for (let i = 0; i < doc.lines.length; i++) {
-          const ln = doc.lines[i];
-          // Plan 072: pre-select the family + category from the AI's suggestion (category derived from the
-          // family so it's always consistent + cost-safe). The human can still change either on the review.
-          const suggestedKind = ln.family ? coerceFamily(ln.family) : null;
-          await tx.ingestedInvoiceLine.create({
-            data: {
+      if (isReceipt && doc.lines.length > 0) {
+        // Insert every line in ONE createMany instead of N sequential INSERT round-trips (Sentry #221
+        // N+1 — a 50-line invoice was 50 serial DB hits inside this tx). The created ids aren't needed
+        // here: the human-review edit path re-reads lines by id (updateIngestedInvoiceLineCore).
+        // Plan 072: pre-select the family + category from the AI's suggestion (category derived from the
+        // family so it's always consistent + cost-safe). The human can still change either on the review.
+        await tx.ingestedInvoiceLine.createMany({
+          data: doc.lines.map((ln, i) => {
+            const suggestedKind = ln.family ? coerceFamily(ln.family) : null;
+            return {
               ingestedInvoiceId: invoice.id,
               lineNo: i + 1,
               descriptionRaw: ln.description || `Line ${i + 1}`,
@@ -136,9 +138,9 @@ export async function createIngestedInvoiceCore(
               lotNoRaw: ln.lotNo ?? null,
               resolvedKind: suggestedKind,
               resolvedCategory: suggestedKind ? categoryOf(suggestedKind) : null,
-            },
-          });
-        }
+            };
+          }),
+        });
       }
 
       if (dupVendorId) {

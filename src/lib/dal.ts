@@ -123,6 +123,26 @@ export async function requireReadyUser(): Promise<AppUser> {
   }
 }
 
+/**
+ * Tenant gate for a tenant-scoped page. Returns the active tenant id, or REDIRECTS a session that
+ * has none to a safe, tenant-less landing (`/no-winery`) — never lets the page fall through to a
+ * `prisma` read that would throw "Tenant context required" as a raw 500 (Sentry #230).
+ *
+ * `requireReadyUser` only proves the user is authenticated/ready — NOT that they have an active
+ * winery. A developer without a support session, or a user with a revoked/absent membership,
+ * resolves to a null tenant (`toAppUser`). Every tenant-scoped `(app)` page must call this before
+ * reading `prisma`; on a soft navigation the layout is cached and cannot guard the page, so the
+ * guard has to live on the page. Complements `(app)/error.tsx`, which catches anything that slips
+ * through. Resolves the tenant the same way the Prisma extension does (support org, then active org).
+ */
+export async function requireActiveTenant(): Promise<string> {
+  const user = await getCurrentUser();
+  if (!user || user.banned) redirect("/login");
+  const tenantId = user.supportOrganizationId ?? user.activeOrganizationId ?? null;
+  if (!tenantId) redirect("/no-winery");
+  return tenantId;
+}
+
 /** Admin-only gate. */
 export async function requireAdmin(): Promise<AppUser> {
   const user = await getCurrentUser();

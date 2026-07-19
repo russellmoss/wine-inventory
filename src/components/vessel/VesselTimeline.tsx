@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, LocalTime } from "@/components/ui";
 import type { TimelineItem, OpItem, TimelineLeg } from "@/lib/lot/timeline";
 import { formatL } from "@/lib/lot/timeline";
 import {
@@ -193,10 +193,9 @@ function SkeletonRow() {
 }
 
 const DAY_FMT: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric", year: "numeric" };
-function prettyDay(dateLabel: string): string {
+function prettyDay(dateLabel: string) {
   // dateLabel is YYYY-MM-DD (UTC date-slice); render at noon UTC to avoid a TZ off-by-one.
-  const d = new Date(`${dateLabel}T12:00:00.000Z`);
-  return Number.isNaN(d.getTime()) ? dateLabel : d.toLocaleDateString(undefined, DAY_FMT);
+  return <LocalTime value={`${dateLabel}T12:00:00.000Z`} mode="date" options={DAY_FMT} invalidText={dateLabel} />;
 }
 
 export function VesselTimeline({

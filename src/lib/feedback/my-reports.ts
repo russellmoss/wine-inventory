@@ -13,7 +13,8 @@ import { getCurrentUser } from "@/lib/dal";
  *     cross-tenant reader (getDeveloperFeedbackData). RLS enforces isolation.
  *   - Own-only: filtered to actorUserId === the signed-in user.
  *   - Reporter-safe: returns a NARROW whitelisted shape only. NEVER expose developerNotes,
- *     prUrl, githubIssueUrl, severity, automationStatus, or debugContext to a customer.
+ *     prUrl, githubIssueUrl, severity, or debugContext to a customer. `automationStatus` is read
+ *     ONLY to derive the `needsInput` boolean (Plan 079 D-1) — the raw status never leaves here.
  *   - Bounded: capped at MAX_REPORTS newest items so a prolific reporter can't render an
  *     unbounded list (there is no actorUserId index; the per-tenant row count is small).
  */
@@ -28,6 +29,7 @@ export type MyReport = {
   status: string; // NEW | TRIAGED | IN_PROGRESS | RESOLVED | DISMISSED
   createdAt: string; // ISO
   resolvedAt: string | null; // ISO, when the item was resolved
+  needsInput: boolean; // Plan 079 D-1: the team asked the reporter a question and is waiting
 };
 
 export async function getMyReports(): Promise<MyReport[]> {
@@ -39,14 +41,14 @@ export async function getMyReports(): Promise<MyReport[]> {
       where: { actorUserId: user.id },
       orderBy: { createdAt: "desc" },
       take: MAX_REPORTS,
-      // Whitelist: only reporter-safe columns leave the DB.
-      select: { id: true, kind: true, title: true, status: true, createdAt: true, resolvedAt: true },
+      // Whitelist: only reporter-safe columns leave the DB. automationStatus → needsInput only.
+      select: { id: true, kind: true, title: true, status: true, automationStatus: true, createdAt: true, resolvedAt: true },
     }),
     prisma.assistantFeedback.findMany({
       where: { actorUserId: user.id, rating: "down" },
       orderBy: { createdAt: "desc" },
       take: MAX_REPORTS,
-      select: { id: true, status: true, createdAt: true, resolvedAt: true },
+      select: { id: true, status: true, automationStatus: true, createdAt: true, resolvedAt: true },
     }),
   ]);
 
@@ -58,6 +60,7 @@ export async function getMyReports(): Promise<MyReport[]> {
     status: t.status,
     createdAt: t.createdAt.toISOString(),
     resolvedAt: t.resolvedAt ? t.resolvedAt.toISOString() : null,
+    needsInput: t.automationStatus === "AWAITING_CLARIFICATION",
   }));
 
   const assistantReports: MyReport[] = assistant.map((a) => ({
@@ -68,6 +71,7 @@ export async function getMyReports(): Promise<MyReport[]> {
     status: a.status,
     createdAt: a.createdAt.toISOString(),
     resolvedAt: a.resolvedAt ? a.resolvedAt.toISOString() : null,
+    needsInput: a.automationStatus === "AWAITING_CLARIFICATION",
   }));
 
   return [...ticketReports, ...assistantReports]

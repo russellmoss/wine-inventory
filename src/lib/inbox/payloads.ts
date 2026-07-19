@@ -9,6 +9,18 @@ export function shouldSuppressSelfNotification(recipientUserId: string, actorUse
   return !!actorUserId && recipientUserId === actorUserId;
 }
 
+/** Whether emitNotificationTx should actually write the row. Normally a self-action is suppressed, but a
+ *  caller can opt in (`allowSelf`) for events where notifying yourself is the point — e.g. a work order you
+ *  assigned to yourself, which you want as a to-do in your own inbox. Pure so the emit gate is unit-tested. */
+export function shouldEmitNotification(
+  recipientUserId: string,
+  actorUserId?: string | null,
+  allowSelf = false,
+): boolean {
+  if (allowSelf) return true;
+  return !shouldSuppressSelfNotification(recipientUserId, actorUserId);
+}
+
 export type BuiltPayload = Pick<
   EmitNotificationInput,
   "category" | "kind" | "title" | "snippet" | "sourceType" | "sourceId"

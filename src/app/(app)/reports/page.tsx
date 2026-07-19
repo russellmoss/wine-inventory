@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireActiveTenant } from "@/lib/dal";
 import { classifyBlend } from "@/lib/bulk/blend";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
@@ -54,6 +55,7 @@ const th: React.CSSProperties = { padding: "10px 14px", fontWeight: 500, textAli
 const td: React.CSSProperties = { padding: "10px 14px", borderTop: "1px solid var(--border-strong)" };
 
 export default async function ReportsPage() {
+  await requireActiveTenant();
   const [bulk, bottled, finished] = await Promise.all([bulkByVariety(), bottledBySkuLocation(), finishedByCategoryLocation()]);
 
   return (

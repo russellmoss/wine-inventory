@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
+import { requireActiveTenant } from "@/lib/dal";
 import { BottlingClient, type VesselOpt, type RunRow } from "./BottlingClient";
 import { materialDisplayName } from "@/lib/cellar/materials-shared";
 import type { MaterialPickerOption } from "@/components/work-orders/MaterialFilterPicker";
 
 export default async function BottlingPage() {
+  await requireActiveTenant();
   const [vessels, locations, runs, packagingMaterials, packagingOnHand] = await Promise.all([
     prisma.vessel.findMany({
       where: { isActive: true },

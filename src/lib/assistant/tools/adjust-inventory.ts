@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { moveStock } from "@/lib/inventory/actions";
+import { unwrap } from "@/lib/action-result";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
@@ -111,7 +112,9 @@ export const commitAdjustInventory: Committer = async (_user, args) => {
   fd.set("locationId", String(args.locationId));
   fd.set("delta", String(args.delta));
   fd.set("reason", String(args.reason ?? "Assistant adjustment"));
-  await moveStock(fd);
+  // moveStock is now a `safeAction` (settles instead of throwing) — unwrap so a blocked adjustment
+  // surfaces its real reason to the assistant instead of being reported as a phantom success.
+  unwrap(await moveStock(fd));
   const sign = Number(args.delta) > 0 ? "+" : "";
   return {
     message: `Adjusted ${String(args.itemName)} at ${String(args.locationName)} by ${sign}${Number(args.delta)} ${String(args.unitWord ?? "units")}.`,

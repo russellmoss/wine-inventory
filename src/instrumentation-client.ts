@@ -1,5 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 
+import { installConsoleCapture } from "@/lib/observability/console-buffer";
+
 // Browser/client runtime. DSN is public (it ships in the client bundle either
 // way) — the env var lets us point at a different project without a code change.
 Sentry.init({
@@ -21,6 +23,10 @@ Sentry.init({
     // Sentry.feedbackIntegration({ colorScheme: "system" }),
   ],
 });
+
+// Always-on console + uncaught-error ring buffer for bug reports (Plan 079).
+// Installed after Sentry so Sentry's own console breadcrumbs keep working.
+installConsoleCapture();
 
 // Report client-side navigation transitions to Sentry (App Router).
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

@@ -58,6 +58,13 @@ jobs:
           AUTOMATION_RUN_ID: ${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}
         run: npx tsx scripts/assistant-feedback-agent.ts
 
+      - name: Ask the user for clarification (Plan 079 U8)
+        if: steps.agent.outputs.clarification_requested == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npx tsx --conditions=react-server scripts/feedback-clarification-request.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}"
+
       - name: Open pull request
         if: steps.agent.outputs.changed == 'true'
         id: cpr

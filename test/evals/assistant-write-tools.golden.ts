@@ -72,6 +72,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { block: "Block 3", brixValue: 24.5, recordedAt: "2024-09-15" },
   },
   {
+    utterance: "Delete the 2000 kg harvest pick on Block 2 from 2024-09-20",
+    tool: "delete_harvest_pick",
+    args: { block: "Block 2", weightKg: 2000, pickDate: "2024-09-20" },
+    note: "standalone pick delete (inverse of log_harvest_pick); narrowed by block + weight + date",
+  },
+  {
     utterance: "Undo the last rack on barrel 16",
     tool: "revert_transfer",
     args: { vessel: "barrel 16" },

@@ -1,6 +1,7 @@
 import { FeedbackTicketKind } from "@prisma/client";
 import { getCurrentUser } from "@/lib/dal";
 import { createFeedbackTicket } from "@/lib/feedback/tickets";
+import { clampDebugContext } from "@/lib/feedback/debug-context";
 
 export const runtime = "nodejs";
 
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
       body: rec.body,
       pageUrl: typeof rec.pageUrl === "string" ? rec.pageUrl : null,
       userAgent: req.headers.get("user-agent"),
-      debugContext: rec.debugContext && typeof rec.debugContext === "object" ? rec.debugContext : null,
+      debugContext: clampDebugContext(rec.debugContext),
       actorUserId: user.id,
       actorEmail: user.email,
     });

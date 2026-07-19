@@ -15,6 +15,8 @@ import {
 } from "@/lib/vendors/vendors";
 import { pullQboVendorsForTenant } from "@/lib/vendors/qbo-vendor-pull";
 import { acceptCandidateCore, rejectCandidateCore, mergeCandidateIntoVendorCore } from "@/lib/vendors/vendor-import-core";
+import { pushVendorToQboCore, getQboVendorMatchesCore } from "@/lib/vendors/vendor-qbo-sync";
+import { getPushVendorsToQbo } from "@/lib/settings/data";
 import type { VendorUsage } from "@/lib/vendors/vendors-shared";
 
 // Plan 069: vendor CRUD server actions. create/update are READY-USER gated (`action`) because they run from
@@ -29,8 +31,15 @@ function revalidateVendors() {
   revalidatePath("/setup/expendables"); // the expendables vendor picker reads the list
 }
 
-export const createVendorAction = action(async ({ actor }, input: VendorInput) => {
+export const createVendorAction = action(async ({ actor }, input: VendorInput, opts?: { qboLinkExternalId?: string }) => {
   const res = await createVendorCore(actor, input);
+  // Plan 077: eager QBO push (opt-in). Link to a chosen QBO vendor, else create+push when the tenant opted in.
+  // Runs AFTER the create commits (never a DB tx across the HTTP call). Best-effort — pushVendorToQboCore
+  // self-handles offline (→ syncStatus=pending, the retry sweep catches it) + conflict; a create never fails on it.
+  try {
+    if (opts?.qboLinkExternalId) await pushVendorToQboCore(res.id, { linkExternalId: opts.qboLinkExternalId });
+    else if (await getPushVendorsToQbo()) await pushVendorToQboCore(res.id);
+  } catch { /* the vendor is created regardless; a stuck push stays pending for the sweep */ }
   revalidateVendors();
   return res;
 });
@@ -45,6 +54,12 @@ export const updateVendorAction = action(async ({ actor }, id: string, input: Ve
  *  guard. READY-USER gated (like create), returns banded candidates — no write, no revalidate. */
 export const checkVendorNearMatchesAction = action(async (_ctx, name: string) => {
   return getVendorNearMatchesCore(name);
+});
+
+/** Plan 077: read-only QBO-side fuzzy check — QBO vendors that look like the same supplier. Drives the create
+ *  modal's "QuickBooks already has X — same vendor?" link offer (opt-in tenants). Empty when QBO is offline. */
+export const checkQboVendorMatchesAction = action(async (_ctx, name: string) => {
+  return getQboVendorMatchesCore(name);
 });
 
 export const archiveVendorAction = adminAction(async ({ actor }, input: { id: string; active: boolean }) => {

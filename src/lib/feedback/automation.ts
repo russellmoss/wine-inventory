@@ -237,6 +237,34 @@ async function updateRunAndSourceAutomationStatus(input: {
   );
 }
 
+/**
+ * Plan 079: park a run + its source at AWAITING_CLARIFICATION while we wait on the reporter's
+ * answer, and point the source at this run (currentAutomationRunId) so its displayed status is
+ * derived from the CURRENT attempt once multiple runs exist across clarification rounds (council
+ * C-3.5). Keeps the run/source two-field status sync intact.
+ */
+export async function parkRunForClarification(
+  tx: Prisma.TransactionClient,
+  input: { source: FeedbackSource; runId: string },
+) {
+  await tx.automationRun.update({
+    where: { id: input.runId },
+    data: { status: FeedbackAutomationStatus.AWAITING_CLARIFICATION },
+  });
+  await updateSourceAutomationStatus(tx, input.source, FeedbackAutomationStatus.AWAITING_CLARIFICATION);
+  if (input.source.sourceType === "ASSISTANT_FEEDBACK") {
+    await tx.assistantFeedback.update({
+      where: { id: input.source.sourceId },
+      data: { currentAutomationRunId: input.runId },
+    });
+  } else {
+    await tx.feedbackTicket.update({
+      where: { id: input.source.sourceId },
+      data: { currentAutomationRunId: input.runId },
+    });
+  }
+}
+
 export async function recordAutomationGate(
   tx: Prisma.TransactionClient,
   input: FeedbackSource & {

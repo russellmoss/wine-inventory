@@ -5,7 +5,7 @@ import { requireTenantId } from "@/lib/tenant/context";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
-import { action, ActionError } from "@/lib/actions";
+import { action, safeAction, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { receiveStock, adjustStock, transferStock, type ItemKind } from "@/lib/stock/movements";
 import { MAX_IMPORT_ROWS, type ParsedInventoryRow } from "@/lib/inventory/csv";
@@ -74,7 +74,11 @@ export const createGood = action(async ({ actor }, formData: FormData) => {
   revalidatePath(PATH);
 });
 
-export const moveStock = action(async ({ actor }, formData: FormData) => {
+// `safeAction`, not `action`: a move can be legitimately blocked (empty/short source, inactive
+// location, same-location transfer) and the user needs the SPECIFIC reason. A thrown `ActionError`
+// is redacted to Next's opaque "an error occurred" in production; settling it into `{ ok:false, error }`
+// ships the real message to the client, which `unwrap`s it back into its existing try/catch.
+export const moveStock = safeAction(async ({ actor }, formData: FormData) => {
   const kind = parseKind(formData.get("kind"));
   const itemId = String(formData.get("itemId") ?? "");
   const mode = String(formData.get("mode") ?? "");
