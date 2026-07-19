@@ -282,6 +282,43 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     maxToolCalls: 1,
     note: "RESTOCK an existing material (supply intake) — distinct from create_material and from add_addition",
   },
+
+  // ── Plan 080 U12 — the boundaries that actually collide once these five tools join the set ──
+  {
+    utterance: "Received 10 kg of tartaric into the Lab at $8/kg",
+    tool: "receive_consumable",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "SAME utterance as the receive_supply case plus a location — the location is what must flip the choice",
+  },
+  {
+    utterance: "Move 5 kg of bentonite from the Lab to the Red Cellar",
+    tool: "transfer_consumable",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "a MATERIAL between two LOCATIONS — must not be confused with rack_wine (wine between vessels)",
+  },
+  {
+    utterance: "We're 2 kg short of bentonite in the Lab after the cycle count",
+    tool: "adjust_consumable",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "correcting a CONSUMABLE count — not adjust_inventory (bottled wine / finished goods)",
+  },
+  {
+    utterance: "Add a new must pump, $4200 from Acme Cellar Supply",
+    tool: "add_equipment",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "a distinct machine = a FIXED ASSET — not create_material, even though it was 'bought'",
+  },
+  {
+    utterance: "Add an invoice from Scott Labs for 5 kg Fermaid-O at $12 a kg, delivered to the Lab",
+    tool: "add_invoice",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "a dictated multi-field INVOICE (no file) — not receive_consumable (single receipt) and not ingest_documents (a file)",
+  },
   {
     utterance: "Retire the old ZZCOST KMBS supply",
     tool: "set_material_active",

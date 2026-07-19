@@ -86,6 +86,12 @@ import { calcConvertTool } from "./tools/calc-convert";
 import { queryCalculationHistoryTool } from "./tools/query-calculation-history";
 import { createMaterialTool } from "./tools/create-material";
 import { receiveSupplyTool } from "./tools/receive-supply";
+// Plan 080 U12: location-aware consumable stock + costed equipment + hand-entered invoice.
+import { receiveConsumableTool } from "./tools/receive-consumable";
+import { adjustConsumableTool } from "./tools/adjust-consumable";
+import { transferConsumableTool } from "./tools/transfer-consumable";
+import { addEquipmentTool } from "./tools/add-equipment";
+import { addInvoiceTool } from "./tools/add-invoice";
 import { setMaterialActiveTool } from "./tools/set-material-active";
 import { pullSampleTool } from "./tools/pull-sample";
 import { recordSampleResultsTool } from "./tools/record-sample-results";
@@ -175,6 +181,11 @@ const ALL_TOOLS: AssistantTool[] = [
   queryRecentIntakesTool,
   reverseIntakeTool,
   receiveSupplyTool,
+  receiveConsumableTool,
+  adjustConsumableTool,
+  transferConsumableTool,
+  addEquipmentTool,
+  addInvoiceTool,
   setMaterialActiveTool,
   pullSampleTool,
   recordSampleResultsTool,

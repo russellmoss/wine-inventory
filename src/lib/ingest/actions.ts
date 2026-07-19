@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { action } from "@/lib/actions";
+import { action, safeAction } from "@/lib/actions";
+import { createManualInvoiceCore, type ManualInvoiceInput, type CreateManualInvoiceResult } from "@/lib/ingest/manual-invoice-core";
 import {
   createIngestedInvoiceCore,
   updateIngestedInvoiceLineCore,
@@ -24,7 +25,20 @@ import { extractDocuments, type ExtractionInput } from "@/lib/ingest/extract-inv
 
 function revalidateIngest() {
   revalidatePath("/setup/expendables");
+  revalidatePath("/inventory");
 }
+
+/**
+ * Plan 080 U4: stage a HAND-TYPED invoice. Lands on the same review screen and applies through the same core
+ * as an AI-extracted upload, so A/P stays one aggregate bill per invoice (AP-1). `safeAction` — validation
+ * blocks (no vendor, no lines, a non-material line, an inactive location) are messages the user must SEE, and
+ * a thrown ActionError is redacted to Next's opaque error in production. Callers `unwrap(...)`.
+ */
+export const createManualInvoiceAction = safeAction(async ({ actor }, input: ManualInvoiceInput): Promise<CreateManualInvoiceResult> => {
+  const res = await createManualInvoiceCore(actor, input);
+  revalidateIngest();
+  return res;
+});
 
 /** Extract a pile of already-uploaded blobs (Unit 3) and stage them (Unit 7). Returns the created staging
  *  invoices + soft duplicate warnings + any per-doc extraction failures (isolated, don't fail the batch). */
