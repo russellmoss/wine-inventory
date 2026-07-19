@@ -31,18 +31,21 @@ const EVAL_URLS = [
 
 interface RetrievalCase {
   q: string;
-  expectPath: string; // a substring of the expected source document's URL
+  // Any ONE of these URL substrings in top-k counts — some questions have several valid authoritative
+  // sources (e.g. barrel sanitation is covered by both the Brett fact sheet AND AWRI's dedicated
+  // barrel-cleaning page). The expectFact check still enforces that the correct facts are actually present.
+  expectPaths: string[];
   expectFact: string[]; // key terms the retrieved passages should contain (faithfulness of retrieval)
 }
 
 const RETRIEVAL_CASES: RetrievalCase[] = [
-  { q: "Are group 11 strobilurin good fungicides to use against downy mildew and powdery mildew?", expectPath: "s1482.pdf", expectFact: ["resistance"] },
-  { q: "What is the most effective way to remove the aromas from Brett?", expectPath: "Brett-fact-sheet.pdf", expectFact: ["reverse osmosis"] },
-  { q: "What is the most effective way to sanitize barrels against Brett?", expectPath: "Brett-fact-sheet.pdf", expectFact: ["70", "85"] },
-  { q: "What is the most ideal YAN concentration for a white must?", expectPath: "/wine_fermentation/yan/", expectFact: ["250", "350"] },
-  { q: "Are there risks to consider with whole cluster (whole bunch) fermentation?", expectPath: "whole-bunch-fermentation", expectFact: ["green", "bunch"] },
-  { q: "What are the optimal conditions for the heat test for protein stability?", expectPath: "protein-stability-fact-sheet.pdf", expectFact: ["80", "NTU"] },
-  { q: "Does the carbon product used for smoke aroma reduction matter?", expectPath: "activated-carbon.pdf", expectFact: ["carbon"] },
+  { q: "Are group 11 strobilurin good fungicides to use against downy mildew and powdery mildew?", expectPaths: ["s1482.pdf"], expectFact: ["resistance"] },
+  { q: "What is the most effective way to remove the aromas from Brett?", expectPaths: ["Brett-fact-sheet.pdf", "brettanomyces"], expectFact: ["reverse osmosis"] },
+  { q: "What is the most effective way to sanitize barrels against Brett?", expectPaths: ["Brett-fact-sheet.pdf", "barrel-cleaning-storage-and-maintenance", "brettanomyces-faq"], expectFact: ["70", "85"] },
+  { q: "What is the most ideal YAN concentration for a white must?", expectPaths: ["/wine_fermentation/yan/"], expectFact: ["250", "350"] },
+  { q: "Are there risks to consider with whole cluster (whole bunch) fermentation?", expectPaths: ["whole-bunch-fermentation"], expectFact: ["green", "bunch"] },
+  { q: "What are the optimal conditions for the heat test for protein stability?", expectPaths: ["protein-stability-fact-sheet.pdf"], expectFact: ["80", "NTU"] },
+  { q: "Does the carbon product used for smoke aroma reduction matter?", expectPaths: ["activated-carbon.pdf"], expectFact: ["carbon"] },
 ];
 
 // PENDING the Wine Australia fan-out (source not crawled in the AWRI slice).
@@ -120,13 +123,13 @@ async function main() {
   console.log("— retrieval correctness (expected source in top-k + citation) —");
   for (const c of RETRIEVAL_CASES) {
     const passages = await retrieveKnowledge({ tenantId: TENANT, query: c.q, topK: 6 });
-    const hit = passages.find((p) => p.canonicalUrl.includes(c.expectPath));
+    const hit = passages.find((p) => c.expectPaths.some((path) => p.canonicalUrl.toLowerCase().includes(path.toLowerCase())));
     const hasCitation = !!hit?.documentId;
     const factsIn = c.expectFact.every((f) =>
       passages.some((p) => p.text.toLowerCase().includes(f.toLowerCase())),
     );
     assert(!!hit && hasCitation && factsIn, `retrieval: ${c.q.slice(0, 52)}`,
-      !hit ? `expected ${c.expectPath} not in top-k (got ${passages.map((p) => p.canonicalUrl.split("/").pop()).join(", ")})`
+      !hit ? `none of [${c.expectPaths.join(" | ")}] in top-k (got ${passages.map((p) => p.canonicalUrl.split("/").filter(Boolean).pop()).join(", ")})`
         : !factsIn ? "expected facts missing from passages" : "");
     if (hit) await optionalJudge(c.q.slice(0, 40), c.q, passages);
   }
