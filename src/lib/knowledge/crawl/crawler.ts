@@ -10,7 +10,7 @@ import { runAsSystem } from "@/lib/tenant/system";
 import { findSourceConfig, TRUSTED_DOMAIN_SET, type KnowledgeSourceConfig } from "../config";
 import { collectSitemapUrls, type SitemapUrl } from "./sitemap";
 import { isAllowedByRobots, getCrawlDelayMs } from "./robots";
-import { fetchDocument, type DetectedType } from "./fetcher";
+import { fetchDocument, type DetectedType, type FetchResult } from "./fetcher";
 import { extractLinks, gateLinks } from "./link-gate";
 
 const DEFAULT_DELAY_MS = 1500; // polite default between requests to one host
@@ -161,35 +161,7 @@ export async function crawlSource(
     if (res.contentType === "other") { summary.skippedType++; continue; }
 
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
-    const document = await runAsSystem(async (db) => {
-      const blob = await db.knowledgeBlob.upsert({
-        where: { contentHash },
-        update: {},
-        create: { contentHash, contentType: res.rawContentType || res.contentType, byteSize: res.bytes.length },
-      });
-      const doc = await db.knowledgeDocument.upsert({
-        where: { sourceId_canonicalUrl: { sourceId, canonicalUrl: item.url } },
-        update: {
-          blobId: blob.id, contentType: res.contentType, etag: res.etag, lastModifiedHttp: res.lastModified,
-          sitemapLastmod: item.lastmod ? new Date(item.lastmod) : null,
-          lastSeenAt: new Date(), lastVerifiedAt: new Date(), retrievedAt: new Date(), status: "active",
-        },
-        create: {
-          sourceId, canonicalUrl: item.url, blobId: blob.id, publisher: cfg.publisher, tier: cfg.tier,
-          license: cfg.license, contentType: res.contentType, etag: res.etag, lastModifiedHttp: res.lastModified,
-          sitemapLastmod: item.lastmod ? new Date(item.lastmod) : null,
-        },
-      });
-      // URL observations (the requested URL and the final URL after redirects) — aliases, not identity.
-      for (const url of new Set([item.url, res.finalUrl])) {
-        await db.knowledgeUrlObservation.upsert({
-          where: { url },
-          update: { lastSeenAt: new Date() },
-          create: { documentId: doc.id, url },
-        });
-      }
-      return doc;
-    });
+    const document = await persistDocument(sourceId, cfg, item.url, item.lastmod, res, contentHash);
     summary.documents++;
 
     // outbound links (HTML only): gate to trusted domains, log the rest as candidates
@@ -220,5 +192,125 @@ export async function crawlSource(
     );
   }
   summary.candidates = candidateDomains.size;
+  return summary;
+}
+
+/** Upsert the identity-split rows for one fetched document (shared by crawlSource + crawlUrls). */
+async function persistDocument(
+  sourceId: string,
+  cfg: KnowledgeSourceConfig,
+  url: string,
+  lastmod: string | undefined,
+  res: FetchResult,
+  contentHash: string,
+) {
+  return runAsSystem(async (db) => {
+    const blob = await db.knowledgeBlob.upsert({
+      where: { contentHash },
+      update: {},
+      create: { contentHash, contentType: res.rawContentType || res.contentType, byteSize: res.bytes.length },
+    });
+    const doc = await db.knowledgeDocument.upsert({
+      where: { sourceId_canonicalUrl: { sourceId, canonicalUrl: url } },
+      update: {
+        blobId: blob.id, contentType: res.contentType, etag: res.etag, lastModifiedHttp: res.lastModified,
+        sitemapLastmod: lastmod ? new Date(lastmod) : null,
+        lastSeenAt: new Date(), lastVerifiedAt: new Date(), retrievedAt: new Date(), status: "active",
+      },
+      create: {
+        sourceId, canonicalUrl: url, blobId: blob.id, publisher: cfg.publisher, tier: cfg.tier,
+        license: cfg.license, contentType: res.contentType, etag: res.etag, lastModifiedHttp: res.lastModified,
+        sitemapLastmod: lastmod ? new Date(lastmod) : null,
+      },
+    });
+    for (const u of new Set([url, res.finalUrl])) {
+      await db.knowledgeUrlObservation.upsert({
+        where: { url: u },
+        update: { lastSeenAt: new Date() },
+        create: { documentId: doc.id, url: u },
+      });
+    }
+    return doc;
+  });
+}
+
+/**
+ * Crawl a SPECIFIC list of URLs through the same fetch/dedup/persist pipeline. Bypasses sitemap discovery
+ * + allow-prefix filtering (the host allowlist + robots + SSRF still apply), so it can reach linked PDFs
+ * (e.g. AWRI /wp-content fact sheets) that aren't in the sitemap. Used by the eval harness for targeted
+ * coverage of the eval-question pages.
+ */
+export async function crawlUrls(
+  sourceKey: string,
+  urls: string[],
+  opts: { onDocument?: (doc: CrawledDoc) => Promise<void> } = {},
+): Promise<CrawlSummary> {
+  const cfg = findSourceConfig(sourceKey);
+  if (!cfg) throw new Error(`unknown source: ${sourceKey}`);
+  const summary: CrawlSummary = {
+    source: sourceKey, discovered: urls.length, fetched: 0, documents: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, errors: 0, candidates: 0,
+  };
+  const throttle = new HostThrottle();
+  const sourceRow = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key: sourceKey } }));
+  if (!sourceRow) throw new Error(`source ${sourceKey} not seeded — run: npm run seed:knowledge-sources`);
+  const sourceId = sourceRow.id;
+
+  for (const url of urls) {
+    let host: string;
+    try {
+      host = new URL(url).host;
+    } catch {
+      continue;
+    }
+    if (!isAllowedHost(new URL(url).hostname.toLowerCase())) {
+      summary.errors++;
+      continue;
+    }
+    let robotsOk = true;
+    try {
+      robotsOk = await isAllowedByRobots(url, isAllowedHost);
+    } catch {
+      robotsOk = true;
+    }
+    if (!robotsOk) { summary.skippedRobots++; continue; }
+    const delay = Math.max(DEFAULT_DELAY_MS, await getCrawlDelayMs(new URL(url).origin, isAllowedHost).catch(() => 0));
+    await throttle.wait(host, delay);
+
+    const existing = await runAsSystem((db) =>
+      db.knowledgeDocument.findUnique({
+        where: { sourceId_canonicalUrl: { sourceId, canonicalUrl: url } },
+        select: { id: true, etag: true, lastModifiedHttp: true },
+      }),
+    );
+    let res;
+    try {
+      res = await fetchDocument(url, { etag: existing?.etag ?? null, lastModified: existing?.lastModifiedHttp ?? null, isAllowedHost });
+    } catch {
+      summary.errors++;
+      continue;
+    }
+    summary.fetched++;
+    if (res.notModified) {
+      summary.notModified++;
+      if (existing) {
+        await runAsSystem((db) =>
+          db.knowledgeDocument.update({ where: { id: existing.id }, data: { lastVerifiedAt: new Date(), lastSeenAt: new Date() } }),
+        );
+      }
+      continue;
+    }
+    if (res.contentType === "other") { summary.skippedType++; continue; }
+
+    const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
+    const document = await persistDocument(sourceId, cfg, url, undefined, res, contentHash);
+    summary.documents++;
+    if (opts.onDocument) {
+      await opts.onDocument({
+        documentId: document.id, sourceId, sourceKey, canonicalUrl: url,
+        contentType: res.contentType, contentHash, bytes: res.bytes,
+      });
+    }
+  }
   return summary;
 }
