@@ -7,7 +7,39 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Add-variety assistant write flow (ticket cmrs2eops / issue #309, Demo) — FIXED in worktree `variety-add-write-flow-1fd03a`. All gates green (vitest 2452, tsc, lint, verify:naming 25/25); DB-proven on Demo. Next: commit → PR (do NOT push main; wave-1 predecessor to #308/#312).**
+**Assistant confirmation-card RELIABILITY (Mike's recurring "it says there's a card but there isn't") — PLAN 081, BUILDING. Units 1+2 DONE on `claude/assistant-card-guard-fixes` (PR A pending). Units 3-10 (Draft Card) next on `claude/assistant-draft-card`.**
+Plan: [2026-07-19-081-fix-assistant-draft-card-guarantee-plan.md](docs/plans/2026-07-19-081-fix-assistant-draft-card-guarantee-plan.md) (Deep, 10 units).
+Council record: [council-feedback-080-assistant-card.md](council-feedback-080-assistant-card.md).
+**Council KILLED the first architecture.** The original plan (forced `tool_choice` repair turn + `decline_write` escape hatch
++ a regex write-intent classifier) was rejected by BOTH Codex and Gemini, independently, on three grounds:
+(1) `tool_choice:{type:"any"}` *mechanically requires* schema-valid JSON, so a missing required field (the assignee email the
+model said it couldn't resolve) **must** be fabricated — not a risk, a guarantee;
+(2) `decline_write` swallows the fix — a model inclined to ask a question gets a typed, legal way to ask a question, so prose
+questions become JSON questions and still no card;
+(3) the regex false-positives on reads — in this domain the write verbs ARE the query verbs ("when did we last **rack** T4?").
+Replacement (both reviewers converged on it independently): the **Draft Card**. A card is currently binary — perfectly valid or
+nonexistent; there is no state for "here's your card, it's missing two things". Add it: write tools return a Draft carrying
+unresolved fields + typed objections, the card ALWAYS renders, and Confirm is *disabled* until resolved (a `blocking` objection
+needs a typed override). **A Draft never mints a commit token** — that's the security-critical invariant.
+Also from Gemini, the domain fact that reversed the earlier Q1 answer: must on skins is a slurry — you *cannot* rack it; it
+clogs a positive-displacement pump. The model's refusal was CORRECT, so a dismissible warning banner was the wrong call.
+Scope call (Q4): build the Draft contract generically, convert tools incrementally, **work-order path first** — relaxing
+`required` on all 51 write tools at once would strip API-level validation across the whole assistant surface.
+Live-reproduced in the in-app browser against Demo Winery: the SAME prompt ("issue a work order to Mike to rack all the
+wine from T3 → T4") emitted a `proposal` event **2 times out of 7**. In the other 5 the model answered with a clarifying
+question instead of calling the write tool. Root cause is architectural, not a rendering bug: the card is emitted at
+[run.ts:136-140](src/lib/assistant/run.ts:136) **only if the model chooses to call a write tool**, and the model call
+([run.ts:107-113](src/lib/assistant/run.ts:107)) passes **no `tool_choice`** — so card emission is a stochastic model
+decision. Six prior fixes across five different layers (prompt rule #116, router.refresh #82, tool-description steering
+#82b, scroll-clip #216, overclaim guard #217, P2002 commit path #322) each fixed a real but *different* layer.
+Second finding: the `claimsWriteWithoutCard` backstop is disabled by any incidental "can't/didn't/unable" **anywhere** in
+the reply ([overclaim-guard.ts:16](src/lib/assistant/overclaim-guard.ts:16)) — and the assistant says "I can't verify Mike
+Juergens' account" in exactly this scenario, so the net is down precisely when it's needed. Verified `false` on the real transcript.
+Mike's tickets: #203/#205/#206 (RESOLVED via #216) + `cmrs4vasg` / [#328](https://github.com/russellmoss/wine-inventory/issues/328) (OPEN, delete-block card error, not yet diagnosed).
+
+<details><summary>prev objective — add-variety assistant write flow (ticket cmrs2eops / #309) — FIXED, PR pending</summary>
+
+**FIXED in worktree `variety-add-write-flow-1fd03a`. All gates green (vitest 2452, tsc, lint, verify:naming 25/25); DB-proven on Demo. Next: commit → PR (do NOT push main; wave-1 predecessor to #308/#312).**
 Approving an assistant change card to ADD a variety threw a raw error and nothing persisted. Root cause: the generic `db_create` path (`commitDbCreate`) let a duplicate name hit Postgres' `@@unique([tenantId, name])` and surfaced the raw multi-line Prisma **P2002** through the confirm route (`{ ok:false, error }` shows the message verbatim). Reporter asked for varieties (plural), so a same-batch/stale card is the trigger. Second latent bug found: the DB unique is case-SENSITIVE, so "syrah" beside "Syrah" silently created a **duplicate** — a master-data identity violation (NAMING-1).
 Fix (fence: `src/lib/assistant/`, `src/lib/reference/`; no schema change):
 (1) [entities.ts](src/lib/assistant/entities.ts) — new optional `EntityConfig.findConflict` + shared `nameConflict` helper (case-INSENSITIVE name match, reads only, never re-keys the existing row); wired for the name-unique globals Variety/Vineyard/Location/FinishedGoodCategory (NOT FinishedGood — it has no name unique, dups are legit);
@@ -270,7 +302,11 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-1. ← you are here
+1. Copied `.env` into this worktree so the dev server + Demo-Winery repro could run here (`preview_start` compiles the
+   SESSION worktree, not the main checkout). Harmless, gitignored — but remember it exists.
+2. Plan number **080 was already taken** by PR #351 ("plan 080 Wave 1 — per-location consumables"), so this work is **081**.
+   The council record file keeps the `-080-` name because that's the plan it reviewed.
+3. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
