@@ -1,7 +1,7 @@
 name: Knowledge Re-crawl
 
 # LOOP 5 — Knowledge-base freshness (Plan 079 Unit 12). See docs/AUTOMATION.md.
-# Weekly, re-crawls the active knowledge sources: conditional GET (304 = no re-embed), changed pages
+# Monthly, re-crawls the active knowledge sources: conditional GET (304 = no re-embed), changed pages
 # re-embed into a new revision with an atomic flip, new pages are added, and pages that 404 are
 # tombstoned (status='withdrawn', kept for audit, excluded from retrieval). Mutates the GLOBAL corpus
 # ONLY — no tenant data — via the owner connection; opens a GitHub ISSUE with the run summary. It NEVER
@@ -9,7 +9,8 @@ name: Knowledge Re-crawl
 
 on:
   schedule:
-    - cron: '0 9 * * 1'  # 09:00 UTC every Monday
+    - cron: '0 9 1 * *'  # 09:00 UTC on the 1st of each month (~every 4 weeks; conditional GET means
+                         # unchanged pages don't re-embed — only changed/new/removed docs cost anything)
   workflow_dispatch:
     inputs:
       max_docs:

@@ -426,7 +426,7 @@ async function persistDocument(
 export async function crawlUrls(
   sourceKey: string,
   urls: string[],
-  opts: { onDocument?: (doc: CrawledDoc) => Promise<void>; ignoreRobots?: boolean; delayMs?: number } = {},
+  opts: { onDocument?: (doc: CrawledDoc) => Promise<void>; ignoreRobots?: boolean; delayMs?: number; maxBytes?: number } = {},
 ): Promise<CrawlSummary> {
   const cfg = findSourceConfig(sourceKey);
   if (!cfg) throw new Error(`unknown source: ${sourceKey}`);
@@ -473,7 +473,7 @@ export async function crawlUrls(
     );
     let res;
     try {
-      res = await fetchDocument(url, { etag: existing?.etag ?? null, lastModified: existing?.lastModifiedHttp ?? null, isAllowedHost });
+      res = await fetchDocument(url, { etag: existing?.etag ?? null, lastModified: existing?.lastModifiedHttp ?? null, isAllowedHost, maxBytes: opts.maxBytes });
     } catch {
       summary.errors++;
       continue;

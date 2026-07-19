@@ -183,6 +183,191 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     crawlCadence: "manual",
     defaultEnabled: true,
   },
+  // ── International sources (Plan 079 source expansion 2) — native-language, multilingual embeddings ──
+  {
+    key: "ifv-occitanie",
+    publisher: "IFV Occitanie (Institut Français de la Vigne et du Vin)",
+    homeDomain: "vignevin-occitanie.com",
+    tier: 1,
+    license: "IFV Occitanie public practical fact sheets (French) — reference use with citation + link back.",
+    // Whole site is vine/wine. Fact sheets are one shared post type under /fiches-pratiques/ but are NOT in
+    // the (broken) sitemap → discovered by link-following from the two listing pages. HTML only here (the 14
+    // viticulture PDFs live under the denied /wp-content/uploads/ and are added via the curated engine).
+    seedRoots: [
+      "https://www.vignevin-occitanie.com/fiches-pratiques-en-viticulture/",
+      "https://www.vignevin-occitanie.com/fiches-pratiques-en-oenologie/",
+    ],
+    allowPrefixes: ["/fiches-pratiques/", "/fondamentaux/"],
+    denyPrefixes: ["/wp-admin/", "/wp-content/", "/wp-json/", "/wp-includes/", "/category/", "/author/", "/tag/", "/feed/", "/event/", "/location/", "/envira"],
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  },
+  {
+    key: "ifv-france",
+    publisher: "IFV France (Institut Français de la Vigne et du Vin)",
+    homeDomain: "vignevin.com",
+    tier: 1,
+    license: "IFV national tools & technical guides (French) — reference use with citation + link back.",
+    // /outils/ holds ~403 wine pages incl. ~392 yeast-strain fiches (/outils/fiches-levures/<strain>/) — a
+    // structured yeast-selection library. All in the flat sitemap; allow only /outils/. HTML only.
+    seedRoots: ["https://www.vignevin.com/outils/"],
+    allowPrefixes: ["/outils/"],
+    denyPrefixes: ["/wp-admin/", "/wp-content/", "/wp-json/", "/wp-includes/"],
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  },
+  {
+    key: "umc",
+    publisher: "Union des Maisons de Champagne",
+    homeDomain: "maisons-champagne.com",
+    tier: 1,
+    license: "UMC Champagne elaboration encyclopedia (French) — reference use with citation + link back.",
+    // The méthode champenoise authority: cuvée → tirage → prise de mousse → sur lies → dégorgement → dosage.
+    // SCOPED to the physical-winemaking chapters (9 vigne, 10 vendanges/pressurage, 11 élaboration) — the
+    // broader "connaissance du champagne" prefix pulled 867 URLs that are mostly SPIP aliases of ~181
+    // articles (the same article under every chapter breadcrumb). Combined with the index-time alias dedup,
+    // this keeps UMC focused on wine production. Non-www canonical (www 301→apex). Honor Crawl-delay 1.
+    seedRoots: [
+      "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-11-l-elaboration-du-champagne/",
+      "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-10-les-vendanges-et-le-pressurage/",
+      "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-9-la-vigne-et-sa-culture/",
+    ],
+    sitemapUrls: ["https://maisons-champagne.com/sitemap.xml"],
+    allowPrefixes: [
+      "/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-9-la-vigne-et-sa-culture/",
+      "/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-10-les-vendanges-et-le-pressurage/",
+      "/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-11-l-elaboration-du-champagne/",
+    ],
+    denyPrefixes: ["/en/", "/local/", "/ecrire/", "/prive/", "/plugins", "/lib/", "/squelettes"],
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  },
+  {
+    key: "icvv",
+    publisher: "ICVV — Instituto de Ciencias de la Vid y del Vino (Spain)",
+    homeDomain: "icvv.es",
+    tier: 1,
+    license: "ICVV applied viticulture & enology (Spanish) — reference use with citation + link back.",
+    // Whole host is grapes/wine, but scoped to the CONTENT hubs (not whole-host) to skip news/team/admin
+    // pages and avoid over-crawling. PDFs live under Drupal's /sites/default/files/, so allow that too.
+    // No sitemap → link-following from the content hubs. Honor Crawl-delay 10 (via robots).
+    seedRoots: [
+      "https://www.icvv.es/divulgables",
+      "https://www.icvv.es/memorias",
+      "https://www.icvv.es/proyectos",
+      "https://www.icvv.es/viticultura",
+      "https://www.icvv.es/enologia",
+      "https://www.icvv.es/seminarios-archivo",
+    ],
+    allowPrefixes: ["/divulgables", "/memorias", "/proyectos", "/viticultura", "/enologia", "/seminarios", "/sites/default/files/"],
+    denyPrefixes: ["/admin/", "/search", "/user/", "/node/add", "/comment/", "/includes/", "/misc/", "/modules/", "/profiles/", "/scripts/", "/themes/"],
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  },
+  {
+    key: "chambre-gironde",
+    publisher: "Chambre d'Agriculture de la Gironde (Bordeaux)",
+    homeDomain: "gironde.chambres-agriculture.fr",
+    tier: 1,
+    license: "Chambre d'Agriculture de la Gironde viticulture/œnology publications (French) — reference use with citation + link back.",
+    // Curated: a flat PDF library mixed across all agriculture. The curated engine parses /nos-publications,
+    // keeps only the wine-folder PDFs (/Viticulture__et_oenologie/, /Referentiel_Du_Vigneron/, + wine items
+    // from /Agro-ecologie/). No usable sitemap.
+    seedRoots: ["https://gironde.chambres-agriculture.fr/nos-publications"],
+    allowPrefixes: ["/fileadmin/user_upload/295_chambre_dagriculture_de_la_gironde/"],
+    denyPrefixes: ["/typo3", "/fileadmin/_"],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
+  {
+    key: "mapa",
+    publisher: "MAPA — Ministerio de Agricultura (Spain)",
+    homeDomain: "mapa.gob.es",
+    tier: 1,
+    license: "MAPA official integrated pest management guide for wine grapes (Spanish) — reference use with citation + link back.",
+    // Curated single PDF: the official IPM guide for uva de transformación (wine grapes). Large (62 MB / 203 pp).
+    seedRoots: ["https://www.mapa.gob.es/dam/mapa/contenido/agricultura/temas/medios-de-produccion/productos-fitosanitarios/uso-sostenible-de-productos-fitosanitarios/guias-de-gestion-integrada-de-plagas/guiauvadetransformacion.pdf"],
+    allowPrefixes: ["/dam/"],
+    denyPrefixes: [],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
+  {
+    key: "wbi",
+    publisher: "WBI Freiburg — Staatliches Weinbauinstitut (Germany)",
+    homeDomain: "wbi.landwirtschaft-bw.de",
+    tier: 1,
+    license: "WBI Freiburg technical wine articles (German, public state institute) — reference use with citation + link back.",
+    // Curated: the winemaking substance is in PDFs that robots blocks with a generic file-type rule
+    // (/*.pdf$ — CMS boilerplate, NOT anti-AI; publicly served 200). Operator-directed PDF pull, honoring
+    // Crawl-delay 2. Whole host is wine. The curated engine crawls the Fachinfo HTML hubs → collects PDFs.
+    seedRoots: ["https://wbi.landwirtschaft-bw.de/,Lde/Startseite/Fachinfo"],
+    allowPrefixes: ["/,Lde/", "/site/"],
+    denyPrefixes: ["/recommend/", "/reportComment/"],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
+  {
+    key: "lvwo",
+    publisher: "LVWO Weinsberg (Germany)",
+    homeDomain: "lvwo.landwirtschaft-bw.de",
+    tier: 1,
+    license: "LVWO Weinsberg technical wine articles (German, public state institute) — reference use with citation + link back.",
+    // Curated: covers wine + fruit + distilling in a FLAT mixed namespace → the curated engine crawls only
+    // the WINE topic hubs + German-keyword-filters, then collects their (robots-blocked, public) PDFs.
+    seedRoots: ["https://lvwo.landwirtschaft-bw.de/,Lde/Startseite/Fachinformationen"],
+    allowPrefixes: ["/,Lde/", "/site/"],
+    denyPrefixes: ["/recommend/", "/reportComment/"],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
+  {
+    key: "incavi",
+    publisher: "INCAVI — Institut Català de la Vinya i el Vi (Catalonia)",
+    homeDomain: "incavi.gencat.cat",
+    tier: 1,
+    license: "INCAVI technical/divulgation wine publications (Catalan) — reference use with citation + link back.",
+    // Curated: the whole subdomain is INCAVI (Catalan wine institute); listings are JS-rendered so we fetch
+    // the confirmed PDF assets under /content/dam/incavi/ directly.
+    seedRoots: ["https://incavi.gencat.cat/ca/coneix-el-vi-catala/llibres-divulgatius"],
+    allowPrefixes: ["/content/dam/incavi/", "/ca/"],
+    denyPrefixes: [],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
+  {
+    key: "laffort",
+    publisher: "Laffort",
+    homeDomain: "laffort.com",
+    tier: 2, // VENDOR (product-biased enology supplier).
+    license: "Proprietary Laffort protocol content — store paraphrasable text + a link back; treat product/brand/dosage specifics as vendor-sourced, not independent authority.",
+    // Curated: the "Spark" sparkling protocol PDF (+ future FG_EN_*.pdf wine protocols).
+    seedRoots: ["https://laffort.com/wp-content/uploads/Protocols/FG_EN_Spark.pdf"],
+    allowPrefixes: ["/wp-content/uploads/Protocols/"],
+    denyPrefixes: [],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
+  {
+    key: "enartis",
+    publisher: "Enartis",
+    homeDomain: "enartis.com",
+    tier: 2, // VENDOR (product-biased enology supplier).
+    license: "Proprietary Enartis educational content — store paraphrasable text + a link back; treat product/brand/dosage specifics as vendor-sourced, not independent authority.",
+    // Curated: the sparkling-wine playbook PDF.
+    seedRoots: ["https://www.enartis.com/wp-content/uploads/2020/09/Enartis-Sparkling-Brochure-2020-EN.pdf"],
+    allowPrefixes: ["/wp-content/uploads/"],
+    denyPrefixes: [],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
 ];
 
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
@@ -196,6 +381,24 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   { domain: "ir.library.oregonstate.edu", sourceKey: "osu-owri" },
   { domain: "extension.oregonstate.edu", sourceKey: "osu-extension" },
   { domain: "scottlab.com", sourceKey: "scott-labs" },
+  { domain: "vignevin-occitanie.com", sourceKey: "ifv-occitanie" },
+  { domain: "www.vignevin-occitanie.com", sourceKey: "ifv-occitanie" },
+  { domain: "vignevin.com", sourceKey: "ifv-france" },
+  { domain: "www.vignevin.com", sourceKey: "ifv-france" },
+  { domain: "maisons-champagne.com", sourceKey: "umc" },
+  { domain: "www.maisons-champagne.com", sourceKey: "umc" },
+  { domain: "icvv.es", sourceKey: "icvv" },
+  { domain: "www.icvv.es", sourceKey: "icvv" },
+  { domain: "gironde.chambres-agriculture.fr", sourceKey: "chambre-gironde" },
+  { domain: "mapa.gob.es", sourceKey: "mapa" },
+  { domain: "www.mapa.gob.es", sourceKey: "mapa" },
+  { domain: "wbi.landwirtschaft-bw.de", sourceKey: "wbi" },
+  { domain: "lvwo.landwirtschaft-bw.de", sourceKey: "lvwo" },
+  { domain: "incavi.gencat.cat", sourceKey: "incavi" },
+  { domain: "laffort.com", sourceKey: "laffort" },
+  { domain: "www.laffort.com", sourceKey: "laffort" },
+  { domain: "enartis.com", sourceKey: "enartis" },
+  { domain: "www.enartis.com", sourceKey: "enartis" },
 ];
 
 /** Set of trusted hostnames for O(1) gate checks (lowercased). */
