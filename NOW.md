@@ -7,19 +7,31 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 079 winemaking knowledge-base RAG — Unit 12 (re-crawl freshness loop) BUILT → PR #289 open; core corpus already on main (PR #285).**
-Isolated worktree `C:\Users\russe\Documents\Wine-inventory-kb`, branch `claude/kb-recrawler` off the merged main.
-Unit 12 = the last plan unit: a weekly GitHub Actions loop (`.github/workflows/knowledge-recrawl.yml` →
-`scripts/recrawl-knowledge.ts`) that keeps the crawled corpus fresh without a human in the write path. Conditional
-GET (304 = no re-embed), changed pages re-embed into a new chunk revision behind the atomic flip, new pages added,
-404s tombstoned (`status='withdrawn'`, kept for audit, excluded from retrieval) — all reversible + self-correcting.
-Tombstone pass gated to COMPLETE crawls (a capped run can't tell "removed" from "not yet reached"). Single-flight,
-writes ONLY the GLOBAL corpus (never tenant data), opens a GitHub issue as the audit trail, never merges code.
-Smoke-tested against live Neon (`KB_MAX_DOCS=3`: 3 docs, all unchanged, 9 new candidate domains, tombstone skipped);
-tsc clean. `docs/AUTOMATION.md` loop 5 + `security-register.md` corrected (the loop DOES write the corpus) + status
-→ shipped. **PENDING: CI green → merge #289; then add sources (Davis/OSU/WSU/Cornell) → Unit 11 per-tenant
-subscription settings UI (backend done). Post-merge activation: add repo secrets `DATABASE_URL_UNPOOLED` +
-`VOYAGE_API_KEY`, trigger once with `max_docs=5`.**
+**Plan 079 winemaking KB RAG — ADDING SOURCES: WSU + Scott Labs + OSU-OWRI built + crawling (branch `claude/kb-sources-osu-wsu-scott`, commit `ed80d6b`).**
+Unit 12 re-crawl loop MERGED (PR #289). Now onboarding new sources. Four investigated (parallel agents); result:
+**WSU** (wine.wsu.edu, tier-1 auto-crawl; sitemap at non-standard /wp-sitemap.xml → new `sitemapUrls` config),
+**Scott Labs** (scottlab.com, tier-2 VENDOR, curated: 2025-26 winemaking handbook PDF [144pp yeast/nutrient/ML]
++ ~28 curated wine-article slugs; /learn/ NOT prefix-separable from cider/beer/spirits), **OSU-OWRI**
+(ir.library.oregonstate.edu, tier-1 curated: ~270 Oregon Wine Research Institute PDFs via a listing-walk that
+avoids the JS-challenge-gated /concern/ pages; our UA CellarhandKnowledgeBot is robots-'*'-permitted for
+/collections/+/downloads/). New config: `sitemapUrls?` + `autoCrawl?` (curated sources excluded from the weekly
+loop). **OSU EXTENSION site DELIBERATELY SKIPPED** — blocks ClaudeBot + ai-train=no + Cloudflare-403 + flat
+/catalog/ namespace mixed with ~4k unrelated pubs + beer/cider/spirits. User explicitly OK'd getting the OWRI
+research PDFs ("get it just do it"); OWRI pull is robots-compliant for our UA + honors Crawl-delay 16.
+Smoke-verified live (handbook→180 chunks, OWRI listing→11 dl/page, WSU→345 URLs, 0 errors). tsc + knowledge
+tests green. **FULL CRAWL RUNNING in background (WSU→Scott→OWRI, ~100min); PENDING: crawl done → add new-source
+eval Q&A + run verify:knowledge-base → open PR. THEN Unit 11 subscription settings UI.**
+
+<details><summary>prev objective — Unit 12 re-crawl freshness loop (SHIPPED + MERGED PR #289)</summary>
+
+**Plan 079 Unit 12 (re-crawl freshness loop) — MERGED (PR #289); core corpus on main (PR #285).**
+Weekly GH Actions loop (`knowledge-recrawl.yml` → `scripts/recrawl-knowledge.ts`): conditional-GET re-crawl
+→ re-embed only changed pages into a new revision behind the atomic flip, add new, tombstone 404s
+(`status='withdrawn'`, kept for audit); reversible + self-correcting; tombstone gated to COMPLETE crawls;
+single-flight; writes GLOBAL corpus only; opens a GitHub issue; never merges code. Post-merge activation
+needs repo secrets `DATABASE_URL_UNPOOLED` + `VOYAGE_API_KEY`, then trigger once with `max_docs=5`.
+
+</details>
 
 <details><summary>prev objective — Plan 079 bug-report clarification loop (FULLY SHIPPED, different workstream)</summary>
 
