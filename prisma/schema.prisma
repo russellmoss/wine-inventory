@@ -3995,12 +3995,26 @@ model EquipmentAsset {
   locationId String? // plain ref → location.id (K11/K12)
   notes      String?
   isActive   Boolean  @default(true)
+  // Plan 080 U3: acquisition cost + invoice provenance (all nullable — existing assets stay uncosted; a
+  // capitalized asset is a FIXED ASSET, never dosed: EQUIPMENT stays non-doseable, WORKORDER-7).
+  // `purchaseCostBase` is ALWAYS the tenant BASE currency (the roll-up basis, COST-4); the foreign quintet
+  // below mirrors SupplyLot exactly — immutable historical provenance (IAS 21), audit only, never revalued.
+  purchaseCostBase    Decimal?  @db.Decimal(18, 8)
+  currency            String?   @default("USD") // the BASE currency stamp for purchaseCostBase
+  foreignPurchaseCost Decimal?  @db.Decimal(18, 8) // the price in the invoice (foreign) currency
+  foreignCurrency     String? // e.g. "EUR"
+  fxRate              Decimal?  @db.Decimal(18, 8) // base per 1 foreign at purchase (base == foreign × fxRate)
+  fxRateDate          DateTime? // the ECB quote date the rate was for
+  fxRateSource        String? // e.g. "ECB via Frankfurter" | "manual override"
+  purchaseDate        DateTime?
+  vendorId            String? // Plan 069/080: composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@unique([tenantId, name])
   @@unique([tenantId, id]) // composite-FK target for work_order_task_equipment
   @@index([tenantId])
+  @@index([tenantId, vendorId]) // Plan 080 U3: per-vendor asset lookups
   @@map("equipment_asset")
 }
 
