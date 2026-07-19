@@ -29,6 +29,9 @@ type BuilderTask = {
   values: Record<string, unknown>;
   assigneeId: string;
   equipmentIds: string[];
+  // Crew guidance seeded from a template. Read-only here (the template owns the wording) and carried
+  // through TaskBuild so it lands on the created task.
+  instructions?: string;
   // Plan 071 (edit mode): set when the task came from an existing WO. `locked` tasks are executed and
   // rendered read-only (only the ledger can change them, via reverse). renderMode drives group-form types.
   existingTaskId?: string;
@@ -49,6 +52,17 @@ export type ExistingWorkOrderSeed = {
   locationId: string;
   dueAt: string; // yyyy-mm-dd (or "")
   dependsOn: string[];
+};
+
+/**
+ * A template pre-fill for a NEW work order (`/work-orders/new?template=<id>`). Deliberately NOT the
+ * `existing` prop: `existing` means EDIT mode (heading, "Save changes", and a submit that routes to
+ * updateWorkOrderFromBuildsAction against a real WO id). A seed only sets the starting state — the
+ * builder stays in create mode, and the winemaker can edit or delete every seeded task before creating.
+ */
+export type TemplateSeed = {
+  title: string;
+  tasks: { taskType: string; title: string; values: Record<string, unknown>; instructions?: string }[];
 };
 
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
@@ -88,6 +102,7 @@ export function WorkOrderBuilderClient({
   equipment,
   vocab,
   existing,
+  seed,
 }: {
   pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[]; lotsByVessel: LotsByVessel };
   members: Member[];
@@ -96,16 +111,23 @@ export function WorkOrderBuilderClient({
   equipment: EquipmentPick[];
   vocab: ResolvedTaskVocabulary;
   existing?: ExistingWorkOrderSeed;
+  seed?: TemplateSeed;
 }) {
   const router = useRouter();
   const isEdit = !!existing;
-  const [title, setTitle] = React.useState(existing?.title ?? "");
+  // A template seed only primes the initial state — `isEdit` stays false, so this is still a CREATE.
+  const seededGroups = React.useMemo<BuilderTask[][]>(() => (
+    seed?.tasks.length
+      ? [seed.tasks.map((t) => ({ key: newKey(), taskType: t.taskType, title: t.title, values: { ...t.values }, assigneeId: "", equipmentIds: [], ...(t.instructions ? { instructions: t.instructions } : {}) }))]
+      : []
+  ), [seed]);
+  const [title, setTitle] = React.useState(existing?.title ?? seed?.title ?? "");
   const [dueAt, setDueAt] = React.useState(existing ? existing.dueAt : todayLocal());
   const [leadEmail, setLeadEmail] = React.useState(existing?.leadEmail ?? "");
   const leadRef = React.useRef<HTMLSelectElement>(null);
   const [priority, setPriority] = React.useState(existing?.priority || "NORMAL");
   const [locationId, setLocationId] = React.useState(existing?.locationId ?? "");
-  const [groups, setGroups] = React.useState<BuilderTask[][]>(existing?.groups?.length ? existing.groups : [[]]);
+  const [groups, setGroups] = React.useState<BuilderTask[][]>(existing?.groups?.length ? existing.groups : seededGroups.length ? seededGroups : [[]]);
   const [dependsOn, setDependsOn] = React.useState<string[]>(existing?.dependsOn ?? []);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -220,6 +242,7 @@ export function WorkOrderBuilderClient({
           assigneeId: t.assigneeId || undefined,
           taskKey: t.key,
           equipmentIds: t.equipmentIds.length ? t.equipmentIds : undefined,
+          instructions: t.instructions || undefined,
         });
       }
     });
@@ -595,6 +618,12 @@ export function WorkOrderBuilderClient({
                               <button type="button" aria-label="Remove task" onClick={() => removeTask(gi, t.key)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 16 }}>×</button>
                             </div>
                             {def?.hint && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>{def.hint}</div>}
+                            {/* Crew guidance from the template this WO was seeded from — rides through to the created task. */}
+                            {t.instructions && (
+                              <div style={{ fontSize: 12, color: "var(--text)", marginBottom: 8, padding: "6px 8px", borderLeft: "2px solid var(--border)", background: "var(--surface)" }}>
+                                {t.instructions}
+                              </div>
+                            )}
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                               {def && Object.entries(def.fields).map(([key, type]) => renderField(gi, t, key, type))}
                               {def?.opType === "BOTTLE" ? (
