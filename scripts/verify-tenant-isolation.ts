@@ -461,6 +461,64 @@ async function main() {
     } catch { supplyInsertRaised = true; }
     check("foreign-tenant supply_lot INSERT raises (WITH CHECK)", supplyInsertRaised);
 
+    // 5b-2. Plan 080 (U1/U2b): the per-location consumables dimension. A SupplyLot now points at a Location,
+    // and every move writes a material_movement row — BOTH are new cross-tenant leak surfaces, so prove:
+    // (i) a lot cannot reference ANOTHER tenant's location, (ii) material_movement is RLS-isolated both
+    // directions, and (iii) its composite-tenant FKs (K11) reject cross-tenant material/location refs.
+    await owner.location.upsert({
+      where: { id: "iso_loc_b" },
+      update: {},
+      create: { id: "iso_loc_b", tenantId: B, name: "ISO Cellar B", isActive: true },
+    });
+    await owner.location.upsert({
+      where: { id: "iso_loc_a" },
+      update: {},
+      create: { id: "iso_loc_a", tenantId: A, name: "ISO Cellar A", isActive: true },
+    });
+
+    // (i) a lot in B may NOT be pinned to A's location — the composite (tenantId, locationId) FK must reject it.
+    let lotLocFkRaised = false;
+    try {
+      await owner.supplyLot.create({
+        data: { id: "iso_supply_locfk", tenantId: B, materialId: "iso_mat_b", locationId: "iso_loc_a", qtyReceived: 1, qtyRemaining: 1, stockUnit: "g", updatedAt: new Date() },
+      });
+    } catch { lotLocFkRaised = true; }
+    check("supply_lot cross-tenant location reference rejected (Plan 080 location FK)", lotLocFkRaised);
+
+    // (ii) material_movement RLS — B's movement is invisible to A, and A can't insert one for B.
+    await owner.materialMovement.upsert({
+      where: { id: "iso_mm_b" },
+      update: {},
+      create: { id: "iso_mm_b", tenantId: B, materialId: "iso_mat_b", locationId: "iso_loc_b", kind: "RECEIVE", deltaQty: "10", createdByEmail: "iso@b.test" },
+    });
+    const aSeesMovementB = await asTenant(A, (db) => db.materialMovement.findFirst({ where: { id: "iso_mm_b" } }));
+    check("tenant A CANNOT see tenant B's material_movement (RLS)", aSeesMovementB === null);
+    let mmInsertRaised = false;
+    try {
+      await asTenant(A, (db) =>
+        db.materialMovement.create({ data: { id: "iso_mm_x", tenantId: B, materialId: "iso_mat_b", locationId: "iso_loc_b", kind: "ADJUST", deltaQty: "1", createdByEmail: "iso@a.test" } }),
+      );
+    } catch { mmInsertRaised = true; }
+    check("foreign-tenant material_movement INSERT raises (WITH CHECK)", mmInsertRaised);
+
+    // (iii) composite-tenant FK (K11): A's movement may not reference B's material or B's location.
+    let mmMatFkRaised = false;
+    try {
+      await asTenant(A, (db) =>
+        db.materialMovement.create({ data: { id: "iso_mm_k11", tenantId: A, materialId: "iso_mat_b", locationId: "iso_loc_a", kind: "ADJUST", deltaQty: "1", createdByEmail: "iso@a.test" } }),
+      );
+    } catch { mmMatFkRaised = true; }
+    check("material_movement cross-tenant material reference rejected (composite FK, K11)", mmMatFkRaised);
+
+    // the CHECK constraint on `kind` keeps the append-only ledger's vocabulary honest (no free-text drift).
+    let mmKindRaised = false;
+    try {
+      await owner.materialMovement.create({
+        data: { id: "iso_mm_kind", tenantId: B, materialId: "iso_mat_b", locationId: "iso_loc_b", kind: "NOT_A_KIND", deltaQty: "1", createdByEmail: "iso@b.test" },
+      });
+    } catch { mmKindRaised = true; }
+    check("material_movement rejects an out-of-vocabulary kind (CHECK constraint)", mmKindRaised);
+
     // 5c. Plan 029: RAW $queryRaw respects the tenant GUC. The tenant extension only intercepts model
     // ops, so an unwrapped raw read runs with no app.tenant_id and (under RLS) returns 0 rows. These
     // prove the runInTenantRawTx path scopes raw reads and that a context-less raw read is fail-closed.
@@ -817,7 +875,11 @@ async function main() {
     await owner.namingTemplate.deleteMany({ where: { id: { in: ["iso_nt_a", "iso_nt_b"] } } });
     await owner.lotOperationLine.deleteMany({ where: { lotId: { in: ["iso_lot_a", "iso_lot_b"] } } });
     await owner.lotOperation.deleteMany({ where: { tenantId: B } });
-    await owner.supplyLot.deleteMany({ where: { id: { in: ["iso_supply_b", "iso_supply_x"] } } });
+    // Plan 080: movements reference material + location, and lots reference location (ON DELETE RESTRICT) —
+    // so drop movements first, then lots, then the locations they pointed at.
+    await owner.materialMovement.deleteMany({ where: { id: { in: ["iso_mm_b", "iso_mm_x", "iso_mm_k11", "iso_mm_kind"] } } });
+    await owner.supplyLot.deleteMany({ where: { id: { in: ["iso_supply_b", "iso_supply_x", "iso_supply_locfk"] } } });
+    await owner.location.deleteMany({ where: { id: { in: ["iso_loc_a", "iso_loc_b"] } } });
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_b" } });
     await owner.brixLog.deleteMany({ where: { id: { in: ["iso_brix_a", "iso_brix_b"] } } });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });

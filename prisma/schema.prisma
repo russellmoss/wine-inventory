@@ -303,6 +303,10 @@ model Location {
   bottledLotStates      BottledLotState[] // Phase 7: en-tirage bottle lots physically stored here
 
   @@unique([tenantId, name])
+  // Plan 080 U13a: composite-tenant-FK target (K11). supply_lot + material_movement reference a Location,
+  // which is a cross-tenant-risk FK (Phase-12 checklist step 5) — without this unique those FKs can only be
+  // simple `-> location(id)`, which does NOT stop a lot in tenant B pointing at tenant A's location.
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("location")
 }
