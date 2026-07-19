@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/dal";
 import { verifyProposal } from "@/lib/assistant/confirm";
 import { getToolsFor } from "@/lib/assistant/registry";
-import { asProposal } from "@/lib/assistant/assistant-events";
+import { asProposal, isDraftProposal } from "@/lib/assistant/assistant-events";
 
 // Deterministic picker resume: a disambiguation tap POSTs its signed `resume` token here. We re-run the
 // SAME tool with the record pinned by id (the token's args) and return the resulting confirm proposal —
@@ -36,7 +36,15 @@ export async function POST(req: Request) {
     const out = await tool.run({ user }, payload.args);
     const proposal = asProposal(out);
     if (!proposal) throw new Error("Couldn't prepare that change — please ask again.");
-    return Response.json({ ok: true, preview: proposal.preview, token: proposal.token, details: proposal.details });
+    // A pinned re-run can still come back as a DRAFT (the choice resolved, but something else is
+    // unresolved/blocked). Carry the draft marker through so the client renders the same gated card it
+    // would have for a streamed draft — and `token` is structurally absent, so nothing is committable.
+    return Response.json({
+      ok: true,
+      preview: proposal.preview,
+      ...(isDraftProposal(proposal) ? { draft: true } : { token: proposal.token }),
+      details: proposal.details,
+    });
   } catch (e) {
     return Response.json(
       { ok: false, error: e instanceof Error ? e.message : "Could not resolve that selection." },

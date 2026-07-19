@@ -11,7 +11,7 @@ export type AssistantToolTrace = {
   name: string;
   input: unknown;
   ok?: boolean;
-  resultKind?: "text" | "json" | "proposal" | "choice" | "navigation" | "error";
+  resultKind?: "text" | "json" | "proposal" | "draft_proposal" | "choice" | "navigation" | "error";
   resultPreview?: string;
 };
 

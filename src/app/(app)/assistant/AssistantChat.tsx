@@ -31,7 +31,10 @@ type TextItem = { kind: "text"; id?: string; role: Role; content: string };
 type ProposalItem = {
   kind: "proposal";
   preview: string;
-  token: string;
+  /** Present ONLY on a Ready card. A Draft has no token and therefore cannot be confirmed at all. */
+  token?: string;
+  /** Plan 081: the card renders, states what is unresolved/blocking, and gates Confirm. */
+  draft?: boolean;
   details?: WorkOrderProposalCardDetails;
   status: "pending" | "applying" | "done" | "error";
   result?: string;
@@ -532,7 +535,16 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           setStatus(evt.phase === "start" ? `${TOOL_LABELS[evt.name] ?? evt.name}…` : "Thinking…");
         } else if (evt.type === "proposal") {
           setStatus(null);
-          setItems((prev) => [...prev, { kind: "proposal", preview: evt.preview, token: evt.token, details: asWorkOrderProposalDetails(evt.details), status: "pending" }]);
+          setItems((prev) => [
+            ...prev,
+            {
+              kind: "proposal",
+              preview: evt.preview,
+              ...(evt.draft ? { draft: true } : { token: evt.token }),
+              details: asWorkOrderProposalDetails(evt.details),
+              status: "pending",
+            },
+          ]);
         } else if (evt.type === "choice") {
           setStatus(null);
           setItems((prev) => [...prev, { kind: "choice", prompt: evt.prompt, options: evt.options }]);
@@ -588,12 +600,16 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
   async function confirmProposal(index: number) {
     const target = items[index];
     if (!target || target.kind !== "proposal" || target.status !== "pending") return;
+    // A Draft has no token. Confirm is already disabled in the UI; this is the second gate, so a stray
+    // programmatic call (or a future refactor that loses the disabled prop) still cannot commit.
+    if (!target.token) return;
+    const token = target.token;
     setItems((prev) => updateProposal(prev, index, { status: "applying" }));
     try {
       const res = await fetch("/api/assistant/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: target.token }),
+        body: JSON.stringify({ token }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.ok) {
@@ -642,7 +658,17 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         });
         const data = await res.json().catch(() => null);
         if (res.ok && data?.ok) {
-          setItems((prev) => [...prev, { kind: "proposal", preview: data.preview, token: data.token, details: asWorkOrderProposalDetails(data.details), status: "pending" }]);
+          setItems((prev) => [
+            ...prev,
+            {
+              kind: "proposal",
+              preview: data.preview,
+              // A pinned re-run can still come back as a Draft (the pick resolved; something else didn't).
+              ...(data.draft ? { draft: true } : { token: data.token }),
+              details: asWorkOrderProposalDetails(data.details),
+              status: "pending",
+            },
+          ]);
         } else {
           setError(data?.error ?? "Couldn't prepare that selection.");
         }

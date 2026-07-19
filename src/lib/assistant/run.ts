@@ -5,7 +5,7 @@ import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
 import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
 import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION } from "./overclaim-guard";
-import { type AssistantEvent, asProposal, asChoice, asNavigation } from "./assistant-events";
+import { type AssistantEvent, asProposal, asChoice, asNavigation, isDraftProposal } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
 import {
@@ -156,17 +156,27 @@ export async function runAssistant(opts: {
             if (proposal) {
               // Don't commit. Surface a confirm card to the user; tell the model
               // to stop and await the out-of-band confirmation.
-              emit({ type: "proposal", tool: tu.name, preview: proposal.preview, token: proposal.token, details: proposal.details });
+              const draft = isDraftProposal(proposal);
+              emit({
+                type: "proposal",
+                tool: tu.name,
+                preview: proposal.preview,
+                // A Draft carries NO token (asProposal strips one if a tool tried). Never spread it in.
+                ...(draft ? { draft: true as const } : { token: proposal.token }),
+                details: proposal.details,
+              });
               results.push({
                 type: "tool_result",
                 tool_use_id: tu.id,
-                content: `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
+                content: draft
+                  ? `A DRAFT card was shown to the user: "${proposal.preview}" It already lists, on the card itself, every field that is unresolved and every blocker. Do not call this tool again and do NOT repeat the list in prose — briefly tell the user the draft card is on screen and ask for what it still needs.`
+                  : `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
               });
               emit({ type: "tool", name: tu.name, phase: "end", ok: true });
               pushToolTrace(trace, {
                 ...toolTrace,
                 ok: true,
-                resultKind: "proposal",
+                resultKind: draft ? "draft_proposal" : "proposal",
                 resultPreview: proposal.preview,
               });
               continue;

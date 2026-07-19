@@ -8,7 +8,13 @@
 export type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
-  | { type: "proposal"; tool: string; preview: string; token: string; details?: unknown }
+  // A confirmation card. TWO shapes (plan 081 U4):
+  //  - Ready:  `token` present → Confirm mints the commit.
+  //  - Draft:  `draft: true`, NO token → the card renders, states what is unresolved / what blocks it,
+  //            and cannot be committed at all. This is the "missing middle" state: before it existed a
+  //            tool with an unresolved field had to fall back to prose, which the UI cannot render as a
+  //            card — the measured 2-in-7 card-emission bug.
+  | { type: "proposal"; tool: string; preview: string; token?: string; draft?: true; details?: unknown }
   // A disambiguation picker: the tool couldn't resolve a name to ONE record, so
   // instead of asking in text (which dead-loops when names collide), it hands the
   // client clickable options. Each option's `send` is a follow-up message that
@@ -83,20 +89,58 @@ export function parseEvent(line: string): AssistantEvent | null {
 // ---- Tool-output shape guards (a tool RETURNS one of these; run.ts detects the
 // shape and turns it into the matching stream event, mirroring the proposal flow) ----
 
-/** A write tool's confirmation proposal (never mutates on first call). */
-export type WriteProposal = { needsConfirmation: true; preview: string; token: string; details?: unknown };
+/**
+ * A write tool's confirmation proposal (never mutates on first call).
+ *
+ * READY — carries a signed, single-use commit token. Confirm applies it.
+ * DRAFT — carries NO token. The tool could describe the change but not make it committable (a required
+ *   field is unresolved, or the operation is physically blocked). It still renders as a card, so the
+ *   assistant never has to fall back to prose to say "I need one more thing."
+ *
+ * SECURITY INVARIANT (plan 081 U4): a Draft must never carry a commit token. `asProposal` NORMALIZES —
+ * when the draft marker is present the token is dropped and never propagates downstream, so a crafted
+ * tool return of `{draft:true, token:"…"}` cannot reach the confirm route. Enforcement is here, at the
+ * contract boundary, NOT in the UI.
+ */
+export type ReadyProposal = {
+  needsConfirmation: true;
+  draft?: false;
+  preview: string;
+  token: string;
+  details?: unknown;
+};
+
+export type DraftProposal = {
+  needsConfirmation: true;
+  draft: true;
+  preview: string;
+  token?: undefined;
+  details?: unknown;
+};
+
+export type WriteProposal = ReadyProposal | DraftProposal;
+
+/**
+ * The SINGLE place "is this committable" is decided. Everything that mints, emits, or acts on a token
+ * must route through this predicate rather than re-testing `token` ad hoc.
+ */
+export function isDraftProposal(p: WriteProposal): p is DraftProposal {
+  return p.draft === true;
+}
 
 export function asProposal(out: unknown): WriteProposal | null {
-  if (
-    out &&
-    typeof out === "object" &&
-    (out as { needsConfirmation?: unknown }).needsConfirmation === true &&
-    typeof (out as { preview?: unknown }).preview === "string" &&
-    typeof (out as { token?: unknown }).token === "string"
-  ) {
-    return out as WriteProposal;
+  if (!out || typeof out !== "object") return null;
+  const o = out as { needsConfirmation?: unknown; preview?: unknown; token?: unknown; draft?: unknown; details?: unknown };
+  if (o.needsConfirmation !== true) return null;
+  if (typeof o.preview !== "string" || !o.preview) return null;
+
+  if (o.draft === true) {
+    // Normalize: rebuild the object so a token can NEVER ride along on a draft, whatever the tool returned.
+    return { needsConfirmation: true, draft: true, preview: o.preview, ...(o.details !== undefined ? { details: o.details } : {}) };
   }
-  return null;
+
+  if (typeof o.token !== "string" || !o.token) return null;
+  return { needsConfirmation: true, preview: o.preview, token: o.token, ...(o.details !== undefined ? { details: o.details } : {}) };
 }
 
 /** A tool's disambiguation request (never mutates; the client shows clickable options). */

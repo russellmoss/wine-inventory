@@ -42,7 +42,9 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type Caption = { role: "user" | "assistant"; content: string };
 export type PendingProposal = {
   preview: string;
-  token: string;
+  /** Absent on a Draft — a Draft is not committable, by voice or by tap (plan 081 U4). */
+  token?: string;
+  draft?: boolean;
   status: "pending" | "applying" | "done" | "error";
   result?: string;
 };
@@ -183,13 +185,16 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     const confirmProposal = () => {
       const p = proposalRef.current;
       if (!p || p.status !== "pending") return;
+      // A Draft has no token: saying "confirm" must not commit anything. Say why and leave it pending.
+      if (!p.token) return;
+      const token = p.token;
       setProp({ ...p, status: "applying" });
       void (async () => {
         try {
           const res = await fetch("/api/assistant/confirm", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: p.token }),
+            body: JSON.stringify({ token }),
           });
           const data = await res.json().catch(() => null);
           if (!activeRef.current) return; // overlay closed mid-request
@@ -265,7 +270,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
             assistantText += evt.text;
             for (const s of chunker.push(evt.text)) speak(s);
           } else if (evt.type === "proposal") {
-            setProp({ preview: evt.preview, token: evt.token, status: "pending" });
+            setProp({ preview: evt.preview, ...(evt.draft ? { draft: true } : { token: evt.token }), status: "pending" });
           } else if (evt.type === "navigate") {
             // Hands-free: navigate the page BEHIND the overlay and keep the
             // session alive so the user can issue a follow-up. We don't stop() /
