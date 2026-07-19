@@ -193,6 +193,33 @@ export function drainConsoleBuffer(): DrainedConsole {
   return singleton?.drain() ?? { consoleLog: [], clientErrors: [] };
 }
 
+/** Entry cap while a Break Mode hunt is running — a deliberate hunt wants more history. */
+export const ESCALATED_MAX_ENTRIES = 200;
+
+let escalated = false;
+
+/**
+ * Grow (or restore) the ring for a Break Mode hunt (Plan 080 Unit 9). Rebuilding the singleton
+ * would drop history, so we swap in a larger ring and replay the existing entries into it.
+ */
+export function setConsoleBufferEscalated(next: boolean): void {
+  if (typeof window === "undefined" || !singleton || escalated === next) return;
+  escalated = next;
+  const carried = singleton.drain();
+  const replacement = createConsoleBuffer({
+    maxEntries: next ? ESCALATED_MAX_ENTRIES : MAX_ENTRIES,
+  });
+  // Re-record newest-last so the ring keeps the most recent entries if it overflows.
+  for (const entry of [...carried.consoleLog, ...carried.clientErrors].sort((a, b) => a.ts - b.ts)) {
+    replacement.record(entry.level, [entry.message]);
+  }
+  singleton = replacement;
+}
+
+export function isConsoleBufferEscalated(): boolean {
+  return escalated;
+}
+
 /**
  * Clear the ring. Call after a successful bug submit (so a later report on a
  * different page doesn't carry stale logs) and on logout / session switch (so a

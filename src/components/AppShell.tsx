@@ -9,6 +9,7 @@ import { isTenantAdminLike } from "@/lib/access";
 import { Avatar, Button, LocalTime } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
+import { BreakModeControl } from "@/components/observability/BreakModeControl";
 import { clearConsoleBuffer } from "@/lib/observability/console-buffer";
 
 type NavItem = { href: string; label: string; admin?: boolean; developer?: boolean; badge?: number };
@@ -272,6 +273,7 @@ export function AppShell({
   voiceEnabled = false,
   inboxEnabled = false,
   unreadMessages = 0,
+  breakModeTenantName = null,
 }: {
   user: { name?: string | null; email: string; role?: string | null; supportOrganizationId?: string | null; supportOrganizationName?: string | null; supportExpiresAt?: string | null };
   children: React.ReactNode;
@@ -282,6 +284,8 @@ export function AppShell({
   voiceEnabled?: boolean;
   inboxEnabled?: boolean;
   unreadMessages?: number;
+  /** Effective tenant name for the Break Mode indicator; null for non-developers. */
+  breakModeTenantName?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -414,6 +418,8 @@ export function AppShell({
       {/* Global assistant dock — hides itself on /assistant (the full-page chat). Voice honors the same
           server gate as the full page; the dock force-closes any open voice session when it collapses. */}
       <AssistantDock userLabel={user.name || user.email} voiceEnabled={voiceEnabled} />
+      {/* Break Mode is developer-only (Plan 080 Unit 9); never rendered for normal users. */}
+      {isDeveloper && breakModeTenantName ? <BreakModeControl tenantName={breakModeTenantName} /> : null}
     </div>
   );
 }
