@@ -238,17 +238,19 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     homeDomain: "icvv.es",
     tier: 1,
     license: "ICVV applied viticulture & enology (Spanish) — reference use with citation + link back.",
-    // Whole host is grapes/wine (no isolation needed). No sitemap → link-following from the content hubs.
-    // Honor Crawl-delay 10 (via robots).
+    // Whole host is grapes/wine, but scoped to the CONTENT hubs (not whole-host) to skip news/team/admin
+    // pages and avoid over-crawling. PDFs live under Drupal's /sites/default/files/, so allow that too.
+    // No sitemap → link-following from the content hubs. Honor Crawl-delay 10 (via robots).
     seedRoots: [
       "https://www.icvv.es/divulgables",
       "https://www.icvv.es/memorias",
       "https://www.icvv.es/proyectos",
       "https://www.icvv.es/viticultura",
       "https://www.icvv.es/enologia",
+      "https://www.icvv.es/seminarios-archivo",
     ],
-    allowPrefixes: ["/"],
-    denyPrefixes: ["/admin/", "/search", "/user/", "/node/add", "/comment/", "/includes/", "/misc/", "/modules/", "/profiles/", "/scripts/", "/themes/", "/compras", "/facturacion", "/trabaja-con-nosotros"],
+    allowPrefixes: ["/divulgables", "/memorias", "/proyectos", "/viticultura", "/enologia", "/seminarios", "/sites/default/files/"],
+    denyPrefixes: ["/admin/", "/search", "/user/", "/node/add", "/comment/", "/includes/", "/misc/", "/modules/", "/profiles/", "/scripts/", "/themes/"],
     crawlCadence: "monthly",
     defaultEnabled: true,
   },
