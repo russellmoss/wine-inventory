@@ -1,11 +1,11 @@
 import "server-only";
 import { addHarvestPick } from "@/lib/harvest/actions";
-import { toKg } from "@/lib/harvest/units";
 import { coerceBrix, coercePh, coerceTa, TA_UNIT } from "@/lib/harvest/pick-fields";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { findScopedBlocks } from "../scope";
+import { resolveWeightKg, describeWeight } from "../weight";
 import { resolveExactlyOne } from "./resolve";
 
 // Plan 039: the "weigh the fruit" stage as a chat action. A crew member logs a harvest weigh-in for a
@@ -27,13 +27,6 @@ type LogHarvestPickInput = {
   pickDate?: string;
 };
 
-/** Normalize a free-text unit to the action's expected "metric" (kg) | "imperial" (lb). */
-function normUnit(u?: string): "metric" | "imperial" {
-  const s = (u ?? "").toLowerCase();
-  if (s === "lb" || s === "lbs" || s === "pound" || s === "pounds" || s === "imperial") return "imperial";
-  return "metric"; // kg / default
-}
-
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -49,8 +42,8 @@ export const logHarvestPickTool: AssistantTool = {
       block: { type: "string", description: "Block label, e.g. 'Block 1'. Use the bare label, not the variety in parentheses." },
       vineyard: { type: "string", description: "Vineyard name, to disambiguate the block (optional for a manager)." },
       variety: { type: "string", description: "Grape variety, to disambiguate when the block isn't named, e.g. 'Grenache'." },
-      weight: { type: "number", description: "The fruit weight of this pick, a positive number." },
-      unit: { type: "string", description: "Weight unit: 'kg' (default) or 'lb'." },
+      weight: { type: "number", description: "The fruit weight of this pick, a positive number IN THE UNIT the user actually said — never convert it yourself. Pass the raw number and set `unit`." },
+      unit: { type: "string", description: "Weight unit of `weight`, exactly as the user stated it: 'kg' (default), 'lb', 'ton'/'tons' (US short ton), or 'tonne'/'metric ton'/'t'. The tool converts to kg — do NOT pre-convert tons to kg yourself." },
       brix: { type: "number", description: "Optional Brix (sugar / ripeness) at pick, 0–35 °Bx." },
       ph: { type: "number", description: "Optional field pH, 2.5–4.5." },
       ta: { type: "number", description: "Optional titratable acidity, g/L tartaric (0–20)." },
@@ -63,9 +56,15 @@ export const logHarvestPickTool: AssistantTool = {
     if (typeof input.weight !== "number" || !Number.isFinite(input.weight) || input.weight <= 0) {
       throw new Error("Provide a positive fruit weight.");
     }
-    const unit = normUnit(input.unit);
-    const kg = toKg(input.weight, unit);
-    if (kg == null || kg <= 0) throw new Error("Provide a positive fruit weight.");
+    // DETERMINISTIC unit conversion (issue #311): resolve the weight in the unit the user actually said
+    // to canonical kg here, instead of trusting the model to do the ton→kg math (it silently got "2 tons"
+    // wrong). An unknown unit fails closed rather than defaulting to a wrong number.
+    const resolved = resolveWeightKg(input.weight, input.unit);
+    if (resolved == null) {
+      throw new Error(`Unrecognized weight unit "${input.unit}". Use kg, lb, ton (US short ton), or tonne (metric).`);
+    }
+    const kg = resolved.kg;
+    if (kg <= 0) throw new Error("Provide a positive fruit weight.");
     // Validate the optional readings up-front (registry ranges) so the preview is trustworthy.
     const brix = coerceBrix(input.brix);
     const ph = coercePh(input.ph);
@@ -83,13 +82,15 @@ export const logHarvestPickTool: AssistantTool = {
     });
 
     const pickDate = input.pickDate ? input.pickDate : todayISO();
-    const unitLabel = unit === "metric" ? "kg" : "lb";
+    // Surface HOW the weight was interpreted (e.g. "2 short tons (1,814.37 kg)") so the human confirming
+    // catches a short-vs-metric or unit slip before it's written — the confirm gate for the conversion.
+    const weightDisplay = describeWeight(resolved);
     const extras = [
       brix != null ? `${brix} °Bx` : null,
       ph != null ? `pH ${ph}` : null,
       ta != null ? `TA ${ta} ${TA_UNIT}` : null,
     ].filter(Boolean);
-    const preview = `Weigh-in: ${input.weight} ${unitLabel} off ${block.label} (${block.vineyardName}) on ${pickDate}${extras.length ? ` — ${extras.join(", ")}` : ""}.`;
+    const preview = `Weigh-in: ${weightDisplay} off ${block.label} (${block.vineyardName}) on ${pickDate}${extras.length ? ` — ${extras.join(", ")}` : ""}.`;
     const token = signProposal("log_harvest_pick", {
       blockId: block.id,
       weightKg: kg,
@@ -98,7 +99,7 @@ export const logHarvestPickTool: AssistantTool = {
       ta,
       pickDate,
       label: block.label,
-      display: `${input.weight} ${unitLabel}`,
+      display: weightDisplay,
     });
     return { needsConfirmation: true, preview, token };
   },
