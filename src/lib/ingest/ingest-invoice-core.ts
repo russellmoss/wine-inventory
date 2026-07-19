@@ -341,6 +341,10 @@ export async function applyIngestedInvoiceCore(
       // (c) recompute landed cost from the source of truth (never trust a stale client preview).
       const extracted = invoice.extractedJson as unknown as ExtractedDocument;
       const charges: InvoiceCharges = extracted?.charges ?? {};
+      // Plan 080 U4: the destination location the human chose (manual entry today; the review screen in Wave 2).
+      // null → receiveSupplyCore/createStockMaterialCore fall back to the system "Winery" location exactly as
+      // before, so the AI upload path is unchanged until a location is explicitly picked.
+      const destinationLocationId = extracted?.locationId ?? null;
       const subtotals = receiptLines.map((l) => {
         if (l.lineTotal != null) return Number(l.lineTotal);
         if (l.qty != null && l.unitPrice != null) return Number(l.qty) * Number(l.unitPrice);
@@ -459,6 +463,7 @@ export async function applyIngestedInvoiceCore(
               category: line.resolvedCategory ? coerceMaterialCategory(line.resolvedCategory) : undefined,
               stockUnit: stockUnitForNewLine(line.unitRaw, extraUnits),
               openingQty: 0, // create at ZERO stock; the receiveSupplyCore below emits the costed lot + A/P (unified path)
+              locationId: destinationLocationId,
               vendorId, // link the intake's vendor
               genericName: ex?.genericName ?? null,
               brand: ex?.brand ?? null,
@@ -495,6 +500,7 @@ export async function applyIngestedInvoiceCore(
             qty: norm.stockQty,
             unitCost: norm.unitCost, // BASE (converted) per-stock-unit cost — the roll-up basis
             lotCode: line.lotNoRaw,
+            locationId: destinationLocationId, // Plan 080 U4: land the goods where the human said
             vendorId,
             vendorInvoiceNumber: invoice.vendorInvoiceNumber,
             currency: baseCurrency, // the lot always holds base

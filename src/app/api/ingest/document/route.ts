@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { getPrivateBlob } from "@/lib/attachments/blob";
+import { MANUAL_INVOICE_BLOB_URL } from "@/lib/ingest/manual-invoice-core";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,11 @@ export async function GET(req: Request) {
     select: { blobUrl: true, mimeType: true, fileName: true },
   });
   if (!inv) return Response.json({ error: "Document not found." }, { status: 404 });
+  // Plan 080 U4: a manually-typed invoice has no source file. Say so plainly instead of handing the
+  // sentinel URL to the blob client and surfacing a confusing 502.
+  if (inv.blobUrl === MANUAL_INVOICE_BLOB_URL) {
+    return Response.json({ error: "This invoice was entered by hand — there's no source document to show." }, { status: 404 });
+  }
 
   try {
     const blob = await getPrivateBlob(inv.blobUrl);
