@@ -9,6 +9,7 @@ import { buildArchiveWhere, buildOpenWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilte
 import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { deriveGroupRackProgress, type BatchAttemptLite, type PlannedGroupRack } from "@/lib/work-orders/group-rack-progress";
 import { parseGroupActivityPayload } from "@/lib/work-orders/group-activity";
+import type { LotsByVessel } from "@/lib/work-orders/vessel-lot-resolve";
 
 // Read-side view-models for work orders (Phase 9). K12-safe: every reader takes tenantId as an EXPLICIT
 // argument and wraps its reads in runAsTenant — never reads the ALS tenant (so these stay correct even
@@ -774,26 +775,40 @@ export async function getTemplateDetail(tenantId: string, templateId: string): P
 
 export type PickerOption = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 
-/** Option lists for the new-WO field pickers (active vessels, stock materials, active lots). */
-export async function getWorkOrderPickers(tenantId: string): Promise<{ vessels: PickerOption[]; materials: PickerOption[]; lots: PickerOption[] }> {
+/**
+ * Option lists for the new-WO field pickers (active vessels, stock materials, active lots), plus
+ * `lotsByVessel` — which lots each vessel currently holds, read from the authoritative `vesselLot`
+ * projection. The builder uses it so naming a tank resolves its occupying lot instead of asking the
+ * winemaker to find it in a list of every lot in the winery (see vessel-lot-resolve.ts). Same query
+ * count as before: the per-vessel volume sum is now folded from the same rows.
+ */
+export async function getWorkOrderPickers(tenantId: string): Promise<{ vessels: PickerOption[]; materials: PickerOption[]; lots: PickerOption[]; lotsByVessel: LotsByVessel }> {
   return runAsTenant(tenantId, async () => {
-    const [vessels, materials, lots, vol, onHand] = await Promise.all([
+    const [vessels, materials, lots, residents, onHand] = await Promise.all([
       prisma.vessel.findMany({ where: { isActive: true }, orderBy: [{ type: "asc" }, { code: "asc" }], select: { id: true, code: true, type: true, capacityL: true } }),
       // Phase 034/036: kind is the family (picker chips); category scopes the picker (cost-safety); brand/generic drive the label.
       prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, stockUnit: true, kind: true, category: true, subcategory: true, isStockTracked: true, genericName: true, brandName: true, preferGeneric: true } }),
       prisma.lot.findMany({ where: { status: "ACTIVE" }, orderBy: { code: "asc" }, take: 500, select: { id: true, code: true } }),
-      // Current wine volume per vessel (the fold of the ledger, VesselLot) — drives the dose calculator.
-      prisma.vesselLot.groupBy({ by: ["vesselId"], _sum: { volumeL: true } }),
+      // Current occupancy (the fold of the ledger, VesselLot): drives BOTH the dose calculator's per-vessel
+      // volume and the vessel→lot narrowing. Lot codes come from here, so a resident lot is always
+      // selectable even if it falls outside the 500-lot list above.
+      prisma.vesselLot.findMany({ select: { vesselId: true, volumeL: true, lot: { select: { id: true, code: true } } }, orderBy: { lot: { code: "asc" } } }),
       // Per-material on-hand (summed open SupplyLots) — surfaced next to each option in the picker.
       prisma.supplyLot.groupBy({ by: ["materialId"], where: { qtyRemaining: { gt: 0 } }, _sum: { qtyRemaining: true } }),
     ]);
-    const volByVessel = new Map(vol.map((g) => [g.vesselId, Number(g._sum.volumeL ?? 0)]));
+    const volByVessel = new Map<string, number>();
+    const lotsByVessel: LotsByVessel = {};
+    for (const r of residents) {
+      volByVessel.set(r.vesselId, (volByVessel.get(r.vesselId) ?? 0) + Number(r.volumeL ?? 0));
+      (lotsByVessel[r.vesselId] ??= []).push({ id: r.lot.id, label: r.lot.code });
+    }
     const onHandByMaterial = new Map(onHand.map((g) => [g.materialId, Number(g._sum.qtyRemaining ?? 0)]));
     return {
       vessels: vessels.map((v) => ({ id: v.id, label: `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}`, kind: v.type, volumeL: volByVessel.get(v.id) ?? 0, capacityL: v.capacityL == null ? null : Number(v.capacityL) })),
       // label = the display name (brand/generic per preference); unit = the material's stock unit.
       materials: materials.map((m) => ({ id: m.id, label: materialDisplayName(m), unit: m.stockUnit, kind: m.kind, category: m.category, subcategory: m.subcategory, onHand: m.isStockTracked ? (onHandByMaterial.get(m.id) ?? 0) : null })),
       lots: lots.map((l) => ({ id: l.id, label: l.code })),
+      lotsByVessel,
     };
   });
 }

@@ -51,6 +51,14 @@ const RETRIEVAL_CASES: RetrievalCase[] = [
   { q: "How do I choose a wine yeast strain and what nitrogen nutrient does it need?", expectPaths: ["scott-labs-yeast", "yeast-choosing", "yeast-nutrient", "yeast-nutrition", "winemaking%20handbook"], expectFact: ["yeast"] }, // Scott Labs
   { q: "Does wildfire smoke exposure affect wine grapes and the resulting wine?", expectPaths: ["smoke-exposure", "impact-smoke"], expectFact: ["smoke"] }, // OSU Extension
   { q: "How do I monitor for grapevine leafroll virus and mealybugs in the vineyard?", expectPaths: ["leafroll", "mealybug"], expectFact: ["mealybug"] }, // OSU Extension
+  // International source expansion 2 (multilingual + sparkling). An English query retrieves the native
+  // French/Spanish chunks (voyage-4 is multilingual) + the sparkling specialists.
+  { q: "How much sugar do I add at tirage to reach the right bottle pressure in méthode champenoise sparkling wine?",
+    expectPaths: ["le-tirage", "le-dosage", "prise-de-mousse", "maisons-champagne", "SparklingHandbook", "Enartis-Sparkling", "FG_EN_Spark"], expectFact: ["tirage"] }, // UMC / sparkling PDFs
+  { q: "What are the integrated pest management thresholds for wine grapes?",
+    expectPaths: ["guiauvadetransformacion", "mapa.gob", "pnw-644", "field-monitoring"], expectFact: ["grape"] }, // MAPA (ES) + PNW IPM
+  { q: "How do I test for TCA cork taint and haloanisoles in my wine?",
+    expectPaths: ["etslabs", "publications/publication"], expectFact: ["haloanisole"] }, // ETS Laboratories (analysis authority)
 ];
 
 // The Wine Australia downy-mildew question (CSV #1) is now scored above — WA is crawled (HTML) + its

@@ -7,6 +7,12 @@ import { action, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
 import { normalizeAbbr } from "@/lib/lot/code";
+import {
+  parseVarietyDetails,
+  isEmptyVarietyDetails,
+  EMPTY_VARIETY_DETAILS,
+  type VarietyDetails,
+} from "@/lib/reference/variety-details";
 
 const PATH = "/reference";
 
@@ -42,10 +48,13 @@ function entityType(kind: RefKind) {
   return kind === "variety" ? "Variety" : "Vineyard";
 }
 
+// Case-INSENSITIVE name match: the DB unique on (tenantId, name) is case-sensitive, so an exact-only
+// check would let "syrah" slip in beside "Syrah" and fragment master data (NAMING-1). Match how the
+// assistant's db_create guards identity, so both write paths agree on "this already exists".
 async function findByName(kind: RefKind, name: string) {
   return kind === "variety"
-    ? prisma.variety.findFirst({ where: { name } })
-    : prisma.vineyard.findFirst({ where: { name } });
+    ? prisma.variety.findFirst({ where: { name: { equals: name, mode: "insensitive" } } })
+    : prisma.vineyard.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
 }
 
 async function findById(kind: RefKind, id: string) {
@@ -80,22 +89,79 @@ export const createRef = action(async ({ actor }, kind: RefKind, formData: FormD
   if (abbreviation && (await abbreviationTaken(kind, abbreviation, null))) {
     throw new ActionError(`Abbreviation "${abbreviation}" is already used by another ${kind}.`, "CONFLICT");
   }
+  // Optional reference detail (ticket #308) — variety only, and entirely opt-in: a form that
+  // never opens the details section submits nothing and lands exactly as it did before.
+  const details = kind === "variety" ? readDetailsFromForm(formData) : EMPTY_VARIETY_DETAILS;
   await runInTenantTx(async (tx) => {
     const created =
       kind === "variety"
-        ? await tx.variety.create({ data: { name, abbreviation } })
+        ? await tx.variety.create({ data: { name, abbreviation, ...details } })
         : await tx.vineyard.create({ data: { name, abbreviation } });
     await writeAudit(tx, {
       ...actor,
       action: "CREATE",
       entityType: entityType(kind),
       entityId: created.id,
-      changes: diff(null, { name: created.name, abbreviation }),
+      changes: diff(null, {
+        name: created.name,
+        abbreviation,
+        ...(isEmptyVarietyDetails(details) ? {} : details),
+      }),
       summary: summarize("CREATE", entityType(kind), { label: created.name }),
     });
   });
   revalidatePath(PATH);
 });
+
+/** Pull the five optional detail fields off a FormData, surfacing a friendly ActionError. */
+function readDetailsFromForm(formData: FormData): VarietyDetails {
+  const parsed = parseVarietyDetails({
+    clone: formData.get("clone"),
+    rootstock: formData.get("rootstock"),
+    nursery: formData.get("nursery"),
+    berryColor: formData.get("berryColor"),
+    species: formData.get("species"),
+  });
+  if (!parsed.ok) throw new ActionError(parsed.error);
+  return parsed.value;
+}
+
+/**
+ * Update a variety's optional reference detail (clone / rootstock / nursery / berry color / species).
+ *
+ * Deliberately allowed even when the variety is already in use: these columns are descriptive, are
+ * not part of variety identity, and no historical record reads them, so correcting a typo here
+ * rewrites nothing that has already happened. Identity (name, abbreviation) keeps its own rules.
+ */
+export const setVarietyDetails = action(
+  async ({ actor }, id: string, input: Partial<VarietyDetails>) => {
+    const row = await prisma.variety.findUnique({ where: { id } });
+    if (!row) throw new ActionError("Variety not found.");
+    const parsed = parseVarietyDetails(input);
+    if (!parsed.ok) throw new ActionError(parsed.error);
+    const next = parsed.value;
+    const before: VarietyDetails = {
+      clone: row.clone,
+      rootstock: row.rootstock,
+      nursery: row.nursery,
+      berryColor: row.berryColor,
+      species: row.species,
+    };
+    const changes = diff(before, next);
+    await runInTenantTx(async (tx) => {
+      await tx.variety.update({ where: { id }, data: next });
+      await writeAudit(tx, {
+        ...actor,
+        action: "UPDATE",
+        entityType: "Variety",
+        entityId: id,
+        changes,
+        summary: summarize("UPDATE", "Variety", { label: row.name, changes }),
+      });
+    });
+    revalidatePath(PATH);
+  },
+);
 
 /** Set or clear (null / empty) a variety's or vineyard's lot-code abbreviation. */
 export const setAbbreviation = action(async ({ actor }, kind: RefKind, id: string, value: string | null) => {

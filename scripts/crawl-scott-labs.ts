@@ -17,6 +17,9 @@ import { disconnectSystem } from "@/lib/tenant/system";
 
 const HANDBOOK_PDF =
   "https://scottlab.com/content/files/documents/handbooks/rev/scott%20laboratories%202025-2026%20winemaking%20handbook%20aug.pdf";
+// The dedicated sparkling-wine handbook (traditional-method base-wine chemistry, tirage, crown-cap/bidule,
+// isobaric filtration). Same scott-labs source. Note the capitalized /content/files/Documents/Handbooks/ path.
+const SPARKLING_HANDBOOK_PDF = "https://scottlab.com/content/files/Documents/Handbooks/SparklingHandbook1819.pdf";
 
 // Curated WINE articles (bare root slugs). Cider/beer/seltzer/spirits/mead/coffee slugs intentionally
 // excluded. A stale/renamed slug simply 404s and is skipped (crawlUrls counts it as an error, continues).
@@ -53,7 +56,7 @@ const WINE_ARTICLE_SLUGS = [
 
 async function main() {
   const max = Number(process.env.KB_MAX_DOCS) || Infinity;
-  const urls = [HANDBOOK_PDF, ...WINE_ARTICLE_SLUGS.map((s) => `https://scottlab.com/${s}`)].slice(0, max);
+  const urls = [HANDBOOK_PDF, SPARKLING_HANDBOOK_PDF, ...WINE_ARTICLE_SLUGS.map((s) => `https://scottlab.com/${s}`)].slice(0, max);
   console.log(`crawl:scott-labs — ${urls.length} URLs (1 handbook PDF + ${urls.length - 1} wine articles)`);
 
   const indexed = { docs: 0, chunks: 0, unchanged: 0, lowConf: 0, empty: 0, errors: 0 };

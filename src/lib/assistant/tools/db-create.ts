@@ -1,5 +1,5 @@
 import "server-only";
-import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit, diff } from "@/lib/audit";
 import { isTenantAdminLike } from "@/lib/access";
@@ -47,6 +47,14 @@ export const dbCreateTool: AssistantTool = {
     const { data, label } = await entity.buildCreate(ctx.user, values);
     assertScoped(entity, ctx.user, data);
 
+    // Master-data identity guard (NAMING-1): if this create would duplicate an existing row's identity
+    // (case-insensitively), refuse HERE — don't offer a confirm card that can only fail with a raw
+    // unique-constraint error. The existing row keeps its id; we never re-key or overwrite it.
+    if (entity.findConflict) {
+      const conflict = await entity.findConflict(data);
+      if (conflict) throw new Error(`A ${entity.displayName} named "${conflict.label}" already exists — no need to add it again.`);
+    }
+
     const preview = `Create ${entity.displayName} "${label}".`;
     const token = signProposal("db_create", { entity: entity.name, data, label });
     return { needsConfirmation: true, preview, token };
@@ -60,18 +68,36 @@ export const commitDbCreate: Committer = async (user, args) => {
   const label = String(args.label ?? "");
   assertScoped(entity, user, data);
 
+  // Re-check identity at commit: the card may be stale — another card in the SAME batch (the reporter
+  // asked for several varieties at once), or a concurrent write, may have created this row since the
+  // preview. Refuse with a friendly message rather than a raw unique-constraint error or a case-variant
+  // duplicate. This is the batch path that produced the reported error.
+  if (entity.findConflict) {
+    const conflict = await entity.findConflict(data);
+    if (conflict) throw new Error(`A ${entity.displayName} named "${conflict.label}" already exists — no need to add it again.`);
+  }
+
   let newId = "";
-  await runInTenantTx(async (tx) => {
-    newId = await entity.create!(tx, data);
-    await writeAudit(tx, {
-      actorUserId: user.id,
-      actorEmail: user.email,
-      action: "CREATE",
-      entityType: entity.name,
-      entityId: newId,
-      changes: diff(null, data),
-      summary: `Created ${entity.displayName} ${label}`,
+  try {
+    await runInTenantTx(async (tx) => {
+      newId = await entity.create!(tx, data);
+      await writeAudit(tx, {
+        actorUserId: user.id,
+        actorEmail: user.email,
+        action: "CREATE",
+        entityType: entity.name,
+        entityId: newId,
+        changes: diff(null, data),
+        summary: `Created ${entity.displayName} ${label}`,
+      });
     });
-  });
+  } catch (e) {
+    // Backstop for any unique-constraint race (or an entity without a findConflict guard): turn Prisma's
+    // raw P2002 into a friendly message instead of leaking the multi-line "Invalid create() invocation".
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      throw new Error(`That ${entity.displayName} already exists.`);
+    }
+    throw e;
+  }
   return { message: `Created ${entity.displayName} "${label}".` };
 };

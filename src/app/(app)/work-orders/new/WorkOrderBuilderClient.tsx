@@ -15,6 +15,7 @@ import { PackagingBoMEditor } from "@/components/work-orders/PackagingBoMEditor"
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import type { PackagingPlanLine } from "@/lib/bottling/packaging-bom";
 import { WORK_ORDER_PRIORITIES } from "@/lib/work-orders/planning";
+import { vesselLotState, reconcileLotValue, lotValueForNewVessel, type LotsByVessel } from "@/lib/work-orders/vessel-lot-resolve";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Member = { userId: string; name: string; email: string };
@@ -88,7 +89,7 @@ export function WorkOrderBuilderClient({
   vocab,
   existing,
 }: {
-  pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[] };
+  pickers: { vessels: Picker[]; materials: Picker[]; lots: Picker[]; lotsByVessel: LotsByVessel };
   members: Member[];
   dependableWorkOrders: DependableWo[];
   locations: LocationRow[];
@@ -146,6 +147,47 @@ export function WorkOrderBuilderClient({
   function setTaskValue(groupIdx: number, key: string, field: string, value: unknown) {
     setGroups((prev) => prev.map((g, gi) => (gi === groupIdx ? g.map((t) => (t.key === key ? { ...t, values: { ...t.values, [field]: value } } : t)) : g)));
   }
+
+  // The lot a task's vessel implies. Only meaningful when the task declares exactly ONE vessel field —
+  // with two (a rack's from/to) there's no single vessel the lot belongs to, so we don't guess.
+  const lotLinkFor = React.useCallback((taskType: string): { vesselKey: string; lotKeys: string[] } | null => {
+    const fields = Object.entries(vocab[taskType]?.fields ?? {});
+    const vesselKeys = fields.filter(([, t]) => t === "vessel").map(([k]) => k);
+    const lotKeys = fields.filter(([, t]) => t === "lot").map(([k]) => k);
+    if (vesselKeys.length !== 1 || lotKeys.length === 0) return null;
+    return { vesselKey: vesselKeys[0], lotKeys };
+  }, [vocab]);
+
+  /**
+   * Fold the vessel's occupancy into a task's values: a single-lot vessel pins its lot, a blend keeps a
+   * resident choice (and drops a non-resident one), an empty vessel clears it. Applied both on vessel
+   * change (so the field updates live) and in `taskBuilds` (so what's SUBMITTED matches what's shown,
+   * whatever route the values arrived by — manual, AI draft, or an edit-mode seed).
+   */
+  const foldLot = React.useCallback((
+    taskType: string,
+    values: Record<string, unknown>,
+    resolve: (state: ReturnType<typeof vesselLotState>, current: string) => string,
+  ): Record<string, unknown> => {
+    const link = lotLinkFor(taskType);
+    if (!link) return values;
+    const state = vesselLotState(String(values[link.vesselKey] ?? ""), pickers.lotsByVessel);
+    if (state.kind === "no-vessel") return values;
+    const next = { ...values };
+    for (const lk of link.lotKeys) next[lk] = resolve(state, String(values[lk] ?? ""));
+    return next;
+  }, [lotLinkFor, pickers.lotsByVessel]);
+
+  const withResolvedLot = React.useCallback(
+    (taskType: string, values: Record<string, unknown>) => foldLot(taskType, values, reconcileLotValue),
+    [foldLot],
+  );
+
+  function setVesselValue(groupIdx: number, key: string, field: string, vesselId: string) {
+    setGroups((prev) => prev.map((g, gi) => (gi === groupIdx ? g.map((t) => (
+      t.key === key ? { ...t, values: foldLot(t.taskType, { ...t.values, [field]: vesselId }, lotValueForNewVessel) } : t
+    )) : g)));
+  }
   function removeTask(groupIdx: number, key: string) {
     setGroups((prev) => prev.map((g, gi) => (gi === groupIdx ? g.filter((t) => t.key !== key) : g)));
   }
@@ -173,7 +215,7 @@ export function WorkOrderBuilderClient({
         builds.push({
           taskType: t.taskType,
           title: t.title.trim() || def?.label || t.taskType,
-          values: cleanValues(t.values),
+          values: cleanValues(withResolvedLot(t.taskType, t.values)),
           groupSeq: gi,
           assigneeId: t.assigneeId || undefined,
           taskKey: t.key,
@@ -182,7 +224,7 @@ export function WorkOrderBuilderClient({
       }
     });
     return builds;
-  }, [groups, vocab]);
+  }, [groups, vocab, withResolvedLot]);
 
   // Live readiness preview (debounced, stale-guarded).
   const [readiness, setReadiness] = React.useState<WorkOrderReadinessProposal | null>(null);
@@ -225,13 +267,49 @@ export function WorkOrderBuilderClient({
         </div>
       );
     }
-    if (type === "vessel" || type === "lot") {
-      const opts = type === "vessel" ? pickers.vessels : pickers.lots;
+    if (type === "vessel") {
+      return (
+        <label key={key} style={labelStyle}>
+          {flabel}
+          <select style={field} value={String(current)} onChange={(e) => setVesselValue(groupIdx, task.key, key, e.target.value)}>
+            <option value="">— pick —</option>
+            {pickers.vessels.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        </label>
+      );
+    }
+    if (type === "lot") {
+      // Naming the vessel answers "which lot" whenever the answer is knowable. A single-lot vessel shows
+      // its lot as a readout (nothing to ask); a blend narrows the picker to its residents and still asks,
+      // because silently picking one lot of a blend would attach the work to the wrong wine; an empty
+      // vessel says so instead of offering every lot in the winery.
+      const link = lotLinkFor(task.taskType);
+      const state = vesselLotState(link ? String(task.values[link.vesselKey] ?? "") : "", pickers.lotsByVessel);
+      if (state.kind === "single") {
+        return (
+          <label key={key} style={labelStyle}>
+            {flabel}
+            <div style={{ ...field, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span>{state.lot.label}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>in this vessel</span>
+            </div>
+          </label>
+        );
+      }
+      if (state.kind === "empty") {
+        return (
+          <label key={key} style={labelStyle}>
+            {flabel}
+            <div style={{ ...field, color: "var(--text-muted)" }}>Vessel is empty — no lot to attach.</div>
+          </label>
+        );
+      }
+      const opts = state.kind === "blend" ? state.lots : pickers.lots;
       return (
         <label key={key} style={labelStyle}>
           {flabel}
           <select style={field} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value)}>
-            <option value="">— pick —</option>
+            <option value="">{state.kind === "blend" ? "— blend: which lot? —" : "— pick —"}</option>
             {opts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
         </label>

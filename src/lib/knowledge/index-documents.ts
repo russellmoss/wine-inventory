@@ -13,7 +13,7 @@ import type { DetectedType } from "./crawl/fetcher";
 
 export interface IndexResult {
   chunks: number;
-  skipped: "unchanged" | "low-confidence" | "empty" | false;
+  skipped: "unchanged" | "low-confidence" | "empty" | "duplicate" | false;
 }
 
 function chunkId(documentId: string, revision: number, ordinal: number, text: string): string {
@@ -37,7 +37,7 @@ export async function indexDocument(input: {
   const doc = await runAsSystem((db) =>
     db.knowledgeDocument.findUnique({
       where: { id: input.documentId },
-      select: { activeRevision: true, indexedContentHash: true },
+      select: { sourceId: true, activeRevision: true, indexedContentHash: true },
     }),
   );
   if (!doc) throw new Error(`indexDocument: document ${input.documentId} not found`);
@@ -50,6 +50,31 @@ export async function indexDocument(input: {
       }),
     );
     if (already > 0) return { chunks: already, skipped: "unchanged" };
+  }
+
+  // Alias dedup: many CMSs (e.g. SPIP) serve the SAME article under several URLs. If another active
+  // document in this SAME source already indexed this exact content, skip embedding a duplicate — it would
+  // bloat the corpus and wreck retrieval diversity (the same passage returned N times). Blobs already dedup
+  // the bytes; this dedups the embedded chunks.
+  const aliasOf = await runAsSystem((db) =>
+    db.knowledgeDocument.findFirst({
+      where: {
+        sourceId: doc.sourceId,
+        indexedContentHash: input.contentHash,
+        status: "active",
+        id: { not: input.documentId },
+      },
+      select: { id: true },
+    }),
+  );
+  if (aliasOf) {
+    // Remove this pure-alias doc row so it doesn't inflate counts or linger empty (its blob is shared +
+    // kept). Self-cleaning every crawl, so the weekly loop never accretes alias rows.
+    await runAsSystem(async (db) => {
+      await db.knowledgeUrlObservation.deleteMany({ where: { documentId: input.documentId } });
+      await db.knowledgeDocument.delete({ where: { id: input.documentId } });
+    });
+    return { chunks: 0, skipped: "duplicate" };
   }
 
   const extracted = await extractDocument(input.bytes, input.contentType, input.url);

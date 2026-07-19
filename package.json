@@ -29,6 +29,8 @@
     "crawl:scott-labs": "tsx --conditions=react-server --env-file=.env scripts/crawl-scott-labs.ts",
     "crawl:owri": "tsx --conditions=react-server --env-file=.env scripts/crawl-owri.ts",
     "crawl:osu-extension": "tsx --conditions=react-server --env-file=.env scripts/crawl-osu-extension.ts",
+    "crawl:curated": "tsx --conditions=react-server --env-file=.env scripts/crawl-curated.ts",
+    "crawl:ets": "tsx --conditions=react-server --env-file=.env scripts/crawl-ets.ts",
     "reset:knowledge-source": "tsx --conditions=react-server --env-file=.env scripts/reset-knowledge-source.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
     "verify:kb-subscriptions": "tsx --conditions=react-server --env-file=.env scripts/verify-kb-subscriptions.ts",

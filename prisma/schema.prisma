@@ -307,6 +307,21 @@ model Location {
   @@map("location")
 }
 
+// Berry (skin) color of the fruit — the winemaker's "black or white". NOT the map
+// display color; that is `Variety.color` (a hex string) and the two are unrelated.
+enum BerryColor {
+  BLACK
+  WHITE
+}
+
+// Vine species grouping. OTHER is the deliberate escape hatch (e.g. rupestris,
+// riparia) so the closed set never blocks recording a variety.
+enum VineSpecies {
+  VINIFERA
+  HYBRID
+  OTHER
+}
+
 model Variety {
   tenantId        String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
@@ -314,6 +329,15 @@ model Variety {
   abbreviation    String? // 2–4 uppercase code for lot codes (PN, CS). Nullable→backfilled; Postgres unique allows multiple NULLs.
   isActive        Boolean           @default(true)
   color           String? // canonical per-variety map color (hex), consistent across vineyards
+  // Optional REFERENCE/presentation attributes (ticket #308). Descriptive only: they
+  // are never part of variety identity (name + abbreviation), never feed a lot code,
+  // and are not read by the ledger/cost/compliance paths. All nullable so every
+  // pre-existing variety keeps its exact historical shape — NAMING-2 provenance.
+  clone           String? // e.g. "Dijon 115", "FPS 04"
+  rootstock       String? // e.g. "101-14", "3309C", "own-rooted"
+  nursery         String? // source nursery the vine material came from
+  berryColor      BerryColor? // black or white — see BerryColor, distinct from `color`
+  species         VineSpecies?
   createdAt       DateTime          @default(now())
   components      VesselComponent[]
   bottlingSources BottlingSource[]
