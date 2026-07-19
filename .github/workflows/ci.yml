@@ -67,7 +67,7 @@ jobs:
     if: github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'feedback-bug')
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16 # postgres:16 + pgvector (Plan 079 knowledge base needs CREATE EXTENSION vector)
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -115,7 +115,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16 # postgres:16 + pgvector (Plan 079 knowledge base needs CREATE EXTENSION vector)
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
