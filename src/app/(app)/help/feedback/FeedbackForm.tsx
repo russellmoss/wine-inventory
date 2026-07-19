@@ -8,8 +8,9 @@ import { DEBUG_CONTEXT_SCHEMA_VERSION, buildNarrative, appendNarrativeDigest } f
 import { captureReplayLink, SENTRY_ORG_SLUG } from "@/lib/observability/sentry-replay";
 import { drainInteractionTrail, clearInteractionTrail } from "@/lib/observability/interaction-buffer";
 import { getActiveHuntId } from "@/lib/observability/break-mode";
+import { feedbackKindOptions, type FeedbackKind } from "@/lib/feedback/kind-options";
 
-type Kind = "BUG_REPORT" | "FEATURE_REQUEST";
+type Kind = FeedbackKind;
 type PendingImage = { file: File; previewUrl: string };
 type MarkupTool = "circle" | "arrow" | "text";
 type MarkupShape =
@@ -139,22 +140,20 @@ export function FeedbackForm({
           width: "fit-content",
         }}
       >
-        {[
-          ["BUG_REPORT", "Bug report"],
-          ["FEATURE_REQUEST", "Feature request"],
-        ].map(([value, label]) => {
+        {/* A locked picker collapses to the kind in force — never a disabled option
+            the reporter can see but cannot choose (see lib/feedback/kind-options). */}
+        {feedbackKindOptions(kind, lockKind).map(({ value, label }) => {
           const selected = kind === value;
           return (
             <button
               key={value}
               type="button"
-              onClick={() => !lockKind && setKind(value as Kind)}
+              onClick={() => setKind(value)}
               aria-pressed={selected}
-              disabled={lockKind}
               style={{
                 border: 0,
                 padding: "10px 14px",
-                cursor: lockKind ? "default" : "pointer",
+                cursor: "pointer",
                 background: selected ? "var(--accent)" : "var(--surface-raised)",
                 color: selected ? "var(--accent-on)" : "var(--text-secondary)",
                 fontFamily: "var(--font-body)",
