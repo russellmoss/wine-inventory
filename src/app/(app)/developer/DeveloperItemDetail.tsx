@@ -297,6 +297,13 @@ export function DeveloperItemDetail({
             ))}
           </div>
         ) : <p className={styles.subtle}>No attachments.</p>}
+        {item.replayUrl ? (
+          <div className={styles.inlineActions} aria-label="Session replay">
+            <a className={styles.plainLink} href={item.replayUrl} target="_blank" rel="noopener noreferrer">
+              ▶ Open Sentry replay
+            </a>
+          </div>
+        ) : null}
       </DetailSection>
 
       <DetailSection id="detail-triage" title="Triage">

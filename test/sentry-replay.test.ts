@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildReplayUrl, captureReplayLink } from "@/lib/observability/sentry-replay";
+import { buildReplayUrl, captureReplayLink, safeSentryReplayUrl } from "@/lib/observability/sentry-replay";
 
 describe("buildReplayUrl", () => {
   it("builds the expected deep-link", () => {
@@ -44,5 +44,29 @@ describe("captureReplayLink", () => {
     const replay = { getReplayId: () => "abc123", flush: vi.fn().mockRejectedValue(new Error("stalled")) };
     const out = await captureReplayLink(replay, "bhutan-wine");
     expect(out).toEqual({});
+  });
+});
+
+describe("safeSentryReplayUrl", () => {
+  it("returns the url for a valid https *.sentry.io link in debugContext", () => {
+    const url = "https://bhutan-wine.sentry.io/replays/abc123/";
+    expect(safeSentryReplayUrl({ replayUrl: url })).toBe(url);
+  });
+
+  it("rejects non-sentry hosts", () => {
+    expect(safeSentryReplayUrl({ replayUrl: "https://evil.example.com/replays/x/" })).toBeNull();
+    expect(safeSentryReplayUrl({ replayUrl: "https://sentry.io.evil.com/x" })).toBeNull();
+  });
+
+  it("rejects non-https and credential-embedded urls", () => {
+    expect(safeSentryReplayUrl({ replayUrl: "http://bhutan-wine.sentry.io/replays/x/" })).toBeNull();
+    expect(safeSentryReplayUrl({ replayUrl: "https://user:pw@bhutan-wine.sentry.io/x" })).toBeNull();
+  });
+
+  it("returns null when replayUrl is absent or debugContext is not an object", () => {
+    expect(safeSentryReplayUrl({ consoleLog: [] })).toBeNull();
+    expect(safeSentryReplayUrl(null)).toBeNull();
+    expect(safeSentryReplayUrl("nope")).toBeNull();
+    expect(safeSentryReplayUrl({ replayUrl: "not a url" })).toBeNull();
   });
 });

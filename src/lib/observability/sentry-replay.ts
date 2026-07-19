@@ -19,6 +19,26 @@ export function buildReplayUrl(orgSlug: string | undefined, replayId: string | u
   return `https://${orgSlug}.sentry.io/replays/${replayId}/`;
 }
 
+/**
+ * Extract a validated Sentry replay deep-link from a stored debugContext (Plan 080 Unit 4). Only an
+ * https URL on a *.sentry.io host (no embedded credentials) survives — anything else, or a missing
+ * field, returns null. Defensive even though the value was clamped on write. Pure, so it's testable
+ * without the server-only feedback loader.
+ */
+export function safeSentryReplayUrl(debugContext: unknown): string | null {
+  if (!debugContext || typeof debugContext !== "object" || Array.isArray(debugContext)) return null;
+  const raw = (debugContext as Record<string, unknown>).replayUrl;
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.hostname.endsWith(".sentry.io") && !url.username && !url.password
+      ? raw
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The slice of the Sentry Replay integration we depend on. Kept minimal so it's fakeable in tests. */
 export type MinimalReplay = {
   getReplayId: () => string | undefined;
