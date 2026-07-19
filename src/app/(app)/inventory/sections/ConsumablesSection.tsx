@@ -3,6 +3,8 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal, Collapsible, LocalTime } from "@/components/ui";
+import { MaterialMovePanel, LocationOnHandList } from "@/components/inventory/MaterialMovePanel";
+import type { LocationOnHand } from "@/lib/cellar/materials";
 import { type CellarMaterialDTO, materialDisplayName } from "@/lib/cellar/materials-shared";
 import {
   MATERIAL_CATEGORIES, CATEGORY_LABELS, categoryOf, familyLabel,
@@ -61,7 +63,21 @@ function useRunner() {
 /** The stored category for a material (fallback derives from kind for legacy rows). */
 const catOf = (m: CellarMaterialDTO): MaterialCategory => (m.category as MaterialCategory) ?? categoryOf(m.kind);
 
-export function ExpendablesClient({ materials, vendors, customUnits = [] }: { materials: CellarMaterialDTO[]; vendors: VendorRow[]; customUnits?: CustomUnitRow[] }) {
+export function ConsumablesSection({
+  materials,
+  vendors,
+  customUnits = [],
+  locations = [],
+  onHandByLocation = {},
+}: {
+  materials: CellarMaterialDTO[];
+  vendors: VendorRow[];
+  customUnits?: CustomUnitRow[];
+  /** Plan 080 U8: active locations for the Receive/Adjust/Transfer pickers. */
+  locations?: { id: string; name: string }[];
+  /** Plan 080 U8: per-material, per-location on-hand (a plain Record — a Map cannot cross the RSC boundary). */
+  onHandByLocation?: Record<string, LocationOnHand[]>;
+}) {
   const { error, pending, run } = useRunner();
   const router = useRouter();
   const refreshVendors = React.useCallback(() => router.refresh(), [router]);
@@ -69,6 +85,7 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
   const [receiveId, setReceiveId] = React.useState<string | null>(null);
+  const [moveId, setMoveId] = React.useState<string | null>(null); // Plan 080 U8: Receive/Adjust/Transfer
 
   // Toolbar: fuzzy search + category filter + (when a category is active) a sub-category multi-select +
   // inactive toggle + which categories are unfurled.
@@ -87,6 +104,7 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
   const detail = detailId ? byId.get(detailId) ?? null : null;
   const editMat = editId ? byId.get(editId) ?? null : null;
   const receiveMat = receiveId ? byId.get(receiveId) ?? null : null;
+  const moveMat = moveId ? byId.get(moveId) ?? null : null;
 
   // Existing family labels per category — seed the form's family picker alongside the built-ins.
   const familiesByCategory = React.useMemo(() => {
@@ -267,8 +285,10 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
         material={detail}
         pending={pending}
         run={run}
+        locationOnHand={detail ? onHandByLocation[detail.id] ?? [] : []}
         onEdit={() => { if (detail) { setEditId(detail.id); setDetailId(null); } }}
         onReceive={() => { if (detail) { setReceiveId(detail.id); setDetailId(null); } }}
+        onMove={() => { if (detail) { setMoveId(detail.id); setDetailId(null); } }}
         onClose={() => setDetailId(null)}
       />
 
@@ -290,6 +310,16 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
         pending={pending}
         run={run}
         onClose={() => setReceiveId(null)}
+      />
+
+      <MaterialMovePanel
+        key={moveMat?.id ?? "move-none"}
+        material={moveMat}
+        locations={locations}
+        onHand={moveMat ? onHandByLocation[moveMat.id] ?? [] : []}
+        pending={pending}
+        run={run}
+        onClose={() => setMoveId(null)}
       />
     </div>
   );
@@ -479,15 +509,20 @@ function MaterialDetailModal({
   material,
   pending,
   run,
+  locationOnHand,
   onEdit,
   onReceive,
+  onMove,
   onClose,
 }: {
   material: CellarMaterialDTO | null;
   pending: boolean;
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
+  /** Plan 080 U8: where this item physically is. */
+  locationOnHand: LocationOnHand[];
   onEdit: () => void;
   onReceive: () => void;
+  onMove: () => void;
   onClose: () => void;
 }) {
   const { format } = useCurrency();
@@ -523,6 +558,12 @@ function MaterialDetailModal({
         {tracked ? (
           <DetailRow label="On hand"><span style={num}>{m.onHand ?? 0}</span> {unit}</DetailRow>
         ) : null}
+        {/* Plan 080 U8: WHERE it is — the question the old flat total could not answer. */}
+        {tracked ? (
+          <DetailRow label="By location">
+            <LocationOnHandList rows={locationOnHand} unit={unit} />
+          </DetailRow>
+        ) : null}
         <DetailRow label="Cost">
           {m.avgUnitCost != null ? <span style={num}>≈ {format(m.avgUnitCost, { per: unit })}</span> : "Unknown (no priced stock)"}
         </DetailRow>
@@ -536,6 +577,7 @@ function MaterialDetailModal({
           <Button type="button" variant="ghost" disabled={pending} onClick={() => run(() => setMaterialActiveAction(m.id, inactive))}>
             {inactive ? "Reactivate" : "Deactivate"}
           </Button>
+          <Button type="button" variant="secondary" disabled={pending} onClick={onMove}>Move stock</Button>
           <Button type="button" variant="secondary" disabled={pending} onClick={onReceive}>Receive</Button>
           <Button type="button" variant="primary" disabled={pending} onClick={onEdit}>Edit</Button>
         </div>

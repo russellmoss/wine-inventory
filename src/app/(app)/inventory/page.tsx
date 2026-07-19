@@ -6,10 +6,10 @@ import { InventoryTabs } from "./InventoryTabs";
 // coerceSection is called on the SERVER — it must come from the client-SAFE shared module, never from
 // the "use client" tab bar (that is a runtime-only error the build does not catch).
 import { coerceSection, type InventorySection } from "./sections-shared";
-import { listMaterials } from "@/lib/cellar/materials";
+import { listMaterials, onHandByLocationForMaterials, type LocationOnHand } from "@/lib/cellar/materials";
 import { listVendors } from "@/lib/vendors/vendors";
 import { listCustomUnitsCore } from "@/lib/units/custom-unit-core";
-import { ExpendablesClient } from "../setup/expendables/ExpendablesClient";
+import { ConsumablesSection as ConsumablesPanel } from "./sections/ConsumablesSection";
 import { listEquipment } from "@/lib/equipment/equipment";
 import { listLocations } from "@/lib/work-orders/data";
 import { EquipmentClient } from "../setup/equipment/EquipmentClient";
@@ -56,12 +56,27 @@ async function FinishedGoodsSection() {
 }
 
 async function ConsumablesSection() {
-  const [materials, vendors, customUnits] = await Promise.all([
+  const [materials, vendors, customUnits, locations] = await Promise.all([
     listMaterials({ includeInactive: true }),
     listVendors({ activeOnly: true }),
     listCustomUnitsCore(),
+    prisma.location.findMany({ where: { isActive: true }, orderBy: [{ isSystem: "desc" }, { name: "asc" }], select: { id: true, name: true } }),
   ]);
-  return <ExpendablesClient materials={materials} vendors={vendors} customUnits={customUnits} />;
+  // Plan 080 U8: per-location on-hand for every listed material, in ONE grouped query rather than N.
+  // Serialized to a plain Record — a Map cannot cross the server/client boundary.
+  const byLoc = await onHandByLocationForMaterials(materials.map((m) => m.id));
+  const onHandByLocation: Record<string, LocationOnHand[]> = {};
+  for (const [materialId, rows] of byLoc) onHandByLocation[materialId] = rows;
+
+  return (
+    <ConsumablesPanel
+      materials={materials}
+      vendors={vendors}
+      customUnits={customUnits}
+      locations={locations}
+      onHandByLocation={onHandByLocation}
+    />
+  );
 }
 
 async function EquipmentSection() {
