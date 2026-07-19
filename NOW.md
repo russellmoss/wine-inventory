@@ -398,7 +398,18 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ⏭️ Next up (candidates, not commitments)
 
-- **"Break Mode" — dev-only high-fidelity bug capture — PHASE 1 BUILT (080); Phase 2 not started.**
+- **"Break Mode" — dev-only high-fidelity bug capture — PHASES 1 + 2 BOTH BUILT + browser-QA'd (080). Ready for /review → /ship.**
+  Phase 2 (units 6–11): replay-fidelity hint cookie (sandbox-only network bodies, masking always on,
+  fails closed), interaction+network-metadata trail buffer, dev-only Break Mode toggle with a
+  risk-coded recording indicator (real tenant → --danger "metadata only"; sandbox → --warning "full
+  capture"; 30-min auto-off + countdown), hunt trail bundled onto reports and rendered in /developer.
+  13 commits total; tsc + eslint clean, **vitest 2516 passed**, `next build` clean. QA'd on Demo:
+  trail captured `click — Inventory / GET /inventory → 200 / route — /inventory / click — Submit`,
+  query strings stripped, no bodies. ⚠ **BLOCKER before any real-tenant use: configure Sentry
+  server-side data-scrubbing** (the cookie is a client-side default, not the guarantee) — see
+  `docs/architecture/security-register.md` 🟡. NOT done (out of repo): the /bug-triage skill step that
+  reads the trail.
+  <details><summary>phase 1 detail</summary>
   Phase 1 (units 1–5) built on `claude/enhanced-bug-reporting-network-cc8b6f` (this worktree; main was
   occupied): debugContext v3 clamp; pure buildReplayUrl/captureReplayLink/safeSentryReplayUrl; link the
   Sentry replay at bug-report submit; "Open Sentry replay" in /developer; narrative prompt
@@ -406,6 +417,7 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   `/review` → `/ship` Phase 1. Phase 2 (units 6–11: middleware fidelity cookie + Sentry server-side scrub,
   session-mode replay + auto-off, tenant-risk-colored indicator, AI trail) needs the MAIN checkout — do
   after Phase 1 ships. Plan: [docs/plans/2026-07-19-080-feat-break-mode-bug-capture-plan.md](docs/plans/2026-07-19-080-feat-break-mode-bug-capture-plan.md).
+  </details>
   Eng review locked 2 decisions: (1) keep network bodies but "do it right" — Next MIDDLEWARE sets the
   `cbh_replay_fidelity` cookie (no middleware existed; layout render can't set cookies) + Sentry server-side
   data-scrubbing is the REAL enforcement belt (cookie is client-writable, only a default); (2) Break Mode uses

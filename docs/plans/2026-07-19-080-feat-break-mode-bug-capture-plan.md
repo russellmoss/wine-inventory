@@ -380,8 +380,33 @@ only; clean up.
   `captureReplayLink`/`safeSentryReplayUrl` (pure) + replay link at submit + "Open Sentry replay" in
   `/developer` + narrative prompt. Gates: `tsc --noEmit` clean, eslint clean, **vitest 2471 passed**
   (24 new tests; fixed one stale existing assertion). No DB/migration needed. Next: `/review` → `/ship`.
-- **Phase 2 (Units 6–11) — NOT STARTED.** Needs the main checkout (middleware, Sentry data-scrubbing,
-  DB-adjacent verify). Do after Phase 1 ships.
+- **Phase 2 (Units 6–11) — BUILT + browser-QA'd 2026-07-19**, same branch. 6 commits. Gates: `tsc`
+  clean, eslint clean, **vitest 2516 passed**, `next build` clean (proxy registered). Browser-QA'd on
+  Demo Winery end to end: toggle renders (44px, dev-only), indicator read
+  `REC · Demo Winery · full capture · 29:53 left` in `--warning` amber with a pulsing dot, survived
+  soft navigation, and a report filed mid-hunt persisted `huntId` + 5 interactions + 3 network entries.
+  Rendered trail: `click — Inventory / GET /inventory → 200 (76ms) / route — /inventory / GET
+  /api/feedback/tickets → 405 (37ms) / click — Submit feedback`. Privacy verified on the stored row:
+  no body/value fields and the `?probe=1` **query string was stripped**. QA fixture cleaned up.
+
+### Phase 2 deviations from the plan (all deliberate, all verified)
+1. **Unit 6 — `proxy.ts` already existed.** Next 16 renames middleware to `proxy`, and the repo ships
+   one. So no new infra and no innovation token. But it only has `getSessionCookie` (presence, no DB)
+   and is explicitly not a security boundary (CVE-2025-29927), so resolving role/tenant there would
+   mean a session+member DB lookup on EVERY request. Instead fidelity is written where it can change
+   (support-tenant enter/exit, plus a mount-time sync from the dev-only control) and `proxy` clears it
+   when there is no session. Same architecture, correct mechanism; every gap fails closed to `masked`.
+2. **Unit 11 — added the hunt-trail display in `/developer`.** Small scope addition: without it the
+   trail is invisible to humans (the same "captured but never rendered" gap found in Phase 1). The
+   structured arrays still go to the fix agent via `debugContext`.
+3. **NOT DONE (out of repo, flagged):** the `/bug-triage` skill step that reads the trail lives in
+   `~/.claude`, and editing a global skill would affect other projects — left for an explicit decision.
+
+### ⚠ Outstanding prerequisite before ANY real-tenant use
+**Sentry server-side data-scrubbing rules are not yet configured.** The fidelity cookie is
+client-writable, so it is a client-side default, not the guarantee. Until ingest-side scrubbing is set
+up in the Sentry project, treat Break Mode as sandbox-only in practice. Recorded in
+`docs/architecture/security-register.md` (status 🟡).
 
 ## Eng-Review Addenda (2026-07-19)
 
