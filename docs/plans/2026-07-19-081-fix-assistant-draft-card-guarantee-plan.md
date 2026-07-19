@@ -220,6 +220,29 @@ rediscovered and re-adopted without re-reading why it failed review.
 | `details` typing | Real discriminated union; `assistantWarnings` distinct from existing `warnings` | Generic `warnings: string[]` on `WriteProposal` | Council C6: `details` is `unknown` and work-order details already has `warnings` — the generic field collides or no-ops |
 | Regression net | Nightly CI, separate proposal/draft/decline/wrong-tool rates | Single `tool_use` boolean; per-PR | Council S4: a bare `tool_use` assertion passes on a wrong tool or a decline |
 
+## Build note (discovered during Unit 4, 2026-07-19) — the Draft Card UI mostly already exists
+
+While wiring the contract it turned out the work-order path **already computes the entire readiness
+model** and then throws it away one line before returning:
+
+- `src/lib/work-orders/proposal-readiness.ts:130,212` — `proposal.unresolved: UnresolvedItem[]`
+  (`{ key, label, reason }`) and `proposal.warnings` with `severity: "blocking" | "confirmable" |
+  "completion_check"`.
+- `src/lib/assistant/tools/propose-work-order.ts:406-408` — when `status !== "ready"` it flattens all of
+  that into a **prose string** (`"I could not make this work order ready to confirm: …"`) and returns it.
+  That prose is the thing the UI cannot render as a card.
+- `src/app/(app)/assistant/AssistantChat.tsx:53,1249-1265` — the client **already declares and renders**
+  `details.unresolved` as a "Needs input" block, and already groups warnings into "Blocks creation" /
+  "Confirm with warning" / "Checked at completion".
+
+So the Draft Card is far less new construction than this plan assumed. The severity vocabulary the plan
+invented (`advisory` / `blocking`) should be **dropped in favour of the existing**
+`blocking` / `confirmable` / `completion_check`, and Unit 7 shrinks from "build a Draft variant" to
+"stop discarding the data, and gate Confirm on it."
+
+Revised effort: **U5 and U7 are substantially smaller; U4 should reuse the existing types rather than
+introduce parallel ones.** The council's architecture is unchanged — this makes it cheaper, not different.
+
 ## Implementation Units
 
 Ordered so the two independently-shippable fixes land first.
