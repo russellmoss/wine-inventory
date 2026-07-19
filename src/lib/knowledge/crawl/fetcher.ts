@@ -33,7 +33,7 @@ export function classifyContentType(rawContentType: string, head: Buffer): Detec
   return "other";
 }
 
-async function readCapped(res: Response): Promise<Buffer> {
+async function readCapped(res: Response, maxBytes: number): Promise<Buffer> {
   const reader = res.body?.getReader();
   if (!reader) return Buffer.alloc(0);
   const chunks: Buffer[] = [];
@@ -43,9 +43,9 @@ async function readCapped(res: Response): Promise<Buffer> {
     if (done) break;
     if (value) {
       total += value.length;
-      if (total > MAX_BYTES) {
+      if (total > maxBytes) {
         await reader.cancel();
-        throw new Error(`fetch: response exceeds ${MAX_BYTES} bytes`);
+        throw new Error(`fetch: response exceeds ${maxBytes} bytes`);
       }
       chunks.push(Buffer.from(value));
     }
@@ -59,7 +59,14 @@ async function readCapped(res: Response): Promise<Buffer> {
  */
 export async function fetchDocument(
   url: string,
-  opts: { etag?: string | null; lastModified?: string | null; isAllowedHost: (host: string) => boolean },
+  opts: {
+    etag?: string | null;
+    lastModified?: string | null;
+    isAllowedHost: (host: string) => boolean;
+    // Override the default 15 MB read cap (SSRF/DoS guard) for a specific operator-directed fetch of a
+    // known-large document (e.g. the 62 MB MAPA IPM guide). Defaults to MAX_BYTES.
+    maxBytes?: number;
+  },
 ): Promise<FetchResult> {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -102,7 +109,7 @@ export async function fetchDocument(
     if (!res.ok) throw new Error(`fetch: HTTP ${res.status} for ${current}`);
 
     const rawContentType = res.headers.get("content-type") ?? "";
-    const bytes = await readCapped(res);
+    const bytes = await readCapped(res, opts.maxBytes ?? MAX_BYTES);
     return {
       finalUrl: current, status: res.status,
       contentType: classifyContentType(rawContentType, bytes.subarray(0, 512)),

@@ -90,6 +90,7 @@ async function main() {
   const summary = await crawlUrls(sourceKey, list, {
     ignoreRobots: spec.ignoreRobots,
     delayMs,
+    maxBytes: spec.maxBytes,
     onDocument: async (doc) => {
       try {
         const r = await indexDocument({

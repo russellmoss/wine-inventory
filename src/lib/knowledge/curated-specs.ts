@@ -20,6 +20,7 @@ export interface CuratedSpec {
   discover?: CuratedDiscover;
   ignoreRobots?: boolean; // for robots-disallowed-but-public PDFs (generic file-type block, not anti-AI)
   delayMs?: number; // polite per-host delay (crawlUrls also enforces robots Crawl-delay)
+  maxBytes?: number; // override the default 15 MB read cap for a known-large PDF (e.g. MAPA 62 MB)
 }
 
 // German other-crop / other-beverage terms to exclude from LVWO (wine + fruit + distilling mixed).
@@ -48,6 +49,7 @@ export const CURATED_SPECS: CuratedSpec[] = [
       "https://www.mapa.gob.es/dam/mapa/contenido/agricultura/temas/medios-de-produccion/productos-fitosanitarios/uso-sostenible-de-productos-fitosanitarios/guias-de-gestion-integrada-de-plagas/guiauvadetransformacion.pdf",
     ],
     delayMs: 2000,
+    maxBytes: 80 * 1024 * 1024, // the IPM guide is ~62 MB (default 15 MB cap would reject it)
   },
   {
     sourceKey: "incavi",
