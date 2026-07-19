@@ -1,0 +1,165 @@
+// Sentry Session Replay helpers (Plan 080).
+//
+// Pure, isomorphic helpers so they're unit-testable without the Sentry SDK or a DOM.
+// Phase 1 uses buildReplayUrl to deep-link a bug report to its replay. Phase 2 will add
+// the fidelity/option builders (resolveReplayFidelity / buildReplayOptions) to this file.
+
+/**
+ * Sentry org slug for building replay deep-links. Client-exposed by design (NEXT_PUBLIC_*).
+ * Defaults to the current org so the link works even if the env var isn't set.
+ */
+export const SENTRY_ORG_SLUG = process.env.NEXT_PUBLIC_SENTRY_ORG_SLUG || "bhutan-wine";
+
+// ---------------------------------------------------------------------------
+// Replay fidelity (Plan 080 Phase 2, Units 6-7)
+//
+// Sentry's replayIntegration options (maskAllText / blockAllMedia /
+// networkDetailAllowUrls) are INIT-TIME only, and instrumentation-client.ts boots before auth is
+// known. So the server writes a non-httpOnly hint cookie holding ONLY this enum (no PII), which
+// init reads synchronously. The cookie is a client-side DEFAULT, not the guarantee: it is
+// client-writable, so the real enforcement is Sentry's server-side data-scrubbing at ingest.
+// Everything here fails CLOSED to "masked".
+// ---------------------------------------------------------------------------
+
+export const REPLAY_FIDELITY_COOKIE = "cbh_replay_fidelity";
+
+/** "full" = sandbox tenant, network bodies allowed. "masked" = everything else (safe default). */
+export type ReplayFidelity = "full" | "masked";
+
+/**
+ * Decide capture fidelity from role + effective tenant. Full fidelity requires BOTH a developer
+ * role AND the sandbox tenant; anything else (unknown role, real customer tenant, missing values)
+ * is masked. Pure.
+ */
+export function resolveReplayFidelity(input: {
+  role?: string | null;
+  effectiveTenantId?: string | null;
+  sandboxTenantId: string;
+}): ReplayFidelity {
+  if (input.role !== "developer") return "masked";
+  if (!input.effectiveTenantId || input.effectiveTenantId !== input.sandboxTenantId) return "masked";
+  return "full";
+}
+
+/** Coerce any raw cookie value to a known fidelity, failing closed. Pure. */
+export function parseReplayFidelity(raw: string | null | undefined): ReplayFidelity {
+  return raw === "full" ? "full" : "masked";
+}
+
+/**
+ * Read the fidelity from a raw `document.cookie` string. Fails closed when absent/garbled.
+ * Pure so init-time behavior is unit-testable without a DOM.
+ */
+export function readReplayFidelityFromCookieString(cookieString: string | undefined): ReplayFidelity {
+  if (!cookieString) return "masked";
+  for (const part of cookieString.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === REPLAY_FIDELITY_COOKIE) return parseReplayFidelity(rest.join("="));
+  }
+  return "masked";
+}
+
+/** The replay integration options for a fidelity. Masking is ALWAYS on; bodies only when full. Pure. */
+export function buildReplayOptions(
+  fidelity: ReplayFidelity,
+  origin: string,
+): { maskAllText: true; blockAllMedia: true; networkDetailAllowUrls?: string[] } {
+  const base = { maskAllText: true, blockAllMedia: true } as const;
+  return fidelity === "full" ? { ...base, networkDetailAllowUrls: [`${origin}/api`] } : { ...base };
+}
+
+/**
+ * Build a Sentry replay deep-link. Returns undefined when either input is missing so callers
+ * can simply omit the link rather than emit a broken URL. Pure — no env, no SDK.
+ */
+export function buildReplayUrl(orgSlug: string | undefined, replayId: string | undefined): string | undefined {
+  if (!orgSlug || !replayId) return undefined;
+  return `https://${orgSlug}.sentry.io/replays/${replayId}/`;
+}
+
+/**
+ * Extract a validated Sentry replay deep-link from a stored debugContext (Plan 080 Unit 4). Only an
+ * https URL on a *.sentry.io host (no embedded credentials) survives — anything else, or a missing
+ * field, returns null. Defensive even though the value was clamped on write. Pure, so it's testable
+ * without the server-only feedback loader.
+ */
+export function safeSentryReplayUrl(debugContext: unknown): string | null {
+  if (!debugContext || typeof debugContext !== "object" || Array.isArray(debugContext)) return null;
+  const raw = (debugContext as Record<string, unknown>).replayUrl;
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.hostname.endsWith(".sentry.io") && !url.username && !url.password
+      ? raw
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Render the stored Break Mode hunt trail as a compact, readable block for the developer workspace
+ * (Plan 080 Unit 11). The structured arrays stay in `debugContext` for /bug-triage's fix agent; this
+ * is purely so a human can read the repro without opening Sentry. Returns null when there's no hunt.
+ * Pure + defensive: unknown shapes are skipped rather than trusted.
+ */
+export function formatHuntTrail(debugContext: unknown): string | null {
+  if (!debugContext || typeof debugContext !== "object" || Array.isArray(debugContext)) return null;
+  const rec = debugContext as Record<string, unknown>;
+  const interactions = Array.isArray(rec.interactionTrail) ? rec.interactionTrail : [];
+  const network = Array.isArray(rec.networkTrail) ? rec.networkTrail : [];
+  if (!interactions.length && !network.length) return null;
+
+  const lines: string[] = [];
+  if (typeof rec.huntId === "string" && rec.huntId) lines.push(`hunt: ${rec.huntId}`);
+
+  type Row = { ts: number; text: string };
+  const rows: Row[] = [];
+  for (const raw of interactions) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const type = typeof e.type === "string" ? e.type : "?";
+    const label = typeof e.label === "string" ? e.label : "";
+    const detail = typeof e.detail === "string" ? e.detail : "";
+    const what = label || detail || "";
+    rows.push({ ts: typeof e.ts === "number" ? e.ts : 0, text: `${type}${what ? ` — ${what}` : ""}` });
+  }
+  for (const raw of network) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const method = typeof e.method === "string" ? e.method : "?";
+    const path = typeof e.path === "string" ? e.path : "?";
+    const status = typeof e.status === "number" ? ` → ${e.status}` : "";
+    const ms = typeof e.durationMs === "number" ? ` (${e.durationMs}ms)` : "";
+    rows.push({ ts: typeof e.ts === "number" ? e.ts : 0, text: `${method} ${path}${status}${ms}` });
+  }
+  rows.sort((a, b) => a.ts - b.ts);
+  for (const row of rows) lines.push(row.text);
+  return lines.join("\n");
+}
+
+/** The slice of the Sentry Replay integration we depend on. Kept minimal so it's fakeable in tests. */
+export type MinimalReplay = {
+  getReplayId: () => string | undefined;
+  flush: () => Promise<void>;
+};
+
+/**
+ * Resolve the replay link for a bug report. `flush()` is awaited so the segment uploads BEFORE
+ * the report is submitted; any error (no replay, stalled/failed flush) resolves to {} so the
+ * report never blocks on it (Plan 080 Unit 3, eng-review flush-rejection guard). Pure given the
+ * injected replay + org slug — no SDK, no env.
+ */
+export async function captureReplayLink(
+  replay: MinimalReplay | undefined | null,
+  orgSlug: string,
+): Promise<{ replayId?: string; replayUrl?: string }> {
+  try {
+    const replayId = replay?.getReplayId();
+    if (!replay || !replayId) return {};
+    await replay.flush();
+    return { replayId, replayUrl: buildReplayUrl(orgSlug, replayId) };
+  } catch {
+    return {};
+  }
+}

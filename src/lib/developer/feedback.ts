@@ -10,6 +10,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
+import { safeSentryReplayUrl, formatHuntTrail } from "@/lib/observability/sentry-replay";
 // requireDeveloper is imported lazily inside the two write/read-item functions below
 // (getDeveloperFeedbackItem / getDeveloperTenantFeedbackPage) so that the read-only
 // getDeveloperFeedbackData path — used by the `triage:list` CLI under
@@ -131,6 +132,10 @@ export type DeveloperFeedbackItem = {
   resolvedAt: string | null;
   attachmentCount: number;
   attachmentIds: string[];
+  // Plan 080: deep-link to the Sentry Session Replay captured with this report (null when none).
+  replayUrl: string | null;
+  // Plan 080: readable Break Mode hunt trail (actions + API calls); null when not a hunt report.
+  huntTrail: string | null;
   linearLink: DeveloperFeedbackLinearLink | null;
   awaitingRunId: string | null;
   awaitingRunKind: FeedbackAutomationKind | null;
@@ -339,6 +344,8 @@ function mapAssistantFeedback(
     resolvedAt: feedback.resolvedAt?.toISOString() ?? null,
     attachmentCount: feedback.attachments.length,
     attachmentIds: feedback.attachments.map((attachment) => attachment.id),
+    replayUrl: null, // assistant thumbs-down path does not capture a replay (Plan 080 scope)
+    huntTrail: null,
     linearLink: link,
     ...automation,
   });
@@ -375,6 +382,8 @@ function mapFeedbackTicket(
     resolvedAt: ticket.resolvedAt?.toISOString() ?? null,
     attachmentCount: ticket.attachments.length,
     attachmentIds: ticket.attachments.map((attachment) => attachment.id),
+    replayUrl: safeSentryReplayUrl(ticket.debugContext),
+    huntTrail: formatHuntTrail(ticket.debugContext),
     linearLink: link,
     ...automation,
   });

@@ -393,6 +393,36 @@ TEMPLATE — copy for each new invariant / finding:
   entitlement + citation recheck + numeric guardrail live, re-crawl freshness loop live; owner write-role
   narrowing + per-tenant subscription UI (Unit 11) are watched follow-ups).
 
+### Break Mode session capture — sandbox-only high fidelity (Plan 080)
+- **What:** Developer-role users can turn on "Break Mode", which starts a Sentry Session Replay and
+  records a first-party interaction + network-**metadata** trail onto the bug report. Capture fidelity
+  is tenant-scoped: network request/response **bodies** are allowed ONLY in the sandbox tenant
+  (`DEVELOPER_HOME_ORG_ID` = `org_demo_winery`). In every real customer tenant the session is
+  metadata-only with `maskAllText` + `blockAllMedia`, and the first-party trail drops element text
+  (role only), so a button label can't leak customer data.
+- **Why:** Reported bugs were unreproducible without the network activity and action sequence. Reusing
+  Sentry Replay (rather than building capture) gets DOM+console+network with masking for free; the
+  tenant scoping keeps real customer financials/PII out of high-fidelity capture.
+- **How it's wired:** Sentry's replay options are **init-time only** and `instrumentation-client.ts`
+  boots before auth, so the server publishes the resolved fidelity as a non-httpOnly, **enum-only**
+  cookie (`cbh_replay_fidelity` = `full|masked`, no PII/tenant id/session material) written where
+  fidelity can change (support-tenant enter/exit) and cleared by `proxy.ts` when there is no session.
+  Absent/garbled → `masked`. NOT written via a per-request DB lookup in `proxy.ts`: Next 16's proxy only
+  has `getSessionCookie` (presence, no DB) and is explicitly not a security boundary (CVE-2025-29927).
+- **What breaks at scale / the honest limit:** the cookie is **client-writable**, so it is a client-side
+  DEFAULT, not the guarantee. A determined developer could set `full` in a real tenant. The real
+  enforcement is **Sentry server-side data scrubbing at ingest** — this MUST be configured in the Sentry
+  project before Break Mode is used in a real customer tenant. Until it is, treat Break Mode as
+  sandbox-only in practice. Break Mode is also developer-gated today; opening it to tenant users would
+  make the scrub configuration mandatory, not advisory.
+- **Tripwire:** `resolveReplayFidelity` returning `full` for any non-sandbox tenant or non-developer
+  role; `buildReplayOptions` emitting `networkDetailAllowUrls` under `masked`; `describeElement`
+  returning a `label` under `masked`; any body/value field appearing in the trail; the fidelity cookie
+  gaining a tenant id or any non-enum payload. Proof: `test/break-mode-tenancy.test.ts` (composed
+  end-to-end guarantee) + `test/sentry-replay.test.ts` + `test/interaction-buffer.test.ts`.
+- **Status:** 🟡 (Phase 2 built; **Sentry server-side data-scrubbing rules not yet configured** — the
+  outstanding prerequisite before any real-tenant use).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - _(none yet)_

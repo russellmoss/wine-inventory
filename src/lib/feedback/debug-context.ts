@@ -13,16 +13,42 @@ import type { Prisma } from "@prisma/client";
 //
 // Type-only Prisma import → safe to reference the shape from client code too.
 
-export const DEBUG_CONTEXT_SCHEMA_VERSION = 2;
+// v3 (Plan 080, Break Mode) adds OPTIONAL replay + narrative + hunt-trail fields alongside the v2
+// console arrays. All new fields are optional and the clamp is additive, so v1/v2 rows still clamp
+// cleanly and no second bump is needed when Phase 2 starts populating the trails.
+export const DEBUG_CONTEXT_SCHEMA_VERSION = 3;
 export const MAX_CONSOLE_ENTRIES = 50;
 export const MAX_CONSOLE_MESSAGE_CHARS = 2000;
 export const MAX_CONSOLE_TOTAL_CHARS = 20_000;
+
+// Break Mode field bounds (defensive server-side clamp; capture-side redaction lives in the buffers).
+export const MAX_REPLAY_ID_CHARS = 64;
+export const MAX_REPLAY_URL_CHARS = 300;
+export const MAX_HUNT_ID_CHARS = 64;
+export const MAX_NARRATIVE_CHARS = 1000;
+export const MAX_TRAIL_ENTRIES = 100;
+export const MAX_TRAIL_FIELD_CHARS = 300;
 
 export type CapturedConsoleEntry = { level: string; ts: number; message: string };
 
 export type ConsoleCapture = {
   consoleLog?: CapturedConsoleEntry[];
   clientErrors?: CapturedConsoleEntry[];
+};
+
+/** Reporter's own words: what they were doing / expected / actually saw (Plan 080 Unit 5). */
+export type NarrativeContext = { doing?: string; expected?: string; actual?: string };
+
+/** One recorded user interaction during a Break Mode hunt (Plan 080 Unit 8). Labels only, never values. */
+export type InteractionEntry = { type: string; ts: number; label?: string; detail?: string };
+
+/** Network-request METADATA only during a hunt (Plan 080 Unit 8). Never request/response bodies. */
+export type NetworkMetaEntry = {
+  method: string;
+  path: string;
+  ts: number;
+  status?: number;
+  durationMs?: number;
 };
 
 function clampEntries(raw: unknown, budget: { remaining: number }): CapturedConsoleEntry[] | undefined {
@@ -66,10 +92,106 @@ export function clampConsoleCapture(input: unknown): ConsoleCapture {
 }
 
 /**
+ * Build the narrative object from the three optional prompt fields (Plan 080 Unit 5). Trims each;
+ * returns undefined when all are empty so callers can conditionally attach it. Pure.
+ */
+export function buildNarrative(doing: string, expected: string, actual: string): NarrativeContext | undefined {
+  const out: NarrativeContext = {};
+  if (doing.trim()) out.doing = doing.trim();
+  if (expected.trim()) out.expected = expected.trim();
+  if (actual.trim()) out.actual = actual.trim();
+  return out.doing || out.expected || out.actual ? out : undefined;
+}
+
+/**
+ * Fold a narrative into a readable digest appended to the report body, so triage/LLM paths that
+ * only read `body` still see the intent (Plan 080 Unit 5). Returns body unchanged when no narrative.
+ */
+export function appendNarrativeDigest(body: string, narrative: NarrativeContext | undefined): string {
+  if (!narrative) return body;
+  const lines = [
+    narrative.doing ? `Doing: ${narrative.doing}` : "",
+    narrative.expected ? `Expected: ${narrative.expected}` : "",
+    narrative.actual ? `Actual: ${narrative.actual}` : "",
+  ].filter(Boolean);
+  return lines.length ? [body, "", ...lines].join("\n") : body;
+}
+
+/** Bound a string field to a cap; returns undefined for non-strings or empties. */
+function clampStringField(raw: unknown, cap: number): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.slice(0, cap);
+  return trimmed.length ? trimmed : undefined;
+}
+
+/** Keep only the three narrative fields, each bounded; undefined if none present. */
+function clampNarrative(raw: unknown): NarrativeContext | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const rec = raw as Record<string, unknown>;
+  const out: NarrativeContext = {};
+  const doing = clampStringField(rec.doing, MAX_NARRATIVE_CHARS);
+  const expected = clampStringField(rec.expected, MAX_NARRATIVE_CHARS);
+  const actual = clampStringField(rec.actual, MAX_NARRATIVE_CHARS);
+  if (doing) out.doing = doing;
+  if (expected) out.expected = expected;
+  if (actual) out.actual = actual;
+  return doing || expected || actual ? out : undefined;
+}
+
+/** Bound the interaction trail: cap entry count + per-field size. Never carries input values. */
+function clampInteractionTrail(raw: unknown): InteractionEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: InteractionEntry[] = [];
+  for (const item of raw) {
+    if (out.length >= MAX_TRAIL_ENTRIES) break;
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const type = clampStringField(rec.type, 40);
+    if (!type) continue;
+    const entry: InteractionEntry = {
+      type,
+      ts: typeof rec.ts === "number" && Number.isFinite(rec.ts) ? rec.ts : 0,
+    };
+    const label = clampStringField(rec.label, MAX_TRAIL_FIELD_CHARS);
+    const detail = clampStringField(rec.detail, MAX_TRAIL_FIELD_CHARS);
+    if (label) entry.label = label;
+    if (detail) entry.detail = detail;
+    out.push(entry);
+  }
+  return out.length ? out : undefined;
+}
+
+/** Bound the network-metadata trail: cap entry count + field sizes. Never carries bodies. */
+function clampNetworkTrail(raw: unknown): NetworkMetaEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: NetworkMetaEntry[] = [];
+  for (const item of raw) {
+    if (out.length >= MAX_TRAIL_ENTRIES) break;
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const method = clampStringField(rec.method, 12);
+    const path = clampStringField(rec.path, MAX_TRAIL_FIELD_CHARS);
+    if (!method || !path) continue;
+    const entry: NetworkMetaEntry = {
+      method,
+      path,
+      ts: typeof rec.ts === "number" && Number.isFinite(rec.ts) ? rec.ts : 0,
+    };
+    if (typeof rec.status === "number" && Number.isFinite(rec.status)) entry.status = rec.status;
+    if (typeof rec.durationMs === "number" && Number.isFinite(rec.durationMs)) {
+      entry.durationMs = rec.durationMs;
+    }
+    out.push(entry);
+  }
+  return out.length ? out : undefined;
+}
+
+/**
  * Clamp a fully client-supplied debugContext (the FeedbackTicket path) to a
  * known-safe, bounded JSON object. Keeps `schemaVersion`/`source`, bounds the
- * console arrays, drops everything else. Returns null for a non-object input.
- * Tolerates legacy v1 rows (no console arrays → just schemaVersion/source).
+ * console arrays plus the v3 replay/narrative/hunt-trail fields, drops everything
+ * else. Returns null for a non-object input. Tolerates legacy v1/v2 rows (missing
+ * fields → simply omitted).
  */
 export function clampDebugContext(input: unknown): Prisma.InputJsonValue | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
@@ -80,5 +202,20 @@ export function clampDebugContext(input: unknown): Prisma.InputJsonValue | null 
   const { consoleLog, clientErrors } = clampConsoleCapture(rec);
   if (consoleLog) out.consoleLog = consoleLog;
   if (clientErrors) out.clientErrors = clientErrors;
+
+  // v3 (Break Mode) — all optional, all bounded.
+  const replayId = clampStringField(rec.replayId, MAX_REPLAY_ID_CHARS);
+  const replayUrl = clampStringField(rec.replayUrl, MAX_REPLAY_URL_CHARS);
+  const huntId = clampStringField(rec.huntId, MAX_HUNT_ID_CHARS);
+  const narrative = clampNarrative(rec.narrative);
+  const interactionTrail = clampInteractionTrail(rec.interactionTrail);
+  const networkTrail = clampNetworkTrail(rec.networkTrail);
+  if (replayId) out.replayId = replayId;
+  if (replayUrl) out.replayUrl = replayUrl;
+  if (huntId) out.huntId = huntId;
+  if (narrative) out.narrative = narrative;
+  if (interactionTrail) out.interactionTrail = interactionTrail;
+  if (networkTrail) out.networkTrail = networkTrail;
+
   return out as Prisma.InputJsonValue;
 }

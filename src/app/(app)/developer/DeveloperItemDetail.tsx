@@ -297,6 +297,21 @@ export function DeveloperItemDetail({
             ))}
           </div>
         ) : <p className={styles.subtle}>No attachments.</p>}
+        {item.replayUrl ? (
+          <div className={styles.inlineActions} aria-label="Session replay">
+            <a className={styles.plainLink} href={item.replayUrl} target="_blank" rel="noopener noreferrer">
+              ▶ Open Sentry replay
+            </a>
+          </div>
+        ) : null}
+        {item.huntTrail ? (
+          // Plan 080: the Break Mode trail — what the reporter did and which API calls fired, in
+          // order. Durable (survives replay retention/quota) and readable without opening Sentry.
+          <details>
+            <summary className={styles.detailSummary}>View break-mode trail (actions + API calls)</summary>
+            <pre className={styles.planPreview}>{item.huntTrail}</pre>
+          </details>
+        ) : null}
       </DetailSection>
 
       <DetailSection id="detail-triage" title="Triage">
