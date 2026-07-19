@@ -74,3 +74,21 @@ jobs:
             --allowedTools "Read,Edit,Write,Bash"
             --max-turns 30
             --model claude-opus-4-8
+
+      # Each run opens a fresh bot/brain-refresh-<sha> PR (STEP 4) but never closed the
+      # prior one, so stale duplicate docs PRs piled up and none got reviewed. Deterministic
+      # dedup, keyed purely on the branch prefix (independent of what the agent did above):
+      # keep the newest open brain-refresh PR, close + delete the rest. Self-heals the backlog
+      # on every run, including quiet no-op days. Docs-only; never touches main.
+      - name: Close superseded brain-refresh PRs (keep newest)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr list --state open --json number,headRefName,createdAt \
+            -q 'map(select(.headRefName|startswith("bot/brain-refresh")))
+                | sort_by(.createdAt) | reverse | .[1:] | .[].number' \
+          | while read -r n; do
+              [ -n "$n" ] && gh pr close "$n" --delete-branch \
+                --comment "Superseded by a newer brain-refresh PR (auto-dedup)."
+            done
