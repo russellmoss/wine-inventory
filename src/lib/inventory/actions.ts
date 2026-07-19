@@ -10,6 +10,8 @@ import { writeAudit, summarize, diff } from "@/lib/audit";
 import { receiveStock, adjustStock, transferStock, type ItemKind } from "@/lib/stock/movements";
 import { MAX_IMPORT_ROWS, type ParsedInventoryRow } from "@/lib/inventory/csv";
 import { findWineSku } from "@/lib/bottling/sku";
+import { recordFinishedGoodReceiptCore } from "@/lib/inventory/fg-cost-core";
+import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 
 const PATH = "/inventory";
 
@@ -352,3 +354,38 @@ async function currentBalance(kind: ItemKind, itemId: string, locationId: string
   const b = await prisma.finishedGoodInventory.findFirst({ where: { finishedGoodId: itemId, locationId } });
   return b?.quantity ?? 0;
 }
+
+/**
+ * Plan 080 U7 — receive PURCHASED finished goods: the units land as stock AND a FinishedGoodReceipt records
+ * what they cost, so valuation is a weighted average over receipts (council C4).
+ *
+ * Ordering is deliberate: stock FIRST, then the cost layer. If the receipt write fails, the goods are on
+ * hand with no receipt, so the weighted average reports UNKNOWN — the same D14/COST-2 degradation the rest
+ * of the system already models. The inverse order could book cost for stock that never arrived, which is
+ * strictly worse. A null unitCost skips the receipt entirely rather than inventing a $0 basis.
+ */
+export const receivePurchasedFinishedGoodAction = action(
+  async (
+    { actor },
+    input: { kind: ItemKind; itemId: string; qty: number; locationId: string; unitCost?: number | null; vendorName?: string | null; note?: string | null },
+  ) => {
+    const qty = Math.trunc(Number(input.qty));
+    if (!Number.isInteger(qty) || qty <= 0) throw new ActionError("Quantity must be a whole number greater than zero.");
+    await receiveStock(input.kind, input.itemId, input.locationId, qty, actor, input.note ?? "Purchased receipt");
+
+    const unitCost = input.unitCost;
+    if (unitCost != null && Number.isFinite(unitCost) && unitCost >= 0) {
+      const vendorId = input.vendorName?.trim() ? (await findOrCreateVendorCore({ name: input.vendorName.trim() }))?.id ?? null : null;
+      await recordFinishedGoodReceiptCore(actor, {
+        ...(input.kind === "BOTTLED_WINE" ? { wineSkuId: input.itemId } : { finishedGoodId: input.itemId }),
+        qty,
+        unitCostBase: unitCost,
+        locationId: input.locationId,
+        vendorId,
+        note: input.note ?? null,
+      } as Parameters<typeof recordFinishedGoodReceiptCore>[1]);
+    }
+    revalidatePath("/inventory");
+    return { ok: true as const };
+  },
+);
