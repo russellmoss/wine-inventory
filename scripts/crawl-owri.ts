@@ -62,20 +62,26 @@ async function main() {
     return;
   }
 
-  const indexed = { docs: 0, chunks: 0, unchanged: 0, lowConf: 0, empty: 0 };
+  const indexed = { docs: 0, chunks: 0, unchanged: 0, lowConf: 0, empty: 0, errors: 0 };
   const summary = await crawlUrls("osu-owri", downloadUrls, {
     delayMs: CRAWL_DELAY_MS, // crawlUrls also enforces robots Crawl-delay (16s)
     onDocument: async (doc) => {
-      const r = await indexDocument({
-        documentId: doc.documentId, bytes: doc.bytes, contentType: doc.contentType,
-        url: doc.canonicalUrl, contentHash: doc.contentHash,
-      });
-      if (r.skipped === "unchanged") indexed.unchanged++;
-      else if (r.skipped === "low-confidence") indexed.lowConf++;
-      else if (r.skipped === "empty") indexed.empty++;
-      else { indexed.docs++; indexed.chunks += r.chunks; }
-      if ((indexed.docs + indexed.unchanged + indexed.lowConf + indexed.empty) % 10 === 0) {
-        console.log(`  progress: ${indexed.docs} indexed (${indexed.chunks} chunks), ${indexed.unchanged} unchanged, ${indexed.lowConf} lowConf, ${indexed.empty} empty`);
+      // per-document isolation: one bad PDF must NEVER abort the whole ~270-doc crawl.
+      try {
+        const r = await indexDocument({
+          documentId: doc.documentId, bytes: doc.bytes, contentType: doc.contentType,
+          url: doc.canonicalUrl, contentHash: doc.contentHash,
+        });
+        if (r.skipped === "unchanged") indexed.unchanged++;
+        else if (r.skipped === "low-confidence") indexed.lowConf++;
+        else if (r.skipped === "empty") indexed.empty++;
+        else { indexed.docs++; indexed.chunks += r.chunks; }
+      } catch (e) {
+        indexed.errors++;
+        console.log(`  ! index failed for ${doc.canonicalUrl}: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+      }
+      if ((indexed.docs + indexed.unchanged + indexed.lowConf + indexed.empty + indexed.errors) % 10 === 0) {
+        console.log(`  progress: ${indexed.docs} indexed (${indexed.chunks} chunks), ${indexed.unchanged} unchanged, ${indexed.lowConf} lowConf, ${indexed.empty} empty, ${indexed.errors} errors`);
       }
     },
   });

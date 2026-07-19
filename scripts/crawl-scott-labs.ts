@@ -56,19 +56,25 @@ async function main() {
   const urls = [HANDBOOK_PDF, ...WINE_ARTICLE_SLUGS.map((s) => `https://scottlab.com/${s}`)].slice(0, max);
   console.log(`crawl:scott-labs — ${urls.length} URLs (1 handbook PDF + ${urls.length - 1} wine articles)`);
 
-  const indexed = { docs: 0, chunks: 0, unchanged: 0, lowConf: 0, empty: 0 };
+  const indexed = { docs: 0, chunks: 0, unchanged: 0, lowConf: 0, empty: 0, errors: 0 };
   const summary = await crawlUrls("scott-labs", urls, {
     delayMs: 10_000, // Scott's robots Crawl-delay is 10s (crawlUrls also enforces it)
     onDocument: async (doc) => {
-      const r = await indexDocument({
-        documentId: doc.documentId, bytes: doc.bytes, contentType: doc.contentType,
-        url: doc.canonicalUrl, contentHash: doc.contentHash,
-      });
-      if (r.skipped === "unchanged") indexed.unchanged++;
-      else if (r.skipped === "low-confidence") indexed.lowConf++;
-      else if (r.skipped === "empty") indexed.empty++;
-      else { indexed.docs++; indexed.chunks += r.chunks; }
-      console.log(`  ${doc.contentType} ${doc.canonicalUrl.replace(/^https?:\/\/[^/]+/, "")} -> ${r.skipped || `${r.chunks} chunks`}`);
+      // per-document isolation: a bad doc must not abort the run.
+      try {
+        const r = await indexDocument({
+          documentId: doc.documentId, bytes: doc.bytes, contentType: doc.contentType,
+          url: doc.canonicalUrl, contentHash: doc.contentHash,
+        });
+        if (r.skipped === "unchanged") indexed.unchanged++;
+        else if (r.skipped === "low-confidence") indexed.lowConf++;
+        else if (r.skipped === "empty") indexed.empty++;
+        else { indexed.docs++; indexed.chunks += r.chunks; }
+        console.log(`  ${doc.contentType} ${doc.canonicalUrl.replace(/^https?:\/\/[^/]+/, "")} -> ${r.skipped || `${r.chunks} chunks`}`);
+      } catch (e) {
+        indexed.errors++;
+        console.log(`  ! index failed for ${doc.canonicalUrl}: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+      }
     },
   });
 
