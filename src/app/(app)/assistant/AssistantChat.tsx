@@ -84,6 +84,7 @@ const CONTENT_MAX = 1040;
 const DOCK_CONV_KEY = "assistant.dock.conversationId";
 
 const TOOL_LABELS: Record<string, string> = {
+  search_knowledge_base: "Consulting the winemaking knowledge base",
   query_brix: "Checking Brix readings",
   query_yield: "Checking yields",
   query_recent_harvests: "Checking recent harvests",

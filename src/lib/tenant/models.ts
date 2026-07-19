@@ -13,6 +13,11 @@
  * identical for every tenant, so the daily rate cache is shared (no tenantId, no RLS). It is listed
  * here so the tenant extension passes it through untouched; the mirror in verify-tenant-isolation.ts
  * keeps the RLS coverage guard in sync.
+ *
+ * Plan 079: the knowledge-base CORPUS tables are global reference data too — a crawled library of public
+ * winemaking/viticulture sources, identical for every tenant (no tenantId, no RLS). Per-winery control is
+ * the tenant-scoped `KnowledgeSourceSubscription` (RLS), which is NOT listed here. Keep this in sync with
+ * the verify-tenant-isolation.ts mirror or the RLS-coverage guard will demand RLS on these globals.
  */
 export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   "User",
@@ -23,6 +28,14 @@ export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   "Member",
   "Invitation",
   "FxRate",
+  // Plan 079 — knowledge-base global corpus (crawled, shared; the subscription table is tenant-scoped)
+  "KnowledgeSource",
+  "TrustedDomain",
+  "CandidateSource",
+  "KnowledgeBlob",
+  "KnowledgeDocument",
+  "KnowledgeUrlObservation",
+  "KnowledgeChunk",
 ]);
 
 export function isGlobalModel(model: string | undefined): boolean {

@@ -45,13 +45,21 @@ describe("tenant context (AsyncLocalStorage)", () => {
 });
 
 describe("global-model denylist (K3)", () => {
-  it("marks exactly the auth + org tables plus the FxRate reference cache as global", () => {
+  it("marks exactly the auth + org tables plus the FxRate + knowledge-base reference tables as global", () => {
     expect([...GLOBAL_MODELS].sort()).toEqual(
-      // Plan 073: FxRate is a shared, non-tenant ECB rate cache (reference table, not auth).
-      ["Account", "FxRate", "Invitation", "Member", "Organization", "Session", "User", "Verification"].sort(),
+      [
+        // auth + org core
+        "Account", "Invitation", "Member", "Organization", "Session", "User", "Verification",
+        // Plan 073: FxRate is a shared, non-tenant ECB rate cache (reference table, not auth).
+        "FxRate",
+        // Plan 079: the knowledge-base CORPUS is global reference data (the subscription table is NOT).
+        "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument",
+        "KnowledgeUrlObservation", "KnowledgeChunk",
+      ].sort(),
     );
-    for (const m of ["User", "Session", "Organization", "Member", "Invitation", "FxRate"]) expect(isGlobalModel(m)).toBe(true);
-    for (const m of ["Lot", "Vessel", "AppSettings", "AuditLog"]) expect(isGlobalModel(m)).toBe(false);
+    for (const m of ["User", "Session", "Organization", "Member", "Invitation", "FxRate", "KnowledgeChunk"]) expect(isGlobalModel(m)).toBe(true);
+    // the subscription table is tenant-scoped, NOT global
+    for (const m of ["Lot", "Vessel", "AppSettings", "AuditLog", "KnowledgeSourceSubscription"]) expect(isGlobalModel(m)).toBe(false);
   });
 });
 

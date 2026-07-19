@@ -24,7 +24,16 @@ const ROOT = "src";
 
 // The GUC-setters legitimately issue raw set_config on the `base` client (not prisma/prismaBase),
 // so they wouldn't match anyway — allowlisted as belt-and-suspenders.
-const ALLOWLIST = new Set(["src/lib/prisma.ts", "src/lib/ledger/write.ts", "src/lib/tenant/tx.ts"]);
+const ALLOWLIST = new Set([
+  "src/lib/prisma.ts",
+  "src/lib/ledger/write.ts",
+  "src/lib/tenant/tx.ts",
+  // Plan 079 hybrid retrieval: raw pgvector/tsvector queries over the GLOBAL knowledge corpus tables
+  // (knowledge_chunk/knowledge_document — NO RLS, like fx_rate). There is no tenant GUC to set; tenant
+  // scoping is enforced UPSTREAM in resolveEnabledSources (runAsTenant over the RLS subscription table),
+  // and every query filters `d."sourceId" IN (enabled)`. Confirmed no tenant leak in the code review.
+  "src/lib/knowledge/retrieve.ts",
+]);
 
 // A raw call directly on a TOP-LEVEL client. `\s*` spans newlines so a call split across lines
 // (receiver on one line, `.$queryRaw` on the next) is still caught.
