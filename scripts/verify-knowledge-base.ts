@@ -57,6 +57,8 @@ const RETRIEVAL_CASES: RetrievalCase[] = [
     expectPaths: ["le-tirage", "le-dosage", "prise-de-mousse", "maisons-champagne", "SparklingHandbook", "Enartis-Sparkling", "FG_EN_Spark"], expectFact: ["tirage"] }, // UMC / sparkling PDFs
   { q: "What are the integrated pest management thresholds for wine grapes?",
     expectPaths: ["guiauvadetransformacion", "mapa.gob", "pnw-644", "field-monitoring"], expectFact: ["grape"] }, // MAPA (ES) + PNW IPM
+  { q: "How do I test for TCA cork taint and haloanisoles in my wine?",
+    expectPaths: ["etslabs", "publications/publication"], expectFact: ["haloanisole"] }, // ETS Laboratories (analysis authority)
 ];
 
 // The Wine Australia downy-mildew question (CSV #1) is now scored above — WA is crawled (HTML) + its
