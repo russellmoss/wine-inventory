@@ -15,7 +15,7 @@ import {
   type VoiceProfileState,
 } from "@/lib/voice/focus";
 import type { VoiceSettingsView } from "@/lib/voice/settings-types";
-import { type AssistantEvent, parseEvent, isSafeInternalPath } from "@/lib/assistant/assistant-events";
+import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { clampHistoryForSend } from "@/lib/assistant/message-window";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
@@ -282,19 +282,38 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
           }
         };
 
+        const drainLines = () => {
+          const { lines, rest } = splitNdjsonLines(buffer);
+          buffer = rest;
+          for (const line of lines) {
+            const evt = parseEvent(line);
+            if (evt) handle(evt);
+          }
+        };
+
+        let endedNaturally = false;
         for (;;) {
           if (!isCurrent()) {
             await reader.cancel().catch(() => {});
             break;
           }
           const { value, done } = await reader.read();
-          if (done) break;
+          if (done) {
+            endedNaturally = true;
+            break;
+          }
           buffer += decoder.decode(value, { stream: true });
-          let nl: number;
-          while ((nl = buffer.indexOf("\n")) >= 0) {
-            const line = buffer.slice(0, nl);
-            buffer = buffer.slice(nl + 1);
-            const evt = parseEvent(line);
+          drainLines();
+        }
+
+        // Flush a residual line with no terminating newline (truncated stream) so a trailing event
+        // is not silently dropped. Only on a natural end — an abort/barge-in is intentional, and
+        // replaying its tail would speak or card something the user just interrupted.
+        if (endedNaturally) {
+          buffer += decoder.decode();
+          drainLines();
+          if (buffer.trim()) {
+            const evt = parseEvent(buffer);
             if (evt) handle(evt);
           }
         }

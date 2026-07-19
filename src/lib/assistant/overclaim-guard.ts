@@ -7,20 +7,56 @@
 // catch that exact inconsistency (a card-claim in the final text with NO proposal emitted) and append a
 // correction, so the user is never told something was filed/changed when it wasn't.
 
-/** High-precision: does the text POSITIVELY claim a confirmation card exists, or that a write was already
- * done? Tuned to avoid false positives on the correct blocker phrasing ("there is no card ..."). */
-export function claimsWriteWithoutCard(assistantText: string): boolean {
-  const t = assistantText.toLowerCase();
-  // If the model already disclaims (correctly relaying a blocker/no-card/failure), never "correct" it —
-  // avoids a false-positive correction on the CORRECT prompt behavior ("there is no card ...").
-  if (/\b(?:no card|there is no card|nothing (?:was|has been)|not (?:been )?(?:filed|created|saved|drafted)|couldn't|could not|can't|cannot|wasn't|was not|isn't|didn't|did not|unable)\b/.test(t)) return false;
+/** A sentence that correctly relays a blocker/no-card/failure. Never "correct" such a sentence — that
+ * would produce a false correction on the CORRECT prompt behavior ("there is no card ..."). */
+const DISCLAIMER =
+  /\b(?:no card|there is no card|nothing (?:was|has been)|not (?:been )?(?:filed|created|saved|drafted)|couldn't|could not|can't|cannot|wasn't|was not|isn't|didn't|did not|unable)\b/;
+
+/** Sentences that POSITIVELY claim a card exists, or that a write already happened. */
+const CLAIMS: RegExp[] = [
   // "review the card" / "review and confirm the card" / "confirm the card" (a card to act on = one exists)
-  if (/\b(review|confirm)\b[^.\n]{0,24}\bthe card\b/.test(t)) return true;
+  /\b(review|confirm)\b[^.\n]{0,24}\bthe card\b/,
   // "confirm it to send/file/apply/save" (the ticket's "confirm to send it")
-  if (/\bconfirm (?:it|the change|to (?:send|file|apply|save))\b[^.\n]{0,20}\b(?:send|file|apply|save|it)\b/.test(t)) return true;
+  /\bconfirm (?:it|the change|to (?:send|file|apply|save))\b[^.\n]{0,20}\b(?:send|file|apply|save|it)\b/,
   // Past-tense write claims: "I've drafted/filed/created/queued/submitted", "the report was filed", etc.
-  if (/\bi(?:'ve| have)?\s+(?:drafted|filed|created|queued|submitted|logged|recorded|set up|proposed)\b/.test(t)) return true;
-  if (/\b(?:report|bug|feedback|request|change|work order|card)\s+(?:was|is|has been)\s+(?:filed|drafted|submitted|created|queued|logged|recorded|sent)\b/.test(t)) return true;
+  /\bi(?:'ve| have)?\s+(?:drafted|filed|created|queued|submitted|logged|recorded|set up|proposed)\b/,
+  /\b(?:report|bug|feedback|request|change|work order|card)\s+(?:was|is|has been)\s+(?:filed|drafted|submitted|created|queued|logged|recorded|sent)\b/,
+];
+
+/**
+ * Split a reply into sentences for per-sentence evaluation.
+ *
+ * Splits on a newline, or on .!? followed by whitespace OR a capital letter. The capital-letter case
+ * is not cosmetic: streamed deltas routinely arrive glued together ("...lands correctly?I've proposed
+ * the work order..."), and that join is exactly where a disclaimer and a claim end up adjacent.
+ * Requiring whitespace-or-capital after the terminator keeps decimals ("24.2") and dates ("2026-09-15")
+ * intact, since those are followed by a digit.
+ */
+function sentences(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[.!?])(?=\s|[A-Z])/))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * High-precision: does the text POSITIVELY claim a confirmation card exists, or that a write was
+ * already done?
+ *
+ * Evaluated PER SENTENCE. A disclaimer only suppresses the sentence it appears in — it does not
+ * immunize the rest of the message. The previous whole-text early-out meant any incidental
+ * "can't"/"didn't"/"unable" anywhere disabled the guard entirely, and on the work-order path the
+ * assistant says "I can't verify <assignee>'s account" constantly, so the net was down in precisely
+ * the scenario it exists to police (plan 081 U1; proven against the live 2/7 repro transcript).
+ */
+export function claimsWriteWithoutCard(assistantText: string): boolean {
+  // Split on the ORIGINAL casing (the splitter keys off capital letters), lowercase per sentence.
+  for (const raw of sentences(assistantText)) {
+    const sentence = raw.toLowerCase();
+    if (DISCLAIMER.test(sentence)) continue; // this sentence disclaims; it says nothing false
+    if (CLAIMS.some((re) => re.test(sentence))) return true;
+  }
   return false;
 }
 
