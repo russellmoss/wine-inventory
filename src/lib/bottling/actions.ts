@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/prisma";
 import { action } from "@/lib/actions";
 import { ActionError } from "@/lib/action-error";
 import { executeBottling, deleteBottling, editBottling, type BottlingInput } from "@/lib/bottling/run";
+import { assertMandatoryPackaging, MANDATORY_PACKAGING_SELECT } from "@/lib/bottling/mandatory-packaging";
+import { validateBottlingAbv } from "@/lib/bottling/abv-range";
 
 function parseInt10(raw: unknown, label: string): number {
   const n = Number(raw);
@@ -18,9 +21,12 @@ function parseVintage(raw: unknown): number {
 }
 
 function parseAbv(raw: unknown): number {
-  const a = Number(raw);
-  if (!Number.isFinite(a) || a <= 0) throw new ActionError("Enter the wine's alcohol by volume (%) — required for TTB tax classification.");
-  return Math.round(a * 100) / 100;
+  const a = Math.round(Number(raw) * 100) / 100;
+  // Range-validate at the boundary so a bad ABV (missing or >100%) fails fast with a friendly message;
+  // runBottlingTx re-checks as the server source of truth. Shared helper keeps the wording identical.
+  const err = validateBottlingAbv(a);
+  if (err) throw new ActionError(err);
+  return a;
 }
 
 /** Plan 056: the packaging BoM is serialized to a JSON hidden field ([{materialId, qty}] in eaches).
@@ -61,14 +67,25 @@ function revalidate() {
   revalidatePath("/inventory");
 }
 
+/** Resolve the consumed packaging materials' name/kind for the mandatory-packaging guard (tenant-scoped). */
+function loadPackagingMaterials(ids: string[]) {
+  return prisma.cellarMaterial.findMany({ where: { id: { in: ids } }, select: MANDATORY_PACKAGING_SELECT });
+}
+
 export const createBottlingRun = action(async ({ actor }, formData: FormData) => {
-  await executeBottling(parseInput(formData), actor);
+  const input = parseInput(formData);
+  // P0: a bottling run must consume a bottle, a closure (e.g. cork) and a label — server backstop for the
+  // client guard (a crafted submit can't slip a corkless run past this).
+  await assertMandatoryPackaging(input.packaging, loadPackagingMaterials);
+  await executeBottling(input, actor);
   revalidate();
 });
 
 export const editBottlingRun = action(async ({ actor }, runId: string, formData: FormData) => {
   if (!runId) throw new ActionError("Missing run id.");
-  await editBottling(runId, parseInput(formData), actor);
+  const input = parseInput(formData);
+  await assertMandatoryPackaging(input.packaging, loadPackagingMaterials);
+  await editBottling(runId, input, actor);
   revalidate();
 });
 

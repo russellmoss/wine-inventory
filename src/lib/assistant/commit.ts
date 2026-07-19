@@ -24,6 +24,7 @@ import { commitLogBrix } from "./tools/log-brix";
 import { commitDeleteBrix } from "./tools/delete-brix";
 import { commitSetYieldEstimate } from "./tools/set-yield-estimate";
 import { commitLogHarvestPick } from "./tools/log-harvest-pick";
+import { commitDeleteHarvestPick } from "./tools/delete-harvest-pick";
 import { commitAdjustInventory } from "./tools/adjust-inventory";
 import { commitRackWine } from "./tools/rack-wine";
 import { commitAddAddition } from "./tools/add-addition";
@@ -75,6 +76,7 @@ const COMMITTERS: Record<string, Committer> = {
   delete_brix: commitDeleteBrix,
   set_yield_estimate: commitSetYieldEstimate,
   log_harvest_pick: commitLogHarvestPick,
+  delete_harvest_pick: commitDeleteHarvestPick,
   adjust_inventory: commitAdjustInventory,
   rack_wine: commitRackWine,
   add_addition: commitAddAddition,

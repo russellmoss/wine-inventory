@@ -18,6 +18,9 @@ export type EmitNotificationInput = {
   sourceType: string;
   sourceId: string;
   actor?: NotificationActor;
+  /** Deliver even when the recipient IS the actor. Off by default (self-action is noise). Set for a WO
+   *  ASSIGNMENT — a work order you assigned to yourself is a legitimate to-do you want in your inbox. */
+  allowSelfNotification?: boolean;
 };
 
 /** The reader-facing notification row. `href` is DERIVED (no stored column — amendment 5). */

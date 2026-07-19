@@ -24,6 +24,14 @@ function LoginForm() {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
 
+  // The Google button is env-gated: it only renders when the server has Google creds configured
+  // (mirrors the ELEVENLABS "Talk" button convention). Public flag → inlined at build.
+  const googleEnabled = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === "1";
+  // Better Auth redirects a failed social sign-in back here with an `error` query param. The common
+  // case for this app is an un-provisioned Google account (disableSignUp refuses it), so we show one
+  // actionable message that also covers a cancelled consent.
+  const googleError = params.get("error");
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -36,6 +44,18 @@ function LoginForm() {
     }
     router.push(params.get("from") || "/");
     router.refresh();
+  }
+
+  async function onGoogle() {
+    setError(null);
+    setPending(true);
+    // Better Auth handles the full OAuth redirect round-trip; on success it returns to callbackURL,
+    // on failure to errorCallbackURL with an `error` param (read as `googleError` above).
+    await signIn.social({
+      provider: "google",
+      callbackURL: params.get("from") || "/",
+      errorCallbackURL: "/login",
+    });
   }
 
   return (
@@ -98,6 +118,41 @@ function LoginForm() {
             {pending ? "Signing in..." : "Sign in"}
           </Button>
         </form>
+        {googleEnabled ? (
+          <>
+            {googleError ? (
+              <p style={{ color: "var(--danger)", fontSize: 13.5, margin: "16px 0 0" }}>
+                We couldn&apos;t complete Google sign-in. If your account isn&apos;t set up in Cellarhand
+                yet, ask your admin to add you. Otherwise, try again.
+              </p>
+            ) : null}
+            <div
+              aria-hidden="true"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                margin: "18px 0",
+                color: "var(--text-muted)",
+                fontSize: 12.5,
+              }}
+            >
+              <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              or
+              <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth
+              disabled={pending}
+              onClick={onGoogle}
+              iconLeft={<GoogleIcon />}
+            >
+              Continue with Google
+            </Button>
+          </>
+        ) : null}
         <p style={{ marginTop: 16, textAlign: "center", fontSize: 13.5 }}>
           <Link href="/forgot-password" style={{ color: "var(--text-accent)", textDecoration: "none" }}>
             Forgot password?
@@ -105,6 +160,18 @@ function LoginForm() {
         </p>
       </Card>
     </div>
+  );
+}
+
+function GoogleIcon() {
+  // Google "G" — official four-color mark. Fixed brand colors (not design tokens) by design.
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z" fill="#4285F4" />
+      <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18Z" fill="#34A853" />
+      <path d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33Z" fill="#FBBC05" />
+      <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z" fill="#EA4335" />
+    </svg>
   );
 }
 

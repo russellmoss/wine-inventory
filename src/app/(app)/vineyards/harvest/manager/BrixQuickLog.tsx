@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Input, Button } from "@/components/ui";
+import { Input, Button, LocalTime } from "@/components/ui";
 import { logBrix } from "@/lib/harvest/actions";
 
 type Latest = { brixValue: number; recordedAt: string } | null;
@@ -14,10 +14,8 @@ const sectionLabel: React.CSSProperties = {
   color: "var(--text-muted)",
 };
 
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function formatWhen(iso: string) {
+  return <LocalTime value={iso} mode="date" options={{ month: "short", day: "numeric" }} />;
 }
 
 export function BrixQuickLog({ blockId, latest }: { blockId: string; latest: Latest }) {

@@ -24,6 +24,17 @@ const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", dis
 type Fraction = { id: string; destVesselId: string; volumeL: string; label: string; estimated: boolean };
 const newFid = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
+// Parse a hand-typed volume tolerantly: strip thousands-separator commas (e.g. "1,200" → 1200) so a value
+// the crew clearly entered isn't silently read as NaN and dropped. Returns 0 when the field is blank or
+// unparseable (so it fails the "> 0" checks the same way an empty field would). The <input> below is also
+// type="number" to keep bad characters out at the source (parity with the bottling sub-form).
+function parseVol(raw: string): number {
+  const cleaned = raw.replace(/,/g, "").trim();
+  if (cleaned === "") return 0;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView; data: PressFormData | null; onDone: () => void }) {
   const commandId = React.useMemo(() => crypto.randomUUID(), []);
   const planned = (task.plannedPayload ?? {}) as Record<string, unknown>;
@@ -48,7 +59,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
 
-  const fractionTotal = fractions.reduce((a, f) => a + (Number(f.volumeL) || 0), 0);
+  const fractionTotal = fractions.reduce((a, f) => a + parseVol(f.volumeL), 0);
   const available = pos?.volumeL ?? 0;
   const lees = Math.round((available - fractionTotal) * 100) / 100;
 
@@ -59,13 +70,13 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   function complete() {
     setError(null);
     if (!pos) return setError("Pick a must lot to press.");
-    const fr = fractions.filter((f) => Number(f.volumeL) > 0 && f.destVesselId);
+    const fr = fractions.filter((f) => parseVol(f.volumeL) > 0 && f.destVesselId);
     if (fr.length === 0) return setError("Add at least one fraction (a cut with a vessel + volume).");
     if (fractionTotal > available + 1e-6) return setError(`Fractions (${fractionTotal} L) exceed what the lot holds (${available} L).`);
     const actualPayload: Record<string, unknown> = {
       parentLotId: pos.lotId,
       sourceVesselId: pos.vesselId,
-      fractions: fr.map((f) => ({ destVesselId: f.destVesselId, volumeL: Number(f.volumeL), label: f.label, estimated: f.estimated })),
+      fractions: fr.map((f) => ({ destVesselId: f.destVesselId, volumeL: parseVol(f.volumeL), label: f.label, estimated: f.estimated })),
       lossL: lees > 0 ? lees : 0,
       op,
       note: note.trim() || undefined,
@@ -142,7 +153,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
             <select value={f.destVesselId} onChange={(e) => setFraction(i, { destVesselId: e.target.value })} aria-label="Destination vessel" style={{ ...big, width: 150 }}>
               {vessels.map((v) => <option key={v.id} value={v.id}>{v.code}</option>)}
             </select>
-            <input value={f.volumeL} onChange={(e) => setFraction(i, { volumeL: e.target.value })} inputMode="decimal" placeholder="L" aria-label="Fraction volume" style={{ ...big, width: 100, textAlign: "right" }} />
+            <input type="number" value={f.volumeL} onChange={(e) => setFraction(i, { volumeL: e.target.value })} inputMode="decimal" step="any" min="0" placeholder="L" aria-label="Fraction volume" style={{ ...big, width: 100, textAlign: "right" }} />
             <label style={{ fontSize: 12.5, display: "flex", gap: 4, alignItems: "center", color: "var(--text-muted)" }}>
               <input type="checkbox" checked={f.estimated} onChange={(e) => setFraction(i, { estimated: e.target.checked })} /> est.
             </label>
@@ -157,7 +168,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
       </label>
 
       <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 12 }}>
-        {fractionTotal} L into {fractions.filter((f) => Number(f.volumeL) > 0).length} fraction(s){lees > 0 ? ` · ${lees} L lees` : ""}{available > 0 ? ` · of ${available} L` : ""}
+        {fractionTotal} L into {fractions.filter((f) => parseVol(f.volumeL) > 0).length} fraction(s){lees > 0 ? ` · ${lees} L lees` : ""}{available > 0 ? ` · of ${available} L` : ""}
       </div>
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}

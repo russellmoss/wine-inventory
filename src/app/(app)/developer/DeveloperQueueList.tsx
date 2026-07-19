@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
-import { Badge } from "@/components/ui";
+import { Badge, LocalTime } from "@/components/ui";
 import type {
   DeveloperFeedbackItem,
   DeveloperTenantFeedbackPage,
@@ -153,7 +153,7 @@ export function DeveloperQueueList({
                   <td>
                     <span>{delivery(item)}</span>
                     <time className={styles.deliverySignal} dateTime={item.createdAt}>
-                      {new Date(item.createdAt).toLocaleString()}
+                      <LocalTime value={item.createdAt} />
                     </time>
                   </td>
                 </tr>

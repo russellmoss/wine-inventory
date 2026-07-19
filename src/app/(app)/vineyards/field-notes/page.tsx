@@ -1,4 +1,4 @@
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { getLatestFieldNote } from "@/lib/fieldnotes/actions";
 import { listFieldInputs } from "@/lib/fieldnotes/input-actions";
@@ -35,6 +35,7 @@ export default async function FieldNotesPage({
   searchParams: Promise<{ view?: string; vineyard?: string }>;
 }) {
   const user = await requireReadyUser();
+  await requireActiveTenant();
 
   if (user.role === "admin") {
     const sp = await searchParams;

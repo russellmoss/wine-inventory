@@ -20,8 +20,21 @@ You stay in control; the loops just make sure the work *starts itself*.
 | 2 | **Security sweep** | GitHub Actions | weekly + on sensitive-path push + manual | GitHub **issue** if tenant/RLS/auth/secret drift found |
 | 3 | **Scale tripwire** | GitHub Actions | weekly + manual | GitHub **issue** if a `scale-register` tripwire is approaching |
 | 4 | **UX consistency** | GitHub Actions | on PRs touching UI + manual | PR review comments vs `ux-principles.md` |
+| 5 | **Knowledge re-crawl** | GitHub Actions | weekly + manual | refreshes the GLOBAL knowledge corpus (re-embed changed / add new / tombstone 404s); GitHub **issue** with the run summary |
 
 Workflow files live in `.github/workflows/`. The local hook is `.githooks/post-commit`.
+
+### The one loop that writes data (knowledge re-crawl)
+Loops 1–4 are read-only analysis (they only open PRs/issues). Loop 5 (`knowledge-recrawl.yml`,
+Plan 079 Unit 12) is different: it runs a deterministic script (`scripts/recrawl-knowledge.ts`), not an
+LLM, and it **mutates the GLOBAL knowledge corpus** — never any tenant data. It re-crawls each active
+`KnowledgeSource` with conditional GET (a 304 skips re-embedding), re-embeds only changed pages into a
+new chunk revision with an atomic flip, adds newly-discovered pages, and **tombstones** any active doc
+that now 404s (`status='withdrawn'`, rows kept for audit, excluded from retrieval). Every change is
+reversible and self-correcting — a re-reached doc flips back to `active` next run — so the corpus stays
+fresh without a human in the write path, and the issue it opens is the audit trail. It still obeys the
+golden rule: it never touches code and never merges `main`. Single-flight (`concurrency:`) so two runs
+can't race on chunk revisions. Run it manually with a `max_docs` input for a bounded smoke test.
 
 ### How the brain-refresh loop knows what's stale
 `docs/.brain-refresh-marker` holds the commit SHA the docs were last refreshed at. The loop diffs
@@ -62,6 +75,12 @@ That is the only secret required — GitHub provides `GITHUB_TOKEN` automaticall
 Add a read-only **`DATABASE_URL_UNPOOLED`** secret and uncomment the "Dump Neon slow queries" step in
 `.github/workflows/scale-tripwire.yml`. Then the scale loop reasons over *real* slow-query stats.
 
+### 3b. Turn on the knowledge re-crawl (loop 5)
+Add two secrets: **`DATABASE_URL_UNPOOLED`** (the Neon **owner** URL — the re-crawl writes the global
+corpus, which needs `BYPASSRLS`) and **`VOYAGE_API_KEY`** (embeddings). Without them the loop no-ops.
+Trigger it once from the Actions tab with a small `max_docs` (e.g. `5`) to smoke-test before the weekly
+schedule takes over. This is the only loop that needs write-capable DB creds — the analysis loops don't.
+
 ### 4. Test before trusting
 Every workflow has a **manual trigger**: GitHub → **Actions** tab → pick a workflow → **Run workflow**.
 Run each once to confirm it behaves, then let the schedules take over.
@@ -76,4 +95,4 @@ Run each once to confirm it behaves, then let the schedules take over.
   or delete its `.yml`. Nothing else depends on it.
 
 ---
-*Set up 2026-07-02. Add a row to the table whenever you add a loop; keep the golden rule.*
+*Set up 2026-07-02. Loop 5 (knowledge re-crawl) added 2026-07-19. Add a row to the table whenever you add a loop; keep the golden rule.*

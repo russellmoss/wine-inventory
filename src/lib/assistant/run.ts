@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
+import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
 import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION } from "./overclaim-guard";
 import { type AssistantEvent, asProposal, asChoice, asNavigation } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
@@ -66,7 +67,29 @@ export async function runAssistant(opts: {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content;
 
   const client = new Anthropic();
-  const system = buildSystemPrompt();
+  let system = buildSystemPrompt();
+
+  // Plan 079 (U12): if engineering asked this user for a detail on a bug they reported, surface it —
+  // the inbox has no push notification, so the assistant is where they're most likely to notice.
+  // Best-effort; a feedback read must never break the assistant.
+  try {
+    const tenantId = user.supportOrganizationId ?? user.activeOrganizationId;
+    if (tenantId) {
+      const open = await listOpenClarificationsForUser(tenantId, user.id);
+      if (open.length) {
+        const c = open[0];
+        const qs = c.questions.split("\n").filter(Boolean).map((q) => `- ${q}`).join("\n");
+        system +=
+          `\n\n<open_bug_clarification>\nEngineering asked this user for one detail on a bug they reported (ref ${c.ref}). ` +
+          `If it fits naturally, proactively let them know and relay the question(s) verbatim:\n${qs}\n` +
+          `They can reply in their inbox (the "Cellarhand Support" message thread) and it goes straight to engineering. ` +
+          `Do NOT invent an answer or any detail — only relay this and encourage them to respond.\n</open_bug_clarification>`;
+      }
+    }
+  } catch {
+    /* non-fatal */
+  }
+
   const trace = newAssistantTrace({
     model: MODEL,
     maxTurns: MAX_TURNS,

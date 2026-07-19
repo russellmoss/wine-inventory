@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/dal";
+import { requireAdmin, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { getMigrationBatchDetail, listMigrationBatches } from "@/lib/migration/batch";
 import { loadGenericMigrationFixture } from "@/lib/migration/generic-fixture";
@@ -13,6 +13,7 @@ type MigrationPageProps = {
 
 export default async function MigrationPage({ searchParams }: MigrationPageProps) {
   await requireAdmin();
+  await requireActiveTenant();
   const sp = await searchParams;
   const selectedBatchId = typeof sp.batch === "string" ? sp.batch : undefined;
   const [batches, detail, vessels, bonds] = await Promise.all([

@@ -37,6 +37,12 @@ jobs:
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
           AUTOMATION_RUN_ID: ${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}
         run: npx tsx scripts/bug-feedback-agent.ts
+      - name: Ask the reporter for clarification (Plan 079 U8)
+        if: steps.agent.outputs.clarification_requested == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: npx tsx --conditions=react-server scripts/feedback-clarification-request.ts "${{ github.event.client_payload.automationRunId || github.event.inputs.automationRunId }}"
       - name: Fence changed paths
         if: steps.agent.outputs.changed == 'true'
         run: |

@@ -29,6 +29,14 @@
     {
       "path": "/api/cron/qbo-vendor-poll",
       "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/cron/qbo-vendor-sync",
+      "schedule": "45 14 * * *"
+    },
+    {
+      "path": "/api/cron/feedback-automation-sweep",
+      "schedule": "0 15 * * *"
     }
   ]
 }

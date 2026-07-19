@@ -1,4 +1,4 @@
-import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { getLatestBrixByBlock, getVineyardHarvest } from "@/lib/harvest/actions";
 import { Card } from "@/components/ui";
@@ -14,6 +14,7 @@ export default async function HarvestPage({
   searchParams: Promise<{ view?: string; vineyard?: string }>;
 }) {
   const user = await requireReadyUser();
+  await requireActiveTenant();
   const isAdmin = isTenantAdminLike(user);
 
   if (isAdmin) {

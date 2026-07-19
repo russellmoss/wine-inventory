@@ -12,6 +12,7 @@ import {
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
 import { MAX_CONTENT, clampHistoryForSend } from "@/lib/assistant/message-window";
+import { drainConsoleBuffer } from "@/lib/observability/console-buffer";
 import type { Caption } from "./voice/useVoiceSession";
 import { useDictation } from "./voice/useDictation";
 import { FeedbackTicketModal } from "./FeedbackTicketModal";
@@ -83,6 +84,7 @@ const CONTENT_MAX = 1040;
 const DOCK_CONV_KEY = "assistant.dock.conversationId";
 
 const TOOL_LABELS: Record<string, string> = {
+  search_knowledge_base: "Consulting the winemaking knowledge base",
   query_brix: "Checking Brix readings",
   query_yield: "Checking yields",
   query_recent_harvests: "Checking recent harvests",
@@ -429,6 +431,8 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           conversationId,
           ratedMessageId: rated?.kind === "text" && rated.role === "assistant" ? rated.id : undefined,
           messages: transcript,
+          // Console at 👎 time is only useful for a negative rating (Plan 079).
+          clientConsole: rating === "down" ? drainConsoleBuffer() : undefined,
         }),
       });
     } catch {

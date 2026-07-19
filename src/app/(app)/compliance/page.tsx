@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/dal";
+import { requireAdmin, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { deterministicAnomalies, deterministicExciseAnomalies } from "@/lib/compliance/anomaly";
 import { asOpsCadence, asReturnCadence } from "@/lib/compliance/types";
@@ -14,6 +14,7 @@ import { FormModeSwitch } from "./FormModeSwitch";
 
 export default async function CompliancePage({ searchParams }: { searchParams: Promise<{ id?: string; formType?: string }> }) {
   const me = await requireAdmin();
+  await requireActiveTenant();
   const sp = await searchParams;
   const formType: "TTB_5120_17" | "TTB_5000_24" = sp.formType === "TTB_5000_24" ? "TTB_5000_24" : "TTB_5120_17";
 

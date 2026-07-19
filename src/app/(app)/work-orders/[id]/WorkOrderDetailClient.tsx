@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, LocalTime } from "@/components/ui";
 import type { WorkOrderDetail } from "@/lib/work-orders/data";
 import { issueWorkOrderAction, cancelWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
@@ -41,7 +41,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
             {wo.priority && wo.priority !== "NORMAL" ? `${wo.priority.charAt(0)}${wo.priority.slice(1).toLowerCase()} priority · ` : ""}
             {wo.locationName ? `${wo.locationName} · ` : ""}
             {wo.assigneeEmail ? `Assigned to ${wo.assigneeEmail} · ` : ""}
-            {wo.dueAt ? `Due ${new Date(wo.dueAt).toLocaleDateString()}` : "Unscheduled"}
+            {wo.dueAt ? <>Due <LocalTime value={wo.dueAt} mode="date" /></> : "Unscheduled"}
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}
           </div>
         </div>
@@ -51,7 +51,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
       {wo.instructions ? <Card style={{ marginTop: 14, padding: 14, fontSize: 14 }}>{wo.instructions}</Card> : null}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-        {wo.status === "DRAFT" ? <Button disabled={pending} onClick={() => act(() => issueWorkOrderAction({ workOrderId: wo.id }).then(unwrap))}>Issue</Button> : null}
+        {wo.status === "DRAFT" ? <Button disabled={pending} onClick={() => act(() => issueWorkOrderAction({ workOrderId: wo.id }).then(unwrap))}>Issue &amp; open for execution</Button> : null}
         {(wo.status === "ISSUED" || wo.status === "IN_PROGRESS") ? (
           <Link href={`/work-orders/${wo.id}/execute`}><Button variant="secondary">Open execution view</Button></Link>
         ) : null}
@@ -62,6 +62,12 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
           <Button variant="ghost" disabled={pending} onClick={() => act(() => cancelWorkOrderAction({ workOrderId: wo.id }).then(unwrap))}>Cancel WO</Button>
         ) : null}
       </div>
+
+      {wo.status === "DRAFT" ? (
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>
+          Still a draft. Issuing reserves the inventory it needs and opens it for execution — the assignee can then start the tasks.
+        </div>
+      ) : null}
 
       {warnings.length > 0 ? (
         <Card style={{ marginTop: 12, padding: 14, borderColor: "var(--warning, #b8860b)" }}>

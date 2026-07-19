@@ -6,9 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth-client";
 import { exitSupportTenant } from "@/lib/developer/actions";
 import { isTenantAdminLike } from "@/lib/access";
-import { Avatar, Button } from "@/components/ui";
+import { Avatar, Button, LocalTime } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
+import { clearConsoleBuffer } from "@/lib/observability/console-buffer";
 
 type NavItem = { href: string; label: string; admin?: boolean; developer?: boolean; badge?: number };
 
@@ -320,6 +321,8 @@ export function AppShell({
   }
 
   async function handleSignOut() {
+    // Clear the captured console so the next user on a shared device can't inherit it (Plan 079 C-4).
+    clearConsoleBuffer();
     await signOut();
     router.push("/login");
     router.refresh();
@@ -384,7 +387,7 @@ export function AppShell({
           >
             <span>
               Support view: {user.supportOrganizationName ?? user.supportOrganizationId}
-              {user.supportExpiresAt ? ` expires ${new Date(user.supportExpiresAt).toLocaleTimeString()}` : ""}
+              {user.supportExpiresAt ? <> expires <LocalTime value={user.supportExpiresAt} mode="time" /></> : ""}
             </span>
             <Button
               size="sm"

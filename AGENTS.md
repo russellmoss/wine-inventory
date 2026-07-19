@@ -85,6 +85,13 @@ App access: reads/writes go through the extended `prisma` (tenant auto-resolved 
 runAsTenant). The ledger uses `runLedgerWrite`; other tx use `runInTenantTx`; scripts wrap their
 entry point in `runAsTenant(tenantId, …)`; cross-tenant maintenance uses `runAsSystem` (owner). Never
 read the ALS tenant inside a cached fn (K12) — pass tenantId as an explicit arg.
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED` — optional
+  "Sign in with Google" (LOGIN only; non-sensitive `email`/`profile` scopes → no Google security
+  review, no Workspace needed; NOT Gmail access). Wired in `src/lib/auth.ts` via Better Auth's
+  `socialProviders.google` with `disableSignUp: true` + `account.accountLinking` — a Google login
+  never creates a user, it links to the EXISTING admin-created account with the same email; an
+  unknown email is refused. Unset creds → the login-page button is hidden. Redirect URI is
+  `/api/auth/callback/google`; `BETTER_AUTH_URL` must match the origin. Full setup in `.env.example`.
 - `GEMINI_API_KEY` — read by `council-mcp` from this `.env` for cross-LLM review.
 - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY` — reused from the
   Dashboard project for council / research tooling.

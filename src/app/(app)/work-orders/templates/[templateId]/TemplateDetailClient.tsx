@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, LocalTime } from "@/components/ui";
 import type { TemplateDetail } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY, fieldLabel, type TemplateTaskSpec } from "@/lib/work-orders/template-vocabulary";
 import { cloneTemplateAction, archiveTemplateAction, unarchiveTemplateAction } from "@/lib/work-orders/actions";
@@ -13,8 +13,8 @@ import { unwrap } from "@/lib/action-result";
 // history, and the actions (Edit/Clone/Archive gated so system templates are Clone-only). The primary CTA
 // closes the loop to the real job: create a work order from this template.
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+function fmtDate(iso: string) {
+  return <LocalTime value={iso} mode="date" options={{ year: "numeric", month: "short", day: "numeric" }} />;
 }
 
 function BlockCard({ t }: { t: TemplateTaskSpec }) {

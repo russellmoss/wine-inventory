@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Card, Badge, Metric } from "@/components/ui";
+import { Card, Badge, Metric, LocalTime } from "@/components/ui";
 import type { CostComponent } from "@prisma/client";
 import type { LotCostView } from "@/lib/cost/data";
 import { useCurrency } from "@/components/money/CurrencyProvider";
@@ -69,7 +69,7 @@ export function CostPanel({ cost }: { cost: LotCostView }) {
           {cost.asOf ? (
             <p style={{ ...num, color: "var(--text-muted)", fontSize: 12.5, margin: "0 0 12px" }}>
               As of {cost.asOf.type.toLowerCase().replace(/_/g, " ")} on{" "}
-              {new Date(cost.asOf.observedAt).toLocaleDateString()} · policy v{cost.policyVersion}
+              <LocalTime value={cost.asOf.observedAt} mode="date" /> · policy v{cost.policyVersion}
             </p>
           ) : null}
 

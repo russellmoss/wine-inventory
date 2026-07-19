@@ -107,7 +107,7 @@ async function main() {
       assert(Math.abs(Number(bill?.TotalAmt) - total) < 0.01, `read-back: Bill TotalAmt == ${total.toFixed(2)} (got ${bill?.TotalAmt})`);
       assert(typeof bill?.PrivateNote === "string" && bill!.PrivateNote.includes(invoiceNo), `read-back: Bill memo carries the invoice # ${invoiceNo}`);
 
-      let paymentExternalId: string | null = ev?.paymentExternalId ?? null;
+      const paymentExternalId: string | null = ev?.paymentExternalId ?? null;
       let billBalance = Number(bill?.Balance ?? -1);
       if (bankAccount) {
         assert(!!paymentExternalId, `BillPayment recorded (externalId ${paymentExternalId})`);

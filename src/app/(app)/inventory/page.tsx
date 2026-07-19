@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { requireActiveTenant } from "@/lib/dal";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { InventoryClient, type ItemOpt, type OnHandRow } from "./InventoryClient";
 
 export default async function InventoryPage() {
+  await requireActiveTenant();
   const [categories, skus, goods, locations, bottled, fg] = await Promise.all([
     prisma.finishedGoodCategory.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.wineSku.findMany({ where: { isActive: true }, orderBy: [{ name: "asc" }, { vintage: "desc" }], include: { category: { select: { name: true } } } }),

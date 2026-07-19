@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import type { DirectMessageThreadDetail } from "@/lib/inbox/types";
+import { LocalTime } from "@/components/ui";
 
 // Plan 068 Unit 8 — render a DM thread oldest→newest. Attachments download through the authed proxy
 // route by id (never a raw blobUrl — council amendment 1).
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+function fmt(iso: string): React.ReactNode {
+  return <LocalTime value={iso} options={{ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }} />;
 }
 
 export function ThreadView({ thread }: { thread: DirectMessageThreadDetail }) {

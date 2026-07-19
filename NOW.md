@@ -7,6 +7,140 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Plan 079 winemaking KB RAG — COMPLETE. Unit 11 subscription settings UI → PR #293 (CI green, browser-QA'd); 4 sources MERGED (#292); corpus 1,449 docs.**
+The whole plan is done: crawled cited corpus (AWRI+WA) + Unit 12 re-crawl freshness loop (#289) + 4 new sources
+(WSU/OSU-Extension/OSU-OWRI/Scott, #292) + Unit 11 per-tenant subscription UI (#293). Unit 11: a Settings card
+(`KnowledgeSourcesCard`) toggles which GLOBAL sources feed THIS winery's assistant — `listSourceSettings()` loader
+(effective on/off + doc count), `setKnowledgeSourceEnabled` admin action (upserts tenant-scoped
+`KnowledgeSourceSubscription` via runInTenantTx, audited). `verify:kb-subscriptions` 7/7 (disable→dropped from
+retrieval, re-enable→restored, RLS isolation, cleanup→default). Browser-QA'd on Demo: card renders 6 sources w/
+badges, toggle persists to DB. All sources `defaultEnabled` → nothing changes until a winery toggles one off.
+**PENDING: CI on #293 → merge #293. Then plan 079 fully shipped — no active objective; next work is a new plan.**
+
+<details><summary>prev objective — Unit 12 re-crawl freshness loop (SHIPPED + MERGED PR #289)</summary>
+
+**Plan 079 Unit 12 (re-crawl freshness loop) — MERGED (PR #289); core corpus on main (PR #285).**
+Weekly GH Actions loop (`knowledge-recrawl.yml` → `scripts/recrawl-knowledge.ts`): conditional-GET re-crawl
+→ re-embed only changed pages into a new revision behind the atomic flip, add new, tombstone 404s
+(`status='withdrawn'`, kept for audit); reversible + self-correcting; tombstone gated to COMPLETE crawls;
+single-flight; writes GLOBAL corpus only; opens a GitHub issue; never merges code. Post-merge activation
+needs repo secrets `DATABASE_URL_UNPOOLED` + `VOYAGE_API_KEY`, then trigger once with `max_docs=5`.
+
+</details>
+
+<details><summary>prev objective — Plan 079 bug-report clarification loop (FULLY SHIPPED, different workstream)</summary>
+
+**Plan 079 bug-report clarification loop — FULLY SHIPPED to main (all 13 units), browser-QA'd end-to-end.**
+Four landing PRs: #276 (backend spine), #281 (U11-UI + U12 assistant surfacing), #277 (inventory-error sibling),
+**#282 (U8 in-agent `request_clarification` tool + workflow branch, `6ac7b0b`)**; docs truth-up PR #283. What it does:
+(1) a bug report auto-captures the browser console (ring buffer → clamped debug context); (2) when the automation
+finds a report too thin to act on — either a cheap-LLM **sufficiency gate** pre-flight OR the fix agent
+mid-investigation via the new `request_clarification` tool — it **DMs the reporter** from "Cellarhand Support" with a
+`[Ref: BUG-XXXX]` token, parks the run at `AWAITING_CLARIFICATION`; (3) the reporter sees a "Needs your input" chip on
+My Reports + an assistant nudge, replies in their inbox; (4) the reply hook strips the ref token, flips the
+clarification to ANSWERED, feeds the answer onto the ticket, and **re-dispatches the fix workflow at attempt 2**
+(`MAX_CLARIFICATION_ROUNDS=2` now live). Watchdog + TTL sweep cron recovers strands. DONE — nothing pending.
+
+</details>
+
+<details><summary>prev objective — P0 bottling ABV range guard (SHIPPED PR #275)</summary>
+
+**P0 bottling ABV range guard (feedback `cmrqtzlc1000kij049zm4me25` / #263, DEFECT) — SHIPPED, PR #275 merged (`c74ec98`).**
+Ticket RESOLVED + reporter (Mike, `mike@bhutanwine.com`) DM'd from Cellarhand Support. Branch pruned. Bug: the
+bottling flow accepted an absurd ABV (e.g. **140%**) with no upper bound → corrupt finished-goods/tax data.
+Fix: ABV is a %-by-volume, physically bounded to **(0, 100]** — new pure helper
+[abv-range.ts](src/lib/bottling/abv-range.ts) (`validateBottlingAbv` + constants + friendly messages), shared by
+client + server so wording matches. Server source of truth is `runBottlingTx`
+([run.ts:63](src/lib/bottling/run.ts)) — the single choke point every entry point routes through (standalone
+create/edit AND the WO BOTTLE task in `execute.ts`), so all paths are covered without touching the out-of-fence WO
+files. `parseAbv` ([actions.ts](src/lib/bottling/actions.ts)) validates at the action boundary for a fast message;
+[BottlingClient.tsx](src/app/(app)/bottling/BottlingClient.tsx) makes ABV controlled with an inline hint + `max` and
+blocks submit out of range. Ceiling is the physical max, NOT 24% — compliance tax-class intentionally captures >24%
+and flags it for review (`abv-over-24-review`), so rejecting at 24 would defeat that design. GREEN: unit 8/8
+([test/bottling-abv-range.test.ts](test/bottling-abv-range.test.ts)), verify:cost 55/55 (happy path intact), tsc +
+lint clean, verify:naming 25/25; CI check/review/tenant-isolation/GitGuardian all passed. Demo DB proof:
+`executeBottling(abv=140)` rejected with ZERO writes (no SKU/run, vessel untouched), `abv=13.5` still succeeds.
+
+</details>
+
+<details><summary>prev objective — Ticket #188 harvest-pick + VineyardBlock cascade delete (SHIPPED PR #265)</summary>
+
+**Ticket #188 — assistant delete for standalone harvest picks + user-confirmed VineyardBlock cascade — SHIPPED (PR #265, `3eb512e`).**
+Feedback `cmrm6akt60001jp04fmxyrl0l` (Bajo test-data cleanup): couldn't delete blocks refused by dependent
+Brix/harvest records, and no path to delete a standalone harvest pick.
+(1) **`delete_harvest_pick`** assistant tool — inverse of `log_harvest_pick`, mirrors `delete_brix`; hardened
+`deleteHarvestPick` refuses a crushed pick (`LotHarvestSource` Restrict; was a latent 500) + fixed audit action.
+(2) **Confirmed cascade in `db_delete`** — `RelationSpec.cascadable` + `EntityConfig.cascadeRestrict`; `VineyardBlock`
+cascades Brix + harvest records (+ discloses subblocks) but HARD-REFUSES crushed picks & keeps WO-task FK a hard wall.
+No schema. `/review` CLEAR (3 specialists, 0 critical). vitest 2333/0, tsc/eslint/ai-native green.
+
+</details>
+
+<details><summary>prev objective — Ticket #268 self-assigned WO inbox emit + "Issue" button (SHIPPED PR #278)</summary>
+
+**Ticket #268 — self-assigned WO emitted no inbox notification + confusing "Issue" button — SHIPPED (PR #278, `6dc2d14`).**
+Feedback `cmrqtvwja000fij04rsn25z15` (Demo Winery). Two issues: (a) the WO detail "Issue" button was ambiguous
+(reads like "report a problem"; it actually flips DRAFT→ISSUED and opens execution); (b) **the real defect** — a
+self-assigned WO showed in the inbox WO bucket (assigneeId set) but produced NO inbox notification, because every emit
+path suppressed self-notifications AND the create path never emitted an assignment notification at all.
+Fix: new `allowSelfNotification` flag on `EmitNotificationInput` + pure `shouldEmitNotification` gate; emit a
+`WO_ASSIGNED` notification at the create chokepoint (`createWorkOrderCore`) to the resolved assignee **allowing self**,
+and mark the reassign emit self-aware too. `WO_STATUS` self-suppression unchanged. Button → "Issue & open for
+execution" + a DRAFT helper line. vitest 50/50 (4 new gate tests); DB proof passed.
+
+</details>
+
+<details><summary>prev objective — WO builder same-vessel transfer guard (cmrqqm75b, SHIPPED PR #262)</summary>
+
+**WO builder same-vessel transfer guard (feedback cmrqqm75b, P1 defect) — SHIPPED, PR #262 merged (`ee851b8`).**
+Ticket RESOLVED/DEFECT + issuer (Mike) DM'd. Branch pruned. Bug: the WO builder let you author a transfer
+(RACK) whose source and destination are the SAME vessel; execution correctly refuses it, so a user could save a WO
+guaranteed to fail at execute — builder validation out of sync with the execution guard. `/investigate` confirmed
+root cause: execution refuses `fromVesselId === toVesselId` at [rack-core.ts:94](src/lib/vessels/rack-core.ts:94)
+(RACK) and [topping.ts:42](src/lib/cellar/topping.ts:42) (TOPPING), keyed on **vessel id**; but the shared builder
+validation core `readTask` in [proposal-readiness.ts](src/lib/work-orders/proposal-readiness.ts) only checked each
+vessel exists + is active, never source ≠ dest. Fix = mirror the guard: add a `blocking(ctx, "same_vessel", …)` in
+the RACK and TOPPING readiness cases (same-id short-circuit). Flows to BOTH surfaces automatically — the builder UI
+(`readiness.status === "blocked"` disables Create + shows the warning) AND the server write gate
+`gateWorkOrderReadinessForWrite` (refuses create/edit; `safeAction`→`settleAction` returns `{ok:false,error}`, no
+thrown ActionError). Execution guards kept as backstop, unchanged. GROUP_RACK deliberately untouched (execution
+silently filters self-members, not a reject). 4 regression tests in
+[test/work-order-readiness.test.ts](test/work-order-readiness.test.ts) (same-vessel RACK+TOPPING blocked, distinct
+vessels ready). GREEN at merge: vitest 21/21 (readiness), tsc, eslint, next build, verify:work-orders 43; CI
+(check + tenant-isolation + GitGuardian + Vercel) all passed. Closed the loop: ticket → RESOLVED/DEFECT with a
+write-back note, and a resolution DM sent to the issuer (Mike, `mike@bhutanwine.com`).
+
+</details>
+
+<details><summary>prev objective — P0 bottling no-cork guard (SHIPPED, PR #259, a173e0a)</summary>
+
+**P0 bottling no-cork guard (feedback bug) — SHIPPED, PR #259 merged (`a173e0a`).**
+Superseded client-only PR #242 with a server backstop. Pure classifier in
+[packaging-bom.ts](src/lib/bottling/packaging-bom.ts) — `classifyPackagingRole` (name/kind → bottle|closure|label;
+a capsule is deliberately NOT a closure). Server guard
+[mandatory-packaging.ts](src/lib/bottling/mandatory-packaging.ts) `assertMandatoryPackaging(packaging, loadMaterials)`
+— wired into `createBottlingRun`/`editBottlingRun` ([actions.ts](src/lib/bottling/actions.ts)) AND the WO BOTTLE task
+([execute.ts](src/lib/work-orders/execute.ts)) at the entry points, not `runBottlingTx`. UI mirrors in
+[BottlingClient.tsx](src/app/(app)/bottling/BottlingClient.tsx) + BottlingTaskForm. Live Demo proof: corkless run
+REJECTED with zero partial writes; full run wrote 100 bottles + depleted cork 500→400.
+
+</details>
+
+<details><summary>prev objective — #241 dashboard Recent activity filter (BUILT)</summary>
+
+**Feedback #241 (cmrqpp88 "too much detail in dashboard") — dashboard Recent activity filtered to leadership-relevant events — BUILT, ready for /ship.**
+Branch `claude/work-241-page-tsx-5fdfdb` (commit 752c212). The leadership dashboard's Recent activity feed pulled the last 6
+audit rows indiscriminately, burying operational signal ("we bottled wine today") under bug-triage / dev-automation /
+auth-admin churn. Added a leadership-relevance classifier to [src/lib/audit.ts](src/lib/audit.ts) — denylist of
+non-operational entity types (`FEEDBACK_TICKET`, `ASSISTANT_FEEDBACK`, `AutomationRun`, `AppSettings`, `Session`, `User`,
+`VendorImportCandidate`, `DirectMessage`) + actions (`LOGIN`, `PASSWORD_*`, `USER_CREATED/DELETED`, `USER_VINEYARD_ASSIGNED`,
+`IMPERSONATE`) — exposed as a pure predicate `isOperationalAuditEntry` + a synced Prisma fragment `operationalAuditWhere`;
+[page.tsx](src/app/(app)/page.tsx) filters the feed at the DB. Denylist (not allowlist) so new operational events show by
+default. GREEN: tsc, eslint, vitest 15/15 (audit + assistant-audit). Proven on real prod data (Neon): prior 6th feed row
+"Developer approved feedback automation" drops out, replaced by a real work-order event. Next: `/review` then `/ship`.
+
+<details><summary>prev objective — Plan 076/078 invoice ingestion (SHIPPED, PR #246)</summary>
+
 **Plan 076/078 — invoice ingestion: dupe guard + one-Bill-per-invoice QBO + Paid/Outstanding A/P — SHIPPED (PR #246 OPEN).**
 Branch `claude/invoice-ingestion-features-95d4df`; merged latest main (Plan 075 vendor-pull; resolved qbo/client.ts conflict).
 All gates green post-merge (vitest 2284, ingest 81, accounting-idempotency 33, invariants 35/35, next build). Live QBO
@@ -19,17 +153,36 @@ multi-line `billLinesJson`), per-lot emit suppressed via `skipApEmit`, multi-lin
 AP-1. (3) Paid/Outstanding — schema on `IngestedInvoice`+`ApExportEvent`+AppSettings pay-from accounts, required
 review-screen selector, `setInvoicePaymentStatus` post-apply flip, QBO **BillPayment** poster pass (Check/CreditCard,
 exactly-once), inbound Bill.Balance read-back in reconcile (two-way + discrepancy surfacing). Two RLS-neutral
-migrations applied to Neon. GREEN: tsc, eslint, vitest 2276, next build, verify:ingest 81, verify:accounting 8,
-verify:accounting-idempotency 33, verify:invariants 35/35, naming/raw-sql/ai-native/tenant-isolation.
-**Live QBO-sandbox pass DONE + USER-CONFIRMED in QBO UI** (`verify:plan076-live`: real 2-line Bill Id 166 $385.79
-+ BillPayment Id 167 → Balance $0.00; user's Claude-browser check confirmed 2 lines, memo invoice #, status PAID,
-$385.79 payment from Checking bank account). **Browser-QA on Demo DONE** (payment selector renders, required-status + Paid-needs-account gates
-fire, duplicate gate "book it anyway" fires with nothing booked, Settings pay-from pickers populate from live QBO
-COA). PENDING before prod trust: **accountant sign-off** on the BillPayment GL direction only.
+migrations applied to Neon. **Live QBO-sandbox pass DONE + USER-CONFIRMED**; **Browser-QA on Demo DONE**. PENDING before
+prod trust: **accountant sign-off** on the BillPayment GL direction only.
+
+</details>
+
+<details><summary>prev objective — QBO vendor sync Slice 2 (Plan 077, BUILT on claude/qbo-vendor-eager-push)</summary>
+
+**QBO vendor sync Slice 2 — eager create-into-QBO (Plan 077) — BUILT (all 7 units), gates green, live-proven on Demo. Next: `/ship`.**
+Branch `claude/qbo-vendor-eager-push`. Final slice of the vendor-sync arc (Slice 0 #229 near-dup guard, Slice 1
+#231 pull queue). When an opted-in winery creates a vendor in Cellarhand it's pushed to QuickBooks immediately,
+so an owner-operator never opens QBO. Push runs AFTER `createVendorCore` commits (never a DB tx across the QBO
+HTTP call — Neon P2028), home-currency only (foreign `(CUR)` vendors stay lazy at bill-post, Plan 073),
+idempotent (skip if already linked; `findOrCreateVendor` query-before-creates). Fuzzy-matches QBO first
+(Slice-1 `listVendors` + Plan-074 `findVendorNearMatches`) so it never mints "Scott Labs"/"Scott Laboratories"
+in QBO — the modal offers **link-to-existing** vs **create-new**. QBO offline → `syncStatus='pending'` + a retry
+sweep (`runVendorSyncSweep` + `/api/cron/qbo-vendor-sync`, 14:45 UTC). Two vendors → one QBO id → `conflict`
+(Slice-1 `@@unique`, not a 500). Opt-in per tenant (`AppSettings.pushVendorsToQbo`, default off; large wineries
+author in QBO). Units: U1 columns+migration (applied to Neon), U2 eager-push core, U3 fuzzy pre-check action,
+U4 modal link-vs-create wired through the setup page, U5 sweep+cron, U6 `/settings` toggle, U7 `verify:vendor-sync`
+(5/5 deterministic + live QBO push/pre-check under `VERIFY_VENDOR_SYNC_LIVE=1`) + backfill + security note.
+**Gates all green:** tsc, `verify:vendor-sync` (link/idempotent/conflict/sweep-gating/opt-in + LIVE push=synced,
+pre-check clean), verify:ai-native, verify:parity, verify:naming, verify:tenant-isolation, vendor vitest 61,
+lint 0 errors, `next build` clean (cron route registered). Plan: `docs/plans/2026-07-18-077-feat-qbo-vendor-eager-push-plan.md` (status: completed).
+
+</details>
 
 <details><summary>prev objectives (on their own branches / shipped)</summary>
 
-- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo, shipping.** Branch `claude/assistant-widget-drag-resize-3c069b`. Drag title bar to move, top-left grip to grow (bottom-right anchored, floors at default); frontend-only in [AssistantDock.tsx](src/components/assistant/AssistantDock.tsx). tsc + eslint green.
+- **Movable + growable assistant dock — BUILT + browser-QA'd on Demo** on `claude/assistant-widget-drag-resize-3c069b`.
+
 - **Plan 073 multi-currency FX ingestion — BUILT (10 units), gates green, ready for `/ship`** on branch
   `claude/multi-currency-fx-ingestion`. Foreign invoice → base-currency inventory at a dated ECB rate
   (Frankfurter, keyless) + EUR A/P Bill to QBO; P0 double-conversion fixed by decoupling (lot=base,
@@ -109,6 +262,41 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
 
 ## ✅ Done recently
 
+- **Plan 079 KB RAG — Unit 11 subscription settings UI → PR #293** (CI green, browser-QA'd). Settings card toggles which sources feed the assistant per winery; `verify:kb-subscriptions` 7/7. LAST plan-079 unit → plan COMPLETE.
+- **Plan 079 KB RAG — 4 new sources → MERGED PR #292** (WSU 95 + OSU Extension 36 + OSU-OWRI 264 + Scott Labs 28 = 426 new docs; corpus 1,449 total). Curated wine/grapes-only scoping; verify:knowledge-base 14/14.
+- **Plan 079 winemaking KB RAG — core corpus SHIPPED to main (PR #285, `6d7f894`); Unit 12 re-crawl loop MERGED (PR #289).**
+  Cited "assistant winemaker" over a GLOBAL crawled pgvector corpus (AWRI 745 + Wine Australia 278 docs / 6,150 chunks),
+  per-tenant source subscriptions, hybrid retrieval (dense + FTS, RRF + MMR), defers math to existing calculators. Unit 12
+  adds the weekly freshness loop (see current objective). Remaining: add sources (Davis/OSU/WSU/Cornell) → Unit 11 subscription UI.
+- **Plan 079 bug-report clarification loop — FULLY SHIPPED (13/13 units, PRs #276/#281/#277/#282, docs #283); browser-QA'd end-to-end.**
+  Vague ticket → auto-captured console + a sufficiency gate (or the fix agent's `request_clarification` tool) → DM the
+  reporter from "Cellarhand Support" with `[Ref: BUG-XXXX]` → "Needs your input" chip + assistant nudge → reply strips
+  the token, flips clarification ANSWERED, feeds the answer onto the ticket + re-dispatches the fix workflow at attempt 2
+  (`MAX_CLARIFICATION_ROUNDS=2` live). Watchdog+TTL sweep cron. All 9 council concurrency fixes + 4 /review CRITICALs
+  folded. U8 proven: a real fix-agent run on a deliberately vague ticket chose `request_clarification` over `apply_fix`.
+- **Empty-source stock-transfer error clarity (feedback cmrquedll…, #270) — SHIPPED + MERGED (PR #277, addc318).**
+  `moveStock` → `safeAction` + `unwrap` (Next redacted the thrown ActionError in prod); `transferStock` names the reason
+  (empty "no inventory there" vs shortfall "only N there"). vitest 55, verify:naming/ai-native green; Demo DB proof.
+- **P0 bottling ABV range guard (feedback cmrqtzlc…me25 / #263, DEFECT) — SHIPPED + MERGED (PR #275, c74ec98); ticket RESOLVED, reporter Mike DM'd; branch pruned.**
+  Bottling accepted an absurd ABV (140%) → corrupt finished-goods/tax data. Fix: server-enforced range **(0, 100]** in
+  `runBottlingTx` (the one choke point for standalone create/edit AND the WO BOTTLE task) via new shared pure helper
+  `src/lib/bottling/abv-range.ts`, + inline client hint/`max` in BottlingClient. Ceiling is the physical max (NOT 24% —
+  compliance intentionally captures >24 for review). unit 8/8, verify:cost 55/55, tsc/lint/naming green; Demo DB proof:
+  140% rejected with zero writes, 13.5% still succeeds.
+- **Ticket #268 — self-assigned WO inbox emit + "Issue" button clarity — SHIPPED + MERGED (PR #278, 6dc2d14); ticket RESOLVED.** (parallel session)
+- **Ticket #188 — `delete_harvest_pick` + confirmed VineyardBlock cascade — MERGED (squash PR #265, 3eb512e); ticket RESOLVED.**
+- **Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2 display) — SHIPPED + MERGED (PR #274, 222fe63); ticket RESOLVED/DEFECT, reporter Mike DM'd; branch pruned.**
+  Design-partner (Mike) report on `/inbox?bucket=wo`: "when I select a work order to view it, I shouldn't have to
+  select it again in the viewing box to open it." `/investigate` (via the real ticket `pageUrl`, not `/work-orders`)
+  found the Inbox WO list row only set local `selected` state and the reader pane rendered a stub whose "Open work
+  order" link did the real nav → two selections per WO. Fix in
+  [InboxClient.tsx](src/app/(app)/inbox/InboxClient.tsx): WO row is now a direct `<Link>` to `/work-orders/[id]`
+  (one click, matches the DM bucket + /work-orders list cards); removed the dead reader-pane WO branch; narrowed the
+  `selected` union. 7 ins / 17 del, one file. tsc + eslint + `next build` green; browser-verified in Demo (single
+  `<a href="/work-orders/…">`, no "Open work order" stub, one-click opens the detail page, no console errors);
+  QA fixture cleaned up.
+- **QBO vendor sync Slices 0–2 — the full arc.** Slice 0 near-dup guard SHIPPED (#229), Slice 1 pull queue
+  SHIPPED (#231), Slice 2 eager push BUILT (Plan 077, all 7 units, live-proven on Demo) → `/ship` next.
 - **Chat "400 Invalid messages" defect (Bhutan cmrm9s97) — FIXED, PR #220 open; ticket closed-loop.**
   `/investigate` root cause: the chat client sends the FULL conversation history every turn (no cap);
   the server (`api/assistant/route.ts` `parseMessages`) hard-rejected with 400 once history passed 40
@@ -207,4 +395,4 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   Branch `claude/addition-execution-view-clarity`. Remaining: CI + browser QA on `/work-orders/*/execute`.
 
 ---
-_Last updated: 2026-07-18 — Plan 076 (invoice ingestion: dupe confirm gate + one-Bill-per-invoice QBO + Paid/Outstanding A/P via QBO BillPayment, two-way) BUILT — all 11 units on branch claude/invoice-ingestion-features-95d4df (commits d79f6f4→75a13d7), all gates green (tsc/eslint/vitest 2276/next build + verify:ingest 81/accounting 8/accounting-idempotency 33/invariants 35/naming/raw-sql/ai-native/tenant-isolation), 2 RLS-neutral Neon migrations applied. Ready for /ship. PENDING before prod trust: accountant sign-off on the BillPayment GL direction + a live QBO-sandbox multi-line Bill+BillPayment pass (poster/reconcile proven offline via injected mock) + browser-QA of the review-screen payment selector & duplicate modal on Demo. Prior: movable assistant dock shipping; Plan 073 FX ingestion ready for /ship; Plan 072 ingestion SHIPPED (#223)._
+_Last updated: 2026-07-19 — Plan 079 KB RAG COMPLETE: Unit 11 per-tenant subscription settings UI → PR #293 (CI green + browser-QA'd on Demo; KnowledgeSourcesCard toggles which global sources feed a winery's assistant; listSourceSettings loader + setKnowledgeSourceEnabled admin action upserting tenant-scoped KnowledgeSourceSubscription; verify:kb-subscriptions 7/7 incl RLS isolation). Prior in this arc: 4 new sources MERGED #292 (WSU/OSU-Extension/OSU-OWRI/Scott, corpus 1,449 docs), Unit 12 re-crawl loop MERGED #289, core corpus #285. PENDING: merge #293 → plan 079 fully shipped. Prior: 4 new sources → PR #292 (WSU 95 + OSU Extension 36 wine/grapes-only + OSU-OWRI 264 + Scott Labs 28; corpus 1,449 docs). New config sitemapUrls?/autoCrawl?, normalizeCrawlUrl dedup, reset:knowledge-source. OSU robots reassessed (our UA permitted; blocks only named training crawlers). verify:knowledge-base 14/14, gates green. PENDING CI→merge, then Unit 11 subscription UI. Prior: Unit 12 re-crawl freshness loop MERGED PR #289 (branch claude/kb-recrawler off merged main); core corpus already on main (PR #285). Weekly GH Actions loop (knowledge-recrawl.yml → scripts/recrawl-knowledge.ts): conditional-GET re-crawl of active sources → re-embed only changed pages into a new revision behind the atomic flip, add new pages, tombstone 404s (status='withdrawn', kept for audit); reversible + self-correcting; tombstone pass gated to COMPLETE crawls; single-flight; writes GLOBAL corpus only (never tenant data); opens a GitHub issue; never merges code. Smoke-tested on live Neon (KB_MAX_DOCS=3), tsc clean; AUTOMATION.md loop 5 + security-register corrected. PENDING: CI green → merge #289; then add sources (Davis/OSU/WSU/Cornell) → Unit 11 subscription UI; post-merge add secrets DATABASE_URL_UNPOOLED + VOYAGE_API_KEY and trigger once with max_docs=5. — Prior: Plan 079 bug-report clarification loop FULLY SHIPPED to main (all 13 units): PRs #276 (backend spine) + #281 (U11-UI My-Reports chip + U12 assistant surfacing) + #277 (inventory-error sibling) + #282 (U8 in-agent request_clarification tool + workflow branch, 6ac7b0b) + docs truth-up #283. Vague ticket → auto-captured browser console + a cheap-LLM sufficiency gate (or the fix agent mid-investigation via request_clarification) → DM the reporter from "Cellarhand Support" with a [Ref: BUG-XXXX] token, park the run at AWAITING_CLARIFICATION → reporter sees a "Needs your input" chip on My Reports + an assistant nudge, replies in inbox → reply hook strips the token, flips clarification ANSWERED, feeds the answer onto the ticket, re-dispatches the fix workflow at attempt 2 (MAX_CLARIFICATION_ROUNDS=2 now live); watchdog + TTL sweep cron recovers strands. All 9 council concurrency fixes + 4 /review CRITICALs folded. Browser-QA'd the whole loop in the in-app Claude browser; QA fixtures cleaned, .env + Demo bugReportMode restored; gates green (tsc, eslint, vitest; CI check + tenant-isolation on #282). Prior: Empty-source stock-transfer error clarity (feedback cmrquedll…, plan #270) SHIPPED (PR #277): /inventory Move-stock Transfer from a location holding none of the item was blocked but showed a generic "an error occurred" — `moveStock` was a plain `action` so Next redacted the thrown ActionError in prod. Fix: `moveStock` → `safeAction` + `unwrap` at both call sites (Inventory form + assistant adjust-inventory committer); `transferStock` names the reason (empty "no inventory there" vs shortfall "only N there"). tsc/eslint/vitest-55/verify:naming/verify:ai-native green + DB proof on Demo (QA-* fixtures, cleaned). Worked in the session worktree (main checkout live-in-use by a parallel session). PENDING: CI green → squash-merge → resolve ticket + DM Mike. Prior: P0 bottling ABV range guard (feedback cmrqtzlc…me25 / #263, DEFECT) SHIPPED + MERGED (PR #275 squash-merged to main, c74ec98): bottling accepted an absurd ABV (140%) → corrupt finished-goods/tax data; fix is a server-enforced range (0, 100] in runBottlingTx (the one choke point for standalone create/edit AND the WO BOTTLE task) via new shared pure helper src/lib/bottling/abv-range.ts, + inline client hint/max in BottlingClient; ceiling is the physical max, NOT 24% (compliance intentionally captures >24 for tax review). unit 8/8, verify:cost 55/55, tsc/lint/verify:naming green; CI check/review/tenant-isolation/GitGuardian passed; Demo DB proof — 140% rejected with zero writes (no SKU/run, vessel untouched), 13.5% still succeeds; ticket → RESOLVED with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com) from Cellarhand Support; branch pruned. Prior: Inbox WO "viewer redundancy" (feedback cmrqqjk57, P2) SHIPPED + MERGED (PR #274 squash-merged to main, 222fe63): the Inbox wo-bucket reader-pane stub ("Open work order" 2nd click) removed, WO list row is now a direct <Link> to /work-orders/[id]; tsc/eslint/next build green + browser-verified on Demo; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to reporter Mike (mike@bhutanwine.com); branch pruned. Prior in-flight: Ticket #188 delete_harvest_pick + confirmed VineyardBlock cascade SHIPPING (PR #265) on claude/harvest-vineyard-lib-295869; PENDING live DB proof + browser-QA. Also: WO builder same-vessel transfer guard (feedback cmrqqm75b, P1) SHIPPED — PR #262 squash-merged to main (ee851b8), CI all green; ticket → RESOLVED/DEFECT with write-back note; resolution DM sent to issuer Mike (mike@bhutanwine.com); branch pruned. Fix mirrors the execution guard (rack-core.ts:94 / topping.ts:42, keyed on vessel id) as a blocking readiness warning in RACK+TOPPING (proposal-readiness.ts readTask) → disables builder Create + refuses server write gate; execution kept as backstop; 4 regression tests. Also merged in parallel: Ticket #268 self-assigned WO inbox emit + "Issue" button clarity SHIPPED (PR #278, 6dc2d14). Prior: P0 bottling no-cork guard SHIPPED (PR #259, a173e0a); Plan 076 invoice ingestion SHIPPED (#246)._

@@ -247,10 +247,13 @@ export function describeOperation(opn: RawOperation, lines: RawLine[], opts: Des
   let summary: string;
   switch (opn.type) {
     case "SEED": {
+      // "Filled <vessel> with <vol> L" — a winemaker reads this as putting wine into a vessel for the
+      // first time (the lot's genesis / opening balance). NOT "Transferred" (that's RACK) or "Added"
+      // (that's ADDITION dosing) — both would collide with an existing op's wording.
       const dest = dstLabels || "the cellar";
       summary = opts.legacyCutover
-        ? `Seeded ${formatL(inTotal)} L into ${dest} at cutover (Day-Zero)`
-        : `Seeded ${formatL(inTotal)} L into ${dest}`;
+        ? `Filled ${dest} with ${formatL(inTotal)} L at cutover (Day-Zero)`
+        : `Filled ${dest} with ${formatL(inTotal)} L`;
       break;
     }
     case "RACK": {
