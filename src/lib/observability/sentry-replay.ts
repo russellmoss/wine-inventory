@@ -97,6 +97,47 @@ export function safeSentryReplayUrl(debugContext: unknown): string | null {
   }
 }
 
+/**
+ * Render the stored Break Mode hunt trail as a compact, readable block for the developer workspace
+ * (Plan 080 Unit 11). The structured arrays stay in `debugContext` for /bug-triage's fix agent; this
+ * is purely so a human can read the repro without opening Sentry. Returns null when there's no hunt.
+ * Pure + defensive: unknown shapes are skipped rather than trusted.
+ */
+export function formatHuntTrail(debugContext: unknown): string | null {
+  if (!debugContext || typeof debugContext !== "object" || Array.isArray(debugContext)) return null;
+  const rec = debugContext as Record<string, unknown>;
+  const interactions = Array.isArray(rec.interactionTrail) ? rec.interactionTrail : [];
+  const network = Array.isArray(rec.networkTrail) ? rec.networkTrail : [];
+  if (!interactions.length && !network.length) return null;
+
+  const lines: string[] = [];
+  if (typeof rec.huntId === "string" && rec.huntId) lines.push(`hunt: ${rec.huntId}`);
+
+  type Row = { ts: number; text: string };
+  const rows: Row[] = [];
+  for (const raw of interactions) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const type = typeof e.type === "string" ? e.type : "?";
+    const label = typeof e.label === "string" ? e.label : "";
+    const detail = typeof e.detail === "string" ? e.detail : "";
+    const what = label || detail || "";
+    rows.push({ ts: typeof e.ts === "number" ? e.ts : 0, text: `${type}${what ? ` — ${what}` : ""}` });
+  }
+  for (const raw of network) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const method = typeof e.method === "string" ? e.method : "?";
+    const path = typeof e.path === "string" ? e.path : "?";
+    const status = typeof e.status === "number" ? ` → ${e.status}` : "";
+    const ms = typeof e.durationMs === "number" ? ` (${e.durationMs}ms)` : "";
+    rows.push({ ts: typeof e.ts === "number" ? e.ts : 0, text: `${method} ${path}${status}${ms}` });
+  }
+  rows.sort((a, b) => a.ts - b.ts);
+  for (const row of rows) lines.push(row.text);
+  return lines.join("\n");
+}
+
 /** The slice of the Sentry Replay integration we depend on. Kept minimal so it's fakeable in tests. */
 export type MinimalReplay = {
   getReplayId: () => string | undefined;
