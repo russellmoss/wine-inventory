@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { shouldDismissOnOverlayInteraction } from "./modal-dismiss";
 
 export interface ModalProps {
   open: boolean;
@@ -34,6 +35,10 @@ function useIsMobile(enabled: boolean): boolean {
 
 export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600, fullScreenOnMobile = false, overlayProps }: ModalProps) {
   const mobileFull = useIsMobile(fullScreenOnMobile);
+  // Only a genuine backdrop click dismisses. We remember whether the press STARTED on the backdrop
+  // so a drag-select that begins inside the modal and releases on the backdrop (e.g. dragging a text
+  // selection to the far-left screen edge) does NOT close the dialog and discard typed data (#310).
+  const pressStartedOnOverlay = React.useRef(false);
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -50,7 +55,19 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600
   return (
     <div
       {...overlayProps}
-      onClick={onClose}
+      onPointerDown={(e) => {
+        pressStartedOnOverlay.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (
+          shouldDismissOnOverlayInteraction({
+            pressStartedOnOverlay: pressStartedOnOverlay.current,
+            clickTargetIsOverlay: e.target === e.currentTarget,
+          })
+        ) {
+          onClose();
+        }
+      }}
       style={{
         position: "fixed", inset: 0, background: "rgba(20,19,15,0.45)",
         display: "flex", alignItems: mobileFull ? "stretch" : "flex-start", justifyContent: "center",
