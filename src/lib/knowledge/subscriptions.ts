@@ -34,3 +34,44 @@ export async function resolveEnabledSources(tenantId: string): Promise<EnabledSo
 export async function resolveEnabledSourceIds(tenantId: string): Promise<string[]> {
   return (await resolveEnabledSources(tenantId)).map((s) => s.id);
 }
+
+export interface SourceSetting {
+  id: string;
+  key: string;
+  publisher: string;
+  tier: number;
+  enabled: boolean; // effective: the tenant's subscription override, else the source default
+  defaultEnabled: boolean;
+  docCount: number; // active documents in the GLOBAL corpus for this source
+}
+
+/**
+ * Settings-UI loader (Unit 11): every active source + this tenant's effective on/off state + how much
+ * content each holds. Unlike resolveEnabledSources (called ALS-less from the assistant with an explicit
+ * tenantId), this runs inside a normal authed request, so the extended client resolves the tenant from
+ * the session — global KnowledgeSource/Document read pass-through, the subscription read is RLS-scoped.
+ */
+export async function listSourceSettings(): Promise<SourceSetting[]> {
+  const sources = await prisma.knowledgeSource.findMany({
+    where: { active: true },
+    select: { id: true, key: true, publisher: true, tier: true, defaultEnabled: true },
+    orderBy: [{ tier: "asc" }, { publisher: "asc" }],
+  });
+  const subs = await prisma.knowledgeSourceSubscription.findMany({ select: { sourceId: true, enabled: true } });
+  const counts = await prisma.knowledgeDocument.groupBy({
+    by: ["sourceId"],
+    where: { status: "active" },
+    _count: { _all: true },
+  });
+  const override = new Map(subs.map((s) => [s.sourceId, s.enabled]));
+  const countMap = new Map(counts.map((c) => [c.sourceId, c._count._all]));
+  return sources.map((s) => ({
+    id: s.id,
+    key: s.key,
+    publisher: s.publisher,
+    tier: s.tier,
+    defaultEnabled: s.defaultEnabled,
+    enabled: override.get(s.id) ?? s.defaultEnabled,
+    docCount: countMap.get(s.id) ?? 0,
+  }));
+}

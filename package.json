@@ -31,6 +31,7 @@
     "crawl:osu-extension": "tsx --conditions=react-server --env-file=.env scripts/crawl-osu-extension.ts",
     "reset:knowledge-source": "tsx --conditions=react-server --env-file=.env scripts/reset-knowledge-source.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
+    "verify:kb-subscriptions": "tsx --conditions=react-server --env-file=.env scripts/verify-kb-subscriptions.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",
     "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",

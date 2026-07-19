@@ -16,6 +16,8 @@ import { Commerce7ConnectionCard, type Commerce7ConnectionSummary } from "./Comm
 import { Commerce7MappingCard } from "./Commerce7MappingCard";
 import { NamingTemplateCard } from "./NamingTemplateCard";
 import { VoiceRecognitionCard } from "./VoiceRecognitionCard";
+import { KnowledgeSourcesCard } from "./KnowledgeSourcesCard";
+import type { SourceSetting } from "@/lib/knowledge/subscriptions";
 
 type AccountingMapping = { component: string; costAccount: string | null; inventoryAccount: string | null };
 
@@ -51,6 +53,7 @@ export function SettingsClient({
   accountingApPayment,
   commerce7,
   voice,
+  knowledgeSources,
 }: {
   sparklingEnabled: boolean;
   pushVendorsToQbo: boolean;
@@ -62,6 +65,7 @@ export function SettingsClient({
   accountingApPayment: { apPaymentBankAccount: string | null; apPaymentCardAccount: string | null };
   commerce7: Commerce7ConnectionSummary | null;
   voice: VoiceSettingsView;
+  knowledgeSources: SourceSetting[];
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
@@ -270,6 +274,9 @@ export function SettingsClient({
       </Card>
 
       <VoiceRecognitionCard initial={voice} />
+
+      {/* Plan 079 Unit 11 — which global knowledge sources feed this winery's assistant. */}
+      <KnowledgeSourcesCard sources={knowledgeSources} />
 
       {/* Phase 1 — lot naming template authoring (identity presentation layer). */}
       <NamingTemplateCard />
