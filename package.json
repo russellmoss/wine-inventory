@@ -88,6 +88,7 @@
     "triage:dispatch": "tsx --conditions=react-server --env-file=.env scripts/bug-triage-dispatch.ts",
     "triage:plan": "tsx --conditions=react-server --env-file=.env scripts/bug-triage-plan.ts",
     "triage:resolve": "tsx --conditions=react-server --env-file=.env scripts/bug-triage-set-status.ts",
+    "triage:issues": "tsx --conditions=react-server --env-file=.env scripts/bug-triage-issues.ts",
     "triage:lookup": "tsx --conditions=react-server --env-file=.env scripts/bug-triage-lookup.ts",
     "qa:e2e": "playwright test",
     "qa:e2e:report": "playwright show-report",
