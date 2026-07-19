@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { Card, Eyebrow, Metric, Badge } from "@/components/ui";
@@ -9,6 +9,7 @@ import { operationalAuditWhere } from "@/lib/audit";
 
 export default async function DashboardPage() {
   const user = await requireReadyUser();
+  await requireActiveTenant();
 
   const [bulk, bottled, goods, recent] = await Promise.all([
     prisma.vesselComponent.aggregate({ _sum: { volumeL: true } }),

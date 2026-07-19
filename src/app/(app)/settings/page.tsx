@@ -1,5 +1,5 @@
 import { getAppSettings, getCostSettings, getPushVendorsToQbo } from "@/lib/settings/data";
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { asOpsCadence, asReturnCadence } from "@/lib/compliance/types";
 import { getConnectionSummary } from "@/lib/accounting/connection";
@@ -12,6 +12,7 @@ export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const user = await requireReadyUser();
+  await requireActiveTenant();
   const [settings, cost, profile, accounting, accountingMappings, accountingAp, accountingApPayment, commerce7, voice, pushVendorsToQbo] = await Promise.all([
     getAppSettings(),
     getCostSettings(),

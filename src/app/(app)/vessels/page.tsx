@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { requireActiveTenant } from "@/lib/dal";
 import { computeFill } from "@/lib/vessels/fill";
 import { VesselsClient, type VesselRow } from "./VesselsClient";
 
 export default async function VesselsPage() {
+  await requireActiveTenant();
   const vessels = await prisma.vessel.findMany({
     include: {
       components: { select: { volumeL: true } },
