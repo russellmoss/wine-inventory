@@ -69,29 +69,56 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     homeDomain: "wine.wsu.edu",
     tier: 1,
     license: "Public WSU Viticulture & Enology extension resource — store paraphrasable text + a link back.",
-    // The whole host is viticulture/enology. The substantive articles are ROOT-level slugs (e.g.
-    // /managing-high-acidity-in-grape-must-and-wine/), NOT under /extension/, so allow the whole host and
-    // deny only WordPress cruft + the beer (brewing-certificate) + non-content program/admin pages.
+    // The technical viti/enology content is the /extension/ topic hubs, the /documents/ PDFs, the VEEN
+    // newsletter (/viticulture-enology-extension-news-*), and root-level article slugs (e.g.
+    // /managing-high-acidity-in-grape-must-and-wine/). Those root articles have no common prefix, so we
+    // allow the whole host and DENY everything non-technical: WordPress cruft, event calendars, and all the
+    // academic-program / staff / department-news / commerce sections (we want technical content, not the
+    // department's org chart or event listings).
     seedRoots: ["https://wine.wsu.edu/extension/"],
     sitemapUrls: ["https://wine.wsu.edu/wp-sitemap.xml"], // WordPress core sitemap (non-standard path)
     allowPrefixes: ["/"],
     denyPrefixes: [
+      // WordPress cruft + thin taxonomy/author/pagination archives
       "/wp-admin/",
       "/wp-content/", // theme assets; the real PDFs live under /documents/ (still allowed)
       "/wp-json/",
       "/wp-includes/",
+      "/wp-login",
       "/feed/",
       "/comments/",
-      "/category/", // thin WordPress taxonomy/author archive pages (self-filter anyway, but skip the fetch)
+      "/category/",
       "/tag/",
       "/author/",
-      "/certificate-program/brewing-certificate/", // beer
+      "/page/",
+      // The Events Calendar plugin: event/venue/organizer pages + ?ical exports = non-content noise
+      "/events/",
+      "/event/",
+      "/venue/",
+      "/organizer/",
       "/news/events/",
+      // Academic program / department / staff / admissions pages — NOT technical viti/enology content
+      "/certificate-program/", // whole program (course/enrollment admin, incl. the beer brewing cert)
+      "/about/",
+      "/people/",
+      "/staff/",
+      "/faculty/",
+      "/employment/",
+      "/jobs/",
+      "/undergraduate-programs/",
+      "/graduate-programs/",
+      "/student-department-resources/",
+      "/apply/",
+      "/admissions/",
+      "/courses/",
+      // Department news + fundraising + commerce
+      "/news/",
+      "/ve-news/",
+      "/give/",
+      "/donate/",
       "/shop/",
       "/cart/",
       "/checkout/",
-      "/give/",
-      "/employment/",
     ],
     crawlCadence: "weekly",
     defaultEnabled: true,

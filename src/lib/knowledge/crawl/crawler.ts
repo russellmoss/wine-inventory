@@ -16,6 +16,22 @@ import { extractLinks, gateLinks } from "./link-gate";
 const DEFAULT_DELAY_MS = 1500; // polite default between requests to one host
 const isAllowedHost = (h: string) => TRUSTED_DOMAIN_SET.has(h.toLowerCase());
 
+/**
+ * Canonicalize a crawl URL: drop the #fragment, and strip a trailing slash that follows a FILE-EXTENSION
+ * segment (`/x.pdf/` → `/x.pdf`) — a link-followed variant that otherwise duplicates the clean file URL.
+ * Directory-style trailing slashes (`/foo/`) are left intact; several sources (AWRI) rely on them.
+ */
+export function normalizeCrawlUrl(raw: string): string {
+  const noFrag = raw.split("#")[0];
+  try {
+    const u = new URL(noFrag);
+    if (/\.[a-z0-9]{2,5}\/$/i.test(u.pathname)) u.pathname = u.pathname.replace(/\/+$/, "");
+    return u.toString();
+  } catch {
+    return noFrag;
+  }
+}
+
 export interface CrawledDoc {
   documentId: string;
   sourceId: string;
@@ -91,12 +107,14 @@ export async function crawlSource(
   const seen = new Set<string>();
   const queue: { url: string; lastmod?: string }[] = [];
   for (const root of cfg.seedRoots) {
-    if (!seen.has(root)) { seen.add(root); queue.push({ url: root }); }
+    const url = normalizeCrawlUrl(root);
+    if (!seen.has(url)) { seen.add(url); queue.push({ url }); }
   }
   for (const su of sitemapUrls) {
-    if (!seen.has(su.loc) && pathAllowed(cfg, su.loc)) {
-      seen.add(su.loc);
-      queue.push({ url: su.loc, lastmod: su.lastmod });
+    const url = normalizeCrawlUrl(su.loc);
+    if (!seen.has(url) && pathAllowed(cfg, url)) {
+      seen.add(url);
+      queue.push({ url, lastmod: su.lastmod });
     }
   }
   summary.discovered = queue.length;
@@ -258,7 +276,7 @@ export async function crawlWithFollowing(
   const queued = new Set<string>();
   const queue: string[] = [];
   const enqueue = (rawUrl: string) => {
-    const url = rawUrl.split("#")[0];
+    const url = normalizeCrawlUrl(rawUrl);
     if (queued.has(url) || visited.has(url)) return;
     const tgt = resolveTarget(url);
     if (!tgt || !pathAllowedFor(tgt.cfg, url)) return;
