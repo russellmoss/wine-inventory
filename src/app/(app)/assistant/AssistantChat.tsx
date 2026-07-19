@@ -531,35 +531,56 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       const decoder = new TextDecoder();
       let buffer = "";
 
+      // EXHAUSTIVE (plan 081 U8, council S1). This used to be an if/else chain, so adding a variant to
+      // AssistantEvent compiled fine and then silently did nothing at runtime — a whole class of "the
+      // server sent it, the user never saw it" bug. The `never` default makes that a typecheck failure
+      // in BOTH consumers (here and useVoiceSession) until each one handles it.
       const handle = (evt: AssistantEvent) => {
-        if (evt.type === "text") {
-          appendText(evt.text);
-        } else if (evt.type === "tool") {
-          setStatus(evt.phase === "start" ? `${TOOL_LABELS[evt.name] ?? evt.name}…` : "Thinking…");
-        } else if (evt.type === "proposal") {
-          setStatus(null);
-          setItems((prev) => [
-            ...prev,
-            {
-              kind: "proposal",
-              preview: evt.preview,
-              ...(evt.draft ? { draft: true } : { token: evt.token }),
-              details: asWorkOrderProposalDetails(evt.details),
-              status: "pending",
-            },
-          ]);
-        } else if (evt.type === "choice") {
-          setStatus(null);
-          setItems((prev) => [...prev, { kind: "choice", prompt: evt.prompt, options: evt.options }]);
-        } else if (evt.type === "navigate") {
-          setStatus(null);
-          requestNavigation(evt.path, evt.label, evt.auto);
-        } else if (evt.type === "conversation") {
-          setConversationId(evt.id);
-        } else if (evt.type === "message") {
-          attachMessageId(evt.role, evt.id);
-        } else if (evt.type === "error") {
-          setError(evt.message);
+        switch (evt.type) {
+          case "text":
+            appendText(evt.text);
+            return;
+          case "tool":
+            setStatus(evt.phase === "start" ? `${TOOL_LABELS[evt.name] ?? evt.name}…` : "Thinking…");
+            return;
+          case "proposal":
+            setStatus(null);
+            setItems((prev) => [
+              ...prev,
+              {
+                kind: "proposal",
+                preview: evt.preview,
+                ...(evt.draft ? { draft: true } : { token: evt.token }),
+                details: asWorkOrderProposalDetails(evt.details),
+                status: "pending",
+              },
+            ]);
+            return;
+          case "choice":
+            setStatus(null);
+            setItems((prev) => [...prev, { kind: "choice", prompt: evt.prompt, options: evt.options }]);
+            return;
+          case "navigate":
+            setStatus(null);
+            requestNavigation(evt.path, evt.label, evt.auto);
+            return;
+          case "conversation":
+            setConversationId(evt.id);
+            return;
+          case "message":
+            attachMessageId(evt.role, evt.id);
+            return;
+          case "error":
+            setError(evt.message);
+            return;
+          case "done":
+            // Terminal marker only — the reader loop's own `done` drives teardown.
+            return;
+          default: {
+            const unhandled: never = evt;
+            if (process.env.NODE_ENV !== "production") console.warn("[assistant] unhandled event", unhandled);
+            return;
+          }
         }
       };
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { proposalGate } from "@/lib/assistant/proposal-card";
+import { proposalGate, readDraftGaps } from "@/lib/assistant/proposal-card";
 
 // Plan 081 U7 — Confirm gating for the Draft card.
 //
@@ -80,5 +80,40 @@ describe("proposalGate — Draft", () => {
     const gate = proposalGate({ draft: true, details: undefined });
     expect(gate.canConfirm).toBe(false);
     expect(gate.reason).toBeTruthy();
+  });
+});
+
+// Plan 081 U8 — voice mode's DEFINED behavior for a Draft: speak the gaps, defer to the visual card.
+// It never attempts in-voice field resolution (dictating an email/lot code is where a wrong value
+// gets committed) and it never confirms a draft (there is no token to confirm).
+describe("readDraftGaps — what voice says about a draft", () => {
+  it("reports missing-field labels, lower-cased for speech", () => {
+    const gaps = readDraftGaps({ unresolved: [{ label: "Assignee" }, { label: "Filter media" }] });
+    expect(gaps.unresolved).toBe(2);
+    expect(gaps.labels).toEqual(["assignee", "filter media"]);
+  });
+
+  it("caps the spoken list at three so it stays one sentence", () => {
+    const gaps = readDraftGaps({ unresolved: [1, 2, 3, 4, 5].map((n) => ({ label: `Field ${n}` })) });
+    expect(gaps.unresolved).toBe(5);
+    expect(gaps.labels).toHaveLength(3);
+  });
+
+  it("counts only blocking warnings", () => {
+    const gaps = readDraftGaps({
+      warnings: [
+        { severity: "blocking", message: "a" },
+        { severity: "confirmable", message: "b" },
+        { severity: "completion_check", message: "c" },
+      ],
+    });
+    expect(gaps.blocking).toBe(1);
+  });
+
+  it("survives junk off the wire without throwing", () => {
+    for (const junk of [undefined, null, "string", 42, {}, { unresolved: "no" }, { unresolved: [null, 7, {}] }]) {
+      expect(() => readDraftGaps(junk)).not.toThrow();
+    }
+    expect(readDraftGaps({ unresolved: [null, 7, {}] }).labels).toEqual([]);
   });
 });

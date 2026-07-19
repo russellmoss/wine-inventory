@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { isSafeInternalPath, parseEvent, asProposal, isDraftProposal, asNavigation, splitNdjsonLines } from "@/lib/assistant/assistant-events";
+import {
+  isSafeInternalPath,
+  parseEvent,
+  asProposal,
+  isDraftProposal,
+  asNavigation,
+  splitNdjsonLines,
+  ASSISTANT_EVENT_TYPES,
+} from "@/lib/assistant/assistant-events";
 
 // Plan 081 U2: a line is only complete once its "\n" arrives. Both stream consumers used to
 // `break` on stream-end and discard whatever the buffer still held, so a truncated final chunk
@@ -82,6 +90,27 @@ describe("parseEvent", () => {
     expect(parseEvent("")).toBeNull();
     expect(parseEvent("{not json")).toBeNull();
     expect(parseEvent('{"foo":1}')).toBeNull();
+  });
+
+  // Plan 081 U8 (council S1): parseEvent used to cast ANY object with a string `type`, so an event
+  // neither consumer handled reached them, matched no branch, and vanished. Reject at the parser.
+  it("rejects an unknown event type instead of casting it through", () => {
+    expect(parseEvent('{"type":"decline","reason":"x"}')).toBeNull();
+    expect(parseEvent('{"type":"","text":"x"}')).toBeNull();
+    expect(parseEvent('{"type":123}')).toBeNull();
+  });
+
+  it("accepts every declared event type", () => {
+    for (const type of ASSISTANT_EVENT_TYPES) {
+      expect(parseEvent(JSON.stringify({ type })), type).not.toBeNull();
+    }
+  });
+
+  it("accepts a DRAFT proposal line (no token on the wire)", () => {
+    expect(parseEvent('{"type":"proposal","tool":"propose_work_order","preview":"p","draft":true}')).toMatchObject({
+      type: "proposal",
+      draft: true,
+    });
   });
 });
 

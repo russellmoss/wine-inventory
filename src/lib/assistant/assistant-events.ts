@@ -71,14 +71,48 @@ export function splitNdjsonLines(buffer: string): { lines: string[]; rest: strin
   return { lines: parts, rest };
 }
 
-/** Parse one NDJSON line into an AssistantEvent, or null if unparseable/invalid. */
+/**
+ * Every event variant the wire may carry. Typed as `AssistantEvent["type"][]` so adding a variant to
+ * the union without listing it here is a COMPILE error — the first of the three guards (with the
+ * exhaustive switches in both stream consumers) that stop a new event type silently no-op'ing at
+ * runtime (council S1).
+ */
+export const ASSISTANT_EVENT_TYPES = [
+  "text",
+  "tool",
+  "proposal",
+  "choice",
+  "navigate",
+  "conversation",
+  "message",
+  "error",
+  "done",
+] as const satisfies readonly AssistantEvent["type"][];
+
+const KNOWN_EVENT_TYPES = new Set<string>(ASSISTANT_EVENT_TYPES);
+
+/** Type-completeness check: fails to compile if a union member is missing from the list above. */
+type _AllEventTypesListed = Exclude<AssistantEvent["type"], (typeof ASSISTANT_EVENT_TYPES)[number]> extends never
+  ? true
+  : ["AssistantEvent variant missing from ASSISTANT_EVENT_TYPES"];
+const _allEventTypesListed: _AllEventTypesListed = true;
+void _allEventTypesListed;
+
+/**
+ * Parse one NDJSON line into an AssistantEvent, or null if unparseable/invalid.
+ *
+ * Validates the discriminant against the known set rather than casting any object that happens to
+ * have a string `type`. An unrecognised type is dropped here instead of reaching a consumer that has
+ * no branch for it.
+ */
 export function parseEvent(line: string): AssistantEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   try {
     const obj = JSON.parse(trimmed) as unknown;
-    if (obj && typeof obj === "object" && typeof (obj as { type?: unknown }).type === "string") {
-      return obj as AssistantEvent;
+    if (obj && typeof obj === "object") {
+      const type = (obj as { type?: unknown }).type;
+      if (typeof type === "string" && KNOWN_EVENT_TYPES.has(type)) return obj as AssistantEvent;
     }
   } catch {
     /* partial/garbled line */

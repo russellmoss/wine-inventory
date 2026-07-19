@@ -17,6 +17,7 @@ import {
 import type { VoiceSettingsView } from "@/lib/voice/settings-types";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { clampHistoryForSend } from "@/lib/assistant/message-window";
+import { readDraftGaps } from "@/lib/assistant/proposal-card";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
 
@@ -265,25 +266,64 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         const decoder = new TextDecoder();
         let buffer = "";
 
+        // EXHAUSTIVE (plan 081 U8, council S1) — see the matching switch in AssistantChat. The `never`
+        // default means a new AssistantEvent variant cannot ship until voice mode has decided what it
+        // does about it, rather than silently no-op'ing in the one client nobody is looking at.
         const handle = (evt: AssistantEvent) => {
-          if (evt.type === "text") {
-            assistantText += evt.text;
-            for (const s of chunker.push(evt.text)) speak(s);
-          } else if (evt.type === "proposal") {
-            setProp({ preview: evt.preview, ...(evt.draft ? { draft: true } : { token: evt.token }), status: "pending" });
-          } else if (evt.type === "navigate") {
-            // Hands-free: navigate the page BEHIND the overlay and keep the
-            // session alive so the user can issue a follow-up. We don't stop() /
-            // close — the overlay stays up and speaks a short confirmation.
-            if (evt.auto && isSafeInternalPath(evt.path)) {
-              speak(`Showing ${evt.label}.`);
-              router.push(evt.path);
+          switch (evt.type) {
+            case "text":
+              assistantText += evt.text;
+              for (const s of chunker.push(evt.text)) speak(s);
+              return;
+            case "proposal": {
+              const draft = evt.draft === true;
+              setProp({ preview: evt.preview, ...(draft ? { draft: true } : { token: evt.token }), status: "pending" });
+              // Plan 081 U8 — DEFINED voice behavior for a Draft: say what it needs, then defer to the
+              // visual card. Deliberately NOT attempting in-voice field resolution: dictating an email
+              // address or a lot code through STT is exactly where a wrong value gets committed, and a
+              // draft is the state where a wrong value is most likely. Voice can still confirm a READY
+              // card by saying "confirm" — that path is unchanged.
+              if (draft) {
+                const gaps = readDraftGaps(evt.details);
+                speak(
+                  gaps.blocking > 0
+                    ? "I've put a draft on screen, but it can't be issued as written — the blocker is on the card."
+                    : gaps.unresolved > 0
+                      ? `I've put a draft on screen. It still needs ${gaps.labels.join(" and ")}. Have a look at the card.`
+                      : "I've put a draft on screen — it isn't ready to issue yet. Have a look at the card.",
+                );
+              }
+              return;
             }
-          } else if (evt.type === "conversation") {
-            conversationIdRef.current = evt.id;
-            optsRef.current.onConversationId?.(evt.id);
-          } else if (evt.type === "error") {
-            setError(evt.message);
+            case "navigate":
+              // Hands-free: navigate the page BEHIND the overlay and keep the
+              // session alive so the user can issue a follow-up. We don't stop() /
+              // close — the overlay stays up and speaks a short confirmation.
+              if (evt.auto && isSafeInternalPath(evt.path)) {
+                speak(`Showing ${evt.label}.`);
+                router.push(evt.path);
+              }
+              return;
+            case "conversation":
+              conversationIdRef.current = evt.id;
+              optsRef.current.onConversationId?.(evt.id);
+              return;
+            case "error":
+              setError(evt.message);
+              return;
+            // Deliberately silent in voice mode: `tool` is a visual progress label, `choice` is a
+            // tap-only picker (never spoken — see the same reasoning as drafts), `message` is an id
+            // bookkeeping event, and `done` is handled by the reader loop.
+            case "tool":
+            case "choice":
+            case "message":
+            case "done":
+              return;
+            default: {
+              const unhandled: never = evt;
+              if (process.env.NODE_ENV !== "production") console.warn("[voice] unhandled event", unhandled);
+              return;
+            }
           }
         };
 

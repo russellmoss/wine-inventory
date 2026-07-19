@@ -48,3 +48,26 @@ export function proposalGate(item: ProposalCardInput): ProposalGate {
 
   return { canConfirm: false, reason, unresolvedCount: unresolved.length, blockingCount: blocking.length };
 }
+
+/**
+ * What voice mode says about a Draft (plan 081 U8). Reads the untyped `details` defensively — it comes
+ * off the wire and any write tool may produce it — and returns just enough to speak one sentence.
+ *
+ * Voice deliberately does NOT resolve draft fields by dictation: an email address or a lot code
+ * through STT is exactly where a wrong value gets committed, and a draft is where that is likeliest.
+ * It reads the gaps aloud and defers to the visual card.
+ */
+export function readDraftGaps(details: unknown): { unresolved: number; blocking: number; labels: string[] } {
+  const d = (details ?? {}) as { unresolved?: unknown; warnings?: unknown };
+  const unresolved = Array.isArray(d.unresolved) ? d.unresolved : [];
+  const warnings = Array.isArray(d.warnings) ? d.warnings : [];
+  const labels = unresolved
+    .map((u) => (u && typeof u === "object" ? (u as { label?: unknown }).label : null))
+    .filter((l): l is string => typeof l === "string" && !!l)
+    .slice(0, 3) // one spoken sentence, not a recital
+    .map((l) => l.toLowerCase());
+  const blocking = warnings.filter(
+    (w) => w && typeof w === "object" && (w as { severity?: unknown }).severity === "blocking",
+  ).length;
+  return { unresolved: unresolved.length, blocking, labels };
+}
