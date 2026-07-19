@@ -475,6 +475,53 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { material: "ZZCOST KMBS", active: false },
     note: "catalog toggle, history-safe (never a hard delete); reactivate = active:true",
   },
+
+  // ── Plan 080 U12: per-location consumable stock + costed equipment + hand-entered invoice ──
+  {
+    utterance: "Received 5 kg of Fermaid-O into the Lab at $12 a kilo",
+    tool: "receive_consumable",
+    args: { material: "Fermaid-O", qty: 5, location: "Lab", unitCost: 12 },
+    note: "receipt WITH a named location → the location-aware sibling of receive_supply",
+  },
+  {
+    utterance: "We're 2 kg short of bentonite in the Lab — cycle count",
+    tool: "adjust_consumable",
+    args: { material: "bentonite", delta: -2, location: "Lab", reason: "cycle count" },
+    note: "signed CORRECTION at a location; negative delta; reason required",
+  },
+  {
+    utterance: "Found 5 more kg of DAP in the Red Cellar",
+    tool: "adjust_consumable",
+    args: { material: "DAP", delta: 5, location: "Red Cellar", reason: "found stock" },
+    note: "positive correction — new lot priced at the weighted-avg, never $0",
+  },
+  {
+    utterance: "Move 5 kg of bentonite from the Lab to the Red Cellar",
+    tool: "transfer_consumable",
+    args: { material: "bentonite", qty: 5, fromLocation: "Lab", toLocation: "Red Cellar" },
+    note: "relocates EXISTING stock (FIFO lot-split) — not a receipt, not a correction",
+  },
+  {
+    utterance: "Add a new must pump, $4200 from Acme Cellar Supply",
+    tool: "add_equipment",
+    args: { name: "must pump", kind: "pump", purchaseCost: 4200, vendor: "Acme Cellar Supply" },
+    note: "an individually-tracked FIXED ASSET (WORKORDER-7) — parts bought by the box are consumables instead",
+  },
+  {
+    utterance:
+      "Add an invoice from Scott Labs, 5 kg Fermaid-O at $12 a kg and 10 kg bentonite at $4 a kg, $40 shipping, delivered to the Lab",
+    tool: "add_invoice",
+    args: {
+      vendor: "Scott Labs",
+      location: "Lab",
+      shipping: 40,
+      lines: [
+        { description: "Fermaid-O", qty: 5, unit: "kg", unitPrice: 12 },
+        { description: "bentonite", qty: 10, unit: "kg", unitPrice: 4 },
+      ],
+    },
+    note: "hand-entered invoice (no file) → stages + opens review; a FILE would be ingest_documents",
+  },
   {
     utterance: "Pull a sample from tank 5 and send it to ETS",
     tool: "pull_sample",

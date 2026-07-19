@@ -6,6 +6,7 @@ import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { resolveExactlyOne } from "./resolve";
+import { pickLocation } from "./location-picker";
 
 type AdjustInput = {
   item?: string;
@@ -44,23 +45,9 @@ async function resolveItem(item: string, vintage?: number): Promise<ResolvedItem
   return { kind: "FINISHED_GOOD", id: g.id, name: g.name, unitWord: "units" };
 }
 
-async function resolveLocation(location?: string): Promise<{ id: string; name: string }> {
-  const locs = await prisma.location.findMany({
-    where: { isActive: true, ...(location ? { name: { contains: location, mode: "insensitive" } } : {}) },
-    take: 10,
-    select: { id: true, name: true },
-  });
-  if (locs.length === 0) throw new Error(location ? `No location matches "${location}".` : "No active locations exist.");
-  if (location) {
-    return resolveExactlyOne(locs, {
-      describe: (l) => l.name,
-      noneMsg: `No location matches "${location}".`,
-      manyMsg: `Several locations match "${location}"`,
-    });
-  }
-  if (locs.length === 1) return locs[0];
-  throw new Error(`Which location? One of: ${locs.map((l) => l.name).join(", ")}.`);
-}
+// Plan 080 U12: location resolution now lives in the shared ./location-picker so every stock tool
+// (wine + consumables) resolves a location identically.
+const resolveLocation = (location?: string) => pickLocation(location);
 
 export const adjustInventoryTool: AssistantTool = {
   name: "adjust_inventory",

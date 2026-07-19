@@ -68,6 +68,12 @@ import { commitCreateCustomUnit } from "./tools/create-custom-unit";
 import { commitIngestDocuments } from "./tools/ingest-documents";
 import { commitReverseIntake } from "./tools/reverse-intake";
 import { commitMergeVendors } from "./tools/merge-vendors";
+// Plan 080 U12
+import { commitReceiveConsumable } from "./tools/receive-consumable";
+import { commitAdjustConsumable } from "./tools/adjust-consumable";
+import { commitTransferConsumable } from "./tools/transfer-consumable";
+import { commitAddEquipment } from "./tools/add-equipment";
+import { commitAddInvoice } from "./tools/add-invoice";
 
 // Static map of tool name -> committer. No side-effect registration, no import
 // cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
@@ -78,6 +84,11 @@ const COMMITTERS: Record<string, Committer> = {
   log_harvest_pick: commitLogHarvestPick,
   delete_harvest_pick: commitDeleteHarvestPick,
   adjust_inventory: commitAdjustInventory,
+  receive_consumable: commitReceiveConsumable,
+  adjust_consumable: commitAdjustConsumable,
+  transfer_consumable: commitTransferConsumable,
+  add_equipment: commitAddEquipment,
+  add_invoice: commitAddInvoice,
   rack_wine: commitRackWine,
   add_addition: commitAddAddition,
   record_measurement: commitRecordMeasurement,
@@ -124,6 +135,15 @@ const COMMITTERS: Record<string, Committer> = {
   reverse_intake: commitReverseIntake,
   merge_vendors: commitMergeVendors,
 };
+
+/**
+ * The tool names that have a registered committer. Exported ONLY so the eval harness can assert that every
+ * `kind:"write"` tool in the registry is actually commit-able — a write tool registered without a committer
+ * looks fine until a user confirms it and hits "That action can no longer be applied."
+ */
+export function committerToolNames(): string[] {
+  return Object.keys(COMMITTERS);
+}
 
 /**
  * Verify a confirmation token, burn its nonce (single-use, BEFORE committing so a
