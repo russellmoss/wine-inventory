@@ -39,6 +39,7 @@ interface RetrievalCase {
 }
 
 const RETRIEVAL_CASES: RetrievalCase[] = [
+  { q: "What is a good pre-infection fungicide I can use for downy mildew?", expectPaths: ["managing-downy-mildew", "downy-mildew"], expectFact: ["copper", "mancozeb"] },
   { q: "Are group 11 strobilurin good fungicides to use against downy mildew and powdery mildew?", expectPaths: ["s1482.pdf"], expectFact: ["resistance"] },
   { q: "What is the most effective way to remove the aromas from Brett?", expectPaths: ["Brett-fact-sheet.pdf", "brettanomyces"], expectFact: ["reverse osmosis"] },
   { q: "What is the most effective way to sanitize barrels against Brett?", expectPaths: ["Brett-fact-sheet.pdf", "barrel-cleaning-storage-and-maintenance", "brettanomyces-faq"], expectFact: ["70", "85"] },
@@ -48,8 +49,8 @@ const RETRIEVAL_CASES: RetrievalCase[] = [
   { q: "Does the carbon product used for smoke aroma reduction matter?", expectPaths: ["activated-carbon.pdf"], expectFact: ["carbon"] },
 ];
 
-// PENDING the Wine Australia fan-out (source not crawled in the AWRI slice).
-const PENDING_WA = "What is a good pre-infection fungicide I can use for Downy Mildew? (Wine Australia — pending fan-out)";
+// The Wine Australia downy-mildew question (CSV #1) is now scored above — WA is crawled (HTML) + its
+// /getmedia extension PDFs are indexed, so all 8 CSV retrieval questions are covered.
 
 // Handled by the existing calculators, NEVER the KB (routing checks).
 const CALC_ROUTING = [
@@ -144,7 +145,7 @@ async function main() {
   console.log("\n— routing checks (handled by calculators, not the KB) —");
   for (const r of CALC_ROUTING) console.log(`  · ${r}`);
   console.log("  (asserted structurally: these are calc-tool questions; the KB tool description defers math)");
-  console.log(`\n— pending fan-out —\n  · ${PENDING_WA}`);
+  console.log(`\n(all 8 CSV retrieval questions scored — Wine Australia downy-mildew now covered via its /getmedia PDFs)`);
 
   console.log(`\n${failed === 0 ? "ALL KNOWLEDGE-BASE CHECKS PASSED ✓" : "KNOWLEDGE-BASE CHECKS FAILED ✗"} (${passed} passed, ${failed} failed)`);
   await disconnectSystem();
