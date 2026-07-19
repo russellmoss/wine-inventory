@@ -223,12 +223,22 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     tier: 1,
     license: "UMC Champagne elaboration encyclopedia (French) — reference use with citation + link back.",
     // The méthode champenoise authority: cuvée → tirage → prise de mousse → sur lies → dégorgement → dosage.
-    // Whole site is Champagne-topical; allow the technical "connaissance du champagne" half, deny the pure
-    // history half + the /en/ duplicate. Non-www is canonical (www 301→apex). Honor Crawl-delay 1.
-    seedRoots: ["https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/"],
+    // SCOPED to the physical-winemaking chapters (9 vigne, 10 vendanges/pressurage, 11 élaboration) — the
+    // broader "connaissance du champagne" prefix pulled 867 URLs that are mostly SPIP aliases of ~181
+    // articles (the same article under every chapter breadcrumb). Combined with the index-time alias dedup,
+    // this keeps UMC focused on wine production. Non-www canonical (www 301→apex). Honor Crawl-delay 1.
+    seedRoots: [
+      "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-11-l-elaboration-du-champagne/",
+      "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-10-les-vendanges-et-le-pressurage/",
+      "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-9-la-vigne-et-sa-culture/",
+    ],
     sitemapUrls: ["https://maisons-champagne.com/sitemap.xml"],
-    allowPrefixes: ["/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/"],
-    denyPrefixes: ["/en/", "/fr/encyclopedies/histoire-du-champagne/premiere-partie-histoire-du-champagne/", "/local/", "/ecrire/", "/prive/", "/plugins", "/lib/", "/squelettes"],
+    allowPrefixes: [
+      "/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-9-la-vigne-et-sa-culture/",
+      "/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-10-les-vendanges-et-le-pressurage/",
+      "/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-11-l-elaboration-du-champagne/",
+    ],
+    denyPrefixes: ["/en/", "/local/", "/ecrire/", "/prive/", "/plugins", "/lib/", "/squelettes"],
     crawlCadence: "monthly",
     defaultEnabled: true,
   },
