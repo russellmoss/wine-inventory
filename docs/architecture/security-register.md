@@ -423,9 +423,34 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟡 (Phase 2 built; **Sentry server-side data-scrubbing rules not yet configured** — the
   outstanding prerequisite before any real-tenant use).
 
+### Plan 080 (unified inventory) — the consumables Location FK had to become composite (2026-07-19)
+- **What:** `supply_lot.locationId` and `material_movement.locationId` now use COMPOSITE-tenant FKs
+  `(tenantId, locationId) → location(tenantId, id)`, backed by a new `@@unique([tenantId, id])` on
+  `location`. Plan 080 U1 originally shipped them as SIMPLE FKs → `location(id)`, mirroring
+  `bottled_inventory` / `stock_movement`, because `location` had no composite target to point at.
+- **Why:** the U13a tenant-isolation case proved the consequence — a `supply_lot` in tenant B could be
+  pinned to tenant A's `Location`. RLS hides other tenants' locations from the `app_rls` role, so this was
+  NOT reachable through the app; the gap was that the DATABASE didn't enforce it, leaving a
+  defense-in-depth hole against a bug, a raw insert, or an owner/BYPASSRLS script. Phase-12 checklist
+  step 5 requires a cross-tenant-risk FK to be composite, so the simple FK was a spec deviation.
+- **What breaks at scale:** nothing performance-wise (one extra unique index on a small table). The real
+  risk was silent: a mis-scoped write would have created inventory that reads as belonging to one tenant
+  while physically located in another's cellar, and no constraint would have complained.
+- **Tripwire:** a NEW table referencing `location` (or any tenant-scoped parent) with a bare
+  `REFERENCES location("id")`. Note the SAME latent gap still exists on the older
+  `bottled_inventory` / `finished_good_inventory` / `stock_movement` / `bottling_run` location FKs — they
+  predate this and were not migrated here (out of scope for plan 080, no known cross-tenant rows).
+  **Watched follow-up.** Proof: `verify:tenant-isolation` now asserts the rejection explicitly.
+- **Status:** 🟢 (closed for the consumables path in plan 080 U13a, migration
+  `20260719140000_location_composite_tenant_fk`; 0 cross-tenant rows verified before enforcing).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
-- _(none yet)_
+- **Legacy `location` FKs are still simple, not composite** — `bottled_inventory`,
+  `finished_good_inventory`, `stock_movement`, `bottling_run`, `bottled_lot_state` reference
+  `location(id)` without the tenant column, the same gap plan 080 U13a closed for consumables. RLS covers
+  the app path; the DB does not enforce it. Low severity, defense-in-depth only. Fix = the same
+  drop/re-add-composite migration now that `location(tenantId, id)` exists.
 
 ---
 *Seeded 2026-07-02 from the live RLS/auth setup. The security-posture loop keeps it honest — see [[AUTOMATION]].*

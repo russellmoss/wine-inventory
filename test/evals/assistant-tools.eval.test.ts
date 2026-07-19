@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getToolsFor, type AssistantTool } from "@/lib/assistant/registry";
 import { ASSISTANT_WRITE_GOLDEN } from "./assistant-write-tools.golden";
+import { committerToolNames } from "@/lib/assistant/commit";
 import { ASSISTANT_READ_GOLDEN } from "./assistant-read-tools.golden";
 
 /**
@@ -102,6 +103,24 @@ describe("H8 structural eval — golden cases match the real tool registry", () 
       ungoverned,
       `write tool(s) with no golden case and not in UNCOVERED_OK — add a case to assistant-write-tools.golden.ts: ${ungoverned.join(", ")}`,
     ).toEqual([]);
+  });
+
+  // Plan 080 U12: a write tool is only half-shipped without a committer. Registering one and forgetting the
+  // COMMITTERS entry passes every other check — the tool appears, the model calls it, the preview renders —
+  // and only fails when the user finally hits Confirm ("That action can no longer be applied."). Guard it.
+  it("every write tool has a registered committer (a confirm with no committer dead-ends the user)", () => {
+    const committers = new Set(committerToolNames());
+    const missing = WRITE_TOOL_NAMES.filter((n) => !committers.has(n));
+    expect(
+      missing,
+      `write tool(s) with no entry in COMMITTERS (src/lib/assistant/commit.ts) — confirming one would fail: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("no committer is registered for a tool that no longer exists", () => {
+    const all = new Set(TOOLS.map((t) => t.name));
+    const stale = committerToolNames().filter((n) => !all.has(n));
+    expect(stale, `COMMITTERS names tools that are not in the registry: ${stale.join(", ")}`).toEqual([]);
   });
 
   it("UNCOVERED_OK does not list stale/nonexistent write tools", () => {

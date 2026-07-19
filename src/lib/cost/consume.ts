@@ -1,6 +1,6 @@
 import type { Prisma, CostBasisCompleteness, CostingMethod } from "@prisma/client";
-import { planDepletion, type SupplyLotView, type DepletionPlan } from "@/lib/cost/deplete";
-import { round8 } from "@/lib/cost/rollup";
+import { planDepletion, weightedAvgUnitCost, type SupplyLotView, type DepletionPlan } from "@/lib/cost/deplete";
+import { round8, mergeCompleteness } from "@/lib/cost/rollup";
 import { convert } from "@/lib/units/measure";
 
 // Phase 8 (Unit 3) — the in-tx adapter that turns an ADDITION/FINING material dose into supply
@@ -30,6 +30,16 @@ export type DepleteSupplyInput = {
   qtyInStock: number;
   method: CostingMethod;
   policyVersion: number;
+  /**
+   * Plan 080 U2 — location-scoped depletion. When set, the draw is confined to THIS location's open lots
+   * and, if they can't cover it, the shortfall is booked at the material's weighted-average cost (KNOWN,
+   * COST-2) against ONE negative "reconcile" SupplyLot written at this location (qtyRemaining = −shortfall).
+   * That negative lot is INERT to all FIFO/WA math (both filter qtyRemaining > 0) — it only drags the
+   * location's on-hand sum negative, the "needs cycle-count" signal, until a later receipt nets it. Omit
+   * (the legacy dosing path) → the draw is location-agnostic and a shortfall stays unsourced/UNKNOWN,
+   * byte-identical to the pre-Plan-080 behaviour (verify:cost 55/55).
+   */
+  locationId?: string | null;
 };
 
 /**
@@ -43,8 +53,10 @@ export type DepleteSupplyInput = {
  * truth. Behaviour is locked by the characterization tests in `test/cost-consume.test.ts`.
  */
 export async function depleteSupplyLotsTx(tx: Prisma.TransactionClient, input: DepleteSupplyInput): Promise<DepletionPlan> {
+  // Plan 080 U2: a location-scoped draw is confined to that location's open lots (the legacy dosing path
+  // passes no location → the material-wide set, unchanged).
   const available = await tx.supplyLot.findMany({
-    where: { materialId: input.materialId, qtyRemaining: { gt: 0 } },
+    where: { materialId: input.materialId, qtyRemaining: { gt: 0 }, ...(input.locationId ? { locationId: input.locationId } : {}) },
     select: { id: true, qtyRemaining: true, unitCost: true, receivedAt: true },
   });
   const lots: SupplyLotView[] = available.map((l) => ({
@@ -70,6 +82,83 @@ export async function depleteSupplyLotsTx(tx: Prisma.TransactionClient, input: D
         policyVersion: input.policyVersion,
       },
     });
+  }
+
+  // Plan 080 U2 — negative-reconcile (location mode only, and only when this location can't cover the draw).
+  // A consumption booked past a location's on-hand is TRUTHFUL ("used here, owe a receipt"), not a silent
+  // cross-location pull (which would fabricate location balances) and not a $0 (COST-2). We:
+  //   1. price the shortfall at the material's weighted-avg — this LOCATION's priced lots first (from the
+  //      pre-draw snapshot), else tenant-wide priced open lots — so COGS stays KNOWN;
+  //   2. write ONE negative SupplyLot at this location carrying the deficit (qtyRemaining = −shortfall). It
+  //      is inert to every FIFO/WA computation (they filter qtyRemaining > 0) and simply drags this
+  //      location's on-hand sum negative — the "needs cycle-count reconciliation" signal;
+  //   3. book a SupplyConsumption for the shortfall AGAINST that negative lot (no further decrement — the lot
+  //      is born at −shortfall), so the dose's MATERIAL cost is fully captured (COST-1 conservation).
+  if (input.locationId && plan.shortfall > 1e-9) {
+    const shortfall = plan.shortfall;
+    // (1) weighted-avg price: location-first (pre-draw snapshot), tenant-wide fallback.
+    let reconcileUnitCost = weightedAvgUnitCost(lots);
+    if (reconcileUnitCost == null) {
+      const tenantPriced = await tx.supplyLot.findMany({
+        where: { materialId: input.materialId, qtyRemaining: { gt: 0 }, unitCost: { not: null } },
+        select: { id: true, qtyRemaining: true, unitCost: true, receivedAt: true },
+      });
+      reconcileUnitCost = weightedAvgUnitCost(
+        tenantPriced.map((l) => ({ id: l.id, qtyRemaining: Number(l.qtyRemaining), unitCost: l.unitCost == null ? null : Number(l.unitCost), receivedAt: l.receivedAt.getTime() })),
+      );
+    }
+    const [material, settings] = await Promise.all([
+      tx.cellarMaterial.findUnique({ where: { id: input.materialId }, select: { stockUnit: true } }),
+      tx.appSettings.findFirst({ select: { currency: true } }),
+    ]);
+    // (2) the negative reconcile lot — the physical deficit at this location.
+    const reconcileLot = await tx.supplyLot.create({
+      data: {
+        materialId: input.materialId,
+        qtyReceived: 0,
+        qtyRemaining: round8(-shortfall),
+        stockUnit: material?.stockUnit ?? "unit",
+        unitCost: reconcileUnitCost,
+        currency: settings?.currency ?? "USD",
+        locationId: input.locationId,
+        policyVersion: input.policyVersion,
+        supplierNote: "Negative reconcile — consumed past on-hand at this location",
+      },
+      select: { id: true },
+    });
+    // (3) book the shortfall at the reconcile price (KNOWN when priced; UNKNOWN only if the material has no
+    // priced lot anywhere — COST-2, never a silent $0). No decrement: the lot already holds −shortfall.
+    const extended = reconcileUnitCost != null ? round8(shortfall * reconcileUnitCost) : null;
+    // Completeness of the DRAWN portion alone (re-plan with no shortfall so planDepletion's shortfall→UNKNOWN
+    // taint doesn't apply), merged with the reconcile price's knownness.
+    const drawableQty = round8(lots.reduce((s, l) => s + Math.max(0, l.qtyRemaining), 0));
+    const reconcileCompleteness = reconcileUnitCost != null ? "KNOWN" : "UNKNOWN";
+    // When NOTHING was drawable, the reconcile IS the whole draw — merging in a KNOWN that no slice earned
+    // would dilute a fully-unpriced draw to PARTIAL and understate the taint (COST-2).
+    const completeness =
+      drawableQty > 1e-9
+        ? mergeCompleteness(planDepletion(lots, drawableQty, input.method).completeness, reconcileCompleteness)
+        : reconcileCompleteness;
+    await tx.supplyConsumption.create({
+      data: {
+        operationId: input.operationId,
+        supplyLotId: reconcileLot.id,
+        qty: round8(shortfall),
+        unitCost: reconcileUnitCost,
+        extendedCost: extended,
+        methodUsed: input.method,
+        basisCompleteness: completeness,
+        policyVersion: input.policyVersion,
+      },
+    });
+    // Fold the reconcile slice into the returned plan: the draw is now fully sourced at a KNOWN basis.
+    return {
+      lines: [...plan.lines, { supplyLotId: reconcileLot.id, qty: round8(shortfall), unitCost: reconcileUnitCost, extendedCost: extended }],
+      totalCost: round8(plan.totalCost + (extended ?? 0)),
+      drawn: round8(plan.drawn + shortfall),
+      shortfall: 0,
+      completeness,
+    };
   }
 
   return plan;
