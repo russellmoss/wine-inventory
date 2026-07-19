@@ -421,6 +421,10 @@ export type TaskBuild = {
   // resolver). Rides as a first-class CreateTaskInput column (the WorkOrderTask.priority column already
   // persists via lifecycle.ts). Omitted → null (defaults to NORMAL in the UI). NOT a plannedPayload key.
   priority?: string | null;
+  // Crew guidance carried from a template seed (template-to-builder.ts). The spec path
+  // (instantiateTasksFromSpec) has always persisted a task's `instructions`; this lets the BUILDER path
+  // do the same, so seeding a template into the builder doesn't quietly drop it. Omitted → null.
+  instructions?: string | null;
 };
 
 /** Instantiate an explicit flat list of task builds into CreateTaskInput[] (validates each taskType +
@@ -448,7 +452,7 @@ export function instantiateTaskBuilds(builds: TaskBuild[], vocab: ResolvedTaskVo
       opType: def.opType ?? null,
       observationType: def.observationType ?? null,
       activityType: def.activityType ?? null,
-      instructions: null,
+      instructions: b.instructions?.trim() || null,
       sourceVesselId: canon.sourceVesselId,
       destVesselId: canon.destVesselId,
       lotId: canon.lotId,
