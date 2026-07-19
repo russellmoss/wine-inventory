@@ -8,6 +8,7 @@ import { completeTaskAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { loadCrushFormData } from "@/lib/ferment/crush-data";
 import { loadPressFormData } from "@/lib/ferment/press-data";
+import { resolveWeightKg, describeWeight } from "../weight";
 
 // Assistant-coverage Wave 1 #3 (Slices A+B) — complete a work-order task by chat. Wraps
 // completeTaskAction → completeTaskCore (no re-implemented logic, no db_*).
@@ -36,6 +37,8 @@ type CompleteTaskRawInput = {
   // crush task only
   block?: string;
   kg?: number;
+  weightUnit?: string;
+  destemmed?: boolean;
   destVessel?: string;
   outputL?: number;
   crusherOn?: boolean;
@@ -79,11 +82,23 @@ function buildSimplePayload(task: ResolvedTask, input: CompleteTaskRawInput): { 
 
 /** Simple crush by chat: one covering pick + dest + measured output. Otherwise deep-link. */
 async function buildCrushPayload(task: ResolvedTask, input: CompleteTaskRawInput) {
-  const kg = num(input.kg);
+  const rawKg = num(input.kg);
   const outputL = num(input.outputL);
-  if (!input.block || kg == null || !input.destVessel || outputL == null) {
-    return deepLinkForm(task, "A de-stem/crush needs the harvest pick(s) + kg, destination and measured output volume.");
+  if (!input.block || rawKg == null || !input.destVessel || outputL == null) {
+    return deepLinkForm(task, "A de-stem/crush needs the harvest pick(s) + weight, destination and measured output volume.");
   }
+  // DETERMINISTIC unit conversion (issue #311): `kg` is the number the user said in `weightUnit` (default
+  // kg). Resolve to canonical kg HERE instead of trusting the model's mental ton→kg math ("2 tons" came
+  // out as 1000 kg). An unrecognized unit fails closed rather than writing a fabricated weight.
+  const resolvedWeight = resolveWeightKg(rawKg, input.weightUnit);
+  if (resolvedWeight == null) {
+    throw new Error(`Unrecognized weight unit "${input.weightUnit}". Use kg, lb, ton (US short ton), or tonne (metric).`);
+  }
+  const kg = resolvedWeight.kg;
+  // Whether the fruit is de-stemmed is an ATYPICAL-op lever: white grapes / whole-cluster fruit are often
+  // NOT de-stemmed. Default stays true (the common red-crush case) but the model can set it, and either way
+  // the process is spelled out in the confirm summary so a wrong assumption is visible before it's written.
+  const destemmed = input.destemmed ?? true;
   const { blocks } = await loadCrushFormData();
   const needle = norm(input.block);
   const block = blocks.find((b) => { const h = norm(b.label); return h === needle || h.includes(needle) || needle.includes(h); });
@@ -98,19 +113,27 @@ async function buildCrushPayload(task: ResolvedTask, input: CompleteTaskRawInput
   }
   const dest = await resolveVessel(input.destVessel);
   if (!dest.isActive) throw new Error(`${dest.type === "BARREL" ? "Barrel" : "Tank"} ${dest.code} is inactive.`);
+  const crusherOn = input.crusherOn ?? true;
   const payload: Record<string, unknown> = {
     picks: [{ pickId: covering[0].pickId, consumedKg: kg }],
     destVesselId: dest.id,
     outputVolumeL: outputL,
     vintage: block.vintageYear,
     ...(block.varietyId ? { varietyId: block.varietyId } : {}),
-    destemmed: true,
-    crusherOn: input.crusherOn ?? true,
+    destemmed,
+    crusherOn,
     ...(num(input.crushedPct) != null ? { crushedPct: input.crushedPct } : {}),
     ...(num(input.mustTempC) != null ? { mustTempC: input.mustTempC } : {}),
   };
   const yieldLt = kg > 0 ? Math.round((outputL / kg) * 1000 * 100) / 100 : null;
-  return { payload, summary: `de-stem ${kg} kg from ${block.label} into ${dest.type === "BARREL" ? "Barrel" : "Tank"} ${dest.code} → ${outputL} L${yieldLt != null ? ` (${yieldLt} L/t)` : ""}` };
+  // Spell out the process (de-stem/whole-cluster, crusher on/off, % crushed) so an atypical setting — e.g.
+  // whole-cluster or a white not de-stemmed — is visible on the confirm card, not silently assumed.
+  const process = [
+    destemmed ? "de-stemmed" : "NOT de-stemmed (whole-cluster)",
+    crusherOn ? (num(input.crushedPct) != null ? `crusher on ${input.crushedPct}%` : "crusher on") : "crusher off",
+  ].join(", ");
+  const dest_ = dest.type === "BARREL" ? "Barrel" : "Tank";
+  return { payload, summary: `crush ${describeWeight(resolvedWeight)} from ${block.label} into ${dest_} ${dest.code} → ${outputL} L${yieldLt != null ? ` (${yieldLt} L/t)` : ""} [${process}]` };
 }
 
 /** Simple press by chat: a pressable must lot + a short fraction list. Otherwise deep-link. */
@@ -158,8 +181,10 @@ export const completeTaskTool: AssistantTool = {
       reading: { type: "number", description: "Observation task: the reading value (Brix/panel)." },
       note: { type: "string", description: "Completion note." },
       reason: { type: "string", description: "Deviation reason, if the actual differed from planned." },
-      block: { type: "string", description: "Crush task only: the harvest block being de-stemmed, e.g. 'Block 3'." },
-      kg: { type: "number", description: "Crush task only: kilograms of fruit crushed." },
+      block: { type: "string", description: "Crush task only: the harvest block being crushed, e.g. 'Block 3'." },
+      kg: { type: "number", description: "Crush task only: the fruit weight crushed, as the RAW number the user said in `weightUnit` (default kg). Do NOT convert tons to kg yourself — pass e.g. 2 with weightUnit 'tons' and the tool converts." },
+      weightUnit: { type: "string", description: "Crush task only: the unit of `kg`, as the user stated it: 'kg' (default), 'lb', 'ton'/'tons' (US short ton), or 'tonne'/'metric ton'/'t'. The tool converts to kg." },
+      destemmed: { type: "boolean", description: "Crush task only: whether the fruit is de-stemmed (default true). Set false for whole-cluster fruit (common for whites / an atypical crush) — do not assume true when the user says whole-cluster or names a white variety." },
       destVessel: { type: "string", description: "Crush task only: destination vessel for the must, e.g. 'tank 5'." },
       outputL: { type: "number", description: "Crush task only: measured must volume out (L)." },
       crusherOn: { type: "boolean", description: "Crush task only: crusher rollers engaged (default true)." },

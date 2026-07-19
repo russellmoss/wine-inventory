@@ -67,6 +67,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "the fruit weigh-in stage; only weight is required, Brix/pH/TA are optional",
   },
   {
+    utterance: "Weigh in 2 tons off Block 1",
+    tool: "log_harvest_pick",
+    args: { weight: 2, unit: "tons", block: "Block 1" },
+    note: "issue #311 — pass the RAW number + the stated unit; the tool converts tons→kg (2 short tons = 1,814.37 kg). The model must NOT pre-convert (it silently produced 1000 kg). weight is the raw 2, not a kilogram figure.",
+  },
+  {
     utterance: "Delete the 24.5 brix reading on Block 3 from 2024-09-15",
     tool: "delete_brix",
     args: { block: "Block 3", brixValue: 24.5, recordedAt: "2024-09-15" },
@@ -309,6 +315,18 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     tool: "complete_task",
     args: { wo: 150, block: "Block 3", kg: 2000, destVessel: "tank 5", outputL: 1400 },
     note: "simple crush by chat; a multi-pick/complex one deep-links the execute form",
+  },
+  {
+    utterance: "Complete the crush on WO 150 — Block 3, 2 tons into tank 5, got 1400 L",
+    tool: "complete_task",
+    args: { wo: 150, block: "Block 3", kg: 2, weightUnit: "tons", destVessel: "tank 5", outputL: 1400 },
+    note: "issue #311 — crush weight given in tons: pass kg=2 (the raw number) + weightUnit='tons'; the tool converts to canonical kg (1,814.37 kg). The model must NOT do the ton→kg math itself.",
+  },
+  {
+    utterance: "Complete the crush on WO 151 — Block 4 Chardonnay, whole cluster, 1 ton into press P1, got 600 L",
+    tool: "complete_task",
+    args: { wo: 151, block: "Block 4 Chardonnay", kg: 1, weightUnit: "ton", destemmed: false, destVessel: "press P1", outputL: 600 },
+    note: "issue #311 — atypical/white whole-cluster crush: destemmed=false must be set (not the true default), and the ton weight passes through weightUnit. The confirm card spells out 'NOT de-stemmed (whole-cluster)'.",
   },
   {
     utterance: "Complete the punchdown on tank 1",
