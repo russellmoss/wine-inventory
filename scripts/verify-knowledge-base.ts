@@ -142,6 +142,21 @@ async function main() {
     assert(!onTopic, `rejection: ${r.q.slice(0, 50)}`, onTopic ? "surfaced off-topic content" : "");
   }
 
+  console.log("\n— source diversity / conflict-surfacing (Unit 9) —");
+  {
+    // a topic BOTH AWRI and Wine Australia cover should surface passages from >1 publisher, so the
+    // assistant can present each authority's view rather than silently picking one.
+    const q = "managing downy mildew in the vineyard";
+    const passages = await retrieveKnowledge({ tenantId: TENANT, query: q, topK: 8 });
+    const publishers = new Set(passages.map((p) => p.publisher));
+    const dated = passages.filter((p) => p.publishedAt).length;
+    assert(publishers.size >= 2, `diversity: dual-coverage query surfaces >=2 publishers`, `saw: ${[...publishers].join(", ")}`);
+    console.log(`  (${passages.length} passages, ${publishers.size} publishers, ${dated} with a date)`);
+    if (process.env.KB_EVAL_JUDGE === "1") {
+      await optionalJudge("conflict-surfacing", `${q} — do AWRI and Wine Australia agree, and if not what does each recommend?`, passages);
+    }
+  }
+
   console.log("\n— routing checks (handled by calculators, not the KB) —");
   for (const r of CALC_ROUTING) console.log(`  · ${r}`);
   console.log("  (asserted structurally: these are calc-tool questions; the KB tool description defers math)");

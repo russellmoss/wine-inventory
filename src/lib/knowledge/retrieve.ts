@@ -32,6 +32,7 @@ interface Row {
   tier: number;
   canonicalUrl: string;
   publishedAt: Date | null;
+  sitemapLastmod: Date | null;
   embeddingText: string;
 }
 
@@ -63,7 +64,7 @@ export async function retrieveKnowledge(opts: {
   // Dense arm: cosine nearest neighbors.
   const dense = await prisma.$queryRaw<Row[]>`
     SELECT c."id" AS "chunkId", c."documentId", c."sectionPath", c."text",
-           d."publisher", d."tier", d."canonicalUrl", d."publishedAt",
+           d."publisher", d."tier", d."canonicalUrl", d."publishedAt", d."sitemapLastmod",
            c."embedding"::text AS "embeddingText"
     FROM "knowledge_chunk" c
     JOIN "knowledge_document" d ON d."id" = c."documentId"
@@ -77,7 +78,7 @@ export async function retrieveKnowledge(opts: {
   // Lexical arm: full-text over the generated tsvector (with synonym expansion for acronyms/units).
   const lexical = await prisma.$queryRaw<Row[]>`
     SELECT c."id" AS "chunkId", c."documentId", c."sectionPath", c."text",
-           d."publisher", d."tier", d."canonicalUrl", d."publishedAt",
+           d."publisher", d."tier", d."canonicalUrl", d."publishedAt", d."sitemapLastmod",
            c."embedding"::text AS "embeddingText"
     FROM "knowledge_chunk" c
     JOIN "knowledge_document" d ON d."id" = c."documentId"
@@ -106,7 +107,8 @@ export async function retrieveKnowledge(opts: {
     publisher: r.publisher,
     tier: r.tier,
     canonicalUrl: r.canonicalUrl,
-    publishedAt: r.publishedAt,
+    // effective date for conflict-surfacing: the page's published date, else the sitemap lastmod
+    publishedAt: r.publishedAt ?? r.sitemapLastmod,
     sectionPath: r.sectionPath,
     text: r.text,
   }));

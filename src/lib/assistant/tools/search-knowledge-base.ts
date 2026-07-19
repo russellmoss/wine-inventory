@@ -31,7 +31,12 @@ export const searchKnowledgeBaseTool: AssistantTool = {
     "5. For a 'what should I TARGET and how much do I ADD' question, FIRST use this tool to find the " +
     "target/threshold, THEN pass that target into the calculator tool. Chain them.\n" +
     "6. If nothing returned actually answers the question, say you don't have a sourced answer rather than " +
-    "guessing from general knowledge.",
+    "guessing from general knowledge.\n" +
+    "7. CONFLICTS: when passages from different sources (or authors) give DIFFERENT recommendations, do NOT " +
+    "average them or silently pick one. Present BOTH positions attributed to their source with tier and " +
+    "date, e.g. 'AWRI (tier 1, 2022) recommends X; Wine Australia (tier 1, 2010) recommends Y', note which " +
+    "is more recent, and let the winemaker make the call. Genuine disagreement between authorities is useful " +
+    "signal, not noise.",
   kind: "read",
   inputSchema: {
     type: "object",
