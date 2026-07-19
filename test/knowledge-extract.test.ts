@@ -1,6 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { extractHtml } from "@/lib/knowledge/extract/html";
-import { extractDocument } from "@/lib/knowledge/extract";
+import { extractDocument, sanitizeText } from "@/lib/knowledge/extract";
+
+describe("sanitizeText (Postgres NUL/control-byte safety)", () => {
+  it("strips NUL and other C0 control bytes but keeps tab/newline/CR and normal text", () => {
+    const dirty = `Sanitize at 85${String.fromCharCode(0)}C\tfor 30\nmin${String.fromCharCode(7)}.`;
+    const clean = sanitizeText(dirty);
+    expect(clean).not.toContain(String.fromCharCode(0));
+    expect(clean).not.toContain(String.fromCharCode(7));
+    expect(clean).toContain("\t");
+    expect(clean).toContain("\n");
+    expect(clean).toBe("Sanitize at 85C\tfor 30\nmin.");
+  });
+});
 
 const ARTICLE = `<!DOCTYPE html><html><head><title>Barrel sanitation against Brett</title></head>
 <body>

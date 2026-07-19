@@ -19,26 +19,34 @@ async function main() {
   let indexed = 0;
   let chunks = 0;
   let skipped = 0;
+  let errors = 0;
 
   const result = await crawlWithFollowing(sources, {
     maxDocs,
     delayMs: 1000,
     onDocument: async (doc) => {
-      const r = await indexDocument({
-        documentId: doc.documentId, bytes: doc.bytes, contentType: doc.contentType,
-        url: doc.canonicalUrl, contentHash: doc.contentHash,
-      });
-      if (r.skipped) skipped++;
-      else {
-        indexed++;
-        chunks += r.chunks;
+      // per-document isolation: one bad document must NEVER abort the whole crawl.
+      try {
+        const r = await indexDocument({
+          documentId: doc.documentId, bytes: doc.bytes, contentType: doc.contentType,
+          url: doc.canonicalUrl, contentHash: doc.contentHash,
+        });
+        if (r.skipped) skipped++;
+        else {
+          indexed++;
+          chunks += r.chunks;
+        }
+      } catch (e) {
+        errors++;
+        console.log(`  ! index failed for ${doc.canonicalUrl}: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
       }
-      if ((indexed + skipped) % 25 === 0) {
+      if ((indexed + skipped + errors) % 25 === 0) {
         const mins = ((Date.now() - t0) / 60000).toFixed(1);
-        console.log(`  [${mins}m] ${indexed} indexed (${chunks} chunks), ${skipped} skipped/unchanged`);
+        console.log(`  [${mins}m] ${indexed} indexed (${chunks} chunks), ${skipped} skipped, ${errors} errors`);
       }
     },
   });
+  console.log(`index errors: ${errors}`);
 
   const mins = ((Date.now() - t0) / 60000).toFixed(1);
   console.log(`\ndone in ${mins} min — indexed=${indexed} chunks=${chunks} skipped=${skipped} hitCap=${result.hitCap} candidateDomains=${result.candidateDomains}`);
