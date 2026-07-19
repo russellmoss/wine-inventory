@@ -400,7 +400,7 @@ async function persistDocument(
 export async function crawlUrls(
   sourceKey: string,
   urls: string[],
-  opts: { onDocument?: (doc: CrawledDoc) => Promise<void> } = {},
+  opts: { onDocument?: (doc: CrawledDoc) => Promise<void>; ignoreRobots?: boolean; delayMs?: number } = {},
 ): Promise<CrawlSummary> {
   const cfg = findSourceConfig(sourceKey);
   if (!cfg) throw new Error(`unknown source: ${sourceKey}`);
@@ -424,14 +424,19 @@ export async function crawlUrls(
       summary.errors++;
       continue;
     }
-    let robotsOk = true;
-    try {
-      robotsOk = await isAllowedByRobots(url, isAllowedHost);
-    } catch {
-      robotsOk = true;
+    // ignoreRobots is ONLY set by an explicit, operator-directed targeted fetch of specific documents
+    // (never the default crawl). It still respects host allowlist + SSRF + a polite per-host delay.
+    if (!opts.ignoreRobots) {
+      let robotsOk = true;
+      try {
+        robotsOk = await isAllowedByRobots(url, isAllowedHost);
+      } catch {
+        robotsOk = true;
+      }
+      if (!robotsOk) { summary.skippedRobots++; continue; }
     }
-    if (!robotsOk) { summary.skippedRobots++; continue; }
-    const delay = Math.max(DEFAULT_DELAY_MS, await getCrawlDelayMs(new URL(url).origin, isAllowedHost).catch(() => 0));
+    const baseDelay = opts.delayMs ?? DEFAULT_DELAY_MS;
+    const delay = Math.max(baseDelay, await getCrawlDelayMs(new URL(url).origin, isAllowedHost).catch(() => 0));
     await throttle.wait(host, delay);
 
     const existing = await runAsSystem((db) =>
