@@ -77,10 +77,13 @@ export async function crawlSource(
   if (!sourceRow) throw new Error(`source ${sourceKey} not seeded — run: npm run seed:knowledge-sources`);
   const sourceId = sourceRow.id;
 
-  // 1. Discover: sitemap(s) at the seed origin + the seed roots themselves.
+  // 1. Discover: sitemap(s) at the seed origin (or the source's explicit sitemapUrls) + the seed roots.
   const seedOrigin = new URL(cfg.seedRoots[0]).origin;
   let sitemapUrls: SitemapUrl[] = [];
-  for (const sm of [`${seedOrigin}/sitemap_index.xml`, `${seedOrigin}/sitemap.xml`]) {
+  const sitemapCandidates = cfg.sitemapUrls?.length
+    ? cfg.sitemapUrls
+    : [`${seedOrigin}/sitemap_index.xml`, `${seedOrigin}/sitemap.xml`];
+  for (const sm of sitemapCandidates) {
     sitemapUrls = await collectSitemapUrls(sm, isAllowedHost);
     if (sitemapUrls.length) break;
   }
@@ -268,7 +271,12 @@ export async function crawlWithFollowing(
     const cfg = findSourceConfig(key)!;
     for (const root of cfg.seedRoots) enqueue(root);
     const seedOrigin = new URL(cfg.seedRoots[0]).origin;
-    for (const sm of [`${seedOrigin}/sitemap_index.xml`, `${seedOrigin}/sitemap.xml`]) {
+    // Prefer an explicitly-configured sitemap (e.g. WordPress core /wp-sitemap.xml); otherwise probe the
+    // two standard locations. First one that yields URLs wins.
+    const sitemapCandidates = cfg.sitemapUrls?.length
+      ? cfg.sitemapUrls
+      : [`${seedOrigin}/sitemap_index.xml`, `${seedOrigin}/sitemap.xml`];
+    for (const sm of sitemapCandidates) {
       const urls = await collectSitemapUrls(sm, crawlableHost);
       if (urls.length) {
         for (const u of urls) enqueue(u.loc);

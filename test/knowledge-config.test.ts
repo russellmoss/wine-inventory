@@ -32,10 +32,17 @@ describe("knowledge source config", () => {
     }
   });
 
-  it("trusted domains include both apex and www for each source", () => {
+  it("every source's home domain is in the crawl allowlist", () => {
     for (const s of KNOWLEDGE_SOURCES) {
       expect(TRUSTED_DOMAIN_SET.has(s.homeDomain)).toBe(true);
-      expect(TRUSTED_DOMAIN_SET.has(`www.${s.homeDomain}`)).toBe(true);
+    }
+  });
+
+  it("apex sources also trust their www host (subdomain hosts have no www form)", () => {
+    // AWRI + Wine Australia pages link via the www host, so that variant must be followable too. Subdomain
+    // hosts (wine.wsu.edu, ir.library.oregonstate.edu) have no meaningful www form, so this is per-source.
+    for (const host of ["www.awri.com.au", "www.wineaustralia.com"]) {
+      expect(TRUSTED_DOMAIN_SET.has(host)).toBe(true);
     }
   });
 });

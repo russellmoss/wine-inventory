@@ -364,6 +364,20 @@ TEMPLATE — copy for each new invariant / finding:
   follow-up (acceptable for v1: global reference data only, no tenant reach, single-flight, reversible).
   The tombstone pass is gated to COMPLETE crawls (a capped/incomplete run can't distinguish "removed"
   from "not yet reached", so it self-suppresses rather than risk a wrong withdrawal).
+- **Source onboarding + robots posture:** every source is `KNOWLEDGE_SOURCES`-registered with its host in
+  `TRUSTED_DOMAINS` (the crawl boundary). Sources are one of two kinds: **auto-crawl** (sitemap +
+  link-following, e.g. AWRI/WA/WSU — WSU declares its non-standard `/wp-sitemap.xml` via `sitemapUrls`), or
+  **curated** (`autoCrawl:false` — a dedicated operator script; excluded from the weekly loop so it can't
+  choke on slow crawl-delays / undiscoverable URLs). Curated adds: `scott-labs` (a VENDOR, tier 2 — its
+  `/learn/` articles are bare root slugs intermixed with products + cider/beer/spirits, NOT prefix-separable,
+  so `crawl-scott-labs.ts` fetches the winemaking handbook PDF + a curated wine-article allow-list; license
+  note flags brand/dosage specifics as vendor-sourced) and `osu-owri` (Oregon Wine Research Institute PDFs
+  via `crawl-owri.ts`, which walks the ungated collection listing for `/downloads/` links and never touches
+  the JS-challenge-gated `/concern/` item pages). Our fetcher UA is `CellarhandKnowledgeBot`, subject to the
+  robots `*` group (which permits OSU's `/collections/` + `/downloads/`); the OSU `ClaudeBot Disallow` targets
+  Anthropic's training crawler, a different agent. We DELIBERATELY did NOT add the OSU **Extension** site
+  (extension.oregonstate.edu): it blocks ClaudeBot + signals `ai-train=no` + Cloudflare-403s, AND its wine
+  articles share a flat `/catalog/` namespace with ~4k unrelated pubs + beer/cider/spirits (no clean filter).
 - **Tripwire:** the citation route redirecting without the per-request subscription recheck; retrieval
   dropping the enabled-source filter (or degrading empty→all); a numeric answer paraphrased instead of
   quoted; the crawler following a link to a non-allowlisted domain or fetching a private IP; owner creds
