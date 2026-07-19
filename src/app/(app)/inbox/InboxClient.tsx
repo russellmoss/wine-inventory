@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LocalTime } from "@/components/ui";
 import {
   markAllNotificationsReadAction,
   markNotificationsReadAction,
@@ -30,9 +31,8 @@ const BUCKETS: { key: InboxBucket; label: string }[] = [
   { key: "dm", label: "Direct messages" },
 ];
 
-function fmt(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+function fmt(iso: string): React.ReactNode {
+  return <LocalTime value={iso} options={{ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }} />;
 }
 
 const panel: React.CSSProperties = { border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)" };
@@ -152,7 +152,7 @@ export function InboxClient(props: {
                     <span style={{ color: "var(--text-primary)" }}>#{w.number} · {w.title}</span>
                     <StatusPill status={w.status} />
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Updated {fmt(w.updatedAt)}{w.dueAt ? ` · due ${fmt(w.dueAt)}` : ""}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Updated {fmt(w.updatedAt)}{w.dueAt ? <> · due {fmt(w.dueAt)}</> : null}</div>
                 </Link>
               ))}
             </>

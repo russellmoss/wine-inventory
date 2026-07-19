@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Modal, Badge, ConfirmButton } from "@/components/ui";
+import { Modal, Badge, ConfirmButton, LocalTime } from "@/components/ui";
 import type { TimelineItem, OpItem, RecordItem, OpWorkOrderProvenance } from "@/lib/lot/timeline";
 import { deleteOperationAction, editOperationAction } from "@/lib/cellar/actions";
 import { previewReversalChainAction, reverseOperationChainAction } from "@/lib/ledger/actions";
@@ -96,14 +96,10 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 function ProvenanceBlock({ item }: { item: TimelineItem }) {
   const method = item.captureMethod && item.captureMethod !== "MANUAL" ? item.captureMethod.toLowerCase() : "manual";
-  const observed = new Date(item.observedAt);
-  const when = Number.isNaN(observed.getTime())
-    ? item.observedAt
-    : observed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 16 }}>
       <Row label="When">
-        <time dateTime={item.observedAt}>{when}</time>
+        <LocalTime value={item.observedAt} options={{ dateStyle: "medium", timeStyle: "short" }} invalidText={item.observedAt} />
       </Row>
       <Row label="Entered by">{item.enteredBy}</Row>
       <Row label="Capture">{method}</Row>
@@ -115,7 +111,7 @@ function ProvenanceBlock({ item }: { item: TimelineItem }) {
 
 function WorkOrderBlock({ wo }: { wo: OpWorkOrderProvenance }) {
   const fmt = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
+    iso ? <LocalTime value={iso} options={{ dateStyle: "medium", timeStyle: "short" }} /> : null;
   return (
     <div
       style={{

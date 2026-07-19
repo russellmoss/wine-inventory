@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { LocalTime } from "@/components/ui";
 import type { WorkOrderPrintView, WorkOrderPrintTask } from "@/lib/work-orders/data";
 
 // Phase 9.1 (Unit 6): the printable / Save-as-PDF work-order sheet. Token-driven (print.css), one WO per
@@ -9,9 +10,9 @@ import type { WorkOrderPrintView, WorkOrderPrintTask } from "@/lib/work-orders/d
 // (vessel code, lot code, material name — never raw ids) + a plain dose line with the total. window.print()
 // → native Save-as-PDF; no new deps. Screen-only chrome (.wo-print-hide) drops out when printing.
 
-function fmtDate(iso: string | null): string {
+function fmtDate(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  return <LocalTime value={iso} mode="date" options={{ year: "numeric", month: "long", day: "numeric" }} />;
 }
 
 const box: React.CSSProperties = { border: "1px solid #c9bfb4", borderRadius: 6, padding: "12px 14px", marginTop: 10 };

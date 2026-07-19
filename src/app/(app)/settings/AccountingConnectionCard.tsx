@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Card, Badge, Button, ConfirmButton } from "@/components/ui";
+import { Card, Badge, Button, ConfirmButton, LocalTime } from "@/components/ui";
 import { disconnectQuickBooks } from "@/lib/accounting/actions";
 
 // Phase 15 Unit 4 — the "QuickBooks / Accounting" Settings card (Connect / status / Disconnect).
@@ -95,7 +95,7 @@ export function AccountingConnectionCard({ accounting }: { accounting: Connectio
             </div>
             <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
               {accounting?.homeCurrency ? `Books in ${accounting.homeCurrency}` : "QuickBooks Online"}
-              {accounting?.connectedAt ? ` · connected ${new Date(accounting.connectedAt).toLocaleDateString()}` : ""}
+              {accounting?.connectedAt ? <> · connected <LocalTime value={accounting.connectedAt} mode="date" /></> : ""}
             </div>
           </div>
           <ConfirmButton onConfirm={doDisconnect} confirmLabel="Disconnect" disabled={pending}>

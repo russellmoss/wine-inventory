@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, LocalTime } from "@/components/ui";
 import type { WorkOrderSummary } from "@/lib/work-orders/data";
 import { OPEN_STATUSES, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersTabs } from "./WorkOrdersTabs";
@@ -16,9 +16,9 @@ type Dashboard = {
   counts: Record<string, number>;
 };
 
-function fmtDate(iso: string | null): string {
+function fmtDate(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return <LocalTime value={iso} mode="date" options={{ month: "short", day: "numeric" }} />;
 }
 
 function WoCard({ wo }: { wo: WorkOrderSummary }) {
@@ -31,7 +31,7 @@ function WoCard({ wo }: { wo: WorkOrderSummary }) {
             {wo.doneCount}/{wo.taskCount} tasks
             {wo.assigneeEmail ? ` · ${wo.assigneeEmail}` : ""}
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}
-            {` · due ${fmtDate(wo.dueAt)}`}
+            {wo.dueAt ? <> · due {fmtDate(wo.dueAt)}</> : null}
           </div>
         </div>
         <Badge tone={statusTone(wo.status)}>{wo.status.replace(/_/g, " ").toLowerCase()}</Badge>
