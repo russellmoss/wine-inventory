@@ -47,6 +47,10 @@ const RETRIEVAL_CASES: RetrievalCase[] = [
   { q: "Are there risks to consider with whole cluster (whole bunch) fermentation?", expectPaths: ["whole-bunch-fermentation"], expectFact: ["green", "bunch"] },
   { q: "What are the optimal conditions for the heat test for protein stability?", expectPaths: ["protein-stability-fact-sheet.pdf"], expectFact: ["80", "NTU"] },
   { q: "Does the carbon product used for smoke aroma reduction matter?", expectPaths: ["activated-carbon.pdf"], expectFact: ["carbon"] },
+  // New sources (Plan 079 source expansion): each expects its own source's doc in top-k.
+  { q: "How do I choose a wine yeast strain and what nitrogen nutrient does it need?", expectPaths: ["scott-labs-yeast", "yeast-choosing", "yeast-nutrient", "yeast-nutrition", "winemaking%20handbook"], expectFact: ["yeast"] }, // Scott Labs
+  { q: "Does wildfire smoke exposure affect wine grapes and the resulting wine?", expectPaths: ["smoke-exposure", "impact-smoke"], expectFact: ["smoke"] }, // OSU Extension
+  { q: "How do I monitor for grapevine leafroll virus and mealybugs in the vineyard?", expectPaths: ["leafroll", "mealybug"], expectFact: ["mealybug"] }, // OSU Extension
 ];
 
 // The Wine Australia downy-mildew question (CSV #1) is now scored above — WA is crawled (HTML) + its
@@ -120,6 +124,28 @@ async function main() {
     },
   });
   console.log(`  crawl: fetched ${crawl.fetched}, documents ${crawl.documents}, errors ${crawl.errors}\n`);
+
+  // Self-seed the new-source eval pages too (idempotent; routed to each source by host).
+  const NEW_SOURCE_EVAL: { source: string; urls: string[] }[] = [
+    { source: "scott-labs", urls: ["https://scottlab.com/yeast-nutrition-101"] },
+    {
+      source: "osu-extension",
+      urls: [
+        "https://extension.oregonstate.edu/catalog/em-9253-impact-smoke-exposure-wine",
+        "https://extension.oregonstate.edu/catalog/em-8985-field-monitoring-leafroll-virus-mealybug-pacific-northwest-vineyards",
+      ],
+    },
+  ];
+  for (const ns of NEW_SOURCE_EVAL) {
+    await crawlUrls(ns.source, ns.urls, {
+      onDocument: async (doc) => {
+        await indexDocument({
+          documentId: doc.documentId, bytes: doc.bytes, contentType: doc.contentType,
+          url: doc.canonicalUrl, contentHash: doc.contentHash,
+        });
+      },
+    });
+  }
 
   console.log("— retrieval correctness (expected source in top-k + citation) —");
   for (const c of RETRIEVAL_CASES) {
