@@ -4,7 +4,7 @@ import React from "react";
 import * as Sentry from "@sentry/nextjs";
 import { Badge, Button, Card, Input, Modal, Textarea } from "@/components/ui";
 import { drainConsoleBuffer, clearConsoleBuffer } from "@/lib/observability/console-buffer";
-import { DEBUG_CONTEXT_SCHEMA_VERSION } from "@/lib/feedback/debug-context";
+import { DEBUG_CONTEXT_SCHEMA_VERSION, buildNarrative, appendNarrativeDigest } from "@/lib/feedback/debug-context";
 import { captureReplayLink, SENTRY_ORG_SLUG } from "@/lib/observability/sentry-replay";
 
 type Kind = "BUG_REPORT" | "FEATURE_REQUEST";
@@ -35,6 +35,10 @@ export function FeedbackForm({
   const [kind, setKind] = React.useState<Kind>(initialKind);
   const [title, setTitle] = React.useState("");
   const [body, setBody] = React.useState("");
+  // Narrative prompt (Plan 080 Unit 5) — optional, BUG_REPORT only. Captures intent, not just symptoms.
+  const [doing, setDoing] = React.useState("");
+  const [expected, setExpected] = React.useState("");
+  const [actual, setActual] = React.useState("");
   const [files, setFiles] = React.useState<PendingImage[]>(() => toPendingImages(initialFiles));
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<{ id: string; mode?: string } | null>(null);
@@ -54,13 +58,17 @@ export function FeedbackForm({
       const { consoleLog, clientErrors } = drainConsoleBuffer();
       // Link the Sentry replay (if one is recording) so triage can rewind the session (Plan 080).
       const { replayId, replayUrl } = await captureReplayLink(Sentry.getReplay(), SENTRY_ORG_SLUG);
+      // Narrative (BUG_REPORT only): keep the structured object AND fold a readable digest into the
+      // body so existing triage/LLM paths see it without knowing the debugContext shape (Plan 080 U5).
+      const narrative = kind === "BUG_REPORT" ? buildNarrative(doing, expected, actual) : undefined;
+      const bodyToSend = appendNarrativeDigest(body, narrative);
       const res = await fetch("/api/feedback/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           kind,
           title,
-          body,
+          body: bodyToSend,
           pageUrl: window.location.href,
           debugContext: {
             schemaVersion: DEBUG_CONTEXT_SCHEMA_VERSION,
@@ -69,6 +77,7 @@ export function FeedbackForm({
             clientErrors,
             ...(replayId ? { replayId } : {}),
             ...(replayUrl ? { replayUrl } : {}),
+            ...(narrative ? { narrative } : {}),
           },
         }),
       });
@@ -92,6 +101,9 @@ export function FeedbackForm({
       setWarnings(uploadWarnings);
       setTitle("");
       setBody("");
+      setDoing("");
+      setExpected("");
+      setActual("");
       setFiles([]);
       // Reset so a later report on a different screen doesn't carry these logs.
       clearConsoleBuffer();
@@ -150,6 +162,34 @@ export function FeedbackForm({
         rows={compact ? 4 : 7}
         maxLength={6000}
       />
+      {kind === "BUG_REPORT" ? (
+        <div style={{ display: "grid", gap: "var(--space-3)" }}>
+          <Textarea
+            label="What were you doing? (optional)"
+            value={doing}
+            onChange={(e) => setDoing(e.target.value)}
+            minRows={2}
+            maxLength={1000}
+            placeholder="e.g. Transferring 200L from Tank 4 to a barrel"
+          />
+          <Textarea
+            label="What did you expect? (optional)"
+            value={expected}
+            onChange={(e) => setExpected(e.target.value)}
+            minRows={2}
+            maxLength={1000}
+            placeholder="e.g. The transfer to save and show in the vessel"
+          />
+          <Textarea
+            label="What actually happened? (optional)"
+            value={actual}
+            onChange={(e) => setActual(e.target.value)}
+            minRows={2}
+            maxLength={1000}
+            placeholder="e.g. It showed 'an error occurred' and nothing saved"
+          />
+        </div>
+      ) : null}
       <label style={{ display: "grid", gap: 6, fontFamily: "var(--font-body)", color: "var(--text-primary)" }}>
         <span style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>Screenshots/images</span>
         <input

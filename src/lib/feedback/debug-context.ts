@@ -91,6 +91,32 @@ export function clampConsoleCapture(input: unknown): ConsoleCapture {
   return capture;
 }
 
+/**
+ * Build the narrative object from the three optional prompt fields (Plan 080 Unit 5). Trims each;
+ * returns undefined when all are empty so callers can conditionally attach it. Pure.
+ */
+export function buildNarrative(doing: string, expected: string, actual: string): NarrativeContext | undefined {
+  const out: NarrativeContext = {};
+  if (doing.trim()) out.doing = doing.trim();
+  if (expected.trim()) out.expected = expected.trim();
+  if (actual.trim()) out.actual = actual.trim();
+  return out.doing || out.expected || out.actual ? out : undefined;
+}
+
+/**
+ * Fold a narrative into a readable digest appended to the report body, so triage/LLM paths that
+ * only read `body` still see the intent (Plan 080 Unit 5). Returns body unchanged when no narrative.
+ */
+export function appendNarrativeDigest(body: string, narrative: NarrativeContext | undefined): string {
+  if (!narrative) return body;
+  const lines = [
+    narrative.doing ? `Doing: ${narrative.doing}` : "",
+    narrative.expected ? `Expected: ${narrative.expected}` : "",
+    narrative.actual ? `Actual: ${narrative.actual}` : "",
+  ].filter(Boolean);
+  return lines.length ? [body, "", ...lines].join("\n") : body;
+}
+
 /** Bound a string field to a cap; returns undefined for non-strings or empties. */
 function clampStringField(raw: unknown, cap: number): string | undefined {
   if (typeof raw !== "string") return undefined;

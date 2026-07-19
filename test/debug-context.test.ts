@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   clampDebugContext,
+  buildNarrative,
+  appendNarrativeDigest,
   DEBUG_CONTEXT_SCHEMA_VERSION,
   MAX_NARRATIVE_CHARS,
   MAX_TRAIL_ENTRIES,
@@ -84,5 +86,27 @@ describe("clampDebugContext — v3 Break Mode fields", () => {
 
   it("current schema version is 3", () => {
     expect(DEBUG_CONTEXT_SCHEMA_VERSION).toBe(3);
+  });
+});
+
+describe("buildNarrative / appendNarrativeDigest (Unit 5)", () => {
+  it("builds a trimmed narrative from filled fields", () => {
+    expect(buildNarrative("  moving stock ", "it moves", "")).toEqual({
+      doing: "moving stock",
+      expected: "it moves",
+    });
+  });
+
+  it("returns undefined when all fields are empty/whitespace", () => {
+    expect(buildNarrative("", "  ", "\n")).toBeUndefined();
+  });
+
+  it("appends a readable digest to the body when narrative present", () => {
+    const out = appendNarrativeDigest("Base report", { doing: "X", actual: "Y" });
+    expect(out).toBe("Base report\n\nDoing: X\nActual: Y");
+  });
+
+  it("leaves the body unchanged when no narrative", () => {
+    expect(appendNarrativeDigest("Base report", undefined)).toBe("Base report");
   });
 });
