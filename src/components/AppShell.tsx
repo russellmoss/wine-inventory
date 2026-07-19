@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth-client";
 import { exitSupportTenant } from "@/lib/developer/actions";
 import { isTenantAdminLike } from "@/lib/access";
-import { Avatar, Button } from "@/components/ui";
+import { Avatar, Button, LocalTime } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { clearConsoleBuffer } from "@/lib/observability/console-buffer";
@@ -387,7 +387,7 @@ export function AppShell({
           >
             <span>
               Support view: {user.supportOrganizationName ?? user.supportOrganizationId}
-              {user.supportExpiresAt ? ` expires ${new Date(user.supportExpiresAt).toLocaleTimeString()}` : ""}
+              {user.supportExpiresAt ? <> expires <LocalTime value={user.supportExpiresAt} mode="time" /></> : ""}
             </span>
             <Button
               size="sm"

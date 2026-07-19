@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal, Collapsible } from "@/components/ui";
+import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal, Collapsible, LocalTime } from "@/components/ui";
 import { type CellarMaterialDTO, materialDisplayName } from "@/lib/cellar/materials-shared";
 import {
   MATERIAL_CATEGORIES, CATEGORY_LABELS, categoryOf, familyLabel,
@@ -577,7 +577,7 @@ function MaterialLotsPanel({ materialId }: { materialId: string }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>
           {lots.map((l) => {
             const exp = lotExpiryStatus(l.expiresAt, now);
-            const received = new Date(l.receivedAt).toLocaleDateString();
+            const received = <LocalTime value={l.receivedAt} mode="date" />;
             return (
               <div key={l.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>

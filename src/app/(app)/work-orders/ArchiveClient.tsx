@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge } from "@/components/ui";
+import { Card, Button, Badge, LocalTime } from "@/components/ui";
 import type { ArchiveRow } from "@/lib/work-orders/data";
 import { ARCHIVE_STATUSES, type ArchiveFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersTabs } from "./WorkOrdersTabs";
@@ -20,9 +20,9 @@ type Template = { id: string; name: string };
 
 const STATUS_TONE: Record<string, "neutral" | "green"> = { APPROVED: "green", CANCELLED: "neutral" };
 
-function fmtDate(iso: string | null): string {
+function fmtDate(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return <LocalTime value={iso} mode="date" options={{ year: "numeric", month: "short", day: "numeric" }} />;
 }
 
 export function ArchiveClient({

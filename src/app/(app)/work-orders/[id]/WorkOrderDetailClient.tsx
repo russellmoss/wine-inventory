@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, LocalTime } from "@/components/ui";
 import type { WorkOrderDetail } from "@/lib/work-orders/data";
 import { issueWorkOrderAction, cancelWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
@@ -41,7 +41,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
             {wo.priority && wo.priority !== "NORMAL" ? `${wo.priority.charAt(0)}${wo.priority.slice(1).toLowerCase()} priority · ` : ""}
             {wo.locationName ? `${wo.locationName} · ` : ""}
             {wo.assigneeEmail ? `Assigned to ${wo.assigneeEmail} · ` : ""}
-            {wo.dueAt ? `Due ${new Date(wo.dueAt).toLocaleDateString()}` : "Unscheduled"}
+            {wo.dueAt ? <>Due <LocalTime value={wo.dueAt} mode="date" /></> : "Unscheduled"}
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}
           </div>
         </div>

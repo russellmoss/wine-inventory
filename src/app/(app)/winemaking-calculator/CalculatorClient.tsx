@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { Badge, Button, Card, Eyebrow, Input } from "@/components/ui";
+import { Badge, Button, Card, Eyebrow, Input, LocalTime } from "@/components/ui";
 import {
   CALCULATORS, SECTIONS, defaultInput, DomainError, isCalc,
   type CalcDescriptor, type CalcResult, type Descriptor, type FieldSpec,
@@ -212,7 +212,7 @@ function HistoryPanel({ rows }: { rows: CalcHistoryRow[] }) {
                 <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 500 }}>{calcName(r.calculatorId)}</span>
                   <span style={{ color: "var(--text-muted)", fontSize: "var(--text-caption)" }}>
-                    {new Date(r.createdAt).toLocaleString()}
+                    <LocalTime value={r.createdAt} />
                   </span>
                   <Badge tone={r.source === "ASSISTANT" ? "maroon" : "neutral"}>{r.source === "ASSISTANT" ? "Assistant" : "Page"}</Badge>
                   {r.advisory && <Badge tone="gold">Advisory</Badge>}

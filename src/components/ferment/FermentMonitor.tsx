@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, LocalTime } from "@/components/ui";
 import { FermentChart } from "@/components/ferment/FermentChart";
 import { getFermentSeriesAction } from "@/lib/ferment/monitor-actions";
 import { transitionStateAction } from "@/lib/ferment/actions";
@@ -44,9 +44,10 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
-function fmtWhen(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+function fmtWhen(iso: string): React.ReactNode {
+  // <LocalTime> defers the locale/timezone formatting to after mount, so SSR and the first client render
+  // match (no hydration error, Sentry #13).
+  return <LocalTime value={iso} options={{ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }} />;
 }
 
 let rowSeq = 0;

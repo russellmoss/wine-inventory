@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Card, Badge, Button, ConfirmButton } from "@/components/ui";
+import { Card, Badge, Button, ConfirmButton, LocalTime } from "@/components/ui";
 import { confirmCommerce7, disconnectCommerce7 } from "@/lib/commerce/actions";
 
 // Phase 16 Unit 3 — the "Commerce7 / DTC sales" Settings card. Nonce-bound install flow: Connect →
@@ -107,8 +107,8 @@ export function Commerce7ConnectionCard({ commerce7 }: { commerce7: Commerce7Con
               Connected to <strong>{commerce7?.companyName ?? commerce7?.externalTenantId ?? "your Commerce7 tenant"}</strong>
             </div>
             <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
-              {commerce7?.connectedAt ? `Connected ${new Date(commerce7.connectedAt).toLocaleDateString()}` : "Commerce7"}
-              {commerce7?.lastWebhookAt ? ` · last update ${new Date(commerce7.lastWebhookAt).toLocaleString()}` : ""}
+              {commerce7?.connectedAt ? <>Connected <LocalTime value={commerce7.connectedAt} mode="date" /></> : "Commerce7"}
+              {commerce7?.lastWebhookAt ? <> · last update <LocalTime value={commerce7.lastWebhookAt} /></> : ""}
             </div>
           </div>
           <ConfirmButton onConfirm={doDisconnect} confirmLabel="Disconnect" disabled={pending}>

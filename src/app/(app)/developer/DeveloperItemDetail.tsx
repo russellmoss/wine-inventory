@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import React from "react";
-import { Badge, Button, Input, Textarea } from "@/components/ui";
+import { Badge, Button, Input, Textarea, LocalTime } from "@/components/ui";
 import type { DeveloperFeedbackItem } from "@/lib/developer/feedback";
 import {
   approveFeedbackAutomation,
@@ -486,7 +486,7 @@ export function DeveloperItemDetail({
               <div className={styles.inlineActions}>
                 <Badge tone="neutral" variant="outline">{entry.source === "bug-triage" ? "Bug triage" : entry.source === "developer" ? "Developer" : "Human note"}</Badge>
                 {entry.type ? <span className={styles.subtle}>{entry.type.replaceAll("-", " ")}</span> : null}
-                {entry.stamp ? <time className={styles.subtle} dateTime={entry.stamp}>{new Date(entry.stamp).toLocaleString()}</time> : null}
+                {entry.stamp ? <LocalTime className={styles.subtle} value={entry.stamp} /> : null}
               </div>
               <p>{entry.text}</p>
             </div>
@@ -509,7 +509,7 @@ export function DeveloperItemDetail({
               <Button variant="secondary" disabled={busy !== null || outcome.trim().length < 20} onClick={() => close("DISMISSED")}>Dismiss</Button>
             </div>
           </>
-        ) : <p className={styles.subtle}>Closed {item.resolvedAt ? new Date(item.resolvedAt).toLocaleString() : "with recorded outcome"}.</p>}
+        ) : <p className={styles.subtle}>Closed {item.resolvedAt ? <LocalTime value={item.resolvedAt} /> : "with recorded outcome"}.</p>}
       </DetailSection>
     </article>
   );
