@@ -11,6 +11,10 @@ beforeAll(() => {
   process.env.BETTER_AUTH_SECRET = "test-secret-aaaaaaaaaaaaaaaaaaaa";
 });
 
+// Loaded at module scope, not inside the test: the confirm route pulls in every committer (and Prisma
+// through them), which is slow enough under a full parallel suite run to blow a per-test timeout.
+const { POST } = await import("@/app/api/assistant/confirm/route");
+
 describe("assistant confirm tokens", () => {
   it("round-trips a signed proposal", () => {
     const token = signProposal("log_brix", { blockId: "b1", brixValue: 22.4 });
@@ -54,7 +58,6 @@ describe("assistant confirm tokens", () => {
 // Plan 081 U4 — the Draft-cannot-commit invariant, proven at the COMMIT boundary rather than in the UI.
 describe("the confirm route refuses a tokenless (draft) commit", () => {
   it("rejects the exact payloads a Draft card could produce", async () => {
-    const { POST } = await import("@/app/api/assistant/confirm/route");
     const post = (body: unknown) =>
       POST(new Request("http://localhost/api/assistant/confirm", { method: "POST", body: JSON.stringify(body) }));
 
