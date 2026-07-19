@@ -9,10 +9,27 @@ export interface ExtractedHtml {
   wordCount: number;
 }
 
+// dynamic import: defuddle/node exports only an `import` condition (no `require`), so a static import
+// fails under tsx/CJS. Dynamic import() uses the ESM loader in both CJS (scripts) and ESM (vitest).
+//
+// Memoized because the first load is EXPENSIVE — it pulls in linkedom to build a DOM (~100ms of module
+// load plus ~175ms for the first parse on an idle machine, and far more under CPU contention). A crawl
+// loop over thousands of documents should re-enter the ESM resolver once, not once per document, and
+// callers that care about latency can pay the cost up front via `loadDefuddle()` (see below).
+let defuddleModule: Promise<typeof import("defuddle/node")> | null = null;
+
+/**
+ * Load (once) the ESM-only `defuddle/node` module. Exposed so callers can warm the loader OUTSIDE a
+ * latency-sensitive window — notably the extraction tests, where charging a cold linkedom load to the
+ * first test's 5s budget made the suite flaky under a loaded parallel run.
+ */
+export function loadDefuddle(): Promise<typeof import("defuddle/node")> {
+  defuddleModule ??= import("defuddle/node");
+  return defuddleModule;
+}
+
 export async function extractHtml(html: string, url: string): Promise<ExtractedHtml> {
-  // dynamic import: defuddle/node exports only an `import` condition (no `require`), so a static import
-  // fails under tsx/CJS. Dynamic import() uses the ESM loader in both CJS (scripts) and ESM (vitest).
-  const { Defuddle } = await import("defuddle/node");
+  const { Defuddle } = await loadDefuddle();
   const res = await Defuddle(html, url, { markdown: true });
   const markdown = (res.contentMarkdown ?? res.content ?? "").trim();
   const wordCount = res.wordCount ?? markdown.split(/\s+/).filter(Boolean).length;
