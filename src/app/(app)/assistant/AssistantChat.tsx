@@ -11,6 +11,7 @@ import {
   type SearchResult,
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
+import { proposalGate } from "@/lib/assistant/proposal-card";
 import { MAX_CONTENT, clampHistoryForSend } from "@/lib/assistant/message-window";
 import { drainConsoleBuffer } from "@/lib/observability/console-buffer";
 import type { Caption } from "./voice/useVoiceSession";
@@ -451,7 +452,9 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     // hit-tests to the container behind them, so pressing Confirm silently does nothing and the write never
     // dispatches (feedback #203). `behavior:"smooth"` is unreliable here — the rapid re-renders of streaming
     // interrupt the animation and leave it short (measured landing at scrollTop 0 with a card below the
-    // fold). A rAF-deferred instant scroll reaches the true bottom every time.
+    // fold). A rAF-deferred instant scroll reaches the true bottom every time. This still holds for the
+    // (taller) Draft cards added in plan 081: the card renders synchronously before paint, so
+    // `scrollHeight` already includes its full height by the time the rAF callback runs.
     const id = requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight;
     });
@@ -1169,6 +1172,19 @@ function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onCon
   const done = item.status === "done";
   const errored = item.status === "error";
   const details = item.details;
+  // Plan 081 U7: a Draft renders as a card — that is the whole point — but cannot be confirmed. It has
+  // no token, so Confirm has nothing to POST; the gate decides what the user is TOLD about that.
+  const gate = proposalGate(item);
+  const isDraft = !gate.canConfirm;
+  const edge = done
+    ? "var(--positive)"
+    : errored
+      ? "var(--danger)"
+      : isDraft
+        ? gate.blockingCount > 0
+          ? "var(--danger)"
+          : "var(--warning)"
+        : "var(--accent)";
   return (
     <div
       style={{
@@ -1176,25 +1192,39 @@ function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onCon
         padding: "var(--space-3) var(--space-4)",
         borderRadius: "var(--radius-lg)",
         background: "var(--surface-raised)",
-        border: `1px solid ${done ? "var(--positive)" : errored ? "var(--danger)" : "var(--accent)"}`,
+        border: `1px solid ${edge}`,
+        // A draft is visibly provisional, not just differently-worded: a dashed edge reads as
+        // "unfinished" at a glance, which is the defence against Confirm becoming a reflex.
+        borderStyle: isDraft && !done && !errored ? "dashed" : "solid",
         fontFamily: "var(--font-body)",
       }}
     >
-      <div style={{ fontSize: "var(--text-body-sm)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", marginBottom: 6 }}>
-        Confirm change
+      <div style={{ fontSize: "var(--text-body-sm)", textTransform: "uppercase", letterSpacing: "0.1em", color: isDraft && !done && !errored ? edge : "var(--text-muted)", marginBottom: 6 }}>
+        {done || errored ? "Confirm change" : isDraft ? (gate.blockingCount > 0 ? "Draft — blocked" : "Draft — needs input") : "Confirm change"}
       </div>
       <div style={{ fontSize: "var(--text-body)", color: "var(--text-primary)", marginBottom: 12 }}>{item.preview}</div>
 
       {details ? <WorkOrderProposalDetails details={details} /> : null}
 
       {item.status === "pending" || item.status === "applying" ? (
-        <div style={{ display: "flex", gap: "var(--space-2)" }}>
-          <Button onClick={onConfirm} disabled={item.status === "applying"}>
-            {item.status === "applying" ? "Applying…" : "Confirm"}
-          </Button>
-          <Button variant="secondary" onClick={onCancel} disabled={item.status === "applying"}>
-            Cancel
-          </Button>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          {gate.reason ? (
+            <div role="status" style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+              {gate.reason}
+            </div>
+          ) : null}
+          <div style={{ display: "flex", gap: "var(--space-2)" }}>
+            <Button
+              onClick={onConfirm}
+              disabled={!gate.canConfirm || item.status === "applying"}
+              title={gate.reason ?? undefined}
+            >
+              {item.status === "applying" ? "Applying…" : "Confirm"}
+            </Button>
+            <Button variant="secondary" onClick={onCancel} disabled={item.status === "applying"}>
+              {gate.canConfirm ? "Cancel" : "Dismiss"}
+            </Button>
+          </div>
         </div>
       ) : (
         <div style={{ fontSize: "var(--text-body-sm)", color: done ? "var(--positive)" : "var(--danger)" }}>
