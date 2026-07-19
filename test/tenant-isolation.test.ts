@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { GLOBAL_MODELS } from "@/lib/tenant/models";
 import { memberOfTenant, tenantUserWhere } from "@/lib/users/scope";
+import { ensureOrganization } from "./helpers/tenant-fixtures";
 
 /**
  * Phase 12 — cross-tenant isolation, run AS THE app_rls role against a real DB. GATED: only runs
@@ -43,8 +44,11 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     app = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_APP } } });
     // Tenant A is always the Demo Winery sandbox. Create it on a fresh CI DB so the FK-bound
     // fixtures can insert; never write isolation fixtures into Bhutan Wine Co.
-    await owner.organization.upsert({ where: { id: A }, update: {}, create: { id: A, name: "Demo Winery", slug: "demo-winery" } });
-    await owner.organization.upsert({ where: { id: B }, update: {}, create: { id: B, name: "Iso Vitest B", slug: B } });
+    // Atomic (ON CONFLICT DO NOTHING) rather than upsert: developer-feedback-db.test.ts runs in a
+    // parallel vitest worker in the same CI job and also ensures `org_demo_winery`, so a plain
+    // upsert races and dies with P2002. See test/helpers/tenant-fixtures.ts.
+    await ensureOrganization(owner, { id: A, name: "Demo Winery", slug: "demo-winery" });
+    await ensureOrganization(owner, { id: B, name: "Iso Vitest B", slug: B });
     await owner.feedbackLinearLink.deleteMany({
       where: {
         id: {

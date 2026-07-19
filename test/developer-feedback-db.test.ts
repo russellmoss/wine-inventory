@@ -23,6 +23,7 @@ import {
   ensurePlanAutomationRun,
   retryApprovedAutomationRun,
 } from "@/lib/feedback/automation";
+import { ensureOrganization, renameOrganization } from "./helpers/tenant-fixtures";
 
 const ENABLED =
   process.env.TENANT_ISOLATION_DB === "1" &&
@@ -51,16 +52,20 @@ describe.skipIf(!ENABLED)("developer feedback database loaders", () => {
     owner = new PrismaClient({
       datasources: { db: { url: process.env.DATABASE_URL_UNPOOLED } },
     });
-    await owner.organization.upsert({
-      where: { id: DEMO_TENANT },
-      update: {},
-      create: { id: DEMO_TENANT, name: "Demo Winery", slug: "demo-winery" },
+    // Atomic (ON CONFLICT DO NOTHING) rather than upsert: this file and tenant-isolation.test.ts
+    // run in parallel vitest workers and both ensure `org_demo_winery`, so a plain upsert races
+    // and dies with P2002. See test/helpers/tenant-fixtures.ts.
+    await ensureOrganization(owner, {
+      id: DEMO_TENANT,
+      name: "Demo Winery",
+      slug: "demo-winery",
     });
-    await owner.organization.upsert({
-      where: { id: TENANT },
-      update: { name: "Developer Loader Vitest" },
-      create: { id: TENANT, name: "Developer Loader Vitest", slug: TENANT },
+    await ensureOrganization(owner, {
+      id: TENANT,
+      name: "Developer Loader Vitest",
+      slug: TENANT,
     });
+    await renameOrganization(owner, TENANT, "Developer Loader Vitest");
     await owner.auditLog.deleteMany({ where: { tenantId: TENANT } });
     await owner.feedbackTicket.deleteMany({ where: { tenantId: TENANT } });
     await owner.assistantFeedback.deleteMany({ where: { tenantId: TENANT } });
