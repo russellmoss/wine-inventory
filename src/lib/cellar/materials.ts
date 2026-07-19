@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { ActionError } from "@/lib/action-error";
 import { emitApExportForReceipt } from "@/lib/accounting/ap-emit";
 import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
+import { resolveSystemLocationId } from "@/lib/locations/system-location";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { MaterialKind, RateBasis } from "@/lib/cellar/additions-math";
 import { STOCK_UNITS, coerceStockUnit, materialDisplayName, type StockUnit, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
@@ -282,6 +283,8 @@ export type CreateStockMaterialInput = MaterialIntakeInput & {
   /** Phase 036 intake: total price paid for the package. With packageAmount+packageUnit it derives the
    * opening lot (qty in stockUnit + per-stockUnit unitCost) via deriveOpeningLot — overrides openingQty/unitCost. */
   totalCost?: number | null;
+  /** Plan 080 U2: location for the opening-stock lot. Omit → the system "Winery" location. */
+  locationId?: string | null;
 };
 
 /**
@@ -353,8 +356,10 @@ export async function createStockMaterialCore(
 
     if (openingQty > 0) {
       const settings = await tx.appSettings.findFirst({ select: { costingPolicyVersion: true, currency: true } });
+      // Plan 080 U2: opening stock lands at the given location (default: system "Winery").
+      const locationId = input.locationId ?? (await resolveSystemLocationId(tx));
       const lot = await tx.supplyLot.create({
-        data: { materialId: material.id, qtyReceived: openingQty, qtyRemaining: openingQty, stockUnit, unitCost, currency: coerceCurrency(settings?.currency), policyVersion: settings?.costingPolicyVersion ?? 1, supplierNote: "Opening stock", vendorId: mirror.vendorId },
+        data: { materialId: material.id, qtyReceived: openingQty, qtyRemaining: openingQty, stockUnit, unitCost, locationId, currency: coerceCurrency(settings?.currency), policyVersion: settings?.costingPolicyVersion ?? 1, supplierNote: "Opening stock", vendorId: mirror.vendorId },
         select: { id: true },
       });
       await writeAudit(tx, { ...actor, action: "CREATE", entityType: "SupplyLot", entityId: lot.id, summary: `Opening stock ${openingQty} ${stockUnit} of "${f.name}"${unitCost != null ? ` @ ${unitCost}/${stockUnit}` : " (cost unknown)"}` });
@@ -502,6 +507,9 @@ export type ReceiveSupplyInput = {
   // per-invoice Bill owns the A/P (emitApExportForInvoice) instead of N per-lot bills. Non-ingest receipts
   // (manual intake) leave it unset and keep the per-lot emit unchanged.
   skipApEmit?: boolean;
+  // Plan 080 U2: the physical location this lot is received into. Omit → the system "Winery" location
+  // (pre-location-aware callers). Location-aware receipts (Add consumable, assistant tools) pass it.
+  locationId?: string | null;
 };
 
 /**
@@ -544,6 +552,8 @@ export async function receiveSupplyCore(
       const v = await findOrCreateVendorCore({ name: vendorName }, tx);
       vendorId = v?.id ?? null;
     }
+    // Plan 080 U2: every lot has a home location (default: the tenant's system "Winery" location).
+    const locationId = input.locationId ?? (await resolveSystemLocationId(tx));
     const lot = await tx.supplyLot.create({
       data: {
         materialId: material.id,
@@ -551,6 +561,7 @@ export async function receiveSupplyCore(
         qtyRemaining: qty,
         stockUnit,
         unitCost,
+        locationId,
         // Plan 073: the lot ALWAYS holds the BASE currency (the roll-up basis). A foreign invoice is converted
         // upstream (ingest-invoice-core), which passes base `unitCost` + base `currency` + the foreign columns.
         currency: input.currency?.trim() ? coerceCurrency(input.currency) : coerceCurrency(settings?.currency),
