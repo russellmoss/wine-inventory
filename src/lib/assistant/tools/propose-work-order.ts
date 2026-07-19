@@ -302,17 +302,38 @@ function previewText(proposal: ReturnType<typeof proposalDetails>): string {
   return `Create and issue "${proposal.title}" with ${proposal.tasks.length} task${proposal.tasks.length === 1 ? "" : "s"}: ${taskText}.${warningCount ? ` ${warningCount} warning${warningCount === 1 ? "" : "s"} attached.` : ""}${unknown}`;
 }
 
+/**
+ * Plan 081 U5 — the preview line for a DRAFT card.
+ *
+ * The readiness engine has always computed exactly what is missing (`unresolved`) and what is
+ * physically refused (`warnings` with severity "blocking"). Until now this tool flattened all of it
+ * into a prose sentence and returned the string — and a string is not a card. Now the same data rides
+ * a Draft proposal, so it renders, and the preview only has to say WHY the card is not confirmable.
+ */
+function draftPreviewText(details: ReturnType<typeof proposalDetails>): string {
+  const blockers = details.warnings.filter((w) => w.severity === "blocking");
+  const n = details.tasks.length;
+  const head = `Draft work order "${details.title}"${n ? ` with ${n} task${n === 1 ? "" : "s"}` : ""} — not ready to issue.`;
+  if (blockers.length > 0) {
+    return `${head} ${blockers.length} blocker${blockers.length === 1 ? "" : "s"} must be resolved first: ${blockers.map((b) => b.message).join(" ")}`;
+  }
+  const missing = details.unresolved.map((u) => u.label);
+  return missing.length > 0
+    ? `${head} Still needs: ${missing.join(", ")}.`
+    : `${head} Some details are still unresolved.`;
+}
+
 export const proposeWorkOrderTool: AssistantTool = {
   name: "propose_work_order",
   description:
-    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine; pass `vessel` for a single vessel, or `vesselGroup` for a barrel range/group e.g. 'clean and sanitize B1-B4' which becomes ONE consolidated task across the range (completed all-at-once) — never put a range in `vessel`); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (run-time inputs — picks, fractions, weights, measured volume — are entered on the execute screen, but CRUSH process defaults ARE settable here: destemmed, crusherOn, crushedPct e.g. 50 for '50% crushed'/'50% rollers on', mustTempC — they prefill the execute crush form; whenever the user names the fruit/lot, pass `block` on the HARVEST_WEIGH_IN and CRUSH tasks — on weigh-in it prefills the block, on crush it names the fruit in the title); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); group racking BARREL_DOWN (one source tank into a barrel group/range via `toGroup`, e.g. 'barrel down T12 into B101-B110') and RACK_TO_TANK (a barrel group/range back into one tank via `fromGroup`) as ONE reviewable task; BOTTLE (bottle a vessel into a finished SKU with its packaging dry-goods — pass `skuName`, `skuVintage`, an estimated `cases` or `bottles`, and either `packaging` (named dry goods: glass, cork, capsule, labels, case boxes) or `standardPackaging: true` for 'our usual packaging' which copies this SKU's last run; the source vessels, final bottle count, measured ABV and destination are entered on the execute screen); EQUIPMENT_SERVICE (service a press/pump/filter or other EquipmentAsset by name — pass `equipment`, e.g. 'the basket press'; optionally `setStatus` to transition it, e.g. maintenance→available, on completion; the equipment is resolved by name and an ambiguous name shows a picker); and explicit checklist NOTE. `toGroup`/`fromGroup` (group racking) and `vesselGroup` (barrel maintenance) may each be a range ('B101-B110'), a saved group name, or a comma list. Per-task planning: set `assignee` (a name or email; resolved to a real member, ambiguous → picker), `priority` (LOW/NORMAL/HIGH/URGENT), and `groupSeq` on any task — when the user sequences work ('X and then Y', 'do X, followed by Y') put later steps in a higher groupSeq so they run after the earlier group. Floor/facility cleaning (not a vessel or a registered EquipmentAsset) is NOT supported here. Cross-order WO→WO dependencies are set in the visual builder, not here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks.",
+    "Author a NEW work order from natural language. Use this when the user wants cellar work assigned as a work order from specific instructions like 'Rack T12 to T15, add 30 ppm SO2, set T12 to 14C, clean and sanitize T15, and pull a panel.' The tool only proposes typed work-order tasks and returns a confirmation card; it never logs ledger operations, never completes tasks, and never creates materials. Supported task kinds: RACK and TOPPING (vessel to vessel); ADDITION/FINING (existing doseable material into a vessel); FILTRATION, CAP_MGMT (punchdown/pumpover), TEMP_SETPOINT; vessel maintenance CLEAN/SANITIZE/STEAM/OZONE/GAS/SO2/WET_STORAGE (any supply is overhead, never dosed into wine; pass `vessel` for a single vessel, or `vesselGroup` for a barrel range/group e.g. 'clean and sanitize B1-B4' which becomes ONE consolidated task across the range (completed all-at-once) — never put a range in `vessel`); the transform placeholders CRUSH/PRESS/HARVEST_WEIGH_IN (run-time inputs — picks, fractions, weights, measured volume — are entered on the execute screen, but CRUSH process defaults ARE settable here: destemmed, crusherOn, crushedPct e.g. 50 for '50% crushed'/'50% rollers on', mustTempC — they prefill the execute crush form; whenever the user names the fruit/lot, pass `block` on the HARVEST_WEIGH_IN and CRUSH tasks — on weigh-in it prefills the block, on crush it names the fruit in the title); PANEL and BRIX observations; SAMPLE_PULL (pull/send a real lab sample on completion, optionally with a lab name and sendNow); group racking BARREL_DOWN (one source tank into a barrel group/range via `toGroup`, e.g. 'barrel down T12 into B101-B110') and RACK_TO_TANK (a barrel group/range back into one tank via `fromGroup`) as ONE reviewable task; BOTTLE (bottle a vessel into a finished SKU with its packaging dry-goods — pass `skuName`, `skuVintage`, an estimated `cases` or `bottles`, and either `packaging` (named dry goods: glass, cork, capsule, labels, case boxes) or `standardPackaging: true` for 'our usual packaging' which copies this SKU's last run; the source vessels, final bottle count, measured ABV and destination are entered on the execute screen); EQUIPMENT_SERVICE (service a press/pump/filter or other EquipmentAsset by name — pass `equipment`, e.g. 'the basket press'; optionally `setStatus` to transition it, e.g. maintenance→available, on completion; the equipment is resolved by name and an ambiguous name shows a picker); and explicit checklist NOTE. `toGroup`/`fromGroup` (group racking) and `vesselGroup` (barrel maintenance) may each be a range ('B101-B110'), a saved group name, or a comma list. Per-task planning: set `assignee` (a name or email; resolved to a real member, ambiguous → picker), `priority` (LOW/NORMAL/HIGH/URGENT), and `groupSeq` on any task — when the user sequences work ('X and then Y', 'do X, followed by Y') put later steps in a higher groupSeq so they run after the earlier group. Floor/facility cleaning (not a vessel or a registered EquipmentAsset) is NOT supported here. Cross-order WO→WO dependencies are set in the visual builder, not here. Do not use rack_wine/add_addition/pull_sample for this when the user says work order or combines multiple planned tasks. CALL THIS TOOL EVEN WHEN THE REQUEST IS INCOMPLETE OR LOOKS WRONG: if a detail is missing (you don't know the assignee's email, a target is unclear) or the operation looks physically questionable, still call it with what you DO have and omit what you don't. The tool returns a DRAFT card that names every unresolved field and every blocker, and that draft cannot be confirmed until they are resolved. Never invent a value to complete the call, and never ask the question in prose instead of calling — a prose question produces no card at all, which is the failure this draft path exists to prevent.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       sourceText: { type: "string", description: "The user's original wording." },
       title: { type: "string", description: "Optional work-order title." },
-      assigneeEmail: { type: "string", description: "Optional assignee email. Only pass a real email the user named." },
+      assigneeEmail: { type: "string", description: "Optional assignee email. Only pass a real email the user named — NEVER guess or construct one. If the user named a person but you do not know their email, omit this field and call the tool anyway: the card renders as a draft naming the assignee as unresolved, which is correct. An invented email is not." },
       dueDate: { type: "string", description: "Optional due date as YYYY-MM-DD. Resolve relative dates deterministically before passing." },
       tasks: {
         type: "array",
@@ -403,12 +424,16 @@ export const proposeWorkOrderTool: AssistantTool = {
     const assigneeChoice = await resolveAssigneesForTasks(tenantId, draft);
     if (assigneeChoice) return assigneeChoice;
     const proposal = await buildNlWorkOrderProposal(draft);
+    const details = proposalDetails(proposal);
     if (proposal.status !== "ready") {
-      const reasons = [...proposal.unresolved.map((u) => u.reason), ...proposal.warnings.filter((w) => w.severity === "blocking").map((w) => w.message)];
-      return `I could not make this work order ready to confirm: ${reasons.join(" ") || "the proposal is incomplete."}`;
+      // DRAFT (plan 081 U5). Previously this returned a prose sentence, which the client renders as
+      // chat text — so a work order that was one field short produced NO card at all, and the model,
+      // knowing that, often skipped the tool and asked in prose instead. `details` already carries
+      // `unresolved` (what is missing) and `warnings` (severity blocking / confirmable /
+      // completion_check); the client already renders both. NO token is minted, so this cannot commit.
+      return { needsConfirmation: true, draft: true as const, preview: draftPreviewText(details), details };
     }
     const token = signProposal("propose_work_order", buildNlWorkOrderCommitArgs(proposal));
-    const details = proposalDetails(proposal);
     return { needsConfirmation: true, preview: previewText(details), token, details };
   },
 };
