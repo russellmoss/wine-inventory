@@ -12,6 +12,10 @@ export interface ModalProps {
   /** On phones (≤767px), render full-screen instead of a centered card — for dense workspaces
    *  like the vessel History (plan 045). Desktop is unchanged. */
   fullScreenOnMobile?: boolean;
+  /** `data-*` attributes spread onto the outer overlay element (backdrop). Lets a caller attach
+   *  hooks — e.g. so a page screenshot can exclude the WHOLE modal, backdrop + title bar included
+   *  (see FeedbackTicketModal's capture). Our onClick/style always win over anything passed here. */
+  overlayProps?: Record<`data-${string}`, string>;
 }
 
 /** Track the ≤767px breakpoint (DESIGN.md mobile breakpoint) for full-screen modals. SSR-safe. */
@@ -28,7 +32,7 @@ function useIsMobile(enabled: boolean): boolean {
   return isMobile;
 }
 
-export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600, fullScreenOnMobile = false }: ModalProps) {
+export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600, fullScreenOnMobile = false, overlayProps }: ModalProps) {
   const mobileFull = useIsMobile(fullScreenOnMobile);
   React.useEffect(() => {
     if (!open) return;
@@ -45,6 +49,7 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600
 
   return (
     <div
+      {...overlayProps}
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, background: "rgba(20,19,15,0.45)",

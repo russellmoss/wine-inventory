@@ -225,6 +225,7 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
           type="button"
           onClick={openDock}
           aria-label="Open the assistant"
+          data-assistant-surface
           style={{
             position: "fixed", right: "var(--space-5)", bottom: "var(--space-5)", zIndex: 60,
             height: 52, padding: "0 var(--space-4)", borderRadius: "var(--radius-pill)",
@@ -248,6 +249,7 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
               type="button"
               aria-label="Shrink the assistant"
               onClick={() => setExpanded(false)}
+              data-assistant-surface
               style={{
                 position: "fixed",
                 inset: 0,
@@ -265,6 +267,7 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
             aria-labelledby={titleId}
             aria-modal={false}
             tabIndex={-1}
+            data-assistant-surface
             style={{
               position: "fixed",
               zIndex: expanded ? 61 : 60,
