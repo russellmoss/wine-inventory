@@ -57,6 +57,12 @@ export type EntityConfig = {
   buildCreate?: (user: AppUser, values: ValidatedValues) => Promise<{ data: Record<string, unknown>; label: string }>;
   /** Insert the row within a transaction; returns the new id. */
   create?: (tx: Prisma.TransactionClient, data: Record<string, unknown>) => Promise<string>;
+  /** Master-data identity guard (NAMING-1). Given the assembled create `data`, return the conflicting
+   *  row's presentation label if the create would duplicate an existing identity — e.g. a case-insensitive
+   *  name match — else null. The existing row keeps its surrogate id: db_create NEVER re-keys or overwrites
+   *  it, and surfaces a friendly "already exists" instead of a raw unique-constraint error (and never a
+   *  silent case-variant duplicate — the DB uniques are case-sensitive, so this is the only guard). */
+  findConflict?: (data: Record<string, unknown>) => Promise<{ label: string } | null>;
   /** Scalar fields the user may edit. */
   editable?: FieldSpec[];
   /** Current editable values, for diff/preview, or null if the row is gone. */
@@ -64,6 +70,23 @@ export type EntityConfig = {
   /** Apply validated edits within a transaction. */
   update?: (tx: Prisma.TransactionClient, id: string, values: ValidatedValues) => Promise<void>;
 };
+
+/**
+ * Build a `findConflict` for a name-unique registry: match an existing row by CASE-INSENSITIVE name
+ * (the DB unique is case-sensitive, so "syrah" would otherwise create a twin of "Syrah"). Runs on the
+ * tenant-scoped extended client, so the match is per-tenant. The existing row is only READ — its identity
+ * is never touched (NAMING-1).
+ */
+function nameConflict(
+  lookup: (name: string) => Promise<{ name: string } | null>,
+): (data: Record<string, unknown>) => Promise<{ label: string } | null> {
+  return async (data) => {
+    const name = String(data.name ?? "").trim();
+    if (!name) return null;
+    const row = await lookup(name);
+    return row ? { label: row.name } : null;
+  };
+}
 
 // ───────────────────────── VineyardBlock (Unit 1 vertical slice) ─────────────────────────
 
@@ -203,6 +226,9 @@ const vineyard: EntityConfig = {
   creatable: [{ name: "name", type: "string", required: true, min: 2, max: 80 }],
   buildCreate: async (_user, v) => ({ data: { name: String(v.name) }, label: String(v.name) }),
   create: async (tx, data) => (await tx.vineyard.create({ data: data as Prisma.VineyardUncheckedCreateInput, select: { id: true } })).id,
+  findConflict: nameConflict((name) =>
+    prisma.vineyard.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { name: true } }),
+  ),
 };
 
 // ───────────────────────── Global registries (admin-only to mutate) ─────────────────────────
@@ -236,6 +262,9 @@ const variety: EntityConfig = {
   ],
   buildCreate: async (_u, v) => ({ data: { name: String(v.name), ...(v.color ? { color: String(v.color) } : {}) }, label: String(v.name) }),
   create: async (tx, data) => (await tx.variety.create({ data: data as Prisma.VarietyUncheckedCreateInput, select: { id: true } })).id,
+  findConflict: nameConflict((name) =>
+    prisma.variety.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { name: true } }),
+  ),
 };
 
 const location: EntityConfig = {
@@ -264,6 +293,9 @@ const location: EntityConfig = {
   creatable: [{ name: "name", type: "string", required: true, min: 2, max: 80 }],
   buildCreate: async (_u, v) => ({ data: { name: String(v.name) }, label: String(v.name) }),
   create: async (tx, data) => (await tx.location.create({ data: data as Prisma.LocationUncheckedCreateInput, select: { id: true } })).id,
+  findConflict: nameConflict((name) =>
+    prisma.location.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { name: true } }),
+  ),
 };
 
 const finishedGoodCategory: EntityConfig = {
@@ -290,6 +322,9 @@ const finishedGoodCategory: EntityConfig = {
   creatable: [{ name: "name", type: "string", required: true, min: 2, max: 80 }],
   buildCreate: async (_u, v) => ({ data: { name: String(v.name) }, label: String(v.name) }),
   create: async (tx, data) => (await tx.finishedGoodCategory.create({ data: data as Prisma.FinishedGoodCategoryUncheckedCreateInput, select: { id: true } })).id,
+  findConflict: nameConflict((name) =>
+    prisma.finishedGoodCategory.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { name: true } }),
+  ),
 };
 
 const vessel: EntityConfig = {
@@ -390,6 +425,8 @@ const finishedGood: EntityConfig = {
     return { data: { name: String(v.name), categoryId: cat.id }, label: String(v.name) };
   },
   create: async (tx, data) => (await tx.finishedGood.create({ data: data as Prisma.FinishedGoodUncheckedCreateInput, select: { id: true } })).id,
+  // NOTE: FinishedGood has no name-unique constraint (two items may legitimately share a name across
+  // categories), so there is intentionally NO findConflict guard here — one would wrongly block a create.
 };
 
 // ───────────────────────── Registry ─────────────────────────

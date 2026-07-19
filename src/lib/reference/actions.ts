@@ -42,10 +42,13 @@ function entityType(kind: RefKind) {
   return kind === "variety" ? "Variety" : "Vineyard";
 }
 
+// Case-INSENSITIVE name match: the DB unique on (tenantId, name) is case-sensitive, so an exact-only
+// check would let "syrah" slip in beside "Syrah" and fragment master data (NAMING-1). Match how the
+// assistant's db_create guards identity, so both write paths agree on "this already exists".
 async function findByName(kind: RefKind, name: string) {
   return kind === "variety"
-    ? prisma.variety.findFirst({ where: { name } })
-    : prisma.vineyard.findFirst({ where: { name } });
+    ? prisma.variety.findFirst({ where: { name: { equals: name, mode: "insensitive" } } })
+    : prisma.vineyard.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
 }
 
 async function findById(kind: RefKind, id: string) {
