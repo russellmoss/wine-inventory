@@ -9,7 +9,7 @@ import {
   type MaterialCategory,
 } from "@/lib/cellar/material-taxonomy";
 
-// Read the expendables/materials catalog with on-hand stock. Wraps listMaterials (which already
+// Read the consumables/materials catalog with on-hand stock. Wraps listMaterials (which already
 // aggregates on-hand across open SupplyLots + weighted-average cost, tenant-scoped via RLS + the
 // Prisma extension). This is the READ counterpart to the create_material / receive_supply /
 // adjust_inventory write tools — it answers "what supplies do we have", "how much DAP is left",
@@ -75,9 +75,9 @@ function stockStatus(m: CellarMaterialDTO): "in stock" | "out of stock" | "not t
 export const queryMaterialsTool: AssistantTool = {
   name: "query_materials",
   description:
-    "Read the expendables/materials catalog and on-hand stock. Use for questions like 'what supplies do we have', " +
+    "Read the consumables/materials catalog and on-hand stock. Use for questions like 'what supplies do we have', " +
     "'how much DAP / bentonite / SO2 is left', 'what's our on-hand quantity of yeast', 'list our cleaning and " +
-    "sanitizing products', 'what packaging materials are in the catalog', or 'what expendables are we out of'. " +
+    "sanitizing products', 'what packaging materials are in the catalog', or 'what consumables are we out of'. " +
     "Returns catalog items with their family, category, on-hand quantity (summed remaining across open supply lots, " +
     "in the item's stock unit), weighted-average unit cost, vendor, and active flag. On-hand is null for items that " +
     "aren't stock-tracked. This is read-only — to receive stock use receive_supply, to correct a balance use " +

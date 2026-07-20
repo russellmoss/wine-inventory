@@ -529,6 +529,53 @@ async function main() {
     } catch { mmKindRaised = true; }
     check("material_movement rejects an out-of-vocabulary kind (CHECK constraint)", mmKindRaised);
 
+    // 5b-3. Plan 080 U7: finished_good_receipt (the purchased-cost layer) is a NEW tenant table — prove RLS
+    // both directions and that its composite-tenant FKs reject a cross-tenant SKU/location, the same defect
+    // U13a had to fix on supply_lot.
+    await owner.finishedGoodReceipt.deleteMany({ where: { id: { in: ["iso_fgr_b", "iso_fgr_x", "iso_fgr_k11"] } } });
+    // Seed our OWN SKU fixture rather than hunting for one: an `if (found)` guard would let these cases
+    // silently SKIP on a tenant with no wine, which is false confidence, not a passing test.
+    const skuB = await owner.wineSku.upsert({
+      where: { id: "iso_sku_b" },
+      update: {},
+      create: { id: "iso_sku_b", tenantId: B, name: "ISO Cross-tenant Red", vintage: 2024 },
+      select: { id: true },
+    });
+    {
+      await owner.finishedGoodReceipt.create({
+        data: { id: "iso_fgr_b", tenantId: B, wineSkuId: skuB.id, qty: 5, unitCostBase: "10", locationId: "iso_loc_b", createdByEmail: "iso@b.test" },
+      });
+      check(
+        "tenant A CANNOT see tenant B's finished_good_receipt (RLS)",
+        (await asTenant(A, (db) => db.finishedGoodReceipt.findFirst({ where: { id: "iso_fgr_b" } }))) === null,
+      );
+      let fgrInsertRaised = false;
+      try {
+        await asTenant(A, (db) =>
+          db.finishedGoodReceipt.create({ data: { id: "iso_fgr_x", tenantId: B, wineSkuId: skuB.id, qty: 1, unitCostBase: "1", locationId: "iso_loc_b", createdByEmail: "iso@a.test" } }),
+        );
+      } catch { fgrInsertRaised = true; }
+      check("foreign-tenant finished_good_receipt INSERT raises (WITH CHECK)", fgrInsertRaised);
+
+      let fgrFkRaised = false;
+      try {
+        // A's receipt referencing B's SKU must be rejected by the composite (tenantId, wineSkuId) FK.
+        await asTenant(A, (db) =>
+          db.finishedGoodReceipt.create({ data: { id: "iso_fgr_k11", tenantId: A, wineSkuId: skuB.id, qty: 1, unitCostBase: "1", locationId: "iso_loc_a", createdByEmail: "iso@a.test" } }),
+        );
+      } catch { fgrFkRaised = true; }
+      check("finished_good_receipt cross-tenant SKU reference rejected (composite FK, K11)", fgrFkRaised);
+    }
+
+    // the exactly-one-target CHECK: a receipt values a wine SKU or a merch good, never both/neither.
+    let fgrTargetRaised = false;
+    try {
+      await owner.finishedGoodReceipt.create({
+        data: { id: "iso_fgr_bad", tenantId: B, qty: 1, unitCostBase: "1", locationId: "iso_loc_b", createdByEmail: "iso@b.test" },
+      });
+    } catch { fgrTargetRaised = true; }
+    check("finished_good_receipt with NO target rejected (exactly-one CHECK)", fgrTargetRaised);
+
     // 5c. Plan 029: RAW $queryRaw respects the tenant GUC. The tenant extension only intercepts model
     // ops, so an unwrapped raw read runs with no app.tenant_id and (under RLS) returns 0 rows. These
     // prove the runInTenantRawTx path scopes raw reads and that a context-less raw read is fail-closed.
@@ -887,6 +934,10 @@ async function main() {
     await owner.lotOperation.deleteMany({ where: { tenantId: B } });
     // Plan 080: movements reference material + location, and lots reference location (ON DELETE RESTRICT) —
     // so drop movements first, then lots, then the locations they pointed at.
+    // Plan 080 U7: finished_good_receipt composite-FKs location AND wine_sku (ON DELETE RESTRICT), so it
+    // must go before BOTH of those.
+    await owner.finishedGoodReceipt.deleteMany({ where: { id: { in: ["iso_fgr_b", "iso_fgr_x", "iso_fgr_k11", "iso_fgr_bad"] } } });
+    await owner.wineSku.deleteMany({ where: { id: "iso_sku_b" } });
     await owner.materialMovement.deleteMany({ where: { id: { in: ["iso_mm_b", "iso_mm_x", "iso_mm_k11", "iso_mm_kind"] } } });
     await owner.supplyLot.deleteMany({ where: { id: { in: ["iso_supply_b", "iso_supply_x", "iso_supply_locfk"] } } });
     await owner.location.deleteMany({ where: { id: { in: ["iso_loc_a", "iso_loc_b"] } } });

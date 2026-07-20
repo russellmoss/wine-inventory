@@ -39,6 +39,8 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600
   // so a drag-select that begins inside the modal and releases on the backdrop (e.g. dragging a text
   // selection to the far-left screen edge) does NOT close the dialog and discard typed data (#310).
   const pressStartedOnOverlay = React.useRef(false);
+  // Plan 080: the dialog needs a STABLE id to be announced by its own title (aria-labelledby).
+  const titleId = React.useId();
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -75,6 +77,13 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600
       }}
     >
       <div
+        // Plan 080: real dialog semantics. Without these a screen reader announces this as an anonymous
+        // group — it never says "dialog", never reads the title on open, and nothing marks the rest of the
+        // page as inert. `aria-modal` + `role="dialog"` + a title association are the minimum that makes
+        // the modal perceivable to assistive tech; this component backs EVERY modal in the app.
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface-raised)",
@@ -87,7 +96,7 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 600
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12 }}>
           <div>
-            <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: 0 }}>{title}</h2>
+            <h2 id={titleId} style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: 0 }}>{title}</h2>
             {subtitle ? <div style={{ color: "var(--text-muted)", fontSize: 13.5, marginTop: 4 }}>{subtitle}</div> : null}
           </div>
           <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "var(--text-muted)", lineHeight: 1 }}>×</button>

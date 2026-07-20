@@ -6,7 +6,7 @@ import { STOCK_UNITS } from "@/lib/cellar/materials-shared";
 import { createStockMaterialAction } from "@/lib/cellar/actions";
 import type { CreateStockMaterialInput } from "@/lib/cellar/materials";
 
-// Wave 3 (materials) — create a NEW catalog material/expendable, wrapping createStockMaterialCore. A pure
+// Wave 3 (materials) — create a NEW catalog material/consumable, wrapping createStockMaterialCore. A pure
 // wrapper: no taxonomy/cost logic here (the core derives family→category, seeds the opening SupplyLot, and
 // stamps the costing-policy version). Family is free-text (coerceFamily maps a built-in or keeps a custom
 // one); category is DERIVED from it (cost-safety authority). RESTOCKING an existing material is receive_supply.
@@ -18,7 +18,7 @@ type RawInput = { name?: string; family?: string; stockUnit?: string; openingQty
 export const createMaterialTool: AssistantTool = {
   name: "create_material",
   description:
-    "Create a NEW material/expendable in the catalog (an additive, cleaning/sanitizing supply, or packaging). Use when the user wants to ADD a product that isn't in the catalog yet — 'add a new tannin called Grape Tannin VR Supra', 'create a Fermaid-O nutrient'. Optionally seed opening on-hand stock (openingQty + unitCost). This does NOT restock an existing material — use receive_supply for that. Returns a preview to confirm.",
+    "Create a NEW material/consumable in the catalog (an additive, cleaning/sanitizing supply, or packaging). Use when the user wants to ADD a product that isn't in the catalog yet — 'add a new tannin called Grape Tannin VR Supra', 'create a Fermaid-O nutrient'. Optionally seed opening on-hand stock (openingQty + unitCost). This does NOT restock an existing material — use receive_supply for that. Returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",

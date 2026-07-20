@@ -109,8 +109,27 @@ export async function listEquipment(tenantId: string, opts?: { activeOnly?: bool
     const rows = await prisma.equipmentAsset.findMany({
       where: opts?.activeOnly ? { isActive: true } : {},
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
-      select: { id: true, name: true, kind: true, status: true, locationId: true, notes: true, isActive: true },
+      select: {
+        id: true, name: true, kind: true, status: true, locationId: true, notes: true, isActive: true,
+        // Plan 080 U9: the U3 cost columns, so the registry can show what an asset cost.
+        purchaseCostBase: true, currency: true, purchaseDate: true,
+        vendorId: true,
+      },
     });
-    return rows;
+    // Resolve vendor names in ONE query rather than per row.
+    const vendorIds = [...new Set(rows.map((r) => r.vendorId).filter((v): v is string => !!v))];
+    const vendors = vendorIds.length
+      ? await prisma.vendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, name: true } })
+      : [];
+    const vendorName = new Map(vendors.map((v) => [v.id, v.name]));
+    // Decimal/Date are not serializable across the RSC boundary — map to number / ISO string here.
+    return rows.map((r) => ({
+      id: r.id, name: r.name, kind: r.kind, status: r.status, locationId: r.locationId,
+      notes: r.notes, isActive: r.isActive,
+      purchaseCostBase: r.purchaseCostBase == null ? null : Number(r.purchaseCostBase),
+      currency: r.currency ?? null,
+      purchaseDate: r.purchaseDate ? r.purchaseDate.toISOString() : null,
+      vendorName: r.vendorId ? vendorName.get(r.vendorId) ?? null : null,
+    }));
   });
 }

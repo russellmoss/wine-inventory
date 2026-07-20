@@ -74,6 +74,7 @@ import { commitAdjustConsumable } from "./tools/adjust-consumable";
 import { commitTransferConsumable } from "./tools/transfer-consumable";
 import { commitAddEquipment } from "./tools/add-equipment";
 import { commitAddInvoice } from "./tools/add-invoice";
+import { commitReceiveFinishedGood } from "./tools/receive-finished-good";
 
 // Static map of tool name -> committer. No side-effect registration, no import
 // cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
@@ -89,6 +90,7 @@ const COMMITTERS: Record<string, Committer> = {
   transfer_consumable: commitTransferConsumable,
   add_equipment: commitAddEquipment,
   add_invoice: commitAddInvoice,
+  receive_finished_good: commitReceiveFinishedGood,
   rack_wine: commitRackWine,
   add_addition: commitAddAddition,
   record_measurement: commitRecordMeasurement,

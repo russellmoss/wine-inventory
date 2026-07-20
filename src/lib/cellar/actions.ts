@@ -99,7 +99,7 @@ export const createStockMaterialAction = action(
   },
 );
 
-/** Phase 037: edit an existing material's base setup data (the expendables detail-modal "Edit" action). */
+/** Phase 037: edit an existing material's base setup data (the consumables detail-modal "Edit" action). */
 export const updateMaterialAction = action(
   async ({ actor }, id: string, input: UpdateMaterialInput): Promise<CellarMaterialDTO> => {
     const dto = await updateMaterialCore(actor, id, input);

@@ -184,6 +184,19 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   engine is unaffected); `validUntil` is separate from `dueAt` and a past-due WO does NOT auto-expire its holds.
   Guard: `npm run verify:work-orders`.
 
+- **A consumable MOVE conserves quantity and value (STOCK-2, plan 080).**
+  Consumables became per-location in plan 080. A transfer is a FIFO **lot-split**, not a decrement-here /
+  increment-there: Σ`qtyRemaining` is unchanged, and each destination lot inherits its SOURCE lot's
+  `unitCost`, `receivedAt`, `expiresAt`, `vendorId`, `policyVersion` and FX quintet, so Σ(qty × unitCost) is
+  unchanged too. The naive implementation destroys cost lineage — the moved stock either loses its basis
+  (valuing at $0/UNKNOWN) or is silently re-priced at today's average, back-dating a cost change onto stock
+  whose value never moved. A split lot points back via `splitFromLotId`; provenance derives TRANSITIVELY
+  through that edge and is never row-copied, so later-added source documents still resolve. Negative
+  `qtyRemaining` is reserved for the CONSUME reconcile path (a dose past a location's on-hand, booked at a
+  KNOWN weighted-avg so COGS is never $0 and never cross-pulled from another location); a deliberate user
+  transfer or adjustment BLOCKS with the specific shortfall instead.
+  Guard: `npm run test -- material-stock`.
+
 - **Vessel-activity (maintenance) supply use is OVERHEAD, never wine COGS (WORKORDER-3, Phase 9.1).**
   A maintenance task (cleaning, sanitizing, steaming, gas, ozone, SO₂ treatment, wet-storage solution change,
   temperature setpoint) that consumes a supply

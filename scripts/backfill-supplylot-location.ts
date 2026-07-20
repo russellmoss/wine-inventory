@@ -32,12 +32,16 @@ async function ensureSystemLocation(): Promise<string> {
 async function backfillTenant(tenantId: string) {
   return runAsTenant(tenantId, async () => {
     const systemLocationId = await ensureSystemLocation();
-    const res = await prisma.supplyLot.updateMany({
-      where: { locationId: null },
-      data: { locationId: systemLocationId },
-    });
-    const remaining = await prisma.supplyLot.count({ where: { locationId: null } });
-    return { tenantId, systemLocationId, filled: res.count, remaining };
+    // Plan 080 U13a: locationId is now NOT NULL, so the typed client can no longer even EXPRESS
+    // `where: { locationId: null }`. Raw SQL keeps this script working if the constraint is ever dropped
+    // for a re-expand (the documented rollback), instead of deleting the deploy path outright. Raw is
+    // tenant-scoped by the surrounding runAsTenant + RLS; the explicit tenantId predicate is belt-and-braces.
+    const filled = await prisma.$executeRaw`
+      UPDATE "supply_lot" SET "locationId" = ${systemLocationId}
+      WHERE "locationId" IS NULL AND "tenantId" = ${tenantId}`;
+    const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT COUNT(*)::bigint n FROM "supply_lot" WHERE "locationId" IS NULL AND "tenantId" = ${tenantId}`;
+    return { tenantId, systemLocationId, filled, remaining: Number(rows[0]?.n ?? 0) };
   });
 }
 

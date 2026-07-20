@@ -476,6 +476,13 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "catalog toggle, history-safe (never a hard delete); reactivate = active:true",
   },
 
+  {
+    utterance: "Received 48 logo glasses at $4 each into the Tasting Room",
+    tool: "receive_finished_good",
+    args: { item: "logo glasses", qty: 48, unitCost: 4, location: "Tasting Room" },
+    note: "PURCHASED finished goods — stock + a weighted-avg cost receipt; NOT wine we bottled ourselves",
+  },
+
   // ── Plan 080 U12: per-location consumable stock + costed equipment + hand-entered invoice ──
   {
     utterance: "Received 5 kg of Fermaid-O into the Lab at $12 a kilo",

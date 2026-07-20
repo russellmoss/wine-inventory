@@ -701,6 +701,10 @@ model WineSku {
   // dosage g/L live on BottlingRun, not here — council CRITICAL #5).
   method           SparklingMethod?
   dosageStyle      DosageStyle?
+  // Plan 080 U7: list PRICE. Safe as a mutable SKU column — it is what you SELL for, not what it COST.
+  // COGS deliberately does NOT live here (council C4: a mutable cost column is a second source of truth
+  // with no history); purchased cost lives in FinishedGoodReceipt, bottled cost in BottlingCostSnapshot.
+  msrp             Decimal?               @db.Decimal(18, 2)
   isActive         Boolean                @default(true)
   createdAt        DateTime               @default(now())
   categoryId       String?
@@ -826,6 +830,48 @@ model BottledInventory {
 
 // ───────────────────────── Finished goods (merch) ─────────────────────────
 
+// Plan 080 U7 (council C4) — the PURCHASED-cost layer for finished goods. Append-only receipts; on-hand
+// valuation is the WEIGHTED AVERAGE over them, never a mutable `unitCogs` column on the SKU (that would be a
+// second source of truth with no history) and never last-cost (which whipsaws COGS).
+//
+// Scope is deliberately narrow: this covers 3rd-party / merchandise / externally-purchased wine only.
+// INTERNALLY-BOTTLED wine keeps its specific-lot COGS from the frozen BottlingCostSnapshot and is NOT
+// touched here (COST-3 — that snapshot is immutable). A library buy-back of your own wine IS a purchase and
+// legitimately gets a receipt (council DQ1: lock only when the provenance is an internal bottling run).
+//
+// Exactly ONE of wineSkuId / finishedGoodId is set (CHECK-constrained). `unitCostBase` is ALWAYS the tenant
+// base currency (COST-4); the foreign quintet mirrors SupplyLot as immutable audit provenance (IAS 21).
+model FinishedGoodReceipt {
+  tenantId            String    @default("")
+  id                  String    @id @default(cuid())
+  wineSkuId           String? // composite-tenant FK -> wine_sku(tenantId,id) (raw SQL, K11)
+  finishedGoodId      String? // composite-tenant FK -> finished_good(tenantId,id) (raw SQL, K11)
+  qty                 Int // units received on this receipt (> 0, CHECK-constrained)
+  unitCostBase        Decimal   @db.Decimal(18, 8) // per unit, tenant BASE currency — the valuation basis
+  currency            String    @default("USD") // the BASE currency stamp
+  // Immutable foreign-invoice provenance (all null for a base-currency purchase) — audit only, never revalued.
+  foreignUnitCost     Decimal?  @db.Decimal(18, 8)
+  foreignCurrency     String?
+  fxRate              Decimal?  @db.Decimal(18, 8)
+  fxRateDate          DateTime?
+  fxRateSource        String?
+  locationId          String // where the units landed — composite-tenant FK -> location(tenantId,id)
+  receivedAt          DateTime  @default(now())
+  vendorId            String? // composite-tenant FK -> vendor(tenantId,id)
+  sourceInvoiceLineId String? // provenance when this came from an invoice line (Wave 3 / U5)
+  note                String?
+  createdById         String?
+  createdByEmail      String
+  createdAt           DateTime  @default(now())
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, wineSkuId, receivedAt]) // weighted-avg scan per SKU
+  @@index([tenantId, finishedGoodId, receivedAt]) // weighted-avg scan per good
+  @@index([tenantId, locationId])
+  @@map("finished_good_receipt")
+}
+
 model FinishedGoodCategory {
   tenantId  String         @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id        String         @id @default(cuid())
@@ -845,12 +891,15 @@ model FinishedGood {
   id             String                  @id @default(cuid())
   name           String
   categoryId     String
+  /// Plan 080 U7: list PRICE (see the note on WineSku.msrp — price, never cost).
+  msrp           Decimal?                @db.Decimal(18, 2)
   isActive       Boolean                 @default(true)
   createdAt      DateTime                @default(now())
   category       FinishedGoodCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   inventory      FinishedGoodInventory[]
   stockMovements StockMovement[]
 
+  @@unique([tenantId, id]) // Plan 080 U7: composite-tenant-FK target for finished_good_receipt (K11)
   @@index([categoryId])
   @@index([tenantId])
   @@map("finished_good")
@@ -2734,10 +2783,12 @@ model SupplyLot {
   supplierNote  String?
   expiresAt     DateTime? // Plan 072: batch/lot expiry (attached from a COA by lot no.); nullable, RLS-neutral column add
   vendorId      String? // Plan 069: per-purchase vendor — composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
-  // Plan 080 U1: physical location of this lot. Nullable through the expand phase (backfill → SET NOT NULL in a
-  // later migration once all writers set it — council S7). Composite-tenant FK (tenantId,locationId)→location(tenantId,id)
-  // in raw SQL (K11), NO Prisma relation (mirrors vendorId) so Location's back-relations stay untouched.
-  locationId    String?
+  // Plan 080: physical location of this lot. CONTRACTED to NOT NULL in U13a
+  // (20260719180000_supplylot_location_not_null) once every writer — app paths AND the verify/seed scripts —
+  // stamped it and the backfill reached 0 nulls across all tenants. Composite-tenant FK
+  // (tenantId,locationId)→location(tenantId,id) in raw SQL (K11), NO Prisma relation (mirrors vendorId) so
+  // Location's back-relations stay untouched.
+  locationId    String
   // Plan 080 U1: transfer lineage. When a transfer SPLITS a lot, the destination lot points back at the source lot
   // here; provenance (LotDocument/expiry) is derived TRANSITIVELY through this edge (council S2 — never row-copy).
   splitFromLotId String?

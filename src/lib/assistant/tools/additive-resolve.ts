@@ -56,7 +56,7 @@ export function resolveAdditiveFrom(
   const exact = all.filter((m) => nameNorms(m).includes(needle));
   const fuzzy = all.filter((m) => nameNorms(m).some((h) => h !== "" && (h.includes(needle) || needle.includes(h))));
   const matches = exact.length > 0 ? exact : fuzzy;
-  if (matches.length === 0) throw new Error(`No additive matches "${ref}". Add it to the expendables catalog first, or check the name.`);
+  if (matches.length === 0) throw new Error(`No additive matches "${ref}". Add it to the consumables catalog first, or check the name.`);
 
   const doseable = matches.filter((m) => isDoseableCategory(catOf(m)));
   if (doseable.length === 0) throw new Error(nonAdditiveMsg(matches[0]));
@@ -68,6 +68,6 @@ export function resolveAdditiveFrom(
     describe: (m) => materialDisplayName(m),
     detail: (m) => [m.kind, m.subcategory].filter(Boolean).join(" · ") + ` · ref ${m.id.replace(/-/g, "").slice(0, 6)}`,
     resume: (m) => signResume(resumeTool, { ...resumeBase, material: `#${m.id}` }),
-    noneMsg: `No additive matches "${ref}". Add it to the expendables catalog first, or check the name.`,
+    noneMsg: `No additive matches "${ref}". Add it to the consumables catalog first, or check the name.`,
   });
 }

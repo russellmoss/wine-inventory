@@ -3,6 +3,8 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal, Collapsible, LocalTime } from "@/components/ui";
+import { MaterialMovePanel, LocationOnHandList } from "@/components/inventory/MaterialMovePanel";
+import type { LocationOnHand } from "@/lib/cellar/materials";
 import { type CellarMaterialDTO, materialDisplayName } from "@/lib/cellar/materials-shared";
 import {
   MATERIAL_CATEGORIES, CATEGORY_LABELS, categoryOf, familyLabel,
@@ -61,7 +63,21 @@ function useRunner() {
 /** The stored category for a material (fallback derives from kind for legacy rows). */
 const catOf = (m: CellarMaterialDTO): MaterialCategory => (m.category as MaterialCategory) ?? categoryOf(m.kind);
 
-export function ExpendablesClient({ materials, vendors, customUnits = [] }: { materials: CellarMaterialDTO[]; vendors: VendorRow[]; customUnits?: CustomUnitRow[] }) {
+export function ConsumablesSection({
+  materials,
+  vendors,
+  customUnits = [],
+  locations = [],
+  onHandByLocation = {},
+}: {
+  materials: CellarMaterialDTO[];
+  vendors: VendorRow[];
+  customUnits?: CustomUnitRow[];
+  /** Plan 080 U8: active locations for the Receive/Adjust/Transfer pickers. */
+  locations?: { id: string; name: string }[];
+  /** Plan 080 U8: per-material, per-location on-hand (a plain Record — a Map cannot cross the RSC boundary). */
+  onHandByLocation?: Record<string, LocationOnHand[]>;
+}) {
   const { error, pending, run } = useRunner();
   const router = useRouter();
   const refreshVendors = React.useCallback(() => router.refresh(), [router]);
@@ -69,6 +85,7 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
   const [receiveId, setReceiveId] = React.useState<string | null>(null);
+  const [moveId, setMoveId] = React.useState<string | null>(null); // Plan 080 U8: Receive/Adjust/Transfer
 
   // Toolbar: fuzzy search + category filter + (when a category is active) a sub-category multi-select +
   // inactive toggle + which categories are unfurled.
@@ -87,6 +104,7 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
   const detail = detailId ? byId.get(detailId) ?? null : null;
   const editMat = editId ? byId.get(editId) ?? null : null;
   const receiveMat = receiveId ? byId.get(receiveId) ?? null : null;
+  const moveMat = moveId ? byId.get(moveId) ?? null : null;
 
   // Existing family labels per category — seed the form's family picker alongside the built-ins.
   const familiesByCategory = React.useMemo(() => {
@@ -148,7 +166,7 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
       <Eyebrow rule>Setup</Eyebrow>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Expendables</h1>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Consumables</h1>
           <p style={{ color: "var(--text-secondary)", marginBottom: 20, maxWidth: "60ch" }}>
             Winemaking supplies — yeast, nutrients, SO₂, fining agents, acids, tannins, enzymes, cleaning &amp;
             sanitizing, packaging. Click an item to view its details, then edit its setup, receive a costed lot,
@@ -158,7 +176,7 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <IngestInvoiceLauncher />
           <Button variant="primary" onClick={() => setAddOpen(true)} style={{ minHeight: 44, marginTop: 10 }}>
-            + Add expendable
+            + Add consumable
           </Button>
         </div>
       </div>
@@ -168,9 +186,9 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
       {materials.length === 0 ? (
         <Card padding="var(--space-5)" style={{ marginTop: 8, textAlign: "center" }}>
           <p style={{ color: "var(--text-secondary)", fontSize: 15, margin: "8px 0 14px" }}>
-            No expendables yet. Add your first supply to start tracking stock and cost.
+            No consumables yet. Add your first supply to start tracking stock and cost.
           </p>
-          <Button variant="primary" onClick={() => setAddOpen(true)}>+ Add expendable</Button>
+          <Button variant="primary" onClick={() => setAddOpen(true)}>+ Add consumable</Button>
         </Card>
       ) : (
         <>
@@ -179,8 +197,8 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search expendables by name…"
-              aria-label="Search expendables"
+              placeholder="Search consumables by name…"
+              aria-label="Search consumables"
             />
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button type="button" aria-pressed={catFilter === "ALL"} style={chipStyle(catFilter === "ALL")} onClick={() => selectCat("ALL")}>All</button>
@@ -214,7 +232,7 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
 
           {categories.length === 0 ? (
             <Card padding="var(--space-5)" style={{ textAlign: "center" }}>
-              <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: "6px 0" }}>No expendables match your search.</p>
+              <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: "6px 0" }}>No consumables match your search.</p>
             </Card>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -267,8 +285,10 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
         material={detail}
         pending={pending}
         run={run}
+        locationOnHand={detail ? onHandByLocation[detail.id] ?? [] : []}
         onEdit={() => { if (detail) { setEditId(detail.id); setDetailId(null); } }}
         onReceive={() => { if (detail) { setReceiveId(detail.id); setDetailId(null); } }}
+        onMove={() => { if (detail) { setMoveId(detail.id); setDetailId(null); } }}
         onClose={() => setDetailId(null)}
       />
 
@@ -290,6 +310,16 @@ export function ExpendablesClient({ materials, vendors, customUnits = [] }: { ma
         pending={pending}
         run={run}
         onClose={() => setReceiveId(null)}
+      />
+
+      <MaterialMovePanel
+        key={moveMat?.id ?? "move-none"}
+        material={moveMat}
+        locations={locations}
+        onHand={moveMat ? onHandByLocation[moveMat.id] ?? [] : []}
+        pending={pending}
+        run={run}
+        onClose={() => setMoveId(null)}
       />
     </div>
   );
@@ -324,7 +354,7 @@ function IngestInvoiceLauncher() {
       for (const f of files) form.append("files", f);
       const res = await fetch("/api/ingest/documents", { method: "POST", body: form });
       if (res.status === 503) {
-        setError("Document ingestion isn't available (upload storage isn't configured). Add the item manually with “+ Add expendable”.");
+        setError("Document ingestion isn't available (upload storage isn't configured). Add the item manually with “+ Add consumable”.");
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { files?: { blobUrl: string; mimeType: string; fileName: string; fileSha256?: string }[]; error?: string };
@@ -479,15 +509,20 @@ function MaterialDetailModal({
   material,
   pending,
   run,
+  locationOnHand,
   onEdit,
   onReceive,
+  onMove,
   onClose,
 }: {
   material: CellarMaterialDTO | null;
   pending: boolean;
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
+  /** Plan 080 U8: where this item physically is. */
+  locationOnHand: LocationOnHand[];
   onEdit: () => void;
   onReceive: () => void;
+  onMove: () => void;
   onClose: () => void;
 }) {
   const { format } = useCurrency();
@@ -523,6 +558,12 @@ function MaterialDetailModal({
         {tracked ? (
           <DetailRow label="On hand"><span style={num}>{m.onHand ?? 0}</span> {unit}</DetailRow>
         ) : null}
+        {/* Plan 080 U8: WHERE it is — the question the old flat total could not answer. */}
+        {tracked ? (
+          <DetailRow label="By location">
+            <LocationOnHandList rows={locationOnHand} unit={unit} />
+          </DetailRow>
+        ) : null}
         <DetailRow label="Cost">
           {m.avgUnitCost != null ? <span style={num}>≈ {format(m.avgUnitCost, { per: unit })}</span> : "Unknown (no priced stock)"}
         </DetailRow>
@@ -536,6 +577,7 @@ function MaterialDetailModal({
           <Button type="button" variant="ghost" disabled={pending} onClick={() => run(() => setMaterialActiveAction(m.id, inactive))}>
             {inactive ? "Reactivate" : "Deactivate"}
           </Button>
+          <Button type="button" variant="secondary" disabled={pending} onClick={onMove}>Move stock</Button>
           <Button type="button" variant="secondary" disabled={pending} onClick={onReceive}>Receive</Button>
           <Button type="button" variant="primary" disabled={pending} onClick={onEdit}>Edit</Button>
         </div>
@@ -646,13 +688,13 @@ function AddExpendableModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add expendable" subtitle="Product, purchase, and how it's tracked" maxWidth="min(620px, 96vw)">
+    <Modal open={open} onClose={onClose} title="Add consumable" subtitle="Product, purchase, and how it's tracked" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" vendors={vendors} customUnits={customUnits} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
-            {pending ? "Adding…" : "Add expendable"}
+            {pending ? "Adding…" : "Add consumable"}
           </Button>
         </div>
       </div>

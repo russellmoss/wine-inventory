@@ -3,9 +3,10 @@
 import React from "react";
 import { Card, Input, Button, Badge, Eyebrow, ConfirmButton, ExportCsvButton } from "@/components/ui";
 import type { ItemKind } from "@/lib/stock/movements";
-import { createCategory, createWineSku, createGood, moveStock, updateOnHand, deleteOnHand } from "@/lib/inventory/actions";
+import { moveStock, updateOnHand, deleteOnHand } from "@/lib/inventory/actions";
 import { unwrap } from "@/lib/action-result";
-import { ImportCsvModal } from "./ImportCsvModal";
+import { ImportCsvModal } from "../ImportCsvModal";
+import { AddFinishedGoodModal } from "@/components/inventory/AddFinishedGoodModal";
 
 export type Cat = { id: string; name: string };
 export type ItemOpt = { kind: ItemKind; id: string; label: string; category: string };
@@ -21,7 +22,7 @@ const sel: React.CSSProperties = {
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)", width: "100%",
 };
 
-export function InventoryClient({ categories, items, locations, onHand }: { categories: Cat[]; items: ItemOpt[]; locations: LocOpt[]; onHand: OnHandRow[] }) {
+export function FinishedGoodsSection({ categories, items, locations, onHand }: { categories: Cat[]; items: ItemOpt[]; locations: LocOpt[]; onHand: OnHandRow[] }) {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [mode, setMode] = React.useState<Mode>("RECEIVE");
@@ -30,6 +31,11 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
   const [draft, setDraft] = React.useState<Draft | null>(null);
   const [fCategory, setFCategory] = React.useState("all");
   const [fLocation, setFLocation] = React.useState("all");
+  // Plan 080 U7: Wine / Merchandise sub-tabs. Finished goods are two genuinely different things — a
+  // vintage-dated wine SKU and a merch item — and the add form differs, so the tab drives BOTH the table
+  // filter and which "+ Add" the button opens.
+  const [subTab, setSubTab] = React.useState<"all" | "BOTTLED_WINE" | "FINISHED_GOOD">("all");
+  const [addOpen, setAddOpen] = React.useState(false);
 
   // Filter options: union of registry names and anything currently on hand (stays
   // dynamic as categories/locations are added, edited, or removed).
@@ -41,7 +47,24 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
     () => [...new Set([...locations.map((l) => l.name), ...onHand.map((r) => r.location)])].sort((a, b) => a.localeCompare(b)),
     [locations, onHand],
   );
-  const filtered = onHand.filter((r) => (fCategory === "all" || r.category === fCategory) && (fLocation === "all" || r.location === fLocation));
+  const subTabs: { key: "all" | "BOTTLED_WINE" | "FINISHED_GOOD"; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "BOTTLED_WINE", label: "Wine" },
+    { key: "FINISHED_GOOD", label: "Merchandise" },
+  ];
+  const subSeg = (active: boolean): React.CSSProperties => ({
+    padding: "6px 14px", fontFamily: "var(--font-body)", fontSize: 14, fontWeight: active ? 600 : 500,
+    color: active ? "var(--surface-raised)" : "var(--text-secondary)",
+    background: active ? "var(--wine-primary)" : "transparent",
+    border: "none", borderRadius: "calc(var(--radius-md) - 2px)", cursor: "pointer", minHeight: 34,
+  });
+
+  const filtered = onHand.filter(
+    (r) =>
+      (fCategory === "all" || r.category === fCategory) &&
+      (fLocation === "all" || r.location === fLocation) &&
+      (subTab === "all" || r.kind === subTab),
+  );
 
   function run(fn: () => Promise<void>, form?: HTMLFormElement, after?: () => void) {
     setError(null);
@@ -94,35 +117,10 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
 
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 28 }}>
-        <Card style={{ flex: "1 1 300px" }}>
-          <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 20, marginBottom: 12 }}>New wine SKU</h2>
-          <form onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => createWineSku(new FormData(f)), f); }} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Input name="name" placeholder="Ser Kem Marp Reserve" required />
-            <Input name="vintage" type="number" placeholder="Vintage" required />
-            <Button type="submit" variant="primary" disabled={pending}>Add wine</Button>
-          </form>
-        </Card>
-
-        <Card style={{ flex: "1 1 300px" }}>
-          <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 20, marginBottom: 12 }}>New item &amp; category</h2>
-          <form onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => createCategory(new FormData(f)), f); }} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <Input name="name" placeholder="New category (e.g. Apparel)" style={{ flex: 1 }} required />
-            <Button type="submit" variant="secondary" disabled={pending}>Add category</Button>
-          </form>
-          {categories.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Add a category, then add items to it.</p>
-          ) : (
-            <form onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => createGood(new FormData(f)), f); }} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Input name="name" placeholder="Item (e.g. Logo T-Shirt)" style={{ flex: "1 1 150px" }} required />
-              <select name="categoryId" style={{ ...sel, height: 44, flex: "0 1 150px" }} required defaultValue="">
-                <option value="" disabled>Category</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <Button type="submit" variant="primary" disabled={pending}>Add item</Button>
-            </form>
-          )}
-        </Card>
-
+        {/* Plan 080 U7: the legacy inline "New wine SKU" and "New item & category" forms are GONE — the
+            "+ Add wine" / "+ Add merchandise" modal beside the sub-tabs supersedes them and is a strict
+            superset (it also captures MSRP and opening stock). Keeping both left four competing ways to add
+            an item on one screen. */}
         {canMove ? (
           <Card style={{ flex: "1 1 360px" }}>
             <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 20, marginBottom: 12 }}>Move stock</h2>
@@ -158,6 +156,20 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
             </form>
           </Card>
         ) : null}
+      </div>
+
+      {/* Plan 080 U7: Wine / Merchandise sub-tabs. Drives the table filter AND which "+ Add" opens. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        <div role="tablist" aria-label="Finished goods type" style={{ display: "inline-flex", gap: 2, padding: 3, background: "var(--paper-100)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
+          {subTabs.map((t) => (
+            <button key={t.key} type="button" role="tab" aria-selected={subTab === t.key} style={subSeg(subTab === t.key)} onClick={() => setSubTab(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <Button type="button" variant="primary" onClick={() => setAddOpen(true)}>
+          {subTab === "FINISHED_GOOD" ? "+ Add merchandise" : "+ Add wine"}
+        </Button>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -265,6 +277,15 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
           </tbody>
         </table>
       </Card>
+
+      <AddFinishedGoodModal
+        open={addOpen}
+        kind={subTab === "FINISHED_GOOD" ? "FINISHED_GOOD" : "BOTTLED_WINE"}
+        categories={categories}
+        locations={locations}
+        onClose={() => setAddOpen(false)}
+        onSaved={() => setAddOpen(false)}
+      />
     </div>
   );
 }

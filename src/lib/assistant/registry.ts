@@ -92,6 +92,7 @@ import { adjustConsumableTool } from "./tools/adjust-consumable";
 import { transferConsumableTool } from "./tools/transfer-consumable";
 import { addEquipmentTool } from "./tools/add-equipment";
 import { addInvoiceTool } from "./tools/add-invoice";
+import { receiveFinishedGoodTool } from "./tools/receive-finished-good";
 import { setMaterialActiveTool } from "./tools/set-material-active";
 import { pullSampleTool } from "./tools/pull-sample";
 import { recordSampleResultsTool } from "./tools/record-sample-results";
@@ -186,6 +187,7 @@ const ALL_TOOLS: AssistantTool[] = [
   transferConsumableTool,
   addEquipmentTool,
   addInvoiceTool,
+  receiveFinishedGoodTool,
   setMaterialActiveTool,
   pullSampleTool,
   recordSampleResultsTool,

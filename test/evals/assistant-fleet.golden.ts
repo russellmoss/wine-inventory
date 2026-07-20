@@ -283,6 +283,14 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     note: "RESTOCK an existing material (supply intake) — distinct from create_material and from add_addition",
   },
 
+  {
+    utterance: "Bought back 12 bottles of the 2019 Cabernet at $22 into the Library",
+    tool: "receive_finished_good",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "a library BUY-BACK is a purchase (cost receipt) — not adjust_inventory and not a bottling run",
+  },
+
   // ── Plan 080 U12 — the boundaries that actually collide once these five tools join the set ──
   {
     utterance: "Received 10 kg of tartaric into the Lab at $8/kg",

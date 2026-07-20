@@ -74,7 +74,7 @@ async function prepareSpec(tenantId: string, raw: unknown): Promise<{ spec: Temp
   const { spec, unresolved } = resolveSpecMaterials(parsed, materials);
   if (unresolved.length > 0) {
     const list = unresolved.map((u) => `"${u.ref}" (block ${u.taskIndex + 1}, ${u.taskType})`).join(", ");
-    throw new Error(`I couldn't match these materials in your catalog (or they can't be dosed in that block): ${list}. Add them under Expendables first, or use one that's stocked.`);
+    throw new Error(`I couldn't match these materials in your catalog (or they can't be dosed in that block): ${list}. Add them under Consumables first, or use one that's stocked.`);
   }
   const v = validateTemplateSpec(spec, await runAsTenant(tenantId, () => resolveTaskVocabulary()));
   if (!v.ok) throw new Error(`That template isn't valid: ${v.errors.join(" ")}`);

@@ -47,7 +47,9 @@ const SETUP: NavItem[] = [
   { href: "/vessels", label: "Vessels" },
   { href: "/locations", label: "Locations" },
   { href: "/reference", label: "Varieties & vineyards" },
-  { href: "/setup/expendables", label: "Expendables" },
+  // Plan 080 U6: "Expendables" is gone from Setup — consumables now live in the unified Inventory page
+  // (Inventory → Consumables), alongside finished goods and equipment. /setup/expendables redirects there.
+  // Locations stays here for now: it has no section on the Inventory page yet and every intake depends on it.
   { href: "/setup/vendors", label: "Vendors" },
   { href: "/settings", label: "Settings", admin: true },
   { href: "/users", label: "Users", admin: true },

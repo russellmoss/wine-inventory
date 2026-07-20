@@ -43,6 +43,11 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     args: { outOfStockOnly: true },
   },
   {
+    utterance: "What consumables are we out of?",
+    tool: "query_materials",
+    args: { outOfStockOnly: true },
+  },
+  {
     utterance: "What vendors do we have?",
     tool: "query_vendors",
     args: {},

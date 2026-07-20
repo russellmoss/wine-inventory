@@ -114,7 +114,7 @@ export const addAdditionTool: AssistantTool = {
         detail: (m) => [m.kind, m.subcategory].filter(Boolean).join(" · ") + ` · ref ${m.id.replace(/-/g, "").slice(0, 6)}`,
         // Deterministic: tapping re-runs THIS tool with the material pinned by id (no model round-trip).
         resume: (m) => signResume("add_addition", { ...input, material: `#${m.id}`, unit }),
-        noneMsg: `No additive matches "${input.material}". Add it to the expendables catalog first, or check the name.`,
+        noneMsg: `No additive matches "${input.material}". Add it to the consumables catalog first, or check the name.`,
       });
       if (res.kind === "choice") return res.choice;
       material = res.row;

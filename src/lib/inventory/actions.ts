@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireTenantId } from "@/lib/tenant/context";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
@@ -10,6 +9,8 @@ import { writeAudit, summarize, diff } from "@/lib/audit";
 import { receiveStock, adjustStock, transferStock, type ItemKind } from "@/lib/stock/movements";
 import { MAX_IMPORT_ROWS, type ParsedInventoryRow } from "@/lib/inventory/csv";
 import { findWineSku } from "@/lib/bottling/sku";
+import { recordFinishedGoodReceiptCore } from "@/lib/inventory/fg-cost-core";
+import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 
 const PATH = "/inventory";
 
@@ -35,44 +36,11 @@ function parseKind(raw: unknown): ItemKind {
   return k;
 }
 
-export const createCategory = action(async ({ actor }, formData: FormData) => {
-  const name = clean(formData.get("name"), "Category name");
-  if (await prisma.finishedGoodCategory.findFirst({ where: { name } })) throw new ActionError("That category already exists.", "CONFLICT");
-  await runInTenantTx(async (tx) => {
-    const cat = await tx.finishedGoodCategory.create({ data: { name } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, changes: diff(null, { name }), summary: summarize("CREATE", "Category", { label: name }) });
-  });
-  revalidatePath(PATH);
-});
 
-export const createWineSku = action(async ({ actor }, formData: FormData) => {
-  const name = clean(formData.get("name"), "Wine name");
-  const vintage = parseVintage(formData.get("vintage"));
-  let categoryId = String(formData.get("categoryId") ?? "");
-  if (await findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage: false, bottleSizeMl: 750 })) {
-    throw new ActionError("That wine + vintage already exists.", "CONFLICT");
-  }
-  await runInTenantTx(async (tx) => {
-    if (!categoryId) {
-      const wine = await tx.finishedGoodCategory.upsert({ where: { tenantId_name: { tenantId: requireTenantId(), name: "Wine" } }, update: {}, create: { name: "Wine" } });
-      categoryId = wine.id;
-    }
-    const sku = await tx.wineSku.create({ data: { name, vintage, bottleSizeMl: 750, categoryId } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, changes: diff(null, { name, vintage }), summary: summarize("CREATE", "Wine SKU", { label: `${name} ${vintage}` }) });
-  });
-  revalidatePath(PATH);
-});
 
-export const createGood = action(async ({ actor }, formData: FormData) => {
-  const name = clean(formData.get("name"), "Item name");
-  const categoryId = String(formData.get("categoryId") ?? "");
-  if (!(await prisma.finishedGoodCategory.findUnique({ where: { id: categoryId } }))) throw new ActionError("Pick a category.");
-  await runInTenantTx(async (tx) => {
-    const good = await tx.finishedGood.create({ data: { name, categoryId } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, changes: diff(null, { name }), summary: summarize("CREATE", "Item", { label: name }) });
-  });
-  revalidatePath(PATH);
-});
+
+
+
 
 // `safeAction`, not `action`: a move can be legitimately blocked (empty/short source, inactive
 // location, same-location transfer) and the user needs the SPECIFIC reason. A thrown `ActionError`
@@ -352,3 +320,122 @@ async function currentBalance(kind: ItemKind, itemId: string, locationId: string
   const b = await prisma.finishedGoodInventory.findFirst({ where: { finishedGoodId: itemId, locationId } });
   return b?.quantity ?? 0;
 }
+
+/**
+ * Plan 080 U7 — receive PURCHASED finished goods: the units land as stock AND a FinishedGoodReceipt records
+ * what they cost, so valuation is a weighted average over receipts (council C4).
+ *
+ * Ordering is deliberate: stock FIRST, then the cost layer. If the receipt write fails, the goods are on
+ * hand with no receipt, so the weighted average reports UNKNOWN — the same D14/COST-2 degradation the rest
+ * of the system already models. The inverse order could book cost for stock that never arrived, which is
+ * strictly worse. A null unitCost skips the receipt entirely rather than inventing a $0 basis.
+ */
+export const receivePurchasedFinishedGoodAction = action(
+  async (
+    { actor },
+    input: { kind: ItemKind; itemId: string; qty: number; locationId: string; unitCost?: number | null; vendorName?: string | null; note?: string | null },
+  ) => {
+    const qty = Math.trunc(Number(input.qty));
+    if (!Number.isInteger(qty) || qty <= 0) throw new ActionError("Quantity must be a whole number greater than zero.");
+    await receiveStock(input.kind, input.itemId, input.locationId, qty, actor, input.note ?? "Purchased receipt");
+
+    const unitCost = input.unitCost;
+    if (unitCost != null && Number.isFinite(unitCost) && unitCost >= 0) {
+      const vendorId = input.vendorName?.trim() ? (await findOrCreateVendorCore({ name: input.vendorName.trim() }))?.id ?? null : null;
+      await recordFinishedGoodReceiptCore(actor, {
+        ...(input.kind === "BOTTLED_WINE" ? { wineSkuId: input.itemId } : { finishedGoodId: input.itemId }),
+        qty,
+        unitCostBase: unitCost,
+        locationId: input.locationId,
+        vendorId,
+        note: input.note ?? null,
+      } as Parameters<typeof recordFinishedGoodReceiptCore>[1]);
+    }
+    revalidatePath("/inventory");
+    return { ok: true as const };
+  },
+);
+
+/**
+ * Plan 080 U7 — the "+ Add inventory" modal's single entry point: define a finished good and, optionally,
+ * bring in opening stock with its cost, in one step.
+ *
+ * Vintage is OPTIONAL (the schema already allows it) — the UI soft-confirms a blank one for WINE only
+ * (council S8); a blank vintage on merchandise is normal and must never nag. MSRP is a price and lives on
+ * the SKU; COGS does NOT (council C4) — opening stock's cost becomes a FinishedGoodReceipt, so valuation
+ * stays a weighted average over receipts.
+ *
+ * `safeAction`: a duplicate wine+vintage or a taken category name is a block the user must SEE.
+ */
+export const addFinishedGoodAction = safeAction(
+  async (
+    { actor },
+    input: {
+      kind: ItemKind;
+      name: string;
+      categoryId?: string | null;
+      newCategoryName?: string | null;
+      vintage?: number | null;
+      msrp?: number | null;
+      openingQty?: number | null;
+      locationId?: string | null;
+      unitCost?: number | null;
+    },
+  ) => {
+    const name = clean(input.name, input.kind === "BOTTLED_WINE" ? "Wine name" : "Item name");
+    const msrp = input.msrp != null && Number.isFinite(input.msrp) && input.msrp >= 0 ? input.msrp : null;
+
+    // Category: pick an existing one or create it inline (the modal offers both).
+    let categoryId = input.categoryId?.trim() || "";
+    const newCat = input.newCategoryName?.trim();
+    if (!categoryId && newCat) {
+      const existing = await prisma.finishedGoodCategory.findFirst({ where: { name: newCat }, select: { id: true } });
+      categoryId = existing?.id ?? (await runInTenantTx(async (tx) => {
+        const cat = await tx.finishedGoodCategory.create({ data: { name: newCat }, select: { id: true } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, summary: summarize("CREATE", "Category", { label: newCat }) });
+        return cat.id;
+      }));
+    }
+
+    let itemId: string;
+    if (input.kind === "BOTTLED_WINE") {
+      const vintage = input.vintage != null && Number.isInteger(input.vintage) ? input.vintage : null;
+      if (vintage != null && (vintage < 1900 || vintage > 2100)) throw new ActionError("Enter a valid vintage year.");
+      // A blank vintage means NON-VINTAGE, and it must be STORED that way. WineSku's uniqueness is two
+      // PARTIAL indexes — UNIQUE(name,vintage,bottleSize) WHERE vintage IS NOT NULL, and
+      // UNIQUE(name,bottleSize) WHERE isNonVintage. Writing vintage:null WITHOUT isNonVintage matches
+      // NEITHER, so the same no-vintage wine could be created unlimited times with nothing to stop it —
+      // and the modal already tells the user it is adding "a non-vintage wine", so the data would also
+      // contradict what they were shown.
+      const isNonVintage = vintage == null;
+      if (await findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage, bottleSizeMl: 750 })) {
+        throw new ActionError(
+          isNonVintage ? `A non-vintage "${name}" already exists.` : "That wine + vintage already exists.",
+          "CONFLICT",
+        );
+      }
+      itemId = await runInTenantTx(async (tx) => {
+        const sku = await tx.wineSku.create({ data: { name, vintage, isNonVintage, categoryId: categoryId || null, msrp }, select: { id: true } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, summary: summarize("CREATE", "Wine", { label: `${name}${vintage ? ` ${vintage}` : ""}` }) });
+        return sku.id;
+      });
+    } else {
+      if (!categoryId) throw new ActionError("Pick a category.");
+      itemId = await runInTenantTx(async (tx) => {
+        const good = await tx.finishedGood.create({ data: { name, categoryId, msrp }, select: { id: true } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, summary: summarize("CREATE", "Item", { label: name }) });
+        return good.id;
+      });
+    }
+
+    // Optional opening stock. Reuses the purchased-receipt path so the physical balance and the cost layer
+    // are one decision — including its ordering rationale (stock first; a failed receipt values as UNKNOWN).
+    const qty = input.openingQty != null ? Math.trunc(Number(input.openingQty)) : 0;
+    if (qty > 0 && input.locationId) {
+      await receivePurchasedFinishedGoodAction({ kind: input.kind, itemId, qty, locationId: input.locationId, unitCost: input.unitCost ?? null, note: "Opening stock" });
+    }
+
+    revalidatePath("/inventory");
+    return { itemId };
+  },
+);
