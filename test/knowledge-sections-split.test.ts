@@ -150,6 +150,33 @@ describe("splitHtmlSections — review regressions (2026-07-20)", () => {
     expect(sections[1].html).not.toContain("KEEPME_TECHNICAL");
   });
 
+  it("PARTITIONS the document — preamble + sections reassemble to the original exactly", () => {
+    // The strongest available guarantee, and the one that would have caught the zero-length-slice
+    // bug directly: if reassembly is byte-identical to the input, no content can be lost and none
+    // can be duplicated, for ANY anchor arrangement.
+    const cases = [
+      `<div><a name="1"></a>AAA<a name="2"></a>BBB</div><p><a name="3"></a>CCC</p>`,
+      `<p><a name="9"></a>NINE</p><p><a name="1"></a>ONE</p><p><a name="9"></a>DUPE</p>`,
+      `<a name="1"></a>Lead<p><a name="2"></a>Two</p>`,
+      `<p>intro</p><p><a name="1"></a>`,
+      `<p><a name="1"></a>A<a name="2"></a>B<a name="3"></a>C</p>`,
+    ];
+    for (const html of cases) {
+      const { sections, preambleHtml } = splitHtmlSections(html);
+      expect(preambleHtml + sections.map((s) => s.html).join("")).toBe(html);
+    }
+  });
+
+  it("preserves offsets when masking spans astral characters", () => {
+    // maskNonContent replaces a match with the SAME number of UTF-16 code units, so slicing the
+    // original by offsets found in the mask stays aligned even across surrogate pairs.
+    const html = `<!-- 🍇🍷 <a name="9"></a> 🍾 --><p><a name="1"></a>Real</p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).toEqual(["1"]);
+    expect(sections[0].html.startsWith("<p>")).toBe(true);
+    expect(sections[0].html).toContain("Real");
+  });
+
   it("keeps slice starts strictly increasing for any anchor arrangement", () => {
     const html =
       `<div><a name="1"></a>A<a name="2"></a>B<a name="3"></a>C</div>` +

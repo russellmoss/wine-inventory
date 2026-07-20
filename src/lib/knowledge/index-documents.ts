@@ -107,11 +107,17 @@ export async function indexDocument(input: {
       // the version mechanism exists to serve. Clear the chunks and record the hash so the state
       // settles. activeRevision is left alone: retrieval reads `revision = activeRevision` and now
       // finds zero rows, which is the correct "this page has no indexable content" state.
+      // Same locking discipline as the main write below: take the document row FOR UPDATE inside
+      // one tx, so a concurrent indexer can't flip in a new revision while we delete its chunks and
+      // leave the document pointing at a revision with no rows.
       await runAsSystem(async (db) => {
-        await db.knowledgeChunk.deleteMany({ where: { documentId: input.documentId } });
-        await db.knowledgeDocument.update({
-          where: { id: input.documentId },
-          data: { indexedContentHash: indexHash },
+        await db.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "activeRevision" FROM "knowledge_document" WHERE "id" = ${input.documentId} FOR UPDATE`;
+          await tx.knowledgeChunk.deleteMany({ where: { documentId: input.documentId } });
+          await tx.knowledgeDocument.update({
+            where: { id: input.documentId },
+            data: { indexedContentHash: indexHash },
+          });
         });
       });
       console.log(
