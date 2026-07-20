@@ -32,6 +32,7 @@
     "crawl:curated": "tsx --conditions=react-server --env-file=.env scripts/crawl-curated.ts",
     "crawl:ets": "tsx --conditions=react-server --env-file=.env scripts/crawl-ets.ts",
     "reset:knowledge-source": "tsx --conditions=react-server --env-file=.env scripts/reset-knowledge-source.ts",
+    "backfill:published-dates": "tsx --conditions=react-server --env-file=.env scripts/backfill-published-dates.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
     "verify:kb-subscriptions": "tsx --conditions=react-server --env-file=.env scripts/verify-kb-subscriptions.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",

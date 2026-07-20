@@ -86,18 +86,28 @@ is two decisions that are Russell's, not code:
    **87 active docs / 667 chunks, voyage-4/1024, 0 errors, 0 skippedRobots, hitCap=false** (full
    frontier, not truncated). `autoCrawl: true` so the monthly sweep picks it up with no workflow edit.
    robots.txt ALLOWS `/agriculture/grape/` — no bypass was used or needed.
-   **TWO OPEN DECISIONS BEFORE THIS SHIPS — branch is currently RED:**
-   (a) **All 87 docs have NO date** (`publishedAt` + `sitemapLastmod` both NULL; site has no sitemap and
-   no date meta tag). The date is in the page body as `Updated: MM/YY` — and spot-checking powdery
-   mildew shows **12/14 and 07/15, i.e. decade-old pesticide guidance**. These are pesticide
-   guidelines: registrations get cancelled and REIs change, so "cited with date unknown" is a safety
-   problem, not a cosmetic one. Needs a `Updated: MM/YY` → `publishedAt` extractor. NOTE the verify
-   run reports `0 with a date` corpus-wide, so this is bigger than uc-ipm.
-   (b) **`verify:knowledge-base` golden now fails** (16 pass / 1 fail): "IPM thresholds for wine
+   (a) ✅ **DATE EXTRACTOR DONE.** Root cause was bigger than uc-ipm: `publishedAt` was READ by
+   retrieval (`retrieve.ts:111`) and surfaced in the assistant citation, but **nothing ever wrote it** —
+   the column was dead corpus-wide. Added `extract/published-date.ts` (pure, 18 tests): label-anchored
+   only (`Updated:`/`Revised:`/…) so a bare year in prose is never mistaken for a stamp, range-checked,
+   returns null rather than guessing. Wired through `ExtractedDoc.publishedAt` → `index-documents.ts`
+   (write-only-when-found, so a re-index can't erase a good date). Backfill needed its own script
+   (`npm run backfill:published-dates`) because `indexDocument` short-circuits on unchanged
+   contentHash — a re-crawl alone would never re-extract. **uc-ipm: 83/87 dated (95.4%).** Full suite
+   2871 pass. ⚠️ If tests fail to load on `@prisma/client`, run `npm run db:generate` (clobber).
+   **THE FINDING THAT MATTERS: the UC IPM grape corpus is OLD** — 2015×54, 2016×10, 2014×4 (so 82% is
+   2016-or-older), vs only 8 docs 2021+. Decade-old spray guidance is now at least *dated* in citations.
+   **TWO THINGS STILL OPEN — branch is RED:**
+   (b) **`verify:knowledge-base` golden still fails** (16 pass / 1 fail): "IPM thresholds for wine
    grapes" expected `mapa.gob | pnw-644 | field-monitoring`, now returns UC IPM leafhoppers /
    mealybugs / nematodes / fungicide-timing. Probably a STALE EXPECTATION (UC IPM is the canonical US
    grape-IPM threshold source) rather than a regression — but widening a golden to green your own
    change is the band-aid pattern, so it is Russell's call, not the agent's.
+   (c) **Corpus-wide backfill NOT run** — only uc-ipm. The other ~2,694 active docs are still undated
+   (verify still prints `0 with a date` for the AWRI/WA diversity check). It is ~1h of polite serial
+   re-crawling across 18 external sites, costs zero Voyage credits, and is resumable (selects
+   `publishedAt: null`), so it is safe to run — but it is an hour of outbound traffic to other people's
+   servers, so it wants an explicit go-ahead rather than being launched silently.
 1. **OPEN — #387 is merged but NOT browser-verified.** Russell asked for "merge #387 and verify
    'delete Block 1' in the browser". The merge happened (`de889cc1`); the browser check did not.
    Needs the interactive logged-in pane. **Do not tell Mike anything until it runs** — a fix has
