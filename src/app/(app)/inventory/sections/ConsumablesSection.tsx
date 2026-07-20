@@ -319,6 +319,7 @@ export function ConsumablesSection({
         onHand={moveMat ? onHandByLocation[moveMat.id] ?? [] : []}
         pending={pending}
         run={run}
+        customUnits={customUnits}
         onClose={() => setMoveId(null)}
       />
     </div>
