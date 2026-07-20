@@ -26,6 +26,7 @@ function normUnit(u?: string): "metric" | "imperial" {
 export const setYieldEstimateTool: AssistantTool = {
   name: "set_yield_estimate",
   description:
+    "ALWAYS call this when the user gives a yield estimate for a block — even if you are unsure WHICH block. Do not list candidates or ask which one in prose first: an ambiguous query returns a CLICKABLE PICKER that pins the exact row by id, and a prose list gives the user nothing to act on — records with identical labels cannot be told apart by name at all. " +
     "Set the pre-harvest yield estimate for a vineyard block in a given vintage year. Use when the user wants to add, set, or update a yield estimate. This does NOT save immediately — it returns a preview the user must confirm in the UI.",
   kind: "write",
   inputSchema: {

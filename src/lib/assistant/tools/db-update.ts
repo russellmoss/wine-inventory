@@ -26,6 +26,7 @@ function assertScoped(entity: { vineyardScoped: boolean }, user: { role: string 
 export const dbUpdateTool: AssistantTool = {
   name: "db_update",
   description:
+    "ALWAYS call this when the user asks to change a field on a record — even if you are unsure WHICH record they mean. Do not list candidates or ask which one in prose first: an ambiguous query returns a CLICKABLE PICKER that pins the exact row by id, and a prose list gives the user nothing to act on — records with identical labels cannot be told apart by name at all. Calling this NEVER writes anything; it returns a preview to confirm. " +
     "Edit fields on an existing record. Resolve the row by entity + query (or exact id), then pass the fields to change in `values` (field name -> new value). Returns a preview of the before→after changes the user must confirm.",
   kind: "write",
   inputSchema: {

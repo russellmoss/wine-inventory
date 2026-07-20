@@ -15,6 +15,7 @@ import {
   planMaterialUpdate,
   findCorrectableOpeningLot,
   openingLotTotalCost,
+  openingLotQty,
   resolveOpeningCostCorrection,
   type MaterialIntakeInput,
   type UpdateMaterialInput,
@@ -136,6 +137,7 @@ export async function listMaterials(opts: { kind?: MaterialKind; category?: Mate
       avgUnitCost: weightedAvgUnitCost(lots),
       costCorrectable: correctable != null,
       openingLotCost: openingLotTotalCost(correctable),
+      openingLotQty: openingLotQty(correctable),
     };
   });
 }
