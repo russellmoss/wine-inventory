@@ -7,9 +7,22 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 085 — MSU Extension Grapes/Viticulture into the assistant KB. PLANNED + APPROVED, build starting.**
+**PLAN 085 — MSU Extension Grapes/Viticulture into the assistant KB. UNITS 1-7 DONE + COMMITTED;
+UNIT 8 (the live seed/crawl) DELIBERATELY NOT RUN. PR not yet opened.**
 Branch `claude/msu-viticulture-source-e7e94c` (worktree).
 Plan: [2026-07-20-085-…](docs/plans/2026-07-20-085-feat-kb-msu-viticulture-source-plan.md) (Standard, 8 units).
+Gates: **tsc 0, eslint 0 errors, vitest 3065/0**. Every guard sabotage-verified, not assumed.
+
+⛔ **DO NOT run `seed:knowledge-sources` until this is merged AND deployed.** Seeding writes
+`msu-grapes` into the GLOBAL (= prod) `knowledge_source` table; deployed code that doesn't know the
+key still ADMITS it (`findSourceConfig(s.key)?.autoCrawl !== false` → `undefined !== false` → true),
+then `crawlWithFollowing` throws `unknown source` before crawling — **killing the monthly refresh for
+all 21 sources.** Order is merge → deploy → seed → crawl.
+
+⛔ **MSU's bot wall has shut this network out.** Recon started intermittent; after ~15 requests the
+residential IP went to 5/5 refused and still is (`npm run verify:msu` → `BLOCKED — imperva (959B)`).
+So the live half of U8 is unverified. This materially raises the plan's headline risk: a GH Actions
+runner makes far more requests from a datacenter range. **"Works from a laptop" is no evidence about CI.**
 
 Russell asked for MSU (`canr.msu.edu/grapes/`) as a monthly-CRON source like AWRI/UC IPM, toggleable
 in Settings, with publication dates. Normally that is a config edit. **It is not, and the reason is
@@ -259,7 +272,8 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
 
 _Last updated: 2026-07-20 — plan 085 (MSU Extension KB source + WAF-challenge guard + link-provenance
-crawl gate) PLANNED and APPROVED; build starting. Plan 082 moved to "Also in flight" (code-complete,
+crawl gate) BUILT: units 1-7 committed, vitest 3065/0. Unit 8 live seed/crawl NOT run — see the two
+⛔ blockers under Current objective (seed-after-deploy ordering; MSU bot wall shut this network out). Plan 082 moved to "Also in flight" (code-complete,
 PR unopened). Prior: plan 084 (VT Enology Notes KB + section filter) SHIPPED as PR #406. Prior: the feedback-loop class sweep + regression-test gate
 (branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
 lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the

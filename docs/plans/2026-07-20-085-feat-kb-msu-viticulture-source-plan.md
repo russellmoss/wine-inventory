@@ -1,12 +1,61 @@
 ---
 title: MSU Extension Grapes/Viticulture knowledge source + WAF-challenge guard + link-provenance crawl gate
 type: feat
-status: draft
+status: units-1-7-complete-unit-8-blocked
 date: 2026-07-20
-branch: claude/msu-viticulture-source
+branch: claude/msu-viticulture-source-e7e94c
 depth: standard
 units: 8
 ---
+
+## ⚠️ BUILD OUTCOME — read before running anything (2026-07-20)
+
+**Units 1-7 are complete, tested and committed. Unit 8 is deliberately NOT finished.** Two findings
+from the build change the deploy order; neither was visible at planning time.
+
+### 1. SEED AFTER DEPLOY, NEVER BEFORE. Seeding early breaks the monthly sweep for ALL sources.
+
+`npm run seed:knowledge-sources` writes `msu-grapes` into the GLOBAL `knowledge_source` table, and
+this repo's `.env` points at PRODUCTION. If that row exists while the deployed code does not yet
+know the key:
+
+1. `scripts/recrawl-knowledge.ts:39` filters with `findSourceConfig(s.key)?.autoCrawl !== false`.
+   For an unknown key that is `undefined !== false` → **true**, so `msu-grapes` is INCLUDED.
+2. `crawlWithFollowing` then does `const cfg = findSourceConfig(key); if (!cfg) throw`.
+3. That throw happens before any crawling, and `main().catch` exits 1 — so the **entire monthly
+   refresh dies for all 21 sources**, not just MSU.
+
+So the order is: **merge + deploy → seed → crawl.** Not the order this plan originally listed.
+(The `defaultEnabled: true` entry would also surface a working toggle in prod Settings for a source
+with zero documents, which is merely sloppy — the sweep crash is the actual hazard.)
+
+### 2. MSU's bot wall escalates with volume, and it shut this network out completely.
+
+Reconnaissance started with intermittent challenges. After roughly 15 requests the residential IP
+went to **5/5 refused**, and it is still refused: `npm run verify:msu` reports
+`BLOCKED — imperva (959B)` on the `/grapes/` hub. Each challenge body is a slightly different size,
+confirming the unique-`incident_id` behaviour that defeats the content-hash dedup.
+
+This raises the probability of the plan's headline risk materially. A GitHub Actions runner makes
+far more requests than 15, from a datacenter IP range. **Treat "MSU works from a laptop" as no
+evidence at all about CI.**
+
+The machinery to find out is in place and was proven end to end by the block itself: the detector
+fired, the crawl loops would skip, and `findDarkSources` fails the job loudly instead of letting
+the source rot silently.
+
+### What remains (all of Unit 8's live half)
+
+- [ ] Merge + deploy, THEN `npm run seed:knowledge-sources` from the MAIN checkout.
+- [ ] `npm run verify:msu` from a network MSU is not currently refusing (proves the rule against
+      MSU's real page structure — the pure half already passes).
+- [ ] `npm run crawl:source msu-grapes -- --follow --max 5` (smoke), then the full crawl.
+- [ ] Confirm documents landed WITH `publishedAt`; `npm run backfill:published-dates --source
+      msu-grapes --dry` first if many are undated.
+- [ ] `npm run verify:knowledge-base` — a new source shifts rankings; WIDEN `expectPaths`, never
+      repoint.
+- [ ] Audit the ingested `/news/` URL list for non-grape leakage; tighten `linkedFrom` or add
+      `denyPrefixes` if junk appears.
 
 ## Overview
 
