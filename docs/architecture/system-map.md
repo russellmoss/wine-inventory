@@ -122,6 +122,18 @@ lists org ids on the cron path (never the owner). `adapter.ts` is provider-neutr
 `qbo/{oauth,client,journal,bill}.ts` is the only QBO-specific code. UI: Settings connect + mapping
 cards, `/accounting` dashboard. See [[security-register]] + [[scale-register]].
 
+**Invoice ingest → A/P** (`src/lib/ingest/`): a supplier invoice (LLM-extracted or hand-entered) is reviewed
+line-by-line, then applied in ONE atomic tx that creates each line's target and emits A/P **once** as a single
+aggregate `ApExportEvent` keyed `apinv:<invoiceId>` → one multi-line QBO Bill (AP-1). Foreign-currency invoices
+convert at a dated ECB rate at ingestion; the lot's cost is frozen in base currency and never FX-revalued
+(COST-4). Plan 080 U5 made it a **mixed invoice** — parts, capitalized equipment and finished goods on ONE
+document: each line carries a `targetKind` ∈ {MATERIAL, EQUIPMENT_ASSET, FINISHED_GOOD} (nullable, no default —
+a null target is a hard needsAck, never a silent MATERIAL guess), and codes to its OWN GL account
+(`AppSettings.apInventoryAccount` / `apFixedAssetAccount` / `apSuppliesExpenseAccount`; an unconfigured account
+WITHHOLDS the invoice rather than miscode it). A line for N pumps mints N `EquipmentAsset`s, tracked by the
+append-only `IngestedInvoiceLineCreatedAsset` join (composite-tenant FK, RLS-isolated per the Phase-12
+checklist) so a reversal knows exactly what to undo. Proof: `npm run verify:ingest`.
+
 ### 9. Commerce7 DTC/sales integration (Phase 16) — `src/lib/commerce/`
 The revenue side of the money loop (built, live-sandbox-pending). An event-driven adapter off our ledger:
 Commerce7 DTC/club/POS **sales** in → a MUTABLE `Commerce7Order` projection → normalize → **diff** →
@@ -276,7 +288,10 @@ sections' queries.
   pick-or-create, optional vintage with a WINE-ONLY blank-vintage soft-confirm, MSRP, optional opening stock
   which writes both the stock movement and a `FinishedGoodReceipt`).
 - **Consumables** — the former `/setup/expendables`. Per-location on-hand plus Receive / Adjust / Transfer
-  (`material-stock-core.ts`), with a negative location balance surfaced as "needs reconcile".
+  (`material-stock-core.ts`), with a negative location balance surfaced as "needs reconcile". A Transfer is a
+  FIFO lot-split that conserves both quantity and cost basis (STOCK-2). Plan 080 U15 lets Receive state its
+  quantity **by the pack** (`qtyUnit` = "roll"/"case"/…); the pack size is resolved server-side into the
+  material's stock unit (custom units per tenant) before any write, converting quantity and unit-cost together.
 - **Equipment & parts** — the `EquipmentAsset` registry (now carrying acquisition cost + vendor + FX
   provenance) alongside quantity-tracked EQUIPMENT-category materials, which are surfaced BY CATEGORY so no
   data moves and nothing double-counts. Parts stay expensed, never capitalized (WORKORDER-7).
@@ -293,4 +308,4 @@ model names, tool `name` strings, committer keys and parity evidence paths are u
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-14 (plans 060–061; 115 Prisma models, ~3.77k schema lines): **multi-lot vessel-reading fan-out** — one whole-tank reading writes one `AnalysisPanel` per co-resident lot sharing a `vesselReadingGroupId` (per-tenant unique = idempotent; vessel-scoped dedup via `coalesce`), the one schema change this cycle (nullable column + two indexes, no RLS change); **multi-vessel maintenance consolidation** (ADR 0004) — "clean B1–B60" is ONE reviewable MAINTENANCE task with members in `plannedPayload.groupActivity`, all-at-once completion + `undoMaintenanceTaskCore`, WORKORDER-3 holds per-event. Prior refresh 2026-07-12 (plans 053–059): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, plan-059 `triageClass`). Ask Claude to refresh after each phase.*
+*Refreshed 2026-07-20 (plan 080 Waves 3–5; 140 Prisma models, ~4.54k schema lines): **mixed invoice ingest** — parts + capitalized equipment + finished goods on ONE supplier invoice, still ONE aggregate A/P Bill (AP-1); each line carries a `targetKind` discriminator + review-time-resolved FG target and codes to its OWN GL account (new `AppSettings.apFixedAssetAccount`/`apSuppliesExpenseAccount`), an unconfigured account WITHHOLDS rather than miscodes; a line minting N equipment assets is tracked by the new RLS-isolated `IngestedInvoiceLineCreatedAsset` join (the only new table this cycle, Phase-12 checklist verbatim). **Receive-by-the-pack** (`resolveReceiptQuantity`) — consumable Receive states qty in a pack unit and resolves it server-side into the stock unit before any write, converting qty + unit-cost together (STOCK-2 conserved). No RLS-model or ledger-invariant change. Prior refresh 2026-07-14 (plans 060–061; 115 models): **multi-lot vessel-reading fan-out** — one whole-tank reading writes one `AnalysisPanel` per co-resident lot sharing a `vesselReadingGroupId` (per-tenant unique = idempotent; vessel-scoped dedup via `coalesce`), the one schema change this cycle (nullable column + two indexes, no RLS change); **multi-vessel maintenance consolidation** (ADR 0004) — "clean B1–B60" is ONE reviewable MAINTENANCE task with members in `plannedPayload.groupActivity`, all-at-once completion + `undoMaintenanceTaskCore`, WORKORDER-3 holds per-event. Prior refresh 2026-07-12 (plans 053–059): WO **builder** — task palette, sequential groups, per-task assignee/priority, WO→WO dependencies, `Location.kind`, the **equipment registry**, record-only **Custom Log task types** + per-tenant field overlays (WORKORDER-4), progressive group-rack (054); **bottling packaging** dry-goods → COGS PACKAGING bucket (056); documented **data migration/import** (§11) and the **feedback + developer auto-fix loop** (§12, plan-059 `triageClass`). Ask Claude to refresh after each phase.*
