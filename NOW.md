@@ -97,12 +97,12 @@ is two decisions that are Russell's, not code:
    2871 pass. ⚠️ If tests fail to load on `@prisma/client`, run `npm run db:generate` (clobber).
    **THE FINDING THAT MATTERS: the UC IPM grape corpus is OLD** — 2015×54, 2016×10, 2014×4 (so 82% is
    2016-or-older), vs only 8 docs 2021+. Decade-old spray guidance is now at least *dated* in citations.
-   **TWO THINGS STILL OPEN — branch is RED:**
-   (b) **`verify:knowledge-base` golden still fails** (16 pass / 1 fail): "IPM thresholds for wine
-   grapes" expected `mapa.gob | pnw-644 | field-monitoring`, now returns UC IPM leafhoppers /
-   mealybugs / nematodes / fungicide-timing. Probably a STALE EXPECTATION (UC IPM is the canonical US
-   grape-IPM threshold source) rather than a regression — but widening a golden to green your own
-   change is the band-aid pattern, so it is Russell's call, not the agent's.
+   **BRANCH IS NOW GREEN — one thing still running:**
+   (b) ✅ **Golden widened, `verify:knowledge-base` 17/17.** Russell's call (asked, answered): added
+   `ipm.ucanr.edu` to the IPM-thresholds case's `expectPaths` alongside `mapa.gob`/`pnw-644`/
+   `field-monitoring`. WIDENED, not repointed — all remain valid authoritative answers, which is what
+   the multi-value `expectPaths` contract was built for (see its header comment). Reading note left in
+   the file: most of uc-ipm is stamped 2015-or-older, so "authoritative" = canonical, not current.
    (c) **Corpus-wide backfill NOT run** — only uc-ipm. The other ~2,694 active docs are still undated
    (verify still prints `0 with a date` for the AWRI/WA diversity check). It is ~1h of polite serial
    re-crawling across 18 external sites, costs zero Voyage credits, and is resumable (selects
