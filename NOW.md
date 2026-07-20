@@ -7,6 +7,31 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Plan 080 (unified inventory) — Wave 1 MERGED (PR #351). Wave 2 code-complete on `claude/plan-080-wave-2` (unpushed). NEXT: push + open the Wave 2 PR, then Wave 3 (U5 mixed-invoice apply, council-review first).**
+- **Wave 1** (merged `e0481cc0`): per-location consumables spine, costed equipment, manual invoice, 5 assistant
+  write tools, composite-tenant Location FK. `supply_lot.locationId` is now **NOT NULL** — expand/contract closed.
+- **Wave 2** (local): U6 unified `/inventory` with 3 URL-addressable sections + redirects · U8 consumables
+  per-location on-hand + Receive/Adjust/Transfer · U7 `FinishedGoodReceipt` weighted-avg cost layer + Wine/Merch
+  sub-tabs + add modal · U9 equipment costs + parts · U11 Expendables→Consumables (copy only) · U13b brain refresh.
+- **Browser-verified on Demo** (the session's most useful hour): sub-tabs, the WINE-ONLY blank-vintage
+  soft-confirm, per-location on-hand, and a real shortfall block —
+  *"Not enough BENTONITE at Winery: only 10000 g there, can't transfer 99999."*
+- ⚠️ **ONE DATABASE.** `.env` and prod are the SAME Neon instance; it holds the real Bhutan tenant. Every
+  migration this plan deployed is already live.
+- 🔧 Found by driving the UI, not by CI: `Modal` had NO `role="dialog"`/`aria-modal` (app-wide a11y gap, fixed),
+  and finished goods had FOUR competing add affordances (legacy inline forms removed + their dead server
+  actions deleted — an exported Next action stays invocable with no caller).
+- 🧠 Lesson: I mis-diagnosed "modal won't open" TWICE by detecting `[role="dialog"]` on a Modal that never set
+  it, and reported a false verification gap in two commits. Verify the detector before trusting the verdict.
+
+<details><summary>parallel workstream — Plan 081 assistant confirmation-card reliability (from main)</summary>
+
+
+<details><summary>parallel workstream — Plan 081 (from main)</summary>
+
+
+<details><summary>parallel workstream — Plan 081 (from main)</summary>
+
 **Plan 081 (assistant confirmation card) — SHIPPED to main.** #354 (`fe3f483e`) + #355 (`c6f524d8`).
 Unit 10 live proof on Demo: the repro prompt went from **2/7 (29%) → 12/12 (100%)** card emission
 (5 trials through the UI with a rendered Confirm button, 7 direct to `/api/assistant` with valid tokens).
@@ -33,10 +58,14 @@ _Cosmetic: #355 squash-merged to main still titled "WIP:" — I marked the PR re
 it before merging._
 
 
+
+</details>
 **Assistant confirmation-card RELIABILITY (Mike's recurring "it says there's a card but there isn't") — PLAN 081. Units 1+2 DONE on `claude/assistant-card-guard-fixes` (PR A pending). Units 3–9 DONE + PUSHED on `claude/assistant-draft-card` (PR #355). Only Unit 10 (live browser QA) left — it needs the interactive logged-in pane.**
 **MEASURED RESULT: the seeded repro went 2/7 (29%) → 3/3 (100%)** on the new MUST_PROPOSE eval (opus-4-8, real prompt, `tool_choice` omitted, multi-turn, 3 runs/case). Zero fabricated assignee emails, zero wrong-tool, read-intent controls clean.
 Landed: U4 Draft contract (`asProposal` NORMALIZES so a draft can never carry a commit token) · U5 `propose_work_order` returns a Draft instead of prose · U6 prompt rules 40/45 rewritten to compose · U7 card renders + Confirm gated · U8 exhaustive `switch` + `never` in both stream consumers (verified by temporarily adding a variant) · U9 nightly eval + workflow.
 Four things the plan got wrong are recorded in it as "Build note 2": the assignee was **never** a required arg (nothing to relax); the **typed override is not implementable** and shouldn't be (a Draft has no token, and the server gate refuses blockers anyway — shipped stricter: a blocked draft is not issuable at all); **must-on-skins is detected by nothing in the codebase** (the model knew it, the engine doesn't — needs its own rule + winemaker sign-off on severity); and a **single-turn eval measures the wrong thing** (scored 0/3 because the model correctly reads cellar state first).
+
+</details>
 **Assistant confirmation-card RELIABILITY (Mike's recurring "it says there's a card but there isn't") — PLAN 081, BUILDING. Units 1+2 DONE on `claude/assistant-card-guard-fixes` (PR A pending). Units 3-10 (Draft Card) next on `claude/assistant-draft-card`.**
 Plan: [2026-07-19-081-fix-assistant-draft-card-guarantee-plan.md](docs/plans/2026-07-19-081-fix-assistant-draft-card-guarantee-plan.md) (Deep, 10 units).
 Council record: [council-feedback-080-assistant-card.md](council-feedback-080-assistant-card.md).
@@ -104,6 +133,8 @@ Wave 1 = the money spine, reviewed WITHOUT UI churn (Wave 2 = surfaces U6–U11;
   −shortfall). That is the settled interpretation — build on it.
 - **Wave-2 follow-up:** `listMaterials`' scalar `onHand` still sums only positive lots, so it will overstate once
   negative reconcile lots exist. Harmless in Wave 1 (nothing passes `locationId` yet); fix when dosing-by-location lands.
+
+</details>
 
 <details><summary>prev objective — add-variety assistant write flow (MERGED to main as PR #322)</summary>
 

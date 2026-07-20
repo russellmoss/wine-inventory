@@ -68,7 +68,19 @@ The operations that change a lot's identity: `crush-core.ts` (`crushLotCore`), `
 Cost follows the wine. Fruit/supply cost attaches at crush and is carried, rolled up, and *negated on
 reversal* through the same operations as the ledger.
 - `rollup.ts`, `consume.ts`, `deplete.ts`, `cogs.ts`/`cogs-write.ts`, `policy.ts`, `reverse.ts`, `cache.ts`, `transfer.ts`.
-- Schema: `SupplyLot`, `CostLine`, `SupplyConsumption`, `OperationCostTransfer`, `LotCostState`, `BottlingCostSnapshot`.
+- Schema: `SupplyLot`, `CostLine`, `SupplyConsumption`, `OperationCostTransfer`, `LotCostState`, `BottlingCostSnapshot`,
+  `MaterialMovement`, `FinishedGoodReceipt`.
+- **Per-location consumables (plan 080).** `SupplyLot.locationId` is NOT NULL (expand/contract closed in U13a)
+  with a COMPOSITE-tenant FK to `location(tenantId,id)`; on-hand is a GROUP BY over lots, so physical location
+  and cost basis live on the SAME row. A transfer is a FIFO **lot-split** carrying cost/age/expiry/vendor/FX and
+  a `splitFromLotId` lineage edge (STOCK-2). `MaterialMovement` is the append-only per-location ledger
+  (RECEIVE|ADJUST|TRANSFER|CONSUME, signed `deltaQty`, paired transfer legs). Consumption past a location's
+  on-hand goes NEGATIVE there at a KNOWN weighted-avg cost rather than cross-pulling — negative lots are inert
+  to FIFO/WA (both filter `qtyRemaining > 0`) and are the "needs cycle-count" signal.
+- **Purchased finished-goods cost (plan 080 U7).** `FinishedGoodReceipt` is an append-only weighted-average
+  cost layer for merch / wine bought in or bought back. Internally-bottled wine is NOT valued here — it keeps
+  its specific-lot COGS frozen in `BottlingCostSnapshot` (COST-3). MSRP is a price and sits on the SKU; COGS
+  deliberately does not (council C4 — a mutable cost column is a second source of truth with no history).
 - **Packaging dry-goods (plan 056):** at bottling, packaging materials (glass/closures/labels/capsules)
   deplete from supply lots and **capitalize into a COGS PACKAGING bucket** via `consume-packaging.ts` +
   `transfer.ts` — same conserve-and-negate discipline as fruit/additives (COST-1/2), reversed append-only
@@ -203,8 +215,8 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   backfill fallback. The **family** (the `kind` column, chips via `familyLabel`) is now user-extensible
   ("+ add family"); the fine-grained `subcategory` level is retired from the UI (column dormant). Materials
   carry brand/generic display metadata + `preferGeneric` — `materialDisplayName` (used at every render site
-  + the dose snapshot `LotTreatment.materialName`) shows the preferred name. Intake is the **Add-expendable
-  modal** (`/setup/expendables`): generic/brand, vendor+URL, Category, family, and a purchase (package
+  + the dose snapshot `LotTreatment.materialName`) shows the preferred name. Intake is the **Add-consumable
+  modal** (Inventory -> Consumables; `/setup/expendables` is now a permanent redirect): generic/brand, vendor+URL, Category, family, and a purchase (package
   amount + unit + total cost) that `deriveOpeningLot` (`src/lib/cost/intake-cost.ts`) converts into the
   canonical per-stock-unit cost. **Units** live in `src/lib/units/measure.ts` (mass g/mg/kg/oz/lb, volume
   mL/L/fl oz/gal, count) — imperial converts to the metric canonical at intake AND in the dose path
@@ -251,6 +263,28 @@ disposition** (DEFECT | MODEL_BEHAVIOR | PRODUCT_GAP | NOT_A_BUG | UNCLEAR, plan
 root cause, so the fixer is never fed a product-gap it can't fix. Support-tenant impersonation via
 `developer/support-context.ts`. See [[security-register]] — the fence is the control that lets an autonomous
 agent touch `main` safely.
+
+### Inventory IA — ONE page, three sections (plan 080)
+
+`/inventory` is the single inventory surface, with three URL-addressable sections
+(`?section=finished|consumables|equipment`). URL-driven rather than client tab state, because the assistant's
+`navigate` tool, the old-route redirects and shared links all have to resolve to a specific section. Each
+section is its own async server component rendered only when active, so switching tabs does not run the other
+sections' queries.
+
+- **Finished goods** — Wine / Merchandise sub-tabs, per-location on-hand, and the "+ Add" modal (category
+  pick-or-create, optional vintage with a WINE-ONLY blank-vintage soft-confirm, MSRP, optional opening stock
+  which writes both the stock movement and a `FinishedGoodReceipt`).
+- **Consumables** — the former `/setup/expendables`. Per-location on-hand plus Receive / Adjust / Transfer
+  (`material-stock-core.ts`), with a negative location balance surfaced as "needs reconcile".
+- **Equipment & parts** — the `EquipmentAsset` registry (now carrying acquisition cost + vendor + FX
+  provenance) alongside quantity-tracked EQUIPMENT-category materials, which are surfaced BY CATEGORY so no
+  data moves and nothing double-counts. Parts stay expensed, never capitalized (WORKORDER-7).
+
+Old routes `/setup/expendables` and `/setup/equipment` are PERMANENT redirects, not deletions — both are
+reachable from bookmarks, older assistant `navigate` payloads, `revalidatePath` calls and the ingest review
+screen. "Expendables" is renamed to "Consumables" in user-facing copy and assistant tool DESCRIPTIONS only;
+model names, tool `name` strings, committer keys and parity evidence paths are unchanged.
 
 ## How a typical write flows
 1. UI (or the assistant) calls a **server action** — or a **work-order task is completed**, which builds the same core input.
