@@ -4,6 +4,7 @@
 // (with a magic-byte fallback) — never the URL extension (Wine Australia PDFs are getmedia/<guid>?ext=.pdf).
 
 import { assertPublicHost } from "./ssrf";
+import { detectChallengePage, type ChallengeInfo } from "./challenge";
 
 export type DetectedType = "html" | "pdf" | "other";
 
@@ -16,6 +17,15 @@ export interface FetchResult {
   etag: string | null;
   lastModified: string | null;
   notModified: boolean;
+  /**
+   * Plan 085 — set when the body is a WAF/bot-wall interstitial rather than the document. This is
+   * REPORTED, never thrown: `scripts/recrawl-knowledge.ts` reads a throw out of this function as
+   * "the page was removed" and tombstones the document, so throwing on a transient challenge would
+   * mark a whole source's corpus slice `withdrawn`. Callers must skip these BEFORE persisting —
+   * each challenge carries a unique incident id, so they defeat the content-hash dedup and would
+   * re-embed every month forever.
+   */
+  challenge: ChallengeInfo | null;
 }
 
 export const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
@@ -98,6 +108,7 @@ export async function fetchDocument(
       return {
         finalUrl: current, status: 304, contentType: "other", rawContentType: "",
         bytes: Buffer.alloc(0), etag: opts.etag ?? null, lastModified: opts.lastModified ?? null, notModified: true,
+        challenge: null, // a 304 has no body to inspect
       };
     }
     if (res.status >= 300 && res.status < 400) {
@@ -115,6 +126,9 @@ export async function fetchDocument(
       contentType: classifyContentType(rawContentType, bytes.subarray(0, 512)),
       rawContentType, bytes,
       etag: res.headers.get("etag"), lastModified: res.headers.get("last-modified"), notModified: false,
+      // Reported, not thrown — see the FetchResult.challenge docstring. The status here is 200 and
+      // the type is text/html, so nothing above this line would have refused it.
+      challenge: detectChallengePage(bytes, rawContentType),
     };
   }
   throw new Error(`fetch: too many redirects for ${url}`);
