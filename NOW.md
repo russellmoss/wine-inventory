@@ -73,10 +73,11 @@ date, rate, or product identity. Building from zero.
 - **Phase 2 deferred:** rate/PHI/REI label extraction. Most of the effort, nearly all the liability.
   Also blocked on a **planned** harvest date — `HarvestPick.pickDate` is actual-only.
 
-**Cornell Fruit Resources — needs its own plan number now that 085 has merged.**
-[`2026-07-20-085-ADDENDUM-cornell-fruit-resources.md`](docs/plans/2026-07-20-085-ADDENDUM-cornell-fruit-resources.md)
-was written to be appended to 085 as Units 9-10; that premise died when #415 landed. **Re-file as
-plan 087.** ⚠️ A `claude/cornell-grapes-knowledge-source-808b00` worktree already exists — check for
+**PLAN 087 — Cornell Fruit Resources. PLANNED, not started.**
+Plan: [2026-07-20-087-…](docs/plans/2026-07-20-087-feat-cornell-fruit-resources-plan.md) (Lightweight,
+2 units). Written as an addendum to fold into 085 as Units 9-10; re-filed standalone when #415 landed
+first, so its Unit 1 sits *beneath* 085's now-merged metadata-date normalizer rather than beside it.
+⚠️ A `claude/cornell-grapes-knowledge-source-808b00` worktree already exists — check for
 a parallel session first. Cornell is the well-behaved case MSU wasn't: no WAF, robots allows, one
 clean `/grapes/` prefix, per-blog sitemap → **no `linkedOnlyPrefixes` needed**. One blocker, the
 INVERSE of MSU's: its *articles* are dated (`<time datetime>`) but the durable *reference pages*
