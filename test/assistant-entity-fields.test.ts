@@ -118,10 +118,12 @@ describe("entity registry — field lists unchanged by the Unit 2 refactor", () 
       creatable: ["blockLabel:string:1..80", "clone:string:..80", "irrigated:boolean", "numRows:int:0..", "rootstock:string:..80", "rowSpacing:float:0..", "spacingUnit:enum", "variety:string", "vineCount:int:0..", "vineSpacing:float:0..", "vineyard:string!", "yearPlanted:int:1900..2100"],
       editable: ["blockLabel:string:1..80", "clone:string:..80", "irrigated:boolean", "numRows:int:0..", "rootstock:string:..80", "rowSpacing:float:0..", "spacingUnit:enum", "variety:string", "vineCount:int:0..", "vineSpacing:float:0..", "yearPlanted:int:1900..2100"],
     },
-    // Unit 5 added `abbreviation` — the lot-code token — on both paths.
+    // Unit 5 added `abbreviation` (the lot-code token) on both paths; Unit 6 flattened the
+    // VineyardDetail columns on as update-only — see DETAIL_UPDATE_ONLY for why they are not
+    // symmetric yet.
     Vineyard: {
       creatable: ["abbreviation:string:2..4", "name:string!:2..80"],
-      editable: ["abbreviation:string:2..4", "isActive:boolean", "name:string:2..80"],
+      editable: ["abbreviation:string:2..4", "defaultUnit:enum", "elevation:float", "elevationUnit:enum", "gpsLat:float:-90..90", "gpsLng:float:-180..180", "isActive:boolean", "manager:string:..120", "name:string:2..80", "soilType:string:..120"],
     },
     Variety: {
       creatable: ["color:string:..9", "name:string!:1..80"],

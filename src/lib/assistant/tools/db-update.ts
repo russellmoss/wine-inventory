@@ -100,17 +100,24 @@ export const commitDbUpdate: Committer = async (user, args) => {
   assertScoped(entity, user, row.vineyardId);
 
   const before = (await entity.current(id)) ?? {};
+  // Entities that write to more than one table split their audit accordingly, so a vineyard's GPS
+  // edit is logged as VineyardDetail exactly as the /reference form logs it. Everything else keeps
+  // the single row under its own name.
+  const groups = entity.auditGroups?.(values) ?? [{ entityType: entity.name, values }];
   await runInTenantTx(async (tx) => {
     await entity.update!(tx, id, values);
-    await writeAudit(tx, {
-      actorUserId: user.id,
-      actorEmail: user.email,
-      action: "UPDATE",
-      entityType: entity.name,
-      entityId: id,
-      changes: diff(before, { ...before, ...values }),
-      summary: `Updated ${entity.displayName} ${label}`,
-    });
+    for (const group of groups) {
+      if (Object.keys(group.values).length === 0) continue;
+      await writeAudit(tx, {
+        actorUserId: user.id,
+        actorEmail: user.email,
+        action: "UPDATE",
+        entityType: group.entityType,
+        entityId: id,
+        changes: diff(before, { ...before, ...group.values }),
+        summary: `Updated ${entity.displayName} ${label}`,
+      });
+    }
   });
   return { message: `Updated ${entity.displayName} "${label}".` };
 };

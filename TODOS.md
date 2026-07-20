@@ -179,6 +179,28 @@ carries the `draft` flag, so this is a UI increment, not new architecture.
 **(h) `verify:work-orders-transform` red** on the plan-059 bottling guard — its fixture
 needs a label. Chip filed.
 
+## VineyardDetail fields are update-only pending a nested-create tenantId spike
+
+**What:** plan 082 Unit 6 made GPS, elevation, soil, manager and defaultUnit assistant-editable, but
+**update-only**. Creating a vineyard still cannot set them in the same breath.
+
+**Why it stopped there:** the update path upserts the detail row and mirrors proven code
+(`src/lib/vineyard/actions.ts:153`, which passes no explicit `tenantId` and relies on the tenant
+Prisma extension to inject it). A nested `detail: { create: {...} }` inside the *vineyard* create has
+**no precedent anywhere in this codebase** — grep for `upsert`/`connect:` across `src/lib/assistant`
+returned zero before Unit 6. `VineyardDetail.tenantId` is `String @default("")`, so if the extension
+does not reach a nested create the row lands with `tenantId = ""` and RLS makes it invisible rather
+than erroring. A silently orphaned row on a governed table is worse than a missing feature.
+
+**The spike (~15 min, needs `.env`):** in the MAIN checkout, `runAsTenant("org_demo_winery", …)` a
+`prisma.vineyard.create({ data: { name: "QA-Nested", detail: { create: { soilType: "x" } } } })`,
+then read the row back and check `tenantId`. If it is the org id, drop `mode: "update-only"` and
+`DETAIL_UPDATE_ONLY` from those seven entries in `vineyardFields` and extend `buildCreate`. If it is
+`""`, the create path needs an explicit tenantId and that is worth an invariant note.
+
+**Where:** `src/lib/assistant/entities.ts`, constant `DETAIL_UPDATE_ONLY`. The golden in
+`test/assistant-entity-fields.test.ts` will fail until its `Vineyard` rows are updated — intended.
+
 ## Vessel create/update asymmetry — cooperage fields are update-only for no reason
 
 **What:** `Vessel` accepts only `code`, `type`, `capacityL` on create, but `blendName`,

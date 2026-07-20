@@ -7,7 +7,8 @@ import { withFields, type EntityField, type FieldSpec, type ValidatedValues } fr
 import { resolveExactlyOne, resolveOneOrChoice, type ResolveResult } from "./tools/resolve";
 import type { ChoiceRequest } from "./assistant-events";
 import {
-  ABBREVIATION_MAX, ABBREVIATION_MIN, normalizeAbbreviation, readUnitValue, spacingToCanonicalM,
+  ABBREVIATION_MAX, ABBREVIATION_MIN, elevationToCanonicalM, normalizeAbbreviation, readUnitValue,
+  spacingToCanonicalM,
 } from "@/lib/vineyard/field-coercion";
 import { formatSpacing, type Unit } from "@/lib/vineyard/units";
 import { assertBlockCascadeSafe, cascadeDeleteBlockChildrenTx } from "@/lib/vineyard/block-delete";
@@ -86,6 +87,10 @@ export type EntityConfig = {
   /** Keys that `buildUpdate` adds as plumbing (resolved FK ids). Hidden from the confirm card, which
    *  shows the human-readable sibling instead — nobody should have to confirm "varietyId: cmxyz…". */
   internalUpdateKeys?: string[];
+  /** Split an update's values across audit entity types, for entities that write to more than one
+   *  table. Omit → one audit row under this entity's own name (what every other entity wants).
+   *  Groups with no values are skipped, so a plain rename does not emit an empty second row. */
+  auditGroups?: (values: ValidatedValues) => Array<{ entityType: string; values: ValidatedValues }>;
   /** Apply validated edits within a transaction. */
   update?: (tx: Prisma.TransactionClient, id: string, values: ValidatedValues) => Promise<void>;
 };
@@ -123,6 +128,14 @@ const PARENT_FK_ON_CREATE =
  *  which must not alter behavior. */
 const UNDECIDED_DRIFT =
   "NOT a deliberate asymmetry — never decided, just never added to the other list. Preserved as-is here because this unit is a pure refactor; see TODOS.md.";
+
+/** VineyardDetail fields, update-only for a specific and temporary reason (Unit 6). The upsert in
+ *  `update` mirrors proven code (vineyard/actions.ts:153, no explicit tenantId — the tenant extension
+ *  injects it). A nested `detail: { create }` inside the vineyard create has NO precedent anywhere in
+ *  this codebase, and getting tenantId wrong on a governed table means an RLS-orphaned row that reads
+ *  as missing rather than as an error. Make it symmetric once that is DB-verified; see TODOS.md. */
+const DETAIL_UPDATE_ONLY =
+  "Update-only until the nested-create tenantId behavior is DB-verified — the update-path upsert mirrors proven code, a nested create on a governed table does not. See TODOS.md.";
 
 /**
  * Resolve a grape-variety NAME to its id. Shared by the block's create and update paths so the two
@@ -355,7 +368,33 @@ const vineyardFields: EntityField[] = [
   { name: "abbreviation", type: "string", min: ABBREVIATION_MIN, max: ABBREVIATION_MAX,
     description: "Short code used in lot codes, 2-4 letters or numbers, e.g. EST." },
   { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
+
+  // ── Unit 6: VineyardDetail, flattened onto the vineyard ──
+  // These live on a separate 1:1 row that may not exist yet. Presenting them as vineyard fields is
+  // the point: "what are the coordinates for Estate?" should not require knowing there is a detail
+  // table. `update` upserts the row; `current` returns them absent rather than throwing when there
+  // is none.
+  { name: "gpsLat", type: "float", min: -90, max: 90, description: "Latitude in decimal degrees.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "gpsLng", type: "float", min: -180, max: 180, description: "Longitude in decimal degrees.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "elevation", type: "float", description: "Elevation, in the unit given by elevationUnit.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "elevationUnit", type: "enum", enumValues: ["imperial", "metric"],
+    description: "Unit for elevation. Defaults to imperial (feet).",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "soilType", type: "string", max: 120, description: "Soil description, e.g. 'schist'.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "manager", type: "string", max: 120, description: "Vineyard manager's name.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "defaultUnit", type: "enum", enumValues: ["imperial", "metric"],
+    description: "Unit this vineyard's readouts display in.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
 ];
+
+/** Columns that live on VineyardDetail rather than Vineyard. One list, so update / current / the
+ *  audit split cannot disagree about where a field belongs. */
+const DETAIL_COLUMNS = ["gpsLat", "gpsLng", "elevationM", "soilType", "manager", "defaultUnit"] as const;
 
 /**
  * Is `abbreviation` already held by a DIFFERENT vineyard? Case-insensitively, because the token is
@@ -396,16 +435,90 @@ const vineyard: EntityConfig = {
   ],
   del: async (tx, id) => { await tx.vineyard.delete({ where: { id } }); },
   ...withFields(vineyardFields),
-  current: (id) => prisma.vineyard.findUnique({ where: { id }, select: { name: true, abbreviation: true, isActive: true } }),
-  update: async (tx, id, v) => { await tx.vineyard.update({ where: { id }, data: v as Prisma.VineyardUncheckedUpdateInput }); },
+  async current(id) {
+    const row = await prisma.vineyard.findUnique({
+      where: { id },
+      select: {
+        name: true, abbreviation: true, isActive: true,
+        detail: { select: { gpsLat: true, gpsLng: true, elevationM: true, soilType: true, manager: true, defaultUnit: true } },
+      },
+    });
+    if (!row) return null;
+    const { detail, ...vineyardColumns } = row;
+    // A vineyard with no detail row is normal, not an error: the row is created lazily on first
+    // write. Every detail field simply reads as absent so the whole preview still renders.
+    // Decimals are normalized to plain numbers — `diff` compares primitives, and a raw Decimal
+    // renders as an object on the confirm card (the same reason actions.ts:160 stringifies them).
+    return {
+      ...vineyardColumns,
+      gpsLat: num(detail?.gpsLat),
+      gpsLng: num(detail?.gpsLng),
+      elevationM: num(detail?.elevationM),
+      soilType: detail?.soilType ?? null,
+      manager: detail?.manager ?? null,
+      defaultUnit: detail?.defaultUnit ?? null,
+    };
+  },
+  internalUpdateKeys: ["elevationM"],
   async buildUpdate(_user, values, id) {
-    if (values.abbreviation == null) return values;
-    const abbreviation = normalizeAbbreviation(values.abbreviation)!;
-    const holder = await abbreviationHolder(abbreviation, id);
-    if (holder) {
-      throw new Error(`The abbreviation "${abbreviation}" is already used by "${holder.name}". Lot codes have to stay unambiguous, so pick another.`);
+    const out: ValidatedValues = { ...values };
+
+    if (values.abbreviation != null) {
+      const abbreviation = normalizeAbbreviation(values.abbreviation)!;
+      const holder = await abbreviationHolder(abbreviation, id);
+      if (holder) {
+        throw new Error(`The abbreviation "${abbreviation}" is already used by "${holder.name}". Lot codes have to stay unambiguous, so pick another.`);
+      }
+      out.abbreviation = abbreviation;
     }
-    return { ...values, abbreviation };
+
+    if (values.elevation != null) {
+      const typedIn = readUnitValue(values.elevationUnit);
+      // Unlike spacing, 0 is a real elevation (sea level), so this coercer permits it.
+      out.elevationM = elevationToCanonicalM(values.elevation, typedIn)!;
+      out.elevation = `${Number(values.elevation)} ${typedIn === "metric" ? "m" : "ft"}`;
+    }
+    delete out.elevationUnit; // input-only: it says how to read `elevation`, it is not a column
+    return out;
+  },
+  async update(tx, id, values) {
+    const vineyardData: Record<string, unknown> = {};
+    const detailData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (key === "elevation" || key === "elevationUnit") continue; // display-only
+      if ((DETAIL_COLUMNS as readonly string[]).includes(key)) detailData[key] = value;
+      else vineyardData[key] = value;
+    }
+    if (Object.keys(vineyardData).length > 0) {
+      await tx.vineyard.update({ where: { id }, data: vineyardData as Prisma.VineyardUncheckedUpdateInput });
+    }
+    // Only touch the detail row when a detail field actually changed, so renaming a vineyard does
+    // not conjure an empty detail row. PARTIAL by design: the /reference form posts every field at
+    // once, but the assistant sends deltas — writing the full shape here would null out soilType
+    // whenever someone set GPS.
+    if (Object.keys(detailData).length > 0) {
+      await tx.vineyardDetail.upsert({
+        where: { vineyardId: id },
+        create: { vineyardId: id, ...detailData },
+        update: detailData,
+      });
+    }
+  },
+  /** Detail-column edits are audited as VineyardDetail, matching what the /reference form writes
+   *  (actions.ts:179) so one vineyard's history reads as one story regardless of which surface
+   *  made the change. */
+  auditGroups: (values) => {
+    const vineyardValues: ValidatedValues = {};
+    const detailValues: ValidatedValues = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (key === "elevation" || key === "elevationUnit") continue;
+      if ((DETAIL_COLUMNS as readonly string[]).includes(key)) detailValues[key] = value;
+      else vineyardValues[key] = value;
+    }
+    return [
+      { entityType: "Vineyard", values: vineyardValues },
+      { entityType: "VineyardDetail", values: detailValues },
+    ];
   },
   buildCreate: async (_user, v) => ({
     data: { name: String(v.name), abbreviation: normalizeAbbreviation(v.abbreviation) },
