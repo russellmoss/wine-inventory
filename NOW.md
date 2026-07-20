@@ -143,6 +143,21 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Plan 084 — Cornell grapes/IPM knowledge source + publication dates — ALL 8 UNITS DONE, code-complete
+  on branch, PR not yet opened.** ⚠️ `verify:knowledge-base` + `verify:kb-subscriptions` + the first
+  Cornell crawl still need a run from the MAIN checkout (worktree has no `.env`/network/DB).
+  Branch `claude/cornell-grapes-knowledge-source-808b00`. Standard, 8 units. vitest 2966/0, tsc, eslint 0.
+  [2026-07-20-084-…](docs/plans/2026-07-20-084-feat-cornell-grapes-knowledge-source-plan.md).
+  Recon found three things the request assumed otherwise: (1) **nothing to bypass in robots.txt** —
+  `blogs.cornell.edu` disallows only `/wp-admin/`, and all 13 third-party hosts permit the PDFs we
+  want, so no bypass is in scope; (2) **`TRUSTED_DOMAINS` is hard-enforced on the curated path too**
+  (`crawler.ts:449`, `fetcher.ts:77`) — curated bypasses sitemap discovery and path prefixes, NOT the
+  host allowlist, so off-site PDFs *require* widening the allowlist; (3) **36 of 98 linked PDFs
+  soft-404** (HTTP 200 + `text/html`) — all 34 `grapesandwine.cals.cornell.edu` links now redirect to a
+  CALS landing page, so a naive crawl indexes 34 copies of a nav page as Cornell research. Also found:
+  `publishedAt` has **never** been populated by the crawl path for any of the 18 existing sources
+  (only `crawl-ets.ts` sets it), so every crawled passage reaches the assistant dated `"unknown"`.
+  Fixed at the shared seam, so all 19 sources benefit.
 - **Feedback loop: class sweep + regression-test gate — built on `claude/determined-clarke-6d3e65`, PR not yet opened.**
   Backlog-process review, not a ticket. The data: ~40 PRs merged in 48h, PR queue near-empty — **throughput
   is not the bottleneck**. The defect is fix *altitude*: **#385** fixed one `resolveExactlyOne` ambiguity,
