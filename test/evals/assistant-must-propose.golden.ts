@@ -107,14 +107,28 @@ export const MUST_PROPOSE_GOLDEN: MustProposeCase[] = [
     tool: "propose_work_order",
     readyRequires: ["sourceText", "tasks"],
     note: "Genuinely under-specified. A Draft naming what it needs is the right outcome; silence is not.",
-    // MEASURED 0/3 after Units 4-8 (every other case went to 3/3). Not a prompt problem — the tool
-    // genuinely cannot represent this draft: canonicalizeRawIntents (nl-proposal.ts) THROWS
-    // "A topping task needs both a source and a destination vessel" before the readiness engine ever
-    // runs, so there is no proposal object to attach `unresolved` to. Unit 5 converted the
-    // readiness-stage prose blocker; the canonicalizer-stage THROWS are still prose. That is the next
-    // increment of this plan, not a defect in what shipped.
+    // The TOOL-side gap is now CLOSED and the case still fails — the cause was misdiagnosed.
+    //
+    // Previously recorded as "canonicalizeRawIntents throws before a draft proposal can be built". That
+    // throw was real and is fixed: the canonicalizer now emits a PARTIAL carrying its own unresolved
+    // item. Proven end-to-end against Demo with the exact input below, which used to throw:
+    //     proposal.status = needs_input
+    //     proposal.unresolved = [{ key: "partial-1-topping", label: "Topping",
+    //                              reason: "Needs both a source and a destination vessel." }]
+    //     taskBuilds = 0, fingerprint = ""   -> not committable
+    // So if the model calls propose_work_order with {kind:"TOPPING"}, it now gets a Draft card.
+    //
+    // But it still measures 0/3, and the eval buckets say **no-tool 3**: the model makes ZERO write-tool
+    // calls for this utterance. It never reaches the canonicalizer at all. The remaining cause is model
+    // tool-choice — "top up the barrels that need it" names no target, and the model treats picking the
+    // barrels as a prerequisite rather than something a Draft can ask for. That is prompt/U6 territory
+    // (or a `needs_input`-shaped affordance the model can see in the tool description), NOT a defect in
+    // the canonicalizer path.
+    //
+    // Kept as a knownGap with the corrected cause rather than deleted (which would hide a real product
+    // gap) or left failing (which trains people to ignore the nightly).
     knownGap:
-      "canonicalizeRawIntents throws on a task missing its required vessels, before a draft proposal can be built",
+      "model makes no write-tool call for a target-less utterance (eval: no-tool 3/3); the canonicalizer-stage throw it was previously blamed on is fixed and proven",
     fixture: {
       query_cellar_contents:
         'Barrel B101: lot 24-PN-03, 220 L of 228 L. Barrel B102: lot 24-PN-03, 215 L of 228 L. Barrel B103: lot 24-PN-04, 226 L of 228 L.',

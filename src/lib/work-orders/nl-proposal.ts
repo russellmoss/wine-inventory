@@ -66,6 +66,27 @@ export type NlWorkOrderIntent = (
 export const NL_RUNTIME_KINDS = new Set<NlWorkOrderIntent["kind"]>(["CRUSH", "PRESS", "HARVEST_WEIGH_IN"]);
 export const NL_MAINTENANCE_KINDS = new Set<string>(["CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE"]);
 
+/**
+ * A task the user clearly asked for that CANNOT be canonicalized yet because a required field is missing
+ * (plan 081 follow-up). It is deliberately NOT an `NlWorkOrderIntent` — the union's members have their
+ * required fields for a reason, and weakening them would let an incomplete task reach the resolver and the
+ * commit path.
+ *
+ * Before this existed, `canonicalizeRawIntents` THREW on a missing field. That throw happened before any
+ * proposal object existed, so there was nothing to hang `unresolved` items on, the tool error surfaced as
+ * chat prose, and the user got NO card — the exact failure plan 081 set out to remove, surviving one stage
+ * earlier in the pipeline. Carrying the gap as data instead lets the proposal come back `needs_input` and
+ * render as a Draft card that names what is missing.
+ */
+export type NlPartialIntent = {
+  kind: "PARTIAL";
+  /** The task kind the user asked for, e.g. "TOPPING". Display only — never resolved or committed. */
+  requestedKind: string;
+  /** What is missing. Same shape the readiness engine emits, so the card renders it with no special case. */
+  unresolved: UnresolvedItem[];
+  note?: string;
+};
+
 export type NlWorkOrderDraft = {
   schemaVersion: 2;
   sourceText: string;
@@ -73,6 +94,13 @@ export type NlWorkOrderDraft = {
   assigneeEmail: string | null;
   dueDate: string | null;
   intents: NlWorkOrderIntent[];
+  /**
+   * Tasks that could not be canonicalized. A draft with ANY partial is never `ready`, so it can never
+   * commit — `computeNlProposal` downgrades the status and the existing `taskBuilds: ready ? … : []` gate
+   * blanks the signed builds. That is what makes dropping the task from `intents` safe rather than a
+   * silent omission.
+   */
+  partials: NlPartialIntent[];
 };
 
 export type ProposalStatus = "ready" | "needs_input" | "blocked";
@@ -274,28 +302,75 @@ export function canonicalizeNlWorkOrderDraft(raw: unknown): NlWorkOrderDraft {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const sourceText = cleanString(obj.sourceText) ?? cleanString(obj.utterance) ?? "";
   const rawTasks = Array.isArray(obj.tasks) ? obj.tasks : Array.isArray(obj.intents) ? obj.intents : null;
-  const intents = rawTasks ? canonicalizeRawIntents(rawTasks as RawIntent[]) : parseWorkOrderUtteranceForEval(sourceText);
-  if (intents.length > NL_WORK_ORDER_MAX_TASKS) {
-    throw new Error(`That is too much for one work order (${intents.length} tasks). Split it into ${NL_WORK_ORDER_MAX_TASKS} tasks or fewer.`);
+  const { intents, partials } = rawTasks
+    ? canonicalizeRawIntents(rawTasks as RawIntent[])
+    : { intents: parseWorkOrderUtteranceForEval(sourceText), partials: [] as NlPartialIntent[] };
+  // Count partials too — a task the user asked for still costs a slot, whether or not we could type it.
+  const taskCount = intents.length + partials.length;
+  if (taskCount > NL_WORK_ORDER_MAX_TASKS) {
+    throw new Error(`That is too much for one work order (${taskCount} tasks). Split it into ${NL_WORK_ORDER_MAX_TASKS} tasks or fewer.`);
   }
   const title = cleanString(obj.title) ?? titleFromIntents(intents);
   const assigneeEmail = cleanString(obj.assigneeEmail);
   const dueDate = cleanString(obj.dueDate);
-  return { schemaVersion: 2, sourceText, title, assigneeEmail, dueDate, intents };
+  return { schemaVersion: 2, sourceText, title, assigneeEmail, dueDate, intents, partials };
 }
 
-export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] {
+/**
+ * Canonicalize the model's raw task list.
+ *
+ * Two failure modes, deliberately treated differently:
+ *  - A MISSING REQUIRED FIELD ("top up the barrels" with no vessels) is the user not having said enough
+ *    yet. That yields a PARTIAL carrying an `UnresolvedItem`, so the proposal comes back `needs_input` and
+ *    the user gets a Draft card naming the gap. It does NOT throw.
+ *  - A MALFORMED or OUT-OF-SCOPE instruction (an unknown kind, a bad dose unit, an invalid equipment
+ *    status, blend authoring) is not something the user can fix by adding a field. Those still throw.
+ */
+export function canonicalizeRawIntents(tasks: RawIntent[]): { intents: NlWorkOrderIntent[]; partials: NlPartialIntent[] } {
   const intents: NlWorkOrderIntent[] = [];
+  const partials: NlPartialIntent[] = [];
+  /** Parallel to `intents`: the raw task each intent came from (see pushIntent). */
+  const intentSources: RawIntent[] = [];
   let lastRackDestination: string | null = null;
+  let taskIndex = 0;
+
+  /**
+   * Record a task we could not type. The drop from `intents` and the `unresolved` entry happen together,
+   * here, so a task can never be silently omitted without also being reported — the invariant the
+   * commit-path safety argument rests on.
+   */
+  /**
+   * Push an intent AND remember which raw task produced it.
+   *
+   * The per-task meta merge at the end of this function (assignee / priority / groupSeq) used to index
+   * `tasks` positionally, which was exact only while every raw task produced exactly one intent. Now that
+   * an incomplete task yields a PARTIAL and NO intent, position no longer lines up — without this the
+   * meta would shift, and a rack could silently inherit the topping's assignee. Track the source instead.
+   */
+  const pushIntent = (raw: RawIntent, intent: NlWorkOrderIntent) => {
+    intents.push(intent);
+    intentSources.push(raw);
+  };
+
+  const partial = (requestedKind: string, label: string, reason: string, raw: RawIntent) => {
+    partials.push({
+      kind: "PARTIAL",
+      requestedKind,
+      unresolved: [{ key: `partial-${taskIndex}-${requestedKind.toLowerCase()}`, label, reason }],
+      ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
+    });
+  };
+
   for (const raw of tasks) {
+    taskIndex += 1;
     const kind = cleanString(raw.kind) ?? cleanString(raw.type) ?? cleanString(raw.operation);
     const up = kind?.toUpperCase();
     const groupDir = groupRackDirection(up, raw);
     if (groupDir === "BARREL_DOWN") {
       const from = cleanString(raw.from) ?? cleanString(raw.fromVessel) ?? cleanString(raw.source);
       const toGroup = cleanString(raw.toGroup) ?? cleanString(raw.destinations) ?? cleanString(raw.barrels) ?? cleanString(raw.group) ?? cleanString(raw.to);
-      if (!from || !toGroup) throw new Error("A barrel-down needs a source vessel and a barrel group or range (e.g. B101-B110).");
-      intents.push({
+      if (!from || !toGroup) { partial("BARREL_DOWN", "Barrel-down", "Needs a source vessel and a barrel group or range (e.g. B101-B110).", raw); continue; }
+      pushIntent(raw, {
         kind: "BARREL_DOWN",
         from,
         toGroup,
@@ -308,8 +383,8 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     if (groupDir === "RACK_TO_TANK") {
       const fromGroup = cleanString(raw.fromGroup) ?? cleanString(raw.sources) ?? cleanString(raw.barrels) ?? cleanString(raw.group) ?? cleanString(raw.from);
       const to = cleanString(raw.to) ?? cleanString(raw.toVessel);
-      if (!fromGroup || !to) throw new Error("Racking barrels to a tank needs a barrel group or range and a destination tank.");
-      intents.push({
+      if (!fromGroup || !to) { partial("RACK_TO_TANK", "Rack barrels to tank", "Needs a barrel group or range and a destination tank.", raw); continue; }
+      pushIntent(raw, {
         kind: "RACK_TO_TANK",
         fromGroup,
         to,
@@ -324,7 +399,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     if (up === "RACK") {
       const from = cleanString(raw.from) ?? cleanString(raw.fromVessel);
       const to = cleanString(raw.to) ?? cleanString(raw.toVessel);
-      if (!from || !to) throw new Error("A rack task needs both from and to vessels.");
+      if (!from || !to) { partial("RACK", "Rack", "Needs both a source and a destination vessel.", raw); continue; }
       const intent: NlWorkOrderIntent = {
         kind: "RACK",
         from,
@@ -334,7 +409,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
         ...(cleanString(raw.rackType) ? { rackType: cleanString(raw.rackType)! } : {}),
         ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}),
       };
-      intents.push(intent);
+      pushIntent(raw, intent);
       lastRackDestination = to;
       continue;
     }
@@ -344,11 +419,11 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       const amount = positiveNumber(raw.amount);
       const unit = cleanString(raw.unit) ?? cleanString(raw.doseUnit);
       if (!vessel || !material || amount == null || !unit) {
-        throw new Error(`${up === "FINING" ? "Fining" : "Addition"} needs a vessel, material, amount, and unit.`);
+        partial(up, up === "FINING" ? "Fining" : "Addition", "Needs a vessel, material, amount, and unit.", raw); continue;
       }
       if (!DOSE_UNITS.has(unit) && !DOSE_UNITS.has(normalizeDoseUnit(unit))) throw new Error(`Unsupported dose unit "${unit}".`);
       const solutionPercentKmbs = positiveNumber(raw.solutionPercentKmbs);
-      intents.push({
+      pushIntent(raw, {
         kind: up,
         vessel,
         material,
@@ -362,8 +437,8 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     if (up === "PANEL") {
       const vessel = cleanString(raw.vessel) ?? lastRackDestination ?? undefined;
       const lot = cleanString(raw.lot) ?? undefined;
-      if (!vessel && !lot) throw new Error("A panel task needs a vessel or lot.");
-      intents.push({
+      if (!vessel && !lot) { partial("PANEL", "Lab panel", "Needs a vessel or a lot.", raw); continue; }
+      pushIntent(raw, {
         kind: "PANEL",
         ...(vessel ? { vessel } : {}),
         ...(lot ? { lot } : {}),
@@ -375,15 +450,15 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     if (up === "BRIX") {
       const vessel = cleanString(raw.vessel) ?? lastRackDestination ?? undefined;
       const lot = cleanString(raw.lot) ?? undefined;
-      if (!vessel && !lot) throw new Error("A Brix reading needs a vessel or lot.");
-      intents.push({ kind: "BRIX", ...(vessel ? { vessel } : {}), ...(lot ? { lot } : {}), ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
+      if (!vessel && !lot) { partial("BRIX", "Brix reading", "Needs a vessel or a lot.", raw); continue; }
+      pushIntent(raw, { kind: "BRIX", ...(vessel ? { vessel } : {}), ...(lot ? { lot } : {}), ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
       continue;
     }
     if (up === "SAMPLE_PULL") {
       const vessel = cleanString(raw.vessel) ?? lastRackDestination ?? undefined;
       const lot = cleanString(raw.lot) ?? undefined;
-      if (!vessel && !lot) throw new Error("A sample task needs a vessel or lot.");
-      intents.push({
+      if (!vessel && !lot) { partial("SAMPLE_PULL", "Sample pull", "Needs a vessel or a lot.", raw); continue; }
+      pushIntent(raw, {
         kind: "SAMPLE_PULL",
         ...(vessel ? { vessel } : {}),
         ...(lot ? { lot } : {}),
@@ -396,8 +471,8 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     if (up === "TOPPING") {
       const from = cleanString(raw.from) ?? cleanString(raw.fromVessel);
       const to = cleanString(raw.to) ?? cleanString(raw.toVessel);
-      if (!from || !to) throw new Error("A topping task needs both a source and a destination vessel.");
-      intents.push({
+      if (!from || !to) { partial("TOPPING", "Topping", "Needs both a source and a destination vessel.", raw); continue; }
+      pushIntent(raw, {
         kind: "TOPPING",
         from,
         to,
@@ -408,8 +483,8 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     }
     if (up === "FILTRATION") {
       const vessel = cleanString(raw.vessel) ?? lastRackDestination;
-      if (!vessel) throw new Error("A filtration task needs a vessel.");
-      intents.push({
+      if (!vessel) { partial("FILTRATION", "Filtration", "Needs a vessel.", raw); continue; }
+      pushIntent(raw, {
         kind: "FILTRATION",
         vessel,
         ...(cleanString(raw.filterType) ? { filterType: cleanString(raw.filterType)! } : {}),
@@ -420,8 +495,8 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     }
     if (up === "CAP_MGMT") {
       const vessel = cleanString(raw.vessel) ?? lastRackDestination;
-      if (!vessel) throw new Error("A cap-management task needs a vessel.");
-      intents.push({
+      if (!vessel) { partial("CAP_MGMT", "Cap management", "Needs a vessel.", raw); continue; }
+      pushIntent(raw, {
         kind: "CAP_MGMT",
         vessel,
         ...(cleanString(raw.technique) ? { technique: cleanString(raw.technique)! } : {}),
@@ -432,8 +507,8 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     }
     if (up === "TEMP_SETPOINT") {
       const vessel = cleanString(raw.vessel) ?? lastRackDestination;
-      if (!vessel) throw new Error("A temperature setpoint needs a vessel.");
-      intents.push({
+      if (!vessel) { partial("TEMP_SETPOINT", "Temperature setpoint", "Needs a vessel.", raw); continue; }
+      pushIntent(raw, {
         kind: "TEMP_SETPOINT",
         vessel,
         ...(finiteNumber(raw.targetValue) != null ? { targetValue: finiteNumber(raw.targetValue)! } : {}),
@@ -447,8 +522,8 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       // nl-resolve. A single vessel keeps the lastRackDestination fallback (only when no group is given).
       const vesselGroup = cleanString(raw.vesselGroup) ?? cleanString(raw.group) ?? cleanString(raw.barrels) ?? cleanString(raw.vessels);
       const vessel = cleanString(raw.vessel) ?? (vesselGroup ? null : lastRackDestination);
-      if (!vessel && !vesselGroup) throw new Error(`A ${up.toLowerCase()} task needs a vessel, or a barrel group/range (e.g. B1-B4).`);
-      intents.push({
+      if (!vessel && !vesselGroup) { partial(up, up.charAt(0) + up.slice(1).toLowerCase().replace(/_/g, " "), "Needs a vessel, or a barrel group/range (e.g. B1-B4).", raw); continue; }
+      pushIntent(raw, {
         kind: up as NlMaintenanceKind,
         ...(vesselGroup ? { vesselGroup } : { vessel: vessel! }),
         ...(cleanString(raw.material) ? { material: cleanString(raw.material)! } : {}),
@@ -468,7 +543,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       const crushedPct = percentNumber(raw.crushedPct);
       const destemmed = booleanFlag(raw.destemmed);
       const mustTempC = finiteNumber(raw.mustTempC ?? raw.mustTemp);
-      intents.push({
+      pushIntent(raw, {
         kind: "CRUSH",
         ...(cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ?? cleanString(raw.vessel) ? { destVessel: (cleanString(raw.destVessel) ?? cleanString(raw.toVessel) ?? cleanString(raw.vessel))! } : {}),
         ...(cleanString(raw.block) ? { block: cleanString(raw.block)! } : {}),
@@ -483,7 +558,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     }
     if (up === "PRESS") {
       const op = cleanString(raw.op);
-      intents.push({
+      pushIntent(raw, {
         kind: "PRESS",
         ...(cleanString(raw.sourceVessel) ?? cleanString(raw.fromVessel) ?? cleanString(raw.vessel) ? { sourceVessel: (cleanString(raw.sourceVessel) ?? cleanString(raw.fromVessel) ?? cleanString(raw.vessel))! } : {}),
         ...(cleanString(raw.sourceLot) ?? cleanString(raw.lot) ? { sourceLot: (cleanString(raw.sourceLot) ?? cleanString(raw.lot))! } : {}),
@@ -495,7 +570,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       continue;
     }
     if (up === "HARVEST_WEIGH_IN") {
-      intents.push({
+      pushIntent(raw, {
         kind: "HARVEST_WEIGH_IN",
         ...(cleanString(raw.block) ? { block: cleanString(raw.block)! } : {}),
         // blockId is pinned by the tool layer (propose-work-order.ts) after vineyard-access-scoped
@@ -512,7 +587,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       const skuVintage = finiteNumber(raw.skuVintage ?? raw.vintage);
       const cases = positiveNumber(raw.cases);
       const bottles = positiveNumber(raw.bottles ?? raw.bottlesProduced);
-      intents.push({
+      pushIntent(raw, {
         kind: "BOTTLE",
         ...(cleanString(raw.vessel) ?? cleanString(raw.from) ?? cleanString(raw.sourceVessel) ? { vessel: (cleanString(raw.vessel) ?? cleanString(raw.from) ?? cleanString(raw.sourceVessel))! } : {}),
         ...(cleanString(raw.skuName) ?? cleanString(raw.wine) ?? cleanString(raw.sku) ? { skuName: (cleanString(raw.skuName) ?? cleanString(raw.wine) ?? cleanString(raw.sku))! } : {}),
@@ -532,7 +607,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
       const equipment = cleanString(raw.equipment) ?? cleanString(raw.equipmentName) ?? cleanString(raw.asset);
       const equipmentId = cleanString(raw.equipmentId);
       if (!equipment && !equipmentId) {
-        throw new Error("An equipment-service task needs the equipment to service (e.g. \"the basket press\").");
+        partial("EQUIPMENT_SERVICE", "Equipment service", "Needs the equipment to service (e.g. \"the basket press\").", raw); continue;
       }
       const setStatusRaw = cleanString(raw.setStatus) ?? cleanString(raw.status);
       let setStatus: string | undefined;
@@ -541,7 +616,7 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
         if (!matched) throw new Error(`"${setStatusRaw}" is not a valid equipment status (allowed: ${EQUIPMENT_STATUSES.join(", ")}).`);
         setStatus = matched;
       }
-      intents.push({
+      pushIntent(raw, {
         kind: "EQUIPMENT_SERVICE",
         ...(equipment ? { equipment } : {}),
         ...(equipmentId ? { equipmentId } : {}),
@@ -552,14 +627,16 @@ export function canonicalizeRawIntents(tasks: RawIntent[]): NlWorkOrderIntent[] 
     }
     // NOTE (the only remaining SUPPORTED kind).
     const title = cleanString(raw.title);
-    if (!title) throw new Error("A note task needs a title.");
-    intents.push({ kind: "NOTE", title, ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
+    if (!title) { partial("NOTE", "Note", "Needs a title.", raw); continue; }
+    pushIntent(raw, { kind: "NOTE", title, ...(cleanString(raw.note) ? { note: cleanString(raw.note)! } : {}) });
   }
-  // Plan 055 U7/U8/D3: apply the cross-cutting per-task planning fields. Each raw task maps 1:1 (in order)
-  // to the intent pushed for it, so a positional merge is exact. Only present fields are set (merge, never
-  // wipe) so a resume that re-emits the same tasks preserves assignee AND priority AND groupSeq.
-  intents.forEach((intent, i) => Object.assign(intent, parseTaskMeta(tasks[i])));
-  return intents;
+  // Plan 055 U7/U8/D3: apply the cross-cutting per-task planning fields. Keyed off `intentSources` (the
+  // raw task each intent actually came from) rather than the position in `tasks` — an incomplete task now
+  // yields a PARTIAL and no intent, so positional indexing would shift the meta onto the wrong task. Only
+  // present fields are set (merge, never wipe) so a resume that re-emits the same tasks preserves
+  // assignee AND priority AND groupSeq.
+  intents.forEach((intent, i) => Object.assign(intent, parseTaskMeta(intentSources[i])));
+  return { intents, partials };
 }
 
 export function parseWorkOrderUtteranceForEval(sourceText: string): NlWorkOrderIntent[] {

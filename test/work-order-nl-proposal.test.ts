@@ -232,8 +232,15 @@ describe("Phase 9.3 Unit 4 — expanded task-kind canonicalization", () => {
     expect(freeText.intents[0]).toMatchObject({ kind: "RACK_TO_TANK", fromGroup: "B101-B110", to: "T15" });
   });
 
-  it("still rejects a group barrel-down missing its group/source", () => {
-    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "barrel_down", from: "T12" }] })).toThrow(/barrel group or range/i);
+  // Plan 081 follow-up: a MISSING FIELD is no longer a throw. It becomes a PARTIAL carrying an
+  // unresolved item, so the proposal comes back needs_input and the user gets a Draft card naming the
+  // gap instead of prose with no card at all.
+  it("carries a group barrel-down missing its group/source as a PARTIAL, not a throw", () => {
+    const draft = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "barrel_down", from: "T12" }] });
+    expect(draft.intents).toHaveLength(0);
+    expect(draft.partials).toHaveLength(1);
+    expect(draft.partials[0].requestedKind).toBe("BARREL_DOWN");
+    expect(draft.partials[0].unresolved[0].reason).toMatch(/barrel group or range/i);
   });
 });
 
@@ -275,10 +282,12 @@ describe("Plan 060 — maintenance across a barrel group/range", () => {
     expect(draft.intents[0]).toEqual({ kind: "CLEAN", vesselGroup: "B1-B4" });
   });
 
-  it("throws a group-aware error when a maintenance task has neither a vessel nor a group", () => {
-    expect(() =>
-      canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "sanitize", material: "citric" }] }),
-    ).toThrow(/needs a vessel, or a barrel group\/range/i);
+  it("carries a maintenance task with neither vessel nor group as a PARTIAL", () => {
+    const draft = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "sanitize", material: "citric" }] });
+    expect(draft.intents).toHaveLength(0);
+    expect(draft.partials).toHaveLength(1);
+    expect(draft.partials[0].requestedKind).toBe("SANITIZE");
+    expect(draft.partials[0].unresolved[0].reason).toMatch(/needs a vessel, or a barrel group\/range/i);
   });
 });
 
@@ -338,10 +347,12 @@ describe("Plan 055 U3 — EQUIPMENT_SERVICE canonicalization", () => {
     ).toThrow(/not a valid equipment status/i);
   });
 
-  it("requires the equipment (or a pinned id) to service", () => {
-    expect(() =>
-      canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "EQUIPMENT_SERVICE", setStatus: "available" }] }),
-    ).toThrow(/needs the equipment to service/i);
+  it("carries an equipment-service task with no equipment as a PARTIAL", () => {
+    const draft = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "EQUIPMENT_SERVICE", setStatus: "available" }] });
+    expect(draft.intents).toHaveLength(0);
+    expect(draft.partials).toHaveLength(1);
+    expect(draft.partials[0].requestedKind).toBe("EQUIPMENT_SERVICE");
+    expect(draft.partials[0].unresolved[0].reason).toMatch(/equipment to service/i);
   });
 });
 
@@ -364,5 +375,163 @@ describe("Plan 055 U7/U8/D3 — per-task assignee / priority / groupSeq meta", (
     expect("assignee" in draft.intents[0]).toBe(false);
     expect("priority" in draft.intents[0]).toBe(false);
     expect("groupSeq" in draft.intents[0]).toBe(false);
+  });
+});
+
+// ─── Plan 081 follow-up: canonicalizer-stage PARTIALs ────────────────────────────────────────────
+//
+// The gap this closes: `canonicalizeRawIntents` used to THROW when a task was missing a required
+// field. That throw fired BEFORE any proposal object existed, so there was nothing to hang
+// `unresolved` items on — the tool error surfaced as chat prose and the user got NO card. Measured by
+// the MUST_PROPOSE eval case `wo-vague-target` ("put in a work order to top up the barrels that need
+// it"), which scored 0/3 while every other case scored 3/3.
+describe("canonicalizer PARTIALs (missing required fields no longer throw)", () => {
+  it("turns the eval's failing case — a topping task with no vessels — into a PARTIAL", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "put in a work order to top up the barrels that need it",
+      tasks: [{ kind: "TOPPING" }],
+    });
+    expect(draft.intents).toHaveLength(0);
+    expect(draft.partials).toHaveLength(1);
+    expect(draft.partials[0].kind).toBe("PARTIAL");
+    expect(draft.partials[0].requestedKind).toBe("TOPPING");
+    expect(draft.partials[0].unresolved[0].label).toBe("Topping");
+    expect(draft.partials[0].unresolved[0].reason).toMatch(/source and a destination vessel/i);
+  });
+
+  it("keeps the complete tasks and partials the incomplete one, in the same draft", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "rack T1 to T2 and top up the barrels",
+      tasks: [
+        { kind: "RACK", from: "T1", to: "T2" },
+        { kind: "TOPPING" },
+      ],
+    });
+    expect(draft.intents).toHaveLength(1);
+    expect(draft.intents[0].kind).toBe("RACK");
+    expect(draft.partials).toHaveLength(1);
+    expect(draft.partials[0].requestedKind).toBe("TOPPING");
+  });
+
+  // THE safety invariant. A partial is dropped from `intents` because it cannot be typed — that is only
+  // safe because the proposal can never be `ready`, so `computeNlProposal` blanks the signed taskBuilds
+  // and the fingerprint. A partial must therefore ALWAYS be reported; a silent drop would let a work
+  // order commit with a task the user asked for quietly missing.
+  it("never drops a task without reporting it — every partial carries an unresolved item", () => {
+    const incomplete = [
+      { kind: "TOPPING" },
+      { kind: "RACK", from: "T1" },
+      { kind: "ADDITION", vessel: "T1" },
+      { kind: "PANEL" },
+      { kind: "BRIX" },
+      { kind: "SAMPLE_PULL" },
+      { kind: "FILTRATION" },
+      { kind: "CAP_MGMT" },
+      { kind: "TEMP_SETPOINT" },
+      { kind: "SANITIZE" },
+      { kind: "EQUIPMENT_SERVICE" },
+      { kind: "NOTE" },
+      { kind: "barrel_down", from: "T12" },
+      { kind: "rack_barrels_to_tank", fromGroup: "B1-B4" },
+    ];
+    for (const task of incomplete) {
+      const draft = canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [task] });
+      expect(draft.intents, JSON.stringify(task)).toHaveLength(0);
+      expect(draft.partials, JSON.stringify(task)).toHaveLength(1);
+      expect(draft.partials[0].unresolved.length, JSON.stringify(task)).toBeGreaterThan(0);
+      expect(draft.partials[0].unresolved[0].reason, JSON.stringify(task)).toBeTruthy();
+      expect(draft.partials[0].unresolved[0].key, JSON.stringify(task)).toBeTruthy();
+    }
+  });
+
+  it("gives each partial a distinct unresolved key so the card can list several", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "x",
+      tasks: [{ kind: "TOPPING" }, { kind: "FILTRATION" }],
+    });
+    expect(draft.partials).toHaveLength(2);
+    const keys = draft.partials.flatMap((p) => p.unresolved.map((u) => u.key));
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  // MALFORMED / out-of-scope is a different failure from "you didn't say enough yet". The user cannot
+  // fix these by supplying a field, so they still throw rather than becoming a card.
+  it("still THROWS for malformed or out-of-scope instructions", () => {
+    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "teleport", vessel: "T1" }] })).toThrow(
+      /Unsupported work-order instruction/,
+    );
+    expect(() =>
+      canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "ADDITION", vessel: "T1", material: "SO2", amount: 3, unit: "furlongs" }] }),
+    ).toThrow(/Unsupported dose unit/i);
+    expect(() =>
+      canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks: [{ kind: "EQUIPMENT_SERVICE", equipment: "press", setStatus: "broken" }] }),
+    ).toThrow(/not a valid equipment status/i);
+    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "Make a work order to blend T1 and T2" })).toThrow(/Blend authoring/);
+  });
+
+  it("counts partials against the per-work-order task cap", () => {
+    const tasks = Array.from({ length: NL_WORK_ORDER_MAX_TASKS + 1 }, () => ({ kind: "TOPPING" }));
+    expect(() => canonicalizeNlWorkOrderDraft({ sourceText: "x", tasks })).toThrow(/too much for one work order/i);
+  });
+
+  it("leaves a fully-specified draft with no partials at all", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "x",
+      tasks: [{ kind: "TOPPING", from: "T1", to: "B2" }],
+    });
+    expect(draft.partials).toHaveLength(0);
+    expect(draft.intents).toHaveLength(1);
+  });
+});
+
+// Regression for a bug introduced BY the partial change and caught in review: the per-task meta merge
+// (assignee / priority / groupSeq) indexed `tasks` positionally, which was exact only while every raw
+// task produced exactly one intent. Once an incomplete task yields a PARTIAL and no intent, position
+// shifts — and the surviving task silently inherits the DROPPED task's assignee. Wrong-assignee work
+// orders are precisely the class of bug this whole plan exists to stop.
+describe("per-task meta stays attached to the right task when a partial is dropped", () => {
+  it("does not shift assignee/priority onto the wrong task", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "x",
+      tasks: [
+        // Incomplete -> PARTIAL, contributes NO intent. Its meta must not leak onto the rack.
+        { kind: "TOPPING", assignee: "mike@bhutanwine.com", priority: "URGENT" },
+        { kind: "RACK", from: "T1", to: "T2", assignee: "russell@demo.test", priority: "LOW" },
+      ],
+    });
+
+    expect(draft.intents).toHaveLength(1);
+    expect(draft.partials).toHaveLength(1);
+    const rack = draft.intents[0] as { kind: string; assignee?: string; priority?: string };
+    expect(rack.kind).toBe("RACK");
+    expect(rack.assignee).toBe("russell@demo.test");
+    expect(rack.priority).toBe("LOW");
+  });
+
+  it("keeps meta correct when a partial precedes several complete tasks", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "x",
+      tasks: [
+        // FILTRATION before any rack: no lastRackDestination to fall back to -> PARTIAL, no intent.
+        { kind: "FILTRATION", assignee: "a@x.test" },
+        { kind: "RACK", from: "T1", to: "T2", assignee: "b@x.test" },
+        // PANEL AFTER a rack legitimately inherits the rack's destination (existing fallback), so it
+        // resolves to a real intent. Included deliberately: it shifts every later index by one, which is
+        // exactly what broke the positional merge.
+        { kind: "PANEL", assignee: "c@x.test" },
+        { kind: "TOPPING", from: "T3", to: "B1", assignee: "d@x.test" },
+      ],
+    });
+
+    expect(draft.partials).toHaveLength(1);
+    expect(draft.partials[0].requestedKind).toBe("FILTRATION");
+    expect(draft.intents).toHaveLength(3);
+
+    const byKind = Object.fromEntries(
+      (draft.intents as { kind: string; assignee?: string }[]).map((i) => [i.kind, i.assignee]),
+    );
+    expect(byKind.RACK).toBe("b@x.test");
+    expect(byKind.PANEL).toBe("c@x.test");
+    expect(byKind.TOPPING).toBe("d@x.test");
   });
 });

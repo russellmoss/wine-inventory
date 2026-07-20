@@ -18,6 +18,7 @@ import {
   canonicalizeNlWorkOrderDraft,
   normalizeDoseUnit,
   type NlWorkOrderDraft,
+  type ProposalStatus,
   type ProposedTask,
   type WorkOrderProposal,
   type NlWorkOrderCommitArgs,
@@ -869,17 +870,29 @@ async function computeNlProposal(raw: unknown): Promise<{ proposal: WorkOrderPro
     dueDate: draft.dueDate,
     taskBuilds,
   });
-  const ready = readiness.status === "ready";
+  // Plan 081 follow-up: tasks the canonicalizer could not type (a required field is missing) arrive as
+  // PARTIALs carrying their own unresolved items. Merge them in and downgrade the status, so a draft that
+  // is one field short comes back `needs_input` — a Draft CARD naming the gap — instead of the tool
+  // throwing before a proposal existed and the user seeing prose with no card at all.
+  //
+  // The downgrade is what makes dropping a partial from `tasks` safe: `ready` gates the signed taskBuilds
+  // and the fingerprint below, so a work order can never commit while one of its tasks is still missing.
+  const partialUnresolved = draft.partials.flatMap((p) => p.unresolved);
+  const unresolved = [...readiness.unresolved, ...partialUnresolved];
+  const status: ProposalStatus =
+    partialUnresolved.length > 0 && readiness.status === "ready" ? "needs_input" : readiness.status;
+
+  const ready = status === "ready";
   const proposal: WorkOrderProposal = {
     schemaVersion: 2,
     sourceText: draft.sourceText,
     title: draft.title,
     assigneeEmail: draft.assigneeEmail,
     dueDate: draft.dueDate,
-    status: readiness.status,
+    status,
     stateReadAt: readiness.stateReadAt,
     tasks,
-    unresolved: readiness.unresolved,
+    unresolved,
     warnings: readiness.warnings,
     cost: readiness.cost,
     diff: readiness.diff,
