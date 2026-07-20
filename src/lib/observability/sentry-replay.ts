@@ -11,19 +11,22 @@
 export const SENTRY_ORG_SLUG = process.env.NEXT_PUBLIC_SENTRY_ORG_SLUG || "bhutan-wine";
 
 // ---------------------------------------------------------------------------
-// Replay fidelity (Plan 080 Phase 2, Units 6-7)
+// Replay fidelity (Plan 080)
 //
-// Sentry's replayIntegration options (maskAllText / blockAllMedia /
-// networkDetailAllowUrls) are INIT-TIME only, and instrumentation-client.ts boots before auth is
-// known. So the server writes a non-httpOnly hint cookie holding ONLY this enum (no PII), which
-// init reads synchronously. The cookie is a client-side DEFAULT, not the guarantee: it is
-// client-writable, so the real enforcement is Sentry's server-side data-scrubbing at ingest.
-// Everything here fails CLOSED to "masked".
+// Fidelity now governs ONE thing: whether the first-party interaction trail keeps readable element
+// LABELS (sandbox) or drops them to the element role only (any real customer tenant).
+//
+// It no longer affects Sentry at all. It used to also gate `networkDetailAllowUrls`, but that made a
+// client-writable cookie the only thing standing between a real tenant and full request/response
+// body capture — so body capture was removed outright instead (see buildReplayOptions). The cookie
+// is still resolved SERVER-side and read at init time, and everything here fails CLOSED to
+// "masked", but a tampered value can now at worst reveal our own bounded, redacted, 120-char
+// element labels — never a payload.
 // ---------------------------------------------------------------------------
 
 export const REPLAY_FIDELITY_COOKIE = "cbh_replay_fidelity";
 
-/** "full" = sandbox tenant, network bodies allowed. "masked" = everything else (safe default). */
+/** "full" = sandbox tenant, readable trail labels. "masked" = everything else (safe default). */
 export type ReplayFidelity = "full" | "masked";
 
 /**
@@ -59,13 +62,26 @@ export function readReplayFidelityFromCookieString(cookieString: string | undefi
   return "masked";
 }
 
-/** The replay integration options for a fidelity. Masking is ALWAYS on; bodies only when full. Pure. */
-export function buildReplayOptions(
-  fidelity: ReplayFidelity,
-  origin: string,
-): { maskAllText: true; blockAllMedia: true; networkDetailAllowUrls?: string[] } {
-  const base = { maskAllText: true, blockAllMedia: true } as const;
-  return fidelity === "full" ? { ...base, networkDetailAllowUrls: [`${origin}/api`] } : { ...base };
+/**
+ * The replay integration options. Masking is ALWAYS on, and request/response BODIES are NEVER
+ * captured — in any tenant, at any fidelity.
+ *
+ * We previously allowlisted same-origin `/api` bodies in the sandbox (`networkDetailAllowUrls`).
+ * That was dropped deliberately. The allowlist was the ONLY behavioural difference between the two
+ * fidelities for Sentry, which meant a client-writable hint cookie was the single thing standing
+ * between a real customer tenant and full request/response body capture. The obvious mitigation —
+ * Sentry's server-side scrubbing — turns out to be best-effort pattern matching for classic PII
+ * (credit cards, SSNs, passwords); it would not recognise this domain's sensitive data (lot costs,
+ * vendor invoice amounts, customer names), so it could not be the guarantee.
+ *
+ * Removing body capture closes that hole outright rather than mitigating it. Very little is lost:
+ * network METADATA (method / path / status / duration) is captured by our own interaction buffer,
+ * error payloads still reach the console ring, and the DOM replay still shows the (masked) session.
+ *
+ * Pure, and now fidelity-independent — so there is no configuration in which bodies can be captured.
+ */
+export function buildReplayOptions(): { maskAllText: true; blockAllMedia: true } {
+  return { maskAllText: true, blockAllMedia: true };
 }
 
 /**

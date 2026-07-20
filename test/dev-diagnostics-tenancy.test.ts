@@ -17,7 +17,6 @@ import { deriveIndicator } from "@/lib/observability/dev-diagnostics";
 
 const SANDBOX = "org_demo_winery";
 const REAL_TENANTS = ["org_bhutan_wine_co", "org_some_future_customer", ""];
-const ORIGIN = "https://cellarhand.example.com";
 
 describe("TENANCY GUARANTEE: real customer tenants never get high-fidelity capture", () => {
   for (const tenant of REAL_TENANTS) {
@@ -29,9 +28,9 @@ describe("TENANCY GUARANTEE: real customer tenants never get high-fidelity captu
       });
       expect(fidelity).toBe("masked");
 
-      // 1. Sentry never gets a body allowlist.
-      const options = buildReplayOptions(fidelity, ORIGIN);
-      expect(options.networkDetailAllowUrls).toBeUndefined();
+      // 1. Sentry never gets a body allowlist — not for this tenant, not for ANY tenant.
+      const options = buildReplayOptions();
+      expect(options).not.toHaveProperty("networkDetailAllowUrls");
       // 2. Masking is on regardless.
       expect(options.maskAllText).toBe(true);
       expect(options.blockAllMedia).toBe(true);
@@ -56,19 +55,23 @@ describe("TENANCY GUARANTEE: real customer tenants never get high-fidelity captu
     });
   }
 
-  it("only the sandbox tenant + developer role unlocks full fidelity", () => {
+  it("full fidelity still resolves for the sandbox, but it no longer unlocks body capture", () => {
     const fidelity = resolveReplayFidelity({
       role: "developer",
       effectiveTenantId: SANDBOX,
       sandboxTenantId: SANDBOX,
     });
     expect(fidelity).toBe("full");
-    expect(buildReplayOptions(fidelity, ORIGIN).networkDetailAllowUrls).toEqual([`${ORIGIN}/api`]);
+    // Fidelity now only governs first-party trail LABELS. Sentry body capture is gone entirely,
+    // so the highest fidelity we can reach still sends no request/response bodies.
+    expect(buildReplayOptions()).not.toHaveProperty("networkDetailAllowUrls");
   });
 
   it("a tampered cookie cannot be anything other than full|masked", () => {
     // The cookie is client-writable by design; the point is that it can only ever select between
-    // two known configs. The real enforcement for real tenants is Sentry server-side scrubbing.
+    // two known configs — and since body capture was removed, neither config can leak a payload.
+    // (Sentry's server-side scrubbing is best-effort PII pattern matching and was never a
+    // sufficient guarantee for this domain's financial data, so the hole was closed instead.)
     for (const tampered of ["full; admin=1", "FULL", "'full'", "1", "yes", "<script>"]) {
       expect(parseReplayFidelity(tampered)).toBe("masked");
     }

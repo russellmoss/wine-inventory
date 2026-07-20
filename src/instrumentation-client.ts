@@ -1,21 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 
 import { installConsoleCapture } from "@/lib/observability/console-buffer";
-import {
-  buildReplayOptions,
-  readReplayFidelityFromCookieString,
-} from "@/lib/observability/sentry-replay";
-
-// Replay fidelity is resolved SERVER-side and published as a non-httpOnly hint cookie, because
-// Sentry's replay options are init-time only and this file runs before auth is known (Plan 080
-// Unit 7). Absent/garbled cookie → "masked", so we always fail closed to: masking on, no bodies.
-const replayFidelity = readReplayFidelityFromCookieString(
-  typeof document === "undefined" ? undefined : document.cookie,
-);
-const replayOptions = buildReplayOptions(
-  replayFidelity,
-  typeof window === "undefined" ? "" : window.location.origin,
-);
+import { buildReplayOptions } from "@/lib/observability/sentry-replay";
 
 // Browser/client runtime. DSN is public (it ships in the client bundle either
 // way) — the env var lets us point at a different project without a code change.
@@ -38,9 +24,10 @@ Sentry.init({
   enableLogs: true,
 
   integrations: [
-    // Masking is ALWAYS on; network request/response bodies are allowed only in the sandbox
-    // tenant ("full" fidelity). Real customer tenants can never reach the body branch.
-    Sentry.replayIntegration(replayOptions),
+    // Masking is ALWAYS on and request/response BODIES are NEVER captured — there is no tenant,
+    // role, or cookie value that turns them on. See buildReplayOptions for why the sandbox
+    // allowlist was removed rather than mitigated.
+    Sentry.replayIntegration(buildReplayOptions()),
     // Sentry.feedbackIntegration({ colorScheme: "system" }),
   ],
 });

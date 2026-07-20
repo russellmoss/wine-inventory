@@ -11,10 +11,11 @@ import {
 
 // Plan 080 Unit 6 — server side of the replay-fidelity hint.
 //
-// WHY a cookie: Sentry's replayIntegration options (masking / networkDetailAllowUrls) are
-// INIT-TIME only, and instrumentation-client.ts boots before auth is known. The server therefore
-// publishes the resolved fidelity as a non-httpOnly cookie holding ONLY the enum (no PII) so init
-// can read it synchronously.
+// WHY a cookie: the fidelity must be known client-side before React mounts (the diagnostics
+// indicator and the interaction trail both read it), and it can only be resolved from the session
+// server-side. So the server publishes the resolved value as a non-httpOnly cookie holding ONLY the
+// enum (no PII). It no longer configures Sentry — replay body capture was removed entirely — so a
+// tampered value can at worst affect our own bounded, redacted trail labels.
 //
 // WHY NOT proxy.ts: Next 16's proxy runs per-request but only has `getSessionCookie` (presence, no
 // DB), so it cannot know role/tenant without a session+member lookup on every request. Instead we
@@ -22,8 +23,10 @@ import {
 // support-tenant enter/exit), and proxy clears it when there is no session. Absent/garbled cookie
 // always resolves to "masked", so every gap fails closed.
 //
-// This cookie is a client-side DEFAULT, never the guarantee: it is client-writable, so the real
-// enforcement for real customer tenants is Sentry server-side data scrubbing at ingest.
+// This cookie is client-writable, so it is a DEFAULT rather than a guarantee. That used to matter a
+// great deal, because it gated Sentry request/response body capture. It no longer does: body capture
+// was removed entirely, so the worst a tampered value can do is keep readable element labels in our
+// own bounded, redacted trail.
 
 /**
  * Resolve the current session's replay fidelity and publish it as the hint cookie.

@@ -393,35 +393,44 @@ TEMPLATE — copy for each new invariant / finding:
   entitlement + citation recheck + numeric guardrail live, re-crawl freshness loop live; owner write-role
   narrowing + per-tenant subscription UI (Unit 11) are watched follow-ups).
 
-### Break Mode session capture — sandbox-only high fidelity (Plan 080)
-- **What:** Developer-role users can turn on "Break Mode", which starts a Sentry Session Replay and
-  records a first-party interaction + network-**metadata** trail onto the bug report. Capture fidelity
-  is tenant-scoped: network request/response **bodies** are allowed ONLY in the sandbox tenant
-  (`DEVELOPER_HOME_ORG_ID` = `org_demo_winery`). In every real customer tenant the session is
-  metadata-only with `maskAllText` + `blockAllMedia`, and the first-party trail drops element text
-  (role only), so a button label can't leak customer data.
-- **Why:** Reported bugs were unreproducible without the network activity and action sequence. Reusing
-  Sentry Replay (rather than building capture) gets DOM+console+network with masking for free; the
-  tenant scoping keeps real customer financials/PII out of high-fidelity capture.
-- **How it's wired:** Sentry's replay options are **init-time only** and `instrumentation-client.ts`
-  boots before auth, so the server publishes the resolved fidelity as a non-httpOnly, **enum-only**
-  cookie (`cbh_replay_fidelity` = `full|masked`, no PII/tenant id/session material) written where
-  fidelity can change (support-tenant enter/exit) and cleared by `proxy.ts` when there is no session.
-  Absent/garbled → `masked`. NOT written via a per-request DB lookup in `proxy.ts`: Next 16's proxy only
-  has `getSessionCookie` (presence, no DB) and is explicitly not a security boundary (CVE-2025-29927).
-- **What breaks at scale / the honest limit:** the cookie is **client-writable**, so it is a client-side
-  DEFAULT, not the guarantee. A determined developer could set `full` in a real tenant. The real
-  enforcement is **Sentry server-side data scrubbing at ingest** — this MUST be configured in the Sentry
-  project before Break Mode is used in a real customer tenant. Until it is, treat Break Mode as
-  sandbox-only in practice. Break Mode is also developer-gated today; opening it to tenant users would
-  make the scrub configuration mandatory, not advisory.
-- **Tripwire:** `resolveReplayFidelity` returning `full` for any non-sandbox tenant or non-developer
-  role; `buildReplayOptions` emitting `networkDetailAllowUrls` under `masked`; `describeElement`
-  returning a `label` under `masked`; any body/value field appearing in the trail; the fidelity cookie
-  gaining a tenant id or any non-enum payload. Proof: `test/break-mode-tenancy.test.ts` (composed
-  end-to-end guarantee) + `test/sentry-replay.test.ts` + `test/interaction-buffer.test.ts`.
-- **Status:** 🟡 (Phase 2 built; **Sentry server-side data-scrubbing rules not yet configured** — the
-  outstanding prerequisite before any real-tenant use).
+### Developer diagnostics session capture — no replay body capture, anywhere (Plan 080)
+- **What:** Developer-role users always run diagnostics (no toggle): a Sentry Session Replay buffers
+  in memory and is uploaded only when a bug report is filed, plus a first-party interaction +
+  network-**metadata** trail that lands on the ticket. Sentry replay masking (`maskAllText` +
+  `blockAllMedia`) is on in every tenant, and request/response **BODIES are never captured at all**.
+  In real customer tenants the first-party trail also drops element text (role only), so a button
+  label can't leak customer data.
+- **Why:** Reported bugs were unreproducible without the action sequence and network activity.
+  Reusing Sentry Replay (rather than building capture) gets a masked DOM + console + network
+  timeline for free.
+- **CORRECTION (supersedes the earlier entry).** This entry previously claimed the enforcement for
+  real tenants was *Sentry server-side data scrubbing at ingest*. That was wrong, and the design was
+  changed rather than documented around it. Sentry's ingest-side scrubbing of replay request/response
+  bodies is explicitly **best-effort pattern matching** for classic PII (credit cards, SSNs,
+  passwords, tokens). It does not recognise this domain's sensitive data — lot costs, vendor invoice
+  amounts, customer names — so it could never have been the guarantee. Sentry's Advanced Data
+  Scrubbing selectors are also event-shaped (`$http`, `$error`, `extra.**`) with no documented
+  coverage of replay recording payloads.
+- **How the hole was closed:** `networkDetailAllowUrls` was removed outright. Body capture was the
+  ONLY behavioural difference between the two fidelities on the Sentry side, which meant a
+  client-writable hint cookie was the single thing standing between a real customer tenant and full
+  body capture. `buildReplayOptions()` now takes no arguments and returns a constant
+  `{ maskAllText, blockAllMedia }`, so there is no tenant, role, cookie value, or configuration in
+  which bodies can be captured. Little was lost: network METADATA (method/path/status/duration) is
+  captured by our own interaction buffer, error payloads still reach the console ring, and the DOM
+  replay still shows the masked session.
+- **What the fidelity flag still does:** it governs first-party trail LABELS only (full = readable
+  element text in the sandbox; masked = element role only). Much lower stakes — those are our own
+  bounded, `redactString`-scrubbed, 120-char strings, not arbitrary API responses.
+- **Tripwire:** `buildReplayOptions` growing a parameter or ever emitting `networkDetailAllowUrls`;
+  `resolveReplayFidelity` returning `full` for any non-sandbox tenant or non-developer role;
+  `describeElement` returning a `label` under `masked`; any body/value field or query string
+  appearing in the trail; the fidelity cookie gaining a tenant id or any non-enum payload. Proof:
+  `test/dev-diagnostics-tenancy.test.ts` (composed end-to-end guarantee) + `test/sentry-replay.test.ts`
+  + `test/interaction-buffer.test.ts`.
+- **Status:** 🟢 (body capture removed entirely; no Sentry-side configuration is required for the
+  guarantee to hold. Enabling Sentry's default scrubbers remains a nice-to-have belt for errors,
+  breadcrumbs and transactions — where those scrubbers genuinely work well — but nothing depends on it.)
 
 ### Plan 080 (unified inventory) — the consumables Location FK had to become composite (2026-07-19)
 - **What:** `supply_lot.locationId` and `material_movement.locationId` now use COMPOSITE-tenant FKs
