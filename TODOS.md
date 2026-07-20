@@ -179,6 +179,28 @@ carries the `draft` flag, so this is a UI increment, not new architecture.
 **(h) `verify:work-orders-transform` red** on the plan-059 bottling guard — its fixture
 needs a label. Chip filed.
 
+## Vessel create/update asymmetry — cooperage fields are update-only for no reason
+
+**What:** `Vessel` accepts only `code`, `type`, `capacityL` on create, but `blendName`,
+`oakOrigin`, `cooperage`, `toastLevel` and `cooperageYear` on update. So the assistant can add
+a barrel but cannot record whose cooperage it is, its toast level, or its year in the same
+breath — you add it, then immediately edit it to say what it actually is.
+
+**Why it's here:** found while doing plan 082 Unit 2 (deriving `creatable`/`editable` from one
+field table). It is the **same half-built shape** that plan 082 exists to fix on `VineyardBlock`,
+just in a different entity — two hand-maintained lists that drifted, with no decision behind the
+split. Unit 2 was a pure refactor so it preserved the behavior and labelled it `UNDECIDED_DRIFT`
+in `src/lib/assistant/entities.ts` rather than silently blessing it.
+
+**The fix is small:** drop `mode: "update-only"` from those five entries in `vesselFields` and
+extend `buildCreate` to pass them through. The golden in `test/assistant-entity-fields.test.ts`
+will fail until its `Vessel` rows are updated, which is the intended prompt to look.
+
+**Open question for the winemaker, not an engineering call:** is there a reason you would NOT
+want cooperage details at barrel-creation time? If not, this is a straight symmetry fix. Worth
+asking alongside Unit 3's block-symmetry decisions, since it is the same question about a
+different noun.
+
 ## NRCS SSURGO soil composition per vineyard block
 
 **What:** Russell asked (office-hours, 2026-07-20) whether soil maps could be pulled in so a

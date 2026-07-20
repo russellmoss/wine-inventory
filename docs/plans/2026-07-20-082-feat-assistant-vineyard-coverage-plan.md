@@ -239,6 +239,31 @@ flagged — a guard against silent re-drift.
 **Verification:** `npx vitest run test/assistant-entities.test.ts`; the derived arrays must
 be a superset of today's for both paths.
 
+**Build note (Unit 2, 2026-07-20):**
+
+- **Applied to all 8 writable entities, not the block alone.** The unit's stated goal is to make
+  the drift structurally impossible; a guard covering one entity does not do that. Auditing the
+  registry also found **Vessel carries the identical shape** — `blendName`, `oakOrigin`,
+  `cooperage`, `toastLevel`, `cooperageYear` are update-only for no recorded reason, so you cannot
+  set a barrel's cooperage when you add it. Left unchanged here (this unit is a pure refactor) and
+  logged in `TODOS.md`.
+- **The compiler enforces it, not the test.** `EntityField` is a union where `why` is mandatory
+  whenever `mode` is set, so a silent one-sided field does not typecheck. The test is the second
+  net, catching the one thing types cannot: spreading `withFields()` and then hand-overriding
+  `creatable`/`editable`.
+- **Existing asymmetries are labelled honestly rather than blessed.** Deliberate ones (parent FK on
+  create, `isActive` on update) carry a real rationale; ones nobody ever decided are marked
+  `UNDECIDED_DRIFT` so the next reader can tell the difference.
+- **Behavior-preservation is proven, not asserted:** a golden table locks all 8 entities' derived
+  lists to their pre-refactor values and passed unmodified on the first run.
+- **The guard was verified by sabotage.** Hand-overriding `editable` after the spread fails 3
+  assertions; injecting an undeclared one-sided field fails 2; both go green on restore. (Twice now
+  on this project a detector has been trusted without being seen to fail — not repeating that.)
+- Gates: tsc 0, eslint 0 errors/0 warnings, vitest **2756 passed** against a measured baseline of
+  **2739** (delta = exactly the 17 tests added).
+- ⚠️ Unit 3 will change the `VineyardBlock` rows in the golden (variety → both, planting fields →
+  both). Update those rows and only those.
+
 ### Unit 3: Block symmetry — variety on update, planting fields on create
 
 **Goal:** Close gap 2. `variety` becomes editable; `numRows`, `clone`, `rootstock`,
@@ -429,8 +454,8 @@ action of Unit 6.
       acreage matches what the UI computes for the same inputs
 - [ ] Assistant-created vineyards carry a valid `abbreviation` and cannot collide
       case-insensitively with an existing one
-- [ ] `creatable`/`editable` derive from one table; a test fails if a field silently
-      appears in only one
+- [x] `creatable`/`editable` derive from one table; a test fails if a field silently
+      appears in only one — **done (Unit 2), for all 8 writable entities, not just the block**
 - [ ] New `MUST_PROPOSE` cases pass at ≥90% over 10 runs, **with a recorded pre-change
       baseline for each**
 - [ ] `verify:parity`, `verify:ai-native`, `verify:invariants`, `verify:naming` green

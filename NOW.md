@@ -24,8 +24,18 @@ and `editable` derive from one table so they cannot drift again.**
   `0` for spacing silently CLEARED the field (`optFloat{min:0}` admitted it, then `pos()` mapped
   `<=0` to null). Now errors. Split into a verbatim move + the fix so the behavior change is
   visible in the diff. vitest 2761/0, tsc, eslint clean.
-- ⬜ U2 one field table → U3 variety-on-update + planting-fields-on-create → U4 spacing both paths
+- ✅ **U2 one field table.** `creatable`/`editable` now DERIVE from one `EntityField[]` per entity via
+  `withFields()`. Symmetry is the default; asymmetry needs `mode` + a mandatory `why` — enforced by the
+  TYPE (a union), so a silent one-sided field does not compile. Applied to **all 8** writable entities,
+  not just the block: the goal is "drift is structurally impossible", and a one-entity guard isn't that.
+  A golden locks all 8 lists to their pre-refactor values and passed unmodified → provably no behavior
+  change. **Guard verified by sabotage** (override `editable` → 3 fails; inject an undeclared one-sided
+  field → 2 fails; green on restore) rather than assumed. tsc 0, eslint clean, vitest 2756 vs a measured
+  2739 baseline (delta = the 17 added). 🔎 Found en route: **Vessel has the identical drift** (5 cooperage
+  fields update-only for no recorded reason) — labelled `UNDECIDED_DRIFT`, left unchanged, → TODOS.
+- ⬜ U3 variety-on-update + planting-fields-on-create → U4 spacing both paths
   → U5 `Vineyard.abbreviation` + collision guard → U6 `VineyardDetail` (GPS) → U7 evals + registers.
+  ⚠️ U3 must update the `VineyardBlock` rows in the U2 golden (and only those).
 - ⚠️ **U6 is the soft spot, MEDIUM confidence.** No entity config has ever done a nested write
   (grep for `upsert`/`connect:` across `src/lib/assistant` returns zero). Spike `current`+`update`
   against a Demo vineyard with **no detail row** before writing the rest of the unit.
@@ -51,7 +61,18 @@ and `editable` derive from one table so they cannot drift again.**
    `/plan`, then **deliberately parked to finish 082**. Full detail in `TODOS.md`. Detour closed
    cleanly; nothing half-done, no branch touched (`claude/usgs-soil-maps-vineyard-eabe6c` is
    still empty).
-3. ← you are here
+3. ⚠️ **OPEN — branch collision with a parallel session (2026-07-20).** Another agent working feedback
+   `cmrsrs02` (tasting-note-by-vessel) created and checked out `assistant-fix/cmrsrs02` **in the main
+   checkout, mid-session**, so my two U2 commits landed on THEIR branch on top of an unrelated
+   `[create-pull-request]` commit. Recovered by cherry-picking onto `claude/assistant-vineyard-coverage`
+   from a throwaway worktree (never touching the shared checkout again). **`assistant-fix/cmrsrs02` still
+   carries duplicates of `6be7146e` + `037aefa4`** — if that branch PRs as-is it ships the U2 refactor
+   twice. Needs a `git reset` on that branch by whoever owns it. Pop when it's clean.
+   Two hard lessons: the git **index is shared** across `.claude/worktrees/*` and the main checkout
+   (a plain `git commit` swept their staged files into mine — `git commit --only <paths>` is the
+   safe form), and a parallel `prisma generate` **poisons vitest's resolution cache** with a stale
+   "Cannot find package '@prisma/client'" that survives the package being restored (`--no-cache` clears it).
+4. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
