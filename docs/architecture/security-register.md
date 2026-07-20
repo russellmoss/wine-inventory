@@ -428,9 +428,18 @@ TEMPLATE — copy for each new invariant / finding:
   appearing in the trail; the fidelity cookie gaining a tenant id or any non-enum payload. Proof:
   `test/dev-diagnostics-tenancy.test.ts` (composed end-to-end guarantee) + `test/sentry-replay.test.ts`
   + `test/interaction-buffer.test.ts`.
+- **Sentry-side belt (enabled 2026-07-19):** org-level **Data Scrubber** + **Use Default Scrubbers**
+  + **Prevent Storing of IP Addresses** are ON (Settings → Security & Privacy → DATA SCRUBBING).
+  Org-wide settings override per-project ones, so this covers `javascript-nextjs`. Default scrubbers
+  redact credit-card patterns and any field whose key or value contains `password`, `secret`,
+  `passwd`, `api_key`, `apikey`, `auth`, `credentials`, `mysql_pwd`, `privatekey`, `private_key`,
+  `token`, `bearer`. This is a genuine belt for **errors, breadcrumbs and transactions** — NOT the
+  replay guarantee, which is structural (see above). Enabled by the repo owner in the Sentry UI;
+  not independently verified from this repo (no `SENTRY_AUTH_TOKEN` is configured locally, and these
+  settings are not exposed as writable/readable on the documented project API).
 - **Status:** 🟢 (body capture removed entirely; no Sentry-side configuration is required for the
-  guarantee to hold. Enabling Sentry's default scrubbers remains a nice-to-have belt for errors,
-  breadcrumbs and transactions — where those scrubbers genuinely work well — but nothing depends on it.)
+  guarantee to hold. The default scrubbers are now on as additional defence in depth for non-replay
+  event types.)
 
 ### Plan 080 (unified inventory) — the consumables Location FK had to become composite (2026-07-19)
 - **What:** `supply_lot.locationId` and `material_movement.locationId` now use COMPOSITE-tenant FKs
