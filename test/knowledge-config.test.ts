@@ -47,6 +47,87 @@ describe("knowledge source config", () => {
   });
 });
 
+describe("VT Enology Notes source (plan 083)", () => {
+  const vt = () => findSourceConfig("vt-enology-notes")!;
+
+  it("is a tier-1 extension source with a cite-only license", () => {
+    expect(vt().tier).toBe(1);
+    expect(vt().publisher).toBe("Virginia Tech Enology");
+    // the site asserts all-rights-reserved with no grant; provenance must say so per document
+    expect(vt().license).toMatch(/all rights reserved/i);
+    expect(vt().license).toMatch(/citation/i);
+  });
+
+  it("trusts BOTH hosts — without this the crawler refuses the host outright", () => {
+    expect(TRUSTED_DOMAIN_SET.has("enology.fst.vt.edu")).toBe(true);
+    expect(TRUSTED_DOMAIN_SET.has("www.enology.fst.vt.edu")).toBe(true);
+  });
+
+  it("stays on the MONTHLY SWEEP (autoCrawl must not be false)", () => {
+    // USER REQUIREMENT. autoCrawl:false would exclude it from scripts/recrawl-knowledge.ts entirely,
+    // which filters to `autoCrawl !== false`. The tempting "curated spec" route violates this.
+    expect(vt().autoCrawl).not.toBe(false);
+    expect(vt().crawlCadence).toBe("monthly");
+  });
+
+  it("declares the section filter — the whole reason this source needs code", () => {
+    expect(vt().sectionFilter).toBe("anchor-heading");
+  });
+
+  it("enumerates every issue so a 304 on an index page cannot stall discovery", () => {
+    const roots = vt().seedRoots;
+    expect(roots).toContain("https://enology.fst.vt.edu/EN/1.html");
+    expect(roots).toContain("https://enology.fst.vt.edu/EN/166.html");
+    expect(roots.filter((r) => /\/EN\/\d+\.html$/.test(r))).toHaveLength(166);
+  });
+
+  it("seeds the PDF-only notes, including #170's four section files", () => {
+    const roots = vt().seedRoots;
+    // #167-169 have no .html twin (they 404); #170 is published as _Sec1.._Sec4
+    for (const n of [167, 168, 169]) {
+      expect(roots).toContain(`https://enology.fst.vt.edu/downloads/EnologyNotes${n}.pdf`);
+    }
+    for (const sec of [1, 2, 3, 4]) {
+      expect(roots).toContain(`https://enology.fst.vt.edu/downloads/EnologyNotes170_Sec${sec}.pdf`);
+    }
+  });
+
+  it("allows the HTML issues and the PDF-only notes", () => {
+    const allowed = (u: string) => {
+      const p = new URL(u).pathname;
+      return (
+        !vt().denyPrefixes.some((d) => p.startsWith(d)) && vt().allowPrefixes.some((a) => p.startsWith(a))
+      );
+    };
+    expect(allowed("https://enology.fst.vt.edu/EN/166.html")).toBe(true);
+    expect(allowed("https://enology.fst.vt.edu/downloads/EnologyNotes167.pdf")).toBe(true);
+    expect(allowed("https://enology.fst.vt.edu/downloads/EnologyNotes170_Sec3.pdf")).toBe(true);
+  });
+
+  it("REFUSES the PDF twins of pages we already ingest as filtered HTML", () => {
+    // EnologyNotes165.pdf and 166.pdf are 200 and real. The PDF path cannot be section-filtered
+    // (no anchors), so a blanket /downloads/ allow would re-import the study-tour ad and the staff
+    // announcement as a second, UNFILTERED document -- silently undoing the whole feature.
+    const allowed = (u: string) => {
+      const p = new URL(u).pathname;
+      return (
+        !vt().denyPrefixes.some((d) => p.startsWith(d)) && vt().allowPrefixes.some((a) => p.startsWith(a))
+      );
+    };
+    expect(allowed("https://enology.fst.vt.edu/downloads/EnologyNotes165.pdf")).toBe(false);
+    expect(allowed("https://enology.fst.vt.edu/downloads/EnologyNotes166.pdf")).toBe(false);
+    expect(allowed("https://enology.fst.vt.edu/downloads/EnologyNotes112.pdf")).toBe(false);
+  });
+
+  it("refuses the year index pages (navigation, not content)", () => {
+    const p = "/EN/2013.html";
+    expect(vt().denyPrefixes.some((d) => p.startsWith(d))).toBe(true);
+    expect(vt().denyPrefixes.some((d) => "/EN/2000.html".startsWith(d))).toBe(true);
+    // but a real issue that happens to look numeric is still fine
+    expect(vt().denyPrefixes.some((d) => "/EN/166.html".startsWith(d))).toBe(false);
+  });
+});
+
 describe("query synonym expansion (lexical arm)", () => {
   it("expands an acronym to its spelled-out form", () => {
     const out = expandQueryTerms("how much KMBS for my ferment");
