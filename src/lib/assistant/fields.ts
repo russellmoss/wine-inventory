@@ -42,16 +42,21 @@ export type EntityField =
  * row", which is meaningless on update (`validateFields` in "update" mode only looks at the
  * fields actually provided). Keeping it would be harmless but misleading to read.
  */
+/** Copy `source` without the named keys. Shallow — every FieldSpec value is a primitive or a
+ *  string array we intentionally share. */
+function omit(source: object, keys: string[]): FieldSpec {
+  const copy: Record<string, unknown> = { ...source };
+  for (const key of keys) delete copy[key];
+  return copy as FieldSpec;
+}
+
 export function splitFields(fields: EntityField[]): { creatable: FieldSpec[]; editable: FieldSpec[] } {
   const creatable: FieldSpec[] = [];
   const editable: FieldSpec[] = [];
   for (const field of fields) {
-    const { mode = "both", why: _why, ...spec } = field as FieldSpec & { mode?: FieldMode; why?: string };
-    if (mode !== "update-only") creatable.push(spec);
-    if (mode !== "create-only") {
-      const { required: _required, ...updatable } = spec;
-      editable.push(updatable);
-    }
+    const mode: FieldMode = field.mode ?? "both";
+    if (mode !== "update-only") creatable.push(omit(field, ["mode", "why"]));
+    if (mode !== "create-only") editable.push(omit(field, ["mode", "why", "required"]));
   }
   return { creatable, editable };
 }
