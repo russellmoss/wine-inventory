@@ -25,6 +25,82 @@ export interface KnowledgeSourceConfig {
 
 export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
   {
+    key: "cornell-grapes",
+    publisher: "Cornell Fruit Resources: Grapes",
+    homeDomain: "blogs.cornell.edu",
+    tier: 1,
+    license:
+      "Public Cornell Cooperative Extension grape resource (Cornell Fruit Resources) — store paraphrasable text + a link back.",
+    // Cool-climate eastern-US IPM: the corpus otherwise has only Australian (AWRI, Wine Australia) and
+    // Pacific-Northwest (WSU, OSU) authorities, and answers eastern disease-pressure questions from the
+    // wrong climate and the wrong pest complex.
+    //
+    // SCOPING IS LOAD-BEARING HERE. blogs.cornell.edu is Cornell's ENTIRE university-wide WordPress
+    // multisite (thousands of unrelated blogs), so unlike wsu — which owns its host and can allow "/" —
+    // this source must stay anchored to specific path prefixes. A bare "/" allow would crawl the whole
+    // university.
+    //
+    // Two prefixes, not one: 35 of the 43 live Cornell PDFs the grape site links to are stored under
+    // /newfruit/files/ (the sibling Cornell Fruit Resources blog's file store), NOT /grapes/. They are
+    // unambiguously grape documents — cold injury to canes and trunks, canopy management for hybrids,
+    // vineyard site selection, organic vineyard pest management. Allowing ONLY the file store (never
+    // /newfruit/ HTML) picks them up via link-following without dragging in the tree-fruit blog.
+    seedRoots: ["https://blogs.cornell.edu/grapes/"],
+    // WordPress core sitemap, under the multisite subpath rather than the host root.
+    sitemapUrls: ["https://blogs.cornell.edu/grapes/wp-sitemap.xml"],
+    allowPrefixes: ["/grapes/", "/newfruit/files/"],
+    denyPrefixes: [
+      // WordPress cruft + thin taxonomy/author/pagination archives
+      "/grapes/wp-admin/",
+      "/grapes/wp-json/",
+      "/grapes/wp-includes/",
+      "/grapes/wp-login",
+      "/grapes/feed/",
+      "/grapes/comments/",
+      "/grapes/category/",
+      "/grapes/tag/",
+      "/grapes/author/",
+      "/grapes/page/",
+      // Events / news listings: dated announcements, not technical content.
+      "/grapes/news-and-events/",
+      // Cornell also runs hops and brewing extension programs. Their content must never enter this
+      // corpus: verify-knowledge-base.ts asserts that a beer/IPA question surfaces NOTHING on-topic,
+      // and wsu carries an equivalent deny for exactly this reason (its brewing certificate program).
+      "/grapes/hops/",
+      "/grapes/brewing/",
+    ],
+    // NOTE: crawlCadence is documentation only — nothing reads it to schedule anything. The monthly
+    // refresh comes from omitting autoCrawl (defaults true), which enrolls this source in
+    // .github/workflows/knowledge-recrawl.yml.
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  },
+  {
+    key: "viticulture-extension-refs",
+    publisher: "Regional viticulture extension publications",
+    homeDomain: "nyshs.org",
+    tier: 1,
+    license:
+      "Publicly published regional extension/research publications (NYSHS, USDA-SARE, USDA-ARS, UNH Extension, Cornell) — store paraphrasable text + a link back to the publisher.",
+    // The grape site links out to a small set of technical PDFs hosted by OTHER publishers. They are
+    // worth having, but they are NOT Cornell's, so they get their own source rather than being cited
+    // under a Cornell byline — the assistant quotes the publisher when resolving conflicting advice
+    // ("AWRI (tier 1, 2022) recommends X"), and a mis-attributed publisher corrupts that judgment.
+    //
+    // Curated, not crawled: these are ~11 specific documents scattered across 7 hosts with no common
+    // path structure, and crawling those hosts generally would pull in tree fruit, berries, livestock
+    // and field crops. The exact URL list lives in curated-specs.ts.
+    //
+    // They are static extension publications from 2004-2017, so being outside the monthly loop costs
+    // nothing; the monthly cornell-grapes crawl still re-reads the linking pages and surfaces new ones.
+    seedRoots: ["https://blogs.cornell.edu/grapes/ipm/"],
+    allowPrefixes: ["/"], // documentary only — crawlUrls never reads these (curated path)
+    denyPrefixes: [],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    defaultEnabled: true,
+  },
+  {
     key: "awri",
     publisher: "AWRI",
     homeDomain: "awri.com.au",
@@ -392,6 +468,31 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
 // NOT listed here is logged to CandidateSource for human promotion, never crawled. Includes www + apex.
 export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
+  // Cornell's university-wide WordPress multisite. Trusting the HOST is unavoidable (the crawler gates
+  // on hostname, never on path), so the cornell-grapes config's allowPrefixes are what actually keep the
+  // crawl inside /grapes/ and /newfruit/files/. Do not add a source here with a bare "/" allow prefix.
+  { domain: "blogs.cornell.edu", sourceKey: "cornell-grapes" },
+
+  // Publishers of the specific technical PDFs the Cornell grape site links out to (curated source
+  // viticulture-extension-refs). These entries are REQUIRED, not optional: crawlUrls gates every URL on
+  // this set, so a curated spec cannot reach a host that is not listed here — that is the real cost of
+  // ingesting these documents, and there is no way around it via the curated path.
+  //
+  // Blast radius is bounded but not zero. crawlWithFollowing only maps a trusted domain to a source when
+  // that source is part of the run, and this source is autoCrawl:false, so the monthly loop never follows
+  // links into these hosts. What DOES change: they stop being logged as CandidateSource (they are now
+  // "known"), and any future crawl that includes this source could follow links within them.
+  //
+  // Kept to hosts that actually contribute a live document; hosts whose only linked file is dead
+  // (ucanr.org, nmsp.cals.cornell.edu, vinebalance.com, msue.anr.msu.edu) are deliberately absent.
+  { domain: "nyshs.org", sourceKey: "viticulture-extension-refs" },
+  { domain: "www.sare.org", sourceKey: "viticulture-extension-refs" },
+  { domain: "www.ars.usda.gov", sourceKey: "viticulture-extension-refs" },
+  { domain: "extension.unh.edu", sourceKey: "viticulture-extension-refs" },
+  { domain: "www.hort.cornell.edu", sourceKey: "viticulture-extension-refs" },
+  { domain: "harvestny.cce.cornell.edu", sourceKey: "viticulture-extension-refs" },
+  { domain: "publications.dyson.cornell.edu", sourceKey: "viticulture-extension-refs" },
+
   { domain: "awri.com.au", sourceKey: "awri" },
   { domain: "www.awri.com.au", sourceKey: "awri" },
   { domain: "wineaustralia.com", sourceKey: "wine-australia" },
