@@ -347,3 +347,28 @@ Nothing in VISION D2 blocks it — the one-lot rule is per ROW and a fan-out sat
 This is unbuilt, not decided against. Needs a core/server-action change
 (`recordTastingNoteCore`, mirroring plan 060), so it is out of reach of assistant-only fixes.
 Applies to the /chemistry tasting modal too, not just the assistant.
+
+## NOW.md link/reference check (cheap CI guard against a stale focus spine)
+
+**What:** A tiny verify script — `scripts/verify-now-links.ts`, wired as `verify:now` — that parses
+`NOW.md`, extracts every relative markdown link (`](docs/... )`, `](src/... )`, `](scripts/... )`),
+and fails if any target file does not exist. Optionally also warn on a `[…](#123)`-style PR/issue
+reference whose number is below some floor, but the file-existence check is the load-bearing 80%.
+~15 lines. Model it on the existing `scripts/verify-*.ts` house pattern (docblock header + typed
+cases + exit non-zero on failure). Run it in the local `post-commit` hook alongside
+`verify:invariants` (non-blocking), NOT as a hard PR gate — the spine is allowed to be mid-edit.
+
+**Why:** `NOW.md` accumulated **three** stale-reference defects in a single day (2026-07-20):
+(1) plan 082 listed as "code-complete, PR not opened" after it had merged as #397; (2) a Cornell
+entry still saying "re-file as plan 087" after 087 already existed; (3) a live markdown link to
+`docs/plans/2026-07-20-085-ADDENDUM-cornell-fruit-resources.md`, a file deleted in the same PR
+(#419) that made the link stale — fixed in #428. Only #3 is mechanically catchable, but it is the
+one that produces a genuinely broken artifact (a dead link on resume), and it is free to catch. The
+file's own footer already warns "beware 'N commits ahead' as an in-flight signal" — this automates
+the file-link half of that vigilance so a human does not have to eyeball it.
+
+**Scope note:** this catches dead *links*, not stale *prose* (defects 1 and 2 above are semantic and
+uncatchable without understanding git state). Do not oversell it. It is a lint, not a truth-checker.
+
+**Where:** new `scripts/verify-now-links.ts`; `package.json` (`verify:now`); `.git/hooks/post-commit`
+or wherever `verify:invariants` is already invoked non-blocking. Precedent: any `scripts/verify-*.ts`.
