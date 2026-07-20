@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildReplayMessages, type ReplayRow } from "@/lib/assistant/replay";
+import { buildReplayMessages, windowReplayRows, type ReplayRow } from "@/lib/assistant/replay";
+import { MAX_CONTENT } from "@/lib/assistant/message-window";
 
 /**
  * Plan 083 Unit 3. The contract is narrow and the failure modes are expensive:
@@ -175,5 +176,95 @@ describe("buildReplayMessages — never emits a malformed conversation", () => {
   it("handles empty and malformed input without throwing", () => {
     expect(buildReplayMessages([])).toEqual([]);
     expect(buildReplayMessages(undefined as unknown as ReplayRow[])).toEqual([]);
+  });
+});
+
+describe("windowReplayRows — bounding cannot orphan a tool block", () => {
+  /** A conversation of n user/assistant pairs where every assistant turn used a tool. */
+  function toolConversation(pairs: number): ReplayRow[] {
+    const rows: ReplayRow[] = [];
+    for (let i = 0; i < pairs; i++) {
+      rows.push({ role: "user", content: `ask ${i}` });
+      rows.push({ role: "assistant", content: `reply ${i}`, metadata: traced([{ ...CALL, id: `toolu_${i}` }]) });
+    }
+    rows.push({ role: "user", content: "the current utterance" });
+    return rows;
+  }
+
+  const blocksOf = (msgs: ReturnType<typeof buildReplayMessages>) =>
+    msgs.flatMap((m) => (Array.isArray(m.content) ? m.content : []));
+
+  it("bounds the EXPANDED message count, not the row count", () => {
+    // Each tool turn costs 3 messages, so an unbounded rebuild of 40 rows would send ~120.
+    const out = buildReplayMessages(windowReplayRows(toolConversation(40)));
+    expect(out.length).toBeLessThanOrEqual(40);
+  });
+
+  it("keeps every tool_use paired with its tool_result at EVERY window budget", () => {
+    // The off-by-one lives at a specific budget, so sweep them rather than spot-checking one.
+    const rows = toolConversation(30);
+    for (let budget = 1; budget <= 60; budget++) {
+      const out = buildReplayMessages(windowReplayRows(rows, budget));
+      const uses = blocksOf(out).filter((b) => b.type === "tool_use") as Array<{ id: string }>;
+      const results = blocksOf(out).filter((b) => b.type === "tool_result") as Array<{ tool_use_id: string }>;
+      expect(uses.length, `budget ${budget}: ${uses.length} tool_use vs ${results.length} tool_result`).toBe(results.length);
+      expect(new Set(uses.map((u) => u.id)), `budget ${budget}: ids do not match`).toEqual(
+        new Set(results.map((r) => r.tool_use_id)),
+      );
+    }
+  });
+
+  it("always opens on a user turn and alternates, at every budget", () => {
+    const rows = toolConversation(30);
+    for (let budget = 1; budget <= 60; budget++) {
+      const out = buildReplayMessages(windowReplayRows(rows, budget));
+      if (out.length === 0) continue;
+      expect(out[0].role, `budget ${budget}: does not open on user`).toBe("user");
+      out.forEach((m, i) => {
+        if (i > 0) expect(m.role, `budget ${budget}: messages ${i - 1}/${i} do not alternate`).not.toBe(out[i - 1].role);
+      });
+    }
+  });
+
+  it("never opens with an orphan tool_result even when the cut lands mid-turn", () => {
+    const rows = toolConversation(10);
+    for (let start = 0; start < rows.length; start++) {
+      const out = buildReplayMessages(rows.slice(start));
+      if (out.length === 0) continue;
+      const first = out[0].content;
+      if (Array.isArray(first)) {
+        expect(first.some((b) => b.type === "tool_result"), `slice at ${start} opens on an orphan tool_result`).toBe(false);
+      }
+    }
+  });
+
+  it("always preserves the most recent turn — the user's actual request", () => {
+    const rows = toolConversation(20);
+    for (let budget = 1; budget <= 40; budget++) {
+      const out = buildReplayMessages(windowReplayRows(rows, budget));
+      const last = out[out.length - 1];
+      const text = typeof last.content === "string"
+        ? last.content
+        : (last.content.find((b) => b.type === "text") as { text?: string } | undefined)?.text;
+      expect(text, `budget ${budget}: dropped the current utterance`).toBe("the current utterance");
+    }
+  });
+
+  it("clips an over-long stored turn instead of sending it whole", () => {
+    const rows: ReplayRow[] = [
+      { role: "user", content: "x".repeat(MAX_CONTENT + 500) },
+    ];
+    const out = buildReplayMessages(rows);
+    expect((out[0].content as string).length).toBe(MAX_CONTENT);
+    expect((out[0].content as string).endsWith("…")).toBe(true);
+  });
+
+  it("leaves a short text-only conversation untouched", () => {
+    const rows: ReplayRow[] = [
+      { role: "user", content: "a" },
+      { role: "assistant", content: "b" },
+      { role: "user", content: "c" },
+    ];
+    expect(windowReplayRows(rows)).toEqual(rows);
   });
 });

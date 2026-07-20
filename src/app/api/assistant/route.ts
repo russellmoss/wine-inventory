@@ -10,7 +10,7 @@ import {
   touchConversation,
   listMessagesForReplay,
 } from "@/lib/assistant/conversations";
-import { buildReplayMessages } from "@/lib/assistant/replay";
+import { buildReplayMessages, windowReplayRows } from "@/lib/assistant/replay";
 import { generateTitle } from "@/lib/assistant/title";
 
 // Node runtime + the Vercel ceiling: the tool-use loop makes several model
@@ -95,7 +95,9 @@ export async function POST(req: Request) {
       if (conversationId) {
         try {
           const rows = await listMessagesForReplay(conversationId);
-          const rebuilt = buildReplayMessages(rows);
+          // Bound BEFORE rebuilding — windowing the rebuilt array could split a tool_use from its
+          // tool_result, which is a hard 400. Cutting at row boundaries makes that unrepresentable.
+          const rebuilt = buildReplayMessages(windowReplayRows(rows));
           if (rebuilt.length > 0) replayed = rebuilt;
         } catch {
           /* fall back to the client-supplied history */
