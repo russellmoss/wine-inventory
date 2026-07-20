@@ -3,10 +3,19 @@
 // tables into markdown tables, which is exactly the council's "preserve table structure" requirement for
 // dose/limit tables. Only ever called from crawl/re-crawl scripts, never a request path (ESM-only is fine).
 
+import { parseHtmlPublishedDate } from "./published-date";
+
 export interface ExtractedHtml {
   title: string;
   markdown: string;
   wordCount: number;
+  /**
+   * Plan 084 — the page's own publication date, when it declares one (JSON-LD `datePublished`,
+   * `<meta property="article:published_time">`, …). Null when absent or unparseable: retrieval renders
+   * "unknown" rather than falling back to a guess, because the assistant ranks conflicting advice by
+   * recency and a wrong date silently changes which recommendation it calls current.
+   */
+  publishedAt: Date | null;
 }
 
 // dynamic import: defuddle/node exports only an `import` condition (no `require`), so a static import
@@ -33,5 +42,10 @@ export async function extractHtml(html: string, url: string): Promise<ExtractedH
   const res = await Defuddle(html, url, { markdown: true });
   const markdown = (res.contentMarkdown ?? res.content ?? "").trim();
   const wordCount = res.wordCount ?? markdown.split(/\s+/).filter(Boolean).length;
-  return { title: (res.title ?? "").trim(), markdown, wordCount };
+  return {
+    title: (res.title ?? "").trim(),
+    markdown,
+    wordCount,
+    publishedAt: parseHtmlPublishedDate(res.published),
+  };
 }

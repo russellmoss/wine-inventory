@@ -83,6 +83,11 @@ export async function indexDocument(input: {
   const chunks = chunkMarkdown(extracted.markdown, extracted.title);
   if (chunks.length === 0) return { chunks: 0, skipped: "empty" };
 
+  // citation.ts renders `canonicalTitle || publisher`, so an unset title makes every crawled document
+  // cite as the bare publisher name ("AWRI", "Cornell") with no indication of WHICH document. Cap the
+  // length: extracted titles come from page <title>/PDF metadata and are occasionally a whole sentence.
+  const canonicalTitle = extracted.title.trim().slice(0, 300) || null;
+
   // Embed OUTSIDE the transaction (network call — never hold a DB tx across it), then validate each
   // embedding to a pgvector literal before opening the tx.
   const embedded = await embedTexts(chunks.map((c) => c.text), { inputType: "document" });
@@ -116,7 +121,21 @@ export async function indexDocument(input: {
         }
         await tx.knowledgeDocument.update({
           where: { id: input.documentId },
-          data: { activeRevision: newRevision, indexedContentHash: input.contentHash },
+          data: {
+            activeRevision: newRevision,
+            indexedContentHash: input.contentHash,
+            // Plan 084 — publishedAt/canonicalTitle live in the EXTRACTED content, but persistDocument
+            // (the crawler's only document write) runs before extraction and never sees parsed bytes, so
+            // it structurally cannot set them. This is the first point in the pipeline that has both the
+            // document row and the parsed content, which is why the write belongs here and why every
+            // ingestion path (crawlSource, crawlUrls, crawlWithFollowing) gets it for free.
+            //
+            // Spread-conditional so a document that stops declaring a date on a later re-crawl KEEPS the
+            // date we already have. Overwriting with null would quietly downgrade a good citation to
+            // "unknown"; there is no case where forgetting is the better answer.
+            ...(extracted.publishedAt ? { publishedAt: extracted.publishedAt } : {}),
+            ...(canonicalTitle ? { canonicalTitle } : {}),
+          },
         });
         await tx.knowledgeChunk.deleteMany({
           where: { documentId: input.documentId, revision: { not: newRevision } },

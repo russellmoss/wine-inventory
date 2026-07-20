@@ -1,6 +1,12 @@
 import { beforeAll, describe, it, expect } from "vitest";
 import { extractHtml, loadDefuddle } from "@/lib/knowledge/extract/html";
 import { extractDocument, sanitizeText } from "@/lib/knowledge/extract";
+import {
+  cleanPdfTitle,
+  isPlausiblePublishedDate,
+  parseHtmlPublishedDate,
+  parsePdfDate,
+} from "@/lib/knowledge/extract/published-date";
 
 // Warm the extraction stack BEFORE any test runs.
 //
@@ -27,6 +33,117 @@ describe("sanitizeText (Postgres NUL/control-byte safety)", () => {
     expect(clean).toContain("\t");
     expect(clean).toContain("\n");
     expect(clean).toBe("Sanitize at 85C\tfor 30\nmin.");
+  });
+});
+
+// Plan 084 Unit 1 — the assistant resolves conflicting recommendations BY RECENCY, so a wrong date
+// silently re-orders which advice it presents as current. Every case here asserts the fail-closed
+// direction: anything ambiguous must come back null so the citation renders "unknown".
+describe("published-date parsing (fail-closed)", () => {
+  const NOW = new Date("2026-07-20T00:00:00Z");
+
+  describe("isPlausiblePublishedDate", () => {
+    it("accepts a normal in-range date", () => {
+      expect(isPlausiblePublishedDate(new Date("2023-05-01T00:00:00Z"), NOW)).toBe(true);
+    });
+    it("rejects an invalid Date", () => {
+      expect(isPlausiblePublishedDate(new Date("nonsense"), NOW)).toBe(false);
+    });
+    it("rejects the Unix epoch and other pre-1980 parse noise", () => {
+      expect(isPlausiblePublishedDate(new Date(0), NOW)).toBe(false);
+      expect(isPlausiblePublishedDate(new Date("1900-01-01T00:00:00Z"), NOW)).toBe(false);
+    });
+    it("rejects a date beyond the clock-skew tolerance but accepts one inside it", () => {
+      expect(isPlausiblePublishedDate(new Date("2027-01-01T00:00:00Z"), NOW)).toBe(false);
+      expect(isPlausiblePublishedDate(new Date("2026-07-21T00:00:00Z"), NOW)).toBe(true);
+    });
+  });
+
+  describe("parseHtmlPublishedDate", () => {
+    it("parses an ISO timestamp from JSON-LD / article:published_time", () => {
+      const d = parseHtmlPublishedDate("2024-10-15T13:27:36", NOW);
+      expect(d?.getUTCFullYear()).toBe(2024);
+      expect(d?.getUTCMonth()).toBe(9);
+    });
+    it("parses a bare ISO date", () => {
+      expect(parseHtmlPublishedDate("2022-03-08", NOW)?.getUTCFullYear()).toBe(2022);
+    });
+    it("returns null for a missing, empty, or non-string value", () => {
+      expect(parseHtmlPublishedDate(undefined, NOW)).toBeNull();
+      expect(parseHtmlPublishedDate("", NOW)).toBeNull();
+      expect(parseHtmlPublishedDate("   ", NOW)).toBeNull();
+      expect(parseHtmlPublishedDate(20240101, NOW)).toBeNull();
+    });
+    it("returns null for unparseable prose rather than inventing a date", () => {
+      expect(parseHtmlPublishedDate("n.d.", NOW)).toBeNull();
+      expect(parseHtmlPublishedDate("Spring", NOW)).toBeNull();
+    });
+    it("refuses a string with no 4-digit year, even when Date would happily parse it", () => {
+      // `new Date("05/06")` resolves to a real date in the current century. Publishing that as a
+      // publication date would be a fabrication, so the year guard must reject it first.
+      expect(Number.isNaN(new Date("05/06").getTime())).toBe(false);
+      expect(parseHtmlPublishedDate("05/06", NOW)).toBeNull();
+    });
+    it("rejects a future date", () => {
+      expect(parseHtmlPublishedDate("2030-01-01", NOW)).toBeNull();
+    });
+  });
+
+  describe("parsePdfDate", () => {
+    it("parses a Zulu timestamp", () => {
+      const d = parsePdfDate("D:20040802153909Z", NOW);
+      expect(d?.toISOString()).toBe("2004-08-02T15:39:09.000Z");
+    });
+    it("parses a negative UTC offset back to UTC", () => {
+      // 10:15:03 at -04'00' is 14:15:03 UTC.
+      expect(parsePdfDate("D:20180507101503-04'00'", NOW)?.toISOString()).toBe("2018-05-07T14:15:03.000Z");
+    });
+    it("parses a positive UTC offset back to UTC", () => {
+      expect(parsePdfDate("D:20180507101503+02'00'", NOW)?.toISOString()).toBe("2018-05-07T08:15:03.000Z");
+    });
+    it("tolerates the malformed-but-common trailing offset after Z", () => {
+      expect(parsePdfDate("D:20220509184810Z00'00'", NOW)?.toISOString()).toBe("2022-05-09T18:48:10.000Z");
+    });
+    it("defaults missing components to the start of the period", () => {
+      expect(parsePdfDate("D:2019", NOW)?.toISOString()).toBe("2019-01-01T00:00:00.000Z");
+    });
+    it("returns null for a malformed string instead of throwing", () => {
+      expect(parsePdfDate("not a date", NOW)).toBeNull();
+      expect(parsePdfDate("D:", NOW)).toBeNull();
+      expect(parsePdfDate(undefined, NOW)).toBeNull();
+    });
+    it("rejects an out-of-range month rather than rolling it into the next year", () => {
+      // Date.UTC(2018, 12, 1) silently becomes January 2019 — a document shifted a full year.
+      expect(parsePdfDate("D:20181301000000Z", NOW)).toBeNull();
+    });
+    it("rejects an out-of-range day", () => {
+      expect(parsePdfDate("D:20180532000000Z", NOW)).toBeNull();
+    });
+    it("rejects a pre-1980 and a future PDF date", () => {
+      expect(parsePdfDate("D:19700101000000Z", NOW)).toBeNull();
+      expect(parsePdfDate("D:20300101000000Z", NOW)).toBeNull();
+    });
+  });
+
+  describe("cleanPdfTitle", () => {
+    it("keeps a real title", () => {
+      expect(cleanPdfTitle("Grapevine Leafroll Virus - an increasing problem")).toBe(
+        "Grapevine Leafroll Virus - an increasing problem",
+      );
+    });
+    it("strips the Microsoft Word producer prefix and file extension", () => {
+      expect(cleanPdfTitle("Microsoft Word - Insects & grapes review.doc")).toBe("Insects & grapes review");
+    });
+    it("rejects authoring-tool placeholders", () => {
+      expect(cleanPdfTitle("PowerPoint Presentation")).toBeNull();
+      expect(cleanPdfTitle("-")).toBeNull();
+      expect(cleanPdfTitle("Untitled")).toBeNull();
+    });
+    it("rejects a title with no real words", () => {
+      expect(cleanPdfTitle("12345")).toBeNull();
+      expect(cleanPdfTitle("")).toBeNull();
+      expect(cleanPdfTitle(null)).toBeNull();
+    });
   });
 });
 
@@ -89,6 +206,66 @@ describe("HTML extraction (Defuddle -> markdown)", () => {
       for (const v of ["70", "85", "30", "15"]) {
         expect(markdown).toContain(v);
       }
+    },
+    DEFUDDLE_TIMEOUT_MS,
+  );
+});
+
+// Same body as ARTICLE, plus the two ways a publisher actually declares a date. Cornell IPM content is
+// year-stamped and superseded annually, so this path is what stops a 2019 spray guide being presented
+// with the same authority as a current one.
+const DATED_META_ARTICLE = ARTICLE.replace(
+  "</head>",
+  `<meta property="article:published_time" content="2021-06-14T09:00:00Z" /></head>`,
+);
+
+const DATED_JSONLD_ARTICLE = ARTICLE.replace(
+  "</head>",
+  `<script type="application/ld+json">
+   {"@context":"https://schema.org","@type":"Article","headline":"Barrel sanitation against Brett",
+    "datePublished":"2019-04-02T00:00:00Z"}
+   </script></head>`,
+);
+
+describe("HTML publication dates (plan 084)", () => {
+  it(
+    "extracts a date from article:published_time",
+    async () => {
+      const { publishedAt } = await extractHtml(DATED_META_ARTICLE, "https://www.awri.com.au/x/");
+      expect(publishedAt).not.toBeNull();
+      expect(publishedAt?.getUTCFullYear()).toBe(2021);
+    },
+    DEFUDDLE_TIMEOUT_MS,
+  );
+
+  it(
+    "extracts a date from JSON-LD datePublished",
+    async () => {
+      const { publishedAt } = await extractHtml(DATED_JSONLD_ARTICLE, "https://www.awri.com.au/x/");
+      expect(publishedAt).not.toBeNull();
+      expect(publishedAt?.getUTCFullYear()).toBe(2019);
+    },
+    DEFUDDLE_TIMEOUT_MS,
+  );
+
+  it(
+    "yields null for an undated page rather than substituting today",
+    async () => {
+      const { publishedAt } = await extractHtml(ARTICLE, "https://www.awri.com.au/x/");
+      expect(publishedAt).toBeNull();
+    },
+    DEFUDDLE_TIMEOUT_MS,
+  );
+
+  it(
+    "carries the date through the extractDocument router",
+    async () => {
+      const doc = await extractDocument(
+        Buffer.from(DATED_META_ARTICLE, "utf8"),
+        "html",
+        "https://www.awri.com.au/x/",
+      );
+      expect(doc.publishedAt?.getUTCFullYear()).toBe(2021);
     },
     DEFUDDLE_TIMEOUT_MS,
   );

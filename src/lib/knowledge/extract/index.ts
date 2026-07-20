@@ -26,6 +26,14 @@ export interface ExtractedDoc {
   kind: "html" | "pdf";
   wordCount: number;
   lowConfidence: boolean;
+  /**
+   * Plan 084 — the document's own publication date, or null when it does not declare a parseable one.
+   * `indexDocument` persists this to `KnowledgeDocument.publishedAt`, which retrieval hands to the
+   * assistant. Null is a first-class answer here: the citation renders "unknown", which is correct and
+   * safe, whereas an invented date changes which of two conflicting recommendations the model calls
+   * current.
+   */
+  publishedAt: Date | null;
 }
 
 export async function extractDocument(
@@ -42,6 +50,7 @@ export async function extractDocument(
       kind: "pdf",
       wordCount: markdown.split(/\s+/).filter(Boolean).length,
       lowConfidence: r.lowConfidence,
+      publishedAt: null, // PDF metadata dates land in unit 2
     };
   }
   if (contentType === "html") {
@@ -54,6 +63,7 @@ export async function extractDocument(
       wordCount: r.wordCount,
       // an "article" with almost no extracted text is a failure (nav-only page / boilerplate)
       lowConfidence: markdown.length < 80,
+      publishedAt: r.publishedAt,
     };
   }
   throw new Error(`extractDocument: unsupported content type "${contentType}" for ${url}`);
