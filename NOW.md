@@ -81,6 +81,23 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
+0. ⚠️ **OPEN — UC IPM added to the KB corpus (`claude/kb-ucanr-ipm`, branched off `origin/main`).**
+   Source #19 `uc-ipm` (ipm.ucanr.edu grape PMGs) is configured, seeded, crawled and embedded:
+   **87 active docs / 667 chunks, voyage-4/1024, 0 errors, 0 skippedRobots, hitCap=false** (full
+   frontier, not truncated). `autoCrawl: true` so the monthly sweep picks it up with no workflow edit.
+   robots.txt ALLOWS `/agriculture/grape/` — no bypass was used or needed.
+   **TWO OPEN DECISIONS BEFORE THIS SHIPS — branch is currently RED:**
+   (a) **All 87 docs have NO date** (`publishedAt` + `sitemapLastmod` both NULL; site has no sitemap and
+   no date meta tag). The date is in the page body as `Updated: MM/YY` — and spot-checking powdery
+   mildew shows **12/14 and 07/15, i.e. decade-old pesticide guidance**. These are pesticide
+   guidelines: registrations get cancelled and REIs change, so "cited with date unknown" is a safety
+   problem, not a cosmetic one. Needs a `Updated: MM/YY` → `publishedAt` extractor. NOTE the verify
+   run reports `0 with a date` corpus-wide, so this is bigger than uc-ipm.
+   (b) **`verify:knowledge-base` golden now fails** (16 pass / 1 fail): "IPM thresholds for wine
+   grapes" expected `mapa.gob | pnw-644 | field-monitoring`, now returns UC IPM leafhoppers /
+   mealybugs / nematodes / fungicide-timing. Probably a STALE EXPECTATION (UC IPM is the canonical US
+   grape-IPM threshold source) rather than a regression — but widening a golden to green your own
+   change is the band-aid pattern, so it is Russell's call, not the agent's.
 1. **OPEN — #387 is merged but NOT browser-verified.** Russell asked for "merge #387 and verify
    'delete Block 1' in the browser". The merge happened (`de889cc1`); the browser check did not.
    Needs the interactive logged-in pane. **Do not tell Mike anything until it runs** — a fix has
