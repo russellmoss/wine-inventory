@@ -5,6 +5,8 @@ import {
   isAllowed,
   normPath,
   resolveDomainVerifies,
+  evaluateTestGate,
+  TEST_GATE_OVERRIDE_LABEL,
 } from "../scripts/feedback-fence-rules";
 
 describe("feedback write-fence: allowed surfaces", () => {
@@ -131,5 +133,53 @@ describe("domain-verify backstop: resolveDomainVerifies", () => {
       "src/lib/work-orders/reject.ts",
     ]);
     expect(r.scripts.filter((s) => s === "verify:work-orders")).toHaveLength(1);
+  });
+});
+
+describe("regression-test gate", () => {
+  it("fails a code-only fix — a fix without a test is a claim, not a proof", () => {
+    const r = evaluateTestGate(["src/lib/assistant/resolve.ts", "src/components/ui/Picker.tsx"]);
+    expect(r.missingTest).toBe(true);
+    expect(r.codePaths).toHaveLength(2);
+    expect(r.testPaths).toHaveLength(0);
+  });
+
+  it("passes when the fix carries a test alongside the code", () => {
+    const r = evaluateTestGate(["src/lib/assistant/resolve.ts", "test/assistant-resolve.test.ts"]);
+    expect(r.missingTest).toBe(false);
+    expect(r.testPaths).toEqual(["test/assistant-resolve.test.ts"]);
+  });
+
+  it("passes a test-only diff (no code changed, nothing to prove)", () => {
+    expect(evaluateTestGate(["test/assistant-resolve.test.ts"]).missingTest).toBe(false);
+  });
+
+  it("passes an empty diff", () => {
+    expect(evaluateTestGate([]).missingTest).toBe(false);
+    expect(evaluateTestGate(["", "  "]).missingTest).toBe(false);
+  });
+
+  it("ignores out-of-fence paths — a stray doc must never be what forces a test", () => {
+    // The fence job owns out-of-fence paths; this gate must not double-report them.
+    const r = evaluateTestGate(["docs/architecture/system-map.md", "README.md"]);
+    expect(r.missingTest).toBe(false);
+    expect(r.codePaths).toHaveLength(0);
+  });
+
+  it("still demands a test when a doc rides along with a real code change", () => {
+    const r = evaluateTestGate(["docs/notes.md", "src/lib/vessel/state.ts"]);
+    expect(r.missingTest).toBe(true);
+    expect(r.codePaths).toEqual(["src/lib/vessel/state.ts"]);
+  });
+
+  it("normalizes Windows separators (git diff output is not always posix)", () => {
+    const r = evaluateTestGate(["src\\lib\\vessel\\state.ts", "test\\vessel-state.test.ts"]);
+    expect(r.missingTest).toBe(false);
+    expect(r.codePaths).toEqual(["src/lib/vessel/state.ts"]);
+  });
+
+  it("keeps the override an explicit, human-visible label", () => {
+    // Deliberately NOT agent-settable: the exception has to cost a person a click.
+    expect(TEST_GATE_OVERRIDE_LABEL).toBe("no-regression-test");
   });
 });

@@ -14,7 +14,7 @@
  * Env: ANTHROPIC_API_KEY, DATABASE_URL (+ DATABASE_URL_UNPOOLED), AUTOMATION_RUN_ID,
  * GITHUB_OUTPUT (provided by Actions). Supports --dry-run for a no-write validation.
  */
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, appendFileSync, realpathSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
@@ -25,10 +25,16 @@ import { formatConsoleErrorsBlock, formatClarificationHistoryBlock } from "../sr
 
 const ROOT = process.cwd();
 const MODEL = "claude-opus-4-8";
-const MAX_TURNS = 30;
+// Raised from 30 with the class sweep: hunting sibling instances costs real turns, and a
+// budget that starves the sweep would just push the model back to instance-level fixes.
+const MAX_TURNS = 40;
 
 // Paths never even readable by the agent.
 const READ_DENY = [".env", "node_modules", ".git", ".next"];
+
+// Roots the class sweep searches. src + test is where sibling instances live.
+const SEARCH_ROOTS = ["src", "test"];
+const SEARCH_MAX_LINES = 120;
 
 function setOutput(key: string, value: string) {
   const out = process.env.GITHUB_OUTPUT;
@@ -58,6 +64,42 @@ function insideFenceReal(rel: string): boolean {
   }
 }
 
+/**
+ * Repo search for the class sweep. You cannot sweep for a class of defect without grep.
+ *
+ * SECURITY: execFileSync with a fixed ARG VECTOR — no shell, so the model's pattern can never
+ * become shell syntax. Matching runs in git's own regex engine (not JS), so a pathological
+ * pattern cannot ReDoS the Node event loop, and the timeout bounds it either way. This reads
+ * files the agent may already read via read_file; it grants no new reach.
+ */
+function searchRepo(pattern: string, path?: string): string {
+  if (!pattern || pattern.length > 200) return "Error: pattern must be 1-200 characters.";
+  let scope = SEARCH_ROOTS;
+  if (path) {
+    const rel = safeRel(path);
+    if (rel === null || readDenied(rel)) return "Error: path not accessible.";
+    scope = [rel];
+  }
+  try {
+    const out = execFileSync("git", ["grep", "-n", "-I", "--no-color", "-e", pattern, "--", ...scope], {
+      cwd: ROOT,
+      timeout: 20_000,
+      maxBuffer: 8 * 1024 * 1024,
+      encoding: "utf8",
+    });
+    const lines = out.split("\n").filter(Boolean);
+    if (!lines.length) return "(no matches)";
+    const shown = lines.slice(0, SEARCH_MAX_LINES).join("\n");
+    return lines.length > SEARCH_MAX_LINES
+      ? `${shown}\n… ${lines.length - SEARCH_MAX_LINES} more match(es); narrow the pattern or scope to a path.`
+      : shown;
+  } catch (e) {
+    // git grep exits 1 when nothing matched — a valid answer, not a failure.
+    if ((e as { status?: number }).status === 1) return "(no matches)";
+    return "Error: search failed.";
+  }
+}
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "list_dir",
@@ -70,9 +112,62 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
   },
   {
+    name: "search_repo",
+    description:
+      "Search the repo (src/ and test/) for a pattern, like grep. Returns file:line matches. Use this to hunt for OTHER places with the same defect as the reported one — you cannot do the class sweep without it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        pattern: { type: "string", description: "A regular expression (POSIX/git syntax), 1-200 characters." },
+        path: { type: "string", description: "Optional repo-relative dir or file to narrow the search to." },
+      },
+      required: ["pattern"],
+    },
+  },
+  {
+    name: "record_class_sweep",
+    description:
+      "REQUIRED before apply_fix. State the GENERAL FORM of the defect — the class this ticket is one instance of — then the searches you ran to find sibling instances, and every other site sharing that shape. Fixing only the reported instance and leaving its siblings is a band-aid; this repo has already paid for that pattern more than once.",
+    input_schema: {
+      type: "object",
+      properties: {
+        generalForm: {
+          type: "string",
+          description:
+            "The defect stated GENERALLY, not as the reported symptom. Not 'the Ojai lot shows an error' but 'resolveExactlyOne throws instead of offering a picker wherever a name matches multiple rows'.",
+        },
+        searches: {
+          type: "array",
+          items: { type: "string" },
+          description: "The search_repo patterns you ran hunting for siblings. At least one.",
+        },
+        instances: {
+          type: "array",
+          description:
+            "Every site sharing the general form, INCLUDING the reported one. Leave empty only if you searched and the defect is genuinely a one-off.",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string", description: "Repo-relative file path." },
+              note: { type: "string", description: "Why this site has the same defect." },
+              willFix: { type: "boolean", description: "True if the fix you are about to apply covers this site." },
+            },
+            required: ["path", "note", "willFix"],
+          },
+        },
+        unfixedReason: {
+          type: "string",
+          description:
+            "If any instance has willFix=false, why you are leaving it (outside the fence, needs a product decision, only superficially similar). Empty string if you are fixing all of them.",
+        },
+      },
+      required: ["generalForm", "searches", "instances"],
+    },
+  },
+  {
     name: "apply_fix",
     description:
-      "Apply your final fix. Provide a short summary and the FULL new contents for each file you change. You may ONLY change EXISTING files inside the write-fence (app pages, components, the assistant, the feedback API). If you cannot safely fix it, call this with an empty edits array and explain in summary.",
+      "Apply your final fix. Call record_class_sweep FIRST — apply_fix is rejected without it. Provide a short summary and the FULL new contents for each file you change. You may ONLY change EXISTING files inside the write-fence (app pages, components, the assistant, cellar-floor server domains, the feedback API, and test/). Include the regression test in these same edits. If you cannot safely fix it, call this with an empty edits array and explain in summary.",
     input_schema: {
       type: "object",
       properties: {
@@ -131,10 +226,38 @@ function runTool(name: string, input: Record<string, unknown>): string {
     if (buf.length > 200_000) return "Error: file too large.";
     return buf.toString("utf8");
   }
+  if (name === "search_repo") {
+    return searchRepo(String(input.pattern ?? ""), input.path ? String(input.path) : undefined);
+  }
   return "Error: unknown tool.";
 }
 
 type FixResult = { summary: string; edits: Array<{ path: string; contents: string }> };
+type ClassSweep = {
+  generalForm: string;
+  searches: string[];
+  instances: Array<{ path: string; note: string; willFix: boolean }>;
+  unfixedReason: string;
+};
+
+/** Normalize the model's sweep payload — every field is untrusted shape, not just untrusted text. */
+function parseSweep(input: Record<string, unknown>): ClassSweep {
+  const rawInstances = Array.isArray(input.instances) ? input.instances : [];
+  return {
+    generalForm: String(input.generalForm ?? "").slice(0, 2000),
+    searches: (Array.isArray(input.searches) ? input.searches : []).map((s) => String(s)).filter(Boolean).slice(0, 20),
+    instances: rawInstances
+      .filter((i): i is Record<string, unknown> => !!i && typeof i === "object")
+      .map((i) => ({
+        path: String(i.path ?? "").slice(0, 300),
+        note: String(i.note ?? "").slice(0, 500),
+        willFix: i.willFix === true,
+      }))
+      .filter((i) => i.path)
+      .slice(0, 40),
+    unfixedReason: String(input.unfixedReason ?? "").slice(0, 2000),
+  };
+}
 type AppliedEdit = { path: string; ok: boolean; reason?: string };
 
 function applyEdits(edits: Array<{ path: string; contents: string }>): AppliedEdit[] {
@@ -174,11 +297,26 @@ ${allowedPrefixes.map((p) => `    - ${p}`).join("\n")}
 ${deniedPrefixes.map((p) => `    - ${p}`).join("\n")}
   If the only correct fix lives in a denied path, do NOT edit it — call apply_fix with an empty edits array and say so.
 - Never weaken input validation or the confirm-before-write flow.
-- Prefer the smallest change that addresses the ticket — usually a style/markup/logic tweak in a page or component. Do NOT refactor unrelated code.
 - If you cannot fix it safely and confidently, call apply_fix with an empty edits array and explain why.
+
+FIX THE CLASS, NOT THE TICKET:
+A bug report describes ONE INSTANCE of a defect. Your job is to find and fix the CLASS it belongs to. A fix that repairs the reported symptom and leaves three identical siblings elsewhere in the codebase is a band-aid — the reporter files those three next week and the loop pays for the same bug four times.
+- You MUST call record_class_sweep before apply_fix. apply_fix is rejected until you do.
+- Before that: state the defect's general form to yourself, then use search_repo to hunt for sibling sites. Search for the SHAPE — the shared helper, the repeated call pattern, the duplicated guard — not the reporter's wording.
+- Fix every sibling you find that is inside the write-fence and genuinely the same defect. List any you are leaving, and why, in unfixedReason.
+- Widening a fix to cover its whole class is NOT the "unrelated refactoring" the rules warn against — that warning is about drive-by cleanups (renames, reformatting, restructuring code that has no defect). Fixing four instances of one bug is a single change.
+- If the sweep finds nothing, say so honestly with an empty instances array. A genuine one-off is a fine answer; an unsearched one is not.
+- Otherwise prefer the smallest change that addresses the class. Do NOT refactor code that has no defect.
+
+SHIP THE REGRESSION TEST:
+A fix without a test is a claim that the bug is gone, not a proof, and CI will FAIL this PR if it changes code and adds no test.
+- Include the test in the SAME apply_fix edits as the code change.
+- test/ is inside the write-fence, but you CANNOT create files — find the closest EXISTING test file (search_repo and list_dir on test/ will show you) and add a case to it.
+- The test must fail on the old behavior and pass on the new one. Cover the class where you can, not just the reported instance.
+- If no existing test file can express it, say so explicitly in your apply_fix summary so the human knows to decide.
 - If the report is too VAGUE to locate or reproduce the bug even after investigating (no page, no repro, no error, and the code doesn't make it obvious), call request_clarification with 1-3 specific questions for the reporter INSTEAD of guessing. Strongly prefer a real fix; only ask when genuinely blocked. Never call request_clarification after apply_fix.
 
-Investigate with list_dir/read_file (the ticket's page URL is a strong hint for where the code lives), then call apply_fix exactly once with the full new contents of each changed file — or request_clarification if you're blocked on missing detail.`;
+Investigate with list_dir/read_file/search_repo (the ticket's page URL is a strong hint for where the code lives), sweep for the defect's class, call record_class_sweep, then call apply_fix exactly once with the full new contents of each changed file (code + test) — or request_clarification if you're blocked on missing detail.`;
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
@@ -266,6 +404,7 @@ App code lives under src/app/ (App Router pages/routes) and src/components/ (sha
       { role: "user", content: [{ type: "text", text: firstUser + skippedNote }, ...imageBlocks] },
     ];
     let fix: FixResult | null = null;
+    let sweep: ClassSweep | null = null;
     let clarification: { reason: string; questions: string[] } | null = null;
 
     for (let turn = 0; turn < MAX_TURNS && !fix && !clarification; turn++) {
@@ -284,7 +423,24 @@ App code lives under src/app/ (App Router pages/routes) and src/components/ (sha
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const block of res.content) {
         if (block.type !== "tool_use") continue;
-        if (block.name === "apply_fix") {
+        if (block.name === "record_class_sweep") {
+          sweep = parseSweep(block.input as Record<string, unknown>);
+          results.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: `Sweep recorded (${sweep.instances.length} instance(s) of the class). Now call apply_fix with the code change AND its regression test.`,
+          });
+        } else if (block.name === "apply_fix" && !sweep) {
+          // Deterministic gate, not a prose rule: without the sweep the model reliably
+          // drifts back to fixing the reported instance alone. Reject and make it sweep.
+          results.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content:
+              "REJECTED: you must call record_class_sweep before apply_fix. Use search_repo to find other sites with the same defect, then record the sweep. Your fix has NOT been applied — call record_class_sweep, then apply_fix again.",
+            is_error: true,
+          });
+        } else if (block.name === "apply_fix") {
           fix = block.input as FixResult;
           results.push({ type: "tool_result", tool_use_id: block.id, content: "received" });
         } else if (block.name === "request_clarification" && !fix) {
@@ -366,7 +522,7 @@ App code lives under src/app/ (App Router pages/routes) and src/components/ (sha
     } catch {
       console.error("Proposed fix failed typecheck — reverting.");
       execSync("git checkout -- .", { cwd: ROOT });
-      execSync("git clean -fd src", { cwd: ROOT });
+      execSync("git clean -fd src test", { cwd: ROOT });
       await bail("Agent fix failed typecheck; not proposed.");
       return;
     }
@@ -387,10 +543,33 @@ App code lives under src/app/ (App Router pages/routes) and src/components/ (sha
     if (escaped.length) {
       console.error(`Changes outside the fence (${escaped.join(", ")}) — reverting.`);
       execSync("git checkout -- .", { cwd: ROOT });
-      execSync("git clean -fd src", { cwd: ROOT });
+      execSync("git clean -fd src test", { cwd: ROOT });
       await bail("Agent produced changes outside the feedback write-fence; not proposed.");
       return;
     }
+
+    // The sweep is the point of review: "did this fix the class or just the ticket?" is the
+    // question a human should be answering here, so put the evidence in front of them.
+    const unfixed = (sweep?.instances ?? []).filter((i) => !i.willFix);
+    const sweepSection = sweep
+      ? [
+          "",
+          "### Class sweep",
+          `**General form:** ${sweep.generalForm}`,
+          sweep.searches.length ? `**Searched:** ${sweep.searches.map((s) => `\`${s}\``).join(", ")}` : "",
+          sweep.instances.length
+            ? `**Instances of this class (${sweep.instances.length}):**\n${sweep.instances
+                .map((i) => `- ${i.willFix ? "✅ fixed" : "⚠️ LEFT"} \`${i.path}\` — ${i.note}`)
+                .join("\n")}`
+            : "**Instances:** none beyond the reported one (agent searched and found no siblings).",
+          unfixed.length ? `**Left unfixed:** ${sweep.unfixedReason || "(no reason given — challenge this)"}` : "",
+        ]
+      : [];
+
+    const testPaths = good.filter((g) => g.path.startsWith("test/"));
+    const testLine = testPaths.length
+      ? `**Regression test:** ✅ ${testPaths.map((t) => `\`${t.path}\``).join(", ")}`
+      : `**Regression test:** ❌ none — the \`feedback-test-gate\` CI job will fail this PR. Either the agent could not find an existing test file to extend, or it skipped the test. Add one, or label \`no-regression-test\` to ship it untested on purpose.`;
 
     const body = [
       `Automated fix from bug ticket \`${ticket.id}\` (AutomationRun \`${run.id}\`).`,
@@ -403,10 +582,12 @@ App code lives under src/app/ (App Router pages/routes) and src/components/ (sha
       imageBlocks.length ? `**Screenshots analyzed:** ${imageBlocks.length}` : "",
       `**Files changed:** ${good.map((g) => `\`${g.path}\``).join(", ")}`,
       rejected.length ? `**Rejected (outside fence):** ${rejected.map((r) => `\`${r.path}\``).join(", ")}` : "",
+      testLine,
+      ...sweepSection,
       "",
       `Local check — typecheck: ✅. Lint & tests run by CI on this PR (not in the agent job, which holds secrets).`,
       "",
-      `Review carefully before merging. Generated by the bug feedback agent.`,
+      `Review carefully before merging — start with the class sweep above: did this fix the CLASS, or only the reported instance? Generated by the bug feedback agent.`,
     ]
       .filter(Boolean)
       .join("\n");

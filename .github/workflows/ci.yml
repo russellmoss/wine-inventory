@@ -57,6 +57,31 @@ jobs:
           git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed.txt
           npx tsx scripts/verify-feedback-fence.ts $(cat /tmp/changed.txt)
 
+  # Regression-test gate: a feedback-bug PR that changes code must also change test/. A fix
+  # without a test is a claim the bug is gone, not a proof — and this is what turns the design
+  # partner's ticket stream into a growing eval suite instead of a pile of one-off patches.
+  # Label-gated like feedback-fence (skips green on ordinary PRs). Escape hatch is the HUMAN-applied
+  # `no-regression-test` label, which stays visible on the PR. Because bug-triage's auto-merge gate
+  # requires CI fully green, a missing test blocks auto-merge with no change to that skill.
+  feedback-test-gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'feedback-bug')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Verify the fix carries a regression test
+        env:
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed.txt
+          CHANGED_PATHS="$(cat /tmp/changed.txt)" npx tsx scripts/verify-feedback-test-gate.ts
+
   # Domain-verify backstop (plan 052): when a feedback-bug PR touches a WIDENED server domain
   # (e.g. src/lib/work-orders), run that domain's runtime verify:* against a throwaway Postgres, so
   # an LLM fix can't auto-merge into governed code unproven — the required `check` job runs NO DB

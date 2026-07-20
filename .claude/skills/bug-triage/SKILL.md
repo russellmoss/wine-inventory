@@ -357,8 +357,15 @@ A PR auto-merges **only if ALL** hold (any miss → queued):
 - **Fence-only** — every changed file is within `src/app/(app)`, `src/app/api/feedback`,
   `src/components`, `src/lib/assistant`. Auth/DB/schema/migrations/tenancy/prisma/
   secrets/workflows → out.
-- **CI fully green** and **MERGEABLE** (pending ≠ green).
-- **Root fix, not cosmetic** — the reviewer confirmed it addresses the root cause.
+- **CI fully green** and **MERGEABLE** (pending ≠ green). This now includes
+  `feedback-test-gate`: an agent fix that changes code but ships no `test/` change FAILS,
+  so a missing regression test blocks auto-merge automatically. The only way past it is a
+  human applying the `no-regression-test` label — if you see that label, the PR was
+  consciously shipped untested and needs your eyes, not a rubber stamp.
+- **Root fix, not cosmetic** — the reviewer confirmed it addresses the root cause. The PR body
+  now carries a **Class sweep** section (general form of the defect + sibling instances found +
+  any left unfixed). Read it first: a sweep listing `⚠️ LEFT` instances means the class is only
+  partly fixed and the reporter will be back. An empty/hand-wavy sweep is itself a review flag.
 - **Merge-safe** — no red flags, no stacked yellows (same model as `/merge-check`).
 - **Small** — ≤ ~150 changed lines, ≤ ~8 files.
 

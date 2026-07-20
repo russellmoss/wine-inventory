@@ -67,10 +67,16 @@ jobs:
           # outside the allowlist (or in a denied path) slipped through — so a broad add-paths can't
           # leak denied code. Broad here just avoids a second hand-synced domain list drifting from
           # scripts/feedback-fence-rules.ts (plan 052).
+          # `test` is REQUIRED here, not optional: the agent must ship a regression test with
+          # every fix (feedback-fence-rules puts test/ in the fence, and the feedback-test-gate CI
+          # job fails a code change that carries none). Omit it and the agent's test edits are
+          # silently dropped from the commit — the gate would then fail every PR for a test the
+          # agent actually wrote.
           add-paths: |
             src/app
             src/components
             src/lib
+            test
       - name: Mark automation PR opened
         if: steps.cpr.outputs.pull-request-number
         env:
