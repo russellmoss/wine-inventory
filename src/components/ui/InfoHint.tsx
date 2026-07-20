@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
+import { shouldDismissHintOnPointerDown } from "./info-hint-dismiss";
 
 export interface InfoHintProps {
   /** The explanatory text shown on hover / focus. */
@@ -16,19 +17,42 @@ export interface InfoHintProps {
  * InfoHint — a small "ⓘ" affordance that reveals a one-line explanation on hover AND keyboard focus.
  * Token-driven (no hardcoded colors), light-only per DESIGN.md. Reveal is instant (no animation), so it is
  * inherently reduced-motion safe. The bubble is a `role="tooltip"` linked to the trigger via aria-describedby.
+ *
+ * Once open, the bubble STAYS open when the cursor moves off the trigger — so the user can move onto it to
+ * read or select the text (#371). It dismisses only on a pointer press that ORIGINATES outside the hint
+ * (the pointerdown-origin pattern from #310 / PR #318) or on Escape. Closing on cursor-leave was the bug:
+ * with a gap between trigger and bubble, the bubble was unreachable.
  */
 export function InfoHint({ label, ariaLabel = "More information", side = "top", style }: InfoHintProps) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement>(null);
   const id = useId();
 
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const startedInside =
+        !!rootRef.current && e.target instanceof Node && rootRef.current.contains(e.target);
+      if (shouldDismissHintOnPointerDown({ pressStartedInsideHint: startedInside })) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <span style={{ position: "relative", display: "inline-flex", ...style }}>
+    <span ref={rootRef} style={{ position: "relative", display: "inline-flex", ...style }}>
       <button
         type="button"
         aria-label={ariaLabel}
         aria-describedby={open ? id : undefined}
         onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onClick={(e) => {
