@@ -94,15 +94,22 @@ describe("buildManualInvoiceDocument — validation", () => {
     expect(() => buildManualInvoiceDocument({ ...base, lines: [{ description: "X", unitPrice: -5 }] })).toThrow(/can't be negative/);
   });
 
-  it("WAVE-1 (council C6): hard-refuses a non-MATERIAL line instead of misposting it as a consumable", () => {
-    expect(() =>
-      buildManualInvoiceDocument({ ...base, lines: [{ description: "Must pump", targetKind: "EQUIPMENT_ASSET" }] }),
-    ).toThrow(/equipment/i);
-    expect(() =>
-      buildManualInvoiceDocument({ ...base, lines: [{ description: "Merch tee", targetKind: "FINISHED_GOOD" }] }),
-    ).toThrow(/finished good/i);
-    // an explicit MATERIAL target is fine, as is omitting it entirely
-    expect(() => buildManualInvoiceDocument({ ...base, lines: [{ description: "Bentonite", targetKind: "MATERIAL" }] })).not.toThrow();
-    expect(() => buildManualInvoiceDocument({ ...base, lines: [{ description: "Bentonite" }] })).not.toThrow();
+  it("carries a per-line target through (Wave 3 lifted the Wave-1 materials-only guard)", () => {
+    // Wave 1 REFUSED these outright (council C6) because the apply could not route them yet. U5 can, so a
+    // hand-entered invoice may now mix a pump and a case of merch with the consumables.
+    const { document } = buildManualInvoiceDocument({
+      ...base,
+      lines: [
+        { description: "Bentonite", targetKind: "MATERIAL" },
+        { description: "Must pump", qty: 2, unitPrice: 400, targetKind: "EQUIPMENT_ASSET" },
+        { description: "Merch tee", qty: 10, unitPrice: 12, targetKind: "FINISHED_GOOD" },
+      ],
+    });
+    expect(document.lines.map((l) => l.targetKind)).toEqual(["MATERIAL", "EQUIPMENT_ASSET", "FINISHED_GOOD"]);
+  });
+
+  it("defaults an unspecified line to a consumable — the overwhelming majority of supplier invoices", () => {
+    const { document } = buildManualInvoiceDocument({ ...base, lines: [{ description: "Bentonite" }] });
+    expect(document.lines[0].targetKind).toBe("MATERIAL");
   });
 });

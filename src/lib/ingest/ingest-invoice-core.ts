@@ -149,7 +149,7 @@ export async function createIngestedInvoiceCore(
               // forbids — the value is explicit, visible on the review screen, and the human re-points a
               // line to equipment or finished goods before applying. What C2 rules out is APPLY guessing
               // for a line nobody classified, and that still hard-gates.
-              targetKind: "MATERIAL",
+              targetKind: ln.targetKind ?? "MATERIAL",
             };
           }),
         });

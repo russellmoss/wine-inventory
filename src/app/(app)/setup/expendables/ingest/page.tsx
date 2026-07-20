@@ -160,6 +160,10 @@ export default async function IngestReviewPage({ searchParams }: { searchParams:
       resolvedCategory: l.resolvedCategory,
       allocatedUnitCost: numOrNull(l.allocatedUnitCost),
       createdSupplyLotId: l.createdSupplyLotId,
+      // Plan 080 U5: the line's destination, chosen here on review before apply.
+      targetKind: (l.targetKind as "MATERIAL" | "EQUIPMENT_ASSET" | "FINISHED_GOOD" | null) ?? null,
+      wineSkuTargetId: l.wineSkuTargetId ?? null,
+      finishedGoodTargetId: l.finishedGoodTargetId ?? null,
     }));
     // Duplicate warnings lead (most actionable), then the extraction's own anomaly warnings.
     const dupWarns = dupWarningsByDoc.get(r.id) ?? [];

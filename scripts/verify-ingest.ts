@@ -605,17 +605,16 @@ async function main() {
         assert(inv1!.status === "applied", "scenario 13: manual invoice marked applied");
         assert(ej.manualEntry === true && ej.locationId === loc.id && ej.invoiceDate === "2026-07-19T00:00:00.000Z", "scenario 13: manual-entry marker + chosen location + invoice date preserved in extractedJson");
 
-        // Wave-1 scope gate (council C6): a non-material target is refused, not silently booked as a consumable.
-        let refused = false;
-        try {
-          await createManualInvoiceCore(ACTOR, { vendorName: `${PFX} Manual Vendor`, locationId: loc.id, lines: [{ description: `${PFX} Pump`, targetKind: "EQUIPMENT_ASSET" }] });
-        } catch {
-          refused = true;
-        }
-        assert(refused, "scenario 13: a non-MATERIAL line is refused until Wave 3 (council C6)");
-
-        // NOTE: that C6 refusal is the MANUAL-ENTRY form's guard. Wave 3 lifts the restriction for the
-        // APPLY core (scenario 14); threading a target through the hand-entry form is the remaining piece.
+        // Wave 3 lifted the Wave-1 materials-only guard (council C6): a hand-entered invoice can now carry
+        // an equipment line, and the target survives staging all the way to the staged row.
+        const mixedManual = await createManualInvoiceCore(ACTOR, {
+          vendorName: `${PFX} Manual Vendor`,
+          invoiceNumber: "QA-MAN-2",
+          locationId: loc.id,
+          lines: [{ description: `${PFX} Manual Pump`, qty: 1, unitPrice: 500, targetKind: "EQUIPMENT_ASSET" }],
+        });
+        const mixedLine = await prisma.ingestedInvoiceLine.findFirst({ where: { ingestedInvoiceId: mixedManual.invoiceId }, select: { targetKind: true } });
+        assert(mixedLine?.targetKind === "EQUIPMENT_ASSET", `scenario 13: a hand-entered EQUIPMENT line stages with its target (got ${mixedLine?.targetKind})`);
       }
 
       // ── Scenario 14 (Plan 080 U5): ONE invoice, THREE target kinds, ONE aggregate bill ──

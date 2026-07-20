@@ -20,7 +20,7 @@ import {
   isReceiptDoc, effectiveDecision, landedPreview, isForeignCurrency, convertedPreview, canConfirmDoc,
   buildPrecommitSummary, summarySentence,
   PACK_UNITS, packInputValues, composePackUnitRaw, packFieldsValid,
-  type ReviewDoc, type ReviewLine, type ReviewDocType,
+  type ReviewDoc, type ReviewLine, type ReviewDocType, LINE_TARGETS,
 } from "./ingest-review-model";
 import { currencySymbol } from "@/lib/money/currency";
 
@@ -613,7 +613,37 @@ function LineRow({
     </span>
   );
 
-  const newFields = decision === "new" ? (
+  // Plan 080 U5 — WHERE this line's goods go. Sits above the material-only fields because it decides
+  // whether those fields are even relevant: an equipment line mints assets, a finished-goods line moves
+  // stock, and only a consumable line needs a category/family. A FINISHED_GOOD line must also have its SKU
+  // picked before Confirm (council S11), which the apply gate enforces.
+  const targetField = (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: narrow ? 2 : 6 }}>
+      <select
+        aria-label={`What line ${line.lineNo} brings in`}
+        value={line.targetKind ?? ""}
+        disabled={disabled}
+        onChange={(e) => onSaveLine(doc.id, line.id, { targetKind: (e.target.value || null) as ReviewLine["targetKind"] })}
+        style={{ ...selectStyle, flex: "1 1 180px" }}
+      >
+        <option value="">What is this?…</option>
+        {LINE_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+      </select>
+      {line.targetKind === "FINISHED_GOOD" && !line.wineSkuTargetId && !line.finishedGoodTargetId ? (
+        <span style={{ fontSize: 12.5, color: "var(--danger, #b3261e)" }}>
+          Pick the wine or merchandise item on the Inventory page first, then choose it here.
+        </span>
+      ) : null}
+      {line.targetKind === "EQUIPMENT_ASSET" && (line.qty ?? 0) > 1 ? (
+        <span style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+          Creates {Math.trunc(Number(line.qty))} separately-tracked assets.
+        </span>
+      ) : null}
+    </div>
+  );
+
+  // Category/family only matter for a CONSUMABLE line — an asset or a case of merch has neither.
+  const newFields = decision === "new" && (line.targetKind ?? "MATERIAL") === "MATERIAL" ? (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: narrow ? 2 : 6 }}>
       <select aria-label="Category" value={line.resolvedCategory ?? ""} disabled={disabled} onChange={(e) => onSaveLine(doc.id, line.id, { resolvedCategory: e.target.value || null })} style={{ ...selectStyle, flex: "1 1 160px" }}>
         <option value="">Category…</option>
@@ -671,6 +701,7 @@ function LineRow({
           <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Unit price</div>{price}</div>
           <div style={{ flex: "1 1 90px" }}><div style={fieldLabel}>Lot no.</div>{lot}</div>
         </div>
+        <div style={{ marginTop: 8 }}><div style={fieldLabel}>Brings in</div>{targetField}</div>
         <div style={{ marginTop: 8 }}><div style={fieldLabel}>Match</div>{dedupSelect}{newFields}</div>
         <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={fieldLabel}>Landed cost</span>{landedCell}
@@ -686,6 +717,7 @@ function LineRow({
         <div>{dedupSelect}</div>
         <div style={{ textAlign: "right" }}>{landedCell}</div>
       </div>
+      <div style={{ paddingLeft: 0 }}>{targetField}</div>
       {newFields ? <div style={{ paddingLeft: 0 }}>{newFields}</div> : null}
     </div>
   );
