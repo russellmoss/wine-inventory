@@ -394,7 +394,13 @@ keep `verify:naming` green before and after.
    should the assistant be able to change it at all? Changing it silently reinterprets every
    spacing number a user reads afterward. Defaulting to including it, but it is the one
    detail field with a plausible argument for read-only.
-2. **NAMING-2 status mismatch** — the note's frontmatter says `status: guarded`, while
+2. **Should elevation accept below sea level?** (raised during Unit 1) The /reference form has
+   always enforced `min: 0` on elevation. Unit 1 inherited that verbatim into the shared
+   coercer so both write paths agree — but it refuses real sub-sea-level vineyard sites
+   (Death Valley ~-60 m, the Dead Sea region ~-400 m). Changing it is a one-line product
+   decision in `field-coercion.ts` that now applies to both paths at once. Not changed
+   unilaterally inside a refactor.
+3. **NAMING-2 status mismatch** — the note's frontmatter says `status: guarded`, while
    `INVARIANTS.md:79` and `:94` say `planned` with `verify:naming` landing in Phase 1. Not
    this plan's problem and not blocking, but it means the register and the narrative
    disagree. Worth a separate chip.
