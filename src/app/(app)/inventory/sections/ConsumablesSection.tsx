@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal, Collapsible, LocalTime } from "@/components/ui";
-import { MaterialMovePanel, LocationOnHandList } from "@/components/inventory/MaterialMovePanel";
+import { MaterialMovePanel, LocationOnHandList, type MoveMode } from "@/components/inventory/MaterialMovePanel";
 import type { LocationOnHand } from "@/lib/cellar/materials";
 import { type CellarMaterialDTO, materialDisplayName } from "@/lib/cellar/materials-shared";
 import {
@@ -18,7 +18,7 @@ import {
 import type { VendorRow } from "@/lib/vendors/vendors-shared";
 import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
-import { receiveSupplyAction, setMaterialActiveAction, listMaterialLotsAction } from "@/lib/cost/actions";
+import { setMaterialActiveAction, listMaterialLotsAction } from "@/lib/cost/actions";
 import type { MaterialLotRow } from "@/lib/cellar/materials";
 import { lotExpiryStatus, expiryLabel, docRoleLabel } from "@/lib/cellar/lot-history";
 import { extractAndStageAction, updateIngestedInvoiceAction } from "@/lib/ingest/actions";
@@ -84,8 +84,17 @@ export function ConsumablesSection({
   const [addOpen, setAddOpen] = React.useState(false);
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
-  const [receiveId, setReceiveId] = React.useState<string | null>(null);
   const [moveId, setMoveId] = React.useState<string | null>(null); // Plan 080 U8: Receive/Adjust/Transfer
+  const [moveMode, setMoveMode] = React.useState<MoveMode>("receive"); // which tab the move panel opens on
+
+  // Plan 080 U15 (#366/#370): "Receive" and "Move stock" both open the ONE location-aware panel, which lets
+  // you state the quantity by the pack ("3 rolls of 500") and resolves it server-side. The old grams-only
+  // ReceiveModal was removed — it couldn't take a unit or a location and left the reported bug reachable.
+  const openMove = React.useCallback((id: string, mode: MoveMode) => {
+    setMoveMode(mode);
+    setMoveId(id);
+    setDetailId(null);
+  }, []);
 
   // Toolbar: fuzzy search + category filter + (when a category is active) a sub-category multi-select +
   // inactive toggle + which categories are unfurled.
@@ -103,7 +112,6 @@ export function ConsumablesSection({
   const byId = React.useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
   const detail = detailId ? byId.get(detailId) ?? null : null;
   const editMat = editId ? byId.get(editId) ?? null : null;
-  const receiveMat = receiveId ? byId.get(receiveId) ?? null : null;
   const moveMat = moveId ? byId.get(moveId) ?? null : null;
 
   // Existing family labels per category — seed the form's family picker alongside the built-ins.
@@ -287,8 +295,8 @@ export function ConsumablesSection({
         run={run}
         locationOnHand={detail ? onHandByLocation[detail.id] ?? [] : []}
         onEdit={() => { if (detail) { setEditId(detail.id); setDetailId(null); } }}
-        onReceive={() => { if (detail) { setReceiveId(detail.id); setDetailId(null); } }}
-        onMove={() => { if (detail) { setMoveId(detail.id); setDetailId(null); } }}
+        onReceive={() => { if (detail) { openMove(detail.id, "receive"); } }}
+        onMove={() => { if (detail) { openMove(detail.id, "receive"); } }}
         onClose={() => setDetailId(null)}
       />
 
@@ -304,17 +312,10 @@ export function ConsumablesSection({
         onClose={() => setEditId(null)}
       />
 
-      <ReceiveModal
-        key={receiveMat?.id ?? "receive-none"}
-        material={receiveMat}
-        pending={pending}
-        run={run}
-        onClose={() => setReceiveId(null)}
-      />
-
       <MaterialMovePanel
         key={moveMat?.id ?? "move-none"}
         material={moveMat}
+        initialMode={moveMode}
         locations={locations}
         onHand={moveMat ? onHandByLocation[moveMat.id] ?? [] : []}
         pending={pending}
@@ -758,75 +759,6 @@ function EditMaterialModal({
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
             {pending ? "Saving…" : "Save changes"}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function ReceiveModal({
-  material,
-  pending,
-  run,
-  onClose,
-}: {
-  material: CellarMaterialDTO | null;
-  pending: boolean;
-  run: (fn: () => Promise<unknown>, after?: () => void) => void;
-  onClose: () => void;
-}) {
-  const [qty, setQty] = React.useState("");
-  const [unitCost, setUnitCost] = React.useState("");
-  const [lotCode, setLotCode] = React.useState("");
-  const [note, setNote] = React.useState("");
-  const [vendorName, setVendorName] = React.useState("");
-  const [terms, setTerms] = React.useState("");
-  const { symbol } = useCurrency();
-  const unit = material?.stockUnit ?? "g";
-  const qtyValid = qty.trim() !== "" && Number(qty) > 0;
-
-  function submit() {
-    if (!material || !qtyValid) return;
-    run(
-      () =>
-        receiveSupplyAction({
-          materialId: material.id,
-          qty: Number(qty),
-          unitCost: unitCost.trim() !== "" ? Number(unitCost) : undefined,
-          lotCode: lotCode.trim() || undefined,
-          note: note.trim() || undefined,
-          vendorName: vendorName.trim() || undefined,
-          terms: terms.trim() || undefined,
-        }),
-      onClose,
-    );
-  }
-
-  return (
-    <Modal open={!!material} onClose={onClose} title={material ? `Receive · ${materialDisplayName(material)}` : "Receive"} subtitle="Add a costed stock lot" maxWidth="min(460px, 94vw)">
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Input label={`Quantity (${unit})`} value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" placeholder="qty received" autoFocus style={{ flex: "1 1 140px" }} />
-          <Input label={`Cost per ${unit} (optional)`} value={unitCost} onChange={(e) => setUnitCost(e.target.value)} inputMode="decimal" placeholder="unit cost" iconLeft={symbol} style={{ flex: "1 1 140px" }} />
-        </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Input label="Lot / PO code (optional)" value={lotCode} onChange={(e) => setLotCode(e.target.value)} placeholder="supplier lot ref" style={{ flex: "1 1 140px" }} />
-          <Input label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} placeholder="supplier, etc." style={{ flex: "1 1 140px" }} />
-        </div>
-        {/* Phase 15 — a vendor turns this receipt into a QuickBooks A/P bill (needs a cost + A/P accounts mapped). */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Input label="Vendor (optional)" value={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="e.g. Scott Labs" style={{ flex: "1 1 140px" }} />
-          <Input label="Terms (optional)" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="e.g. Net 30" style={{ flex: "1 1 140px" }} />
-        </div>
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
-          Leaving cost blank records the stock as unknown-cost until you receive a priced lot. Add a
-          vendor (with a cost) to send this as a bill to QuickBooks Accounts Payable.
-        </p>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
-          <Button type="button" variant="primary" onClick={submit} disabled={pending || !qtyValid}>
-            {pending ? "Receiving…" : "Receive stock"}
           </Button>
         </div>
       </div>
