@@ -135,3 +135,90 @@ The assistant global dock can auto-navigate ("take me to X") after a 3s countdow
 protection is inert; only the countdown+Cancel protects a mid-edit user. Wire the
 high-risk forms (field-report editor, template spec builder, inventory-adjust) to set
 `data-unsaved="true"` while dirty. Source: /review of plan-042 PR-A.
+
+## Plan 081 follow-ups — assistant Draft Card residuals
+
+Deferred out of NOW.md during the 2026-07-20 spine compaction. Plan 081 shipped
+(PRs #354/#355); these are the measured, honest gaps it did NOT close.
+
+**(a) `brix-write` still 5/10.** The Draft Card fixed the WORK-ORDER path; it did not
+generalise to other write families. `log_brix` emits no tool call about half the time.
+This is the largest remaining piece of Mike's original "it says there's a card but there
+isn't" complaint. NOTE: PR #380 later took `log_brix` to 10/10 via a tool-description
+prepend, and PR #387 established that the stronger lever is the system prompt, not the
+description — re-measure before assuming this is still 5/10.
+
+**(b) Draft rendering unproven in a live browser.** All 14 shipping trials returned
+`ready` (Mike resolves cleanly in Demo, so nothing was ever missing). The Draft path is
+unit-tested and DB-proven (`needs_input`, 0 signed builds, `committable:false`) but
+nobody has watched Confirm sit greyed out on screen. Needs the interactive logged-in pane.
+
+**(c) `wo-vague-target` knownGap is probably an eval artifact, not a product bug.** Live,
+that utterance DOES card — it routes to `issue_operation_wo`, while the eval case asserts
+`propose_work_order`. Fix the case's expected tool before the nightly starts mailing false
+failures. Second time this eval's fixtures rather than the product produced a misleading
+signal.
+
+**(d) Absent assignee ≠ wrong assignee.** Requesting a WO for a nonexistent person
+correctly avoids fabricating an email, but returns a READY card that is silently
+unassigned. The over-claim guard catches a wrong email, not a missing one.
+
+**(e) `canonicalizeRawIntents` throws instead of drafting.** In `nl-proposal.ts` it still
+THROWS for a task missing a required vessel, *before* a proposal object exists, so those
+utterances stay prose. Sole cause of (c) above.
+
+**(f) must-on-skins readiness rule — not built.** Nothing in the codebase detects that a
+must on skins cannot be racked (it clogs a positive-displacement pump); the model knew it,
+the engine does not. Wants the winemaker's call on `blocking` vs `confirmable`, and whether
+TOPPING/BARREL_DOWN are covered.
+
+**(g) In-place Draft resolution.** Type the missing email on the card and re-drive
+id-pinned via the resume-token path. Today the user answers in chat. The route already
+carries the `draft` flag, so this is a UI increment, not new architecture.
+
+**(h) `verify:work-orders-transform` red** on the plan-059 bottling guard — its fixture
+needs a label. Chip filed.
+
+## NRCS SSURGO soil composition per vineyard block
+
+**What:** Russell asked (office-hours, 2026-07-20) whether soil maps could be pulled in so a
+drawn block reports "30% soil A / 20% B / 50% C".
+
+**Answer:** yes. It is **NRCS, not USGS**. The API is Soil Data Access
+(`sdmdataaccess.nrcs.usda.gov/Tabular/post.rest`), free and keyless, and
+`VineyardBlock.polygon` already holds the GeoJSON input. No PostGIS needed.
+
+**Key design call:** do **NOT** area-weight properties into block-level numbers. pH is
+logarithmic, drainage class is categorical, and averaging restrictive depth is actively
+dangerous. The use case is documentation, so roll up area percentage only and keep each map
+unit's properties intact.
+
+**BLOCKED on a ~20-minute curl spike** that answers: (1) how many map units a real block
+returns — if it is 1 mukey, the whole composition premise collapses; (2) whether SDA can clip
+server-side; (3) the `JSON+COLUMNNAME` response shape. Do the spike before `/plan`, against
+Demo Winery (Bhutan is outside SSURGO coverage).
+
+Design doc: `~/.rstack/projects/wine-inventory/russe-claude-usgs-soil-maps-vineyard-eabe6c-design-20260720-005928.md`.
+An empty branch `claude/usgs-soil-maps-vineyard-eabe6c` exists with no commits.
+
+## Plan 062 Units 2/5 — liquid SO₂-solution booking (feature gap, NOT the money bug)
+
+Booking a *stocked liquid KMBS-solution material* by ppm currently books an UNKNOWN-cost line
+with no depletion: there is no durable `so2SolutionPercentKmbs` field, and `consumeMaterialCore`
+cannot convert g → mL. Powder KMBS is fully correct.
+
+⚠️ Do NOT simply run `/work` on plan 062 — the money-critical half already shipped (plan 066,
+PR #180), and re-running would DOUBLE-APPLY the 0.576 active fraction and re-break `verify:cost`.
+
+Needs a governed schema change + eng review. Separate plan when prioritized.
+
+## Break Mode — configure Sentry server-side data scrubbing
+
+Break Mode shipped (PRs #345, #375) with client-side defaults: replay never captures
+request/response bodies, masking always on, fails closed. **That is a client-side default,
+not a guarantee.**
+
+⚠️ **BLOCKER before Break Mode is used on any real tenant:** configure Sentry server-side
+data-scrubbing. Tracked in `docs/architecture/security-register.md` (🟡).
+
+Also not done, and out of repo: the `/bug-triage` skill step that reads the captured hunt trail.
