@@ -156,7 +156,7 @@ side is a 400. This is the constraint driving Unit 4.
 
 | Decision | Choice | Alternatives Considered | Rationale |
 |----------|--------|------------------------|-----------|
-| How to make tool evidence visible | **Decide empirically in Unit 1** between structured block replay and prose neutralization | Ship structured replay on assumption | Ablation B already disproved one "obvious" fix. We are not building five units on an untested hypothesis again. |
+| How to make tool evidence visible | **Structured `tool_use`/`tool_result` block replay, and nothing else** (Unit 1 spike, RESOLVED 2026-07-20) | Prose neutralization (0.88, below threshold); blocks+neutralization (1.00, no better than blocks alone); text markers (0/6, previously disproved) | Measured: A 0/8, **B 1.00**, C 0.88, D 1.00. Blocks alone are sufficient AND leave the stored transcript verbatim, so no prose is rewritten and no conversational context is lost. D buys nothing over B. |
 | Where replay fidelity is stored | `AssistantMessage.metadata` JSON | New column; encode into `content` | No migration; `content` carries a generated tsvector, so changing its shape breaks FTS |
 | Who assembles replayed history | Server, rebuilt from the DB | Keep trusting the client array | Client currently dictates history; three layers must agree, and a server rebuild collapses that to one. Also closes a trust gap. |
 | Text markers in message content | Rejected | — | Measured 0/6, and the model leaked the marker into user-visible output |
@@ -165,7 +165,23 @@ side is a 400. This is the constraint driving Unit 4.
 
 ## Implementation Units
 
-### Unit 1: Spike — pick the mechanism against the live reproduction
+### Unit 1: Spike — pick the mechanism against the live reproduction — ✅ COMPLETE (2026-07-20)
+
+**RESULT.** `claude-opus-4-8`, real system prompt, 84 tools, no `tool_choice`, n=8 per arm, replaying
+the captured `cmrsrs02` transcript:
+
+| Arm | `record_tasting_note` | Read |
+|---|---|---|
+| A — baseline, today's text-only replay | **0/8 (0.00)** | Bug reproduces. Spike is valid. |
+| **B — reconstructed `tool_use`/`tool_result` blocks** | **8/8 (1.00)** | **WINNER** |
+| C — assistant card-claiming prose neutralized | 7/8 (0.88) | Below the 0.9 threshold |
+| D — blocks + neutralized | 8/8 (1.00) | No better than B |
+
+**Decision: build arm B only.** Blocks alone are sufficient. Neutralization is both insufficient
+alone and redundant on top of blocks, and it would rewrite the winemaker's transcript to fix a
+replay bug — the wrong layer. Unit 3 therefore adds tool evidence and changes no stored prose.
+Harness kept at `test/evals/assistant-history-replay.spike.test.ts` + fixture
+`test/evals/fixtures/cmrsrs02-transcript.json`; Unit 2 absorbs both, then the spike file is deleted.
 
 **Goal:** Empirically choose between structured block replay and prose neutralization before
 building anything. This unit is a decision gate; it ships no production code.
@@ -211,7 +227,8 @@ the failure pre-fix. A case that cannot fail before the fix is not a test.
 `src/app/api/assistant/route.ts`, `src/lib/assistant/run.ts`, `src/lib/assistant/trace.ts`
 (capture `tool_use_id`), `src/app/(app)/assistant/AssistantChat.tsx`,
 `src/app/(app)/assistant/voice/useVoiceSession.ts`
-**Approach:** Shape follows Unit 1's winning arm. Persist replay-grade tool evidence in
+**Approach:** Shape is settled by Unit 1: **arm B — add structured `tool_use`/`tool_result` blocks,
+change no stored prose.** Persist replay-grade tool evidence in
 `AssistantMessage.metadata` (add `tool_use_id` to the trace's tool calls — today it is never
 captured). Rebuild the API `messages` array server-side from persisted rows rather than the
 client-supplied array; the client keeps sending its history for now, the server stops trusting it.
@@ -325,7 +342,7 @@ read-back, since the browser proves the UI and the script proves the write.
 |---------|-----------|-------|
 | Problem Frame | HIGH | Reproduced 0/8 against the live transcript; two ablations isolate the cause and rule out the obvious fix |
 | Scope Boundaries | HIGH | Three adjacent bugs found during investigation are explicitly pushed to follow-ups |
-| Implementation Units | MEDIUM | Unit 3's shape is deliberately unresolved until the Unit 1 spike reports. That is a feature, not a gap — but it means Unit 3's file list may shift |
+| Implementation Units | HIGH (was MEDIUM) | Unit 1 ran and resolved the open question: arm B at 1.00 against a 0.00 baseline. Unit 3's shape is now fixed, and it is the *less* invasive of the two candidates — no stored prose changes |
 | Test Strategy | HIGH | The reproduction harness already exists and is proven to reproduce the failure on demand |
 | Risk Assessment | MEDIUM | Two real unknowns: token/context cost of replaying tool results, and whether pair-aware windowing can be made airtight at every boundary. Both are named with mitigations; neither is measured yet |
 
