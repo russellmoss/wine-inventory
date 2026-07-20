@@ -4,10 +4,10 @@ import { writeAudit } from "@/lib/audit";
 import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
-import { signProposal } from "../confirm";
+import { signProposal, signResume } from "../confirm";
 import { getEntity, allowedEntityNames } from "../entities";
 import { describeDelete, isBlocked, needsCascade, formatEffectGroups } from "../relations";
-import { resolveExactlyOne } from "./resolve";
+import { resolveOneOrChoice } from "./resolve";
 
 type DbDeleteInput = { entity?: string; query?: string; id?: string };
 
@@ -41,11 +41,21 @@ export const dbDeleteTool: AssistantTool = {
       if (!row) throw new Error(`No ${entity.displayName} with that id.`);
     } else {
       const matches = await entity.find(ctx.user, input.query ?? "");
-      row = resolveExactlyOne(matches, {
+      // Ambiguity hands back a clickable PICKER, not a thrown paragraph (feedback cmrs4vasg / #328).
+      // Previously this used resolveExactlyOne, which throws on multiple matches — so asking to delete
+      // "Block 1" in a winery with six blocks labelled "Block 1" produced a wall of error text and no
+      // card at all. Duplicate labels are NORMAL here (every vineyard has its own "Block 1"), and a text
+      // question cannot resolve them: the user answers "the Ojai one" and we re-run the same ambiguous
+      // match. The picker pins the row by id, so identical labels are still tell-apart-able — and this is
+      // the DESTRUCTIVE path, where picking the wrong row also takes its cascade with it.
+      const res = resolveOneOrChoice(matches, {
+        prompt: `Which ${entity.displayName} do you want to delete?`,
         describe: (m) => m.label,
+        resume: (m) => signResume("db_delete", { entity: input.entity, id: m.id }),
         noneMsg: `No ${entity.displayName} matches "${input.query ?? ""}".`,
-        manyMsg: `Several ${entity.displayName} records match`,
       });
+      if (res.kind === "choice") return res.choice;
+      row = res.row;
     }
 
     const effects = await describeDelete(entity, row.id);
