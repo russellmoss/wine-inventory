@@ -7,64 +7,56 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 082 — assistant vineyard/block coverage. ALL 7 UNITS DONE, code-complete on branch, PR not yet opened.**
-Branch `claude/assistant-vineyard-coverage` off `de889cc1`.
-Plan: [2026-07-20-082-…](docs/plans/2026-07-20-082-feat-assistant-vineyard-coverage-plan.md) (Standard, 7 units).
+**PLAN 085 — MSU Extension Grapes/Viticulture into the assistant KB. PLANNED + APPROVED, build starting.**
+Branch `claude/msu-viticulture-source-e7e94c` (worktree).
+Plan: [2026-07-20-085-…](docs/plans/2026-07-20-085-feat-kb-msu-viticulture-source-plan.md) (Standard, 8 units).
 
-The assistant has **zero GPS coverage** (`VineyardDetail` isn't a registered entity), block
-`variety` is create-only so a mis-set variety is permanently unfixable, and row/vine spacing is
-writable by neither path — so it can change `vineCount` and strand the derived planted acreage
-with no way to correct it. Root framing: `entities.ts:91` labels the block config a *"Unit 1
-vertical slice"* and nothing came back to finish it. **Unit 2's real job is making `creatable`
-and `editable` derive from one table so they cannot drift again.**
+Russell asked for MSU (`canr.msu.edu/grapes/`) as a monthly-CRON source like AWRI/UC IPM, toggleable
+in Settings, with publication dates. Normally that is a config edit. **It is not, and the reason is
+the point: 2 of the 8 units add MSU; the other 6 fix crawler bugs MSU exposed.** Three verified
+blockers, all confirmed by execution not inference:
 
-- ✅ **U1 shared pure coercion** (`src/lib/vineyard/field-coercion.ts`). The rules were private to
-  `actions.ts`, which is `"use server"` and can only export async functions — so the assistant
-  path *structurally could not* import them and grew a second copy. Fixed R1 as a live bug: typing
-  `0` for spacing silently CLEARED the field (`optFloat{min:0}` admitted it, then `pos()` mapped
-  `<=0` to null). Now errors. Split into a verbatim move + the fix so the behavior change is
-  visible in the diff. vitest 2761/0, tsc, eslint clean.
-- ✅ **U2 one field table.** `creatable`/`editable` now DERIVE from one `EntityField[]` per entity via
-  `withFields()`. Symmetry is the default; asymmetry needs `mode` + a mandatory `why` — enforced by the
-  TYPE (a union), so a silent one-sided field does not compile. Applied to **all 8** writable entities,
-  not just the block: the goal is "drift is structurally impossible", and a one-entity guard isn't that.
-  A golden locks all 8 lists to their pre-refactor values and passed unmodified → provably no behavior
-  change. **Guard verified by sabotage** (override `editable` → 3 fails; inject an undeclared one-sided
-  field → 2 fails; green on restore) rather than assumed. tsc 0, eslint clean, **vitest 2778** on a clean
-  checkout = the 2761 U1 baseline + the 17 added. 🔎 Found en route: **Vessel has the identical drift** (5 cooperage
-  fields update-only for no recorded reason) — labelled `UNDECIDED_DRIFT`, left unchanged, → TODOS.
-- ✅ **U3 block symmetry.** variety + numRows/clone/rootstock/irrigated now on both paths. The shape
-  the plan missed: `update` runs INSIDE the tx so it cannot resolve an ambiguous name — nowhere to ask.
-  Added `buildUpdate`, the pre-tx mirror of `buildCreate`, returning values OR a ChoiceRequest that
-  becomes a clickable picker. U4/U5/U6 all then needed the same hook → right seam, not a one-off.
-- ✅ **U4 spacing both paths.** Closes the correctness hazard (vineCount was writable, spacings were
-  not → acreage strandable). Explicit `spacingUnit`; card renders in the VINEYARD's unit so it never
-  compares ft to m. 🔎 Found: negatives were refused with "must be at least 0" (optFloat's min fired
-  first) — a message that says 0 is OK when it isn't. Fixed at source; U1's test had a loose
-  `/Row spacing/` match that passed with the wrong wording.
-- ✅ **U5 abbreviation.** Both paths + closed a PRE-EXISTING hole — `findConflict` only checked `name`,
-  so two vineyards could collide on the lot-code token itself.
-- ✅ **U6 VineyardDetail (GPS/soil/manager).** The soft spot; nested write, no precedent. Partial
-  upsert (assistant sends deltas — a full-shape write would blank soilType on every GPS edit), no
-  empty row on a rename, Decimals → numbers, audit split to `VineyardDetail`. **Deliberately
-  update-only:** nested-create tenantId is unverified and `tenantId` defaults to `""`, so a bad
-  nested create lands RLS-invisible rather than erroring. ~15-min spike in TODOS.
-- ✅ **U7 evals + registers.** 3 MUST_PROPOSE cases, structurally validated against db_update's real
-  schema. Parity notes deliberately NOT written: the register is InnoVint-doc-keyed and none of its
-  997 notes mentions GPS/spacing/soil — authoring incumbent-evidenced notes for them would be
-  fabricating evidence. verify:parity/ai-native/invariants green; coverage doc regenerated to no
-  change (082 added FIELDS to already-covered tools, not new cores).
-- **Gates: tsc 0, eslint 0 errors, vitest 2825.** Every guard sabotage-checked, not assumed.
-- ⚠️ **NOT done:** the `runAsTenant` DB read-back for U6, the LLM half of the evals (needs an API key;
-  the 3 new cases have NO pre-change baseline and cannot — db_update rejected those field names
-  outright before, so the rate was 0 by construction), `verify:naming` (needs `.env`), and browser QA.
-- ⚠️ **U6 is the soft spot, MEDIUM confidence.** No entity config has ever done a nested write
-  (grep for `upsert`/`connect:` across `src/lib/assistant` returns zero). Spike `current`+`update`
-  against a Demo vineyard with **no detail row** before writing the rest of the unit.
-- ⚠️ **U1 raised a product question:** elevation inherits the form's `min: 0`, which refuses real
-  sub-sea-level sites (Death Valley, Dead Sea). Preserved rather than changed. Open question on the plan.
+- ⚠️ **Incapsula/Imperva serves challenge pages with HTTP 200**, `text/html`, ~950 B. The fetch path
+  has **zero body validation**, so a challenge indexes as a real document — and each one carries a
+  unique `incident_id`, so the content-hash dedup never fires and it **re-embeds every month forever**.
+  Latent bug affecting ALL 20 sources, not just MSU.
+- ⚠️ **The detector must RETURN a flag, never throw.** `recrawl-knowledge.ts:93` reads any
+  `fetchDocument` throw as "page removed" → `status: withdrawn`. Throwing would mass-tombstone a
+  whole source's corpus slice on a transient WAF blip. All 3 crawl loops also `catch {}` and discard
+  the message, so a throw could never reach the run summary anyway.
+- ⚠️ **Both date paths fail on MSU.** JSON-LD is malformed (`"2024-4-11EDT12:00AM"` → Invalid Date)
+  and the byline has no label anchor (`… Horticulture - April 11, 2024` → null). Fix is a
+  metadata-path normalizer ONLY — deliberately NOT loosening `LABEL`, whose posture is "a wrong date
+  is worse than no date."
+- **Scope (Russell's call):** no sitemap (both 404), and the real articles are flat `/news/<slug>`
+  mixed in with all of MSU Extension (dairy, 4-H, field crops). New opt-in `linkedOnlyPrefixes`
+  capability: `/news/` admitted only when linked FROM an admitted `/grapes/` page, and **terminal**
+  (links not followed onward) — terminal-ness is what actually caps the blast radius.
+- ⚠️ **Biggest unresolvable-before-merge risk:** the monthly CRON runs on GitHub Actions datacenter
+  IPs, which Incapsula challenges far harder than the residential IP this was scouted from. May fail
+  wholesale in CI. Mitigation is loudness (per-source `skippedChallenge`, went-dark job failure),
+  not evasion. Contingency: `autoCrawl: false` + curated crawl. **Decide only with real CI evidence.**
 
 ## 🔭 Also in flight
+
+**PLAN 082 — assistant vineyard/block coverage. ALL 7 UNITS DONE, code-complete on
+`claude/assistant-vineyard-coverage` (off `de889cc1`), PR NOT YET OPENED.**
+Plan: [2026-07-20-082-…](docs/plans/2026-07-20-082-feat-assistant-vineyard-coverage-plan.md).
+Full unit-by-unit detail is in the plan file and the branch's commits; the load-bearing residue:
+
+- **Gates: tsc 0, eslint 0, vitest 2825.** Every guard sabotage-checked, not assumed.
+- ⚠️ **NOT done:** the `runAsTenant` DB read-back for U6, the LLM half of the evals (needs an API
+  key; the 3 new cases have NO pre-change baseline and cannot — `db_update` rejected those field
+  names outright before, so the rate was 0 by construction), `verify:naming` (needs `.env`), and
+  browser QA.
+- ⚠️ **U6 (VineyardDetail nested write) is the soft spot, MEDIUM confidence.** No entity config had
+  ever done a nested write. Deliberately update-only: nested-create `tenantId` is unverified and
+  defaults to `""`, so a bad nested create lands RLS-invisible rather than erroring.
+- 🔎 **Found en route: `Vessel` has the identical create/edit drift** (5 cooperage fields
+  update-only for no recorded reason) — labelled `UNDECIDED_DRIFT`, left unchanged, → TODOS.
+- ⚠️ **Open product question:** elevation inherits the form's `min: 0`, refusing real sub-sea-level
+  sites (Death Valley, Dead Sea). Preserved rather than changed.
+
 
 **Plan 080 is fully merged** — Waves 1-4 all landed (#351, #376, #392, #395). What it left behind
 is two decisions that are Russell's, not code:
@@ -188,7 +180,7 @@ is two decisions that are Russell's, not code:
    ⚠️ **NOT done: the DB row-level proof.** `npm run crawl:source vt-enology-notes` needs `.env` +
    the MAIN checkout and is the first real write to the global corpus — left for a human.
    Pop when #406 merges.
-7. ← you are here
+7. **PLAN 085 IN PROGRESS — MSU KB source (see Current objective).** ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
@@ -262,11 +254,13 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 
 ## ⏭️ Next up (candidates, not commitments)
 
-- Finish plan 082 (U2–U7).
+- Build plan 085 (8 units), then seed + crawl MSU from the MAIN checkout.
+- Open the PR for plan 082 (`claude/assistant-vineyard-coverage`, code-complete, unopened).
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
-- Plan 080 Wave 3 → council review → PR.
 
-_Last updated: 2026-07-20 — plan 084 (VT Enology Notes KB + section filter) SHIPPED as PR #406. Prior: the feedback-loop class sweep + regression-test gate
+_Last updated: 2026-07-20 — plan 085 (MSU Extension KB source + WAF-challenge guard + link-provenance
+crawl gate) PLANNED and APPROVED; build starting. Plan 082 moved to "Also in flight" (code-complete,
+PR unopened). Prior: plan 084 (VT Enology Notes KB + section filter) SHIPPED as PR #406. Prior: the feedback-loop class sweep + regression-test gate
 (branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
 lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the
 consumables fix and issue #328 had all already landed while still listed as in-flight. Beware
