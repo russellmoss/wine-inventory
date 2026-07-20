@@ -28,6 +28,8 @@ export type AssistantTrace = {
   toolCalls: AssistantToolTrace[];
   stopReason?: string;
   turns: number;
+  /** Plan 083 U5: whether the over-claim repair turn ran, and whether it rescued the write. */
+  overclaimRepair?: "attempted" | "recovered" | "failed";
 };
 
 export function newAssistantTrace(args: {

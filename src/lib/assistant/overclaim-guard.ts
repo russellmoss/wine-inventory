@@ -60,5 +60,20 @@ export function claimsWriteWithoutCard(assistantText: string): boolean {
   return false;
 }
 
+/**
+ * Injected as a USER turn when the model claims a card it never created, to give it one chance to
+ * actually do the thing before we fall back to apologising for it (plan 083 Unit 5).
+ *
+ * Never shown to the user — it goes into the conversation, not the stream. Worded as an instruction
+ * about the NEXT action rather than as scaffolding to repeat, because injected scaffolding is
+ * measurably echoed back verbatim: plan 083 Unit 1 ablation B prefixed a marker to history and the
+ * model reproduced it in its reply to the user.
+ */
+export const OVERCLAIM_REPAIR_PROMPT =
+  "Your last reply told the user a change was made or a card is on screen, but you did not call any " +
+  "tool, so nothing was created and there is no card. Call the correct tool now to actually perform " +
+  "what they asked for. If some detail is missing, still call it and leave that field out rather than " +
+  "guessing. Do not apologise, do not explain this message, and do not mention it to the user.";
+
 export const OVERCLAIM_CORRECTION =
   "\n\n⚠️ Correction: I have not actually created or filed anything yet — there is no card to confirm and nothing was saved. Tell me to go ahead and I'll do it now.";

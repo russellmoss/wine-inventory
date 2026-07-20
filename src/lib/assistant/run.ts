@@ -4,7 +4,7 @@ import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
 import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
-import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION } from "./overclaim-guard";
+import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION, OVERCLAIM_REPAIR_PROMPT } from "./overclaim-guard";
 import { type AssistantEvent, asProposal, asChoice, asNavigation, isDraftProposal } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
@@ -61,6 +61,7 @@ export async function runAssistant(opts: {
   // to deterministically catch the model over-claiming a write (feedback cmri7ympe: it said a bug report was
   // "Done — review the card" without ever calling file_feedback, so nothing was filed).
   let emittedProposal = false;
+  let repairAttempted = false;
   const emit = (e: AssistantEvent) => {
     if (e.type === "text") assistantText += e.text;
     if (e.type === "proposal") emittedProposal = true;
@@ -291,6 +292,27 @@ export async function runAssistant(opts: {
         break;
       }
 
+      // Over-claim REPAIR (plan 083 Unit 5). The model just ended its turn claiming a card exists
+      // while calling nothing — the user asked for a write and would get prose. Rather than only
+      // apologising afterwards, give it exactly one chance to actually perform the action.
+      //
+      // Done as another pass of THIS loop rather than a separate request: it inherits MAX_TURNS, the
+      // existing trace, and the same stream plumbing, so there is no second code path to keep in sync.
+      // Bounded to one attempt — a model that ignores the instruction once will ignore it twice, and
+      // the user is already waiting.
+      if (
+        !emittedProposal &&
+        !repairAttempted &&
+        msg.stop_reason === "end_turn" &&
+        claimsWriteWithoutCard(assistantText)
+      ) {
+        repairAttempted = true;
+        trace.overclaimRepair = "attempted";
+        convo.push({ role: "assistant", content: msg.content });
+        convo.push({ role: "user", content: OVERCLAIM_REPAIR_PROMPT });
+        continue;
+      }
+
       // end_turn or max_tokens — text already streamed via on("text").
       trace.stopReason = msg.stop_reason ?? "end_turn";
       break;
@@ -308,7 +330,12 @@ export async function runAssistant(opts: {
     // emitted a proposal this run, the claim is false — correct it so the user isn't silently misled into
     // thinking something was filed/changed (feedback cmri7ympe). The prompt rule alone is stochastic.
     if (!emittedProposal && claimsWriteWithoutCard(assistantText)) {
+      // Reached only when the repair turn also failed to produce a card (or never ran, e.g. the run
+      // errored out). The user is told plainly that nothing was saved — never worse off than before.
+      if (repairAttempted) trace.overclaimRepair = "failed";
       emit({ type: "text", text: OVERCLAIM_CORRECTION });
+    } else if (repairAttempted) {
+      trace.overclaimRepair = "recovered";
     }
     emit({ type: "done" });
   }

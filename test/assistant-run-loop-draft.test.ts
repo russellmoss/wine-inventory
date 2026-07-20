@@ -137,3 +137,59 @@ describe("runAssistant — Draft proposal emission", () => {
     expect(proposal).toBeUndefined();
   });
 });
+
+// Plan 083 U5 — the repair turn's interaction with a REAL card. Lives here rather than in
+// assistant-run-loop.test.ts because that file uses the real registry, where any write tool needs the
+// DB; the fake_write stub above makes both the success and failure paths deterministic.
+describe("runAssistant — over-claim repair turn, against a real proposal", () => {
+  const CLAIM = "I've logged a tasting note on T5 — review and confirm the card to save it.";
+
+  /** Script: the model claims a card in prose, then (on the repair turn) actually calls the tool. */
+  async function runRepair(out: unknown, turns: Anthropic.Message[]) {
+    toolOut.value = out;
+    let i = 0;
+    const seen: Anthropic.MessageStreamParams[] = [];
+    const events: AssistantEvent[] = [];
+    const result = await runAssistant({
+      user: { id: "u1", email: "d@d.com", role: "admin", activeOrganizationId: "org_demo_winery", vineyardIds: [] } as never,
+      messages: [{ role: "user", content: "log a tasting note on T5" }],
+      send: (e) => events.push(e),
+      createStream: (params) => {
+        seen.push(params);
+        const msg = turns[Math.min(i, turns.length - 1)];
+        i += 1;
+        return {
+          on(_e: "text", handler: (d: string) => void) {
+            for (const b of msg.content) if (b.type === "text") handler(b.text);
+            return this;
+          },
+          finalMessage: async () => msg,
+        };
+      },
+    });
+    return { events, result, calls: () => i, seen };
+  }
+
+  it("recovers the write: the repair turn calls the tool and the correction stays silent", async () => {
+    const { events, result } = await runRepair({ needsConfirmation: true, preview: "Tasting note on 24-CS-01", token: "tok-9" }, [
+      textTurn(CLAIM),
+      toolTurn(),
+      textTurn("The card is on screen."),
+    ]);
+
+    expect(events.some((e) => e.type === "proposal")).toBe(true);
+    expect(events.map((e) => (e.type === "text" ? e.text : "")).join("")).not.toContain("Correction");
+    expect(result.trace.overclaimRepair).toBe("recovered");
+  });
+
+  it("does not fire at all when the first turn already produced a card", async () => {
+    const { result, calls } = await runRepair({ needsConfirmation: true, preview: "Tasting note", token: "tok-9" }, [
+      toolTurn(),
+      textTurn(CLAIM),
+    ]);
+
+    // The claim in the trailing text is TRUE here, so there is nothing to repair.
+    expect(result.trace.overclaimRepair).toBeUndefined();
+    expect(calls()).toBe(2);
+  });
+});
