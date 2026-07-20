@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { classifyContentType } from "@/lib/knowledge/crawl/fetcher";
 import { isPrivateAddress } from "@/lib/knowledge/crawl/ssrf";
 import { extractLinks, gateLinks, hostIsTrusted } from "@/lib/knowledge/crawl/link-gate";
-import { isSoftNotFound, normalizeCrawlUrl } from "@/lib/knowledge/crawl/crawler";
+import { isSoftNotFound, normalizeCrawlUrl, redirectedIntoDeniedPath } from "@/lib/knowledge/crawl/crawler";
+import { findSourceConfig } from "@/lib/knowledge/config";
 
 describe("normalizeCrawlUrl (dedup link-followed URL variants)", () => {
   it("strips a trailing slash after a file-extension segment (dup of the file)", () => {
@@ -57,6 +58,64 @@ describe("soft-404 detection (.pdf URL answering with HTML)", () => {
 
   it("never flags content classified as other (that path is already skipped)", () => {
     expect(isSoftNotFound("https://example.org/x.pdf", "other")).toBe(false);
+  });
+
+  it("does NOT drop a real PDF that a misconfigured server labels text/html", () => {
+    // The guard only ever sees `contentType`, so its soundness depends on classifyContentType getting a
+    // mislabelled PDF right. A wrong Content-Type on a PDF is common (Apache missing AddType after a
+    // migration, IIS static-handler fallthrough). Before the magic-byte reorder this classified as html
+    // and the guard silently discarded a genuine document.
+    const realPdf = Buffer.concat([Buffer.from("%PDF-1.7\n", "latin1"), Buffer.alloc(64)]);
+    for (const header of ["text/html", "text/html; charset=UTF-8", "text/plain", "application/octet-stream"]) {
+      const kind = classifyContentType(header, realPdf);
+      expect(kind, header).toBe("pdf");
+      expect(isSoftNotFound("https://example.org/report.pdf", kind), header).toBe(false);
+    }
+  });
+
+  it("still treats a genuine HTML landing page at a .pdf URL as a soft 404", () => {
+    const html = Buffer.from("<!doctype html><html><body>Viticulture &amp; Enology</body></html>", "utf8");
+    const kind = classifyContentType("text/html; charset=UTF-8", html);
+    expect(kind).toBe("html");
+    expect(isSoftNotFound("https://example.org/report.pdf", kind)).toBe(true);
+  });
+});
+
+// Plan 084 — path scoping is evaluated once, on the PRE-fetch URL. fetchDocument then follows redirects
+// re-gating only the HOST, so a request that starts inside the allowed scope and 301s elsewhere on the
+// same host was fetched and indexed, filed under the requested URL with no trace of the escape.
+describe("redirect escaping the source's deny list", () => {
+  const cornell = () => findSourceConfig("cornell-grapes")!;
+
+  it("blocks a request that redirects into a denied path", () => {
+    // /grapes/hops (unslashed) passes the pre-fetch check, then WordPress 301s to /grapes/hops/.
+    expect(
+      redirectedIntoDeniedPath(
+        cornell(),
+        "https://blogs.cornell.edu/grapes/hops",
+        "https://blogs.cornell.edu/grapes/hops/",
+      ),
+    ).toBe(true);
+  });
+
+  it("allows a redirect that stays out of the deny list", () => {
+    expect(
+      redirectedIntoDeniedPath(
+        cornell(),
+        "https://blogs.cornell.edu/grapes/ipm",
+        "https://blogs.cornell.edu/grapes/ipm/",
+      ),
+    ).toBe(false);
+  });
+
+  it("is a no-op when there was no redirect", () => {
+    const u = "https://blogs.cornell.edu/grapes/ipm/";
+    expect(redirectedIntoDeniedPath(cornell(), u, u)).toBe(false);
+    expect(redirectedIntoDeniedPath(cornell(), u, "")).toBe(false);
+  });
+
+  it("does not throw on a malformed final URL", () => {
+    expect(redirectedIntoDeniedPath(cornell(), "https://blogs.cornell.edu/grapes/x", "not a url")).toBe(false);
   });
 });
 

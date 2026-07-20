@@ -33,20 +33,72 @@ export function isPlausiblePublishedDate(d: Date, now: Date = new Date()): boole
 }
 
 /**
+ * Did Date.UTC silently roll the components over into a different day?
+ *
+ * A month/day range check alone is not enough: day 31 is "in range" but February 31st rolls forward to
+ * March 2nd and September 31st to October 1st. Small compared to a year-shift, but the callers' comments
+ * claim the rollover is closed, so close it rather than leave a claim that is almost true.
+ */
+function rolledOver(d: Date, monthIdx: number, dayNum: number): boolean {
+  return d.getUTCMonth() !== monthIdx || d.getUTCDate() !== dayNum;
+}
+
+/**
  * Parse the publication date Defuddle lifts out of a page (JSON-LD `datePublished`,
  * `<meta property="article:published_time">`, and similar). The field is typed `string` but is populated
  * from arbitrary publisher markup, so it arrives as anything from a clean ISO timestamp to "n.d." to "".
  *
- * Requires an explicit 4-digit year in the raw string before trusting Date parsing: without that guard a
- * bare "05/06" or a stray number parses to a real Date in the current century and would be published as
- * fact.
+ * STRICT ISO-8601 ONLY (`YYYY-MM-DD`, optionally with a time and zone). Both real sources of this field
+ * are specified as ISO-8601, so strictness costs nothing and closes a real hole: a "contains a 4-digit
+ * year, then trust `new Date()`" check is NOT sufficient, because V8's legacy date parser silently
+ * discards tokens it does not recognize. Measured:
+ *
+ *     new Date("n.d. 2019")  -> 2019-01-01    new Date("Issue 2019") -> 2019-01-01
+ *     new Date("Page 2016")  -> 2016-01-01    new Date("2019")       -> 2019-01-01
+ *
+ * A publisher whose `datePublished` carries a journal volume, an issue label, or literally "n.d." would
+ * have had a January 1st fabricated for it and persisted as fact — then used by the assistant to decide
+ * which of two conflicting spray recommendations is "more recent". A bare year is rejected for the same
+ * reason: Jan 1 is a fabrication, not a publication date.
+ *
+ * A date with no explicit timezone is read as UTC rather than server-local, so the stored instant does
+ * not depend on where the crawler happens to run.
  */
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?\s*(Z|[+-]\d{2}:?\d{2})?$/i;
+
 export function parseHtmlPublishedDate(raw: unknown, now: Date = new Date()): Date | null {
   if (typeof raw !== "string") return null;
-  const s = raw.trim();
-  if (!s) return null;
-  if (!/(?:^|\D)(\d{4})(?:\D|$)/.test(s)) return null;
-  const parsed = new Date(s);
+  const m = ISO_DATE_RE.exec(raw.trim());
+  if (!m) return null;
+
+  const [, year, month, day, hour, minute, second, zone] = m;
+  const monthIdx = Number(month) - 1;
+  const dayNum = Number(day);
+  // Reject out-of-range components rather than letting Date.UTC roll them over ("2019-13-01" would
+  // otherwise become January 2020 — a document shifted a full year).
+  if (monthIdx < 0 || monthIdx > 11) return null;
+  if (dayNum < 1 || dayNum > 31) return null;
+
+  // Validate the calendar day against a plain UTC construction FIRST. This must not be done on the
+  // zone-resolved value: "2024-10-15T23:00:00-05:00" is legitimately 2024-10-16 in UTC, and comparing
+  // that back to day 15 would reject a perfectly good date.
+  const asUtc = new Date(Date.UTC(Number(year), monthIdx, dayNum));
+  if (rolledOver(asUtc, monthIdx, dayNum)) return null;
+
+  // With an explicit zone the string is unambiguous, so let Date resolve the offset.
+  const parsed = zone
+    ? new Date(raw.trim())
+    : new Date(
+        Date.UTC(
+          Number(year),
+          monthIdx,
+          dayNum,
+          hour ? Number(hour) : 0,
+          minute ? Number(minute) : 0,
+          second ? Number(second) : 0,
+        ),
+      );
+
   if (!isPlausiblePublishedDate(parsed, now)) return null;
   return parsed;
 }
@@ -71,6 +123,8 @@ export function parsePdfDate(raw: unknown, now: Date = new Date()): Date | null 
   // would become January of the next year, quietly shifting the document a year forward).
   if (monthIdx < 0 || monthIdx > 11) return null;
   if (dayNum < 1 || dayNum > 31) return null;
+  // Day 31 is "in range" but rolls forward in a short month (Feb 31 -> Mar 2, Sep 31 -> Oct 1).
+  if (rolledOver(new Date(Date.UTC(Number(year), monthIdx, dayNum)), monthIdx, dayNum)) return null;
 
   let ms = Date.UTC(
     Number(year),
@@ -101,7 +155,11 @@ export function parsePdfDate(raw: unknown, now: Date = new Date()): Date | null 
  */
 export function cleanPdfTitle(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
-  let t = raw.trim();
+  // Cap FIRST, matching the first-line heuristic's own 200-char limit (pdf.ts). The title is prepended
+  // as a breadcrumb to EVERY chunk of the document, so an unbounded /Title from a malformed or hostile
+  // PDF would bloat the whole document and its embedding cost. Slicing before the regex work also keeps
+  // the string operations below bounded regardless of input size.
+  let t = raw.slice(0, 200).trim();
   // "Microsoft Word - foo.docx" / "Microsoft PowerPoint - foo.pptx" — the real title follows the dash.
   t = t.replace(/^Microsoft\s+(?:Word|PowerPoint|Excel)\s*-\s*/i, "").trim();
   // Drop a trailing authoring-tool file extension left over from the above.

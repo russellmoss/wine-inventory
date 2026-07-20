@@ -52,6 +52,8 @@ export interface CrawlSummary {
   skippedType: number;
   /** Plan 084 — `.pdf` URLs that answered with HTML (dead link behind a redirect). See isSoftNotFound. */
   skippedSoftNotFound: number;
+  /** Plan 084 — fetches that redirected OUT of the source's allowed scope into a denyPrefix. */
+  skippedRedirectDenied: number;
   errors: number;
   candidates: number;
 }
@@ -90,15 +92,59 @@ export function isSoftNotFound(requestUrl: string, contentType: DetectedType): b
   }
 }
 
-function pathAllowed(cfg: KnowledgeSourceConfig, url: string): boolean {
+/**
+ * Is this URL inside the source's configured path scope? Deny wins over allow, and an empty
+ * allowPrefixes fails closed (`.some()` on [] is false) — which is how a curated source declares that
+ * no path-driven crawl may enqueue anything for it.
+ *
+ * Exported because it is the ONLY thing bounding a source whose host is broader than the source itself
+ * (blogs.cornell.edu is Cornell's entire university-wide multisite). Tests assert real crawler behavior
+ * against it rather than re-implementing the rule and asserting a copy.
+ */
+export function pathAllowed(cfg: KnowledgeSourceConfig, url: string): boolean {
   let path: string;
   try {
     path = new URL(url).pathname;
   } catch {
     return false;
   }
-  if (cfg.denyPrefixes.some((p) => path.startsWith(p))) return false;
+  if (isDenied(cfg, path)) return false;
   return cfg.allowPrefixes.some((p) => path.startsWith(p));
+}
+
+/**
+ * Deny-prefix match, tolerant of the missing trailing slash.
+ *
+ * Every deny entry in the registry is written directory-style (`/news/`, `/grapes/hops/`), but WordPress
+ * and most CMSs also serve the UNSLASHED form and 301 to the slashed one. A plain `startsWith` therefore
+ * lets `/grapes/hops` straight through a list that denies `/grapes/hops/` — the exact content
+ * verify-knowledge-base.ts asserts must never be retrievable. Treat `/x/` as also denying exactly `/x`.
+ */
+function isDenied(cfg: KnowledgeSourceConfig, path: string): boolean {
+  return cfg.denyPrefixes.some((p) => path.startsWith(p) || (p.endsWith("/") && path === p.slice(0, -1)));
+}
+
+/**
+ * Re-check the URL we ACTUALLY landed on against the source's deny list.
+ *
+ * fetchDocument follows redirects and re-gates the HOST on every hop, but path scoping is evaluated once,
+ * on the pre-fetch URL. So a request that starts inside the allowed scope and 301s elsewhere on the same
+ * host is fetched and indexed, and persistDocument files it under the REQUESTED url — leaving no trace of
+ * the escape. This is the same class of bug the curated spec documents for robots (the extension.unh.edu
+ * exclusion), applied to deny prefixes.
+ *
+ * Deliberately deny-only, NOT a full pathAllowed re-check: an explicit deny means "never this content"
+ * and honouring it post-redirect cannot break a source that was not already violating its own rules,
+ * whereas re-applying allowPrefixes would drop legitimate cross-prefix redirects that existing sources
+ * (e.g. Wine Australia's /getmedia PDFs) may rely on.
+ */
+export function redirectedIntoDeniedPath(cfg: KnowledgeSourceConfig, requestedUrl: string, finalUrl: string): boolean {
+  if (!finalUrl || finalUrl === requestedUrl) return false;
+  try {
+    return isDenied(cfg, new URL(finalUrl).pathname);
+  } catch {
+    return false;
+  }
 }
 
 export async function crawlSource(
@@ -110,7 +156,7 @@ export async function crawlSource(
   const maxDocs = opts.maxDocs ?? 50;
   const summary: CrawlSummary = {
     source: sourceKey, discovered: 0, fetched: 0, documents: 0,
-    notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, errors: 0, candidates: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, skippedRedirectDenied: 0, errors: 0, candidates: 0,
   };
   const throttle = new HostThrottle();
 
@@ -206,6 +252,7 @@ export async function crawlSource(
     }
     if (res.contentType === "other") { summary.skippedType++; continue; }
     if (isSoftNotFound(item.url, res.contentType)) { summary.skippedSoftNotFound++; continue; }
+    if (redirectedIntoDeniedPath(cfg, item.url, res.finalUrl)) { summary.skippedRedirectDenied++; continue; }
 
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(sourceId, cfg, item.url, item.lastmod, res, contentHash);
@@ -273,7 +320,7 @@ export async function crawlWithFollowing(
     if (!cfg) throw new Error(`unknown source: ${key}`);
     const row = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key } }));
     if (!row) throw new Error(`source ${key} not seeded — run: npm run seed:knowledge-sources`);
-    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, errors: 0, candidates: 0 };
+    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, skippedRedirectDenied: 0, errors: 0, candidates: 0 };
     const entry = { sourceId: row.id, sourceKey: key, cfg };
     domainToSource.set(cfg.homeDomain.toLowerCase(), entry);
     domainToSource.set(`www.${cfg.homeDomain}`.toLowerCase(), entry);
@@ -287,16 +334,8 @@ export async function crawlWithFollowing(
       return null;
     }
   };
-  const pathAllowedFor = (cfg: KnowledgeSourceConfig, url: string) => {
-    let p: string;
-    try {
-      p = new URL(url).pathname;
-    } catch {
-      return false;
-    }
-    if (cfg.denyPrefixes.some((x) => p.startsWith(x))) return false;
-    return cfg.allowPrefixes.some((x) => p.startsWith(x));
-  };
+  // Same rule as crawlSource — use the one implementation so the two paths cannot drift apart.
+  const pathAllowedFor = pathAllowed;
 
   const visited = new Set<string>();
   const queued = new Set<string>();
@@ -377,6 +416,7 @@ export async function crawlWithFollowing(
     }
     if (res.contentType === "other") { s.skippedType++; continue; }
     if (isSoftNotFound(url, res.contentType)) { s.skippedSoftNotFound++; continue; }
+    if (redirectedIntoDeniedPath(tgt.cfg, url, res.finalUrl)) { s.skippedRedirectDenied++; continue; }
 
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(tgt.sourceId, tgt.cfg, url, undefined, res, contentHash);
@@ -459,7 +499,7 @@ export async function crawlUrls(
   if (!cfg) throw new Error(`unknown source: ${sourceKey}`);
   const summary: CrawlSummary = {
     source: sourceKey, discovered: urls.length, fetched: 0, documents: 0,
-    notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, errors: 0, candidates: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, skippedRedirectDenied: 0, errors: 0, candidates: 0,
   };
   const throttle = new HostThrottle();
   const sourceRow = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key: sourceKey } }));
@@ -517,6 +557,7 @@ export async function crawlUrls(
     }
     if (res.contentType === "other") { summary.skippedType++; continue; }
     if (isSoftNotFound(url, res.contentType)) { summary.skippedSoftNotFound++; continue; }
+    if (redirectedIntoDeniedPath(cfg, url, res.finalUrl)) { summary.skippedRedirectDenied++; continue; }
 
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(sourceId, cfg, url, undefined, res, contentHash);

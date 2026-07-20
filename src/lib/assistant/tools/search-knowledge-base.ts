@@ -11,6 +11,41 @@ export function yearsSince(published: Date, now: Date = new Date()): number {
 }
 
 /**
+ * Shape one retrieved passage for the model. Pure + exported so the undated branch is testable: the tool
+ * handler itself needs a live DB and embedding call, and if `ageYears` ever regressed from "unknown" to
+ * 0 for an undated passage, every undated document would be presented as brand new — which is exactly
+ * the failure this feature exists to prevent, and it would be silent.
+ */
+export function toPassageResult(
+  p: { publisher: string; tier: number; sectionPath: string; publishedAt: Date | null; documentId: string; text: string },
+  n: number,
+  now: Date = new Date(),
+): {
+  n: number;
+  publisher: string;
+  tier: number;
+  section: string;
+  date: string;
+  ageYears: number | "unknown";
+  citation: string;
+  text: string;
+} {
+  return {
+    n,
+    publisher: p.publisher,
+    tier: p.tier,
+    section: p.sectionPath,
+    // "unknown" (never null) so the model states the date is unknown rather than inventing one
+    date: p.publishedAt ? p.publishedAt.toISOString().slice(0, 10) : "unknown",
+    // Precomputed so the model never has to do date arithmetic (it is bad at it, and a wrong age on a
+    // pest-management passage is a decision someone acts on in a vineyard).
+    ageYears: p.publishedAt ? yearsSince(p.publishedAt, now) : "unknown",
+    citation: `/kb/source/${p.documentId}`,
+    text: p.text,
+  };
+}
+
+/**
  * Plan 079 — the assistant's winemaking brain. Retrieval-only: hybrid-searches the tenant's enabled
  * knowledge sources (AWRI, Wine Australia, …) and returns cited passages for the model to reason over.
  * It DEFERS all math to the existing calculators and quotes numbers verbatim (council numeric-safety).
@@ -97,20 +132,7 @@ export const searchKnowledgeBaseTool: AssistantTool = {
       guidance:
         "Answer ONLY from these passages, cite each fact with its `citation` markdown link, quote any " +
         "numbers/doses/limits verbatim, and defer any calculation to calc_so2/calc_sugar.",
-      results: passages.map((p, i) => ({
-        n: i + 1,
-        publisher: p.publisher,
-        tier: p.tier,
-        section: p.sectionPath,
-        // "unknown" (never null) so the model states the date is unknown rather than inventing one
-        date: p.publishedAt ? p.publishedAt.toISOString().slice(0, 10) : "unknown",
-        // Plan 084 — age in whole years, precomputed so the model never has to do date arithmetic (it is
-        // bad at it, and a wrong age on a pest-management passage is a field decision). "unknown" when
-        // undated, matching `date`.
-        ageYears: p.publishedAt ? yearsSince(p.publishedAt) : "unknown",
-        citation: `/kb/source/${p.documentId}`,
-        text: p.text,
-      })),
+      results: passages.map((p, i) => toPassageResult(p, i + 1)),
     };
   },
 };

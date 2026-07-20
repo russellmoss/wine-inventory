@@ -6,6 +6,7 @@ import {
   findSourceConfig,
 } from "@/lib/knowledge/config";
 import { CURATED_SPECS, findCuratedSpec } from "@/lib/knowledge/curated-specs";
+import { pathAllowed as crawlerPathAllowed } from "@/lib/knowledge/crawl/crawler";
 import { expandQueryTerms } from "@/lib/knowledge/synonyms";
 
 describe("knowledge source config", () => {
@@ -46,11 +47,10 @@ describe("knowledge source config", () => {
   describe("cornell-grapes multisite scoping", () => {
     const cornell = () => findSourceConfig("cornell-grapes")!;
 
-    const pathAllowed = (path: string) => {
-      const cfg = cornell();
-      if (cfg.denyPrefixes.some((p) => path.startsWith(p))) return false;
-      return cfg.allowPrefixes.some((p) => path.startsWith(p));
-    };
+    // Assert against the REAL crawler predicate, not a re-implementation of it. A test-local copy of the
+    // rule would keep passing if the crawler's own rule drifted, which is the opposite of what a guard
+    // on "does the crawl stay inside /grapes/" is for.
+    const pathAllowed = (path: string) => crawlerPathAllowed(cornell(), `https://blogs.cornell.edu${path}`);
 
     it("never allows a bare root prefix", () => {
       expect(cornell().allowPrefixes).not.toContain("/");
@@ -70,11 +70,22 @@ describe("knowledge source config", () => {
       }
     });
 
-    it("refuses Cornell's hops and brewing programs", () => {
+    it("refuses Cornell's hops and brewing programs, slashed OR unslashed", () => {
       // verify-knowledge-base.ts asserts a beer/IPA question surfaces nothing on-topic; wsu carries an
       // equivalent deny for its brewing certificate program.
-      expect(pathAllowed("/grapes/hops/")).toBe(false);
-      expect(pathAllowed("/grapes/brewing/")).toBe(false);
+      //
+      // The unslashed forms matter: deny entries are written directory-style, but WordPress serves the
+      // unslashed URL and 301s to the slashed one. A plain startsWith let /grapes/hops straight through.
+      for (const p of ["/grapes/hops/", "/grapes/hops", "/grapes/brewing/", "/grapes/brewing"]) {
+        expect(pathAllowed(p), p).toBe(false);
+      }
+    });
+
+    it("refuses the unslashed form of every one of its deny prefixes", () => {
+      for (const deny of cornell().denyPrefixes) {
+        const unslashed = deny.endsWith("/") ? deny.slice(0, -1) : deny;
+        expect(pathAllowed(unslashed), unslashed).toBe(false);
+      }
     });
 
     it("refuses WordPress cruft and thin taxonomy archives", () => {
@@ -118,6 +129,36 @@ describe("knowledge source config", () => {
 // Plan 084 U5/U8 — generic registry invariants. Each of these encodes a failure mode that is silent:
 // nothing crashes, the corpus is just quietly wrong or quietly short.
 describe("knowledge registry integrity", () => {
+  // The original version of this guard checked only `cornell-grapes` — and the OTHER source added in the
+  // same commit, sitting on the same host, carried a bare "/". The guard was written for the wrong one.
+  // Generalized so a shared host can never be paired with a wide-open prefix again.
+  it("no source on a shared/multisite host carries a bare root allow prefix", () => {
+    const SHARED_HOSTS = ["blogs.cornell.edu", "cornell.edu"];
+    for (const s of KNOWLEDGE_SOURCES) {
+      const hosts = [s.homeDomain, ...s.seedRoots.map((r) => new URL(r).hostname)];
+      const onShared = hosts.some((h) => SHARED_HOSTS.some((sh) => h === sh || h.endsWith(`.${sh}`)));
+      if (!onShared) continue;
+      expect(s.allowPrefixes, `${s.key} is on a shared host and must not allow "/"`).not.toContain("/");
+    }
+  });
+
+  it("no curated source is path-crawlable across a whole host", () => {
+    // autoCrawl:false only says "the monthly loop skips me". An operator can still run
+    // `crawl:source <key>` or put the key in KB_SOURCES, and both read allowPrefixes. A bare "/" there
+    // turns that into a whole-site crawl under this source's byline. Narrow prefixes are fine — the
+    // hazard is specifically the unbounded one.
+    for (const s of KNOWLEDGE_SOURCES) {
+      if (s.autoCrawl !== false) continue;
+      expect(s.allowPrefixes, `curated source ${s.key} must not allow "/"`).not.toContain("/");
+    }
+  });
+
+  it("viticulture-extension-refs declares NO crawlable paths at all", () => {
+    // Its six trusted hosts are whole extension sites covering tree fruit, berries and field crops, and
+    // its documents are reachable only by explicit URL. Empty fails closed.
+    expect(findSourceConfig("viticulture-extension-refs")!.allowPrefixes).toEqual([]);
+  });
+
   it("source keys are unique", () => {
     const keys = KNOWLEDGE_SOURCES.map((s) => s.key);
     expect(new Set(keys).size).toBe(keys.length);

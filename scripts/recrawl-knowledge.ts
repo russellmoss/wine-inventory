@@ -120,6 +120,9 @@ async function main() {
     // Reported rather than silently dropped: a rising count is how we find out a publisher reorganized
     // their site and a chunk of the corpus is quietly rotting.
     softNotFound: Object.values(crawl.summaries).reduce((n, s) => n + s.skippedSoftNotFound, 0),
+    // Fetches that started inside the allowed scope and redirected into a denyPrefix. A nonzero count
+    // means a publisher is redirecting content we deliberately excluded into our path — worth reading.
+    redirectDenied: Object.values(crawl.summaries).reduce((n, s) => n + s.skippedRedirectDenied, 0),
     finishedAt: new Date().toISOString(),
   };
   console.log("\n::KB_RECRAWL_SUMMARY::" + JSON.stringify(summary));

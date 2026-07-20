@@ -93,8 +93,18 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     //
     // They are static extension publications from 2004-2017, so being outside the monthly loop costs
     // nothing; the monthly cornell-grapes crawl still re-reads the linking pages and surfaces new ones.
-    seedRoots: ["https://blogs.cornell.edu/grapes/ipm/"],
-    allowPrefixes: ["/"], // documentary only — crawlUrls never reads these (curated path)
+    // Points at this source's OWN host, not at the Cornell page these were collected from. seedRoots[0]
+    // determines the origin crawlSource probes for a sitemap, so naming blogs.cornell.edu here would aim
+    // a sitemap probe at Cornell's university-wide multisite root on behalf of a source that is not
+    // Cornell. (It cannot be empty: crawler.ts dereferences seedRoots[0] unconditionally.)
+    seedRoots: ["https://nyshs.org/"],
+    // EMPTY, not ["/"], and this matters. crawlUrls ignores allowPrefixes, but crawlSource and
+    // crawlWithFollowing both read them (crawler.ts pathAllowed / pathAllowedFor), and this source's
+    // six trusted hosts include whole extension sites covering tree fruit, berries and field crops. A
+    // bare "/" here would make an operator-invoked `KB_SOURCES=…,viticulture-extension-refs
+    // crawl:corpus` crawl all of them under a tier-1 byline. Empty fails closed: pathAllowed's
+    // `.some()` returns false, so no path-driven crawl can ever enqueue anything for this source.
+    allowPrefixes: [],
     denyPrefixes: [],
     autoCrawl: false,
     crawlCadence: "manual",

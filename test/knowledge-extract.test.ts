@@ -80,6 +80,65 @@ describe("published-date parsing (fail-closed)", () => {
       expect(parseHtmlPublishedDate("n.d.", NOW)).toBeNull();
       expect(parseHtmlPublishedDate("Spring", NOW)).toBeNull();
     });
+
+    it("refuses prose that merely CONTAINS a year, which V8 would happily coerce", () => {
+      // These are the real hole: V8's legacy date parser discards tokens it does not recognize, so
+      // `new Date("n.d. 2019")` returns 2019-01-01. A "contains a 4-digit year" guard passes all of
+      // these and would persist a fabricated January 1st as fact.
+      // Prove the hazard is real before asserting we defend against it: V8 turns these into 1 January.
+      for (const s of ["n.d. 2019", "Issue 2019", "Page 2016"]) {
+        const coerced = new Date(s);
+        expect(Number.isNaN(coerced.getTime()), `${s} should be a live hazard`).toBe(false);
+        expect(coerced.getUTCFullYear()).toBeGreaterThan(2000);
+      }
+      for (const s of ["n.d. 2019", "Issue 2019", "Page 2016", "Volume 12, 2011", "Winter 2014"]) {
+        expect(parseHtmlPublishedDate(s, NOW), s).toBeNull();
+      }
+    });
+
+    it("refuses a bare year — Jan 1 would be a fabrication, not a publication date", () => {
+      expect(parseHtmlPublishedDate("2019", NOW)).toBeNull();
+      expect(parseHtmlPublishedDate("2019-05", NOW)).toBeNull();
+    });
+
+    it("reads a zone-less timestamp as UTC, not server-local", () => {
+      // Otherwise the stored instant depends on where the crawler runs — the same page indexed in
+      // New York and in UTC would disagree, and near midnight they would disagree on the DAY.
+      expect(parseHtmlPublishedDate("2022-03-08", NOW)?.toISOString()).toBe("2022-03-08T00:00:00.000Z");
+      expect(parseHtmlPublishedDate("2024-10-15T13:27:36", NOW)?.toISOString()).toBe(
+        "2024-10-15T13:27:36.000Z",
+      );
+    });
+
+    it("honours an explicit timezone offset", () => {
+      expect(parseHtmlPublishedDate("2024-10-15T13:27:36Z", NOW)?.toISOString()).toBe(
+        "2024-10-15T13:27:36.000Z",
+      );
+      expect(parseHtmlPublishedDate("2024-10-15T13:27:36-05:00", NOW)?.toISOString()).toBe(
+        "2024-10-15T18:27:36.000Z",
+      );
+    });
+
+    it("rejects an out-of-range month rather than rolling it into the next year", () => {
+      expect(parseHtmlPublishedDate("2019-13-01", NOW)).toBeNull();
+      expect(parseHtmlPublishedDate("2019-01-32", NOW)).toBeNull();
+    });
+
+    it("rejects a day that does not exist in that month", () => {
+      // In-range (<=31) but rolls forward: Feb 31 -> Mar 2, Sep 31 -> Oct 1.
+      expect(parseHtmlPublishedDate("2019-02-31", NOW)).toBeNull();
+      expect(parseHtmlPublishedDate("2018-09-31", NOW)).toBeNull();
+      expect(parseHtmlPublishedDate("2020-02-29", NOW)?.toISOString()).toBe("2020-02-29T00:00:00.000Z"); // leap year is real
+      expect(parseHtmlPublishedDate("2019-02-29", NOW)).toBeNull(); // non-leap is not
+    });
+
+    it("does not mistake a legitimate timezone day-shift for a rollover", () => {
+      // 23:00 at -05:00 is the NEXT day in UTC. Validating the day against the zone-resolved value
+      // would reject this.
+      expect(parseHtmlPublishedDate("2024-10-15T23:00:00-05:00", NOW)?.toISOString()).toBe(
+        "2024-10-16T04:00:00.000Z",
+      );
+    });
     it("refuses a string with no 4-digit year, even when Date would happily parse it", () => {
       // `new Date("05/06")` resolves to a real date in the current century. Publishing that as a
       // publication date would be a fabrication, so the year guard must reject it first.
@@ -121,6 +180,15 @@ describe("published-date parsing (fail-closed)", () => {
     it("rejects an out-of-range day", () => {
       expect(parsePdfDate("D:20180532000000Z", NOW)).toBeNull();
     });
+
+    it("rejects a day that does not exist in that month", () => {
+      expect(parsePdfDate("D:20200231120000Z", NOW)).toBeNull(); // Feb 31 -> would roll to Mar 2
+      expect(parsePdfDate("D:20180931000000Z", NOW)).toBeNull(); // Sep 31 -> would roll to Oct 1
+    });
+
+    it("parses an offset with no minutes group", () => {
+      expect(parsePdfDate("D:20180507101503-04", NOW)?.toISOString()).toBe("2018-05-07T14:15:03.000Z");
+    });
     it("rejects a pre-1980 and a future PDF date", () => {
       expect(parsePdfDate("D:19700101000000Z", NOW)).toBeNull();
       expect(parsePdfDate("D:20300101000000Z", NOW)).toBeNull();
@@ -145,6 +213,16 @@ describe("published-date parsing (fail-closed)", () => {
       expect(cleanPdfTitle("12345")).toBeNull();
       expect(cleanPdfTitle("")).toBeNull();
       expect(cleanPdfTitle(null)).toBeNull();
+    });
+
+    it("caps an unbounded title at 200 chars, matching the first-line heuristic", () => {
+      // The title is prepended as a breadcrumb to EVERY chunk, so an unbounded /Title from a malformed
+      // or hostile PDF would bloat the whole document and its embedding cost. firstNonEmptyLine already
+      // caps at 200; the metadata path must not be the way around that.
+      const huge = "Grape ".repeat(5000);
+      const cleaned = cleanPdfTitle(huge);
+      expect(cleaned).not.toBeNull();
+      expect(cleaned!.length).toBeLessThanOrEqual(200);
     });
   });
 });

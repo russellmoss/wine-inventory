@@ -26,9 +26,16 @@ const USER_AGENT = "CellarhandKnowledgeBot/1.0 (+winery ERP knowledge base; resp
 export function classifyContentType(rawContentType: string, head: Buffer): DetectedType {
   const ct = rawContentType.toLowerCase();
   if (ct.includes("application/pdf")) return "pdf";
-  if (ct.includes("text/html") || ct.includes("application/xhtml")) return "html";
-  // magic-byte fallback (header missing or wrong)
+  // Plan 084 — the %PDF- signature beats a text/html header, and must be checked BEFORE it.
+  //
+  // A five-byte magic number is unambiguous; a Content-Type header is a server config that is routinely
+  // wrong (Apache missing an AddType after a migration, IIS static-handler fallthrough, CMS file-delivery
+  // endpoints). Previously a genuine PDF served as text/html classified as html — and the soft-404 guard
+  // then silently DROPPED it, because "a .pdf URL that returned HTML" is exactly its trigger. Note the
+  // shape of the old bug: text/plain and application/octet-stream both recovered via this fallback; the
+  // one header that caused data loss was the one that short-circuited before reaching it.
   if (head.subarray(0, 5).toString("latin1") === "%PDF-") return "pdf";
+  if (ct.includes("text/html") || ct.includes("application/xhtml")) return "html";
   if (/^\s*(<!doctype html|<html)/i.test(head.subarray(0, 256).toString("utf8"))) return "html";
   return "other";
 }
