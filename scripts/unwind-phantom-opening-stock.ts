@@ -1,7 +1,8 @@
 import { runAsSystem } from "@/lib/tenant/system";
 import { runAsTenant } from "@/lib/tenant/context";
 import { prisma } from "@/lib/prisma";
-import { adjustConsumableCore } from "@/lib/cellar/material-stock-core";
+import { runInTenantTx } from "@/lib/tenant/tx";
+import { writeAudit } from "@/lib/audit";
 import { deriveOpeningLot } from "@/lib/cost/intake-cost";
 import { toExtraUnits } from "@/lib/units/custom-units";
 import { coerceStockUnit } from "@/lib/cellar/materials-shared";
@@ -118,6 +119,50 @@ async function findCandidates(tenantId: string): Promise<Candidate[]> {
   return out;
 }
 
+/**
+ * Reverse THE SPECIFIC phantom lot.
+ *
+ * The first version of this used adjustConsumableCore with a negative delta, which does a FIFO draw --
+ * it removes the right QUANTITY but from whichever lot is oldest, not necessarily the phantom. That is
+ * fine when the phantom happens to be oldest and WRONG otherwise: on the live run, B12's phantom was
+ * received after a real 1,000-unit lot, so the reversal ate 100 units of genuinely-received stock at
+ * $0.64 and left the phantom sitting there at $0.44. On-hand was right; the cost basis was not (COST-1).
+ *
+ * So the reversal targets the lot by id. The guarded updateMany mirrors the house decrement (never goes
+ * negative), and the MaterialMovement carries `supplyLotId` so the correction names exactly which lot it
+ * unwound. The row itself is never deleted and qtyReceived is never rewritten (LEDGER-6/8/10).
+ */
+async function reverseSpecificLot(c: Candidate) {
+  await runInTenantTx(async (tx) => {
+    const res = await tx.supplyLot.updateMany({
+      where: { id: c.lotId, qtyRemaining: { gte: c.qty } },
+      data: { qtyRemaining: { decrement: c.qty } },
+    });
+    if (res.count === 0) throw new Error(`Lot ${c.lotId} changed under us (qtyRemaining < ${c.qty}); re-run the dry run.`);
+
+    await tx.materialMovement.create({
+      data: {
+        materialId: c.materialId,
+        locationId: c.locationId,
+        kind: "ADJUST",
+        deltaQty: -c.qty,
+        supplyLotId: c.lotId,
+        reason: "Correction: opening stock inferred from package size was never physically received (plan 080 U14)",
+        createdById: ACTOR.actorUserId,
+        createdByEmail: ACTOR.actorEmail,
+      },
+    });
+
+    await writeAudit(tx, {
+      ...ACTOR,
+      action: "UPDATE",
+      entityType: "SupplyLot",
+      entityId: c.lotId,
+      summary: `Reversed ${c.qty} ${c.stockUnit} of phantom opening stock on "${c.materialName}" (inferred from pack size, never received)`,
+    });
+  });
+}
+
 async function processTenant(tenantId: string) {
   return runAsTenant(tenantId, async () => {
     const candidates = await findCandidates(tenantId);
@@ -135,12 +180,7 @@ async function processTenant(tenantId: string) {
 
     let unwound = 0;
     for (const c of candidates) {
-      await adjustConsumableCore(ACTOR, {
-        materialId: c.materialId,
-        locationId: c.locationId,
-        delta: -c.qty,
-        reason: "Correction: opening stock inferred from package size was never physically received (plan 080 U14)",
-      });
+      await reverseSpecificLot(c);
       unwound++;
     }
     return { tenantId, found: candidates.length, unwound };
