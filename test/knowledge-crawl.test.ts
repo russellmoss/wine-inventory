@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { findSourceConfig } from "@/lib/knowledge/config";
 import { classifyContentType } from "@/lib/knowledge/crawl/fetcher";
 import { isPrivateAddress } from "@/lib/knowledge/crawl/ssrf";
@@ -108,5 +110,39 @@ describe("redirect path re-gating (plan 084)", () => {
 
   it("rejects a redirect onto a denied year index", () => {
     expect(pathAllowedFor("vt-enology-notes", "https://enology.fst.vt.edu/EN/2013.html")).toBe(false);
+  });
+});
+
+// Plan 085 — the challenge guard's ORDERING is the whole point, and it is not reachable by a unit
+// test: crawlSource / crawlWithFollowing / crawlUrls all need Prisma + runAsSystem + live network,
+// which is why none of them has ever had coverage. So this pins the ordering at the source level.
+//
+// It is a blunt instrument on purpose. The failure it prevents is silent and expensive: move the
+// `res.challenge` check BELOW persistDocument and every WAF interstitial gets written to the GLOBAL
+// corpus with a unique content hash, defeating the dedup and re-embedding forever. Nothing else in
+// CI would notice. A refactor that reorders these has to delete an assertion, not just pass tests.
+describe("challenge guard ordering (plan 085, source-level contract)", () => {
+  const src = readFileSync(
+    fileURLToPath(new URL("../src/lib/knowledge/crawl/crawler.ts", import.meta.url)),
+    "utf8",
+  );
+
+  it("checks res.challenge in all three crawl loops", () => {
+    expect(src.match(/if \(res\.challenge\)/g) ?? []).toHaveLength(3);
+  });
+
+  it("skips the challenge BEFORE persisting, in every loop", () => {
+    // Walk each persistDocument call and require a challenge guard between it and the previous one.
+    const guards = [...src.matchAll(/if \(res\.challenge\)/g)].map((m) => m.index!);
+    const persists = [...src.matchAll(/await persistDocument\(|= await persistDocument\(/g)].map((m) => m.index!);
+    expect(persists.length).toBeGreaterThanOrEqual(3);
+    for (const p of persists) {
+      const guardBefore = guards.filter((g) => g < p).length;
+      expect(guardBefore, `persistDocument at offset ${p} is not preceded by a challenge guard`).toBeGreaterThan(0);
+    }
+  });
+
+  it("increments a per-source counter rather than swallowing the skip", () => {
+    expect(src.match(/skippedChallenge\+\+/g) ?? []).toHaveLength(3);
   });
 });

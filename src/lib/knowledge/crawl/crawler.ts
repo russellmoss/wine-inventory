@@ -52,6 +52,12 @@ export interface CrawlSummary {
   skippedType: number;
   /** Plan 084 — fetches whose FINAL url (post-redirect) fell outside the source's path rules. */
   skippedRedirect: number;
+  /**
+   * Plan 085 — fetches that returned a WAF/bot-wall interstitial instead of the document. Counted
+   * per source rather than globally because the number that matters is "did THIS source go dark",
+   * which a total cannot answer. Surfaced in ::KB_RECRAWL_SUMMARY:: and gates the tombstone pass.
+   */
+  skippedChallenge: number;
   errors: number;
   candidates: number;
 }
@@ -87,7 +93,7 @@ export async function crawlSource(
   const maxDocs = opts.maxDocs ?? 50;
   const summary: CrawlSummary = {
     source: sourceKey, discovered: 0, fetched: 0, documents: 0,
-    notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, errors: 0, candidates: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, skippedChallenge: 0, errors: 0, candidates: 0,
   };
   const throttle = new HostThrottle();
 
@@ -181,6 +187,15 @@ export async function crawlSource(
       }
       continue;
     }
+    // Plan 085 — a WAF/bot-wall interstitial arrives as HTTP 200 + text/html, so nothing above
+    // refused it and classifyContentType calls it "html". Skip BEFORE persistDocument: each
+    // challenge carries a unique incident id, so persisting one would defeat the content-hash
+    // dedup and re-embed the same garbage every month, forever.
+    if (res.challenge) {
+      summary.skippedChallenge++;
+      console.log(`  ! challenge page (${res.challenge.vendor}): ${item.url}`);
+      continue;
+    }
     if (res.contentType === "other") { summary.skippedType++; continue; }
 
     // Plan 084 — re-gate the FINAL url. fetchDocument follows up to 5 redirects re-checking only
@@ -261,7 +276,7 @@ export async function crawlWithFollowing(
     if (!cfg) throw new Error(`unknown source: ${key}`);
     const row = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key } }));
     if (!row) throw new Error(`source ${key} not seeded — run: npm run seed:knowledge-sources`);
-    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, errors: 0, candidates: 0 };
+    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, skippedChallenge: 0, errors: 0, candidates: 0 };
     const entry = { sourceId: row.id, sourceKey: key, cfg };
     domainToSource.set(cfg.homeDomain.toLowerCase(), entry);
     domainToSource.set(`www.${cfg.homeDomain}`.toLowerCase(), entry);
@@ -363,6 +378,15 @@ export async function crawlWithFollowing(
       // still follow links from a not-modified HTML page? we don't have the body; rely on the sitemap seed.
       continue;
     }
+    // Plan 085 — a WAF/bot-wall interstitial arrives as HTTP 200 + text/html, so nothing above
+    // refused it and classifyContentType calls it "html". Skip BEFORE persistDocument: each
+    // challenge carries a unique incident id, so persisting one would defeat the content-hash
+    // dedup and re-embed the same garbage every month, forever.
+    if (res.challenge) {
+      s.skippedChallenge++;
+      console.log(`  ! challenge page (${res.challenge.vendor}): ${url}`);
+      continue;
+    }
     if (res.contentType === "other") { s.skippedType++; continue; }
 
     // Plan 084 — re-gate the FINAL url. fetchDocument follows up to 5 redirects re-checking only
@@ -458,7 +482,7 @@ export async function crawlUrls(
   if (!cfg) throw new Error(`unknown source: ${sourceKey}`);
   const summary: CrawlSummary = {
     source: sourceKey, discovered: urls.length, fetched: 0, documents: 0,
-    notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, errors: 0, candidates: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, skippedChallenge: 0, errors: 0, candidates: 0,
   };
   const throttle = new HostThrottle();
   const sourceRow = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key: sourceKey } }));
@@ -512,6 +536,15 @@ export async function crawlUrls(
           db.knowledgeDocument.update({ where: { id: existing.id }, data: { lastVerifiedAt: new Date(), lastSeenAt: new Date() } }),
         );
       }
+      continue;
+    }
+    // Plan 085 — a WAF/bot-wall interstitial arrives as HTTP 200 + text/html, so nothing above
+    // refused it and classifyContentType calls it "html". Skip BEFORE persistDocument: each
+    // challenge carries a unique incident id, so persisting one would defeat the content-hash
+    // dedup and re-embed the same garbage every month, forever.
+    if (res.challenge) {
+      summary.skippedChallenge++;
+      console.log(`  ! challenge page (${res.challenge.vendor}): ${url}`);
       continue;
     }
     if (res.contentType === "other") { summary.skippedType++; continue; }
