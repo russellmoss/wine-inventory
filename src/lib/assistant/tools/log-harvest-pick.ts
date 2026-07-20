@@ -35,6 +35,7 @@ function todayISO(): string {
 export const logHarvestPickTool: AssistantTool = {
   name: "log_harvest_pick",
   description:
+    "ALWAYS call this when the user reports a fruit weigh-in — even if you are unsure WHICH block. Do not list candidates or ask which one in prose first: an ambiguous query returns a CLICKABLE PICKER that pins the exact row by id, and a prose list gives the user nothing to act on — records with identical labels cannot be told apart by name at all. " +
     "Log a harvest pick / fruit weigh-in for a vineyard block: the fruit weight plus optional Brix, pH, and TA. Use when the user weighs in fruit off a block ('weigh in 1200 kg from Block 1, 24 brix, pH 3.4, TA 6.2'). This does NOT save immediately — it returns a preview the user must confirm in the UI.",
   kind: "write",
   inputSchema: {

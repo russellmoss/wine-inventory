@@ -18,6 +18,7 @@ type DeleteBrixInput = {
 export const deleteBrixTool: AssistantTool = {
   name: "delete_brix",
   description:
+    "ALWAYS call this when the user wants a Brix reading removed — even if you are unsure WHICH block or WHICH reading. Do not list candidates or ask which one in prose first: an ambiguous query returns a CLICKABLE PICKER that pins the exact row by id, and a prose list gives the user nothing to act on — records with identical labels cannot be told apart by name at all. Calling this NEVER deletes anything; it returns a preview to confirm. " +
     "Delete (revert) a mistaken Brix reading on a block. Use when the user wants to remove, undo, revert, or delete a Brix reading they logged. Narrow to a single reading with the block plus the value and/or date. This does NOT delete immediately — it returns a preview the user must confirm in the UI.",
   kind: "write",
   inputSchema: {

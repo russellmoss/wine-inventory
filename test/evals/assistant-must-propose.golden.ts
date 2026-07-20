@@ -142,6 +142,30 @@ export const MUST_PROPOSE_GOLDEN: MustProposeCase[] = [
     },
   },
   {
+    id: "delete-ambiguous-block",
+    // Observed in PRODUCTION 2026-07-20 (Demo Winery, "delete Block 1"): the model enumerated all seven
+    // matching blocks IN PROSE and asked the user to type which one. No db_delete call, so no picker —
+    // the tool's picker (PR #385) is correct but never ran. Same meta-pattern as the original bug: the
+    // tool behaves when called, and the model sometimes does not call it.
+    //
+    // The db_find fixture below DELIBERATELY hands back all seven candidates, reproducing the production
+    // conditions that let the model answer from its own read instead of delegating. Give it an empty
+    // read and the case proves nothing.
+    //
+    // NOTE on scoring: this case does NOT need a new "choice" outcome. The eval never EXECUTES the tool,
+    // so it cannot observe a picker coming back — only whether a write tool was CALLED, which is exactly
+    // what regressed. `entity` + `query` is a complete call; the picker is then the server's job.
+    utterance: "delete Block 1",
+    tool: "db_delete",
+    readyRequires: ["entity", "query"],
+    note: "Ambiguous target. It must call db_delete anyway and let the picker resolve it — listing the candidates in prose leaves the user nothing to click, and identical labels cannot be disambiguated by name.",
+    baseline: "prose list, no tool call, observed live 2026-07-20",
+    fixture: {
+      db_find:
+        'VineyardBlock: 7 matches — "Block 1 — Cabernet" (QBO Demo Vineyard zhmfs); "Block 1" (Ojai, Sauvignon Blanc); "Block 1" (Madera, Cabernet Sauvignon); "Block 1 — Pinot" (Russian River Ranch); "Block 1 — Cabernet" (QBO Demo Vineyard); "Block 1 — Cabernet" (QBO Demo Vineyard pt0sk); "Block 1 — Cabernet" (Oakville Estate).',
+    },
+  },
+  {
     id: "brix-write",
     utterance: "log 24.2 brix for Block 3",
     tool: "log_brix",

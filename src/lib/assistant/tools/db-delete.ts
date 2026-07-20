@@ -14,6 +14,7 @@ type DbDeleteInput = { entity?: string; query?: string; id?: string };
 export const dbDeleteTool: AssistantTool = {
   name: "db_delete",
   description:
+    "ALWAYS call this when the user asks to delete or remove a record — even if you are unsure WHICH record they mean. Do not list candidates or ask which one in prose first: an ambiguous query returns a CLICKABLE PICKER that pins the exact row by id, and a prose list gives the user nothing to act on — records with identical labels cannot be told apart by name at all. Calling this NEVER deletes anything; it returns a preview to confirm. " +
     "Delete a record (admin only). Use when the user wants to delete or remove a record. It resolves a single target by entity + query (or exact id), REFUSES if other records depend on it (and says what), and lists anything that would be cascade-deleted. This does NOT delete immediately — it returns a preview the user must confirm in the UI.",
   kind: "write",
   adminOnly: true,
