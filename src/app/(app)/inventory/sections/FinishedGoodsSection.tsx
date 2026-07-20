@@ -5,7 +5,8 @@ import { Card, Input, Button, Badge, Eyebrow, ConfirmButton, ExportCsvButton } f
 import type { ItemKind } from "@/lib/stock/movements";
 import { createCategory, createWineSku, createGood, moveStock, updateOnHand, deleteOnHand } from "@/lib/inventory/actions";
 import { unwrap } from "@/lib/action-result";
-import { ImportCsvModal } from "./ImportCsvModal";
+import { ImportCsvModal } from "../ImportCsvModal";
+import { AddFinishedGoodModal } from "@/components/inventory/AddFinishedGoodModal";
 
 export type Cat = { id: string; name: string };
 export type ItemOpt = { kind: ItemKind; id: string; label: string; category: string };
@@ -21,7 +22,7 @@ const sel: React.CSSProperties = {
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)", width: "100%",
 };
 
-export function InventoryClient({ categories, items, locations, onHand }: { categories: Cat[]; items: ItemOpt[]; locations: LocOpt[]; onHand: OnHandRow[] }) {
+export function FinishedGoodsSection({ categories, items, locations, onHand }: { categories: Cat[]; items: ItemOpt[]; locations: LocOpt[]; onHand: OnHandRow[] }) {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [mode, setMode] = React.useState<Mode>("RECEIVE");
@@ -30,6 +31,11 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
   const [draft, setDraft] = React.useState<Draft | null>(null);
   const [fCategory, setFCategory] = React.useState("all");
   const [fLocation, setFLocation] = React.useState("all");
+  // Plan 080 U7: Wine / Merchandise sub-tabs. Finished goods are two genuinely different things — a
+  // vintage-dated wine SKU and a merch item — and the add form differs, so the tab drives BOTH the table
+  // filter and which "+ Add" the button opens.
+  const [subTab, setSubTab] = React.useState<"all" | "BOTTLED_WINE" | "FINISHED_GOOD">("all");
+  const [addOpen, setAddOpen] = React.useState(false);
 
   // Filter options: union of registry names and anything currently on hand (stays
   // dynamic as categories/locations are added, edited, or removed).
@@ -41,7 +47,24 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
     () => [...new Set([...locations.map((l) => l.name), ...onHand.map((r) => r.location)])].sort((a, b) => a.localeCompare(b)),
     [locations, onHand],
   );
-  const filtered = onHand.filter((r) => (fCategory === "all" || r.category === fCategory) && (fLocation === "all" || r.location === fLocation));
+  const subTabs: { key: "all" | "BOTTLED_WINE" | "FINISHED_GOOD"; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "BOTTLED_WINE", label: "Wine" },
+    { key: "FINISHED_GOOD", label: "Merchandise" },
+  ];
+  const subSeg = (active: boolean): React.CSSProperties => ({
+    padding: "6px 14px", fontFamily: "var(--font-body)", fontSize: 14, fontWeight: active ? 600 : 500,
+    color: active ? "var(--surface-raised)" : "var(--text-secondary)",
+    background: active ? "var(--wine-primary)" : "transparent",
+    border: "none", borderRadius: "calc(var(--radius-md) - 2px)", cursor: "pointer", minHeight: 34,
+  });
+
+  const filtered = onHand.filter(
+    (r) =>
+      (fCategory === "all" || r.category === fCategory) &&
+      (fLocation === "all" || r.location === fLocation) &&
+      (subTab === "all" || r.kind === subTab),
+  );
 
   function run(fn: () => Promise<void>, form?: HTMLFormElement, after?: () => void) {
     setError(null);
@@ -160,6 +183,20 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
         ) : null}
       </div>
 
+      {/* Plan 080 U7: Wine / Merchandise sub-tabs. Drives the table filter AND which "+ Add" opens. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        <div role="tablist" aria-label="Finished goods type" style={{ display: "inline-flex", gap: 2, padding: 3, background: "var(--paper-100)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
+          {subTabs.map((t) => (
+            <button key={t.key} type="button" role="tab" aria-selected={subTab === t.key} style={subSeg(subTab === t.key)} onClick={() => setSubTab(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <Button type="button" variant="primary" onClick={() => setAddOpen(true)}>
+          {subTab === "FINISHED_GOOD" ? "+ Add merchandise" : "+ Add wine"}
+        </Button>
+      </div>
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <Eyebrow rule>On hand</Eyebrow>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -265,6 +302,15 @@ export function InventoryClient({ categories, items, locations, onHand }: { cate
           </tbody>
         </table>
       </Card>
+
+      <AddFinishedGoodModal
+        open={addOpen}
+        kind={subTab === "FINISHED_GOOD" ? "FINISHED_GOOD" : "BOTTLED_WINE"}
+        categories={categories}
+        locations={locations}
+        onClose={() => setAddOpen(false)}
+        onSaved={() => setAddOpen(false)}
+      />
     </div>
   );
 }

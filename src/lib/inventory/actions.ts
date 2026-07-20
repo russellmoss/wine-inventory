@@ -389,3 +389,77 @@ export const receivePurchasedFinishedGoodAction = action(
     return { ok: true as const };
   },
 );
+
+/**
+ * Plan 080 U7 — the "+ Add inventory" modal's single entry point: define a finished good and, optionally,
+ * bring in opening stock with its cost, in one step.
+ *
+ * Vintage is OPTIONAL (the schema already allows it) — the UI soft-confirms a blank one for WINE only
+ * (council S8); a blank vintage on merchandise is normal and must never nag. MSRP is a price and lives on
+ * the SKU; COGS does NOT (council C4) — opening stock's cost becomes a FinishedGoodReceipt, so valuation
+ * stays a weighted average over receipts.
+ *
+ * `safeAction`: a duplicate wine+vintage or a taken category name is a block the user must SEE.
+ */
+export const addFinishedGoodAction = safeAction(
+  async (
+    { actor },
+    input: {
+      kind: ItemKind;
+      name: string;
+      categoryId?: string | null;
+      newCategoryName?: string | null;
+      vintage?: number | null;
+      msrp?: number | null;
+      openingQty?: number | null;
+      locationId?: string | null;
+      unitCost?: number | null;
+    },
+  ) => {
+    const name = clean(input.name, input.kind === "BOTTLED_WINE" ? "Wine name" : "Item name");
+    const msrp = input.msrp != null && Number.isFinite(input.msrp) && input.msrp >= 0 ? input.msrp : null;
+
+    // Category: pick an existing one or create it inline (the modal offers both).
+    let categoryId = input.categoryId?.trim() || "";
+    const newCat = input.newCategoryName?.trim();
+    if (!categoryId && newCat) {
+      const existing = await prisma.finishedGoodCategory.findFirst({ where: { name: newCat }, select: { id: true } });
+      categoryId = existing?.id ?? (await runInTenantTx(async (tx) => {
+        const cat = await tx.finishedGoodCategory.create({ data: { name: newCat }, select: { id: true } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, summary: summarize("CREATE", "Category", { label: newCat }) });
+        return cat.id;
+      }));
+    }
+
+    let itemId: string;
+    if (input.kind === "BOTTLED_WINE") {
+      const vintage = input.vintage != null && Number.isInteger(input.vintage) ? input.vintage : null;
+      if (vintage != null && (vintage < 1900 || vintage > 2100)) throw new ActionError("Enter a valid vintage year.");
+      if (vintage != null && (await findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage: false, bottleSizeMl: 750 }))) {
+        throw new ActionError("That wine + vintage already exists.", "CONFLICT");
+      }
+      itemId = await runInTenantTx(async (tx) => {
+        const sku = await tx.wineSku.create({ data: { name, vintage, categoryId: categoryId || null, msrp }, select: { id: true } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, summary: summarize("CREATE", "Wine", { label: `${name}${vintage ? ` ${vintage}` : ""}` }) });
+        return sku.id;
+      });
+    } else {
+      if (!categoryId) throw new ActionError("Pick a category.");
+      itemId = await runInTenantTx(async (tx) => {
+        const good = await tx.finishedGood.create({ data: { name, categoryId, msrp }, select: { id: true } });
+        await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, summary: summarize("CREATE", "Item", { label: name }) });
+        return good.id;
+      });
+    }
+
+    // Optional opening stock. Reuses the purchased-receipt path so the physical balance and the cost layer
+    // are one decision — including its ordering rationale (stock first; a failed receipt values as UNKNOWN).
+    const qty = input.openingQty != null ? Math.trunc(Number(input.openingQty)) : 0;
+    if (qty > 0 && input.locationId) {
+      await receivePurchasedFinishedGoodAction({ kind: input.kind, itemId, qty, locationId: input.locationId, unitCost: input.unitCost ?? null, note: "Opening stock" });
+    }
+
+    revalidatePath("/inventory");
+    return { itemId };
+  },
+);

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireActiveTenant, requireReadyUser } from "@/lib/dal";
 import { casesAndLoose } from "@/lib/bottling/draw";
-import { InventoryClient, type ItemOpt, type OnHandRow } from "./InventoryClient";
+import { FinishedGoodsSection as FinishedGoodsPanel, type ItemOpt, type OnHandRow } from "./sections/FinishedGoodsSection";
 import { InventoryTabs } from "./InventoryTabs";
 // coerceSection is called on the SERVER — it must come from the client-SAFE shared module, never from
 // the "use client" tab bar (that is a runtime-only error the build does not catch).
@@ -52,7 +52,7 @@ async function FinishedGoodsSection() {
     ...fg.map((f) => ({ kind: "FINISHED_GOOD" as const, itemId: f.finishedGoodId, item: f.finishedGood.name, name: f.finishedGood.name, vintage: null, categoryId: f.finishedGood.categoryId, category: f.finishedGood.category.name, locationId: f.locationId, location: f.location.name, qty: f.quantity, cases: 0, loose: f.quantity, detail: "" })),
   ].sort((a, b) => a.category.localeCompare(b.category) || a.item.localeCompare(b.item));
 
-  return <InventoryClient categories={categories} items={items} locations={locations} onHand={onHand} />;
+  return <FinishedGoodsPanel categories={categories} items={items} locations={locations} onHand={onHand} />;
 }
 
 async function ConsumablesSection() {
