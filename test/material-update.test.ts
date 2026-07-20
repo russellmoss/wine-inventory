@@ -5,6 +5,7 @@ import {
   deriveMaterialFields,
   findCorrectableOpeningLot,
   openingLotTotalCost,
+  openingLotQty,
   resolveOpeningCostCorrection,
   type ExistingMaterialForUpdate,
   type SupplyLotForCost,
@@ -198,6 +199,25 @@ describe("opening-lot cost correction (Phase 037.1)", () => {
     it("null when cost unknown or no lot", () => {
       expect(openingLotTotalCost(lot({ id: "a", unitCost: null }))).toBeNull();
       expect(openingLotTotalCost(null)).toBeNull();
+    });
+  });
+
+  describe("openingLotQty", () => {
+    it("is the lot's received qty — the denominator the total-cost field divides by", () => {
+      expect(openingLotQty(lot({ id: "a", qtyReceived: 750, qtyRemaining: 750 }))).toBe(750);
+    });
+    it("pairs with openingLotCost so the Edit modal can price a MULTI-package lot correctly", () => {
+      // 3 × 250 g packages received as one lot at $0.42764/g. The total is ~$320.73 for 750 g — a UI that
+      // divided by packageAmount (250) instead of this qty would show ~3× the true per-gram price.
+      const l = lot({ id: "a", qtyReceived: 750, qtyRemaining: 750, unitCost: 0.42764 });
+      const total = openingLotTotalCost(l);
+      const qty = openingLotQty(l);
+      expect(total).toBeCloseTo(320.73, 2);
+      expect(qty).toBe(750);
+      expect(total! / qty!).toBeCloseTo(0.42764, 5);
+    });
+    it("null when there is no correctable lot", () => {
+      expect(openingLotQty(null)).toBeNull();
     });
   });
 
