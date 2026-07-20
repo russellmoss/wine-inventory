@@ -230,6 +230,18 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Consumable cost surfacing (#372 "pricing") — MERGED (PR #435, squash `b46cd30`).** Mike: "I don't see the
+  price I entered" + "are we averaging across shipments?". The engine already captured both — each `SupplyLot`
+  stores the receipt price; the material's unit cost is the weighted average across open priced lots — but the
+  UI never surfaced the per-shipment price nor named the method. Now the detail view leads with a "Shipments &
+  prices" panel (open by default) showing each shipment's "Paid $X/unit", plus an `InfoHint` + summary line
+  explaining the Cost is the weighted average across priced shipments still in stock (unpriced excluded, never
+  $0). Read-only (COST-3); a new pure `summarizeConsumableCost` **reuses** the engine's `weightedAvgUnitCost`
+  (COST-1, single source of truth) + `test/cost-display.test.ts`. Browser-QA'd on Demo (100@$2 + 300@$6 →
+  $5.00). Ticket RESOLVED (canonical console path) + Mike DMed. 🔎 **Lesson: resolve feedback via
+  `closeFeedbackItemCore` from the start — a raw status write skips the structured outcome note + reporter
+  notice and can't be re-closed cleanly (the #366 reopen/version-race trap).**
+
 - **Consumables receive-by-pack (#366/#370) — MERGED (PR #433, squash `3b13b6e`).** The receive machinery
   (`resolveReceiptQuantity`, location-aware `receiveConsumableCore`, the `MaterialMovePanel` unit selector +
   preview) had already shipped in **#395** (plan 080 U15); the reported bug was still reachable only because
@@ -311,9 +323,11 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-20 — **#366/#370 consumables receive-by-pack MERGED** (PR #433, `3b13b6e`): retired
-the leftover grams-only ReceiveModal so "Receive" opens the pack-aware Move-stock panel; both tickets DMed
-+ RESOLVED (reporter Mike). Prior: **Cornell Fruit Resources LIVE** (96 docs / 948 chunks, verify:knowledge-base
+_Last updated: 2026-07-20 — **#372 consumable cost surfacing MERGED** (PR #435, `b46cd30`): the detail view now
+shows each shipment's "Paid $X/unit" + explains the weighted-average method (InfoHint + summary); read-only,
+reuses the engine's weightedAvgUnitCost; ticket RESOLVED + Mike DMed. Prior: **#366/#370 receive-by-pack
+MERGED** (PR #433, `3b13b6e`): retired the grams-only ReceiveModal so "Receive" opens the pack-aware Move-stock
+panel; both tickets DMed + RESOLVED (reporter Mike). Prior: **Cornell Fruit Resources LIVE** (96 docs / 948 chunks, verify:knowledge-base
 20/20). Landed as #424 (reconciling a parallel session's #411), then #425 crawl-error visibility, #426
 the CampusPress CDN, #427 the dropped canonicalTitle. En route: main was found to be FABRICATING
 publication dates from junk metadata, and a newly-allowlisted crawl target proved undiscoverable
