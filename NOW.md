@@ -7,6 +7,32 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Plan 081 (assistant confirmation card) — SHIPPED to main.** #354 (`fe3f483e`) + #355 (`c6f524d8`).
+Unit 10 live proof on Demo: the repro prompt went from **2/7 (29%) → 12/12 (100%)** card emission
+(5 trials through the UI with a rendered Confirm button, 7 direct to `/api/assistant` with valid tokens).
+Two hard cases also carded: an unknown assignee, and "top up the barrels that need it".
+Reporter (Mike) DM'd with the measured number and the two honest caveats below.
+
+**Residual — NOT done, in rough priority order:**
+1. **`brix-write` 5/10.** The Draft Card fixed the WORK-ORDER path; it did not generalise. Different
+   write family, `no-tool` half the time. Largest remaining piece of the original complaint.
+2. **Draft rendering unproven in a live browser.** All 14 trials returned `ready` (Mike resolves in
+   Demo, so nothing was ever missing). The Draft path is unit-tested + DB-proven (`needs_input`,
+   0 signed builds, `committable:false`) but nobody has watched Confirm greyed out on screen.
+3. **`wo-vague-target` knownGap is probably an eval artifact.** Live, that utterance DOES card — it
+   routes to `issue_operation_wo`, while the eval asserts `propose_work_order`. Fix the case's expected
+   tool before the nightly starts mailing false failures. (Second time this eval's fixtures, not the
+   product, produced a misleading signal.)
+4. **Absent assignee ≠ wrong assignee.** Asking for a WO for a nonexistent person correctly avoids
+   fabricating an email, but returns a READY card that is silently unassigned. The guard catches a
+   wrong email, not a missing one.
+5. **Ticket #328 / `cmrs4vasg`** (card appeared then errored on block delete) — still unroot-caused.
+6. `verify:work-orders-transform` red on the plan-059 bottling guard (needs a label in its fixture) — chip filed.
+
+_Cosmetic: #355 squash-merged to main still titled "WIP:" — I marked the PR ready but forgot to retitle
+it before merging._
+
+
 **Assistant confirmation-card RELIABILITY (Mike's recurring "it says there's a card but there isn't") — PLAN 081. Units 1+2 DONE on `claude/assistant-card-guard-fixes` (PR A pending). Units 3–9 DONE + PUSHED on `claude/assistant-draft-card` (PR #355). Only Unit 10 (live browser QA) left — it needs the interactive logged-in pane.**
 **MEASURED RESULT: the seeded repro went 2/7 (29%) → 3/3 (100%)** on the new MUST_PROPOSE eval (opus-4-8, real prompt, `tool_choice` omitted, multi-turn, 3 runs/case). Zero fabricated assignee emails, zero wrong-tool, read-intent controls clean.
 Landed: U4 Draft contract (`asProposal` NORMALIZES so a draft can never carry a commit token) · U5 `propose_work_order` returns a Draft instead of prose · U6 prompt rules 40/45 rewritten to compose · U7 card renders + Confirm gated · U8 exhaustive `switch` + `never` in both stream consumers (verified by temporarily adding a variant) · U9 nightly eval + workflow.

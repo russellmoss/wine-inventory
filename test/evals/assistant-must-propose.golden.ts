@@ -127,8 +127,15 @@ export const MUST_PROPOSE_GOLDEN: MustProposeCase[] = [
     //
     // Kept as a knownGap with the corrected cause rather than deleted (which would hide a real product
     // gap) or left failing (which trains people to ignore the nightly).
+    // UPDATE (n=5, after the log_brix fix): the picture is clearer and the expected tool here is
+    // probably WRONG. Live, this utterance DOES produce a card — it routes to `issue_operation_wo`,
+    // which this case scores as "wrong-tool" because it asserts `propose_work_order`. In the eval the
+    // model mostly enumerates the barrels and asks which need topping ("I don't have a reliable
+    // 'needs topping' flag — I'm inferring from ullage"), which is a fair question about a genuinely
+    // target-less request. Next step is to decide whether issue_operation_wo is an acceptable answer
+    // here and widen `tool`, rather than to keep scoring it as a failure.
     knownGap:
-      "model makes no write-tool call for a target-less utterance (eval: no-tool 3/3); the canonicalizer-stage throw it was previously blamed on is fixed and proven",
+      "target-less utterance: model enumerates and asks rather than writing; when it DOES write it uses issue_operation_wo, which this case mis-scores as wrong-tool (expected tool likely needs widening)",
     fixture: {
       query_cellar_contents:
         'Barrel B101: lot 24-PN-03, 220 L of 228 L. Barrel B102: lot 24-PN-03, 215 L of 228 L. Barrel B103: lot 24-PN-04, 226 L of 228 L.',
