@@ -39,11 +39,13 @@ describe("knowledge passage age", () => {
       documentId: "doc_abc",
       text: "Phomopsis overwinters in infected canes.",
       publishedAt: new Date("2017-05-31T00:00:00Z"),
+      dateSource: "published" as const,
     };
 
     it("reports a real date and its age", () => {
       const r = toPassageResult(passage, 1, NOW);
       expect(r.date).toBe("2017-05-31");
+      expect(r.dateSource).toBe("published");
       expect(r.ageYears).toBe(9);
       expect(r.citation).toBe("/kb/source/doc_abc");
       expect(r.n).toBe(1);
@@ -53,10 +55,31 @@ describe("knowledge passage age", () => {
       // The safety-critical branch. If ageYears regressed to 0 here, every undated document in the
       // corpus would be presented to the model as brand new — which is precisely the failure this
       // feature exists to prevent, and it would be completely silent.
-      const r = toPassageResult({ ...passage, publishedAt: null }, 2, NOW);
+      const r = toPassageResult({ ...passage, publishedAt: null, dateSource: "unknown" }, 2, NOW);
       expect(r.date).toBe("unknown");
       expect(r.ageYears).toBe("unknown");
       expect(r.ageYears).not.toBe(0);
+    });
+
+    it("refuses to derive an age from a last-MODIFIED date", () => {
+      // The leak this closes: a 2009 IPM page that declares no date falls back to the sitemap lastmod,
+      // which reflects a plugin bulk-edit last month. Deriving age from that hands the model
+      // "ageYears: 0" and it presents seventeen-year-old spray guidance as current-season.
+      const r = toPassageResult(
+        { ...passage, publishedAt: new Date("2026-02-11T00:00:00Z"), dateSource: "last-modified" },
+        3,
+        NOW,
+      );
+      expect(r.date).toBe("2026-02-11"); // still shown — a rough date beats none for ordering
+      expect(r.dateSource).toBe("last-modified");
+      expect(r.ageYears).toBe("unknown"); // but it must NOT drive staleness reasoning
+    });
+
+    it("tells the model that a last-modified date is not evidence of currency", () => {
+      const d = searchKnowledgeBaseTool.description;
+      expect(d).toMatch(/dateSource/);
+      expect(d.toLowerCase()).toContain("last-modified");
+      expect(d.toLowerCase()).toContain("never as evidence the content is current");
     });
   });
 

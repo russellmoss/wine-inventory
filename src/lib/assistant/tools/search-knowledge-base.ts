@@ -1,6 +1,6 @@
 import "server-only";
 import type { AssistantTool, ToolContext } from "../registry";
-import { retrieveKnowledge } from "@/lib/knowledge/retrieve";
+import { retrieveKnowledge, type DateSource } from "@/lib/knowledge/retrieve";
 
 type SearchKbInput = { query?: string; topic?: string };
 
@@ -17,7 +17,15 @@ export function yearsSince(published: Date, now: Date = new Date()): number {
  * the failure this feature exists to prevent, and it would be silent.
  */
 export function toPassageResult(
-  p: { publisher: string; tier: number; sectionPath: string; publishedAt: Date | null; documentId: string; text: string },
+  p: {
+    publisher: string;
+    tier: number;
+    sectionPath: string;
+    publishedAt: Date | null;
+    dateSource: DateSource;
+    documentId: string;
+    text: string;
+  },
   n: number,
   now: Date = new Date(),
 ): {
@@ -26,10 +34,17 @@ export function toPassageResult(
   tier: number;
   section: string;
   date: string;
+  dateSource: DateSource;
   ageYears: number | "unknown";
   citation: string;
   text: string;
 } {
+  // Age is computed ONLY from a date the document actually declared. A sitemap <lastmod> is when the
+  // page was last TOUCHED — a theme migration or a category re-tag — so deriving "this is 0 years old"
+  // from it would tell the model a 2009 spray guide is current-season guidance. That is the precise
+  // failure this feature exists to prevent, so the fallback date is still shown (it beats nothing for
+  // ordering) but it is never allowed to drive the staleness reasoning.
+  const declared = p.dateSource === "published" && p.publishedAt;
   return {
     n,
     publisher: p.publisher,
@@ -37,9 +52,10 @@ export function toPassageResult(
     section: p.sectionPath,
     // "unknown" (never null) so the model states the date is unknown rather than inventing one
     date: p.publishedAt ? p.publishedAt.toISOString().slice(0, 10) : "unknown",
+    dateSource: p.dateSource,
     // Precomputed so the model never has to do date arithmetic (it is bad at it, and a wrong age on a
     // pest-management passage is a decision someone acts on in a vineyard).
-    ageYears: p.publishedAt ? yearsSince(p.publishedAt, now) : "unknown",
+    ageYears: declared ? yearsSince(p.publishedAt as Date, now) : "unknown",
     citation: `/kb/source/${p.documentId}`,
     text: p.text,
   };
@@ -87,7 +103,15 @@ export const searchKnowledgeBaseTool: AssistantTool = {
     "and the passage is several years old, SAY SO in the answer (e.g. 'this is from a 2019 guide — confirm " +
     "the product is still registered and the rate current before spraying'). Do not silently present old " +
     "chemical guidance as current, and do not refuse to answer because a passage is old — surface the age " +
-    "and let the winemaker judge. Never use `ageYears` to compute or state a publication date; use `date`.",
+    "and let the winemaker judge. Never use `ageYears` to compute or state a publication date; use `date`.\n" +
+    "9. DATE TRUST. Each result has `dateSource`. Only `\"published\"` means the document declared that " +
+    "date itself. `\"last-modified\"` means we only know when the page was last EDITED — a re-tag or a " +
+    "site migration, which says nothing about when the guidance was written or last reviewed; treat such " +
+    "a date as an UPPER BOUND on age, never as evidence the content is current, and say so if you rely " +
+    "on it (e.g. 'the page was edited in 2026 but does not state when it was written'). `\"unknown\"` " +
+    "means no date at all. When resolving a conflict by recency, a `\"published\"` date outranks a " +
+    "`\"last-modified\"` one even if the last-modified is newer — a page edited yesterday can be " +
+    "twenty-year-old advice.",
   kind: "read",
   inputSchema: {
     type: "object",
