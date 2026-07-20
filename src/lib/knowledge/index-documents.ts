@@ -184,7 +184,17 @@ export async function indexDocument(input: {
         }
         await tx.knowledgeDocument.update({
           where: { id: input.documentId },
-          data: { activeRevision: newRevision, indexedContentHash: indexHash },
+          data: {
+            activeRevision: newRevision,
+            // plan 084: indexHash, NOT input.contentHash. It folds in SECTION_FILTER_VERSION so a
+            // drop-pattern change forces a real re-index. Identical to contentHash for every source
+            // that does not declare a sectionFilter, so #405's behavior is unchanged.
+            indexedContentHash: indexHash,
+            // Only WRITE a date we actually found: a re-index whose extraction yields nothing must not
+            // erase a date an earlier pass (or the sitemap lastmod backfill) got right. Losing a good
+            // date silently would put us back to citing undated pesticide guidance.
+            ...(extracted.publishedAt ? { publishedAt: extracted.publishedAt } : {}),
+          },
         });
         await tx.knowledgeChunk.deleteMany({
           where: { documentId: input.documentId, revision: { not: newRevision } },

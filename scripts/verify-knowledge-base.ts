@@ -56,7 +56,13 @@ const RETRIEVAL_CASES: RetrievalCase[] = [
   { q: "How much sugar do I add at tirage to reach the right bottle pressure in méthode champenoise sparkling wine?",
     expectPaths: ["le-tirage", "le-dosage", "prise-de-mousse", "maisons-champagne", "SparklingHandbook", "Enartis-Sparkling", "FG_EN_Spark"], expectFact: ["tirage"] }, // UMC / sparkling PDFs
   { q: "What are the integrated pest management thresholds for wine grapes?",
-    expectPaths: ["guiauvadetransformacion", "mapa.gob", "pnw-644", "field-monitoring"], expectFact: ["grape"] }, // MAPA (ES) + PNW IPM
+    // MAPA (ES) + PNW IPM + UC IPM. uc-ipm was added after this case was written and now outranks the
+    // other two: its grape Pest Management Guidelines are the canonical US source for treatment
+    // thresholds, so retrieving them here is the retrieval getting BETTER, not regressing. Widened rather
+    // than repointed — all three remain valid authoritative answers, which is exactly what the multi-value
+    // expectPaths contract above is for. Caveat worth remembering when reading these results: most of the
+    // uc-ipm corpus is stamped 2015 or older, so "authoritative" here means canonical, not current.
+    expectPaths: ["guiauvadetransformacion", "mapa.gob", "pnw-644", "field-monitoring", "ipm.ucanr.edu"], expectFact: ["grape"] },
   { q: "How do I test for TCA cork taint and haloanisoles in my wine?",
     expectPaths: ["etslabs", "publications/publication"], expectFact: ["haloanisole"] }, // ETS Laboratories (analysis authority)
 ];
