@@ -84,6 +84,74 @@ function pathAllowed(cfg: KnowledgeSourceConfig, url: string): boolean {
   return cfg.allowPrefixes.some((p) => path.startsWith(p));
 }
 
+/** Plan 085 — the enqueue decision for one URL. `terminal` pages are ingested but never followed. */
+export type Admission = { admit: false } | { admit: true; terminal: boolean };
+
+const REFUSE: Admission = { admit: false };
+
+/**
+ * Plan 085 — should `url` be crawled for `cfg`, given the page it was found on?
+ *
+ * Exported and pure so the rule is TESTED rather than re-implemented in a test (the crawl loops
+ * need Prisma + live network, so they have never had coverage, and the existing redirect-re-gate
+ * test had to copy its rule by hand). Order is load-bearing:
+ *
+ *   1. denyPrefixes win unconditionally — no longest-match, same contract as everywhere else.
+ *   2. linkedOnlyPrefixes: admitted ONLY with provenance from a `linkedFrom` page, and terminal.
+ *      `fromUrl === null` means a seed root or sitemap entry, which can never admit one.
+ *   3. otherwise the ordinary allowPrefixes whitelist.
+ *
+ * A link-only match SHORT-CIRCUITS: it never falls through to allowPrefixes. Otherwise a source
+ * that listed the same prefix in both would silently lose the provenance requirement.
+ */
+export function decideAdmission(
+  cfg: KnowledgeSourceConfig,
+  url: string,
+  fromUrl: string | null,
+): Admission {
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return REFUSE;
+  }
+  if (cfg.denyPrefixes.some((p) => path.startsWith(p))) return REFUSE;
+
+  const rule = cfg.linkedOnlyPrefixes?.find((r) => path.startsWith(r.prefix));
+  if (rule) {
+    if (fromUrl === null) return REFUSE;
+    let fromPath: string;
+    try {
+      fromPath = new URL(fromUrl).pathname;
+    } catch {
+      return REFUSE;
+    }
+    return rule.linkedFrom.some((f) => fromPath.startsWith(f)) ? { admit: true, terminal: true } : REFUSE;
+  }
+
+  return cfg.allowPrefixes.some((p) => path.startsWith(p)) ? { admit: true, terminal: false } : REFUSE;
+}
+
+/**
+ * Plan 085 — does `url` match one of the source's `linkedOnlyPrefixes` (and survive denyPrefixes)?
+ *
+ * Used ONLY to re-gate a redirect on an already-admitted link-only item. It deliberately does NOT
+ * check provenance: that was established at enqueue time and a redirect target has no referrer of
+ * its own. It exists because link-only paths are absent from `allowPrefixes` by design, so
+ * `pathAllowed` refuses them and would drop every redirecting article as "out of scope".
+ */
+export function pathAllowedAsLinkOnly(cfg: KnowledgeSourceConfig, url: string): boolean {
+  if (!cfg.linkedOnlyPrefixes?.length) return false;
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return false;
+  }
+  if (cfg.denyPrefixes.some((p) => path.startsWith(p))) return false;
+  return cfg.linkedOnlyPrefixes.some((r) => path.startsWith(r.prefix));
+}
+
 export async function crawlSource(
   sourceKey: string,
   opts: { maxDocs?: number; onDocument?: (doc: CrawledDoc) => Promise<void> } = {},
@@ -290,27 +358,24 @@ export async function crawlWithFollowing(
       return null;
     }
   };
-  const pathAllowedFor = (cfg: KnowledgeSourceConfig, url: string) => {
-    let p: string;
-    try {
-      p = new URL(url).pathname;
-    } catch {
-      return false;
-    }
-    if (cfg.denyPrefixes.some((x) => p.startsWith(x))) return false;
-    return cfg.allowPrefixes.some((x) => p.startsWith(x));
-  };
+  // (Plan 085 removed a local `pathAllowedFor` here — a third copy of the deny-then-allow rule.
+  //  `decideAdmission` is now the single, exported, tested implementation.)
 
   const visited = new Set<string>();
   const queued = new Set<string>();
-  const queue: string[] = [];
-  const enqueue = (rawUrl: string) => {
+  // Plan 085 — carries provenance + terminal-ness per item. crawlSource has used an object queue
+  // since plan 079 ({ url, lastmod }); this brings the following crawl to the same shape.
+  const queue: { url: string; terminal: boolean }[] = [];
+
+  const enqueue = (rawUrl: string, from: { url: string } | null = null) => {
     const url = normalizeCrawlUrl(rawUrl);
     if (queued.has(url) || visited.has(url)) return;
     const tgt = resolveTarget(url);
-    if (!tgt || !pathAllowedFor(tgt.cfg, url)) return;
+    if (!tgt) return;
+    const verdict = decideAdmission(tgt.cfg, url, from?.url ?? null);
+    if (!verdict.admit) return;
     queued.add(url);
-    queue.push(url);
+    queue.push({ url, terminal: verdict.terminal });
   };
 
   // seed: each source's roots + sitemap URLs
@@ -331,7 +396,7 @@ export async function crawlWithFollowing(
       }
     }
   }
-  for (const key of sourceKeys) summaries[key].discovered = queue.filter((u) => resolveTarget(u)?.sourceKey === key).length;
+  for (const key of sourceKeys) summaries[key].discovered = queue.filter((q) => resolveTarget(q.url)?.sourceKey === key).length;
 
   const candidateDomains = new Map<string, string>();
   let processed = 0;
@@ -339,7 +404,8 @@ export async function crawlWithFollowing(
   let hitCap = false;
   while (head < queue.length) {
     if (processed >= maxDocs) { hitCap = true; break; }
-    const url = queue[head++];
+    const item = queue[head++];
+    const url = item.url;
     if (visited.has(url)) continue;
     visited.add(url);
     const tgt = resolveTarget(url);
@@ -395,7 +461,15 @@ export async function crawlWithFollowing(
     // carry a correctness guarantee: vt-enology-notes excludes the PDF twins of pages it ingests
     // as filtered HTML, and PDFs cannot be section-filtered — a redirect would reimport the very
     // announcements the filter strips, as a second unfiltered document.
-    if (res.finalUrl !== url && !pathAllowed(tgt.cfg, res.finalUrl)) {
+    // Plan 085 — re-gate under the SAME rule that admitted this item. A link-only URL (/news/<slug>)
+    // is deliberately absent from allowPrefixes, so the plain pathAllowed check would report every
+    // redirecting article as "out of scope" and silently drop the content this source exists for.
+    // Provenance is not re-checkable here, but it was already established at enqueue time; what
+    // still must hold is that the FINAL url is the same kind of link-only path, and not denied.
+    const finalOk = item.terminal
+      ? pathAllowedAsLinkOnly(tgt.cfg, res.finalUrl)
+      : pathAllowed(tgt.cfg, res.finalUrl);
+    if (res.finalUrl !== url && !finalOk) {
       s.skippedRedirect++;
       console.log(`  ! redirect out of scope: ${url} -> ${res.finalUrl}`);
       continue;
@@ -405,9 +479,15 @@ export async function crawlWithFollowing(
     const document = await persistDocument(tgt.sourceId, tgt.cfg, url, undefined, res, contentHash);
     s.documents++;
 
-    if (res.contentType === "html") {
+    // Plan 085 — a terminal page is a leaf: we ingest it, we do NOT follow it. This is the part
+    // that actually caps the blast radius. MSU's /news/ articles cross-link heavily into unrelated
+    // Extension programmes (dairy, field crops, 4-H), so following them even one hop would pull in
+    // exactly the corpus the linkedOnly rule exists to keep out.
+    if (res.contentType === "html" && !item.terminal) {
       const gated = gateLinks(extractLinks(res.bytes.toString("utf8"), res.finalUrl), res.finalUrl);
-      for (const link of gated.followable) enqueue(link); // trusted-domain links -> crawl (routed to their source)
+      // Provenance: a link is admitted under linkedOnlyPrefixes only if THIS page qualifies as its
+      // parent, so the from-url has to travel with it.
+      for (const link of gated.followable) enqueue(link, { url });
       for (const c of gated.candidateDomains) if (!candidateDomains.has(c.domain)) candidateDomains.set(c.domain, c.fromUrl);
     }
 

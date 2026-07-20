@@ -29,6 +29,18 @@ export interface KnowledgeSourceConfig {
   // page). "anchor-heading" = split on <a name="N"> anchors, classify by heading text. Config-only,
   // like sitemapUrls/autoCrawl — the seed script does not persist it, so no migration.
   sectionFilter?: "anchor-heading";
+  // Plan 085 — paths admitted ONLY when discovered as a link FROM a page whose path matches one of
+  // `linkedFrom`. Never seeded, and TERMINAL: links found on such a page are not followed onward.
+  //
+  // Why this exists: MSU Extension's substantive viticulture articles live at flat /news/<slug>
+  // URLs, but /news/ is also every other MSU Extension programme (dairy, field crops, 4-H,
+  // forestry). No `startsWith` prefix can separate them, and there is no sitemap to filter. What
+  // DOES separate them is provenance: the grape articles are the ones the /grapes/ pages link to.
+  //
+  // Terminal-ness is the part that actually caps the blast radius. Those articles cross-link
+  // heavily into unrelated Extension content, so following them even one hop would pull in the
+  // corpus this rule exists to exclude. denyPrefixes still win first, as everywhere else.
+  linkedOnlyPrefixes?: { prefix: string; linkedFrom: string[] }[];
   crawlCadence: string;
   defaultEnabled: boolean;
 }

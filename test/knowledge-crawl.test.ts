@@ -5,7 +5,7 @@ import { findSourceConfig } from "@/lib/knowledge/config";
 import { classifyContentType } from "@/lib/knowledge/crawl/fetcher";
 import { isPrivateAddress } from "@/lib/knowledge/crawl/ssrf";
 import { extractLinks, gateLinks, hostIsTrusted } from "@/lib/knowledge/crawl/link-gate";
-import { normalizeCrawlUrl } from "@/lib/knowledge/crawl/crawler";
+import { normalizeCrawlUrl, decideAdmission, pathAllowedAsLinkOnly } from "@/lib/knowledge/crawl/crawler";
 
 describe("normalizeCrawlUrl (dedup link-followed URL variants)", () => {
   it("strips a trailing slash after a file-extension segment (dup of the file)", () => {
@@ -144,5 +144,102 @@ describe("challenge guard ordering (plan 085, source-level contract)", () => {
 
   it("increments a per-source counter rather than swallowing the skip", () => {
     expect(src.match(/skippedChallenge\+\+/g) ?? []).toHaveLength(3);
+  });
+});
+
+// Plan 085 — linkedOnlyPrefixes. MSU Extension's real viticulture articles live at flat
+// /news/<slug> URLs, but /news/ is also every other MSU Extension programme (dairy, field crops,
+// 4-H, forestry). No startsWith prefix separates them and there is no sitemap. What DOES separate
+// them is provenance: the grape articles are the ones the /grapes/ pages link to.
+//
+// Tested against the REAL exported decision function rather than a hand-copied rule -- the older
+// redirect-re-gate suite above had to re-implement its rule locally, and a re-implementation can
+// drift from the thing it claims to pin.
+describe("decideAdmission — linkedOnlyPrefixes (plan 085)", () => {
+  const cfg = {
+    key: "test-msu",
+    publisher: "t",
+    homeDomain: "canr.msu.edu",
+    tier: 1,
+    license: "t",
+    seedRoots: ["https://www.canr.msu.edu/grapes/"],
+    allowPrefixes: ["/grapes/"],
+    linkedOnlyPrefixes: [{ prefix: "/news/", linkedFrom: ["/grapes/"] }],
+    denyPrefixes: ["/search", "/grapes/wine_tourism/"],
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  };
+  const NEWS = "https://www.canr.msu.edu/news/cold-hardiness-of-grapevines";
+  const FROM_GRAPES = "https://www.canr.msu.edu/grapes/viticulture/";
+
+  it("admits a /news/ article linked from a /grapes/ page, and marks it terminal", () => {
+    expect(decideAdmission(cfg, NEWS, FROM_GRAPES)).toEqual({ admit: true, terminal: true });
+  });
+
+  it("REFUSES the same article linked from another /news/ page (one hop only)", () => {
+    // This is what keeps the dairy / 4-H / field-crop corpus out.
+    expect(decideAdmission(cfg, NEWS, "https://www.canr.msu.edu/news/dairy-margins-2026")).toEqual({ admit: false });
+  });
+
+  it("REFUSES a /news/ article with no parent (seed root / sitemap entry)", () => {
+    expect(decideAdmission(cfg, NEWS, null)).toEqual({ admit: false });
+  });
+
+  it("admits a /grapes/ page with or without a parent, NOT terminal (it may be followed)", () => {
+    expect(decideAdmission(cfg, FROM_GRAPES, null)).toEqual({ admit: true, terminal: false });
+    expect(decideAdmission(cfg, FROM_GRAPES, "https://www.canr.msu.edu/grapes/")).toEqual({
+      admit: true,
+      terminal: false,
+    });
+  });
+
+  it("lets denyPrefixes win even when the linkedFrom parent qualifies", () => {
+    expect(decideAdmission(cfg, "https://www.canr.msu.edu/search?q=x", FROM_GRAPES)).toEqual({ admit: false });
+    expect(decideAdmission(cfg, "https://www.canr.msu.edu/grapes/wine_tourism/map", FROM_GRAPES)).toEqual({
+      admit: false,
+    });
+  });
+
+  it("is inert for a source that declares no linkedOnlyPrefixes", () => {
+    // The other 20 sources must behave exactly as before: provenance is simply ignored.
+    const plain = { ...cfg, linkedOnlyPrefixes: undefined };
+    expect(decideAdmission(plain, NEWS, FROM_GRAPES)).toEqual({ admit: false });
+    expect(decideAdmission(plain, FROM_GRAPES, null)).toEqual({ admit: true, terminal: false });
+  });
+
+  it("refuses an unparseable url rather than throwing", () => {
+    expect(decideAdmission(cfg, "not a url", FROM_GRAPES)).toEqual({ admit: false });
+    expect(decideAdmission(cfg, NEWS, "not a url")).toEqual({ admit: false });
+  });
+});
+
+describe("pathAllowedAsLinkOnly — redirect re-gate for link-only items (plan 085)", () => {
+  const cfg = {
+    key: "test-msu", publisher: "t", homeDomain: "canr.msu.edu", tier: 1, license: "t",
+    seedRoots: ["https://www.canr.msu.edu/grapes/"],
+    allowPrefixes: ["/grapes/"],
+    linkedOnlyPrefixes: [{ prefix: "/news/", linkedFrom: ["/grapes/"] }],
+    denyPrefixes: ["/search"],
+    crawlCadence: "monthly", defaultEnabled: true,
+  };
+
+  // Without this, a /news/ article that 301s (trailing slash, canonicalisation) would be dropped as
+  // "redirect out of scope", because link-only paths are deliberately absent from allowPrefixes.
+  it("accepts a redirect that lands on another link-only path", () => {
+    expect(pathAllowedAsLinkOnly(cfg, "https://www.canr.msu.edu/news/cold-hardiness/")).toBe(true);
+  });
+
+  it("still refuses a denied path", () => {
+    expect(pathAllowedAsLinkOnly(cfg, "https://www.canr.msu.edu/search?q=x")).toBe(false);
+  });
+
+  it("refuses a path that is not link-only at all", () => {
+    expect(pathAllowedAsLinkOnly(cfg, "https://www.canr.msu.edu/dairy/feed")).toBe(false);
+  });
+
+  it("returns false for a source with no linkedOnlyPrefixes (never widens anyone else)", () => {
+    expect(pathAllowedAsLinkOnly({ ...cfg, linkedOnlyPrefixes: undefined }, "https://www.canr.msu.edu/news/x")).toBe(
+      false,
+    );
   });
 });
