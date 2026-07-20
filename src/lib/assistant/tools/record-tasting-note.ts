@@ -7,9 +7,18 @@ import { recordTastingNoteAction } from "@/lib/chemistry/actions";
 import type { RecordTastingNoteInput } from "@/lib/chemistry/tasting";
 
 // Assistant-coverage Wave 1 #2b — record a sensory TASTING NOTE against a LOT by chat. Wraps
-// recordTastingNoteAction → recordTastingNoteCore (no re-implemented logic, no db_*). Same target rule
-// as chem panels: attaches to exactly one lot; a blend vessel asks which (resolveLotTarget). Structure
-// scores are 1–5; overall score is 0–100 or 0–20 by scale. Values accepted as typed, shown to confirm.
+// recordTastingNoteAction → recordTastingNoteCore (no re-implemented logic, no db_*). Each tasting-note
+// ROW attaches to exactly one lot; when the named vessel holds a blend, resolveLotTargetOrChoice returns
+// a CLICKABLE lot picker (not a prose dead-end) so the winemaker pins the lot in one tap and still gets
+// the normal confirm card. Structure scores are 1–5; overall score is 0–100 or 0–20 by scale. Values
+// accepted as typed, shown to confirm.
+//
+// DEFERRED, not decided: you taste the whole TANK, not one lot inside it, so a co-ferment should fan out
+// the way record_measurement already does (plan 060 — one row per co-resident lot, each row still
+// single-lot). The one-lot rule is per ROW and a fan-out satisfies it, so nothing in VISION D2 blocks
+// this; it is simply unbuilt (it needs a core/server-action change, not an assistant-only one). Until it
+// lands, this tool and record_measurement behave differently on the SAME multi-lot tank — picker here,
+// automatic fan-out there. See TODOS.md.
 
 const STRUCTURE = ["tannin", "acidity", "body", "finish"] as const;
 
@@ -32,13 +41,13 @@ type RecordTastingRawInput = {
 export const recordTastingNoteTool: AssistantTool = {
   name: "record_tasting_note",
   description:
-    "Record a sensory tasting note for a wine LOT — appearance / aroma / flavor prose, 1–5 structure scores (tannin, acidity, body, finish), an overall score (0–100 or 0–20), and free notes. Give the lot by code (e.g. 'lot 24-CS-A') or the vessel (a blend asks which lot). Use when the user is describing how a wine tastes. Does NOT save immediately — returns a preview to confirm.",
+    "Record a sensory TASTING NOTE for a wine — appearance / aroma / flavor prose, 1–5 structure scores (tannin, acidity, body, finish), an overall score (0–100 or 0–20), and free notes. Use whenever the user describes how a wine SMELLS or TASTES against a vessel or lot (e.g. 'log a tasting note on T5 that it smells like rotten eggs', 'note that barrel 3 tastes oxidized'). This is the sensory counterpart to record_measurement (which is for numeric chem/lab readings). Give the wine by lot code (e.g. 'lot 24-CS-A') OR by the vessel that holds it (e.g. 'tank 5' / 'T5'). If the vessel holds more than one lot (a blend/co-ferment), you do NOT have to pick a lot yourself — pass the vessel and the tool returns a clickable lot picker for the user to pin the exact lot. Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       lot: { type: "string", description: "Lot code, e.g. '24-CS-A'." },
-      vessel: { type: "string", description: "Vessel holding the lot (resolved to its lot; a blend asks which)." },
+      vessel: { type: "string", description: "Vessel holding the wine, e.g. 'tank 5' or 'T5' (resolved to its lot; a blend returns a lot picker)." },
       appearance: { type: "string", description: "Appearance / color notes." },
       aroma: { type: "string", description: "Aroma / nose notes." },
       flavor: { type: "string", description: "Palate / flavor notes." },
