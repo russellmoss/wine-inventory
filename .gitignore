@@ -79,9 +79,13 @@ test/e2e/.auth/
 # rstack / gstack agent toolchain state + local health-* skills/workflows (kept local, not versioned here)
 .rstack/
 .gstack/
-.claude/workflows/
+.claude/workflows/*
 .claude/skills/health-check/
 .claude/skills/health-remediate/
+# ...except /bug-triage, which IS versioned here so the team shares one copy.
+# (Pattern above must be `workflows/*`, not `workflows/`: git cannot re-include a
+# file whose parent directory is itself excluded.)
+!.claude/workflows/bug-triage.js
 
 # vintrace docs corpus: keep the Markdown, ignore the raw API dumps
 vintrace-docs/_raw/
