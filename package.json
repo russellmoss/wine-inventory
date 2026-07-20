@@ -34,6 +34,7 @@
     "reset:knowledge-source": "tsx --conditions=react-server --env-file=.env scripts/reset-knowledge-source.ts",
     "backfill:published-dates": "tsx --conditions=react-server --env-file=.env scripts/backfill-published-dates.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
+    "verify:vt-enology": "tsx scripts/verify-vt-enology.ts",
     "verify:kb-subscriptions": "tsx --conditions=react-server --env-file=.env scripts/verify-kb-subscriptions.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
     "verify:reverse": "tsx --env-file=.env scripts/verify-reverse.ts",

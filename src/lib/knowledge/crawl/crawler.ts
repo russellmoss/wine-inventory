@@ -50,6 +50,8 @@ export interface CrawlSummary {
   notModified: number;
   skippedRobots: number;
   skippedType: number;
+  /** Plan 084 — fetches whose FINAL url (post-redirect) fell outside the source's path rules. */
+  skippedRedirect: number;
   errors: number;
   candidates: number;
 }
@@ -85,7 +87,7 @@ export async function crawlSource(
   const maxDocs = opts.maxDocs ?? 50;
   const summary: CrawlSummary = {
     source: sourceKey, discovered: 0, fetched: 0, documents: 0,
-    notModified: 0, skippedRobots: 0, skippedType: 0, errors: 0, candidates: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, errors: 0, candidates: 0,
   };
   const throttle = new HostThrottle();
 
@@ -181,6 +183,18 @@ export async function crawlSource(
     }
     if (res.contentType === "other") { summary.skippedType++; continue; }
 
+    // Plan 084 — re-gate the FINAL url. fetchDocument follows up to 5 redirects re-checking only
+    // the HOST (isAllowedHost + assertPublicHost), never the source's path rules, so a same-host
+    // 302 could land on a path the config deliberately denies. That matters most where prefixes
+    // carry a correctness guarantee: vt-enology-notes excludes the PDF twins of pages it ingests
+    // as filtered HTML, and PDFs cannot be section-filtered — a redirect would reimport the very
+    // announcements the filter strips, as a second unfiltered document.
+    if (res.finalUrl !== item.url && !pathAllowed(cfg, res.finalUrl)) {
+      summary.skippedRedirect++;
+      console.log(`  ! redirect out of scope: ${item.url} -> ${res.finalUrl}`);
+      continue;
+    }
+
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(sourceId, cfg, item.url, item.lastmod, res, contentHash);
     summary.documents++;
@@ -247,7 +261,7 @@ export async function crawlWithFollowing(
     if (!cfg) throw new Error(`unknown source: ${key}`);
     const row = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key } }));
     if (!row) throw new Error(`source ${key} not seeded — run: npm run seed:knowledge-sources`);
-    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, errors: 0, candidates: 0 };
+    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, errors: 0, candidates: 0 };
     const entry = { sourceId: row.id, sourceKey: key, cfg };
     domainToSource.set(cfg.homeDomain.toLowerCase(), entry);
     domainToSource.set(`www.${cfg.homeDomain}`.toLowerCase(), entry);
@@ -351,6 +365,18 @@ export async function crawlWithFollowing(
     }
     if (res.contentType === "other") { s.skippedType++; continue; }
 
+    // Plan 084 — re-gate the FINAL url. fetchDocument follows up to 5 redirects re-checking only
+    // the HOST (isAllowedHost + assertPublicHost), never the source's path rules, so a same-host
+    // 302 could land on a path the config deliberately denies. That matters most where prefixes
+    // carry a correctness guarantee: vt-enology-notes excludes the PDF twins of pages it ingests
+    // as filtered HTML, and PDFs cannot be section-filtered — a redirect would reimport the very
+    // announcements the filter strips, as a second unfiltered document.
+    if (res.finalUrl !== url && !pathAllowed(tgt.cfg, res.finalUrl)) {
+      s.skippedRedirect++;
+      console.log(`  ! redirect out of scope: ${url} -> ${res.finalUrl}`);
+      continue;
+    }
+
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(tgt.sourceId, tgt.cfg, url, undefined, res, contentHash);
     s.documents++;
@@ -432,7 +458,7 @@ export async function crawlUrls(
   if (!cfg) throw new Error(`unknown source: ${sourceKey}`);
   const summary: CrawlSummary = {
     source: sourceKey, discovered: urls.length, fetched: 0, documents: 0,
-    notModified: 0, skippedRobots: 0, skippedType: 0, errors: 0, candidates: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, skippedRedirect: 0, errors: 0, candidates: 0,
   };
   const throttle = new HostThrottle();
   const sourceRow = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key: sourceKey } }));
@@ -489,6 +515,13 @@ export async function crawlUrls(
       continue;
     }
     if (res.contentType === "other") { summary.skippedType++; continue; }
+
+    // NOTE: no redirect path re-gate here, unlike crawlSource/crawlWithFollowing. crawlUrls is the
+    // operator-directed path — the caller passes an EXPLICIT url list, and several of its callers
+    // (crawl-owri, crawl-scott-labs, crawl-curated) deliberately fetch paths their source's
+    // allowPrefixes do not cover. Applying the gate here would reject those by design.
+    // `summary.skippedRedirect` therefore stays 0 on this path; it is part of the shared
+    // CrawlSummary shape, not dead state.
 
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(sourceId, cfg, url, undefined, res, contentHash);

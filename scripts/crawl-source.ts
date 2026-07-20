@@ -40,6 +40,7 @@ async function main() {
             contentType: doc.contentType,
             url: doc.canonicalUrl,
             contentHash: doc.contentHash,
+            sourceKey: doc.sourceKey,
           });
           if (r.skipped === "unchanged") indexed.unchanged++;
           else if (r.skipped === "low-confidence") indexed.lowConf++;

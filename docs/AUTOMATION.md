@@ -36,6 +36,16 @@ fresh without a human in the write path, and the issue it opens is the audit tra
 golden rule: it never touches code and never merges `main`. Single-flight (`concurrency:`) so two runs
 can't race on chunk revisions. Run it manually with a `max_docs` input for a bounded smoke test.
 
+**Section filtering (plan 084).** A source may declare `sectionFilter: "anchor-heading"` in
+`src/lib/knowledge/config.ts`, which strips non-technical SECTIONS from within a page before extraction
+— needed when one url mixes technical and non-technical content (VT Enology Notes carries winemaking
+chemistry and a paid study-tour ad on the same page, which path-prefix filtering cannot separate). It
+emits ONE document with the announcements removed, never one document per section. ⚠️ **Bump
+`SECTION_FILTER_VERSION`** (`src/lib/knowledge/sections/index.ts`) whenever a drop pattern changes: it
+folds into `indexedContentHash`, and without a bump the re-crawl sees unchanged bytes, short-circuits to
+`skipped:"unchanged"`, and the new rules silently never apply. Gate: `npm run verify:vt-enology`
+(DB-free, runs anywhere).
+
 ### How the brain-refresh loop knows what's stale
 `docs/.brain-refresh-marker` holds the commit SHA the docs were last refreshed at. The loop diffs
 `marker..HEAD`; if anything under `prisma/schema.prisma`, `prisma/migrations/`, or

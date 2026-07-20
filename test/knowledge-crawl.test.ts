@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { findSourceConfig } from "@/lib/knowledge/config";
 import { classifyContentType } from "@/lib/knowledge/crawl/fetcher";
 import { isPrivateAddress } from "@/lib/knowledge/crawl/ssrf";
 import { extractLinks, gateLinks, hostIsTrusted } from "@/lib/knowledge/crawl/link-gate";
@@ -75,5 +76,37 @@ describe("allowlist-gated link following", () => {
     expect(hostIsTrusted("www.awri.com.au")).toBe(true);
     expect(hostIsTrusted("wineaustralia.com")).toBe(true);
     expect(hostIsTrusted("evil.example")).toBe(false);
+  });
+});
+
+describe("redirect path re-gating (plan 084)", () => {
+  // fetchDocument follows up to 5 redirects re-checking only the HOST. The crawl loops now re-run
+  // the source's path rules against the FINAL url. This test pins the RULE the loops apply, so a
+  // refactor that drops the re-gate has to delete an assertion rather than silently widen scope.
+  const pathAllowedFor = (key: string, url: string) => {
+    const cfg = findSourceConfig(key)!;
+    const p = new URL(url).pathname;
+    if (cfg.denyPrefixes.some((d) => p.startsWith(d))) return false;
+    return cfg.allowPrefixes.some((a) => p.startsWith(a));
+  };
+
+  it("would reject a same-host redirect onto an excluded PDF twin", () => {
+    // The scenario: /EN/166.html 302s to the PDF of the same issue. That PDF cannot be
+    // section-filtered (no anchors), so ingesting it reimports the study-tour ad unfiltered.
+    expect(pathAllowedFor("vt-enology-notes", "https://enology.fst.vt.edu/EN/166.html")).toBe(true);
+    expect(
+      pathAllowedFor("vt-enology-notes", "https://enology.fst.vt.edu/downloads/EnologyNotes166.pdf"),
+    ).toBe(false);
+  });
+
+  it("still admits a redirect that stays inside the source's scope", () => {
+    expect(pathAllowedFor("vt-enology-notes", "https://enology.fst.vt.edu/EN/165.html")).toBe(true);
+    expect(
+      pathAllowedFor("vt-enology-notes", "https://enology.fst.vt.edu/downloads/EnologyNotes167.pdf"),
+    ).toBe(true);
+  });
+
+  it("rejects a redirect onto a denied year index", () => {
+    expect(pathAllowedFor("vt-enology-notes", "https://enology.fst.vt.edu/EN/2013.html")).toBe(false);
   });
 });
