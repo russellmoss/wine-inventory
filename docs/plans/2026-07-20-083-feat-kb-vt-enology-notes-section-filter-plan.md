@@ -1,7 +1,7 @@
 ---
 title: VT Enology Notes knowledge source + section-level technical filter
 type: feat
-status: draft
+status: completed
 date: 2026-07-20
 branch: claude/kb-vt-enology-notes
 depth: standard
@@ -267,6 +267,34 @@ is the worse error.
 **R5 — Copyright.** VT asserts "Unauthorized use is prohibited" with no license grant. User decision
 is to proceed cite-only. The `license` field must say so explicitly, and the existing citation path
 (`/kb/source/{documentId}` → 302 to `canonicalUrl`) already links every retrieval back to VT.
+
+## Execution log (2026-07-20)
+
+ALL 7 UNITS DONE on `claude/kb-vt-enology-notes`. tsc 0, 7 knowledge suites green, `verify:vt-enology`
+PASSES live. Six commits, one per unit boundary.
+
+Three things the plan got wrong, corrected during the build:
+
+1. **#170 is four files, not one.** `EnologyNotes170.pdf` is a 404; the note is published as
+   `170_Sec1..Sec4`. Found by reading `EN/index.html` instead of trusting the plan's range. Also
+   `www.enology.fst.vt.edu` resolves, so both hosts are trusted.
+2. **A blanket `/downloads/` allow-prefix would have silently undone the feature.** Notes #1–166 have
+   PDF twins of pages we ingest as HTML, and the PDF path cannot be section-filtered (no anchors) — so
+   `EnologyNotes166.pdf` would have re-imported the study-tour ad as a second, unfiltered document.
+   Allow-prefixes are now per-note and asserted.
+3. **The classifier was reading body prose as a heading.** Caught by the live gate, not by reasoning:
+   EN-159 anchor #1 has no bold title, so heading extraction ran to the first `</p>` and swallowed 207
+   chars of prose that mentions "On-Line Publications" in passing — dropping a section about
+   fermentation considerations. Fixed with a 150-char guard (calibrated: prose 207, longest real
+   non-technical heading 118) and `SECTION_FILTER_VERSION` bumped 1→2.
+
+Measured drop rate on the 9-issue sample: **10%**, not the 37.6% the research predicted. Both are
+right — the research counted year-index title lists (announcement-dense), while this sample is
+dominated by EN-159 and EN-165, deep dives with 30+ technical subsections each. Consistent with the
+research's own finding that the rate is driven by issue length, ranging 5%–64%.
+
+Not done, deliberately: the DB-level row proof (`npm run crawl:source vt-enology-notes`) needs `.env`
+and must run from the MAIN checkout, and it is the first real corpus write — left for a human.
 
 ## Implementation Units
 

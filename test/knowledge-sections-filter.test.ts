@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -116,7 +117,7 @@ describe("deriveIndexHash — R1, the silent no-op guard", () => {
     // Without this, tuning a drop pattern is a silent no-op: the raw bytes are unchanged, so
     // indexDocument short-circuits to skipped:"unchanged" forever.
     const current = deriveIndexHash(RAW, true);
-    const asIfBumped = require("node:crypto")
+    const asIfBumped = crypto
       .createHash("sha256")
       .update(`${RAW}|sf:${Number(SECTION_FILTER_VERSION) + 1}`)
       .digest("hex");

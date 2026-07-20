@@ -2,6 +2,10 @@
 // only fetches sources listed here, and only follows links INTO domains in TRUSTED_DOMAINS. Adding a
 // source later is a config edit (re-run scripts/seed-knowledge-sources.ts), not code. AWRI is source #1,
 // Wine Australia #2 (queued: UC Davis, Oregon State, Washington State, Cornell).
+//
+// Plan 083 — "a config edit, not code" holds for MOST sources but is no longer universal. A source that
+// mixes technical and non-technical content inside ONE url cannot be expressed with path prefixes, and
+// needs a `sectionFilter` strategy implemented in src/lib/knowledge/sections/ (see vt-enology-notes).
 
 export interface KnowledgeSourceConfig {
   key: string;
