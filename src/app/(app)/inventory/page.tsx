@@ -12,7 +12,7 @@ import { listCustomUnitsCore } from "@/lib/units/custom-unit-core";
 import { ConsumablesSection as ConsumablesPanel } from "./sections/ConsumablesSection";
 import { listEquipment } from "@/lib/equipment/equipment";
 import { listLocations } from "@/lib/work-orders/data";
-import { EquipmentClient } from "../setup/equipment/EquipmentClient";
+import { EquipmentSection as EquipmentPanel } from "./sections/EquipmentSection";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Inventory" };
@@ -83,8 +83,26 @@ async function EquipmentSection() {
   const user = await requireReadyUser();
   const tenantId = user.activeOrganizationId;
   if (!tenantId) return <div style={{ padding: 24 }}>Your account isn&apos;t attached to a winery.</div>;
-  const [equipment, locations] = await Promise.all([listEquipment(tenantId), listLocations(tenantId)]);
-  return <EquipmentClient equipment={equipment} locations={locations} isAdmin={user.role === "admin" || user.role === "owner"} />;
+  // Plan 080 U9: "Equipment & parts" is TWO stores — individually-tracked EquipmentAssets, and
+  // quantity-tracked EQUIPMENT-category materials. Parts are surfaced by CATEGORY, so no data moves.
+  const [equipment, locations, parts] = await Promise.all([
+    listEquipment(tenantId),
+    listLocations(tenantId),
+    listMaterials({ category: "EQUIPMENT", includeInactive: false }),
+  ]);
+  const byLoc = await onHandByLocationForMaterials(parts.map((p) => p.id));
+  const partsOnHand: Record<string, LocationOnHand[]> = {};
+  for (const [materialId, rows] of byLoc) partsOnHand[materialId] = rows;
+
+  return (
+    <EquipmentPanel
+      equipment={equipment}
+      locations={locations}
+      isAdmin={user.role === "admin" || user.role === "owner"}
+      parts={parts}
+      partsOnHand={partsOnHand}
+    />
+  );
 }
 
 export default async function InventoryPage({ searchParams }: { searchParams: Promise<{ section?: string | string[] }> }) {
