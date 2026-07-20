@@ -111,6 +111,22 @@ describe("redirect path re-gating (plan 084)", () => {
   it("rejects a redirect onto a denied year index", () => {
     expect(pathAllowedFor("vt-enology-notes", "https://enology.fst.vt.edu/EN/2013.html")).toBe(false);
   });
+
+  it("denies the landing page and ALL five alphabetical index pages", () => {
+    // Pure navigation. Verified in production: /EN/index.html indexed as 2 chunks of subject-index
+    // links and truncated summaries, zero technical prose. crawl:source does not follow links, so
+    // the five indexNN pages never appeared in the initial crawl — but the monthly sweep runs
+    // crawlWithFollowing, which does, so they would have arrived silently on the 1st.
+    for (const p of ["index.html", "indexae.html", "indexfj.html", "indexko.html", "indexpt.html", "indexuz.html"]) {
+      expect(pathAllowedFor("vt-enology-notes", `https://enology.fst.vt.edu/EN/${p}`)).toBe(false);
+    }
+  });
+
+  it("still admits every real issue page (no issue url starts with 'index')", () => {
+    for (const n of [1, 40, 41, 112, 145, 165, 166]) {
+      expect(pathAllowedFor("vt-enology-notes", `https://enology.fst.vt.edu/EN/${n}.html`)).toBe(true);
+    }
+  });
 });
 
 // Plan 085 — the challenge guard's ORDERING is the whole point, and it is not reachable by a unit

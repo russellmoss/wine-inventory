@@ -86,49 +86,29 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-0. ⚠️ **OPEN — UC IPM added to the KB corpus (`claude/kb-ucanr-ipm`, branched off `origin/main`).**
-   Source #19 `uc-ipm` (ipm.ucanr.edu grape PMGs) is configured, seeded, crawled and embedded:
-   **87 active docs / 667 chunks, voyage-4/1024, 0 errors, 0 skippedRobots, hitCap=false** (full
-   frontier, not truncated). `autoCrawl: true` so the monthly sweep picks it up with no workflow edit.
-   robots.txt ALLOWS `/agriculture/grape/` — no bypass was used or needed.
-   (a) ✅ **DATE EXTRACTOR DONE.** Root cause was bigger than uc-ipm: `publishedAt` was READ by
-   retrieval (`retrieve.ts:111`) and surfaced in the assistant citation, but **nothing ever wrote it** —
-   the column was dead corpus-wide. Added `extract/published-date.ts` (pure, 18 tests): label-anchored
-   only (`Updated:`/`Revised:`/…) so a bare year in prose is never mistaken for a stamp, range-checked,
-   returns null rather than guessing. Wired through `ExtractedDoc.publishedAt` → `index-documents.ts`
-   (write-only-when-found, so a re-index can't erase a good date). Backfill needed its own script
-   (`npm run backfill:published-dates`) because `indexDocument` short-circuits on unchanged
-   contentHash — a re-crawl alone would never re-extract. **uc-ipm: 83/87 dated (95.4%).** Full suite
-   2871 pass. ⚠️ If tests fail to load on `@prisma/client`, run `npm run db:generate` (clobber).
-   **THE FINDING THAT MATTERS: the UC IPM grape corpus is OLD** — 2015×54, 2016×10, 2014×4 (so 82% is
-   2016-or-older), vs only 8 docs 2021+. Decade-old spray guidance is now at least *dated* in citations.
-   **BRANCH IS NOW GREEN — one thing still running:**
-   (b) ✅ **Golden widened, `verify:knowledge-base` 17/17.** Russell's call (asked, answered): added
-   `ipm.ucanr.edu` to the IPM-thresholds case's `expectPaths` alongside `mapa.gob`/`pnw-644`/
-   `field-monitoring`. WIDENED, not repointed — all remain valid authoritative answers, which is what
-   the multi-value `expectPaths` contract was built for (see its header comment). Reading note left in
-   the file: most of uc-ipm is stamped 2015-or-older, so "authoritative" = canonical, not current.
-   (d) ✅ **Assistant age warning shipped.** `passage-age.ts` (pure, 12 tests): `current` <5y, `aging`
-   5-10y, `stale` 10y+, and **`unknown` for an undated doc — which WARNS rather than passing as fresh**
-   (silently treating undated as current is how stale guidance gets laundered into confident advice).
-   Computed server-side in `search-knowledge-base.ts` as `ageWarning` per passage + a `currencyWarning`
-   over the set, NOT as a prompt line — a prose rule is advisory and gets dropped under long context; a
-   populated field must be actively contradicted. Prompt rule 8 tells the model WHEN it matters (the
-   split: age is a fact computed here, relevance is a judgment the model makes with the question in
-   hand). Live proof: AWRI's 2011-06 YAN passage flags `stale (15y)`.
-   (c) ✅ **Corpus-wide backfill DONE** — `found=735, none=1327, robots=578, errors=7`.
-   **869/2,781 dated (31.2%)**; `verify:knowledge-base` 17/17 and its diversity check moved `0 with a
-   date` → `1`, so dates now genuinely reach retrieval. Of the DATED docs: **270 stale (10y+), 245 aging
-   (5-10y), 354 current** — i.e. 59% of everything we can date is 5+ years old.
-   **TWO THINGS THE BACKFILL SURFACED, both follow-ups not blockers:**
-   • **`osu-owri` is the worst source in the corpus, not uc-ipm** — 266 docs, oldest **1993**. Only 5 are
-   dated (2%), so the 18.2y average is a 5-doc sample and must NOT be quoted as fact; the *oldest* stamp
-   is the solid part. Worth a real look. awri is 55% dated / 8.9y avg / oldest 2011.
-   • **578 docs were robots-BLOCKED from re-fetch** yet are already in the corpus. Not a contradiction
-   but an asymmetry worth knowing: the crawler fails OPEN on a robots fetch error, the backfill fails
-   CLOSED. So those docs can never be dated by this script, and they are permanently `unknown` →
-   which the assistant now warns on rather than passing off as fresh. UMC also 429-rate-limited us.
-   ⚠️ Re-running the backfill will NOT improve these; it needs a decision, not a retry.
+0. ✅ **POPPED — UC IPM knowledge source + corpus dates + stale-guidance warning. MERGED (#405,
+   `77edb7a8`), branch deleted.** Source #19 `uc-ipm` (ipm.ucanr.edu grape PMGs): 87 docs / 667 chunks,
+   `autoCrawl: true` so the monthly sweep takes it with no workflow edit. robots.txt ALLOWS
+   `/agriculture/grape/` — no bypass used or needed. What it uncovered, in order of importance:
+   • **`publishedAt` was dead corpus-wide** — READ by `retrieve.ts:111` and shown as the citation date,
+   but NEVER written. Fixed (`extract/published-date.ts`, label-anchored, refuses to guess) + a backfill
+   script, because `indexDocument` short-circuits on unchanged contentHash so a re-crawl would never
+   re-extract. **869/2,781 dated (31.2%)**; of those, 270 stale / 245 aging / 354 current.
+   • **`osu-owri` is the oldest source in the corpus, not uc-ipm** — 266 docs, oldest **1993**. Only 2%
+   dated, so its 18.2y average is a 5-doc sample and must NOT be quoted as fact; the oldest stamp is the
+   solid part. → Worth its own pass. awri: 55% dated, oldest 2011.
+   • **578 docs are robots-blocked from re-fetch though already IN the corpus** — the crawler fails OPEN
+   on a robots error, the backfill fails CLOSED. Permanently `unknown`; re-running won't help, it needs a
+   decision. UMC also 429-rate-limited us.
+   • **Assistant now warns on age** (`passage-age.ts`): `ageWarning` per passage + `currencyWarning` per
+   set, computed server-side rather than as a prompt line. ⚠️ **Read the ablation note in
+   `assistant-currency-warning.golden.ts` before trusting the green eval** — with the warning fields
+   STRIPPED the stale case still scores 5/5, because Opus already caveats from the bare `date`. The suite
+   guards the BEHAVIOUR; it is NOT evidence the age plumbing is load-bearing (that stands as a backstop
+   for weaker models, long context, and the undated case).
+   🔻 **MY ERROR, worth not repeating: I wrote a PR "deploy note" saying `seed:knowledge-sources` still
+   had to run against prod. Wrong — and the ⚠️ ONE DATABASE line in this very file already said so.**
+   Everything (crawl, embeds, backfill, seed) hit production live as it ran. PR body corrected.
 1. **OPEN — #387 is merged but NOT browser-verified.** Russell asked for "merge #387 and verify
    'delete Block 1' in the browser". The merge happened (`de889cc1`); the browser check did not.
    Needs the interactive logged-in pane. **Do not tell Mike anything until it runs** — a fix has
@@ -170,7 +150,7 @@ is two decisions that are Russell's, not code:
    row-boundary windowing so a tool_use can never be orphaned, and ONE over-claim repair turn.
    Browser-QA'd on Demo with a DB read-back. Plan 081's cold 3/3 overstated its fix (4/5 under
    history); correction appended there. Pop when #404 merges.
-6. **PLAN 084 SHIPPED — PR #406.** VT *Enology Notes* into the assistant KB with section-level
+6. ✅ **POPPED — PLAN 084 LIVE. Merged #406 + #409; corpus populated and verified.** VT *Enology Notes* into the assistant KB with section-level
    filtering. `enology.fst.vt.edu` puts rot chemistry and a $3,200 study-tour ad on the SAME url,
    which path-prefix filtering structurally cannot separate — so this adds the crawler's FIRST
    section-level content filter. robots.txt: there is none (404), nothing bypassed.
@@ -189,10 +169,22 @@ is two decisions that are Russell's, not code:
    cap); an over-masking regression; and a number-strip regression that broke case-insensitive
    arabic the corpus actually uses. One finding was REFUTED not applied — masking past `-- >` is
    correct, verified against linkedom.
-   Gates: tsc 0, eslint 0, **vitest 2985/0**, verify:invariants 36/36, verify:vt-enology PASS live.
-   ⚠️ **NOT done: the DB row-level proof.** `npm run crawl:source vt-enology-notes` needs `.env` +
-   the MAIN checkout and is the first real write to the global corpus — left for a human.
-   Pop when #406 merges.
+   **LIVE, and the DB proof RAN** (the gap that had been left for a human): seeded, then crawled
+   174 urls → **173 documents / 858 chunks**, 0 errors, 0 skippedRedirect. Corpus **2,850 → 3,023**.
+   Acceptance query against the real corpus: **zero announcement text leaks from any
+   section-filterable page.** The 3 remaining hits are the two paths that are unfiltered BY DESIGN
+   and documented — 1 PDF (no anchors) and T1 #17/#21 (anchorless fail-open). 34 T1 fail-open pages
+   observed vs ~40 predicted for #1-40; 119 pages filtered with correct reasons.
+   🔎 **The live acceptance test earned its keep** — it caught a config inconsistency the offline
+   gate could not: I denied the 14 year pages as "navigation, not content" and then seeded
+   `/EN/index.html`, which is also navigation (indexed as 2 chunks of pure link dump). Worse, it
+   links to five alphabetical index pages that match the `/EN/` allow-prefix — `crawl:source` does
+   not follow links but the MONTHLY sweep's `crawlWithFollowing` does, so they would have arrived
+   silently on the 1st. Fixed in **#409** (one `/EN/index` prefix covers all six); the stale doc was
+   deleted from the corpus.
+   ⚠️ Also learned: `recrawl-knowledge` reads sources from the **DB**, not config — merging a
+   source does NOTHING until `seed:knowledge-sources` runs. Easy to miss.
+   Gates: tsc 0, eslint 0, **vitest 2985/0**, verify:invariants 36/36, verify:vt-enology PASS.
 7. **PLAN 085 IN PROGRESS — MSU KB source (see Current objective).** ← you are here
 
 ## 🪝 Off-path — do NOT do now
@@ -271,10 +263,12 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Open the PR for plan 082 (`claude/assistant-vineyard-coverage`, code-complete, unopened).
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
 
-_Last updated: 2026-07-20 — plan 085 (MSU Extension KB source + WAF-challenge guard + link-provenance
-crawl gate) BUILT: units 1-7 committed, vitest 3065/0. Unit 8 live seed/crawl NOT run — see the two
-⛔ blockers under Current objective (seed-after-deploy ordering; MSU bot wall shut this network out). Plan 082 moved to "Also in flight" (code-complete,
-PR unopened). Prior: plan 084 (VT Enology Notes KB + section filter) SHIPPED as PR #406. Prior: the feedback-loop class sweep + regression-test gate
+_Last updated: 2026-07-20 — plan 085 (MSU Extension KB source + WAF-challenge guard +
+link-provenance crawl gate) BUILT: units 1-7 committed, vitest 3065/0. Unit 8 live seed/crawl NOT
+run — see the two ⛔ blockers under Current objective (seed-after-deploy ordering; MSU bot wall shut
+this network out). Plan 082 moved to "Also in flight" (code-complete, PR unopened). Prior: plan 084
+LIVE (#406 + #409, corpus verified 173 docs/858 chunks). Prior: popped the UC IPM / corpus-dates /
+stale-warning tangent (#405 merged).
 (branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
 lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the
 consumables fix and issue #328 had all already landed while still listed as in-flight. Beware
