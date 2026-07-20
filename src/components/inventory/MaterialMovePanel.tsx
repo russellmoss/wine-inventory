@@ -23,6 +23,8 @@ import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
 // reason instead of Next's redacted production error — that specific message is the whole point of the block.
 
 type Mode = "receive" | "adjust" | "transfer";
+/** Which verb the panel opens on — the caller ("Receive" vs "Move stock") decides. */
+export type MoveMode = Mode;
 type LocationOpt = { id: string; name: string };
 
 const MODES: { key: Mode; label: string }[] = [
@@ -93,6 +95,7 @@ export function MaterialMovePanel({
   onHand,
   pending,
   run,
+  initialMode = "receive",
   customUnits = [],
   vendors = [],
   onVendorCreated,
@@ -103,6 +106,8 @@ export function MaterialMovePanel({
   onHand: LocationOnHand[];
   pending: boolean;
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
+  /** Which tab to open on. The caller keys this panel by material id, so it applies fresh on each open. */
+  initialMode?: Mode;
   /** Plan 080 U15: the tenant's own units ("roll", "case"), selectable when receiving. */
   customUnits?: CustomUnitRow[];
   /** Plan 080 U17: the tenant's vendors for the receipt vendor picker. */
@@ -110,7 +115,7 @@ export function MaterialMovePanel({
   onVendorCreated?: (vendor: { id: string; name: string }) => void;
   onClose: () => void;
 }) {
-  const [mode, setMode] = React.useState<Mode>("receive");
+  const [mode, setMode] = React.useState<Mode>(initialMode);
   const [qty, setQty] = React.useState("");
   const [delta, setDelta] = React.useState("");
   const [reason, setReason] = React.useState("");

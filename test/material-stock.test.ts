@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Prisma } from "@prisma/client";
-import { adjustConsumableCore, transferConsumableCore } from "@/lib/cellar/material-stock-core";
+import { adjustConsumableCore, transferConsumableCore, receiveConsumableCore } from "@/lib/cellar/material-stock-core";
+import { runWithTenantContext } from "@/lib/tenant/context";
 import { ActionError } from "@/lib/action-error";
 
 // Plan 080 U2b — the location-aware consumables stock engine. These lock the MONEY-critical properties of
@@ -45,6 +46,8 @@ function makeTx(opts: {
   material?: { id: string; name: string; stockUnit: string | null; isStockTracked: boolean } | null;
   lots: LotRow[];
   settings?: { costingPolicyVersion: number; currency: string } | null;
+  /** Plan 080 U15: the tenant's custom units, so a receipt "by the roll" can resolve its pack size. */
+  customUnits?: { normalizedName: string; dimension: string; perCanonical: number }[];
 }) {
   const lots = opts.lots.map((l) => ({ ...l }));
   const calls = {
@@ -79,6 +82,7 @@ function makeTx(opts: {
       },
     },
     location: { findUnique: async (args: { where: { id: string } }) => locById[args.where.id] ?? null },
+    customUnit: { findMany: async () => opts.customUnits ?? [] },
     appSettings: { findFirst: async () => opts.settings ?? { costingPolicyVersion: 3, currency: "USD" } },
     supplyLot: {
       findMany: async (args: { where: Record<string, unknown>; orderBy?: unknown }) => {
@@ -320,5 +324,60 @@ describe("adjustConsumableCore", () => {
     const { tx } = makeTx({ lots: [lot("a", 10, 2, 1_000, LOC.lab.id)] });
     await expect(adjustConsumableCore(ACTOR, { materialId: "m1", locationId: LOC.lab.id, delta: 0, reason: "x" }, tx)).rejects.toThrow(/non-zero/);
     await expect(adjustConsumableCore(ACTOR, { materialId: "m1", locationId: LOC.lab.id, delta: 5, reason: "  " }, tx)).rejects.toThrow(/reason/);
+  });
+});
+
+// Plan 080 U15 (#366/#370) — receiving BY THE PACK. The pure conversion is unit-tested exhaustively in
+// test/receipt-quantity.test.ts; these prove the CORE wires it in — the quantity AND the per-unit cost are
+// resolved server-side into the material's stock unit BEFORE the lot is written, so the booked stock and the
+// cost every future depletion charges to wine are both correct (COST-1). requireTenantId() reads the ALS
+// tenant (loadCustomUnits is K12-explicit), so the core runs inside a tenant context here.
+describe("receiveConsumableCore — receive by the pack", () => {
+  const LABELS = { id: "m1", name: "6BSS labels", stockUnit: "unit", isStockTracked: true };
+  const ROLL = [{ normalizedName: "roll", dimension: "count", perCanonical: 500 }];
+
+  it("books 3 rolls of 500 as 1,500 labels at $0.50 each — the reported ask (#366/#370)", async () => {
+    const { tx, calls } = makeTx({ material: LABELS, customUnits: ROLL, lots: [] });
+
+    await runWithTenantContext({ tenantId: ACTOR.tenantId }, () =>
+      receiveConsumableCore(ACTOR, { materialId: "m1", locationId: LOC.lab.id, qty: 3, qtyUnit: "roll", unitCost: 250, skipApEmit: true }, tx),
+    );
+
+    // The lot is stored in the STOCK unit, not the pack unit: 3 rolls → 1,500 labels.
+    expect(calls.created).toHaveLength(1);
+    expect(calls.created[0]).toMatchObject({ qtyReceived: 1500, qtyRemaining: 1500, locationId: LOC.lab.id });
+    // COST-1: cost converts through the TOTAL — $250/roll × 3 = $750 over 1,500 labels = $0.50/label exactly.
+    expect(Number(calls.created[0].unitCost)).toBeCloseTo(0.5, 10);
+    expect(1500 * Number(calls.created[0].unitCost)).toBeCloseTo(3 * 250, 8);
+    // and a RECEIVE movement stamped in the stock unit at the location.
+    expect(calls.movements[0]).toMatchObject({ kind: "RECEIVE", deltaQty: 1500, locationId: LOC.lab.id });
+  });
+
+  it("still receives in the base stock unit when no pack unit is chosen", async () => {
+    const { tx, calls } = makeTx({ material: LABELS, customUnits: ROLL, lots: [] });
+
+    await runWithTenantContext({ tenantId: ACTOR.tenantId }, () =>
+      receiveConsumableCore(ACTOR, { materialId: "m1", locationId: LOC.lab.id, qty: 500, unitCost: 0.5, skipApEmit: true }, tx),
+    );
+
+    // No qtyUnit → nothing to convert: 500 labels at the stated $0.50, unchanged.
+    expect(calls.created[0]).toMatchObject({ qtyReceived: 500, qtyRemaining: 500 });
+    expect(Number(calls.created[0].unitCost)).toBeCloseTo(0.5, 10);
+    expect(calls.movements[0]).toMatchObject({ kind: "RECEIVE", deltaQty: 500 });
+  });
+
+  it("REFUSES a cross-dimension pack rather than fabricating a conversion (COST-1)", async () => {
+    // "roll" measures a count; the material is tracked in grams — no density, so the receipt is blocked.
+    const grams = { id: "m1", name: "KMBS", stockUnit: "g", isStockTracked: true };
+    const { tx, calls } = makeTx({ material: grams, customUnits: ROLL, lots: [] });
+
+    await expect(
+      runWithTenantContext({ tenantId: ACTOR.tenantId }, () =>
+        receiveConsumableCore(ACTOR, { materialId: "m1", locationId: LOC.lab.id, qty: 2, qtyUnit: "roll", unitCost: 10, skipApEmit: true }, tx),
+      ),
+    ).rejects.toThrow(/measure different things/i);
+    // nothing booked on the blocked path
+    expect(calls.created).toHaveLength(0);
+    expect(calls.movements).toHaveLength(0);
   });
 });
