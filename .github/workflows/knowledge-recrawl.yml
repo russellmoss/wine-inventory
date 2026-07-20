@@ -80,6 +80,8 @@ jobs:
             echo '```'
             echo ""
             echo "Review: any **withdrawn** docs (a source removed the page?) and **newCandidateDomains** (new trusted-source candidates queued to CandidateSource). Re-embeds and tombstones are reversible."
+            echo ""
+            echo "**Bot walls (plan 085).** \`skippedChallenge\` counts fetches that returned a WAF interstitial instead of the document, per source; those are skipped before persisting, never indexed. \`tombstoneExcludedSources\` lists sources held out of the tombstone pass because a challenge makes \"not reached\" indistinguishable from \"removed\". **\`darkSources\` is the one that FAILS this job**: challenged AND zero documents indexed, which usually means the runner's datacenter IP is refused where a residential IP is not."
           } > issue-body.md
           gh issue create \
             --title "KB re-crawl $DATE" \

@@ -20,6 +20,7 @@ import { crawlWithFollowing } from "@/lib/knowledge/crawl/crawler";
 import { indexDocument } from "@/lib/knowledge/index-documents";
 import { fetchDocument } from "@/lib/knowledge/crawl/fetcher";
 import { TRUSTED_DOMAIN_SET, findSourceConfig } from "@/lib/knowledge/config";
+import { findDarkSources } from "@/lib/knowledge/crawl/challenge";
 import { runAsSystem, disconnectSystem } from "@/lib/tenant/system";
 
 const isAllowedHost = (h: string) => TRUSTED_DOMAIN_SET.has(h.toLowerCase());
@@ -74,25 +75,55 @@ async function main() {
   // reached" just means "we stopped early", not "removed" — skipping avoids ~1k needless fetches and,
   // worse, wrongly tombstoning live pages the capped crawl never got to.
   const capped = Boolean(process.env.KB_MAX_DOCS) || crawl.hitCap;
+
+  // Plan 085 — a source that hit a bot wall is in EXACTLY the same position as a capped crawl: we
+  // did not establish what is still live, so "not reached" is not a removal signal. Excluding it is
+  // per-source rather than global so one flaky source cannot suppress legitimate tombstoning across
+  // the other nineteen.
+  const challengedKeys = Object.entries(crawl.summaries)
+    .filter(([, s]) => s.skippedChallenge > 0)
+    .map(([key]) => key);
+  const challengedIds = new Set(autoSources.filter((a) => challengedKeys.includes(a.key)).map((a) => a.id));
+  const tombstoneSourceIds = autoSourceIds.filter((id) => !challengedIds.has(id));
+  if (challengedKeys.length) {
+    console.log(
+      `tombstone pass EXCLUDES [${challengedKeys.join(", ")}] — challenged by a bot wall this run ` +
+        "(cannot distinguish 'removed' from 'blocked')",
+    );
+  }
+
   const stale = capped
     ? []
     : await runAsSystem((db) =>
         db.knowledgeDocument.findMany({
           // Only auto-crawl sources: a curated source's docs are never "reached" by this crawl, so
           // existence-checking them here would tombstone/refetch the whole curated set every week.
-          where: { status: "active", lastVerifiedAt: { lt: runStart }, sourceId: { in: autoSourceIds } },
+          where: { status: "active", lastVerifiedAt: { lt: runStart }, sourceId: { in: tombstoneSourceIds } },
           select: { id: true, canonicalUrl: true },
         }),
       );
   if (capped) console.log("tombstone pass SKIPPED — crawl was capped/incomplete (not a trustworthy removal signal)");
   let withdrawn = 0;
   let stillLive = 0;
+  let challengedProbes = 0;
   for (const d of stale) {
     let gone = false;
+    let challenged = false;
     try {
-      await fetchDocument(d.canonicalUrl, { isAllowedHost }); // throws on 404 / non-2xx / bad host
+      // throws on 404 / non-2xx / bad host. A bot wall does NOT throw — it answers 200 with an
+      // interstitial, which is why the result has to be inspected rather than discarded.
+      const probe = await fetchDocument(d.canonicalUrl, { isAllowedHost });
+      challenged = Boolean(probe.challenge);
     } catch {
       gone = true;
+    }
+    if (challenged) {
+      // Neither liveness nor removal was established: a bot wall answered, not the origin. Leave
+      // lastVerifiedAt ALONE so this doc is re-checked next run rather than looking freshly
+      // verified, and obviously do not withdraw it.
+      challengedProbes++;
+      await sleep(1000);
+      continue;
     }
     if (gone) {
       await runAsSystem((db) =>
@@ -108,6 +139,15 @@ async function main() {
     await sleep(1000); // polite
   }
 
+  // Plan 085 — per-source, not just a total: a global count cannot say WHICH source went dark, and
+  // that is the only actionable part. crawl.summaries used to be computed and thrown away entirely.
+  const skippedChallenge = Object.fromEntries(
+    Object.entries(crawl.summaries)
+      .filter(([, s]) => s.skippedChallenge > 0)
+      .map(([key, s]) => [key, s.skippedChallenge]),
+  );
+  const darkSources = findDarkSources(crawl.summaries);
+
   const summary = {
     sources: keys,
     reEmbedded,
@@ -115,14 +155,29 @@ async function main() {
     unchanged,
     crawlErrors,
     tombstoneSkipped: capped,
+    tombstoneExcludedSources: challengedKeys,
     checkedNotReached: stale.length,
     withdrawn,
     stillLive,
+    challengedProbes,
+    skippedChallenge,
+    darkSources,
     newCandidateDomains: crawl.candidateDomains, // count queued to CandidateSource for human review
     finishedAt: new Date().toISOString(),
   };
   console.log("\n::KB_RECRAWL_SUMMARY::" + JSON.stringify(summary));
   await disconnectSystem();
+
+  // Exit AFTER the marker is printed, so the workflow's grep still captures the summary and the
+  // issue it files carries the full detail. `set -o pipefail` in the workflow propagates this.
+  if (darkSources.length) {
+    console.error(
+      `\nFAIL: source(s) shut out by a bot wall with zero documents indexed: ${darkSources.join(", ")}. ` +
+        "Most likely the runner's datacenter IP is being refused where a residential IP is not. " +
+        "This is deliberately loud — a source silently going dark is how a corpus rots.",
+    );
+    process.exit(1);
+  }
 }
 
 main().catch(async (e) => {

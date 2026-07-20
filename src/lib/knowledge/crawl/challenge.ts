@@ -87,3 +87,27 @@ export function detectChallengePage(bytes: Buffer, rawContentType: string): Chal
   }
   return null;
 }
+
+/** The slice of CrawlSummary that the went-dark decision needs. */
+export interface SourceOutcome {
+  documents: number;
+  skippedChallenge: number;
+}
+
+/**
+ * Sources that a bot wall shut out completely this run: challenged at least once AND indexed
+ * nothing. Returned sorted so the run log and the failure message are stable.
+ *
+ * WHY THIS PREDICATE AND NOT `skippedChallenge > 0`: challenges are intermittent by nature (we
+ * saw one path challenged and its siblings served, on the same host, minutes apart). Failing the
+ * monthly job on ANY challenge would cry wolf every month and train everyone to ignore it. A
+ * source that got challenged and still brought back documents is working; a source that got
+ * challenged and brought back NOTHING is the one a human needs to look at — most likely because
+ * the runner's datacenter IP is being refused where a residential IP is not.
+ */
+export function findDarkSources(summaries: Record<string, SourceOutcome>): string[] {
+  return Object.entries(summaries)
+    .filter(([, s]) => s.skippedChallenge > 0 && s.documents === 0)
+    .map(([key]) => key)
+    .sort();
+}

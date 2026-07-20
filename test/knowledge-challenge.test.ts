@@ -10,7 +10,7 @@
 // effectively untestable (readCapped needs a real ReadableStream, assertPublicHost does live DNS).
 
 import { describe, it, expect } from "vitest";
-import { detectChallengePage } from "@/lib/knowledge/crawl/challenge";
+import { detectChallengePage, findDarkSources } from "@/lib/knowledge/crawl/challenge";
 
 const HTML = "text/html; charset=utf-8";
 
@@ -91,5 +91,37 @@ describe("detectChallengePage", () => {
   it("does not scan unboundedly — a marker past the scan window is not matched", () => {
     const padded = "x".repeat(80_000) + "Request unsuccessful. Incapsula incident ID: 9";
     expect(detectChallengePage(buf(padded), HTML)).toBeNull();
+  });
+});
+
+describe("findDarkSources (monthly-job failure predicate)", () => {
+  it("flags a source that was challenged and indexed nothing", () => {
+    expect(findDarkSources({ "msu-grapes": { documents: 0, skippedChallenge: 12 } })).toEqual(["msu-grapes"]);
+  });
+
+  // The whole reason the predicate is not `skippedChallenge > 0`. Challenges are intermittent --
+  // during recon one path was refused while its siblings on the same host were served, minutes
+  // apart. Failing on ANY challenge would red the monthly job routinely and train everyone to
+  // ignore it, which is worse than not alerting at all.
+  it("does NOT flag a source that was challenged but still brought back documents", () => {
+    expect(findDarkSources({ "msu-grapes": { documents: 40, skippedChallenge: 3 } })).toEqual([]);
+  });
+
+  it("does NOT flag a source with zero documents and no challenge (nothing new to fetch)", () => {
+    expect(findDarkSources({ awri: { documents: 0, skippedChallenge: 0 } })).toEqual([]);
+  });
+
+  it("reports every dark source, sorted, so the failure message is stable", () => {
+    expect(
+      findDarkSources({
+        wsu: { documents: 0, skippedChallenge: 1 },
+        awri: { documents: 5, skippedChallenge: 0 },
+        "msu-grapes": { documents: 0, skippedChallenge: 9 },
+      }),
+    ).toEqual(["msu-grapes", "wsu"]);
+  });
+
+  it("is empty for a clean run", () => {
+    expect(findDarkSources({ awri: { documents: 12, skippedChallenge: 0 } })).toEqual([]);
   });
 });
