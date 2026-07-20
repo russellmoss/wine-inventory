@@ -7,14 +7,16 @@ import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, ActionError, getActionUser } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
-import { ftToM, type Unit } from "@/lib/vineyard/units";
+import { type Unit } from "@/lib/vineyard/units";
 import {
   optStr,
   optInt,
-  optFloat,
   optColor,
   readUnitValue,
   spacingToCanonicalM,
+  elevationToCanonicalM,
+  gpsLatToCanonical,
+  gpsLngToCanonical,
 } from "@/lib/vineyard/field-coercion";
 import { serializeBlock, serializeDetail, type VineyardDetailPayload } from "@/lib/vineyard/data";
 import { normalizeToken } from "@/lib/lot/code";
@@ -138,10 +140,9 @@ export const upsertVineyardDetail = action(
     if (!vineyard) throw new ActionError("Vineyard not found.");
 
     const unit = readUnit(formData);
-    const gpsLat = optFloat(formData.get("gpsLat"), "Latitude", { min: -90, max: 90 });
-    const gpsLng = optFloat(formData.get("gpsLng"), "Longitude", { min: -180, max: 180 });
-    const elevationRaw = optFloat(formData.get("elevation"), "Elevation", { min: 0 });
-    const elevationM = elevationRaw == null ? null : unit === "metric" ? elevationRaw : ftToM(elevationRaw);
+    const gpsLat = gpsLatToCanonical(formData.get("gpsLat"));
+    const gpsLng = gpsLngToCanonical(formData.get("gpsLng"));
+    const elevationM = elevationToCanonicalM(formData.get("elevation"), unit);
     const soilType = optStr(formData.get("soilType"), 120);
     const manager = optStr(formData.get("manager"), 120);
 

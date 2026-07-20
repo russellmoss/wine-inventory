@@ -12,7 +12,7 @@
 
 import { ActionError } from "@/lib/action-error";
 import { isValidHex } from "@/lib/vineyard/colors";
-import { toCanonicalSpacing, type Unit } from "@/lib/vineyard/units";
+import { ftToM, toCanonicalSpacing, type Unit } from "@/lib/vineyard/units";
 
 // ── Primitive parsers (everything optional; validate only when present) ────
 
@@ -68,13 +68,68 @@ export function readUnitValue(v: unknown): Unit {
 /**
  * A spacing value typed in `unit` → canonical meters.
  *
- * CHARACTERIZATION (pre-fix behavior, preserved verbatim in this commit): a value of
- * `0` passes `optFloat`'s `min: 0` bound, then `toCanonicalSpacing` routes it through
- * `pos()` (units.ts:18-23), which returns null for anything `<= 0`. So "0" silently
- * CLEARS the field instead of erroring. That is plan 082's risk R1 and is fixed in the
- * next commit — this one only proves the extraction changed nothing.
+ * Zero and negatives are REFUSED, not silently dropped. Two layers used to disagree
+ * about what `0` meant: `optFloat`'s `min: 0` admitted it, then `toCanonicalSpacing` →
+ * `pos()` (units.ts:18-23) mapped anything `<= 0` to null. A user typing 0 into row
+ * spacing got a wiped field and no complaint (plan 082, R1). Spacing is a physical
+ * distance between vines — zero is not a value, it is a mistake, and it silently
+ * destroys the derived planted acreage.
+ *
+ * Contrast `elevationToCanonicalM` below, where 0 IS meaningful (sea level).
  */
 export function spacingToCanonicalM(v: unknown, label: string, unit: Unit): number | null {
   const raw = optFloat(v, label, { min: 0 });
+  if (raw === null) return null;
+  if (raw <= 0) throw new ActionError(`${label} must be greater than 0.`);
   return toCanonicalSpacing(raw, unit);
+}
+
+/**
+ * An elevation typed in `unit` → canonical meters. Unlike spacing, 0 is a legitimate
+ * value (sea level) and passes through.
+ *
+ * The `min: 0` bound is inherited verbatim from the /reference form's existing rule, so
+ * both write paths agree. NOTE it means sub-sea-level sites are refused, and real ones
+ * exist (Death Valley, the Dead Sea). Changing that is a product decision, not a
+ * refactor, so it is deliberately NOT changed here — raised as an open question on
+ * plan 082 instead. If it changes, it changes in this one place for both callers.
+ */
+export function elevationToCanonicalM(v: unknown, unit: Unit): number | null {
+  const raw = optFloat(v, "Elevation", { min: 0 });
+  if (raw === null) return null;
+  return unit === "metric" ? raw : ftToM(raw);
+}
+
+export function gpsLatToCanonical(v: unknown): number | null {
+  return optFloat(v, "Latitude", { min: -90, max: 90 });
+}
+
+export function gpsLngToCanonical(v: unknown): number | null {
+  return optFloat(v, "Longitude", { min: -180, max: 180 });
+}
+
+/**
+ * A vineyard abbreviation → the canonical uppercase lot-code token.
+ *
+ * This is the 2-4 character slot that appears in lot codes, so it is identity-adjacent:
+ * it must be alphanumeric and length-bounded, and callers must ALSO check it does not
+ * collide case-insensitively with another vineyard's (see EntityConfig.findConflict).
+ * Uppercasing here means "abv" and "ABV" cannot both be stored.
+ */
+export const ABBREVIATION_MIN = 2;
+export const ABBREVIATION_MAX = 4;
+
+export function normalizeAbbreviation(v: unknown): string | null {
+  const s = optStr(v, ABBREVIATION_MAX);
+  if (s === null) return null;
+  const upper = s.toUpperCase();
+  if (!/^[A-Z0-9]+$/.test(upper)) {
+    throw new ActionError("An abbreviation can only contain letters and numbers.");
+  }
+  if (upper.length < ABBREVIATION_MIN) {
+    throw new ActionError(
+      `An abbreviation must be ${ABBREVIATION_MIN}-${ABBREVIATION_MAX} characters.`,
+    );
+  }
+  return upper;
 }
