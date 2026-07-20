@@ -320,6 +320,8 @@ export function ConsumablesSection({
         pending={pending}
         run={run}
         customUnits={customUnits}
+        vendors={vendors}
+        onVendorCreated={refreshVendors}
         onClose={() => setMoveId(null)}
       />
     </div>

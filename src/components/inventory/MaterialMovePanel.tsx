@@ -8,6 +8,8 @@ import { materialDisplayName, type CellarMaterialDTO } from "@/lib/cellar/materi
 import type { LocationOnHand } from "@/lib/cellar/materials";
 import { receiveConsumableAction, adjustConsumableAction, transferConsumableAction } from "@/lib/cellar/actions";
 import { resolveReceiptQuantity } from "@/lib/units/receipt-quantity";
+import { VendorPicker } from "@/components/vendors/VendorPicker";
+import type { VendorRow } from "@/lib/vendors/vendors-shared";
 import { toExtraUnits } from "@/lib/units/custom-units";
 import { MEASURE_UNITS, dimensionOf } from "@/lib/units/measure";
 import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
@@ -92,6 +94,8 @@ export function MaterialMovePanel({
   pending,
   run,
   customUnits = [],
+  vendors = [],
+  onVendorCreated,
   onClose,
 }: {
   material: CellarMaterialDTO | null;
@@ -101,6 +105,9 @@ export function MaterialMovePanel({
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
   /** Plan 080 U15: the tenant's own units ("roll", "case"), selectable when receiving. */
   customUnits?: CustomUnitRow[];
+  /** Plan 080 U17: the tenant's vendors for the receipt vendor picker. */
+  vendors?: VendorRow[];
+  onVendorCreated?: (vendor: { id: string; name: string }) => void;
   onClose: () => void;
 }) {
   const [mode, setMode] = React.useState<Mode>("receive");
@@ -111,7 +118,7 @@ export function MaterialMovePanel({
   // Default to the material's own stock unit, so an untouched form behaves exactly as it did pre-U15.
   const [qtyUnit, setQtyUnit] = React.useState(() => material?.stockUnit ?? "g");
   const [lotCode, setLotCode] = React.useState("");
-  const [vendorName, setVendorName] = React.useState("");
+  const [vendorId, setVendorId] = React.useState<string | null>(null);
   // Sensible defaults, computed ONCE on mount (the caller keys this panel by material id, so it remounts
   // per item). Lazy initial state rather than a syncing effect — no setState-in-effect, no extra render.
   // Default to where the stock actually IS, so the common "top up / move what's here" case is one click.
@@ -169,7 +176,7 @@ export function MaterialMovePanel({
               locationId,
               unitCost: unitCost.trim() === "" ? undefined : Number(unitCost),
               lotCode: lotCode.trim() || undefined,
-              vendorName: vendorName.trim() || undefined,
+              vendorId: vendorId ?? undefined,
             }),
           ),
         onClose,
@@ -240,8 +247,18 @@ export function MaterialMovePanel({
             <Field label="Lot code (optional)">
               <Input value={lotCode} onChange={(e) => setLotCode(e.target.value)} />
             </Field>
+            {/* Plan 080 U17 (#373): this screen had free-text vendor entry even though vendors have been
+                first-class since plan 069. The picker persists the immutable vendorId; the name is only
+                ever presentation, so renaming a vendor never re-keys the receipts already booked against
+                it (NAMING-1/2). The vendor list is tenant-scoped by its loader, so the lookup cannot see
+                another winery's vendors (TENANT-1). */}
             <Field label="Vendor (optional)">
-              <Input value={vendorName} onChange={(e) => setVendorName(e.target.value)} />
+              <VendorPicker
+                vendors={vendors}
+                value={vendorId}
+                onSelect={(v) => setVendorId(v?.id ?? null)}
+                onVendorCreated={onVendorCreated}
+              />
             </Field>
           </>
         ) : null}
