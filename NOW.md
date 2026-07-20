@@ -103,11 +103,19 @@ is two decisions that are Russell's, not code:
    `field-monitoring`. WIDENED, not repointed — all remain valid authoritative answers, which is what
    the multi-value `expectPaths` contract was built for (see its header comment). Reading note left in
    the file: most of uc-ipm is stamped 2015-or-older, so "authoritative" = canonical, not current.
-   (c) **Corpus-wide backfill NOT run** — only uc-ipm. The other ~2,694 active docs are still undated
-   (verify still prints `0 with a date` for the AWRI/WA diversity check). It is ~1h of polite serial
-   re-crawling across 18 external sites, costs zero Voyage credits, and is resumable (selects
-   `publishedAt: null`), so it is safe to run — but it is an hour of outbound traffic to other people's
-   servers, so it wants an explicit go-ahead rather than being launched silently.
+   (d) ✅ **Assistant age warning shipped.** `passage-age.ts` (pure, 12 tests): `current` <5y, `aging`
+   5-10y, `stale` 10y+, and **`unknown` for an undated doc — which WARNS rather than passing as fresh**
+   (silently treating undated as current is how stale guidance gets laundered into confident advice).
+   Computed server-side in `search-knowledge-base.ts` as `ageWarning` per passage + a `currencyWarning`
+   over the set, NOT as a prompt line — a prose rule is advisory and gets dropped under long context; a
+   populated field must be actively contradicted. Prompt rule 8 tells the model WHEN it matters (the
+   split: age is a fact computed here, relevance is a judgment the model makes with the question in
+   hand). Live proof: AWRI's 2011-06 YAN passage flags `stale (15y)`.
+   (c) ⏳ **Corpus-wide backfill RUNNING** (bg task `bfrkszljk`). ~2,694 docs; at last check 536/2,781
+   (19.3%) and climbing. Polite serial re-crawl across 18 external sites, zero Voyage credits, resumable
+   (selects `publishedAt: null`) — so if it dies partway, just re-run it. **PR waits on this** so the body
+   can carry final coverage + the per-source age table (the number that says which OTHER sources are
+   quietly stale the way uc-ipm turned out to be).
 1. **OPEN — #387 is merged but NOT browser-verified.** Russell asked for "merge #387 and verify
    'delete Block 1' in the browser". The merge happened (`de889cc1`); the browser check did not.
    Needs the interactive logged-in pane. **Do not tell Mike anything until it runs** — a fix has

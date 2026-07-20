@@ -1,6 +1,7 @@
 import "server-only";
 import type { AssistantTool, ToolContext } from "../registry";
 import { retrieveKnowledge } from "@/lib/knowledge/retrieve";
+import { assessPassageAge, summarizeCorpusAge } from "@/lib/knowledge/passage-age";
 
 type SearchKbInput = { query?: string; topic?: string };
 
@@ -38,7 +39,15 @@ export const searchKnowledgeBaseTool: AssistantTool = {
     "average them or silently pick one. Present BOTH positions attributed to their source with tier and " +
     "date, e.g. 'AWRI (tier 1, 2022) recommends X; Wine Australia (tier 1, 2010) recommends Y', note which " +
     "is more recent, and let the winemaker make the call. Genuine disagreement between authorities is useful " +
-    "signal, not noise. If a passage's date is 'unknown', say the date is unknown — NEVER invent or guess one.",
+    "signal, not noise. If a passage's date is 'unknown', say the date is unknown — NEVER invent or guess one.\n" +
+    "8. CURRENCY. A passage may carry `ageWarning` (and the result set a `currencyWarning`). When present " +
+    "you MUST surface it — state the passage's age in your answer rather than presenting it as current " +
+    "practice. This matters most for PEST/DISEASE and any regulated figure: pesticide registrations get " +
+    "cancelled, application rates and re-entry / pre-harvest intervals are amended, and legal limits move. " +
+    "For a stale passage carrying a product name, spray rate, REI/PHI, or legal limit, do not give it as " +
+    "the answer — give it as what the source said on that date, and tell the user to confirm against the " +
+    "current product label and their regulator (TTB / state / local) before acting. Age is a reason to " +
+    "caveat, never a reason to silently substitute your own untraceable general knowledge instead.",
   kind: "read",
   inputSchema: {
     type: "object",
@@ -78,11 +87,19 @@ export const searchKnowledgeBaseTool: AssistantTool = {
       };
     }
 
+    // Age is computed here rather than left to the prompt: a prose "mention the date if it's old" rule is
+    // advisory and gets dropped under long context, whereas a populated `ageWarning` field is data the
+    // model must actively contradict. Corpus reality that motivated it — 82% of the UC IPM grape pest
+    // guidelines are stamped 2016 or older.
+    const ages = passages.map((p) => assessPassageAge(p.publishedAt));
+    const currencyWarning = summarizeCorpusAge(ages);
+
     return {
       found: true,
       guidance:
         "Answer ONLY from these passages, cite each fact with its `citation` markdown link, quote any " +
         "numbers/doses/limits verbatim, and defer any calculation to calc_so2/calc_sugar.",
+      ...(currencyWarning ? { currencyWarning } : {}),
       results: passages.map((p, i) => ({
         n: i + 1,
         publisher: p.publisher,
@@ -90,6 +107,9 @@ export const searchKnowledgeBaseTool: AssistantTool = {
         section: p.sectionPath,
         // "unknown" (never null) so the model states the date is unknown rather than inventing one
         date: p.publishedAt ? p.publishedAt.toISOString().slice(0, 10) : "unknown",
+        ageYears: ages[i].ageYears,
+        // present ONLY when there is something to warn about, so its presence is itself the signal
+        ...(ages[i].warning ? { ageWarning: ages[i].warning } : {}),
         citation: `/kb/source/${p.documentId}`,
         text: p.text,
       })),
