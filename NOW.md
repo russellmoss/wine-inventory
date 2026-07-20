@@ -7,33 +7,39 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 085 — MSU Extension KB source + crawler hardening. MERGED (#415, `c49d42bc`). The CODE is
-in; the SOURCE IS NOT LIVE. Two operator steps remain, in this order.**
-Plan: [2026-07-20-085-…](docs/plans/2026-07-20-085-feat-kb-msu-viticulture-source-plan.md) (Standard, 8 units).
-Gates at merge: **tsc 0, eslint 0 errors, vitest 3073/0**, CI green. Every guard sabotage-verified.
+**PLAN 085 — CLOSED. MSU is UNREACHABLE; source set DORMANT. Nothing left to do on it.**
+Merged: #415 (source + hardening), #418 (sweep fail-closed), #421 (crawl-source workflow),
+#422 (dormant). Plan: [2026-07-20-085-…](docs/plans/2026-07-20-085-feat-kb-msu-viticulture-source-plan.md).
 
-**① SEED — but ONLY after this is DEPLOYED, never before.** `seed:knowledge-sources` writes
-`msu-grapes` into the GLOBAL (= prod) `knowledge_source` table. Deployed code that doesn't know the
-key still ADMITS it (`findSourceConfig(s.key)?.autoCrawl !== false` → `undefined !== false` → true),
-then `crawlWithFollowing` throws `unknown source` before crawling — **killing the monthly refresh for
-all 21 sources.** Order: deploy → `npm run seed:knowledge-sources` → crawl. **From the MAIN checkout.**
-(The converse, from #410: the sweep IGNORES a source that was never seeded. Both halves are real.)
+⛔ **DO NOT try to crawl MSU again without new evidence.** Imperva refuses this crawler from every
+network available: the operator's residential IP (**5/5 refused** after ~15 requests, across bot UA,
+Chrome UA *and* no UA — so IP-based, not UA-based) AND **GitHub Actions runners**
+(`discovered 1, fetched 1, documents 0, skippedChallenge 1`). The plan's documented fallback — a
+curated URL list — **does not help either**, because it fetches from the same blocked network.
+What is needed is a network MSU will answer, not a different code path.
+`msu-grapes` is `autoCrawl:false` + `defaultEnabled:false`, seeded, 0 docs, 0 tenant overrides.
+`npm run verify:msu` is the probe: if it ever reports **live PASS**, un-dormant both flags + re-seed.
+Tripwire assertions in `test/knowledge-config.test.ts` + `verify:msu` stop a silent re-enable.
 
-**② CRAWL + VERIFY.** `npm run crawl:source msu-grapes -- --follow --max 5` (smoke), then full, then
-confirm docs landed WITH `publishedAt`, then `npm run verify:knowledge-base` (widen `expectPaths`,
-never repoint). Then audit the ingested `/news/` list for non-grape leakage.
+**What the exercise bought, which is the part worth keeping:**
+- 🔎 **A production-down bug, unrelated to MSU.** `virginia-fruit` was seeded from an unmerged branch;
+  the sweep selected it (`findSourceConfig(key)?.autoCrawl !== false` → `undefined !== false` → TRUE),
+  then `crawlWithFollowing` threw `unknown source` and **killed the monthly refresh for all 21
+  sources**. Dead in prod, would have failed silently on the 1st. Fixed #418 — unknown keys now get
+  their own bucket and are reported, never crawled. **Seeding from an unmerged checkout is a normal
+  thing people do; the sweep now tolerates it.**
+- 🛡️ **The crawler hardening was validated under live fire** from a network it had never seen: the
+  detector fired on a real Imperva interstitial, skipped it BEFORE persist, indexed nothing, counted
+  it, warned. Without it that run writes a challenge page into the GLOBAL corpus as a document — and
+  because each carries a unique `incident_id`, the content-hash dedup never fires and it **re-embeds
+  every month forever**. Also closed: any fetch failure used to mean "page removed" (now only 404/410).
+- ⚙️ **New: `knowledge-crawl-source.yml`** — dispatch a single-source crawl on a runner. The monthly
+  sweep CANNOT populate a new source: it walks each source's whole sitemap in registry order, so a
+  source appended last sits behind every other frontier (a 60-doc run left MSU at 0). That is why
+  uc-ipm and vt-enology were populated by hand. **Use this workflow for the next new source.**
 
-⛔ **MSU's bot wall shut this network out and the live half is UNVERIFIED.** Recon started
-intermittent; after ~15 requests the residential IP went to 5/5 refused and stayed there
-(`npm run verify:msu` → `config checks: PASS / live checks: BLOCKED — imperva (959B)`). This
-*raises* the headline risk rather than settling it: a GH Actions runner makes far more requests from
-a datacenter range. **"Works from a laptop" is no evidence about CI — and there is no laptop
-evidence yet either.** If the monthly job reports `msu-grapes` in `darkSources`, that IS this same
-block from CI; fallback is `autoCrawl:false` + a curated crawl (documented on the source entry).
-Do NOT evade the WAF.
-
-_Why this was 8 units and not a config edit, what `linkedOnlyPrefixes` is for, and the three review
-findings deliberately deferred: all in the plan file. Don't re-derive it here._
+⚠️ **Vercel deploys are rate-limited for ~24h** (free-tier daily build cap, 5 PRs today). Merged code
+is on `main` but may not be deployed yet. Non-required check, does not block merges.
 
 ## 🔭 Also in flight
 
@@ -304,9 +310,11 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Open the PR for plan 082 (`claude/assistant-vineyard-coverage`, code-complete, unopened).
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
 
-_Last updated: 2026-07-20 — plan 085 (MSU Extension KB source + crawler hardening) MERGED as #415
-(`c49d42bc`), CI green. **Code is in; the source is NOT live** — seed + crawl remain, and seeding
-before deploy would kill the monthly sweep for all 21 sources. Prior: plan 084 LIVE (#406 + #409).
+_Last updated: 2026-07-20 — plan 085 CLOSED: MSU proved UNREACHABLE from every network (residential
+IP and GitHub runners both), source set DORMANT (#422). En route it surfaced a production-down bug —
+`virginia-fruit`, seeded from an unmerged branch, was killing the monthly sweep for all 21
+sources (fixed #418) — and added a single-source crawl workflow (#421).
+Prior: plan 084 LIVE (#406 + #409).
 (branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
 lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the
 consumables fix and issue #328 had all already landed while still listed as in-flight. Beware
