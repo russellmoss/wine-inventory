@@ -16,6 +16,7 @@
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { createStockMaterialCore } from "@/lib/cellar/materials";
+import { deriveOpeningLot } from "@/lib/cost/intake-cost";
 import { categoryOf, familyLabel, CATEGORY_LABELS } from "@/lib/cellar/material-taxonomy";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { RateBasis } from "@/lib/cellar/additions-math";
@@ -24,6 +25,27 @@ import { disconnectSystem } from "../src/lib/tenant/system";
 
 const DEMO_ORG_ID = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@seed-demo-materials" };
+
+/**
+ * Plan 080 U14: `createStockMaterialCore` no longer infers opening stock from package size — describing a
+ * product must never book inventory. This seed genuinely DOES want stock on hand, so it states the quantity
+ * explicitly. Rows priced as a whole package ("1 lb for $54") still convert through the same
+ * `deriveOpeningLot` helper the core used to call, so the seeded demo numbers are unchanged.
+ */
+function openingStockFor(r: Row): { openingQty: number | null; unitCost: number | null } {
+  if (r.packageAmount != null && r.packageUnit && r.totalCost != null) {
+    const derived = deriveOpeningLot({
+      packageAmount: r.packageAmount,
+      packageUnit: r.packageUnit,
+      totalCost: r.totalCost,
+      stockUnit: r.stockUnit,
+    });
+    if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
+      return { openingQty: derived.qtyInStockUnit, unitCost: derived.unitCost };
+    }
+  }
+  return { openingQty: r.openingQty ?? null, unitCost: r.unitCost ?? null };
+}
 
 type Row = {
   name?: string; // legacy: identity/display when no generic/brand given
@@ -115,11 +137,9 @@ async function main() {
         vendorUrl: r.vendorUrl,
         stockUnit: r.stockUnit,
         defaultBasis: r.defaultBasis ?? undefined,
-        openingQty: r.openingQty ?? null,
-        unitCost: r.unitCost ?? null,
+        ...openingStockFor(r),
         packageAmount: r.packageAmount,
         packageUnit: r.packageUnit,
-        totalCost: r.totalCost,
       });
     }
   });
