@@ -59,8 +59,21 @@ all green.
 - The **first Cornell crawl has not been run.** Do the capped smoke crawl and read the fetched URL
   list before the full crawl — the multisite scoping is the thing most likely to be wrong.
 - Existing pre-084 documents will **not** backfill dates on a normal re-crawl (`indexDocument`
-  early-returns on unchanged content). Backfilling the other 18 sources needs
-  `reset:knowledge-source` and is an explicit operator decision, not part of this branch.
+  early-returns on unchanged content). Tracked as issue #412 — it is not merely a gap, it biases
+  conflict resolution toward Cornell, since Cornell becomes the only source with a date OR a title.
+
+### Pre-landing review (PR #411)
+
+Three reviewers (security, testing, red-team). **Eight findings fixed**, two guards verified by sabotage.
+The two that mattered most, both of which defeated the feature stated purpose:
+
+1. `parseHtmlPublishedDate` laundered prose into dates — `new Date("n.d. 2019")` is `2019-01-01`, and the
+   docstring named `"n.d."` as a rejected case while the test covered only the bare form. Now strict ISO.
+2. Retrieval fell back to the sitemap `lastmod`, so every date the strict parser refused to invent got an
+   invented one anyway. Now labelled `dateSource`, and `ageYears` comes only from a declared date.
+
+Deferred with issues: #412 (backfill), #413 (soft-404 documents never retired), #414 (pre-existing flaky
+hook), #408 (H8 eval drift, pre-existing).
 
 ## Overview
 

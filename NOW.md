@@ -143,10 +143,13 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
-- **Plan 084 — Cornell grapes/IPM knowledge source + publication dates — ALL 8 UNITS DONE, code-complete
-  on branch, PR not yet opened.** ⚠️ `verify:knowledge-base` + `verify:kb-subscriptions` + the first
+- **Plan 084 — Cornell grapes/IPM knowledge source + publication dates — SHIPPED to PR #411.** ⚠️ `verify:knowledge-base` + `verify:kb-subscriptions` + the first
   Cornell crawl still need a run from the MAIN checkout (worktree has no `.env`/network/DB).
-  Branch `claude/cornell-grapes-knowledge-source-808b00`. Standard, 8 units. vitest 2966/0, tsc, eslint 0.
+  Branch `claude/cornell-grapes-knowledge-source-808b00`. 8 units + 8 review fixes. vitest 2998/0.
+  Review found two holes that defeated the feature purpose: `new Date("n.d. 2019")`->2019-01-01 got past
+  the year guard, and retrieval re-invented every date the strict parser refused via sitemap lastmod.
+  Follow-ups: #412 backfill (Cornell is otherwise the ONLY source with a date or title -> structural
+  bias), #413 soft-404 docs never retired, #414 flaky hook, #408 H8 eval drift.
   [2026-07-20-084-…](docs/plans/2026-07-20-084-feat-cornell-grapes-knowledge-source-plan.md).
   Recon found three things the request assumed otherwise: (1) **nothing to bypass in robots.txt** —
   `blogs.cornell.edu` disallows only `/wp-admin/`, and all 13 third-party hosts permit the PDFs we
