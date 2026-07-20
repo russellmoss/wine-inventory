@@ -623,6 +623,39 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   { domain: "www.canr.msu.edu", sourceKey: "msu-grapes" },
 ];
 
+/**
+ * Split the `knowledge_source` rows the DB says are active into the three buckets the monthly sweep
+ * needs. UNKNOWN is its own bucket, and that is the whole point of this function.
+ *
+ * WHY: the DB table and this registry drift apart routinely, because seeding runs from whatever
+ * checkout an operator happens to be in. A source seeded from an unmerged branch exists in the
+ * GLOBAL (production) table while its config is nowhere on main.
+ *
+ * The sweep used to select with `findSourceConfig(s.key)?.autoCrawl !== false`. For an unknown key
+ * that is `undefined !== false` → TRUE, so the unmerged source was INCLUDED, and crawlWithFollowing's
+ * `if (!cfg) throw` then killed the run before a single page was fetched — taking every other
+ * source's freshness with it. That is not hypothetical: `virginia-fruit` was seeded from a branch
+ * that never merged, and the production sweep was dead for all 21 sources until this landed.
+ *
+ * Skipping beats throwing here: one operator's half-finished source must not be able to stop the
+ * other twenty from refreshing. Callers are expected to report `unknown` loudly rather than swallow
+ * it — a row that is stale should be deactivated, and one whose code is pending should merge.
+ */
+export function partitionSeededSources<T extends { key: string }>(
+  activeRows: T[],
+): { auto: T[]; curated: T[]; unknown: string[] } {
+  const auto: T[] = [];
+  const curated: T[] = [];
+  const unknown: string[] = [];
+  for (const row of activeRows) {
+    const cfg = findSourceConfig(row.key);
+    if (!cfg) unknown.push(row.key);
+    else if (cfg.autoCrawl === false) curated.push(row);
+    else auto.push(row);
+  }
+  return { auto, curated, unknown };
+}
+
 /** Set of trusted hostnames for O(1) gate checks (lowercased). */
 export const TRUSTED_DOMAIN_SET: ReadonlySet<string> = new Set(
   TRUSTED_DOMAINS.map((d) => d.domain.toLowerCase()),

@@ -3,6 +3,7 @@ import {
   KNOWLEDGE_SOURCES,
   TRUSTED_DOMAIN_SET,
   findSourceConfig,
+  partitionSeededSources,
 } from "@/lib/knowledge/config";
 import { expandQueryTerms } from "@/lib/knowledge/synonyms";
 
@@ -218,5 +219,47 @@ describe("MSU Extension Grapes source (plan 085)", () => {
     // The hub carries the news listing that feeds the linkedOnly rule, and /grapes/viticulture/ was
     // challenged by the WAF on every reconnaissance attempt.
     expect(msu().seedRoots).toEqual(["https://www.canr.msu.edu/grapes/"]);
+  });
+});
+
+// The monthly sweep died in PRODUCTION on this. `virginia-fruit` was seeded into the global
+// knowledge_source table from a branch that never merged; the old selection
+// (`findSourceConfig(key)?.autoCrawl !== false`) reads `undefined !== false` as TRUE, so the
+// unknown key was INCLUDED, and crawlWithFollowing's `if (!cfg) throw` then killed the run before
+// a single page was fetched — taking all 21 sources' freshness with it.
+//
+// The DB and this registry drift apart by design: seeding runs from whatever checkout an operator
+// is in. So the sweep has to tolerate a row it does not recognise.
+describe("partitionSeededSources — the sweep must fail CLOSED on an unknown key", () => {
+  it("routes an unknown key to `unknown`, never to `auto`", () => {
+    const got = partitionSeededSources([{ key: "virginia-fruit" }]);
+    expect(got.unknown).toEqual(["virginia-fruit"]);
+    expect(got.auto).toEqual([]);
+    expect(got.curated).toEqual([]);
+  });
+
+  it("still routes real sources correctly alongside an unknown one", () => {
+    const got = partitionSeededSources([
+      { key: "msu-grapes" }, // autoCrawl: true
+      { key: "scott-labs" }, // autoCrawl: false -> curated
+      { key: "not-a-real-source" },
+    ]);
+    expect(got.auto.map((s) => s.key)).toEqual(["msu-grapes"]);
+    expect(got.curated.map((s) => s.key)).toEqual(["scott-labs"]);
+    expect(got.unknown).toEqual(["not-a-real-source"]);
+  });
+
+  it("treats an omitted autoCrawl as auto (the default for most sources)", () => {
+    // awri declares no autoCrawl field at all.
+    expect(partitionSeededSources([{ key: "awri" }]).auto.map((s) => s.key)).toEqual(["awri"]);
+  });
+
+  it("preserves the row object, not just the key (callers need the id)", () => {
+    const rows = [{ key: "msu-grapes", id: "src_123" }];
+    expect(partitionSeededSources(rows).auto[0].id).toBe("src_123");
+  });
+
+  it("handles an empty set", () => {
+    expect(partitionSeededSources([])).toEqual({ auto: [], curated: [], unknown: [] });
   });
 });
