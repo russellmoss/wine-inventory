@@ -90,8 +90,8 @@ describe("computeWorkOrderReadiness — RACK", () => {
     const state = makeState({
       vesselsById: new Map([
         ["v-from", vessel({ id: "v-from", code: "T1", volumeL: 900, lots: [
-          { id: "l-a", code: "LOT-A", status: "AGING", volumeL: 450, updatedAt: "x", taxAbvOverride: null },
-          { id: "l-b", code: "LOT-B", status: "AGING", volumeL: 450, updatedAt: "x", taxAbvOverride: null },
+          { id: "l-a", code: "LOT-A", status: "AGING", form: "WINE", volumeL: 450, updatedAt: "x", taxAbvOverride: null },
+          { id: "l-b", code: "LOT-B", status: "AGING", form: "WINE", volumeL: 450, updatedAt: "x", taxAbvOverride: null },
         ] })],
         ["v-to", vessel({ id: "v-to", code: "T2", capacityL: 500, volumeL: 100 })],
       ]),
@@ -119,8 +119,8 @@ describe("computeWorkOrderReadiness — RACK", () => {
   it("accounts for an earlier rack's fill when warning on a second rack into the same tank", () => {
     const state = makeState({
       vesselsById: new Map([
-        ["v1", vessel({ id: "v1", code: "T1", volumeL: 300, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
-        ["v3", vessel({ id: "v3", code: "T3", volumeL: 300, lots: [{ id: "l3", code: "L3", status: "AGING", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
+        ["v1", vessel({ id: "v1", code: "T1", volumeL: 300, lots: [{ id: "l1", code: "L1", status: "AGING", form: "WINE", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
+        ["v3", vessel({ id: "v3", code: "T3", volumeL: 300, lots: [{ id: "l3", code: "L3", status: "AGING", form: "WINE", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
         ["v2", vessel({ id: "v2", code: "T2", capacityL: 500, volumeL: 0 })],
       ]),
     });
@@ -147,7 +147,7 @@ describe("computeWorkOrderReadiness — RACK", () => {
   // validation now mirrors that guard: same vessel → blocked at author time.
   it("blocks a same-vessel rack (source === destination)", () => {
     const state = makeState({
-      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 500, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 500, updatedAt: "x", taxAbvOverride: null }] })]]),
+      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 500, lots: [{ id: "l1", code: "L1", status: "AGING", form: "WINE", volumeL: 500, updatedAt: "x", taxAbvOverride: null }] })]]),
     });
     const p = computeWorkOrderReadiness(input([{ taskType: "RACK", values: { fromVesselId: "v1", toVesselId: "v1" } }]), state);
     expect(p.status).toBe("blocked");
@@ -159,7 +159,7 @@ describe("computeWorkOrderReadiness — RACK", () => {
   it("does not flag same_vessel when source and destination differ", () => {
     const state = makeState({
       vesselsById: new Map([
-        ["v1", vessel({ id: "v1", code: "T1", volumeL: 300, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
+        ["v1", vessel({ id: "v1", code: "T1", volumeL: 300, lots: [{ id: "l1", code: "L1", status: "AGING", form: "WINE", volumeL: 300, updatedAt: "x", taxAbvOverride: null }] })],
         ["v2", vessel({ id: "v2", code: "T2", capacityL: 1000, volumeL: 0 })],
       ]),
     });
@@ -174,7 +174,7 @@ describe("computeWorkOrderReadiness — TOPPING", () => {
   // mirrors it so a same-vessel top-up can't be saved either.
   it("blocks a same-vessel top-up (source === target)", () => {
     const state = makeState({
-      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 400, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 400, updatedAt: "x", taxAbvOverride: null }] })]]),
+      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 400, lots: [{ id: "l1", code: "L1", status: "AGING", form: "WINE", volumeL: 400, updatedAt: "x", taxAbvOverride: null }] })]]),
     });
     const p = computeWorkOrderReadiness(input([{ taskType: "TOPPING", values: { fromVesselId: "v1", toVesselId: "v1", volumeL: 5 } }]), state);
     expect(p.status).toBe("blocked");
@@ -184,7 +184,7 @@ describe("computeWorkOrderReadiness — TOPPING", () => {
   it("does not flag same_vessel when source and target differ", () => {
     const state = makeState({
       vesselsById: new Map([
-        ["v1", vessel({ id: "v1", code: "T1", volumeL: 400, lots: [{ id: "l1", code: "L1", status: "AGING", volumeL: 400, updatedAt: "x", taxAbvOverride: null }] })],
+        ["v1", vessel({ id: "v1", code: "T1", volumeL: 400, lots: [{ id: "l1", code: "L1", status: "AGING", form: "WINE", volumeL: 400, updatedAt: "x", taxAbvOverride: null }] })],
         ["v2", vessel({ id: "v2", code: "T2", capacityL: 1000, volumeL: 500 })],
       ]),
     });
@@ -195,7 +195,7 @@ describe("computeWorkOrderReadiness — TOPPING", () => {
 
 describe("computeWorkOrderReadiness — ADDITION / FINING", () => {
   const vesselState = () => makeState({
-    vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 1000, lots: [{ id: "l1", code: "LOT-1", status: "AGING", volumeL: 1000, updatedAt: "x", taxAbvOverride: null }] })]]),
+    vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 1000, lots: [{ id: "l1", code: "LOT-1", status: "AGING", form: "WINE", volumeL: 1000, updatedAt: "x", taxAbvOverride: null }] })]]),
     materialsById: new Map([["m1", material({ id: "m1", displayName: "KMBS" })]]),
   });
 
@@ -231,8 +231,8 @@ describe("computeWorkOrderReadiness — observations & maintenance", () => {
   it("asks which lot when a panel targets a blended vessel (needs_input, not thrown)", () => {
     const state = makeState({
       vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 800, lots: [
-        { id: "l1", code: "LOT-1", status: "AGING", volumeL: 400, updatedAt: "x", taxAbvOverride: null },
-        { id: "l2", code: "LOT-2", status: "AGING", volumeL: 400, updatedAt: "x", taxAbvOverride: null },
+        { id: "l1", code: "LOT-1", status: "AGING", form: "WINE", volumeL: 400, updatedAt: "x", taxAbvOverride: null },
+        { id: "l2", code: "LOT-2", status: "AGING", form: "WINE", volumeL: 400, updatedAt: "x", taxAbvOverride: null },
       ] })]]),
     });
     const p = computeWorkOrderReadiness(input([{ taskType: "PANEL", values: { vesselId: "v1" } }]), state);
@@ -298,7 +298,7 @@ describe("computeWorkOrderReadiness — envelope", () => {
   // modal (and the assistant) MUST get the same warnings/cost/diff for the same TaskBuild[].
   it("produces identical warnings/cost/diff regardless of source", () => {
     const state = makeState({
-      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 1000, lots: [{ id: "l1", code: "LOT-1", status: "AGING", volumeL: 1000, updatedAt: "x", taxAbvOverride: null }] })]]),
+      vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 1000, lots: [{ id: "l1", code: "LOT-1", status: "AGING", form: "WINE", volumeL: 1000, updatedAt: "x", taxAbvOverride: null }] })]]),
       materialsById: new Map([["m1", material({ id: "m1", displayName: "KMBS" })]]),
     });
     const builds: TaskBuild[] = [{ taskType: "ADDITION", values: { vesselId: "v1", materialId: "m1", amount: 30, doseUnit: "g" } }];
@@ -310,5 +310,114 @@ describe("computeWorkOrderReadiness — envelope", () => {
     expect(manual.diff).toEqual(modal.diff);
     expect(manual.unresolved).toEqual(modal.unresolved);
     expect(manual.status).toBe(modal.status);
+  });
+});
+
+// ─── Source still on skins (plan 081 follow-up, "Build note 2 §3") ───────────────────────────────
+//
+// The live repro that motivated plan 081 had the assistant refuse to rack a tank holding must on
+// skins. Nothing in readTask checked lot FORM — the refusal came entirely from the model's own
+// domain knowledge, so the engine would have happily authored it.
+//
+// SEVERITY IS confirmable, ON THE WINEMAKER'S EXPLICIT CALL, and that is load-bearing: pulling liquid
+// off a must is NORMAL work. It is a rack-and-return (pump-over off the cap), a drain-and-press
+// (free-run off before pressing), or a saignée (bleeding juice off a red). Blocking would stop all
+// three. The warning exists so nobody sends a slurry through a pump expecting clean wine.
+describe("computeWorkOrderReadiness — source on skins", () => {
+  const mustLot = { id: "l-must", code: "24-CS-01", status: "ACTIVE", form: "MUST", volumeL: 4200, updatedAt: "x", taxAbvOverride: null };
+  const wineLot = { id: "l-wine", code: "24-CS-09", status: "AGING", form: "WINE", volumeL: 4200, updatedAt: "x", taxAbvOverride: null };
+
+  const stateWith = (fromLots: typeof mustLot[]) =>
+    makeState({
+      vesselsById: new Map([
+        ["v-from", vessel({ id: "v-from", code: "T3", capacityL: 5000, volumeL: 4200, lots: fromLots })],
+        ["v-to", vessel({ id: "v-to", code: "T4", capacityL: 5000, volumeL: 0 })],
+      ]),
+    });
+
+  it("warns (confirmable, never blocking) when racking from a must on skins", () => {
+    const p = computeWorkOrderReadiness(
+      input([{ taskType: "RACK", values: { fromVesselId: "v-from", toVesselId: "v-to" } }]),
+      stateWith([mustLot]),
+    );
+    const w = p.warnings.find((x) => x.code === "source_on_skins");
+    expect(w, "expected a source_on_skins warning").toBeDefined();
+    expect(w!.severity).toBe("confirmable");
+    expect(w!.message).toContain("T3");
+    expect(w!.message).toContain("24-CS-01");
+    // The three legitimate operations must be named, or the warning reads as "you did something wrong".
+    expect(w!.message).toMatch(/rack-and-return/i);
+    expect(w!.message).toMatch(/drain-and-press/i);
+    expect(w!.message).toMatch(/saign[ée]e/i);
+    // Critically: it must NOT block. A saignée is real work and has to stay issuable.
+    expect(p.warnings.some((x) => x.severity === "blocking")).toBe(false);
+    expect(p.status).not.toBe("blocked");
+  });
+
+  it("stays silent for an ordinary wine source", () => {
+    const p = computeWorkOrderReadiness(
+      input([{ taskType: "RACK", values: { fromVesselId: "v-from", toVesselId: "v-to" } }]),
+      stateWith([wineLot]),
+    );
+    expect(p.warnings.some((x) => x.code === "source_on_skins")).toBe(false);
+  });
+
+  it("only fires for an ACTIVE must, matching isPressableLotState", () => {
+    const p = computeWorkOrderReadiness(
+      input([{ taskType: "RACK", values: { fromVesselId: "v-from", toVesselId: "v-to" } }]),
+      stateWith([{ ...mustLot, status: "PRESSED_OFF" }]),
+    );
+    expect(p.warnings.some((x) => x.code === "source_on_skins")).toBe(false);
+  });
+
+  it("does NOT fire on the DESTINATION being a must — only the source is drawn from", () => {
+    const state = makeState({
+      vesselsById: new Map([
+        ["v-from", vessel({ id: "v-from", code: "T3", capacityL: 5000, volumeL: 4200, lots: [wineLot] })],
+        ["v-to", vessel({ id: "v-to", code: "T4", capacityL: 9000, volumeL: 100, lots: [mustLot] })],
+      ]),
+    });
+    const p = computeWorkOrderReadiness(input([{ taskType: "RACK", values: { fromVesselId: "v-from", toVesselId: "v-to" } }]), state);
+    expect(p.warnings.some((x) => x.code === "source_on_skins")).toBe(false);
+  });
+
+  it("covers TOPPING drawn from a must source", () => {
+    const p = computeWorkOrderReadiness(
+      input([{ taskType: "TOPPING", values: { fromVesselId: "v-from", toVesselId: "v-to", volumeL: 20 } }]),
+      stateWith([mustLot]),
+    );
+    const w = p.warnings.find((x) => x.code === "source_on_skins");
+    expect(w?.severity).toBe("confirmable");
+  });
+
+  it("covers FILTRATION of a must", () => {
+    const p = computeWorkOrderReadiness(
+      input([{ taskType: "FILTRATION", values: { vesselId: "v-from", filterType: "PAD" } }]),
+      stateWith([mustLot]),
+    );
+    const w = p.warnings.find((x) => x.code === "source_on_skins");
+    expect(w?.severity).toBe("confirmable");
+  });
+
+  it("covers a GROUP_RACK barrel-down off a must source", () => {
+    const state = makeState({
+      vesselsById: new Map([
+        ["v-from", vessel({ id: "v-from", code: "T3", capacityL: 5000, volumeL: 4200, lots: [mustLot] })],
+        ["b1", vessel({ id: "b1", code: "B1", type: "BARREL", capacityL: 228, volumeL: 0 })],
+        ["b2", vessel({ id: "b2", code: "B2", type: "BARREL", capacityL: 228, volumeL: 0 })],
+      ]),
+    });
+    const p = computeWorkOrderReadiness(
+      input([
+        {
+          taskType: "GROUP_RACK",
+          values: { groupRack: { direction: "BARREL_DOWN", sourceVesselId: "v-from", destVesselIds: ["b1", "b2"], drawL: 400 } },
+        },
+      ]),
+      state,
+    );
+    const w = p.warnings.find((x) => x.code === "source_on_skins");
+    expect(w?.severity).toBe("confirmable");
+    expect(w!.message).toMatch(/Barrelling down/i);
   });
 });
