@@ -7,7 +7,7 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 080 (unified inventory) — Waves 1-3 MERGED (#351, #376, #392). Wave 4 (U14-U17) BUILT on `claude/plan-080-wave-4`, 5 commits, all gates green, PR NOT yet opened. NEXT: browser-verify the three UI units on Demo, decide on the phantom-stock unwind, then open the PR.**
+**Plan 080 (unified inventory) — Waves 1-3 MERGED (#351, #376, #392). Wave 4 (U14-U17) BUILT + BROWSER-VERIFIED on `claude/plan-080-wave-4`, 7 commits, all gates green, PR OPEN. NEXT: review the U15 deviation, and decide on the phantom-stock unwind (6 candidates, one in PRODUCTION).**
 - **Wave 3 / U5** (local, 2 commits): ONE invoice can now carry parts + equipment + finished goods and still
   emit ONE aggregate bill (AP-1). Per-line `targetKind` (C2: nullable, NO default — a null target is a hard
   `needsAck`, never a silent MATERIAL guess) · per-line GL routing (C3: fixed-asset / supplies-expense /
@@ -27,7 +27,14 @@
   stock unit (so labels were stuck in grams) and carried no cost (so there was no cost to display).
 - ⛔ **Phantom-stock unwind NOT APPLIED.** `scripts/unwind-phantom-opening-stock.ts` dry-runs clean; 6 real
   candidates, **one in `org_bhutan_wine_co` (production)**. `--apply` is Russell's call.
-- ⛔ **Wave 4 is NOT browser-verified** — three UI units need a pass in the pane against Demo.
+- ✅ **Wave 4 BROWSER-VERIFIED on Demo** (2026-07-20), each unit proven in the DB, not just the UI: U14 record
+  with `packageAmount: 50` → **0 lots, 0 movements** · U15 "3 Roll" → *Books 1,500 unit at $0.5000/unit*, lot
+  **1500 @ $0.50 = $750.00 exactly** · U16 57/65 rows priced, `$0/unit` NOWHERE · U17 lot stamped with the
+  immutable `vendorId`. Server refusal guards hit directly (the picker can't reach them): cross-dimension +
+  unknown unit both refused, **lot count unchanged** — nothing leaks on refusal. QA-* fixtures cleaned;
+  verify:naming 25/25 before AND after.
+- 🐛 Found ONLY by reading the live DOM: JSX swallowed the space after `<strong>Receive</strong>` ("Use
+  Receivewhen…"). tsc + eslint + `next build` all passed it. Fixed `d452af2c`.
 - **Wave 4** (new, 2026-07-20, from a `/bug-triage` dry run): five Demo reports that are ONE flow —
   Mike setting up label materials to bottle Ann's Blend 2026, blocked at every step. U14 bifurcate record
   setup from receipt (#377, phantom 50 units — unwind with a REVERSING movement, never a delete) ·
