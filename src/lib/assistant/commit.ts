@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AppUser } from "@/lib/access";
+import { runAsTenant } from "@/lib/tenant/context";
 import { verifyProposal } from "./confirm";
 
 /**
@@ -151,22 +152,55 @@ export function committerToolNames(): string[] {
  * Verify a confirmation token, burn its nonce (single-use, BEFORE committing so a
  * replay/double-submit can't double-apply), then run the tool's committer.
  */
+/**
+ * The tenant a confirm runs as. Mirrors `resolveTenantId` in @/lib/actions — tenant comes ONLY from
+ * the verified session's active org (K9), never from client input. Kept local because that one is
+ * private to the server-action wrapper.
+ */
+function resolveCommitTenantId(user: AppUser): string {
+  if (user.supportOrganizationId) return user.supportOrganizationId;
+  if (!user.activeOrganizationId) throw new Error("Your account isn't attached to a winery.");
+  return user.activeOrganizationId;
+}
+
 export async function commitProposal(user: AppUser, token: string): Promise<CommitResult> {
   const payload = verifyProposal(token);
   if (payload.kind === "resume") throw new Error("That's a selection token, not a confirmation.");
   const committer = COMMITTERS[payload.tool];
   if (!committer) throw new Error("That action can no longer be applied.");
 
-  try {
-    await prisma.assistantConfirmation.create({
-      data: { nonce: payload.nonce, tool: payload.tool, actorEmail: user.email },
-    });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      throw new Error("This change was already confirmed.");
-    }
-    throw e;
-  }
-
-  return committer(user, payload.args);
+  // Establish the tenant context for the whole confirm.
+  //
+  // This route is an API route, NOT a server action, so nothing upstream ran `action()` — and
+  // `action()` is what normally opens the ALS tenant context. Committers that delegate to a real
+  // server action got their context from that action and were fine; the three generic CRUD
+  // committers (db_create / db_update / db_delete) call `runInTenantTx` DIRECTLY, which does
+  // `requireTenantId()` and fails closed. Every generic-CRUD confirm therefore died with
+  // "No tenant context — wrap this call in runAsTenant()" and nothing was ever written.
+  //
+  // Wrapping here rather than in each committer: this is the single choke point every assistant
+  // write passes through, so a future committer that also skips the server-action layer is covered
+  // by construction. Nesting is harmless — a committer that calls a server action re-enters
+  // `runAsTenant` with the same tenant.
+  //
+  // `userId` is carried for the same reason `action()` carries it: per-user RLS on the inbox keys
+  // owner-only reads on `app.user_id`, so a committer that emits a notification needs it set.
+  const tenantId = resolveCommitTenantId(user);
+  return runAsTenant(
+    tenantId,
+    async () => {
+      try {
+        await prisma.assistantConfirmation.create({
+          data: { nonce: payload.nonce, tool: payload.tool, actorEmail: user.email },
+        });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+          throw new Error("This change was already confirmed.");
+        }
+        throw e;
+      }
+      return committer(user, payload.args);
+    },
+    { userId: user.id },
+  );
 }
