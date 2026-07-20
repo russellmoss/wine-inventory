@@ -168,13 +168,20 @@ describe("MSU Extension Grapes source (plan 085)", () => {
     expect(msu().homeDomain).toBe("canr.msu.edu");
   });
 
-  it("stays on the MONTHLY SWEEP (autoCrawl must not be false)", () => {
-    expect(msu().autoCrawl).not.toBe(false);
-    expect(msu().crawlCadence).toBe("monthly");
+  // DORMANT, and these two assertions are a TRIPWIRE, not bookkeeping. Imperva refuses this crawler
+  // from every network tried -- the operator's residential IP and GitHub Actions runners both
+  // (verified: discovered 1, fetched 1, documents 0, skippedChallenge 1). Re-enabling autoCrawl puts
+  // a permanently-challenged source back in the monthly sweep, where findDarkSources sees
+  // "challenged + zero documents" and reds the job EVERY MONTH. Re-enabling defaultEnabled shows an
+  // always-empty source in every tenant's Settings. Flip both only alongside evidence of a network
+  // MSU will answer.
+  it("is DORMANT — kept out of the monthly sweep because MSU is unreachable", () => {
+    expect(msu().autoCrawl).toBe(false);
+    expect(msu().crawlCadence).toBe("monthly"); // the intended cadence if it ever becomes reachable
   });
 
-  it("is on by default so tenants get cold-climate coverage without opting in", () => {
-    expect(msu().defaultEnabled).toBe(true);
+  it("is OFF by default — it can never have content, so it must not show as an enabled source", () => {
+    expect(msu().defaultEnabled).toBe(false);
   });
 
   it("allowlists BOTH the apex and www — the site serves at www", () => {
@@ -240,11 +247,11 @@ describe("partitionSeededSources — the sweep must fail CLOSED on an unknown ke
 
   it("still routes real sources correctly alongside an unknown one", () => {
     const got = partitionSeededSources([
-      { key: "msu-grapes" }, // autoCrawl: true
+      { key: "uc-ipm" }, // autoCrawl: true
       { key: "scott-labs" }, // autoCrawl: false -> curated
       { key: "not-a-real-source" },
     ]);
-    expect(got.auto.map((s) => s.key)).toEqual(["msu-grapes"]);
+    expect(got.auto.map((s) => s.key)).toEqual(["uc-ipm"]);
     expect(got.curated.map((s) => s.key)).toEqual(["scott-labs"]);
     expect(got.unknown).toEqual(["not-a-real-source"]);
   });
@@ -255,8 +262,16 @@ describe("partitionSeededSources — the sweep must fail CLOSED on an unknown ke
   });
 
   it("preserves the row object, not just the key (callers need the id)", () => {
-    const rows = [{ key: "msu-grapes", id: "src_123" }];
+    const rows = [{ key: "uc-ipm", id: "src_123" }];
     expect(partitionSeededSources(rows).auto[0].id).toBe("src_123");
+  });
+
+  it("routes the DORMANT msu-grapes to curated, never auto", () => {
+    // autoCrawl:false, so the sweep must not pick it up.
+    const got = partitionSeededSources([{ key: "msu-grapes" }]);
+    expect(got.auto).toEqual([]);
+    expect(got.curated.map((s) => s.key)).toEqual(["msu-grapes"]);
+    expect(got.unknown).toEqual([]);
   });
 
   it("handles an empty set", () => {
