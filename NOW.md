@@ -37,6 +37,49 @@ findings deliberately deferred: all in the plan file. Don't re-derive it here._
 
 ## 🔭 Also in flight
 
+**PLAN 086 — US pesticide registration + resistance-group coverage. PLANNED, not started.**
+Plan: [2026-07-20-086-…](docs/plans/2026-07-20-086-feat-us-pesticide-registration-plan.md) (Deep, 11 units).
+Numbered 086 because this session's 085 collided with the MSU plan above — `ls docs/plans/` was
+checked and came back clean, but their file was still branch-only. **The check is only sound against
+`git log --all`, not the working tree.**
+
+Answers three questions the app cannot answer today: is a product legally registered on grapes in
+my state, what resistance group is it, and does my spray history actually rotate modes of action.
+**No spray-application record exists** — `FieldNote.spraysApplied` is a JSON array of names with no
+date, rate, or product identity. Building from zero.
+
+- **Registration data goes in RELATIONAL TABLES, not the embedding corpus.** "Is X registered on
+  grapes in CA" is a `WHERE` clause, not a similarity search. Avoids +12,500 chunks and sidesteps
+  **`knowledge_chunk.embedding` having NO ANN index** (zero `hnsw`/`ivfflat` in any migration — every
+  dense query is a seq scan; scale-register tripwire ~10k chunks). EPA still registers as a
+  `KnowledgeSource` row purely to borrow the shipped per-tenant toggle + citation plumbing.
+- ⚠️ **Do NOT ingest label PDFs via `extractPdf`.** `chunk.ts:140-145` only guarantees markdown
+  pipe-tables are never split; `extract/pdf.ts` emits no pipes and no headings, so a label becomes ONE
+  segment. A dose row (`Grapes 14 2 56 14`) separates from its headers ~40-45% of the time, with
+  **zero overlap** — `tailForOverlap` splits on `[.!?]` and numeric runs have none. Synthesize tables.
+- ⚠️ **Licensing.** FRAC and HRAC both reserve commercial use ("may not be… stored in a retrieval
+  system"). Codes are DERIVED from extension sources already in the corpus, each row cited.
+- 🔎 **Unit 4 de-risked (measured):** UC IPM vs Cornell Table 3.2.1 = 6/14 match, **2/14 systematic
+  conflict on multi-site compounds** (Cornell `N/A` vs UC IPM `M 04` — both right, different
+  questions), 6/14 miss (4 biologicals). So `siteType` must be modeled separately from the code, and
+  a trade-name→code join from an AI-keyed source is UNSAFE (`Switch` sits under `cyprodinil (9)` but
+  is 9/12 — a naive join silently drops a mode of action).
+- **Phase 2 deferred:** rate/PHI/REI label extraction. Most of the effort, nearly all the liability.
+  Also blocked on a **planned** harvest date — `HarvestPick.pickDate` is actual-only.
+
+**Cornell Fruit Resources — needs its own plan number now that 085 has merged.**
+[`2026-07-20-085-ADDENDUM-cornell-fruit-resources.md`](docs/plans/2026-07-20-085-ADDENDUM-cornell-fruit-resources.md)
+was written to be appended to 085 as Units 9-10; that premise died when #415 landed. **Re-file as
+plan 087.** ⚠️ A `claude/cornell-grapes-knowledge-source-808b00` worktree already exists — check for
+a parallel session first. Cornell is the well-behaved case MSU wasn't: no WAF, robots allows, one
+clean `/grapes/` prefix, per-blog sitemap → **no `linkedOnlyPrefixes` needed**. One blocker, the
+INVERSE of MSU's: its *articles* are dated (`<time datetime>`) but the durable *reference pages*
+(`/ipm/diseases/`, `/production/`, `/post-harvest/`) carry **no date signal at all**, so the valuable
+70% lands 100% `unknown`. Recovered from sitemap `lastmod`, which `sitemap.ts:9-11` already parses.
+⚠️ The NETWORK sitemap has **zero** grape URLs — the per-blog one is `/grapes/wp-sitemap.xml`.
+⚠️ Cornell's Pest Management Guidelines are **paid + unreachable**, so this does NOT close 086's
+biologicals gap.
+
 **PLAN 082 — assistant vineyard/block coverage. ALL 7 UNITS DONE, code-complete on
 `claude/assistant-vineyard-coverage` (off `de889cc1`), PR NOT YET OPENED.**
 Plan: [2026-07-20-082-…](docs/plans/2026-07-20-082-feat-assistant-vineyard-coverage-plan.md).
