@@ -265,7 +265,7 @@ export function MaterialForm({
       {mode === "create" ? (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
           Tracked in <strong>{stockUnit}</strong>. Package size describes how it&apos;s sold — it doesn&apos;t put any
-          in stock. Use <strong>Receive</strong> when it physically arrives; that&apos;s where quantity and cost are recorded.
+          in stock. Use <strong>Receive</strong>{" "}when it physically arrives; that&apos;s where quantity and cost are recorded.
         </p>
       ) : (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
