@@ -3,8 +3,14 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AppUser } from "@/lib/access";
 import { findScopedBlocks, resolveVineyards } from "./scope";
-import type { FieldSpec, ValidatedValues } from "./fields";
-import { resolveExactlyOne } from "./tools/resolve";
+import { withFields, type EntityField, type FieldSpec, type ValidatedValues } from "./fields";
+import { resolveExactlyOne, resolveOneOrChoice, type ResolveResult } from "./tools/resolve";
+import type { ChoiceRequest } from "./assistant-events";
+import {
+  ABBREVIATION_MAX, ABBREVIATION_MIN, elevationToCanonicalM, normalizeAbbreviation, readUnitValue,
+  spacingToCanonicalM,
+} from "@/lib/vineyard/field-coercion";
+import { formatSpacing, type Unit } from "@/lib/vineyard/units";
 import { assertBlockCascadeSafe, cascadeDeleteBlockChildrenTx } from "@/lib/vineyard/block-delete";
 
 /**
@@ -51,7 +57,12 @@ export type EntityConfig = {
   };
 
   // ── Optional create/update support (db_create / db_update) ──
-  /** Fields accepted on create (validated by fields.ts; FK names resolved in buildCreate). */
+  /** The ONE field table `creatable` and `editable` are derived from. Install all three with
+   *  `...withFields(table)`. Present so the registry test can prove every create/update asymmetry
+   *  was declared with a reason instead of drifting in silently (plan 082 Unit 2). */
+  fields?: EntityField[];
+  /** Fields accepted on create (validated by fields.ts; FK names resolved in buildCreate).
+   *  DERIVED — install via `...withFields(table)`, never by hand. See `EntityField`. */
   creatable?: FieldSpec[];
   /** Resolve FK names + assemble the prisma `data` for a create. Async, pre-transaction. */
   buildCreate?: (user: AppUser, values: ValidatedValues) => Promise<{ data: Record<string, unknown>; label: string }>;
@@ -63,10 +74,23 @@ export type EntityConfig = {
    *  it, and surfaces a friendly "already exists" instead of a raw unique-constraint error (and never a
    *  silent case-variant duplicate — the DB uniques are case-sensitive, so this is the only guard). */
   findConflict?: (data: Record<string, unknown>) => Promise<{ label: string } | null>;
-  /** Scalar fields the user may edit. */
+  /** Scalar fields the user may edit.
+   *  DERIVED — populate via `...withFields(table)`, never by hand. See `EntityField`. */
   editable?: FieldSpec[];
   /** Current editable values, for diff/preview, or null if the row is gone. */
   current?: (id: string) => Promise<Record<string, unknown> | null>;
+  /** Resolve FK NAMES in update values to ids, BEFORE the transaction — the mirror of `buildCreate`.
+   *  `update` runs inside the tx and so cannot ask the user anything; resolution has to happen out
+   *  here, where an ambiguous name can still return a clickable picker. Return the augmented values,
+   *  or a ChoiceRequest to hand the user a picker instead of writing. Omit → values pass through. */
+  buildUpdate?: (user: AppUser, values: ValidatedValues, id: string) => Promise<ValidatedValues | ChoiceRequest>;
+  /** Keys that `buildUpdate` adds as plumbing (resolved FK ids). Hidden from the confirm card, which
+   *  shows the human-readable sibling instead — nobody should have to confirm "varietyId: cmxyz…". */
+  internalUpdateKeys?: string[];
+  /** Split an update's values across audit entity types, for entities that write to more than one
+   *  table. Omit → one audit row under this entity's own name (what every other entity wants).
+   *  Groups with no values are skipped, so a plain rename does not emit an empty second row. */
+  auditGroups?: (values: ValidatedValues) => Array<{ entityType: string; values: ValidatedValues }>;
   /** Apply validated edits within a transaction. */
   update?: (tx: Prisma.TransactionClient, id: string, values: ValidatedValues) => Promise<void>;
 };
@@ -88,7 +112,96 @@ function nameConflict(
   };
 }
 
-// ───────────────────────── VineyardBlock (Unit 1 vertical slice) ─────────────────────────
+// ───────────────────────── Shared asymmetry rationales ─────────────────────────
+// Reused `why` strings, so the same judgement is stated once and stays consistent.
+
+/** A row is born active; deactivating is a lifecycle action, not a create-time field. */
+const DEACTIVATE_ONLY = "A row is born active — deactivating is a lifecycle action, not a create-time field.";
+
+/** Parent FK supplied BY NAME and resolved in buildCreate. Re-parenting is a different operation
+ *  (it moves history with the row), so it is deliberately not a field edit. */
+const PARENT_FK_ON_CREATE =
+  "Parent FK, resolved by name in buildCreate. Re-parenting moves the row's history and is a distinct operation, not a field edit.";
+
+/** Not a deliberate asymmetry — the same half-built shape plan 082 exists to fix, in another
+ *  entity. Recorded honestly rather than blessed; changing it is out of scope for this unit,
+ *  which must not alter behavior. */
+const UNDECIDED_DRIFT =
+  "NOT a deliberate asymmetry — never decided, just never added to the other list. Preserved as-is here because this unit is a pure refactor; see TODOS.md.";
+
+/** VineyardDetail fields, update-only for a specific and temporary reason (Unit 6). The upsert in
+ *  `update` mirrors proven code (vineyard/actions.ts:153, no explicit tenantId — the tenant extension
+ *  injects it). A nested `detail: { create }` inside the vineyard create has NO precedent anywhere in
+ *  this codebase, and getting tenantId wrong on a governed table means an RLS-orphaned row that reads
+ *  as missing rather than as an error. Make it symmetric once that is DB-verified; see TODOS.md. */
+const DETAIL_UPDATE_ONLY =
+  "Update-only until the nested-create tenantId behavior is DB-verified — the update-path upsert mirrors proven code, a nested create on a governed table does not. See TODOS.md.";
+
+/**
+ * Resolve a grape-variety NAME to its id. Shared by the block's create and update paths so the two
+ * cannot disagree about what "Merlot" means (Unit 3 — before this the resolver was inline in
+ * buildCreate and update had no variety field at all).
+ *
+ * Returns a ResolveResult rather than throwing on ambiguity: an update runs through db_update, which
+ * turns a `choice` into a CLICKABLE picker. A thrown paragraph would be a dead end — the same lesson
+ * as #328, where prose "which one did you mean?" gave the user nothing to act on.
+ */
+export async function resolveVarietyId(name: string): Promise<ResolveResult<{ id: string; name: string }>> {
+  const varieties = await prisma.variety.findMany({
+    where: { name: { contains: name, mode: "insensitive" } },
+    take: 6,
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  // An exact (case-insensitive) hit wins outright — "Merlot" must not open a picker just because
+  // "Merlot Blanc" also exists.
+  const exact = varieties.filter((v) => v.name.toLowerCase() === name.trim().toLowerCase());
+  if (exact.length === 1) return { kind: "one", row: exact[0] };
+  return resolveOneOrChoice(varieties, {
+    prompt: `Which variety did you mean by "${name}"?`,
+    describe: (v) => v.name,
+    noneMsg: `No variety matches "${name}".`,
+  });
+}
+
+// ───────────────────────── VineyardBlock ─────────────────────────
+// Fields live in ONE table; `creatable`/`editable` are derived. Plan 082 Unit 2 — this config
+// used to carry two hand-written arrays that drifted apart in opposite directions.
+
+const blockFields: EntityField[] = [
+  { name: "vineyard", type: "string", required: true, description: "Vineyard name the block belongs to.",
+    mode: "create-only", why: PARENT_FK_ON_CREATE },
+  { name: "blockLabel", type: "string", min: 1, max: 80, description: "Block label, e.g. 'Block 2'." },
+  { name: "vineCount", type: "int", min: 0, description: "Number of vines." },
+  { name: "yearPlanted", type: "int", min: 1900, max: 2100, description: "Year planted." },
+  // Unit 3 made these five symmetric. `variety` arrives as a NAME on both paths and is resolved to
+  // `varietyId` before the transaction (see resolveVarietyId / buildUpdate) — a mis-set variety used
+  // to be permanently unfixable by the assistant.
+  { name: "variety", type: "string", description: "Grape variety name." },
+  { name: "numRows", type: "int", min: 0, description: "Number of rows." },
+  { name: "clone", type: "string", max: 80, description: "Clone." },
+  { name: "rootstock", type: "string", max: 80, description: "Rootstock." },
+  { name: "irrigated", type: "boolean", description: "Whether the block is irrigated." },
+  // Unit 4. These two derive planted acreage together with vineCount, which was ALREADY writable —
+  // so before this the assistant could change the vine count and strand the acreage with no way to
+  // correct it. Values arrive in whatever unit the user spoke, so the unit is declared explicitly
+  // rather than guessed; canonical storage stays metric (units.ts).
+  { name: "rowSpacing", type: "float", min: 0, description: "Distance between rows, in the unit given by spacingUnit." },
+  { name: "vineSpacing", type: "float", min: 0, description: "Distance between vines within a row, in the unit given by spacingUnit." },
+  { name: "spacingUnit", type: "enum", enumValues: ["imperial", "metric"],
+    description: "Unit for rowSpacing and vineSpacing. Defaults to imperial (feet)." },
+];
+
+/** The unit this block's vineyard displays in, so a confirm card never compares feet to meters. */
+async function blockDisplayUnit(blockId: string): Promise<Unit> {
+  const row = await prisma.vineyardBlock.findUnique({
+    where: { id: blockId },
+    select: { vineyard: { select: { detail: { select: { defaultUnit: true } } } } },
+  });
+  return readUnitValue(row?.vineyard.detail?.defaultUnit);
+}
+
+const num = (v: unknown): number | null => (v == null ? null : Number(v));
 
 const vineyardBlock: EntityConfig = {
   name: "VineyardBlock",
@@ -131,31 +244,69 @@ const vineyardBlock: EntityConfig = {
     assertSafe: (id) => assertBlockCascadeSafe(id),
     run: (tx, id) => cascadeDeleteBlockChildrenTx(tx, id),
   },
-  editable: [
-    { name: "blockLabel", type: "string", min: 1, max: 80, description: "Block label, e.g. 'Block 2'." },
-    { name: "numRows", type: "int", min: 0, description: "Number of rows." },
-    { name: "vineCount", type: "int", min: 0, description: "Number of vines." },
-    { name: "yearPlanted", type: "int", min: 1900, max: 2100, description: "Year planted." },
-    { name: "clone", type: "string", max: 80, description: "Clone." },
-    { name: "rootstock", type: "string", max: 80, description: "Rootstock." },
-    { name: "irrigated", type: "boolean", description: "Whether the block is irrigated." },
-  ],
+  ...withFields(blockFields),
   async current(id) {
-    return prisma.vineyardBlock.findUnique({
+    const row = await prisma.vineyardBlock.findUnique({
       where: { id },
-      select: { blockLabel: true, numRows: true, vineCount: true, yearPlanted: true, clone: true, rootstock: true, irrigated: true },
+      select: {
+        blockLabel: true, numRows: true, vineCount: true, yearPlanted: true, clone: true,
+        rootstock: true, irrigated: true, varietyId: true,
+        rowSpacingM: true, vineSpacingM: true,
+        variety: { select: { name: true } },
+      },
     });
+    if (!row) return null;
+    const unit = await blockDisplayUnit(id);
+    const { variety, rowSpacingM, vineSpacingM, ...rest } = row;
+    return {
+      ...rest,
+      // Flatten the relation to a NAME so the card reads "variety: Cabernet → Merlot".
+      // `varietyId` rides along so the audit diff records a change, not a bare addition.
+      variety: variety?.name ?? null,
+      // Spacing shows in the vineyard's display unit ("7.00 ft"), never raw meters. The canonical
+      // numbers stay for the audit diff and are hidden from the card by internalUpdateKeys.
+      rowSpacing: formatSpacing(num(rowSpacingM), unit),
+      vineSpacing: formatSpacing(num(vineSpacingM), unit),
+      rowSpacingM: num(rowSpacingM),
+      vineSpacingM: num(vineSpacingM),
+    };
+  },
+  internalUpdateKeys: ["varietyId", "rowSpacingM", "vineSpacingM"],
+  async buildUpdate(_user, values, id) {
+    const out: ValidatedValues = { ...values };
+
+    if (values.variety != null) {
+      const res = await resolveVarietyId(String(values.variety));
+      if (res.kind === "choice") return res.choice;
+      // Store the CANONICAL name, not what the user typed — "merlot" confirms as "Merlot".
+      out.variety = res.row.name;
+      out.varietyId = res.row.id;
+    }
+
+    if (values.rowSpacing != null || values.vineSpacing != null) {
+      const typedIn = readUnitValue(values.spacingUnit);
+      const shownIn = await blockDisplayUnit(id);
+      if (values.rowSpacing != null) {
+        const m = spacingToCanonicalM(values.rowSpacing, "Row spacing", typedIn);
+        out.rowSpacingM = m!;
+        out.rowSpacing = formatSpacing(m, shownIn);
+      }
+      if (values.vineSpacing != null) {
+        const m = spacingToCanonicalM(values.vineSpacing, "Vine spacing", typedIn);
+        out.vineSpacingM = m!;
+        out.vineSpacing = formatSpacing(m, shownIn);
+      }
+    }
+    // An input-only field: it says how to read the numbers, it is not a column.
+    delete out.spacingUnit;
+    return out;
   },
   async update(tx, id, values) {
-    await tx.vineyardBlock.update({ where: { id }, data: values as Prisma.VineyardBlockUncheckedUpdateInput });
+    // Display-only keys carried for the preview and audit; the *M columns hold the writes.
+    const data: Record<string, unknown> = { ...values };
+    for (const key of ["variety", "rowSpacing", "vineSpacing", "spacingUnit"]) delete data[key];
+    await tx.vineyardBlock.update({ where: { id }, data: data as Prisma.VineyardBlockUncheckedUpdateInput });
   },
-  creatable: [
-    { name: "vineyard", type: "string", required: true, description: "Vineyard name the block belongs to." },
-    { name: "blockLabel", type: "string", min: 1, max: 80, description: "Block label, e.g. 'Block 6'." },
-    { name: "variety", type: "string", description: "Grape variety name (optional)." },
-    { name: "vineCount", type: "int", min: 0, description: "Number of vines (optional)." },
-    { name: "yearPlanted", type: "int", min: 1900, max: 2100, description: "Year planted (optional)." },
-  ],
   async buildCreate(user, values) {
     const vineyards = await resolveVineyards(user, String(values.vineyard));
     const vineyard = resolveExactlyOne(vineyards, {
@@ -163,25 +314,31 @@ const vineyardBlock: EntityConfig = {
       noneMsg: `No vineyard matches "${values.vineyard}" that you can access.`,
       manyMsg: `Several vineyards match "${values.vineyard}"`,
     });
-    let varietyId: string | undefined;
+    let varietyId: string | null = null;
     if (values.variety) {
-      const varieties = await prisma.variety.findMany({
-        where: { name: { contains: String(values.variety), mode: "insensitive" } },
-        take: 6,
-        select: { id: true, name: true },
-      });
-      varietyId = resolveExactlyOne(varieties, {
-        describe: (v) => v.name,
-        noneMsg: `No variety matches "${values.variety}".`,
-        manyMsg: `Several varieties match "${values.variety}"`,
-      }).id;
+      const res = await resolveVarietyId(String(values.variety));
+      // db_create has no picker plumbing, so an ambiguous name still has to be a message here. The
+      // shared resolver keeps the MATCHING rules identical to the update path; only the ambiguity
+      // affordance differs.
+      if (res.kind === "choice") {
+        const names = res.choice.options.map((o) => o.label).join("; ");
+        throw new Error(`Several varieties match "${values.variety}": ${names}. Please be more specific.`);
+      }
+      varietyId = res.row.id;
     }
+    const typedIn = readUnitValue(values.spacingUnit);
     const data: Record<string, unknown> = {
       vineyardId: vineyard.id,
       blockLabel: values.blockLabel ?? null,
-      varietyId: varietyId ?? null,
+      varietyId,
       vineCount: values.vineCount ?? null,
       yearPlanted: values.yearPlanted ?? null,
+      numRows: values.numRows ?? null,
+      clone: values.clone ?? null,
+      rootstock: values.rootstock ?? null,
+      irrigated: values.irrigated ?? null,
+      rowSpacingM: spacingToCanonicalM(values.rowSpacing, "Row spacing", typedIn),
+      vineSpacingM: spacingToCanonicalM(values.vineSpacing, "Vine spacing", typedIn),
     };
     return { data, label: `${values.blockLabel ?? "(unlabeled)"} in ${vineyard.name}` };
   },
@@ -195,6 +352,66 @@ const vineyardBlock: EntityConfig = {
 };
 
 // ───────────────────────── Vineyard ─────────────────────────
+
+/** Location and FinishedGoodCategory are plain name-plus-active registries. (Vineyard was too,
+ *  until Unit 5 gave it an abbreviation.) */
+const nameRegistryFields: EntityField[] = [
+  { name: "name", type: "string", required: true, min: 2, max: 80 },
+  { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
+];
+
+const vineyardFields: EntityField[] = [
+  { name: "name", type: "string", required: true, min: 2, max: 80 },
+  // Unit 5. This is the token that appears in LOT CODES, so a vineyard created without it is
+  // half-built: it cannot participate in lot coding until a human opens /reference. The assistant
+  // used to create exactly that and report success.
+  { name: "abbreviation", type: "string", min: ABBREVIATION_MIN, max: ABBREVIATION_MAX,
+    description: "Short code used in lot codes, 2-4 letters or numbers, e.g. EST." },
+  { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
+
+  // ── Unit 6: VineyardDetail, flattened onto the vineyard ──
+  // These live on a separate 1:1 row that may not exist yet. Presenting them as vineyard fields is
+  // the point: "what are the coordinates for Estate?" should not require knowing there is a detail
+  // table. `update` upserts the row; `current` returns them absent rather than throwing when there
+  // is none.
+  { name: "gpsLat", type: "float", min: -90, max: 90, description: "Latitude in decimal degrees.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "gpsLng", type: "float", min: -180, max: 180, description: "Longitude in decimal degrees.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "elevation", type: "float", description: "Elevation, in the unit given by elevationUnit.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "elevationUnit", type: "enum", enumValues: ["imperial", "metric"],
+    description: "Unit for elevation. Defaults to imperial (feet).",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "soilType", type: "string", max: 120, description: "Soil description, e.g. 'schist'.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "manager", type: "string", max: 120, description: "Vineyard manager's name.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+  { name: "defaultUnit", type: "enum", enumValues: ["imperial", "metric"],
+    description: "Unit this vineyard's readouts display in.",
+    mode: "update-only", why: DETAIL_UPDATE_ONLY },
+];
+
+/** Columns that live on VineyardDetail rather than Vineyard. One list, so update / current / the
+ *  audit split cannot disagree about where a field belongs. */
+const DETAIL_COLUMNS = ["gpsLat", "gpsLng", "elevationM", "soilType", "manager", "defaultUnit"] as const;
+
+/**
+ * Is `abbreviation` already held by a DIFFERENT vineyard? Case-insensitively, because the token is
+ * stored uppercased and identity-bearing — two vineyards sharing one lot-code prefix makes the codes
+ * ambiguous, which no downstream reader can recover from.
+ *
+ * `exceptId` excludes the row being edited so re-saving your own abbreviation is not a conflict.
+ */
+async function abbreviationHolder(abbreviation: string, exceptId?: string) {
+  return prisma.vineyard.findFirst({
+    where: {
+      abbreviation: { equals: abbreviation, mode: "insensitive" },
+      ...(exceptId ? { id: { not: exceptId } } : {}),
+    },
+    select: { name: true, abbreviation: true },
+  });
+}
 
 const vineyard: EntityConfig = {
   name: "Vineyard",
@@ -217,21 +434,125 @@ const vineyard: EntityConfig = {
     { label: "assigned managers", kind: "cascade", count: (id) => prisma.userVineyard.count({ where: { vineyardId: id } }) },
   ],
   del: async (tx, id) => { await tx.vineyard.delete({ where: { id } }); },
-  editable: [
-    { name: "name", type: "string", min: 2, max: 80 },
-    { name: "isActive", type: "boolean" },
-  ],
-  current: (id) => prisma.vineyard.findUnique({ where: { id }, select: { name: true, isActive: true } }),
-  update: async (tx, id, v) => { await tx.vineyard.update({ where: { id }, data: v as Prisma.VineyardUncheckedUpdateInput }); },
-  creatable: [{ name: "name", type: "string", required: true, min: 2, max: 80 }],
-  buildCreate: async (_user, v) => ({ data: { name: String(v.name) }, label: String(v.name) }),
+  ...withFields(vineyardFields),
+  async current(id) {
+    const row = await prisma.vineyard.findUnique({
+      where: { id },
+      select: {
+        name: true, abbreviation: true, isActive: true,
+        detail: { select: { gpsLat: true, gpsLng: true, elevationM: true, soilType: true, manager: true, defaultUnit: true } },
+      },
+    });
+    if (!row) return null;
+    const { detail, ...vineyardColumns } = row;
+    // A vineyard with no detail row is normal, not an error: the row is created lazily on first
+    // write. Every detail field simply reads as absent so the whole preview still renders.
+    // Decimals are normalized to plain numbers — `diff` compares primitives, and a raw Decimal
+    // renders as an object on the confirm card (the same reason actions.ts:160 stringifies them).
+    return {
+      ...vineyardColumns,
+      gpsLat: num(detail?.gpsLat),
+      gpsLng: num(detail?.gpsLng),
+      elevationM: num(detail?.elevationM),
+      soilType: detail?.soilType ?? null,
+      manager: detail?.manager ?? null,
+      defaultUnit: detail?.defaultUnit ?? null,
+    };
+  },
+  internalUpdateKeys: ["elevationM"],
+  async buildUpdate(_user, values, id) {
+    const out: ValidatedValues = { ...values };
+
+    if (values.abbreviation != null) {
+      const abbreviation = normalizeAbbreviation(values.abbreviation)!;
+      const holder = await abbreviationHolder(abbreviation, id);
+      if (holder) {
+        throw new Error(`The abbreviation "${abbreviation}" is already used by "${holder.name}". Lot codes have to stay unambiguous, so pick another.`);
+      }
+      out.abbreviation = abbreviation;
+    }
+
+    if (values.elevation != null) {
+      const typedIn = readUnitValue(values.elevationUnit);
+      // Unlike spacing, 0 is a real elevation (sea level), so this coercer permits it.
+      out.elevationM = elevationToCanonicalM(values.elevation, typedIn)!;
+      out.elevation = `${Number(values.elevation)} ${typedIn === "metric" ? "m" : "ft"}`;
+    }
+    delete out.elevationUnit; // input-only: it says how to read `elevation`, it is not a column
+    return out;
+  },
+  async update(tx, id, values) {
+    const vineyardData: Record<string, unknown> = {};
+    const detailData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (key === "elevation" || key === "elevationUnit") continue; // display-only
+      if ((DETAIL_COLUMNS as readonly string[]).includes(key)) detailData[key] = value;
+      else vineyardData[key] = value;
+    }
+    if (Object.keys(vineyardData).length > 0) {
+      await tx.vineyard.update({ where: { id }, data: vineyardData as Prisma.VineyardUncheckedUpdateInput });
+    }
+    // Only touch the detail row when a detail field actually changed, so renaming a vineyard does
+    // not conjure an empty detail row. PARTIAL by design: the /reference form posts every field at
+    // once, but the assistant sends deltas — writing the full shape here would null out soilType
+    // whenever someone set GPS.
+    if (Object.keys(detailData).length > 0) {
+      await tx.vineyardDetail.upsert({
+        where: { vineyardId: id },
+        create: { vineyardId: id, ...detailData },
+        update: detailData,
+      });
+    }
+  },
+  /** Detail-column edits are audited as VineyardDetail, matching what the /reference form writes
+   *  (actions.ts:179) so one vineyard's history reads as one story regardless of which surface
+   *  made the change. */
+  auditGroups: (values) => {
+    const vineyardValues: ValidatedValues = {};
+    const detailValues: ValidatedValues = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (key === "elevation" || key === "elevationUnit") continue;
+      if ((DETAIL_COLUMNS as readonly string[]).includes(key)) detailValues[key] = value;
+      else vineyardValues[key] = value;
+    }
+    return [
+      { entityType: "Vineyard", values: vineyardValues },
+      { entityType: "VineyardDetail", values: detailValues },
+    ];
+  },
+  buildCreate: async (_user, v) => ({
+    data: { name: String(v.name), abbreviation: normalizeAbbreviation(v.abbreviation) },
+    label: String(v.name),
+  }),
   create: async (tx, data) => (await tx.vineyard.create({ data: data as Prisma.VineyardUncheckedCreateInput, select: { id: true } })).id,
-  findConflict: nameConflict((name) =>
-    prisma.vineyard.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { name: true } }),
-  ),
+  /** Guards BOTH identity columns. The name check is the original NAMING-1 guard; the abbreviation
+   *  check closes a pre-existing hole — two vineyards could collide on the lot-code token itself,
+   *  which the name-only guard never looked at. */
+  async findConflict(data) {
+    const name = String(data.name ?? "").trim();
+    if (name) {
+      const byName = await prisma.vineyard.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+        select: { name: true },
+      });
+      if (byName) return { label: byName.name };
+    }
+    const abbreviation = data.abbreviation ? String(data.abbreviation) : null;
+    if (abbreviation) {
+      const byAbbr = await abbreviationHolder(abbreviation);
+      if (byAbbr) return { label: `${byAbbr.name} (abbreviation ${byAbbr.abbreviation})` };
+    }
+    return null;
+  },
 };
 
 // ───────────────────────── Global registries (admin-only to mutate) ─────────────────────────
+
+const varietyFields: EntityField[] = [
+  { name: "name", type: "string", required: true, min: 1, max: 80 },
+  { name: "color", type: "string", max: 9 },
+  { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
+];
 
 const variety: EntityConfig = {
   name: "Variety",
@@ -249,17 +570,9 @@ const variety: EntityConfig = {
     { label: "blocks", kind: "setNull", count: (id) => prisma.vineyardBlock.count({ where: { varietyId: id } }) },
   ],
   del: async (tx, id) => { await tx.variety.delete({ where: { id } }); },
-  editable: [
-    { name: "name", type: "string", min: 1, max: 80 },
-    { name: "isActive", type: "boolean" },
-    { name: "color", type: "string", max: 9 },
-  ],
+  ...withFields(varietyFields),
   current: (id) => prisma.variety.findUnique({ where: { id }, select: { name: true, isActive: true, color: true } }),
   update: async (tx, id, v) => { await tx.variety.update({ where: { id }, data: v as Prisma.VarietyUncheckedUpdateInput }); },
-  creatable: [
-    { name: "name", type: "string", required: true, min: 1, max: 80 },
-    { name: "color", type: "string", max: 9 },
-  ],
   buildCreate: async (_u, v) => ({ data: { name: String(v.name), ...(v.color ? { color: String(v.color) } : {}) }, label: String(v.name) }),
   create: async (tx, data) => (await tx.variety.create({ data: data as Prisma.VarietyUncheckedCreateInput, select: { id: true } })).id,
   findConflict: nameConflict((name) =>
@@ -284,13 +597,9 @@ const location: EntityConfig = {
     { label: "bottling runs", kind: "restrict", count: (id) => prisma.bottlingRun.count({ where: { destinationLocationId: id } }) },
   ],
   del: async (tx, id) => { await tx.location.delete({ where: { id } }); },
-  editable: [
-    { name: "name", type: "string", min: 2, max: 80 },
-    { name: "isActive", type: "boolean" },
-  ],
+  ...withFields(nameRegistryFields),
   current: (id) => prisma.location.findUnique({ where: { id }, select: { name: true, isActive: true } }),
   update: async (tx, id, v) => { await tx.location.update({ where: { id }, data: v as Prisma.LocationUncheckedUpdateInput }); },
-  creatable: [{ name: "name", type: "string", required: true, min: 2, max: 80 }],
   buildCreate: async (_u, v) => ({ data: { name: String(v.name) }, label: String(v.name) }),
   create: async (tx, data) => (await tx.location.create({ data: data as Prisma.LocationUncheckedCreateInput, select: { id: true } })).id,
   findConflict: nameConflict((name) =>
@@ -313,19 +622,31 @@ const finishedGoodCategory: EntityConfig = {
     { label: "wine SKUs", kind: "setNull", count: (id) => prisma.wineSku.count({ where: { categoryId: id } }) },
   ],
   del: async (tx, id) => { await tx.finishedGoodCategory.delete({ where: { id } }); },
-  editable: [
-    { name: "name", type: "string", min: 2, max: 80 },
-    { name: "isActive", type: "boolean" },
-  ],
+  ...withFields(nameRegistryFields),
   current: (id) => prisma.finishedGoodCategory.findUnique({ where: { id }, select: { name: true, isActive: true } }),
   update: async (tx, id, v) => { await tx.finishedGoodCategory.update({ where: { id }, data: v as Prisma.FinishedGoodCategoryUncheckedUpdateInput }); },
-  creatable: [{ name: "name", type: "string", required: true, min: 2, max: 80 }],
   buildCreate: async (_u, v) => ({ data: { name: String(v.name) }, label: String(v.name) }),
   create: async (tx, data) => (await tx.finishedGoodCategory.create({ data: data as Prisma.FinishedGoodCategoryUncheckedCreateInput, select: { id: true } })).id,
   findConflict: nameConflict((name) =>
     prisma.finishedGoodCategory.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { name: true } }),
   ),
 };
+
+const vesselFields: EntityField[] = [
+  { name: "code", type: "string", required: true, min: 1, max: 40 },
+  { name: "capacityL", type: "decimal", required: true, min: 0 },
+  { name: "type", type: "enum", required: true, enumValues: ["BARREL", "TANK"],
+    mode: "create-only",
+    why: "A barrel cannot become a tank — type fixes the vessel's identity and the meaning of its capacity." },
+  // These five are the SAME half-built shape plan 082 exists to fix, in a different entity: cooperage
+  // details you would obviously want when adding a barrel, but create only accepts code/type/capacity.
+  { name: "blendName", type: "string", max: 80, mode: "update-only", why: UNDECIDED_DRIFT },
+  { name: "oakOrigin", type: "string", max: 40, mode: "update-only", why: UNDECIDED_DRIFT },
+  { name: "cooperage", type: "string", max: 80, mode: "update-only", why: UNDECIDED_DRIFT },
+  { name: "toastLevel", type: "string", max: 40, mode: "update-only", why: UNDECIDED_DRIFT },
+  { name: "cooperageYear", type: "int", min: 1900, max: 2100, mode: "update-only", why: UNDECIDED_DRIFT },
+  { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
+];
 
 const vessel: EntityConfig = {
   name: "Vessel",
@@ -342,26 +663,18 @@ const vessel: EntityConfig = {
     { label: "bottling sources", kind: "restrict", count: (id) => prisma.bottlingSource.count({ where: { vesselId: id } }) },
   ],
   del: async (tx, id) => { await tx.vessel.delete({ where: { id } }); },
-  editable: [
-    { name: "code", type: "string", min: 1, max: 40 },
-    { name: "blendName", type: "string", max: 80 },
-    { name: "capacityL", type: "decimal", min: 0 },
-    { name: "isActive", type: "boolean" },
-    { name: "oakOrigin", type: "string", max: 40 },
-    { name: "cooperage", type: "string", max: 80 },
-    { name: "toastLevel", type: "string", max: 40 },
-    { name: "cooperageYear", type: "int", min: 1900, max: 2100 },
-  ],
+  ...withFields(vesselFields),
   current: (id) => prisma.vessel.findUnique({ where: { id }, select: { code: true, blendName: true, capacityL: true, isActive: true, oakOrigin: true, cooperage: true, toastLevel: true, cooperageYear: true } }),
   update: async (tx, id, v) => { await tx.vessel.update({ where: { id }, data: v as Prisma.VesselUncheckedUpdateInput }); },
-  creatable: [
-    { name: "code", type: "string", required: true, min: 1, max: 40 },
-    { name: "type", type: "enum", required: true, enumValues: ["BARREL", "TANK"] },
-    { name: "capacityL", type: "decimal", required: true, min: 0 },
-  ],
   buildCreate: async (_u, v) => ({ data: { code: String(v.code), type: String(v.type), capacityL: Number(v.capacityL) }, label: `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}` }),
   create: async (tx, data) => (await tx.vessel.create({ data: data as Prisma.VesselUncheckedCreateInput, select: { id: true } })).id,
 };
+
+const wineSkuFields: EntityField[] = [
+  { name: "name", type: "string", required: true, min: 2, max: 80 },
+  { name: "vintage", type: "int", required: true, min: 1900, max: 2100 },
+  { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
+];
 
 const wineSku: EntityConfig = {
   name: "WineSku",
@@ -379,20 +692,19 @@ const wineSku: EntityConfig = {
     { label: "stock movements", kind: "restrict", count: (id) => prisma.stockMovement.count({ where: { wineSkuId: id } }) },
   ],
   del: async (tx, id) => { await tx.wineSku.delete({ where: { id } }); },
-  editable: [
-    { name: "name", type: "string", min: 2, max: 80 },
-    { name: "vintage", type: "int", min: 1900, max: 2100 },
-    { name: "isActive", type: "boolean" },
-  ],
+  ...withFields(wineSkuFields),
   current: (id) => prisma.wineSku.findUnique({ where: { id }, select: { name: true, vintage: true, isActive: true } }),
   update: async (tx, id, v) => { await tx.wineSku.update({ where: { id }, data: v as Prisma.WineSkuUncheckedUpdateInput }); },
-  creatable: [
-    { name: "name", type: "string", required: true, min: 2, max: 80 },
-    { name: "vintage", type: "int", required: true, min: 1900, max: 2100 },
-  ],
   buildCreate: async (_u, v) => ({ data: { name: String(v.name), vintage: Number(v.vintage), bottleSizeMl: 750 }, label: `${v.name} ${v.vintage}` }),
   create: async (tx, data) => (await tx.wineSku.create({ data: data as Prisma.WineSkuUncheckedCreateInput, select: { id: true } })).id,
 };
+
+const finishedGoodFields: EntityField[] = [
+  { name: "name", type: "string", required: true, min: 2, max: 80 },
+  { name: "category", type: "string", required: true, description: "Category name the item belongs to.",
+    mode: "create-only", why: PARENT_FK_ON_CREATE },
+  { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
+];
 
 const finishedGood: EntityConfig = {
   name: "FinishedGood",
@@ -409,16 +721,9 @@ const finishedGood: EntityConfig = {
     { label: "stock movements", kind: "restrict", count: (id) => prisma.stockMovement.count({ where: { finishedGoodId: id } }) },
   ],
   del: async (tx, id) => { await tx.finishedGood.delete({ where: { id } }); },
-  editable: [
-    { name: "name", type: "string", min: 2, max: 80 },
-    { name: "isActive", type: "boolean" },
-  ],
+  ...withFields(finishedGoodFields),
   current: (id) => prisma.finishedGood.findUnique({ where: { id }, select: { name: true, isActive: true } }),
   update: async (tx, id, v) => { await tx.finishedGood.update({ where: { id }, data: v as Prisma.FinishedGoodUncheckedUpdateInput }); },
-  creatable: [
-    { name: "name", type: "string", required: true, min: 2, max: 80 },
-    { name: "category", type: "string", required: true, description: "Category name the item belongs to." },
-  ],
   buildCreate: async (_u, v) => {
     const cats = await prisma.finishedGoodCategory.findMany({ where: { name: { contains: String(v.category), mode: "insensitive" } }, take: 6, select: { id: true, name: true } });
     const cat = resolveExactlyOne(cats, { describe: (c) => c.name, noneMsg: `No category matches "${v.category}".`, manyMsg: `Several categories match "${v.category}"` });

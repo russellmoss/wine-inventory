@@ -176,6 +176,43 @@ export const MUST_PROPOSE_GOLDEN: MustProposeCase[] = [
       query_vineyard_status: 'Estate Vineyard: Block 3 (Merlot) at veraison.',
     },
   },
+  // ── Plan 082: reference-data writes ──────────────────────────────────────────────────────────
+  // These three capabilities did not exist before plan 082 — db_update rejected the field names
+  // outright ("Unknown field \"gpsLat\"…"), so a pre-change baseline would be 0/N by construction
+  // rather than by model behavior. That is why none of them carries a `baseline`: there was nothing
+  // to measure, only something to build. What these cases guard is the OTHER half — that the model
+  // reaches for db_update at all rather than answering in prose, which is the failure this repo has
+  // shipped twice (#328, #387).
+  {
+    id: "vineyard-gps-update",
+    utterance: "set the GPS for Estate Vineyard to 38.29, -122.45",
+    tool: "db_update",
+    readyRequires: ["entity", "values"],
+    note: "Unit 6. GPS lives on VineyardDetail, a table the assistant could not see at all — the answer used to be 'I can't do that'. Flattened onto the Vineyard entity, so the model should never need to know a second table exists.",
+    fixture: {
+      db_find: 'Vineyard: 1 match — "Estate Vineyard", id vy_estate.',
+    },
+  },
+  {
+    id: "block-spacing-update",
+    utterance: "change the vine spacing on Block 3 to 5 feet",
+    tool: "db_update",
+    readyRequires: ["entity", "values"],
+    note: "Unit 4, and the correctness hazard of the whole plan: vineCount was writable while the spacings were not, so the assistant could strand the derived planted acreage with no way to correct it. Also exercises the spoken unit ('feet') reaching an explicit spacingUnit.",
+    fixture: {
+      db_find: 'VineyardBlock: 1 match — "Block 3" (Estate Vineyard, Merlot), id blk_3.',
+    },
+  },
+  {
+    id: "block-variety-fix",
+    utterance: "Block 3 is actually Merlot, not Cabernet",
+    tool: "db_update",
+    readyRequires: ["entity", "values"],
+    note: "Unit 3, and the phrasing most likely to be answered in prose — it is a statement of fact, not an imperative, so nothing lexical marks it as a write. A mis-set variety used to be permanently unfixable by the assistant.",
+    fixture: {
+      db_find: 'VineyardBlock: 1 match — "Block 3" (Estate Vineyard, Cabernet Sauvignon), id blk_3.',
+    },
+  },
   {
     id: "tasting-note-vessel",
     // Reported live 2026-07-20 (feedback cmrsrs02, Demo Winery): asked for a tasting note on a tank, the

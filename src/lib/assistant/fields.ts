@@ -18,6 +18,63 @@ export type FieldSpec = {
 
 export type ValidatedValues = Record<string, string | number | boolean>;
 
+export type FieldMode = "both" | "create-only" | "update-only";
+
+/**
+ * One entry in an entity's SINGLE field table. `EntityConfig.creatable` and `.editable` are
+ * DERIVED from this via `splitFields`, so the two lists cannot drift apart the way they did
+ * before plan 082 (the block config shipped as a "Unit 1 vertical slice" and the two arrays
+ * were then maintained independently in opposite directions).
+ *
+ * Symmetry is the DEFAULT: omit `mode` and the field is writable on both paths. An asymmetry
+ * must be declared AND justified — the union below makes `why` mandatory whenever `mode` is
+ * set, so the compiler refuses a silent one-sided field. That is the whole point: the next
+ * person to add a field gets symmetry for free and has to argue for anything else.
+ */
+export type EntityField =
+  | (FieldSpec & { mode?: "both"; why?: never })
+  | (FieldSpec & { mode: "create-only" | "update-only"; why: string });
+
+/**
+ * Derive the create and update field lists from one table.
+ *
+ * `required` is stripped from the editable list: it means "must be supplied when creating the
+ * row", which is meaningless on update (`validateFields` in "update" mode only looks at the
+ * fields actually provided). Keeping it would be harmless but misleading to read.
+ */
+/** Copy `source` without the named keys. Shallow — every FieldSpec value is a primitive or a
+ *  string array we intentionally share. */
+function omit(source: object, keys: string[]): FieldSpec {
+  const copy: Record<string, unknown> = { ...source };
+  for (const key of keys) delete copy[key];
+  return copy as FieldSpec;
+}
+
+export function splitFields(fields: EntityField[]): { creatable: FieldSpec[]; editable: FieldSpec[] } {
+  const creatable: FieldSpec[] = [];
+  const editable: FieldSpec[] = [];
+  for (const field of fields) {
+    const mode: FieldMode = field.mode ?? "both";
+    if (mode !== "update-only") creatable.push(omit(field, ["mode", "why"]));
+    if (mode !== "create-only") editable.push(omit(field, ["mode", "why", "required"]));
+  }
+  return { creatable, editable };
+}
+
+/**
+ * Spread this into an `EntityConfig` to install a field table and its two derived lists in one
+ * go: `...withFields(blockFields)`. Keeping the table on the config (not just its output) is what
+ * lets `test/assistant-entities.test.ts` prove every asymmetry was declared — and lets it fail an
+ * entity that goes back to hand-writing `creatable`/`editable`.
+ */
+export function withFields(fields: EntityField[]): {
+  fields: EntityField[];
+  creatable: FieldSpec[];
+  editable: FieldSpec[];
+} {
+  return { fields, ...splitFields(fields) };
+}
+
 function coerce(spec: FieldSpec, raw: unknown): string | number | boolean {
   switch (spec.type) {
     case "string": {

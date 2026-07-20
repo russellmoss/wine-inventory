@@ -7,7 +7,17 @@ import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, ActionError, getActionUser } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
-import { ftToM, toCanonicalSpacing, type Unit } from "@/lib/vineyard/units";
+import { type Unit } from "@/lib/vineyard/units";
+import {
+  optStr,
+  optInt,
+  optColor,
+  readUnitValue,
+  spacingToCanonicalM,
+  elevationToCanonicalM,
+  gpsLatToCanonical,
+  gpsLngToCanonical,
+} from "@/lib/vineyard/field-coercion";
 import { serializeBlock, serializeDetail, type VineyardDetailPayload } from "@/lib/vineyard/data";
 import { normalizeToken } from "@/lib/lot/code";
 
@@ -38,52 +48,14 @@ export async function loadVineyardDetail(vineyardId: string): Promise<VineyardDe
   };
 }
 
-// ── Parsing helpers (everything optional; validate only when present) ──────
-
-function optStr(v: FormDataEntryValue | null, max = 200): string | null {
-  const s = String(v ?? "").trim();
-  if (s === "") return null;
-  if (s.length > max) throw new ActionError("That value is too long.");
-  return s;
-}
-
-function optInt(
-  v: FormDataEntryValue | null,
-  label: string,
-  { min = 0, max = Number.MAX_SAFE_INTEGER }: { min?: number; max?: number } = {},
-): number | null {
-  const s = String(v ?? "").trim();
-  if (s === "") return null;
-  const n = Number(s);
-  if (!Number.isInteger(n) || n < min || n > max) {
-    throw new ActionError(`${label} must be a whole number between ${min} and ${max}.`);
-  }
-  return n;
-}
-
-function optFloat(
-  v: FormDataEntryValue | null,
-  label: string,
-  { min, max }: { min?: number; max?: number } = {},
-): number | null {
-  const s = String(v ?? "").trim();
-  if (s === "") return null;
-  const n = Number(s);
-  if (!Number.isFinite(n)) throw new ActionError(`${label} must be a number.`);
-  if (min != null && n < min) throw new ActionError(`${label} must be at least ${min}.`);
-  if (max != null && n > max) throw new ActionError(`${label} must be at most ${max}.`);
-  return n;
-}
-
-function optColor(v: FormDataEntryValue | null): string | null {
-  const s = String(v ?? "").trim();
-  if (s === "") return null;
-  if (!isValidHex(s)) throw new ActionError("That isn't a valid color.");
-  return s;
-}
+// ── Parsing helpers ────────────────────────────────────────────────────────
+// The primitives (optStr/optInt/optFloat/optColor) and the spacing/unit coercers now live
+// in @/lib/vineyard/field-coercion so the assistant's EntityConfig writes by the SAME rules
+// this form does. This module is "use server" and can only export async functions, which is
+// why they could never be shared from here. See plan 082.
 
 function readUnit(formData: FormData): Unit {
-  return formData.get("unit") === "metric" ? "metric" : "imperial";
+  return readUnitValue(formData.get("unit"));
 }
 
 type BlockData = {
@@ -105,14 +77,12 @@ type BlockData = {
  * the two can't drift. Spacing is entered in the active unit and stored in meters.
  */
 function parseBlockForm(formData: FormData, unit: Unit): BlockData {
-  const rowSpacing = optFloat(formData.get("rowSpacing"), "Row spacing", { min: 0 });
-  const vineSpacing = optFloat(formData.get("vineSpacing"), "Vine spacing", { min: 0 });
   const irrigatedRaw = String(formData.get("irrigated") ?? "").trim();
   return {
     blockLabel: optStr(formData.get("blockLabel"), 80),
     numRows: optInt(formData.get("numRows"), "Number of rows", { max: 100000 }),
-    rowSpacingM: toCanonicalSpacing(rowSpacing, unit),
-    vineSpacingM: toCanonicalSpacing(vineSpacing, unit),
+    rowSpacingM: spacingToCanonicalM(formData.get("rowSpacing"), "Row spacing", unit),
+    vineSpacingM: spacingToCanonicalM(formData.get("vineSpacing"), "Vine spacing", unit),
     varietyId: optStr(formData.get("varietyId"), 40),
     clone: optStr(formData.get("clone"), 80),
     rootstock: optStr(formData.get("rootstock"), 80),
@@ -170,10 +140,9 @@ export const upsertVineyardDetail = action(
     if (!vineyard) throw new ActionError("Vineyard not found.");
 
     const unit = readUnit(formData);
-    const gpsLat = optFloat(formData.get("gpsLat"), "Latitude", { min: -90, max: 90 });
-    const gpsLng = optFloat(formData.get("gpsLng"), "Longitude", { min: -180, max: 180 });
-    const elevationRaw = optFloat(formData.get("elevation"), "Elevation", { min: 0 });
-    const elevationM = elevationRaw == null ? null : unit === "metric" ? elevationRaw : ftToM(elevationRaw);
+    const gpsLat = gpsLatToCanonical(formData.get("gpsLat"));
+    const gpsLng = gpsLngToCanonical(formData.get("gpsLng"));
+    const elevationM = elevationToCanonicalM(formData.get("elevation"), unit);
     const soilType = optStr(formData.get("soilType"), 120);
     const manager = optStr(formData.get("manager"), 120);
 

@@ -1,5 +1,4 @@
 import "server-only";
-import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit, diff } from "@/lib/audit";
 import { isTenantAdminLike } from "@/lib/access";
@@ -65,9 +64,19 @@ export const dbUpdateTool: AssistantTool = {
     }
     assertScoped(entity, ctx.user, row.vineyardId);
 
-    const values = validateFields(entity.editable, input.values ?? {}, "update");
+    let values = validateFields(entity.editable, input.values ?? {}, "update");
+    if (entity.buildUpdate) {
+      // FK names → ids, out here where an ambiguous name can still become a clickable picker.
+      // `update` runs inside the transaction and cannot ask the user anything.
+      const resolved = await entity.buildUpdate(ctx.user, values, row.id);
+      if ("needsChoice" in resolved) return resolved;
+      values = resolved;
+    }
     const before = (await entity.current(row.id)) ?? {};
-    const parts = Object.entries(values).map(([k, v]) => `${k}: ${fmt(before[k])} → ${fmt(v)}`);
+    const hidden = new Set(entity.internalUpdateKeys ?? []);
+    const parts = Object.entries(values)
+      .filter(([k]) => !hidden.has(k))
+      .map(([k, v]) => `${k}: ${fmt(before[k])} → ${fmt(v)}`);
     const preview = `Update ${entity.displayName} "${row.label}" — ${parts.join(", ")}.`;
     const token = signProposal("db_update", { entity: entity.name, id: row.id, label: row.label, values });
     return { needsConfirmation: true, preview, token };
@@ -91,17 +100,24 @@ export const commitDbUpdate: Committer = async (user, args) => {
   assertScoped(entity, user, row.vineyardId);
 
   const before = (await entity.current(id)) ?? {};
+  // Entities that write to more than one table split their audit accordingly, so a vineyard's GPS
+  // edit is logged as VineyardDetail exactly as the /reference form logs it. Everything else keeps
+  // the single row under its own name.
+  const groups = entity.auditGroups?.(values) ?? [{ entityType: entity.name, values }];
   await runInTenantTx(async (tx) => {
     await entity.update!(tx, id, values);
-    await writeAudit(tx, {
-      actorUserId: user.id,
-      actorEmail: user.email,
-      action: "UPDATE",
-      entityType: entity.name,
-      entityId: id,
-      changes: diff(before, { ...before, ...values }),
-      summary: `Updated ${entity.displayName} ${label}`,
-    });
+    for (const group of groups) {
+      if (Object.keys(group.values).length === 0) continue;
+      await writeAudit(tx, {
+        actorUserId: user.id,
+        actorEmail: user.email,
+        action: "UPDATE",
+        entityType: group.entityType,
+        entityId: id,
+        changes: diff(before, { ...before, ...group.values }),
+        summary: `Updated ${entity.displayName} ${label}`,
+      });
+    }
   });
   return { message: `Updated ${entity.displayName} "${label}".` };
 };
