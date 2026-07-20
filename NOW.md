@@ -122,6 +122,20 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Feedback loop: class sweep + regression-test gate — built on `claude/determined-clarke-6d3e65`, PR not yet opened.**
+  Backlog-process review, not a ticket. The data: ~40 PRs merged in 48h, PR queue near-empty — **throughput
+  is not the bottleneck**. The defect is fix *altitude*: **#385** fixed one `resolveExactlyOne` ambiguity,
+  **#386** swept the rest of the class by hand a day later. Ticket-driven fixing defaults to instance-level
+  because the ticket *describes* an instance. Two changes to `scripts/bug-feedback-agent.ts` + CI:
+  (1) **class sweep** — new `search_repo` tool (the agent had list_dir/read_file but **no grep**, so it
+  structurally could not sweep) + `record_class_sweep`, enforced as a **deterministic tool-loop rejection**
+  of `apply_fix` without a prior sweep, not a prompt rule. Sweep lands in the PR body as the review artifact.
+  (2) **test gate** — new label-gated `feedback-test-gate` CI job; a code change with no `test/` change FAILS.
+  Escape hatch is the human-applied `no-regression-test` label, deliberately not agent-settable. Composes with
+  bug-triage's auto-merge for free (it already requires CI green). 🔎 **Found en route: `test` was missing from
+  the fix workflow's `add-paths`** — the agent's test edits were being silently dropped from the commit, so the
+  gate would have failed every PR for a test the agent actually wrote. Exactly the hand-synced-list drift the
+  plan-052 comment warned about. tsc 0, eslint 0 errors, **vitest 2861/0**.
 - **#387 assistant picker-vs-prose — MERGED (`de889cc1`).** "delete Block 1" answered in prose.
   The chip blamed tool descriptions; **so did I, and we were both wrong** — prepending guidance to
   six tools measured **1/6**. The cause was prompt **rule 44**, which literally instructed the
@@ -165,7 +179,8 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
 - Plan 080 Wave 3 → council review → PR.
 
-_Last updated: 2026-07-20 — compacted from 684 lines. Verified every "pending" claim against
-`gh pr list`: Wave 2, Break Mode, Plan 077, the consumables fix and issue #328 had all already
-landed while still listed as in-flight. Only plan 082 and plan 080 Wave 3 are genuinely open.
-Beware "N commits ahead" as an in-flight signal — squash-merge leaves branches permanently ahead._
+_Last updated: 2026-07-20 — added the feedback-loop class sweep + regression-test gate
+(branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
+lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the
+consumables fix and issue #328 had all already landed while still listed as in-flight. Beware
+"N commits ahead" as an in-flight signal — squash-merge leaves branches permanently ahead._

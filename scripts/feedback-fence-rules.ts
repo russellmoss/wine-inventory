@@ -79,6 +79,16 @@ export function normPath(p: string): string {
   return p.replace(/\\/g, "/").replace(/^"\s*|\s*"$/g, "");
 }
 
+/** Where regression tests live. Inside the fence on purpose — a fix should carry its test. */
+export const TEST_PREFIX = "test/";
+
+/**
+ * PR label a HUMAN applies to consciously ship an agent fix with no regression test.
+ * Deliberately a label and not an agent-settable flag: the escape hatch has to cost a
+ * person a click and stay visible on the PR, or it stops being an exception.
+ */
+export const TEST_GATE_OVERRIDE_LABEL = "no-regression-test";
+
 export function isDenied(p: string): boolean {
   return deniedPrefixes.some((prefix) => p === prefix || p.startsWith(prefix));
 }
@@ -136,6 +146,44 @@ export interface DomainVerifyResolution {
  * domain lacks a proof. Only considers in-fence `src/lib` domains subject to the policy; UI/assistant
  * and out-of-fence paths are ignored here (the fence handles those).
  */
+// ---------------------------------------------------------------------------
+// Regression-test gate
+//
+// A fix with no test is a CLAIM that the bug is gone, not a proof — and at ~20 merged
+// PRs a day the claim is worth very little. Requiring the test turns the design partner's
+// ticket stream into a growing eval suite, which is the only thing that keeps this velocity
+// from silently re-breaking what last week's fix repaired.
+//
+// Enforced in CI (the `feedback-test-gate` job), NOT inside the credentialed agent job —
+// same boundary as lint/vitest: the agent writes files, CI executes them.
+// ---------------------------------------------------------------------------
+
+export interface TestGateResult {
+  /** In-fence non-test files the diff changes. */
+  codePaths: string[];
+  /** Test files the diff changes. */
+  testPaths: string[];
+  /** True when the diff changes in-fence code but carries no test alongside it. */
+  missingTest: boolean;
+}
+
+/**
+ * Classify a changed-path set for the regression-test gate. Only in-fence paths count as
+ * "code" — a stray doc or lockfile must never be what forces a test, and out-of-fence paths
+ * are the fence job's problem, not this one. A test-only or empty diff passes.
+ */
+export function evaluateTestGate(paths: string[]): TestGateResult {
+  const codePaths: string[] = [];
+  const testPaths: string[] = [];
+  for (const raw of paths) {
+    const p = normPath(raw);
+    if (!p) continue;
+    if (p.startsWith(TEST_PREFIX)) testPaths.push(p);
+    else if (fencePass(p)) codePaths.push(p);
+  }
+  return { codePaths, testPaths, missingTest: codePaths.length > 0 && testPaths.length === 0 };
+}
+
 export function resolveDomainVerifies(paths: string[]): DomainVerifyResolution {
   const scripts = new Set<string>();
   const proven = new Set<string>();
