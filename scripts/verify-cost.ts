@@ -25,6 +25,7 @@ import { emitExportForSnapshot } from "@/lib/cost/export-emit";
 import { executeBottling, deleteBottling } from "@/lib/bottling/run";
 import { getLotCost } from "@/lib/cost/cache";
 import { round2 } from "@/lib/bottling/draw";
+import { systemLocationId } from "./lib/system-location";
 
 // Phase 8: dev/QA runs in the Demo Winery sandbox tenant, never the real Bhutan Wine Co. (AGENTS.md).
 // Requires `npm run seed:demo-tenant` first so org_demo_winery exists.
@@ -135,7 +136,7 @@ async function main() {
   });
   createdMaterialIds.push(material.id);
   await prisma.supplyLot.create({
-    data: { materialId: material.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.05" },
+    data: { locationId: await systemLocationId(), materialId: material.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.05" },
   });
   console.log("  seeded TANK=450 L, received 1000 g KMBS @ $0.05/g");
 
@@ -326,10 +327,10 @@ async function main() {
   // Costed packaging supplies (counted stock, eaches): glass @ $0.80/ea, cork @ $0.10/ea.
   const glass = await prisma.cellarMaterial.create({ data: { name: "ZZCOST Glass 750", normalizedKey: normalizeMaterialKey("ZZCOST Glass 750"), kind: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
   createdMaterialIds.push(glass.id);
-  await prisma.supplyLot.create({ data: { materialId: glass.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.80" } });
+  await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: glass.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.80" } });
   const cork = await prisma.cellarMaterial.create({ data: { name: "ZZCOST Cork", normalizedKey: normalizeMaterialKey("ZZCOST Cork"), kind: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
   createdMaterialIds.push(cork.id);
-  await prisma.supplyLot.create({ data: { materialId: cork.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.10" } });
+  await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: cork.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.10" } });
 
   const pkgBottles = 100;
   const pkgConsumedL = round2(0.75 * pkgBottles); // 75 L

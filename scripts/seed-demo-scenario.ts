@@ -38,6 +38,7 @@ function squareAround(lat: number, lng: number, d = 0.0015) {
 
 async function main() {
   const { prisma } = await import("../src/lib/prisma");
+  const { systemLocationId } = await import("./lib/system-location");
   const { crushLotCore } = await import("../src/lib/transform/crush-core");
   const { pressLotCore } = await import("../src/lib/transform/press-core");
   const { blendLotsCore } = await import("../src/lib/blend/blend-core");
@@ -177,7 +178,7 @@ async function main() {
         data: { name, normalizedKey, kind, isStockTracked: true, stockUnit: "g" },
       }));
     await prisma.supplyLot.create({
-      data: { materialId: m.id, qtyReceived: 5000, qtyRemaining: 5000, stockUnit: "g", unitCost, receivedAt: new Date("2024-08-01") },
+      data: { materialId: m.id, locationId: await systemLocationId(), qtyReceived: 5000, qtyRemaining: 5000, stockUnit: "g", unitCost, receivedAt: new Date("2024-08-01") },
     });
     return m;
   };

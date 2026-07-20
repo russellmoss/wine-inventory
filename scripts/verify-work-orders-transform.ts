@@ -25,6 +25,7 @@ import { reverseOperationCore } from "@/lib/ledger/reverse";
 import { getWorkOrderPrintView } from "@/lib/work-orders/data";
 import { disconnectSystem } from "../src/lib/tenant/system";
 import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
+import { systemLocationId } from "./lib/system-location";
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-wo-tf" };
@@ -309,9 +310,9 @@ async function main() {
     assert(pkgSrcBefore > 100, `packaging-run source tank holds wine (${pkgSrcBefore} L)`);
     // Costed packaging supplies (counted stock, eaches).
     const glass = await prisma.cellarMaterial.create({ data: { name: "ZZWT Glass 750", normalizedKey: normalizeMaterialKey("ZZWT Glass 750"), kind: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
-    await prisma.supplyLot.create({ data: { materialId: glass.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.80" } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: glass.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.80" } });
     const cork = await prisma.cellarMaterial.create({ data: { name: "ZZWT Cork", normalizedKey: normalizeMaterialKey("ZZWT Cork"), kind: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
-    await prisma.supplyLot.create({ data: { materialId: cork.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.10" } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: cork.id, qtyReceived: 200, qtyRemaining: 200, stockUnit: "unit", unitCost: "0.10" } });
     const glassOnHand = async () => Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: glass.id } })).qtyRemaining);
     const corkOnHand = async () => Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: cork.id } })).qtyRemaining);
 

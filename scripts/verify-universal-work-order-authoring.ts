@@ -20,6 +20,7 @@ import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
 import { completeTaskCore } from "@/lib/work-orders/execute";
+import { systemLocationId } from "./lib/system-location";
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-universal-wo" };
@@ -98,7 +99,7 @@ async function main() {
     const so2 = await prisma.cellarMaterial.create({
       data: { name: `${PFX} SO2`, normalizedKey: `${PFX}SO2`, kind: "SO2", category: "ADDITIVE", isStockTracked: true, stockUnit: "g" },
     });
-    await prisma.supplyLot.create({ data: { materialId: so2.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.10" } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: so2.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.10" } });
 
     // Phase 9.4a group-rack fixtures: 4 barrels + a saved group, a 1-barrel group, a source tank at 800 L.
     for (let i = 1; i <= 4; i++) await prisma.vessel.create({ data: { code: `${PFX}-B${i}`, type: "BARREL", capacityL: 225 } });

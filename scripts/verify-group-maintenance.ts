@@ -19,6 +19,7 @@ import { completeTaskCore } from "@/lib/work-orders/execute";
 import { undoMaintenanceTaskCore } from "@/lib/work-orders/approval";
 import { parseGroupActivityPayload } from "@/lib/work-orders/group-activity";
 import { normalizeMaterialKey } from "@/lib/cellar/material-normalize";
+import { systemLocationId } from "./lib/system-location";
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-group-maintenance" };
@@ -67,7 +68,7 @@ async function main() {
     );
     const barrelIds = new Set(barrels.map((b) => b.id));
     const mat = await prisma.cellarMaterial.create({ data: { name: "ZZGM Sanitizer", kind: "SANITIZER", normalizedKey: normalizeMaterialKey("ZZGM Sanitizer"), isStockTracked: true, stockUnit: "L" } });
-    const supply = await prisma.supplyLot.create({ data: { materialId: mat.id, qtyReceived: 100, qtyRemaining: 100, stockUnit: "L", unitCost: 2 } });
+    const supply = await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: mat.id, qtyReceived: 100, qtyRemaining: 100, stockUnit: "L", unitCost: 2 } });
 
     // 1. Authoring consolidates to ONE task with 4 members.
     const dose = 5;
