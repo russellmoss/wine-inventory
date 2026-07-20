@@ -2783,10 +2783,12 @@ model SupplyLot {
   supplierNote  String?
   expiresAt     DateTime? // Plan 072: batch/lot expiry (attached from a COA by lot no.); nullable, RLS-neutral column add
   vendorId      String? // Plan 069: per-purchase vendor — composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
-  // Plan 080 U1: physical location of this lot. Nullable through the expand phase (backfill → SET NOT NULL in a
-  // later migration once all writers set it — council S7). Composite-tenant FK (tenantId,locationId)→location(tenantId,id)
-  // in raw SQL (K11), NO Prisma relation (mirrors vendorId) so Location's back-relations stay untouched.
-  locationId    String?
+  // Plan 080: physical location of this lot. CONTRACTED to NOT NULL in U13a
+  // (20260719180000_supplylot_location_not_null) once every writer — app paths AND the verify/seed scripts —
+  // stamped it and the backfill reached 0 nulls across all tenants. Composite-tenant FK
+  // (tenantId,locationId)→location(tenantId,id) in raw SQL (K11), NO Prisma relation (mirrors vendorId) so
+  // Location's back-relations stay untouched.
+  locationId    String
   // Plan 080 U1: transfer lineage. When a transfer SPLITS a lot, the destination lot points back at the source lot
   // here; provenance (LotDocument/expiry) is derived TRANSITIVELY through this edge (council S2 — never row-copy).
   splitFromLotId String?
