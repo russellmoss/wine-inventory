@@ -483,12 +483,13 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   // links into these hosts. What DOES change: they stop being logged as CandidateSource (they are now
   // "known"), and any future crawl that includes this source could follow links within them.
   //
-  // Kept to hosts that actually contribute a live document; hosts whose only linked file is dead
-  // (ucanr.org, nmsp.cals.cornell.edu, vinebalance.com, msue.anr.msu.edu) are deliberately absent.
+  // Kept to hosts that actually contribute a live document. Deliberately absent: hosts whose only
+  // linked file is dead (ucanr.org, ucanr.edu, nmsp.cals.cornell.edu, vinebalance.com,
+  // msue.anr.msu.edu, nysipm.cornell.edu), and extension.unh.edu, whose PDF redirects into a
+  // robots-disallowed path — see the exclusion note in curated-specs.ts.
   { domain: "nyshs.org", sourceKey: "viticulture-extension-refs" },
   { domain: "www.sare.org", sourceKey: "viticulture-extension-refs" },
   { domain: "www.ars.usda.gov", sourceKey: "viticulture-extension-refs" },
-  { domain: "extension.unh.edu", sourceKey: "viticulture-extension-refs" },
   { domain: "www.hort.cornell.edu", sourceKey: "viticulture-extension-refs" },
   { domain: "harvestny.cce.cornell.edu", sourceKey: "viticulture-extension-refs" },
   { domain: "publications.dyson.cornell.edu", sourceKey: "viticulture-extension-refs" },

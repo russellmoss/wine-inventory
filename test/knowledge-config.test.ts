@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   KNOWLEDGE_SOURCES,
+  TRUSTED_DOMAINS,
   TRUSTED_DOMAIN_SET,
   findSourceConfig,
 } from "@/lib/knowledge/config";
+import { CURATED_SPECS, findCuratedSpec } from "@/lib/knowledge/curated-specs";
 import { expandQueryTerms } from "@/lib/knowledge/synonyms";
 
 describe("knowledge source config", () => {
@@ -109,6 +111,83 @@ describe("knowledge source config", () => {
     // hosts (wine.wsu.edu, ir.library.oregonstate.edu) have no meaningful www form, so this is per-source.
     for (const host of ["www.awri.com.au", "www.wineaustralia.com"]) {
       expect(TRUSTED_DOMAIN_SET.has(host)).toBe(true);
+    }
+  });
+});
+
+// Plan 084 U5/U8 — generic registry invariants. Each of these encodes a failure mode that is silent:
+// nothing crashes, the corpus is just quietly wrong or quietly short.
+describe("knowledge registry integrity", () => {
+  it("source keys are unique", () => {
+    const keys = KNOWLEDGE_SOURCES.map((s) => s.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  // A curated source is reachable by exactly two mechanisms, and the registry records neither:
+  // a declarative CURATED_SPECS entry (driven by scripts/crawl-curated.ts), or a bespoke script for a
+  // source whose shape a spec cannot express. These four are the bespoke ones. Listing them here is the
+  // point: adding a curated source now forces a conscious choice between the two, instead of producing
+  // a source that is registered, toggleable in Settings, and permanently empty because nothing crawls it.
+  const SCRIPT_BACKED_CURATED = new Set([
+    "osu-owri", // scripts/crawl-owri.ts — ScholarsArchive paginated listing walk
+    "osu-extension", // scripts/crawl-osu-extension.ts
+    "scott-labs", // scripts/crawl-scott-labs.ts
+    "ets", // scripts/crawl-ets.ts — a JSON API, not a crawl at all
+  ]);
+
+  it("every curated (autoCrawl:false) source is reachable by SOME operator path", () => {
+    for (const s of KNOWLEDGE_SOURCES) {
+      if (s.autoCrawl !== false) continue;
+      if (SCRIPT_BACKED_CURATED.has(s.key)) continue;
+      expect(
+        findCuratedSpec(s.key),
+        `curated source "${s.key}" has no CURATED_SPECS entry and is not listed as script-backed — nothing can crawl it`,
+      ).toBeDefined();
+    }
+  });
+
+  it("the script-backed list does not name a source that has since gained a spec", () => {
+    // Keeps the list above honest: if someone converts a bespoke script to a declarative spec, the
+    // stale exemption should fail rather than silently weaken the invariant.
+    for (const key of SCRIPT_BACKED_CURATED) {
+      expect(findSourceConfig(key), `script-backed list names unknown source "${key}"`).toBeDefined();
+      expect(findCuratedSpec(key), `"${key}" now has a spec — remove it from SCRIPT_BACKED_CURATED`).toBeUndefined();
+    }
+  });
+
+  it("every curated spec points at a real source that is actually curated", () => {
+    for (const spec of CURATED_SPECS) {
+      const cfg = findSourceConfig(spec.sourceKey);
+      expect(cfg, `curated spec "${spec.sourceKey}" has no source config`).toBeDefined();
+      expect(cfg!.autoCrawl, `spec "${spec.sourceKey}" is on an auto-crawled source`).toBe(false);
+    }
+  });
+
+  it("every curated directUrls host is trusted, else crawlUrls silently drops it", () => {
+    // crawlUrls gates on TRUSTED_DOMAIN_SET and counts a miss as summary.errors++ with no message, so
+    // an untrusted host means those documents never arrive and nothing says why.
+    for (const spec of CURATED_SPECS) {
+      for (const url of spec.directUrls ?? []) {
+        const host = new URL(url).hostname.toLowerCase();
+        expect(TRUSTED_DOMAIN_SET.has(host), `${host} (from ${spec.sourceKey}) is not in TRUSTED_DOMAINS`).toBe(true);
+      }
+    }
+  });
+
+  it("every TRUSTED_DOMAINS sourceKey resolves to a real source", () => {
+    for (const d of TRUSTED_DOMAINS) {
+      if (d.sourceKey) {
+        expect(findSourceConfig(d.sourceKey), `trusted domain ${d.domain} names unknown source "${d.sourceKey}"`).toBeDefined();
+      }
+    }
+  });
+
+  it("no curated spec silently ignores robots without an explanation", () => {
+    // ignoreRobots is legitimate for a generic file-type block on public documents, but it is an
+    // operator decision that must be visible. Cornell's sources must never set it: every host was
+    // verified to permit the files, so there is nothing to bypass.
+    for (const key of ["viticulture-extension-refs"]) {
+      expect(findCuratedSpec(key)?.ignoreRobots).toBeUndefined();
     }
   });
 });
