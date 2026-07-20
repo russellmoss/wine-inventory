@@ -43,6 +43,10 @@ export type CellarMaterialDTO = {
   costCorrectable?: boolean;
   /** Phase 037.1: total price of that correctable opening lot (for the Edit modal prefill); null if unknown/N-A. */
   openingLotCost?: number | null;
+  /** Received qty of that correctable opening lot, in `stockUnit` — the denominator `openingLotCost` divides by.
+   *  The lot can hold several packages, so this is NOT `packageAmount`; the Edit modal names it so the total
+   *  can't be misread as the price of one package. Null if there's no correctable lot. */
+  openingLotQty?: number | null;
 };
 
 /**

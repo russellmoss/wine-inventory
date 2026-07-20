@@ -113,6 +113,7 @@ export function MaterialForm({
   onVendorCreated,
   hasStock = false,
   allowCostEdit = false,
+  openingLot = null,
   customUnits: initialCustomUnits = [],
 }: {
   value: MaterialFormValue;
@@ -127,6 +128,10 @@ export function MaterialForm({
   hasStock?: boolean;
   /** Edit mode: whether the opening-lot cost can be corrected here (single fully-unused lot). Shows the cost field. */
   allowCostEdit?: boolean;
+  /** Edit mode: the correctable lot's received qty + stock unit. The cost field is a total over THIS qty — which
+   *  can be several packages — so we name it in the label and derive the per-unit price from it, never from
+   *  `packageAmount` (that's what made a multi-package total read as a single package's price). */
+  openingLot?: { qty: number; unit: string } | null;
   /** Plan 075: the tenant's user-defined units, selectable alongside the built-ins. */
   customUnits?: CustomUnitRow[];
 }) {
@@ -151,6 +156,10 @@ export function MaterialForm({
   const cost = value.totalCost.trim() !== "" ? Number(value.totalCost) : null;
   const perPackageUnit = costPerPackageUnit(cost, amt);
   const opening = deriveOpeningLot({ packageAmount: amt, packageUnit: value.packageUnit, totalCost: cost, stockUnit, extraUnits });
+  // Edit mode: the cost field is a total over the whole correctable LOT (possibly several packages), and the
+  // server divides it by that lot qty. Price it the same way — dividing by `packageAmount` here would show a
+  // 3-package total as one package's price.
+  const editUnitCost = mode === "edit" && openingLot ? costPerPackageUnit(cost, openingLot.qty) : null;
 
   // A near-duplicate family hint so "Fining"/"Finings" don't fragment.
   const famDupe = value.family.trim() && !familyOptions.some((f) => f.toLowerCase() === value.family.trim().toLowerCase())
@@ -214,7 +223,21 @@ export function MaterialForm({
           </select>
         </label>
         {showCost ? (
-          <Input label={mode === "create" ? "Total cost paid (optional)" : "Total cost paid"} value={value.totalCost} onChange={(e) => onChange({ totalCost: e.target.value })} inputMode="decimal" placeholder="e.g. 500" iconLeft={symbol} style={{ flex: "1 1 160px" }} />
+          <Input
+            label={
+              mode === "create"
+                ? "Total cost paid (optional)"
+                : openingLot
+                  ? `Total cost paid for ${openingLot.qty} ${openingLot.unit}`
+                  : "Total cost paid"
+            }
+            value={value.totalCost}
+            onChange={(e) => onChange({ totalCost: e.target.value })}
+            inputMode="decimal"
+            placeholder="e.g. 500"
+            iconLeft={symbol}
+            style={{ flex: "1 1 160px" }}
+          />
         ) : null}
       </div>
       {/* Vendor (mandatory) — fuzzy picker with inline create; URL autofills from the selected vendor. */}
@@ -250,8 +273,11 @@ export function MaterialForm({
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
           Tracked in <strong>{stockUnit}</strong>.{" "}
           {allowCostEdit
-            ? "Total cost paid sets the price of your current unused stock. Leave it blank for unknown cost."
+            ? `Total cost paid covers ${openingLot ? `all ${openingLot.qty} ${openingLot.unit} of ` : ""}your current unused stock — not one package. Leave it blank for unknown cost.`
             : "This item's stock has been received or used, so its price is locked here — correct a price by receiving a new lot (recorded costs are immutable)."}
+          {allowCostEdit && editUnitCost != null
+            ? ` Costs at ${symbol}${editUnitCost}/${openingLot?.unit ?? stockUnit} — this is the rate used when it's consumed.`
+            : ""}
           {hasStock ? " You can't switch its unit to a different kind (mass ↔ volume ↔ count) while it has stock." : ""}
         </p>
       )}

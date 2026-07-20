@@ -225,6 +225,16 @@ export function openingLotTotalCost(lot: SupplyLotForCost | null): number | null
   return round8(lot.unitCost * lot.qtyReceived);
 }
 
+/**
+ * Received qty of a correctable opening lot — the DENOMINATOR the total-cost field is divided by
+ * (see `resolveOpeningCostCorrection`). Surfaced so the Edit modal can name it: the lot may hold several
+ * packages, so "total cost" is NOT the price of one `packageAmount` and must not be shown as if it were.
+ */
+export function openingLotQty(lot: SupplyLotForCost | null): number | null {
+  if (!lot || !Number.isFinite(lot.qtyReceived) || lot.qtyReceived <= 0) return null;
+  return lot.qtyReceived;
+}
+
 export type CostCorrection =
   | { action: "none" }
   | { action: "set"; lotId: string; unitCost: number | null }

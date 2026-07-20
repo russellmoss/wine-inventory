@@ -725,6 +725,9 @@ function EditMaterialModal({
   const patch = (p: Partial<MaterialFormValue>) => setForm((f) => ({ ...f, ...p }));
   const hasStock = (material?.onHand ?? 0) > 0;
   const allowCostEdit = !!material?.costCorrectable;
+  // The correctable lot the cost field totals over — its qty is the denominator, NOT packageAmount.
+  const openingLot =
+    material?.openingLotQty != null ? { qty: material.openingLotQty, unit: material.stockUnit ?? "g" } : null;
   const canSubmit = !!material && materialFormReady(form) && !pending;
 
   function submit() {
@@ -737,7 +740,7 @@ function EditMaterialModal({
   return (
     <Modal open={!!material} onClose={onClose} title={material ? `Edit · ${materialDisplayName(material)}` : "Edit"} subtitle="Correct the item's setup details" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} vendors={vendors} customUnits={customUnits} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
+        <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="edit" hasStock={hasStock} allowCostEdit={allowCostEdit} openingLot={openingLot} vendors={vendors} customUnits={customUnits} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
