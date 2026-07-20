@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireTenantId } from "@/lib/tenant/context";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
@@ -402,11 +401,21 @@ export const addFinishedGoodAction = safeAction(
     if (input.kind === "BOTTLED_WINE") {
       const vintage = input.vintage != null && Number.isInteger(input.vintage) ? input.vintage : null;
       if (vintage != null && (vintage < 1900 || vintage > 2100)) throw new ActionError("Enter a valid vintage year.");
-      if (vintage != null && (await findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage: false, bottleSizeMl: 750 }))) {
-        throw new ActionError("That wine + vintage already exists.", "CONFLICT");
+      // A blank vintage means NON-VINTAGE, and it must be STORED that way. WineSku's uniqueness is two
+      // PARTIAL indexes — UNIQUE(name,vintage,bottleSize) WHERE vintage IS NOT NULL, and
+      // UNIQUE(name,bottleSize) WHERE isNonVintage. Writing vintage:null WITHOUT isNonVintage matches
+      // NEITHER, so the same no-vintage wine could be created unlimited times with nothing to stop it —
+      // and the modal already tells the user it is adding "a non-vintage wine", so the data would also
+      // contradict what they were shown.
+      const isNonVintage = vintage == null;
+      if (await findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage, bottleSizeMl: 750 })) {
+        throw new ActionError(
+          isNonVintage ? `A non-vintage "${name}" already exists.` : "That wine + vintage already exists.",
+          "CONFLICT",
+        );
       }
       itemId = await runInTenantTx(async (tx) => {
-        const sku = await tx.wineSku.create({ data: { name, vintage, categoryId: categoryId || null, msrp }, select: { id: true } });
+        const sku = await tx.wineSku.create({ data: { name, vintage, isNonVintage, categoryId: categoryId || null, msrp }, select: { id: true } });
         await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, summary: summarize("CREATE", "Wine", { label: `${name}${vintage ? ` ${vintage}` : ""}` }) });
         return sku.id;
       });
