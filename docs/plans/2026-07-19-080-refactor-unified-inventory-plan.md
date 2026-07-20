@@ -1,7 +1,7 @@
 ---
 title: Unified Inventory — one page, four sections, per-location consumables, costed equipment, manual+AI invoice, full assistant coverage
 type: refactor
-status: in-progress (Waves 1-2 shipped; Wave 3 / U5 outstanding; Wave 4 / U14-U17 field-report hardening added 2026-07-20)
+status: in-progress (Waves 1-3 SHIPPED — PRs #351, #376, #392; Wave 4 / U14-U17 BUILT on claude/plan-080-wave-4, PR not yet opened)
 date: 2026-07-19
 branch: shipped via PR #351 (Wave 1) + PR #376 (Wave 2)
 depth: deep
@@ -657,6 +657,31 @@ that already has first-class vendors (Plan 069).
 - **`cmrsl0awi…` / issue #371 popover dismissal** — unrelated to inventory (pure `src/components`
   dismissal semantics). Build standalone, in parallel; reuse the shipped pointerdown-origin pattern from
   ticket #310 / PR #318.
+
+### Wave 4 build note (2026-07-20)
+
+Built on `claude/plan-080-wave-4`. Two units landed differently from the spec above, both deliberately:
+
+- **U15 needed NO schema change.** The plan called for a new count/package dimension plus a pack-size
+  column. Both already exist: the units engine has a `count` dimension (canonical `unit`), and a custom
+  unit carries its pack size as `perCanonical` — `CreateUnitModal`'s own hint is literally
+  "e.g. a roll = 500 labels" (plan 075). Adding a second pack-size column would have created a competing
+  source of truth for a number the cost engine divides by (a COST-1 hazard), so it was NOT built. The real
+  gap was that the receive form was hard-locked to the material's canonical stock unit with no unit
+  selector, so there was nowhere to say "3 rolls". Fixed with a pure `resolveReceiptQuantity` + an optional
+  `qtyUnit` on the receive core. This also sidesteps the NAMING-1 backfill trap the plan flagged, since
+  there is no backfill.
+- **#366 and #374 look like DOWNSTREAM SYMPTOMS OF U14, not independent bugs.** The phantom opening lot
+  pinned the material's stock unit (`updateMaterialCore` refuses a cross-dimension change while stock
+  exists), which is why labels were stuck in grams (#366); and the phantom lots were created with no cost
+  ("Opening stock 50 unit of 6BSS (cost unknown)"), which is why there was no cost data to show (#374).
+  U14 stops both at the source. The U15/U16 work still stands on its own.
+
+**Not applied:** the phantom-stock unwind. `scripts/unwind-phantom-opening-stock.ts` is a dry-run tool; the
+live dry run finds 6 real candidates, one of them in `org_bhutan_wine_co` (the production tenant), so
+running `--apply` is a human decision.
+
+**Not browser-verified.** U15/U16/U17 all change UI and need a pass in the pane against Demo.
 
 ### Wave 4 parallelization
 
