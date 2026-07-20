@@ -1,6 +1,8 @@
 import { beforeAll, describe, it, expect } from "vitest";
 import { extractHtml, loadDefuddle } from "@/lib/knowledge/extract/html";
 import { extractDocument, sanitizeText } from "@/lib/knowledge/extract";
+import { extractPdf } from "@/lib/knowledge/extract/pdf";
+import { buildMinimalPdf } from "./helpers/minimal-pdf";
 import {
   cleanPdfTitle,
   isPlausiblePublishedDate,
@@ -268,6 +270,95 @@ describe("HTML publication dates (plan 084)", () => {
       expect(doc.publishedAt?.getUTCFullYear()).toBe(2021);
     },
     DEFUDDLE_TIMEOUT_MS,
+  );
+});
+
+// Plan 084 Unit 2 — PDF metadata. Measured on the Cornell corpus: 12/12 sampled PDFs carry a usable
+// CreationDate, but only 9/12 carry a Title and several of those are producer junk ("PowerPoint
+// Presentation", "18schruft"), which is why the title path has a quality gate and the date path does not.
+describe("PDF publication dates and titles (plan 084)", () => {
+  const PDF_TIMEOUT_MS = 30_000;
+
+  it(
+    "reads CreationDate from PDF metadata, converting the offset to UTC",
+    async () => {
+      const bytes = buildMinimalPdf({ creationDate: "D:20180507101503-04'00'" });
+      const { publishedAt } = await extractPdf(bytes);
+      expect(publishedAt?.toISOString()).toBe("2018-05-07T14:15:03.000Z");
+    },
+    PDF_TIMEOUT_MS,
+  );
+
+  it(
+    "prefers CreationDate over ModDate so a re-saved old report is not dated to its re-save",
+    async () => {
+      // Observed on the Cornell corpus: a 2004 crop-loss report re-saved in 2011.
+      const bytes = buildMinimalPdf({
+        creationDate: "D:20040802153909Z",
+        modDate: "D:20110608152253-04'00'",
+      });
+      const { publishedAt } = await extractPdf(bytes);
+      expect(publishedAt?.getUTCFullYear()).toBe(2004);
+    },
+    PDF_TIMEOUT_MS,
+  );
+
+  it(
+    "falls back to ModDate when CreationDate is absent",
+    async () => {
+      const bytes = buildMinimalPdf({ modDate: "D:20200529152336Z" });
+      const { publishedAt } = await extractPdf(bytes);
+      expect(publishedAt?.getUTCFullYear()).toBe(2020);
+    },
+    PDF_TIMEOUT_MS,
+  );
+
+  it(
+    "yields a null date, not a throw, when metadata is absent or malformed",
+    async () => {
+      const noMeta = await extractPdf(buildMinimalPdf({}));
+      expect(noMeta.publishedAt).toBeNull();
+
+      const badDate = await extractPdf(buildMinimalPdf({ creationDate: "not-a-date" }));
+      expect(badDate.publishedAt).toBeNull();
+      // the TEXT is what retrieval needs, so it must survive unusable metadata
+      expect(badDate.markdown.toLowerCase()).toContain("grape disease control");
+    },
+    PDF_TIMEOUT_MS,
+  );
+
+  it(
+    "uses a real metadata Title when present",
+    async () => {
+      const bytes = buildMinimalPdf({ title: "Grape Disease Control 2018" });
+      const { title } = await extractPdf(bytes);
+      expect(title).toBe("Grape Disease Control 2018");
+    },
+    PDF_TIMEOUT_MS,
+  );
+
+  it(
+    "falls back to the first text line when the metadata Title is producer junk",
+    async () => {
+      const bytes = buildMinimalPdf({
+        title: "PowerPoint Presentation",
+        text: "Managing sour rot in Finger Lakes vineyards",
+      });
+      const { title } = await extractPdf(bytes);
+      expect(title).toBe("Managing sour rot in Finger Lakes vineyards");
+    },
+    PDF_TIMEOUT_MS,
+  );
+
+  it(
+    "carries the PDF date through the extractDocument router",
+    async () => {
+      const bytes = buildMinimalPdf({ creationDate: "D:20220509184810Z00'00'" });
+      const doc = await extractDocument(bytes, "pdf", "https://blogs.cornell.edu/grapes/x.pdf");
+      expect(doc.kind).toBe("pdf");
+      expect(doc.publishedAt?.getUTCFullYear()).toBe(2022);
+    },
+    PDF_TIMEOUT_MS,
   );
 });
 

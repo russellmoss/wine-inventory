@@ -50,7 +50,7 @@ export async function extractDocument(
       kind: "pdf",
       wordCount: markdown.split(/\s+/).filter(Boolean).length,
       lowConfidence: r.lowConfidence,
-      publishedAt: null, // PDF metadata dates land in unit 2
+      publishedAt: r.publishedAt,
     };
   }
   if (contentType === "html") {
