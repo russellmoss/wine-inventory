@@ -1,4 +1,4 @@
-// Client-side interaction + network-METADATA ring buffer for Break Mode hunts (Plan 080 Unit 8).
+// Client-side interaction + network-METADATA ring buffer for developer diagnostics (Plan 080).
 //
 // Why: a bug report is far easier to reproduce when you can see the sequence of actions and API
 // calls that led to it. Sentry Replay is the rich, rewindable record for a human; THIS buffer is
@@ -10,8 +10,8 @@
 // things that carry customer data. Bodies (in the sandbox only) are Sentry's job, not ours.
 //
 // Mirrors console-buffer.ts: a pure, unit-testable ring core plus a browser-only singleton
-// installer. Unlike the console buffer this is ARMED ON DEMAND — it only records while Break Mode
-// is on, so a normal session costs nothing.
+// installer. It is ARMED explicitly — only developer-role sessions arm it (automatically, on
+// mount), so a normal user's session records nothing and costs nothing.
 
 import { redactString } from "./console-buffer";
 import type { ReplayFidelity } from "./sentry-replay";
@@ -246,14 +246,14 @@ function install(): void {
   };
 }
 
-/** Start recording at the given fidelity (Break Mode ON). Installs listeners on first use. */
+/** Start recording at the given fidelity. Installs listeners on first use. */
 export function armInteractionCapture(fidelity: ReplayFidelity): void {
   install();
   activeFidelity = fidelity;
   armed = true;
 }
 
-/** Stop recording (Break Mode OFF). Listeners stay installed but become no-ops. */
+/** Stop recording. Listeners stay installed but become no-ops. */
 export function disarmInteractionCapture(): void {
   armed = false;
 }

@@ -7,7 +7,7 @@ import {
 } from "@/lib/observability/sentry-replay";
 import { formatHuntTrail } from "@/lib/observability/sentry-replay";
 import { describeElement, createInteractionBuffer } from "@/lib/observability/interaction-buffer";
-import { deriveIndicator } from "@/lib/observability/break-mode";
+import { deriveIndicator } from "@/lib/observability/dev-diagnostics";
 
 // Plan 080 Unit 11 — the composed tenancy guarantee.
 //
@@ -49,8 +49,9 @@ describe("TENANCY GUARANTEE: real customer tenants never get high-fidelity captu
       expect(JSON.stringify(described)).not.toContain("48,000");
 
       // 4. The indicator warns loudly that this is a real tenant.
-      const indicator = deriveIndicator({ fidelity, tenantName: tenant || "Unknown", replayAvailable: true });
+      const indicator = deriveIndicator({ fidelity, tenantName: tenant || "Unknown" });
       expect(indicator.tone).toBe("danger");
+      expect(indicator.label).toContain("real tenant");
       expect(indicator.label).toContain("metadata only");
     });
   }

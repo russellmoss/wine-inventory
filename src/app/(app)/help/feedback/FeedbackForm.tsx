@@ -7,9 +7,10 @@ import { drainConsoleBuffer, clearConsoleBuffer } from "@/lib/observability/cons
 import { DEBUG_CONTEXT_SCHEMA_VERSION, buildNarrative, appendNarrativeDigest } from "@/lib/feedback/debug-context";
 import { captureReplayLink, SENTRY_ORG_SLUG } from "@/lib/observability/sentry-replay";
 import { drainInteractionTrail, clearInteractionTrail } from "@/lib/observability/interaction-buffer";
-import { getActiveHuntId } from "@/lib/observability/break-mode";
+import { getActiveHuntId } from "@/lib/observability/dev-diagnostics";
+import { feedbackKindOptions, type FeedbackKind } from "@/lib/feedback/kind-options";
 
-type Kind = "BUG_REPORT" | "FEATURE_REQUEST";
+type Kind = FeedbackKind;
 type PendingImage = { file: File; previewUrl: string };
 type MarkupTool = "circle" | "arrow" | "text";
 type MarkupShape =
@@ -64,9 +65,10 @@ export function FeedbackForm({
       // body so existing triage/LLM paths see it without knowing the debugContext shape (Plan 080 U5).
       const narrative = kind === "BUG_REPORT" ? buildNarrative(doing, expected, actual) : undefined;
       const bodyToSend = appendNarrativeDigest(body, narrative);
-      // Break Mode hunt trail (Plan 080 Unit 10). Empty/no-op unless a hunt is running, and it is
-      // the durable machine-readable repro: quota- and replay-retention-independent, so /bug-triage
-      // can read the sequence of actions even after the Sentry replay ages out.
+      // Developer diagnostics trail (Plan 080). Always recording for developer-role users (empty for
+      // everyone else), and it is the durable machine-readable repro: quota- and
+      // replay-retention-independent, and NOT limited to the replay's ~60s buffer window, so
+      // /bug-triage can read the longer action history even after the Sentry replay ages out.
       const huntId = getActiveHuntId();
       const { interactionTrail, networkTrail } = drainInteractionTrail();
       const res = await fetch("/api/feedback/tickets", {
@@ -139,22 +141,20 @@ export function FeedbackForm({
           width: "fit-content",
         }}
       >
-        {[
-          ["BUG_REPORT", "Bug report"],
-          ["FEATURE_REQUEST", "Feature request"],
-        ].map(([value, label]) => {
+        {/* A locked picker collapses to the kind in force — never a disabled option
+            the reporter can see but cannot choose (see lib/feedback/kind-options). */}
+        {feedbackKindOptions(kind, lockKind).map(({ value, label }) => {
           const selected = kind === value;
           return (
             <button
               key={value}
               type="button"
-              onClick={() => !lockKind && setKind(value as Kind)}
+              onClick={() => setKind(value)}
               aria-pressed={selected}
-              disabled={lockKind}
               style={{
                 border: 0,
                 padding: "10px 14px",
-                cursor: lockKind ? "default" : "pointer",
+                cursor: "pointer",
                 background: selected ? "var(--accent)" : "var(--surface-raised)",
                 color: selected ? "var(--accent-on)" : "var(--text-secondary)",
                 fontFamily: "var(--font-body)",

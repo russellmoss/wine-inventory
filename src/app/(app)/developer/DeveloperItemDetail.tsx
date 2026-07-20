@@ -305,10 +305,11 @@ export function DeveloperItemDetail({
           </div>
         ) : null}
         {item.huntTrail ? (
-          // Plan 080: the Break Mode trail — what the reporter did and which API calls fired, in
-          // order. Durable (survives replay retention/quota) and readable without opening Sentry.
+          // Plan 080: the diagnostics trail — what the reporter did and which API calls fired, in
+          // order. Durable (survives replay retention/quota), longer than the replay's buffer
+          // window, and readable without opening Sentry.
           <details>
-            <summary className={styles.detailSummary}>View break-mode trail (actions + API calls)</summary>
+            <summary className={styles.detailSummary}>View session trail (actions + API calls)</summary>
             <pre className={styles.planPreview}>{item.huntTrail}</pre>
           </details>
         ) : null}

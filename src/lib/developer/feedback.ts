@@ -134,7 +134,7 @@ export type DeveloperFeedbackItem = {
   attachmentIds: string[];
   // Plan 080: deep-link to the Sentry Session Replay captured with this report (null when none).
   replayUrl: string | null;
-  // Plan 080: readable Break Mode hunt trail (actions + API calls); null when not a hunt report.
+  // Plan 080: readable diagnostics trail (actions + API calls); null when the report has none.
   huntTrail: string | null;
   linearLink: DeveloperFeedbackLinearLink | null;
   awaitingRunId: string | null;

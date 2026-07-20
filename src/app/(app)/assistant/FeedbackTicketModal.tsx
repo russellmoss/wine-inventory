@@ -12,8 +12,8 @@ export function FeedbackTicketModal({ open, onClose }: { open: boolean; onClose:
   const [preview, setPreview] = React.useState<string | null>(null);
   const [capturing, setCapturing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  // "Is the bug in the assistant?" — default No, so the shot hides the assistant to reveal the page
-  // behind it. Yes keeps the assistant dock in the frame. Either way the "Report a bug" dialog itself
+  // "Is this about the assistant?" — default No, so the shot hides the assistant to reveal the page
+  // behind it. Yes keeps the assistant dock in the frame. Either way the report dialog itself
   // is always excluded (its backdrop + title bar would otherwise occlude the whole screenshot).
   const [inAssistant, setInAssistant] = React.useState(false);
   const [prevOpen, setPrevOpen] = React.useState(open);
@@ -71,7 +71,7 @@ export function FeedbackTicketModal({ open, onClose }: { open: boolean; onClose:
     <Modal
       open={open}
       onClose={onClose}
-      title="Report a bug"
+      title="Report a bug or request a feature"
       maxWidth={720}
       fullScreenOnMobile
       overlayProps={{ "data-feedback-capture-exclude": "" }}
@@ -80,16 +80,16 @@ export function FeedbackTicketModal({ open, onClose }: { open: boolean; onClose:
         {step === "consent" ? (
           <>
             <p style={{ margin: 0, fontFamily: "var(--font-body)", color: "var(--text-secondary)" }}>
-              Attach a screenshot of the current page to help explain the bug?
+              Attach a screenshot of the current page to help explain it?
             </p>
 
             <div style={{ display: "grid", gap: "var(--space-2)" }}>
               <span style={{ fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", color: "var(--text-primary)", fontWeight: 500 }}>
-                Is the bug in the assistant?
+                Is this about the assistant?
               </span>
               <div
                 role="group"
-                aria-label="Is the bug in the assistant?"
+                aria-label="Is this about the assistant?"
                 style={{ display: "inline-flex", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-pill)", overflow: "hidden", width: "fit-content" }}
               >
                 {([["No", false], ["Yes", true]] as const).map(([label, value]) => {
@@ -151,9 +151,10 @@ export function FeedbackTicketModal({ open, onClose }: { open: boolean; onClose:
               </div>
             ) : null}
             {error ? <div style={{ color: "var(--danger)", fontFamily: "var(--font-body)" }}>{error}</div> : null}
+            {/* Kind is NOT locked: the widget is the primary in-app reporting path, so a
+                reporter must be able to file a feature request here, not only a bug. */}
             <FeedbackForm
               compact
-              lockKind
               initialKind="BUG_REPORT"
               initialFiles={files}
               onSubmitted={onClose}

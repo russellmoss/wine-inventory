@@ -12,6 +12,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "../src/lib/tenant/context";
+import { systemLocationId } from "./lib/system-location";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -99,7 +100,10 @@ async function main() {
     const material = await prisma.cellarMaterial.create({
       data: { name: "ZZWO Tannin", normalizedKey: "ZZWOTANNIN", kind: "TANNIN", isStockTracked: true, stockUnit: "g" },
     });
-    await prisma.supplyLot.create({ data: { materialId: material.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.02", updatedAt: new Date() } });
+    // Plan 080 U1 made SupplyLot.locationId NOT NULL; every lot needs a home. resolveSystemLocationId is
+    // the helper that defaults the pre-location-aware callers.
+    const locationId = await systemLocationId();
+    await prisma.supplyLot.create({ data: { materialId: material.id, locationId, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.02", updatedAt: new Date() } });
     console.log("── fixtures seeded ──");
 
     // ── Create + issue a WO with a RACK, an ADDITION, and a BRIX observation task. ──

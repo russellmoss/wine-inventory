@@ -28,10 +28,10 @@ Sentry.init({
   tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
 
   // Session Replay — capture 10% of sessions, and 100% of sessions with an error.
-  // NOTE (Plan 080): Break Mode starts replays on demand, so ambient session sampling could be
-  // dialed DOWN to reallocate the capped free-plan quota toward deliberate hunts. Left at 0.1 for
-  // now because Phase 1's opportunistic report<->replay linking depends on it; revisit once the
-  // exact monthly replay cap is confirmed (Settings → Subscription).
+  // NOTE (Plan 080): developer sessions additionally start a replay BUFFER that is only uploaded
+  // when a bug report is filed, so most report<->replay linking no longer depends on this ambient
+  // rate. It could be dialed DOWN to reclaim quota; left at 0.1 until the exact monthly replay cap
+  // is confirmed (Settings → Subscription), since non-developer reports still rely on it.
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
 
