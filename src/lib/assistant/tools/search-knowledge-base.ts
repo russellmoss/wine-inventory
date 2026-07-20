@@ -4,6 +4,12 @@ import { retrieveKnowledge } from "@/lib/knowledge/retrieve";
 
 type SearchKbInput = { query?: string; topic?: string };
 
+/** Whole years between a publication date and now, floored at 0 (a same-day document is 0 years old). */
+export function yearsSince(published: Date, now: Date = new Date()): number {
+  const years = (now.getTime() - published.getTime()) / (365.2425 * 24 * 60 * 60 * 1000);
+  return Math.max(0, Math.floor(years));
+}
+
 /**
  * Plan 079 — the assistant's winemaking brain. Retrieval-only: hybrid-searches the tenant's enabled
  * knowledge sources (AWRI, Wine Australia, …) and returns cited passages for the model to reason over.
@@ -38,7 +44,15 @@ export const searchKnowledgeBaseTool: AssistantTool = {
     "average them or silently pick one. Present BOTH positions attributed to their source with tier and " +
     "date, e.g. 'AWRI (tier 1, 2022) recommends X; Wine Australia (tier 1, 2010) recommends Y', note which " +
     "is more recent, and let the winemaker make the call. Genuine disagreement between authorities is useful " +
-    "signal, not noise. If a passage's date is 'unknown', say the date is unknown — NEVER invent or guess one.",
+    "signal, not noise. If a passage's date is 'unknown', say the date is unknown — NEVER invent or guess one.\n" +
+    "8. AGE. Each result carries `ageYears`. Some guidance goes stale and some does not, and the difference " +
+    "matters in the vineyard: SPRAY PROGRAMS, PESTICIDE/FUNGICIDE PRODUCT NAMES AND RATES, RESISTANCE-" +
+    "MANAGEMENT GROUPS, and LEGAL/REGULATORY LIMITS can be revised or withdrawn every season, whereas plant " +
+    "physiology, disease biology and general technique age slowly. When your answer rests on the first kind " +
+    "and the passage is several years old, SAY SO in the answer (e.g. 'this is from a 2019 guide — confirm " +
+    "the product is still registered and the rate current before spraying'). Do not silently present old " +
+    "chemical guidance as current, and do not refuse to answer because a passage is old — surface the age " +
+    "and let the winemaker judge. Never use `ageYears` to compute or state a publication date; use `date`.",
   kind: "read",
   inputSchema: {
     type: "object",
@@ -90,6 +104,10 @@ export const searchKnowledgeBaseTool: AssistantTool = {
         section: p.sectionPath,
         // "unknown" (never null) so the model states the date is unknown rather than inventing one
         date: p.publishedAt ? p.publishedAt.toISOString().slice(0, 10) : "unknown",
+        // Plan 084 — age in whole years, precomputed so the model never has to do date arithmetic (it is
+        // bad at it, and a wrong age on a pest-management passage is a field decision). "unknown" when
+        // undated, matching `date`.
+        ageYears: p.publishedAt ? yearsSince(p.publishedAt) : "unknown",
         citation: `/kb/source/${p.documentId}`,
         text: p.text,
       })),
