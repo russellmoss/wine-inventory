@@ -173,6 +173,9 @@ export async function indexDocument(input: {
   }
 
   const extracted = await extractDocument(bytes, input.contentType, input.url);
+  // Both persisted fields come from the extracted content, built in one place so the pair cannot
+  // drift (see the update below for why that matters).
+  const documentMeta = buildDocumentMetadata(extracted);
   if (extracted.lowConfidence) return { chunks: 0, skipped: "low-confidence" };
 
   const chunks = chunkMarkdown(extracted.markdown, extracted.title);
@@ -219,10 +222,17 @@ export async function indexDocument(input: {
             // drop-pattern change forces a real re-index. Identical to contentHash for every source
             // that does not declare a sectionFilter, so #405's behavior is unchanged.
             indexedContentHash: indexHash,
-            // Only WRITE a date we actually found: a re-index whose extraction yields nothing must not
-            // erase a date an earlier pass (or the sitemap lastmod backfill) got right. Losing a good
-            // date silently would put us back to citing undated pesticide guidance.
-            ...(extracted.publishedAt ? { publishedAt: extracted.publishedAt } : {}),
+            // BOTH fields, written unconditionally — see buildDocumentMetadata for why null is a
+            // legitimate value to persist here rather than something to skip. Short version: this
+            // line is only reached when the CONTENT CHANGED, so keeping a previous date or title
+            // would attach it to content that no longer exists.
+            //
+            // Going through buildDocumentMetadata rather than inlining is deliberate. Reconciling
+            // #411 onto main dropped the title half here — main's update object predated
+            // canonicalTitle — and 90/90 Cornell documents indexed untitled, every one of them
+            // citing as the bare publisher name with no indication of WHICH document.
+            // verify:knowledge-base's title-coverage gate is what caught it.
+            ...documentMeta,
           },
         });
         await tx.knowledgeChunk.deleteMany({
