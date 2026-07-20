@@ -220,6 +220,65 @@ rediscovered and re-adopted without re-reading why it failed review.
 | `details` typing | Real discriminated union; `assistantWarnings` distinct from existing `warnings` | Generic `warnings: string[]` on `WriteProposal` | Council C6: `details` is `unknown` and work-order details already has `warnings` — the generic field collides or no-ops |
 | Regression net | Nightly CI, separate proposal/draft/decline/wrong-tool rates | Single `tool_use` boolean; per-PR | Council S4: a bare `tool_use` assertion passes on a wrong tool or a decline |
 
+## Build note (discovered during Unit 4, 2026-07-19) — the Draft Card UI mostly already exists
+
+While wiring the contract it turned out the work-order path **already computes the entire readiness
+model** and then throws it away one line before returning:
+
+- `src/lib/work-orders/proposal-readiness.ts:130,212` — `proposal.unresolved: UnresolvedItem[]`
+  (`{ key, label, reason }`) and `proposal.warnings` with `severity: "blocking" | "confirmable" |
+  "completion_check"`.
+- `src/lib/assistant/tools/propose-work-order.ts:406-408` — when `status !== "ready"` it flattens all of
+  that into a **prose string** (`"I could not make this work order ready to confirm: …"`) and returns it.
+  That prose is the thing the UI cannot render as a card.
+- `src/app/(app)/assistant/AssistantChat.tsx:53,1249-1265` — the client **already declares and renders**
+  `details.unresolved` as a "Needs input" block, and already groups warnings into "Blocks creation" /
+  "Confirm with warning" / "Checked at completion".
+
+So the Draft Card is far less new construction than this plan assumed. The severity vocabulary the plan
+invented (`advisory` / `blocking`) should be **dropped in favour of the existing**
+`blocking` / `confirmable` / `completion_check`, and Unit 7 shrinks from "build a Draft variant" to
+"stop discarding the data, and gate Confirm on it."
+
+Revised effort: **U5 and U7 are substantially smaller; U4 should reuse the existing types rather than
+introduce parallel ones.** The council's architecture is unchanged — this makes it cheaper, not different.
+
+## Build note 2 (discovered during Units 5–9, 2026-07-19) — four things this plan got wrong
+
+Recorded rather than worked around silently.
+
+**1. The assignee was never a required arg.** U5 says to "relax genuinely-unknowable required arguments
+(assignee) from required to optional." `propose_work_order`'s schema is already `required: ["sourceText"]`
+and per-task `required: ["kind"]` — `assigneeEmail` has always been optional. No relaxation was needed or
+made. What was missing was not schema permission but a *return shape* for an incomplete call. U5 therefore
+reduced to the single line at `:406-408` plus tool-description steering.
+
+**2. The typed override for a `blocking` objection is not implementable as specified, and should not be.**
+U7 and the Requirements section call for "Confirm blocked, requiring an explicit typed override." But a
+Draft carries no token, so Confirm has nothing to POST. An override could only work by re-driving the tool
+to mint a token *past* the blocker — and `gateWorkOrderReadinessForWrite` re-runs readiness at commit and
+throws on any blocking warning, so such a token would be refused server-side anyway. Building the override
+would mean weakening that gate from the client. **Shipped instead: a blocked Draft cannot be confirmed at
+all.** This is strictly stronger than council asked for ("not one click from issued" → "not issuable"), and
+it keeps the server gate authoritative. If a genuine override is ever wanted, it belongs in the readiness
+engine as an explicit, audited input — not in the card.
+
+**3. "Racking must on skins" is not detected by anything in the codebase.** The plan (and Success Criteria)
+assume it renders as a `blocking` warning. It does not: `proposal-readiness.ts` has no rule about lot form
+at all — a RACK task validates vessel existence, sameness, volume and headroom, nothing about whether the
+source is a MUST. The model's refusal in the live repro came from its own domain knowledge, not from the
+engine. The Draft infrastructure will carry such a warning the moment one exists, and U5's test proves the
+blocking path end to end using a real rule (`same_vessel`) — but **the must-on-skins rule itself is not
+built**, and no unit in this plan assigns it. It is a one-rule addition to `readTask`'s RACK case
+(source lot `form === "MUST"` → `blocking`) and should be its own follow-up, because it is a domain
+judgment that wants the winemaker's sign-off on the exact severity.
+
+**4. A single-turn eval measures the wrong thing (U9).** The first cut of the MUST_PROPOSE eval sent one
+message and classified the response. It scored **0/3** on the seeded repro — not because no card appears,
+but because the model's first move is `query_cellar_contents`, exactly as prompt rule 31 instructs. The
+eval must run the full multi-turn exchange with stubbed read results, stopping when a write tool is called
+or the model ends its turn. Corrected before landing; the fixtures are declared per case.
+
 ## Implementation Units
 
 Ordered so the two independently-shippable fixes land first.
@@ -470,6 +529,35 @@ Re-prioritised per council S6 — the earlier draft had latency at the top, whic
 - [ ] All gates green: `tsc`, `eslint`, full `vitest`, `verify:ai-native`, `verify:naming`,
       `verify:work-orders`, `next build`
 - [ ] No regressions in the 99 existing golden cases or the D26 coverage guard
+
+## Measured result (Units 4–9 landed, 2026-07-19)
+
+`ASSISTANT_EVAL=1 ASSISTANT_EVAL_RUNS=3`, production `claude-opus-4-8`, real system prompt, `tool_choice`
+omitted, multi-turn with declared fixtures:
+
+| Case | Card rate | Notes |
+|------|-----------|-------|
+| **wo-rack-assignee-unknown** (the repro) | **3/3 (100%)** | baseline **2/7 (29%)**; 0 fabricated emails |
+| wo-rack-fully-specified | 3/3 (100%) | control — unchanged one-shot Ready |
+| wo-crush-atypical | 3/3 (100%) | the old rule-45 "ask first" case |
+| wo-vague-target | 0/3 | **known gap**, see Build note 2 §4 / follow-up below |
+| brix-write | 3/3 (100%) | a different write family |
+| read-when-racked (control) | 0 write calls | no false positive |
+| read-ready-to-bottle (control) | 0 write calls | no false positive |
+
+Wrong-tool: 0 across every case. Fabricated unknowable fields: 0.
+
+### Follow-ups this work identified
+
+1. **Canonicalizer-stage throws are still prose.** `canonicalizeRawIntents` throws (e.g. "A topping task
+   needs both a source and a destination vessel") *before* a proposal object exists, so those cannot become
+   Drafts yet. This is the sole cause of the `wo-vague-target` gap. Converting them is the next increment.
+2. **The must-on-skins readiness rule** (Build note 2 §3) — not built, wants winemaker sign-off on severity.
+3. **In-place Draft resolution** — U7's "type the missing email on the card and re-drive id-pinned via the
+   resume-token path" was deferred. Today the user answers in chat and the tool re-runs. The resume-token
+   machinery exists (`confirm.ts:49-53`, `resolve-choice/route.ts`) and now carries a `draft` flag, so this
+   is a UI-plus-route increment, not new architecture.
+4. **Unit 10 (live browser QA) not run** — needs the interactive logged-in browser pane.
 
 ## Confidence
 

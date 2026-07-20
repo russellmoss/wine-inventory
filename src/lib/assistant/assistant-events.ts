@@ -8,7 +8,13 @@
 export type AssistantEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string; phase: "start" | "end"; ok?: boolean }
-  | { type: "proposal"; tool: string; preview: string; token: string; details?: unknown }
+  // A confirmation card. TWO shapes (plan 081 U4):
+  //  - Ready:  `token` present → Confirm mints the commit.
+  //  - Draft:  `draft: true`, NO token → the card renders, states what is unresolved / what blocks it,
+  //            and cannot be committed at all. This is the "missing middle" state: before it existed a
+  //            tool with an unresolved field had to fall back to prose, which the UI cannot render as a
+  //            card — the measured 2-in-7 card-emission bug.
+  | { type: "proposal"; tool: string; preview: string; token?: string; draft?: true; details?: unknown }
   // A disambiguation picker: the tool couldn't resolve a name to ONE record, so
   // instead of asking in text (which dead-loops when names collide), it hands the
   // client clickable options. Each option's `send` is a follow-up message that
@@ -65,14 +71,48 @@ export function splitNdjsonLines(buffer: string): { lines: string[]; rest: strin
   return { lines: parts, rest };
 }
 
-/** Parse one NDJSON line into an AssistantEvent, or null if unparseable/invalid. */
+/**
+ * Every event variant the wire may carry. Typed as `AssistantEvent["type"][]` so adding a variant to
+ * the union without listing it here is a COMPILE error — the first of the three guards (with the
+ * exhaustive switches in both stream consumers) that stop a new event type silently no-op'ing at
+ * runtime (council S1).
+ */
+export const ASSISTANT_EVENT_TYPES = [
+  "text",
+  "tool",
+  "proposal",
+  "choice",
+  "navigate",
+  "conversation",
+  "message",
+  "error",
+  "done",
+] as const satisfies readonly AssistantEvent["type"][];
+
+const KNOWN_EVENT_TYPES = new Set<string>(ASSISTANT_EVENT_TYPES);
+
+/** Type-completeness check: fails to compile if a union member is missing from the list above. */
+type _AllEventTypesListed = Exclude<AssistantEvent["type"], (typeof ASSISTANT_EVENT_TYPES)[number]> extends never
+  ? true
+  : ["AssistantEvent variant missing from ASSISTANT_EVENT_TYPES"];
+const _allEventTypesListed: _AllEventTypesListed = true;
+void _allEventTypesListed;
+
+/**
+ * Parse one NDJSON line into an AssistantEvent, or null if unparseable/invalid.
+ *
+ * Validates the discriminant against the known set rather than casting any object that happens to
+ * have a string `type`. An unrecognised type is dropped here instead of reaching a consumer that has
+ * no branch for it.
+ */
 export function parseEvent(line: string): AssistantEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   try {
     const obj = JSON.parse(trimmed) as unknown;
-    if (obj && typeof obj === "object" && typeof (obj as { type?: unknown }).type === "string") {
-      return obj as AssistantEvent;
+    if (obj && typeof obj === "object") {
+      const type = (obj as { type?: unknown }).type;
+      if (typeof type === "string" && KNOWN_EVENT_TYPES.has(type)) return obj as AssistantEvent;
     }
   } catch {
     /* partial/garbled line */
@@ -83,20 +123,58 @@ export function parseEvent(line: string): AssistantEvent | null {
 // ---- Tool-output shape guards (a tool RETURNS one of these; run.ts detects the
 // shape and turns it into the matching stream event, mirroring the proposal flow) ----
 
-/** A write tool's confirmation proposal (never mutates on first call). */
-export type WriteProposal = { needsConfirmation: true; preview: string; token: string; details?: unknown };
+/**
+ * A write tool's confirmation proposal (never mutates on first call).
+ *
+ * READY — carries a signed, single-use commit token. Confirm applies it.
+ * DRAFT — carries NO token. The tool could describe the change but not make it committable (a required
+ *   field is unresolved, or the operation is physically blocked). It still renders as a card, so the
+ *   assistant never has to fall back to prose to say "I need one more thing."
+ *
+ * SECURITY INVARIANT (plan 081 U4): a Draft must never carry a commit token. `asProposal` NORMALIZES —
+ * when the draft marker is present the token is dropped and never propagates downstream, so a crafted
+ * tool return of `{draft:true, token:"…"}` cannot reach the confirm route. Enforcement is here, at the
+ * contract boundary, NOT in the UI.
+ */
+export type ReadyProposal = {
+  needsConfirmation: true;
+  draft?: false;
+  preview: string;
+  token: string;
+  details?: unknown;
+};
+
+export type DraftProposal = {
+  needsConfirmation: true;
+  draft: true;
+  preview: string;
+  token?: undefined;
+  details?: unknown;
+};
+
+export type WriteProposal = ReadyProposal | DraftProposal;
+
+/**
+ * The SINGLE place "is this committable" is decided. Everything that mints, emits, or acts on a token
+ * must route through this predicate rather than re-testing `token` ad hoc.
+ */
+export function isDraftProposal(p: WriteProposal): p is DraftProposal {
+  return p.draft === true;
+}
 
 export function asProposal(out: unknown): WriteProposal | null {
-  if (
-    out &&
-    typeof out === "object" &&
-    (out as { needsConfirmation?: unknown }).needsConfirmation === true &&
-    typeof (out as { preview?: unknown }).preview === "string" &&
-    typeof (out as { token?: unknown }).token === "string"
-  ) {
-    return out as WriteProposal;
+  if (!out || typeof out !== "object") return null;
+  const o = out as { needsConfirmation?: unknown; preview?: unknown; token?: unknown; draft?: unknown; details?: unknown };
+  if (o.needsConfirmation !== true) return null;
+  if (typeof o.preview !== "string" || !o.preview) return null;
+
+  if (o.draft === true) {
+    // Normalize: rebuild the object so a token can NEVER ride along on a draft, whatever the tool returned.
+    return { needsConfirmation: true, draft: true, preview: o.preview, ...(o.details !== undefined ? { details: o.details } : {}) };
   }
-  return null;
+
+  if (typeof o.token !== "string" || !o.token) return null;
+  return { needsConfirmation: true, preview: o.preview, token: o.token, ...(o.details !== undefined ? { details: o.details } : {}) };
 }
 
 /** A tool's disambiguation request (never mutates; the client shows clickable options). */

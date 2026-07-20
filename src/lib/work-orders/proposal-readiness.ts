@@ -142,6 +142,11 @@ export type ReadinessLotContents = {
   id: string;
   code: string;
   status: string;
+  /**
+   * The lot's physical form (LotForm: FRUIT | MUST | JUICE | WINE | BOTTLED_IN_PROCESS | FINISHED).
+   * Loaded so transfer rules can see that a source is still on skins — see mustSourceNotice.
+   */
+  form: string;
   volumeL: number;
   updatedAt: string;
   taxAbvOverride: number | null;
@@ -223,6 +228,42 @@ function blocking(ctx: Ctx, code: string, message: string) {
 function confirmable(ctx: Ctx, code: string, message: string | null | undefined) {
   if (message) ctx.warnings.push({ severity: "confirmable", code, message });
 }
+/**
+ * Is this vessel holding a lot that is still on skins?
+ *
+ * `MUST` is the physical form of juice fermenting on skins and seeds — a slurry, not clean liquid. Mirrors
+ * the existing `isPressableLotState` test (src/lib/ferment/press-data.ts): form MUST, status ACTIVE.
+ * Returns the offending lot's code so the warning can name it.
+ */
+function mustLotOnSkins(vessel: ReadinessVesselState | null | undefined): ReadinessLotContents | null {
+  if (!vessel) return null;
+  return vessel.lots.find((l) => l.form === "MUST" && l.status === "ACTIVE") ?? null;
+}
+
+/**
+ * Warn (never block) when a transfer draws from a vessel still on skins.
+ *
+ * CONFIRMABLE by the winemaker's explicit call, not by default. Pulling liquid off a must is NORMAL
+ * winemaking and has three legitimate forms: a rack-and-return (pump-over off the cap), a drain-and-press
+ * (free-run off before pressing), and a saignée (bleeding juice off a red to concentrate it). Blocking
+ * would stop all three. The value here is telling the crew there are SKINS in the source so nobody sends a
+ * slurry through a pump expecting clean wine.
+ *
+ * This is the rule the assistant's own domain knowledge was supplying and the engine was not: the live
+ * repro that motivated plan 081 had the model refuse a rack off must-on-skins entirely on its own
+ * judgement, with nothing in readTask checking lot form.
+ */
+function mustSourceNotice(ctx: Ctx, state: ReadinessLoadedState, seq: number, vesselId: string | null | undefined, opLabel: string) {
+  const vessel = vesselId ? state.vesselsById.get(vesselId) : null;
+  const must = mustLotOnSkins(vessel);
+  if (!must || !vessel) return;
+  confirmable(
+    ctx,
+    "source_on_skins",
+    `Task #${seq}: ${vessel.label} holds must on skins (lot ${must.code}). ${opLabel} off a must moves slurry, not clean liquid — fine for a rack-and-return, a drain-and-press, or a saignée, but check that is what you mean.`,
+  );
+}
+
 function completionCheck(ctx: Ctx, code: string, message: string) {
   ctx.warnings.push({ severity: "completion_check", code, message });
 }
@@ -346,6 +387,7 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
         blocking(ctx, "same_vessel", `Task #${seq}: a transfer's source and destination must be different vessels (both are ${from.label}).`);
         return;
       }
+      mustSourceNotice(ctx, state, seq, from.id, "Racking");
       // Account for volume already moved by EARLIER tasks in this proposal (parity with the ADDITION path),
       // so chained racks warn against the planned state, not the raw DB volume. Advisory only.
       const priorFrom = ctx.plannedVolumeDeltaByVesselId.get(from.id) ?? 0;
@@ -418,6 +460,9 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       const dests = memberIds.map((id) => state.vesselsById.get(id)).filter((x): x is ReadinessVesselState => !!x);
       if (dests.length !== memberIds.length) blocking(ctx, "missing_vessel", `A destination barrel in task #${seq} no longer exists.`);
       for (const d of dests) if (!d.isActive) blocking(ctx, "inactive_vessel", `${d.label} is inactive.`);
+      // Barrel-down draws from ONE source tank into many barrels — same physical objection as a rack, and
+      // worse in consequence: skins would be distributed across every barrel in the group.
+      mustSourceNotice(ctx, state, seq, src.id, "Barrelling down");
       const drawL = numOrNull(gr.drawL) ?? src.volumeL;
       const intoL = Math.max(0, ROUND(drawL - lossL));
       const totalHeadroom = ROUND(dests.reduce((a, d) => a + Math.max(0, d.capacityL - d.volumeL - d.capacityReserved), 0));
@@ -446,6 +491,7 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
         blocking(ctx, "same_vessel", `Task #${seq}: a top-up's source and target must be different vessels (both are ${from.label}).`);
         return;
       }
+      mustSourceNotice(ctx, state, seq, from.id, "Drawing top-up liquid");
       const volumeL = numOrNull(v.volumeL);
       if (volumeL == null || volumeL <= 0) {
         runtime(ctx, seq, "TOPPING", "volumeL", "Top-up volume (L)", "The top-up volume is confirmed on the floor.");
@@ -545,6 +591,7 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
     case "FILTRATION": {
       const vessel = requireVessel(ctx, state, seq, str(v.vesselId), "target");
       if (!vessel) return;
+      mustSourceNotice(ctx, state, seq, vessel.id, "Filtering");
       validateSelect(ctx, seq, "FILTRATION", "filterType", v.filterType);
       if (!str(v.filterType)) unresolved(ctx, `task-${seq}-media`, "Filter media", `Task #${seq} needs a filter medium.`);
       runtime(ctx, seq, "FILTRATION", "actualOutputL", "Output volume (L)", "The measured output volume (and resulting loss) is recorded at completion.");
@@ -770,7 +817,7 @@ async function loadState(taskBuilds: TaskBuild[]): Promise<ReadinessLoadedState>
           where: { id: { in: ids.vesselIds } },
           select: {
             id: true, code: true, type: true, capacityL: true, isActive: true, updatedAt: true,
-            vesselLots: { select: { lotId: true, volumeL: true, lot: { select: { id: true, code: true, status: true, updatedAt: true, taxAbvOverride: true } } }, orderBy: { lot: { code: "asc" } } },
+            vesselLots: { select: { lotId: true, volumeL: true, lot: { select: { id: true, code: true, status: true, form: true, updatedAt: true, taxAbvOverride: true } } }, orderBy: { lot: { code: "asc" } } },
           },
         })
       : Promise.resolve([]),
@@ -828,6 +875,7 @@ async function loadState(taskBuilds: TaskBuild[]): Promise<ReadinessLoadedState>
       status: vl.lot.status,
       volumeL: num(vl.volumeL),
       updatedAt: vl.lot.updatedAt.toISOString(),
+      form: vl.lot.form,
       taxAbvOverride: vl.lot.taxAbvOverride == null ? null : Number(vl.lot.taxAbvOverride),
     }));
     vesselsById.set(vr.id, {
@@ -909,7 +957,7 @@ export async function buildReadinessFingerprint(taskBuilds: TaskBuild[]): Promis
       ? prisma.vesselLot.findMany({ where: { vesselId: { in: ids.vesselIds } }, select: { vesselId: true, lotId: true, volumeL: true }, orderBy: [{ vesselId: "asc" }, { lotId: "asc" }] })
       : Promise.resolve([]),
     ids.lotIds.length
-      ? prisma.lot.findMany({ where: { id: { in: ids.lotIds } }, select: { id: true, code: true, status: true, updatedAt: true, taxAbvOverride: true }, orderBy: { id: "asc" } })
+      ? prisma.lot.findMany({ where: { id: { in: ids.lotIds } }, select: { id: true, code: true, status: true, form: true, updatedAt: true, taxAbvOverride: true }, orderBy: { id: "asc" } })
       : Promise.resolve([]),
     ids.materialIds.length
       ? prisma.cellarMaterial.findMany({ where: { id: { in: ids.materialIds } }, select: { id: true, name: true, kind: true, category: true, isActive: true, isStockTracked: true, stockUnit: true }, orderBy: { id: "asc" } })
@@ -924,7 +972,7 @@ export async function buildReadinessFingerprint(taskBuilds: TaskBuild[]): Promis
     tasks: taskBuilds.map((task) => ({ taskType: task.taskType, title: task.title ?? null, values: task.values })),
     vessels: vessels.map((v) => ({ ...v, capacityL: num(v.capacityL), updatedAt: v.updatedAt.toISOString() })),
     vesselLots: vesselLots.map((vl) => ({ vesselId: vl.vesselId, lotId: vl.lotId, volumeL: num(vl.volumeL) })),
-    lots: lots.map((l) => ({ id: l.id, code: l.code, status: l.status, updatedAt: l.updatedAt.toISOString(), taxAbvOverride: l.taxAbvOverride == null ? null : Number(l.taxAbvOverride) })),
+    lots: lots.map((l) => ({ id: l.id, code: l.code, status: l.status, form: l.form, updatedAt: l.updatedAt.toISOString(), taxAbvOverride: l.taxAbvOverride == null ? null : Number(l.taxAbvOverride) })),
     materials,
     supplyLots: supplyLots.map((lot) => ({ ...lot, qtyRemaining: num(lot.qtyRemaining), unitCost: lot.unitCost == null ? null : num(lot.unitCost), updatedAt: lot.updatedAt.toISOString() })),
   });

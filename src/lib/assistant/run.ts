@@ -5,7 +5,7 @@ import { getToolsFor } from "./registry";
 import { buildSystemPrompt } from "./prompt";
 import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
 import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION } from "./overclaim-guard";
-import { type AssistantEvent, asProposal, asChoice, asNavigation } from "./assistant-events";
+import { type AssistantEvent, asProposal, asChoice, asNavigation, isDraftProposal } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
 import {
@@ -25,6 +25,19 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type AssistantRunResult = { text: string; trace: AssistantTrace };
 
 /**
+ * The slice of the Anthropic streaming helper this loop actually uses. Narrowing it to an interface
+ * is what makes the loop testable: `runAssistant` constructed its client inline, so there was no seam
+ * and the loop had ZERO tests (plan 081 U3). Production still uses the real SDK — the factory below
+ * defaults to it, so behavior is unchanged.
+ */
+export type AssistantStream = {
+  on(event: "text", handler: (delta: string) => void): unknown;
+  finalMessage(): Promise<Anthropic.Message>;
+};
+
+export type AssistantStreamFactory = (params: Anthropic.MessageStreamParams) => AssistantStream;
+
+/**
  * Run the multi-turn tool-use loop and push events to `send` as they happen.
  * Follows the claude-api manual loop rules: append the FULL assistant content
  * (keeps tool_use blocks), return ALL tool_result blocks in a SINGLE user
@@ -34,6 +47,8 @@ export async function runAssistant(opts: {
   user: AppUser;
   messages: ChatMessage[];
   send: (e: AssistantEvent) => void;
+  /** Test seam. Omitted in production, where it defaults to the real Anthropic SDK stream. */
+  createStream?: AssistantStreamFactory;
 }): Promise<AssistantRunResult> {
   const { user, messages, send } = opts;
 
@@ -66,7 +81,10 @@ export async function runAssistant(opts: {
   // the user actually just say? (Never trust the model to self-report intent.)
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content;
 
-  const client = new Anthropic();
+  // Lazily construct the real client so a test-supplied factory never needs an API key.
+  let client: Anthropic | null = null;
+  const createStream: AssistantStreamFactory =
+    opts.createStream ?? ((params) => (client ??= new Anthropic()).messages.stream(params));
   let system = buildSystemPrompt();
 
   // Plan 079 (U12): if engineering asked this user for a detail on a bug they reported, surface it —
@@ -97,7 +115,8 @@ export async function runAssistant(opts: {
     toolNames: tools.map((t) => t.name),
   });
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  // An injected factory supplies its own transport, so the key requirement only applies to the real SDK.
+  if (!opts.createStream && !process.env.ANTHROPIC_API_KEY) {
     emit({ type: "error", message: "The assistant is not configured (missing API key)." });
     emit({ type: "done" });
     trace.stopReason = "missing_api_key";
@@ -107,7 +126,7 @@ export async function runAssistant(opts: {
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       trace.turns = turn + 1;
-      const stream = client.messages.stream({
+      const stream = createStream({
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system,
@@ -137,17 +156,27 @@ export async function runAssistant(opts: {
             if (proposal) {
               // Don't commit. Surface a confirm card to the user; tell the model
               // to stop and await the out-of-band confirmation.
-              emit({ type: "proposal", tool: tu.name, preview: proposal.preview, token: proposal.token, details: proposal.details });
+              const draft = isDraftProposal(proposal);
+              emit({
+                type: "proposal",
+                tool: tu.name,
+                preview: proposal.preview,
+                // A Draft carries NO token (asProposal strips one if a tool tried). Never spread it in.
+                ...(draft ? { draft: true as const } : { token: proposal.token }),
+                details: proposal.details,
+              });
               results.push({
                 type: "tool_result",
                 tool_use_id: tu.id,
-                content: `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
+                content: draft
+                  ? `A DRAFT card was shown to the user: "${proposal.preview}" It already lists, on the card itself, every field that is unresolved and every blocker. Do not call this tool again and do NOT repeat the list in prose — briefly tell the user the draft card is on screen and ask for what it still needs.`
+                  : `A confirmation card was shown to the user: "${proposal.preview}" Do not call this tool again. Briefly ask the user to review and confirm it.`,
               });
               emit({ type: "tool", name: tu.name, phase: "end", ok: true });
               pushToolTrace(trace, {
                 ...toolTrace,
                 ok: true,
-                resultKind: "proposal",
+                resultKind: draft ? "draft_proposal" : "proposal",
                 resultPreview: proposal.preview,
               });
               continue;
