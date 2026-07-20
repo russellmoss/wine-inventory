@@ -1517,6 +1517,12 @@ model AppSettings {
   // posts DR inventory-asset / CR accounts-payable. Both unset → AP export is withheld (never posted).
   apInventoryAccount       String?
   apPayableAccount         String?
+  // Plan 080 U5 (council C3): a MIXED invoice codes each line to its OWN account — a pump is a fixed
+  // asset, a clamp is an expense, a case of merch is inventory. Posting all three to apInventoryAccount
+  // corrupts the balance sheet. NULLABLE on purpose: an unconfigured account WITHHOLDS the invoice
+  // (needsAck) instead of silently miscoding, and the accountant confirms this map before go-live.
+  apFixedAssetAccount      String? // capitalized equipment
+  apSuppliesExpenseAccount String? // consumables / spare parts (expensed, not capitalized)
   // Plan 076 — the pay-from accounts a BillPayment draws on when an invoice is marked Paid: a check/bank
   // payment credits the bank account; a company-card payment credits the credit-card LIABILITY account
   // (moves the debt from the vendor to the card). Either may be unset until first used.
@@ -3597,6 +3603,23 @@ model IngestedInvoice {
 // resolved fields carry the human's dedup + classification choices; `createdSupplyLotId` is a
 // belt-and-suspenders audit link written INSIDE the atomic apply tx (the apply is all-or-nothing via an
 // injected tx, NOT resumed off this marker — the marker-outside-tx design was unsound, council P1).
+// Plan 080 U5 (council C5) — an invoice line for 2 pumps creates TWO EquipmentAssets, and a single FK on
+// the line cannot represent N of them. This append-only join records every asset a line minted, so the
+// line→assets provenance survives and a reversal knows exactly what to undo.
+model IngestedInvoiceLineCreatedAsset {
+  tenantId         String   @default("")
+  id               String   @id @default(cuid())
+  lineId           String // composite-tenant FK → ingested_invoice_line(tenantId,id)
+  equipmentAssetId String // composite-tenant FK → equipment_asset(tenantId,id)
+  createdAt        DateTime @default(now())
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, lineId, equipmentAssetId]) // idempotent: one row per (line, asset)
+  @@index([tenantId])
+  @@index([tenantId, lineId])
+  @@map("ingested_invoice_line_created_asset")
+}
+
 model IngestedInvoiceLine {
   tenantId           String   @default("")
   id                 String   @id @default(cuid())
@@ -3615,6 +3638,14 @@ model IngestedInvoiceLine {
   resolvedKind       String? // material family for a `new` line
   resolvedCategory   String? // material category for a `new` line (EQUIPMENT for parts)
   createdSupplyLotId String? // audit: the SupplyLot this line created (set inside the atomic apply tx)
+  // Plan 080 U5 — where this line's goods GO. NULLABLE with NO default (council C2): a null target is a
+  // hard needsAck at apply, never a silent MATERIAL assumption, because guessing mis-posts real money.
+  // CHECK-constrained in SQL to {MATERIAL, EQUIPMENT_ASSET, FINISHED_GOOD}.
+  targetKind         String?
+  // Finished-goods target, resolved at REVIEW time — apply-time auto-create is irreversible (council S11).
+  // Exactly one may be set, and only when targetKind = FINISHED_GOOD (CHECK-constrained).
+  wineSkuTargetId    String? // composite-tenant FK → wine_sku(tenantId,id) (raw SQL, K11)
+  finishedGoodTargetId String? // composite-tenant FK → finished_good(tenantId,id) (raw SQL, K11)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

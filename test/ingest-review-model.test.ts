@@ -20,6 +20,10 @@ import {
 
 function line(over: Partial<ReviewLine> = {}): ReviewLine {
   return {
+    // Plan 080 U5: a fixture line is a consumable unless a case says otherwise.
+    targetKind: over.targetKind ?? "MATERIAL",
+    wineSkuTargetId: over.wineSkuTargetId ?? null,
+    finishedGoodTargetId: over.finishedGoodTargetId ?? null,
     id: over.id ?? "l1",
     lineNo: over.lineNo ?? 1,
     descriptionRaw: over.descriptionRaw ?? "Widget",

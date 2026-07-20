@@ -27,7 +27,18 @@ export type ReviewLine = {
   resolvedCategory: string | null;
   allocatedUnitCost: number | null;
   createdSupplyLotId: string | null;
+  // Plan 080 U5 — where this line's goods go. A mixed invoice is classified HERE, before apply.
+  targetKind: "MATERIAL" | "EQUIPMENT_ASSET" | "FINISHED_GOOD" | null;
+  wineSkuTargetId: string | null;
+  finishedGoodTargetId: string | null;
 };
+
+/** The three destinations a line can route to, with the wording the receiving desk actually uses. */
+export const LINE_TARGETS: { value: "MATERIAL" | "EQUIPMENT_ASSET" | "FINISHED_GOOD"; label: string }[] = [
+  { value: "MATERIAL", label: "Consumable / part" },
+  { value: "EQUIPMENT_ASSET", label: "Equipment (asset)" },
+  { value: "FINISHED_GOOD", label: "Finished goods" },
+];
 
 export type ReviewDocType = "invoice" | "proforma" | "coa" | "other";
 export type ReviewStatus = "pending" | "applying" | "applied" | "discarded" | "held";
