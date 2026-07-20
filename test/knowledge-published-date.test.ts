@@ -139,3 +139,28 @@ describe("resolvePublishedDate — non-ISO metadata (the MSU Extension shape)", 
     expect(iso(resolvePublishedDate({ metadataDate: meta, markdown: "" }, NOW))).toBe(expected);
   });
 });
+
+// Plan 085 review — the salvage path's edges. These carry the actual wrong-date risk, which is the
+// failure mode this module says it exists to prevent.
+describe("resolvePublishedDate — salvage-path boundaries", () => {
+  it("refuses a run-on digit sequence (the (?!\d) boundary is load-bearing)", () => {
+    // Drop the lookahead and this silently starts resolving to 2024-04-11.
+    expect(resolvePublishedDate({ metadataDate: "2024-4-1123", markdown: "" }, NOW)).toBeNull();
+  });
+
+  it("takes the FIRST date of an interval, not a blend of the two", () => {
+    // Pinned rather than incidental: intervals returned null before the salvage existed.
+    expect(iso(resolvePublishedDate({ metadataDate: "2024-04-11/2024-05-20", markdown: "" }, NOW))).toBe("2024-04-11");
+  });
+
+  it("salvages when the parser SUCCEEDED but the range check rejected the result", () => {
+    // "2026-07-20T23:00-01:00" parses to the 21st UTC, which is future vs NOW and refused. The
+    // salvage then reads the literal leading date. Documented, not accidental — see the comment on
+    // LEADING_YMD's use site.
+    expect(iso(resolvePublishedDate({ metadataDate: "2026-07-20T23:00-01:00", markdown: "" }, NOW))).toBe("2026-07-20");
+  });
+
+  it("still prefers the markdown scan over an unsalvageable metadata string", () => {
+    expect(iso(resolvePublishedDate({ metadataDate: "Q3 FY24", markdown: "Updated: 06/18" }, NOW))).toBe("2018-06-01");
+  });
+});

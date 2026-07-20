@@ -34,14 +34,27 @@ const DELAY_MS = 2000; // MSU escalates its bot wall with request volume — sta
 const HUB = "https://www.canr.msu.edu/grapes/";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const failures: string[] = [];
+// Kept separate because the report has to tell an operator WHICH half broke: a pure failure is a
+// config regression in this repo, a live failure is MSU changing their site. One array reported as
+// "pure checks" would point debugging at exactly the wrong place.
+const pureFailures: string[] = [];
+const liveFailures: string[] = [];
 const check = (ok: boolean, msg: string) => {
-  if (!ok) failures.push(msg);
+  if (!ok) pureFailures.push(msg);
+};
+const checkLive = (ok: boolean, msg: string) => {
+  if (!ok) liveFailures.push(msg);
 };
 
 async function get(url: string): Promise<{ bytes: Buffer; challenged: string | null }> {
   const res = await fetch(url, { headers: { "user-agent": UA } });
   const bytes = Buffer.from(await res.arrayBuffer());
+  // A bot wall has two shapes and only one of them is a 200 interstitial. Imperva escalates to
+  // outright 403/429 (which is what MSU did after ~15 recon requests), and Cloudflare answers 503.
+  // Without this, a non-2xx block falls through to the content assertions and reports a FEATURE
+  // failure ("the hub linked NO admissible /news/ articles") — the exact confusion this script
+  // exists to prevent.
+  if (!res.ok) return { bytes, challenged: `HTTP ${res.status}` };
   const c = detectChallengePage(bytes, res.headers.get("content-type") ?? "");
   return { bytes, challenged: c ? `${c.vendor} (${c.byteSize}B)` : null };
 }
@@ -94,7 +107,7 @@ async function main() {
 
     // The load-bearing live assertion. If MSU restructures the hub so it no longer links articles,
     // the crawl still "succeeds" and quietly ingests nothing but index pages.
-    check(
+    checkLive(
       admittedNews.length > 0,
       `the /grapes/ hub linked NO admissible /news/ articles (found ${links.length} links total) — ` +
         "the linkedOnly rule would ingest index pages only",
@@ -109,7 +122,24 @@ async function main() {
         return false;
       }
     });
-    check(leaked.length === 0, `non-grape paths were admissible from the hub: ${leaked.slice(0, 5).join(", ")}`);
+    checkLive(leaked.length === 0, `non-grape paths were admissible from the hub: ${leaked.slice(0, 5).join(", ")}`);
+    // The leak check above cannot fail against the SHIPPED config (allowPrefixes is /grapes/ only),
+    // so on its own it is vacuous. This is what gives it teeth: assert the hub genuinely still
+    // serves cross-programme links, so "nothing leaked" means "we evaluated real hostile input and
+    // it was refused" rather than "there was nothing to refuse".
+    const crossProgramme = links.filter((l) => {
+      try {
+        const p = new URL(l).pathname;
+        return !p.startsWith("/grapes/") && !p.startsWith("/news/");
+      } catch {
+        return false;
+      }
+    });
+    checkLive(
+      crossProgramme.length > 0,
+      "the hub served no cross-programme links at all — the leak check above evaluated nothing, " +
+        "so it is no longer evidence that the prefix rules hold",
+    );
 
     // ---- LIVE: dates. The user's explicit requirement was knowing when guidance is old. ---------
     if (admittedNews.length) {
@@ -120,30 +150,36 @@ async function main() {
       } else {
         const ex = await extractHtml(art.bytes.toString("utf8"), admittedNews[0]);
         const when = resolvePublishedDate({ metadataDate: ex.published, markdown: ex.markdown });
-        check(
+        checkLive(
           when !== null,
           `no publishedAt recovered from ${admittedNews[0]} (defuddle.published=${JSON.stringify(ex.published)}) — ` +
             "MSU passages would all carry the 'unknown' age warning",
         );
-        check(ex.wordCount > 100, `article extracted only ${ex.wordCount} words — extraction may be broken`);
+        checkLive(ex.wordCount > 100, `article extracted only ${ex.wordCount} words — extraction may be broken`);
         if (when) console.log(`  publishedAt recovered: ${when.toISOString().slice(0, 10)} from ${admittedNews[0]}`);
       }
     }
   }
 
   // ---- Report ----------------------------------------------------------------------------------
-  console.log(`\npure checks: ${failures.length ? `${failures.length} FAILED` : "PASS"}`);
-  if (admittedNews.length) console.log(`live: ${admittedNews.length} admissible /news/ articles from the hub`);
+  console.log(`\nconfig checks: ${pureFailures.length ? `${pureFailures.length} FAILED` : "PASS"}`);
+  console.log(
+    `live checks:   ${liveBlocked ? "BLOCKED" : liveFailures.length ? `${liveFailures.length} FAILED` : "PASS"}`,
+  );
+  if (admittedNews.length) console.log(`  ${admittedNews.length} admissible /news/ articles from the hub`);
 
-  if (failures.length) {
-    for (const f of failures) console.error(`  ✗ ${f}`);
+  if (pureFailures.length || liveFailures.length) {
+    // Tagged by half: a [config] failure is a regression in this repo, a [live] failure means MSU
+    // changed their site. Reporting both as "pure checks" pointed debugging at the wrong one.
+    for (const f of pureFailures) console.error(`  ✗ [config] ${f}`);
+    for (const f of liveFailures) console.error(`  ✗ [live]   ${f}`);
     process.exit(1);
   }
   if (liveBlocked) {
     // NOT a feature failure, and saying "PASS" here would be a lie — we verified nothing live.
     console.error(
       `\n✗ BLOCKED — MSU's bot wall answered instead of the origin: ${liveBlocked}\n` +
-        "  This is a WAF block, not a broken feature: the pure checks above all passed.\n" +
+        "  This is a WAF block, not a broken feature: the config checks above all passed.\n" +
         "  MSU escalates with request volume; retry later, or from a different network.\n" +
         "  If the MONTHLY job reports msu-grapes in darkSources, that is the same thing from CI —\n" +
         "  see the fallback noted on the source entry in config.ts (autoCrawl:false + curated crawl).",

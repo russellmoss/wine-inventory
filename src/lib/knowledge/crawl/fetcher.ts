@@ -28,6 +28,30 @@ export interface FetchResult {
   challenge: ChallengeInfo | null;
 }
 
+/**
+ * Plan 085 — a non-2xx response, carrying its status.
+ *
+ * WHY THE STATUS HAS TO SURVIVE THE THROW: the tombstone pass in scripts/recrawl-knowledge.ts
+ * treats a throw from `fetchDocument` as "this page was removed" and sets status:'withdrawn'. That
+ * is only true for 404/410. A 403 or 429 (how Imperva and Cloudflare block when they don't serve a
+ * 200 interstitial), a 503, a DNS blip, a timeout, or the 15 MB cap are all "could not establish",
+ * and withdrawing on those quietly deletes live documents from the corpus.
+ */
+export class FetchHttpError extends Error {
+  constructor(
+    readonly status: number,
+    url: string,
+  ) {
+    super(`fetch: HTTP ${status} for ${url}`);
+    this.name = "FetchHttpError";
+  }
+}
+
+/** 404 Gone / 410 Gone are the ONLY statuses that mean "removed". Everything else is unknown. */
+export function statusMeansRemoved(e: unknown): boolean {
+  return e instanceof FetchHttpError && (e.status === 404 || e.status === 410);
+}
+
 export const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
 const TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
@@ -117,7 +141,7 @@ export async function fetchDocument(
       current = new URL(loc, current).toString(); // re-gated + re-checked next iteration
       continue;
     }
-    if (!res.ok) throw new Error(`fetch: HTTP ${res.status} for ${current}`);
+    if (!res.ok) throw new FetchHttpError(res.status, current);
 
     const rawContentType = res.headers.get("content-type") ?? "";
     const bytes = await readCapped(res, opts.maxBytes ?? MAX_BYTES);

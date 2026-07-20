@@ -530,19 +530,23 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     // robots.txt (checked 2026-07-20): disallows only /search and /application/, plus a blanket ban on
     // AhrefsBot (not us). Both mirrored below. Nothing under /grapes/ or /news/ is disallowed.
     //
-    // THREE THINGS MAKE THIS SOURCE UNUSUAL — all verified live, not assumed:
+    // THREE THINGS MAKE THIS SOURCE UNUSUAL:
     //
-    // 1. NO SITEMAP. /sitemap.xml and /sitemap_index.xml both return an HTML 404 page, so discovery
-    //    is seed roots + link-following only. That is why `npm run crawl:source msu-grapes` needs
-    //    --follow: without a sitemap, the non-following path would fetch the seed root and stop.
+    // 1. NO SITEMAP (verified). /sitemap.xml and /sitemap_index.xml both return an HTML 404 page, so
+    //    discovery is seed roots + link-following only. That is why `npm run crawl:source
+    //    msu-grapes` needs --follow: without a sitemap the non-following path fetches the seed root
+    //    and stops.
     //
-    // 2. THE REAL CONTENT IS NOT UNDER /grapes/. The substantive articles (cold hardiness,
-    //    mechanization, the scouting reports) live at FLAT /news/<slug> urls. But /news/ is also
-    //    every other MSU Extension programme — dairy, field crops, 4-H, forestry — so no startsWith
-    //    prefix can select the grape ones. Hence linkedOnlyPrefixes: a /news/ article is admitted
-    //    only when a /grapes/ page linked to it, and it is TERMINAL so its own cross-links (which
-    //    run heavily into unrelated Extension content) are never followed. See crawler.ts
-    //    decideAdmission.
+    // 2. THE SUBSTANTIVE ARTICLES WE COULD REACH ARE NOT UNDER /grapes/ (partly INFERRED — see the
+    //    caveat). Cold hardiness, mechanization and the scouting reports live at FLAT /news/<slug>
+    //    urls. /news/ is also every other MSU Extension programme — dairy, field crops, 4-H,
+    //    forestry — so no startsWith prefix selects the grape ones. Hence linkedOnlyPrefixes: a
+    //    /news/ article is admitted only when a /grapes/ page linked to it, and it is TERMINAL so
+    //    its own cross-links are never followed. See crawler.ts decideAdmission.
+    //    ⚠️ CAVEAT: /grapes/viticulture/ was challenged on EVERY recon attempt, so the one subtree
+    //    that could falsify this was never successfully fetched. The claim rests on a partial,
+    //    WAF-truncated sample. Re-check after the first successful full crawl: if /grapes/ turns
+    //    out to carry the technical content directly, linkedOnlyPrefixes may be unnecessary.
     //
     // 3. IT SITS BEHIND IMPERVA/INCAPSULA. Challenge pages come back HTTP 200 with content-type
     //    text/html, so they look like documents. crawl/challenge.ts detects and skips them, and the

@@ -147,14 +147,21 @@ describe("challenge guard ordering (plan 085, source-level contract)", () => {
     expect(src.match(/if \(res\.challenge\)/g) ?? []).toHaveLength(3);
   });
 
-  it("skips the challenge BEFORE persisting, in every loop", () => {
-    // Walk each persistDocument call and require a challenge guard between it and the previous one.
-    const guards = [...src.matchAll(/if \(res\.challenge\)/g)].map((m) => m.index!);
-    const persists = [...src.matchAll(/await persistDocument\(|= await persistDocument\(/g)].map((m) => m.index!);
-    expect(persists.length).toBeGreaterThanOrEqual(3);
-    for (const p of persists) {
-      const guardBefore = guards.filter((g) => g < p).length;
-      expect(guardBefore, `persistDocument at offset ${p} is not preceded by a challenge guard`).toBeGreaterThan(0);
+  it("skips the challenge BEFORE persisting, WITHIN each loop", () => {
+    // Scoped per function. An earlier version compared byte offsets across the whole file, which
+    // was unfalsifiable: the first two guards precede all three persistDocument calls, so deleting
+    // the guard from the THIRD loop still passed. Splitting on function boundaries first is what
+    // makes this assertion mean anything.
+    const bodies = src.split(/^export async function /m).slice(1);
+    const loops = bodies.filter((b) => b.includes("persistDocument("));
+    expect(loops, "expected three crawl loops that persist").toHaveLength(3);
+
+    for (const body of loops) {
+      const name = body.slice(0, body.indexOf("("));
+      const guard = body.indexOf("if (res.challenge)");
+      const persist = body.indexOf("persistDocument(");
+      expect(guard, `${name}: no challenge guard`).toBeGreaterThan(-1);
+      expect(guard, `${name}: challenge guard must precede persistDocument`).toBeLessThan(persist);
     }
   });
 

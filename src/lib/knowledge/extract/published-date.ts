@@ -157,8 +157,12 @@ export function resolvePublishedDate(
       const d = buildDate(parsed.getUTCFullYear(), parsed.getUTCMonth() + 1, parsed.getUTCDate(), now);
       if (d) return d;
     }
-    // Only reachable when the built-in parser REFUSED the string, so every metadata shape that
-    // already worked keeps taking the branch above, byte for byte. This is the salvage path.
+    // Reachable when the built-in parser REFUSED the string (the MSU case), and ALSO when it
+    // produced a value that buildDate then rejected. The second path is deliberate but narrow:
+    // e.g. "2026-07-20T23:00-01:00" parses to the 21st UTC and is refused as future, and the
+    // salvage then accepts the literal leading 2026-07-20. That is the more honest reading of the
+    // stamp, and buildDate still range-checks it. What it is NOT is "zero behavior change" —
+    // a shape that previously fell through to the markdown scan can now resolve here instead.
     const m = LEADING_YMD.exec(meta);
     if (m) {
       const d = buildDate(Number(m[1]), Number(m[2]), Number(m[3]), now);

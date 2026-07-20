@@ -18,7 +18,7 @@
  */
 import { crawlWithFollowing } from "@/lib/knowledge/crawl/crawler";
 import { indexDocument } from "@/lib/knowledge/index-documents";
-import { fetchDocument } from "@/lib/knowledge/crawl/fetcher";
+import { fetchDocument, statusMeansRemoved } from "@/lib/knowledge/crawl/fetcher";
 import { TRUSTED_DOMAIN_SET, findSourceConfig } from "@/lib/knowledge/config";
 import { findDarkSources } from "@/lib/knowledge/crawl/challenge";
 import { runAsSystem, disconnectSystem } from "@/lib/tenant/system";
@@ -106,22 +106,31 @@ async function main() {
   let withdrawn = 0;
   let stillLive = 0;
   let challengedProbes = 0;
+  let couldNotVerify = 0;
   for (const d of stale) {
     let gone = false;
     let challenged = false;
+    let unknown = false;
     try {
-      // throws on 404 / non-2xx / bad host. A bot wall does NOT throw — it answers 200 with an
-      // interstitial, which is why the result has to be inspected rather than discarded.
+      // A bot wall does NOT throw when it serves a 200 interstitial, which is why the RESULT has to
+      // be inspected rather than discarded.
       const probe = await fetchDocument(d.canonicalUrl, { isAllowedHost });
       challenged = Boolean(probe.challenge);
-    } catch {
-      gone = true;
+    } catch (e) {
+      // Plan 085 — only 404/410 means REMOVED. This used to be a bare `catch { gone = true }`, so
+      // every other failure mode was read as a removal: a 403/429 bot wall (how Imperva and
+      // Cloudflare block when they don't serve a 200 interstitial), a 503, a DNS blip, a 30s
+      // timeout, the 15 MB cap, a redirect error. Any of those could quietly withdraw live
+      // documents in bulk. Note a non-2xx block also never reaches skippedChallenge, so the
+      // source-level exclusion above does not cover this arm — it has to be handled here.
+      if (statusMeansRemoved(e)) gone = true;
+      else unknown = true;
     }
-    if (challenged) {
-      // Neither liveness nor removal was established: a bot wall answered, not the origin. Leave
-      // lastVerifiedAt ALONE so this doc is re-checked next run rather than looking freshly
-      // verified, and obviously do not withdraw it.
-      challengedProbes++;
+    if (challenged || unknown) {
+      // Neither liveness nor removal was established. Leave lastVerifiedAt ALONE so the doc is
+      // re-checked next run rather than looking freshly verified, and do not withdraw it.
+      if (challenged) challengedProbes++;
+      else couldNotVerify++;
       await sleep(1000);
       continue;
     }
@@ -160,6 +169,7 @@ async function main() {
     withdrawn,
     stillLive,
     challengedProbes,
+    couldNotVerify,
     skippedChallenge,
     darkSources,
     newCandidateDomains: crawl.candidateDomains, // count queued to CandidateSource for human review
@@ -170,7 +180,11 @@ async function main() {
 
   // Exit AFTER the marker is printed, so the workflow's grep still captures the summary and the
   // issue it files carries the full detail. `set -o pipefail` in the workflow propagates this.
-  if (darkSources.length) {
+  // Plan 085 review — gate on a COMPLETE crawl, mirroring the tombstone pass. On a capped run
+  // (KB_MAX_DOCS, exposed as a workflow_dispatch input, or hitCap) a source may simply never have
+  // got a turn, so `documents === 0` says nothing about whether it is reachable. darkSources still
+  // appears in the summary either way; it just does not fail the job on incomplete evidence.
+  if (!capped && darkSources.length) {
     console.error(
       `\nFAIL: source(s) shut out by a bot wall with zero documents indexed: ${darkSources.join(", ")}. ` +
         "Most likely the runner's datacenter IP is being refused where a residential IP is not. " +

@@ -74,9 +74,33 @@ describe("detectChallengePage", () => {
     expect(detectChallengePage(buf(short), HTML)).toBeNull();
   });
 
-  it("never flags a PDF, even if the bytes coincidentally contain a marker word", () => {
-    const pdf = Buffer.concat([buf("%PDF-1.7\n"), buf("Request unsuccessful. Incapsula incident ID: 1")]);
-    expect(detectChallengePage(pdf, "application/pdf")).toBeNull();
+  // isPdf has two arms and each needs its own case — one test passing BOTH a %PDF- prefix and
+  // "application/pdf" would still pass with either arm deleted.
+  it("never flags a PDF identified by its content-type header", () => {
+    expect(detectChallengePage(buf("Incapsula incident ID: 1"), "application/pdf")).toBeNull();
+  });
+
+  it("never flags a PDF identified by magic bytes when the header lies", () => {
+    // The arm that matters: a PDF served as text/html. Binary payloads can contain anything.
+    const pdf = Buffer.concat([buf("%PDF-1.7\n"), buf("Incapsula incident ID: 1")]);
+    expect(detectChallengePage(pdf, HTML)).toBeNull();
+  });
+
+  // A typo in any of these ships silently — they are the least-observed vendors, so nobody catches
+  // it by hand.
+  it.each([
+    ["akamai", "<html><head><TITLE>Access Denied</TITLE></head><body>ref</body></html>"],
+    ["datadome", '<html><head><script src="https://js.datadome.co/tags.js"></script></head></html>'],
+    ["perimeterx", '<html><body><div id="px-captcha"></div></body></html>'],
+  ])("detects a %s interstitial", (vendor, body) => {
+    expect(detectChallengePage(buf(body), HTML)?.vendor).toBe(vendor);
+  });
+
+  // Deliberately NOT a marker: generic English, redundant with _Incapsula_Resource, and real
+  // false-positive surface across 21 sources since we scan 64KB of every body.
+  it("does NOT flag a page merely containing the phrase 'Request unsuccessful.'", () => {
+    const body = "<html><body><p>Request unsuccessful. Retry the veraison sampling next week.</p></body></html>";
+    expect(detectChallengePage(buf(body), HTML)).toBeNull();
   });
 
   it("returns null for an empty body", () => {
@@ -96,7 +120,7 @@ describe("detectChallengePage", () => {
 
 describe("findDarkSources (monthly-job failure predicate)", () => {
   it("flags a source that was challenged and indexed nothing", () => {
-    expect(findDarkSources({ "msu-grapes": { documents: 0, skippedChallenge: 12 } })).toEqual(["msu-grapes"]);
+    expect(findDarkSources({ "msu-grapes": { documents: 0, notModified: 0, skippedChallenge: 12 } })).toEqual(["msu-grapes"]);
   });
 
   // The whole reason the predicate is not `skippedChallenge > 0`. Challenges are intermittent --
@@ -104,24 +128,38 @@ describe("findDarkSources (monthly-job failure predicate)", () => {
   // apart. Failing on ANY challenge would red the monthly job routinely and train everyone to
   // ignore it, which is worse than not alerting at all.
   it("does NOT flag a source that was challenged but still brought back documents", () => {
-    expect(findDarkSources({ "msu-grapes": { documents: 40, skippedChallenge: 3 } })).toEqual([]);
+    expect(findDarkSources({ "msu-grapes": { documents: 40, notModified: 0, skippedChallenge: 3 } })).toEqual([]);
   });
 
   it("does NOT flag a source with zero documents and no challenge (nothing new to fetch)", () => {
-    expect(findDarkSources({ awri: { documents: 0, skippedChallenge: 0 } })).toEqual([]);
+    expect(findDarkSources({ awri: { documents: 0, notModified: 0, skippedChallenge: 0 } })).toEqual([]);
   });
 
   it("reports every dark source, sorted, so the failure message is stable", () => {
     expect(
       findDarkSources({
-        wsu: { documents: 0, skippedChallenge: 1 },
-        awri: { documents: 5, skippedChallenge: 0 },
-        "msu-grapes": { documents: 0, skippedChallenge: 9 },
+        wsu: { documents: 0, notModified: 0, skippedChallenge: 1 },
+        awri: { documents: 5, notModified: 0, skippedChallenge: 0 },
+        "msu-grapes": { documents: 0, notModified: 0, skippedChallenge: 9 },
       }),
     ).toEqual(["msu-grapes", "wsu"]);
   });
 
   it("is empty for a clean run", () => {
-    expect(findDarkSources({ awri: { documents: 12, skippedChallenge: 0 } })).toEqual([]);
+    expect(findDarkSources({ awri: { documents: 12, notModified: 0, skippedChallenge: 0 } })).toEqual([]);
+  });
+
+  // THE REGRESSION THIS PREDICATE ALMOST SHIPPED WITH. `documents` counts only pages we re-indexed;
+  // the whole point of the conditional-GET re-crawl is that unchanged pages come back 304 and
+  // increment notModified instead. So a healthy source on a stable corpus legitimately ends a month
+  // with documents === 0. One intermittent challenge would then have declared it "dark" and failed
+  // the monthly job for all 21 sources -- and the odds rise every month as the 304 rate approaches
+  // 100%. A 304 is positive proof the ORIGIN answered, not the bot wall.
+  it("does NOT flag a fully-cached source that 304'd everything and saw one challenge", () => {
+    expect(findDarkSources({ awri: { documents: 0, notModified: 40, skippedChallenge: 1 } })).toEqual([]);
+  });
+
+  it("still flags a source with no documents AND no 304s", () => {
+    expect(findDarkSources({ awri: { documents: 0, notModified: 0, skippedChallenge: 7 } })).toEqual(["awri"]);
   });
 });

@@ -14,9 +14,14 @@
 // POSTURE — SIGNATURE ONLY, NEVER SIZE. The tempting heuristic is "a 950-byte HTML page is
 // suspicious". It is wrong in both directions: legitimately short pages exist (stubs, thin index
 // pages, redirect shims), and Cloudflare's interstitial is not small. So every match must be a
-// vendor-specific marker string that cannot occur in viticulture prose. A missed challenge is
-// exactly today's behaviour, so a false negative is never a regression; a false positive would
-// silently drop real content, which would be.
+// vendor-specific marker string that cannot occur in viticulture prose.
+//
+// THE ASYMMETRY, STATED PRECISELY, because it sets the bar for adding a marker. A false NEGATIVE
+// is exactly today's behaviour, so it is never a regression. A false POSITIVE is not "one dropped
+// page" — the consequence is SOURCE-WIDE and JOB-WIDE: one bogus match adds the whole source to
+// `challengedKeys` in recrawl-knowledge.ts (excluding every one of its documents from the
+// tombstone pass), and if that source indexed nothing else that run it lands in findDarkSources
+// and hard-fails the monthly job. Calibrate new markers against that, not against one page.
 //
 // CALLER CONTRACT: this is reported, never thrown. See `fetcher.ts` and the note in
 // `scripts/recrawl-knowledge.ts` — a throw out of `fetchDocument` is read as "the page was
@@ -43,8 +48,14 @@ export interface ChallengeInfo {
 const SIGNATURES: { vendor: ChallengeInfo["vendor"]; markers: string[] }[] = [
   {
     // Observed live on www.canr.msu.edu (plan 085 recon): HTTP 200, 965 bytes.
+    //
+    // The interstitial also contains the sentence "Request unsuccessful." — deliberately NOT a
+    // marker. It is generic English, not a vendor signature, and it is redundant: the real body
+    // always carries `_Incapsula_Resource` in <head> alongside it. Since we scan the first 64 KB of
+    // EVERY body across all 21 sources, a generic phrase is real false-positive surface (inline
+    // head JS, i18n string blobs) for zero detection gain.
     vendor: "imperva",
-    markers: ["_Incapsula_Resource", "Incapsula incident ID", "Request unsuccessful."],
+    markers: ["_Incapsula_Resource", "Incapsula incident ID"],
   },
   {
     vendor: "cloudflare",
@@ -91,23 +102,34 @@ export function detectChallengePage(bytes: Buffer, rawContentType: string): Chal
 /** The slice of CrawlSummary that the went-dark decision needs. */
 export interface SourceOutcome {
   documents: number;
+  /**
+   * 304s. Load-bearing, not decoration — see findDarkSources. A conditional GET that returns 304
+   * is POSITIVE PROOF the origin answered us rather than the bot wall.
+   */
+  notModified: number;
   skippedChallenge: number;
 }
 
 /**
- * Sources that a bot wall shut out completely this run: challenged at least once AND indexed
- * nothing. Returned sorted so the run log and the failure message are stable.
+ * Sources that a bot wall shut out completely this run: challenged at least once AND brought back
+ * nothing at all. Returned sorted so the run log and the failure message are stable.
  *
- * WHY THIS PREDICATE AND NOT `skippedChallenge > 0`: challenges are intermittent by nature (we
- * saw one path challenged and its siblings served, on the same host, minutes apart). Failing the
- * monthly job on ANY challenge would cry wolf every month and train everyone to ignore it. A
- * source that got challenged and still brought back documents is working; a source that got
- * challenged and brought back NOTHING is the one a human needs to look at — most likely because
- * the runner's datacenter IP is being refused where a residential IP is not.
+ * WHY NOT `skippedChallenge > 0`: challenges are intermittent by nature (recon saw one path
+ * challenged and its siblings served, same host, minutes apart). Failing the monthly job on ANY
+ * challenge would cry wolf every month and train everyone to ignore it.
+ *
+ * WHY `notModified === 0` AND NOT JUST `documents === 0`: this is the trap. `documents` only counts
+ * pages we actually re-indexed, and the whole point of the conditional-GET re-crawl is that
+ * unchanged pages come back 304 and increment `notModified` instead. So a perfectly healthy source
+ * on a stable corpus legitimately finishes a month with `documents === 0`. Pair that with one
+ * intermittent challenge on one new URL and the naive predicate declares a working source "dark"
+ * and reds the job — and it gets MORE likely every month as the corpus settles and the 304 rate
+ * approaches 100%. Requiring zero 304s as well means we only fire when the source produced no
+ * content-bearing response whatsoever, which is what "shut out" actually means.
  */
 export function findDarkSources(summaries: Record<string, SourceOutcome>): string[] {
   return Object.entries(summaries)
-    .filter(([, s]) => s.skippedChallenge > 0 && s.documents === 0)
+    .filter(([, s]) => s.skippedChallenge > 0 && s.documents === 0 && s.notModified === 0)
     .map(([key]) => key)
     .sort();
 }

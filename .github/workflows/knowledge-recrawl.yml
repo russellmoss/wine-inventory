@@ -60,11 +60,20 @@ jobs:
           KB_MAX_DOCS: ${{ github.event.inputs.max_docs }}
         run: |
           set -o pipefail
-          npm run --silent recrawl:knowledge 2>&1 | tee recrawl.log
-          # Pull the machine-readable summary line the script prints.
+          # Plan 085 — capture the exit code instead of letting it abort the step.
+          # Actions runs this as `bash -e`, so a failing pipe used to kill the step ON THIS LINE:
+          # the grep below never ran, summary.json was never written, and the `if: always()` issue
+          # step then died on `cat summary.json` before reaching `gh issue create`. A deliberate
+          # non-zero exit (the script's darkSources gate) would have produced a bare red X with no
+          # summary and no issue — the exact opposite of failing loudly. Now the summary is always
+          # extracted and published, and the step still fails at the end.
+          rc=0
+          npm run --silent recrawl:knowledge 2>&1 | tee recrawl.log || rc=$?
+          # Pull the machine-readable summary line the script prints (emitted BEFORE any exit).
           grep '::KB_RECRAWL_SUMMARY::' recrawl.log | sed 's/.*::KB_RECRAWL_SUMMARY:://' | tail -1 > summary.json || true
           [ -s summary.json ] || echo '{"error":"no summary emitted — see the run log"}' > summary.json
           echo "summary=$(cat summary.json)" >> "$GITHUB_OUTPUT"
+          exit $rc
 
       - name: Open freshness issue
         if: always()
@@ -72,11 +81,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           DATE=$(date -u +%F)
+          # This step is `if: always()`, so it must survive the recrawl step having failed —
+          # including the case where summary.json was never produced at all.
+          [ -s summary.json ] || echo '{"error":"no summary emitted — see the run log"}' > summary.json
           {
             echo "Automated knowledge-base re-crawl (Plan 079 Unit 12). Mutates the GLOBAL corpus only; never merges code."
             echo ""
             echo '```json'
-            cat summary.json
+            cat summary.json || true
             echo '```'
             echo ""
             echo "Review: any **withdrawn** docs (a source removed the page?) and **newCandidateDomains** (new trusted-source candidates queued to CandidateSource). Re-embeds and tombstones are reversible."
