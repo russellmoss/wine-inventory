@@ -48,5 +48,11 @@ jobs:
             - This is advisory. Do NOT block, do NOT edit code.
           claude_args: |
             --allowedTools "Read,Bash"
-            --max-turns 20
+            # 20 turns was not enough to review a large PR: plan 080's Wave 2 (9 commits, ~50 files)
+            # exhausted the budget TWICE before reaching a verdict, so the job errored with
+            # "Reached maximum number of turns" and posted NO comments at all. A review that cannot
+            # finish is worse than a slow one — it looks like a failing check while providing zero
+            # signal. 40 gives a big PR room to actually land a verdict; the job stays advisory
+            # (continue-on-error above), so the only cost of the higher ceiling is tokens.
+            --max-turns 40
             --model claude-sonnet-5
