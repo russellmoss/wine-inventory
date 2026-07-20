@@ -111,11 +111,19 @@ is two decisions that are Russell's, not code:
    populated field must be actively contradicted. Prompt rule 8 tells the model WHEN it matters (the
    split: age is a fact computed here, relevance is a judgment the model makes with the question in
    hand). Live proof: AWRI's 2011-06 YAN passage flags `stale (15y)`.
-   (c) ⏳ **Corpus-wide backfill RUNNING** (bg task `bfrkszljk`). ~2,694 docs; at last check 536/2,781
-   (19.3%) and climbing. Polite serial re-crawl across 18 external sites, zero Voyage credits, resumable
-   (selects `publishedAt: null`) — so if it dies partway, just re-run it. **PR waits on this** so the body
-   can carry final coverage + the per-source age table (the number that says which OTHER sources are
-   quietly stale the way uc-ipm turned out to be).
+   (c) ✅ **Corpus-wide backfill DONE** — `found=735, none=1327, robots=578, errors=7`.
+   **869/2,781 dated (31.2%)**; `verify:knowledge-base` 17/17 and its diversity check moved `0 with a
+   date` → `1`, so dates now genuinely reach retrieval. Of the DATED docs: **270 stale (10y+), 245 aging
+   (5-10y), 354 current** — i.e. 59% of everything we can date is 5+ years old.
+   **TWO THINGS THE BACKFILL SURFACED, both follow-ups not blockers:**
+   • **`osu-owri` is the worst source in the corpus, not uc-ipm** — 266 docs, oldest **1993**. Only 5 are
+   dated (2%), so the 18.2y average is a 5-doc sample and must NOT be quoted as fact; the *oldest* stamp
+   is the solid part. Worth a real look. awri is 55% dated / 8.9y avg / oldest 2011.
+   • **578 docs were robots-BLOCKED from re-fetch** yet are already in the corpus. Not a contradiction
+   but an asymmetry worth knowing: the crawler fails OPEN on a robots fetch error, the backfill fails
+   CLOSED. So those docs can never be dated by this script, and they are permanently `unknown` →
+   which the assistant now warns on rather than passing off as fresh. UMC also 429-rate-limited us.
+   ⚠️ Re-running the backfill will NOT improve these; it needs a decision, not a retry.
 1. **OPEN — #387 is merged but NOT browser-verified.** Russell asked for "merge #387 and verify
    'delete Block 1' in the browser". The merge happened (`de889cc1`); the browser check did not.
    Needs the interactive logged-in pane. **Do not tell Mike anything until it runs** — a fix has
