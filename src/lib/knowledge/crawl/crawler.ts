@@ -50,6 +50,8 @@ export interface CrawlSummary {
   notModified: number;
   skippedRobots: number;
   skippedType: number;
+  /** Plan 084 — `.pdf` URLs that answered with HTML (dead link behind a redirect). See isSoftNotFound. */
+  skippedSoftNotFound: number;
   errors: number;
   candidates: number;
 }
@@ -62,6 +64,29 @@ class HostThrottle {
     const waitMs = Math.max(0, prev + minDelayMs - Date.now());
     if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
     this.last.set(host, Date.now());
+  }
+}
+
+/**
+ * Plan 084 — detect a SOFT 404: a URL that promises a PDF but answers with HTML.
+ *
+ * Link rot on extension sites usually fails soft, not hard. When a site is reorganized, the old
+ * /files/x.pdf links 302 to a section landing page and return HTTP 200 with text/html — so a HEAD check
+ * says "200, alive" and the crawler happily ingests a navigation page as a research document. Measured
+ * on the Cornell corpus: 36 of 98 linked PDFs, including ALL 34 on grapesandwine.cals.cornell.edu, which
+ * now redirect to the CALS viticulture landing page. Without this guard that is 34 copies of the same nav
+ * page indexed as Cornell research.
+ *
+ * Deliberately narrow. A content-type mismatch on a `.pdf` URL is unambiguous evidence of a redirect;
+ * "does this HTML look like a nav page" is a judgment call, and lowConfidence already handles that case
+ * downstream. We do not want a heuristic here that can drop real documents.
+ */
+export function isSoftNotFound(requestUrl: string, contentType: DetectedType): boolean {
+  if (contentType !== "html") return false;
+  try {
+    return new URL(requestUrl).pathname.toLowerCase().endsWith(".pdf");
+  } catch {
+    return false;
   }
 }
 
@@ -85,7 +110,7 @@ export async function crawlSource(
   const maxDocs = opts.maxDocs ?? 50;
   const summary: CrawlSummary = {
     source: sourceKey, discovered: 0, fetched: 0, documents: 0,
-    notModified: 0, skippedRobots: 0, skippedType: 0, errors: 0, candidates: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, errors: 0, candidates: 0,
   };
   const throttle = new HostThrottle();
 
@@ -180,6 +205,7 @@ export async function crawlSource(
       continue;
     }
     if (res.contentType === "other") { summary.skippedType++; continue; }
+    if (isSoftNotFound(item.url, res.contentType)) { summary.skippedSoftNotFound++; continue; }
 
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(sourceId, cfg, item.url, item.lastmod, res, contentHash);
@@ -247,7 +273,7 @@ export async function crawlWithFollowing(
     if (!cfg) throw new Error(`unknown source: ${key}`);
     const row = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key } }));
     if (!row) throw new Error(`source ${key} not seeded — run: npm run seed:knowledge-sources`);
-    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, errors: 0, candidates: 0 };
+    summaries[key] = { source: key, discovered: 0, fetched: 0, documents: 0, notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, errors: 0, candidates: 0 };
     const entry = { sourceId: row.id, sourceKey: key, cfg };
     domainToSource.set(cfg.homeDomain.toLowerCase(), entry);
     domainToSource.set(`www.${cfg.homeDomain}`.toLowerCase(), entry);
@@ -350,6 +376,7 @@ export async function crawlWithFollowing(
       continue;
     }
     if (res.contentType === "other") { s.skippedType++; continue; }
+    if (isSoftNotFound(url, res.contentType)) { s.skippedSoftNotFound++; continue; }
 
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(tgt.sourceId, tgt.cfg, url, undefined, res, contentHash);
@@ -432,7 +459,7 @@ export async function crawlUrls(
   if (!cfg) throw new Error(`unknown source: ${sourceKey}`);
   const summary: CrawlSummary = {
     source: sourceKey, discovered: urls.length, fetched: 0, documents: 0,
-    notModified: 0, skippedRobots: 0, skippedType: 0, errors: 0, candidates: 0,
+    notModified: 0, skippedRobots: 0, skippedType: 0, skippedSoftNotFound: 0, errors: 0, candidates: 0,
   };
   const throttle = new HostThrottle();
   const sourceRow = await runAsSystem((db) => db.knowledgeSource.findUnique({ where: { key: sourceKey } }));
@@ -489,6 +516,7 @@ export async function crawlUrls(
       continue;
     }
     if (res.contentType === "other") { summary.skippedType++; continue; }
+    if (isSoftNotFound(url, res.contentType)) { summary.skippedSoftNotFound++; continue; }
 
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(sourceId, cfg, url, undefined, res, contentHash);

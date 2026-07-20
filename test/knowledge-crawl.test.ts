@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { classifyContentType } from "@/lib/knowledge/crawl/fetcher";
 import { isPrivateAddress } from "@/lib/knowledge/crawl/ssrf";
 import { extractLinks, gateLinks, hostIsTrusted } from "@/lib/knowledge/crawl/link-gate";
-import { normalizeCrawlUrl } from "@/lib/knowledge/crawl/crawler";
+import { isSoftNotFound, normalizeCrawlUrl } from "@/lib/knowledge/crawl/crawler";
 
 describe("normalizeCrawlUrl (dedup link-followed URL variants)", () => {
   it("strips a trailing slash after a file-extension segment (dup of the file)", () => {
@@ -17,6 +17,46 @@ describe("normalizeCrawlUrl (dedup link-followed URL variants)", () => {
   });
   it("drops the #fragment and preserves the query string", () => {
     expect(normalizeCrawlUrl("https://x.test/a.pdf/?v=2#frag")).toBe("https://x.test/a.pdf?v=2");
+  });
+});
+
+// Plan 084 — 36 of the 98 PDFs linked from the Cornell grape site answer HTTP 200 with text/html
+// because the host reorganized and now redirects to a landing page. All 34 grapesandwine.cals.cornell.edu
+// links do this. Without the guard that is 34 copies of one nav page indexed as Cornell research.
+describe("soft-404 detection (.pdf URL answering with HTML)", () => {
+  it("flags a .pdf URL that came back as HTML", () => {
+    expect(
+      isSoftNotFound(
+        "https://grapesandwine.cals.cornell.edu/sites/.../documents/GBM-Management.pdf",
+        "html",
+      ),
+    ).toBe(true);
+  });
+
+  it("allows a .pdf URL that actually returned a PDF", () => {
+    expect(isSoftNotFound("https://blogs.cornell.edu/grapes/x/report-2018.pdf", "pdf")).toBe(false);
+  });
+
+  it("leaves normal HTML pages alone", () => {
+    expect(isSoftNotFound("https://blogs.cornell.edu/grapes/ipm/", "html")).toBe(false);
+  });
+
+  it("is case-insensitive on the extension and ignores the query string", () => {
+    expect(isSoftNotFound("https://example.org/a/B/Report.PDF", "html")).toBe(true);
+    expect(isSoftNotFound("https://example.org/a/report.pdf?download=1", "html")).toBe(true);
+  });
+
+  it("does not flag a URL that merely mentions pdf in a path segment or query", () => {
+    expect(isSoftNotFound("https://example.org/pdf/guide", "html")).toBe(false);
+    expect(isSoftNotFound("https://example.org/guide?format=pdf", "html")).toBe(false);
+  });
+
+  it("returns false for a malformed URL instead of throwing", () => {
+    expect(isSoftNotFound("not a url", "html")).toBe(false);
+  });
+
+  it("never flags content classified as other (that path is already skipped)", () => {
+    expect(isSoftNotFound("https://example.org/x.pdf", "other")).toBe(false);
   });
 });
 

@@ -116,6 +116,10 @@ async function main() {
     withdrawn,
     stillLive,
     newCandidateDomains: crawl.candidateDomains, // count queued to CandidateSource for human review
+    // Plan 084 — `.pdf` links that answered with HTML, i.e. dead links hiding behind a 200 redirect.
+    // Reported rather than silently dropped: a rising count is how we find out a publisher reorganized
+    // their site and a chunk of the corpus is quietly rotting.
+    softNotFound: Object.values(crawl.summaries).reduce((n, s) => n + s.skippedSoftNotFound, 0),
     finishedAt: new Date().toISOString(),
   };
   console.log("\n::KB_RECRAWL_SUMMARY::" + JSON.stringify(summary));
