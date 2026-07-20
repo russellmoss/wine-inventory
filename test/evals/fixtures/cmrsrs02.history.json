@@ -1,0 +1,86 @@
+{
+  "source": "assistant_feedback cmrsrs02r0000l704lswc7xg4, Demo Winery, 2026-07-20",
+  "note": "The REAL conversation that preceded the reported failure, captured verbatim from AssistantFeedback.conversation. `toolCalls` reconstructs what each assistant turn actually did — evidence today's replay throws away, because history.ts keeps only string content. Every assistant turn here ends by pointing at a card, which is exactly the pattern the model went on to complete in prose without calling anything.",
+  "turns": [
+    {
+      "role": "user",
+      "content": "issue a work order to rack tank T3 to tank T4 and assign it to sarah@example.com"
+    },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "propose_work_order",
+          "input": { "sourceText": "rack tank T3 to tank T4", "assigneeEmail": "sarah@example.com" },
+          "result": "Draft proposal emitted. status=needs_input. unresolved=[{key:'assignee', reason:'No member matches sarah@example.com'}]. No commit token (draft). Card is on screen."
+        }
+      ],
+      "content": "The draft work order is on screen, but it couldn't resolve **sarah@example.com** to a member, so it can't be issued yet. Please confirm the assignee (a matching Cellarhand user) on the card, or let me know the correct email/name."
+    },
+    {
+      "role": "user",
+      "content": "put in a work order to top up the barrels that need it"
+    },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "query_cellar_contents",
+          "input": { "vesselType": "barrel" },
+          "result": "B1 225/225 L (full); B2 225/225 L (full); B3 100/225 L, 2025 Pinot Noir; B4 ~225/225 L, 3 MUST lots, AF active; B5 228/228 L, MUST; B6 500/500 L, MUST."
+        }
+      ],
+      "content": "I can't tell which barrels need topping — that's a judgment call, and \"the barrels that need it\" isn't something I can resolve to specific vessels. Let me pull the current barrel contents so we can pick the ones to top.Looking at the barrels, here's the headspace situation — the ones with meaningful ullage are the topping candidates:\n\n- **Barrel B3** — 100 L in a 225 L barrel → **~125 L headspace** (2025 Pinot Noir). Clear candidate.\n- **Barrel B4** — ~225 L in a 225 L barrel, but it holds 3 MUST lots (still fermenting). Effectively full; you don't top fermenting must.\n\nThe rest are at capacity:\n- **B1** 225/225, **B2** 225/225, **B5** 228/228, **B6** 500/500 — full, nothing to top.\n\nSo the only barrel that clearly needs topping is **B3**. Note B4/B5/B6 hold active MUST (mid-ferment) — those aren't normally topped.\n\nWant me to issue a topping work order for **just B3**? If so, tell me the source vessel to top from (e.g. a keg or tank) and roughly how much, and I'll put it in."
+    },
+    {
+      "role": "user",
+      "content": "delete Block 1"
+    },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "db_find",
+          "input": { "entity": "VineyardBlock", "query": "Block 1" },
+          "result": "7 matches — 'Block 1 — Cabernet' (QBO Demo Vineyard zhmfs); 'Block 1' (Ojai, Sauvignon Blanc); 'Block 1' (Madera, Cabernet Sauvignon); 'Block 1 — Pinot' (Russian River Ranch); 'Block 1 — Cabernet' (QBO Demo Vineyard); 'Block 1 — Cabernet' (QBO Demo Vineyard pt0sk); 'Block 1 — Cabernet' (Oakville Estate)."
+        }
+      ],
+      "content": "Which \"Block 1\" — I want to target the right one before deleting. Let me look it up.There are seven \"Block 1\" blocks across different vineyards — I need you to pick the exact one:\n\n- **Block 1 — Cabernet** in QBO Demo Vineyard zhmfs\n- **Block 1 (Sauvignon Blanc)** in Ojai\n- **Block 1 (Cabernet Sauvignon)** in Madera\n- **Block 1 — Pinot** in Russian River Ranch\n- **Block 1 — Cabernet** in QBO Demo Vineyard\n- **Block 1 — Cabernet** in QBO Demo Vineyard pt0sk\n- **Block 1 — Cabernet** in Oakville Estate\n\nWhich vineyard's Block 1 do you want to delete? Note that deleting a block may be blocked if it has Brix readings, picks, or yield estimates attached — I'll relay any blockers before anything is removed."
+    },
+    {
+      "role": "user",
+      "content": "I want to issue a work order to Mike Juergens to rack wine from tank T3 to tank T4. It should rack all the wine."
+    },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "query_cellar_contents",
+          "input": { "vessel": "T3" },
+          "result": "Tank T3: lot 24-CS-01 (Cabernet Sauvignon 2024), form WINE, 4200 L, AF dry. Tank T4: empty, capacity 5000 L."
+        },
+        {
+          "name": "propose_work_order",
+          "input": { "sourceText": "rack all wine from T3 to T4", "assigneeEmail": "mike@demowinery.test" },
+          "result": "Ready proposal emitted with 1 warning. Signed commit token attached. Card is on screen awaiting confirmation."
+        }
+      ],
+      "content": "The work order is ready to rack all wine (~4,200 L) from **T3 → T4**, assigned to Mike Juergens. There's 1 warning attached — please review and confirm the card to issue it."
+    },
+    {
+      "role": "user",
+      "content": "log 24.2 brix for Block 3\""
+    },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "log_brix",
+          "input": { "brixValue": 24.2, "block": "Block 3" },
+          "result": "Proposal emitted: Block 3 (Ojai) at 24.2 Bx, dated today. Signed commit token attached. Card is on screen awaiting confirmation."
+        }
+      ],
+      "content": "I need to know which vineyard's Block 3 — \"Block 3\" likely exists in several. Let me log it so you get a picker to pin the exact block.It resolved to **Block 3 (Ojai)** at 24.2 °Bx (today). Review and confirm the card — if you meant a different vineyard's Block 3, let me know and I'll re-point it."
+    }
+  ]
+}
