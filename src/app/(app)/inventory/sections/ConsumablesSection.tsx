@@ -683,8 +683,8 @@ function AddExpendableModal({
 
   function submit() {
     if (!canSubmit) return;
-    const cost = form.totalCost.trim() !== "" ? Number(form.totalCost) : undefined;
-    run(() => createStockMaterialAction({ ...materialFormToInput(form), totalCost: cost }), onClose);
+    // Plan 080 U14: setting up the record books NO stock and NO cost — receipt is a separate action.
+    run(() => createStockMaterialAction(materialFormToInput(form)), onClose);
   }
 
   return (

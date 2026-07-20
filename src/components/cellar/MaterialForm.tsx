@@ -11,7 +11,7 @@ import { MEASURE_UNITS, dimensionOf, canonicalUnitFor, type ExtraUnits } from "@
 import { toExtraUnits } from "@/lib/units/custom-units";
 import { CreateUnitModal } from "@/components/units/CreateUnitModal";
 import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
-import { costPerPackageUnit, deriveOpeningLot } from "@/lib/cost/intake-cost";
+import { costPerPackageUnit } from "@/lib/cost/intake-cost";
 import { closestMatch } from "@/lib/inventory/similarity";
 import { useCurrency } from "@/components/money/CurrencyProvider";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials-shared";
@@ -135,7 +135,10 @@ export function MaterialForm({
   /** Plan 075: the tenant's user-defined units, selectable alongside the built-ins. */
   customUnits?: CustomUnitRow[];
 }) {
-  const showCost = mode === "create" || allowCostEdit;
+  // Plan 080 U14: cost is a property of a RECEIPT, not of the catalog record. Create no longer books an
+  // opening lot, so there is nothing on create for a cost to attach to — the field would be a no-op input.
+  // Edit still shows it, but only while the opening lot is correctable (single fully-unused lot, D17).
+  const showCost = allowCostEdit;
   // Plan 075: custom units are selectable as package units; a newly created one is appended locally.
   const [customUnits, setCustomUnits] = React.useState<CustomUnitRow[]>(initialCustomUnits);
   const [unitModalOpen, setUnitModalOpen] = React.useState(false);
@@ -154,8 +157,6 @@ export function MaterialForm({
 
   const amt = value.packageAmount.trim() !== "" ? Number(value.packageAmount) : null;
   const cost = value.totalCost.trim() !== "" ? Number(value.totalCost) : null;
-  const perPackageUnit = costPerPackageUnit(cost, amt);
-  const opening = deriveOpeningLot({ packageAmount: amt, packageUnit: value.packageUnit, totalCost: cost, stockUnit, extraUnits });
   // Edit mode: the cost field is a total over the whole correctable LOT (possibly several packages), and the
   // server divides it by that lot qty. Price it the same way — dividing by `packageAmount` here would show a
   // 3-package total as one package's price.
@@ -263,11 +264,8 @@ export function MaterialForm({
 
       {mode === "create" ? (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
-          Tracked in <strong>{stockUnit}</strong>.{" "}
-          {perPackageUnit != null ? `≈ ${symbol}${perPackageUnit}/${value.packageUnit}. ` : ""}
-          {opening.qtyInStockUnit != null && opening.unitCost != null
-            ? `Opening stock ${opening.qtyInStockUnit} ${stockUnit} at ~${symbol}${opening.unitCost}/${stockUnit}.`
-            : `Leave cost blank to record unknown-cost stock (never ${symbol}0).`}
+          Tracked in <strong>{stockUnit}</strong>. Package size describes how it&apos;s sold — it doesn&apos;t put any
+          in stock. Use <strong>Receive</strong> when it physically arrives; that&apos;s where quantity and cost are recorded.
         </p>
       ) : (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>
