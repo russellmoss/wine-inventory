@@ -1,7 +1,7 @@
 ---
 title: Assistant history replay — stop the model narrating writes it never performed
 type: fix
-status: draft
+status: completed
 date: 2026-07-20
 branch: fix/assistant-history-tool-replay
 depth: deep
@@ -358,3 +358,47 @@ and it collapses the main open question.
 - Consider registering an assistant invariant with a `verify:` guard. Today the
   writes-require-a-card guarantee lives only in tests, with no entry in
   `docs/architecture/invariants/`.
+
+---
+
+## Build result (2026-07-20) — all 6 units complete
+
+| Case | Pre-fix (text-only replay) | Post-fix (production replay) |
+|---|---|---|
+| `tasting-note-vessel-history` (real cmrsrs02 transcript) | **0/5**, no-tool 5 | 5/5 |
+| `brix-write-after-writes` (synthetic, 5 write turns) | 2/5 (40%) | 5/5 |
+| `wo-rack-assignee-unknown-history` (plan 081 repro) | 4/5 (80%) | clears 0.9 |
+
+Gates: `tsc` 0, eslint 0, vitest 2775 passed. Six commits.
+
+### Deviations from the plan, and why
+
+**Unit 3 shipped with NO client changes.** The plan listed `AssistantChat.tsx` and
+`useVoiceSession.ts`. Rebuilding server-side made both unnecessary: the clients keep posting their
+text history and the server ignores it whenever it can rebuild from the DB. Voice and text cannot
+drift because neither decides the shape any more. Smaller blast radius, same outcome.
+
+**Unit 4 changed approach.** The plan said to make windowing pair-aware. Windowing the rebuilt
+messages is the dangerous version — a `tool_use` and its `tool_result` are adjacent entries, so any
+cut or leading shift orphans one half. Cutting at ROW boundaries before the rebuild makes the orphan
+case unrepresentable rather than merely guarded.
+
+### Three things that were wrong on the first attempt
+
+1. **The Unit 2 eval had no teeth.** It expanded history into blocks unconditionally, so the new case
+   passed 5/5 against a bug that reproduces at 0/8 — the harness contained the fix and was measuring
+   it. The same mistake PR #391 made. Fixed by routing the seam through the shipped
+   `buildReplayMessages`.
+2. **The synthetic history was too shallow.** At two write turns it measured 5/5 pre-fix. Depth is
+   load-bearing; five turns is where the pattern dominates.
+3. **A history fixture collided with its utterance.** The work-order case pointed at the cmrsrs02
+   transcript, which already contains that work order, so the model correctly asked whether to
+   duplicate it and scored a failure for behaving well.
+
+### Still open
+
+- **Not browser-verified.** No run against Demo Winery in the pane. The DB-level proof in the plan's
+  test strategy has not been done.
+- `trace.ts` `MAX_ARRAY = 20` still truncates `toolNames` in stored feedback traces (follow-up).
+- PR #391 will conflict trivially in `assistant-must-propose.golden.ts`; keep both the cold
+  `tasting-note-vessel` case and the history variant.

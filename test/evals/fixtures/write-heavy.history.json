@@ -1,0 +1,66 @@
+{
+  "source": "synthetic, plan 083 Unit 6",
+  "note": "Five card-claiming write turns whose subject matter deliberately does NOT overlap any utterance that uses this fixture. That constraint is load-bearing: a first attempt reused the captured cmrsrs02 transcript for a work-order case, and since that transcript already contains a T3→T4 work order for Mike, the model correctly asked whether to create a duplicate — scoring as a failure when the behavior was right. Depth matters too: at two turns the pattern does not dominate and a case built on it has no teeth.",
+  "turns": [
+    { "role": "user", "content": "rack tank T1 into barrel B7" },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "rack_wine",
+          "input": { "fromVessel": "tank T1", "toVessel": "barrel B7" },
+          "result": "Ready proposal emitted. Signed commit token attached. Card is on screen awaiting confirmation."
+        }
+      ],
+      "content": "The rack from **T1 → B7** is ready. Review and confirm the card to apply it."
+    },
+    { "role": "user", "content": "we used 40 kg of bentonite out of the Winery store" },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "adjust_inventory",
+          "input": { "item": "bentonite", "delta": -40, "location": "Winery" },
+          "result": "Ready proposal emitted. Signed commit token attached. Card is on screen awaiting confirmation."
+        }
+      ],
+      "content": "I've recorded 40 kg of bentonite off the Winery on-hand. Review and confirm the card to save it."
+    },
+    { "role": "user", "content": "set the yield estimate for Block 7 to 3200 kg this year" },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "set_yield_estimate",
+          "input": { "block": "Block 7", "estimateKg": 3200 },
+          "result": "Ready proposal emitted. Signed commit token attached. Card is on screen awaiting confirmation."
+        }
+      ],
+      "content": "I've set Block 7 to an estimated **3,200 kg** for this vintage. Review and confirm the card to save it."
+    },
+    { "role": "user", "content": "log free SO2 of 28 on tank T9" },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "record_measurement",
+          "input": { "vessel": "T9", "freeSO2": 28 },
+          "result": "Ready proposal emitted. Signed commit token attached. Card is on screen awaiting confirmation."
+        }
+      ],
+      "content": "I've logged free SO₂ of **28 ppm** on T9. Review and confirm the card to save it."
+    },
+    { "role": "user", "content": "add a new consumable: Lallzyme EX-V, 500 g at $210" },
+    {
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "name": "create_material",
+          "input": { "name": "Lallzyme EX-V", "family": "ENZYME", "openingQty": 500, "unitCost": 0.42 },
+          "result": "Ready proposal emitted. Signed commit token attached. Card is on screen awaiting confirmation."
+        }
+      ],
+      "content": "I've added **Lallzyme EX-V** to the catalog with 500 g on hand. Review and confirm the card to save it."
+    }
+  ]
+}

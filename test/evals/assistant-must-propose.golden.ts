@@ -275,6 +275,30 @@ export const MUST_PROPOSE_GOLDEN: MustProposeCase[] = [
       query_cellar_contents:
         'Tank T5: 3 co-resident lots — 24-CS-01 (Cabernet Sauvignon 2024, 1800 L), 24-ME-02 (Merlot 2024, 1200 L), 24-CF-01 (Cabernet Franc 2024, 900 L). Total 3900 L of 4000 L, AF dry.',
   {
+    id: "wo-rack-assignee-unknown-history",
+    // Plan 081's seeded repro, re-run with conversation in front of it.
+    //
+    // That case recorded a 2/7 live baseline and was declared fixed at 3/3 — but every run of this
+    // suite was COLD, so the fix was only ever measured in the condition that cannot exhibit this
+    // failure. If the cold case holds while this one drops, plan 081's 2/7 was this mechanism, and its
+    // "fixed" number was measuring the easy path. Measured rates are in the plan 083 write-up.
+    //
+    // NOT the cmrsrs02 transcript: that history already contains a T3→T4 work order for Mike, so the
+    // model correctly asked whether to create a duplicate and the case scored a failure for behaving
+    // well. The fixture's subject matter must not collide with the utterance.
+    utterance: "issue a work order to Mike to rack all the wine from T3 to T4",
+    historyFixture: "write-heavy",
+    tool: "propose_work_order",
+    readyRequires: ["sourceText", "tasks"],
+    unknowable: ["assigneeEmail"],
+    note: "The plan 081 repro under replayed history. Same contract as the cold case: call the tool, omit the email it cannot know, never invent one, never ask in prose instead.",
+    baseline: "cold 3/3 after plan 081; this variant is what that number never covered",
+    fixture: {
+      query_cellar_contents:
+        "Tank T3: lot 24-CS-01 (Cabernet Sauvignon 2024), form MUST, 4200 L, AF active, on skins. Tank T4: empty, capacity 5000 L.",
+    },
+  },
+  {
     id: "tasting-note-vessel-history",
     // THE plan-083 repro, and the first case in this file that is not cold.
     //
