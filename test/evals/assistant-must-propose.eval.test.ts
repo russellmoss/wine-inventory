@@ -113,7 +113,7 @@ function classify(gc: MustProposeCase, writeCalls: Block[]): { outcome: Outcome;
   const has = (k: string) => args[k] != null && args[k] !== "";
   return {
     outcome: gc.readyRequires.every(has) ? "complete" : "partial",
-    fabricated: (gc.unknowable ?? []).filter(has),
+    fabricated: (gc.unknowable ?? []).filter(has).map((k) => `${k}=${JSON.stringify(args[k])}`),
   };
 }
 

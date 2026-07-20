@@ -19,6 +19,7 @@ import {
   normalizeDoseUnit,
   type NlWorkOrderDraft,
   type ProposalStatus,
+  type UnresolvedItem,
   type ProposedTask,
   type WorkOrderProposal,
   type NlWorkOrderCommitArgs,
@@ -856,6 +857,40 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 // whether to gate the signed taskBuilds (the assistant commit path) or hand them back raw (the builder draft
 // path). `rawTaskBuilds` is the un-gated resolved set — safe to hydrate into the builder for editing because
 // createWorkOrderFromBuildsAction re-instantiates and re-runs the readiness gate server-side before persist.
+/**
+ * Refuse to call a work order "ready" when its assignee email matches no member of this tenant.
+ *
+ * `validateNlWorkOrderMetadata` only checks the address is SYNTACTICALLY an email. Nothing checked that it
+ * belongs to a real person, and the consequence is not cosmetic: `resolveAssigneeIdByEmail` returns null
+ * for an unknown address, so `createWorkOrderCore` persists the work order with `assigneeEmail` set but
+ * `assigneeId` NULL — and assigneeId is what puts it in the assignee's inbox bucket and fires the
+ * notification (lifecycle.ts). The work order LOOKS assigned on the card and in the header, is invisible
+ * in that person's inbox, and notifies nobody. That exact failure has been reported twice already
+ * (#198 builder WOs, #278 self-assigned WOs).
+ *
+ * The MUST_PROPOSE eval caught the assistant inventing an assignee email roughly 1 run in 10-30, despite
+ * both the system prompt and the tool schema description forbidding it in as many words. Prose has now
+ * failed twice here, so this is the code guard: an unresolvable assignee becomes an unresolved item, which
+ * downgrades the proposal to `needs_input` -> a Draft card that names the problem and cannot commit.
+ * It catches a plain user typo the same way, which is the more common case.
+ */
+async function unresolvedAssignee(assigneeEmail: string | null): Promise<UnresolvedItem[]> {
+  const email = assigneeEmail?.trim();
+  if (!email) return [];
+  const member = await prisma.member.findFirst({
+    where: { user: { email: { equals: email, mode: "insensitive" } } },
+    select: { userId: true },
+  });
+  if (member) return [];
+  return [
+    {
+      key: "wo-assignee",
+      label: "Assignee",
+      reason: `No one at this winery has the email ${email}. Pick the person to assign this to, or leave it unassigned — a work order with an unrecognised assignee never reaches anyone's inbox.`,
+    },
+  ];
+}
+
 async function computeNlProposal(raw: unknown): Promise<{ proposal: WorkOrderProposal; rawTaskBuilds: TaskBuild[] }> {
   const draft = canonicalizeNlWorkOrderDraft(raw);
   validateNlWorkOrderMetadata(draft);
@@ -877,10 +912,13 @@ async function computeNlProposal(raw: unknown): Promise<{ proposal: WorkOrderPro
   //
   // The downgrade is what makes dropping a partial from `tasks` safe: `ready` gates the signed taskBuilds
   // and the fingerprint below, so a work order can never commit while one of its tasks is still missing.
-  const partialUnresolved = draft.partials.flatMap((p) => p.unresolved);
-  const unresolved = [...readiness.unresolved, ...partialUnresolved];
+  // Gaps the readiness engine cannot see: tasks the canonicalizer could not type, and a WO-level assignee
+  // that matches nobody. BOTH must downgrade the status, not merely be listed — an unresolved item that
+  // leaves the proposal `ready` still mints a token and commits, which is the bug this guards against.
+  const extraUnresolved = [...draft.partials.flatMap((p) => p.unresolved), ...(await unresolvedAssignee(draft.assigneeEmail))];
+  const unresolved = [...readiness.unresolved, ...extraUnresolved];
   const status: ProposalStatus =
-    partialUnresolved.length > 0 && readiness.status === "ready" ? "needs_input" : readiness.status;
+    extraUnresolved.length > 0 && readiness.status === "ready" ? "needs_input" : readiness.status;
 
   const ready = status === "ready";
   const proposal: WorkOrderProposal = {
