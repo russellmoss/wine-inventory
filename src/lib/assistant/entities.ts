@@ -6,6 +6,8 @@ import { findScopedBlocks, resolveVineyards } from "./scope";
 import { withFields, type EntityField, type FieldSpec, type ValidatedValues } from "./fields";
 import { resolveExactlyOne, resolveOneOrChoice, type ResolveResult } from "./tools/resolve";
 import type { ChoiceRequest } from "./assistant-events";
+import { readUnitValue, spacingToCanonicalM } from "@/lib/vineyard/field-coercion";
+import { formatSpacing, type Unit } from "@/lib/vineyard/units";
 import { assertBlockCascadeSafe, cascadeDeleteBlockChildrenTx } from "@/lib/vineyard/block-delete";
 
 /**
@@ -78,7 +80,7 @@ export type EntityConfig = {
    *  `update` runs inside the tx and so cannot ask the user anything; resolution has to happen out
    *  here, where an ambiguous name can still return a clickable picker. Return the augmented values,
    *  or a ChoiceRequest to hand the user a picker instead of writing. Omit → values pass through. */
-  buildUpdate?: (user: AppUser, values: ValidatedValues) => Promise<ValidatedValues | ChoiceRequest>;
+  buildUpdate?: (user: AppUser, values: ValidatedValues, id: string) => Promise<ValidatedValues | ChoiceRequest>;
   /** Keys that `buildUpdate` adds as plumbing (resolved FK ids). Hidden from the confirm card, which
    *  shows the human-readable sibling instead — nobody should have to confirm "varietyId: cmxyz…". */
   internalUpdateKeys?: string[];
@@ -165,7 +167,26 @@ const blockFields: EntityField[] = [
   { name: "clone", type: "string", max: 80, description: "Clone." },
   { name: "rootstock", type: "string", max: 80, description: "Rootstock." },
   { name: "irrigated", type: "boolean", description: "Whether the block is irrigated." },
+  // Unit 4. These two derive planted acreage together with vineCount, which was ALREADY writable —
+  // so before this the assistant could change the vine count and strand the acreage with no way to
+  // correct it. Values arrive in whatever unit the user spoke, so the unit is declared explicitly
+  // rather than guessed; canonical storage stays metric (units.ts).
+  { name: "rowSpacing", type: "float", min: 0, description: "Distance between rows, in the unit given by spacingUnit." },
+  { name: "vineSpacing", type: "float", min: 0, description: "Distance between vines within a row, in the unit given by spacingUnit." },
+  { name: "spacingUnit", type: "enum", enumValues: ["imperial", "metric"],
+    description: "Unit for rowSpacing and vineSpacing. Defaults to imperial (feet)." },
 ];
+
+/** The unit this block's vineyard displays in, so a confirm card never compares feet to meters. */
+async function blockDisplayUnit(blockId: string): Promise<Unit> {
+  const row = await prisma.vineyardBlock.findUnique({
+    where: { id: blockId },
+    select: { vineyard: { select: { detail: { select: { defaultUnit: true } } } } },
+  });
+  return readUnitValue(row?.vineyard.detail?.defaultUnit);
+}
+
+const num = (v: unknown): number | null => (v == null ? null : Number(v));
 
 const vineyardBlock: EntityConfig = {
   name: "VineyardBlock",
@@ -215,27 +236,60 @@ const vineyardBlock: EntityConfig = {
       select: {
         blockLabel: true, numRows: true, vineCount: true, yearPlanted: true, clone: true,
         rootstock: true, irrigated: true, varietyId: true,
+        rowSpacingM: true, vineSpacingM: true,
         variety: { select: { name: true } },
       },
     });
     if (!row) return null;
-    // Flatten the relation to a NAME so the before→after card reads "variety: Cabernet → Merlot".
-    // `varietyId` rides along so the audit diff records a change rather than a bare addition.
-    const { variety, ...rest } = row;
-    return { ...rest, variety: variety?.name ?? null };
+    const unit = await blockDisplayUnit(id);
+    const { variety, rowSpacingM, vineSpacingM, ...rest } = row;
+    return {
+      ...rest,
+      // Flatten the relation to a NAME so the card reads "variety: Cabernet → Merlot".
+      // `varietyId` rides along so the audit diff records a change, not a bare addition.
+      variety: variety?.name ?? null,
+      // Spacing shows in the vineyard's display unit ("7.00 ft"), never raw meters. The canonical
+      // numbers stay for the audit diff and are hidden from the card by internalUpdateKeys.
+      rowSpacing: formatSpacing(num(rowSpacingM), unit),
+      vineSpacing: formatSpacing(num(vineSpacingM), unit),
+      rowSpacingM: num(rowSpacingM),
+      vineSpacingM: num(vineSpacingM),
+    };
   },
-  internalUpdateKeys: ["varietyId"],
-  async buildUpdate(_user, values) {
-    if (values.variety == null) return values;
-    const res = await resolveVarietyId(String(values.variety));
-    if (res.kind === "choice") return res.choice;
-    // Store the CANONICAL name, not what the user typed — "merlot" confirms as "Merlot".
-    return { ...values, variety: res.row.name, varietyId: res.row.id };
+  internalUpdateKeys: ["varietyId", "rowSpacingM", "vineSpacingM"],
+  async buildUpdate(_user, values, id) {
+    const out: ValidatedValues = { ...values };
+
+    if (values.variety != null) {
+      const res = await resolveVarietyId(String(values.variety));
+      if (res.kind === "choice") return res.choice;
+      // Store the CANONICAL name, not what the user typed — "merlot" confirms as "Merlot".
+      out.variety = res.row.name;
+      out.varietyId = res.row.id;
+    }
+
+    if (values.rowSpacing != null || values.vineSpacing != null) {
+      const typedIn = readUnitValue(values.spacingUnit);
+      const shownIn = await blockDisplayUnit(id);
+      if (values.rowSpacing != null) {
+        const m = spacingToCanonicalM(values.rowSpacing, "Row spacing", typedIn);
+        out.rowSpacingM = m!;
+        out.rowSpacing = formatSpacing(m, shownIn);
+      }
+      if (values.vineSpacing != null) {
+        const m = spacingToCanonicalM(values.vineSpacing, "Vine spacing", typedIn);
+        out.vineSpacingM = m!;
+        out.vineSpacing = formatSpacing(m, shownIn);
+      }
+    }
+    // An input-only field: it says how to read the numbers, it is not a column.
+    delete out.spacingUnit;
+    return out;
   },
   async update(tx, id, values) {
-    // `variety` is the display name carried for the preview and audit; `varietyId` is the column.
+    // Display-only keys carried for the preview and audit; the *M columns hold the writes.
     const data: Record<string, unknown> = { ...values };
-    delete data.variety;
+    for (const key of ["variety", "rowSpacing", "vineSpacing", "spacingUnit"]) delete data[key];
     await tx.vineyardBlock.update({ where: { id }, data: data as Prisma.VineyardBlockUncheckedUpdateInput });
   },
   async buildCreate(user, values) {
@@ -257,6 +311,7 @@ const vineyardBlock: EntityConfig = {
       }
       varietyId = res.row.id;
     }
+    const typedIn = readUnitValue(values.spacingUnit);
     const data: Record<string, unknown> = {
       vineyardId: vineyard.id,
       blockLabel: values.blockLabel ?? null,
@@ -267,6 +322,8 @@ const vineyardBlock: EntityConfig = {
       clone: values.clone ?? null,
       rootstock: values.rootstock ?? null,
       irrigated: values.irrigated ?? null,
+      rowSpacingM: spacingToCanonicalM(values.rowSpacing, "Row spacing", typedIn),
+      vineSpacingM: spacingToCanonicalM(values.vineSpacing, "Vine spacing", typedIn),
     };
     return { data, label: `${values.blockLabel ?? "(unlabeled)"} in ${vineyard.name}` };
   },

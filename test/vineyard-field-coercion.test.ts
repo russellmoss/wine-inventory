@@ -92,7 +92,12 @@ describe("spacingToCanonicalM", () => {
     expect(spacingToCanonicalM(null, "Row spacing", "imperial")).toBeNull();
   });
   it("refuses a negative outright (optFloat's min: 0 bound)", () => {
-    expect(() => spacingToCanonicalM("-1", "Row spacing", "imperial")).toThrow(/Row spacing/);
+    // Asserts the exact wording, not just the label: a `min: 0` bound used to reject this with
+    // "must be at least 0", which implies 0 is allowed. Zero and negative are the same mistake
+    // and must say so identically.
+    expect(() => spacingToCanonicalM("-1", "Row spacing", "imperial")).toThrow(
+      /Row spacing must be greater than 0/,
+    );
   });
 
   // ── R1: previously, zero silently cleared the field ──

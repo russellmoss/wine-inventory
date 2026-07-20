@@ -68,7 +68,7 @@ export const dbUpdateTool: AssistantTool = {
     if (entity.buildUpdate) {
       // FK names → ids, out here where an ambiguous name can still become a clickable picker.
       // `update` runs inside the transaction and cannot ask the user anything.
-      const resolved = await entity.buildUpdate(ctx.user, values);
+      const resolved = await entity.buildUpdate(ctx.user, values, row.id);
       if ("needsChoice" in resolved) return resolved;
       values = resolved;
     }

@@ -115,8 +115,8 @@ describe("entity registry — field lists unchanged by the Unit 2 refactor", () 
     // Unit 3 made variety + the four planting fields symmetric. `vineyard` stays create-only
     // (re-parenting a block is a different operation), so this entity still exercises the guard.
     VineyardBlock: {
-      creatable: ["blockLabel:string:1..80", "clone:string:..80", "irrigated:boolean", "numRows:int:0..", "rootstock:string:..80", "variety:string", "vineCount:int:0..", "vineyard:string!", "yearPlanted:int:1900..2100"],
-      editable: ["blockLabel:string:1..80", "clone:string:..80", "irrigated:boolean", "numRows:int:0..", "rootstock:string:..80", "variety:string", "vineCount:int:0..", "yearPlanted:int:1900..2100"],
+      creatable: ["blockLabel:string:1..80", "clone:string:..80", "irrigated:boolean", "numRows:int:0..", "rootstock:string:..80", "rowSpacing:float:0..", "spacingUnit:enum", "variety:string", "vineCount:int:0..", "vineSpacing:float:0..", "vineyard:string!", "yearPlanted:int:1900..2100"],
+      editable: ["blockLabel:string:1..80", "clone:string:..80", "irrigated:boolean", "numRows:int:0..", "rootstock:string:..80", "rowSpacing:float:0..", "spacingUnit:enum", "variety:string", "vineCount:int:0..", "vineSpacing:float:0..", "yearPlanted:int:1900..2100"],
     },
     Vineyard: {
       creatable: ["name:string!:2..80"],

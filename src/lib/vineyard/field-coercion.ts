@@ -78,7 +78,10 @@ export function readUnitValue(v: unknown): Unit {
  * Contrast `elevationToCanonicalM` below, where 0 IS meaningful (sea level).
  */
 export function spacingToCanonicalM(v: unknown, label: string, unit: Unit): number | null {
-  const raw = optFloat(v, label, { min: 0 });
+  // Deliberately NO `min` bound here. With `min: 0`, optFloat rejected negatives first with
+  // "must be at least 0" — which tells the user 0 is acceptable, and it is not. Letting the
+  // `<= 0` check own the whole rejection gives one true message for both cases.
+  const raw = optFloat(v, label);
   if (raw === null) return null;
   if (raw <= 0) throw new ActionError(`${label} must be greater than 0.`);
   return toCanonicalSpacing(raw, unit);

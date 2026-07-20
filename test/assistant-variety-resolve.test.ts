@@ -10,9 +10,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * have similar names — the #328 lesson.
  */
 
-const mocks = vi.hoisted(() => ({ findMany: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findMany: vi.fn(), blockFindUnique: vi.fn() }));
 
-vi.mock("@/lib/prisma", () => ({ prisma: { variety: { findMany: mocks.findMany } } }));
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    variety: { findMany: mocks.findMany },
+    vineyardBlock: { findUnique: mocks.blockFindUnique },
+  },
+}));
 vi.mock("@/lib/assistant/scope", () => ({ findScopedBlocks: vi.fn(), resolveVineyards: vi.fn() }));
 vi.mock("@/lib/vineyard/block-delete", () => ({
   assertBlockCascadeSafe: vi.fn(),
@@ -65,43 +70,100 @@ describe("resolveVarietyId", () => {
 
 describe("VineyardBlock.buildUpdate", () => {
   const block = () => getEntity("VineyardBlock")!;
-  beforeEach(() => mocks.findMany.mockReset());
+  const displaysIn = (unit: string) =>
+    mocks.blockFindUnique.mockResolvedValue({ vineyard: { detail: { defaultUnit: unit } } });
 
-  it("passes values through untouched when variety is absent", async () => {
-    const out = await block().buildUpdate!({} as never, { numRows: 12 });
+  beforeEach(() => {
+    mocks.findMany.mockReset();
+    mocks.blockFindUnique.mockReset();
+    displaysIn("imperial");
+  });
+
+  it("passes values through untouched when nothing needs resolving", async () => {
+    const out = await block().buildUpdate!({} as never, { numRows: 12 }, "b1");
     expect(out).toEqual({ numRows: 12 });
     expect(mocks.findMany).not.toHaveBeenCalled();
   });
 
   it("adds varietyId and canonicalizes the typed name", async () => {
     mocks.findMany.mockResolvedValue([MERLOT]);
-    const out = await block().buildUpdate!({} as never, { variety: "merlot" });
+    const out = await block().buildUpdate!({} as never, { variety: "merlot" }, "b1");
     expect(out).toEqual({ variety: "Merlot", varietyId: "v-merlot" });
   });
 
   it("returns the picker instead of resolving when ambiguous", async () => {
     mocks.findMany.mockResolvedValue([MERLOT, MERLOT_BLANC]);
-    const out = await block().buildUpdate!({} as never, { variety: "merlo" });
+    const out = await block().buildUpdate!({} as never, { variety: "merlo" }, "b1");
     expect(out).toHaveProperty("needsChoice", true);
   });
 
-  it("declares varietyId internal so it stays off the confirm card", () => {
-    expect(block().internalUpdateKeys).toContain("varietyId");
+  it("declares the plumbing keys internal so they stay off the confirm card", () => {
+    expect(block().internalUpdateKeys).toEqual(
+      expect.arrayContaining(["varietyId", "rowSpacingM", "vineSpacingM"]),
+    );
+  });
+
+  // ── Unit 4: spacing ──
+  it("converts feet to canonical meters by default", async () => {
+    const out = (await block().buildUpdate!({} as never, { vineSpacing: 5 }, "b1")) as Record<string, unknown>;
+    expect(out.vineSpacingM).toBeCloseTo(1.524, 4);
+    expect(out.vineSpacing).toBe("5.00 ft");
+    expect(out.spacingUnit).toBeUndefined();
+  });
+
+  it("passes metric input through unconverted when the unit says so", async () => {
+    const out = (await block().buildUpdate!({} as never, { rowSpacing: 3, spacingUnit: "metric" }, "b1")) as Record<string, unknown>;
+    expect(out.rowSpacingM).toBeCloseTo(3, 6);
+  });
+
+  it("renders the card in the VINEYARD's unit, not the unit the user typed", async () => {
+    // Spoke metric, vineyard displays imperial — the before side comes from `current` in imperial,
+    // so the after side must match or the card silently compares 3 m to 7 ft.
+    displaysIn("imperial");
+    const out = (await block().buildUpdate!({} as never, { rowSpacing: 3, spacingUnit: "metric" }, "b1")) as Record<string, unknown>;
+    expect(out.rowSpacing).toBe("9.84 ft");
+  });
+
+  it("refuses zero spacing instead of silently clearing it (R1)", async () => {
+    await expect(block().buildUpdate!({} as never, { rowSpacing: 0 }, "b1")).rejects.toThrow(/greater than 0/);
+  });
+
+  it("refuses negative spacing", async () => {
+    await expect(block().buildUpdate!({} as never, { vineSpacing: -2 }, "b1")).rejects.toThrow(/greater than 0/);
   });
 });
 
 describe("VineyardBlock.update", () => {
-  it("writes varietyId and drops the display-only variety name", async () => {
+  it("writes the columns and drops every display-only key", async () => {
     const update = vi.fn();
     const tx = { vineyardBlock: { update } } as never;
     await getEntity("VineyardBlock")!.update!(tx, "b1", {
       variety: "Merlot",
       varietyId: "v-merlot",
+      rowSpacing: "9.84 ft",
+      rowSpacingM: 3,
+      vineSpacing: "5.00 ft",
+      vineSpacingM: 1.524,
+      spacingUnit: "metric",
       numRows: 12,
     });
     expect(update).toHaveBeenCalledWith({
       where: { id: "b1" },
-      data: { varietyId: "v-merlot", numRows: 12 },
+      data: { varietyId: "v-merlot", rowSpacingM: 3, vineSpacingM: 1.524, numRows: 12 },
     });
+  });
+});
+
+describe("planted acreage stays correctable", () => {
+  it("the fields that derive it are now writable on BOTH paths", () => {
+    // The original hazard: vineCount was writable and the spacings were not, so the assistant could
+    // change one factor of rowSpacing * vineSpacing * vineCount and strand the result.
+    const block = getEntity("VineyardBlock")!;
+    const creatable = block.creatable!.map((f) => f.name);
+    const editable = block.editable!.map((f) => f.name);
+    for (const field of ["vineCount", "rowSpacing", "vineSpacing"]) {
+      expect(creatable, `create: ${field}`).toContain(field);
+      expect(editable, `update: ${field}`).toContain(field);
+    }
   });
 });
