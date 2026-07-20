@@ -44,6 +44,28 @@ The machinery to find out is in place and was proven end to end by the block its
 fired, the crawl loops would skip, and `findDarkSources` fails the job loudly instead of letting
 the source rot silently.
 
+### Review findings NOT fixed (deliberate, tracked)
+
+`/review` (3 specialists + adversarial) found 3 real bugs, all fixed in `fix(kb): address /review
+findings`. These were judged real but deferred:
+
+- **The source-level tombstone exclusion can mask a legitimate withdrawal indefinitely.** One
+  challenged URL removes that source's whole document set from the stale pass, and MSU's block may
+  recur every month. Kept because failing safe is right, but note the per-probe `challenged` check
+  added in U4 is precise and self-healing, so the source-level exclusion is arguably redundant now.
+  **Follow-up:** either drop the source-level exclusion, or add a staleness alarm (count + oldest
+  `lastVerifiedAt` of active docs unverified in >90 days, per source) to the monthly summary so an
+  indefinitely-masked source becomes visible instead of decaying quietly.
+- **The challenge guard sits before the `contentType === "other"` guard.** A non-HTML body whose
+  first 64 KB happens to contain a short marker is counted as `skippedChallenge` (which excludes
+  the source from tombstoning) rather than the harmless `skippedType`. Very low probability;
+  swapping the two guards would close it.
+- **`decideFetchOutcome` refactor.** The ordering test is still source-level (now correctly scoped
+  per function, and sabotage-verified). The genuinely better fix is extracting the post-fetch
+  decision into a pure function all three loops call, turning "challenge is checked before persist"
+  into a behavioural assertion. Same move that made `detectChallengePage` and `decideAdmission`
+  testable. Deferred as a refactor rather than a review fix.
+
 ### What remains (all of Unit 8's live half)
 
 - [ ] Merge + deploy, THEN `npm run seed:knowledge-sources` from the MAIN checkout.

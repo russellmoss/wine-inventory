@@ -190,7 +190,11 @@ async function main() {
         "Most likely the runner's datacenter IP is being refused where a residential IP is not. " +
         "This is deliberately loud — a source silently going dark is how a corpus rots.",
     );
-    process.exit(1);
+    // exitCode, not process.exit(): the workflow pipes stdout through `tee`, so writes are async
+    // and a hard exit can truncate unflushed output. The ::KB_RECRAWL_SUMMARY:: marker surviving is
+    // the entire point of failing here rather than earlier, so do not risk it. Nothing keeps the
+    // event loop alive once disconnectSystem() has resolved.
+    process.exitCode = 1;
   }
 }
 
