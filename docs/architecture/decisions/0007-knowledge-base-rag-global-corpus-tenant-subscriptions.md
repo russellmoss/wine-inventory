@@ -37,6 +37,15 @@ owns the corpus, and how each winery controls it.
    one row (byte-dedup on a single document row) would destroy provenance, make tombstoning ambiguous, and
    leak content across subscriptions — the council flagged this (C3).
 
+   **Consequence, discovered by plan 084:** "one logical doc per `(source, canonicalUrl)`" is enforced in
+   three independent places — `normalizeCrawlUrl` does `raw.split("#")[0]`, `extractLinks` drops `#` hrefs,
+   and alias-dedup keys on the raw-BYTE hash (so two fragments of one page collide and the second is
+   hard-deleted). A source that mixes technical and non-technical content *within* one URL therefore cannot
+   be handled by emitting a document per fragment; it must strip in place and emit one filtered document.
+   That is what `sectionFilter` does (see [[../scale-register|scale-register]]). If a future requirement
+   genuinely needs per-fragment identity — most likely per-chunk citation deep-links — the cheaper move is
+   an `anchor` column on `KnowledgeChunk`, NOT relaxing any of those three points.
+
 4. **Retrieval is HYBRID** — dense (pgvector cosine `<=>`) + lexical (a generated `tsvector`, the same
    full-text mechanism already used for assistant-conversation search) fused by Reciprocal Rank Fusion.
    Pure dense search under-ranks the exact numbers/acronyms/thresholds this domain is full of
