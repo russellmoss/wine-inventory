@@ -16,6 +16,7 @@ vi.mock("@/lib/feedback/clarification", () => ({
 }));
 
 const { runAssistant } = await import("@/lib/assistant/run");
+const { OVERCLAIM_REPAIR_PROMPT } = await import("@/lib/assistant/overclaim-guard");
 
 type ScriptedTurn = Anthropic.Message;
 
@@ -145,5 +146,47 @@ describe("runAssistant — loop characterization", () => {
   it("does NOT append the correction on an ordinary read answer", async () => {
     const { events } = await run([textTurn("The latest Brix for Block 3 is 24.2.")]);
     expect(events.map((e) => (e.type === "text" ? e.text : "")).join("")).not.toContain("Correction");
+  });
+});
+
+// Plan 083 U5. The correction tells the user nothing was saved, which is honest but leaves them with
+// their request unperformed. Before apologising, give the model one chance to actually do it.
+describe("runAssistant — over-claim repair turn", () => {
+  const CLAIM = "I've logged a tasting note on T5 — review and confirm the card to save it.";
+
+  it("retries once when the model claims a card without calling anything", async () => {
+    const { scripted } = await run([textTurn(CLAIM), textTurn(CLAIM)]);
+    // Two model calls: the original claim, then the repair attempt. Not three.
+    expect(scripted.calls()).toBe(2);
+  });
+
+  it("falls back to the correction, exactly once, when the repair also fails", async () => {
+    const { events, result } = await run([textTurn(CLAIM), textTurn(CLAIM)]);
+
+    const corrections = events.filter(
+      (e) => e.type === "text" && (e as { text: string }).text.includes("Correction"),
+    );
+    expect(corrections).toHaveLength(1);
+    expect(result.trace.overclaimRepair).toBe("failed");
+  });
+
+  it("never triggers on a reply that claims nothing", async () => {
+    const { scripted, result } = await run([textTurn("The latest Brix for Block 3 is 24.2.")]);
+    expect(scripted.calls()).toBe(1);
+    expect(result.trace.overclaimRepair).toBeUndefined();
+  });
+
+  it("never leaks the repair instruction into anything the user sees", async () => {
+    // Ablation B (plan 083 U1) showed the model will echo injected scaffolding verbatim, so the
+    // prompt must reach the conversation and nothing else.
+    const { events, scripted } = await run([textTurn(CLAIM), textTurn(CLAIM)]);
+
+    const shown = events.map((e) => (e.type === "text" ? e.text : "")).join(" ");
+    expect(shown).not.toContain("Call the correct tool now");
+    expect(shown).not.toContain(OVERCLAIM_REPAIR_PROMPT);
+
+    // It IS in the second request's messages — that is the whole mechanism.
+    const second = scripted.seen[1];
+    expect(JSON.stringify(second.messages)).toContain("Call the correct tool now");
   });
 });

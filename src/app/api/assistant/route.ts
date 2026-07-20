@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/dal";
-import { runAssistant } from "@/lib/assistant/run";
+import { runAssistant, type ChatMessage } from "@/lib/assistant/run";
 import { parseAndWindowMessages } from "@/lib/assistant/message-window";
 import type { AssistantEvent } from "@/lib/assistant/assistant-events";
 import type { Prisma } from "@prisma/client";
@@ -8,7 +8,9 @@ import {
   createConversation,
   appendMessage,
   touchConversation,
+  listMessagesForReplay,
 } from "@/lib/assistant/conversations";
+import { buildReplayMessages, windowReplayRows } from "@/lib/assistant/replay";
 import { generateTitle } from "@/lib/assistant/title";
 
 // Node runtime + the Vercel ceiling: the tool-use loop makes several model
@@ -79,9 +81,36 @@ export async function POST(req: Request) {
         conversationId = null; // give up on persistence, still answer the user
       }
 
+      // Plan 083: rebuild history from the DB rather than trusting the client's array.
+      //
+      // The client can only send TEXT — proposal/choice items are filtered out of it, so every prior
+      // tool call is invisible in what it posts. That is the bug: the model saw its own turns claiming
+      // cards with no tool call attached and completed the pattern in prose (0/8 on the captured
+      // repro, 8/8 once the blocks are restored). The persisted rows carry the trace, so they can be
+      // replayed faithfully. The user turn was just appended, so `rows` already ends on it.
+      //
+      // If persistence failed, conversationId is null and we fall back to the client array — degraded
+      // replay, but the user still gets an answer.
+      let replayed: ChatMessage[] = messages;
+      if (conversationId) {
+        try {
+          const rows = await listMessagesForReplay(conversationId);
+          // Bound BEFORE rebuilding — windowing the rebuilt array could split a tool_use from its
+          // tool_result, which is a hard 400. Cutting at row boundaries makes that unrepresentable.
+          const rebuilt = buildReplayMessages(windowReplayRows(rows));
+          if (rebuilt.length > 0) replayed = rebuilt;
+        } catch {
+          /* fall back to the client-supplied history */
+        }
+      }
+
       try {
-        const run = await runAssistant({ user, messages, send });
-        if (conversationId && run.text.trim()) {
+        const run = await runAssistant({ user, messages: replayed, send });
+        // Persist when there is text OR any tool call. A turn that emitted only a card has no text;
+        // dropping it (the old `run.text.trim()` gate) threw away exactly the tool evidence replay
+        // needs, so the next turn would look like the assistant answered a write request with nothing.
+        const hasToolEvidence = run.trace.toolCalls.length > 0;
+        if (conversationId && (run.text.trim() || hasToolEvidence)) {
           try {
             const assistantMessageId = await appendMessage({
               conversationId,

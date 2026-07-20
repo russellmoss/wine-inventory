@@ -5,7 +5,9 @@ import {
   MAX_MESSAGES,
   MAX_CONTENT,
 } from "@/lib/assistant/message-window";
-import type { ChatMessage } from "@/lib/assistant/run";
+// TextMessage, not ChatMessage: this parser handles what the CLIENT posts, which is text only.
+// Replayed turns rebuilt from the DB carry blocks and go through replay.ts instead (plan 083).
+import type { TextMessage } from "@/lib/assistant/message-window";
 
 // Regression for the Bhutan "'Invalid message' error when typing in chat" report
 // (feedback cmrm9s97r0000ju04g6ry4hix). The client sends the FULL conversation history
@@ -15,14 +17,14 @@ import type { ChatMessage } from "@/lib/assistant/run";
 // over-long PRIOR turns instead of rejecting.
 
 // Alternating u/a/u/... starting on user. Odd length ends on a user turn.
-function conversation(n: number): ChatMessage[] {
+function conversation(n: number): TextMessage[] {
   return Array.from({ length: n }, (_, i) => ({
     role: i % 2 === 0 ? "user" : "assistant",
     content: `m${i}`,
   }));
 }
 
-function assertModelReady(messages: ChatMessage[]) {
+function assertModelReady(messages: TextMessage[]) {
   expect(messages.length).toBeGreaterThan(0);
   expect(messages[0].role).toBe("user"); // Anthropic requires a leading user turn
   expect(messages[messages.length - 1].role).toBe("user"); // must end on a user turn
@@ -56,7 +58,7 @@ describe("parseAndWindowMessages", () => {
 
   it("truncates an over-long PRIOR turn (e.g. a huge assistant reply) rather than rejecting", () => {
     const huge = "x".repeat(MAX_CONTENT + 500);
-    const raw: ChatMessage[] = [
+    const raw: TextMessage[] = [
       { role: "user", content: "hi" },
       { role: "assistant", content: huge }, // poisoned every future send before the fix
       { role: "user", content: "and now?" },
@@ -72,14 +74,14 @@ describe("parseAndWindowMessages", () => {
   });
 
   it("rejects an over-long CURRENT message with a specific, non-opaque error", () => {
-    const raw: ChatMessage[] = [{ role: "user", content: "y".repeat(MAX_CONTENT + 1) }];
+    const raw: TextMessage[] = [{ role: "user", content: "y".repeat(MAX_CONTENT + 1) }];
     const res = parseAndWindowMessages(raw);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/too long/i);
   });
 
   it("rejects an empty current message with a clear error", () => {
-    const raw: ChatMessage[] = [{ role: "user", content: "" }];
+    const raw: TextMessage[] = [{ role: "user", content: "" }];
     const res = parseAndWindowMessages(raw);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/empty/i);

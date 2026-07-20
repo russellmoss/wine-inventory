@@ -101,7 +101,28 @@ is two decisions that are Russell's, not code:
    (a plain `git commit` swept their staged files into mine — `git commit --only <paths>` is the
    safe form), and a parallel `prisma generate` **poisons vitest's resolution cache** with a stale
    "Cannot find package '@prisma/client'" that survives the package being restored (`--no-cache` clears it).
-4. ← you are here
+4. **PLAN 083 BUILT — assistant write-narration root cause (feedback `cmrsrs02`), all 6 units, on
+   `fix/assistant-history-tool-replay` (7 commits, rebased onto main, NOT pushed).** PR #391 fixed the
+   wrong thing: its premise measures 10/10 cold pre-fix. Real cause is `history.ts:16` dropping
+   `tool_use`/`tool_result` from replayed history, so the model saw its own turns claiming cards with no
+   tool call attached and completed that pattern — 0/8 on the real transcript, 8/8 with blocks restored.
+   Fix is `src/lib/assistant/replay.ts` (server rebuilds history from the DB; clients unchanged). Also:
+   row-boundary windowing so a tool_use can never be orphaned, and the over-claim guard now gets ONE
+   repair turn to actually perform the write before apologising. Re-measured plan 081's own repro under
+   history: 4/5, below threshold — its cold 3/3 overstated that fix, correction appended to plan 081.
+   ⚠️ NOT browser-verified against Demo. Pop when it is QA'd and merged.
+   (Re item 3 above: `assistant-fix/cmrsrs02` on ORIGIN never carried the duplicate U2 commits — the
+   golden-case fix was cherry-picked onto origin's tip from a throwaway worktree, so #391 merged clean.)
+5. **PLAN 083 SHIPPING — assistant write-narration root cause (feedback `cmrsrs02`), PR #404.**
+   PR #391 fixed the wrong thing: its premise measures 10/10 cold pre-fix, and re-measured AFTER #391
+   merged the bug still reproduces 0/5. Real cause is `history.ts` dropping `tool_use`/`tool_result`
+   from replayed history, so the model saw its own turns claiming cards with no tool call attached and
+   completed that pattern — 0/8 on the real transcript, 8/8 with blocks restored. Fix is
+   `src/lib/assistant/replay.ts` (server rebuilds history from the DB; clients unchanged), plus
+   row-boundary windowing so a tool_use can never be orphaned, and ONE over-claim repair turn.
+   Browser-QA'd on Demo with a DB read-back. Plan 081's cold 3/3 overstated its fix (4/5 under
+   history); correction appended there. Pop when #404 merges.
+6. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 

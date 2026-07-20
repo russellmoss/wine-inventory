@@ -583,3 +583,26 @@ Wrong-tool: 0 across every case. Fabricated unknowable fields: 0.
 
 **VERDICT:** COUNCIL APPLIED — architecture replaced (forced repair turn → Draft Card). Units 1 and 2 are
 independently shippable and gate nothing. Full council record in `council-feedback-080-assistant-card.md`.
+
+---
+
+## Correction (plan 083, 2026-07-20): the measured result overstated the fix
+
+This plan recorded the seeded repro going 2/7 → 3/3 and treated the card-emission bug as closed. Both
+numbers are real. The conclusion was too strong, because **every run of the U9 eval started cold** —
+one synthetic user message, no prior conversation.
+
+Plan 083 found a second, independent cause of the same symptom: history was replayed as TEXT ONLY
+(`history.ts` kept only string content), so prior `tool_use` / `tool_result` blocks were dropped and
+the model saw its own turns claiming cards with no tool call attached. It completed that pattern.
+
+Re-measuring this plan's own repro with conversation in front of it: **4/5**, below the 0.9 threshold
+the cold case clears at 3/3. A different utterance (`record_tasting_note` on a vessel) measures 10/10
+cold and **0/8** with real history — the same mechanism, more starkly.
+
+So the 2/7 live baseline recorded here was probably this bug, not only the readiness/prompt issues U4-U6
+addressed. Those fixes are still correct and still needed; they were simply measured in the one
+condition that cannot exhibit the failure.
+
+Fixed in plan 083 (`src/lib/assistant/replay.ts`). The eval gained a history axis so this cannot recur
+silently. See `docs/architecture/assistant-coverage.md`.

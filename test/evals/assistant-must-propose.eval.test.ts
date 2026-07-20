@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { getToolsFor } from "@/lib/assistant/registry";
 import { buildSystemPrompt } from "@/lib/assistant/prompt";
+import { buildReplayMessages, type ReplayRow } from "@/lib/assistant/replay";
 import {
   MUST_PROPOSE_GOLDEN,
   MUST_NOT_PROPOSE_GOLDEN,
   DEFAULT_EMPTY_RESULT,
+  type HistoryTurn,
   type MustProposeCase,
 } from "./assistant-must-propose.golden";
 
@@ -55,12 +59,76 @@ const MAX_EVAL_TURNS = 4;
  * model's FIRST move is `query_cellar_contents` — which the prompt explicitly tells it to do before
  * proposing. Stopping there measures the read, not the card.
  */
-async function runExchange(gc: { utterance: string; fixture?: Record<string, string> }): Promise<{
+/**
+ * Load a captured transcript from `test/evals/fixtures/<name>.history.json`.
+ *
+ * Kept as data rather than inlined in the golden file so a real conversation can be captured verbatim
+ * from `AssistantFeedback.conversation` and dropped in without being paraphrased by hand.
+ */
+function loadHistoryFixture(name: string): HistoryTurn[] {
+  const path = fileURLToPath(new URL(`./fixtures/${name}.history.json`, import.meta.url));
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as { turns?: HistoryTurn[] };
+  if (!Array.isArray(parsed.turns) || parsed.turns.length === 0) {
+    throw new Error(`history fixture "${name}" has no turns`);
+  }
+  return parsed.turns;
+}
+
+/** The read controls carry only {id, utterance, note}, so runExchange takes the narrow shape. */
+type ExchangeCase = Pick<MustProposeCase, "id" | "utterance"> &
+  Partial<Pick<MustProposeCase, "fixture" | "history" | "historyFixture">>;
+
+function historyOf(gc: ExchangeCase): HistoryTurn[] {
+  if (gc.history && gc.historyFixture) {
+    throw new Error(`${gc.id}: set history OR historyFixture, not both`);
+  }
+  return gc.historyFixture ? loadHistoryFixture(gc.historyFixture) : (gc.history ?? []);
+}
+
+/**
+ * REPLAY SEAM — routed through the SHIPPED reconstruction (plan 083 Unit 3).
+ *
+ * The eval builds its own messages array, so it does not exercise production automatically. Build the
+ * blocks by hand here and every history case passes trivially, because you have written the fix into
+ * the harness and are then measuring it — the same mistake PR #391 made, and the first version of
+ * this file made it too (5/5 on a case that reproduces at 0/8).
+ *
+ * So the golden's history turns are shaped into the persisted rows a real conversation would have
+ * written, and handed to `buildReplayMessages`. Revert replay.ts to text-only and these cases go red.
+ * That is the guard. REPLAY_TEXT_ONLY=1 reproduces the pre-fix behavior for comparison.
+ */
+const TEXT_ONLY = process.env.REPLAY_TEXT_ONLY === "1";
+
+/** The persisted rows a conversation of these turns would have produced, ending on the utterance. */
+function toReplayRows(turns: HistoryTurn[], gc: ExchangeCase): ReplayRow[] {
+  const rows: ReplayRow[] = turns.map((t, i) => {
+    if (TEXT_ONLY || !t.toolCalls?.length) return { role: t.role, content: t.content };
+    const slug = gc.id.replace(/[^a-z0-9]/gi, "");
+    return {
+      role: t.role,
+      content: t.content,
+      metadata: {
+        trace: {
+          toolCalls: t.toolCalls.map((c, k) => ({
+            id: `toolu_${slug}_${i}_${k}`,
+            name: c.name,
+            input: c.input,
+            resultPreview: c.result,
+          })),
+        },
+      },
+    };
+  });
+  rows.push({ role: "user", content: gc.utterance });
+  return rows;
+}
+
+async function runExchange(gc: ExchangeCase): Promise<{
   writeCalls: Block[];
   readCalls: string[];
   finalText: string;
 }> {
-  const messages: Turn[] = [{ role: "user", content: gc.utterance }];
+  const messages = buildReplayMessages(toReplayRows(historyOf(gc), gc)) as Turn[];
   const readCalls: string[] = [];
 
   for (let turn = 0; turn < MAX_EVAL_TURNS; turn++) {
@@ -222,6 +290,52 @@ describe("MUST_PROPOSE goldens are structurally valid", () => {
     for (const key of [...gc.readyRequires, ...(gc.unknowable ?? [])]) {
       expect(props, `${gc.id}: "${key}" is not in ${gc.tool}'s inputSchema`).toContain(key);
     }
+  });
+
+  // Plan 083: the history axis is only worth having if a broken fixture fails HERE, in normal CI,
+  // rather than at 3am in a continue-on-error nightly where a silently-cold case looks like a pass.
+  it.each(MUST_PROPOSE_GOLDEN.filter((g) => g.history || g.historyFixture))(
+    "$id declares replayable history",
+    (gc) => {
+      expect(gc.history && gc.historyFixture, `${gc.id}: set history OR historyFixture, not both`).toBeFalsy();
+      const turns = historyOf(gc);
+      expect(turns.length, `${gc.id}: empty history`).toBeGreaterThan(0);
+
+      // The API rejects a conversation that does not alternate, and expandHistory only preserves
+      // alternation if the source does. Catch it here, not as an opaque 400 mid-run.
+      turns.forEach((t, i) => {
+        expect(["user", "assistant"], `${gc.id}: turn ${i} has role "${t.role}"`).toContain(t.role);
+        if (i > 0) expect(t.role, `${gc.id}: turns ${i - 1}/${i} do not alternate`).not.toBe(turns[i - 1].role);
+        expect(typeof t.content, `${gc.id}: turn ${i} content must be a string`).toBe("string");
+      });
+      expect(turns[0].role, `${gc.id}: history must open on a user turn`).toBe("user");
+      expect(turns[turns.length - 1].role, `${gc.id}: history must end on an assistant turn (the utterance follows)`).toBe("assistant");
+
+      // Only assistant turns can carry tool calls, and every call needs a real registry tool — a
+      // fixture naming a renamed tool would replay evidence of something that cannot happen.
+      for (const [i, t] of turns.entries()) {
+        for (const call of t.toolCalls ?? []) {
+          expect(t.role, `${gc.id}: turn ${i} is a user turn with toolCalls`).toBe("assistant");
+          expect(byName.has(call.name), `${gc.id}: turn ${i} calls unknown tool "${call.name}"`).toBe(true);
+          expect(call.result.length, `${gc.id}: turn ${i} tool "${call.name}" has an empty result`).toBeGreaterThan(0);
+        }
+      }
+
+      // The PRODUCTION reconstruction must come out alternating, or the run 400s.
+      const expanded = buildReplayMessages(toReplayRows(turns, gc));
+      expanded.forEach((m, i) => {
+        if (i > 0) expect(m.role, `${gc.id}: expanded messages ${i - 1}/${i} do not alternate`).not.toBe(expanded[i - 1].role);
+      });
+      // buildReplayMessages is handed rows ending on the utterance, so the rebuilt conversation ends
+      // on that user turn — which is also what the API requires.
+      expect(expanded[expanded.length - 1].role, `${gc.id}: rebuilt conversation must end on the user utterance`).toBe("user");
+      expect(expanded[0].role, `${gc.id}: rebuilt conversation must open on a user turn`).toBe("user");
+    },
+  );
+
+  it("at least one case replays history (a fully cold suite cannot see the plan-083 failure class)", () => {
+    const withHistory = MUST_PROPOSE_GOLDEN.filter((g) => g.history || g.historyFixture);
+    expect(withHistory.length, "no case replays prior turns — the history axis has been lost").toBeGreaterThan(0);
   });
 
   it("every knownGap states a reason (a bare skip is how a bug becomes permanent)", () => {
