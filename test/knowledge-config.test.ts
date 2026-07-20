@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   KNOWLEDGE_SOURCES,
+  TRUSTED_DOMAINS,
   TRUSTED_DOMAIN_SET,
   findSourceConfig,
   partitionSeededSources,
 } from "@/lib/knowledge/config";
+import { CURATED_SPECS, findCuratedSpec } from "@/lib/knowledge/curated-specs";
+import { pathAllowed as crawlerPathAllowed } from "@/lib/knowledge/crawl/crawler";
 import { expandQueryTerms } from "@/lib/knowledge/synonyms";
 
 describe("knowledge source config", () => {
@@ -37,6 +40,82 @@ describe("knowledge source config", () => {
     for (const s of KNOWLEDGE_SOURCES) {
       expect(TRUSTED_DOMAIN_SET.has(s.homeDomain)).toBe(true);
     }
+  });
+
+  // Plan 084. blogs.cornell.edu is Cornell's ENTIRE university-wide WordPress multisite, so unlike every
+  // other source in the registry, trusting the host does NOT bound the crawl — only allowPrefixes does.
+  // A future "just allow /" edit would quietly point the crawler at thousands of unrelated Cornell blogs.
+  describe("cornell-grapes multisite scoping", () => {
+    const cornell = () => findSourceConfig("cornell-grapes")!;
+
+    // Assert against the REAL crawler predicate, not a re-implementation of it. A test-local copy of the
+    // rule would keep passing if the crawler's own rule drifted, which is the opposite of what a guard
+    // on "does the crawl stay inside /grapes/" is for.
+    const pathAllowed = (path: string) => crawlerPathAllowed(cornell(), `https://blogs.cornell.edu${path}`);
+
+    it("never allows a bare root prefix", () => {
+      expect(cornell().allowPrefixes).not.toContain("/");
+    });
+
+    it("allows the grape site and the sibling blog's FILE STORE only", () => {
+      expect(pathAllowed("/grapes/ipm/diseases/")).toBe(true);
+      expect(pathAllowed("/newfruit/files/2016/12/Canopy-Management-for-Hybrids-2007.pdf")).toBe(true);
+      // the sibling blog's own pages are tree fruit and berries, not grapes
+      expect(pathAllowed("/newfruit/")).toBe(false);
+      expect(pathAllowed("/newfruit/apples/")).toBe(false);
+    });
+
+    it("refuses unrelated blogs on the same multisite", () => {
+      for (const path of ["/", "/nutrition/", "/economics/", "/hort/", "/somerandomblog/2024/post/"]) {
+        expect(pathAllowed(path)).toBe(false);
+      }
+    });
+
+    it("refuses Cornell's hops and brewing programs, slashed OR unslashed", () => {
+      // verify-knowledge-base.ts asserts a beer/IPA question surfaces nothing on-topic; wsu carries an
+      // equivalent deny for its brewing certificate program.
+      //
+      // The unslashed forms matter: deny entries are written directory-style, but WordPress serves the
+      // unslashed URL and 301s to the slashed one. A plain startsWith let /grapes/hops straight through.
+      for (const p of ["/grapes/hops/", "/grapes/hops", "/grapes/brewing/", "/grapes/brewing"]) {
+        expect(pathAllowed(p), p).toBe(false);
+      }
+    });
+
+    it("refuses the unslashed form of every one of its deny prefixes", () => {
+      for (const deny of cornell().denyPrefixes) {
+        const unslashed = deny.endsWith("/") ? deny.slice(0, -1) : deny;
+        expect(pathAllowed(unslashed), unslashed).toBe(false);
+      }
+    });
+
+    it("refuses WordPress cruft and thin taxonomy archives", () => {
+      for (const path of [
+        "/grapes/wp-admin/",
+        "/grapes/wp-json/",
+        "/grapes/feed/",
+        "/grapes/category/news/",
+        "/grapes/tag/mildew/",
+        "/grapes/author/someone/",
+        "/grapes/page/3/",
+      ]) {
+        expect(pathAllowed(path)).toBe(false);
+      }
+    });
+
+    it("its seed root is inside its own allow prefixes", () => {
+      const cfg = cornell();
+      for (const root of cfg.seedRoots) {
+        const path = new URL(root).pathname;
+        expect(cfg.allowPrefixes.some((p) => path.startsWith(p))).toBe(true);
+      }
+    });
+
+    it("stays on the monthly auto-crawl loop", () => {
+      // The monthly refresh comes from autoCrawl defaulting to true (recrawl-knowledge.ts filters on it),
+      // NOT from crawlCadence, which nothing reads.
+      expect(cornell().autoCrawl).not.toBe(false);
+    });
   });
 
   it("apex sources also trust their www host (subdomain hosts have no www form)", () => {
@@ -135,6 +214,118 @@ describe("VT Enology Notes source (plan 084)", () => {
     expect(vt().denyPrefixes.some((d) => "/EN/2000.html".startsWith(d))).toBe(true);
     // but a real issue that happens to look numeric is still fine
     expect(vt().denyPrefixes.some((d) => "/EN/166.html".startsWith(d))).toBe(false);
+  });
+});
+
+// Plan 084 U5/U8 — generic registry invariants. Each of these encodes a failure mode that is silent:
+// nothing crashes, the corpus is just quietly wrong or quietly short.
+describe("knowledge registry integrity", () => {
+  // The original version of this guard checked only `cornell-grapes` — and the OTHER source added in the
+  // same commit, sitting on the same host, carried a bare "/". The guard was written for the wrong one.
+  // Generalized so a shared host can never be paired with a wide-open prefix again.
+  it("no source on a shared/multisite host carries a bare root allow prefix", () => {
+    const SHARED_HOSTS = ["blogs.cornell.edu", "cornell.edu"];
+    for (const s of KNOWLEDGE_SOURCES) {
+      const hosts = [s.homeDomain, ...s.seedRoots.map((r) => new URL(r).hostname)];
+      const onShared = hosts.some((h) => SHARED_HOSTS.some((sh) => h === sh || h.endsWith(`.${sh}`)));
+      if (!onShared) continue;
+      expect(s.allowPrefixes, `${s.key} is on a shared host and must not allow "/"`).not.toContain("/");
+    }
+  });
+
+  it("no curated source is path-crawlable across a whole host", () => {
+    // autoCrawl:false only says "the monthly loop skips me". An operator can still run
+    // `crawl:source <key>` or put the key in KB_SOURCES, and both read allowPrefixes. A bare "/" there
+    // turns that into a whole-site crawl under this source's byline. Narrow prefixes are fine — the
+    // hazard is specifically the unbounded one.
+    for (const s of KNOWLEDGE_SOURCES) {
+      if (s.autoCrawl !== false) continue;
+      expect(s.allowPrefixes, `curated source ${s.key} must not allow "/"`).not.toContain("/");
+    }
+  });
+
+  it("viticulture-extension-refs declares NO crawlable paths at all", () => {
+    // Its six trusted hosts are whole extension sites covering tree fruit, berries and field crops, and
+    // its documents are reachable only by explicit URL. Empty fails closed.
+    expect(findSourceConfig("viticulture-extension-refs")!.allowPrefixes).toEqual([]);
+  });
+
+  it("source keys are unique", () => {
+    const keys = KNOWLEDGE_SOURCES.map((s) => s.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  // A curated source is reachable by exactly two mechanisms, and the registry records neither:
+  // a declarative CURATED_SPECS entry (driven by scripts/crawl-curated.ts), or a bespoke script for a
+  // source whose shape a spec cannot express. These four are the bespoke ones. Listing them here is the
+  // point: adding a curated source now forces a conscious choice between the two, instead of producing
+  // a source that is registered, toggleable in Settings, and permanently empty because nothing crawls it.
+  const SCRIPT_BACKED_CURATED = new Set([
+    "osu-owri", // scripts/crawl-owri.ts — ScholarsArchive paginated listing walk
+    "osu-extension", // scripts/crawl-osu-extension.ts
+    "scott-labs", // scripts/crawl-scott-labs.ts
+    "ets", // scripts/crawl-ets.ts — a JSON API, not a crawl at all
+  ]);
+
+  it("every curated (autoCrawl:false) source is reachable by SOME operator path", () => {
+    for (const s of KNOWLEDGE_SOURCES) {
+      if (s.autoCrawl !== false) continue;
+      if (SCRIPT_BACKED_CURATED.has(s.key)) continue;
+      // DORMANT is not CURATED. A source that is autoCrawl:false AND defaultEnabled:false is switched
+      // off deliberately, not populated by an operator script -- msu-grapes is off because MSU's bot
+      // wall refuses every network we have (plan 085), so demanding a crawl path for it asserts the
+      // opposite of the intent. The paired assertion in the msu describe block is what keeps it honest.
+      if (s.defaultEnabled === false) continue;
+      expect(
+        findCuratedSpec(s.key),
+        `curated source "${s.key}" has no CURATED_SPECS entry and is not listed as script-backed — nothing can crawl it`,
+      ).toBeDefined();
+    }
+  });
+
+  it("the script-backed list does not name a source that has since gained a spec", () => {
+    // Keeps the list above honest: if someone converts a bespoke script to a declarative spec, the
+    // stale exemption should fail rather than silently weaken the invariant.
+    for (const key of SCRIPT_BACKED_CURATED) {
+      expect(findSourceConfig(key), `script-backed list names unknown source "${key}"`).toBeDefined();
+      expect(findCuratedSpec(key), `"${key}" now has a spec — remove it from SCRIPT_BACKED_CURATED`).toBeUndefined();
+    }
+  });
+
+  it("every curated spec points at a real source that is actually curated", () => {
+    for (const spec of CURATED_SPECS) {
+      const cfg = findSourceConfig(spec.sourceKey);
+      expect(cfg, `curated spec "${spec.sourceKey}" has no source config`).toBeDefined();
+      expect(cfg!.autoCrawl, `spec "${spec.sourceKey}" is on an auto-crawled source`).toBe(false);
+    }
+  });
+
+  it("every curated directUrls host is trusted, else crawlUrls silently drops it", () => {
+    // crawlUrls gates on TRUSTED_DOMAIN_SET and counts a miss as summary.errors++ with no message, so
+    // an untrusted host means those documents never arrive and nothing says why.
+    for (const spec of CURATED_SPECS) {
+      for (const url of spec.directUrls ?? []) {
+        const host = new URL(url).hostname.toLowerCase();
+        expect(TRUSTED_DOMAIN_SET.has(host), `${host} (from ${spec.sourceKey}) is not in TRUSTED_DOMAINS`).toBe(true);
+      }
+    }
+  });
+
+  it("every TRUSTED_DOMAINS sourceKey resolves to a real source", () => {
+    for (const d of TRUSTED_DOMAINS) {
+      if (d.sourceKey) {
+        expect(findSourceConfig(d.sourceKey), `trusted domain ${d.domain} names unknown source "${d.sourceKey}"`).toBeDefined();
+      }
+    }
+  });
+
+  it("no curated spec silently ignores robots without an explanation", () => {
+    // ignoreRobots is legitimate for a generic file-type block on public documents, but it is an
+    // operator decision that must be visible. Cornell's sources must never set it: every host was
+    // verified to permit the files, so there is nothing to bypass.
+    for (const key of ["viticulture-extension-refs"]) {
+      expect(findCuratedSpec(key)?.ignoreRobots).toBeUndefined();
+    }
   });
 });
 

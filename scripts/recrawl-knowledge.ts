@@ -180,6 +180,13 @@ async function main() {
     skippedChallenge,
     darkSources,
     newCandidateDomains: crawl.candidateDomains, // count queued to CandidateSource for human review
+    // Plan 084 — `.pdf` links that answered with HTML, i.e. dead links hiding behind a 200 redirect.
+    // Reported rather than silently dropped: a rising count is how we find out a publisher reorganized
+    // their site and a chunk of the corpus is quietly rotting.
+    softNotFound: Object.values(crawl.summaries).reduce((n, s) => n + s.skippedSoftNotFound, 0),
+    // Fetches that started inside the allowed scope and redirected into a denyPrefix. A nonzero count
+    // means a publisher is redirecting content we deliberately excluded into our path — worth reading.
+    redirectDenied: Object.values(crawl.summaries).reduce((n, s) => n + s.skippedRedirectDenied, 0),
     finishedAt: new Date().toISOString(),
   };
   console.log("\n::KB_RECRAWL_SUMMARY::" + JSON.stringify(summary));

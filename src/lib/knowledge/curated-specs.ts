@@ -27,6 +27,45 @@ export interface CuratedSpec {
 const DE_NEG = /(obstbau|obst|frucht|brennerei|brennere|brand|destill|likör|kirsch|apfel|birne)/i;
 
 export const CURATED_SPECS: CuratedSpec[] = [
+  // ── Regional viticulture extension publications linked from the Cornell grape site (plan 084) ──
+  //
+  // Nine specific technical PDFs, six hosts, no shared path structure — and crawling these hosts
+  // generally would pull in tree fruit, berries, livestock and field crops. So: an explicit list.
+  // Static 2004-2017 extension publications; being outside the monthly loop costs nothing, and the
+  // monthly cornell-grapes crawl still re-reads the linking pages so new references surface.
+  //
+  // NO ignoreRobots. Every host here was checked individually and permits these files. Two exclusions
+  // were made for exactly that reason, and should NOT be "fixed" by adding them back:
+  //
+  //   * extension.unh.edu — the linked /resources/files/ URL 302s to
+  //     /sites/default/files/migrated_unmanaged_files/…pdf, and UNH's robots.txt carries a global
+  //     `Disallow: /sites/default/files/*.pdf$`. Robots is only evaluated against the REQUESTED url
+  //     (crawler.ts), so the crawler would have fetched it without ever noticing the redirect landed
+  //     somewhere disallowed. That is an accidental robots evasion, so the document is out.
+  //   * ucanr.org, ucanr.edu, nmsp.cals.cornell.edu, vinebalance.com, msue.anr.msu.edu,
+  //     nysipm.cornell.edu — linked file is dead (404, connection failure, or a soft-404 landing page).
+  {
+    sourceKey: "viticulture-extension-refs",
+    directUrls: [
+      // New York State Horticultural Society — NY Fruit Quarterly articles (bird damage, crown gall).
+      "https://nyshs.org/wp-content/uploads/2016/10/15-18Agnello-Pages-NYFQ-Winter-2014-Book-4.pdf",
+      "https://nyshs.org/wp-content/uploads/2016/10/Bye-Bye-Birdie-Repelling-Birds-From-Fruit-Plantings.pdf",
+      "https://nyshs.org/wp-content/uploads/2016/10/Controlling-Birds-with-Netting-Blueberries-Cherries-and-Grapes.pdf",
+      "https://nyshs.org/wp-content/uploads/2016/10/Burr-Pages-15-18-NYFQ-Book-Summer-2016.pdf",
+      // USDA-SARE — Managing Cover Crops Profitably. The link on the Cornell page is the old
+      // /publications/covercrops/ path, which 302s here; using the final URL avoids the redirect hop.
+      "https://www.sare.org/wp-content/uploads/Managing-Cover-Crops-Profitably.pdf",
+      // USDA-ARS — commercial storage of fruits and vegetables (post-harvest handling).
+      "https://www.ars.usda.gov/ARSUserFiles/oc/np/CommercialStorage/CommercialStorage.pdf",
+      // Cornell (other hosts than the grape blog).
+      // NOTE: http, not https — www.hort.cornell.edu does not answer on 443. The fetcher permits http
+      // (fetcher.ts) and this is a public read of a published factsheet, so it is left as linked.
+      "http://www.hort.cornell.edu/expo/proceedings/2017/WildlifeMGMT.Birds%20NY%20Factsheet.Lindell%20et%20al.pdf",
+      "https://harvestny.cce.cornell.edu/uploads/doc_40.pdf",
+      "https://publications.dyson.cornell.edu/outreach/extensionpdf/2010/Cornell-Dyson-eb1015.pdf",
+    ],
+    delayMs: 1500,
+  },
   // ── France ──
   {
     sourceKey: "chambre-gironde",

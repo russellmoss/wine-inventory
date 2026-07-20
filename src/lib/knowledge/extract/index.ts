@@ -28,9 +28,11 @@ export interface ExtractedDoc {
   wordCount: number;
   lowConfidence: boolean;
   /**
-   * The document's revision date, or null when it does not carry one we can trust. Persisted to
-   * `KnowledgeDocument.publishedAt` and surfaced in the assistant's citation — null renders as
-   * "unknown", which is the honest answer and deliberately preferred over a guess.
+   * Plan 084 — the document's own publication date, or null when it does not declare a parseable one.
+   * `indexDocument` persists this to `KnowledgeDocument.publishedAt`, which retrieval hands to the
+   * assistant. Null is a first-class answer here: the citation renders "unknown", which is correct and
+   * safe, whereas an invented date changes which of two conflicting recommendations the model calls
+   * current.
    */
   publishedAt: Date | null;
 }
@@ -49,9 +51,10 @@ export async function extractDocument(
       kind: "pdf",
       wordCount: markdown.split(/\s+/).filter(Boolean).length,
       lowConfidence: r.lowConfidence,
-      // No metadata arm for PDFs — the body scan is all we have (extension PDFs typically stamp
-      // "Revised: <month> <year>" on the cover page).
-      publishedAt: resolvePublishedDate({ markdown }),
+      // Plan 084 + 085 merged: PDF metadata date first (CreationDate/ModDate), then the
+      // body scan. Extension PDFs routinely stamp "Revised: <month> <year>" on the cover
+      // page and carry no metadata date at all, so dropping either arm loses documents.
+      publishedAt: r.publishedAt ?? resolvePublishedDate({ markdown }),
     };
   }
   if (contentType === "html") {

@@ -28,6 +28,33 @@ function toVectorLiteral(vec: number[]): string {
   return `[${vec.join(",")}]`;
 }
 
+/**
+ * The document metadata derived from freshly-extracted content: what `indexDocument` writes alongside
+ * the revision flip. Pure + exported so the write decision is testable — the DB write itself needs a live
+ * Postgres and a Voyage embedding call, so without this seam the only write path for `publishedAt` and
+ * `canonicalTitle` would have no automated coverage at all.
+ *
+ * Both fields are written UNCONDITIONALLY, including null. That is deliberate and it is a correction:
+ * an earlier version preserved an existing date when the new extraction produced none. But this code is
+ * only reached when the CONTENT CHANGED (an unchanged content hash returns early), so a retained date
+ * belongs to content that no longer exists. Extension sites reuse URLs — a 2024-dated page replaced by
+ * an undated reprint of a 2011 guide would keep the 2024 date, and the assistant would then skip the
+ * "confirm this product is still registered" warning it gives for older material. Tying the metadata to
+ * the content it was extracted from is the only story that stays true.
+ */
+export function buildDocumentMetadata(extracted: { title: string; publishedAt: Date | null }): {
+  publishedAt: Date | null;
+  canonicalTitle: string | null;
+} {
+  return {
+    publishedAt: extracted.publishedAt,
+    // citation.ts renders `canonicalTitle || publisher`, so an unset title makes every crawled document
+    // cite as the bare publisher name with no indication of WHICH document. Capped because extracted
+    // titles come from page <title>/PDF metadata and are occasionally a whole sentence.
+    canonicalTitle: extracted.title.trim().slice(0, 300) || null,
+  };
+}
+
 export async function indexDocument(input: {
   documentId: string;
   bytes: Buffer;
@@ -150,6 +177,8 @@ export async function indexDocument(input: {
 
   const chunks = chunkMarkdown(extracted.markdown, extracted.title);
   if (chunks.length === 0) return { chunks: 0, skipped: "empty" };
+
+  const metadata = buildDocumentMetadata(extracted);
 
   // Embed OUTSIDE the transaction (network call — never hold a DB tx across it), then validate each
   // embedding to a pgvector literal before opening the tx.

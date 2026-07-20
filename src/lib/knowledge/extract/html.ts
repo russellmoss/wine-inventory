@@ -3,6 +3,8 @@
 // tables into markdown tables, which is exactly the council's "preserve table structure" requirement for
 // dose/limit tables. Only ever called from crawl/re-crawl scripts, never a request path (ESM-only is fine).
 
+import { parseHtmlPublishedDate } from "./published-date";
+
 export interface ExtractedHtml {
   title: string;
   markdown: string;
@@ -13,6 +15,15 @@ export interface ExtractedHtml {
    * falls back to a label-anchored scan of the body when this is empty (the UC IPM case).
    */
   published: string;
+  /**
+   * Plan 084 — the same metadata date, strictly parsed. RAW AND PARSED ARE BOTH EXPOSED ON PURPOSE:
+   * they answer different questions. `publishedAt` is "does this page declare a trustworthy date",
+   * which is what the extraction tests assert and what a caller wanting metadata-only should read.
+   * `published` is the raw string, which `extract/index.ts` hands to `resolvePublishedDate` so the
+   * body-scan fallback still runs — that fallback is where 735 corpus-wide dates came from, and a
+   * metadata-only reading would silently drop every one of them.
+   */
+  publishedAt: Date | null;
 }
 
 // dynamic import: defuddle/node exports only an `import` condition (no `require`), so a static import
@@ -39,5 +50,6 @@ export async function extractHtml(html: string, url: string): Promise<ExtractedH
   const res = await Defuddle(html, url, { markdown: true });
   const markdown = (res.contentMarkdown ?? res.content ?? "").trim();
   const wordCount = res.wordCount ?? markdown.split(/\s+/).filter(Boolean).length;
-  return { title: (res.title ?? "").trim(), markdown, wordCount, published: (res.published ?? "").trim() };
+  const published = (res.published ?? "").trim();
+  return { title: (res.title ?? "").trim(), markdown, wordCount, published, publishedAt: parseHtmlPublishedDate(published) };
 }
