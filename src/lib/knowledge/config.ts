@@ -415,7 +415,9 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     // and the crawl would quietly do nothing. Seeds are enqueued unconditionally, so enumeration is
     // the fix. The archive is static (ends 2013), so the list is complete by construction.
     seedRoots: [
-      "https://enology.fst.vt.edu/EN/index.html",
+      // NOTE: /EN/index.html is deliberately NOT seeded. It is a link dump (alphabetical subject
+      // index + one-line summaries), and every issue and PDF below is enumerated explicitly, so it
+      // buys no discovery. It is also denied outright — see denyPrefixes.
       ...Array.from({ length: 166 }, (_, i) => `https://enology.fst.vt.edu/EN/${i + 1}.html`),
       // #167-169 are PDF-only (their .html twins 404); #170 is published as four section files.
       "https://enology.fst.vt.edu/downloads/EnologyNotes167.pdf",
@@ -437,9 +439,18 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
       "/downloads/EnologyNotes169",
       "/downloads/EnologyNotes170_",
     ],
-    // The year pages are navigation, not content: a list of links to the issues we already seed.
-    // They are also anchorless, so they would take the T1 fail-open path and index as a link dump.
-    denyPrefixes: Array.from({ length: 14 }, (_, i) => `/EN/${2000 + i}.html`),
+    // Navigation, not content. Both of these are anchorless, so they take the T1 fail-open path and
+    // index as a pure link dump — verified in production: /EN/index.html produced 2 chunks of
+    // subject-index links and truncated summaries, zero technical prose.
+    //   - the 14 year pages: a list of links to the issues we already enumerate
+    //   - /EN/index* : the landing page plus its five alphabetical index pages (indexae, indexfj,
+    //     indexko, indexpt, indexuz). `crawl:source` does not follow links so these never appeared
+    //     in the initial crawl, but the MONTHLY sweep runs crawlWithFollowing, which does — so
+    //     without this they would silently arrive on the 1st. No issue url starts with "index".
+    denyPrefixes: [
+      ...Array.from({ length: 14 }, (_, i) => `/EN/${2000 + i}.html`),
+      "/EN/index",
+    ],
     // The whole point of this source: 166.html carries rot-metabolite chemistry AND a paid study
     // tour ad AND a staff hire announcement, all under ONE url. Path prefixes cannot express that.
     sectionFilter: "anchor-heading",
