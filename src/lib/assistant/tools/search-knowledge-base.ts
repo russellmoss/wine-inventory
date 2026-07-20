@@ -1,9 +1,66 @@
 import "server-only";
 import type { AssistantTool, ToolContext } from "../registry";
-import { retrieveKnowledge } from "@/lib/knowledge/retrieve";
+import { retrieveKnowledge, type DateSource } from "@/lib/knowledge/retrieve";
 import { assessPassageAge, summarizeCorpusAge } from "@/lib/knowledge/passage-age";
 
 type SearchKbInput = { query?: string; topic?: string };
+
+/** Whole years between a publication date and now, floored at 0 (a same-day document is 0 years old). */
+export function yearsSince(published: Date, now: Date = new Date()): number {
+  const years = (now.getTime() - published.getTime()) / (365.2425 * 24 * 60 * 60 * 1000);
+  return Math.max(0, Math.floor(years));
+}
+
+/**
+ * Shape one retrieved passage for the model. Pure + exported so the undated branch is testable: the tool
+ * handler itself needs a live DB and embedding call, and if `ageYears` ever regressed from "unknown" to
+ * 0 for an undated passage, every undated document would be presented as brand new — which is exactly
+ * the failure this feature exists to prevent, and it would be silent.
+ */
+export function toPassageResult(
+  p: {
+    publisher: string;
+    tier: number;
+    sectionPath: string;
+    publishedAt: Date | null;
+    dateSource: DateSource;
+    documentId: string;
+    text: string;
+  },
+  n: number,
+  now: Date = new Date(),
+): {
+  n: number;
+  publisher: string;
+  tier: number;
+  section: string;
+  date: string;
+  dateSource: DateSource;
+  ageYears: number | "unknown";
+  citation: string;
+  text: string;
+} {
+  // Age is computed ONLY from a date the document actually declared. A sitemap <lastmod> is when the
+  // page was last TOUCHED — a theme migration or a category re-tag — so deriving "this is 0 years old"
+  // from it would tell the model a 2009 spray guide is current-season guidance. That is the precise
+  // failure this feature exists to prevent, so the fallback date is still shown (it beats nothing for
+  // ordering) but it is never allowed to drive the staleness reasoning.
+  const declared = p.dateSource === "published" && p.publishedAt;
+  return {
+    n,
+    publisher: p.publisher,
+    tier: p.tier,
+    section: p.sectionPath,
+    // "unknown" (never null) so the model states the date is unknown rather than inventing one
+    date: p.publishedAt ? p.publishedAt.toISOString().slice(0, 10) : "unknown",
+    dateSource: p.dateSource,
+    // Precomputed so the model never has to do date arithmetic (it is bad at it, and a wrong age on a
+    // pest-management passage is a decision someone acts on in a vineyard).
+    ageYears: declared ? yearsSince(p.publishedAt as Date, now) : "unknown",
+    citation: `/kb/source/${p.documentId}`,
+    text: p.text,
+  };
+}
 
 /**
  * Plan 079 — the assistant's winemaking brain. Retrieval-only: hybrid-searches the tenant's enabled
@@ -40,7 +97,13 @@ export const searchKnowledgeBaseTool: AssistantTool = {
     "date, e.g. 'AWRI (tier 1, 2022) recommends X; Wine Australia (tier 1, 2010) recommends Y', note which " +
     "is more recent, and let the winemaker make the call. Genuine disagreement between authorities is useful " +
     "signal, not noise. If a passage's date is 'unknown', say the date is unknown — NEVER invent or guess one.\n" +
-    "8. CURRENCY. A passage may carry `ageWarning` (and the result set a `currencyWarning`). When present " +
+    "8. CURRENCY. Each result carries `ageYears` and `dateSource`. `dateSource: 'last-modified'` means the " +
+    "document declared NO date of its own and this is only when the file was last touched (a theme " +
+    "migration, a re-tag) — treat that as UNKNOWN age, never as evidence the content is current. " +
+    "`ageYears` is a STALENESS signal only: never use `ageYears` to compute or state a publication date. " +
+    "Do NOT refuse to answer because a passage is old — an old passage is still the sourced answer, it " +
+    "just has to be labelled. A passage may also carry `ageWarning` (and the result set " +
+    "a `currencyWarning`). When present " +
     "you MUST surface it — state the passage's age in your answer rather than presenting it as current " +
     "practice. This matters most for PEST/DISEASE and any regulated figure: pesticide registrations get " +
     "cancelled, application rates and re-entry / pre-harvest intervals are amended, and legal limits move. " +
@@ -91,7 +154,13 @@ export const searchKnowledgeBaseTool: AssistantTool = {
     // advisory and gets dropped under long context, whereas a populated `ageWarning` field is data the
     // model must actively contradict. Corpus reality that motivated it — 82% of the UC IPM grape pest
     // guidelines are stamped 2016 or older.
-    const ages = passages.map((p) => assessPassageAge(p.publishedAt));
+    // Age is derived ONLY from a date the document itself DECLARED. A passage with no date of its
+    // own falls back to the sitemap lastmod (retrieve.ts dateOf), which reflects whenever a plugin
+    // last touched the file — so a 2009 IPM page bulk-edited last month would otherwise score
+    // `ageYears: 0` and be presented to the model as current-season spray guidance. Nulling the
+    // last-modified case here keeps assessPassageAge and toPassageResult agreeing on one notion of
+    // age, rather than warning off one date while reporting another.
+    const ages = passages.map((p) => assessPassageAge(p.dateSource === "published" ? p.publishedAt : null));
     const currencyWarning = summarizeCorpusAge(ages);
 
     return {
@@ -100,18 +169,12 @@ export const searchKnowledgeBaseTool: AssistantTool = {
         "Answer ONLY from these passages, cite each fact with its `citation` markdown link, quote any " +
         "numbers/doses/limits verbatim, and defer any calculation to calc_so2/calc_sugar.",
       ...(currencyWarning ? { currencyWarning } : {}),
+      // toPassageResult owns date/dateSource/ageYears (it holds the last-modified guard); the
+      // ageWarning is layered on top from the same guarded age, so the two cannot disagree.
       results: passages.map((p, i) => ({
-        n: i + 1,
-        publisher: p.publisher,
-        tier: p.tier,
-        section: p.sectionPath,
-        // "unknown" (never null) so the model states the date is unknown rather than inventing one
-        date: p.publishedAt ? p.publishedAt.toISOString().slice(0, 10) : "unknown",
-        ageYears: ages[i].ageYears,
+        ...toPassageResult(p, i + 1),
         // present ONLY when there is something to warn about, so its presence is itself the signal
         ...(ages[i].warning ? { ageWarning: ages[i].warning } : {}),
-        citation: `/kb/source/${p.documentId}`,
-        text: p.text,
       })),
     };
   },

@@ -153,11 +153,16 @@ describe("resolvePublishedDate — salvage-path boundaries", () => {
     expect(iso(resolvePublishedDate({ metadataDate: "2024-04-11/2024-05-20", markdown: "" }, NOW))).toBe("2024-04-11");
   });
 
-  it("salvages when the parser SUCCEEDED but the range check rejected the result", () => {
-    // "2026-07-20T23:00-01:00" parses to the 21st UTC, which is future vs NOW and refused. The
-    // salvage then reads the literal leading date. Documented, not accidental — see the comment on
-    // LEADING_YMD's use site.
-    expect(iso(resolvePublishedDate({ metadataDate: "2026-07-20T23:00-01:00", markdown: "" }, NOW))).toBe("2026-07-20");
+  it("accepts a small future offset rather than salvaging the literal date", () => {
+    // "2026-07-20T23:00-01:00" resolves to the 21st UTC, one day past NOW. The Cornell branch's
+    // isPlausiblePublishedDate allows a 2-day future tolerance for publisher clock skew and timezone
+    // handling, so the strict-ISO arm accepts it and the salvage never runs. Deliberate: a document
+    // stamped an hour into tomorrow is a timezone artefact, not a parse error.
+    expect(iso(resolvePublishedDate({ metadataDate: "2026-07-20T23:00-01:00", markdown: "" }, NOW))).toBe("2026-07-21");
+  });
+
+  it("still refuses a date FAR in the future (beyond clock-skew tolerance)", () => {
+    expect(resolvePublishedDate({ metadataDate: "2031-04-11T00:00:00Z", markdown: "" }, NOW)).toBeNull();
   });
 
   it("still prefers the markdown scan over an unsalvageable metadata string", () => {

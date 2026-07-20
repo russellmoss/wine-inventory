@@ -12,6 +12,19 @@ import { expandQueryTerms } from "./synonyms";
 import { rrfFuse, normalizeScores } from "./rrf";
 import { mmrSelect, type MmrCandidate } from "./mmr";
 
+/**
+ * Where a passage's date came from. Plan 084 — this distinction is the whole point.
+ *
+ * "published"     — the document declared it (JSON-LD datePublished, article:published_time, PDF
+ *                   CreationDate). Trustworthy enough to reason about staleness with.
+ * "last-modified" — no declared date; this is the sitemap's <lastmod>, i.e. when the page was last
+ *                   TOUCHED. On WordPress that is a theme migration, a plugin bulk-edit or a category
+ *                   re-tag. A 2009 spray guide re-tagged last month carries a last-modified of last
+ *                   month. It is NOT a publication date and must never be treated as one.
+ * "unknown"       — neither is available.
+ */
+export type DateSource = "published" | "last-modified" | "unknown";
+
 export interface RetrievedPassage {
   chunkId: string;
   documentId: string;
@@ -19,6 +32,7 @@ export interface RetrievedPassage {
   tier: number;
   canonicalUrl: string;
   publishedAt: Date | null;
+  dateSource: DateSource;
   sectionPath: string;
   text: string;
 }
@@ -34,6 +48,16 @@ interface Row {
   publishedAt: Date | null;
   sitemapLastmod: Date | null;
   embeddingText: string;
+}
+
+/** Resolve a row's effective date and record WHICH kind of date it is. Pure — unit-tested. */
+export function dateOf(r: { publishedAt: Date | null; sitemapLastmod: Date | null }): {
+  publishedAt: Date | null;
+  dateSource: DateSource;
+} {
+  if (r.publishedAt) return { publishedAt: r.publishedAt, dateSource: "published" };
+  if (r.sitemapLastmod) return { publishedAt: r.sitemapLastmod, dateSource: "last-modified" };
+  return { publishedAt: null, dateSource: "unknown" };
 }
 
 function parseVector(text: string | null): number[] {
@@ -107,8 +131,11 @@ export async function retrieveKnowledge(opts: {
     publisher: r.publisher,
     tier: r.tier,
     canonicalUrl: r.canonicalUrl,
-    // effective date for conflict-surfacing: the page's published date, else the sitemap lastmod
-    publishedAt: r.publishedAt ?? r.sitemapLastmod,
+    // Effective date for conflict-surfacing: the page's declared date, else the sitemap lastmod. The
+    // fallback is KEPT (a rough date beats none for ordering) but is now LABELLED, because the two are
+    // not interchangeable and the difference is load-bearing: the assistant reasons about staleness of
+    // spray and pesticide guidance from this, and a lastmod reflects the last edit, not the last review.
+    ...dateOf(r),
     sectionPath: r.sectionPath,
     text: r.text,
   }));

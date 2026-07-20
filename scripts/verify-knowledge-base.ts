@@ -16,6 +16,7 @@ import { retrieveKnowledge } from "@/lib/knowledge/retrieve";
 import { KNOWLEDGE_SOURCES } from "@/lib/knowledge/config";
 import { runAsSystem, disconnectSystem } from "@/lib/tenant/system";
 import { prisma } from "@/lib/prisma";
+import { mentionsOffTopic } from "./kb-eval-match";
 
 const TENANT = "org_demo_winery";
 
@@ -65,7 +66,18 @@ const RETRIEVAL_CASES: RetrievalCase[] = [
     expectPaths: ["guiauvadetransformacion", "mapa.gob", "pnw-644", "field-monitoring", "ipm.ucanr.edu"], expectFact: ["grape"] },
   { q: "How do I test for TCA cork taint and haloanisoles in my wine?",
     expectPaths: ["etslabs", "publications/publication"], expectFact: ["haloanisole"] }, // ETS Laboratories (analysis authority)
+  // Plan 084 — Cornell. The corpus previously had no cool-climate eastern-US authority, so these
+  // questions were answered from Australian / Pacific-Northwest sources written for a different climate
+  // and a different pest complex. Phomopsis and black rot are eastern-US disease-pressure signatures.
+  { q: "What fungicide program controls Phomopsis and black rot in an eastern US vineyard?",
+    expectPaths: ["blogs.cornell.edu", "grape-disease-control", "wilcox"], expectFact: ["phomopsis", "black rot"] },
 ];
+
+// NOTE for whoever runs this after adding Cornell: the leafroll/mealybug case above expects an OSU
+// document, and Cornell also publishes authoritatively on leafroll. If that case starts failing because
+// a Cornell doc displaced the OSU one in top-6, retrieval got BETTER, not worse — widen that case's
+// expectPaths rather than narrowing the Cornell source. Deliberately not pre-widened here: that would
+// weaken a real OSU coverage check on a guess.
 
 // The Wine Australia downy-mildew question (CSV #1) is now scored above — WA is crawled (HTML) + its
 // /getmedia extension PDFs are indexed, so all 8 CSV retrieval questions are covered.
@@ -81,6 +93,9 @@ const REJECTION_CASES = [
   { q: "How do I brew a hoppy IPA beer with dry hopping?", offTopic: ["ipa", "hops", "dry hop"] },
   { q: "What is the best espresso grind size for a flat white?", offTopic: ["espresso", "grind", "coffee"] },
 ];
+
+// Word-boundary (not substring) matching for the rejection cases — see scripts/kb-eval-match.ts for why
+// the naive `includes` check was a false-positive generator once a viticulture corpus got big enough.
 
 let passed = 0;
 let failed = 0;
@@ -149,6 +164,17 @@ async function main() {
         "https://extension.oregonstate.edu/catalog/em-8985-field-monitoring-leafroll-virus-mealybug-pacific-northwest-vineyards",
       ],
     },
+    {
+      // Plan 084 — Cornell. Deliberately spans BOTH allow prefixes: an HTML hub and a /grapes/files/ PDF,
+      // plus a /newfruit/files/ PDF, because 35 of the 43 live Cornell PDFs live in that sibling file
+      // store and a crawl that silently missed them would still look successful here.
+      source: "cornell-grapes",
+      urls: [
+        "https://blogs.cornell.edu/grapes/ipm/diseases/",
+        "https://blogs.cornell.edu/grapes/files/2016/12/Wilcox-Grape-Disease-Control-2017-1uzpoqi.pdf",
+        "https://blogs.cornell.edu/newfruit/files/2016/12/Assessing-Winter-Cold-Injury-of-Grape-Canes-and-Trunks-Final-2ijd3wl.pdf",
+      ],
+    },
   ];
   for (const ns of NEW_SOURCE_EVAL) {
     await crawlUrls(ns.source, ns.urls, {
@@ -178,8 +204,16 @@ async function main() {
   console.log("\n— negative rejection (out-of-corpus must return nothing on-topic) —");
   for (const r of REJECTION_CASES) {
     const passages = await retrieveKnowledge({ tenantId: TENANT, query: r.q, topK: 4 });
-    const onTopic = passages.some((p) => r.offTopic.some((t) => p.text.toLowerCase().includes(t)));
-    assert(!onTopic, `rejection: ${r.q.slice(0, 50)}`, onTopic ? "surfaced off-topic content" : "");
+    let offender: { term: string; url: string } | null = null;
+    for (const p of passages) {
+      const term = mentionsOffTopic(p.text, r.offTopic);
+      if (term) { offender = { term, url: p.canonicalUrl }; break; }
+    }
+    assert(
+      !offender,
+      `rejection: ${r.q.slice(0, 50)}`,
+      offender ? `surfaced off-topic content ("${offender.term}" in ${offender.url})` : "",
+    );
   }
 
   console.log("\n— source diversity / conflict-surfacing (Unit 9) —");
@@ -194,6 +228,45 @@ async function main() {
     console.log(`  (${passages.length} passages, ${publishers.size} publishers, ${dated} with a date)`);
     if (process.env.KB_EVAL_JUDGE === "1") {
       await optionalJudge("conflict-surfacing", `${q} — do AWRI and Wine Australia agree, and if not what does each recommend?`, passages);
+    }
+  }
+
+  console.log("\n— publication-date coverage (plan 084) —");
+  {
+    // Asserted against the documents THIS RUN just (re)indexed, not the whole corpus. publishedAt is
+    // written by indexDocument, which early-returns on unchanged/duplicate content — so pre-existing
+    // documents from before plan 084 keep their null date until something forces a re-index
+    // (reset:knowledge-source). A whole-corpus floor would therefore fail for a reason that is not a bug.
+    //
+    // Cornell is the right subject: it is freshly crawled above, it is the source whose content is
+    // year-stamped and superseded annually, and 12/12 sampled Cornell PDFs carry real metadata dates —
+    // so anything well below full coverage means the extraction regressed, not that the source is thin.
+    const cornellDocs = await runAsSystem((db) =>
+      db.knowledgeDocument.findMany({
+        where: { source: { key: "cornell-grapes" }, status: "active" },
+        select: { canonicalUrl: true, publishedAt: true, canonicalTitle: true },
+      }),
+    );
+    if (cornellDocs.length === 0) {
+      assert(false, "date coverage: cornell-grapes has documents to check", "no active cornell-grapes documents — did the crawl run?");
+    } else {
+      const dated = cornellDocs.filter((d) => d.publishedAt).length;
+      const titled = cornellDocs.filter((d) => d.canonicalTitle).length;
+      const pct = Math.round((dated / cornellDocs.length) * 100);
+      assert(
+        dated / cornellDocs.length >= 0.6,
+        `date coverage: >=60% of cornell-grapes docs carry publishedAt`,
+        `${dated}/${cornellDocs.length} dated (${pct}%)`,
+      );
+      // citation.ts renders `canonicalTitle || publisher`, so an untitled document cites as the bare
+      // publisher name with no indication of WHICH document it is.
+      assert(
+        titled / cornellDocs.length >= 0.9,
+        `title coverage: >=90% of cornell-grapes docs carry canonicalTitle`,
+        `${titled}/${cornellDocs.length} titled`,
+      );
+      const undated = cornellDocs.filter((d) => !d.publishedAt).map((d) => d.canonicalUrl.split("/").pop());
+      if (undated.length) console.log(`  undated: ${undated.slice(0, 8).join(", ")}${undated.length > 8 ? ` (+${undated.length - 8})` : ""}`);
     }
   }
 
