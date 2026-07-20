@@ -2,9 +2,9 @@ import "server-only";
 import { getBlockPicks, deleteHarvestPick } from "@/lib/harvest/actions";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
-import { signProposal } from "../confirm";
+import { signProposal, signResume } from "../confirm";
 import { findScopedBlocks } from "../scope";
-import { resolveExactlyOne } from "./resolve";
+import { resolveOneOrChoice } from "./resolve";
 
 // Assistant coverage for ticket #188: the inverse of log_harvest_pick. Deletes a STANDALONE harvest pick
 // (one logged directly on a block, not created by a work-order weigh-in — those are backed out via
@@ -14,6 +14,7 @@ import { resolveExactlyOne } from "./resolve";
 
 type DeleteHarvestPickInput = {
   block?: string;
+  blockId?: string;
   vineyard?: string;
   variety?: string;
   weightKg?: number;
@@ -29,6 +30,7 @@ export const deleteHarvestPickTool: AssistantTool = {
     type: "object",
     properties: {
       block: { type: "string", description: "Block label, e.g. 'Block 2'." },
+      blockId: { type: "string", description: "Internal use: a block pinned by id from a picker tap. Never invent one." },
       vineyard: { type: "string", description: "Vineyard name (optional for a manager)." },
       variety: { type: "string", description: "Grape variety, to disambiguate the block, e.g. 'Grenache'." },
       weightKg: { type: "number", description: "The pick weight in kilograms, to pinpoint the pick." },
@@ -42,11 +44,19 @@ export const deleteHarvestPickTool: AssistantTool = {
       vineyard: input.vineyard,
       variety: input.variety,
     });
-    const block = resolveExactlyOne(blocks, {
-      describe: (b) => `${b.label}${b.varietyName ? ` (${b.varietyName})` : ""} in ${b.vineyardName}`,
+    // Picker on ambiguity (sweep after #328). Block labels repeat across vineyards — "Block 1" matches
+    // seven rows in a real winery — and findScopedBlocks matches on CONTAINS, so the candidate set is
+    // wider still. resolveExactlyOne threw a paragraph here; the tap pins the block by id.
+    const blockCandidates = input.blockId ? blocks.filter((b) => b.id === input.blockId) : blocks;
+    const picked = resolveOneOrChoice(blockCandidates, {
+      prompt: `Which block do you mean?`,
+      describe: (b) => `${b.label}${b.varietyName ? ` (${b.varietyName})` : ""}`,
+      detail: (b) => b.vineyardName,
+      resume: (b) => signResume("delete_harvest_pick", { ...input, blockId: b.id }),
       noneMsg: `No block matches that you can access (block "${input.block ?? "?"}"${input.variety ? `, variety "${input.variety}"` : ""}).`,
-      manyMsg: `Several blocks match`,
     });
+    if (picked.kind === "choice") return picked.choice;
+    const block = picked.row;
 
     const picks = await getBlockPicks(block.id);
     let candidates = picks;
@@ -57,11 +67,15 @@ export const deleteHarvestPickTool: AssistantTool = {
       candidates = candidates.filter((p) => p.pickDate === input.pickDate);
     }
 
-    const pick = resolveExactlyOne(candidates, {
+    // Second ambiguity point: a block can have several picks sharing a weight or a date. Same treatment.
+    const pickedPick = resolveOneOrChoice(candidates, {
+      prompt: `Which pick on ${block.label} do you want to delete?`,
       describe: (p) => `${p.weightKg} kg picked ${p.pickDate}`,
+      resume: (p) => signResume("delete_harvest_pick", { ...input, blockId: block.id, weightKg: p.weightKg, pickDate: p.pickDate }),
       noneMsg: `No matching harvest pick on ${block.label} (${block.vineyardName}). Nothing to delete.`,
-      manyMsg: `Several picks on ${block.label} match`,
     });
+    if (pickedPick.kind === "choice") return pickedPick.choice;
+    const pick = pickedPick.row;
 
     const preview = `Delete the ${pick.weightKg} kg harvest pick on ${block.label} (${block.vineyardName}), picked ${pick.pickDate}.`;
     const token = signProposal("delete_harvest_pick", {
