@@ -74,6 +74,15 @@ describe("VT Enology Notes source (plan 084)", () => {
     expect(vt().sectionFilter).toBe("anchor-heading");
   });
 
+  it("is the ONLY source that declares a sectionFilter (blast-radius guard)", () => {
+    // Adding sectionFilter to a source changes its stored indexedContentHash (deriveIndexHash
+    // stops passing through), which forces a full re-embed of that source's slice of the
+    // ~1,449-document corpus on the next monthly sweep. Nothing else in CI would catch that.
+    expect(KNOWLEDGE_SOURCES.filter((s) => s.sectionFilter).map((s) => s.key)).toEqual([
+      "vt-enology-notes",
+    ]);
+  });
+
   it("enumerates every issue so a 304 on an index page cannot stall discovery", () => {
     const roots = vt().seedRoots;
     expect(roots).toContain("https://enology.fst.vt.edu/EN/1.html");

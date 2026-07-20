@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   applySectionFilter,
   deriveIndexHash,
+  shouldApplySectionFilter,
   SECTION_FILTER_VERSION,
 } from "@/lib/knowledge/sections";
 import { extractHtml } from "@/lib/knowledge/extract/html";
@@ -95,6 +96,41 @@ describe("Defuddle survives the synthesized body (spike risk R3)", () => {
     expect(clean.markdown).not.toContain("Skip menu");
     expect(clean.markdown).toContain("Sauvignon blanc");
   }, 20_000);
+});
+
+describe("shouldApplySectionFilter — the gate", () => {
+  it("applies only to HTML from a source that declares the filter", () => {
+    expect(shouldApplySectionFilter("html", "vt-enology-notes")).toBe(true);
+  });
+
+  it("never applies to a PDF, even from the filtered source", () => {
+    // VT seeds 7 PDF-only notes (#167-170); they carry no anchors, so filtering them would find
+    // nothing and fail open -- masking the mistake instead of surfacing it.
+    expect(shouldApplySectionFilter("pdf", "vt-enology-notes")).toBe(false);
+  });
+
+  it("leaves every pre-084 source untouched", () => {
+    expect(shouldApplySectionFilter("html", "awri")).toBe(false);
+    expect(shouldApplySectionFilter("html", "wsu")).toBe(false);
+    expect(shouldApplySectionFilter("html", undefined)).toBe(false);
+  });
+
+  it("falls back to no-filter for a source row with no config entry", () => {
+    expect(shouldApplySectionFilter("html", "ghost-source-not-in-config")).toBe(false);
+  });
+});
+
+describe("applySectionFilter — null is reserved for all-dropped", () => {
+  it("fails open (html NOT null) on empty or tagless input", () => {
+    // index-documents.ts branches on `filtered.html === null` to return skipped:"empty".
+    // A later refactor to a falsy check would silently invert this for the empty-string case.
+    for (const input of ["", "   ", "just plain text, no tags at all"]) {
+      const res = applySectionFilter(input);
+      expect(res.html).not.toBeNull();
+      expect(res.failedOpen).toBe(true);
+      expect(res.dropped).toEqual([]);
+    }
+  });
 });
 
 describe("deriveIndexHash — R1, the silent no-op guard", () => {

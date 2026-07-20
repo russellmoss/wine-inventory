@@ -25,6 +25,23 @@ describe("normalizeHeading", () => {
   it("leaves a heading with no leading number untouched", () => {
     expect(normalizeHeading("Polysaccharides and instability")).toBe("Polysaccharides and instability");
   });
+
+  it("does NOT eat real words made of Roman-numeral letters", () => {
+    // Regression. `[ivxlc]+` matched any word built from those letters, so real content was
+    // truncated before classification: "Civil. Engineering" -> "Engineering".
+    for (const s of ["Civil. Engineering", "Vic. Report", "Ill. Effects", "Cl. Test", "Mix. Notes"]) {
+      expect(normalizeHeading(s)).toBe(s);
+    }
+  });
+
+  it("still strips well-formed Roman section numbers", () => {
+    expect(normalizeHeading("I. Sauvignon blanc aroma/flavor.")).toBe("Sauvignon blanc aroma/flavor.");
+    expect(normalizeHeading("II. Virginia Tech Enology Service Lab.")).toBe(
+      "Virginia Tech Enology Service Lab.",
+    );
+    expect(normalizeHeading("IX. Malolactic Fermentation")).toBe("Malolactic Fermentation");
+    expect(normalizeHeading("XIV. Cold Stabilization")).toBe("Cold Stabilization");
+  });
 });
 
 describe("classifySection — DROP: the three non-technical genres", () => {

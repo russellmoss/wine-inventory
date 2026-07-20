@@ -39,8 +39,15 @@ export function normalizeHeading(raw: string): string {
     .replace(/[‒-―−]/g, "-") // en/em dash -> hyphen: "Red Wines – A Review"
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
-    // leading section number: arabic ("3.", "29bii."), Roman ("II."), either closer
-    .replace(/^\s*(?:\d+[a-z]*|[ivxlc]+)\s*[.)]\s*/i, "")
+    // Leading section number: arabic ("3.", "29bii.") or Roman ("II."), either closer.
+    //
+    // The Roman branch is a WELL-FORMED numeral, not `[ivxlc]+`. The loose form matched any word
+    // built from those letters, so "Civil. Engineering" normalized to "Engineering" and
+    // "Ill. Effects" to "Effects" — real content silently truncated before classification, which
+    // can also shorten a heading past MAX_CLASSIFIABLE_HEADING and make it droppable.
+    // Case-sensitive on the Roman side: VT numbers sections "II.", never "ii.", and lowercase is
+    // where the English-word collisions live.
+    .replace(/^\s*(?:\d+[a-z]*|(?:X{0,3})(?:IX|IV|V?I{0,3}))\s*[.)]\s*/, "")
     .replace(/\bon-line\b/gi, "Online")
     .replace(/\bround table\b/gi, "Roundtable")
     .replace(/\s+/g, " ")

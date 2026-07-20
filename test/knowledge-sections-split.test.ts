@@ -132,3 +132,80 @@ describe("splitHtmlSections — spike-found edge cases", () => {
     expect(splitHtmlSections("<html><body><p>nothing</p></body></html>").sections).toEqual([]);
   });
 });
+
+describe("splitHtmlSections — review regressions (2026-07-20)", () => {
+  it("never emits a zero-length slice when two anchors share one block", () => {
+    // THE BUG: both anchors resolved to the same enclosing <p>, so section 1 got a zero-length
+    // slice and its content folded into section 2. Section 2 is an announcement, so the filter
+    // dropped it -- deleting section 1's technical content while still REPORTING it as kept.
+    // Measured before the fix: applySectionFilter emitted "<article></article>". Empty.
+    const html =
+      `<p><a name="1"></a><strong>Rot Chemistry</strong> KEEPME_TECHNICAL ` +
+      `<a name="2"></a><strong>Study Tour, June 10</strong> ad text</p>`;
+    const { sections } = splitHtmlSections(html);
+
+    expect(sections.map((s) => s.anchor)).toEqual(["1", "2"]);
+    for (const s of sections) expect(s.html.length).toBeGreaterThan(0);
+    expect(sections[0].html).toContain("KEEPME_TECHNICAL");
+    expect(sections[1].html).not.toContain("KEEPME_TECHNICAL");
+  });
+
+  it("keeps slice starts strictly increasing for any anchor arrangement", () => {
+    const html =
+      `<div><a name="1"></a>A<a name="2"></a>B<a name="3"></a>C</div>` +
+      `<p><a name="4"></a>D</p><a name="5"></a>E`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections).toHaveLength(5);
+    for (const s of sections) expect(s.html.length).toBeGreaterThan(0);
+    // reassembling the sections must reproduce every section's content exactly once
+    const joined = sections.map((s) => s.html).join("");
+    for (const letter of ["A", "B", "C", "D", "E"]) {
+      expect(joined.split(letter).length - 1).toBe(1);
+    }
+  });
+
+  it("ignores anchors inside HTML comments", () => {
+    const html = `<!-- <a name="1"></a>commented out --><p><a name="2"></a>Real</p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).toEqual(["2"]);
+  });
+
+  it("ignores anchors inside script and style bodies", () => {
+    const html =
+      `<script>var s = '<a name="7"></a>';</script>` +
+      `<style>/* <a name="8"></a> */</style>` +
+      `<p><a name="1"></a>Real</p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).toEqual(["1"]);
+  });
+
+  it("still finds the real anchors on all three fixtures after masking", () => {
+    // masking must not perturb the offsets that slicing depends on
+    expect(splitHtmlSections(fixture(166)).sections.map((s) => s.anchor)).toEqual([
+      "1", "2", "2a", "2b", "3", "4", "5",
+    ]);
+    expect(splitHtmlSections(fixture(112)).sections).toHaveLength(2);
+    expect(splitHtmlSections(fixture(5)).sections).toHaveLength(0);
+  });
+
+  it(
+    "splits a large dense-anchor page without stalling",
+    () => {
+      // The old blockStartFor re-sliced from index 0 and re-scanned the whole prefix for EVERY
+      // anchor -- O(anchors x pageSize). Measured before the fix: 14s on a 1MB dense-anchor page,
+      // extrapolating to ~1h at the 15MB fetch cap. A crawl that looks hung, not slow.
+      //
+      // The bound is deliberately loose. This suite is already load-sensitive (see the memoization
+      // note in extract/html.ts), and the fixed implementation runs this in well under 100ms, so
+      // 10s is a ~100x margin against flake while the quadratic version takes MINUTES on this
+      // input and fails unambiguously.
+      const html = `<p><a name="1"></a>x${"y".repeat(400)}</p>`.repeat(4000);
+      const t0 = Date.now();
+      const { sections } = splitHtmlSections(html);
+      const elapsed = Date.now() - t0;
+      expect(sections).toHaveLength(4000);
+      expect(elapsed).toBeLessThan(10_000);
+    },
+    30_000,
+  );
+});

@@ -60,8 +60,11 @@ async function main() {
           reEmbedded++;
           chunks += r.chunks;
         }
-      } catch {
+      } catch (e) {
         crawlErrors++;
+        // was a bare `catch {}` — the unattended monthly sweep reported a filter regression as
+        // nothing but an opaque error count, indistinguishable from a network flake.
+        console.log(`  ! index failed for ${doc.canonicalUrl}: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
       }
     },
   });

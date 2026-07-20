@@ -35,7 +35,10 @@ export interface SplitHtmlResult {
 const SECTION_ANCHOR = /<a\s+name="([0-9]+[a-z]*)"[^>]*>/gi;
 
 const BLOCK_OPEN = /<(?:p|li|h[1-6]|div|blockquote)\b[^>]*>/gi;
-const BLOCK_CLOSE = /<\/(?:p|li|h[1-6]|div|blockquote)\s*>/i;
+const BLOCK_CLOSE = /<\/(?:p|li|h[1-6]|div|blockquote)\s*>/gi;
+
+/** Comments and script/style bodies, whose contents must never be mistaken for a section anchor. */
+const MASKABLE = /<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 
 /** Terminators for a heading run. First one wins. */
 const HEADING_END = /<\/(?:strong|b|p|h[1-6]|li|div)\s*>/i;
@@ -71,22 +74,72 @@ function decodeEntities(s: string): string {
 }
 
 /**
+ * Mask comments and script/style BODIES with spaces, preserving byte offsets exactly.
+ *
+ * Slicing always reads the ORIGINAL html; only the *searching* runs against the mask. Without this,
+ * `<!-- <a name="1"></a> -->` becomes a section, which both invents junk sections and defeats the
+ * "0 sections found on a non-T1 issue = unknown template" tripwire in verify-vt-enology.ts by making
+ * the count non-zero on a page whose real anchors were never seen.
+ */
+function maskNonContent(html: string): string {
+  MASKABLE.lastIndex = 0;
+  return html.replace(MASKABLE, (match) => " ".repeat(match.length));
+}
+
+/** Ascending match offsets for a sticky-global regex. Scanned ONCE per document, not per anchor. */
+function offsetsOf(re: RegExp, haystack: string): number[] {
+  re.lastIndex = 0;
+  const out: number[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(haystack))) {
+    out.push(m.index);
+    if (m.index === re.lastIndex) re.lastIndex++; // zero-width guard
+  }
+  return out;
+}
+
+/** Largest value in the ascending array that is strictly less than `limit`, or -1. */
+function lastBefore(sorted: number[], limit: number): number {
+  let lo = 0;
+  let hi = sorted.length - 1;
+  let best = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] < limit) {
+      best = sorted[mid];
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
+}
+
+/** True if any value lies strictly between `lo` and `hi`. */
+function anyBetween(sorted: number[], lo: number, hi: number): boolean {
+  const c = lastBefore(sorted, hi);
+  return c > lo;
+}
+
+/**
  * Back the slice start up from the anchor to its enclosing block tag.
  *
  * Slicing exactly at `<a name` lands INSIDE the `<p><strong>`, so the heading loses its bold in the
  * extracted markdown (`**1. Sustainable Winery Expansion**` degrades to plain text). Verified on 6
  * issues during the spike. Only backs up when no closing tag intervenes, so we never absorb the
  * previous section's tail.
+ *
+ * Takes PRE-SCANNED offset arrays rather than rescanning. The original implementation re-sliced the
+ * document from index 0 and re-ran the block scan for every anchor — O(anchors x pageSize). Measured
+ * on real input: 5 MB / 1000 anchors took 2.7s, and a dense-anchor page took 14s at 1 MB, which
+ * extrapolates to roughly an hour at the 15 MB fetch cap. A hung monthly crawl, from a page shape
+ * nobody would think to test.
  */
-function blockStartFor(html: string, anchorIndex: number): number {
-  const before = html.slice(0, anchorIndex);
-  BLOCK_OPEN.lastIndex = 0;
-  let lastOpen = -1;
-  let m: RegExpExecArray | null;
-  while ((m = BLOCK_OPEN.exec(before))) lastOpen = m.index;
+function blockStartFor(opens: number[], closes: number[], anchorIndex: number): number {
+  const lastOpen = lastBefore(opens, anchorIndex);
   if (lastOpen < 0) return anchorIndex;
   // a closing tag between the block open and the anchor means the anchor is NOT inside that block
-  if (BLOCK_CLOSE.test(before.slice(lastOpen))) return anchorIndex;
+  if (anyBetween(closes, lastOpen, anchorIndex)) return anchorIndex;
   return lastOpen;
 }
 
@@ -103,15 +156,29 @@ function headingAfter(html: string, from: number): string {
 export function splitHtmlSections(html: string): SplitHtmlResult {
   if (!html) return { sections: [], preambleHtml: "" };
 
+  // Search the masked copy, slice the original. Offsets are identical by construction.
+  const searchable = maskNonContent(html);
+  const opens = offsetsOf(BLOCK_OPEN, searchable);
+  const closes = offsetsOf(BLOCK_CLOSE, searchable);
+
   const hits: { anchor: string; start: number; afterAnchor: number }[] = [];
   SECTION_ANCHOR.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = SECTION_ANCHOR.exec(html))) {
-    hits.push({
-      anchor: m[1],
-      start: blockStartFor(html, m.index),
-      afterAnchor: m.index + m[0].length,
-    });
+  let prevStart = -1;
+  while ((m = SECTION_ANCHOR.exec(searchable))) {
+    let start = blockStartFor(opens, closes, m.index);
+    // Starts MUST strictly increase, or a section gets a zero-length slice and its content is
+    // silently folded into the NEXT section. When the next section is then dropped as an
+    // announcement, the kept technical content disappears while the filter still reports it as
+    // kept — silent data loss in exactly the case this feature exists to prevent.
+    //
+    // Happens whenever two anchors share one enclosing block, e.g.
+    //   <p><a name="1"></a><strong>Rot Chemistry</strong> ... <a name="2"></a><strong>Tour</strong></p>
+    // which is unremarkable in hand-written 1990s HTML (an omitted </p> is enough).
+    // m.index always exceeds the previous start, so falling back to it restores monotonicity.
+    if (start <= prevStart) start = m.index;
+    prevStart = start;
+    hits.push({ anchor: m[1], start, afterAnchor: m.index + m[0].length });
   }
 
   // T1 (#1-40, ~24% of the corpus) has no anchors at all. That is a valid page, not an empty one —

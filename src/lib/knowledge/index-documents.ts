@@ -9,8 +9,7 @@ import { runAsSystem } from "@/lib/tenant/system";
 import { embedTexts, KB_EMBEDDING_MODEL, KB_EMBEDDING_DIM } from "./embed";
 import { chunkMarkdown } from "./chunk";
 import { extractDocument } from "./extract";
-import { findSourceConfig } from "./config";
-import { applySectionFilter, deriveIndexHash } from "./sections";
+import { applySectionFilter, deriveIndexHash, shouldApplySectionFilter } from "./sections";
 import type { DetectedType } from "./crawl/fetcher";
 
 export interface IndexResult {
@@ -54,9 +53,7 @@ export async function indexDocument(input: {
   // stores folds in SECTION_FILTER_VERSION, so bumping a drop pattern forces a real re-index instead
   // of short-circuiting to "unchanged" forever. Computed WITHOUT running the filter, so the cheap
   // idempotency check below still short-circuits before any parsing.
-  const sectionFilterApplies =
-    input.contentType === "html" &&
-    (input.sourceKey ? findSourceConfig(input.sourceKey)?.sectionFilter === "anchor-heading" : false);
+  const sectionFilterApplies = shouldApplySectionFilter(input.contentType, input.sourceKey);
   const indexHash = deriveIndexHash(input.contentHash, sectionFilterApplies);
 
   // idempotency: same content already indexed with the current model -> no-op
@@ -101,7 +98,25 @@ export async function indexDocument(input: {
   if (sectionFilterApplies) {
     const filtered = applySectionFilter(input.bytes.toString("utf8"));
     if (filtered.html === null) {
-      // sections existed and every one was an announcement
+      // Sections existed and every one was an announcement.
+      //
+      // This MUST converge, not just bail. Returning early would leave the document's previously
+      // indexed chunks live and retrievable — including the announcement text a pattern change was
+      // meant to remove — while `indexedContentHash` kept its old value, so every monthly sweep
+      // would redo the same no-op forever. That defeats SECTION_FILTER_VERSION in the exact branch
+      // the version mechanism exists to serve. Clear the chunks and record the hash so the state
+      // settles. activeRevision is left alone: retrieval reads `revision = activeRevision` and now
+      // finds zero rows, which is the correct "this page has no indexable content" state.
+      await runAsSystem(async (db) => {
+        await db.knowledgeChunk.deleteMany({ where: { documentId: input.documentId } });
+        await db.knowledgeDocument.update({
+          where: { id: input.documentId },
+          data: { indexedContentHash: indexHash },
+        });
+      });
+      console.log(
+        `  [sections] ${input.url} — ALL ${filtered.dropped.length} sections dropped; chunks cleared`,
+      );
       return { chunks: 0, skipped: "empty" };
     }
     if (filtered.failedOpen) {
