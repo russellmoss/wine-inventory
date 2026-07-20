@@ -13,7 +13,7 @@ import type { Prisma } from "@prisma/client";
 //
 // Type-only Prisma import → safe to reference the shape from client code too.
 
-// v3 (Plan 080, Break Mode) adds OPTIONAL replay + narrative + hunt-trail fields alongside the v2
+// v3 (Plan 080) adds OPTIONAL replay + narrative + diagnostics-trail fields alongside the v2
 // console arrays. All new fields are optional and the clamp is additive, so v1/v2 rows still clamp
 // cleanly and no second bump is needed when Phase 2 starts populating the trails.
 export const DEBUG_CONTEXT_SCHEMA_VERSION = 3;
@@ -21,7 +21,7 @@ export const MAX_CONSOLE_ENTRIES = 50;
 export const MAX_CONSOLE_MESSAGE_CHARS = 2000;
 export const MAX_CONSOLE_TOTAL_CHARS = 20_000;
 
-// Break Mode field bounds (defensive server-side clamp; capture-side redaction lives in the buffers).
+// Diagnostics field bounds (defensive server-side clamp; capture-side redaction lives in the buffers).
 export const MAX_REPLAY_ID_CHARS = 64;
 export const MAX_REPLAY_URL_CHARS = 300;
 export const MAX_HUNT_ID_CHARS = 64;
@@ -39,10 +39,10 @@ export type ConsoleCapture = {
 /** Reporter's own words: what they were doing / expected / actually saw (Plan 080 Unit 5). */
 export type NarrativeContext = { doing?: string; expected?: string; actual?: string };
 
-/** One recorded user interaction during a Break Mode hunt (Plan 080 Unit 8). Labels only, never values. */
+/** One recorded user interaction during a diagnostics session (Plan 080). Labels only, never values. */
 export type InteractionEntry = { type: string; ts: number; label?: string; detail?: string };
 
-/** Network-request METADATA only during a hunt (Plan 080 Unit 8). Never request/response bodies. */
+/** Network-request METADATA only (Plan 080). Never request/response bodies. */
 export type NetworkMetaEntry = {
   method: string;
   path: string;
@@ -203,7 +203,7 @@ export function clampDebugContext(input: unknown): Prisma.InputJsonValue | null 
   if (consoleLog) out.consoleLog = consoleLog;
   if (clientErrors) out.clientErrors = clientErrors;
 
-  // v3 (Break Mode) — all optional, all bounded.
+  // v3 (diagnostics) — all optional, all bounded.
   const replayId = clampStringField(rec.replayId, MAX_REPLAY_ID_CHARS);
   const replayUrl = clampStringField(rec.replayUrl, MAX_REPLAY_URL_CHARS);
   const huntId = clampStringField(rec.huntId, MAX_HUNT_ID_CHARS);
