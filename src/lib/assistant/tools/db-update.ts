@@ -1,5 +1,4 @@
 import "server-only";
-import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit, diff } from "@/lib/audit";
 import { isTenantAdminLike } from "@/lib/access";
@@ -65,9 +64,19 @@ export const dbUpdateTool: AssistantTool = {
     }
     assertScoped(entity, ctx.user, row.vineyardId);
 
-    const values = validateFields(entity.editable, input.values ?? {}, "update");
+    let values = validateFields(entity.editable, input.values ?? {}, "update");
+    if (entity.buildUpdate) {
+      // FK names → ids, out here where an ambiguous name can still become a clickable picker.
+      // `update` runs inside the transaction and cannot ask the user anything.
+      const resolved = await entity.buildUpdate(ctx.user, values);
+      if ("needsChoice" in resolved) return resolved;
+      values = resolved;
+    }
     const before = (await entity.current(row.id)) ?? {};
-    const parts = Object.entries(values).map(([k, v]) => `${k}: ${fmt(before[k])} → ${fmt(v)}`);
+    const hidden = new Set(entity.internalUpdateKeys ?? []);
+    const parts = Object.entries(values)
+      .filter(([k]) => !hidden.has(k))
+      .map(([k, v]) => `${k}: ${fmt(before[k])} → ${fmt(v)}`);
     const preview = `Update ${entity.displayName} "${row.label}" — ${parts.join(", ")}.`;
     const token = signProposal("db_update", { entity: entity.name, id: row.id, label: row.label, values });
     return { needsConfirmation: true, preview, token };

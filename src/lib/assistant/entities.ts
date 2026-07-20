@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import type { AppUser } from "@/lib/access";
 import { findScopedBlocks, resolveVineyards } from "./scope";
 import { withFields, type EntityField, type FieldSpec, type ValidatedValues } from "./fields";
-import { resolveExactlyOne } from "./tools/resolve";
+import { resolveExactlyOne, resolveOneOrChoice, type ResolveResult } from "./tools/resolve";
+import type { ChoiceRequest } from "./assistant-events";
 import { assertBlockCascadeSafe, cascadeDeleteBlockChildrenTx } from "@/lib/vineyard/block-delete";
 
 /**
@@ -73,6 +74,14 @@ export type EntityConfig = {
   editable?: FieldSpec[];
   /** Current editable values, for diff/preview, or null if the row is gone. */
   current?: (id: string) => Promise<Record<string, unknown> | null>;
+  /** Resolve FK NAMES in update values to ids, BEFORE the transaction — the mirror of `buildCreate`.
+   *  `update` runs inside the tx and so cannot ask the user anything; resolution has to happen out
+   *  here, where an ambiguous name can still return a clickable picker. Return the augmented values,
+   *  or a ChoiceRequest to hand the user a picker instead of writing. Omit → values pass through. */
+  buildUpdate?: (user: AppUser, values: ValidatedValues) => Promise<ValidatedValues | ChoiceRequest>;
+  /** Keys that `buildUpdate` adds as plumbing (resolved FK ids). Hidden from the confirm card, which
+   *  shows the human-readable sibling instead — nobody should have to confirm "varietyId: cmxyz…". */
+  internalUpdateKeys?: string[];
   /** Apply validated edits within a transaction. */
   update?: (tx: Prisma.TransactionClient, id: string, values: ValidatedValues) => Promise<void>;
 };
@@ -111,6 +120,33 @@ const PARENT_FK_ON_CREATE =
 const UNDECIDED_DRIFT =
   "NOT a deliberate asymmetry — never decided, just never added to the other list. Preserved as-is here because this unit is a pure refactor; see TODOS.md.";
 
+/**
+ * Resolve a grape-variety NAME to its id. Shared by the block's create and update paths so the two
+ * cannot disagree about what "Merlot" means (Unit 3 — before this the resolver was inline in
+ * buildCreate and update had no variety field at all).
+ *
+ * Returns a ResolveResult rather than throwing on ambiguity: an update runs through db_update, which
+ * turns a `choice` into a CLICKABLE picker. A thrown paragraph would be a dead end — the same lesson
+ * as #328, where prose "which one did you mean?" gave the user nothing to act on.
+ */
+export async function resolveVarietyId(name: string): Promise<ResolveResult<{ id: string; name: string }>> {
+  const varieties = await prisma.variety.findMany({
+    where: { name: { contains: name, mode: "insensitive" } },
+    take: 6,
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  // An exact (case-insensitive) hit wins outright — "Merlot" must not open a picker just because
+  // "Merlot Blanc" also exists.
+  const exact = varieties.filter((v) => v.name.toLowerCase() === name.trim().toLowerCase());
+  if (exact.length === 1) return { kind: "one", row: exact[0] };
+  return resolveOneOrChoice(varieties, {
+    prompt: `Which variety did you mean by "${name}"?`,
+    describe: (v) => v.name,
+    noneMsg: `No variety matches "${name}".`,
+  });
+}
+
 // ───────────────────────── VineyardBlock ─────────────────────────
 // Fields live in ONE table; `creatable`/`editable` are derived. Plan 082 Unit 2 — this config
 // used to carry two hand-written arrays that drifted apart in opposite directions.
@@ -121,17 +157,14 @@ const blockFields: EntityField[] = [
   { name: "blockLabel", type: "string", min: 1, max: 80, description: "Block label, e.g. 'Block 2'." },
   { name: "vineCount", type: "int", min: 0, description: "Number of vines." },
   { name: "yearPlanted", type: "int", min: 1900, max: 2100, description: "Year planted." },
-  { name: "variety", type: "string", description: "Grape variety name.",
-    mode: "create-only",
-    why: "DRIFT, not design — a mis-set variety is currently unfixable by the assistant. Unit 3 makes this symmetric." },
-  { name: "numRows", type: "int", min: 0, description: "Number of rows.",
-    mode: "update-only", why: "DRIFT, not design — Unit 3 makes this symmetric." },
-  { name: "clone", type: "string", max: 80, description: "Clone.",
-    mode: "update-only", why: "DRIFT, not design — Unit 3 makes this symmetric." },
-  { name: "rootstock", type: "string", max: 80, description: "Rootstock.",
-    mode: "update-only", why: "DRIFT, not design — Unit 3 makes this symmetric." },
-  { name: "irrigated", type: "boolean", description: "Whether the block is irrigated.",
-    mode: "update-only", why: "DRIFT, not design — Unit 3 makes this symmetric." },
+  // Unit 3 made these five symmetric. `variety` arrives as a NAME on both paths and is resolved to
+  // `varietyId` before the transaction (see resolveVarietyId / buildUpdate) — a mis-set variety used
+  // to be permanently unfixable by the assistant.
+  { name: "variety", type: "string", description: "Grape variety name." },
+  { name: "numRows", type: "int", min: 0, description: "Number of rows." },
+  { name: "clone", type: "string", max: 80, description: "Clone." },
+  { name: "rootstock", type: "string", max: 80, description: "Rootstock." },
+  { name: "irrigated", type: "boolean", description: "Whether the block is irrigated." },
 ];
 
 const vineyardBlock: EntityConfig = {
@@ -177,13 +210,33 @@ const vineyardBlock: EntityConfig = {
   },
   ...withFields(blockFields),
   async current(id) {
-    return prisma.vineyardBlock.findUnique({
+    const row = await prisma.vineyardBlock.findUnique({
       where: { id },
-      select: { blockLabel: true, numRows: true, vineCount: true, yearPlanted: true, clone: true, rootstock: true, irrigated: true },
+      select: {
+        blockLabel: true, numRows: true, vineCount: true, yearPlanted: true, clone: true,
+        rootstock: true, irrigated: true, varietyId: true,
+        variety: { select: { name: true } },
+      },
     });
+    if (!row) return null;
+    // Flatten the relation to a NAME so the before→after card reads "variety: Cabernet → Merlot".
+    // `varietyId` rides along so the audit diff records a change rather than a bare addition.
+    const { variety, ...rest } = row;
+    return { ...rest, variety: variety?.name ?? null };
+  },
+  internalUpdateKeys: ["varietyId"],
+  async buildUpdate(_user, values) {
+    if (values.variety == null) return values;
+    const res = await resolveVarietyId(String(values.variety));
+    if (res.kind === "choice") return res.choice;
+    // Store the CANONICAL name, not what the user typed — "merlot" confirms as "Merlot".
+    return { ...values, variety: res.row.name, varietyId: res.row.id };
   },
   async update(tx, id, values) {
-    await tx.vineyardBlock.update({ where: { id }, data: values as Prisma.VineyardBlockUncheckedUpdateInput });
+    // `variety` is the display name carried for the preview and audit; `varietyId` is the column.
+    const data: Record<string, unknown> = { ...values };
+    delete data.variety;
+    await tx.vineyardBlock.update({ where: { id }, data: data as Prisma.VineyardBlockUncheckedUpdateInput });
   },
   async buildCreate(user, values) {
     const vineyards = await resolveVineyards(user, String(values.vineyard));
@@ -192,25 +245,28 @@ const vineyardBlock: EntityConfig = {
       noneMsg: `No vineyard matches "${values.vineyard}" that you can access.`,
       manyMsg: `Several vineyards match "${values.vineyard}"`,
     });
-    let varietyId: string | undefined;
+    let varietyId: string | null = null;
     if (values.variety) {
-      const varieties = await prisma.variety.findMany({
-        where: { name: { contains: String(values.variety), mode: "insensitive" } },
-        take: 6,
-        select: { id: true, name: true },
-      });
-      varietyId = resolveExactlyOne(varieties, {
-        describe: (v) => v.name,
-        noneMsg: `No variety matches "${values.variety}".`,
-        manyMsg: `Several varieties match "${values.variety}"`,
-      }).id;
+      const res = await resolveVarietyId(String(values.variety));
+      // db_create has no picker plumbing, so an ambiguous name still has to be a message here. The
+      // shared resolver keeps the MATCHING rules identical to the update path; only the ambiguity
+      // affordance differs.
+      if (res.kind === "choice") {
+        const names = res.choice.options.map((o) => o.label).join("; ");
+        throw new Error(`Several varieties match "${values.variety}": ${names}. Please be more specific.`);
+      }
+      varietyId = res.row.id;
     }
     const data: Record<string, unknown> = {
       vineyardId: vineyard.id,
       blockLabel: values.blockLabel ?? null,
-      varietyId: varietyId ?? null,
+      varietyId,
       vineCount: values.vineCount ?? null,
       yearPlanted: values.yearPlanted ?? null,
+      numRows: values.numRows ?? null,
+      clone: values.clone ?? null,
+      rootstock: values.rootstock ?? null,
+      irrigated: values.irrigated ?? null,
     };
     return { data, label: `${values.blockLabel ?? "(unlabeled)"} in ${vineyard.name}` };
   },
