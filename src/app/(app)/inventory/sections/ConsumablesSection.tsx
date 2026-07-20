@@ -450,6 +450,7 @@ function IngestInvoiceLauncher() {
 }
 
 function SupplyRow({ mat, onOpen }: { mat: CellarMaterialDTO; onOpen: () => void }) {
+  const { format } = useCurrency();
   const tracked = !!mat.isStockTracked;
   const out = tracked && (mat.onHand ?? 0) <= 0;
   const display = materialDisplayName(mat);
@@ -489,6 +490,15 @@ function SupplyRow({ mat, onOpen }: { mat: CellarMaterialDTO; onOpen: () => void
         ) : (
           <Badge tone="neutral" variant="soft">not stock-tracked</Badge>
         )}
+        {/* Plan 080 U16: the cost was already derived and shown in the detail modal, but you had to open
+            every item to see it ("why is there no cost data for this expendable?", #374). READ-ONLY and
+            still derived from priced receipts — materials carry no price column, and an unpriced item says
+            so rather than showing a fabricated $0 (COST-2, COST-3). */}
+        {tracked && mat.avgUnitCost != null ? (
+          <span style={{ ...num, fontSize: 13.5, color: "var(--text-muted)" }}>
+            ≈ {format(mat.avgUnitCost, { per: mat.stockUnit ?? "" })}
+          </span>
+        ) : null}
         {out ? <Badge tone="red">out of stock</Badge> : null}
         {mat.isActive === false ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
       </span>
