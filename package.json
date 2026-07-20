@@ -32,6 +32,7 @@
     "crawl:curated": "tsx --conditions=react-server --env-file=.env scripts/crawl-curated.ts",
     "crawl:ets": "tsx --conditions=react-server --env-file=.env scripts/crawl-ets.ts",
     "reset:knowledge-source": "tsx --conditions=react-server --env-file=.env scripts/reset-knowledge-source.ts",
+    "backfill:published-dates": "tsx --conditions=react-server --env-file=.env scripts/backfill-published-dates.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
     "verify:kb-subscriptions": "tsx --conditions=react-server --env-file=.env scripts/verify-kb-subscriptions.ts",
     "verify:chemistry": "tsx --conditions=react-server --env-file=.env scripts/verify-chemistry.ts",
@@ -108,6 +109,7 @@
     "qa:e2e:report": "playwright show-report",
     "eval:assistant": "vitest run test/evals/assistant-tools.eval.test.ts",
     "eval:assistant-must-propose": "vitest run test/evals/assistant-must-propose.eval.test.ts",
+    "eval:assistant-currency": "vitest run test/evals/assistant-currency-warning.eval.test.ts",
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate"
   },

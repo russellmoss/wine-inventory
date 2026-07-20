@@ -5,6 +5,7 @@
 
 import { extractHtml } from "./html";
 import { extractPdf } from "./pdf";
+import { resolvePublishedDate } from "./published-date";
 import type { DetectedType } from "../crawl/fetcher";
 
 // Postgres TEXT columns cannot store NUL (char 0); some PDFs extract stray NUL + other C0 control bytes.
@@ -26,6 +27,12 @@ export interface ExtractedDoc {
   kind: "html" | "pdf";
   wordCount: number;
   lowConfidence: boolean;
+  /**
+   * The document's revision date, or null when it does not carry one we can trust. Persisted to
+   * `KnowledgeDocument.publishedAt` and surfaced in the assistant's citation — null renders as
+   * "unknown", which is the honest answer and deliberately preferred over a guess.
+   */
+  publishedAt: Date | null;
 }
 
 export async function extractDocument(
@@ -42,6 +49,9 @@ export async function extractDocument(
       kind: "pdf",
       wordCount: markdown.split(/\s+/).filter(Boolean).length,
       lowConfidence: r.lowConfidence,
+      // No metadata arm for PDFs — the body scan is all we have (extension PDFs typically stamp
+      // "Revised: <month> <year>" on the cover page).
+      publishedAt: resolvePublishedDate({ markdown }),
     };
   }
   if (contentType === "html") {
@@ -54,6 +64,7 @@ export async function extractDocument(
       wordCount: r.wordCount,
       // an "article" with almost no extracted text is a failure (nav-only page / boilerplate)
       lowConfidence: markdown.length < 80,
+      publishedAt: resolvePublishedDate({ metadataDate: r.published, markdown }),
     };
   }
   throw new Error(`extractDocument: unsupported content type "${contentType}" for ${url}`);

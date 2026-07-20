@@ -81,6 +81,49 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
+0. ⚠️ **OPEN — UC IPM added to the KB corpus (`claude/kb-ucanr-ipm`, branched off `origin/main`).**
+   Source #19 `uc-ipm` (ipm.ucanr.edu grape PMGs) is configured, seeded, crawled and embedded:
+   **87 active docs / 667 chunks, voyage-4/1024, 0 errors, 0 skippedRobots, hitCap=false** (full
+   frontier, not truncated). `autoCrawl: true` so the monthly sweep picks it up with no workflow edit.
+   robots.txt ALLOWS `/agriculture/grape/` — no bypass was used or needed.
+   (a) ✅ **DATE EXTRACTOR DONE.** Root cause was bigger than uc-ipm: `publishedAt` was READ by
+   retrieval (`retrieve.ts:111`) and surfaced in the assistant citation, but **nothing ever wrote it** —
+   the column was dead corpus-wide. Added `extract/published-date.ts` (pure, 18 tests): label-anchored
+   only (`Updated:`/`Revised:`/…) so a bare year in prose is never mistaken for a stamp, range-checked,
+   returns null rather than guessing. Wired through `ExtractedDoc.publishedAt` → `index-documents.ts`
+   (write-only-when-found, so a re-index can't erase a good date). Backfill needed its own script
+   (`npm run backfill:published-dates`) because `indexDocument` short-circuits on unchanged
+   contentHash — a re-crawl alone would never re-extract. **uc-ipm: 83/87 dated (95.4%).** Full suite
+   2871 pass. ⚠️ If tests fail to load on `@prisma/client`, run `npm run db:generate` (clobber).
+   **THE FINDING THAT MATTERS: the UC IPM grape corpus is OLD** — 2015×54, 2016×10, 2014×4 (so 82% is
+   2016-or-older), vs only 8 docs 2021+. Decade-old spray guidance is now at least *dated* in citations.
+   **BRANCH IS NOW GREEN — one thing still running:**
+   (b) ✅ **Golden widened, `verify:knowledge-base` 17/17.** Russell's call (asked, answered): added
+   `ipm.ucanr.edu` to the IPM-thresholds case's `expectPaths` alongside `mapa.gob`/`pnw-644`/
+   `field-monitoring`. WIDENED, not repointed — all remain valid authoritative answers, which is what
+   the multi-value `expectPaths` contract was built for (see its header comment). Reading note left in
+   the file: most of uc-ipm is stamped 2015-or-older, so "authoritative" = canonical, not current.
+   (d) ✅ **Assistant age warning shipped.** `passage-age.ts` (pure, 12 tests): `current` <5y, `aging`
+   5-10y, `stale` 10y+, and **`unknown` for an undated doc — which WARNS rather than passing as fresh**
+   (silently treating undated as current is how stale guidance gets laundered into confident advice).
+   Computed server-side in `search-knowledge-base.ts` as `ageWarning` per passage + a `currencyWarning`
+   over the set, NOT as a prompt line — a prose rule is advisory and gets dropped under long context; a
+   populated field must be actively contradicted. Prompt rule 8 tells the model WHEN it matters (the
+   split: age is a fact computed here, relevance is a judgment the model makes with the question in
+   hand). Live proof: AWRI's 2011-06 YAN passage flags `stale (15y)`.
+   (c) ✅ **Corpus-wide backfill DONE** — `found=735, none=1327, robots=578, errors=7`.
+   **869/2,781 dated (31.2%)**; `verify:knowledge-base` 17/17 and its diversity check moved `0 with a
+   date` → `1`, so dates now genuinely reach retrieval. Of the DATED docs: **270 stale (10y+), 245 aging
+   (5-10y), 354 current** — i.e. 59% of everything we can date is 5+ years old.
+   **TWO THINGS THE BACKFILL SURFACED, both follow-ups not blockers:**
+   • **`osu-owri` is the worst source in the corpus, not uc-ipm** — 266 docs, oldest **1993**. Only 5 are
+   dated (2%), so the 18.2y average is a 5-doc sample and must NOT be quoted as fact; the *oldest* stamp
+   is the solid part. Worth a real look. awri is 55% dated / 8.9y avg / oldest 2011.
+   • **578 docs were robots-BLOCKED from re-fetch** yet are already in the corpus. Not a contradiction
+   but an asymmetry worth knowing: the crawler fails OPEN on a robots fetch error, the backfill fails
+   CLOSED. So those docs can never be dated by this script, and they are permanently `unknown` →
+   which the assistant now warns on rather than passing off as fresh. UMC also 429-rate-limited us.
+   ⚠️ Re-running the backfill will NOT improve these; it needs a decision, not a retry.
 1. **OPEN — #387 is merged but NOT browser-verified.** Russell asked for "merge #387 and verify
    'delete Block 1' in the browser". The merge happened (`de889cc1`); the browser check did not.
    Needs the interactive logged-in pane. **Do not tell Mike anything until it runs** — a fix has

@@ -387,6 +387,53 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     crawlCadence: "manual",
     defaultEnabled: true,
   },
+  {
+    key: "uc-ipm",
+    publisher: "UC IPM (UC Agriculture & Natural Resources)",
+    homeDomain: "ipm.ucanr.edu",
+    tier: 1,
+    license:
+      "UC Statewide IPM Program content, © Regents of the University of California — public land-grant extension resource; reference use with citation + link back (same posture as the WSU/OSU extension sources).",
+    // GRAPE ONLY, and cleanly prefix-scoped — unlike the OSU/Scott Labs sources, UC IPM namespaces every
+    // grape Pest Management Guideline under /agriculture/grape/ (~90 topics: invertebrates, diseases,
+    // nematodes, weeds, vertebrates, plus the year-round IPM program and monitoring supplements). That means
+    // this is a normal autoCrawl source, not an operator script.
+    //
+    // robots.txt (checked 2026-07-20): /agriculture/grape/ is NOT disallowed. Their disallow list is
+    // housekeeping (/tmp, /styles, /include, /mc-icons, /ADMIN) plus two substantive ones we honor below —
+    // /PUSE (pesticide-use reporting data) and /page-view-* (their analytics endpoints). Note /PDF is
+    // disallowed EXCEPT the explicitly Allowed /PDF/PUBS + /PDF/QTSP, so the publication PDFs are opted in
+    // by the site itself. Do NOT add a "/PDF/" denyPrefix to mirror that: denyPrefixes are checked FIRST and
+    // win unconditionally (crawler.ts:75 — no longest-match), so it would kill the /PDF/PUBS/ allow below.
+    // It is unnecessary anyway — allowPrefixes is a whitelist, so any other /PDF/* path matches no allow and
+    // is refused regardless. No Crawl-delay declared → the default 1500ms host throttle applies. Their robots
+    // header asks crawlers to prefer evenings/weekends; the monthly job runs 09:00 UTC (~1-2am Pacific).
+    //
+    // No sitemap.xml (404) → link-following crawl from the grape hub.
+    //
+    // FRESHNESS IS SAFETY-RELEVANT here in a way it is not for the enology sources: these are pesticide
+    // guidelines, so registrations get cancelled and REIs/resistance ratings change. UC IPM date-stamps
+    // every guideline; keep publishedAt populated so the citation surfaces the revision date.
+    seedRoots: ["https://ipm.ucanr.edu/agriculture/grape/"],
+    allowPrefixes: ["/agriculture/grape/", "/PDF/PUBS/", "/PDF/QTSP/"],
+    denyPrefixes: [
+      // Mirrors of the robots.txt disallows that are reachable from grape pages.
+      "/PUSE", // pesticide-use reporting data (robots-disallowed)
+      "/page-view-", // their analytics endpoints
+      "/tools",
+      "/feedback",
+      "/notices",
+      "/WEATHER/CF-ARCHIVE",
+      "/MODELS/",
+      "/WATER/OPCALC",
+      // Non-technical / non-grape noise reachable from the hub.
+      "/legacy/",
+      "/search",
+    ],
+    autoCrawl: true,
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  },
 ];
 
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
@@ -421,6 +468,7 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   { domain: "etslabs.com", sourceKey: "ets" },
   { domain: "www.etslabs.com", sourceKey: "ets" },
   { domain: "webapi.etslabs.com", sourceKey: "ets" }, // the JSON data host that crawl-ets.ts reads
+  { domain: "ipm.ucanr.edu", sourceKey: "uc-ipm" },
 ];
 
 /** Set of trusted hostnames for O(1) gate checks (lowercased). */

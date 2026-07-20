@@ -116,7 +116,14 @@ export async function indexDocument(input: {
         }
         await tx.knowledgeDocument.update({
           where: { id: input.documentId },
-          data: { activeRevision: newRevision, indexedContentHash: input.contentHash },
+          data: {
+            activeRevision: newRevision,
+            indexedContentHash: input.contentHash,
+            // Only WRITE a date we actually found: a re-index whose extraction yields nothing must not
+            // erase a date an earlier pass (or the sitemap lastmod backfill) got right. Losing a good
+            // date silently would put us back to citing undated pesticide guidance.
+            ...(extracted.publishedAt ? { publishedAt: extracted.publishedAt } : {}),
+          },
         });
         await tx.knowledgeChunk.deleteMany({
           where: { documentId: input.documentId, revision: { not: newRevision } },

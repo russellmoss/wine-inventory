@@ -7,6 +7,12 @@ export interface ExtractedHtml {
   title: string;
   markdown: string;
   wordCount: number;
+  /**
+   * Defuddle's own publication date (meta tags / JSON-LD), raw and unvalidated — "" on the many sources
+   * that publish no metadata date. Parsed + range-checked downstream by `resolvePublishedDate`, which
+   * falls back to a label-anchored scan of the body when this is empty (the UC IPM case).
+   */
+  published: string;
 }
 
 // dynamic import: defuddle/node exports only an `import` condition (no `require`), so a static import
@@ -33,5 +39,5 @@ export async function extractHtml(html: string, url: string): Promise<ExtractedH
   const res = await Defuddle(html, url, { markdown: true });
   const markdown = (res.contentMarkdown ?? res.content ?? "").trim();
   const wordCount = res.wordCount ?? markdown.split(/\s+/).filter(Boolean).length;
-  return { title: (res.title ?? "").trim(), markdown, wordCount };
+  return { title: (res.title ?? "").trim(), markdown, wordCount, published: (res.published ?? "").trim() };
 }
