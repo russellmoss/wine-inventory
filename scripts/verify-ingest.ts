@@ -77,8 +77,21 @@ async function cleanup() {
     await prisma.apExportEvent.deleteMany({ where: { id: { in: evIds } } });
     await prisma.vendorMaterialCode.deleteMany({ where: { OR: [{ materialId: { in: matIds } }, { vendorId: { in: vendIds } }] } });
     await prisma.supplyLot.deleteMany({ where: { id: { in: lotIds } } });
+    // Plan 080 U5: scenario 14's mixed invoice mints join rows, equipment assets, merch, a FG cost receipt
+    // and stock movements. Every one of them FKs ON DELETE RESTRICT, so the order below is the dependency
+    // order: join -> receipts/movements/balances -> assets (before VENDOR) -> goods -> lines.
+    const qaLineIds = (await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: { in: invIds } }, select: { id: true } })).map((l) => l.id);
+    const qaFgIds = (await prisma.finishedGood.findMany({ where: { name: { startsWith: PFX } }, select: { id: true } })).map((g) => g.id);
+    const qaAssetIds = (await prisma.equipmentAsset.findMany({ where: { name: { startsWith: PFX } }, select: { id: true } })).map((a) => a.id);
+    await prisma.ingestedInvoiceLineCreatedAsset.deleteMany({ where: { OR: [{ lineId: { in: qaLineIds } }, { equipmentAssetId: { in: qaAssetIds } }] } });
+    await prisma.finishedGoodReceipt.deleteMany({ where: { finishedGoodId: { in: qaFgIds } } });
+    await prisma.stockMovement.deleteMany({ where: { finishedGoodId: { in: qaFgIds } } });
+    await prisma.finishedGoodInventory.deleteMany({ where: { finishedGoodId: { in: qaFgIds } } });
+    await prisma.workOrderTaskEquipment.deleteMany({ where: { equipmentId: { in: qaAssetIds } } });
+    await prisma.equipmentAsset.deleteMany({ where: { id: { in: qaAssetIds } } }); // before vendor (FK)
     await prisma.ingestedInvoiceLine.deleteMany({ where: { ingestedInvoiceId: { in: invIds } } });
     await prisma.ingestedInvoice.deleteMany({ where: { id: { in: invIds } } });
+    await prisma.finishedGood.deleteMany({ where: { id: { in: qaFgIds } } }); // after the LINES (finishedGoodTargetId FK)
     await prisma.cellarMaterial.deleteMany({ where: { OR: [{ id: { in: matIds } }, { vendorId: { in: vendIds } }] } });
     await prisma.vendor.deleteMany({ where: { id: { in: vendIds } } });
     // Plan 080 U4: the manual-invoice scenario creates a QA destination Location. It must go LAST — supply_lot
@@ -600,6 +613,83 @@ async function main() {
           refused = true;
         }
         assert(refused, "scenario 13: a non-MATERIAL line is refused until Wave 3 (council C6)");
+
+        // NOTE: that C6 refusal is the MANUAL-ENTRY form's guard. Wave 3 lifts the restriction for the
+        // APPLY core (scenario 14); threading a target through the hand-entry form is the remaining piece.
+      }
+
+      // ── Scenario 14 (Plan 080 U5): ONE invoice, THREE target kinds, ONE aggregate bill ──
+      // The whole point of Wave 3: a real supplier invoice mixes a pump, a box of clamps and a case of
+      // merch. Each must land in its own store AND code to its own GL account, while A/P stays ONE bill.
+      {
+        const loc = await prisma.location.create({ data: { name: `${PFX} Mixed Dock ${Date.now()}`, isActive: true }, select: { id: true, name: true } });
+        const merch = await prisma.finishedGood.create({
+          data: { name: `${PFX} Logo Glass`, categoryId: (await prisma.finishedGoodCategory.findFirst({ select: { id: true } }))!.id },
+          select: { id: true },
+        });
+        // configure the two accounts council C3 needs; without them the invoice must WITHHOLD (asserted below)
+        const st = await prisma.appSettings.findFirst({ select: { id: true, apFixedAssetAccount: true, apSuppliesExpenseAccount: true } });
+        const savedAccts = { fixed: st?.apFixedAssetAccount ?? null, supplies: st?.apSuppliesExpenseAccount ?? null };
+
+        const batch = `${PFX}-14-${Date.now()}`;
+        const d = doc({
+          vendor: { name: `${PFX} Mixed Vendor` },
+          invoiceNumber: "QA-MIX-1",
+          invoiceTotal: 1000,
+          locationId: loc.id,
+          lines: [
+            { description: `${PFX} Mixed Bentonite`, qty: 1000, unit: "g", unitPrice: 0.1, lineTotal: 100 },
+            { description: `${PFX} Mixed Pump`, qty: 2, unit: "unit", unitPrice: 400, lineTotal: 800 },
+            { description: `${PFX} Logo Glass`, qty: 10, unit: "unit", unitPrice: 10, lineTotal: 100 },
+          ],
+        });
+        const created = await createIngestedInvoiceCore(ACTOR, input("qa-mix.pdf", d, batch));
+        const invId = created.invoices[0].id;
+        const mLines = await prisma.ingestedInvoiceLine.findMany({ where: { ingestedInvoiceId: invId }, orderBy: { lineNo: "asc" } });
+        assert(mLines.every((l) => l.targetKind === "MATERIAL"), "scenario 14: staging classifies every line MATERIAL (explicit, human-overridable)");
+
+        // the human re-points two of the three lines on the review screen
+        await updateIngestedInvoiceLineCore(ACTOR, mLines[0].id, { matchDecision: "new", resolvedKind: "BENTONITE" });
+        await updateIngestedInvoiceLineCore(ACTOR, mLines[1].id, { targetKind: "EQUIPMENT_ASSET" });
+        await updateIngestedInvoiceLineCore(ACTOR, mLines[2].id, { targetKind: "FINISHED_GOOD", finishedGoodTargetId: merch.id });
+
+        // C3: with no Fixed Assets account configured, the invoice must WITHHOLD rather than miscode a pump.
+        await prisma.appSettings.update({ where: { id: st!.id }, data: { apFixedAssetAccount: null, apSuppliesExpenseAccount: null } });
+        const withheld = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(!withheld.ok, "scenario 14: an equipment line with NO Fixed Assets account does not post");
+
+        await prisma.appSettings.update({ where: { id: st!.id }, data: { apFixedAssetAccount: "QA Fixed Assets", apSuppliesExpenseAccount: "QA Supplies Expense" } });
+        const res = await applyIngestedInvoiceCore(ACTOR, { ingestedInvoiceId: invId });
+        assert(res.ok, `scenario 14: mixed invoice applies once the accounts exist (${res.ok ? "" : res.error})`);
+        if (!res.ok) return;
+
+        // each kind landed in its OWN store
+        assert(res.supplyLotIds.length === 1, `scenario 14: exactly 1 SupplyLot from the consumable line (got ${res.supplyLotIds.length})`);
+        const assetLinks = await prisma.ingestedInvoiceLineCreatedAsset.findMany({ where: { lineId: mLines[1].id } });
+        assert(assetLinks.length === 2, `scenario 14: qty-2 equipment line created 2 assets + 2 join rows (council C5) (got ${assetLinks.length})`);
+        const assets = await prisma.equipmentAsset.findMany({ where: { id: { in: assetLinks.map((a) => a.equipmentAssetId) } }, select: { purchaseCostBase: true } });
+        const assetSum = assets.reduce((a, x) => a + Number(x.purchaseCostBase ?? 0), 0);
+        assert(Math.abs(assetSum - 800) < 0.01, `scenario 14: asset costs sum EXACTLY to the line total 800 (council C7) (got ${assetSum})`);
+        const fgr = await prisma.finishedGoodReceipt.findMany({ where: { finishedGoodId: merch.id } });
+        assert(fgr.length === 1 && fgr[0].qty === 10, `scenario 14: 1 finished-goods receipt for 10 units (got ${fgr.length})`);
+        assert(Math.abs(Number(fgr[0].unitCostBase) - 10) < 0.01, `scenario 14: FG unit cost = 100/10 = 10 (got ${fgr[0].unitCostBase})`);
+        const fgInv = await prisma.finishedGoodInventory.findFirst({ where: { finishedGoodId: merch.id, locationId: loc.id } });
+        assert(fgInv?.quantity === 10, `scenario 14: 10 units of merch on hand at the invoice's location (got ${fgInv?.quantity})`);
+
+        // AP-1 still holds: ONE bill — but now with THREE different per-line GL accounts (council C3)
+        const evs = await prisma.apExportEvent.findMany({ where: { ingestedInvoiceId: invId } });
+        assert(evs.length === 1, `scenario 14: still exactly ONE aggregate bill for a mixed invoice (AP-1) (got ${evs.length})`);
+        const bl = (evs[0].billLinesJson as { amount: number; debitAccount: string; targetKind?: string }[] | null) ?? [];
+        assert(bl.length === 3, `scenario 14: 3 bill lines (got ${bl.length})`);
+        const acctFor = (k: string) => bl.find((x) => x.targetKind === k)?.debitAccount;
+        assert(acctFor("EQUIPMENT_ASSET") === "QA Fixed Assets", `scenario 14: the pump codes to Fixed Assets (got ${acctFor("EQUIPMENT_ASSET")})`);
+        assert(acctFor("MATERIAL") === "QA Supplies Expense", `scenario 14: the consumable codes to Supplies Expense (got ${acctFor("MATERIAL")})`);
+        assert(acctFor("FINISHED_GOOD") != null && acctFor("FINISHED_GOOD") !== "QA Fixed Assets", "scenario 14: the merch line codes to the inventory account, not Fixed Assets");
+        assert(new Set(bl.map((x) => x.debitAccount)).size === 3, "scenario 14: a mixed invoice hits THREE distinct GL accounts — the balance sheet stays honest");
+        const billTotal = bl.reduce((a, x) => a + Number(x.amount), 0);
+        assert(Math.abs(billTotal - 1000) < 0.01, `scenario 14: bill lines reconcile EXACTLY to the invoice total 1000 (got ${billTotal})`);
+
+        await prisma.appSettings.update({ where: { id: st!.id }, data: { apFixedAssetAccount: savedAccts.fixed, apSuppliesExpenseAccount: savedAccts.supplies } });
         // NOTE: the QA location is removed by cleanup() (after the lots that FK to it), not here.
       }
     });

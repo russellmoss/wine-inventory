@@ -194,6 +194,37 @@ export async function depleteForSale(tx: Prisma.TransactionClient, wineSkuId: st
   });
 }
 
+/**
+ * Plan 080 U5 — receive finished goods INSIDE the caller's transaction (the mixed-invoice apply).
+ *
+ * `receiveStock` above opens its OWN `withWriteRetry(runInTenantTx(...))`. Calling it from inside the
+ * invoice apply would nest a transaction and a retry inside the governed apply tx — the council's
+ * double-post / partial-apply hazard. This is the same three writes with the tx handed in, so the goods
+ * movement commits or rolls back with the rest of the invoice.
+ */
+export async function receiveStockTx(
+  tx: Prisma.TransactionClient,
+  kind: ItemKind,
+  itemId: string,
+  locationId: string,
+  qty: number,
+  ctx: Ctx,
+  reason?: string,
+): Promise<void> {
+  assertCount(qty, "Quantity");
+  const loc = await locationActive(tx, locationId);
+  if (!loc || !loc.isActive) throw new ActionError("That location is not available.");
+  await movementCreate(tx, kind, itemId, locationId, "RECEIVE", qty, ctx, reason);
+  await increment(tx, kind, itemId, locationId, qty);
+  await writeAudit(tx, {
+    ...ctx,
+    action: "STOCK_MOVEMENT",
+    entityType: kind === "BOTTLED_WINE" ? "BottledInventory" : "FinishedGoodInventory",
+    entityId: itemId,
+    summary: `Received ${qty} ${UNIT(kind)} at ${loc.name}${reason ? ` (${reason})` : ""}`,
+  });
+}
+
 /** Restore `qty` bottles of a WineSku at a location for a refund/cancel (a positive SALE-kind move). */
 export async function restoreForRefund(tx: Prisma.TransactionClient, wineSkuId: string, locationId: string, qty: number, ctx: Ctx, reason?: string): Promise<void> {
   assertCount(qty, "Refund quantity");

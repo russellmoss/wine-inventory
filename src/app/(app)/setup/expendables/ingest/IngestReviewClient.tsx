@@ -59,7 +59,7 @@ function useNarrow(): boolean {
 type ApplyState = {
   pending: boolean;
   error: string | null;
-  needsAck: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" | null;
+  needsAck: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" | "target" | null;
   acks: { reconcile: boolean; partial: boolean; duplicate: boolean };
   result: { supplyLotIds: string[]; apLineCount: number } | null;
 };

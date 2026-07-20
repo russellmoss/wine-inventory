@@ -21,7 +21,11 @@ function dueDateFrom(base: Date, terms?: string | null): Date | null {
   return new Date(base.getTime() + days * 86_400_000);
 }
 
-export type ApEmitResult = { emitted: number; postable: boolean; reason?: string };
+/** `reasonCode` lets a caller distinguish a LEGITIMATE non-post (no vendor, no priced lines, a tenant that
+ *  runs without A/P at all) from a MISCONFIGURATION the operator must fix — plan 080 U5 needs that split so
+ *  an unmapped GL account blocks, while an A/P-less tenant keeps applying inventory-only exactly as before. */
+export type ApEmitReasonCode = "no-priced-lines" | "no-ap-accounts" | "no-vendor" | "unmapped-line-account";
+export type ApEmitResult = { emitted: number; postable: boolean; reason?: string; reasonCode?: ApEmitReasonCode };
 
 /**
  * Emit the AP export event + Bill delivery for one supply receipt. Idempotent by postingKey. No-op when
@@ -119,7 +123,27 @@ export async function emitApExportForReceipt(
 }
 
 /** One QBO Bill line for an aggregate per-invoice event — an inventory-account debit in the document currency. */
-export type ApBillLine = { amount: number; description?: string | null };
+/** Plan 080 U5 (council C3): a line's target decides its GL account. Omitted → the inventory account,
+ *  which is the correct default for a consumables-only invoice (every pre-U5 caller). */
+export type ApBillTarget = "MATERIAL" | "EQUIPMENT_ASSET" | "FINISHED_GOOD";
+export type ApBillLine = { amount: number; description?: string | null; targetKind?: ApBillTarget | null };
+
+/** The configured GL accounts a bill line can code to. */
+export type ApAccounts = { inventory: string | null; fixedAsset: string | null; suppliesExpense: string | null };
+
+/**
+ * PURE — council C3's category→account map. A pump is a FIXED ASSET, a clamp is an EXPENSE, a case of merch
+ * is INVENTORY; coding all three to one account corrupts the balance sheet.
+ *
+ * Returns null when the needed account is not configured, which makes the caller WITHHOLD the invoice
+ * rather than silently miscode it. Consumables fall back to the inventory account when no supplies-expense
+ * account is set, so every pre-U5 (consumables-only) invoice posts exactly as it did before.
+ */
+export function apAccountForTarget(target: ApBillTarget | null | undefined, accounts: ApAccounts): string | null {
+  if (target === "EQUIPMENT_ASSET") return accounts.fixedAsset;
+  if (target === "MATERIAL") return accounts.suppliesExpense ?? accounts.inventory;
+  return accounts.inventory; // FINISHED_GOOD + unspecified
+}
 
 /**
  * Plan 076 — emit ONE aggregate A/P event (+ PENDING Bill delivery) for a whole ingested invoice, so it
@@ -148,21 +172,51 @@ export async function emitApExportForInvoice(
   dbArg?: Db,
 ): Promise<ApEmitResult> {
   const db = asDb(dbArg);
-  const settings = await db.appSettings.findFirst({ select: { apInventoryAccount: true, apPayableAccount: true } });
+  const settings = await db.appSettings.findFirst({
+    select: { apInventoryAccount: true, apPayableAccount: true, apFixedAssetAccount: true, apSuppliesExpenseAccount: true },
+  });
   const inv = settings?.apInventoryAccount ?? null;
   const ap = settings?.apPayableAccount ?? null;
+  const fixedAsset = settings?.apFixedAssetAccount ?? null;
+  const suppliesExpense = settings?.apSuppliesExpenseAccount ?? null;
 
   const pricedLines = opts.lines.filter((l) => Number.isFinite(l.amount) && Number(l.amount) > 0);
   const postable = pricedLines.length > 0 && !!inv && !!ap && !!opts.vendorId;
   if (!postable) {
     const reason = pricedLines.length === 0 ? "no priced lines" : !inv || !ap ? "A/P accounts are not configured" : "no vendor on the invoice";
-    return { emitted: 0, postable: false, reason };
+    const reasonCode: ApEmitReasonCode = pricedLines.length === 0 ? "no-priced-lines" : !inv || !ap ? "no-ap-accounts" : "no-vendor";
+    return { emitted: 0, postable: false, reason, reasonCode };
+  }
+
+  // Plan 080 U5 (council C3) — per-line GL. A pump is a FIXED ASSET, a clamp is an EXPENSE, a case of merch
+  // is INVENTORY. Coding all three to the inventory account corrupts the balance sheet, so a line whose
+  // target needs an account the tenant has not configured WITHHOLDS the whole invoice rather than posting it
+  // to the wrong place. Consumables/unspecified keep the inventory account, so every pre-U5 invoice is
+  // unaffected. The category→account map itself is pending accountant sign-off before go-live.
+  const accountFor = (t: ApBillTarget | null | undefined): string | null =>
+    apAccountForTarget(t, { inventory: inv, fixedAsset, suppliesExpense });
+  const unmapped = pricedLines.find((l) => accountFor(l.targetKind) == null);
+  if (unmapped) {
+    return {
+      emitted: 0,
+      postable: false,
+      reasonCode: "unmapped-line-account",
+      reason:
+        unmapped.targetKind === "EQUIPMENT_ASSET"
+          ? "this invoice capitalizes equipment, but no Fixed Assets account is configured (Settings → Accounting)"
+          : "a line's GL account is not configured (Settings → Accounting)",
+    };
   }
 
   const amount = pricedLines.reduce((a, l) => a + Number(l.amount), 0);
   // Every line debits the same inventory-asset account today (single configured account); the JSON preserves
   // per-line amounts + descriptions so the QBO Bill shows the invoice's lines, not one collapsed total.
-  const billLines = pricedLines.map((l) => ({ debitAccount: inv as string, amount: Number(l.amount), description: l.description ?? null }));
+  const billLines = pricedLines.map((l) => ({
+    debitAccount: accountFor(l.targetKind) as string,
+    amount: Number(l.amount),
+    description: l.description ?? null,
+    targetKind: l.targetKind ?? null,
+  }));
   const exRate = opts.exchangeRate != null && Number.isFinite(opts.exchangeRate) && opts.exchangeRate > 0 ? opts.exchangeRate : null;
 
   const postingKey = `apinv:${ingestedInvoiceId}`;
