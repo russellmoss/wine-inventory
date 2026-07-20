@@ -3,7 +3,7 @@
 import React from "react";
 import { Card, Input, Button, Badge, Eyebrow, ConfirmButton, ExportCsvButton } from "@/components/ui";
 import type { ItemKind } from "@/lib/stock/movements";
-import { createCategory, createWineSku, createGood, moveStock, updateOnHand, deleteOnHand } from "@/lib/inventory/actions";
+import { moveStock, updateOnHand, deleteOnHand } from "@/lib/inventory/actions";
 import { unwrap } from "@/lib/action-result";
 import { ImportCsvModal } from "../ImportCsvModal";
 import { AddFinishedGoodModal } from "@/components/inventory/AddFinishedGoodModal";
@@ -117,35 +117,10 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
 
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 28 }}>
-        <Card style={{ flex: "1 1 300px" }}>
-          <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 20, marginBottom: 12 }}>New wine SKU</h2>
-          <form onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => createWineSku(new FormData(f)), f); }} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Input name="name" placeholder="Ser Kem Marp Reserve" required />
-            <Input name="vintage" type="number" placeholder="Vintage" required />
-            <Button type="submit" variant="primary" disabled={pending}>Add wine</Button>
-          </form>
-        </Card>
-
-        <Card style={{ flex: "1 1 300px" }}>
-          <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 20, marginBottom: 12 }}>New item &amp; category</h2>
-          <form onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => createCategory(new FormData(f)), f); }} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <Input name="name" placeholder="New category (e.g. Apparel)" style={{ flex: 1 }} required />
-            <Button type="submit" variant="secondary" disabled={pending}>Add category</Button>
-          </form>
-          {categories.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Add a category, then add items to it.</p>
-          ) : (
-            <form onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => createGood(new FormData(f)), f); }} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Input name="name" placeholder="Item (e.g. Logo T-Shirt)" style={{ flex: "1 1 150px" }} required />
-              <select name="categoryId" style={{ ...sel, height: 44, flex: "0 1 150px" }} required defaultValue="">
-                <option value="" disabled>Category</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <Button type="submit" variant="primary" disabled={pending}>Add item</Button>
-            </form>
-          )}
-        </Card>
-
+        {/* Plan 080 U7: the legacy inline "New wine SKU" and "New item & category" forms are GONE — the
+            "+ Add wine" / "+ Add merchandise" modal beside the sub-tabs supersedes them and is a strict
+            superset (it also captures MSRP and opening stock). Keeping both left four competing ways to add
+            an item on one screen. */}
         {canMove ? (
           <Card style={{ flex: "1 1 360px" }}>
             <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 20, marginBottom: 12 }}>Move stock</h2>

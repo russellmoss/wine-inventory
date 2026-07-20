@@ -37,44 +37,11 @@ function parseKind(raw: unknown): ItemKind {
   return k;
 }
 
-export const createCategory = action(async ({ actor }, formData: FormData) => {
-  const name = clean(formData.get("name"), "Category name");
-  if (await prisma.finishedGoodCategory.findFirst({ where: { name } })) throw new ActionError("That category already exists.", "CONFLICT");
-  await runInTenantTx(async (tx) => {
-    const cat = await tx.finishedGoodCategory.create({ data: { name } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "Category", entityId: cat.id, changes: diff(null, { name }), summary: summarize("CREATE", "Category", { label: name }) });
-  });
-  revalidatePath(PATH);
-});
 
-export const createWineSku = action(async ({ actor }, formData: FormData) => {
-  const name = clean(formData.get("name"), "Wine name");
-  const vintage = parseVintage(formData.get("vintage"));
-  let categoryId = String(formData.get("categoryId") ?? "");
-  if (await findWineSku(prisma as unknown as Parameters<typeof findWineSku>[0], { name, vintage, isNonVintage: false, bottleSizeMl: 750 })) {
-    throw new ActionError("That wine + vintage already exists.", "CONFLICT");
-  }
-  await runInTenantTx(async (tx) => {
-    if (!categoryId) {
-      const wine = await tx.finishedGoodCategory.upsert({ where: { tenantId_name: { tenantId: requireTenantId(), name: "Wine" } }, update: {}, create: { name: "Wine" } });
-      categoryId = wine.id;
-    }
-    const sku = await tx.wineSku.create({ data: { name, vintage, bottleSizeMl: 750, categoryId } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "WineSku", entityId: sku.id, changes: diff(null, { name, vintage }), summary: summarize("CREATE", "Wine SKU", { label: `${name} ${vintage}` }) });
-  });
-  revalidatePath(PATH);
-});
 
-export const createGood = action(async ({ actor }, formData: FormData) => {
-  const name = clean(formData.get("name"), "Item name");
-  const categoryId = String(formData.get("categoryId") ?? "");
-  if (!(await prisma.finishedGoodCategory.findUnique({ where: { id: categoryId } }))) throw new ActionError("Pick a category.");
-  await runInTenantTx(async (tx) => {
-    const good = await tx.finishedGood.create({ data: { name, categoryId } });
-    await writeAudit(tx, { ...actor, action: "CREATE", entityType: "FinishedGood", entityId: good.id, changes: diff(null, { name }), summary: summarize("CREATE", "Item", { label: name }) });
-  });
-  revalidatePath(PATH);
-});
+
+
+
 
 // `safeAction`, not `action`: a move can be legitimately blocked (empty/short source, inactive
 // location, same-location transfer) and the user needs the SPECIFIC reason. A thrown `ActionError`
