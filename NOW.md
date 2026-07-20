@@ -145,7 +145,7 @@ is two decisions that are Russell's, not code:
    row-boundary windowing so a tool_use can never be orphaned, and ONE over-claim repair turn.
    Browser-QA'd on Demo with a DB read-back. Plan 081's cold 3/3 overstated its fix (4/5 under
    history); correction appended there. Pop when #404 merges.
-6. **PLAN 084 SHIPPED — PR #406.** VT *Enology Notes* into the assistant KB with section-level
+6. ✅ **POPPED — PLAN 084 LIVE. Merged #406 + #409; corpus populated and verified.** VT *Enology Notes* into the assistant KB with section-level
    filtering. `enology.fst.vt.edu` puts rot chemistry and a $3,200 study-tour ad on the SAME url,
    which path-prefix filtering structurally cannot separate — so this adds the crawler's FIRST
    section-level content filter. robots.txt: there is none (404), nothing bypassed.
@@ -164,10 +164,22 @@ is two decisions that are Russell's, not code:
    cap); an over-masking regression; and a number-strip regression that broke case-insensitive
    arabic the corpus actually uses. One finding was REFUTED not applied — masking past `-- >` is
    correct, verified against linkedom.
-   Gates: tsc 0, eslint 0, **vitest 2985/0**, verify:invariants 36/36, verify:vt-enology PASS live.
-   ⚠️ **NOT done: the DB row-level proof.** `npm run crawl:source vt-enology-notes` needs `.env` +
-   the MAIN checkout and is the first real write to the global corpus — left for a human.
-   Pop when #406 merges.
+   **LIVE, and the DB proof RAN** (the gap that had been left for a human): seeded, then crawled
+   174 urls → **173 documents / 858 chunks**, 0 errors, 0 skippedRedirect. Corpus **2,850 → 3,023**.
+   Acceptance query against the real corpus: **zero announcement text leaks from any
+   section-filterable page.** The 3 remaining hits are the two paths that are unfiltered BY DESIGN
+   and documented — 1 PDF (no anchors) and T1 #17/#21 (anchorless fail-open). 34 T1 fail-open pages
+   observed vs ~40 predicted for #1-40; 119 pages filtered with correct reasons.
+   🔎 **The live acceptance test earned its keep** — it caught a config inconsistency the offline
+   gate could not: I denied the 14 year pages as "navigation, not content" and then seeded
+   `/EN/index.html`, which is also navigation (indexed as 2 chunks of pure link dump). Worse, it
+   links to five alphabetical index pages that match the `/EN/` allow-prefix — `crawl:source` does
+   not follow links but the MONTHLY sweep's `crawlWithFollowing` does, so they would have arrived
+   silently on the 1st. Fixed in **#409** (one `/EN/index` prefix covers all six); the stale doc was
+   deleted from the corpus.
+   ⚠️ Also learned: `recrawl-knowledge` reads sources from the **DB**, not config — merging a
+   source does NOTHING until `seed:knowledge-sources` runs. Easy to miss.
+   Gates: tsc 0, eslint 0, **vitest 2985/0**, verify:invariants 36/36, verify:vt-enology PASS.
 7. ← you are here
 
 ## 🪝 Off-path — do NOT do now
@@ -246,7 +258,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
 - Plan 080 Wave 3 → council review → PR.
 
-_Last updated: 2026-07-20 — popped the UC IPM / corpus-dates / stale-warning tangent (#405 merged). Prior: plan 084 (VT Enology Notes KB + section filter) as PR #406
+_Last updated: 2026-07-20 — plan 084 LIVE (#406 + #409, corpus verified 173 docs/858 chunks). Prior: popped the UC IPM / corpus-dates / stale-warning tangent (#405 merged). Prior: plan 084 (VT Enology Notes KB + section filter) as PR #406
 (branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
 lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the
 consumables fix and issue #328 had all already landed while still listed as in-flight. Beware
