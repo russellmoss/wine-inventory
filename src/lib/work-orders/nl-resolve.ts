@@ -285,7 +285,7 @@ function matchMaterialByRef(all: CellarMaterialDTO[], ref: string, opts: { scope
   const exact = all.filter((m) => names(m).includes(needle));
   const fuzzy = all.filter((m) => names(m).some((h) => h && (h.includes(needle) || needle.includes(h))));
   const matches = exact.length ? exact : fuzzy;
-  if (matches.length === 0) throw new Error(`No material matches "${ref}". Add it to the expendables catalog first, or check the name.`);
+  if (matches.length === 0) throw new Error(`No material matches "${ref}". Add it to the consumables catalog first, or check the name.`);
   const inScope = matches.filter((m) => {
     const category = categoryOfMaterial(m);
     if (opts.doseableOnly && !isDoseableCategory(category)) return false;

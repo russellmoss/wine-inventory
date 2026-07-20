@@ -67,7 +67,7 @@ export function VendorsClient({ vendors, isAdmin, importCandidates = [], qboPush
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: "8px 0 4px" }}>Vendors</h1>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>Suppliers for expendables and the accounts you buy under. Used across the app and on accounting bills.</p>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>Suppliers for consumables and the accounts you buy under. Used across the app and on accounting bills.</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {isAdmin ? <Button variant="ghost" disabled={pending} onClick={pull}>{pending ? "Working…" : "Pull vendors from QBO"}</Button> : null}

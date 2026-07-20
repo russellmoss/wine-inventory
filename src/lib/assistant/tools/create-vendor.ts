@@ -31,11 +31,11 @@ const s = (v: unknown): string | undefined => (typeof v === "string" && v.trim()
 export const createVendorTool: AssistantTool = {
   name: "create_vendor",
   description:
-    "Create a NEW vendor/supplier in the vendor list (the suppliers you buy expendables from, also used on " +
+    "Create a NEW vendor/supplier in the vendor list (the suppliers you buy consumables from, also used on " +
     "accounting bills). Use when the user wants to add a supplier — 'add a vendor called Scott Labs, Net 30', " +
     "'create a new vendor Gusmer, orders@gusmer.com, PO required'. Core field: name (required). Optional: phone, " +
     "email, primary contact name, our account number, PO-required flag, payment terms (e.g. 'Net 30', 'Pay at " +
-    "purchase'), and website URL. This does NOT create a material/expendable — use create_material for that. " +
+    "purchase'), and website URL. This does NOT create a material/consumable — use create_material for that. " +
     "Returns a preview to confirm.",
   kind: "write",
   inputSchema: {

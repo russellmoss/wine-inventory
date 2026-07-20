@@ -11,7 +11,7 @@ export const queryRecentIntakesTool: AssistantTool = {
   name: "query_recent_intakes",
   description:
     "List recently ingested supplier documents (invoices/proformas/COAs) and what they added to inventory. " +
-    "Use for 'what did I just intake', 'show my recent invoice ingests', 'what expendables did the Crush2Cellar " +
+    "Use for 'what did I just intake', 'show my recent invoice ingests', 'what consumables did the Crush2Cellar " +
     "invoice add', 'is that intake applied or still pending'. Returns each intake's vendor, invoice #, document " +
     "type, status (pending | applied | discarded), and — for applied ones — the materials + lots + quantities " +
     "it created and the invoice total. Read-only; to undo an applied intake use reverse_intake.",

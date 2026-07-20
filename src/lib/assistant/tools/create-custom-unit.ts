@@ -33,7 +33,7 @@ export const createCustomUnitTool: AssistantTool = {
     "'make a roll unit, 500 labels per roll'. Provide: name; what it measures (mass/weight, volume, or count); " +
     "how big one is (amount); and for weight/volume the reference unit the amount is in (kg, L, gal…). For a " +
     "count unit the amount is how many base items are in one (e.g. 500 labels per roll; use 1 to just count the " +
-    "unit itself). This does NOT create a material/expendable (use create_material) and does NOT receive stock " +
+    "unit itself). This does NOT create a material/consumable (use create_material) and does NOT receive stock " +
     "(use receive_supply). Names that clash with a built-in unit are refused. Returns a preview to confirm.",
   kind: "write",
   inputSchema: {

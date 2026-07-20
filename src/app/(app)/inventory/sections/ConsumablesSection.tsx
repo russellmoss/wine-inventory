@@ -166,7 +166,7 @@ export function ConsumablesSection({
       <Eyebrow rule>Setup</Eyebrow>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Expendables</h1>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Consumables</h1>
           <p style={{ color: "var(--text-secondary)", marginBottom: 20, maxWidth: "60ch" }}>
             Winemaking supplies — yeast, nutrients, SO₂, fining agents, acids, tannins, enzymes, cleaning &amp;
             sanitizing, packaging. Click an item to view its details, then edit its setup, receive a costed lot,
@@ -176,7 +176,7 @@ export function ConsumablesSection({
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <IngestInvoiceLauncher />
           <Button variant="primary" onClick={() => setAddOpen(true)} style={{ minHeight: 44, marginTop: 10 }}>
-            + Add expendable
+            + Add consumable
           </Button>
         </div>
       </div>
@@ -186,9 +186,9 @@ export function ConsumablesSection({
       {materials.length === 0 ? (
         <Card padding="var(--space-5)" style={{ marginTop: 8, textAlign: "center" }}>
           <p style={{ color: "var(--text-secondary)", fontSize: 15, margin: "8px 0 14px" }}>
-            No expendables yet. Add your first supply to start tracking stock and cost.
+            No consumables yet. Add your first supply to start tracking stock and cost.
           </p>
-          <Button variant="primary" onClick={() => setAddOpen(true)}>+ Add expendable</Button>
+          <Button variant="primary" onClick={() => setAddOpen(true)}>+ Add consumable</Button>
         </Card>
       ) : (
         <>
@@ -197,8 +197,8 @@ export function ConsumablesSection({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search expendables by name…"
-              aria-label="Search expendables"
+              placeholder="Search consumables by name…"
+              aria-label="Search consumables"
             />
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button type="button" aria-pressed={catFilter === "ALL"} style={chipStyle(catFilter === "ALL")} onClick={() => selectCat("ALL")}>All</button>
@@ -232,7 +232,7 @@ export function ConsumablesSection({
 
           {categories.length === 0 ? (
             <Card padding="var(--space-5)" style={{ textAlign: "center" }}>
-              <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: "6px 0" }}>No expendables match your search.</p>
+              <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: "6px 0" }}>No consumables match your search.</p>
             </Card>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -354,7 +354,7 @@ function IngestInvoiceLauncher() {
       for (const f of files) form.append("files", f);
       const res = await fetch("/api/ingest/documents", { method: "POST", body: form });
       if (res.status === 503) {
-        setError("Document ingestion isn't available (upload storage isn't configured). Add the item manually with “+ Add expendable”.");
+        setError("Document ingestion isn't available (upload storage isn't configured). Add the item manually with “+ Add consumable”.");
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { files?: { blobUrl: string; mimeType: string; fileName: string; fileSha256?: string }[]; error?: string };
@@ -688,13 +688,13 @@ function AddExpendableModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add expendable" subtitle="Product, purchase, and how it's tracked" maxWidth="min(620px, 96vw)">
+    <Modal open={open} onClose={onClose} title="Add consumable" subtitle="Product, purchase, and how it's tracked" maxWidth="min(620px, 96vw)">
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <MaterialForm value={form} onChange={patch} familiesByCategory={familiesByCategory} mode="create" vendors={vendors} customUnits={customUnits} onVendorCreated={(v) => { patch({ vendorId: v.id }); onVendorCreated(); }} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button type="button" variant="primary" onClick={submit} disabled={!canSubmit}>
-            {pending ? "Adding…" : "Add expendable"}
+            {pending ? "Adding…" : "Add consumable"}
           </Button>
         </div>
       </div>
