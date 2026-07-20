@@ -66,7 +66,39 @@ findings`. These were judged real but deferred:
   into a behavioural assertion. Same move that made `detectChallengePage` and `decideAdmission`
   testable. Deferred as a refactor rather than a review fix.
 
-### What remains (all of Unit 8's live half)
+### FINAL OUTCOME (2026-07-20, after merge): MSU IS UNREACHABLE. Source set DORMANT.
+
+Unit 8 ran and produced a definitive negative. Recording it so nobody repeats the attempt.
+
+**MSU refuses this crawler from every network tried.**
+
+| Network | Result |
+|---|---|
+| Operator residential IP | 5/5 refused after ~15 requests, across every user-agent (bot UA, Chrome UA, no UA) — so it is IP-based, not UA-based |
+| GitHub Actions runner | `discovered: 1, fetched: 1, documents: 0, skippedChallenge: 1` on `https://www.canr.msu.edu/grapes/` |
+
+So the plan's headline risk did materialise, and the documented fallback (`autoCrawl: false` + an
+operator-run curated crawl) **does not work either** — a curated URL list still fetches from a
+blocked network. What is needed is a network MSU will answer, not a different code path.
+
+**Disposition (user's call): `autoCrawl: false` + `defaultEnabled: false`.** The source stays
+registered with all its verified research intact; it is out of the monthly sweep (where
+`findDarkSources` would red the job every month) and off by default (so it is not an
+always-empty toggle in every tenant's Settings). Pinned by tripwire assertions in
+`test/knowledge-config.test.ts` and `verify:msu`.
+
+**What the exercise was still worth.** The six hardening units were validated under live fire from
+a network they had never seen: the detector fired on a real Imperva interstitial, skipped it before
+persist, indexed nothing, counted it, and surfaced a `::warning::`. Without them that run would have
+written a challenge page into the global corpus as a document and re-embedded it monthly forever.
+It also surfaced a **production-down bug unrelated to MSU** — `virginia-fruit`, seeded from an
+unmerged branch, was killing the entire monthly sweep (fixed in #418).
+
+**If MSU is ever wanted again**, the open question the config flags is whether `/grapes/` carries the
+technical content directly. That was never verifiable, because `/grapes/viticulture/` was challenged
+on every attempt — so `linkedOnlyPrefixes` may not even be necessary.
+
+### What remains (all of Unit 8's live half) — SUPERSEDED by the outcome above
 
 - [ ] Merge + deploy, THEN `npm run seed:knowledge-sources` from the MAIN checkout.
 - [ ] `npm run verify:msu` from a network MSU is not currently refusing (proves the rule against

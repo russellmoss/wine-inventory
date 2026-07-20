@@ -575,9 +575,25 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     ],
     // NOTE: /grapes/education is deliberately NOT denied — it may carry technical material. Revisit
     // after the first full crawl if it turns out to be event listings.
-    autoCrawl: true,
+    //
+    // ⛔ DORMANT — UNREACHABLE, NOT BROKEN. Imperva refuses this crawler from every network tried:
+    // the operator's residential IP (5/5 refused after ~15 requests, across every user-agent) AND
+    // GitHub Actions runners (`discovered: 1, fetched: 1, documents: 0, skippedChallenge: 1` on
+    // https://www.canr.msu.edu/grapes/). So there is no path from which this source can be ingested.
+    //
+    // autoCrawl:false keeps it out of the monthly sweep, where it would otherwise land in
+    // findDarkSources (challenged, zero documents) and red the job every month forever.
+    // defaultEnabled:false keeps it from showing as an ON-but-permanently-empty toggle in every
+    // tenant's Settings.
+    //
+    // Everything above this line is verified research and stays: the robots.txt check, the missing
+    // sitemap, the /news/-from-/grapes/ provenance rule, and the JSON-LD date shape. Flip both flags
+    // back the day a route exists. NOTE the fallback the plan describes — an operator-run curated
+    // crawl — does NOT work either; a curated URL list still fetches from a blocked network. What is
+    // needed is a network MSU will answer, not a different code path.
+    autoCrawl: false,
     crawlCadence: "monthly",
-    defaultEnabled: true,
+    defaultEnabled: false,
   },
 ];
 

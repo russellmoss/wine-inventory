@@ -64,8 +64,13 @@ async function main() {
   if (!cfg) throw new Error("msu-grapes is not in KNOWLEDGE_SOURCES — nothing to verify");
 
   // ---- PURE: the shipped config says what we think it says -------------------------------------
-  check(cfg.autoCrawl !== false, "msu-grapes must stay on the monthly sweep (autoCrawl !== false)");
-  check(cfg.crawlCadence === "monthly", "msu-grapes crawlCadence must be 'monthly'");
+  // DORMANT. MSU is unreachable from every network tried (residential IP and GitHub runners both),
+  // so the source is deliberately out of the monthly sweep and off by default. These assertions are
+  // a tripwire: re-enabling autoCrawl puts a permanently-challenged source back in the sweep, where
+  // findDarkSources reds the job every month. Flip only with evidence of a network MSU will answer.
+  check(cfg.autoCrawl === false, "msu-grapes must stay DORMANT (autoCrawl === false) while MSU is unreachable");
+  check(cfg.defaultEnabled === false, "msu-grapes must stay OFF by default — it can never have content");
+  check(cfg.crawlCadence === "monthly", "msu-grapes crawlCadence must be 'monthly' (the cadence if it becomes reachable)");
   check(TRUSTED_DOMAIN_SET.has("canr.msu.edu"), "canr.msu.edu missing from TRUSTED_DOMAINS");
   check(TRUSTED_DOMAIN_SET.has("www.canr.msu.edu"), "www.canr.msu.edu missing from TRUSTED_DOMAINS");
   check(
@@ -180,9 +185,12 @@ async function main() {
     console.error(
       `\n✗ BLOCKED — MSU's bot wall answered instead of the origin: ${liveBlocked}\n` +
         "  This is a WAF block, not a broken feature: the config checks above all passed.\n" +
-        "  MSU escalates with request volume; retry later, or from a different network.\n" +
-        "  If the MONTHLY job reports msu-grapes in darkSources, that is the same thing from CI —\n" +
-        "  see the fallback noted on the source entry in config.ts (autoCrawl:false + curated crawl).",
+        "  EXPECTED as of 2026-07-20 — msu-grapes is DORMANT precisely because this happens. MSU\n" +
+        "  refused this crawler from the operator's residential IP (5/5, every user-agent) AND from\n" +
+        "  GitHub Actions runners, so there is no network we can currently reach it from. A curated\n" +
+        "  URL list does NOT help: it fetches from the same blocked network.\n" +
+        "  This script is the probe for whether that has changed. If it ever reports live PASS, the\n" +
+        "  source can be un-dormanted (autoCrawl + defaultEnabled back to true, then re-seed).",
     );
     process.exit(1);
   }
