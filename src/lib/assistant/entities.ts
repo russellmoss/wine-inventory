@@ -6,7 +6,9 @@ import { findScopedBlocks, resolveVineyards } from "./scope";
 import { withFields, type EntityField, type FieldSpec, type ValidatedValues } from "./fields";
 import { resolveExactlyOne, resolveOneOrChoice, type ResolveResult } from "./tools/resolve";
 import type { ChoiceRequest } from "./assistant-events";
-import { readUnitValue, spacingToCanonicalM } from "@/lib/vineyard/field-coercion";
+import {
+  ABBREVIATION_MAX, ABBREVIATION_MIN, normalizeAbbreviation, readUnitValue, spacingToCanonicalM,
+} from "@/lib/vineyard/field-coercion";
 import { formatSpacing, type Unit } from "@/lib/vineyard/units";
 import { assertBlockCascadeSafe, cascadeDeleteBlockChildrenTx } from "@/lib/vineyard/block-delete";
 
@@ -338,11 +340,39 @@ const vineyardBlock: EntityConfig = {
 
 // ───────────────────────── Vineyard ─────────────────────────
 
-/** Vineyard, Location and FinishedGoodCategory are all plain name-plus-active registries. */
+/** Location and FinishedGoodCategory are plain name-plus-active registries. (Vineyard was too,
+ *  until Unit 5 gave it an abbreviation.) */
 const nameRegistryFields: EntityField[] = [
   { name: "name", type: "string", required: true, min: 2, max: 80 },
   { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
 ];
+
+const vineyardFields: EntityField[] = [
+  { name: "name", type: "string", required: true, min: 2, max: 80 },
+  // Unit 5. This is the token that appears in LOT CODES, so a vineyard created without it is
+  // half-built: it cannot participate in lot coding until a human opens /reference. The assistant
+  // used to create exactly that and report success.
+  { name: "abbreviation", type: "string", min: ABBREVIATION_MIN, max: ABBREVIATION_MAX,
+    description: "Short code used in lot codes, 2-4 letters or numbers, e.g. EST." },
+  { name: "isActive", type: "boolean", mode: "update-only", why: DEACTIVATE_ONLY },
+];
+
+/**
+ * Is `abbreviation` already held by a DIFFERENT vineyard? Case-insensitively, because the token is
+ * stored uppercased and identity-bearing — two vineyards sharing one lot-code prefix makes the codes
+ * ambiguous, which no downstream reader can recover from.
+ *
+ * `exceptId` excludes the row being edited so re-saving your own abbreviation is not a conflict.
+ */
+async function abbreviationHolder(abbreviation: string, exceptId?: string) {
+  return prisma.vineyard.findFirst({
+    where: {
+      abbreviation: { equals: abbreviation, mode: "insensitive" },
+      ...(exceptId ? { id: { not: exceptId } } : {}),
+    },
+    select: { name: true, abbreviation: true },
+  });
+}
 
 const vineyard: EntityConfig = {
   name: "Vineyard",
@@ -365,14 +395,42 @@ const vineyard: EntityConfig = {
     { label: "assigned managers", kind: "cascade", count: (id) => prisma.userVineyard.count({ where: { vineyardId: id } }) },
   ],
   del: async (tx, id) => { await tx.vineyard.delete({ where: { id } }); },
-  ...withFields(nameRegistryFields),
-  current: (id) => prisma.vineyard.findUnique({ where: { id }, select: { name: true, isActive: true } }),
+  ...withFields(vineyardFields),
+  current: (id) => prisma.vineyard.findUnique({ where: { id }, select: { name: true, abbreviation: true, isActive: true } }),
   update: async (tx, id, v) => { await tx.vineyard.update({ where: { id }, data: v as Prisma.VineyardUncheckedUpdateInput }); },
-  buildCreate: async (_user, v) => ({ data: { name: String(v.name) }, label: String(v.name) }),
+  async buildUpdate(_user, values, id) {
+    if (values.abbreviation == null) return values;
+    const abbreviation = normalizeAbbreviation(values.abbreviation)!;
+    const holder = await abbreviationHolder(abbreviation, id);
+    if (holder) {
+      throw new Error(`The abbreviation "${abbreviation}" is already used by "${holder.name}". Lot codes have to stay unambiguous, so pick another.`);
+    }
+    return { ...values, abbreviation };
+  },
+  buildCreate: async (_user, v) => ({
+    data: { name: String(v.name), abbreviation: normalizeAbbreviation(v.abbreviation) },
+    label: String(v.name),
+  }),
   create: async (tx, data) => (await tx.vineyard.create({ data: data as Prisma.VineyardUncheckedCreateInput, select: { id: true } })).id,
-  findConflict: nameConflict((name) =>
-    prisma.vineyard.findFirst({ where: { name: { equals: name, mode: "insensitive" } }, select: { name: true } }),
-  ),
+  /** Guards BOTH identity columns. The name check is the original NAMING-1 guard; the abbreviation
+   *  check closes a pre-existing hole — two vineyards could collide on the lot-code token itself,
+   *  which the name-only guard never looked at. */
+  async findConflict(data) {
+    const name = String(data.name ?? "").trim();
+    if (name) {
+      const byName = await prisma.vineyard.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+        select: { name: true },
+      });
+      if (byName) return { label: byName.name };
+    }
+    const abbreviation = data.abbreviation ? String(data.abbreviation) : null;
+    if (abbreviation) {
+      const byAbbr = await abbreviationHolder(abbreviation);
+      if (byAbbr) return { label: `${byAbbr.name} (abbreviation ${byAbbr.abbreviation})` };
+    }
+    return null;
+  },
 };
 
 // ───────────────────────── Global registries (admin-only to mutate) ─────────────────────────
