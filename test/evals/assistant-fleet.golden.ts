@@ -148,6 +148,13 @@ export const ASSISTANT_FLEET: FleetCase[] = [
     kind: "write",
     maxToolCalls: 1,
   },
+  {
+    utterance: "Log a tasting note on T5 that it smells like rotten eggs",
+    tool: "record_tasting_note",
+    kind: "write",
+    maxToolCalls: 1,
+    note: "SENSORY on a VESSEL (feedback cmrsrs02) — the confusable is record_measurement, which owns the numeric chem/lab side of the same tank. 'Smells like' is prose, not an analyte. The reported failure was worse than mis-selection: the model called NOTHING and narrated a saved note, so this case also guards the tool being reachable by vessel at all",
+  },
   // ── Issue an instance vs author a template (a real confusable) ──
   {
     utterance: "Issue the weekly barrel-care work order for tomorrow",

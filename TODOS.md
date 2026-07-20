@@ -135,3 +135,20 @@ The assistant global dock can auto-navigate ("take me to X") after a 3s countdow
 protection is inert; only the countdown+Cancel protects a mid-edit user. Wire the
 high-risk forms (field-report editor, template spec builder, inventory-adjust) to set
 `data-unsaved="true"` while dirty. Source: /review of plan-042 PR-A.
+
+## Whole-tank tasting notes (fan out the way chem panels already do)
+You taste the TANK, not one lot inside it. `record_measurement` already handles this —
+plan 060 fans a reading out to every co-resident lot, one row each, so the "a row belongs
+to exactly one lot" rule still holds. `record_tasting_note` never got the same treatment:
+on a multi-lot vessel it returns a lot PICKER and forces the winemaker to pin one of three
+lots for a note that describes all three. Same tank, same tasting session, two behaviors.
+
+Reported by the winemaker in feedback `cmrsrs02` ("the tank is now one lot, even though
+it's a collection of 3 — but we still are required to select [one]"). PR #391 addressed
+only the other half of that report (the assistant not reaching for the tool) and explicitly
+deferred this.
+
+Nothing in VISION D2 blocks it — the one-lot rule is per ROW and a fan-out satisfies it.
+This is unbuilt, not decided against. Needs a core/server-action change
+(`recordTastingNoteCore`, mirroring plan 060), so it is out of reach of assistant-only fixes.
+Applies to the /chemistry tasting modal too, not just the assistant.

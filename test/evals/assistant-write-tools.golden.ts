@@ -174,6 +174,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { lot: "24-CS-A", aroma: "bright cherry", tannin: 4, score: 92 },
   },
   {
+    utterance: "Log a tasting note on T5 that it smells like rotten eggs",
+    tool: "record_tasting_note",
+    args: { vessel: "T5", aroma: "smells like rotten eggs" },
+    note: "the VESSEL phrasing (feedback cmrsrs02) — the reported miss was the model narrating a saved note in prose instead of calling the tool at all. A tasting note is reachable by vessel, not just by lot code; a multi-lot vessel returns the clickable lot picker (resolveLotTargetOrChoice), never a prose dead-end",
+  },
+  {
     utterance: "Issue the weekly barrel-care work order for tomorrow",
     tool: "create_work_order",
     args: { template: "weekly barrel care", dueDate: "2026-07-06" },

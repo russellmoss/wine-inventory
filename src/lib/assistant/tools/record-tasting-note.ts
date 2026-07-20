@@ -7,11 +7,18 @@ import { recordTastingNoteAction } from "@/lib/chemistry/actions";
 import type { RecordTastingNoteInput } from "@/lib/chemistry/tasting";
 
 // Assistant-coverage Wave 1 #2b — record a sensory TASTING NOTE against a LOT by chat. Wraps
-// recordTastingNoteAction → recordTastingNoteCore (no re-implemented logic, no db_*). A tasting note
-// attaches to exactly one lot (VISION D2, the one-lot invariant); when the named vessel holds a blend,
-// resolveLotTargetOrChoice returns a CLICKABLE lot picker (not a prose dead-end) so the winemaker pins
-// the lot in one tap and still gets the normal confirm card. Structure scores are 1–5; overall score is
-// 0–100 or 0–20 by scale. Values accepted as typed, shown to confirm.
+// recordTastingNoteAction → recordTastingNoteCore (no re-implemented logic, no db_*). Each tasting-note
+// ROW attaches to exactly one lot; when the named vessel holds a blend, resolveLotTargetOrChoice returns
+// a CLICKABLE lot picker (not a prose dead-end) so the winemaker pins the lot in one tap and still gets
+// the normal confirm card. Structure scores are 1–5; overall score is 0–100 or 0–20 by scale. Values
+// accepted as typed, shown to confirm.
+//
+// DEFERRED, not decided: you taste the whole TANK, not one lot inside it, so a co-ferment should fan out
+// the way record_measurement already does (plan 060 — one row per co-resident lot, each row still
+// single-lot). The one-lot rule is per ROW and a fan-out satisfies it, so nothing in VISION D2 blocks
+// this; it is simply unbuilt (it needs a core/server-action change, not an assistant-only one). Until it
+// lands, this tool and record_measurement behave differently on the SAME multi-lot tank — picker here,
+// automatic fan-out there. See TODOS.md.
 
 const STRUCTURE = ["tannin", "acidity", "body", "finish"] as const;
 
