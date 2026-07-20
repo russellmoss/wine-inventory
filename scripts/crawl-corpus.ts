@@ -29,7 +29,7 @@ async function main() {
       try {
         const r = await indexDocument({
           documentId: doc.documentId, bytes: doc.bytes, contentType: doc.contentType,
-          url: doc.canonicalUrl, contentHash: doc.contentHash,
+          url: doc.canonicalUrl, contentHash: doc.contentHash, sourceKey: doc.sourceKey,
         });
         if (r.skipped) skipped++;
         else {

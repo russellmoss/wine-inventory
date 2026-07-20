@@ -19,6 +19,12 @@ export interface KnowledgeSourceConfig {
   // corpus is populated by a dedicated operator script instead (a curated URL list that path-prefix
   // filtering can't cleanly express, or a paginated listing walk). Default true.
   autoCrawl?: boolean;
+  // Plan 083 — strip non-technical SECTIONS from within a page before extraction. Only needed when
+  // a source mixes technical and non-technical content inside ONE url, which path-prefix filtering
+  // structurally cannot express (VT Enology Notes puts rot chemistry and a paid tour ad on the same
+  // page). "anchor-heading" = split on <a name="N"> anchors, classify by heading text. Config-only,
+  // like sitemapUrls/autoCrawl — the seed script does not persist it, so no migration.
+  sectionFilter?: "anchor-heading";
   crawlCadence: string;
   defaultEnabled: boolean;
 }
