@@ -39,15 +39,21 @@ export function normalizeHeading(raw: string): string {
     .replace(/[‒-―−]/g, "-") // en/em dash -> hyphen: "Red Wines – A Review"
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
-    // Leading section number: arabic ("3.", "29bii.") or Roman ("II."), either closer.
+    // Leading section number, stripped in TWO passes because the two numbering systems need
+    // different case rules. Doing it as one alternation forced one flag on both and broke arabic.
     //
-    // The Roman branch is a WELL-FORMED numeral, not `[ivxlc]+`. The loose form matched any word
-    // built from those letters, so "Civil. Engineering" normalized to "Engineering" and
+    // Arabic stays case-INSENSITIVE: the corpus uses letter-suffixed numbers (EN-159 has 29bi and
+    // 29bii) and they appear in both cases. A leading digit is required, so this can never match
+    // the empty string.
+    .replace(/^\s*\d+[a-z]*\s*[.)]\s*/i, "")
+    // Roman is case-SENSITIVE and must be a WELL-FORMED numeral. The loose `[ivxlc]+` form matched
+    // any word built from those letters, so "Civil. Engineering" normalized to "Engineering" and
     // "Ill. Effects" to "Effects" — real content silently truncated before classification, which
-    // can also shorten a heading past MAX_CLASSIFIABLE_HEADING and make it droppable.
-    // Case-sensitive on the Roman side: VT numbers sections "II.", never "ii.", and lowercase is
-    // where the English-word collisions live.
-    .replace(/^\s*(?:\d+[a-z]*|(?:X{0,3})(?:IX|IV|V?I{0,3}))\s*[.)]\s*/, "")
+    // can also shorten a heading past MAX_CLASSIFIABLE_HEADING and make it droppable. Lowercase is
+    // where the English-word collisions live, and VT numbers sections "II.", never "ii.".
+    // The leading lookahead is load-bearing: every quantifier below is optional, so without it the
+    // pattern matches EMPTY and strips a bare leading "." or ")".
+    .replace(/^\s*(?=[MDCLXVI])M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\s*[.)]\s*/, "")
     .replace(/\bon-line\b/gi, "Online")
     .replace(/\bround table\b/gi, "Roundtable")
     .replace(/\s+/g, " ")

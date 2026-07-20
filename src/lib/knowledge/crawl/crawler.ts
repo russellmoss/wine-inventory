@@ -516,6 +516,13 @@ export async function crawlUrls(
     }
     if (res.contentType === "other") { summary.skippedType++; continue; }
 
+    // NOTE: no redirect path re-gate here, unlike crawlSource/crawlWithFollowing. crawlUrls is the
+    // operator-directed path — the caller passes an EXPLICIT url list, and several of its callers
+    // (crawl-owri, crawl-scott-labs, crawl-curated) deliberately fetch paths their source's
+    // allowPrefixes do not cover. Applying the gate here would reject those by design.
+    // `summary.skippedRedirect` therefore stays 0 on this path; it is part of the shared
+    // CrawlSummary shape, not dead state.
+
     const contentHash = crypto.createHash("sha256").update(res.bytes).digest("hex");
     const document = await persistDocument(sourceId, cfg, url, undefined, res, contentHash);
     summary.documents++;

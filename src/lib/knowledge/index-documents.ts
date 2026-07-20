@@ -100,13 +100,18 @@ export async function indexDocument(input: {
     if (filtered.html === null) {
       // Sections existed and every one was an announcement.
       //
-      // This MUST converge, not just bail. Returning early would leave the document's previously
-      // indexed chunks live and retrievable — including the announcement text a pattern change was
-      // meant to remove — while `indexedContentHash` kept its old value, so every monthly sweep
-      // would redo the same no-op forever. That defeats SECTION_FILTER_VERSION in the exact branch
-      // the version mechanism exists to serve. Clear the chunks and record the hash so the state
-      // settles. activeRevision is left alone: retrieval reads `revision = activeRevision` and now
-      // finds zero rows, which is the correct "this page has no indexable content" state.
+      // Returning early would leave the document's previously indexed chunks live and retrievable
+      // — including the announcement text a pattern change was meant to remove — while
+      // `indexedContentHash` kept its old value. That defeats SECTION_FILTER_VERSION in the exact
+      // branch the version mechanism exists to serve. Clear the chunks and record the hash.
+      // activeRevision is left alone: retrieval reads `revision = activeRevision` and now finds
+      // zero rows, which is the correct "this page has no indexable content" state.
+      //
+      // NOTE: the CHUNKS converge, the WORK does not. The idempotency short-circuit above needs a
+      // hash match AND at least one existing chunk, and this branch leaves zero — so a later sweep
+      // re-parses the page and re-runs this small transaction. That costs one parse plus one tiny
+      // tx per all-dropped document per sweep, and zero embedding spend. Not worth a sentinel
+      // column to avoid; documented so nobody reads the code expecting a full short-circuit.
       // Same locking discipline as the main write below: take the document row FOR UPDATE inside
       // one tx, so a concurrent indexer can't flip in a new revision while we delete its chunks and
       // leave the document pointing at a revision with no rows.
@@ -118,7 +123,7 @@ export async function indexDocument(input: {
             where: { id: input.documentId },
             data: { indexedContentHash: indexHash },
           });
-        });
+        }, { timeout: 60_000 });
       });
       console.log(
         `  [sections] ${input.url} — ALL ${filtered.dropped.length} sections dropped; chunks cleared`,

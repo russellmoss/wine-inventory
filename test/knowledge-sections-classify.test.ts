@@ -34,6 +34,21 @@ describe("normalizeHeading", () => {
     }
   });
 
+  it("keeps arabic numbering case-insensitive (corpus uses 29bi / 29BII)", () => {
+    // Regression: folding both numbering systems into one alternation forced ONE case flag on
+    // both. Making it case-sensitive for Roman silently broke uppercase letter-suffixed arabic.
+    expect(normalizeHeading("29bii. Rinse Protocol")).toBe("Rinse Protocol");
+    expect(normalizeHeading("29BII. Rinse Protocol")).toBe("Rinse Protocol");
+    expect(normalizeHeading("29B. Biofilms")).toBe("Biofilms");
+  });
+
+  it("never strips a bare leading separator", () => {
+    // Every quantifier in the Roman branch is optional, so without a leading lookahead the
+    // pattern matches EMPTY and eats a leading "." or ")".
+    expect(normalizeHeading(". Foo")).toBe(". Foo");
+    expect(normalizeHeading(") Foo")).toBe(") Foo");
+  });
+
   it("still strips well-formed Roman section numbers", () => {
     expect(normalizeHeading("I. Sauvignon blanc aroma/flavor.")).toBe("Sauvignon blanc aroma/flavor.");
     expect(normalizeHeading("II. Virginia Tech Enology Service Lab.")).toBe(
@@ -41,6 +56,8 @@ describe("normalizeHeading", () => {
     );
     expect(normalizeHeading("IX. Malolactic Fermentation")).toBe("Malolactic Fermentation");
     expect(normalizeHeading("XIV. Cold Stabilization")).toBe("Cold Stabilization");
+    expect(normalizeHeading("XL. Late Harvest")).toBe("Late Harvest");
+    expect(normalizeHeading("L. Barrel Program")).toBe("Barrel Program");
   });
 });
 

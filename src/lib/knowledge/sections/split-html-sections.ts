@@ -37,8 +37,24 @@ const SECTION_ANCHOR = /<a\s+name="([0-9]+[a-z]*)"[^>]*>/gi;
 const BLOCK_OPEN = /<(?:p|li|h[1-6]|div|blockquote)\b[^>]*>/gi;
 const BLOCK_CLOSE = /<\/(?:p|li|h[1-6]|div|blockquote)\s*>/gi;
 
-/** Comments and script/style bodies, whose contents must never be mistaken for a section anchor. */
-const MASKABLE = /<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+/**
+ * Comments and script/style bodies, whose contents must never be mistaken for a section anchor.
+ *
+ * Every alternative here is bounded, and that is the whole point. A naive
+ * `<!--[\s\S]*?-->` OVER-masks on malformed markup: `<!-->`, `<!-- nav -- >`, and a self-closing
+ * `<script src="a.js"/>` all fail to terminate, so the lazy match runs on to the NEXT `-->` or
+ * `</script>` and swallows every anchor in between. Those anchors' content then lands in the
+ * discarded preamble — silent section loss, and invisible because the section count stays non-zero
+ * so the unknown-template tripwire never fires. Malformed closers and XHTML-style self-closing
+ * tags are exactly what 1990s hand-written HTML is full of.
+ *
+ * So: `<!-->` and `<!--->` are the empty comments HTML5 says they are, comments terminate on
+ * `-->` / `--!>` / end-of-input, script and style accept a self-closing form, and an UNTERMINATED
+ * script masks to end-of-input rather than not masking at all (otherwise `document.write('<a
+ * name="7">')` becomes a section made of JavaScript).
+ */
+const MASKABLE =
+  /<!--(?:>|->|[\s\S]*?(?:--!?>|$))|<(?:script|style)\b[^>]*\/>|<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi;
 
 /** Terminators for a heading run. First one wins. */
 const HEADING_END = /<\/(?:strong|b|p|h[1-6]|li|div)\s*>/i;

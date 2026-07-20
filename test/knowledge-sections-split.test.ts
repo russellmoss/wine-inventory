@@ -197,6 +197,42 @@ describe("splitHtmlSections — review regressions (2026-07-20)", () => {
     expect(sections.map((s) => s.anchor)).toEqual(["2"]);
   });
 
+  it("does NOT over-mask on malformed comments and script tags", () => {
+    // Regression from the FIRST review fix. A naive /<!--[\s\S]*?-->/ fails to terminate on these,
+    // so the lazy match ran on to the next --> or </script> and swallowed every anchor in between.
+    // The swallowed sections land in the discarded preamble: silent loss, and invisible because the
+    // section count stays non-zero so the unknown-template tripwire never fires.
+    const cases: [string, string][] = [
+      ["abbreviated empty comment", `<!--><p><a name="1"></a>Rot Chemistry</p><p>b</p><!-- nav -->`],
+      ["self-closing script", `<script src="a.js"/><p><a name="1"></a>Rot Chemistry</p><script>x</script>`],
+    ];
+    for (const [label, html] of cases) {
+      const { sections } = splitHtmlSections(html);
+      expect(sections.map((s) => s.anchor), label).toContain("1");
+      expect(sections.find((s) => s.anchor === "1")!.html, label).toContain("Rot Chemistry");
+    }
+  });
+
+  it("DOES mask past a `-- >` closer, because that is what a real parser does", () => {
+    // Deliberate, and verified against linkedom (the parser Defuddle runs on) rather than assumed:
+    //   <!-- nav -- >  -> content NOT in document.body.textContent  (comment continues)
+    //   <!-->          -> content IS in textContent                 (empty comment)
+    // Per HTML5 a comment ends only at `-->` or `--!>`; `-- >` with a space does not close it.
+    // So masking here matches what the extractor would see anyway. Content inside a comment the
+    // browser hides is genuinely commented out, and indexing it would be the bug.
+    const html = `<!-- nav -- ><p><a name="1"></a>Commented Out</p><!-- real -->`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections).toHaveLength(0);
+  });
+
+  it("masks an UNTERMINATED script to end-of-input", () => {
+    // The inverse failure: with no closing tag the mask matched nothing, so JavaScript became a
+    // section. `document.write('<a name="7">')` produced a section whose heading was a JS fragment.
+    const html = `<p>intro</p><script>document.write('<a name="7"></a>');<p><a name="1"></a>Real</p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).not.toContain("7");
+  });
+
   it("ignores anchors inside script and style bodies", () => {
     const html =
       `<script>var s = '<a name="7"></a>';</script>` +

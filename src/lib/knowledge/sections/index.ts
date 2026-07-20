@@ -20,11 +20,14 @@ import { classifySection } from "./classify-section";
  */
 // v2 (2026-07-20): added the MAX_CLASSIFIABLE_HEADING prose guard after the live gate caught
 //                  EN-159 #1 dropping real fermentation content on an incidental phrase match.
+// v4 (2026-07-20): fix-review — bounded comment/script masking (the v3 mask OVER-matched on
+//                  malformed markup and silently swallowed sections) + two-pass number strip (v3
+//                  broke case-insensitive arabic and could strip a bare separator).
 // v3 (2026-07-20): review fixes — monotonic slice starts (two anchors sharing a block produced a
 //                  zero-length slice and silently deleted the KEPT section's content), comment /
 //                  script masking, and a well-formed Roman numeral strip ("Civil. Engineering" was
 //                  normalizing to "Engineering"). All three change what gets indexed.
-export const SECTION_FILTER_VERSION = "3";
+export const SECTION_FILTER_VERSION = "4";
 
 export interface DroppedSection {
   anchor: string;
