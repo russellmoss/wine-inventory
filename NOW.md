@@ -7,6 +7,29 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**PLAN 082 — assistant vineyard/block coverage. APPROVED, starting Unit 1. Plan: [2026-07-20-082-…](docs/plans/2026-07-20-082-feat-assistant-vineyard-coverage-plan.md) (Standard, 7 units). Branch off `main` (`de889cc1`).**
+Came out of Russell asking, after the #387 fix, whether the real root cause was that the assistant has no vineyard
+editing tools. It wasn't the cause of #387 — but the audit it triggered found a bigger gap. The assistant has **zero
+GPS coverage** (`VineyardDetail` is not a registered entity at all), block `variety` is create-only so a mis-set
+variety is permanently unfixable, and `rowSpacingM`/`vineSpacingM` are writable by neither path — so the assistant
+can change `vineCount` and strand the derived planted acreage with no way to correct it.
+Root framing: `entities.ts:91` labels the block config a *"Unit 1 vertical slice"* and nothing came back to finish it.
+The `creatable`/`editable` asymmetry is a half-built config that shipped, not a design. **Unit 2's real job is making
+the two lists derive from one table so they cannot drift again.**
+Key decisions: keep direct-Prisma but extract the **pure** coercion both write paths share (the actions are
+`"use server"` + FormData, structurally uncallable from a tool runtime — and the real defect is two copies of the
+rules, not two call paths) · flatten `VineyardDetail` onto `Vineyard` (a separate entity can't be *updated* before it
+exists, which is exactly the first-time case that matters) · **no `FieldSpec` framework change** (blast radius across
+all 8 entities for one entity's problem; revisit at rule-of-three).
+⚠️ **Unit 6 is the soft spot — MEDIUM confidence.** No entity config has ever done a nested write; grep for `upsert`
+/ `connect:` across `src/lib/assistant` returns zero. Plan recommends spiking `current`+`update` against a Demo
+vineyard with **no detail row** before writing the rest of the unit (~15 min, converts the unknown into an observation).
+⚠️ **R1, found by reading the source:** `toCanonicalSpacing` → `pos()` (units.ts:18-23) silently maps `0` and
+negatives to `null`, while `FieldSpec{min:0}` accepts `0`. "Set spacing to 0" would silently CLEAR the field. Unit 1
+owns the fix. Suggests other silent-null paths may exist that this pass didn't look for.
+
+<details><summary>prev objective — Plan 080 unified inventory (Wave 1 merged, Wave 2 unpushed)</summary>
+
 **Plan 080 (unified inventory) — Wave 1 MERGED (PR #351). Wave 2 code-complete on `claude/plan-080-wave-2` (unpushed). NEXT: push + open the Wave 2 PR, then Wave 3 (U5 mixed-invoice apply, council-review first).**
 - **Wave 1** (merged `e0481cc0`): per-location consumables spine, costed equipment, manual invoice, 5 assistant
   write tools, composite-tenant Location FK. `supply_lot.locationId` is now **NOT NULL** — expand/contract closed.
@@ -410,8 +433,14 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
    The council record file keeps the `-080-` name because that's the plan it reviewed.
 3. POPPED — the U9 eval was built single-turn first; measured 0/3 on the repro and had to be rebuilt multi-turn
    with declared fixtures. Cause understood and written into the plan (Build note 2 §4). Not a code defect.
-4. ← you are here
-3. ← you are here
+4. **OPEN — #387 is merged but NOT browser-verified.** Russell asked for "merge #387 and verify 'delete Block 1' in
+   the browser". The merge happened (`de889cc1`); the browser check did not. It needs the interactive logged-in pane.
+   **Do not tell Mike anything until that runs** — a fix has now twice been reported that the eval liked and
+   production didn't. Pop this when "delete Block 1" is confirmed to produce a picker on screen in Demo.
+5. **NOW.md has badly outgrown its own convention** — 631 lines, and TWO competing `_Last updated_` lines (630, 631),
+   each a single wall-of-text paragraph. The file is supposed to fit on a screen. Compaction is its own chore; flagged,
+   not started.
+6. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
@@ -431,6 +460,19 @@ Vendor management (Plan 070, PR #195) and inbox DM (#197) landed on main; Plan 0
   fully correct. Needs a governed schema change + eng review — separate plan when prioritized, not now.
 
 ## ✅ Done recently
+
+- **#387 assistant picker-vs-prose — MERGED (`de889cc1`, 2026-07-20).** "delete Block 1" answered in prose instead of
+  returning a picker. The task chip blamed the tool descriptions; **so did I, and we were both wrong.** Prepending
+  call-anyway guidance to six tools measured **1/6** — no improvement. The actual cause was prompt **rule 44**, which
+  literally instructed the behavior being debugged ("relay the choices and ask the user which they mean") and flatly
+  contradicted rule 41's "a picker when a name matched more than one record… Prose is not." Rewriting it took the case
+  to **10/10**, and the model stopped calling `db_find` first entirely. The prepends were kept but the PR says plainly
+  they're the weaker half.
+  **Second time a stale prompt rule has been the root cause** (plan 081's rule-40/45 contradiction was the first).
+  Both were rules left in place after the machinery beneath them changed. Grepping code for stale references is
+  routine; nobody audits a 15,000-character prompt the same way — that may deserve a standing check.
+  Only caught because each change was measured before AND after; shipping after the description change would have
+  claimed a fix that measured 17%. ⚠️ **Still not browser-verified — see tangent 4.**
 
 - **Consumables "Total cost paid" display fix (off-path, 2026-07-20, worktree `unit-cost-calculation-2259db`).**
   Russell read the Edit modal's `$106.91` sitting under `Package size 250 / g` and asked whether we were storing
