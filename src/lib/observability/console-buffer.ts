@@ -193,13 +193,13 @@ export function drainConsoleBuffer(): DrainedConsole {
   return singleton?.drain() ?? { consoleLog: [], clientErrors: [] };
 }
 
-/** Entry cap while a Break Mode hunt is running — a deliberate hunt wants more history. */
+/** Entry cap while developer diagnostics are on — a developer hunting bugs wants more history. */
 export const ESCALATED_MAX_ENTRIES = 200;
 
 let escalated = false;
 
 /**
- * Grow (or restore) the ring for a Break Mode hunt (Plan 080 Unit 9). Rebuilding the singleton
+ * Grow (or restore) the ring for a developer diagnostics session (Plan 080). Rebuilding the singleton
  * would drop history, so we swap in a larger ring and replay the existing entries into it.
  */
 export function setConsoleBufferEscalated(next: boolean): void {

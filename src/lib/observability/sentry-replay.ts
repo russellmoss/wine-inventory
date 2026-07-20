@@ -98,7 +98,7 @@ export function safeSentryReplayUrl(debugContext: unknown): string | null {
 }
 
 /**
- * Render the stored Break Mode hunt trail as a compact, readable block for the developer workspace
+ * Render the stored diagnostics trail as a compact, readable block for the developer workspace
  * (Plan 080 Unit 11). The structured arrays stay in `debugContext` for /bug-triage's fix agent; this
  * is purely so a human can read the repro without opening Sentry. Returns null when there's no hunt.
  * Pure + defensive: unknown shapes are skipped rather than trusted.

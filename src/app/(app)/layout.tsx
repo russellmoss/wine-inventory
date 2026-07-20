@@ -29,10 +29,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     effectiveTenantId ? getTenantCurrency() : Promise.resolve(DEFAULT_CURRENCY),
     inboxEnabled && effectiveTenantId ? countUnreadInbox(effectiveTenantId, user.id) : Promise.resolve(0),
   ]);
-  // Break Mode (Plan 080) is developer-only, so the tenant-name lookup it needs for the recording
-  // indicator is too — a normal user's load is unchanged. `organization` is a global auth table, so
-  // this needs no tenant context. The indicator must name the tenant whose data is being captured.
-  const breakModeTenantName =
+  // Developer diagnostics (Plan 080) are developer-only, so the tenant-name lookup the indicator
+  // needs is too — a normal user's load is unchanged. `organization` is a global auth table, so this
+  // needs no tenant context. The indicator must name the tenant whose data is being captured.
+  const diagnosticsTenantName =
     user.role === "developer" && effectiveTenantId
       ? (user.supportOrganizationName ??
           (await prisma.organization.findUnique({
@@ -43,7 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       : null;
   return (
     <CurrencyProvider code={currency}>
-      <AppShell user={user} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} voiceEnabled={voiceEnabled()} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} breakModeTenantName={breakModeTenantName}>
+      <AppShell user={user} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} voiceEnabled={voiceEnabled()} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} diagnosticsTenantName={diagnosticsTenantName}>
         {children}
       </AppShell>
     </CurrencyProvider>
