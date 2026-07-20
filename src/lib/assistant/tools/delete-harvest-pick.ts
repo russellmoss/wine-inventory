@@ -24,6 +24,7 @@ type DeleteHarvestPickInput = {
 export const deleteHarvestPickTool: AssistantTool = {
   name: "delete_harvest_pick",
   description:
+    "ALWAYS call this when the user wants a harvest pick removed — even if you are unsure WHICH block or WHICH pick. Do not list candidates or ask which one in prose first: an ambiguous query returns a CLICKABLE PICKER that pins the exact row by id, and a prose list gives the user nothing to act on — records with identical labels cannot be told apart by name at all. Calling this NEVER deletes anything; it returns a preview to confirm. " +
     "Delete (void) a mistaken harvest pick logged on a block. Use when the user wants to remove, undo, revert, or delete a harvest pick / weigh-in they recorded directly on a block. Narrow to a single pick with the block plus its weight (kg) and/or pick date. Refuses if the fruit has already been crushed into a lot. To back out a pick created by a work-order fruit weigh-in task, use review_task instead. This does NOT delete immediately — it returns a preview the user must confirm in the UI.",
   kind: "write",
   inputSchema: {
