@@ -131,27 +131,27 @@ describe("parseReplayFidelity / readReplayFidelityFromCookieString", () => {
   });
 });
 
-describe("buildReplayOptions — masking always on, bodies sandbox-only", () => {
-  it("masked: masking on, NO network body capture", () => {
-    const opts = buildReplayOptions("masked", "https://app.example.com");
+describe("buildReplayOptions — masking always on, bodies NEVER captured", () => {
+  it("masking and media blocking are always on", () => {
+    const opts = buildReplayOptions();
     expect(opts.maskAllText).toBe(true);
     expect(opts.blockAllMedia).toBe(true);
-    expect(opts.networkDetailAllowUrls).toBeUndefined();
   });
 
-  it("full: masking still on, plus same-origin /api body capture", () => {
-    const opts = buildReplayOptions("full", "https://app.example.com");
-    expect(opts.maskAllText).toBe(true);
-    expect(opts.blockAllMedia).toBe(true);
-    expect(opts.networkDetailAllowUrls).toEqual(["https://app.example.com/api"]);
+  it("never emits a network body allowlist — there is no configuration that enables bodies", () => {
+    // The options are fidelity-independent by construction, so this cannot regress into a branch.
+    expect(buildReplayOptions()).toEqual({ maskAllText: true, blockAllMedia: true });
+    expect(Object.keys(buildReplayOptions())).not.toContain("networkDetailAllowUrls");
+    expect(JSON.stringify(buildReplayOptions())).not.toMatch(/networkDetail|allowUrls/i);
   });
 
-  it("a real-tenant session can never produce body capture end-to-end", () => {
-    const fidelity = resolveReplayFidelity({
-      role: "developer",
-      effectiveTenantId: REAL_TENANT,
-      sandboxTenantId: SANDBOX,
-    });
-    expect(buildReplayOptions(fidelity, "https://app.example.com").networkDetailAllowUrls).toBeUndefined();
+  it("the options are identical no matter what fidelity resolves to", () => {
+    // Body capture used to be the ONLY difference between the fidelities. It is gone, so a
+    // tampered fidelity value can no longer unlock anything on the Sentry side.
+    const sandbox = resolveReplayFidelity({ role: "developer", effectiveTenantId: SANDBOX, sandboxTenantId: SANDBOX });
+    const real = resolveReplayFidelity({ role: "developer", effectiveTenantId: REAL_TENANT, sandboxTenantId: SANDBOX });
+    expect(sandbox).toBe("full");
+    expect(real).toBe("masked");
+    expect(buildReplayOptions()).toEqual(buildReplayOptions());
   });
 });

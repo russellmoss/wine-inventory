@@ -413,6 +413,11 @@ up in the Sentry project, treat Break Mode as sandbox-only in practice. Recorded
 ### Decisions locked
 - **Issue 1 (bodies + cookie):** Keep bodies, do it RIGHT — Next middleware sets the fidelity
   cookie + Sentry server-side data-scrubbing is the real enforcement belt (Unit 6 rewritten).
+  **SUPERSEDED 2026-07-19:** Sentry's ingest-side scrubbing turned out to be best-effort pattern
+  matching for classic PII (credit cards, SSNs, passwords) and would not recognise winery financial
+  data, so it could never have been the enforcement. `networkDetailAllowUrls` was removed entirely
+  instead — replay bodies are now never captured in any tenant, which closes the hole rather than
+  mitigating it. See the security register entry and `buildReplayOptions`.
 - **Issue 2 (hunt recording):** Session mode + auto-off timeout + stop-on-hide (Unit 9 updated).
 - Applied directly (obvious fixes): flush() rejection guard (Unit 3), interaction-buffer DRY import
   (Unit 8), auto-off + middleware-cookie + flush-reject test gaps added (Units 3/6/9), server-side
