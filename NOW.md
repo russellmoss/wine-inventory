@@ -7,7 +7,7 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 082 — assistant vineyard/block coverage. Unit 1 of 7 DONE.**
+**PLAN 082 — assistant vineyard/block coverage. ALL 7 UNITS DONE, code-complete on branch, PR not yet opened.**
 Branch `claude/assistant-vineyard-coverage` off `de889cc1`.
 Plan: [2026-07-20-082-…](docs/plans/2026-07-20-082-feat-assistant-vineyard-coverage-plan.md) (Standard, 7 units).
 
@@ -33,9 +33,31 @@ and `editable` derive from one table so they cannot drift again.**
   field → 2 fails; green on restore) rather than assumed. tsc 0, eslint clean, **vitest 2778** on a clean
   checkout = the 2761 U1 baseline + the 17 added. 🔎 Found en route: **Vessel has the identical drift** (5 cooperage
   fields update-only for no recorded reason) — labelled `UNDECIDED_DRIFT`, left unchanged, → TODOS.
-- ⬜ U3 variety-on-update + planting-fields-on-create → U4 spacing both paths
-  → U5 `Vineyard.abbreviation` + collision guard → U6 `VineyardDetail` (GPS) → U7 evals + registers.
-  ⚠️ U3 must update the `VineyardBlock` rows in the U2 golden (and only those).
+- ✅ **U3 block symmetry.** variety + numRows/clone/rootstock/irrigated now on both paths. The shape
+  the plan missed: `update` runs INSIDE the tx so it cannot resolve an ambiguous name — nowhere to ask.
+  Added `buildUpdate`, the pre-tx mirror of `buildCreate`, returning values OR a ChoiceRequest that
+  becomes a clickable picker. U4/U5/U6 all then needed the same hook → right seam, not a one-off.
+- ✅ **U4 spacing both paths.** Closes the correctness hazard (vineCount was writable, spacings were
+  not → acreage strandable). Explicit `spacingUnit`; card renders in the VINEYARD's unit so it never
+  compares ft to m. 🔎 Found: negatives were refused with "must be at least 0" (optFloat's min fired
+  first) — a message that says 0 is OK when it isn't. Fixed at source; U1's test had a loose
+  `/Row spacing/` match that passed with the wrong wording.
+- ✅ **U5 abbreviation.** Both paths + closed a PRE-EXISTING hole — `findConflict` only checked `name`,
+  so two vineyards could collide on the lot-code token itself.
+- ✅ **U6 VineyardDetail (GPS/soil/manager).** The soft spot; nested write, no precedent. Partial
+  upsert (assistant sends deltas — a full-shape write would blank soilType on every GPS edit), no
+  empty row on a rename, Decimals → numbers, audit split to `VineyardDetail`. **Deliberately
+  update-only:** nested-create tenantId is unverified and `tenantId` defaults to `""`, so a bad
+  nested create lands RLS-invisible rather than erroring. ~15-min spike in TODOS.
+- ✅ **U7 evals + registers.** 3 MUST_PROPOSE cases, structurally validated against db_update's real
+  schema. Parity notes deliberately NOT written: the register is InnoVint-doc-keyed and none of its
+  997 notes mentions GPS/spacing/soil — authoring incumbent-evidenced notes for them would be
+  fabricating evidence. verify:parity/ai-native/invariants green; coverage doc regenerated to no
+  change (082 added FIELDS to already-covered tools, not new cores).
+- **Gates: tsc 0, eslint 0 errors, vitest 2825.** Every guard sabotage-checked, not assumed.
+- ⚠️ **NOT done:** the `runAsTenant` DB read-back for U6, the LLM half of the evals (needs an API key;
+  the 3 new cases have NO pre-change baseline and cannot — db_update rejected those field names
+  outright before, so the rate was 0 by construction), `verify:naming` (needs `.env`), and browser QA.
 - ⚠️ **U6 is the soft spot, MEDIUM confidence.** No entity config has ever done a nested write
   (grep for `upsert`/`connect:` across `src/lib/assistant` returns zero). Spike `current`+`update`
   against a Demo vineyard with **no detail row** before writing the rest of the unit.

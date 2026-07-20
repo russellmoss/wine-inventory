@@ -1,7 +1,7 @@
 ---
 title: Close the assistant's vineyard + block coverage gap
 type: feat
-status: draft
+status: completed
 date: 2026-07-20
 branch: claude/assistant-vineyard-coverage
 depth: standard
@@ -447,19 +447,70 @@ Winery on a vineyard with no detail row, before writing the rest of the unit. Th
 minutes and would convert the main unknown into an observation. Recommended as the first
 action of Unit 6.
 
+## Build notes — Units 3-7 (2026-07-20)
+
+**A shape the plan did not anticipate.** `update` runs *inside* the transaction, so it cannot resolve
+a name that turns out to be ambiguous — it has nowhere to ask. Unit 3 therefore added `buildUpdate`,
+the pre-transaction mirror of `buildCreate`, returning either augmented values or a `ChoiceRequest`
+that `db_update` surfaces as a clickable picker. Units 4, 5 and 6 all then needed the same hook
+(spacing conversion, abbreviation collision, elevation conversion), which is good evidence it was the
+right seam rather than a one-off. It also grew a third argument, the row id, once Unit 4 needed to
+know which vineyard's display unit to render in.
+
+**Resolved FK ids are plumbing.** `internalUpdateKeys` keeps `varietyId` / `rowSpacingM` /
+`vineSpacingM` / `elevationM` off the confirm card while they still ride in the values for the audit
+diff. Nobody should be asked to approve "varietyId: cmxyz…".
+
+**Two bugs found by building, not by reading:**
+
+1. `spacingToCanonicalM` rejected NEGATIVE spacing with "must be at least 0" — `optFloat`'s `min: 0`
+   fired before the `<= 0` check. That message tells the user zero is acceptable, and it is not. Unit
+   1's own test asserted only `/Row spacing/`, a loose match that passed with the wrong wording. Fixed
+   at the source; the test now asserts the exact message.
+2. `db-update.ts` carried a dead `prisma` import — the file's only lint warning.
+
+**Unit 5 closed a pre-existing hole**, as the plan predicted: the vineyard's `findConflict` only ever
+checked `name`, so two vineyards could collide on the *abbreviation* — the token that appears in lot
+codes — making every code carrying that prefix ambiguous. Now guarded on create AND update.
+
+**Unit 6 stopped deliberately short of symmetry.** The detail fields are update-only, with
+`DETAIL_UPDATE_ONLY` stating why: the upsert mirrors proven code (`actions.ts:153`), but a nested
+`detail: { create }` inside the vineyard create has no precedent, and `VineyardDetail.tenantId`
+defaults to `""` — if the tenant extension does not reach a nested create, the row lands RLS-invisible
+rather than erroring. A silently orphaned row on a governed table is worse than a missing feature.
+The ~15-minute spike that settles it is in `TODOS.md`.
+
+**Unit 7's parity notes were not written, on purpose.** The register is 997 notes keyed to InnoVint's
+published docs, and *none* mentions GPS, spacing, or soil — those capabilities are not in the
+incumbent's documentation. Hand-authoring InnoVint-evidenced notes for them would be fabricating
+evidence. `verify:parity` is green, and the coverage doc regenerated to no change, correctly: this
+plan added FIELDS to entities that `db_update`/`db_create` already covered, not new cores or tools.
+
+**Every guard was sabotage-checked**, not assumed — U2's drift guard (3 and 2 failures), U3's picker
+wiring (2 of 3), U6's partial-write and no-empty-row rules (4 and 1). All green on restore. An early
+`perl`-based sabotage silently no-op'd and made the tests look falsely robust, which is itself the
+argument for doing this.
+
 ## Success Criteria
 
-- [ ] Assistant can set GPS, elevation, soil, manager on a vineyard **with no existing
-      detail row**, verified in the DB by a `runAsTenant` read-back
-- [ ] Assistant can correct a block's variety after creation
-- [ ] Assistant can set row and vine spacing on both create and update; resulting planted
-      acreage matches what the UI computes for the same inputs
-- [ ] Assistant-created vineyards carry a valid `abbreviation` and cannot collide
-      case-insensitively with an existing one
+- [~] Assistant can set GPS, elevation, soil, manager on a vineyard **with no existing
+      detail row** — built and unit-proven (the upsert's `create` branch is asserted directly),
+      but **NOT yet verified in the DB by a `runAsTenant` read-back**. Needs `.env`. See Residual.
+- [x] Assistant can correct a block's variety after creation — Unit 3, with a picker on ambiguity
+- [x] Assistant can set row and vine spacing on both create and update — Unit 4. The acreage
+      equivalence is by construction (both paths call Unit 1's `spacingToCanonicalM`, the same
+      function `parseBlockForm` uses), not by a separate computed-acreage assertion.
+- [x] Assistant-created vineyards carry a valid `abbreviation` and cannot collide
+      case-insensitively — Unit 5, on **both** paths (findConflict only covers create)
 - [x] `creatable`/`editable` derive from one table; a test fails if a field silently
       appears in only one — **done (Unit 2), for all 8 writable entities, not just the block**
-- [ ] New `MUST_PROPOSE` cases pass at ≥90% over 10 runs, **with a recorded pre-change
-      baseline for each**
-- [ ] `verify:parity`, `verify:ai-native`, `verify:invariants`, `verify:naming` green
-- [ ] Full `vitest run` green, no regressions
-- [ ] Block editor browser-QA'd in Demo Winery (Unit 1 refactors its parser)
+- [~] New `MUST_PROPOSE` cases added (3) and structurally validated against `db_update`'s real
+      schema. **The ≥90%-over-10-runs LLM half has NOT been run** — it needs an API key and costs
+      real tokens. **No pre-change baseline exists for these three, and cannot:** before this plan
+      `db_update` rejected the field names outright, so the rate was 0 by construction rather than
+      by model behavior. Recorded in the golden's own comment rather than left implied.
+- [x] `verify:parity` (997 notes), `verify:ai-native`, `verify:invariants` (36/36) green.
+      `verify:naming` needs `.env` and cannot run in a worktree — deferred to CI.
+- [x] Full `vitest run` green — **2825 passed**, no regressions
+- [ ] Block editor browser-QA'd in Demo Winery (Unit 1 refactors its parser) — needs the
+      interactive logged-in pane
