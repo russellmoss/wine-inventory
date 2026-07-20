@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal, Collapsible, LocalTime } from "@/components/ui";
+import { Card, Eyebrow, Badge, Input, Button, Checkbox, Modal, Collapsible, LocalTime, InfoHint } from "@/components/ui";
 import { MaterialMovePanel, LocationOnHandList, type MoveMode } from "@/components/inventory/MaterialMovePanel";
 import type { LocationOnHand } from "@/lib/cellar/materials";
 import { type CellarMaterialDTO, materialDisplayName } from "@/lib/cellar/materials-shared";
@@ -20,6 +20,7 @@ import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
 import { createStockMaterialAction, updateMaterialAction } from "@/lib/cellar/actions";
 import { setMaterialActiveAction, listMaterialLotsAction } from "@/lib/cost/actions";
 import type { MaterialLotRow } from "@/lib/cellar/materials";
+import { summarizeConsumableCost } from "@/lib/cost/cost-display";
 import { lotExpiryStatus, expiryLabel, docRoleLabel } from "@/lib/cellar/lot-history";
 import { extractAndStageAction, updateIngestedInvoiceAction } from "@/lib/ingest/actions";
 import type { IngestDuplicate } from "@/lib/ingest/ingest-invoice-core";
@@ -578,8 +579,18 @@ function MaterialDetailModal({
             <LocationOnHandList rows={locationOnHand} unit={unit} />
           </DetailRow>
         ) : null}
+        {/* Feedback #372: show the derived cost AND explain the method — it's the weighted average of the
+            prices entered across every shipment still in stock, not a single price. Read-only (COST-3); the
+            per-shipment prices are surfaced in "Shipments & prices" below. */}
         <DetailRow label="Cost">
-          {m.avgUnitCost != null ? <span style={num}>≈ {format(m.avgUnitCost, { per: unit })}</span> : "Unknown (no priced stock)"}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            {m.avgUnitCost != null ? <span style={num}>≈ {format(m.avgUnitCost, { per: unit })}</span> : <span>Unknown (no priced stock)</span>}
+            <InfoHint
+              side="bottom"
+              ariaLabel="How this cost is calculated"
+              label="Weighted average of the prices you entered across every shipment still in stock — weighted by how much of each remains. Shipments received without a price aren't counted (never as $0). This is the cost charged to wine each time it's used; it can't be edited directly. Per-shipment prices are in “Shipments & prices” below."
+            />
+          </span>
         </DetailRow>
         <DetailRow label="Status">
           {inactive ? <Badge tone="neutral" variant="soft">inactive</Badge> : <Badge tone="green" variant="soft">active</Badge>}
@@ -600,12 +611,14 @@ function MaterialDetailModal({
   );
 }
 
-// Plan 072 Unit 10 (read side): per-lot history — each SupplyLot with its costed metadata, expiry (from a
-// matched COA), and links to its source documents (invoice / COA). Lazily loads on first render; collapsed
-// by default so the detail modal stays compact. Foreign-currency + expired/near-expiry lots are flagged.
+// Plan 072 Unit 10 (read side) + feedback #372: per-shipment history — each SupplyLot with the PRICE PAID at
+// receipt, expiry (from a matched COA), and links to its source documents. Opens by default so the price the
+// operator entered is visible without a click ("I don't see any price data", #372), and leads with a summary
+// that names the costing method (weighted average across priced shipments still in stock). Read-only (COST-3).
 function MaterialLotsPanel({ materialId }: { materialId: string }) {
   const [lots, setLots] = React.useState<MaterialLotRow[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const { format } = useCurrency();
 
   // The parent keys this panel by materialId, so it re-mounts (fresh null state) when the material changes —
   // no synchronous setState reset inside the effect (that triggers a cascading re-render, flagged by lint).
@@ -619,18 +632,38 @@ function MaterialLotsPanel({ materialId }: { materialId: string }) {
 
   const now = new Date();
   const count = lots?.length ?? 0;
-  const title = <span style={{ fontSize: 13.5, fontWeight: 600 }}>Lots {lots ? `(${count})` : ""}</span>;
+  const title = <span style={{ fontSize: 13.5, fontWeight: 600 }}>Shipments &amp; prices {lots ? `(${count})` : ""}</span>;
+  // The SAME weighted average the Cost row shows and the depletion engine draws at — surfaced with its shipment
+  // counts so the operator can see it IS a blend of their receipts (#372, COST-1: reuses the engine's math).
+  const summary = lots && lots.length ? summarizeConsumableCost(lots) : null;
+  const stockUnit = lots?.[0]?.stockUnit ?? "";
 
   return (
-    <Collapsible title={title} defaultOpen={false}>
+    <Collapsible title={title} defaultOpen>
       {error ? (
         <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>{error}</div>
       ) : lots == null ? (
         <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>Loading…</div>
       ) : count === 0 ? (
-        <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>No lots received yet.</div>
+        <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "6px 2px" }}>No shipments received yet — the price is captured when you Receive stock.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>
+          {summary ? (
+            <div style={{ fontSize: 12.5, color: "var(--text-secondary)", padding: "2px 2px 6px" }}>
+              {summary.weightedAvgUnitCost != null ? (
+                <>
+                  Cost is the <strong style={{ fontWeight: 600 }}>weighted average</strong> across{" "}
+                  {summary.pricedShipmentCount} priced shipment{summary.pricedShipmentCount === 1 ? "" : "s"} in stock:{" "}
+                  <span style={num}>≈ {format(summary.weightedAvgUnitCost, { per: stockUnit })}</span>
+                  {summary.unpricedShipmentCount > 0
+                    ? ` · ${summary.unpricedShipmentCount} in stock with no price entered (not counted).`
+                    : "."}
+                </>
+              ) : (
+                "No priced shipments in stock yet, so the unit cost is unknown — receive a priced shipment to set it."
+              )}
+            </div>
+          ) : null}
           {lots.map((l) => {
             const exp = lotExpiryStatus(l.expiresAt, now);
             const received = <LocalTime value={l.receivedAt} mode="date" />;
@@ -645,7 +678,7 @@ function MaterialLotsPanel({ materialId }: { materialId: string }) {
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <span>Received {received}</span>
                   <span><span style={num}>{l.qtyRemaining}</span> / {l.qtyReceived} {l.stockUnit} left</span>
-                  <span>{l.unitCost != null ? <>{l.unitCost} {l.currency}/{l.stockUnit}</> : "cost unknown"}</span>
+                  <span>{l.unitCost != null ? <>Paid <span style={num}>{l.unitCost}</span> {l.currency}/{l.stockUnit}</> : "No price entered"}</span>
                 </div>
                 {l.documents.length ? (
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
