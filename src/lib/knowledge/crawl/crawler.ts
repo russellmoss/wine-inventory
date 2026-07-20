@@ -308,8 +308,12 @@ export async function crawlSource(
         lastModified: existing?.lastModifiedHttp ?? null,
         isAllowedHost,
       });
-    } catch {
+    } catch (e) {
+      // Plan 087 — was a bare `catch { errors++ }`. A crawl that reports "29 documents, 168
+      // errors" with no reason is undiagnosable, and 168 silent failures look like success in
+      // every summary we emit. Same fix already applied to recrawl-knowledge.ts's index catch.
       summary.errors++;
+      console.log(`  ! fetch failed ${item.url}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
       continue;
     }
     processed++;
@@ -506,8 +510,12 @@ export async function crawlWithFollowing(
     let res;
     try {
       res = await fetchDocument(url, { etag: existing?.etag ?? null, lastModified: existing?.lastModifiedHttp ?? null, isAllowedHost: crawlableHost });
-    } catch {
+    } catch (e) {
+      // Plan 087 — was a bare `catch { errors++ }`. A crawl that reports "29 documents, 168
+      // errors" with no reason is undiagnosable, and 168 silent failures look like success in
+      // every summary we emit. Same fix already applied to recrawl-knowledge.ts's index catch.
       s.errors++;
+      console.log(`  ! fetch failed ${url}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
       continue;
     }
     processed++;
@@ -680,8 +688,9 @@ export async function crawlUrls(
     let res;
     try {
       res = await fetchDocument(url, { etag: existing?.etag ?? null, lastModified: existing?.lastModifiedHttp ?? null, isAllowedHost, maxBytes: opts.maxBytes });
-    } catch {
+    } catch (e) {
       summary.errors++;
+      console.log(`  ! fetch failed ${url}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
       continue;
     }
     summary.fetched++;
