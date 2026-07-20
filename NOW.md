@@ -7,39 +7,39 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 085 — CLOSED. MSU is UNREACHABLE; source set DORMANT. Nothing left to do on it.**
-Merged: #415 (source + hardening), #418 (sweep fail-closed), #421 (crawl-source workflow),
-#422 (dormant). Plan: [2026-07-20-085-…](docs/plans/2026-07-20-085-feat-kb-msu-viticulture-source-plan.md).
+**CORNELL FRUIT RESOURCES IS LIVE IN THE CORPUS. Plans 085 (MSU) and the Cornell work are both
+CLOSED. Nothing outstanding on either.**
 
-⛔ **DO NOT try to crawl MSU again without new evidence.** Imperva refuses this crawler from every
-network available: the operator's residential IP (**5/5 refused** after ~15 requests, across bot UA,
-Chrome UA *and* no UA — so IP-based, not UA-based) AND **GitHub Actions runners**
-(`discovered 1, fetched 1, documents 0, skippedChallenge 1`). The plan's documented fallback — a
-curated URL list — **does not help either**, because it fetches from the same blocked network.
-What is needed is a network MSU will answer, not a different code path.
-`msu-grapes` is `autoCrawl:false` + `defaultEnabled:false`, seeded, 0 docs, 0 tenant overrides.
-`npm run verify:msu` is the probe: if it ever reports **live PASS**, un-dormant both flags + re-seed.
-Tripwire assertions in `test/knowledge-config.test.ts` + `verify:msu` stop a silent re-enable.
+`cornell-grapes`: **96 documents / 948 chunks**, 64 PDFs, `verify:knowledge-base` **20/20 PASS**
+(titles 95/95, dates 71/95, all 8 retrieval goldens, both rejection checks). It now surfaces as a
+third publisher in the diversity check alongside AWRI and Wine Australia. Date range 1998–2023.
+Merged: #424 (source, reconciled) · #425 (crawl error visibility) · #426 (CDN) · #427 (title fix).
 
-**What the exercise bought, which is the part worth keeping:**
-- 🔎 **A production-down bug, unrelated to MSU.** `virginia-fruit` was seeded from an unmerged branch;
-  the sweep selected it (`findSourceConfig(key)?.autoCrawl !== false` → `undefined !== false` → TRUE),
-  then `crawlWithFollowing` threw `unknown source` and **killed the monthly refresh for all 21
-  sources**. Dead in prod, would have failed silently on the 1st. Fixed #418 — unknown keys now get
-  their own bucket and are reported, never crawled. **Seeding from an unmerged checkout is a normal
-  thing people do; the sweep now tolerates it.**
-- 🛡️ **The crawler hardening was validated under live fire** from a network it had never seen: the
-  detector fired on a real Imperva interstitial, skipped it BEFORE persist, indexed nothing, counted
-  it, warned. Without it that run writes a challenge page into the GLOBAL corpus as a document — and
-  because each carries a unique `incident_id`, the content-hash dedup never fires and it **re-embeds
-  every month forever**. Also closed: any fetch failure used to mean "page removed" (now only 404/410).
-- ⚙️ **New: `knowledge-crawl-source.yml`** — dispatch a single-source crawl on a runner. The monthly
-  sweep CANNOT populate a new source: it walks each source's whole sitemap in registry order, so a
-  source appended last sits behind every other frontier (a 60-doc run left MSU at 0). That is why
-  uc-ipm and vt-enology were populated by hand. **Use this workflow for the next new source.**
+**Three things this cost that are worth remembering:**
 
-⚠️ **Vercel deploys are rate-limited for ~24h** (free-tier daily build cap, 5 PRs today). Merged code
-is on `main` but may not be deployed yet. Non-required check, does not block merges.
+- 🔎 **main was FABRICATING publication dates.** `resolvePublishedDate` opened with a bare
+  `new Date(meta)`, and V8's legacy parser invents a January 1st from junk — `"Issue 2019"` →
+  `2019-01-01`, `"Spring 2020"` → `2020-01-01`. Those cleared the range checks, were stored as
+  fact, and fed the assistant's "which advice is more recent" judgment. Caught by #411's author,
+  fixed in #424. Age was also being derived from sitemap `lastmod`, so an undated 2009 IPM page
+  bulk-edited last month scored `ageYears: 0`.
+- ⚠️ **A newly-allowlisted target is UNDISCOVERABLE by re-crawl.** A 304 page yields no links
+  (`crawler.ts` says so explicitly), so every page linking to a newly-allowed path short-circuits
+  and the new target is never enqueued. Cornell's `/newfruit/` PDFs stayed at 0 until
+  `reset:knowledge-source` forced full re-fetches. **After ANY allow/deny scope change: reset, then
+  re-crawl.** That is what the reset script's own docstring says it is for.
+- ⚠️ **Cornell's files live on a SHARED CDN.** Every `blogs.cornell.edu` upload 302s to
+  `bpb-us-e1.wpmucdn.com`, which serves all CampusPress customers. Host + path are separate gates:
+  the host must be in TRUSTED_DOMAINS *and* `/blogs.cornell.edu/` must be an allowPrefix, or the
+  PDFs vanish as a throw or as `skippedRedirect`. The path prefix is the ONLY thing bounding us to
+  Cornell — sabotage-verified tests refuse a Harvard/Penn State path on the same CDN.
+
+⛔ **MSU (`msu-grapes`) stays DORMANT — do not retry.** Imperva refuses this crawler from every
+network available (residential IP 5/5 across all UAs; GitHub runners `skippedChallenge: 1`). A
+curated URL list does not help — same blocked network. `npm run verify:msu` is the probe: if it
+ever reports **live PASS**, un-dormant both flags + re-seed.
+
+⚠️ **Vercel builds were rate-limited for ~24h** on 2026-07-20 (free-tier daily cap, ~8 PRs). Recovered.
 
 ## 🔭 Also in flight
 
@@ -73,18 +73,13 @@ date, rate, or product identity. Building from zero.
 - **Phase 2 deferred:** rate/PHI/REI label extraction. Most of the effort, nearly all the liability.
   Also blocked on a **planned** harvest date — `HarvestPick.pickDate` is actual-only.
 
-**PLAN 087 — Cornell Fruit Resources. PLANNED, not started.**
-Plan: [2026-07-20-087-…](docs/plans/2026-07-20-087-feat-cornell-fruit-resources-plan.md) (Lightweight,
-2 units). Written as an addendum to fold into 085 as Units 9-10; re-filed standalone when #415 landed
-first, so its Unit 1 sits *beneath* 085's now-merged metadata-date normalizer rather than beside it.
-⚠️ A `claude/cornell-grapes-knowledge-source-808b00` worktree already exists — check for
-a parallel session first. Cornell is the well-behaved case MSU wasn't: no WAF, robots allows, one
-clean `/grapes/` prefix, per-blog sitemap → **no `linkedOnlyPrefixes` needed**. One blocker, the
-INVERSE of MSU's: its *articles* are dated (`<time datetime>`) but the durable *reference pages*
-(`/ipm/diseases/`, `/production/`, `/post-harvest/`) carry **no date signal at all**, so the valuable
-70% lands 100% `unknown`. Recovered from sitemap `lastmod`, which `sitemap.ts:9-11` already parses.
-⚠️ The NETWORK sitemap has **zero** grape URLs — the per-blog one is `/grapes/wp-sitemap.xml`.
-⚠️ Cornell's Pest Management Guidelines are **paid + unreachable**, so this does NOT close 086's
+**PLAN 087 — Cornell Fruit Resources. SUPERSEDED, do not work it.** The source shipped instead via
+#411 (a parallel session had already built it) reconciled onto main as #424. The plan file describes
+a Unit 1 date-normalizer that no longer applies — main's seam now does strict ISO -> non-ISO salvage
+-> month-name -> label-anchored body scan, plus PDF metadata dates. Cornell's reference pages did
+land undated as the plan predicted (71/95 dated), but the PDFs carry real dates (64/64) so the
+sitemap-lastmod recovery it proposed was never needed.
+⚠️ Cornell's Pest Management Guidelines remain **paid + unreachable**, so this does NOT close 086's
 biologicals gap.
 
 **PLAN 082 — assistant vineyard/block coverage. ALL 7 UNITS DONE, code-complete on
@@ -311,12 +306,9 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Open the PR for plan 082 (`claude/assistant-vineyard-coverage`, code-complete, unopened).
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
 
-_Last updated: 2026-07-20 — plan 085 CLOSED: MSU proved UNREACHABLE from every network (residential
-IP and GitHub runners both), source set DORMANT (#422). En route it surfaced a production-down bug —
-`virginia-fruit`, seeded from an unmerged branch, was killing the monthly sweep for all 21
-sources (fixed #418) — and added a single-source crawl workflow (#421).
-Prior: plan 084 LIVE (#406 + #409).
-(branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
-lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the
-consumables fix and issue #328 had all already landed while still listed as in-flight. Beware
-"N commits ahead" as an in-flight signal — squash-merge leaves branches permanently ahead._
+_Last updated: 2026-07-20 — **Cornell Fruit Resources LIVE** (96 docs / 948 chunks, verify:knowledge-base
+20/20). Landed as #424 (reconciling a parallel session's #411), then #425 crawl-error visibility, #426
+the CampusPress CDN, #427 the dropped canonicalTitle. En route: main was found to be FABRICATING
+publication dates from junk metadata, and a newly-allowlisted crawl target proved undiscoverable
+without a reset. Prior: plan 085 CLOSED, MSU unreachable and DORMANT (#422); the sweep fail-closed
+fix (#418) that un-broke the monthly refresh for all 21 sources._
