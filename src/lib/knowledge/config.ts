@@ -29,6 +29,18 @@ export interface KnowledgeSourceConfig {
   // page). "anchor-heading" = split on <a name="N"> anchors, classify by heading text. Config-only,
   // like sitemapUrls/autoCrawl — the seed script does not persist it, so no migration.
   sectionFilter?: "anchor-heading";
+  // Plan 085 — paths admitted ONLY when discovered as a link FROM a page whose path matches one of
+  // `linkedFrom`. Never seeded, and TERMINAL: links found on such a page are not followed onward.
+  //
+  // Why this exists: MSU Extension's substantive viticulture articles live at flat /news/<slug>
+  // URLs, but /news/ is also every other MSU Extension programme (dairy, field crops, 4-H,
+  // forestry). No `startsWith` prefix can separate them, and there is no sitemap to filter. What
+  // DOES separate them is provenance: the grape articles are the ones the /grapes/ pages link to.
+  //
+  // Terminal-ness is the part that actually caps the blast radius. Those articles cross-link
+  // heavily into unrelated Extension content, so following them even one hop would pull in the
+  // corpus this rule exists to exclude. denyPrefixes still win first, as everywhere else.
+  linkedOnlyPrefixes?: { prefix: string; linkedFrom: string[] }[];
   crawlCadence: string;
   defaultEnabled: boolean;
 }
@@ -504,6 +516,69 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     crawlCadence: "monthly",
     defaultEnabled: true,
   },
+  {
+    key: "msu-grapes",
+    publisher: "MSU Extension (Michigan State University)",
+    homeDomain: "canr.msu.edu",
+    tier: 1,
+    license:
+      "MSU Extension / MSU AgBioResearch content, © Michigan State University — public land-grant extension resource; reference use with citation + link back (same posture as the WSU/OSU/UC IPM extension sources).",
+    // WHY THIS SOURCE: the corpus had no COLD-CLIMATE viticulture authority. AWRI and Wine Australia
+    // are warm-climate, WSU/OSU are Pacific Northwest. Michigan is a genuinely cold site, and MSU's
+    // cold-hardiness / winter-injury / spring-frost work is the best public material on the subject.
+    //
+    // robots.txt (checked 2026-07-20): disallows only /search and /application/, plus a blanket ban on
+    // AhrefsBot (not us). Both mirrored below. Nothing under /grapes/ or /news/ is disallowed.
+    //
+    // THREE THINGS MAKE THIS SOURCE UNUSUAL:
+    //
+    // 1. NO SITEMAP (verified). /sitemap.xml and /sitemap_index.xml both return an HTML 404 page, so
+    //    discovery is seed roots + link-following only. That is why `npm run crawl:source
+    //    msu-grapes` needs --follow: without a sitemap the non-following path fetches the seed root
+    //    and stops.
+    //
+    // 2. THE SUBSTANTIVE ARTICLES WE COULD REACH ARE NOT UNDER /grapes/ (partly INFERRED — see the
+    //    caveat). Cold hardiness, mechanization and the scouting reports live at FLAT /news/<slug>
+    //    urls. /news/ is also every other MSU Extension programme — dairy, field crops, 4-H,
+    //    forestry — so no startsWith prefix selects the grape ones. Hence linkedOnlyPrefixes: a
+    //    /news/ article is admitted only when a /grapes/ page linked to it, and it is TERMINAL so
+    //    its own cross-links are never followed. See crawler.ts decideAdmission.
+    //    ⚠️ CAVEAT: /grapes/viticulture/ was challenged on EVERY recon attempt, so the one subtree
+    //    that could falsify this was never successfully fetched. The claim rests on a partial,
+    //    WAF-truncated sample. Re-check after the first successful full crawl: if /grapes/ turns
+    //    out to carry the technical content directly, linkedOnlyPrefixes may be unnecessary.
+    //
+    // 3. IT SITS BEHIND IMPERVA/INCAPSULA. Challenge pages come back HTTP 200 with content-type
+    //    text/html, so they look like documents. crawl/challenge.ts detects and skips them, and the
+    //    monthly job FAILS if this source is challenged and indexes nothing (findDarkSources). Be
+    //    aware the block escalates with request volume: during recon a residential IP went from
+    //    intermittent challenges to 5/5 refused after ~15 requests. A GitHub Actions datacenter IP
+    //    may fare worse. If the monthly job reports msu-grapes dark, the fallback is autoCrawl:false
+    //    plus an operator-run curated crawl — do NOT try to evade the WAF.
+    //
+    // Dates: MSU publishes JSON-LD, but as `2024-4-11EDT12:00AM` — unpadded, timezone jammed on, and
+    // Invalid Date to any spec parser. Defuddle surfaces it and extract/published-date.ts salvages
+    // the leading Y-M-D. The byline carries no label word, so the body-scan fallback cannot help;
+    // that is why the metadata path had to be fixed rather than the label anchor loosened.
+    seedRoots: ["https://www.canr.msu.edu/grapes/"],
+    // /grapes/ (not /grapes/viticulture/) — it is the parent hub, it carries the grape news listing
+    // that feeds the linkedOnly rule, and /grapes/viticulture/ was challenged on every recon attempt.
+    allowPrefixes: ["/grapes/"],
+    linkedOnlyPrefixes: [{ prefix: "/news/", linkedFrom: ["/grapes/"] }],
+    denyPrefixes: [
+      // Mirrors of the robots.txt disallows.
+      "/search",
+      "/application/",
+      // Non-technical: a winery/tourism directory and staff bio pages.
+      "/grapes/wine_tourism/",
+      "/grapes/experts",
+    ],
+    // NOTE: /grapes/education is deliberately NOT denied — it may carry technical material. Revisit
+    // after the first full crawl if it turns out to be event listings.
+    autoCrawl: true,
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  },
 ];
 
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
@@ -541,6 +616,11 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   { domain: "www.etslabs.com", sourceKey: "ets" },
   { domain: "webapi.etslabs.com", sourceKey: "ets" }, // the JSON data host that crawl-ets.ts reads
   { domain: "ipm.ucanr.edu", sourceKey: "uc-ipm" },
+  // MSU serves at www; the apex is listed too because homeDomain is the apex and the config test
+  // asserts homeDomain membership. crawlWithFollowing registers homeDomain + www.<homeDomain> + every
+  // TRUSTED_DOMAINS entry for the source, so both forms route correctly.
+  { domain: "canr.msu.edu", sourceKey: "msu-grapes" },
+  { domain: "www.canr.msu.edu", sourceKey: "msu-grapes" },
 ];
 
 /** Set of trusted hostnames for O(1) gate checks (lowercased). */

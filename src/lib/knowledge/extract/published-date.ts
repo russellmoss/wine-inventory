@@ -128,6 +128,21 @@ export function parsePublishedDate(text: string, now: Date = new Date()): Parsed
 }
 
 /**
+ * A leading `YYYY-M-D`, anchored at the start of the string, ignoring whatever follows.
+ *
+ * Plan 085 — MSU Extension (canr.msu.edu) emits JSON-LD dates as `2024-4-11EDT12:00AM`: month and
+ * day unpadded, and the timezone abbreviation jammed straight onto the date with no separator. No
+ * spec-compliant parser accepts that (`new Date(...)` is Invalid Date), so `publishedAt` came back
+ * null for the whole source.
+ *
+ * We take the Y-M-D and DISCARD the time and zone. They are unparseable as written, and a date-only
+ * reading is off by at most one day, which is immaterial to a staleness bucket measured in years.
+ * Anchored at the start so a number sequence sitting inside some other string can never be mistaken
+ * for a publication date.
+ */
+const LEADING_YMD = /^(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/;
+
+/**
  * Resolve a document's published date, preferring extractor-supplied metadata (meta tags / JSON-LD via
  * Defuddle) and falling back to a label-anchored scan of the extracted body text.
  */
@@ -140,6 +155,17 @@ export function resolvePublishedDate(
     const parsed = new Date(meta);
     if (!Number.isNaN(parsed.getTime())) {
       const d = buildDate(parsed.getUTCFullYear(), parsed.getUTCMonth() + 1, parsed.getUTCDate(), now);
+      if (d) return d;
+    }
+    // Reachable when the built-in parser REFUSED the string (the MSU case), and ALSO when it
+    // produced a value that buildDate then rejected. The second path is deliberate but narrow:
+    // e.g. "2026-07-20T23:00-01:00" parses to the 21st UTC and is refused as future, and the
+    // salvage then accepts the literal leading 2026-07-20. That is the more honest reading of the
+    // stamp, and buildDate still range-checks it. What it is NOT is "zero behavior change" —
+    // a shape that previously fell through to the markdown scan can now resolve here instead.
+    const m = LEADING_YMD.exec(meta);
+    if (m) {
+      const d = buildDate(Number(m[1]), Number(m[2]), Number(m[3]), now);
       if (d) return d;
     }
   }

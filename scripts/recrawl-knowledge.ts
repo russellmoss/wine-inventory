@@ -18,8 +18,9 @@
  */
 import { crawlWithFollowing } from "@/lib/knowledge/crawl/crawler";
 import { indexDocument } from "@/lib/knowledge/index-documents";
-import { fetchDocument } from "@/lib/knowledge/crawl/fetcher";
+import { fetchDocument, statusMeansRemoved } from "@/lib/knowledge/crawl/fetcher";
 import { TRUSTED_DOMAIN_SET, findSourceConfig } from "@/lib/knowledge/config";
+import { findDarkSources } from "@/lib/knowledge/crawl/challenge";
 import { runAsSystem, disconnectSystem } from "@/lib/tenant/system";
 
 const isAllowedHost = (h: string) => TRUSTED_DOMAIN_SET.has(h.toLowerCase());
@@ -74,25 +75,64 @@ async function main() {
   // reached" just means "we stopped early", not "removed" — skipping avoids ~1k needless fetches and,
   // worse, wrongly tombstoning live pages the capped crawl never got to.
   const capped = Boolean(process.env.KB_MAX_DOCS) || crawl.hitCap;
+
+  // Plan 085 — a source that hit a bot wall is in EXACTLY the same position as a capped crawl: we
+  // did not establish what is still live, so "not reached" is not a removal signal. Excluding it is
+  // per-source rather than global so one flaky source cannot suppress legitimate tombstoning across
+  // the other nineteen.
+  const challengedKeys = Object.entries(crawl.summaries)
+    .filter(([, s]) => s.skippedChallenge > 0)
+    .map(([key]) => key);
+  const challengedIds = new Set(autoSources.filter((a) => challengedKeys.includes(a.key)).map((a) => a.id));
+  const tombstoneSourceIds = autoSourceIds.filter((id) => !challengedIds.has(id));
+  if (challengedKeys.length) {
+    console.log(
+      `tombstone pass EXCLUDES [${challengedKeys.join(", ")}] — challenged by a bot wall this run ` +
+        "(cannot distinguish 'removed' from 'blocked')",
+    );
+  }
+
   const stale = capped
     ? []
     : await runAsSystem((db) =>
         db.knowledgeDocument.findMany({
           // Only auto-crawl sources: a curated source's docs are never "reached" by this crawl, so
           // existence-checking them here would tombstone/refetch the whole curated set every week.
-          where: { status: "active", lastVerifiedAt: { lt: runStart }, sourceId: { in: autoSourceIds } },
+          where: { status: "active", lastVerifiedAt: { lt: runStart }, sourceId: { in: tombstoneSourceIds } },
           select: { id: true, canonicalUrl: true },
         }),
       );
   if (capped) console.log("tombstone pass SKIPPED — crawl was capped/incomplete (not a trustworthy removal signal)");
   let withdrawn = 0;
   let stillLive = 0;
+  let challengedProbes = 0;
+  let couldNotVerify = 0;
   for (const d of stale) {
     let gone = false;
+    let challenged = false;
+    let unknown = false;
     try {
-      await fetchDocument(d.canonicalUrl, { isAllowedHost }); // throws on 404 / non-2xx / bad host
-    } catch {
-      gone = true;
+      // A bot wall does NOT throw when it serves a 200 interstitial, which is why the RESULT has to
+      // be inspected rather than discarded.
+      const probe = await fetchDocument(d.canonicalUrl, { isAllowedHost });
+      challenged = Boolean(probe.challenge);
+    } catch (e) {
+      // Plan 085 — only 404/410 means REMOVED. This used to be a bare `catch { gone = true }`, so
+      // every other failure mode was read as a removal: a 403/429 bot wall (how Imperva and
+      // Cloudflare block when they don't serve a 200 interstitial), a 503, a DNS blip, a 30s
+      // timeout, the 15 MB cap, a redirect error. Any of those could quietly withdraw live
+      // documents in bulk. Note a non-2xx block also never reaches skippedChallenge, so the
+      // source-level exclusion above does not cover this arm — it has to be handled here.
+      if (statusMeansRemoved(e)) gone = true;
+      else unknown = true;
+    }
+    if (challenged || unknown) {
+      // Neither liveness nor removal was established. Leave lastVerifiedAt ALONE so the doc is
+      // re-checked next run rather than looking freshly verified, and do not withdraw it.
+      if (challenged) challengedProbes++;
+      else couldNotVerify++;
+      await sleep(1000);
+      continue;
     }
     if (gone) {
       await runAsSystem((db) =>
@@ -108,6 +148,15 @@ async function main() {
     await sleep(1000); // polite
   }
 
+  // Plan 085 — per-source, not just a total: a global count cannot say WHICH source went dark, and
+  // that is the only actionable part. crawl.summaries used to be computed and thrown away entirely.
+  const skippedChallenge = Object.fromEntries(
+    Object.entries(crawl.summaries)
+      .filter(([, s]) => s.skippedChallenge > 0)
+      .map(([key, s]) => [key, s.skippedChallenge]),
+  );
+  const darkSources = findDarkSources(crawl.summaries);
+
   const summary = {
     sources: keys,
     reEmbedded,
@@ -115,14 +164,38 @@ async function main() {
     unchanged,
     crawlErrors,
     tombstoneSkipped: capped,
+    tombstoneExcludedSources: challengedKeys,
     checkedNotReached: stale.length,
     withdrawn,
     stillLive,
+    challengedProbes,
+    couldNotVerify,
+    skippedChallenge,
+    darkSources,
     newCandidateDomains: crawl.candidateDomains, // count queued to CandidateSource for human review
     finishedAt: new Date().toISOString(),
   };
   console.log("\n::KB_RECRAWL_SUMMARY::" + JSON.stringify(summary));
   await disconnectSystem();
+
+  // Exit AFTER the marker is printed, so the workflow's grep still captures the summary and the
+  // issue it files carries the full detail. `set -o pipefail` in the workflow propagates this.
+  // Plan 085 review — gate on a COMPLETE crawl, mirroring the tombstone pass. On a capped run
+  // (KB_MAX_DOCS, exposed as a workflow_dispatch input, or hitCap) a source may simply never have
+  // got a turn, so `documents === 0` says nothing about whether it is reachable. darkSources still
+  // appears in the summary either way; it just does not fail the job on incomplete evidence.
+  if (!capped && darkSources.length) {
+    console.error(
+      `\nFAIL: source(s) shut out by a bot wall with zero documents indexed: ${darkSources.join(", ")}. ` +
+        "Most likely the runner's datacenter IP is being refused where a residential IP is not. " +
+        "This is deliberately loud — a source silently going dark is how a corpus rots.",
+    );
+    // exitCode, not process.exit(): the workflow pipes stdout through `tee`, so writes are async
+    // and a hard exit can truncate unflushed output. The ::KB_RECRAWL_SUMMARY:: marker surviving is
+    // the entire point of failing here rather than earlier, so do not risk it. Nothing keeps the
+    // event loop alive once disconnectSystem() has resolved.
+    process.exitCode = 1;
+  }
 }
 
 main().catch(async (e) => {

@@ -157,3 +157,66 @@ describe("query synonym expansion (lexical arm)", () => {
     expect(expandQueryTerms("harvest date planning")).toBe("harvest date planning");
   });
 });
+
+describe("MSU Extension Grapes source (plan 085)", () => {
+  const msu = () => findSourceConfig("msu-grapes")!;
+
+  it("resolves and is a tier-1 extension source", () => {
+    expect(msu()).toBeTruthy();
+    expect(msu().tier).toBe(1);
+    expect(msu().homeDomain).toBe("canr.msu.edu");
+  });
+
+  it("stays on the MONTHLY SWEEP (autoCrawl must not be false)", () => {
+    expect(msu().autoCrawl).not.toBe(false);
+    expect(msu().crawlCadence).toBe("monthly");
+  });
+
+  it("is on by default so tenants get cold-climate coverage without opting in", () => {
+    expect(msu().defaultEnabled).toBe(true);
+  });
+
+  it("allowlists BOTH the apex and www — the site serves at www", () => {
+    // Miss either and fetchDocument throws "host is not allowlisted" for every url of the source.
+    expect(TRUSTED_DOMAIN_SET.has("canr.msu.edu")).toBe(true);
+    expect(TRUSTED_DOMAIN_SET.has("www.canr.msu.edu")).toBe(true);
+  });
+
+  it("declares the linkedOnly rule that admits /news/ via /grapes/", () => {
+    expect(msu().linkedOnlyPrefixes).toEqual([{ prefix: "/news/", linkedFrom: ["/grapes/"] }]);
+  });
+
+  it("is the ONLY source that declares linkedOnlyPrefixes (blast-radius guard)", () => {
+    // linkedOnlyPrefixes changes how the SHARED crawl gate admits urls (crawler.ts decideAdmission),
+    // which every source passes through. It is inert without the field, but a second source adopting
+    // it should be a deliberate decision with its own provenance reasoning -- not something that
+    // arrives unnoticed in a diff. Order-sensitive on purpose: adding one forces a test edit.
+    expect(KNOWLEDGE_SOURCES.filter((s) => s.linkedOnlyPrefixes).map((s) => s.key)).toEqual(["msu-grapes"]);
+  });
+
+  it("does NOT declare a sectionFilter — MSU does not mix content within one url", () => {
+    expect(msu().sectionFilter).toBeUndefined();
+  });
+
+  it("mirrors robots.txt and refuses the non-technical corners", () => {
+    const p = msu().denyPrefixes;
+    expect(p).toContain("/search"); // robots
+    expect(p).toContain("/application/"); // robots
+    expect(p).toContain("/grapes/wine_tourism/"); // tourism directory
+    expect(p).toContain("/grapes/experts"); // staff bios
+  });
+
+  it("keeps denyPrefixes from shadowing the /grapes/ allow", () => {
+    // denyPrefixes are checked FIRST and win unconditionally (no longest-match), so a bare "/grapes"
+    // deny would silently kill the entire source.
+    for (const d of msu().denyPrefixes) {
+      expect("/grapes/viticulture/".startsWith(d)).toBe(false);
+    }
+  });
+
+  it("seeds from the /grapes/ hub, not the viticulture subpage", () => {
+    // The hub carries the news listing that feeds the linkedOnly rule, and /grapes/viticulture/ was
+    // challenged by the WAF on every reconnaissance attempt.
+    expect(msu().seedRoots).toEqual(["https://www.canr.msu.edu/grapes/"]);
+  });
+});
