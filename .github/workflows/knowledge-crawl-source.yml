@@ -1,0 +1,101 @@
+name: Knowledge Crawl (single source)
+
+# Operator-initiated crawl of ONE knowledge source, on demand.
+#
+# WHY THIS EXISTS: the monthly sweep (knowledge-recrawl.yml) keeps EXISTING documents fresh; it is a
+# poor tool for POPULATING a newly-added source. crawlWithFollowing seeds each source's roots and its
+# entire sitemap in registry order before moving to the next, so a source appended at the end of
+# KNOWLEDGE_SOURCES sits behind every other source's frontier and a capped run never reaches it.
+# That is why uc-ipm and vt-enology-notes were populated by an operator running `crawl:source`
+# locally, not by the sweep.
+#
+# Running it locally needs a checkout with a real .env AND a network the source will answer. Plan 085
+# found the second half is not a given: canr.msu.edu (Imperva) IP-blocked the operator's network
+# outright after ~15 requests, across every user-agent, leaving NO local path to populate the source.
+# This puts the same command on a runner.
+#
+# Mutates the GLOBAL corpus only (no tenant data), via the owner connection. Never touches code.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_key:
+        description: 'Source key from KNOWLEDGE_SOURCES (e.g. msu-grapes). Must be seeded already.'
+        required: true
+      max_docs:
+        description: 'Cap documents fetched. Keep small for a smoke run first.'
+        required: false
+        default: '25'
+      follow:
+        description: 'Follow links (required for sources with no sitemap, e.g. msu-grapes).'
+        type: boolean
+        required: false
+        default: true
+      index:
+        description: 'Extract + embed. Uncheck to fetch/persist only (no Voyage spend).'
+        type: boolean
+        required: false
+        default: true
+
+# Deliberately the SAME group as knowledge-recrawl: both mutate the corpus, and two crawls racing on
+# one document produce revision conflicts and duplicate fetches. Queue behind the monthly sweep.
+concurrency:
+  group: knowledge-recrawl
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120 # polite ~1.5s/fetch, so a few hundred docs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: Write .env (owner connection + Voyage key)
+        env:
+          DB_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+        run: |
+          {
+            printf 'DATABASE_URL_UNPOOLED=%s\n' "$DB_UNPOOLED"
+            printf 'DATABASE_URL=%s\n' "$DB_UNPOOLED"
+            printf 'VOYAGE_API_KEY=%s\n' "$VOYAGE_API_KEY"
+          } > .env
+
+      - name: Crawl the source
+        env:
+          SOURCE_KEY: ${{ github.event.inputs.source_key }}
+          MAX_DOCS: ${{ github.event.inputs.max_docs }}
+          FOLLOW: ${{ github.event.inputs.follow }}
+          INDEX: ${{ github.event.inputs.index }}
+        run: |
+          set -o pipefail
+          ARGS="$SOURCE_KEY --max ${MAX_DOCS:-25}"
+          [ "$FOLLOW" = "true" ] && ARGS="$ARGS --follow"
+          [ "$INDEX" = "false" ] && ARGS="$ARGS --no-index"
+          echo "crawl:source $ARGS"
+          # Same rc-capture shape as knowledge-recrawl: Actions runs this as `bash -e`, so a failing
+          # pipe would otherwise abort the step before the summary below ever prints.
+          rc=0
+          npm run --silent crawl:source -- $ARGS 2>&1 | tee crawl.log || rc=$?
+          echo ""
+          echo "===== SUMMARY ====="
+          # crawl-source.ts ends with a pretty-printed { crawl, index } block.
+          tail -30 crawl.log
+          # A bot wall is the failure mode that looks like success: the crawl "completes" having
+          # fetched nothing but interstitials. Surface it rather than leaving it in the JSON.
+          if grep -q '"skippedChallenge": [1-9]' crawl.log; then
+            echo "::warning::This source returned WAF challenge pages — see skippedChallenge. Nothing was indexed for those fetches."
+          fi
+          exit $rc
