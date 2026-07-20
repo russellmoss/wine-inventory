@@ -199,7 +199,7 @@ describe("classifySection — prose is not a heading (found live on EN-159)", ()
 
 describe("classifySection — the accepted casualty", () => {
   it("drops 'Phenols and Mouthfeel, Wineries Unlimited 2011' (known false positive)", () => {
-    // PLAN 083, recorded deliberately. The topic is technical but the trade-show suffix triggers
+    // PLAN 084, recorded deliberately. The topic is technical but the trade-show suffix triggers
     // the event rule, and the separator is a comma so the colon rescue cannot apply. Bending the
     // rule to save this one title would require matching commas, which breaks
     // "Wine Filtration Workshop, February 10". Asserted so the trade-off stays visible.

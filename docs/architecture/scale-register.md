@@ -212,7 +212,7 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟢 (global shared corpus; exact scan at winery+AWRI scale; HNSW is a documented later add;
   guarded by `verify:knowledge-base` + `verify:tenant-isolation`; see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]]).
 
-### Section-level content filtering strips in place; it does NOT create per-anchor documents (plan 083)
+### Section-level content filtering strips in place; it does NOT create per-anchor documents (plan 084)
 - **Choice:** when a source mixes technical and non-technical content inside ONE url (VT Enology Notes
   puts rot-metabolite chemistry, a paid study-tour ad, and a staff hire announcement on `166.html`), the
   filter splits the RAW HTML on its `<a name="N">` anchors, drops announcement sections by heading

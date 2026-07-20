@@ -1,5 +1,5 @@
 /**
- * Plan 083 Unit 6 — VT Enology Notes section-filter gate.
+ * Plan 084 Unit 6 — VT Enology Notes section-filter gate.
  *
  *   npm run verify:vt-enology
  *
@@ -18,7 +18,7 @@ import { applySectionFilter } from "@/lib/knowledge/sections";
 import { extractHtml } from "@/lib/knowledge/extract/html";
 import { findSourceConfig } from "@/lib/knowledge/config";
 
-const UA = "CellarhandKnowledgeBot (+plan-083 verify)";
+const UA = "CellarhandKnowledgeBot (+plan-084 verify)";
 const DELAY_MS = 1500; // politeness; the host has no robots.txt to give us a Crawl-delay
 
 /** One issue per template family, plus the two the user named. */

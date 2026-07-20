@@ -1,4 +1,4 @@
-// Plan 083 Unit 2 — decide whether one section of a VT Enology Notes issue is technical content
+// Plan 084 Unit 2 — decide whether one section of a VT Enology Notes issue is technical content
 // worth embedding, or a time-bound announcement that would pollute retrieval.
 //
 // Pure, no I/O. Fails OPEN: anything unrecognized is KEPT. False negatives (an ad leaks in) are

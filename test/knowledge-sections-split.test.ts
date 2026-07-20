@@ -6,7 +6,7 @@ import { splitHtmlSections } from "@/lib/knowledge/sections/split-html-sections"
 const FIXTURES = path.join(process.cwd(), "test", "fixtures", "knowledge", "vt");
 const fixture = (n: number) => fs.readFileSync(path.join(FIXTURES, `EN-${n}.html`), "utf8");
 
-// Plan 083 Unit 1. Every assertion here traces to a measured fact from the 2026-07-20 spike
+// Plan 084 Unit 1. Every assertion here traces to a measured fact from the 2026-07-20 spike
 // (22 live issues, 2000-2013). The three fixtures are the three real site templates:
 //   T1 (#1-40)   EN-5.html   — NO anchors at all (~24% of the corpus)
 //   T2 (#41-145) EN-112.html — <a name="1"> with NO id=, Roman headings inline with body

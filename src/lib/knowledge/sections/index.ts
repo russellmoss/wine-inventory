@@ -1,4 +1,4 @@
-// Plan 083 Unit 3 — the section filter seam.
+// Plan 084 Unit 3 — the section filter seam.
 //
 // Runs BEFORE extraction (index-documents.ts), on raw HTML, because Defuddle destroys the section
 // anchors. Emits ONE filtered document, never one document per section: the pipeline is strictly

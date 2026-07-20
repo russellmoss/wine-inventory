@@ -47,7 +47,7 @@ describe("knowledge source config", () => {
   });
 });
 
-describe("VT Enology Notes source (plan 083)", () => {
+describe("VT Enology Notes source (plan 084)", () => {
   const vt = () => findSourceConfig("vt-enology-notes")!;
 
   it("is a tier-1 extension source with a cite-only license", () => {

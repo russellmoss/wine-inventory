@@ -36,8 +36,8 @@ export async function indexDocument(input: {
   url: string;
   contentHash: string;
   /**
-   * Plan 083. Optional: when the source declares a `sectionFilter`, non-technical sections are
-   * stripped from the raw HTML before extraction. Omitted (every pre-083 caller) = current behavior,
+   * Plan 084. Optional: when the source declares a `sectionFilter`, non-technical sections are
+   * stripped from the raw HTML before extraction. Omitted (every pre-084 caller) = current behavior,
    * byte-identical.
    */
   sourceKey?: string;
@@ -50,7 +50,7 @@ export async function indexDocument(input: {
   );
   if (!doc) throw new Error(`indexDocument: document ${input.documentId} not found`);
 
-  // Plan 083 — section filtering applies to HTML only (PDFs carry no anchors). The hash the index
+  // Plan 084 — section filtering applies to HTML only (PDFs carry no anchors). The hash the index
   // stores folds in SECTION_FILTER_VERSION, so bumping a drop pattern forces a real re-index instead
   // of short-circuiting to "unchanged" forever. Computed WITHOUT running the filter, so the cheap
   // idempotency check below still short-circuits before any parsing.
@@ -94,7 +94,7 @@ export async function indexDocument(input: {
     return { chunks: 0, skipped: "duplicate" };
   }
 
-  // Plan 083 — strip non-technical sections BEFORE extraction. It has to happen here: Defuddle
+  // Plan 084 — strip non-technical sections BEFORE extraction. It has to happen here: Defuddle
   // prunes empty inline elements and every section anchor is an empty <a name="3" id="3"></a>, so
   // by the time we have markdown the section boundaries are gone.
   let bytes = input.bytes;

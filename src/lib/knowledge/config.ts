@@ -3,7 +3,7 @@
 // source later is a config edit (re-run scripts/seed-knowledge-sources.ts), not code. AWRI is source #1,
 // Wine Australia #2 (queued: UC Davis, Oregon State, Washington State, Cornell).
 //
-// Plan 083 — "a config edit, not code" holds for MOST sources but is no longer universal. A source that
+// Plan 084 — "a config edit, not code" holds for MOST sources but is no longer universal. A source that
 // mixes technical and non-technical content inside ONE url cannot be expressed with path prefixes, and
 // needs a `sectionFilter` strategy implemented in src/lib/knowledge/sections/ (see vt-enology-notes).
 
@@ -23,7 +23,7 @@ export interface KnowledgeSourceConfig {
   // corpus is populated by a dedicated operator script instead (a curated URL list that path-prefix
   // filtering can't cleanly express, or a paginated listing walk). Default true.
   autoCrawl?: boolean;
-  // Plan 083 — strip non-technical SECTIONS from within a page before extraction. Only needed when
+  // Plan 084 — strip non-technical SECTIONS from within a page before extraction. Only needed when
   // a source mixes technical and non-technical content inside ONE url, which path-prefix filtering
   // structurally cannot express (VT Enology Notes puts rot chemistry and a paid tour ad on the same
   // page). "anchor-heading" = split on <a name="N"> anchors, classify by heading text. Config-only,
@@ -402,7 +402,7 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     publisher: "Virginia Tech Enology",
     homeDomain: "enology.fst.vt.edu",
     tier: 1, // land-grant extension: Dr. Bruce Zoecklein, Enology-Grape Chemistry Group
-    // Plan 083 / USER DECISION 2026-07-20: proceed cite-only. The site footer asserts "Images and
+    // Plan 084 / USER DECISION 2026-07-20: proceed cite-only. The site footer asserts "Images and
     // information contained on this site are copyrighted. Unauthorized use is prohibited." with NO
     // license grant, and there is no robots.txt to lean on (the host 404s it). Retrieval always
     // links back via /kb/source/<documentId> -> canonicalUrl.
