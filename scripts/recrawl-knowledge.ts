@@ -19,7 +19,7 @@
 import { crawlWithFollowing } from "@/lib/knowledge/crawl/crawler";
 import { indexDocument } from "@/lib/knowledge/index-documents";
 import { fetchDocument, statusMeansRemoved } from "@/lib/knowledge/crawl/fetcher";
-import { TRUSTED_DOMAIN_SET, findSourceConfig } from "@/lib/knowledge/config";
+import { TRUSTED_DOMAIN_SET, partitionSeededSources } from "@/lib/knowledge/config";
 import { findDarkSources } from "@/lib/knowledge/crawl/challenge";
 import { runAsSystem, disconnectSystem } from "@/lib/tenant/system";
 
@@ -31,15 +31,19 @@ async function main() {
   const active = await runAsSystem((db) =>
     db.knowledgeSource.findMany({ where: { active: true }, select: { id: true, key: true } }),
   );
-  // Curated sources (autoCrawl === false) are populated by dedicated operator scripts (a curated URL list
-  // or a paginated listing walk that path-prefix filtering can't express). Exclude them from BOTH the
-  // link-following crawl AND the tombstone existence-check — the weekly loop would otherwise choke on them
-  // (slow crawl-delays, big PDFs) and can't re-discover their curated URLs anyway. They stay fresh by an
-  // operator re-running their script.
-  const autoSources = active.filter((s) => findSourceConfig(s.key)?.autoCrawl !== false);
+  // Splits the DB's active rows into auto / curated / unknown. See partitionSeededSources for why
+  // "unknown" has to be its own bucket rather than falling through to auto.
+  const { auto: autoSources, curated, unknown: unknownKeys } = partitionSeededSources(active);
   const keys = autoSources.map((a) => a.key);
   const autoSourceIds = autoSources.map((a) => a.id);
-  const curatedKeys = active.filter((s) => findSourceConfig(s.key)?.autoCrawl === false).map((s) => s.key);
+  const curatedKeys = curated.map((s) => s.key);
+  if (unknownKeys.length) {
+    console.log(
+      `! SKIPPING [${unknownKeys.join(", ")}] — seeded in the database but absent from ` +
+        "KNOWLEDGE_SOURCES on this ref. Either the source's code has not merged yet, or the row is " +
+        "stale and should be deactivated. Not crawled, and NOT tombstoned.",
+    );
+  }
   console.log(`recrawl:knowledge — auto sources [${keys.join(", ")}]${curatedKeys.length ? `, skipping curated [${curatedKeys.join(", ")}]` : ""}, started ${runStart.toISOString()}`);
 
   // 1. Freshness re-crawl.
@@ -159,6 +163,9 @@ async function main() {
 
   const summary = {
     sources: keys,
+    // Seeded in the DB but absent from KNOWLEDGE_SOURCES on this ref. Surfaced so a stale or
+    // not-yet-merged source is visible in the monthly issue instead of silently uncrawled.
+    unknownSources: unknownKeys,
     reEmbedded,
     chunks,
     unchanged,
