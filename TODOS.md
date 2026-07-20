@@ -193,10 +193,40 @@ logarithmic, drainage class is categorical, and averaging restrictive depth is a
 dangerous. The use case is documentation, so roll up area percentage only and keep each map
 unit's properties intact.
 
-**BLOCKED on a ~20-minute curl spike** that answers: (1) how many map units a real block
-returns — if it is 1 mukey, the whole composition premise collapses; (2) whether SDA can clip
-server-side; (3) the `JSON+COLUMNNAME` response shape. Do the spike before `/plan`, against
-Demo Winery (Bhutan is outside SSURGO coverage).
+**✅ SPIKE RAN 2026-07-20 — CLEARED TO `/plan`.** Ran live against SDA; results are recorded
+in a "Spike Results" section of the design doc that **overrides the body**:
+
+- **2–3 map units per block.** Finger Lakes 5 ac → 2, 15 ac → 3. Napa valley floor → **1**, so
+  the single-map-unit UI state is the normal case on uniform alluvium, not an edge case. The
+  premise holds but is lopsided (e.g. 92.5% Lima loam / 7.5% Kendaia loam) — pitch it as
+  "which soils is this block on, and what are they", NOT "composition analysis".
+- **SDA clips server-side in ONE round trip, 74–315 ms** (`mupolygongeo.STIntersection(...)`
+  joined to `mapunit` + `muaggatt`). So **drop `@turf/*` entirely** — no new dependency, and
+  the multi-call pipeline / P2 / P3 fallback branches are all dead. `STArea()` returns square
+  *degrees*, which is irrelevant: the cos(lat) factor cancels in a ratio, so **percentages need
+  no projection at all**. Convert only for displayed area and the coverage ratio.
+- **Coverage measured 99.996–100.003%**, so ε = 0.005 is safe (~150× above observed error).
+  Bhutan returns 0 rows cleanly in 74 ms — the empty state works without a pre-check.
+
+⚠️ **Two requirements the spike found that the design and two review rounds both missed:**
+
+1. **"Water" is a map unit, not a coverage gap.** A polygon in the middle of Seneca Lake
+   returned **`97.8% Water` at 100% coverage**, with a real major component and every guard
+   passing. A block misdrawn over a pond will confidently report Water as its soil. Same shape
+   for `Pits`, `Urban land-*`, `Rock outcrop`, `Area not surveyed`. `mukind` says
+   "Consociation" for water exactly as for Lima loam, so the obvious discriminator fails.
+   This is the one way the feature can state something **confidently false** — solve it in the
+   plan, do not hand-wave it.
+2. **mukey count overstates meaningfulness.** Walla Walla returned 3 map units at
+   **99.7 / 0.2 / 0.1** — two are boundary slivers. Needs a minimum-share floor (~1%, fold to
+   "other" or drop, and say which). Expect **more** slivers in production than the spike saw:
+   it used synthetic squares, and real hand-drawn blocks have more perimeter per acre.
+
+**Dependency resolved:** Russell confirms Demo Winery has polygons and tenants will have them,
+so polygon adoption is not a gate.
+
+**Deliberately parked 2026-07-20** to finish Plan 082 first. Nothing is blocking it; resume by
+reading the design doc's Spike Results section, then `/plan`.
 
 Design doc: `~/.rstack/projects/wine-inventory/russe-claude-usgs-soil-maps-vineyard-eabe6c-design-20260720-005928.md`.
 An empty branch `claude/usgs-soil-maps-vineyard-eabe6c` exists with no commits.

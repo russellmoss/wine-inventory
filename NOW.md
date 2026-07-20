@@ -47,7 +47,11 @@ and `editable` derive from one table so they cannot drift again.**
    Needs the interactive logged-in pane. **Do not tell Mike anything until it runs** — a fix has
    now twice been reported that the eval liked and production didn't. Pop when "delete Block 1"
    is confirmed to show a picker on screen in Demo.
-2. ← you are here
+2. POPPED — NRCS SSURGO soil-per-block: designed via /office-hours, spike ran and cleared it to
+   `/plan`, then **deliberately parked to finish 082**. Full detail in `TODOS.md`. Detour closed
+   cleanly; nothing half-done, no branch touched (`claude/usgs-soil-maps-vineyard-eabe6c` is
+   still empty).
+3. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
@@ -56,8 +60,12 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 - **Plan 081 follow-ups (a–h)** — brix-write rate, unproven Draft rendering, the
   `wo-vague-target` eval artifact, absent-vs-wrong assignee, canonicalizer throws, must-on-skins
   rule, in-place Draft resolution, `verify:work-orders-transform` red. → TODOS.
-- **NRCS SSURGO soil composition per block** — designed, blocked on a 20-min curl spike. It's
-  NRCS not USGS; do NOT area-weight properties. → TODOS.
+- **NRCS SSURGO soil composition per block** — designed, **spike RAN 2026-07-20: cleared to
+  plan.** It's NRCS not USGS; do NOT area-weight properties. SDA clips server-side in ONE
+  ~180ms call, so no turf/PostGIS. Finger Lakes blocks return 2–3 map units (Napa floor: 1).
+  ⚠️ Spike found two things the design missed: **"Water" is a map unit** (a block drawn on a
+  lake reports "97.8% Water" at 100% coverage, not a gap), and mukey count overstates
+  meaningfulness (Walla Walla = 99.7/0.2/0.1 — needs a share floor). → TODOS.
 - **Plan 062 U2/U5 liquid SO₂-solution booking** — feature gap, not the money bug. Do NOT
   `/work` plan 062 as written; it would double-apply 0.576. → TODOS.
 - **Break Mode: Sentry server-side scrubbing** — ⚠️ blocker before any real-tenant use. → TODOS.
