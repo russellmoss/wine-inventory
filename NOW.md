@@ -82,23 +82,17 @@ sitemap-lastmod recovery it proposed was never needed.
 ⚠️ Cornell's Pest Management Guidelines remain **paid + unreachable**, so this does NOT close 086's
 biologicals gap.
 
-**PLAN 082 — assistant vineyard/block coverage. ALL 7 UNITS DONE, code-complete on
-`claude/assistant-vineyard-coverage` (off `de889cc1`), PR NOT YET OPENED.**
-Plan: [2026-07-20-082-…](docs/plans/2026-07-20-082-feat-assistant-vineyard-coverage-plan.md).
-Full unit-by-unit detail is in the plan file and the branch's commits; the load-bearing residue:
+**PLAN 082 — assistant vineyard/block coverage. SHIPPED (#397, `12e330f2`), plan file `status:
+completed`.** The entry above was stale — it said "PR NOT YET OPENED" when the work had merged at
+11:30 UTC and the branch was deleted. (Same trap the footer warns about; caught by `gh pr list`.)
+Residual follow-ups flagged AT MERGE and not obviously closed since — leave here until confirmed:
 
-- **Gates: tsc 0, eslint 0, vitest 2825.** Every guard sabotage-checked, not assumed.
-- ⚠️ **NOT done:** the `runAsTenant` DB read-back for U6, the LLM half of the evals (needs an API
-  key; the 3 new cases have NO pre-change baseline and cannot — `db_update` rejected those field
-  names outright before, so the rate was 0 by construction), `verify:naming` (needs `.env`), and
-  browser QA.
-- ⚠️ **U6 (VineyardDetail nested write) is the soft spot, MEDIUM confidence.** No entity config had
-  ever done a nested write. Deliberately update-only: nested-create `tenantId` is unverified and
-  defaults to `""`, so a bad nested create lands RLS-invisible rather than erroring.
-- 🔎 **Found en route: `Vessel` has the identical create/edit drift** (5 cooperage fields
-  update-only for no recorded reason) — labelled `UNDECIDED_DRIFT`, left unchanged, → TODOS.
-- ⚠️ **Open product question:** elevation inherits the form's `min: 0`, refusing real sub-sea-level
-  sites (Death Valley, Dead Sea). Preserved rather than changed.
+- ⚠️ **Not verified at merge:** the `runAsTenant` DB read-back for U6, the LLM half of the evals
+  (needs an API key; the 3 new cases had no pre-change baseline), and browser QA on Demo.
+- 🔎 **`Vessel` has the identical create/edit drift** (5 cooperage fields update-only for no recorded
+  reason) — labelled `UNDECIDED_DRIFT`, left unchanged, → TODOS.
+- ⚠️ **Open product question:** block/vineyard elevation inherits the form's `min: 0`, refusing real
+  sub-sea-level sites (Death Valley, Dead Sea). Preserved rather than changed.
 
 
 **Plan 080 is fully merged** — Waves 1-4 all landed (#351, #376, #392, #395). What it left behind
@@ -302,9 +296,9 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 
 ## ⏭️ Next up (candidates, not commitments)
 
-- Build plan 085 (8 units), then seed + crawl MSU from the MAIN checkout.
-- Open the PR for plan 082 (`claude/assistant-vineyard-coverage`, code-complete, unopened).
-- Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
+- **Plan 086** (US pesticide registration) — planned, not started. The big one; read the plan file.
+- Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
+- Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
 _Last updated: 2026-07-20 — **Cornell Fruit Resources LIVE** (96 docs / 948 chunks, verify:knowledge-base
 20/20). Landed as #424 (reconciling a parallel session's #411), then #425 crawl-error visibility, #426
