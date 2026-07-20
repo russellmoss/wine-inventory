@@ -21,7 +21,7 @@ import {
   type UpdateMaterialInput,
   type SupplyLotForCost,
 } from "@/lib/cellar/material-fields";
-import { deriveOpeningLot, weightedAvgUnitCost } from "@/lib/cost/intake-cost";
+import { weightedAvgUnitCost } from "@/lib/cost/intake-cost";
 import { loadCustomUnits } from "@/lib/units/custom-units";
 import { requireTenantId } from "@/lib/tenant/context";
 import { coerceCurrency } from "@/lib/money/currency";
@@ -319,9 +319,6 @@ export type CreateStockMaterialInput = MaterialIntakeInput & {
   openingQty?: number | null;
   /** per-stockUnit cost of the opening stock; null = unknown cost (D14). */
   unitCost?: number | null;
-  /** Phase 036 intake: total price paid for the package. With packageAmount+packageUnit it derives the
-   * opening lot (qty in stockUnit + per-stockUnit unitCost) via deriveOpeningLot — overrides openingQty/unitCost. */
-  totalCost?: number | null;
   /** Plan 080 U2: location for the opening-stock lot. Omit → the system "Winery" location. */
   locationId?: string | null;
 };
@@ -331,6 +328,10 @@ export type CreateStockMaterialInput = MaterialIntakeInput & {
  * given, seed a costed SupplyLot so on-hand + weighted-avg cost start populated. Sets isStockTracked so
  * future draw-downs deplete it (Unit 3). Cost/opening are optional — an untracked-cost material still
  * doses (D14). Stamps the SupplyLot with the tenant's current costing-policy version (D17).
+ *
+ * Plan 080 U14 — SETUP IS NOT RECEIPT. Creating a record books stock ONLY when the caller passes an
+ * explicit `openingQty`. Package size/unit are descriptive purchase metadata and never seed a lot; the
+ * normal way stock arrives is the separate Receive action, which is where cost belongs (COST-3).
  */
 export async function createStockMaterialCore(
   actor: LedgerActor,
@@ -339,24 +340,19 @@ export async function createStockMaterialCore(
 ): Promise<CellarMaterialDTO> {
   const f = deriveMaterialFields(input);
   const stockUnit = coerceStockUnit(input.stockUnit);
-  let openingQty =
+  const openingQty =
     input.openingQty != null && Number.isFinite(input.openingQty) && input.openingQty > 0 ? input.openingQty : 0;
-  let unitCost =
+  const unitCost =
     input.unitCost != null && Number.isFinite(input.unitCost) && input.unitCost >= 0 ? input.unitCost : null;
 
   const body = async (tx: Prisma.TransactionClient) => {
-    // Phase 036: a package (amount+unit) seeds the opening lot in the canonical stock unit; total cost (when
-    // given) sets the per-stock-unit cost, else the lot is UNKNOWN-cost (D14) — never $0, and never a package
-    // with no on-hand. Overrides the raw openingQty/unitCost when it resolves. Plan 075: load the tenant's
-    // custom units (from the in-hand tx) so a custom packageUnit ("drum") still converts to canonical stock.
-    if (f.packageAmount != null && f.packageUnit) {
-      const extraUnits = await loadCustomUnits(tx, requireTenantId());
-      const derived = deriveOpeningLot({ packageAmount: f.packageAmount, packageUnit: f.packageUnit, totalCost: input.totalCost ?? null, stockUnit, extraUnits });
-      if (derived.qtyInStockUnit != null && derived.qtyInStockUnit > 0) {
-        openingQty = derived.qtyInStockUnit;
-        unitCost = derived.unitCost; // null when no cost given → UNKNOWN (D14), which is correct
-      }
-    }
+    // Plan 080 U14: package size is PURCHASE METADATA ("sold as a 50-count roll"), NOT a declaration of stock
+    // on hand. It used to seed an opening SupplyLot via deriveOpeningLot, so merely describing a product
+    // booked inventory nobody received — the reporter set up a label record and got 50 phantom units, which
+    // then poison depletion and weighted-avg cost downstream (COST-1). Receipt is now an explicit second
+    // action: this core books stock ONLY when a caller passes `openingQty` deliberately (MaterialPicker's
+    // opening-qty field, or a script). The invoice-apply path already refused this derivation by hand
+    // (ingest-invoice-core.ts) — that workaround is now the rule everywhere.
 
     const existing = await tx.cellarMaterial.findFirst({
       where: { kind: f.kind, normalizedKey: f.normalizedKey },

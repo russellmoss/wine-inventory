@@ -29,6 +29,9 @@ export type ExtractedLine = {
   productName?: string | null; // the product without the brand or pack size, e.g. "Fermoplus DAP Free"
   genericName?: string | null; // common/chemical name if identifiable, e.g. "Diammonium phosphate (DAP)"
   family?: string | null; // suggested material family/kind (YEAST, NUTRIENT, ENZYME, BENTONITE, EQUIPMENT, …) → pre-selects family + category
+  // Plan 080 U5: where this line's goods GO. HUMAN-supplied (manual entry / review screen) — the extractor
+  // never sets it, so an uploaded invoice still stages as MATERIAL and is re-pointed on review.
+  targetKind?: "MATERIAL" | "EQUIPMENT_ASSET" | "FINISHED_GOOD" | null;
 };
 
 export type ExtractedCharges = {

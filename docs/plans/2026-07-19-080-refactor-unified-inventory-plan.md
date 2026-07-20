@@ -1,11 +1,11 @@
 ---
 title: Unified Inventory — one page, four sections, per-location consumables, costed equipment, manual+AI invoice, full assistant coverage
 type: refactor
-status: in-progress (Waves 1-2 shipped; Wave 3 / U5 outstanding)
+status: in-progress (Waves 1-3 SHIPPED — PRs #351, #376, #392; Wave 4 / U14-U17 BUILT on claude/plan-080-wave-4, PR not yet opened)
 date: 2026-07-19
 branch: shipped via PR #351 (Wave 1) + PR #376 (Wave 2)
 depth: deep
-units: 12
+units: 16
 ---
 
 > **HARDENED 2026-07-19** via `/plan-eng-review` (4 findings) + `/council` (Codex gpt-5.4 + Gemini 3.1-pro,
@@ -578,6 +578,123 @@ Lanes A and B are independent (parallel worktrees, both touch `prisma/schema.pri
 single migration-file sequence, else parallel; treat schema as the one shared-file conflict point). C waits
 on A. D waits on A/B/C. E is Wave 2. **Conflict flag:** A and B both edit `prisma/schema.prisma` — serialize
 the two migrations or author them in one pass to avoid a migration-order conflict.
+
+## Wave 4 — field-report hardening (ADDENDUM, added 2026-07-20)
+
+**Provenance.** Five Demo-Winery bug reports filed 2026-07-20 by `mike@bhutanwine.com`, surfaced by a
+`/bug-triage` dry run. They are *not* five unrelated bugs: they are one winemaker walking through **one
+flow** — setting up label materials to bottle Ann's Blend 2026 — and hitting a wall at every step. That
+flow is exactly this plan's consumables/expendables seam, so they belong here rather than in a new plan.
+
+**Why Wave 4 and not folded into Wave 3.** Wave 3 (U5) is deliberately isolated — highest-risk governed
+apply core, landed ALONE after council, so a problem there blocks nothing else. Adding five field fixes
+to it would destroy that property. Wave 4 runs **independently of Wave 3** (no shared files: U5 is
+`src/lib/ingest/` apply-core; Wave 4 is consumables UOM/cost/receipt + the setup form), so the two may
+proceed in parallel worktrees.
+
+Plan-mode issues #366/#370/#373/#374/#377 exist but are **generic 880-char boilerplate with no analysis** —
+do not `/work` them expecting a plan. The authoritative scope is below.
+
+### Unit 14: Bifurcate consumable record setup from stock receipt  (ticket `cmrskv1w6…`, issue #377)
+
+Creating a packaging/expendable record auto-books a receipt — reporter set up a label record and it
+"automatically received 50 units" that were never physically received. Phantom on-hand poisons depletion
+and unit cost downstream. Split record creation from receipt: creating a `CellarMaterial` books **no**
+`StockMovement`; receipt is an explicit second action.
+
+- **ERP standard to uphold (caution):** the already-booked phantom units must be unwound with a
+  **reversing/correction `StockMovement`**, NEVER a hard delete of the receipt row (LEDGER-6, LEDGER-8,
+  LEDGER-10, COST-1). Correction-as-event is the standard; deleting history is the failure mode.
+- **Verify:** `verify:cost`; a `runAsTenant("org_demo_winery", …)` read proving record-create writes zero
+  movements, and that the reversal nets the phantom units to zero without removing the original rows.
+
+### Unit 15: Count/package UOM + pack size for consumables  (tickets `cmrsk1vhe…` + `cmrsl5iop…`, issues #366 + #370)
+
+**Build as ONE unit — they are the same seam.** Labels can only be received in **grams** (#366); and a
+"roll" unit does not record **how many labels are on a roll** (#370). Split across two instances they
+collide in `src/lib/units` + `prisma/schema.prisma`. Together: a count/package dimension plus a pack-size
+attribute, so "3 rolls @ 500 labels" resolves to 1,500 labels for bottling material planning.
+
+- **ERP standard to uphold (caution):** a new unit must declare a real `{ dimension, perCanonical }` on the
+  custom-unit spine — not a display-only label — because cost and depletion math ride on the conversion
+  (COST-1). Pack size is a governed attribute keyed off the **immutable material id**.
+- **⚠️ Identity trap:** `deriveMaterialFields` derives both `name` AND `normalizedKey` from `brandName` —
+  a bulk metadata fill here can **silently re-key existing materials**. Dry-run a key comparison before any
+  backfill (NAMING-1).
+- **Verify:** `verify:cost`, `verify:naming`; unit tests on the conversion at pack boundaries.
+
+### Unit 16: Surface cost on the consumable view  (ticket `cmrskell3…`, issue #374)
+
+"Why is there no cost field or cost data for this expendable?" — the cost exists (derived from receipt /
+ledger) but is not shown. Read-only column only.
+
+- **ERP standard to uphold (caution):** materials carry **no price column** and cost is **read-only**,
+  derived from receipts. Surface the existing derived cost — do **not** add an editable price field to the
+  material record (COST-3). This is the cheapest unit here; it is also the easiest to get wrong by
+  "just adding a price field."
+- **Verify:** `verify:cost`; the displayed value must equal the weighted-average receipt cost.
+
+### Unit 17: Vendor picker on the consumable/receipt screen  (ticket `cmrskpw5z…`, issue #373)
+
+"We should have a vendor drop down or fuzzy logic on this screen" — free-text vendor entry on a screen
+that already has first-class vendors (Plan 069).
+
+- **ERP standard to uphold (caution):** the picker must persist the **immutable `vendorId`** and treat the
+  vendor name as presentation only; the lookup stays inside the tenant fence. Never match or store on the
+  mutable display name (NAMING-1, NAMING-2, TENANT-1).
+- **Verify:** `verify:tenant-isolation`; a cross-tenant lookup must return nothing.
+
+### Explicitly NOT in Wave 4
+
+- **`cmrsisp2f…` / issue #365 "why is it showing no finished goods in inventory?" — DO NOT BUILD.**
+  Investigated against the live Demo tenant 2026-07-20: `bottledInventory` holds **9 rows with stock**
+  (incl. *Ann's Blend 2026 — 1,524 bottles* in Warehouse); `finishedGoodInventory` holds **0** because no
+  merchandise has ever been created. `FinishedGoodsSection.tsx:37` defaults to the **All** sub-tab and
+  merges both sources, so the wine does render. The reporter was almost certainly on the **Merchandise**
+  sub-tab — a correct empty state — or misread the "Finished Goods" label. Disposition: **`unclear`, ask
+  the reporter**; the only possible code change is a labelling/empty-state clarification, and even that
+  should wait on his answer. Ranking it P0 and building a "fix" would have been a fabricated repair.
+- **`cmrsl0awi…` / issue #371 popover dismissal** — unrelated to inventory (pure `src/components`
+  dismissal semantics). Build standalone, in parallel; reuse the shipped pointerdown-origin pattern from
+  ticket #310 / PR #318.
+
+### Wave 4 build note (2026-07-20)
+
+Built on `claude/plan-080-wave-4`. Two units landed differently from the spec above, both deliberately:
+
+- **U15 needed NO schema change.** The plan called for a new count/package dimension plus a pack-size
+  column. Both already exist: the units engine has a `count` dimension (canonical `unit`), and a custom
+  unit carries its pack size as `perCanonical` — `CreateUnitModal`'s own hint is literally
+  "e.g. a roll = 500 labels" (plan 075). Adding a second pack-size column would have created a competing
+  source of truth for a number the cost engine divides by (a COST-1 hazard), so it was NOT built. The real
+  gap was that the receive form was hard-locked to the material's canonical stock unit with no unit
+  selector, so there was nowhere to say "3 rolls". Fixed with a pure `resolveReceiptQuantity` + an optional
+  `qtyUnit` on the receive core. This also sidesteps the NAMING-1 backfill trap the plan flagged, since
+  there is no backfill.
+- **#366 and #374 look like DOWNSTREAM SYMPTOMS OF U14, not independent bugs.** The phantom opening lot
+  pinned the material's stock unit (`updateMaterialCore` refuses a cross-dimension change while stock
+  exists), which is why labels were stuck in grams (#366); and the phantom lots were created with no cost
+  ("Opening stock 50 unit of 6BSS (cost unknown)"), which is why there was no cost data to show (#374).
+  U14 stops both at the source. The U15/U16 work still stands on its own.
+
+**Not applied:** the phantom-stock unwind. `scripts/unwind-phantom-opening-stock.ts` is a dry-run tool; the
+live dry run finds 6 real candidates, one of them in `org_bhutan_wine_co` (the production tenant), so
+running `--apply` is a human decision.
+
+**Not browser-verified.** U15/U16/U17 all change UI and need a pass in the pane against Demo.
+
+### Wave 4 parallelization
+
+| Lane | Unit | Modules touched | Depends on |
+|------|------|-----------------|------------|
+| F | U14 receipt bifurcation | `src/lib/stock/`, `src/lib/inventory/`, setup form | — |
+| G | U15 UOM + pack size | `src/lib/units/`, `prisma/schema.prisma` | — (serialize migration vs F if F needs schema) |
+| H | U16 cost column | consumables section (read path) | G (cost display reads the conversion) |
+| I | U17 vendor picker | `src/lib/vendors/`, receipt form | — |
+
+F and I are disjoint and may run concurrently. G owns `prisma/schema.prisma` for this wave — coordinate
+with any Wave-3 migration. H waits on G. **Critical path is F** (it rewrites the consumable create path
+that H and I also touch at the form layer) — start it first.
 
 ## UI/UX Specification (design review, 2026-07-19)
 

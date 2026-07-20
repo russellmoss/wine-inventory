@@ -7,6 +7,12 @@ import { useCurrency } from "@/components/money/CurrencyProvider";
 import { materialDisplayName, type CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import type { LocationOnHand } from "@/lib/cellar/materials";
 import { receiveConsumableAction, adjustConsumableAction, transferConsumableAction } from "@/lib/cellar/actions";
+import { resolveReceiptQuantity } from "@/lib/units/receipt-quantity";
+import { VendorPicker } from "@/components/vendors/VendorPicker";
+import type { VendorRow } from "@/lib/vendors/vendors-shared";
+import { toExtraUnits } from "@/lib/units/custom-units";
+import { MEASURE_UNITS, dimensionOf } from "@/lib/units/measure";
+import type { CustomUnitRow } from "@/lib/units/custom-unit-core";
 
 // Plan 080 U8 — the consumables Move-stock card: Receive / Adjust / Transfer AT A LOCATION, the same three
 // verbs bottled wine already had. This is the payoff of the U1/U2b spine — until now a consumable had one
@@ -87,6 +93,9 @@ export function MaterialMovePanel({
   onHand,
   pending,
   run,
+  customUnits = [],
+  vendors = [],
+  onVendorCreated,
   onClose,
 }: {
   material: CellarMaterialDTO | null;
@@ -94,6 +103,11 @@ export function MaterialMovePanel({
   onHand: LocationOnHand[];
   pending: boolean;
   run: (fn: () => Promise<unknown>, after?: () => void) => void;
+  /** Plan 080 U15: the tenant's own units ("roll", "case"), selectable when receiving. */
+  customUnits?: CustomUnitRow[];
+  /** Plan 080 U17: the tenant's vendors for the receipt vendor picker. */
+  vendors?: VendorRow[];
+  onVendorCreated?: (vendor: { id: string; name: string }) => void;
   onClose: () => void;
 }) {
   const [mode, setMode] = React.useState<Mode>("receive");
@@ -101,8 +115,10 @@ export function MaterialMovePanel({
   const [delta, setDelta] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [unitCost, setUnitCost] = React.useState("");
+  // Default to the material's own stock unit, so an untouched form behaves exactly as it did pre-U15.
+  const [qtyUnit, setQtyUnit] = React.useState(() => material?.stockUnit ?? "g");
   const [lotCode, setLotCode] = React.useState("");
-  const [vendorName, setVendorName] = React.useState("");
+  const [vendorId, setVendorId] = React.useState<string | null>(null);
   // Sensible defaults, computed ONCE on mount (the caller keys this panel by material id, so it remounts
   // per item). Lazy initial state rather than a syncing effect — no setState-in-effect, no extra render.
   // Default to where the stock actually IS, so the common "top up / move what's here" case is one click.
@@ -118,11 +134,31 @@ export function MaterialMovePanel({
   const unit = m.stockUnit ?? "g";
   const display = materialDisplayName(m);
 
+  // Plan 080 U15: you buy labels by the roll, not the label. Offer every unit that measures the SAME thing
+  // this item is tracked in — anything else would need a density we don't have, so it isn't offered at all
+  // rather than being offered and refused. The server re-resolves the conversion; this is only a preview.
+  const extraUnits = toExtraUnits(customUnits);
+  const stockDim = dimensionOf(unit, extraUnits);
+  const unitOptions = [
+    ...MEASURE_UNITS.filter((u) => dimensionOf(u, extraUnits) === stockDim),
+    ...customUnits.filter((u) => dimensionOf(u.name, extraUnits) === stockDim).map((u) => u.name),
+  ];
+  const receiptPreview =
+    qtyUnit !== unit && qty.trim() !== "" && Number(qty) > 0
+      ? resolveReceiptQuantity({
+          qty: Number(qty),
+          qtyUnit,
+          unitCost: unitCost.trim() === "" ? null : Number(unitCost),
+          stockUnit: unit,
+          extraUnits,
+        })
+      : null;
+
   const qtyValid = qty.trim() !== "" && Number(qty) > 0;
   const deltaValid = delta.trim() !== "" && Number(delta) !== 0 && Number.isFinite(Number(delta));
   const canSubmit =
     mode === "receive"
-      ? qtyValid && !!locationId
+      ? qtyValid && !!locationId && receiptPreview?.ok !== false
       : mode === "adjust"
         ? deltaValid && !!locationId && reason.trim() !== ""
         : qtyValid && !!fromLocationId && !!toLocationId && fromLocationId !== toLocationId;
@@ -136,10 +172,11 @@ export function MaterialMovePanel({
             await receiveConsumableAction({
               materialId: m.id,
               qty: Number(qty),
+              qtyUnit,
               locationId,
               unitCost: unitCost.trim() === "" ? undefined : Number(unitCost),
               lotCode: lotCode.trim() || undefined,
-              vendorName: vendorName.trim() || undefined,
+              vendorId: vendorId ?? undefined,
             }),
           ),
         onClose,
@@ -184,18 +221,44 @@ export function MaterialMovePanel({
 
         {mode === "receive" ? (
           <>
-            <Field label={`Quantity (${unit})`}>
-              <Input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" />
+            <Field label="Quantity received">
+              <div style={{ display: "flex", gap: 8 }}>
+                <Input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" style={{ flex: 1 }} />
+                {unitOptions.length > 1 ? (
+                  <select value={qtyUnit} onChange={(e) => setQtyUnit(e.target.value)} style={{ ...selectStyle, flex: "0 0 auto" }} aria-label="Unit received in">
+                    {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                ) : (
+                  <span style={{ alignSelf: "center", color: "var(--text-secondary)", fontSize: 14 }}>{unit}</span>
+                )}
+              </div>
             </Field>
+            {receiptPreview ? (
+              <p style={{ fontSize: 12.5, color: receiptPreview.ok ? "var(--text-muted)" : "var(--wine-primary)", margin: "-4px 0 0" }}>
+                {receiptPreview.ok
+                  ? `Books ${receiptPreview.qty.toLocaleString()} ${unit}${receiptPreview.unitCost != null ? ` at ${symbol}${receiptPreview.unitCost.toFixed(4)}/${unit}` : ""}.`
+                  : receiptPreview.error}
+              </p>
+            ) : null}
             <Field label="Into location">{locationSelect(locationId, setLocationId, locations)}</Field>
-            <Field label={`Cost per ${unit} (optional)`}>
+            <Field label={`Cost per ${qtyUnit} (optional)`}>
               <Input inputMode="decimal" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} placeholder={`${symbol}0.00 — leave blank if unknown`} />
             </Field>
             <Field label="Lot code (optional)">
               <Input value={lotCode} onChange={(e) => setLotCode(e.target.value)} />
             </Field>
+            {/* Plan 080 U17 (#373): this screen had free-text vendor entry even though vendors have been
+                first-class since plan 069. The picker persists the immutable vendorId; the name is only
+                ever presentation, so renaming a vendor never re-keys the receipts already booked against
+                it (NAMING-1/2). The vendor list is tenant-scoped by its loader, so the lookup cannot see
+                another winery's vendors (TENANT-1). */}
             <Field label="Vendor (optional)">
-              <Input value={vendorName} onChange={(e) => setVendorName(e.target.value)} />
+              <VendorPicker
+                vendors={vendors}
+                value={vendorId}
+                onSelect={(v) => setVendorId(v?.id ?? null)}
+                onVendorCreated={onVendorCreated}
+              />
             </Field>
           </>
         ) : null}

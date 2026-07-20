@@ -8,6 +8,9 @@ import { coerceStockUnit } from "@/lib/cellar/materials-shared";
 import { receiveSupplyCore, type ReceiveSupplyInput } from "@/lib/cellar/materials";
 import { weightedAvgUnitCost, type SupplyLotView } from "@/lib/cost/deplete";
 import { coerceCurrency } from "@/lib/money/currency";
+import { resolveReceiptQuantity } from "@/lib/units/receipt-quantity";
+import { loadCustomUnits } from "@/lib/units/custom-units";
+import { requireTenantId } from "@/lib/tenant/context";
 
 // Plan 080 U2b — the location-aware consumables stock engine: per-location Receive / Adjust / Transfer,
 // mirroring the wine stock engine (src/lib/stock/movements.ts) but on the COST-lot (`SupplyLot`) grain so
@@ -89,20 +92,51 @@ async function writeMovement(
 
 // ── Receive ───────────────────────────────────────────────────────────────────────────────────────────
 
-export type ReceiveConsumableInput = ReceiveSupplyInput & { locationId: string };
+export type ReceiveConsumableInput = ReceiveSupplyInput & {
+  locationId: string;
+  /**
+   * Plan 080 U15: the unit the quantity (and `unitCost`) are stated in — "roll", "case", "lb". Omit to state
+   * them in the material's stock unit, which is exactly what every pre-U15 caller does.
+   */
+  qtyUnit?: string | null;
+};
 
 /**
  * Receive a costed supply lot INTO a specific location. Reuses `receiveSupplyCore` (same lot shape, FX,
  * per-lot A/P emit unless `skipApEmit`) with the location stamped, then writes a RECEIVE `MaterialMovement`
  * — both in ONE tx so the ledger row and the lot commit together.
+ *
+ * Plan 080 U15: when `qtyUnit` names a different unit, the quantity and cost are resolved into the material's
+ * stock unit HERE, server-side, before anything is written — the client only ever previews the conversion.
  */
 export async function receiveConsumableCore(actor: LedgerActor, input: ReceiveConsumableInput, injectedTx?: Prisma.TransactionClient): Promise<{ supplyLotId: string }> {
-  const qty = round6(Number(input.qty));
-  if (!(qty > QTY_EPS)) throw new ActionError("Received quantity must be greater than zero.", "VALIDATION");
+  const rawQty = round6(Number(input.qty));
+  if (!(rawQty > QTY_EPS)) throw new ActionError("Received quantity must be greater than zero.", "VALIDATION");
   const body = async (tx: Prisma.TransactionClient) => {
     const loc = await loadLocation(tx, input.locationId);
     if (!loc || !loc.isActive) throw new ActionError("That location is not available.", "VALIDATION");
-    const { supplyLotId } = await receiveSupplyCore(actor, { ...input, qty, locationId: input.locationId }, tx);
+
+    // Resolve the stated unit into the material's stock unit before any write. Custom units come from the
+    // in-hand tx so "roll" carries the tenant's own pack size (K12: explicit tenantId, never ALS in a read).
+    const material = await loadStockMaterial(tx, input.materialId);
+    const stockUnit = coerceStockUnit(material.stockUnit);
+    const extraUnits = await loadCustomUnits(tx, requireTenantId());
+    const resolved = resolveReceiptQuantity({
+      qty: rawQty,
+      qtyUnit: input.qtyUnit,
+      unitCost: input.unitCost,
+      stockUnit,
+      extraUnits,
+    });
+    if (!resolved.ok) throw new ActionError(resolved.error, "VALIDATION");
+    const qty = round6(resolved.qty);
+    if (!(qty > QTY_EPS)) throw new ActionError("Received quantity must be greater than zero.", "VALIDATION");
+
+    const { supplyLotId } = await receiveSupplyCore(
+      actor,
+      { ...input, qty, unitCost: resolved.unitCost ?? undefined, locationId: input.locationId },
+      tx,
+    );
     await writeMovement(tx, actor, { materialId: input.materialId, locationId: input.locationId, kind: "RECEIVE", deltaQty: qty, supplyLotId, reason: input.note ?? null });
     return { supplyLotId };
   };

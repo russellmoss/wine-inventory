@@ -5,6 +5,11 @@ import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { createStockMaterialCore, receiveSupplyCore } from "@/lib/cellar/materials";
 import { emitApExportForInvoice, type ApBillLine } from "@/lib/accounting/ap-emit";
+// Plan 080 U5 — the three target writers. Each takes the OUTER tx so a mixed invoice stays ONE transaction
+// and ONE aggregate bill (AP-1); none of them opens its own tx or emits its own A/P.
+import { createEquipmentAssetsFromInvoiceCore } from "@/lib/equipment/equipment-core";
+import { recordFinishedGoodReceiptCore } from "@/lib/inventory/fg-cost-core";
+import { receiveStockTx } from "@/lib/stock/movements";
 import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 import { allocateLandedCost, type InvoiceCharges } from "@/lib/ingest/landed-cost";
 import { normalizeLineToStock, parsePackagingUnit } from "@/lib/ingest/normalize-line";
@@ -16,6 +21,7 @@ import { coerceFamily, coerceMaterialCategory, categoryOf } from "@/lib/cellar/m
 import { dimensionOf, canonicalUnitFor, type ExtraUnits } from "@/lib/units/measure";
 import { loadCustomUnits } from "@/lib/units/custom-units";
 import { requireTenantId } from "@/lib/tenant/context";
+import { resolveSystemLocationId } from "@/lib/locations/system-location";
 import type { ExtractedDocument } from "@/lib/ingest/extract-invoice";
 
 // Plan 072 Unit 7 (GOVERNED MONEY): persist extracted invoices as editable STAGING, then apply ONE invoice
@@ -138,6 +144,12 @@ export async function createIngestedInvoiceCore(
               lotNoRaw: ln.lotNo ?? null,
               resolvedKind: suggestedKind,
               resolvedCategory: suggestedKind ? categoryOf(suggestedKind) : null,
+              // Plan 080 U5: classify the line at STAGING as a consumable, which is what the overwhelming
+              // majority of supplier invoices are. This is NOT the apply-time silent default council C2
+              // forbids — the value is explicit, visible on the review screen, and the human re-points a
+              // line to equipment or finished goods before applying. What C2 rules out is APPLY guessing
+              // for a line nobody classified, and that still hard-gates.
+              targetKind: ln.targetKind ?? "MATERIAL",
             };
           }),
         });
@@ -171,6 +183,12 @@ export type LinePatch = Partial<{
   matchedMaterialId: string | null;
   resolvedKind: string | null;
   resolvedCategory: string | null;
+  // Plan 080 U5 — the per-line target selector on the review screen. Re-pointing a line to equipment or
+  // finished goods is how a MIXED invoice gets classified BEFORE apply; council S11 requires the
+  // finished-goods SKU to be chosen here rather than auto-created mid-apply.
+  targetKind: "MATERIAL" | "EQUIPMENT_ASSET" | "FINISHED_GOOD" | null;
+  wineSkuTargetId: string | null;
+  finishedGoodTargetId: string | null;
 }>;
 
 /** Record a human edit + dedup/classification decision on one staged line. Tenant-scoped (RLS). */
@@ -178,7 +196,13 @@ export async function updateIngestedInvoiceLineCore(actor: LedgerActor, lineId: 
   await runInTenantTx(async (tx) => {
     const existing = await tx.ingestedInvoiceLine.findUnique({ where: { id: lineId }, select: { id: true } });
     if (!existing) return; // RLS-filtered: another tenant's line is invisible → no-op
-    await tx.ingestedInvoiceLine.update({ where: { id: lineId }, data: { ...patch } });
+    // Changing the target away from FINISHED_GOOD must clear any previously-picked SKU: the DB CHECK
+    // allows a wine/merch target ONLY on a FINISHED_GOOD line, so a stale pick would hard-reject the update.
+    const clearFgTarget =
+      patch.targetKind !== undefined && patch.targetKind !== "FINISHED_GOOD"
+        ? { wineSkuTargetId: null, finishedGoodTargetId: null }
+        : {};
+    await tx.ingestedInvoiceLine.update({ where: { id: lineId }, data: { ...patch, ...clearFgTarget } });
     void actor;
   });
 }
@@ -253,7 +277,7 @@ export async function setInvoicePaymentStatusCore(
 
 export type ApplyResult =
   | { ok: true; vendorId: string | null; supplyLotIds: string[]; apLineCount: number }
-  | { ok: false; error: string; needsAck?: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" };
+  | { ok: false; error: string; needsAck?: "reconcile" | "partial-ap" | "fx-rate" | "duplicate" | "target" };
 
 /** Plan 073: the FX rate resolver is injectable so tests can pin a deterministic rate (defaults to the real
  *  Frankfurter-backed service). The signature matches `getRate(base, foreign, at)`. */
@@ -345,6 +369,11 @@ export async function applyIngestedInvoiceCore(
       // null → receiveSupplyCore/createStockMaterialCore fall back to the system "Winery" location exactly as
       // before, so the AI upload path is unchanged until a location is explicitly picked.
       const destinationLocationId = extracted?.locationId ?? null;
+      // Plan 080 U5: finished goods and equipment must land SOMEWHERE — unlike a SupplyLot, a stock movement
+      // has no "unassigned" state. Fall back to the tenant's system location when the human picked none.
+      const stockLocationId = destinationLocationId ?? (await resolveSystemLocationId(tx));
+      // One timestamp for the whole apply, so an asset's purchaseDate matches the bill's receivedAt.
+      const appliedAt = new Date();
       const subtotals = receiptLines.map((l) => {
         if (l.lineTotal != null) return Number(l.lineTotal);
         if (l.qty != null && l.unitPrice != null) return Number(l.qty) * Number(l.unitPrice);
@@ -425,6 +454,20 @@ export async function applyIngestedInvoiceCore(
       }
 
       const supplyLotIds: string[] = [];
+      // Plan 080 U5 (council C2) — every line must SAY where its goods go. A null target is a hard gate,
+      // never a silent MATERIAL assumption: guessing books a pump as a consumable, which mis-states both
+      // the balance sheet and inventory. Lines staged before U5 carry null and surface here once.
+      const untargeted = receiptLines.filter((l) => !l.targetKind);
+      if (untargeted.length > 0) {
+        throw new ApplyAbort({
+          ok: false,
+          needsAck: "target",
+          error:
+            `Choose what ${untargeted.length === 1 ? "line" : "each of these lines"} brings in ` +
+            `(consumable, equipment, or finished goods): ${untargeted.map((l) => `"${l.descriptionRaw}"`).join(", ")}.`,
+        });
+      }
+
       const billLines: ApBillLine[] = []; // Plan 076: accumulate priced lines → ONE aggregate per-invoice Bill
       let apLineCount = 0;
 
@@ -434,11 +477,88 @@ export async function applyIngestedInvoiceCore(
 
       for (let i = 0; i < receiptLines.length; i++) {
         const line = receiptLines[i];
+        const target = line.targetKind as "MATERIAL" | "EQUIPMENT_ASSET" | "FINISHED_GOOD";
         // `allocation` is in the invoice (foreign) currency. Convert the landed line total to BASE at the money
         // grain (round2) so the roll-up basis is single-currency + Σ base ties to QBO's derived GL (council #5).
         const foreignLanded = allocation[i].landedLineTotal;
         const landedLineTotal =
           foreignLanded == null ? null : isForeign ? convertToBase(foreignLanded, fxRate, "cents") : foreignLanded;
+
+        // ── EQUIPMENT_ASSET: capitalize N individually-tracked assets (council C5) ────────────────────
+        if (target === "EQUIPMENT_ASSET") {
+          const units = line.qty != null && Number(line.qty) >= 1 ? Math.trunc(Number(line.qty)) : 1;
+          const { ids } = await createEquipmentAssetsFromInvoiceCore(
+            actor,
+            {
+              name: line.descriptionRaw,
+              kind: "other", // the invoice doesn't state a family; the registry lets the human refine it
+              locationId: destinationLocationId,
+              quantity: units,
+              // Split at 8dp with the residual on the LAST unit, so Σ(asset costs) == the line total
+              // EXACTLY and the aggregate bill reconciles to the cent (council C7).
+              lineTotalBase: landedLineTotal,
+              vendorId,
+              purchaseDate: appliedAt,
+            },
+            tx,
+          );
+          // council C5: one FK can't hold N assets, so the line→assets provenance is its own join.
+          for (const equipmentAssetId of ids) {
+            await tx.ingestedInvoiceLineCreatedAsset.create({ data: { tenantId: requireTenantId(), lineId: line.id, equipmentAssetId } });
+          }
+          if (foreignLanded != null) {
+            apLineCount++;
+            billLines.push({ amount: foreignLanded, description: line.descriptionRaw, targetKind: "EQUIPMENT_ASSET" });
+          }
+          await tx.ingestedInvoiceLine.update({
+            where: { id: line.id },
+            data: { allocatedUnitCost: landedLineTotal != null && units > 0 ? round8(landedLineTotal / units) : null },
+          });
+          continue;
+        }
+
+        // ── FINISHED_GOOD: stock movement + a weighted-avg cost receipt (council C4 / S11) ────────────
+        if (target === "FINISHED_GOOD") {
+          const units = Math.trunc(Number(line.qty ?? 0));
+          if (!(units > 0)) {
+            throw new ApplyAbort({ ok: false, error: `Line ${line.lineNo} ("${line.descriptionRaw}"): finished goods need a whole-unit quantity.` });
+          }
+          // council S11 — the SKU is chosen at REVIEW time. Auto-creating a catalog entry mid-apply is
+          // irreversible, so an unresolved target gates instead.
+          const fgKind = line.wineSkuTargetId ? ("BOTTLED_WINE" as const) : ("FINISHED_GOOD" as const);
+          const fgItemId = line.wineSkuTargetId ?? line.finishedGoodTargetId;
+          if (!fgItemId) {
+            throw new ApplyAbort({
+              ok: false,
+              needsAck: "target",
+              error: `Line ${line.lineNo} ("${line.descriptionRaw}"): pick which wine or merchandise item this is before applying.`,
+            });
+          }
+          await receiveStockTx(tx, fgKind, fgItemId, stockLocationId, units, actor, `Invoice ${invoice.vendorInvoiceNumber ?? ""}`.trim());
+          const unitCostBase = landedLineTotal != null ? round8(landedLineTotal / units) : null;
+          if (unitCostBase != null) {
+            // Valuation is the weighted average over receipts (C4) — internally-bottled wine is untouched
+            // and keeps its specific-lot COGS from bottling (COST-3).
+            await recordFinishedGoodReceiptCore(
+              actor,
+              {
+                ...(fgKind === "BOTTLED_WINE" ? { wineSkuId: fgItemId } : { finishedGoodId: fgItemId }),
+                qty: units,
+                unitCostBase,
+                locationId: stockLocationId,
+                vendorId,
+                sourceInvoiceLineId: line.id,
+              } as Parameters<typeof recordFinishedGoodReceiptCore>[1],
+              tx,
+            );
+          }
+          if (foreignLanded != null) {
+            apLineCount++;
+            billLines.push({ amount: foreignLanded, description: line.descriptionRaw, targetKind: "FINISHED_GOOD" });
+          }
+          await tx.ingestedInvoiceLine.update({ where: { id: line.id }, data: { allocatedUnitCost: unitCostBase } });
+          continue;
+        }
 
         // resolve the material (tenant re-verified: a findUnique under RLS returns null for a foreign-tenant id).
         let materialId: string;
@@ -518,7 +638,7 @@ export async function applyIngestedInvoiceCore(
         if (norm.unitCost != null) apLineCount++;
         // `allocation` (→ foreignLanded) is in the invoice document currency — the A/P bill-line amount.
         // Priced lines only; an unknown-cost line contributes no A/P (partial-A/P, already acked above).
-        if (foreignLanded != null) billLines.push({ amount: foreignLanded, description: line.descriptionRaw });
+        if (foreignLanded != null) billLines.push({ amount: foreignLanded, description: line.descriptionRaw, targetKind: "MATERIAL" });
 
         // persist the audit marker + allocated cost on the staged line.
         await tx.ingestedInvoiceLine.update({ where: { id: line.id }, data: { createdSupplyLotId: received.supplyLotId, allocatedUnitCost: norm.unitCost } });
@@ -540,7 +660,7 @@ export async function applyIngestedInvoiceCore(
       // Plan 076: ONE aggregate A/P event → ONE multi-line QBO Bill for the whole invoice (apinv:<id>),
       // instead of N per-lot bills. DECOUPLED FX: line amounts are the document currency; QBO derives the home
       // GL. No-op when there's no vendor / no A/P accounts / no priced lines (partial-A/P is already acked).
-      await emitApExportForInvoice(
+      const apEmit = await emitApExportForInvoice(
         invoice.id,
         {
           vendorId,
@@ -557,6 +677,15 @@ export async function applyIngestedInvoiceCore(
         },
         tx,
       );
+
+      // Plan 080 U5 (council C3): an UNMAPPED per-line GL account rolls the whole apply back. Booking the
+      // goods anyway would leave a capitalized asset in the registry with nothing in A/P or Fixed Assets —
+      // a silently incomplete set of books, which is the failure C3 exists to prevent. Deliberately narrow:
+      // a tenant with no A/P configured at all, no vendor, or no priced lines still applies inventory-only,
+      // exactly as before.
+      if (!apEmit.postable && apEmit.reasonCode === "unmapped-line-account") {
+        throw new ApplyAbort({ ok: false, error: `This invoice can't post yet — ${apEmit.reason}.` });
+      }
 
       // COA attach: within the SAME ingestion batch, match a COA's lot no. to a created lot's lotCode and set
       // expiry + a COA provenance link. Constrained to same batch (council P3 — a colliding lot no. in another

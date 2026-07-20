@@ -73,14 +73,10 @@ export function buildManualInvoiceDocument(input: ManualInvoiceInput): BuiltManu
     // A blank trailing row is normal in a spreadsheet-style form — drop it rather than failing the entry.
     if (!description) continue;
 
-    // Council C6: refuse a non-material target instead of silently booking a pump as a consumable.
-    if (l.targetKind && l.targetKind !== "MATERIAL") {
-      throw new ActionError(
-        `Line ${i + 1} ("${description}") is marked as ${l.targetKind === "EQUIPMENT_ASSET" ? "equipment" : "a finished good"}. ` +
-          "Manual invoices can only bring in consumables/parts right now — enter equipment and finished goods separately.",
-        "VALIDATION",
-      );
-    }
+    // Wave 3 (U5) lifted the Wave-1 materials-only restriction (council C6): a hand-entered invoice can now
+    // carry equipment and finished-goods lines too. A FINISHED_GOOD line still has to have its SKU picked on
+    // the REVIEW screen before it applies (council S11 — auto-creating a catalog entry mid-apply is
+    // irreversible), which the apply gate enforces.
     if (l.qty != null && Number.isFinite(l.qty) && l.qty < 0) throw new ActionError(`Line ${i + 1} ("${description}"): quantity can't be negative.`, "VALIDATION");
     if (l.unitPrice != null && Number.isFinite(l.unitPrice) && l.unitPrice < 0) throw new ActionError(`Line ${i + 1} ("${description}"): unit price can't be negative.`, "VALIDATION");
 
@@ -96,6 +92,7 @@ export function buildManualInvoiceDocument(input: ManualInvoiceInput): BuiltManu
       // basis needs it. Left null when neither is known (UNKNOWN cost, never an invented 0).
       lineTotal: num(l.lineTotal) ?? (qty != null && unitPrice != null ? Math.round(qty * unitPrice * 1e8) / 1e8 : null),
       lotNo: l.lotNo?.trim() || null,
+      targetKind: l.targetKind ?? "MATERIAL",
     });
   }
   if (lines.length === 0) throw new ActionError("Add at least one line to the invoice.", "VALIDATION");

@@ -66,9 +66,16 @@ and `editable` derive from one table so they cannot drift again.**
 
 ## 🔭 Also in flight
 
-- **Plan 080 Wave 3 — U5 mixed-invoice apply.** `claude/plan-080-wave-3`, 1 commit
-  (`ee2b2972`), unpushed, no PR. Wave 1 (#351) and Wave 2 (#376) both merged. Plan says
-  council-review Wave 3 before shipping — it was deliberately sequenced last and alone.
+**Plan 080 is fully merged** — Waves 1-4 all landed (#351, #376, #392, #395). What it left behind
+is two decisions that are Russell's, not code:
+
+- ⛔ **Phantom-stock unwind NOT APPLIED.** `scripts/unwind-phantom-opening-stock.ts` dry-runs
+  clean with **6 real candidates, one of them in `org_bhutan_wine_co` (PRODUCTION)**. The script
+  was corrected to unwind the SPECIFIC phantom lot rather than take a FIFO draw (#396). Running
+  `--apply` is Russell's call, not an agent's.
+- 💰 **Accountant sign-off still pending** on the Wave 3 category→GL account map before go-live.
+  Also flagged there: an unmapped GL account now ROLLS THE APPLY BACK (it used to book the goods
+  anyway). Scoped by `reasonCode`, so A/P-less tenants are unaffected.
 - ⚠️ **ONE DATABASE.** `.env` and prod are the SAME Neon instance, holding the real Bhutan
   tenant. Every migration plan 080 deployed is already live.
 

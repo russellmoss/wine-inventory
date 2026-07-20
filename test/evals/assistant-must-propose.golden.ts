@@ -213,6 +213,42 @@ export const MUST_PROPOSE_GOLDEN: MustProposeCase[] = [
       db_find: 'VineyardBlock: 1 match — "Block 3" (Estate Vineyard, Cabernet Sauvignon), id blk_3.',
     },
   },
+  {
+    id: "tasting-note-vessel",
+    // Reported live 2026-07-20 (feedback cmrsrs02, Demo Winery): asked for a tasting note on a tank, the
+    // model called NOTHING and told the user it had logged one. The overclaim guard caught the lie after
+    // the fact, but the note was never written. record_tasting_note was registered and working the whole
+    // time — the system prompt simply never mentioned it, so the model did not reach for it. Third
+    // instance of this meta-pattern (see wo-rack-assignee-unknown, delete-ambiguous-block): the tool
+    // behaves when called, and the model sometimes does not call it.
+    //
+    // This case belongs HERE and not only in the fleet/write goldens: those send tool_choice:{type:"any"},
+    // which FORCES a call and so structurally cannot observe the failure that was actually reported.
+    //
+    // ⚠️ MEASURED, AND IT DOES NOT REPRODUCE. Against the pre-fix prompt + tool description (origin/main
+    // at 503b9515), on the production model, this case emits a card 10/10 — no-tool 0, wrong-tool 0. The
+    // PR #391 premise ("the prompt never mentions record_tasting_note, so the model doesn't reach for it")
+    // therefore is NOT supported by measurement: the model already reached for it every time. So this
+    // case does NOT discriminate the fix; it is a REGRESSION GUARD over behavior that already worked,
+    // and the live root cause remains unexplained. Whatever triggered it live is not in this harness —
+    // candidates not yet ruled out: prior conversation history (every run here starts cold), a real
+    // multi-lot resolution against live data, or genuine rare stochasticity below a 1-in-10 rate.
+    // Do NOT read a pass here as proof the reported bug is fixed.
+    utterance: "log a tasting note on T5 that it smells like rotten eggs",
+    tool: "record_tasting_note",
+    readyRequires: ["vessel", "aroma"],
+    note: "Sensory prose on a VESSEL. It must call record_tasting_note (not record_measurement — 'smells like' is not an analyte) and must never narrate a saved note in prose; the note exists only once a card comes back.",
+    baseline: "no tool call + a false 'logged it' claim, observed live 2026-07-20 — NOT reproduced here (10/10 pre-fix)",
+    // The tank DELIBERATELY holds three co-resident lots, reproducing the reporter's real tank. The model
+    // must still pass the VESSEL and let resolveLotTargetOrChoice return the picker — enumerating the
+    // three lots in prose is the dead-end this case exists to catch. (Not listed under `unknowable`:
+    // naming a lot read from this fixture would be wrong routing, not a fabrication, and the two failure
+    // modes are worth keeping distinct.)
+    fixture: {
+      query_cellar_contents:
+        'Tank T5: 3 co-resident lots — 24-CS-01 (Cabernet Sauvignon 2024, 1800 L), 24-ME-02 (Merlot 2024, 1200 L), 24-CF-01 (Cabernet Franc 2024, 900 L). Total 3900 L of 4000 L, AF dry.',
+    },
+  },
 ];
 
 /**
