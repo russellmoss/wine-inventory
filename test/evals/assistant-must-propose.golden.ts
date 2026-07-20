@@ -274,6 +274,8 @@ export const MUST_PROPOSE_GOLDEN: MustProposeCase[] = [
     fixture: {
       query_cellar_contents:
         'Tank T5: 3 co-resident lots — 24-CS-01 (Cabernet Sauvignon 2024, 1800 L), 24-ME-02 (Merlot 2024, 1200 L), 24-CF-01 (Cabernet Franc 2024, 900 L). Total 3900 L of 4000 L, AF dry.',
+    },
+  },
   {
     id: "wo-rack-assignee-unknown-history",
     // Plan 081's seeded repro, re-run with conversation in front of it.
