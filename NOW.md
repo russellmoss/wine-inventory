@@ -165,7 +165,30 @@ is two decisions that are Russell's, not code:
    row-boundary windowing so a tool_use can never be orphaned, and ONE over-claim repair turn.
    Browser-QA'd on Demo with a DB read-back. Plan 081's cold 3/3 overstated its fix (4/5 under
    history); correction appended there. Pop when #404 merges.
-6. ← you are here
+6. **PLAN 084 SHIPPED — PR #406.** VT *Enology Notes* into the assistant KB with section-level
+   filtering. `enology.fst.vt.edu` puts rot chemistry and a $3,200 study-tour ad on the SAME url,
+   which path-prefix filtering structurally cannot separate — so this adds the crawler's FIRST
+   section-level content filter. robots.txt: there is none (404), nothing bypassed.
+   ⚠️ Numbered 084 because a PARALLEL session took 083 (#404) — `ls docs/plans/` before picking.
+   Load-bearing facts: **(a)** Defuddle destroys `<a name>` anchors (12 in EN-166 source, 0 in
+   markdown) → split raw HTML pre-extraction. **(b)** one-doc-per-URL is enforced 3× → strip in
+   place, NEVER per-anchor rows (now recorded in ADR 0007). **(c)** `/technical/i` is semantically
+   INVERTED here; same trap for `/review/i`, `/sustainable/i`, bare `/available/i` — all four have
+   anti-regression tests.
+   ⚠️ **`SECTION_FILTER_VERSION`** must be bumped whenever a drop pattern changes; it folds into
+   `indexedContentHash`, and without a bump the re-crawl short-circuits to `unchanged` FOREVER,
+   silently. Bumped 3× during this work alone.
+   **Review found 4 real bugs** (2 in the original code, 2 regressions in the fixes — re-reviewing
+   the fixes paid off): silent data loss from a zero-length slice that emitted `<article></article>`
+   while reporting the section KEPT; a quadratic split measuring 14s on a 1MB page (~1h at the 15MB
+   cap); an over-masking regression; and a number-strip regression that broke case-insensitive
+   arabic the corpus actually uses. One finding was REFUTED not applied — masking past `-- >` is
+   correct, verified against linkedom.
+   Gates: tsc 0, eslint 0, **vitest 2985/0**, verify:invariants 36/36, verify:vt-enology PASS live.
+   ⚠️ **NOT done: the DB row-level proof.** `npm run crawl:source vt-enology-notes` needs `.env` +
+   the MAIN checkout and is the first real write to the global corpus — left for a human.
+   Pop when #406 merges.
+7. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
@@ -243,7 +266,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
 - Plan 080 Wave 3 → council review → PR.
 
-_Last updated: 2026-07-20 — added the feedback-loop class sweep + regression-test gate
+_Last updated: 2026-07-20 — plan 084 (VT Enology Notes KB + section filter) SHIPPED as PR #406. Prior: the feedback-loop class sweep + regression-test gate
 (branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
 lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the
 consumables fix and issue #328 had all already landed while still listed as in-flight. Beware

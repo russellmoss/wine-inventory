@@ -9,6 +9,7 @@ import { runAsSystem } from "@/lib/tenant/system";
 import { embedTexts, KB_EMBEDDING_MODEL, KB_EMBEDDING_DIM } from "./embed";
 import { chunkMarkdown } from "./chunk";
 import { extractDocument } from "./extract";
+import { applySectionFilter, deriveIndexHash, shouldApplySectionFilter } from "./sections";
 import type { DetectedType } from "./crawl/fetcher";
 
 export interface IndexResult {
@@ -33,6 +34,12 @@ export async function indexDocument(input: {
   contentType: DetectedType;
   url: string;
   contentHash: string;
+  /**
+   * Plan 084. Optional: when the source declares a `sectionFilter`, non-technical sections are
+   * stripped from the raw HTML before extraction. Omitted (every pre-084 caller) = current behavior,
+   * byte-identical.
+   */
+  sourceKey?: string;
 }): Promise<IndexResult> {
   const doc = await runAsSystem((db) =>
     db.knowledgeDocument.findUnique({
@@ -42,8 +49,15 @@ export async function indexDocument(input: {
   );
   if (!doc) throw new Error(`indexDocument: document ${input.documentId} not found`);
 
+  // Plan 084 — section filtering applies to HTML only (PDFs carry no anchors). The hash the index
+  // stores folds in SECTION_FILTER_VERSION, so bumping a drop pattern forces a real re-index instead
+  // of short-circuiting to "unchanged" forever. Computed WITHOUT running the filter, so the cheap
+  // idempotency check below still short-circuits before any parsing.
+  const sectionFilterApplies = shouldApplySectionFilter(input.contentType, input.sourceKey);
+  const indexHash = deriveIndexHash(input.contentHash, sectionFilterApplies);
+
   // idempotency: same content already indexed with the current model -> no-op
-  if (doc.indexedContentHash === input.contentHash) {
+  if (doc.indexedContentHash === indexHash) {
     const already = await runAsSystem((db) =>
       db.knowledgeChunk.count({
         where: { documentId: input.documentId, revision: doc.activeRevision, embeddingModel: KB_EMBEDDING_MODEL },
@@ -60,7 +74,7 @@ export async function indexDocument(input: {
     db.knowledgeDocument.findFirst({
       where: {
         sourceId: doc.sourceId,
-        indexedContentHash: input.contentHash,
+        indexedContentHash: indexHash,
         status: "active",
         id: { not: input.documentId },
       },
@@ -77,7 +91,61 @@ export async function indexDocument(input: {
     return { chunks: 0, skipped: "duplicate" };
   }
 
-  const extracted = await extractDocument(input.bytes, input.contentType, input.url);
+  // Plan 084 — strip non-technical sections BEFORE extraction. It has to happen here: Defuddle
+  // prunes empty inline elements and every section anchor is an empty <a name="3" id="3"></a>, so
+  // by the time we have markdown the section boundaries are gone.
+  let bytes = input.bytes;
+  if (sectionFilterApplies) {
+    const filtered = applySectionFilter(input.bytes.toString("utf8"));
+    if (filtered.html === null) {
+      // Sections existed and every one was an announcement.
+      //
+      // Returning early would leave the document's previously indexed chunks live and retrievable
+      // — including the announcement text a pattern change was meant to remove — while
+      // `indexedContentHash` kept its old value. That defeats SECTION_FILTER_VERSION in the exact
+      // branch the version mechanism exists to serve. Clear the chunks and record the hash.
+      // activeRevision is left alone: retrieval reads `revision = activeRevision` and now finds
+      // zero rows, which is the correct "this page has no indexable content" state.
+      //
+      // NOTE: the CHUNKS converge, the WORK does not. The idempotency short-circuit above needs a
+      // hash match AND at least one existing chunk, and this branch leaves zero — so a later sweep
+      // re-parses the page and re-runs this small transaction. That costs one parse plus one tiny
+      // tx per all-dropped document per sweep, and zero embedding spend. Not worth a sentinel
+      // column to avoid; documented so nobody reads the code expecting a full short-circuit.
+      // Same locking discipline as the main write below: take the document row FOR UPDATE inside
+      // one tx, so a concurrent indexer can't flip in a new revision while we delete its chunks and
+      // leave the document pointing at a revision with no rows.
+      await runAsSystem(async (db) => {
+        await db.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "activeRevision" FROM "knowledge_document" WHERE "id" = ${input.documentId} FOR UPDATE`;
+          await tx.knowledgeChunk.deleteMany({ where: { documentId: input.documentId } });
+          await tx.knowledgeDocument.update({
+            where: { id: input.documentId },
+            data: { indexedContentHash: indexHash },
+          });
+        }, { timeout: 60_000 });
+      });
+      console.log(
+        `  [sections] ${input.url} — ALL ${filtered.dropped.length} sections dropped; chunks cleared`,
+      );
+      return { chunks: 0, skipped: "empty" };
+    }
+    if (filtered.failedOpen) {
+      // T1-era page (VT #1-40, ~24% of that corpus): no anchors to split on, so ingest it whole
+      // rather than dropping it. Logged because a silent count drop is invisible otherwise.
+      console.log(`  [sections] ${input.url} — no anchors, ingesting whole (fail-open)`);
+    } else {
+      console.log(
+        `  [sections] ${input.url} — kept ${filtered.keptAnchors.length}, dropped ${filtered.dropped.length}` +
+          (filtered.dropped.length
+            ? `: ${filtered.dropped.map((d) => `#${d.anchor} (${d.reason})`).join(", ")}`
+            : ""),
+      );
+      bytes = Buffer.from(filtered.html, "utf8");
+    }
+  }
+
+  const extracted = await extractDocument(bytes, input.contentType, input.url);
   if (extracted.lowConfidence) return { chunks: 0, skipped: "low-confidence" };
 
   const chunks = chunkMarkdown(extracted.markdown, extracted.title);
@@ -118,7 +186,10 @@ export async function indexDocument(input: {
           where: { id: input.documentId },
           data: {
             activeRevision: newRevision,
-            indexedContentHash: input.contentHash,
+            // plan 084: indexHash, NOT input.contentHash. It folds in SECTION_FILTER_VERSION so a
+            // drop-pattern change forces a real re-index. Identical to contentHash for every source
+            // that does not declare a sectionFilter, so #405's behavior is unchanged.
+            indexedContentHash: indexHash,
             // Only WRITE a date we actually found: a re-index whose extraction yields nothing must not
             // erase a date an earlier pass (or the sitemap lastmod backfill) got right. Losing a good
             // date silently would put us back to citing undated pesticide guidance.

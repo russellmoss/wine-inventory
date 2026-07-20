@@ -212,5 +212,34 @@ TEMPLATE — copy this block for each new decision:
 - **Status:** 🟢 (global shared corpus; exact scan at winery+AWRI scale; HNSW is a documented later add;
   guarded by `verify:knowledge-base` + `verify:tenant-isolation`; see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]]).
 
+### Section-level content filtering strips in place; it does NOT create per-anchor documents (plan 084)
+- **Choice:** when a source mixes technical and non-technical content inside ONE url (VT Enology Notes
+  puts rot-metabolite chemistry, a paid study-tour ad, and a staff hire announcement on `166.html`), the
+  filter splits the RAW HTML on its `<a name="N">` anchors, drops announcement sections by heading
+  pattern, and re-emits **one** document with the survivors. It runs pre-extraction because Defuddle
+  prunes empty inline elements and every section anchor is empty — 12 anchors in the EN-166 source, 0 in
+  the markdown. Opt-in per source via `sectionFilter` in `config.ts`; unset = byte-identical behavior.
+- **Why not one document per anchor:** the pipeline is strictly one-document-per-URL and enforces it in
+  three independent places — `normalizeCrawlUrl` does `raw.split("#")[0]`, `extractLinks` drops `#`
+  hrefs, and alias-dedup keys on the RAW-BYTE hash (so two fragments of one page collide and the second
+  is hard-deleted). Per-anchor rows would mean changing all three, i.e. the dedup invariant the whole
+  corpus rests on.
+- **Fine until:** a handful of sources need it, each a few hundred pages. The split is a regex over
+  bytes and the classifier is a pure pattern match — both negligible next to the fetch and the embed.
+- **What breaks at scale:** the classifier is heading-pattern based, so a source whose non-technical
+  content is not signalled in its headings needs a different strategy (content-body signals, or an LLM
+  pass — which at ~900 sections would dominate crawl cost and stop being deterministic). Heading
+  patterns are also per-publication: they do NOT transfer between sources.
+- **Tripwire:** a second source wanting `sectionFilter` with a materially different markup shape (that
+  is the signal to generalize the strategy key rather than special-case it); `verify:vt-enology`
+  reporting 0 sections on a non-T1 issue (an unseen template = silent data loss); the T1 fail-open count
+  drifting away from ~40; anyone needing per-chunk citation deep-links (`166.html#1`), which is the
+  cheaper additive alternative — an `anchor` column on `KnowledgeChunk` — NOT per-anchor documents.
+- **Status:** 🟢 (one source, one strategy; pure logic sabotage-tested; guarded by
+  `verify:vt-enology` + `test/knowledge-sections-*.test.ts`). ⚠️ `SECTION_FILTER_VERSION` in
+  `src/lib/knowledge/sections/index.ts` MUST be bumped whenever a drop pattern changes — it folds into
+  `indexedContentHash`, and without a bump the raw bytes are unchanged so every re-crawl short-circuits
+  to `skipped:"unchanged"` and the new rules never take effect, silently.
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

@@ -2,6 +2,10 @@
 // only fetches sources listed here, and only follows links INTO domains in TRUSTED_DOMAINS. Adding a
 // source later is a config edit (re-run scripts/seed-knowledge-sources.ts), not code. AWRI is source #1,
 // Wine Australia #2 (queued: UC Davis, Oregon State, Washington State, Cornell).
+//
+// Plan 084 — "a config edit, not code" holds for MOST sources but is no longer universal. A source that
+// mixes technical and non-technical content inside ONE url cannot be expressed with path prefixes, and
+// needs a `sectionFilter` strategy implemented in src/lib/knowledge/sections/ (see vt-enology-notes).
 
 export interface KnowledgeSourceConfig {
   key: string;
@@ -19,6 +23,12 @@ export interface KnowledgeSourceConfig {
   // corpus is populated by a dedicated operator script instead (a curated URL list that path-prefix
   // filtering can't cleanly express, or a paginated listing walk). Default true.
   autoCrawl?: boolean;
+  // Plan 084 — strip non-technical SECTIONS from within a page before extraction. Only needed when
+  // a source mixes technical and non-technical content inside ONE url, which path-prefix filtering
+  // structurally cannot express (VT Enology Notes puts rot chemistry and a paid tour ad on the same
+  // page). "anchor-heading" = split on <a name="N"> anchors, classify by heading text. Config-only,
+  // like sitemapUrls/autoCrawl — the seed script does not persist it, so no migration.
+  sectionFilter?: "anchor-heading";
   crawlCadence: string;
   defaultEnabled: boolean;
 }
@@ -388,6 +398,55 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     defaultEnabled: true,
   },
   {
+    key: "vt-enology-notes",
+    publisher: "Virginia Tech Enology",
+    homeDomain: "enology.fst.vt.edu",
+    tier: 1, // land-grant extension: Dr. Bruce Zoecklein, Enology-Grape Chemistry Group
+    // Plan 084 / USER DECISION 2026-07-20: proceed cite-only. The site footer asserts "Images and
+    // information contained on this site are copyrighted. Unauthorized use is prohibited." with NO
+    // license grant, and there is no robots.txt to lean on (the host 404s it). Retrieval always
+    // links back via /kb/source/<documentId> -> canonicalUrl.
+    license:
+      "© Virginia Polytechnic Institute and State University. All rights reserved; no license granted. " +
+      "Retrieval with citation and link-back only — do not reproduce at length.",
+    // Enumerated, NOT link-discovery dependent. crawler.ts `continue`s on HTTP 304 without following
+    // links ("we don't have the body; rely on the sitemap seed"), and this archive has no sitemap —
+    // so on the second monthly sweep an unchanged index page would stop re-enqueueing its children
+    // and the crawl would quietly do nothing. Seeds are enqueued unconditionally, so enumeration is
+    // the fix. The archive is static (ends 2013), so the list is complete by construction.
+    seedRoots: [
+      "https://enology.fst.vt.edu/EN/index.html",
+      ...Array.from({ length: 166 }, (_, i) => `https://enology.fst.vt.edu/EN/${i + 1}.html`),
+      // #167-169 are PDF-only (their .html twins 404); #170 is published as four section files.
+      "https://enology.fst.vt.edu/downloads/EnologyNotes167.pdf",
+      "https://enology.fst.vt.edu/downloads/EnologyNotes168.pdf",
+      "https://enology.fst.vt.edu/downloads/EnologyNotes169.pdf",
+      "https://enology.fst.vt.edu/downloads/EnologyNotes170_Sec1.pdf",
+      "https://enology.fst.vt.edu/downloads/EnologyNotes170_Sec2.pdf",
+      "https://enology.fst.vt.edu/downloads/EnologyNotes170_Sec3.pdf",
+      "https://enology.fst.vt.edu/downloads/EnologyNotes170_Sec4.pdf",
+    ],
+    // The PDF allow-prefixes are deliberately per-note, NOT a blanket "/downloads/". Notes #1-166
+    // have PDF twins of pages we ALSO ingest as HTML — and the PDF path cannot be section-filtered
+    // (no anchors), so allowing them would re-import the very announcements the filter just removed,
+    // as a second, unfiltered document. Only the PDF-ONLY notes are reachable.
+    allowPrefixes: [
+      "/EN/",
+      "/downloads/EnologyNotes167",
+      "/downloads/EnologyNotes168",
+      "/downloads/EnologyNotes169",
+      "/downloads/EnologyNotes170_",
+    ],
+    // The year pages are navigation, not content: a list of links to the issues we already seed.
+    // They are also anchorless, so they would take the T1 fail-open path and index as a link dump.
+    denyPrefixes: Array.from({ length: 14 }, (_, i) => `/EN/${2000 + i}.html`),
+    // The whole point of this source: 166.html carries rot-metabolite chemistry AND a paid study
+    // tour ad AND a staff hire announcement, all under ONE url. Path prefixes cannot express that.
+    sectionFilter: "anchor-heading",
+    crawlCadence: "monthly",
+    defaultEnabled: true,
+  },
+  {
     key: "uc-ipm",
     publisher: "UC IPM (UC Agriculture & Natural Resources)",
     homeDomain: "ipm.ucanr.edu",
@@ -439,6 +498,8 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
 // NOT listed here is logged to CandidateSource for human promotion, never crawled. Includes www + apex.
 export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
+  { domain: "enology.fst.vt.edu", sourceKey: "vt-enology-notes" },
+  { domain: "www.enology.fst.vt.edu", sourceKey: "vt-enology-notes" }, // both hosts serve 200
   { domain: "awri.com.au", sourceKey: "awri" },
   { domain: "www.awri.com.au", sourceKey: "awri" },
   { domain: "wineaustralia.com", sourceKey: "wine-australia" },
