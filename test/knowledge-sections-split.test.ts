@@ -1,0 +1,134 @@
+import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { splitHtmlSections } from "@/lib/knowledge/sections/split-html-sections";
+
+const FIXTURES = path.join(process.cwd(), "test", "fixtures", "knowledge", "vt");
+const fixture = (n: number) => fs.readFileSync(path.join(FIXTURES, `EN-${n}.html`), "utf8");
+
+// Plan 083 Unit 1. Every assertion here traces to a measured fact from the 2026-07-20 spike
+// (22 live issues, 2000-2013). The three fixtures are the three real site templates:
+//   T1 (#1-40)   EN-5.html   — NO anchors at all (~24% of the corpus)
+//   T2 (#41-145) EN-112.html — <a name="1"> with NO id=, Roman headings inline with body
+//   T3 (#150+)   EN-166.html — <a name="1" id="1"> twins, arabic headings on their own line
+
+describe("splitHtmlSections — T3 (EN-166, 2013)", () => {
+  const { sections, preambleHtml } = splitHtmlSections(fixture(166));
+
+  it("finds all 7 numeric anchors including the multi-letter sub-anchors", () => {
+    expect(sections.map((s) => s.anchor)).toEqual(["1", "2", "2a", "2b", "3", "4", "5"]);
+  });
+
+  it("extracts headings across all three anchor nestings on this one page", () => {
+    const byAnchor = Object.fromEntries(sections.map((s) => [s.anchor, s.headingText]));
+    // anchor INSIDE <strong>
+    expect(byAnchor["1"]).toBe("1. Production Considerations for Rot- Fruit");
+    // anchor OUTSIDE <strong> — the heading lives in the FOLLOWING <strong>
+    expect(byAnchor["2"]).toBe("2. A Review of Rot Metabolites");
+    // anchor inside <strong>, separated by newlines, unnumbered sub-heading
+    expect(byAnchor["2a"]).toBe("Polysaccharides and instability");
+    expect(byAnchor["3"]).toBe("3. The Technical Study Tour: Alsace, Burgundy and Champagne.");
+    expect(byAnchor["5"]).toBe("5. Our New Research Enologist.");
+  });
+
+  it("keeps the heading's <strong> inside the slice (slice starts at the block tag)", () => {
+    // Slicing exactly at `<a name` starts INSIDE the <p><strong>, which strips the heading's bold
+    // from the extracted markdown. Backing up to the enclosing block tag preserves it.
+    const s3 = sections.find((s) => s.anchor === "3")!;
+    expect(s3.html.startsWith("<p>")).toBe(true);
+    expect(s3.html).toContain("<strong>");
+  });
+
+  it("carries each section's own body prose and not the next section's", () => {
+    const s3 = sections.find((s) => s.anchor === "3")!;
+    expect(s3.html).toContain("A 9 day technical study tour");
+    expect(s3.html).not.toContain("Amanda Stewart"); // that belongs to section 5
+  });
+
+  it("discards a preamble that holds the nav and the table of contents", () => {
+    expect(preambleHtml).toContain("Our New Research Enologist"); // the TOC link
+    expect(sections[0].html).not.toContain("<ol");
+  });
+});
+
+describe("splitHtmlSections — T2 (EN-112, 2006)", () => {
+  const { sections } = splitHtmlSections(fixture(112));
+
+  it("finds anchors that carry no id= attribute", () => {
+    expect(sections.map((s) => s.anchor)).toEqual(["1", "2"]);
+  });
+
+  it("extracts Roman-numeral headings that run inline with the body text", () => {
+    expect(sections[0].headingText).toBe("I. Sauvignon blanc aroma/flavor.");
+    // this one spans a newline plus indentation in the raw HTML — whitespace must normalize
+    expect(sections[1].headingText).toBe("II. Virginia Tech Enology Service Lab.");
+  });
+
+  it("excludes the left-nav soup that Defuddle fails to strip on this template", () => {
+    // Free win: the nav lives in the preamble, so slicing removes it before extraction.
+    for (const s of sections) expect(s.html).not.toContain("Skip menu");
+  });
+});
+
+describe("splitHtmlSections — T1 (EN-5, 2000): anchorless", () => {
+  it("returns zero sections without throwing", () => {
+    const { sections } = splitHtmlSections(fixture(5));
+    expect(sections).toEqual([]);
+  });
+
+  it("returns the whole document as preamble so the caller can fail open", () => {
+    // ~24% of the corpus is T1. Treating this as an empty page silently drops 40 issues.
+    const { preambleHtml } = splitHtmlSections(fixture(5));
+    expect(preambleHtml).toContain("Lab policy");
+  });
+});
+
+describe("splitHtmlSections — spike-found edge cases", () => {
+  it("matches an anchor tag that spans a newline (real: EN-50)", () => {
+    const html = `<p><strong><a\nname="1"></a>1. Cold Stabilization</strong></p><p>Body.</p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).toEqual(["1"]);
+    expect(sections[0].headingText).toBe("1. Cold Stabilization");
+  });
+
+  it("matches multi-letter sub-anchors (real: EN-159 has 29bi and 29bii)", () => {
+    const html =
+      `<p><strong><a name="29b"></a>29b. Biofilms</strong></p><p>A.</p>` +
+      `<p><strong><a name="29bi"></a>29bi. Surface Sanitation</strong></p><p>B.</p>` +
+      `<p><strong><a name="29bii"></a>29bii. Rinse Protocol</strong></p><p>C.</p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).toEqual(["29b", "29bi", "29bii"]);
+  });
+
+  it("handles an issue whose first anchor is a sub-anchor (real: EN-155 starts at 1a)", () => {
+    const html = `<p><strong><a name="1a"></a>1a. Yeast Rehydration</strong></p><p>Body.</p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).toEqual(["1a"]);
+  });
+
+  it("ignores non-numeric chrome anchors (real: skip-menu, MainContent, vtsearchform)", () => {
+    const html =
+      `<a name="skip-menu"></a><a name="MainContent"></a>` +
+      `<p><strong><a name="1"></a>1. Real Section</strong></p><p>Body.</p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).toEqual(["1"]);
+  });
+
+  it("accepts name= on a non-anchor element without treating it as a section (real: EN-155)", () => {
+    // <p id="1a" name="1a"> appears on EN-155; only <a name=...> delimits a section.
+    const html = `<p id="2a" name="2a">Not a section.</p><p><strong><a name="1"></a>1. Real</strong></p>`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections.map((s) => s.anchor)).toEqual(["1"]);
+  });
+
+  it("does not swallow the body when the heading's closing tag is missing", () => {
+    const html = `<p><a name="1"></a>1. Unclosed heading<p>${"x".repeat(2000)}`;
+    const { sections } = splitHtmlSections(html);
+    expect(sections[0].headingText.length).toBeLessThan(400);
+  });
+
+  it("returns no sections for empty or junk input rather than throwing", () => {
+    expect(splitHtmlSections("").sections).toEqual([]);
+    expect(splitHtmlSections("<html><body><p>nothing</p></body></html>").sections).toEqual([]);
+  });
+});
