@@ -230,6 +230,17 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Consumables receive-by-pack (#366/#370) — MERGED (PR #433, squash `3b13b6e`).** The receive machinery
+  (`resolveReceiptQuantity`, location-aware `receiveConsumableCore`, the `MaterialMovePanel` unit selector +
+  preview) had already shipped in **#395** (plan 080 U15); the reported bug was still reachable only because
+  the legacy grams-only `ReceiveModal` was still wired to the detail modal's "Receive" button. Fix: retired
+  that modal — "Receive" now opens the capable Move-stock panel (unit selector + `initialMode` prop), which
+  resolves the pack size server-side and converts qty AND per-unit cost together (COST-1). Regression test in
+  `test/material-stock.test.ts` (3 rolls of 500 → 1,500 @ $0.50). Browser-QA'd on Demo (1 roll @ $250 →
+  500 units @ $0.50, base-unit still works). Both tickets (same reporter, Mike) DMed + RESOLVED. 🔎 **Lesson:
+  when a clustered ticket's core already shipped, the remaining bug is often a leftover *reachable path* — grep
+  for redundant callers before rebuilding.**
+
 - **Plan 085 MSU Extension KB source + crawler hardening — MERGED (#415, `c49d42bc`).** 2 of 8 units
   added MSU; **the other 6 fixed crawler bugs MSU exposed that already affected all 20 sources.**
   WAF challenge pages were being indexed as real documents (HTTP **200** + `text/html`, so nothing
@@ -300,7 +311,9 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-20 — **Cornell Fruit Resources LIVE** (96 docs / 948 chunks, verify:knowledge-base
+_Last updated: 2026-07-20 — **#366/#370 consumables receive-by-pack MERGED** (PR #433, `3b13b6e`): retired
+the leftover grams-only ReceiveModal so "Receive" opens the pack-aware Move-stock panel; both tickets DMed
++ RESOLVED (reporter Mike). Prior: **Cornell Fruit Resources LIVE** (96 docs / 948 chunks, verify:knowledge-base
 20/20). Landed as #424 (reconciling a parallel session's #411), then #425 crawl-error visibility, #426
 the CampusPress CDN, #427 the dropped canonicalTitle. En route: main was found to be FABRICATING
 publication dates from junk metadata, and a newly-allowlisted crawl target proved undiscoverable
