@@ -369,7 +369,13 @@ and it collapses the main open question.
 | `brix-write-after-writes` (synthetic, 5 write turns) | 2/5 (40%) | 5/5 |
 | `wo-rack-assignee-unknown-history` (plan 081 repro) | 4/5 (80%) | clears 0.9 |
 
-Gates: `tsc` 0, eslint 0, vitest 2775 passed. Six commits.
+Gates: `tsc` 0, eslint 0, vitest 2885 passed. Eight commits, rebased onto main.
+
+**Re-measured after rebasing onto main, with PR #391 MERGED** (so its prompt rule and rewritten tool
+description are live, and plan 082's extra tools are in the set): the history case still measures
+**0/5** on text-only replay, and passes on production replay. That settles it — #391's prompt fix does
+not rescue this failure, because an in-context demonstration beats an instruction. The replay fix is
+what moves it.
 
 ### Deviations from the plan, and why
 
