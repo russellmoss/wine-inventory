@@ -30,8 +30,8 @@ and `editable` derive from one table so they cannot drift again.**
   not just the block: the goal is "drift is structurally impossible", and a one-entity guard isn't that.
   A golden locks all 8 lists to their pre-refactor values and passed unmodified → provably no behavior
   change. **Guard verified by sabotage** (override `editable` → 3 fails; inject an undeclared one-sided
-  field → 2 fails; green on restore) rather than assumed. tsc 0, eslint clean, vitest 2756 vs a measured
-  2739 baseline (delta = the 17 added). 🔎 Found en route: **Vessel has the identical drift** (5 cooperage
+  field → 2 fails; green on restore) rather than assumed. tsc 0, eslint clean, **vitest 2778** on a clean
+  checkout = the 2761 U1 baseline + the 17 added. 🔎 Found en route: **Vessel has the identical drift** (5 cooperage
   fields update-only for no recorded reason) — labelled `UNDECIDED_DRIFT`, left unchanged, → TODOS.
 - ⬜ U3 variety-on-update + planting-fields-on-create → U4 spacing both paths
   → U5 `Vineyard.abbreviation` + collision guard → U6 `VineyardDetail` (GPS) → U7 evals + registers.

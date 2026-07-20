@@ -259,8 +259,10 @@ be a superset of today's for both paths.
 - **The guard was verified by sabotage.** Hand-overriding `editable` after the spread fails 3
   assertions; injecting an undeclared one-sided field fails 2; both go green on restore. (Twice now
   on this project a detector has been trusted without being seen to fail — not repeating that.)
-- Gates: tsc 0, eslint 0 errors/0 warnings, vitest **2756 passed** against a measured baseline of
-  **2739** (delta = exactly the 17 tests added).
+- Gates: tsc 0, eslint 0 errors/0 warnings, vitest **2778 passed** on a clean checkout of this
+  branch — exactly the Unit 1 baseline of **2761** plus the 17 tests added here.
+  (First measured 2756/2739 in the shared main checkout; both numbers were polluted by a parallel
+  session's uncommitted work. The delta was right, the absolutes were not. Re-measured clean.)
 - ⚠️ Unit 3 will change the `VineyardBlock` rows in the golden (variety → both, planting fields →
   both). Update those rows and only those.
 
