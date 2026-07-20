@@ -67,10 +67,29 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     // unambiguously grape documents — cold injury to canes and trunks, canopy management for hybrids,
     // vineyard site selection, organic vineyard pest management. Allowing ONLY the file store (never
     // /newfruit/ HTML) picks them up via link-following without dragging in the tree-fruit blog.
+    // EVERY uploaded file redirects to a CDN ON A DIFFERENT HOST, and without the third prefix below
+    // this source gets its HTML and NONE of its 43 PDFs. Measured: a crawl reported "29 documents,
+    // 168 errors", and all 168 were `host bpb-us-e1.wpmucdn.com is not allowlisted`.
+    //
+    //   blogs.cornell.edu/newfruit/files/2017/01/Rootstocks-…pdf
+    //     -> 302 -> bpb-us-e1.wpmucdn.com/blogs.cornell.edu/dist/0/7265/files/2017/01/Rootstocks-…pdf
+    //
+    // Two things are required, because the host gate and the path gate are separate: the CDN host in
+    // TRUSTED_DOMAINS (fetchDocument re-checks the HOST on every redirect hop), and a matching
+    // allowPrefix (crawlWithFollowing re-gates the FINAL url's PATH after a redirect). Miss either and
+    // the PDFs are still dropped — one as a throw, the other as skippedRedirect.
+    //
+    // SCOPING THE CDN MATTERS AS MUCH AS SCOPING THE BLOG. bpb-us-e1.wpmucdn.com is CampusPress's
+    // SHARED CDN — it serves every CampusPress customer, not just Cornell. What bounds us to Cornell
+    // is the `/blogs.cornell.edu/` path prefix, which is the CDN's per-customer namespace. It does
+    // cover all Cornell blogs rather than only grapes/newfruit (the `dist/0/<id>/` segment is the
+    // per-blog id and we would have to enumerate them), but we only ever enqueue a CDN url we found
+    // by following a link from an already-admitted grape page, so reach is bounded by discovery too.
+    // Documents are still filed under the REQUESTED blogs.cornell.edu url, so citations stay Cornell.
     seedRoots: ["https://blogs.cornell.edu/grapes/"],
     // WordPress core sitemap, under the multisite subpath rather than the host root.
     sitemapUrls: ["https://blogs.cornell.edu/grapes/wp-sitemap.xml"],
-    allowPrefixes: ["/grapes/", "/newfruit/files/"],
+    allowPrefixes: ["/grapes/", "/newfruit/files/", "/blogs.cornell.edu/"],
     denyPrefixes: [
       // WordPress cruft + thin taxonomy/author/pagination archives
       "/grapes/wp-admin/",
@@ -692,6 +711,15 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   // on hostname, never on path), so the cornell-grapes config's allowPrefixes are what actually keep the
   // crawl inside /grapes/ and /newfruit/files/. Do not add a source here with a bare "/" allow prefix.
   { domain: "blogs.cornell.edu", sourceKey: "cornell-grapes" },
+  // CampusPress's CDN, where every blogs.cornell.edu upload actually lives — a page link to
+  // /newfruit/files/x.pdf 302s to bpb-us-e1.wpmucdn.com/blogs.cornell.edu/dist/0/<blog-id>/files/x.pdf.
+  // Without this the host gate throws on the redirect hop and Cornell yields ZERO of its 43 PDFs.
+  //
+  // This is a SHARED CDN across CampusPress customers, so the host alone is a much wider boundary than
+  // any other entry in this list. It is bounded by cornell-grapes' `/blogs.cornell.edu/` allowPrefix —
+  // the CDN's per-customer namespace — NOT by the host. Do not reuse this domain for another source
+  // without an equivalent path prefix, or that source can reach every CampusPress blog on the internet.
+  { domain: "bpb-us-e1.wpmucdn.com", sourceKey: "cornell-grapes" },
 
   // Publishers of the specific technical PDFs the Cornell grape site links out to (curated source
   // viticulture-extension-refs). These entries are REQUIRED, not optional: crawlUrls gates every URL on

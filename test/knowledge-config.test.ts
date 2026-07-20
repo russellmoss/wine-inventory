@@ -111,6 +111,36 @@ describe("knowledge source config", () => {
       }
     });
 
+    // Plan 087 — the CDN. Every blogs.cornell.edu upload 302s to CampusPress's SHARED CDN, so the
+    // host allowlist alone would let this source reach every CampusPress blog on the internet. The
+    // `/blogs.cornell.edu/` prefix is the CDN's per-customer namespace and is the ONLY thing bounding
+    // it. These assertions are the safety argument, not bookkeeping.
+    const cdnAllowed = (path: string) =>
+      crawlerPathAllowed(cornell(), `https://bpb-us-e1.wpmucdn.com${path}`);
+
+    it("trusts the CDN host — without it every Cornell PDF throws on the redirect hop", () => {
+      expect(TRUSTED_DOMAIN_SET.has("bpb-us-e1.wpmucdn.com")).toBe(true);
+    });
+
+    it("admits a Cornell asset on the CDN (the real post-redirect url shape)", () => {
+      expect(
+        cdnAllowed("/blogs.cornell.edu/dist/0/7265/files/2017/01/Rootstocks-for-Planting-copy-rqw8ls.pdf"),
+      ).toBe(true);
+    });
+
+    it("REFUSES another CampusPress customer on the same shared CDN", () => {
+      // The whole reason the path prefix exists. If this ever passes, the source can crawl the
+      // uploads of every university hosted by CampusPress.
+      for (const p of [
+        "/blogs.harvard.edu/dist/0/1/files/2020/01/something.pdf",
+        "/sites.psu.edu/dist/0/1/files/2020/01/something.pdf",
+        "/dist/0/7265/files/2017/01/orphaned.pdf",
+        "/",
+      ]) {
+        expect(cdnAllowed(p), p).toBe(false);
+      }
+    });
+
     it("stays on the monthly auto-crawl loop", () => {
       // The monthly refresh comes from autoCrawl defaulting to true (recrawl-knowledge.ts filters on it),
       // NOT from crawlCadence, which nothing reads.
