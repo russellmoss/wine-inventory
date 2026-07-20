@@ -28,6 +28,7 @@ import { reverseVesselActivityTx } from "@/lib/work-orders/vessel-activity";
 import { seedStarterMaterials } from "@/lib/onboarding/seed-starter-materials";
 import { getWorkOrderArchive, getWorkOrderPrintView } from "@/lib/work-orders/data";
 import { disconnectSystem } from "../src/lib/tenant/system";
+import { systemLocationId } from "./lib/system-location";
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-wo-enh" };
@@ -108,12 +109,12 @@ async function main() {
     const wineLot = await seedLotInVessel("ZZWE-LOT-1", wineTank.id, 100);
 
     const proxycarb = await prisma.cellarMaterial.create({ data: { name: "ZZWE Proxycarb", normalizedKey: "ZZWEPROXYCARB", kind: "CLEANING", isStockTracked: true, stockUnit: "g" } });
-    await prisma.supplyLot.create({ data: { materialId: proxycarb.id, qtyReceived: 30, qtyRemaining: 30, stockUnit: "g", unitCost: "0.01", receivedAt: new Date("2026-01-01"), updatedAt: new Date() } });
-    await prisma.supplyLot.create({ data: { materialId: proxycarb.id, qtyReceived: 100, qtyRemaining: 100, stockUnit: "g", unitCost: "0.02", receivedAt: new Date("2026-02-01"), updatedAt: new Date() } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: proxycarb.id, qtyReceived: 30, qtyRemaining: 30, stockUnit: "g", unitCost: "0.01", receivedAt: new Date("2026-01-01"), updatedAt: new Date() } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: proxycarb.id, qtyReceived: 100, qtyRemaining: 100, stockUnit: "g", unitCost: "0.02", receivedAt: new Date("2026-02-01"), updatedAt: new Date() } });
     const paa = await prisma.cellarMaterial.create({ data: { name: "ZZWE PAA", normalizedKey: "ZZWEPAA", kind: "SANITIZER", isStockTracked: true, stockUnit: "mL" } });
-    await prisma.supplyLot.create({ data: { materialId: paa.id, qtyReceived: 5, qtyRemaining: 5, stockUnit: "mL", unitCost: "0.50", updatedAt: new Date() } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: paa.id, qtyReceived: 5, qtyRemaining: 5, stockUnit: "mL", unitCost: "0.50", updatedAt: new Date() } });
     const tannin = await prisma.cellarMaterial.create({ data: { name: "ZZWE Tannin", normalizedKey: "ZZWETANNIN", kind: "TANNIN", isStockTracked: true, stockUnit: "g" } });
-    await prisma.supplyLot.create({ data: { materialId: tannin.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.02", updatedAt: new Date() } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: tannin.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.02", updatedAt: new Date() } });
     console.log("── fixtures seeded ──");
 
     // Snapshot the wine cost DAG so WORKORDER-3 can prove maintenance never touches it.

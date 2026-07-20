@@ -443,28 +443,8 @@ async function main() {
 
     // 5b. Phase 8: supply_lot isolation. Owner seeds a material + costed receipt in B; app-as-A must
     // not see B's stock, and a foreign-tenant supply_lot insert while in A is rejected (WITH CHECK).
-    await owner.cellarMaterial.upsert({
-      where: { id: "iso_mat_b" },
-      update: {},
-      create: { id: "iso_mat_b", tenantId: B, name: "ISO KMBS", normalizedKey: "ISOKMBS", kind: "SO2", isStockTracked: true },
-    });
-    await owner.supplyLot.upsert({
-      where: { id: "iso_supply_b" },
-      update: {},
-      create: { id: "iso_supply_b", tenantId: B, materialId: "iso_mat_b", qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.05", updatedAt: now },
-    });
-    const aSeesSupplyB = await asTenant(A, (db) => db.supplyLot.findFirst({ where: { id: "iso_supply_b" } }));
-    check("tenant A CANNOT see tenant B's supply_lot (RLS)", aSeesSupplyB === null);
-    let supplyInsertRaised = false;
-    try {
-      await asTenant(A, (db) => db.supplyLot.create({ data: { id: "iso_supply_x", tenantId: B, materialId: "iso_mat_b", qtyReceived: 1, qtyRemaining: 1, stockUnit: "g", updatedAt: new Date() } }));
-    } catch { supplyInsertRaised = true; }
-    check("foreign-tenant supply_lot INSERT raises (WITH CHECK)", supplyInsertRaised);
-
-    // 5b-2. Plan 080 (U1/U2b): the per-location consumables dimension. A SupplyLot now points at a Location,
-    // and every move writes a material_movement row — BOTH are new cross-tenant leak surfaces, so prove:
-    // (i) a lot cannot reference ANOTHER tenant's location, (ii) material_movement is RLS-isolated both
-    // directions, and (iii) its composite-tenant FKs (K11) reject cross-tenant material/location refs.
+    // Locations are seeded HERE, before the supply lots: Plan 080 U1 made SupplyLot.locationId NOT NULL
+    // with a composite (tenantId, locationId) FK, so a lot cannot be created before its location exists.
     await owner.location.upsert({
       where: { id: "iso_loc_b" },
       update: {},
@@ -475,6 +455,36 @@ async function main() {
       update: {},
       create: { id: "iso_loc_a", tenantId: A, name: "ISO Cellar A", isActive: true },
     });
+    await owner.cellarMaterial.upsert({
+      where: { id: "iso_mat_b" },
+      update: {},
+      create: { id: "iso_mat_b", tenantId: B, name: "ISO KMBS", normalizedKey: "ISOKMBS", kind: "SO2", isStockTracked: true },
+    });
+    await owner.supplyLot.upsert({
+      where: { id: "iso_supply_b" },
+      update: {},
+      create: { id: "iso_supply_b", tenantId: B, materialId: "iso_mat_b", locationId: "iso_loc_b", qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.05", updatedAt: now },
+    });
+    const aSeesSupplyB = await asTenant(A, (db) => db.supplyLot.findFirst({ where: { id: "iso_supply_b" } }));
+    check("tenant A CANNOT see tenant B's supply_lot (RLS)", aSeesSupplyB === null);
+    // `locationId` is supplied deliberately. Plan 080 U1 made it NOT NULL, and without it this insert
+    // raised a NULL-constraint violation instead of an RLS refusal — the bare `catch` accepted that, so
+    // the check went green while testing nothing about isolation. A negative test that can pass for the
+    // wrong reason is worse than no test. Assert the REASON, not just that something threw.
+    let supplyInsertError: string | null = null;
+    try {
+      await asTenant(A, (db) => db.supplyLot.create({ data: { id: "iso_supply_x", tenantId: B, materialId: "iso_mat_b", locationId: "iso_loc_b", qtyReceived: 1, qtyRemaining: 1, stockUnit: "g", updatedAt: new Date() } }));
+    } catch (e) { supplyInsertError = e instanceof Error ? e.message : String(e); }
+    check("foreign-tenant supply_lot INSERT raises (WITH CHECK)", supplyInsertError !== null);
+    check(
+      "...and it raises for the RLS policy, not an unrelated constraint",
+      supplyInsertError !== null && !/[Nn]ull constraint violation/.test(supplyInsertError),
+    );
+
+    // 5b-2. Plan 080 (U1/U2b): the per-location consumables dimension. A SupplyLot now points at a Location,
+    // and every move writes a material_movement row — BOTH are new cross-tenant leak surfaces, so prove:
+    // (i) a lot cannot reference ANOTHER tenant's location, (ii) material_movement is RLS-isolated both
+    // directions, and (iii) its composite-tenant FKs (K11) reject cross-tenant material/location refs.
 
     // (i) a lot in B may NOT be pinned to A's location — the composite (tenantId, locationId) FK must reject it.
     let lotLocFkRaised = false;

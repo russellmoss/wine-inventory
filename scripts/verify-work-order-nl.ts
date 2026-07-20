@@ -17,6 +17,7 @@ import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifec
 import { attachTaskEquipmentCore } from "@/lib/equipment/equipment";
 import { completeTaskCore, completeGroupRackBatchCore } from "@/lib/work-orders/execute";
 import { rejectGroupRackBatchCore } from "@/lib/work-orders/approval";
+import { systemLocationId } from "./lib/system-location";
 
 const TENANT = "org_demo_winery";
 const ACTOR: LedgerActor = { actorUserId: null, actorEmail: "system@verify-work-order-nl" };
@@ -105,7 +106,7 @@ async function main() {
       },
     });
     await prisma.supplyLot.create({
-      data: { materialId: material.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.10" },
+      data: { locationId: await systemLocationId(), materialId: material.id, qtyReceived: 1000, qtyRemaining: 1000, stockUnit: "g", unitCost: "0.10" },
     });
 
     const opsBeforeAuthoring = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
@@ -148,9 +149,9 @@ async function main() {
     // ── Plan 055a: author a BOTTLE work order WITH its packaging BoM via NL (authoring only; the
     //    execute→deplete→capitalize path is proven by verify:cost + verify:work-orders-transform). ──
     const glass = await prisma.cellarMaterial.create({ data: { name: "ZZNL Glass 750", normalizedKey: "ZZNLGLASS750", kind: "PACKAGING", category: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
-    await prisma.supplyLot.create({ data: { materialId: glass.id, qtyReceived: 5000, qtyRemaining: 5000, stockUnit: "unit", unitCost: "0.80" } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: glass.id, qtyReceived: 5000, qtyRemaining: 5000, stockUnit: "unit", unitCost: "0.80" } });
     const cork = await prisma.cellarMaterial.create({ data: { name: "ZZNL Cork Natural", normalizedKey: "ZZNLCORKNATURAL", kind: "PACKAGING", category: "PACKAGING", isStockTracked: true, stockUnit: "unit" } });
-    await prisma.supplyLot.create({ data: { materialId: cork.id, qtyReceived: 5000, qtyRemaining: 5000, stockUnit: "unit", unitCost: "0.10" } });
+    await prisma.supplyLot.create({ data: { locationId: await systemLocationId(), materialId: cork.id, qtyReceived: 5000, qtyRemaining: 5000, stockUnit: "unit", unitCost: "0.10" } });
 
     const opsBeforeBottle = await prisma.lotOperation.count({ where: { enteredBy: ACTOR.actorEmail } });
     const pkgProposal = await buildNlWorkOrderProposal({

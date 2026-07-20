@@ -1,5 +1,6 @@
 import { runAsTenant } from "@/lib/tenant/context";
 import { prisma } from "@/lib/prisma";
+import { systemLocationId } from "./lib/system-location";
 import {
   mergeVendorsCore,
   removeVendorCore,
@@ -64,7 +65,7 @@ async function main() {
       });
       ids.matId = mat.id;
       const lot = await prisma.supplyLot.create({
-        data: { materialId: mat.id, qtyReceived: 1, qtyRemaining: 1, stockUnit: "unit", vendorId: loser.id },
+        data: { locationId: await systemLocationId(), materialId: mat.id, qtyReceived: 1, qtyRemaining: 1, stockUnit: "unit", vendorId: loser.id },
         select: { id: true },
       });
       ids.lotId = lot.id;
