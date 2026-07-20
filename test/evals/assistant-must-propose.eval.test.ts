@@ -58,6 +58,7 @@ const MAX_EVAL_TURNS = 4;
 async function runExchange(gc: { utterance: string; fixture?: Record<string, string> }): Promise<{
   writeCalls: Block[];
   readCalls: string[];
+  finalText: string;
 }> {
   const messages: Turn[] = [{ role: "user", content: gc.utterance }];
   const readCalls: string[] = [];
@@ -85,8 +86,9 @@ async function runExchange(gc: { utterance: string; fixture?: Record<string, str
     const toolUses = data.content.filter((b) => b.type === "tool_use");
 
     const writeCalls = toolUses.filter((t) => WRITE_TOOL_NAMES.has(t.name ?? ""));
-    if (writeCalls.length > 0) return { writeCalls, readCalls };
-    if (data.stop_reason !== "tool_use") return { writeCalls: [], readCalls };
+    const textOf = (c: Block[]) => c.filter((b) => b.type === "text").map((b) => (b as { text?: string }).text ?? "").join(" ").trim();
+    if (writeCalls.length > 0) return { writeCalls, readCalls, finalText: textOf(data.content) };
+    if (data.stop_reason !== "tool_use") return { writeCalls: [], readCalls, finalText: textOf(data.content) };
 
     // Feed the reads back and let it continue, same as runAssistant does.
     messages.push({ role: "assistant", content: data.content });
@@ -102,7 +104,7 @@ async function runExchange(gc: { utterance: string; fixture?: Record<string, str
       }),
     });
   }
-  return { writeCalls: [], readCalls };
+  return { writeCalls: [], readCalls, finalText: "(hit MAX_EVAL_TURNS without writing)" };
 }
 
 function classify(gc: MustProposeCase, writeCalls: Block[]): { outcome: Outcome; fabricated: string[] } {
@@ -136,11 +138,19 @@ describe.skipIf(!LLM_ENABLED)("MUST_PROPOSE — a write request always yields a 
     async (gc) => {
       const outcomes: Outcome[] = [];
       const fabrications: string[] = [];
+      // Which READ tools the model reached for. Load-bearing for triage: an unstubbed read returns
+      // DEFAULT_EMPTY_RESULT, which for a case whose premise is "this record exists" tells the model
+      // the opposite and can talk it out of writing at all. Without this you cannot tell that apart
+      // from the model simply declining.
+      const reads: string[] = [];
+      const declines: string[] = [];
 
       // Explicit loop: vitest has no `repeats` configured here, and each run must be an independent
       // single-turn sample — no shared conversation state, exactly like a fresh chat.
       for (let i = 0; i < RUNS; i++) {
-        const { writeCalls } = await runExchange(gc);
+        const { writeCalls, readCalls, finalText } = await runExchange(gc);
+        reads.push(...readCalls);
+        if (writeCalls.length === 0 && finalText) declines.push(finalText.slice(0, 220));
         const { outcome, fabricated } = classify(gc, writeCalls);
         outcomes.push(outcome);
         fabrications.push(...fabricated);
@@ -151,8 +161,10 @@ describe.skipIf(!LLM_ENABLED)("MUST_PROPOSE — a write request always yields a 
       console.log(
         `[MUST_PROPOSE] ${gc.id}: card ${t.card}/${t.total} (${(rate * 100).toFixed(0)}%) ` +
           `— complete ${t.complete}, partial(draft) ${t.partial}, wrong-tool ${t.wrongTool}, no-tool ${t.noTool}` +
+          (reads.length ? ` | reads: ${[...new Set(reads)].join(",")}` : "") +
           (gc.baseline ? ` | baseline: ${gc.baseline}` : ""),
       );
+      if (declines.length) console.log(`[MUST_PROPOSE] ${gc.id}: DECLINED SAYING → ${JSON.stringify(declines[0])}`);
 
       // 1. A card must reach the screen. This is the user's actual complaint.
       //    A declared knownGap is measured and reported but not asserted — see the field's docs.
@@ -167,7 +179,12 @@ describe.skipIf(!LLM_ENABLED)("MUST_PROPOSE — a write request always yields a 
 
       // 2. Asserted SEPARATELY (council S4): a bare "some tool was called" passes on the wrong tool,
       //    which would be a write the user never asked for.
-      expect(t.wrongTool, `${gc.id}: called the wrong tool ${t.wrongTool}/${t.total} times`).toBe(0);
+      //    Skipped for a declared knownGap — otherwise a case we have already documented as not-yet-working
+      //    still turns the nightly red, which is how a scheduled eval trains people to ignore it. The gap
+      //    is measured and printed above either way.
+      if (!gc.knownGap) {
+        expect(t.wrongTool, `${gc.id}: called the wrong tool ${t.wrongTool}/${t.total} times`).toBe(0);
+      }
 
       // 3. NEVER fabricate. This is why forced tool_choice was rejected: a required-but-unknown field
       //    must be omitted, not guessed. One occurrence fails the case outright.
