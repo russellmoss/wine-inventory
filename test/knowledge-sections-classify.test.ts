@@ -172,6 +172,31 @@ describe("classifySection — anti-regression: the four rejected patterns", () =
   });
 });
 
+describe("classifySection — prose is not a heading (found live on EN-159)", () => {
+  // Regression. Anchor #1 on EN-159 has no bold title, so heading extraction swallowed a whole
+  // paragraph. It mentions "On-Line Publications" in passing, which dropped a section actually
+  // about fermentation considerations. Length is the discriminator: this is 207 chars, the longest
+  // real non-technical heading in the corpus is 118.
+  const PROSE =
+    "In advance of the 2011 harvest, the following is an outline of some fermentation " +
+    "considerations. Additional information is available on-line at www.vtwines.info . " +
+    "Click Enology Notes or On-Line Publications.";
+
+  it("keeps body prose that happens to mention an admin phrase", () => {
+    expect(PROSE.length).toBeGreaterThan(150);
+    expect(keeps(PROSE)).toBe(true);
+    expect(classifySection(PROSE).reason).toMatch(/prose/i);
+  });
+
+  it("still drops the LONGEST real non-technical heading in the corpus", () => {
+    const asev =
+      "3. American Society for Enology and Viticulture – Eastern Section Conference and " +
+      "Symposium, July 15-17, Lehigh Valley, PA";
+    expect(normalizeHeading(asev).length).toBeLessThan(150);
+    expect(drops(asev)).toBe(true);
+  });
+});
+
 describe("classifySection — the accepted casualty", () => {
   it("drops 'Phenols and Mouthfeel, Wineries Unlimited 2011' (known false positive)", () => {
     // PLAN 083, recorded deliberately. The topic is technical but the trade-show suffix triggers

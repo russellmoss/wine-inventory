@@ -88,9 +88,28 @@ function matchAdmin(h: string): string | null {
   return null;
 }
 
+/**
+ * Above this, the text is body prose, not a heading — so we refuse to classify it.
+ *
+ * Found live by scripts/verify-vt-enology.ts, not by reasoning. Anchor #1 on EN-159 is NOT followed
+ * by a bold title, so heading extraction runs on to the first </p> and swallows a whole paragraph.
+ * That paragraph mentions "On-Line Publications" in passing, which tripped the admin rule and
+ * dropped a section whose actual subject is "an outline of some fermentation considerations".
+ *
+ * Calibration: that prose is 207 chars; the longest REAL non-technical heading in the corpus
+ * ("American Society for Enology and Viticulture - Eastern Section Conference and Symposium,
+ * July 15-17, Lehigh Valley, PA") is 118. 150 separates them with margin on both sides.
+ */
+const MAX_CLASSIFIABLE_HEADING = 150;
+
 export function classifySection(rawHeading: string): SectionVerdict {
   const h = normalizeHeading(rawHeading ?? "");
   if (!h) return { keep: true, reason: "no heading — fail open" };
+
+  // Prose can mention a workshop or a publication in passing. Only a real heading gets classified.
+  if (h.length > MAX_CLASSIFIABLE_HEADING) {
+    return { keep: true, reason: "body prose, not a heading — fail open" };
+  }
 
   // Events and personnel drop UNCONDITIONALLY. No colon rescue: USER RULING is that trip/meeting
   // recaps go the same way as the ads, and without this the "Study Tour: Alsace, Burgundy and

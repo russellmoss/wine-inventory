@@ -17,7 +17,9 @@ import { classifySection } from "./classify-section";
  * participating in the stored hash every subsequent crawl returns skipped:"unchanged" and the new
  * rules never take effect. The failure is silent — the crawl reports success and indexes nothing.
  */
-export const SECTION_FILTER_VERSION = "1";
+// v2 (2026-07-20): added the MAX_CLASSIFIABLE_HEADING prose guard after the live gate caught
+//                  EN-159 #1 dropping real fermentation content on an incidental phrase match.
+export const SECTION_FILTER_VERSION = "2";
 
 export interface DroppedSection {
   anchor: string;
