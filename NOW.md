@@ -7,48 +7,33 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 085 — MSU Extension Grapes/Viticulture into the assistant KB. UNITS 1-7 DONE + COMMITTED;
-UNIT 8 (the live seed/crawl) DELIBERATELY NOT RUN. PR not yet opened.**
-Branch `claude/msu-viticulture-source-e7e94c` (worktree).
+**PLAN 085 — MSU Extension KB source + crawler hardening. MERGED (#415, `c49d42bc`). The CODE is
+in; the SOURCE IS NOT LIVE. Two operator steps remain, in this order.**
 Plan: [2026-07-20-085-…](docs/plans/2026-07-20-085-feat-kb-msu-viticulture-source-plan.md) (Standard, 8 units).
-Gates: **tsc 0, eslint 0 errors, vitest 3065/0**. Every guard sabotage-verified, not assumed.
+Gates at merge: **tsc 0, eslint 0 errors, vitest 3073/0**, CI green. Every guard sabotage-verified.
 
-⛔ **DO NOT run `seed:knowledge-sources` until this is merged AND deployed.** Seeding writes
-`msu-grapes` into the GLOBAL (= prod) `knowledge_source` table; deployed code that doesn't know the
+**① SEED — but ONLY after this is DEPLOYED, never before.** `seed:knowledge-sources` writes
+`msu-grapes` into the GLOBAL (= prod) `knowledge_source` table. Deployed code that doesn't know the
 key still ADMITS it (`findSourceConfig(s.key)?.autoCrawl !== false` → `undefined !== false` → true),
 then `crawlWithFollowing` throws `unknown source` before crawling — **killing the monthly refresh for
-all 21 sources.** Order is merge → deploy → seed → crawl.
+all 21 sources.** Order: deploy → `npm run seed:knowledge-sources` → crawl. **From the MAIN checkout.**
+(The converse, from #410: the sweep IGNORES a source that was never seeded. Both halves are real.)
 
-⛔ **MSU's bot wall has shut this network out.** Recon started intermittent; after ~15 requests the
-residential IP went to 5/5 refused and still is (`npm run verify:msu` → `BLOCKED — imperva (959B)`).
-So the live half of U8 is unverified. This materially raises the plan's headline risk: a GH Actions
-runner makes far more requests from a datacenter range. **"Works from a laptop" is no evidence about CI.**
+**② CRAWL + VERIFY.** `npm run crawl:source msu-grapes -- --follow --max 5` (smoke), then full, then
+confirm docs landed WITH `publishedAt`, then `npm run verify:knowledge-base` (widen `expectPaths`,
+never repoint). Then audit the ingested `/news/` list for non-grape leakage.
 
-Russell asked for MSU (`canr.msu.edu/grapes/`) as a monthly-CRON source like AWRI/UC IPM, toggleable
-in Settings, with publication dates. Normally that is a config edit. **It is not, and the reason is
-the point: 2 of the 8 units add MSU; the other 6 fix crawler bugs MSU exposed.** Three verified
-blockers, all confirmed by execution not inference:
+⛔ **MSU's bot wall shut this network out and the live half is UNVERIFIED.** Recon started
+intermittent; after ~15 requests the residential IP went to 5/5 refused and stayed there
+(`npm run verify:msu` → `config checks: PASS / live checks: BLOCKED — imperva (959B)`). This
+*raises* the headline risk rather than settling it: a GH Actions runner makes far more requests from
+a datacenter range. **"Works from a laptop" is no evidence about CI — and there is no laptop
+evidence yet either.** If the monthly job reports `msu-grapes` in `darkSources`, that IS this same
+block from CI; fallback is `autoCrawl:false` + a curated crawl (documented on the source entry).
+Do NOT evade the WAF.
 
-- ⚠️ **Incapsula/Imperva serves challenge pages with HTTP 200**, `text/html`, ~950 B. The fetch path
-  has **zero body validation**, so a challenge indexes as a real document — and each one carries a
-  unique `incident_id`, so the content-hash dedup never fires and it **re-embeds every month forever**.
-  Latent bug affecting ALL 20 sources, not just MSU.
-- ⚠️ **The detector must RETURN a flag, never throw.** `recrawl-knowledge.ts:93` reads any
-  `fetchDocument` throw as "page removed" → `status: withdrawn`. Throwing would mass-tombstone a
-  whole source's corpus slice on a transient WAF blip. All 3 crawl loops also `catch {}` and discard
-  the message, so a throw could never reach the run summary anyway.
-- ⚠️ **Both date paths fail on MSU.** JSON-LD is malformed (`"2024-4-11EDT12:00AM"` → Invalid Date)
-  and the byline has no label anchor (`… Horticulture - April 11, 2024` → null). Fix is a
-  metadata-path normalizer ONLY — deliberately NOT loosening `LABEL`, whose posture is "a wrong date
-  is worse than no date."
-- **Scope (Russell's call):** no sitemap (both 404), and the real articles are flat `/news/<slug>`
-  mixed in with all of MSU Extension (dairy, 4-H, field crops). New opt-in `linkedOnlyPrefixes`
-  capability: `/news/` admitted only when linked FROM an admitted `/grapes/` page, and **terminal**
-  (links not followed onward) — terminal-ness is what actually caps the blast radius.
-- ⚠️ **Biggest unresolvable-before-merge risk:** the monthly CRON runs on GitHub Actions datacenter
-  IPs, which Incapsula challenges far harder than the residential IP this was scouted from. May fail
-  wholesale in CI. Mitigation is loudness (per-source `skippedChallenge`, went-dark job failure),
-  not evasion. Contingency: `autoCrawl: false` + curated crawl. **Decide only with real CI evidence.**
+_Why this was 8 units and not a config edit, what `linkedOnlyPrefixes` is for, and the three review
+findings deliberately deferred: all in the plan file. Don't re-derive it here._
 
 ## 🔭 Also in flight
 
@@ -185,7 +170,7 @@ is two decisions that are Russell's, not code:
    ⚠️ Also learned: `recrawl-knowledge` reads sources from the **DB**, not config — merging a
    source does NOTHING until `seed:knowledge-sources` runs. Easy to miss.
    Gates: tsc 0, eslint 0, **vitest 2985/0**, verify:invariants 36/36, verify:vt-enology PASS.
-7. **PLAN 085 IN PROGRESS — MSU KB source (see Current objective).** ← you are here
+7. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
@@ -205,6 +190,19 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 - **Break Mode: Sentry server-side scrubbing** — ⚠️ blocker before any real-tenant use. → TODOS.
 
 ## ✅ Done recently
+
+- **Plan 085 MSU Extension KB source + crawler hardening — MERGED (#415, `c49d42bc`).** 2 of 8 units
+  added MSU; **the other 6 fixed crawler bugs MSU exposed that already affected all 20 sources.**
+  WAF challenge pages were being indexed as real documents (HTTP **200** + `text/html`, so nothing
+  refused them) and, because Imperva stamps a unique `incident_id` into each one, every fetch got a
+  fresh content hash — the dedup never fired and the garbage would have **re-embedded every month
+  forever**. The tombstone pass also read ANY fetch failure as "page removed"; now only 404/410
+  means gone. `/review` then caught 3 more real bugs, the sharpest being that `findDarkSources`
+  declared HEALTHY sources dark (`documents` counts only re-indexed pages; unchanged pages 304 into
+  `notModified`, so a stable source legitimately ends a month at 0 — and the odds rose every month).
+  Also: the workflow literally could not report its own failure (`bash -e` + `pipefail` aborted the
+  step before the summary was written). 🔎 **Lesson worth keeping: two independent reviewers finding
+  the same thing is the signal to trust** — that is how the 304 bug surfaced.
 
 - **Feedback loop: class sweep + regression-test gate — built on `claude/determined-clarke-6d3e65`, PR not yet opened.**
   Backlog-process review, not a ticket. The data: ~40 PRs merged in 48h, PR queue near-empty — **throughput
@@ -263,12 +261,9 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Open the PR for plan 082 (`claude/assistant-vineyard-coverage`, code-complete, unopened).
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike.
 
-_Last updated: 2026-07-20 — plan 085 (MSU Extension KB source + WAF-challenge guard +
-link-provenance crawl gate) BUILT: units 1-7 committed, vitest 3065/0. Unit 8 live seed/crawl NOT
-run — see the two ⛔ blockers under Current objective (seed-after-deploy ordering; MSU bot wall shut
-this network out). Plan 082 moved to "Also in flight" (code-complete, PR unopened). Prior: plan 084
-LIVE (#406 + #409, corpus verified 173 docs/858 chunks). Prior: popped the UC IPM / corpus-dates /
-stale-warning tangent (#405 merged).
+_Last updated: 2026-07-20 — plan 085 (MSU Extension KB source + crawler hardening) MERGED as #415
+(`c49d42bc`), CI green. **Code is in; the source is NOT live** — seed + crawl remain, and seeding
+before deploy would kill the monthly sweep for all 21 sources. Prior: plan 084 LIVE (#406 + #409).
 (branch `claude/determined-clarke-6d3e65`, PR not yet opened). Prior entry: compacted from 684
 lines; verified every "pending" claim against `gh pr list` — Wave 2, Break Mode, Plan 077, the
 consumables fix and issue #328 had all already landed while still listed as in-flight. Beware
