@@ -87,3 +87,55 @@ describe("resolvePublishedDate — metadata wins, body text is the fallback", ()
     expect(resolvePublishedDate({ metadataDate: null, markdown: "no dates here" }, NOW)).toBeNull();
   });
 });
+
+// Plan 085 — MSU Extension (canr.msu.edu) publishes JSON-LD, but in a shape no Date parser accepts:
+// no zero-padding and the timezone jammed against the date with no separator. Verified live during
+// recon: `new Date("2024-4-11EDT12:00AM")` is Invalid Date. Its byline ("Paolo Sabbatini, Michigan
+// State University Department of Horticulture - April 11, 2024") carries no label word either, so
+// the body-scan fallback also returns null. Result before this: MSU lands 100% undated, and every
+// passage gets the `unknown` age warning -- exactly what the source was added to avoid.
+//
+// DELIBERATELY NOT FIXED BY LOOSENING THE LABEL ANCHOR. Matching a bare "Month D, YYYY" after a
+// dash would admit event dates and prose dates across all 20 sources, against this module's stated
+// posture that a wrong date is worse than none. The metadata path is where the real date is.
+describe("resolvePublishedDate — non-ISO metadata (the MSU Extension shape)", () => {
+  it.each([
+    ["2024-4-11EDT12:00AM", "2024-04-11"],
+    ["2024-4-12EDT8:42AM", "2024-04-12"],
+    ["2026-7-17EDT11:09AM", "2026-07-17"],
+    ["2015-11-02EST3:15PM", "2015-11-02"],
+  ])("recovers the date from %s", (meta, expected) => {
+    expect(iso(resolvePublishedDate({ metadataDate: meta, markdown: "" }, NOW))).toBe(expected);
+  });
+
+  it("confirms the premise: these are Invalid Date to the built-in parser", () => {
+    expect(Number.isNaN(new Date("2024-4-11EDT12:00AM").getTime())).toBe(true);
+  });
+
+  it("still range-checks the salvaged date exactly like every other path", () => {
+    expect(resolvePublishedDate({ metadataDate: "2031-4-11EDT12:00AM", markdown: "" }, NOW)).toBeNull(); // future
+    expect(resolvePublishedDate({ metadataDate: "1975-4-11EDT12:00AM", markdown: "" }, NOW)).toBeNull(); // pre-1980
+    expect(resolvePublishedDate({ metadataDate: "2024-13-11EDT12:00AM", markdown: "" }, NOW)).toBeNull(); // month 13
+    expect(resolvePublishedDate({ metadataDate: "2024-2-31EDT12:00AM", markdown: "" }, NOW)).toBeNull(); // Feb 31
+  });
+
+  it("anchors at the START — a stray number sequence mid-string is not a date", () => {
+    expect(resolvePublishedDate({ metadataDate: "order 2024-4-11 shipped", markdown: "" }, NOW)).toBeNull();
+  });
+
+  it("falls through to the body scan when the metadata is unsalvageable", () => {
+    expect(iso(resolvePublishedDate({ metadataDate: "EDT12:00AM", markdown: "Updated: 06/18" }, NOW))).toBe(
+      "2018-06-01",
+    );
+  });
+
+  // The regression guard. Every shape that worked before must still take the ORIGINAL path.
+  it.each([
+    ["2023-05-09T00:00:00Z", "2023-05-09"],
+    ["2023-05-09", "2023-05-09"],
+    ["Tue, 09 May 2023 00:00:00 GMT", "2023-05-09"],
+    ["May 9, 2023", "2023-05-09"],
+  ])("leaves the already-working metadata shape %s unchanged", (meta, expected) => {
+    expect(iso(resolvePublishedDate({ metadataDate: meta, markdown: "" }, NOW))).toBe(expected);
+  });
+});
