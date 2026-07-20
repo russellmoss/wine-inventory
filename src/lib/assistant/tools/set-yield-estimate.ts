@@ -2,12 +2,13 @@ import "server-only";
 import { recordYieldEstimate } from "@/lib/harvest/actions";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
-import { signProposal } from "../confirm";
+import { signProposal, signResume } from "../confirm";
 import { findScopedBlocks } from "../scope";
-import { resolveExactlyOne } from "./resolve";
+import { resolveOneOrChoice } from "./resolve";
 
 type SetYieldInput = {
   block?: string;
+  blockId?: string;
   vineyard?: string;
   variety?: string;
   estimate?: number;
@@ -31,6 +32,7 @@ export const setYieldEstimateTool: AssistantTool = {
     type: "object",
     properties: {
       block: { type: "string", description: "Block label, e.g. 'Block 2'. Use the bare label, not the variety in parentheses." },
+      blockId: { type: "string", description: "Internal use: a block pinned by id from a picker tap. Never invent one." },
       vineyard: { type: "string", description: "Vineyard name, to disambiguate the block (optional for a manager)." },
       variety: { type: "string", description: "Grape variety, to disambiguate when the block isn't named, e.g. 'Grenache'." },
       estimate: { type: "number", description: "The estimated yield, a non-negative number." },
@@ -52,11 +54,19 @@ export const setYieldEstimateTool: AssistantTool = {
       vineyard: input.vineyard,
       variety: input.variety,
     });
-    const block = resolveExactlyOne(blocks, {
-      describe: (b) => `${b.label}${b.varietyName ? ` (${b.varietyName})` : ""} in ${b.vineyardName}`,
+    // Picker on ambiguity (sweep after #328). Block labels repeat across vineyards — "Block 1" matches
+    // seven rows in a real winery — and findScopedBlocks matches on CONTAINS, so the candidate set is
+    // wider still. resolveExactlyOne threw a paragraph here; the tap pins the block by id.
+    const candidates = input.blockId ? blocks.filter((b) => b.id === input.blockId) : blocks;
+    const picked = resolveOneOrChoice(candidates, {
+      prompt: `Which block do you mean?`,
+      describe: (b) => `${b.label}${b.varietyName ? ` (${b.varietyName})` : ""}`,
+      detail: (b) => b.vineyardName,
+      resume: (b) => signResume("set_yield_estimate", { ...input, blockId: b.id }),
       noneMsg: `No block matches that you can access (block "${input.block ?? "?"}"${input.variety ? `, variety "${input.variety}"` : ""}${input.vineyard ? `, vineyard "${input.vineyard}"` : ""}).`,
-      manyMsg: `Several blocks match`,
     });
+    if (picked.kind === "choice") return picked.choice;
+    const block = picked.row;
 
     const unit = normUnit(input.unit);
     const unitLabel = unit === "metric" ? "kg" : "lb";

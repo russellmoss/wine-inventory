@@ -3,10 +3,10 @@ import { addHarvestPick } from "@/lib/harvest/actions";
 import { coerceBrix, coercePh, coerceTa, TA_UNIT } from "@/lib/harvest/pick-fields";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
-import { signProposal } from "../confirm";
+import { signProposal, signResume } from "../confirm";
 import { findScopedBlocks } from "../scope";
 import { resolveWeightKg, describeWeight } from "../weight";
-import { resolveExactlyOne } from "./resolve";
+import { resolveOneOrChoice } from "./resolve";
 
 // Plan 039: the "weigh the fruit" stage as a chat action. A crew member logs a harvest weigh-in for a
 // block — "weigh in 1200 kg from Block 1, 24 brix, pH 3.4, TA 6.2" — resolving the block by plain language
@@ -17,6 +17,7 @@ import { resolveExactlyOne } from "./resolve";
 
 type LogHarvestPickInput = {
   block?: string;
+  blockId?: string;
   vineyard?: string;
   variety?: string;
   weight?: number;
@@ -40,6 +41,7 @@ export const logHarvestPickTool: AssistantTool = {
     type: "object",
     properties: {
       block: { type: "string", description: "Block label, e.g. 'Block 1'. Use the bare label, not the variety in parentheses." },
+      blockId: { type: "string", description: "Internal use: a block pinned by id from a picker tap. Never invent one." },
       vineyard: { type: "string", description: "Vineyard name, to disambiguate the block (optional for a manager)." },
       variety: { type: "string", description: "Grape variety, to disambiguate when the block isn't named, e.g. 'Grenache'." },
       weight: { type: "number", description: "The fruit weight of this pick, a positive number IN THE UNIT the user actually said — never convert it yourself. Pass the raw number and set `unit`." },
@@ -75,11 +77,19 @@ export const logHarvestPickTool: AssistantTool = {
       vineyard: input.vineyard,
       variety: input.variety,
     });
-    const block = resolveExactlyOne(blocks, {
-      describe: (b) => `${b.label}${b.varietyName ? ` (${b.varietyName})` : ""} in ${b.vineyardName}`,
+    // Picker on ambiguity (sweep after #328). Block labels repeat across vineyards — "Block 1" matches
+    // seven rows in a real winery — and findScopedBlocks matches on CONTAINS, so the candidate set is
+    // wider still. resolveExactlyOne threw a paragraph here; the tap pins the block by id.
+    const candidates = input.blockId ? blocks.filter((b) => b.id === input.blockId) : blocks;
+    const picked = resolveOneOrChoice(candidates, {
+      prompt: `Which block do you mean?`,
+      describe: (b) => `${b.label}${b.varietyName ? ` (${b.varietyName})` : ""}`,
+      detail: (b) => b.vineyardName,
+      resume: (b) => signResume("log_harvest_pick", { ...input, blockId: b.id }),
       noneMsg: `No block matches that you can access (block "${input.block ?? "?"}"${input.variety ? `, variety "${input.variety}"` : ""}${input.vineyard ? `, vineyard "${input.vineyard}"` : ""}).`,
-      manyMsg: `Several blocks match`,
     });
+    if (picked.kind === "choice") return picked.choice;
+    const block = picked.row;
 
     const pickDate = input.pickDate ? input.pickDate : todayISO();
     // Surface HOW the weight was interpreted (e.g. "2 short tons (1,814.37 kg)") so the human confirming

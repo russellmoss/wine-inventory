@@ -5,10 +5,10 @@ import { writeAudit, diff } from "@/lib/audit";
 import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
-import { signProposal } from "../confirm";
+import { signProposal, signResume } from "../confirm";
 import { getEntity, allowedEntityNames } from "../entities";
 import { validateFields, type ValidatedValues } from "../fields";
-import { resolveExactlyOne } from "./resolve";
+import { resolveOneOrChoice } from "./resolve";
 
 type DbUpdateInput = { entity?: string; query?: string; id?: string; values?: Record<string, unknown> };
 
@@ -51,11 +51,16 @@ export const dbUpdateTool: AssistantTool = {
       if (!row) throw new Error(`No ${entity.displayName} with that id.`);
     } else {
       const matches = await entity.find(ctx.user, input.query ?? "");
-      row = resolveExactlyOne(matches, {
+      // Picker on ambiguity, not a thrown paragraph — the sibling of the db_delete fix (#328). Blocks are
+      // reachable through this generic path too, and "Block 1" matches seven rows in a real winery.
+      const res = resolveOneOrChoice(matches, {
+        prompt: `Which ${entity.displayName} do you want to update?`,
         describe: (m) => m.label,
+        resume: (m) => signResume("db_update", { ...input, id: m.id }),
         noneMsg: `No ${entity.displayName} matches "${input.query ?? ""}".`,
-        manyMsg: `Several ${entity.displayName} records match`,
       });
+      if (res.kind === "choice") return res.choice;
+      row = res.row;
     }
     assertScoped(entity, ctx.user, row.vineyardId);
 
