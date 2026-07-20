@@ -8,6 +8,10 @@ const MAX_OBJECT_KEYS = 50;
 const MAX_TOOL_CALLS = 40;
 
 export type AssistantToolTrace = {
+  /** The Anthropic `tool_use` id. Captured so a persisted turn can be REPLAYED as a well-formed
+   *  tool_use/tool_result pair (plan 083). Without it the pair cannot be reconstructed, and a
+   *  half-pair is a hard 400 — replay.ts degrades such rows to text rather than risk it. */
+  id?: string;
   name: string;
   input: unknown;
   ok?: boolean;

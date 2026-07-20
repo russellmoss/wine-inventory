@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { getToolsFor } from "@/lib/assistant/registry";
 import { buildSystemPrompt } from "@/lib/assistant/prompt";
+import { buildReplayMessages, type ReplayRow } from "@/lib/assistant/replay";
 import {
   MUST_PROPOSE_GOLDEN,
   MUST_NOT_PROPOSE_GOLDEN,
@@ -85,53 +86,41 @@ function historyOf(gc: ExchangeCase): HistoryTurn[] {
 }
 
 /**
- * REPLAY SEAM — the whole point of this axis, and easy to get wrong.
+ * REPLAY SEAM — routed through the SHIPPED reconstruction (plan 083 Unit 3).
  *
- * The eval builds its own messages array, so it does NOT automatically exercise production's replay.
- * Build it structured and every history case passes trivially, because you have hand-written the fix
- * into the harness and are then measuring it. That is the same mistake PR #391 made: a case that
- * cannot fail before the fix proves nothing.
+ * The eval builds its own messages array, so it does not exercise production automatically. Build the
+ * blocks by hand here and every history case passes trivially, because you have written the fix into
+ * the harness and are then measuring it — the same mistake PR #391 made, and the first version of
+ * this file made it too (5/5 on a case that reproduces at 0/8).
  *
- * So this mirrors PRODUCTION. Today `history.ts:16` keeps only string content and drops tool blocks,
- * so `flattenHistory` is what ships and the history cases are expected RED. Plan 083 Unit 3 repoints
- * this at the real reconstruction; when it does, these cases go green, and any future revert to
- * text-only turns them red again. That is the guard.
+ * So the golden's history turns are shaped into the persisted rows a real conversation would have
+ * written, and handed to `buildReplayMessages`. Revert replay.ts to text-only and these cases go red.
+ * That is the guard. REPLAY_TEXT_ONLY=1 reproduces the pre-fix behavior for comparison.
  */
-const REPLAY: (turns: HistoryTurn[], caseId: string) => Turn[] =
-  process.env.REPLAY_STRUCTURED === "1" ? expandHistory : flattenHistory;
+const TEXT_ONLY = process.env.REPLAY_TEXT_ONLY === "1";
 
-/**
- * What production does today: assistant turns collapse to their text, all tool evidence dropped.
- * Measured 0/8 on the cmrsrs02 repro (plan 083 Unit 1).
- */
-function flattenHistory(turns: HistoryTurn[]): Turn[] {
-  return turns.map((t) => ({ role: t.role, content: t.content }));
-}
-
-/**
- * The post-fix shape: the same three-message form `runAssistant` already builds in-turn
- * (run.ts:141 / run.ts:268) — assistant `tool_use` blocks, then ONE user message carrying every
- * `tool_result`, then the assistant's text. Measured 8/8 on the same repro.
- */
-function expandHistory(turns: HistoryTurn[], caseId: string): Turn[] {
-  const out: Turn[] = [];
-  turns.forEach((t, i) => {
-    if (t.role !== "assistant" || !t.toolCalls?.length) {
-      out.push({ role: t.role, content: t.content });
-      return;
-    }
-    const ids = t.toolCalls.map((_, k) => `toolu_${caseId.replace(/[^a-z0-9]/gi, "")}_${i}_${k}`);
-    out.push({
-      role: "assistant",
-      content: t.toolCalls.map((c, k) => ({ type: "tool_use", id: ids[k], name: c.name, input: c.input })),
-    });
-    out.push({
-      role: "user",
-      content: t.toolCalls.map((c, k) => ({ type: "tool_result", tool_use_id: ids[k], content: c.result })),
-    });
-    out.push({ role: "assistant", content: t.content });
+/** The persisted rows a conversation of these turns would have produced, ending on the utterance. */
+function toReplayRows(turns: HistoryTurn[], gc: ExchangeCase): ReplayRow[] {
+  const rows: ReplayRow[] = turns.map((t, i) => {
+    if (TEXT_ONLY || !t.toolCalls?.length) return { role: t.role, content: t.content };
+    const slug = gc.id.replace(/[^a-z0-9]/gi, "");
+    return {
+      role: t.role,
+      content: t.content,
+      metadata: {
+        trace: {
+          toolCalls: t.toolCalls.map((c, k) => ({
+            id: `toolu_${slug}_${i}_${k}`,
+            name: c.name,
+            input: c.input,
+            resultPreview: c.result,
+          })),
+        },
+      },
+    };
   });
-  return out;
+  rows.push({ role: "user", content: gc.utterance });
+  return rows;
 }
 
 async function runExchange(gc: ExchangeCase): Promise<{
@@ -139,10 +128,7 @@ async function runExchange(gc: ExchangeCase): Promise<{
   readCalls: string[];
   finalText: string;
 }> {
-  const messages: Turn[] = [
-    ...REPLAY(historyOf(gc), gc.id),
-    { role: "user", content: gc.utterance },
-  ];
+  const messages = buildReplayMessages(toReplayRows(historyOf(gc), gc)) as Turn[];
   const readCalls: string[] = [];
 
   for (let turn = 0; turn < MAX_EVAL_TURNS; turn++) {
@@ -335,12 +321,15 @@ describe("MUST_PROPOSE goldens are structurally valid", () => {
         }
       }
 
-      // The expansion itself must come out alternating, or the run 400s.
-      const expanded = expandHistory(turns, gc.id);
+      // The PRODUCTION reconstruction must come out alternating, or the run 400s.
+      const expanded = buildReplayMessages(toReplayRows(turns, gc));
       expanded.forEach((m, i) => {
         if (i > 0) expect(m.role, `${gc.id}: expanded messages ${i - 1}/${i} do not alternate`).not.toBe(expanded[i - 1].role);
       });
-      expect(expanded[expanded.length - 1].role, `${gc.id}: expansion must end on assistant so the utterance can follow`).toBe("assistant");
+      // buildReplayMessages is handed rows ending on the utterance, so the rebuilt conversation ends
+      // on that user turn — which is also what the API requires.
+      expect(expanded[expanded.length - 1].role, `${gc.id}: rebuilt conversation must end on the user utterance`).toBe("user");
+      expect(expanded[0].role, `${gc.id}: rebuilt conversation must open on a user turn`).toBe("user");
     },
   );
 

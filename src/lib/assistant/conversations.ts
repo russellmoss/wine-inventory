@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { runInTenantRawTx } from "@/lib/tenant/tx";
 
 const LIST_LIMIT = 50;
+const REPLAY_LIMIT = 200;
 const MESSAGES_LIMIT = 200;
 const SEARCH_LIMIT = 30;
 const MAX_QUERY_LEN = 200;
@@ -67,6 +68,23 @@ export async function appendMessage(args: {
     select: { id: true },
   });
   return row.id;
+}
+
+/**
+ * Rows for REPLAY, oldest first — including `metadata`, which carries the tool trace.
+ *
+ * Separate from getConversation (which serves the UI) because this one must stay cheap and must not
+ * be reshaped for rendering: replay.ts needs the raw role/content/metadata triple. Bounded by
+ * REPLAY_LIMIT so a very long conversation cannot blow the request; message-window.ts narrows it
+ * further, pair-aware.
+ */
+export async function listMessagesForReplay(conversationId: string) {
+  return prisma.assistantMessage.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: "asc" },
+    take: REPLAY_LIMIT,
+    select: { role: true, content: true, metadata: true },
+  });
 }
 
 /** Bump updatedAt so the conversation floats to the top of the list. */

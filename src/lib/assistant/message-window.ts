@@ -1,4 +1,10 @@
-import type { ChatMessage } from "./run";
+/**
+ * The client posts TEXT ONLY, so this parser deals in string content and says so in its type.
+ * `ChatMessage` (run.ts) is deliberately wider — a REPLAYED turn rebuilt from the DB carries
+ * tool_use / tool_result blocks (plan 083, replay.ts). A TextMessage is assignable to ChatMessage;
+ * the reverse is not, which is the point: nothing structured should reach this parser by accident.
+ */
+export type TextMessage = { role: "user" | "assistant"; content: string };
 
 // Shared conversation bounds for the assistant chat transport. Both the client
 // (AssistantChat / voice session) and the server route (/api/assistant) import
@@ -8,7 +14,7 @@ export const MAX_MESSAGES = 40;
 export const MAX_CONTENT = 8000;
 
 export type ParsedMessages =
-  | { ok: true; messages: ChatMessage[] }
+  | { ok: true; messages: TextMessage[] }
   | { ok: false; error: string };
 
 /**
@@ -34,7 +40,7 @@ export function parseAndWindowMessages(raw: unknown): ParsedMessages {
 
   // Keep only the most recent turns instead of 400ing a long conversation.
   const windowed = raw.slice(-MAX_MESSAGES);
-  const out: ChatMessage[] = [];
+  const out: TextMessage[] = [];
 
   for (let i = 0; i < windowed.length; i++) {
     const m = windowed[i];
@@ -82,6 +88,6 @@ export function parseAndWindowMessages(raw: unknown): ParsedMessages {
  * `MAX_MESSAGES` turns. Belt-and-suspenders with the server window — it shrinks
  * the payload and keeps the two sides in lockstep.
  */
-export function clampHistoryForSend(history: ChatMessage[]): ChatMessage[] {
+export function clampHistoryForSend(history: TextMessage[]): TextMessage[] {
   return history.length > MAX_MESSAGES ? history.slice(-MAX_MESSAGES) : history;
 }

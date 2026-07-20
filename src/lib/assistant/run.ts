@@ -21,7 +21,9 @@ const MODEL = "claude-opus-4-8";
 const MAX_TOKENS = 8192;
 const MAX_TURNS = 8; // hard cap — never loop unbounded on a server route
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+/** Content may be a plain string OR Anthropic content blocks — a replayed turn carries tool_use /
+ *  tool_result blocks so prior tool calls stay visible to the model (plan 083, src/lib/assistant/replay.ts). */
+export type ChatMessage = { role: "user" | "assistant"; content: string | unknown[] };
 export type AssistantRunResult = { text: string; trace: AssistantTrace };
 
 /**
@@ -74,12 +76,20 @@ export async function runAssistant(opts: {
 
   const convo: Anthropic.MessageParam[] = messages.map((m) => ({
     role: m.role,
-    content: m.content,
+    content: m.content as Anthropic.MessageParam["content"],
   }));
 
   // Server-side signal for the navigate tool's auto-vs-link decision: what did
   // the user actually just say? (Never trust the model to self-report intent.)
-  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content;
+  // A replayed user turn can carry tool_result blocks alongside its text, so pull the text out
+  // rather than handing the navigate tool an array.
+  const lastUserRaw = [...messages].reverse().find((m) => m.role === "user")?.content;
+  const lastUserMessage =
+    typeof lastUserRaw === "string"
+      ? lastUserRaw
+      : Array.isArray(lastUserRaw)
+        ? (lastUserRaw.find((b) => (b as { type?: string })?.type === "text") as { text?: string } | undefined)?.text
+        : undefined;
 
   // Lazily construct the real client so a test-supplied factory never needs an API key.
   let client: Anthropic | null = null;
@@ -146,7 +156,7 @@ export async function runAssistant(opts: {
         const results: Anthropic.ToolResultBlockParam[] = [];
         for (const tu of toolUses) {
           emit({ type: "tool", name: tu.name, phase: "start" });
-          const toolTrace = { name: tu.name, input: tu.input };
+          const toolTrace = { id: tu.id, name: tu.name, input: tu.input };
           try {
             const tool = tools.find((t) => t.name === tu.name);
             if (!tool) throw new Error(`Unknown tool: ${tu.name}`);
