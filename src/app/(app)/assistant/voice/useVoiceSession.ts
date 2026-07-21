@@ -24,6 +24,7 @@ import { readDraftGaps } from "@/lib/assistant/proposal-card";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
 import { useThinkingSound } from "./useThinkingSound";
+import { useReadySound } from "./useReadySound";
 
 // The orchestrator. Owns the hands-free state machine and stitches the pieces
 // together: listen (mic + VAD) -> transcribe (server) -> think (assistant stream)
@@ -156,6 +157,10 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   // loops back to listening when this is set, so a transient queue-drain mid-stream
   // (network jitter between sentences) doesn't flip us to listening early.
   const streamDoneRef = React.useRef(false);
+  // The "I'm listening now" earcon fires once per session, on the FIRST time we are
+  // ready for the user. This ref is what makes it once — the hook lives as long as
+  // the session does, so ending voice and starting again correctly plays it anew.
+  const readyChimedRef = React.useRef(false);
 
   React.useEffect(() => {
     focusRef.current = focus;
@@ -165,6 +170,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   // silence. Driven off the rendered state (not the impl ref) so every path that
   // leaves "thinking" — reply, barge-in, interrupt, error, stop — silences it.
   const thinkingSound = useThinkingSound();
+  const readySound = useReadySound();
   React.useEffect(() => {
     if (state === "thinking") thinkingSound.start();
     else thinkingSound.stop();
@@ -196,7 +202,26 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
       if (!activeRef.current) return;
       if (stateRef.current === "listening") return; // already listening; don't stack
       go("listening");
-      mic.beginListen((blob) => void implRef.current.handleUtterance(blob));
+
+      const armMic = () => {
+        // Re-check: arming can be deferred behind the ready earcon, and in that gap
+        // the user may have ended the session or a newer turn may have taken over.
+        if (!activeRef.current || stateRef.current !== "listening") return;
+        mic.beginListen((blob) => void implRef.current.handleUtterance(blob));
+      };
+
+      // First time we're ready in this session: sound the earcon, and only open the
+      // mic once it has finished. The clip is ~2.1s, well past the listen VAD's
+      // 250ms cough/click filter, so arming first would risk transcribing our own
+      // cue as the user's opening words — `echoCancellation` is a mitigation, not a
+      // guarantee. Every failure path in `play` still calls back, so a blocked or
+      // missing earcon costs the user nothing.
+      if (readyChimedRef.current) {
+        armMic();
+        return;
+      }
+      readyChimedRef.current = true;
+      readySound.play(armMic);
     };
 
     // Invalidate the in-flight assistant turn (stream + pending TTS) so its
@@ -510,6 +535,10 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
 
   const start = React.useCallback(async () => {
     setError(null);
+    // A session begins here, so the ready earcon is owed again. In practice the
+    // panel remounts per session (fresh refs anyway), but tying it to start()
+    // rather than to a mount coincidence is what actually states the contract.
+    readyChimedRef.current = false;
     try {
       await playback.ensureContext();
       await mic.ensureReady();
