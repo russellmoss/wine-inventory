@@ -74,6 +74,35 @@ export function focusModeLabel(mode: VoiceFocusMode, firstName?: string | null):
   }
 }
 
+export type VoiceFocusAction = {
+  /** Which session method the button calls. */
+  action: "open_to_anyone" | "my_voice";
+  label: string;
+};
+
+/**
+ * The ONE focus control the voice UI offers, given the current mode and profile state,
+ * or null when there is nothing useful to offer.
+ *
+ * Lives beside the focus model rather than with the other inline-voice presentation
+ * helpers: this is a question about focus state, and splitting one domain across two
+ * modules is how the answer drifts. The full-screen overlay rendered this logic twice
+ * (once in the header badge row, once in the button row) and could therefore show two
+ * "Open to anyone" buttons at once in `my_voice`; there is deliberately one here.
+ *
+ * Behaviour is otherwise a faithful port of the overlay's conditions, including the
+ * quirk that "open" mode still offers "Open to anyone" — that is shipped behaviour, and
+ * changing it is a product decision, not a refactor.
+ */
+export function focusAction(
+  mode: VoiceFocusMode,
+  profileState: VoiceProfileState,
+): VoiceFocusAction | null {
+  if (mode !== "team_session") return { action: "open_to_anyone", label: "Open to anyone" };
+  if (profileState === "active") return { action: "my_voice", label: "My voice" };
+  return null;
+}
+
 export function isTurnOffSpeakerRecognitionCommand(text: string): boolean {
   return /\b(turn|switch|shut|take)\s+(off|down|away)\b.*\b(speaker recognition|voice recognition|my voice|voice focus)\b/i.test(
     text,

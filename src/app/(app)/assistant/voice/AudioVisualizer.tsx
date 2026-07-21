@@ -12,6 +12,14 @@ type Props = {
   getLevel: () => number;
   state: VoiceState;
   size?: number;
+  /**
+   * When false the orb draws a single still frame and stops requesting animation
+   * frames entirely. Inline voice (plan 089) uses this to honour DESIGN.md's "no
+   * decorative animation" rule: pinned in the dock title bar the orb follows the user
+   * across every route, so it may only move while audio is actually flowing. Defaults
+   * to true, which is the full-screen behaviour.
+   */
+  animate?: boolean;
 };
 
 function readToken(name: string, fallback: string): string {
@@ -20,7 +28,7 @@ function readToken(name: string, fallback: string): string {
   return v || fallback;
 }
 
-export function AudioVisualizer({ getLevel, state, size = 220 }: Props) {
+export function AudioVisualizer({ getLevel, state, size = 220, animate = true }: Props) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const rafRef = React.useRef<number | null>(null);
   const smoothRef = React.useRef(0);
@@ -57,12 +65,13 @@ export function AudioVisualizer({ getLevel, state, size = 220 }: Props) {
       const s = stateRef.current;
       // Idle/thinking shimmer when there's no real audio to react to.
       const raw = s === "listening" || s === "speaking" ? Math.min(getLevel() * 6, 1) : 0;
-      // Smooth toward the target so the orb breathes rather than jitters.
-      smoothRef.current += (raw - smoothRef.current) * 0.18;
-      phaseRef.current += reduce ? 0.01 : 0.03;
+      // Smooth toward the target so the orb breathes rather than jitters. Parked: settle
+      // straight to rest so re-entry starts from the same place every time.
+      smoothRef.current = animate ? smoothRef.current + (raw - smoothRef.current) * 0.18 : 0;
+      if (animate) phaseRef.current += reduce ? 0.01 : 0.03;
 
       const idlePulse = (Math.sin(phaseRef.current) + 1) / 2; // 0..1
-      const energy = s === "thinking" ? 0.25 + idlePulse * 0.15 : smoothRef.current;
+      const energy = !animate ? 0 : s === "thinking" ? 0.25 + idlePulse * 0.15 : smoothRef.current;
       const color = s === "idle" || s === "error" ? muted : accent;
 
       ctx.clearRect(0, 0, size, size);
@@ -91,6 +100,9 @@ export function AudioVisualizer({ getLevel, state, size = 220 }: Props) {
       ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
       ctx.fill();
 
+      // Parked: one still frame, then stop scheduling. Not just visually static — no
+      // rAF at all, so a docked orb costs nothing while the assistant is thinking.
+      if (!animate) return;
       rafRef.current = requestAnimationFrame(draw);
     };
 
@@ -99,7 +111,9 @@ export function AudioVisualizer({ getLevel, state, size = 220 }: Props) {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [getLevel, size]);
+    // `animate` re-runs the effect, which re-assigns canvas.width and so resets the 2D
+    // transform — the ctx.scale(dpr) below is therefore not compounded across re-runs.
+  }, [getLevel, size, animate]);
 
   return (
     <canvas
