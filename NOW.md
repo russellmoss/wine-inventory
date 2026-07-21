@@ -7,10 +7,10 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 089 — INLINE VOICE MODE IN THE ASSISTANT DOCK. Built + browser-QA'd by Russell, SHIPPING NOW.**
+**Plan 089 — INLINE VOICE MODE IN THE ASSISTANT DOCK. Built + browser-QA'd, SHIPPING as PR #451.**
 Plan: [089](docs/plans/2026-07-21-089-feat-inline-voice-in-dock-plan.md) · commits `fae190ba` (U1/U3
 foundation) + `2064aeef` (UI swap + overlay retired) on branch `claude/conversational-mode-ui-d4a6a3`.
-Gates green: tsc, eslint, **3251 tests**, `next build`.
+Gates green: tsc, eslint, **3310 tests** on the merged state, `next build`.
 
 Retire the full-screen voice overlay; run voice inline in the dock so the user can **see** the page
 while talking. The navigate-and-narrate behavior already works (`useVoiceSession.ts:318-325` pushes
@@ -37,7 +37,7 @@ Four findings that changed the plan:
   unconditionally, so you cannot scroll up mid-conversation. Both fixed in Unit 6.
 
 **Decisions taken:** orb animates only while audio flows (`DESIGN.md` bans decorative animation —
-exception to be logged) · voice navigation stays instant, diverging deliberately from the text chat's
+exception logged) · voice navigation stays instant, diverging deliberately from the text chat's
 3s countdown · no tablet special-casing (phone is already 94% width; only tablet is affected → TODO).
 
 ⛔ **MSU (`msu-grapes`) stays DORMANT — do not retry.** Imperva refuses this crawler from every
@@ -45,23 +45,6 @@ network available. `npm run verify:msu` is the probe: if it ever reports **live 
 both flags + re-seed.
 
 ## 🔭 Also in flight
-
-**PLAN 088 — one lot per vessel (LEDGER-12). Branch 1 MERGED to main (#445 `c9ea0ad9`); branch 2
-(units 14–19) is on `refactor/one-lot-per-vessel-sweep`, UNMERGED.**
-A vessel holds ONE lot; a lot may occupy MANY vessels — enforced at `writeLotOperation` (the single
-`vessel_lot` write site) by a monotone guard + a `(tenantId, vesselId)` unique index, with identity
-decided at the moment of combination by one shared `decideCombineRoute` (KEEP / ABSORB / NEW_BLEND).
-Every "which lot?" picker is gone; a tank now shows what it is MADE of (Bhutan Barrel 18 reads
-`45% Merlot · 33% Cabernet Franc · 22% Cabernet Sauvignon`).
-- 🔎 **Barrel 18's three lots were a MIGRATION fossil, not data entry** — `system@day-zero-migration`
-  turned each row of the old `vessel_component` COMPOSITION table into its own LOT. It was always one
-  Bordeaux blend: the fossil of the exact modelling error the plan fixes.
-- 🔎 **Composition being load-bearing exposed a silent bug**: the fold wrote NOTHING for a blend-lot
-  destination, so an absorb into a blend lost the breakdown. Fixed via `composeLeaves`; verified by
-  two independent methods (incremental fold vs full recompute), zero drift across 38 vessels.
-- ⚠️ **Pre-invariant FIXTURES are the recurring blocker** — `verify:chemistry`, `verify:bond`,
-  `verify:naming` all seeded several lots into one tank and broke the moment the guard went on.
-**Left to do:** merge branch 2, then the 375px browser pass on Demo (needs a human login).
 
 **PLAN 086 — US pesticide registration + resistance-group coverage. PLANNED, not started.**
 Plan: [2026-07-20-086-…](docs/plans/2026-07-20-086-feat-us-pesticide-registration-plan.md) (Deep, 11 units).
@@ -450,11 +433,26 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
-- **Inline voice mode in the assistant dock (plan 089) — SHIPPED.** Retired the full-screen voice
-  overlay; voice now runs inline in the dock so the page stays visible and clickable while the
-  assistant navigates and talks. The reviews caught a P0 the plan itself created (a typed turn was
-  invisible to the voice session's history → `appendHistory`), and two features about to be deleted
-  by omission (`focusNotice`, the first-run hint). Details in memory.
+- **Inline voice mode in the assistant dock (plan 089) — SHIPPED (PR #451).** Retired the full-screen
+  voice overlay; voice now runs inline in the dock so the page stays visible and clickable while the
+  assistant navigates and talks. Triple-reviewed before building, which caught a P0 the plan itself
+  created (a typed turn was invisible to the voice session's history → `appendHistory`) and two
+  features about to be deleted by omission (`focusNotice`, the first-run hint). Details in memory.
+- **One lot per vessel (LEDGER-12) — MERGED + LIVE (PR #445, squash `c9ea0ad9`).** 19 units, 29
+  commits. From Russell's own P0 thumbs-down: *"you have 3 lots in one tank — which lot do you want
+  to transfer?"* → **"stupid and physically impossible."** The picker was the symptom; the DATA MODEL
+  permitting several `vessel_lot` rows per vessel was the bug. Reported 3x, answered 3x with
+  instance-level fan-outs (#444 was the fourth — closed as superseded). Now a vessel holds ONE wine
+  (a lot may still span many vessels), enforced at `writeLotOperation` + a `(tenantId, vesselId)`
+  unique index, with identity decided at the moment of combination by one shared
+  `decideCombineRoute`. Every "which lot?" picker deleted; plan 060's whole-tank fan-out with them.
+  A tank now shows its makeup — Bhutan Barrel 18 reads `45% Merlot · 33% Cabernet Franc · 22%
+  Cabernet Sauvignon`. Ticket RESOLVED via the canonical console path AFTER the prod deploy went
+  green; Mike DMed. 🔎 **Lessons: the Bhutan "data entry error" was actually a Day-Zero migration
+  fossil (component ROWS became LOTS) — investigate before writing something off; making composition
+  load-bearing exposed a silent fold bug for blend lots; and pre-invariant verify FIXTURES
+  (`chemistry`, `bond`, `naming`) each needed one vessel per lot.** ⚠️ Also: **the assistant LLM eval
+  is NOISY — 9–12 failures across five runs on IDENTICAL code. Compare failure SETS, not counts.**
 - **Cornell fruit resources KB source — CLOSED.** `cornell-grapes`: 96 documents / 948 chunks, 64
   PDFs, `verify:knowledge-base` 20/20 PASS. Merged #424 (source, reconciled) · #425 (crawl error
   visibility) · #426 (CDN) · #427 (title fix). Plan 085 (MSU) closed alongside it. 🔎 Lessons kept:
@@ -564,18 +562,20 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-21 — **plan 089 (inline voice in the dock) BUILT, QA'd and SHIPPING.** Planned,
+_Last updated: 2026-07-21 — **plan 089 (inline voice in the dock) BUILT, QA'd and SHIPPING (PR #451).** Planned,
 then triple-reviewed (council Codex+Gemini → eng → design) before a line was written, which paid for
 itself: the reviews found a P0 the plan itself created — letting the user type during a voice session
 silently breaks the assistant's memory, because `historyRef` only ever sees voice turns — so it needed
 one additive method on `VoiceSession` and was never a pure presentation swap. Also caught: deleting
 `aria-modal` breaks the dock's Escape handoff (`AssistantDock.tsx:132`), and two features
 (`focusNotice`, the first-run helper) were about to vanish by omission. 3 TODOs filed (touch-target
-minimum, tablet auto-expand, dock keyboard shortcut). tsc 0, eslint 0, **vitest 3251/0**, next build ok.
-Prior: **plan 088 (one lot per vessel) branch 1 MERGED** (#445 `c9ea0ad9`) — a vessel holds ONE lot,
-enforced at the single `vessel_lot` write site plus a `(tenantId, vesselId)` unique index; every
-"which lot?" picker is gone and a tank shows what it is MADE of. Branch 2 unmerged; 375px browser
-pass still needs a human login.
+minimum, tablet auto-expand, dock keyboard shortcut). tsc 0, eslint 0, **vitest 3310/0**, next build ok.
+Prior: **plan 088 (one lot per vessel) is MERGED AND LIVE IN PROD** (PR #445, squash `c9ea0ad9`,
+Vercel Production `success`; migration already applied, branches pruned). A vessel holds ONE lot; a
+lot may occupy MANY vessels (LEDGER-12), enforced at the single `vessel_lot` write site plus a
+`(tenantId, vesselId)` unique index. Every "which lot?" picker is gone and a tank shows what it is
+MADE of. Ticket `cmruoc3yk…` RESOLVED, PR #444 closed as superseded, Mike DMed. Only the 375px
+browser pass remains (needs a human login).
 Prior: **assistant VOICE MODE is conversational and LIVE IN PROD** (#439
 `9cc51cd8` + #441 `e516248a`, live-verified on a real device). Barge-in is now ADAPTIVE: a single
 fixed loudness threshold structurally cannot separate the user's voice from the assistant's own
