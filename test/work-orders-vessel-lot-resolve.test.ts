@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { vesselLotState, reconcileLotValue, lotValueForNewVessel, type LotsByVessel } from "@/lib/work-orders/vessel-lot-resolve";
+import { vesselLotState, reconcileLotValue, type LotsByVessel } from "@/lib/work-orders/vessel-lot-resolve";
 
-// Occupancy fixtures mirror the `vesselLot` projection the builder is fed: T1 holds one lot, T2 is a
-// blend of two, T3 has no entry at all (empty vessel — the server emits no key for it).
+// Occupancy fixtures mirror the `vesselLot` projection the builder is fed: T1 holds its wine, T3 has no
+// entry at all (empty vessel — the server emits no key for it). T2 carries TWO rows on purpose: that is
+// a pre-LEDGER-12 vessel, the shape the DB unique index now refuses. It stays in the fixtures because
+// the builder must still render something sane if it ever meets one, and "volume-descending, take the
+// first" is that something — the server orders the rows, so lot-b is the wine in T2.
 const OCCUPANCY: LotsByVessel = {
   "vessel-t1": [{ id: "lot-a", label: "2024 CS T1" }],
   "vessel-t2": [
@@ -12,7 +15,7 @@ const OCCUPANCY: LotsByVessel = {
 };
 
 describe("vesselLotState — vessel occupancy drives the lot field", () => {
-  it("single-lot vessel resolves to that lot (the winemaker is never asked)", () => {
+  it("a vessel resolves to its wine (the winemaker is never asked)", () => {
     const state = vesselLotState("vessel-t1", OCCUPANCY);
     expect(state.kind).toBe("single");
     if (state.kind !== "single") return;
@@ -20,12 +23,13 @@ describe("vesselLotState — vessel occupancy drives the lot field", () => {
     expect(state.lot.label).toBe("2024 CS T1");
   });
 
-  it("multi-lot vessel (a blend) stays ambiguous and surfaces EVERY resident", () => {
+  // LEDGER-12 (plan 088). This used to assert `kind === "blend"` and that the state surfaced EVERY
+  // resident — the outcome that drove the "— blend: which lot? —" dropdown on the builder.
+  it("a legacy multi-resident vessel resolves too, rather than stalling on a question with no answer", () => {
     const state = vesselLotState("vessel-t2", OCCUPANCY);
-    expect(state.kind).toBe("blend");
-    if (state.kind !== "blend") return;
-    // The load-bearing assertion: a blend must NOT collapse to one lot.
-    expect(state.lots.map((l) => l.id)).toEqual(["lot-b", "lot-c"]);
+    expect(state.kind).toBe("single");
+    if (state.kind !== "single") return;
+    expect(state.lot.id).toBe("lot-b");
   });
 
   it("empty vessel resolves to nothing — no lot is invented", () => {
@@ -42,17 +46,10 @@ describe("vesselLotState — vessel occupancy drives the lot field", () => {
 });
 
 describe("reconcileLotValue — a stale lot never survives a vessel change", () => {
-  it("single: pins the sole resident, overriding whatever was there", () => {
+  it("pins the vessel's wine, overriding whatever was there", () => {
     const state = vesselLotState("vessel-t1", OCCUPANCY);
     expect(reconcileLotValue(state, "")).toBe("lot-a");
     expect(reconcileLotValue(state, "lot-c")).toBe("lot-a"); // wrong-vessel leftover is corrected
-  });
-
-  it("blend: keeps a resident choice, clears a non-resident one", () => {
-    const state = vesselLotState("vessel-t2", OCCUPANCY);
-    expect(reconcileLotValue(state, "lot-c")).toBe("lot-c");
-    expect(reconcileLotValue(state, "lot-a")).toBe(""); // lot-a lives in T1, not T2
-    expect(reconcileLotValue(state, "")).toBe(""); // still unanswered — the builder keeps asking
   });
 
   it("empty: clears any lot, because there is no wine to attach to", () => {
@@ -65,28 +62,19 @@ describe("reconcileLotValue — a stale lot never survives a vessel change", () 
     expect(reconcileLotValue(state, "lot-a")).toBe("lot-a");
     expect(reconcileLotValue(state, "")).toBe("");
   });
-});
 
-describe("lotValueForNewVessel — switching vessels never pre-answers a blend", () => {
-  it("blend ALWAYS clears, even when the carried-over lot is resident", () => {
-    const state = vesselLotState("vessel-t2", OCCUPANCY);
-    // lot-b IS in T2, so validation would keep it — but nobody chose it FOR T2 (it may have been
-    // auto-resolved from a different single-lot vessel), so a vessel change must not pre-fill it.
-    expect(reconcileLotValue(state, "lot-b")).toBe("lot-b");
-    expect(lotValueForNewVessel(state, "lot-b")).toBe("");
-    expect(lotValueForNewVessel(state, "lot-a")).toBe("");
-  });
-
-  it("agrees with reconcileLotValue everywhere else", () => {
-    for (const vesselId of ["vessel-t1", "vessel-t3", ""]) {
-      const state = vesselLotState(vesselId, OCCUPANCY);
-      for (const current of ["", "lot-a", "lot-c"]) {
-        expect(lotValueForNewVessel(state, current)).toBe(reconcileLotValue(state, current));
-      }
-    }
-  });
-
-  it("single-lot vessel still auto-resolves on the vessel change itself", () => {
-    expect(lotValueForNewVessel(vesselLotState("vessel-t1", OCCUPANCY), "")).toBe("lot-a");
+  // There used to be a SECOND function, lotValueForNewVessel, applied only on a vessel change: a blend
+  // always cleared there, so nobody was shown a lot they hadn't chosen. With one lot per vessel the two
+  // rules coincide, so the builder applies THIS one on both paths — retyping the vessel is enough.
+  it("re-pointing a task at another vessel swaps the lot with it", () => {
+    // T1 → T2 → T3 → back to T1, carrying whatever the field held at each step.
+    let lot = reconcileLotValue(vesselLotState("vessel-t1", OCCUPANCY), "");
+    expect(lot).toBe("lot-a");
+    lot = reconcileLotValue(vesselLotState("vessel-t2", OCCUPANCY), lot);
+    expect(lot).toBe("lot-b"); // never keeps T1's lot on T2
+    lot = reconcileLotValue(vesselLotState("vessel-t3", OCCUPANCY), lot);
+    expect(lot).toBe(""); // empty vessel: the task is unanswered, and the builder says so
+    lot = reconcileLotValue(vesselLotState("vessel-t1", OCCUPANCY), lot);
+    expect(lot).toBe("lot-a");
   });
 });

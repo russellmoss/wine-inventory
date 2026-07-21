@@ -10,8 +10,9 @@ import type { TirageInput, TirageMethod } from "@/lib/sparkling/tirage-core";
 // Wave 3 (sparkling) — bottle a base cuvée to TIRAGE (start the 2nd fermentation in bottle). Wraps
 // tirageAction → tirageCore (optional liqueur-de-tirage ADDITION + the TIRAGE bottling op + the form
 // transition, one atomic write). By chat we handle the common SINGLE-tank base: resolve the source
-// vessel → its one resident lot, draw bottleCount × 750 mL. A multi-lot vessel (an assemblage across
-// lots) is form-work → deep-links the En Tirage screen. Gated on sparklingEnabled; reversible via undo.
+// vessel → its resident lot, draw bottleCount × 750 mL. (An assemblage is BLENDED into one lot before
+// it is tiraged, so there is no "which of the lots in this tank" deep-link left to take — LEDGER-12.)
+// Gated on sparklingEnabled; reversible via undo.
 
 const SPARKLING_OFF = "The sparkling program is off — enable it in Settings to record sparkling operations.";
 const NOMINAL_FILL_L = 0.75; // 750 mL nominal fill (the core's default)
@@ -21,7 +22,7 @@ type Draw = { vesselId: string; drawL: number };
 export const sparklingTirageTool: AssistantTool = {
   name: "sparkling_tirage",
   description:
-    "Bottle a base cuvée to TIRAGE — start the second fermentation in bottle (méthode traditionnelle or pét-nat). Use when the user tirages/bottles a sparkling base from a tank: 'tirage tank 6 into 500 bottles at 24 g/L sugar'. Give the source tank + bottle count and EITHER the tirage sugar (g/L) OR a target pressure (atm). This is NOT an ordinary bottling run. A tank holding multiple lots (an assemblage) deep-links the En Tirage screen. The sparkling program must be enabled. Returns a preview to confirm.",
+    "Bottle a base cuvée to TIRAGE — start the second fermentation in bottle (méthode traditionnelle or pét-nat). Use when the user tirages/bottles a sparkling base from a tank: 'tirage tank 6 into 500 bottles at 24 g/L sugar'. Give the source tank + bottle count and EITHER the tirage sugar (g/L) OR a target pressure (atm). This is NOT an ordinary bottling run. The sparkling program must be enabled. Returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -43,12 +44,6 @@ export const sparklingTirageTool: AssistantTool = {
 
     const contents = await resolveVesselContents(input.vessel);
     if (contents.kind === "empty") throw new Error(`${contents.vesselLabel} is empty — nothing to tirage.`);
-    if (contents.kind === "blend") {
-      return {
-        navigate: { path: "/cellar/en-tirage", label: "the En Tirage screen (multi-lot tirage)", auto: false },
-        message: `${contents.vesselLabel} holds multiple lots — tirage of an assemblage across lots is done on the En Tirage screen.`,
-      };
-    }
 
     const method = (input.method === "PETNAT" ? "PETNAT" : "TRADITIONAL") as TirageMethod;
     const drawL = Math.round(input.bottleCount! * NOMINAL_FILL_L * 100) / 100;

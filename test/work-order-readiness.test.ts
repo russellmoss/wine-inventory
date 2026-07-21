@@ -86,12 +86,11 @@ describe("TASK_COVERAGE contract", () => {
 });
 
 describe("computeWorkOrderReadiness — RACK", () => {
-  it("warns on destination overfill and blends, and emits fill diff rows", () => {
+  it("warns on destination overfill and emits fill diff rows", () => {
     const state = makeState({
       vesselsById: new Map([
         ["v-from", vessel({ id: "v-from", code: "T1", volumeL: 900, lots: [
-          { id: "l-a", code: "LOT-A", status: "AGING", form: "WINE", volumeL: 450, updatedAt: "x", taxAbvOverride: null },
-          { id: "l-b", code: "LOT-B", status: "AGING", form: "WINE", volumeL: 450, updatedAt: "x", taxAbvOverride: null },
+          { id: "l-a", code: "LOT-A", status: "AGING", form: "WINE", volumeL: 900, updatedAt: "x", taxAbvOverride: null },
         ] })],
         ["v-to", vessel({ id: "v-to", code: "T2", capacityL: 500, volumeL: 100 })],
       ]),
@@ -100,7 +99,10 @@ describe("computeWorkOrderReadiness — RACK", () => {
     expect(p.status).toBe("ready"); // advisory warnings only
     const codes = p.warnings.map((w) => w.code);
     expect(codes).toContain("destination_headroom_short"); // 900 into 400 headroom
-    expect(codes).toContain("rack_blend_review");
+    // LEDGER-12 (plan 088): this also asserted a `rack_blend_review` confirmable, raised whenever the
+    // source held >1 lot — "review compliance and lot allocation before completion". A vessel holds ONE
+    // wine now, so a rack moves that wine and there is no allocation to review.
+    expect(codes).not.toContain("rack_blend_review");
     expect(p.diff.rows.filter((r) => r.kind === "vessel")).toHaveLength(2);
   });
 
@@ -228,13 +230,22 @@ describe("computeWorkOrderReadiness — ADDITION / FINING", () => {
 });
 
 describe("computeWorkOrderReadiness — observations & maintenance", () => {
-  it("asks which lot when a panel targets a blended vessel (needs_input, not thrown)", () => {
+  // LEDGER-12 (plan 088). This used to assert `needs_input` + one unresolved field: a panel on a
+  // "blended" vessel raised "T1 holds a blend (LOT-1, LOT-2) - pick which lot this reading is for",
+  // which is a question about a tank of wine that has no physical answer. Naming the vessel answers it.
+  it("a panel on a vessel is ready — naming the vessel names its wine", () => {
     const state = makeState({
       vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 800, lots: [
-        { id: "l1", code: "LOT-1", status: "AGING", form: "WINE", volumeL: 400, updatedAt: "x", taxAbvOverride: null },
-        { id: "l2", code: "LOT-2", status: "AGING", form: "WINE", volumeL: 400, updatedAt: "x", taxAbvOverride: null },
+        { id: "l1", code: "LOT-1", status: "AGING", form: "WINE", volumeL: 800, updatedAt: "x", taxAbvOverride: null },
       ] })]]),
     });
+    const p = computeWorkOrderReadiness(input([{ taskType: "PANEL", values: { vesselId: "v1" } }]), state);
+    expect(p.status).toBe("ready");
+    expect(p.unresolved).toHaveLength(0);
+  });
+
+  it("a panel on an EMPTY vessel still asks — there is no wine to record against", () => {
+    const state = makeState({ vesselsById: new Map([["v1", vessel({ id: "v1", code: "T1", volumeL: 0, lots: [] })]]) });
     const p = computeWorkOrderReadiness(input([{ taskType: "PANEL", values: { vesselId: "v1" } }]), state);
     expect(p.status).toBe("needs_input");
     expect(p.unresolved).toHaveLength(1);

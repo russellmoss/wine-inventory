@@ -7,8 +7,9 @@ import { pullSampleAction } from "@/lib/chemistry/actions";
 import type { PullSampleInput } from "@/lib/chemistry/samples";
 
 // Wave 3 (lab samples) — pull a sample off a lot, optionally sent to a lab in the same step. Wraps
-// pullSampleCore (guarded lifecycle, NOT a ledger op). Per-lot like the chem tools: a blend vessel asks
-// its one lot (resolveLotTarget). Results coming back → record_sample_results; send/cancel → manage_sample.
+// pullSampleCore (guarded lifecycle, NOT a ledger op). Per-lot like the chem tools: naming a vessel
+// resolves its one wine (resolveLotTarget, LEDGER-12). Results coming back → record_sample_results;
+// send/cancel → manage_sample.
 
 type RawInput = { vessel?: string; lot?: string; source?: string; lab?: string; sendNow?: boolean; expectedAt?: string; note?: string };
 

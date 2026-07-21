@@ -191,8 +191,9 @@ export async function resolveVessel(text: string): Promise<ResolvedVessel> {
  */
 export type VesselContents =
   | { kind: "empty"; vesselId: string; vesselLabel: string }
-  | { kind: "single"; vesselId: string; vesselLabel: string; lot: { id: string; code: string } }
-  | { kind: "blend"; vesselId: string; vesselLabel: string; lots: { id: string; code: string }[] };
+  /** The vessel's wine. A vessel holds ONE cohesive liquid (LEDGER-12), so there is no `blend` arm:
+   *  every tool that used to branch on it was branching on a state the cellar cannot be in. */
+  | { kind: "single"; vesselId: string; vesselLabel: string; lot: { id: string; code: string } };
 
 export async function resolveVesselContents(text: string): Promise<VesselContents> {
   const m = await matchVesselByText(text);
@@ -202,7 +203,8 @@ export async function resolveVesselContents(text: string): Promise<VesselContent
       id: true,
       code: true,
       type: true,
-      vesselLots: { include: { lot: { select: { id: true, code: true } } } },
+      // Volume-descending so a pre-invariant row resolves to the wine actually in the vessel.
+      vesselLots: { orderBy: { volumeL: "desc" }, include: { lot: { select: { id: true, code: true } } } },
     },
   });
   if (!vessel) {
@@ -211,13 +213,12 @@ export async function resolveVesselContents(text: string): Promise<VesselContent
   const label = `${vessel.type === "BARREL" ? "Barrel" : "Tank"} ${vessel.code}`;
   const lots = vessel.vesselLots.map((vl) => ({ id: vl.lot.id, code: vl.lot.code }));
   if (lots.length === 0) return { kind: "empty", vesselId: vessel.id, vesselLabel: label };
-  if (lots.length === 1) return { kind: "single", vesselId: vessel.id, vesselLabel: label, lot: lots[0] };
-  return { kind: "blend", vesselId: vessel.id, vesselLabel: label, lots };
+  return { kind: "single", vesselId: vessel.id, vesselLabel: label, lot: lots[0] };
 }
 
 /**
  * A candidate lot for attach-resolution, with an optional picker sublabel (a DISTINGUISHING detail so
- * co-resident lots are tell-apart-able — volume is the load-bearing differentiator per the design review).
+ * lots whose CODES look alike are tell-apart-able — the only ambiguity left is what the user typed).
  */
 type LotCandidate = { id: string; code: string; detail?: string };
 
@@ -228,9 +229,9 @@ type LotResolution =
 /**
  * SHARED resolution: a lot code OR a vessel reference → the candidate lot(s) + context. The two public
  * wrappers below (resolveLotTarget = throw on ambiguity; resolveLotTargetOrChoice = clickable picker)
- * differ ONLY in how they present ambiguity, so they can't drift. Measurements/tasting attach to exactly
- * one lot (the one-lot invariant, VISION D2), so a multi-lot vessel is genuinely ambiguous → we surface
- * every resident lot. Also handles the picker re-tap form "#<lotId>" (pins a lot by id, re-validated
+ * differ ONLY in how they present ambiguity, so they can't drift. The ONLY ambiguity left is a lot CODE
+ * that matches several lots — naming a VESSEL is never ambiguous, because a vessel holds one wine
+ * (LEDGER-12). Also handles the picker re-tap form "#<lotId>" (pins a lot by id, re-validated
  * ACTIVE so a stale tap fails cleanly instead of writing to a lot that was drawn down/merged since).
  */
 async function resolveLotCandidates(opts: { lot?: string; vessel?: string }): Promise<LotResolution> {
@@ -383,7 +384,7 @@ export async function resolveRecentOperation(opts: { operationId?: number; vesse
   if (opts.lot) lotIds = [(await resolveLotTarget({ lot: opts.lot })).lotId];
   else if (opts.vessel) {
     const c = await resolveVesselContents(opts.vessel);
-    lotIds = c.kind === "single" ? [c.lot.id] : c.kind === "blend" ? c.lots.map((l) => l.id) : [];
+    lotIds = c.kind === "single" ? [c.lot.id] : [];
   } else throw new Error("Undo which operation? Give a vessel, a lot, or an operation number.");
   if (lotIds.length === 0) return null; // empty vessel → nothing to undo (tool deep-links the timeline)
 

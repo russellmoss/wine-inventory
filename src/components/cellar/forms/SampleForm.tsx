@@ -8,7 +8,7 @@ import { ColumnShell, LotField, fieldStyle, useLotPick, useRequestId, type Cella
 // ── Sample (pull; optional send-now) ──
 export function SampleForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: RecordSubmit }) {
   const reqId = useRequestId();
-  const { lotId, setLotId, ready } = useLotPick(vessel);
+  const { lotId, ready } = useLotPick(vessel);
   const [source, setSource] = React.useState("");
   const [lab, setLab] = React.useState("");
   const [sendNow, setSendNow] = React.useState(false);
@@ -31,7 +31,7 @@ export function SampleForm({ vessel, pending, onSubmit }: { vessel: CellarAction
 
   return (
     <ColumnShell>
-      <LotField residentLots={vessel.residentLots} value={lotId} onChange={setLotId} />
+      <LotField residentLots={vessel.residentLots} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source (e.g. Barrel A3)" style={{ ...fieldStyle, flex: "1 1 180px" }} aria-label="Sample source" />
         <input value={lab} onChange={(e) => setLab(e.target.value)} placeholder="Lab (optional)" style={{ ...fieldStyle, flex: "1 1 140px" }} aria-label="Lab" />

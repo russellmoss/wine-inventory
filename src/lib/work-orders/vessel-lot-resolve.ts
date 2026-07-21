@@ -8,11 +8,13 @@
  * always pinned the sole resident lot (nl-resolve.ts). This is that same rule, made shared + pure so the
  * manual builder can't drift from the AI path.
  *
- * Correctness over convenience: a vessel holding MULTIPLE lots (a blend) or ZERO lots must NEVER be
- * silently resolved to one lot. A blend narrows the picker to its residents and still asks; an empty
- * vessel has nothing to attach and says so. Only an unambiguous single resident auto-resolves.
+ * A vessel holds ONE cohesive liquid (LEDGER-12), so naming the vessel ALWAYS answers "which lot" —
+ * there is no ambiguous case left to ask about. The `blend` state this module used to carry, and the
+ * "— blend: which lot? —" dropdown it drove, are gone with plan 088: they asked the winemaker to split a
+ * tank of wine into parts that do not physically exist. Only an EMPTY vessel has no answer, and it says
+ * so rather than offering every lot in the winery.
  *
- * Pure (no Prisma, no React) so the single / blend / empty decision is unit-testable in isolation.
+ * Pure (no Prisma, no React) so the single / empty decision is unit-testable in isolation.
  */
 
 export type LotOption = { id: string; label: string };
@@ -23,30 +25,35 @@ export type LotsByVessel = Record<string, LotOption[]>;
 export type VesselLotState =
   /** No vessel chosen yet — we can't narrow anything, so fall back to the full lot list. */
   | { kind: "no-vessel" }
-  /** Exactly one resident lot: the answer is knowable, so resolve it and stop asking. */
+  /** The vessel's wine. The answer is knowable, so resolve it and stop asking. */
   | { kind: "single"; lot: LotOption }
-  /** A blend. Genuinely ambiguous — narrow to the residents and make the human choose. */
-  | { kind: "blend"; lots: LotOption[] }
   /** No wine in the vessel. There is no lot to attach to. */
   | { kind: "empty" };
 
 /**
  * Decide the lot field's state from the task's currently-selected vessel.
  * An absent key means the vessel has no `vesselLot` rows, i.e. it is empty.
+ *
+ * `lotsByVessel` arrives ordered by volume descending (data.ts), so a pre-invariant row that still
+ * carries several residents resolves to the wine that is actually in the tank instead of stalling
+ * the builder on a question with no physical answer.
  */
 export function vesselLotState(vesselId: string | null | undefined, lotsByVessel: LotsByVessel): VesselLotState {
   const id = typeof vesselId === "string" ? vesselId.trim() : "";
   if (!id) return { kind: "no-vessel" };
   const lots = lotsByVessel[id] ?? [];
   if (lots.length === 0) return { kind: "empty" };
-  if (lots.length === 1) return { kind: "single", lot: lots[0] };
-  return { kind: "blend", lots };
+  return { kind: "single", lot: lots[0] };
 }
 
 /**
- * VALIDATION-time reconcile: the lot value a task may legitimately submit. Keeps an explicit choice that
- * is resident in the vessel, pins the sole lot of a single-lot vessel, and drops anything that isn't
- * actually in there — so a lot left over from a different vessel can never reach the work order.
+ * The lot value a task may legitimately submit, applied BOTH on every validation pass and the moment a
+ * new vessel is picked. It pins the vessel's wine and drops anything that isn't actually in there — so a
+ * lot left over from a different vessel can never reach the work order.
+ *
+ * (There used to be a second, vessel-change-only variant that cleared the field for a blend so nobody
+ * was shown an answer they hadn't chosen. With one lot per vessel the two rules coincide, so there is
+ * one rule.)
  */
 export function reconcileLotValue(state: VesselLotState, currentLotId: string): string {
   switch (state.kind) {
@@ -54,22 +61,7 @@ export function reconcileLotValue(state: VesselLotState, currentLotId: string): 
       return currentLotId; // nothing to validate against yet — leave the winemaker's choice alone
     case "single":
       return state.lot.id;
-    case "blend":
-      return state.lots.some((l) => l.id === currentLotId) ? currentLotId : "";
     case "empty":
       return "";
   }
-}
-
-/**
- * VESSEL-CHANGE-time reconcile: what the lot field becomes the moment a new vessel is picked.
- *
- * Differs from reconcileLotValue in exactly one case, and it's the one that matters: a BLEND always
- * clears. A carried-over value would show up pre-filled on a multi-lot vessel — and since the previous
- * value may itself have been auto-resolved from a different single-lot vessel, the winemaker would be
- * looking at an answer nobody chose. A blend must be answered deliberately, for THIS vessel, every time.
- * (Once they do pick, reconcileLotValue keeps it — this only fires on a vessel change.)
- */
-export function lotValueForNewVessel(state: VesselLotState, currentLotId: string): string {
-  return state.kind === "blend" ? "" : reconcileLotValue(state, currentLotId);
 }

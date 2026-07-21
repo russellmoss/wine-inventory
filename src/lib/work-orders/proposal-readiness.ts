@@ -421,11 +421,10 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
         "destination_headroom_short",
         advisoryWarning(evaluateAtp({ kind: "VESSEL_CAPACITY", targetLabel: to.label, supply: to.capacityL - effTo, alreadyReserved: to.capacityReserved, requested: intoL, unit: "L" })),
       );
-      if (from.lots.length > 1) {
-        confirmable(ctx, "rack_blend_review", `${from.label} contains multiple lots; review compliance and lot allocation before completion.`);
-      }
-      const singleLot = from.lots.length === 1 ? from.lots[0] : null;
-      if (singleLot) ctx.plannedLotByVesselId.set(to.id, { id: singleLot.id, code: singleLot.code });
+      // A vessel holds ONE wine (LEDGER-12), so the rack carries it — no "which lot / how much of each"
+      // review to confirm. The destination inherits it, which is what binds a later task in the same draft.
+      const movingLot = from.lots[0] ?? null;
+      if (movingLot) ctx.plannedLotByVesselId.set(to.id, { id: movingLot.id, code: movingLot.code });
       ctx.diffRows.push({ kind: "vessel", label: from.label, before: `${effFrom} L`, after: `${ROUND(effFrom - drawL)} L planned` });
       ctx.diffRows.push({ kind: "vessel", label: to.label, before: `${effTo} L`, after: `${ROUND(effTo + intoL)} L planned` });
       return;
@@ -486,7 +485,6 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       if (intoL > totalHeadroom + 1e-9) {
         blocking(ctx, "group_headroom_short", `The ${dests.length} destination barrels have only ${totalHeadroom} L of headroom, but ${intoL} L needs to move. Add barrels or reduce the amount.`);
       }
-      if (src.lots.length > 1) confirmable(ctx, "rack_blend_review", `${src.label} holds multiple lots; each barrel receives a proportional share (co-residence, not a blend).`);
       ctx.diffRows.push({ kind: "vessel", label: src.label, before: `${src.volumeL} L`, after: `${ROUND(src.volumeL - drawL)} L planned` });
       ctx.diffRows.push({ kind: "vessel", label: `${dests.length} barrels`, before: "—", after: `+${intoL} L across ${dests.length}` });
       return;
@@ -576,14 +574,12 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
       }
       const vessel = requireVessel(ctx, state, seq, str(v.vesselId), "target");
       if (!vessel) return;
-      if (vessel.lots.length === 1) return;
-      if (vessel.lots.length === 0 && ctx.plannedLotByVesselId.has(vessel.id)) {
+      // Naming the vessel names its wine (LEDGER-12) — nothing to resolve. Only an EMPTY vessel is
+      // unanswered, and even then an earlier rack in the same draft may be about to fill it.
+      if (vessel.lots.length > 0) return;
+      if (ctx.plannedLotByVesselId.has(vessel.id)) {
         const planned = ctx.plannedLotByVesselId.get(vessel.id)!;
         completionCheck(ctx, "observation_after_planned_rack", `${vessel.label} is empty now; this ${noun} will attach to lot ${planned.code} planned to arrive from an earlier rack task.`);
-        return;
-      }
-      if (vessel.lots.length > 1) {
-        unresolved(ctx, `task-${seq}-lot`, `${noun} lot`, `${vessel.label} holds a blend (${vessel.lots.map((l) => l.code).join(", ")}) - pick which lot this ${noun} is for.`);
         return;
       }
       unresolved(ctx, `task-${seq}-lot`, "Lot", `${vessel.label} is empty - there is no lot to attach this ${noun} to.`);

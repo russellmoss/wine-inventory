@@ -47,19 +47,19 @@ export const blendLotsTool: AssistantTool = {
     if (raw.length > MAX_COMPONENTS) return deepLink(`That's ${raw.length} sources.`);
     if (!input.toVessel) throw new Error("Where's the blend going? Give a destination vessel.");
 
-    // Resolve each source: must be a single-lot vessel (a blend/empty source is ambiguous → builder).
+    // Resolve each source: each vessel contributes its one wine (LEDGER-12); an EMPTY source has
+    // nothing to give, so that draw goes to the builder rather than being silently dropped.
     const components: { vesselId: string; lotId: string; drawL: number }[] = [];
     const srcLabels: string[] = [];
     for (const c of raw) {
       const sv = await resolveVesselContents(c.vessel as string);
-      if (sv.kind !== "single") return deepLink(`${sv.vesselLabel} ${sv.kind === "empty" ? "is empty" : "holds a blend"}.`);
+      if (sv.kind !== "single") return deepLink(`${sv.vesselLabel} is empty.`);
       components.push({ vesselId: sv.vesselId, lotId: sv.lot.id, drawL: round2(c.drawL as number) });
       srcLabels.push(`${round2(c.drawL as number)} L of ${sv.lot.code}`);
     }
 
     // Destination decides NEW vs GROW.
     const dest = await resolveVesselContents(input.toVessel);
-    if (dest.kind === "blend") return deepLink(`${dest.vesselLabel} holds a blend.`);
     const net = round2(components.reduce((a, c) => a + c.drawL, 0));
 
     let mode: "NEW_LOT" | "GROW_EXISTING";

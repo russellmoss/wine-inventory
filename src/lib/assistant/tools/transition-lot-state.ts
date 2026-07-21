@@ -23,7 +23,7 @@ export const transitionLotStateTool: AssistantTool = {
     type: "object",
     properties: {
       lot: { type: "string", description: "Lot code, e.g. '24-CS-A'." },
-      vessel: { type: "string", description: "Vessel holding the lot (resolved to its lot; a blend asks which)." },
+      vessel: { type: "string", description: "Vessel holding the wine (resolved to the lot in it)." },
       stage: { type: "string", enum: ["AF", "MLF"], description: "AF = alcoholic ferment, MLF = malolactic." },
       to: { type: "string", enum: ["NONE", "ACTIVE", "DRY", "COMPLETE"], description: "Target state. AF uses ACTIVE (started) or DRY (finished); MLF uses ACTIVE (started) or COMPLETE (finished)." },
       note: { type: "string", description: "Optional note." },

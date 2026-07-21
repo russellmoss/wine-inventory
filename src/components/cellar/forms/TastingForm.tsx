@@ -18,7 +18,7 @@ import {
 // ── Tasting (sensory + 1–5 structure segments + score/scale + readiness) ──
 export function TastingForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: RecordSubmit }) {
   const reqId = useRequestId();
-  const { lotId, setLotId, ready } = useLotPick(vessel);
+  const { lotId, ready } = useLotPick(vessel);
   const [aroma, setAroma] = React.useState("");
   const [flavor, setFlavor] = React.useState("");
   const [tannin, setTannin] = React.useState<number | null>(null);
@@ -60,7 +60,7 @@ export function TastingForm({ vessel, pending, onSubmit }: { vessel: CellarActio
 
   return (
     <ColumnShell>
-      <LotField residentLots={vessel.residentLots} value={lotId} onChange={setLotId} />
+      <LotField residentLots={vessel.residentLots} />
       <input value={aroma} onChange={(e) => setAroma(e.target.value)} placeholder="Aroma" style={fieldStyle} aria-label="Aroma" />
       <input value={flavor} onChange={(e) => setFlavor(e.target.value)} placeholder="Flavor" style={fieldStyle} aria-label="Flavor" />
       <Segmented label="Tannin" value={tannin} onChange={setTannin} />
