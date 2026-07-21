@@ -15,7 +15,7 @@ import { ColumnShell, LotField, fieldStyle, useLotPick, useRequestId, type Cella
 // ── Analysis (panel of readings; live molecular SO₂) ──
 export function AnalysisForm({ vessel, pending, onSubmit }: { vessel: CellarActionsVessel; pending: boolean; onSubmit: RecordSubmit }) {
   const reqId = useRequestId();
-  const { lotId, setLotId, ready } = useLotPick(vessel);
+  const { lotId, ready } = useLotPick(vessel);
   const [rows, setRows] = React.useState<ReadingRow[]>([emptyReadingRow("PH")]);
   const [note, setNote] = React.useState("");
   const valid = ready && readingsValid(rows);
@@ -36,7 +36,7 @@ export function AnalysisForm({ vessel, pending, onSubmit }: { vessel: CellarActi
 
   return (
     <ColumnShell>
-      <LotField residentLots={vessel.residentLots} value={lotId} onChange={setLotId} />
+      <LotField residentLots={vessel.residentLots} />
       <ReadingRows rows={rows} onChange={setRows} />
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={fieldStyle} aria-label="Note" />
       <div>

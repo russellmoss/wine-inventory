@@ -1,41 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { planVesselReadingFanout, dedupeByPhysicalReading, physicalReadingKey } from "@/lib/chemistry/fanout-plan";
+import { dedupeByPhysicalReading, physicalReadingKey } from "@/lib/chemistry/fanout-plan";
 
-// Plan 060: the pure fan-out planner. DB-free — proves the group id + per-lot idempotency keys are
-// deterministic (a retry / offline re-sync must land the SAME keys so the unique index dedups).
-
-describe("planVesselReadingFanout", () => {
-  it("fans two resident lots into one group with distinct, deterministic per-lot keys", () => {
-    const plan = planVesselReadingFanout(["lotA", "lotB"], "req-123");
-    expect(plan.vesselReadingGroupId).toBe("vrg:req-123");
-    expect(plan.perLot).toEqual([
-      { lotId: "lotA", clientRequestId: "vrg:req-123#lotA" },
-      { lotId: "lotB", clientRequestId: "vrg:req-123#lotB" },
-    ]);
-    // keys are unique per lot (no collision → no accidental idempotent no-op across lots)
-    const keys = plan.perLot.map((p) => p.clientRequestId);
-    expect(new Set(keys).size).toBe(keys.length);
-  });
-
-  it("is deterministic — same (residents, base) yields byte-identical plan (idempotency contract)", () => {
-    const a = planVesselReadingFanout(["lotA", "lotB"], "req-xyz");
-    const b = planVesselReadingFanout(["lotA", "lotB"], "req-xyz");
-    expect(a).toEqual(b);
-  });
-
-  it("a different base yields a different group (distinct physical readings don't collide)", () => {
-    const first = planVesselReadingFanout(["lotA", "lotB"], "req-1");
-    const second = planVesselReadingFanout(["lotA", "lotB"], "req-2");
-    expect(first.vesselReadingGroupId).not.toBe(second.vesselReadingGroupId);
-    expect(first.perLot[0].clientRequestId).not.toBe(second.perLot[0].clientRequestId);
-  });
-
-  it("single resident still plans one keyed entry (core delegates, but the planner is total)", () => {
-    const plan = planVesselReadingFanout(["only"], "req-1");
-    expect(plan.perLot).toHaveLength(1);
-    expect(plan.perLot[0]).toEqual({ lotId: "only", clientRequestId: "vrg:req-1#only" });
-  });
-});
+// The FAN-OUT PLANNER is gone (plan 088, Unit 15). Plan 060 used to spread a whole-tank reading
+// across every co-resident lot; a vessel now holds ONE cohesive liquid, so there is nothing to
+// spread it over and nothing mints a group id any more.
+//
+// The read-side COLLAPSING below is deliberately kept. Five readings in production were genuinely
+// fanned out, across lots since merged — without this each of them renders TWICE in a vessel view,
+// forever. These tests guard that history, not a live feature.
 
 describe("dedupeByPhysicalReading (vessel-scoped views)", () => {
   it("collapses fanned-out panels sharing a group to one, keeps ungrouped panels distinct", () => {

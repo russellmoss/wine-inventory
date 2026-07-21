@@ -7,9 +7,13 @@ export default async function VesselsPage() {
   await requireActiveTenant();
   const vessels = await prisma.vessel.findMany({
     include: {
-      components: { select: { volumeL: true } },
-      // Phase 2: current lots from the projection, for read-only vessel -> lot links.
-      vesselLots: { include: { lot: { select: { id: true, code: true } } } },
+      // What the wine is MADE OF (variety / vineyard / vintage, attributed through lineage).
+      components: {
+        orderBy: { volumeL: "desc" },
+        include: { variety: { select: { name: true } }, vineyard: { select: { name: true } } },
+      },
+      // The vessel's wine (LEDGER-12 = at most one row) and the authoritative fill.
+      vesselLots: { orderBy: { volumeL: "desc" }, include: { lot: { select: { id: true, code: true } } } },
     },
   });
   // Natural sort: codes are strings ("1","2","10"), so sort numerically not lexically.
@@ -20,8 +24,11 @@ export default async function VesselsPage() {
   );
 
   const rows: VesselRow[] = vessels.map((v) => {
+    // Fill comes from the LEDGER, not the component sum. They agree whenever provenance is complete,
+    // but a lot with no recorded origin has no component rows at all — summing those would report an
+    // occupied vessel as empty. `vessel_lot` is the projection the rest of the app trusts.
     const fill = computeFill(
-      v.components.map((c) => Number(c.volumeL)),
+      v.vesselLots.map((vl) => Number(vl.volumeL)),
       Number(v.capacityL),
     );
     return {
@@ -38,9 +45,13 @@ export default async function VesselsPage() {
       cooperageYear: v.cooperageYear,
       cooperage: v.cooperage,
       toastLevel: v.toastLevel,
-      lots: v.vesselLots
-        .map((vl) => ({ lotId: vl.lotId, code: vl.lot.code, volumeL: Number(vl.volumeL) }))
-        .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })),
+      wine: v.vesselLots[0] ? { lotId: v.vesselLots[0].lotId, code: v.vesselLots[0].lot.code } : null,
+      components: v.components.map((c) => ({
+        varietyName: c.variety.name,
+        vineyardName: c.vineyard.name,
+        vintage: c.vintage,
+        volumeL: Number(c.volumeL),
+      })),
     };
   });
 

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Card, Input, Button, Badge, Eyebrow, Modal, ConfirmButton } from "@/components/ui";
 import { createVessel, updateVessel, setVesselActive } from "@/lib/vessels/actions";
 import { formatL } from "@/lib/lot/timeline";
+import { VesselComposition } from "@/components/vessel/VesselComposition";
+import type { CompositionComponent } from "@/lib/vessel/composition";
 
 export type VesselRow = {
   id: string;
@@ -20,7 +22,10 @@ export type VesselRow = {
   cooperageYear: number | null;
   cooperage: string | null;
   toastLevel: string | null;
-  lots: { lotId: string; code: string; volumeL: number }[];
+  /** The vessel's wine — one, or none when it's empty (LEDGER-12). */
+  wine: { lotId: string; code: string } | null;
+  /** What that wine is made of, for the composition line. */
+  components: CompositionComponent[];
 };
 
 export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
@@ -92,13 +97,14 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
                   {!v.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
                   <span style={{ color: "var(--text-accent)", fontSize: 13 }}>edit ›</span>
                 </button>
-                {v.lots.length > 0 ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 8px 10px 8px" }}>
-                    {v.lots.map((l) => (
-                      <Link key={l.lotId} href={`/lots/${l.lotId}`}>
-                        <Badge tone="neutral" variant="soft">{l.code} · {formatL(l.volumeL)} L</Badge>
-                      </Link>
-                    ))}
+                {/* The wine, then what it is made of. This was a wrap-around row of one badge per
+                    resident lot — a vessel holds one wine now, so it names it and shows its makeup. */}
+                {v.wine ? (
+                  <div style={{ padding: "0 8px 6px 8px" }}>
+                    <Link href={`/lots/${v.wine.lotId}`}>
+                      <Badge tone="neutral" variant="soft">{v.wine.code} · {formatL(v.filledL)} L</Badge>
+                    </Link>
+                    <VesselComposition totalVolumeL={v.filledL} components={v.components} />
                   </div>
                 ) : null}
               </div>

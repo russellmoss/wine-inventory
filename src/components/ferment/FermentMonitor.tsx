@@ -60,23 +60,17 @@ export function FermentMonitor({
   lotId,
   lotCode,
   materials = [],
-  residentLots = [],
 }: {
   vesselId: string;
   vesselCode: string;
   lotId: string;
   lotCode: string;
   materials?: CellarMaterialDTO[];
-  /** Plan 060: all lots co-resident in this vessel (incl. the selected one). >1 → offer whole-tank. */
-  residentLots?: { lotId: string; code: string }[];
 }) {
   const { pending, attention, syncing, capture } = useSync();
-  // Plan 060: on a multi-lot (co-ferment) tank, default to recording on the WHOLE tank — one reading
-  // fanned out to every co-resident lot — with an opt-out to just this lot. residentLots always
-  // includes the selected lot; fall back to [this lot] if the caller didn't pass the list.
-  const allLots = residentLots.length > 0 ? residentLots : [{ lotId, code: lotCode }];
-  const isMultiLot = allLots.length > 1;
-  const [scope, setScope] = React.useState<"tank" | "lot">(isMultiLot ? "tank" : "lot");
+  // Plan 060's "Record on: [Whole tank · N lots] [Just 24-CS]" toggle lived here. It existed because a
+  // co-ferment was modelled as several lots sharing a tank, so a Brix reading had no single owner. The
+  // tank IS the wine now (LEDGER-12) — a reading has exactly one home and nothing to choose.
   const [series, setSeries] = React.useState<FermentSeries | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [optimistic, setOptimistic] = React.useState<FermentPoint[]>([]);
@@ -179,18 +173,12 @@ export function FermentMonitor({
           await voidPanelAction(e.editPanelId); // edit = void the old, then log the new (immutable)
           voidedPanelIds.push(e.editPanelId);
         }
-        // Plan 060 fan-out: record on the WHOLE tank when the user chose "whole tank" on a multi-lot
-        // vessel, OR when editing a reading that was itself a grouped whole-tank reading (voidPanelAction
-        // just voided the ENTIRE group, so we must re-log every lot or the other lots silently lose it).
-        const fanout = isMultiLot && (scope === "tank" || !!e.editGroupId);
-        if (fanout) {
-          const group = `vrg:${newId()}`;
-          for (const rl of allLots) {
-            await capture({ vesselId, lotId: rl.lotId, occupancyToken: `${vesselId}:${rl.lotId}`, deviceObservedAt: iso, readings, vesselReadingGroupId: group });
-          }
-        } else {
-          await capture({ vesselId, lotId, occupancyToken: `${vesselId}:${lotId}`, deviceObservedAt: iso, readings });
-        }
+        // ONE physical reading, ONE row. Plan 060's fan-out wrote a copy per co-resident lot (sharing a
+        // vesselReadingGroupId) because there was no single lot to attach a tank reading to; a vessel
+        // holds one wine now (LEDGER-12), so the copies are gone. Editing a LEGACY grouped reading still
+        // works: voidPanelAction voids the whole group (it was always one physical reading), and the
+        // replacement lands as the single row it should have been.
+        await capture({ vesselId, lotId, occupancyToken: `${vesselId}:${lotId}`, deviceObservedAt: iso, readings });
         newOptimistic.push({
           panelId: null,
           observedAt: iso,
@@ -346,31 +334,6 @@ export function FermentMonitor({
             </select>
           </label>
         </div>
-        {isMultiLot ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Record on</span>
-            <div role="radiogroup" aria-label="Record scope" style={{ display: "flex", gap: 6 }}>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={scope === "tank"}
-                onClick={() => setScope("tank")}
-                style={{ ...field, width: "auto", minHeight: 40, cursor: "pointer", background: scope === "tank" ? "var(--surface-base)" : "var(--surface-raised)", borderColor: scope === "tank" ? "var(--accent)" : "var(--border-strong)", fontWeight: scope === "tank" ? 600 : 400 }}
-              >
-                Whole tank · {allLots.length} lots
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={scope === "lot"}
-                onClick={() => setScope("lot")}
-                style={{ ...field, width: "auto", minHeight: 40, cursor: "pointer", background: scope === "lot" ? "var(--surface-base)" : "var(--surface-raised)", borderColor: scope === "lot" ? "var(--accent)" : "var(--border-strong)", fontWeight: scope === "lot" ? 600 : 400 }}
-              >
-                Just {lotCode}
-              </button>
-            </div>
-          </div>
-        ) : null}
         {entries.map((e) => (
           <div key={e.key} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
             <input type="datetime-local" value={e.when} onChange={(ev) => setEntry(e.key, { when: ev.target.value })} aria-label="Date and time" style={{ ...field, flex: "0 0 195px" }} />

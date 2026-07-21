@@ -9,6 +9,7 @@ import { addComponent, updateComponentVolume, removeComponent, setBlendName } fr
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import type { VesselGroupDTO } from "@/lib/vessels/groups";
 import { CellarActions, type KegOption, type ResidentLot } from "./CellarActions";
+import { VesselComposition } from "@/components/vessel/VesselComposition";
 import { GroupActions, type GroupVessel } from "./GroupActions";
 
 function vesselLabel(type: "BARREL" | "TANK", code: string): string {
@@ -19,12 +20,9 @@ export type Option = { id: string; name: string };
 export type BlockOption = { id: string; vineyardId: string; blockLabel: string | null; code: string | null };
 export type SubblockOption = { id: string; blockId: string; code: string; label: string | null };
 export type Comp = { id: string; varietyId: string; varietyName: string; vineyardName: string; vintage: number; volumeL: number };
-// A blend lot resident in the vessel — no single origin, so it isn't a `Comp`. Display-only here;
-// its volume changes through ledger ops (rack / draw / blend), not the component table.
-export type BlendLot = { lotId: string; code: string; volumeL: number; vintageYear: number | null };
 export type VesselWithContents = {
   id: string; code: string; type: "BARREL" | "TANK"; capacityL: number; blendName: string | null;
-  components: Comp[]; blendLots: BlendLot[]; blend: BlendInfo; fill: Fill;
+  components: Comp[]; blend: BlendInfo; fill: Fill;
   oakOrigin: string | null; cooperageYear: number | null; cooperage: string | null; toastLevel: string | null;
   lotCodes: string[];
   residentLots: ResidentLot[];
@@ -35,16 +33,20 @@ const selectStyle: React.CSSProperties = {
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)",
 };
 
-function StatusBadge({ v }: { v: VesselWithContents }) {
-  if (v.components.length === 0) {
-    // A vessel holding only a blend lot (no origin-backed components) is still full of wine.
-    if (v.blendLots.length > 0) {
-      return <Badge tone="maroon" variant="soft">{v.blendName || (v.blendLots.length === 1 ? v.blendLots[0].code : `Blend · ${v.blendLots.length}`)}</Badge>;
-    }
-    return <Badge tone="neutral" variant="soft">empty</Badge>;
-  }
-  if (v.blend.isBlend) return <Badge tone="maroon" variant="soft">{v.blendName || `Blend · ${v.blend.varieties.length}`}</Badge>;
-  return <Badge tone="green" variant="soft">{v.blendName || `100% ${v.blend.varieties[0]?.varietyName}`}</Badge>;
+/**
+ * WHAT IS THIS — the first of the three questions a vessel answers (then fill, then composition).
+ *
+ * This used to say what the vessel was MADE OF ("Blend · 3", "100% Pinot Noir"), because a vessel was
+ * a bag of components with no single identity. It holds one wine now (LEDGER-12), so it names that
+ * wine — the winemaker's own blend name if they set one, otherwise the lot code. The makeup moved down
+ * a line to <VesselComposition>, where it belongs and where it can be expanded.
+ */
+function WineBadge({ v }: { v: VesselWithContents }) {
+  const resident = v.residentLots[0];
+  if (!resident) return <Badge tone="neutral" variant="soft">empty</Badge>;
+  return (
+    <Badge tone={v.blend.isBlend ? "maroon" : "green"} variant="soft">{v.blendName || resident.code}</Badge>
+  );
 }
 
 function FillBar({ v }: { v: VesselWithContents }) {
@@ -203,20 +205,24 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
         ) : (
           <div>
             {items.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => setSelectedId(v.id)}
-                style={{
-                  width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 8px",
-                  borderTop: "1px solid var(--border-strong)", background: "transparent", border: "none",
-                  borderBottom: "none", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-body)", fontSize: 14,
-                }}
-              >
-                <span style={{ fontWeight: 500, minWidth: 90 }}>{v.code}</span>
-                <FillBar v={v} />
-                <StatusBadge v={v} />
-                <span style={{ color: "var(--text-accent)", fontSize: 13 }}>manage ›</span>
-              </button>
+              // The vessel answers three questions, in this order: what wine is this (WineBadge),
+              // how much (FillBar), what is it made of (VesselComposition — one line, collapsed).
+              <div key={v.id} style={{ borderTop: "1px solid var(--border-strong)", padding: "0 8px" }}>
+                <button
+                  onClick={() => setSelectedId(v.id)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 0",
+                    background: "transparent", border: "none",
+                    cursor: "pointer", textAlign: "left", fontFamily: "var(--font-body)", fontSize: 14,
+                  }}
+                >
+                  <span style={{ fontWeight: 500, minWidth: 90 }}>{v.code}</span>
+                  <FillBar v={v} />
+                  <WineBadge v={v} />
+                  <span style={{ color: "var(--text-accent)", fontSize: 13 }}>manage ›</span>
+                </button>
+                <VesselComposition totalVolumeL={v.fill.filledL} components={v.components} style={{ marginTop: -6 }} />
+              </div>
             ))}
           </div>
         )}
@@ -294,11 +300,24 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
         open={!!selected}
         onClose={() => setSelectedId(null)}
         title={selected ? selected.code : ""}
-        subtitle={selected ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{selected.type === "BARREL" ? "Barrel" : "Tank"} · {selected.fill.filledL}/{selected.capacityL} L ({selected.fill.pct}%)<StatusBadge v={selected} /></span> : null}
+        subtitle={selected ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{selected.type === "BARREL" ? "Barrel" : "Tank"} · {selected.fill.filledL}/{selected.capacityL} L ({selected.fill.pct}%)<WineBadge v={selected} /></span> : null}
       >
         {selected ? (
           <div>
             <BarrelMeta v={selected} />
+            {/* The wine, named and linked, with what it is made of underneath. This replaces a separate
+                "Blends in this vessel" list that existed only because the component projection couldn't
+                represent an origin-less blend lot — it can now (composeLeaves), so there is one wine. */}
+            {selected.residentLots[0] ? (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+                  <span style={{ fontWeight: 600 }}>{selected.residentLots[0].code}</span>
+                  {selected.residentLots[0].varietyName ? <span style={{ color: "var(--text-muted)" }}>{selected.residentLots[0].varietyName}</span> : null}
+                  <Link href={`/lots/${selected.residentLots[0].lotId}`} style={{ marginLeft: "auto", color: "var(--text-accent)", fontSize: 13 }}>view lot ›</Link>
+                </div>
+                <VesselComposition totalVolumeL={selected.fill.filledL} components={selected.components} />
+              </div>
+            ) : null}
             {selected.components.length > 1 ? (
               <form
                 key={`bn-${selected.id}-${selected.blendName ?? ""}`}
@@ -338,25 +357,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
               </table>
             ) : null}
 
-            {/* Blend lots resident in the vessel — display-only; manage volume via the cellar actions below. */}
-            {selected.blendLots.length > 0 ? (
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", marginBottom: 6 }}>
-                  Blend{selected.blendLots.length > 1 ? "s" : ""} in this vessel
-                </div>
-                {selected.blendLots.map((bl) => (
-                  <div key={bl.lotId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderTop: "1px solid var(--border-strong)", fontSize: 14 }}>
-                    <span style={{ fontWeight: 600 }}>{bl.code}</span>
-                    <Badge tone="maroon" variant="soft">blend</Badge>
-                    {bl.vintageYear != null ? <span style={{ color: "var(--text-muted)" }}>{bl.vintageYear}</span> : null}
-                    <span style={{ marginLeft: "auto" }}>{bl.volumeL} L</span>
-                    <Link href={`/lots/${bl.lotId}`} style={{ color: "var(--text-accent)", fontSize: 13 }}>view lot ›</Link>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {selected.components.length === 0 && selected.blendLots.length === 0 ? (
+            {selected.residentLots.length === 0 ? (
               <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 14 }}>This vessel is empty.</p>
             ) : null}
 

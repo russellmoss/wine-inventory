@@ -6,7 +6,7 @@ import { round2 } from "@/lib/bottling/draw";
 import { writeProportionalCostTransfers } from "@/lib/cost/transfer";
 import { planPress, type PressFractionDraw } from "@/lib/ledger/math";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
-import type { CaptureMethod, LotForm } from "@/lib/ledger/vocabulary";
+import { FUNCTIONAL_ZERO_L, type CaptureMethod, type LotForm } from "@/lib/ledger/vocabulary";
 import { nextBlendLotCode, nextLotCode, isUniqueViolation } from "@/lib/lot/generate";
 import { normalizeToken } from "@/lib/lot/code";
 import { LINEAGE_KIND } from "@/lib/lot/lineage";
@@ -65,6 +65,33 @@ function cleanChildren(input: SplitChildInput[], sourceVesselId: string): CleanC
     destVesselId: c.destVesselId?.trim() || sourceVesselId,
     role: c.role === "LEES" ? "LEES" : "SPLIT",
   }));
+}
+
+/**
+ * LEDGER-12: a split makes each child its own LOT, and a vessel holds one cohesive liquid — so at
+ * most ONE child can stay in the source vessel and every other needs its own destination. Two
+ * sublots sitting in one tank is the same fiction at a smaller scale: there is no physical split,
+ * it is still one liquid (plan 088, Unit 10).
+ *
+ * ⚠️ ux-principles rule 12, "no phantom vessels": this app deliberately built split-in-place as a
+ * FIRST-CLASS operation instead of copying InnoVint's round-trip-through-a-throwaway-vessel
+ * workaround. Refusing without offering a real alternative would push winemakers to invent fake
+ * vessels and hand that advantage straight back, so the message has to name a way forward.
+ */
+function assertOneChildPerVessel(children: CleanChild[], sourceVesselCode: string): void {
+  const byVessel = new Map<string, CleanChild[]>();
+  for (const c of children) byVessel.set(c.destVesselId, [...(byVessel.get(c.destVesselId) ?? []), c]);
+
+  for (const [, group] of byVessel) {
+    if (group.length < 2) continue;
+    const tags = group.map((c) => c.sublotTag || "untagged");
+    throw new ActionError(
+      `${sourceVesselCode} holds one wine, so ${tags.join(" and ")} can't sit in it side by side. ` +
+        `Send all but one to their own vessel — or leave it as a single lot and note the trial on ` +
+        `the readings you take from it.`,
+      "CONFLICT",
+    );
+  }
 }
 
 function isCommandConflict(e: unknown): boolean {
@@ -140,6 +167,7 @@ export async function splitLotInPlaceTx(
   const vesselById = new Map(vessels.map((v) => [v.id, v]));
   const source = vesselById.get(input.sourceVesselId);
   if (!source) throw new ActionError("Source vessel not found.");
+  assertOneChildPerVessel(children, source.code);
   if (!source.isActive) throw new ActionError(`${source.code} is inactive.`);
   for (const destId of destVesselIds) {
     const dest = vesselById.get(destId);
@@ -160,6 +188,22 @@ export async function splitLotInPlaceTx(
   const childTotal = round2(children.reduce((a, c) => a + c.volumeL, 0));
   if (childTotal + discardedLeesL > available + 1e-9) {
     throw new ActionError(`That split draws ${childTotal + discardedLeesL} L, but ${parent.code} only has ${round2(available)} L in the source vessel.`, "CONFLICT");
+  }
+
+  // LEDGER-12: the source vessel must end holding exactly ONE lot. A child staying behind is only
+  // legal when the parent is fully drawn out of it — otherwise the child would sit next to the
+  // parent's remainder in the same tank, which is the fiction at its smallest scale: there was no
+  // physical split, it is still one liquid.
+  const stayingInSource = children.filter((c) => c.destVesselId === input.sourceVesselId);
+  const parentRemainder = round2(available - childTotal - discardedLeesL);
+  if (stayingInSource.length > 0 && parentRemainder > FUNCTIONAL_ZERO_L) {
+    const tags = stayingInSource.map((c) => c.sublotTag || "the sub-lot").join(", ");
+    throw new ActionError(
+      `${source.code} would hold both ${parent.code} (${parentRemainder} L left) and ${tags}. ` +
+        `A vessel holds one wine — either split ALL of ${parent.code} out, send ${tags} to its own ` +
+        `vessel, or leave it as one lot and note the trial on the readings you take from it.`,
+      "CONFLICT",
+    );
   }
 
   let originAbbrs: { vineyardAbbr: string; varietyAbbr: string; blockCode?: string; blockLabel?: string; subblockCode?: string; subblockLabel?: string } | null = null;

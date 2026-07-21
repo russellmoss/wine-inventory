@@ -39,7 +39,17 @@ as the restricted **`app_rls`** role, which *cannot* bypass RLS.
 A **lot** is a tracked quantity of wine (`Lot`, `LotOperation`, `LotOperationLine`, `VesselLot`,
 `LotLineage`, `LotStateEvent` in the schema). Every action is an **append-only operation**; current
 state is *derived* from the ledger, not stored loosely.
-- `write.ts` — `runLedgerWrite()`, the single guarded path for ledger writes.
+- `write.ts` — `runLedgerWrite()`, the single guarded path for ledger writes. It is also the ONLY
+  write site for the `VesselLot` occupancy projection, which is what lets **LEDGER-12** be enforced in
+  one place: a vessel holds **at most one lot**, a lot may occupy **many vessels**
+  ([[0008-one-lot-per-vessel]]). The guard is monotone (`assertNoWorsenedCoResidence` — an op may never
+  ADD a lot to a vessel), backed by a `(tenantId, vesselId)` unique index. `write.ts` also folds
+  `VesselComponent`, the vessel's **composition** (variety/vineyard/vintage shares), attributing every
+  lot — including origin-less blend lots — through lineage via `composeLeaves`.
+- `combine.ts` + `combine-state.ts` — `decideCombineRoute`, the ONE decision every combining operation
+  (rack, crush, press, saignée, topping, blend) makes about identity: **KEEP** (destination empty),
+  **ABSORB** (the resident wine grows, keeping its identity), **NEW_BLEND** (mint a new lot). Refuses
+  across ownership, bond, form, ferment state, and tax class — each refusal naming its legal escape.
 - `actions.ts` — the server actions the UI calls.
 - `reverse.ts` + `reverse-guard.ts` — the **universal Undo**: `reverseOperationCore` dispatches an undo for *every* operation family (rack, bottle, sparkling, crush, press, saignée, blend), unwinding in LIFO order with guardrails.
 - `math.ts`, `vocabulary.ts` — volume math + naming.

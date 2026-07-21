@@ -111,7 +111,9 @@ async function loadVesselStateById(id: string): Promise<ResolvedVesselState> {
       updatedAt: true,
       vesselLots: {
         include: { lot: { select: { id: true, code: true, form: true, status: true, updatedAt: true, taxAbvOverride: true } } },
-        orderBy: { lot: { code: "asc" } },
+        // Volume-descending: a vessel holds ONE wine (LEDGER-12), so lots[0] IS the vessel's wine — and a
+        // pre-invariant row that still carries several residents resolves to the one actually in the tank.
+        orderBy: [{ volumeL: "desc" }, { lot: { code: "asc" } }],
       },
     },
   })) as (VesselLite & { vesselLots: VesselContentsRow[] }) | null;
@@ -201,13 +203,10 @@ async function resolvePressSource(intent: { sourceVessel?: string; sourceLot?: s
   if (intent.sourceVessel) {
     const vessel = await resolveVesselState(intent.sourceVessel);
     const pressable = vessel.lots.filter((lot) => isPressableLotState(lot));
-    if (pressable.length === 1) {
-      const lot = pressable[0];
-      return { lotId: lot.id, lotCode: lot.code, vesselId: vessel.id, vesselLabel: vessel.label, volumeL: lot.volumeL };
-    }
-    if (pressable.length > 1) {
-      throw new Error(`${vessel.label} holds multiple pressable MUST lots: ${pressable.map((lot) => `${lot.code} (${lot.volumeL} L)`).join(", ")}. Which lot should be pressed?`);
-    }
+    // A vessel holds ONE wine (LEDGER-12), so at most one lot can be pressable — press it. There is no
+    // "which of the MUST lots in this tank" question: a co-ferment IS one must, pressed as one.
+    const lot = pressable[0];
+    if (lot) return { lotId: lot.id, lotCode: lot.code, vesselId: vessel.id, vesselLabel: vessel.label, volumeL: lot.volumeL };
     const current = vessel.lots.length
       ? vessel.lots.map((lot) => `${lot.code} (${lot.form}, ${lot.status}, ${lot.volumeL} L)`).join(", ")
       : "it is empty";
@@ -373,8 +372,9 @@ function matchUserTaskType(vocab: ResolvedTaskVocabulary, title: string): string
 
 type ObservationTarget = { lotId: string; lotCode: string; vesselId?: string; vesselLabel?: string };
 
-/** Resolve a lot/vessel observation target (shared by PANEL + BRIX). A blended or empty vessel throws so
- * the model asks for one lot; an empty vessel that an earlier rack fills binds to that planned lot. */
+/** Resolve a lot/vessel observation target (shared by PANEL + BRIX). Naming a vessel names its wine
+ * (LEDGER-12); an empty vessel that an earlier rack in the same draft fills binds to that planned lot,
+ * and an empty vessel with nothing planned throws. */
 async function resolveObservationTarget(
   intent: { lot?: string; vessel?: string },
   plannedLotByVesselId: Map<string, { id: string; code: string }>,
@@ -386,12 +386,11 @@ async function resolveObservationTarget(
   }
   if (intent.vessel) {
     const vessel = await resolveVesselState(intent.vessel);
-    if (vessel.lots.length === 1) return { lotId: vessel.lots[0].id, lotCode: vessel.lots[0].code, vesselId: vessel.id, vesselLabel: vessel.label };
-    if (vessel.lots.length === 0 && plannedLotByVesselId.has(vessel.id)) {
+    if (vessel.lots.length > 0) return { lotId: vessel.lots[0].id, lotCode: vessel.lots[0].code, vesselId: vessel.id, vesselLabel: vessel.label };
+    if (plannedLotByVesselId.has(vessel.id)) {
       const planned = plannedLotByVesselId.get(vessel.id)!;
       return { lotId: planned.id, lotCode: planned.code, vesselId: vessel.id, vesselLabel: vessel.label };
     }
-    if (vessel.lots.length > 1) throw new Error(`${vessel.label} holds a blend (${vessel.lots.map((l) => l.code).join(", ")}) - which lot is this ${label} for?`);
     throw new Error(`${vessel.label} is empty - there is no lot to attach this ${label} to.`);
   }
   throw new Error(`This ${label} needs a lot or vessel.`);

@@ -93,30 +93,31 @@ export function buildDescendants(
   return walk(rootId, 0, new Set());
 }
 
-export type RollupSlice = { key: string; label: string; pct: number };
-export type CompositionRollup = {
-  byVariety: RollupSlice[];
-  byVineyard: RollupSlice[];
-  byVintage: RollupSlice[];
-  complete: boolean; // false if any branch's fractions didn't sum to ~1 (unknown provenance)
+/** One ancestor leaf and its share of the root wine. Weights sum to ~1. */
+export type CompositionLeaf = { lotId: string; weight: number };
+
+export type CompositionLeaves = {
+  leaves: CompositionLeaf[];
+  /** false if any branch's fractions didn't sum to ~1 (unknown provenance). */
+  complete: boolean;
 };
 
 /**
- * Weighted composition rollup ("what's in this wine") — recursively attribute the root's
- * makeup to its ANCESTOR LEAVES by multiplying lineage fractions down each path. A leaf (a lot
- * with no parents) contributes its accumulated weight to its own variety / vineyard / vintage.
- * Where a node's parent fractions don't sum to 1 (incomplete provenance), the remainder is
- * attributed to the node itself rather than silently dropped. Cycle-guarded.
+ * Attribute a lot's makeup to its ANCESTOR LEAVES by multiplying lineage fractions down each
+ * path. A leaf (a lot with no parents) carries its accumulated weight. Where a node's parent
+ * fractions don't sum to 1, the remainder is attributed to the node ITSELF rather than silently
+ * dropped. Cycle-guarded.
+ *
+ * This is the joint attribution, kept separate from composeRollup's per-dimension marginals on
+ * purpose: byVariety/byVineyard/byVintage are marginals, and marginals cannot reconstruct the
+ * JOINT (variety, vineyard, vintage) tuple that vessel_component is keyed on. The ledger's
+ * composition fold needs the leaves; the UI rollup needs the marginals. Same walk, both callers.
  */
-export function composeRollup(
-  rootId: string,
-  edges: LineageEdge[],
-  meta: Map<string, LotMeta>,
-): CompositionRollup {
+export function composeLeaves(rootId: string, edges: LineageEdge[]): CompositionLeaves {
   const byChild = new Map<string, LineageEdge[]>();
   for (const e of edges) byChild.set(e.childLotId, [...(byChild.get(e.childLotId) ?? []), e]);
 
-  const leaves: { lotId: string; weight: number }[] = [];
+  const leaves: CompositionLeaf[] = [];
   let complete = true;
 
   const attribute = (lotId: string, weight: number, seen: Set<string>): void => {
@@ -138,6 +139,31 @@ export function composeRollup(
     }
   };
   attribute(rootId, 1, new Set());
+
+  return { leaves, complete };
+}
+
+export type RollupSlice = { key: string; label: string; pct: number };
+export type CompositionRollup = {
+  byVariety: RollupSlice[];
+  byVineyard: RollupSlice[];
+  byVintage: RollupSlice[];
+  complete: boolean; // false if any branch's fractions didn't sum to ~1 (unknown provenance)
+};
+
+/**
+ * Weighted composition rollup ("what's in this wine") — recursively attribute the root's
+ * makeup to its ANCESTOR LEAVES by multiplying lineage fractions down each path. A leaf (a lot
+ * with no parents) contributes its accumulated weight to its own variety / vineyard / vintage.
+ * Where a node's parent fractions don't sum to 1 (incomplete provenance), the remainder is
+ * attributed to the node itself rather than silently dropped. Cycle-guarded.
+ */
+export function composeRollup(
+  rootId: string,
+  edges: LineageEdge[],
+  meta: Map<string, LotMeta>,
+): CompositionRollup {
+  const { leaves, complete } = composeLeaves(rootId, edges);
 
   const total = leaves.reduce((a, l) => a + l.weight, 0) || 1;
   const bucket = (pick: (m: LotMeta | undefined) => { key: string; label: string } | null): RollupSlice[] => {

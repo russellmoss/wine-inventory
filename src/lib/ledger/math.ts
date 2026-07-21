@@ -58,6 +58,105 @@ export function assertBalanced(lines: LedgerLine[]): void {
 }
 
 /**
+ * LEDGER-12 — a vessel holds AT MOST ONE lot. A vessel's contents are one cohesive liquid;
+ * two lots in one tank is a state the physical world does not have (plan 088).
+ *
+ * The inverse direction stays legal and unbounded: ONE lot may occupy MANY vessels (a lot
+ * across 40 barrels is normal), which is why this checks per-vessel and never per-lot.
+ *
+ *   LEGAL                                ILLEGAL
+ *   ─────                                ───────
+ *   tankA → L1                           tankA → L1, L2
+ *   tankA → L1, tankB → L1  (40 barrels) tankA → L1, L2, L3
+ *   tankA → L1, tankB → L2
+ *
+ * Runs on POST-FOLD balances (see foldLines), so an operation that drains lot B while
+ * filling lot A in the SAME op is legal — only the surviving state must satisfy it. That
+ * also means a resident swept to functional zero is not a second lot: foldLines already
+ * dropped its row. This is why the DB constraint can be a plain UNIQUE rather than a
+ * partial index.
+ */
+export type CoResidence = { vesselId: string; lotIds: string[] };
+
+/** Every vessel in the projection that holds more than one lot. Pure; empty = clean. */
+export function findCoResidence(balances: VesselLotBalance[]): CoResidence[] {
+  const byVessel = new Map<string, string[]>();
+  for (const b of balances) {
+    const lots = byVessel.get(b.vesselId);
+    if (lots) lots.push(b.lotId);
+    else byVessel.set(b.vesselId, [b.lotId]);
+  }
+  const violations: CoResidence[] = [];
+  for (const [vesselId, lotIds] of byVessel) {
+    if (lotIds.length > 1) violations.push({ vesselId, lotIds });
+  }
+  return violations;
+}
+
+/**
+ * Throw if any vessel would end up holding more than one lot.
+ *
+ * This is DEFENSE IN DEPTH at the ledger chokepoint, not the winemaker-facing refusal. By
+ * fold time the domain intent ("you tried to rack Cab into a tank holding Pinot") is gone,
+ * so the message is deliberately worded for an engineer: reaching it means a core skipped
+ * its combine preflight (see decideCombineRoute). The user-facing refusals live in the
+ * cores and are RETURNED, never thrown, because server-action errors are redacted in prod.
+ */
+export function assertOneLotPerVessel(balances: VesselLotBalance[]): void {
+  const violations = findCoResidence(balances);
+  if (violations.length === 0) return;
+  const detail = violations.map((v) => `${v.vesselId} would hold ${v.lotIds.length} lots (${v.lotIds.join(", ")})`).join("; ");
+  throw new Error(
+    `Invariant LEDGER-12 violated: a vessel holds at most one lot. ${detail}. ` +
+      `A core is missing its combine preflight (decideCombineRoute).`,
+  );
+}
+
+/**
+ * The MONOTONE form: which vessels would come out of this operation holding MORE lots than they
+ * went in with. This is what the chokepoint enforces, and the difference matters.
+ *
+ * Enforcing "must be exactly one" would refuse every operation on a vessel that is ALREADY
+ * mis-recorded — including the rack that would empty it. A legacy import lands three lots in a
+ * barrel and the barrel is frozen: unusable, and unfixable through the app. Enforcing "never
+ * worse" instead makes the invariant monotone, so a bad state can only ever shrink:
+ *
+ *   0 → 1  ok        1 → 1  ok        3 → 2  ok (healing)
+ *   1 → 2  REFUSED   0 → 2  REFUSED   3 → 4  REFUSED
+ *   3 → 3  ok (untouched — a draw-down on an already-mixed vessel still works)
+ *
+ * The estate therefore repairs itself over time and can never regress. With the DB constraint in
+ * place the bad state is unreachable anyway; this is what keeps the app sane if it is ever
+ * reached another way (a restored backup, a direct import, the constraint dropped).
+ */
+export function findWorsenedCoResidence(before: VesselLotBalance[], after: VesselLotBalance[]): CoResidence[] {
+  const countBefore = new Map<string, number>();
+  for (const b of before) countBefore.set(b.vesselId, (countBefore.get(b.vesselId) ?? 0) + 1);
+  return findCoResidence(after).filter((v) => v.lotIds.length > (countBefore.get(v.vesselId) ?? 0));
+}
+
+/**
+ * Throw if an operation would leave any vessel holding MORE lots than it started with.
+ *
+ * DEFENCE IN DEPTH at the ledger chokepoint — not the winemaker-facing refusal. By fold time the
+ * domain intent ("you tried to rack Cab into a tank holding Pinot") is gone, so the message is
+ * deliberately written for an engineer: reaching it means a core skipped its combine preflight.
+ * The user-facing refusals live in the cores (decideCombineRoute) and are RETURNED, never thrown,
+ * because server-action errors are redacted in production.
+ */
+export function assertNoWorsenedCoResidence(before: VesselLotBalance[], after: VesselLotBalance[]): void {
+  const violations = findWorsenedCoResidence(before, after);
+  if (violations.length === 0) return;
+  const detail = violations
+    .map((v) => `${v.vesselId} would hold ${v.lotIds.length} lots (${v.lotIds.join(", ")})`)
+    .join("; ");
+  throw new Error(
+    `Invariant LEDGER-12 violated: an operation may not put more lots into a vessel. ${detail}. ` +
+      `A core is missing its combine preflight (decideCombineRoute).`,
+  );
+}
+
+/**
  * Apply an operation's lines to the current projection and return the new balances.
  * Only in-vessel lines (vesselId != null) touch the projection; null-vessel lines are
  * the external counter-account. A residual at/below FUNCTIONAL_ZERO_L is swept to 0

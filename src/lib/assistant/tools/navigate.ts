@@ -83,17 +83,8 @@ export const navigateTool: AssistantTool = {
           section: { label: "the tanks list", route: SECTION_ROUTES["tanks & barrels"] },
         };
       }
-      if (contents.kind === "blend") {
-        // A blend holds several lots — never pick one. Hand the model every lot's
-        // link so it can answer in chat.
-        return {
-          ok: false,
-          reason: "blend_vessel",
-          message: `${contents.vesselLabel} holds a blend of ${contents.lots.length} lots.`,
-          lots: contents.lots.map((l) => ({ code: l.code, route: entityPath("lot", l.id) })),
-        };
-      }
-      // Single lot: navigable (its /lots/[id] detail is the ledger history).
+      // The vessel's wine is navigable (its /lots/[id] detail is the ledger history). There is no
+      // "which of these lots did you mean" branch — a vessel holds one wine (LEDGER-12).
       return {
         navigate: {
           path: entityPath("lot", contents.lot.id),

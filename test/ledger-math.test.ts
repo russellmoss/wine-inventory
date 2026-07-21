@@ -7,6 +7,10 @@ import {
   planCorrection,
   planVesselLoss,
   balanceKey,
+  findCoResidence,
+  assertOneLotPerVessel,
+  findWorsenedCoResidence,
+  assertNoWorsenedCoResidence,
   type LedgerLine,
   type VesselLotBalance,
 } from "@/lib/ledger/math";
@@ -227,5 +231,178 @@ describe("planVesselLoss", () => {
     const src: VesselLotBalance[] = [{ vesselId: "t1", lotId: "L1", volumeL: 100 }];
     expect(() => planVesselLoss(src, 0, "loss")).toThrow();
     expect(() => planVesselLoss(src, 150, "loss")).toThrow();
+  });
+});
+
+// ─────────── LEDGER-12: one lot per vessel (plan 088, Unit 1) ───────────
+// The guard runs on POST-FOLD balances, so an operation that drains lot B while filling
+// lot A in the SAME op is legal — only the surviving state has to satisfy the invariant.
+describe("findCoResidence / assertOneLotPerVessel", () => {
+  const bal = (vesselId: string, lotId: string, volumeL: number): VesselLotBalance => ({ vesselId, lotId, volumeL });
+
+  describe("legal states", () => {
+    it("an empty cellar has no violation", () => {
+      expect(findCoResidence([])).toEqual([]);
+    });
+
+    it("one lot in one vessel is fine", () => {
+      expect(findCoResidence([bal("tankA", "L1", 500)])).toEqual([]);
+    });
+
+    it("ONE lot across MANY vessels is fine — the direction we are preserving", () => {
+      const barrels = Array.from({ length: 40 }, (_, i) => bal(`barrel${i}`, "L1", 225));
+      expect(findCoResidence(barrels)).toEqual([]);
+      expect(() => assertOneLotPerVessel(barrels)).not.toThrow();
+    });
+
+    it("many single-lot vessels are fine", () => {
+      expect(findCoResidence([bal("tankA", "L1", 100), bal("tankB", "L2", 200), bal("tankC", "L3", 300)])).toEqual([]);
+    });
+
+    it("drain-B-fill-A in one operation is legal — the fold is what counts", () => {
+      const before = [bal("tankA", "LB", 300)];
+      const lines: LedgerLine[] = [
+        { lotId: "LB", vesselId: "tankA", deltaL: -300 }, // B leaves
+        { lotId: "LA", vesselId: "tankA", deltaL: 300 }, // A arrives
+      ];
+      const after = foldLines(before, lines);
+      expect(after).toHaveLength(1);
+      expect(findCoResidence(after)).toEqual([]);
+    });
+  });
+
+  describe("illegal states", () => {
+    it("a foreign lot landing in an occupied vessel is a violation", () => {
+      const v = findCoResidence([bal("tankA", "L1", 500), bal("tankA", "L2", 100)]);
+      expect(v).toHaveLength(1);
+      expect(v[0].vesselId).toBe("tankA");
+      expect(v[0].lotIds.sort()).toEqual(["L1", "L2"]);
+    });
+
+    it("three survivors in one vessel report all three lots", () => {
+      const v = findCoResidence([bal("b18", "A", 100), bal("b18", "B", 75), bal("b18", "C", 50)]);
+      expect(v).toHaveLength(1);
+      expect(v[0].lotIds.sort()).toEqual(["A", "B", "C"]);
+    });
+
+    it("reports every offending vessel, not just the first", () => {
+      const v = findCoResidence([
+        bal("tankA", "L1", 10),
+        bal("tankA", "L2", 10),
+        bal("tankB", "L3", 10), // fine
+        bal("tankC", "L4", 10),
+        bal("tankC", "L5", 10),
+      ]);
+      expect(v.map((x) => x.vesselId).sort()).toEqual(["tankA", "tankC"]);
+    });
+
+    it("a CORRECTION that would restore a second lot is a violation", () => {
+      // tankA holds L1 after a rack; reverting the rack would put L2 back beside it.
+      const current = [bal("tankA", "L1", 200)];
+      const reversal: LedgerLine[] = [{ lotId: "L2", vesselId: "tankA", deltaL: 150 }];
+      const after = foldLines(current, reversal);
+      expect(findCoResidence(after)).toHaveLength(1);
+    });
+
+    it("assertOneLotPerVessel throws and names the vessel and the lots", () => {
+      expect(() => assertOneLotPerVessel([bal("tankA", "L1", 500), bal("tankA", "L2", 100)])).toThrow(/tankA/);
+      expect(() => assertOneLotPerVessel([bal("tankA", "L1", 500), bal("tankA", "L2", 100)])).toThrow(/L1/);
+      expect(() => assertOneLotPerVessel([bal("tankA", "L1", 500), bal("tankA", "L2", 100)])).toThrow(/LEDGER-12/);
+    });
+  });
+
+  describe("functional-zero boundary", () => {
+    it("a resident swept to functional zero is NOT a second lot", () => {
+      // foldLines drops any residual <= FUNCTIONAL_ZERO_L, so the dust row never survives
+      // the fold. This is why a plain UNIQUE(tenantId, vesselId) is safe at the DB.
+      const before = [bal("tankA", "LB", 300)];
+      const lines: LedgerLine[] = [
+        { lotId: "LB", vesselId: "tankA", deltaL: -299.995 }, // leaves 0.005 L of dust
+        { lotId: "LA", vesselId: "tankA", deltaL: 299.995 },
+      ];
+      const after = foldLines(before, lines);
+      expect(after.map((b) => b.lotId)).toEqual(["LA"]);
+      expect(findCoResidence(after)).toEqual([]);
+    });
+
+    it("a resident just ABOVE functional zero still counts", () => {
+      const before = [bal("tankA", "LB", 300)];
+      const lines: LedgerLine[] = [
+        { lotId: "LB", vesselId: "tankA", deltaL: -299.9 }, // 0.1 L left, above the 0.01 threshold
+        { lotId: "LA", vesselId: "tankA", deltaL: 299.9 },
+      ];
+      const after = foldLines(before, lines);
+      expect(findCoResidence(after)).toHaveLength(1);
+    });
+  });
+
+  describe("the external counter-account", () => {
+    it("null-vessel lines never reach the projection, so they cannot violate", () => {
+      // BOTTLE_STORAGE and EXTERNAL legs carry vesselId: null. They are not vessel occupancy.
+      const before = [bal("tankA", "L1", 500)];
+      const lines: LedgerLine[] = [
+        { lotId: "L1", vesselId: "tankA", deltaL: -100 },
+        { lotId: "L1", vesselId: null, deltaL: 100, bucket: "BOTTLE_STORAGE", bottleDelta: 133 },
+      ];
+      const after = foldLines(before, lines);
+      expect(findCoResidence(after)).toEqual([]);
+    });
+  });
+});
+
+// The MONOTONE guard the chokepoint actually enforces (plan 088, Unit 13). "Must be exactly one"
+// would refuse every operation on an already-mixed vessel, including the rack that would EMPTY it
+// — freezing a barrel a legacy import got wrong. "Never worse" lets bad state only ever shrink.
+describe("findWorsenedCoResidence / assertNoWorsenedCoResidence", () => {
+  const bal = (vesselId: string, lotId: string, volumeL = 100): VesselLotBalance => ({ vesselId, lotId, volumeL });
+
+  it("filling an empty vessel is fine", () => {
+    expect(findWorsenedCoResidence([], [bal("t", "A")])).toEqual([]);
+  });
+
+  it("a lot growing in place is fine", () => {
+    expect(findWorsenedCoResidence([bal("t", "A", 100)], [bal("t", "A", 300)])).toEqual([]);
+  });
+
+  it("adding a SECOND lot to a clean vessel is refused", () => {
+    const v = findWorsenedCoResidence([bal("t", "A")], [bal("t", "A"), bal("t", "B")]);
+    expect(v).toHaveLength(1);
+    expect(() => assertNoWorsenedCoResidence([bal("t", "A")], [bal("t", "A"), bal("t", "B")])).toThrow(/LEDGER-12/);
+  });
+
+  it("filling an empty vessel with TWO lots at once is refused", () => {
+    expect(findWorsenedCoResidence([], [bal("t", "A"), bal("t", "B")])).toHaveLength(1);
+  });
+
+  describe("a vessel that is ALREADY mis-recorded", () => {
+    const messy = [bal("b18", "A"), bal("b18", "B"), bal("b18", "C")];
+
+    it("can still be drawn down — the vessel is not frozen", () => {
+      // The whole point: without this, you could not even rack the wine out to fix it.
+      expect(findWorsenedCoResidence(messy, [bal("b18", "A", 50), bal("b18", "B", 50), bal("b18", "C", 50)])).toEqual([]);
+    });
+
+    it("can be HEALED toward one lot", () => {
+      expect(findWorsenedCoResidence(messy, [bal("b18", "A"), bal("b18", "B")])).toEqual([]);
+      expect(findWorsenedCoResidence(messy, [bal("b18", "A")])).toEqual([]);
+      expect(findWorsenedCoResidence(messy, [])).toEqual([]);
+    });
+
+    it("but can NEVER be made worse", () => {
+      const worse = [...messy, bal("b18", "D")];
+      expect(findWorsenedCoResidence(messy, worse)).toHaveLength(1);
+      expect(() => assertNoWorsenedCoResidence(messy, worse)).toThrow(/b18/);
+    });
+  });
+
+  it("judges each vessel independently — healing one while worsening another still refuses", () => {
+    const before = [bal("messy", "A"), bal("messy", "B"), bal("clean", "C")];
+    const after = [bal("messy", "A"), bal("clean", "C"), bal("clean", "D")];
+    const v = findWorsenedCoResidence(before, after);
+    expect(v.map((x) => x.vesselId)).toEqual(["clean"]);
+  });
+
+  it("a drain-and-refill swap in one operation stays legal", () => {
+    expect(findWorsenedCoResidence([bal("t", "OLD")], [bal("t", "NEW")])).toEqual([]);
   });
 });

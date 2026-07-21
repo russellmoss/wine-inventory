@@ -228,9 +228,10 @@ export async function getVesselTimeline(vesselId: string): Promise<VesselTimelin
       }),
     );
 
-  // Plan 060: a whole-tank reading fans out to one panel per co-resident lot (shared
-  // vesselReadingGroupId). This is a VESSEL-scoped view → collapse each group to ONE timeline item
-  // (identical readings), so History shows one "recorded on the tank" row, not one row per lot.
+  // LEGACY groups: plan 060 fanned a whole-tank reading out to one panel per co-resident lot (shared
+  // vesselReadingGroupId). New readings write one panel (LEDGER-12); the old groups still exist, so this
+  // VESSEL-scoped view collapses each to ONE timeline item — History shows one "recorded on the tank"
+  // row, never one row per lot.
   const panelItems: NonOpItem[] = dedupeByPhysicalReading(panels)
     .filter((p) => afterStart(p.observedAt))
     .map((p) =>

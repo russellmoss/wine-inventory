@@ -8,7 +8,6 @@ import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { CaptureMethod } from "@/lib/ledger/vocabulary";
 import { validateMeasurement, getAnalyte } from "@/lib/chemistry/analytes";
 import { resolveVesselLot, listResidentLots } from "@/lib/chemistry/resolve-lot";
-import { planVesselReadingFanout } from "@/lib/chemistry/fanout-plan";
 
 // Standalone analyte-panel records (Phase 4). A panel HEADER groups readings observed
 // together; a single bench reading is a 1-child panel. NOT a ledger op — no
@@ -165,15 +164,19 @@ export async function recordMeasurementsCore(
   }
 }
 
-// ── Plan 060: whole-tank reading fan-out ─────────────────────────────────────────────────
-// A single physical reading on a MULTI-LOT vessel (a co-ferment) writes ONE panel per co-resident
-// lot, all sharing a vesselReadingGroupId. VISION D2 intact — each panel is still single-lot; this
-// only GROUPS them so vessel-scoped views show one row while each lot keeps its own curve. The group
-// id + per-lot idempotency keys DERIVE from a stable base (the capture's clientRequestId), so a retry
-// or offline re-sync lands the SAME group and the (tenantId, vesselReadingGroupId, lotId) unique makes
-// each per-lot write a no-op on replay. NEVER used for sample RESULTS (this core takes no sampleId —
-// results inherit the sample's captured lot via recordMeasurementsCore). Single-lot vessel → the
-// normal single-lot path, no group.
+// ── Whole-tank reading ───────────────────────────────────────────────────────────────────
+// A vessel holds ONE cohesive liquid (LEDGER-12), so naming a vessel names its wine: one reading,
+// one panel, no picker and nothing to fan out to.
+//
+// This used to be plan 060's FAN-OUT: on a multi-lot vessel it wrote one panel per co-resident lot
+// sharing a vesselReadingGroupId, so vessel views could show one row while each lot kept its own
+// curve. That existed only because a tank could hold several lots. It cannot any more — the
+// chokepoint refuses it and the DB unique makes it impossible — so the write path is gone.
+//
+// ⚠️ `vesselReadingGroupId` REMAINS on AnalysisPanel and the vessel-scoped read paths still collapse
+// by it. FIVE readings in production were genuinely fanned out, across lots since merged; drop the
+// grouping and each of those renders twice, forever (plan 088, Units 14/15). Nothing NEW ever mints
+// a group id — the field is legacy, a record of how readings were captured before LEDGER-12.
 
 export type RecordVesselReadingInput = {
   vesselId: string;
@@ -181,99 +184,40 @@ export type RecordVesselReadingInput = {
   readings: ReadingInput[];
   captureMethod?: CaptureMethod;
   note?: string;
-  /** Stable base; the group id + per-lot keys derive from it (idempotent on retry / re-sync). */
+  /** Stable idempotency base for a retry / offline re-sync. */
   clientRequestId?: string;
 };
 
 export type RecordVesselReadingResult = {
-  /** null when the vessel held a single lot (an ordinary, ungrouped panel was written). */
+  /** Always null now — kept so callers and stored client payloads keep type-checking. */
   vesselReadingGroupId: string | null;
   panels: { lotId: string; panelId: string; readingIds: string[] }[];
 };
 
 /**
- * Record ONE reading against a whole vessel, fanning it out to every co-resident lot.
- * 0 residents → typed empty error; 1 → the unchanged single-lot path (no group); >1 → fan out
- * (one panel per lot, shared group id, atomic + idempotent).
+ * Record ONE reading against a whole vessel. An empty vessel is a typed error; otherwise the
+ * reading attaches to the vessel's single lot.
  */
 export async function recordVesselReadingCore(
   actor: LedgerActor,
   input: RecordVesselReadingInput,
 ): Promise<RecordVesselReadingResult> {
-  const readings = normalizeReadings(input.readings);
   const residents = await listResidentLots(input.vesselId);
   if (residents.length === 0) {
     throw new ActionError("That vessel is empty — there's no wine to record a reading against.");
   }
-  const observedAt = toDate(input.observedAt);
-  const base = input.clientRequestId ?? randomUUID();
-
-  // Single-lot vessel: an ordinary reading, no group. Reuse the unchanged single-lot path.
-  if (residents.length === 1) {
-    const res = await recordMeasurementsCore(actor, {
-      lotId: residents[0].lotId,
-      vesselId: input.vesselId,
-      observedAt,
-      readings: input.readings,
-      captureMethod: input.captureMethod,
-      note: input.note,
-      clientRequestId: base,
-    });
-    return { vesselReadingGroupId: null, panels: [{ lotId: res.lotId, panelId: res.panelId, readingIds: res.readingIds }] };
-  }
-
-  const plan = planVesselReadingFanout(
-    residents.map((r) => r.lotId),
-    base,
-  );
-
-  // Idempotency: a retry with the same base re-hits the same group → return what's already there.
-  const preexisting = await prisma.analysisPanel.findMany({
-    where: { vesselReadingGroupId: plan.vesselReadingGroupId, voidedAt: null },
-    include: { readings: { select: { id: true } } },
+  // LEDGER-12 guarantees at most one. If a legacy row somehow slipped through, the largest holding
+  // is the wine in the vessel; listResidentLots orders by volume desc.
+  const res = await recordMeasurementsCore(actor, {
+    lotId: residents[0].lotId,
+    vesselId: input.vesselId,
+    observedAt: toDate(input.observedAt),
+    readings: input.readings,
+    captureMethod: input.captureMethod,
+    note: input.note,
+    clientRequestId: input.clientRequestId ?? randomUUID(),
   });
-  if (preexisting.length > 0) {
-    return {
-      vesselReadingGroupId: plan.vesselReadingGroupId,
-      panels: preexisting.map((p) => ({ lotId: p.lotId, panelId: p.id, readingIds: p.readings.map((r) => r.id) })),
-    };
-  }
-
-  try {
-    const panels = await runInTenantTx(async (tx) => {
-      const out: { lotId: string; panelId: string; readingIds: string[] }[] = [];
-      for (const { lotId, clientRequestId } of plan.perLot) {
-        const r = await insertPanelTx(tx, actor, {
-          lotId,
-          vesselId: input.vesselId,
-          observedAt,
-          readings,
-          captureMethod: input.captureMethod,
-          note: input.note,
-          clientRequestId,
-          vesselReadingGroupId: plan.vesselReadingGroupId,
-        });
-        out.push({ lotId, panelId: r.panelId, readingIds: r.readingIds });
-      }
-      return out;
-    });
-    return { vesselReadingGroupId: plan.vesselReadingGroupId, panels };
-  } catch (e) {
-    // Lost the idempotency race — return the group the winner wrote.
-    if (isUniqueViolation(e)) {
-      const rows = await prisma.analysisPanel.findMany({
-        where: { vesselReadingGroupId: plan.vesselReadingGroupId, voidedAt: null },
-        include: { readings: { select: { id: true } } },
-      });
-      if (rows.length > 0) {
-        return {
-          vesselReadingGroupId: plan.vesselReadingGroupId,
-          panels: rows.map((p) => ({ lotId: p.lotId, panelId: p.id, readingIds: p.readings.map((r) => r.id) })),
-        };
-      }
-    }
-    throw e;
-  }
+  return { vesselReadingGroupId: null, panels: [{ lotId: res.lotId, panelId: res.panelId, readingIds: res.readingIds }] };
 }
 
 /**

@@ -15,7 +15,7 @@ import { PackagingBoMEditor } from "@/components/work-orders/PackagingBoMEditor"
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import type { PackagingPlanLine } from "@/lib/bottling/packaging-bom";
 import { WORK_ORDER_PRIORITIES } from "@/lib/work-orders/planning";
-import { vesselLotState, reconcileLotValue, lotValueForNewVessel, type LotsByVessel } from "@/lib/work-orders/vessel-lot-resolve";
+import { vesselLotState, reconcileLotValue, type LotsByVessel } from "@/lib/work-orders/vessel-lot-resolve";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Member = { userId: string; name: string; email: string };
@@ -207,7 +207,7 @@ export function WorkOrderBuilderClient({
 
   function setVesselValue(groupIdx: number, key: string, field: string, vesselId: string) {
     setGroups((prev) => prev.map((g, gi) => (gi === groupIdx ? g.map((t) => (
-      t.key === key ? { ...t, values: foldLot(t.taskType, { ...t.values, [field]: vesselId }, lotValueForNewVessel) } : t
+      t.key === key ? { ...t, values: foldLot(t.taskType, { ...t.values, [field]: vesselId }, reconcileLotValue) } : t
     )) : g)));
   }
   function removeTask(groupIdx: number, key: string) {
@@ -302,10 +302,9 @@ export function WorkOrderBuilderClient({
       );
     }
     if (type === "lot") {
-      // Naming the vessel answers "which lot" whenever the answer is knowable. A single-lot vessel shows
-      // its lot as a readout (nothing to ask); a blend narrows the picker to its residents and still asks,
-      // because silently picking one lot of a blend would attach the work to the wrong wine; an empty
-      // vessel says so instead of offering every lot in the winery.
+      // Naming the vessel answers "which lot" — a vessel holds one cohesive liquid (LEDGER-12), so its
+      // wine is a readout, not a question. Only an empty vessel says so instead of offering every lot in
+      // the winery, and only a task with no vessel at all still falls back to the full list.
       const link = lotLinkFor(task.taskType);
       const state = vesselLotState(link ? String(task.values[link.vesselKey] ?? "") : "", pickers.lotsByVessel);
       if (state.kind === "single") {
@@ -327,13 +326,12 @@ export function WorkOrderBuilderClient({
           </label>
         );
       }
-      const opts = state.kind === "blend" ? state.lots : pickers.lots;
       return (
         <label key={key} style={labelStyle}>
           {flabel}
           <select style={field} value={String(current)} onChange={(e) => setTaskValue(groupIdx, task.key, key, e.target.value)}>
-            <option value="">{state.kind === "blend" ? "— blend: which lot? —" : "— pick —"}</option>
-            {opts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            <option value="">— pick —</option>
+            {pickers.lots.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
         </label>
       );

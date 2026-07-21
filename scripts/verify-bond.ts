@@ -88,6 +88,10 @@ async function main() {
     const vA = await prisma.vessel.create({ data: { code: "ZZ-A1", type: "TANK", capacityL: 5000, isActive: true }, select: { id: true } });
     const vB = await prisma.vessel.create({ data: { code: "ZZ-B1", type: "TANK", capacityL: 5000, isActive: true }, select: { id: true } });
     const vC = await prisma.vessel.create({ data: { code: "ZZ-B2", type: "TANK", capacityL: 5000, isActive: true }, select: { id: true } });
+    // LEDGER-12 (plan 088): a vessel holds ONE lot, so each seeded fixture lot needs its own
+    // vessel. These used to share vA, which the chokepoint now refuses.
+    const vD = await prisma.vessel.create({ data: { code: "ZZ-A2", type: "TANK", capacityL: 5000, isActive: true }, select: { id: true } });
+    const vE = await prisma.vessel.create({ data: { code: "ZZ-A3", type: "TANK", capacityL: 5000, isActive: true }, select: { id: true } });
 
     // A lot seeded on the estate (bond A = primary) before the period.
     const lotX = await seedLot("ZZ-X-2025", vA.id, 1000, 13.5, JUNE);
@@ -134,15 +138,15 @@ async function main() {
     assert((await deriveBond(childLot.id, END)) === bondB.id, "a single-parent lineage child walks to its parent's bond (B), not primary (A4)");
 
     // (7) A cross-bond blend is refused (wine can't straddle two bonds — CO-2 / Gemini-CRIT3).
-    const lotY = await seedLot("ZZ-Y-2025", vA.id, 400, 13.0, JUNE); // on bond A (estate)
+    const lotY = await seedLot("ZZ-Y-2025", vD.id, 400, 13.0, JUNE); // on bond A (estate), own vessel
     let blendRefused = false;
     try {
-      await blendLotsCore(ACTOR, { mode: "NEW_LOT", token: "XB", components: [ { vesselId: vB.id, lotId: lotX, drawL: 100 }, { vesselId: vA.id, lotId: lotY, drawL: 100 } ], toVesselId: vC.id });
+      await blendLotsCore(ACTOR, { mode: "NEW_LOT", token: "XB", components: [ { vesselId: vB.id, lotId: lotX, drawL: 100 }, { vesselId: vD.id, lotId: lotY, drawL: 100 } ], toVesselId: vC.id });
     } catch { blendRefused = true; }
     assert(blendRefused, "a blend drawing from lots on different bonds is refused (transfer first)");
 
     // (8) A backdated transfer into a FILED period cascades AMEND-1 onto BOTH bond chains.
-    const lotZ = await seedLot("ZZ-Z-2025", vA.id, 300, 13.0, JUNE); // bond A
+    const lotZ = await seedLot("ZZ-Z-2025", vE.id, 300, 13.0, JUNE); // bond A, own vessel
     await transferInBondCore(ACTOR, { lotId: lotZ, toVesselId: vC.id, toBondId: bondB.id, observedAt: new Date(Date.UTC(YEAR, MONTH - 1, 4)) });
     const [aStatus, bStatus] = await Promise.all([
       prisma.complianceReport.findUnique({ where: { id: repA.reportId }, select: { status: true } }),

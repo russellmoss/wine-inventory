@@ -84,3 +84,29 @@ describe("mapLineToForm (Unit 5)", () => {
     expect(r.target).toEqual({ section: "B", line: 2, sub: "BF" });
   });
 });
+
+// ─────────── plan 088: absorbing must not turn a top-up into a declarable blend ───────────
+// Topping now ABSORBS (the keg wine lands as the resident lot instead of sitting beside it as a
+// second resident). That changes which lot the wine arrives as — it must NOT change how the
+// 5120.17 sees it. Lines 5 (produced by blending) and 20 (used for blending) are for BLEND ops
+// that cross tax classes; a top-up is cellar practice. Vintrace draws the same line.
+describe("TOPPING stays out of the blending lines (LEDGER-12 absorb)", () => {
+  it("never maps to §A5 or §A20, in either direction, in any tax class", () => {
+    const classes: WineTaxClass[] = ["A_LE16", "B_16_21", "C_21_24", "D_CARBONATED", "E_SPARKLING", "F_HARD_CIDER"];
+    for (const taxClass of classes) {
+      for (const deltaSign of [1, -1] as const) {
+        const r = mapLineToForm(base({ opType: "TOPPING", deltaSign, taxClass }));
+        expect(r.target).toBeNull();
+        expect(r.partXReason).toBeNull();
+      }
+    }
+  });
+
+  it("BLEND is the only op that can reach those lines — the contrast that makes the rule real", () => {
+    const produced = mapLineToForm(base({ opType: "BLEND", deltaSign: 1, crossesTaxClass: true }));
+    const used = mapLineToForm(base({ opType: "BLEND", deltaSign: -1, crossesTaxClass: true }));
+    expect(produced.target).not.toBeNull();
+    expect(used.target).not.toBeNull();
+    expect([produced.target?.line, used.target?.line].sort()).toEqual([20, 5].sort());
+  });
+});

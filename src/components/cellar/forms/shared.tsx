@@ -51,39 +51,28 @@ export function useRequestId(): string {
   )[0];
 }
 
-/** D2 lot picker: auto for 1 resident (static label), required select for >1, message when empty. */
-export function LotField({ residentLots, value, onChange }: { residentLots: ResidentLot[]; value: string; onChange: (v: string) => void }) {
-  if (residentLots.length === 0) {
+/**
+ * The vessel's wine, as a READOUT. This was a picker — a required "This vessel holds 3 lots — pick one…"
+ * select on every record form. A vessel holds ONE cohesive liquid (LEDGER-12), so there is nothing to
+ * pick; the field just names what the winemaker is recording against, and only an empty vessel says so.
+ */
+export function LotField({ residentLots }: { residentLots: ResidentLot[] }) {
+  const l = residentLots[0];
+  if (!l) {
     return <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>This vessel is empty — nothing to record against.</p>;
   }
-  if (residentLots.length === 1) {
-    const l = residentLots[0];
-    return (
-      <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-        Lot: <strong style={{ color: "var(--text-primary)" }}>{l.code}</strong>
-        {l.varietyName ? ` · ${l.varietyName}` : ""}
-      </div>
-    );
-  }
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...fieldStyle, flex: "1 1 220px" }} aria-label="Lot" required>
-      <option value="" disabled>
-        This vessel holds {residentLots.length} lots — pick one…
-      </option>
-      {residentLots.map((l) => (
-        <option key={l.lotId} value={l.lotId}>
-          {l.code}
-          {l.varietyName ? ` · ${l.varietyName}` : ""}
-        </option>
-      ))}
-    </select>
+    <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+      Lot: <strong style={{ color: "var(--text-primary)" }}>{l.code}</strong>
+      {l.varietyName ? ` · ${l.varietyName}` : ""}
+    </div>
   );
 }
 
+/** The lot a record attaches to: the vessel's wine, or nothing when it is empty. */
 export function useLotPick(vessel: CellarActionsVessel) {
-  const [lotId, setLotId] = React.useState(vessel.residentLots.length === 1 ? vessel.residentLots[0].lotId : "");
-  const ready = vessel.residentLots.length > 0 && (vessel.residentLots.length === 1 || !!lotId);
-  return { lotId, setLotId, ready };
+  const lotId = vessel.residentLots[0]?.lotId ?? "";
+  return { lotId, ready: !!lotId };
 }
 
 export const READINESS_OPTIONS: { value: string; label: string }[] = [

@@ -12,6 +12,8 @@ import {
 } from "@/lib/ledger/math";
 import { laterTouchedKeys } from "@/lib/ledger/reverse-guard";
 import { blendLotsCore, type BlendComponentInput, type BlendLotsResult } from "@/lib/blend/blend-core";
+import { decideCombineRoute } from "@/lib/ledger/combine";
+import { loadCombineState } from "@/lib/ledger/combine-state";
 
 // Script-safe core for racking + revert (no "use server", no next/cache, no server-only).
 // transfer.ts wraps these in server actions + cache revalidation; scripts/tests call the
@@ -124,6 +126,22 @@ export async function rackWineTx(
     );
   }
 
+  // LEDGER-12: this is the RAW path (work-order completion composes it inside its own tx). It
+  // moves wine without resolving lot identity, which is only legal when the destination is empty
+  // or already holds exactly the lot being moved. Anything else has to go through the combine
+  // decision, so a caller cannot route around it by reaching for the lower-level function.
+  const destLots = await loadVesselLots(toVesselId, tx);
+  const drawnLotIds = new Set(srcLots.filter((r) => Number(r.volumeL) > 0).map((r) => r.lotId));
+  const foreignResident = destLots.find((r) => !drawnLotIds.has(r.lotId));
+  if (foreignResident) {
+    const residentCode = foreignResident.lot.code;
+    throw new ActionError(
+      `${vesselLabel(to)} already holds ${residentCode}. Rack it from the rack screen so you can ` +
+        `choose whether this wine joins ${residentCode} or becomes a new blend.`,
+      "CONFLICT",
+    );
+  }
+
   const balances: VesselLotBalance[] = srcLots.map((r) => ({ vesselId: r.vesselId, lotId: r.lotId, volumeL: Number(r.volumeL) }));
   const plan = planLedgerRack(balances, toVesselId, drawL, lossL);
 
@@ -214,13 +232,12 @@ export async function rackWineCore(actor: LedgerActor, input: TransferWineInput)
 export type RackRoute = "RACK" | "BLEND";
 
 /**
- * Decide how a rack into a destination should route (pure, council C1 / user):
- *   - empty destination            → RACK (plain move, unchanged);
- *   - destination holds the SAME lot the draw carries → RACK (a merge — the (vessel,lot)
- *     balance just grows, no lineage, NOT a blend);
- *   - destination holds a DIFFERENT lot → BLEND (grow-existing: the resident absorbs the draw
- *     and gains lineage), closing the Phase 4 co-residence loophole at the write path;
- *   - destination holds >1 lot (legacy co-residence) → RACK (leave it; don't guess a child).
+ * @deprecated Superseded by decideCombineRoute (plan 088, Unit 4), which every combining
+ * operation now shares. This decided routing from lot IDS ALONE, which meant it could not tell
+ * whether absorbing was legal (tax class, ownership, bond, form, ferment state) — and it bailed
+ * to a plain RACK when the destination held more than one lot, which quietly GREW the pile it
+ * was meant to prevent. Kept only so the existing unit tests keep documenting the old behaviour
+ * until they are retired with the pickers in branch 2.
  */
 export function decideRackRoute(drawnSourceLotIds: string[], destLotIds: string[]): RackRoute {
   if (destLotIds.length !== 1) return "RACK";
@@ -267,22 +284,28 @@ export async function rackVesselCore(actor: LedgerActor, input: RackVesselInput)
     .filter((d) => d.deduct > 0)
     .map((d) => ({ vesselId: fromVesselId, lotId: d.id, drawL: round2(d.deduct) }));
   const drawnSourceLotIds = drawnComponents.map((c) => c.lotId);
-  const destLotIds = destLots.map((r) => r.lotId);
 
-  const route = decideRackRoute(drawnSourceLotIds, destLotIds);
+  // LEDGER-12: a vessel holds one cohesive liquid, so racking into an occupied vessel has to
+  // resolve identity here rather than quietly adding a second resident (plan 088, Unit 6).
+  const state = await loadCombineState({ toVesselId, incomingLotIds: drawnSourceLotIds });
+  const decision = decideCombineRoute({
+    destResidentLots: state.destResidentLots,
+    incoming: state.incoming,
+    explicit: input.newBlend ? "NEW_BLEND" : undefined,
+  });
+  if (!decision.ok) throw new ActionError(decision.message, "CONFLICT");
 
-  // Plain rack / same-lot merge (and no explicit new-blend escape) → unchanged path.
-  if (route === "RACK" && !input.newBlend) {
+  // Plain move / same-lot merge → the unchanged rack path.
+  if (decision.mode === "KEEP") {
     const res = await rackWineCore(actor, input);
     return { kind: "RACK", ...res };
   }
 
-  // Blend path. GROW-EXISTING by default; NEW-LOT when the escape is taken (the lone resident is
-  // fully drawn into the new lot so the destination ends holding only the child — council S4).
+  // ABSORB → grow the resident (it keeps its identity). NEW_BLEND → mint a child and draw the
+  // resident fully into it, so the destination still ends holding exactly one lot (council S4).
   const components = [...drawnComponents];
-  let mode: "NEW_LOT" | "GROW_EXISTING" = "GROW_EXISTING";
-  if (input.newBlend) {
-    mode = "NEW_LOT";
+  const mode: "NEW_LOT" | "GROW_EXISTING" = decision.mode === "NEW_BLEND" ? "NEW_LOT" : "GROW_EXISTING";
+  if (mode === "NEW_LOT") {
     for (const r of destLots) {
       components.push({ vesselId: toVesselId, lotId: r.lotId, drawL: Number(r.volumeL), deplete: true });
     }

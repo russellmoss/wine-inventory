@@ -3,6 +3,7 @@ import {
   buildAncestry,
   buildDescendants,
   composeRollup,
+  composeLeaves,
   hasLineage,
   type LineageEdge,
   type LotMeta,
@@ -96,5 +97,87 @@ describe("composeRollup", () => {
     const partial: LineageEdge[] = [{ parentLotId: "A", childLotId: "CHILD", fraction: 0.6, kind: "BLEND" }];
     const r = composeRollup("CHILD", partial, meta);
     expect(r.complete).toBe(false);
+  });
+});
+
+// ─────────── composeLeaves — the JOINT attribution (plan 088, Unit 5) ───────────
+// composeRollup returns per-dimension MARGINALS (byVariety / byVineyard / byVintage), and
+// marginals cannot reconstruct the joint (variety, vineyard, vintage) tuple that
+// vessel_component is keyed on. The ledger's composition fold needs the leaves themselves.
+describe("composeLeaves", () => {
+  const w = (r: { leaves: { lotId: string; weight: number }[] }, lotId: string) =>
+    Math.round((r.leaves.filter((l) => l.lotId === lotId).reduce((a, l) => a + l.weight, 0)) * 1e6) / 1e6;
+
+  it("a lot with no lineage is its own single leaf at full weight", () => {
+    const r = composeLeaves("A", []);
+    expect(r.leaves).toEqual([{ lotId: "A", weight: 1 }]);
+    expect(r.complete).toBe(true);
+  });
+
+  it("attributes a one-level blend to its parents by fraction", () => {
+    const r = composeLeaves("CHILD", edges);
+    expect(w(r, "A")).toBe(0.6);
+    expect(w(r, "B")).toBe(0.3);
+    expect(w(r, "C")).toBe(0.1);
+    expect(r.complete).toBe(true);
+  });
+
+  it("multiplies fractions down a 3-deep chain", () => {
+    // GRAND ← 0.5 CHILD (itself 0.6 A / 0.4 B), 0.5 D
+    const deep: LineageEdge[] = [
+      { parentLotId: "A", childLotId: "CHILD", fraction: 0.6, kind: "BLEND" },
+      { parentLotId: "B", childLotId: "CHILD", fraction: 0.4, kind: "BLEND" },
+      { parentLotId: "CHILD", childLotId: "GRAND", fraction: 0.5, kind: "BLEND" },
+      { parentLotId: "D", childLotId: "GRAND", fraction: 0.5, kind: "BLEND" },
+    ];
+    const r = composeLeaves("GRAND", deep);
+    expect(w(r, "A")).toBe(0.3); // 0.5 * 0.6
+    expect(w(r, "B")).toBe(0.2); // 0.5 * 0.4
+    expect(w(r, "D")).toBe(0.5);
+    expect(r.complete).toBe(true);
+  });
+
+  it("weights always sum to 1 so a fold never invents or loses volume", () => {
+    for (const root of ["CHILD", "A"]) {
+      const total = composeLeaves(root, edges).leaves.reduce((a, l) => a + l.weight, 0);
+      expect(total).toBeCloseTo(1, 9);
+    }
+  });
+
+  it("attributes an uncovered remainder to the node itself and flags it incomplete", () => {
+    const partial: LineageEdge[] = [{ parentLotId: "A", childLotId: "CHILD", fraction: 0.7, kind: "BLEND" }];
+    const r = composeLeaves("CHILD", partial);
+    expect(w(r, "A")).toBe(0.7);
+    expect(w(r, "CHILD")).toBeCloseTo(0.3, 9); // the unknown 30% stays on the child, not dropped
+    expect(r.complete).toBe(false);
+    expect(r.leaves.reduce((a, l) => a + l.weight, 0)).toBeCloseTo(1, 9);
+  });
+
+  it("splits evenly when fractions are missing entirely", () => {
+    const noFractions: LineageEdge[] = [
+      { parentLotId: "A", childLotId: "CHILD", fraction: null, kind: "BLEND" },
+      { parentLotId: "B", childLotId: "CHILD", fraction: null, kind: "BLEND" },
+    ];
+    const r = composeLeaves("CHILD", noFractions);
+    expect(w(r, "A")).toBe(0.5);
+    expect(w(r, "B")).toBe(0.5);
+  });
+
+  it("survives a cycle instead of blowing the stack", () => {
+    const cyclic: LineageEdge[] = [
+      { parentLotId: "A", childLotId: "B", fraction: 1, kind: "BLEND" },
+      { parentLotId: "B", childLotId: "A", fraction: 1, kind: "BLEND" },
+    ];
+    const r = composeLeaves("A", cyclic);
+    expect(r.leaves.reduce((a, l) => a + l.weight, 0)).toBeCloseTo(1, 9);
+  });
+
+  it("agrees with composeRollup — same walk, marginals vs joint", () => {
+    const leaves = composeLeaves("CHILD", edges);
+    const rollup = composeRollup("CHILD", edges, meta);
+    const cab = rollup.byVariety.find((s) => s.key === "Cabernet");
+    expect(cab?.pct).toBe(60);
+    expect(w(leaves, "A")).toBe(0.6);
+    expect(rollup.complete).toBe(leaves.complete);
   });
 });

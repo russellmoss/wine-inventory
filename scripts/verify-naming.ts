@@ -55,7 +55,13 @@ async function assertThrows<E extends Error>(
 
 const created = { vineyardIds: [] as string[], vesselIds: [] as string[], lotIds: [] as string[] };
 
-async function seedLot(code: string, vesselId: string, volumeL: number, vineyardId: string): Promise<string> {
+// Each fixture lot gets its OWN vessel. These four lots used to share one tank, which LEDGER-12 now
+// refuses at the ledger write — and rightly: naming is about lot IDENTITY and has nothing to say about
+// where the wine sits, so sharing a tank was incidental to the thing under test.
+async function seedLot(code: string, volumeL: number, vineyardId: string): Promise<string> {
+  const vessel = await prisma.vessel.create({ data: { code: `ZZ-NM-${code.replace(/^ZZ-NM-/, "")}-V`, type: "TANK", capacityL: 3000 } });
+  created.vesselIds.push(vessel.id);
+  const vesselId = vessel.id;
   const lot = await prisma.lot.create({
     data: { code, form: "WINE", afState: "DRY", originVineyardId: vineyardId, vintageYear: 2024 },
   });
@@ -111,11 +117,8 @@ async function main() {
 
   const vy = await prisma.vineyard.create({ data: { name: "ZZ-NM Naming VY" } });
   created.vineyardIds.push(vy.id);
-  const tank = await prisma.vessel.create({ data: { code: "ZZ-NM-TANK", type: "TANK", capacityL: 3000 } });
-  created.vesselIds.push(tank.id);
-
   console.log("\n── rename appends history, never rewrites snapshots ──");
-  const lotId = await seedLot("ZZ-NM-A", tank.id, 500, vy.id);
+  const lotId = await seedLot("ZZ-NM-A", 500, vy.id);
   const snapsBefore = await prisma.lotOperationLine.findMany({ where: { lotId }, select: { id: true, lotCode: true } });
   assert(snapsBefore.length > 0 && snapsBefore.every((s) => s.lotCode === "ZZ-NM-A"), "SEED froze the lotCode snapshot");
 
@@ -150,7 +153,7 @@ async function main() {
   assert(asRec.currentCode === "ZZ-NM-C", "(d) current code is C");
 
   // (e) collision OFFERS, not silent
-  const otherLotId = await seedLot("ZZ-NM-TAKEN", tank.id, 100, vy.id);
+  const otherLotId = await seedLot("ZZ-NM-TAKEN", 100, vy.id);
   const err = (await assertThrows(
     () => renameLotCore({ lotId, newCode: "ZZ-NM-TAKEN", actor: ACTOR, commandId: "zznm-rename-3" }),
     "(e) colliding code rename OFFERS disambiguation (throws CodeCollisionError, not silent)",
@@ -187,8 +190,8 @@ async function main() {
   assert(byHist.find((m) => m.lotId === lotId)?.matchContext === "ZZ-NM-A", "(h) the envelope carries the historical matchContext");
 
   // (i) swap two lots' codes in one tx with exactly two events
-  const swapA = await seedLot("ZZ-NM-SW1", tank.id, 100, vy.id);
-  const swapB = await seedLot("ZZ-NM-SW2", tank.id, 100, vy.id);
+  const swapA = await seedLot("ZZ-NM-SW1", 100, vy.id);
+  const swapB = await seedLot("ZZ-NM-SW2", 100, vy.id);
   const evBefore = await prisma.lotCodeEvent.count({ where: { lotId: { in: [swapA, swapB] } } });
   await swapLotCodes({ lotIdA: swapA, lotIdB: swapB, actor: ACTOR, commandId: "zznm-swap-1" });
   const a2 = await prisma.lot.findUniqueOrThrow({ where: { id: swapA }, select: { code: true } });

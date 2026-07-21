@@ -84,8 +84,7 @@ export function CellarActions({
   const [timelineError, setTimelineError] = React.useState(false);
   const [detailItem, setDetailItem] = React.useState<TimelineItem | null>(null);
   const [issueWoOpen, setIssueWoOpen] = React.useState(false);
-  const [fermentLotId, setFermentLotId] = React.useState(vessel.residentLots[0]?.lotId ?? "");
-  const fermentLot = vessel.residentLots.find((l) => l.lotId === fermentLotId) ?? vessel.residentLots[0];
+  const fermentLot = vessel.residentLots[0];
 
   // Form state resets across vessels via a `key` remount in the parent (BulkClient), so no
   // reset effect is needed here.
@@ -263,26 +262,9 @@ export function CellarActions({
   // ── Analyses tab: fermentation monitoring (interactive chart + readings + state) + all-analyte trends.
   const analysesTab = (
     <div>
-      {vessel.residentLots.length > 1 ? (
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-            Lot in this vessel
-          </label>
-          <select
-            value={fermentLot?.lotId ?? ""}
-            onChange={(e) => setFermentLotId(e.target.value)}
-            style={{ height: 44, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontSize: 14 }}
-          >
-            {vessel.residentLots.map((l) => (
-              <option key={l.lotId} value={l.lotId}>
-                {l.code}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
+      {/* No "Lot in this vessel" select: the vessel IS the wine (LEDGER-12), so the monitor charts it. */}
       {fermentLot ? (
-        <FermentMonitor key={fermentLot.lotId} vesselId={vessel.id} vesselCode={vessel.code} lotId={fermentLot.lotId} lotCode={fermentLot.code} materials={materials} residentLots={vessel.residentLots.map((l) => ({ lotId: l.lotId, code: l.code }))} />
+        <FermentMonitor key={fermentLot.lotId} vesselId={vessel.id} vesselCode={vessel.code} lotId={fermentLot.lotId} lotCode={fermentLot.code} materials={materials} />
       ) : (
         <p style={{ color: "var(--text-muted)", fontSize: 14 }}>This vessel is empty — nothing to monitor.</p>
       )}

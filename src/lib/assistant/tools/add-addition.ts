@@ -120,8 +120,8 @@ export const addAdditionTool: AssistantTool = {
       material = res.row;
     }
 
-    // Preview: the canonical total (rate → amount × volume; absolute → the amount itself), + the resident
-    // lots being dosed (transparency on a multi-lot tank — the dose hits all of them).
+    // Preview: the canonical total (rate → amount × volume; absolute → the amount itself), + the wine
+    // being dosed, named — so the confirm card says WHAT is being treated, not just which vessel.
     const est = computeDoseTotal(input.amount, unit, vol); // handles rate AND absolute
     const totalClause = est
       ? dose.kind === "rate"
@@ -130,9 +130,7 @@ export const addAdditionTool: AssistantTool = {
       : `${input.amount} ${unit}`;
     const contents = await resolveVesselContents(input.vessel);
     const lotClause =
-      contents.kind === "blend" ? ` — all ${contents.lots.length} resident lots (${contents.lots.map((l) => l.code).join(", ")})`
-      : contents.kind === "single" ? ` — lot ${contents.lot.code}`
-      : "";
+      contents.kind === "single" ? ` — lot ${contents.lot.code}` : "";
 
     const preview = `${fining ? "Fine" : "Add"} ${input.amount} ${unit} ${materialDisplayName(material)} to ${label(v)}${lotClause}: ${totalClause}.`;
     const token = signProposal("add_addition", {
