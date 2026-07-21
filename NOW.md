@@ -309,13 +309,27 @@ is two decisions that are Russell's, not code:
    • ✅ **The real check: after the rebuild + re-collapse, a fresh recomputation reports ZERO
      drift against the incremental fold.** Round trip proven on live data — reverted, rebuilt,
      re-collapsed, verified.
-   • ⛔ **BHUTAN IS OUT OF SCOPE (Russell): leave Barrel 18's 3 lots alone**, but new work must
-     follow the rule. Two consequences now in the plan: the **DB UNIQUE cannot ship** while any
-     tenant is dirty, and the app guard must become **"never make it worse"** (an op may not
-     increase a vessel's lot count) — otherwise Barrel 18 freezes and they cannot even rack out
-     of it. Monotone, so the estate heals and can never regress.
-   • ✅ **ALL OF DEMO IS COLLAPSED AND VERIFIED** (T5 #4580; B4 #4731, B5 #4732, T7 #4733).
-     Remaining violation: **1** — Bhutan Barrel 18, out of scope by decision.
+   • ✅ **ZERO VIOLATIONS — `verify:one-lot-per-vessel` PASSES across 38 vessels / 8 tenants**, and
+     `rebuild:vessel-composition` reports ZERO drift. Demo T5 #4580, B4 #4731, B5 #4732, T7 #4733;
+     Bhutan Barrel 18 #4858.
+   • 🔎 **BHUTAN BARREL 18 — I had it backwards, and the truth matters.** NOT a data-entry error.
+     Its lots came from `system@day-zero-migration`, note *"Day-Zero legacy seed from
+     **vessel_component**"*: the OLD model was a COMPOSITION table (vessel, variety, vineyard,
+     vintage, volume) — Vintrace's shape — and the migration turned each component row into its
+     own LOT. The barrel is ONE three-variety Bordeaux blend (100 Merlot + 75 Cab Franc, both
+     Bajo, + 50 Cab Sauv, Gortshalu = 225 L in a 225 L barrel). **Barrel 18 is the fossil of the
+     exact modelling error this plan fixes.** I read round numbers as suspicious when they were a
+     recorded composition; the three lots existed in no other vessel and every single-component
+     barrel migrated cleanly. Collapsing it RESTORED the source data rather than inventing a wine.
+     Done as **`2025-BL-BJB`** via the new `--new-blend=<vesselId>=<TOKEN>` mode — a genuine blend
+     must not be called "Merlot". Composition identical to the source rows; fractions
+     0.44444/0.33333/0.22222; the three originals kept DEPLETED as its parents.
+     ⚠️ First run passed `vintage: null` → coded **NV**-BL-BJB for an all-2025 blend; vintage is
+     now derived from the parents when they agree. The reverted NV lot survives as a CORRECTED
+     zero-volume row (append-only, LEDGER-10) — debris from my run, not worth row surgery.
+   • **The DB UNIQUE is now unblocked**, but the app guard should STILL be "never make it worse"
+     (an op may not increase a vessel's lot count): monotone, so a future legacy import heals
+     instead of freezing a vessel nobody can rack out of.
    • 🔎 **A THIRD defect surfaced only because B4/B5/T7 absorbed the SAME parent three times**
      (once per vessel). A lineage edge is one row per (parent, child), so each absorb OVERWROTE
      the fraction with just its own draw: 0.25627 recorded vs 0.27711 true — B4+B5's 125.53 L
