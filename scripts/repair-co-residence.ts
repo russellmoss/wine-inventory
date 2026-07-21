@@ -47,6 +47,18 @@ const SURVIVORS = new Map(
     .map((a) => a.slice("--survivor=".length).split("="))
     .filter((p): p is [string, string] => p.length === 2),
 );
+/**
+ * --new-blend=<vesselId>=<TOKEN> — mint a NEW blend lot instead of letting the largest resident
+ * absorb the others. Right when the vessel genuinely holds a BLEND rather than a dominant wine
+ * plus some top-ups: calling a 44% Merlot / 33% Cab Franc / 22% Cab Sauvignon barrel "Merlot"
+ * would misdescribe it on every report from then on. The original lots survive as its parents.
+ */
+const NEW_BLENDS = new Map(
+  argv
+    .filter((a) => a.startsWith("--new-blend="))
+    .map((a) => a.slice("--new-blend=".length).split("="))
+    .filter((p): p is [string, string] => p.length === 2),
+);
 
 type Row = {
   tenantId: string;
@@ -60,9 +72,10 @@ type Row = {
   carbonation: string;
   ownership: string;
   form: string;
+  vintageYear: number | null;
 };
 
-type Resident = { lotId: string; lotCode: string; volumeL: number; productType: string; carbonation: string; ownership: string; form: string };
+type Resident = { lotId: string; lotCode: string; volumeL: number; productType: string; carbonation: string; ownership: string; form: string; vintageYear: number | null };
 type Target = { tenantId: string; vesselId: string; label: string; residents: Resident[] };
 
 async function loadTargets(): Promise<Target[]> {
@@ -71,7 +84,7 @@ async function loadTargets(): Promise<Target[]> {
       SELECT vl."tenantId" AS "tenantId", vl."vesselId" AS "vesselId", v.code AS "vesselCode",
              v.type::text AS "vesselType", vl."lotId" AS "lotId", l.code AS "lotCode",
              vl."volumeL"::text AS "volumeL", l."productType"::text AS "productType",
-             l.carbonation::text AS carbonation, l.ownership::text AS ownership, l.form::text AS form
+             l.carbonation::text AS carbonation, l.ownership::text AS ownership, l.form::text AS form, l."vintageYear" AS "vintageYear"
       FROM vessel_lot vl JOIN vessel v ON v.id = vl."vesselId" JOIN lot l ON l.id = vl."lotId"
       WHERE vl."vesselId" IN (
         SELECT "vesselId" FROM vessel_lot GROUP BY "tenantId", "vesselId" HAVING COUNT(*) > 1
@@ -95,6 +108,7 @@ async function loadTargets(): Promise<Target[]> {
       carbonation: r.carbonation,
       ownership: r.ownership,
       form: r.form,
+      vintageYear: r.vintageYear,
     });
     byVessel.set(r.vesselId, t);
   }
@@ -163,9 +177,16 @@ async function main() {
     }
     const losers = t.residents.filter((r) => r.lotId !== survivor.lotId);
 
-    console.log(`  SURVIVOR   ${survivor.lotCode}  ${survivor.volumeL} L${override ? "  (overridden)" : "  (largest)"}`);
-    for (const l of losers) console.log(`  absorbed   ${l.lotCode}  ${l.volumeL} L`);
-    console.log(`  RESULT     ${survivor.lotCode} holds ${total} L; ${t.label} holds 1 lot`);
+    const blendToken = NEW_BLENDS.get(t.vesselId);
+    if (blendToken) {
+      console.log(`  NEW BLEND  all ${t.residents.length} lots become one new "${blendToken}" blend lot`);
+      for (const r of t.residents) console.log(`  merged     ${r.lotCode}  ${r.volumeL} L`);
+      console.log(`  RESULT     one new blend lot holds ${total} L; ${t.label} holds 1 lot`);
+    } else {
+      console.log(`  SURVIVOR   ${survivor.lotCode}  ${survivor.volumeL} L${override ? "  (overridden)" : "  (largest)"}`);
+      for (const l of losers) console.log(`  absorbed   ${l.lotCode}  ${l.volumeL} L`);
+      console.log(`  RESULT     ${survivor.lotCode} holds ${total} L; ${t.label} holds 1 lot`);
+    }
 
     // The other positions this must NOT touch. Printed BEFORE the pre-flights on purpose: the
     // vessels most likely to be blocked are exactly the ones whose lots are spread around, and
@@ -206,7 +227,11 @@ async function main() {
 
     plannedCount++;
     if (!APPLY) {
-      console.log(`  → would write ONE BLEND op (grow ${survivor.lotCode}), vessel-scoped.`);
+      console.log(
+        blendToken
+          ? `  → would write ONE BLEND op minting a new "${blendToken}" lot, vessel-scoped; the ${t.residents.length} originals become its parents.`
+          : `  → would write ONE BLEND op (grow ${survivor.lotCode}), vessel-scoped.`,
+      );
       continue;
     }
 
@@ -219,14 +244,31 @@ async function main() {
         });
         console.log(`     re-pointed ${tasks.length} task(s) at ${survivor.lotCode}`);
       }
-      const res = await blendLotsCore(ACTOR, {
-        mode: "GROW_EXISTING",
-        growIntoLotId: survivor.lotId,
-        toVesselId: t.vesselId,
-        // deplete is keyed on (vesselId, lotId) — this vessel's position only.
-        components: losers.map((l) => ({ vesselId: t.vesselId, lotId: l.lotId, drawL: l.volumeL, deplete: true })),
-        note: `One lot per vessel (LEDGER-12): ${survivor.lotCode} absorbed ${losers.map((l) => l.lotCode).join(", ")} in ${t.label}.`,
-      });
+      // deplete is keyed on (vesselId, lotId), so every draw here is this vessel's position only —
+      // a lot that also sits in other vessels keeps those untouched.
+      // A blend of wines that all share a vintage IS that vintage — leaving it null codes the lot
+      // NV, which would misstate a 2025 barrel on a label. Only genuinely mixed vintages are NV.
+      const vintages = new Set(t.residents.map((r) => r.vintageYear).filter((y): y is number => y != null));
+      const blendVintage = vintages.size === 1 ? [...vintages][0] : null;
+
+      const res = blendToken
+        ? await blendLotsCore(ACTOR, {
+            mode: "NEW_LOT",
+            token: blendToken,
+            vintage: blendVintage,
+            toVesselId: t.vesselId,
+            components: t.residents.map((r) => ({ vesselId: t.vesselId, lotId: r.lotId, drawL: r.volumeL, deplete: true })),
+            note: `One lot per vessel (LEDGER-12): ${t.label} holds one blended wine, recorded as ${t.residents
+              .map((r) => r.lotCode)
+              .join(" + ")} by the Day-Zero migration from vessel_component.`,
+          })
+        : await blendLotsCore(ACTOR, {
+            mode: "GROW_EXISTING",
+            growIntoLotId: survivor.lotId,
+            toVesselId: t.vesselId,
+            components: losers.map((l) => ({ vesselId: t.vesselId, lotId: l.lotId, drawL: l.volumeL, deplete: true })),
+            note: `One lot per vessel (LEDGER-12): ${survivor.lotCode} absorbed ${losers.map((l) => l.lotCode).join(", ")} in ${t.label}.`,
+          });
       // childTotalL is the volume this blend ADDED, not the resulting total — read the projection
       // back so the line says what the vessel actually holds. (The first version printed
       // "now 625 L" after collapsing to 6,995 L, which is exactly the kind of success message
@@ -235,7 +277,7 @@ async function main() {
       const afterL = r2(after.reduce((a, r) => a + Number(r.volumeL), 0));
       console.log(
         `  ✅ APPLIED — op #${res.operationId}, ${res.lineageEdges} lineage edge(s); ` +
-          `${t.label} now holds ${after.length} lot (${survivor.lotCode}, ${afterL} L)`,
+          `${t.label} now holds ${after.length} lot (${res.childCode}, ${afterL} L)`,
       );
     });
   }
