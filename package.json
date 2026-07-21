@@ -64,6 +64,7 @@
     "verify:naming": "tsx --env-file=.env scripts/verify-naming.ts",
     "verify:one-lot-per-vessel": "tsx --env-file=.env scripts/verify-one-lot-per-vessel.ts",
     "verify:vessel-composition": "tsx --conditions=react-server --env-file=.env scripts/verify-vessel-composition.ts",
+    "verify:vessel-composition-readout": "tsx --env-file=.env scripts/verify-vessel-composition-readout.ts",
     "audit:co-residence": "tsx --env-file=.env scripts/audit-co-residence.ts",
     "repair:co-residence": "tsx --conditions=react-server --env-file=.env scripts/repair-co-residence.ts",
     "rebuild:vessel-composition": "tsx --env-file=.env scripts/rebuild-vessel-composition.ts",
