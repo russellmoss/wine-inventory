@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { VadDetector, BARGE_VAD_OPTIONS } from "@/lib/voice/vad";
+import { VadDetector, BARGE_VAD_OPTIONS, echoAdjustedLevel } from "@/lib/voice/vad";
 
 // Owns the microphone: one persistent getUserMedia stream + AudioContext +
 // AnalyserNode, with an RAF loop that computes RMS every frame. That RMS does
@@ -22,8 +22,13 @@ export type MicCapture = {
   ensureReady: () => Promise<void>;
   /** Begin a recording turn; fires onUtterance(blob) once on end-of-speech. */
   beginListen: (onUtterance: (audio: Blob) => void) => void;
-  /** Begin barge-in monitoring; fires onSpeech() once speech is sustained enough to be intentional. */
-  beginBargeIn: (onSpeech: (audio?: Blob) => void, options?: { record?: boolean }) => void;
+  /** Begin barge-in monitoring; fires onSpeech() once speech is sustained enough to be intentional.
+   *  `getOutputLevel` returns the assistant's live TTS output RMS so barge detection can discount its
+   *  own echo (see echoAdjustedLevel) — pass it while the assistant is speaking. */
+  beginBargeIn: (
+    onSpeech: (audio?: Blob) => void,
+    options?: { record?: boolean; getOutputLevel?: () => number },
+  ) => void;
   /** Stop the current turn (stops any active recording) without releasing the mic. */
   endTurn: () => void;
   /** Fully release the mic + audio context. */
@@ -57,6 +62,10 @@ export function useMicCapture(): MicCapture {
 
   const onUtteranceRef = React.useRef<((b: Blob) => void) | null>(null);
   const onSpeechRef = React.useRef<((audio?: Blob) => void) | null>(null);
+  // While the assistant is speaking, returns its live TTS output RMS so the barge
+  // detector can subtract the assistant's own echo from the mic level. Null when
+  // there's no reference (fall back to the raw mic level).
+  const getOutputLevelRef = React.useRef<(() => number) | null>(null);
 
   // Stop the active recorder and hand the assembled blob to the listener.
   const finalizeListen = React.useCallback(() => {
@@ -109,7 +118,13 @@ export function useMicCapture(): MicCapture {
           const evt = vadRef.current.process(rms, now);
           if (evt === "finalize") finalizeListen();
         } else if (mode === "barge") {
-          const evt = bargeVadRef.current.process(rms, now);
+          // Discount the assistant's own playback so barge reacts to the USER, not
+          // the assistant's echo. In gaps between the assistant's words the output
+          // level is ~0 and the bar drops to the raw threshold; during loud
+          // playback the bar rises so residual echo can't self-interrupt.
+          const outputLevel = getOutputLevelRef.current ? getOutputLevelRef.current() : 0;
+          const adjusted = echoAdjustedLevel(rms, outputLevel);
+          const evt = bargeVadRef.current.process(adjusted, now);
           if (evt === "speech-confirmed") {
             modeRef.current = "idle";
             const rec = recorderRef.current;
@@ -162,9 +177,13 @@ export function useMicCapture(): MicCapture {
     modeRef.current = "listen";
   }, []);
 
-  const beginBargeIn = React.useCallback((onSpeech: (audio?: Blob) => void, options?: { record?: boolean }) => {
+  const beginBargeIn = React.useCallback((
+    onSpeech: (audio?: Blob) => void,
+    options?: { record?: boolean; getOutputLevel?: () => number },
+  ) => {
     const stream = streamRef.current;
     onSpeechRef.current = onSpeech;
+    getOutputLevelRef.current = options?.getOutputLevel ?? null;
     bargeVadRef.current.reset();
     chunksRef.current = [];
     if (options?.record && stream) {
@@ -199,6 +218,7 @@ export function useMicCapture(): MicCapture {
     modeRef.current = "idle";
     onUtteranceRef.current = null;
     onSpeechRef.current = null;
+    getOutputLevelRef.current = null;
     const rec = recorderRef.current;
     if (rec && rec.state !== "inactive") {
       rec.onstop = null;

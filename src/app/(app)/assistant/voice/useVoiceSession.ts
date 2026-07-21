@@ -20,6 +20,7 @@ import { clampHistoryForSend } from "@/lib/assistant/message-window";
 import { readDraftGaps } from "@/lib/assistant/proposal-card";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
+import { useThinkingSound } from "./useThinkingSound";
 
 // The orchestrator. Owns the hands-free state machine and stitches the pieces
 // together: listen (mic + VAD) -> transcribe (server) -> think (assistant stream)
@@ -146,6 +147,15 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     focusRef.current = focus;
   }, [focus]);
 
+  // Ambient earcon while the assistant works out its reply, so the wait isn't dead
+  // silence. Driven off the rendered state (not the impl ref) so every path that
+  // leaves "thinking" — reply, barge-in, interrupt, error, stop — silences it.
+  const thinkingSound = useThinkingSound();
+  React.useEffect(() => {
+    if (state === "thinking") thinkingSound.start();
+    else thinkingSound.stop();
+  }, [state, thinkingSound]);
+
   React.useEffect(() => {
     optsRef.current = opts;
   });
@@ -239,7 +249,11 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         if (!clean) return;
         if (stateRef.current !== "speaking") {
           go("speaking");
-          mic.beginBargeIn(() => implRef.current.interrupt());
+          // Pass the live TTS output level so barge-in discounts the assistant's own
+          // echo — the user can interrupt by voice without the assistant self-interrupting.
+          mic.beginBargeIn(() => implRef.current.interrupt(), {
+            getOutputLevel: () => playback.levelRef.current,
+          });
         }
         const clip = fetch("/api/assistant/speak", {
           method: "POST",
@@ -257,7 +271,13 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         const res = await fetch("/api/assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: clampHistoryForSend(historyRef.current), conversationId: conversationIdRef.current }),
+          // `voice: true` asks the server for a SPOKEN-style reply (no markdown, no
+          // read-aloud citations, units as words). Same brain + same history otherwise.
+          body: JSON.stringify({
+            messages: clampHistoryForSend(historyRef.current),
+            conversationId: conversationIdRef.current,
+            voice: true,
+          }),
           signal: ac.signal,
         });
         if (!res.ok || !res.body) throw new Error("assistant request failed");

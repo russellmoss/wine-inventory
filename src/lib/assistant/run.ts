@@ -2,7 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
-import { buildSystemPrompt } from "./prompt";
+import { buildSystemPrompt, VOICE_STYLE_PROMPT } from "./prompt";
 import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
 import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION, OVERCLAIM_REPAIR_PROMPT } from "./overclaim-guard";
 import { type AssistantEvent, asProposal, asChoice, asNavigation, isDraftProposal } from "./assistant-events";
@@ -49,6 +49,9 @@ export async function runAssistant(opts: {
   user: AppUser;
   messages: ChatMessage[];
   send: (e: AssistantEvent) => void;
+  /** Hands-free voice turn: append the spoken-reply style block (see VOICE_STYLE_PROMPT).
+   *  Omitted for text chat and for the golden evals, which keep the markdown-rendering brain. */
+  voice?: boolean;
   /** Test seam. Omitted in production, where it defaults to the real Anthropic SDK stream. */
   createStream?: AssistantStreamFactory;
 }): Promise<AssistantRunResult> {
@@ -97,6 +100,10 @@ export async function runAssistant(opts: {
   const createStream: AssistantStreamFactory =
     opts.createStream ?? ((params) => (client ??= new Anthropic()).messages.stream(params));
   let system = buildSystemPrompt();
+  // Voice turns get an extra style block so spoken replies are conversational instead of
+  // screen-shaped (no markdown, no read-aloud citations, units as words). Text chat and the
+  // golden evals never set this, so their behaviour is byte-identical to before.
+  if (opts.voice) system += `\n\n${VOICE_STYLE_PROMPT}`;
 
   // Plan 079 (U12): if engineering asked this user for a detail on a bug they reported, surface it —
   // the inbox has no push notification, so the assistant is where they're most likely to notice.

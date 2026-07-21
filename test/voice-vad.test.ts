@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { VadDetector, BARGE_VAD_OPTIONS, DEFAULT_VAD_OPTIONS } from "@/lib/voice/vad";
+import { VadDetector, BARGE_VAD_OPTIONS, DEFAULT_VAD_OPTIONS, echoAdjustedLevel } from "@/lib/voice/vad";
 
 // Feed synthetic (rms, time) sequences and assert onset/finalize timing. Times
 // are explicit ms so the test doesn't depend on a clock.
@@ -68,23 +68,23 @@ describe("VadDetector", () => {
     expect(v.process(0.2, 800)).toBe("speech-start"); // second turn begins
   });
 
-  // Barge-in (interrupting the assistant while it speaks) must be much harder to
-  // trip than listening, or the assistant interrupts itself on its own echo / a
-  // table bang. These lock the preset's intent so a future tweak can't quietly
-  // regress it back to the sensitive listen thresholds.
-  describe("BARGE_VAD_OPTIONS (robust barge-in)", () => {
-    it("is strictly less sensitive than the listen defaults", () => {
+  // Barge-in (interrupting the assistant while it speaks) is less sensitive than
+  // listening AND fed an echo-adjusted level, so the assistant can't interrupt
+  // itself while the user still can. These lock the preset's intent + timing.
+  describe("BARGE_VAD_OPTIONS (adaptive barge-in)", () => {
+    it("is less sensitive than the listen defaults but still reachable by real speech", () => {
       expect(BARGE_VAD_OPTIONS.speechThreshold).toBeGreaterThan(DEFAULT_VAD_OPTIONS.speechThreshold);
-      expect(BARGE_VAD_OPTIONS.minSpeechMs).toBeGreaterThan(DEFAULT_VAD_OPTIONS.minSpeechMs);
+      expect(BARGE_VAD_OPTIONS.minSpeechMs).toBeGreaterThanOrEqual(DEFAULT_VAD_OPTIONS.minSpeechMs);
+      // Not so high that a normal spoken interruption can't cross it.
+      expect(BARGE_VAD_OPTIONS.speechThreshold).toBeLessThanOrEqual(0.1);
     });
 
-    it("ignores soft echo / room chatter below the barge threshold", () => {
+    it("ignores an echo-adjusted level below the barge threshold", () => {
       const v = new VadDetector(BARGE_VAD_OPTIONS);
-      // Residual playback + background chatter around the listen threshold but
-      // below the barge threshold: never even registers as onset.
+      // Residual echo after the output discount stays under 0.09: never onsets.
       expect(v.process(0.05, 0)).toBe("none");
       expect(v.process(0.08, 300)).toBe("none");
-      expect(v.process(0.1, 900)).toBe("none");
+      expect(v.process(0.06, 900)).toBe("none");
       expect(v.isSpeaking).toBe(false);
     });
 
@@ -92,16 +92,40 @@ describe("VadDetector", () => {
       const v = new VadDetector(BARGE_VAD_OPTIONS);
       expect(v.process(0.4, 0)).toBe("speech-start"); // loud spike registers onset
       // ...but it's gone well before minSpeechMs, so it never confirms an interrupt.
-      expect(v.process(0.3, 200)).toBe("none");
+      expect(v.process(0.3, 150)).toBe("none");
       expect(v.process(0.02, 400)).toBe("none");
       expect(v.isConfirmed).toBe(false);
     });
 
-    it("still confirms a deliberate, sustained interruption", () => {
+    it("confirms a deliberate, sustained interruption (a spoken 'yeah, I got it')", () => {
       const v = new VadDetector(BARGE_VAD_OPTIONS);
-      expect(v.process(0.3, 0)).toBe("speech-start");
-      expect(v.process(0.3, 300)).toBe("none"); // under minSpeechMs (600) so far
-      expect(v.process(0.3, 650)).toBe("speech-confirmed"); // sustained past 600ms -> interrupt
+      expect(v.process(0.15, 0)).toBe("speech-start");
+      expect(v.process(0.15, 250)).toBe("none"); // under minSpeechMs (400) so far
+      expect(v.process(0.15, 450)).toBe("speech-confirmed"); // sustained past 400ms -> interrupt
+    });
+  });
+
+  // The echo discount is what lets the barge threshold stay low (reachable by the
+  // user) without the assistant interrupting itself on its own playback.
+  describe("echoAdjustedLevel", () => {
+    it("passes the raw mic level through when nothing is playing", () => {
+      expect(echoAdjustedLevel(0.12, 0)).toBeCloseTo(0.12, 5);
+    });
+
+    it("discounts the assistant's own output so its echo stays under the bar", () => {
+      // Assistant loud (output 0.25), mic hears mostly residual echo (0.1):
+      // 0.1 - 0.3*0.25 = 0.025, below the 0.09 barge threshold -> no self-interrupt.
+      expect(echoAdjustedLevel(0.1, 0.25)).toBeLessThan(BARGE_VAD_OPTIONS.speechThreshold);
+    });
+
+    it("still lets the user cross the bar when talking over loud playback", () => {
+      // Assistant loud (0.25) AND the user talks over it (mic 0.22):
+      // 0.22 - 0.3*0.25 = 0.145, above 0.09 -> the user is heard.
+      expect(echoAdjustedLevel(0.22, 0.25)).toBeGreaterThan(BARGE_VAD_OPTIONS.speechThreshold);
+    });
+
+    it("never returns a negative level", () => {
+      expect(echoAdjustedLevel(0.01, 0.9)).toBe(0);
     });
   });
 
