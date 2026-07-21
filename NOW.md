@@ -7,8 +7,10 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 088 — one lot per vessel (LEDGER-12). Units 1–19 BUILT; branch 2 (14–19) is on
-`refactor/one-lot-per-vessel-sweep`, unmerged.**
+**Plan 088 — one lot per vessel (LEDGER-12) is MERGED AND LIVE IN PROD.** All 19 units, PR #445,
+squash `c9ea0ad9`, Vercel Production `success`. Migration was already applied; branches pruned.
+Ticket `cmruoc3yk…` RESOLVED via `closeFeedbackItemCore` (only AFTER the deploy went green), PR #444
+closed as superseded, Mike DMed.
 
 A winemaker thumbs-downed the assistant for asking *"you have 3 lots in one tank — which lot do you
 want to transfer?"* — **"stupid and physically impossible."** He was right, and the picker was the
@@ -27,7 +29,7 @@ Bhutan Barrel 18   45% Merlot · 33% Cabernet Franc · 22% Cabernet Sauvignon
 Demo T5            91% Syrah · 9% Cabernet Sauvignon
 ```
 
-**Three things worth remembering from this:**
+**Four things worth remembering from this:**
 
 - 🔎 **The Bhutan diagnosis was BACKWARDS at first.** Barrel 18's three lots looked like data entry
   ("nobody commingles at exactly 100/75/50"). They came from `system@day-zero-migration`, note
@@ -41,8 +43,13 @@ Demo T5            91% Syrah · 9% Cabernet Sauvignon
 - ⚠️ **Pre-invariant FIXTURES are the recurring blocker.** `verify:chemistry`, `verify:bond` and
   `verify:naming` all seeded several lots into one tank and started failing the moment the guard
   went on. Each needed its own vessel per lot. Expect more if a verify script is added.
+- ⚠️ **The assistant LLM eval is NOISY: 9–12 failures across five runs on IDENTICAL code.** A single
+  6-failure run got written up as an improvement over a 10 baseline; it wasn't, and the Unit 17
+  commit corrects that. **Compare failure SETS, not counts.** The claim that survives every run:
+  no lot / vessel / measurement / tasting case fails — the churn is all inventory/template/WO routing.
 
-**Left to do:** merge branch 2, then the 375px browser pass on Demo (needs a human login).
+**Left to do:** the 375px browser pass on Demo (needs a human login) — the ONLY thing not verified
+against live data.
 
 ## 🔭 Also in flight
 
@@ -433,6 +440,21 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **One lot per vessel (LEDGER-12) — MERGED + LIVE (PR #445, squash `c9ea0ad9`).** 19 units, 29
+  commits. From Russell's own P0 thumbs-down: *"you have 3 lots in one tank — which lot do you want
+  to transfer?"* → **"stupid and physically impossible."** The picker was the symptom; the DATA MODEL
+  permitting several `vessel_lot` rows per vessel was the bug. Reported 3x, answered 3x with
+  instance-level fan-outs (#444 was the fourth — closed as superseded). Now a vessel holds ONE wine
+  (a lot may still span many vessels), enforced at `writeLotOperation` + a `(tenantId, vesselId)`
+  unique index, with identity decided at the moment of combination by one shared
+  `decideCombineRoute`. Every "which lot?" picker deleted; plan 060's whole-tank fan-out with them.
+  A tank now shows its makeup — Bhutan Barrel 18 reads `45% Merlot · 33% Cabernet Franc · 22%
+  Cabernet Sauvignon`. Ticket RESOLVED via the canonical console path AFTER the prod deploy went
+  green; Mike DMed. 🔎 **Lessons: the Bhutan "data entry error" was actually a Day-Zero migration
+  fossil (component ROWS became LOTS) — investigate before writing something off; making composition
+  load-bearing exposed a silent fold bug for blend lots; and pre-invariant verify FIXTURES
+  (`chemistry`, `bond`, `naming`) each needed one vessel per lot.**
+
 - **Cornell fruit resources KB source — CLOSED.** `cornell-grapes`: 96 documents / 948 chunks, 64
   PDFs, `verify:knowledge-base` 20/20 PASS. Merged #424 (source, reconciled) · #425 (crawl error
   visibility) · #426 (CDN) · #427 (title fix). Plan 085 (MSU) closed alongside it. 🔎 Lessons kept:
@@ -543,10 +565,11 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-21 — **plan 088 (one lot per vessel) is built through Unit 19.** A vessel
-holds ONE lot; a lot may occupy MANY vessels (LEDGER-12), enforced at the single `vessel_lot` write
-site plus a `(tenantId, vesselId)` unique index, with identity decided at the moment of combination
-by one shared `decideCombineRoute`. Every "which lot?" picker in the app is gone, and a tank now
-shows what it is MADE of — Bhutan Barrel 18 reads `45% Merlot · 33% Cabernet Franc · 22% Cabernet
-Sauvignon` instead of pretending to be three wines. Branch 2 is unmerged; the 375px browser pass
-still needs a human login._
+_Last updated: 2026-07-21 — **plan 088 (one lot per vessel) is MERGED AND LIVE IN PROD** (PR #445,
+squash `c9ea0ad9`, Vercel Production `success`; the migration was already applied, branches pruned).
+A vessel holds ONE lot; a lot may occupy MANY vessels (LEDGER-12), enforced at the single
+`vessel_lot` write site plus a `(tenantId, vesselId)` unique index, with identity decided at the
+moment of combination by one shared `decideCombineRoute`. Every "which lot?" picker is gone, and a
+tank now shows what it is MADE of — Bhutan Barrel 18 reads `45% Merlot · 33% Cabernet Franc · 22%
+Cabernet Sauvignon` instead of pretending to be three wines. Ticket `cmruoc3yk…` RESOLVED, PR #444
+closed as superseded, Mike DMed. Only the 375px browser pass remains (needs a human login)._
