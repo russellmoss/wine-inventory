@@ -8,8 +8,14 @@ describe("resolveResidentLot", () => {
     expect(resolveResidentLot(["lot-a"], "lot-a")).toEqual({ ok: true, lotId: "lot-a" });
   });
 
-  it("requires an explicit pick when the vessel holds more than one lot", () => {
-    expect(resolveResidentLot(["lot-a", "lot-b"])).toEqual({ ok: false, reason: "ambiguous" });
+  // LEDGER-12 (plan 088): a vessel holds ONE cohesive liquid, so there is no "which lot?" to ask.
+  // This used to assert `{ ok: false, reason: "ambiguous" }` — the outcome that forced a picker
+  // onto every per-lot record in the app.
+  it("never asks which lot: a legacy multi-resident vessel resolves to the wine that is in it", () => {
+    // listResidentLots orders by volume desc, so the first entry is the dominant holding. A row
+    // that predates the invariant still gets a reading recorded rather than being refused.
+    expect(resolveResidentLot(["lot-a", "lot-b"])).toEqual({ ok: true, lotId: "lot-a" });
+    // An explicit pick is still honoured — that is how a caller pins a lot BY CODE.
     expect(resolveResidentLot(["lot-a", "lot-b"], "lot-b")).toEqual({ ok: true, lotId: "lot-b" });
   });
 
