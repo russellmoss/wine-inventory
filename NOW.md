@@ -209,7 +209,22 @@ is two decisions that are Russell's, not code:
    ⚠️ Also learned: `recrawl-knowledge` reads sources from the **DB**, not config — merging a
    source does NOTHING until `seed:knowledge-sources` runs. Easy to miss.
    Gates: tsc 0, eslint 0, **vitest 2985/0**, verify:invariants 36/36, verify:vt-enology PASS.
-7. ← you are here
+7. **OPEN — assistant VOICE MODE "oscillates, never speaks" fixed LOCALLY (branch
+   `claude/voice-recognition-detection-7eb06e`, NOT committed/pushed).** Root cause: barge-in (the
+   "talk over the assistant to interrupt it" detector) used the SAME 0.04 RMS threshold as normal
+   listening, so while the assistant spoke, the mic heard its own playback past echo-cancellation
+   (or a table bang) and interrupted itself → listen→transcribe→think→(cut off)→loop, no audio ever.
+   The Jul-8 "voice focus" commit `75d20d5b` is where this + a latent STT fragility landed. Fixes:
+   (a) `BARGE_VAD_OPTIONS` in `vad.ts` (0.15 threshold / 600ms sustained) + a dedicated `bargeVadRef`
+   in `useMicCapture.ts` so LISTEN stays sensitive but BARGE is robust; (b) hardened
+   `transcribe/route.ts` so the per-utterance voice-settings read + audio-isolation can NEVER 502 a
+   turn (they now fall back to raw audio) — that coupling was the latent "stops hearing us."
+   Ruled OUT by elimination: STT works (reaches "thinking"), TTS works (hit ElevenLabs directly →
+   200 + 28KB audio), normalizer/chunker fine. The voiceprint/speaker-match gating was NEVER wired
+   into the live loop, so nothing to unwind there. Gates: **vitest voice-vad 12/12**, eslint 0 on the
+   3 touched files. ⚠️ **NOT live-verified** — barge-in needs a real mic; requires a human to talk to
+   it on Demo. Pop when confirmed talking on a device.
+8. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
@@ -329,7 +344,12 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-21 — **#373 "drop down" closed as REDUNDANT** (no code): the consumable vendor field is
+_Last updated: 2026-07-21 — **assistant VOICE MODE "never speaks" fixed locally** (branch
+`claude/voice-recognition-detection-7eb06e`, not committed): barge-in was self-interrupting on the
+assistant's own audio because it used the listen threshold; added a robust `BARGE_VAD_OPTIONS`
+(0.15/600ms) on a dedicated detector, and hardened the transcribe route so the settings/isolation
+read can't 502 a turn. vitest voice-vad 12/12, eslint 0. NOT yet live-verified (needs a real mic).
+Prior: **#373 "drop down" closed as REDUNDANT** (no code): the consumable vendor field is
 already a fuzzy `VendorPicker` over first-class vendors (persists vendorId, NAMING-1) in both the Add/Edit form
 (Plan 069) and the Receive panel (U17, PR #395); free-text was retired in #433. Mike DMed + RESOLVED. **This
 closes the ENTIRE Mike consumables-flow cluster: #377 → #366/#370 → #372 → #374 → #373.** Prior: **#374 "cost"
