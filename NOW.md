@@ -327,9 +327,23 @@ is two decisions that are Russell's, not code:
      ⚠️ First run passed `vintage: null` → coded **NV**-BL-BJB for an all-2025 blend; vintage is
      now derived from the parents when they agree. The reverted NV lot survives as a CORRECTED
      zero-volume row (append-only, LEDGER-10) — debris from my run, not worth row surgery.
-   • **The DB UNIQUE is now unblocked**, but the app guard should STILL be "never make it worse"
-     (an op may not increase a vessel's lot count): monotone, so a future legacy import heals
-     instead of freezing a vessel nobody can rack out of.
+   • ✅ **UNIT 13 DONE — LEDGER-12 IS ON, IN CODE AND IN THE DATABASE.** Migration
+     `20260721160000_one_lot_per_vessel` applied to prod: `UNIQUE (tenantId, vesselId)` on
+     `vessel_lot`. Proven live — a direct INSERT of a second lot is refused with **23505**, no row
+     left behind. Invariant note `LEDGER-12`; `verify:invariants` 37/37, frontmatter 38/38.
+   • 🔎 **The chokepoint rule is MONOTONE on purpose** (`assertNoWorsenedCoResidence`): it refuses
+     an op that leaves a vessel with MORE lots than it started with, not one that merely isn't
+     perfect. "Must be exactly one" would refuse every op on a mis-recorded vessel **including the
+     rack that would empty it** — freezing a barrel nobody can fix through the app.
+   • ⚠️ **The migration is HAND-WRITTEN.** `prisma migrate diff` against this schema emits a huge
+     phantom diff (enum rebuilds, FK drops) — the known trap. Write the one statement yourself.
+   • ⚠️ **CI cannot run the cross-tenant sweep** — CI has no DB by design. The CI guarantee is the
+     unit tests + the DB constraint; `verify:one-lot-per-vessel` is the OPERATIONAL check around a
+     migration or repair. The invariant note says so rather than claiming a gate that doesn't exist.
+   • 🔎 **Turning it on immediately found two fixtures encoding the old model** — which is the point
+     of a real guard: `verify-chemistry` seeded 2 lots in a tank to exercise the plan-060 fan-out
+     (now unbuildable; asserts the replacement behaviour instead), and `verify-bond` shared one
+     vessel across two bond-A lots.
    • 🔎 **A THIRD defect surfaced only because B4/B5/T7 absorbed the SAME parent three times**
      (once per vessel). A lineage edge is one row per (parent, child), so each absorb OVERWROTE
      the fraction with just its own draw: 0.25627 recorded vs 0.27711 true — B4+B5's 125.53 L
