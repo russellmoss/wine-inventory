@@ -16,7 +16,7 @@ function readingLabel(analyteKey: string): string {
 // Wraps recordMeasurementsAction → recordMeasurementsCore (no re-implemented chemistry, no db_*).
 //
 // Decisions (interview 2026-07-05): attaches to exactly ONE lot (measurements are per-lot, never
-// whole-vessel — the one-lot invariant); a blend vessel is ambiguous → resolveLotTarget asks which lot.
+// whole-vessel — LEDGER-12 means a vessel resolves to its one lot, so there is nothing to ask.
 // Values are accepted as typed (no plausibility ceiling) and shown in the confirm card so a typo is
 // visible before confirming. This is NOT the block-ripeness Brix reading (that's log_brix, on a vineyard
 // block with grapes still on the vine / at harvest) — this is a cellar lot's chemistry, INCLUDING a

@@ -41,7 +41,7 @@ type RecordTastingRawInput = {
 export const recordTastingNoteTool: AssistantTool = {
   name: "record_tasting_note",
   description:
-    "Record a sensory TASTING NOTE for a wine — appearance / aroma / flavor prose, 1–5 structure scores (tannin, acidity, body, finish), an overall score (0–100 or 0–20), and free notes. Use whenever the user describes how a wine SMELLS or TASTES against a vessel or lot (e.g. 'log a tasting note on T5 that it smells like rotten eggs', 'note that barrel 3 tastes oxidized'). This is the sensory counterpart to record_measurement (which is for numeric chem/lab readings). Give the wine by lot code (e.g. 'lot 24-CS-A') OR by the vessel that holds it (e.g. 'tank 5' / 'T5'). If the vessel holds more than one lot (a blend/co-ferment), you do NOT have to pick a lot yourself — pass the vessel and the tool returns a clickable lot picker for the user to pin the exact lot. Does NOT save immediately — returns a preview to confirm.",
+    "Record a sensory TASTING NOTE for a wine — appearance / aroma / flavor prose, 1–5 structure scores (tannin, acidity, body, finish), an overall score (0–100 or 0–20), and free notes. Use whenever the user describes how a wine SMELLS or TASTES against a vessel or lot (e.g. 'log a tasting note on T5 that it smells like rotten eggs', 'note that barrel 3 tastes oxidized'). This is the sensory counterpart to record_measurement (which is for numeric chem/lab readings). Give the wine by lot code (e.g. 'lot 24-CS-A') OR by the vessel that holds it (e.g. 'tank 5' / 'T5') — a vessel holds one wine, so naming it is enough. Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",

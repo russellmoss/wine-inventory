@@ -268,61 +268,52 @@ async function resolveLotCandidates(opts: { lot?: string; vessel?: string }): Pr
     throw new Error(`No active lot matches "${opts.lot}". Check the lot code, or name the vessel.`);
   }
   if (opts.vessel) {
-    // Enriched vessel query (NOT resolveVesselContents — that stays {id,code} for its other callers):
-    // pull per-lot volume + vintage for the picker sublabel so co-resident lots are distinguishable.
+    // A vessel holds ONE cohesive liquid (LEDGER-12), so naming a vessel names its wine. This used
+    // to return a CHOICE of co-resident lots, plus a "float the lot with the most recent reading to
+    // the top" hack that existed to stop a co-ferment's daily readings fragmenting across lots.
+    // Both are gone with plan 088 — there is nothing left to choose between.
     const m = await matchVesselByText(opts.vessel);
     const vessel = await prisma.vessel.findUnique({
       where: { id: m.id },
       select: {
         code: true,
         type: true,
-        vesselLots: { include: { lot: { select: { id: true, code: true, vintageYear: true } } } },
+        vesselLots: {
+          orderBy: { volumeL: "desc" }, // a pre-invariant row still resolves to the dominant wine
+          include: { lot: { select: { id: true, code: true, vintageYear: true } } },
+        },
       },
     });
     if (!vessel) throw new Error(`No ${m.type === "BARREL" ? "barrel" : "tank"} "${m.code}" exists.`);
     const label = `${vessel.type === "BARREL" ? "Barrel" : "Tank"} ${vessel.code}`;
-    const lots: LotCandidate[] = vessel.vesselLots.map((vl) => ({
-      id: vl.lot.id,
-      code: vl.lot.code,
-      detail: [vl.lot.vintageYear ? String(vl.lot.vintageYear) : null, `${Number(vl.volumeL).toLocaleString()} L`].filter(Boolean).join(" · "),
-    }));
-    if (lots.length === 0) throw new Error(`${label} is empty — there's no wine to record a reading against.`);
-    if (lots.length === 1) return { kind: "one", lot: lots[0] };
-    // Curve continuity (design review): float the lot that got this vessel's MOST RECENT reading to the
-    // top and tag it, so a co-fermented tank's daily readings stay on one lot instead of fragmenting.
-    const last = await prisma.analysisPanel.findFirst({
-      where: { lotId: { in: lots.map((l) => l.id) }, voidedAt: null },
-      orderBy: { observedAt: "desc" },
-      select: { lotId: true },
-    });
-    if (last) {
-      const i = lots.findIndex((l) => l.id === last.lotId);
-      if (i > 0) lots.unshift(lots.splice(i, 1)[0]);
-      if (lots[0]?.id === last.lotId) lots[0].detail = [lots[0].detail, "last reading"].filter(Boolean).join(" · ");
-    }
-    return { kind: "many", lots, ref: opts.vessel, via: "vessel", vesselLabel: label };
+    const resident = vessel.vesselLots[0];
+    if (!resident) throw new Error(`${label} is empty — there's no wine to record a reading against.`);
+    return { kind: "one", lot: { id: resident.lot.id, code: resident.lot.code } };
   }
   throw new Error("Which lot (or vessel) is this for?");
 }
 
 /**
  * Resolve the ONE lot a per-lot record (chem panel, tasting note) attaches to — from a lot code OR a
- * vessel reference. Throws a clear message on ambiguity (the one-lot invariant). For the clickable-picker
+ * vessel reference. A VESSEL always resolves: it holds one cohesive liquid (LEDGER-12). Only an
+ * ambiguous lot CODE can still be genuinely ambiguous, and that throws. For the clickable-picker
  * variant the assistant chat tools use, see resolveLotTargetOrChoice.
  */
 export async function resolveLotTarget(opts: { lot?: string; vessel?: string }): Promise<{ lotId: string; lotCode: string }> {
   const r = await resolveLotCandidates(opts);
   if (r.kind === "one") return { lotId: r.lot.id, lotCode: r.lot.code };
-  if (r.via === "vessel") throw new Error(`${r.vesselLabel} holds a blend (${r.lots.map((l) => l.code).join(", ")}) — which lot is this for?`);
   throw new Error(`Several lots match "${r.ref}": ${r.lots.map((l) => l.code).join(", ")}. Which one?`);
 }
 
 /**
- * Like resolveLotTarget, but on a multi-lot vessel (or an ambiguous lot code) returns a clickable CHOICE
- * (one option per candidate lot, id-pinned via signResume) instead of a text dead-end — so a co-fermented
- * "one must" tank no longer blocks a reading. `toolName`/`resumeInput` re-drive the SAME tool with the
- * chosen lot pinned ("#<lotId>"), producing the tool's normal confirm-card (never an auto-write). Every
- * recorded row still attaches to exactly ONE lot (VISION D2 intact).
+ * Like resolveLotTarget, but an ambiguous lot CODE returns a clickable CHOICE (one option per
+ * candidate, id-pinned via signResume) instead of a text dead-end. `toolName`/`resumeInput` re-drive
+ * the SAME tool with the chosen lot pinned ("#<lotId>"), producing the tool's normal confirm-card
+ * (never an auto-write).
+ *
+ * A VESSEL never reaches the choice branch any more (plan 088): it holds one wine, so naming a tank
+ * resolves outright. The picker survives only for "several lots match 24-CS" — a real ambiguity in
+ * what the winemaker TYPED, not an invented one about what is in the tank.
  */
 export async function resolveLotTargetOrChoice(
   opts: { lot?: string; vessel?: string },
@@ -331,12 +322,8 @@ export async function resolveLotTargetOrChoice(
 ): Promise<ResolveResult<{ lotId: string; lotCode: string }>> {
   const r = await resolveLotCandidates(opts);
   if (r.kind === "one") return { kind: "one", row: { lotId: r.lot.id, lotCode: r.lot.code } };
-  const prompt =
-    r.via === "vessel"
-      ? `${r.vesselLabel} holds more than one lot — which lot did you sample?`
-      : `Several lots match "${r.ref}" — which one did you sample?`;
   const res = resolveOneOrChoice(r.lots, {
-    prompt,
+    prompt: `Several lots match "${r.ref}" — which one did you sample?`,
     describe: (l) => l.code,
     detail: (l) => l.detail,
     // Re-pin the chosen lot by id and drop the vessel ref so the re-driven tool resolves the exact lot.
@@ -421,7 +408,7 @@ const OPEN_SAMPLE_STATUSES = ["PULLED", "SENT", "PENDING", "RESULT_RETURNED"] as
 
 /**
  * Resolve the lab sample to act on: an explicit id, or the most-recent STILL-OPEN sample on a lot/vessel
- * (a blend vessel asks which lot via resolveLotTarget). Terminal samples (attached/cancelled) are ignored.
+ * (a vessel resolves to its one lot via resolveLotTarget). Terminal samples (attached/cancelled) are ignored.
  * Nothing open → a clear error telling the operator to pull one first.
  */
 export async function resolveOpenSample(
@@ -436,8 +423,8 @@ export async function resolveOpenSample(
     return { kind: "one", row: { sampleId: s.id, lotId: s.lotId, lotCode: s.lot.code, status: s.status, source: s.source } };
   }
   if (!opts.lot && !opts.vessel) throw new Error("Which sample? Give a vessel, a lot, or a sample id.");
-  // A multi-lot vessel surfaces the clickable lot picker (re-driving this tool with the lot pinned),
-  // instead of the old text throw — same one-must fix as the direct record tools.
+  // A vessel resolves to its one wine. The choice branch survives only for an ambiguous lot CODE
+  // ("several lots match 24-CS"), which re-drives this tool with the chosen lot pinned.
   const resolved = await resolveLotTargetOrChoice({ lot: opts.lot, vessel: opts.vessel }, toolName, resumeInput);
   if (resolved.kind === "choice") return resolved;
   const { lotId, lotCode } = resolved.row;

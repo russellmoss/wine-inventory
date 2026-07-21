@@ -8,20 +8,20 @@ import type { PullSampleInput } from "@/lib/chemistry/samples";
 
 // Wave 3 (lab samples) — pull a sample off a lot, optionally sent to a lab in the same step. Wraps
 // pullSampleCore (guarded lifecycle, NOT a ledger op). Per-lot like the chem tools: a blend vessel asks
-// which lot (resolveLotTarget). Results coming back → record_sample_results; send/cancel → manage_sample.
+// its one lot (resolveLotTarget). Results coming back → record_sample_results; send/cancel → manage_sample.
 
 type RawInput = { vessel?: string; lot?: string; source?: string; lab?: string; sendNow?: boolean; expectedAt?: string; note?: string };
 
 export const pullSampleTool: AssistantTool = {
   name: "pull_sample",
   description:
-    "Pull a LAB SAMPLE off a lot (optionally mark it sent to a lab in the same step). Use when the user pulls/draws/takes a sample for analysis: 'pull a sample from tank 5', 'pull a sample of lot 24-CS-A and send it to ETS'. Give the lot by code or the vessel (a blend asks which lot). To record results that came BACK use record_sample_results; to send/cancel an existing sample use manage_sample. Returns a preview to confirm.",
+    "Pull a LAB SAMPLE off a lot (optionally mark it sent to a lab in the same step). Use when the user pulls/draws/takes a sample for analysis: 'pull a sample from tank 5', 'pull a sample of lot 24-CS-A and send it to ETS'. Give the lot by code, or the vessel that holds it. To record results that came BACK use record_sample_results; to send/cancel an existing sample use manage_sample. Returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       lot: { type: "string", description: "Lot code, e.g. '24-CS-A'." },
-      vessel: { type: "string", description: "Vessel holding the lot, e.g. 'tank 5' (a blend asks which lot)." },
+      vessel: { type: "string", description: "Vessel holding the lot, e.g. 'tank 5'." },
       lab: { type: "string", description: "Lab it's sent to, e.g. 'ETS'. Naming a lab implies it was sent." },
       sendNow: { type: "boolean", description: "Mark it sent to the lab now (skip a separate send step). Defaults true when a lab is named." },
       source: { type: "string", description: "Optional free-text of where/how the sample was drawn." },

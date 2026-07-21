@@ -8,7 +8,7 @@ import type { TransitionInput } from "@/lib/ferment/transition-core";
 
 // Assistant-coverage Wave 2 — record a lot's fermentation state transition (AF/MLF) by chat. Wraps
 // transitionStateAction → transitionStateCore (no db_*; the core validates the state machine). Per-lot
-// (blend vessel → asks which lot). AF: NONE→ACTIVE→DRY; MLF: NONE→ACTIVE→COMPLETE.
+// (a vessel resolves to its one lot). AF: NONE→ACTIVE→DRY; MLF: NONE→ACTIVE→COMPLETE.
 
 const TO_LABEL: Record<string, string> = { NONE: "not started", ACTIVE: "active", DRY: "dry", COMPLETE: "complete" };
 
@@ -17,7 +17,7 @@ type TransitionRawInput = { lot?: string; vessel?: string; stage?: "AF" | "MLF";
 export const transitionLotStateTool: AssistantTool = {
   name: "transition_lot_state",
   description:
-    "Record a lot's fermentation state change: alcoholic ferment (AF) or malolactic (MLF). E.g. 'T5 is dry' (AF→DRY), 'start MLF on lot 24-CS-A' (MLF→ACTIVE), 'MLF is done on the Cab' (MLF→COMPLETE), 'primary kicked off in tank 3' (AF→ACTIVE). Give the lot by code or the vessel (a blend asks which lot). Does NOT save immediately — returns a preview to confirm.",
+    "Record a lot's fermentation state change: alcoholic ferment (AF) or malolactic (MLF). E.g. 'T5 is dry' (AF→DRY), 'start MLF on lot 24-CS-A' (MLF→ACTIVE), 'MLF is done on the Cab' (MLF→COMPLETE), 'primary kicked off in tank 3' (AF→ACTIVE). Give the lot by code, or the vessel that holds it. Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
