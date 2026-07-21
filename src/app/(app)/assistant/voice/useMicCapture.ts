@@ -30,6 +30,93 @@ export type MicCapture = {
   dispose: () => void;
 };
 
+// Barge-in detection, kept pure + exported so the turn-taking is testable.
+//
+// Why this and not VadDetector's "speech-confirmed": VadDetector confirms only on
+// a SINGLE unbroken loud run since onset and resets whenever silence exceeds its
+// hangover. Real interruption speech is intermittent — "yeah I got it. yeah I got
+// it" has word/phrase gaps that routinely exceed the barge hangover — so every
+// burst was discarded before it could confirm and playback never stopped
+// verbally (users had to hit the Interrupt button). This accumulates loud time
+// across brief pauses instead: it fires once the CUMULATIVE sustained loud speech
+// reaches minSpeechMs, tolerating quiet gaps up to gapToleranceMs. It still
+// demands the high barge amplitude (echo/room chatter below threshold never
+// accumulates) and enough total loud time (a brief table-bang can't reach it),
+// preserving the "don't interrupt yourself" guarantee.
+export type BargeOptions = {
+  /** RMS (0..1) at/above which a sample counts as loud. */
+  threshold: number;
+  /** Cumulative loud time required before a barge-in is intentional. */
+  minSpeechMs: number;
+  /** Quiet gaps up to this long don't discard the accumulated speech (word/phrase pauses). */
+  gapToleranceMs: number;
+};
+
+export const DEFAULT_BARGE_OPTIONS: BargeOptions = {
+  threshold: BARGE_VAD_OPTIONS.speechThreshold,
+  minSpeechMs: BARGE_VAD_OPTIONS.minSpeechMs,
+  gapToleranceMs: 700,
+};
+
+export class BargeDetector {
+  private opts: BargeOptions;
+  private accumMs = 0;
+  private lastMs: number | null = null;
+  private lastLoudMs: number | null = null;
+  private fired = false;
+
+  constructor(opts: Partial<BargeOptions> = {}) {
+    this.opts = { ...DEFAULT_BARGE_OPTIONS, ...opts };
+  }
+
+  reset(): void {
+    this.accumMs = 0;
+    this.lastMs = null;
+    this.lastLoudMs = null;
+    this.fired = false;
+  }
+
+  /**
+   * Feed one amplitude sample. Returns true exactly once, when cumulative
+   * sustained loud speech first crosses minSpeechMs. Brief quiet gaps (<=
+   * gapToleranceMs) are bridged; a longer gap forgets the accumulated speech so
+   * a one-off burst never lingers to combine with an unrelated later one.
+   */
+  process(rms: number, nowMs: number): boolean {
+    if (this.fired) return false;
+
+    const prev = this.lastMs;
+    this.lastMs = nowMs;
+    const loud = rms >= this.opts.threshold;
+
+    if (loud) {
+      if (prev !== null && this.lastLoudMs !== null) {
+        const gap = nowMs - this.lastLoudMs;
+        // Count the interval since the previous sample toward accumulated speech,
+        // but only if the quiet stretch since the last loud sample stayed within
+        // tolerance; otherwise the phrase lapsed and we start the tally over.
+        if (gap <= this.opts.gapToleranceMs) {
+          this.accumMs += nowMs - prev;
+        } else {
+          this.accumMs = 0;
+        }
+      }
+      this.lastLoudMs = nowMs;
+      if (this.accumMs >= this.opts.minSpeechMs) {
+        this.fired = true;
+        return true;
+      }
+      return false;
+    }
+
+    // Quiet sample: if we've been quiet longer than tolerance, drop the tally.
+    if (this.lastLoudMs !== null && nowMs - this.lastLoudMs > this.opts.gapToleranceMs) {
+      this.accumMs = 0;
+    }
+    return false;
+  }
+}
+
 function pickMimeType(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
@@ -46,11 +133,12 @@ export function useMicCapture(): MicCapture {
   const dataRef = React.useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const modeRef = React.useRef<Mode>("idle");
-  // Two detectors: `vadRef` for listening (sensitive), `bargeVadRef` for barge-in
-  // (robust — see BARGE_VAD_OPTIONS). Keeping them separate is what lets us hear a
-  // quiet turn while refusing to interrupt the assistant on its own echo.
+  // `vadRef` handles listening (sensitive, finalize-after-hangover — the right
+  // shape for detecting end-of-turn). `bargeRef` handles barge-in with cumulative
+  // sustained-speech detection (see BargeDetector) so an intermittent verbal
+  // interruption stops playback the way the on-screen button does.
   const vadRef = React.useRef(new VadDetector());
-  const bargeVadRef = React.useRef(new VadDetector(BARGE_VAD_OPTIONS));
+  const bargeRef = React.useRef(new BargeDetector());
   const recorderRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<BlobPart[]>([]);
   const mimeRef = React.useRef<string | undefined>(undefined);
@@ -109,8 +197,7 @@ export function useMicCapture(): MicCapture {
           const evt = vadRef.current.process(rms, now);
           if (evt === "finalize") finalizeListen();
         } else if (mode === "barge") {
-          const evt = bargeVadRef.current.process(rms, now);
-          if (evt === "speech-confirmed") {
+          if (bargeRef.current.process(rms, now)) {
             modeRef.current = "idle";
             const rec = recorderRef.current;
             if (rec && rec.state !== "inactive") {
@@ -165,7 +252,7 @@ export function useMicCapture(): MicCapture {
   const beginBargeIn = React.useCallback((onSpeech: (audio?: Blob) => void, options?: { record?: boolean }) => {
     const stream = streamRef.current;
     onSpeechRef.current = onSpeech;
-    bargeVadRef.current.reset();
+    bargeRef.current.reset();
     chunksRef.current = [];
     if (options?.record && stream) {
       const prev = recorderRef.current;
