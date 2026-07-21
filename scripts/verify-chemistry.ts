@@ -193,48 +193,39 @@ async function main() {
   assert(single.vesselReadingGroupId === null, "single-lot vessel: no group id (ordinary panel)");
   assert(single.panels.length === 1 && single.panels[0].lotId === lotId, "single-lot vessel: one panel on the sole lot");
 
-  // Multi-lot vessel: two lots co-resident in one tank (the co-ferment case).
-  const coTank = await makeVessel("ZZ-TEST-CHEM-COTANK", 1000);
-  const { lotId: lotA } = await seedLot("ZZTEST-CO-A", coTank, 580, opObserved);
-  const { lotId: lotB } = await seedLot("ZZTEST-CO-B", coTank, 230, opObserved);
-  const fan = await recordVesselReadingCore(ACTOR, {
-    vesselId: coTank,
+  // ── LEDGER-12 (plan 088): the fan-out no longer has a state to fan out to ──
+  // This section used to seed TWO lots into one tank (the "co-ferment case") and assert that a
+  // whole-tank reading wrote one panel per co-resident lot, sharing a vesselReadingGroupId.
+  // A vessel now holds ONE cohesive liquid, so that fixture is unbuildable — the chokepoint
+  // refuses it and the DB unique makes it impossible. The fan-out machinery itself
+  // (vesselReadingGroupId, group-atomic void) is retired with the pickers in branch 2, Unit 15;
+  // until then it survives as a path that degenerates to a single panel.
+  //
+  // What is still worth asserting is the behaviour that REPLACED it: naming a vessel records ONE
+  // reading against the one wine in it, with no group and no picker.
+  const soloTank = await makeVessel("ZZ-TEST-CHEM-SOLO", 1000);
+  const { lotId: soloLot } = await seedLot("ZZTEST-SOLO", soloTank, 580, opObserved);
+  const solo = await recordVesselReadingCore(ACTOR, {
+    vesselId: soloTank,
     observedAt: new Date("2026-05-15T12:00:00.000Z"),
     readings: [{ analyte: "BRIX", value: 13, unit: "°Bx" }],
-    clientRequestId: "zz-fanout-multi",
+    clientRequestId: "zz-fanout-solo",
   });
-  assert(fan.vesselReadingGroupId !== null, "multi-lot vessel: a group id is minted (fan-out)");
-  assert(fan.panels.length === 2, `fan-out wrote one panel per resident lot (got ${fan.panels.length})`);
-  assert(
-    new Set(fan.panels.map((p) => p.lotId)).size === 2 && fan.panels.every((p) => p.lotId === lotA || p.lotId === lotB),
-    "the two panels attach to the two distinct co-resident lots",
-  );
-  const groupRows = await prisma.analysisPanel.findMany({
-    where: { vesselReadingGroupId: fan.vesselReadingGroupId, voidedAt: null },
-    include: { readings: true },
-  });
-  assert(groupRows.length === 2, `both panels share the vesselReadingGroupId (got ${groupRows.length})`);
-  assert(
-    groupRows.every((p) => p.readings.length === 1 && Number(p.readings[0].value) === 13 && p.lotId != null),
-    "each grouped panel is single-lot (VISION D2) and carries the same 13 °Bx reading",
-  );
+  assert(solo.panels.length === 1, `a whole-tank reading writes exactly ONE panel (got ${solo.panels.length})`);
+  assert(solo.panels[0].lotId === soloLot, "the panel attaches to the vessel's one lot — no picker, no ambiguity");
+  assert(solo.vesselReadingGroupId === null, "no fan-out group is minted: there is nothing to fan out to");
 
-  // Idempotent re-run: same base → no new panels.
-  const fanAgain = await recordVesselReadingCore(ACTOR, {
-    vesselId: coTank,
+  // Idempotent re-run: same base → no new panel.
+  const soloAgain = await recordVesselReadingCore(ACTOR, {
+    vesselId: soloTank,
     observedAt: new Date("2026-05-15T12:00:00.000Z"),
     readings: [{ analyte: "BRIX", value: 13, unit: "°Bx" }],
-    clientRequestId: "zz-fanout-multi",
+    clientRequestId: "zz-fanout-solo",
   });
-  assert(fanAgain.vesselReadingGroupId === fan.vesselReadingGroupId, "re-run with same base returns the same group (idempotent)");
-  const afterReRun = await prisma.analysisPanel.count({ where: { vesselReadingGroupId: fan.vesselReadingGroupId, voidedAt: null } });
-  assert(afterReRun === 2, `re-run wrote no new panels (still ${afterReRun})`);
+  assert(soloAgain.panels[0].panelId === solo.panels[0].panelId, "re-run with the same base is idempotent (same panel)");
 
-  // Group-atomic void: voiding ONE panel voids the whole group.
-  const voidRes = await voidPanelCore(ACTOR, { panelId: fan.panels[0].panelId });
-  assert(voidRes.voidedPanelIds.length === 2, `voiding one grouped panel voids all ${voidRes.voidedPanelIds.length} in the group`);
-  const liveAfterVoid = await prisma.analysisPanel.count({ where: { vesselReadingGroupId: fan.vesselReadingGroupId, voidedAt: null } });
-  assert(liveAfterVoid === 0, `group-atomic void: no live panels remain in the group (got ${liveAfterVoid})`);
+  const voidRes = await voidPanelCore(ACTOR, { panelId: solo.panels[0].panelId });
+  assert(voidRes.voidedPanelIds.length === 1, `voiding the panel voids exactly it (got ${voidRes.voidedPanelIds.length})`);
 
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }

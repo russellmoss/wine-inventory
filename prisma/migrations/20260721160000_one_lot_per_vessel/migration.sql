@@ -1,0 +1,21 @@
+-- LEDGER-12 (plan 088): a vessel holds ONE cohesive liquid.
+--
+-- Two lots in one tank is a state the physical world does not have. The app already refuses it
+-- at the ledger chokepoint in domain language (assertNoWorsenedCoResidence in writeLotOperation);
+-- this makes it structurally impossible for scripts, imports, and any future code that forgets.
+--
+-- The INVERSE direction stays unbounded and is unaffected: one lot may occupy MANY vessels (a lot
+-- across 40 barrels is normal), which is why this keys on the vessel and never on the lot.
+--
+-- Safe to create because BOTTLE_STORAGE ledger legs carry vesselId = NULL, so bottled/sparkling
+-- wine is not vessel occupancy and never appears in this table.
+--
+-- Every tenant was collapsed to one lot per vessel before this ran (scripts/repair-co-residence.ts);
+-- `npm run verify:one-lot-per-vessel` reported 0 violations across 38 occupied vessels / 8 tenants.
+-- If this statement fails with a duplicate-key error, the data regressed — run that check first.
+--
+-- The existing (tenantId, vesselId, lotId) unique is deliberately KEPT: it is strictly weaker, but
+-- it is a live WhereUniqueInput target for existing findUnique/upsert call sites. Removing it is a
+-- separate mechanical sweep.
+
+CREATE UNIQUE INDEX "vessel_lot_tenantId_vesselId_key" ON "vessel_lot"("tenantId", "vesselId");

@@ -113,6 +113,50 @@ export function assertOneLotPerVessel(balances: VesselLotBalance[]): void {
 }
 
 /**
+ * The MONOTONE form: which vessels would come out of this operation holding MORE lots than they
+ * went in with. This is what the chokepoint enforces, and the difference matters.
+ *
+ * Enforcing "must be exactly one" would refuse every operation on a vessel that is ALREADY
+ * mis-recorded — including the rack that would empty it. A legacy import lands three lots in a
+ * barrel and the barrel is frozen: unusable, and unfixable through the app. Enforcing "never
+ * worse" instead makes the invariant monotone, so a bad state can only ever shrink:
+ *
+ *   0 → 1  ok        1 → 1  ok        3 → 2  ok (healing)
+ *   1 → 2  REFUSED   0 → 2  REFUSED   3 → 4  REFUSED
+ *   3 → 3  ok (untouched — a draw-down on an already-mixed vessel still works)
+ *
+ * The estate therefore repairs itself over time and can never regress. With the DB constraint in
+ * place the bad state is unreachable anyway; this is what keeps the app sane if it is ever
+ * reached another way (a restored backup, a direct import, the constraint dropped).
+ */
+export function findWorsenedCoResidence(before: VesselLotBalance[], after: VesselLotBalance[]): CoResidence[] {
+  const countBefore = new Map<string, number>();
+  for (const b of before) countBefore.set(b.vesselId, (countBefore.get(b.vesselId) ?? 0) + 1);
+  return findCoResidence(after).filter((v) => v.lotIds.length > (countBefore.get(v.vesselId) ?? 0));
+}
+
+/**
+ * Throw if an operation would leave any vessel holding MORE lots than it started with.
+ *
+ * DEFENCE IN DEPTH at the ledger chokepoint — not the winemaker-facing refusal. By fold time the
+ * domain intent ("you tried to rack Cab into a tank holding Pinot") is gone, so the message is
+ * deliberately written for an engineer: reaching it means a core skipped its combine preflight.
+ * The user-facing refusals live in the cores (decideCombineRoute) and are RETURNED, never thrown,
+ * because server-action errors are redacted in production.
+ */
+export function assertNoWorsenedCoResidence(before: VesselLotBalance[], after: VesselLotBalance[]): void {
+  const violations = findWorsenedCoResidence(before, after);
+  if (violations.length === 0) return;
+  const detail = violations
+    .map((v) => `${v.vesselId} would hold ${v.lotIds.length} lots (${v.lotIds.join(", ")})`)
+    .join("; ");
+  throw new Error(
+    `Invariant LEDGER-12 violated: an operation may not put more lots into a vessel. ${detail}. ` +
+      `A core is missing its combine preflight (decideCombineRoute).`,
+  );
+}
+
+/**
  * Apply an operation's lines to the current projection and return the new balances.
  * Only in-vessel lines (vesselId != null) touch the projection; null-vessel lines are
  * the external counter-account. A residual at/below FUNCTIONAL_ZERO_L is swept to 0

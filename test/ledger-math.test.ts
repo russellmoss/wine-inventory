@@ -9,6 +9,8 @@ import {
   balanceKey,
   findCoResidence,
   assertOneLotPerVessel,
+  findWorsenedCoResidence,
+  assertNoWorsenedCoResidence,
   type LedgerLine,
   type VesselLotBalance,
 } from "@/lib/ledger/math";
@@ -345,5 +347,62 @@ describe("findCoResidence / assertOneLotPerVessel", () => {
       const after = foldLines(before, lines);
       expect(findCoResidence(after)).toEqual([]);
     });
+  });
+});
+
+// The MONOTONE guard the chokepoint actually enforces (plan 088, Unit 13). "Must be exactly one"
+// would refuse every operation on an already-mixed vessel, including the rack that would EMPTY it
+// — freezing a barrel a legacy import got wrong. "Never worse" lets bad state only ever shrink.
+describe("findWorsenedCoResidence / assertNoWorsenedCoResidence", () => {
+  const bal = (vesselId: string, lotId: string, volumeL = 100): VesselLotBalance => ({ vesselId, lotId, volumeL });
+
+  it("filling an empty vessel is fine", () => {
+    expect(findWorsenedCoResidence([], [bal("t", "A")])).toEqual([]);
+  });
+
+  it("a lot growing in place is fine", () => {
+    expect(findWorsenedCoResidence([bal("t", "A", 100)], [bal("t", "A", 300)])).toEqual([]);
+  });
+
+  it("adding a SECOND lot to a clean vessel is refused", () => {
+    const v = findWorsenedCoResidence([bal("t", "A")], [bal("t", "A"), bal("t", "B")]);
+    expect(v).toHaveLength(1);
+    expect(() => assertNoWorsenedCoResidence([bal("t", "A")], [bal("t", "A"), bal("t", "B")])).toThrow(/LEDGER-12/);
+  });
+
+  it("filling an empty vessel with TWO lots at once is refused", () => {
+    expect(findWorsenedCoResidence([], [bal("t", "A"), bal("t", "B")])).toHaveLength(1);
+  });
+
+  describe("a vessel that is ALREADY mis-recorded", () => {
+    const messy = [bal("b18", "A"), bal("b18", "B"), bal("b18", "C")];
+
+    it("can still be drawn down — the vessel is not frozen", () => {
+      // The whole point: without this, you could not even rack the wine out to fix it.
+      expect(findWorsenedCoResidence(messy, [bal("b18", "A", 50), bal("b18", "B", 50), bal("b18", "C", 50)])).toEqual([]);
+    });
+
+    it("can be HEALED toward one lot", () => {
+      expect(findWorsenedCoResidence(messy, [bal("b18", "A"), bal("b18", "B")])).toEqual([]);
+      expect(findWorsenedCoResidence(messy, [bal("b18", "A")])).toEqual([]);
+      expect(findWorsenedCoResidence(messy, [])).toEqual([]);
+    });
+
+    it("but can NEVER be made worse", () => {
+      const worse = [...messy, bal("b18", "D")];
+      expect(findWorsenedCoResidence(messy, worse)).toHaveLength(1);
+      expect(() => assertNoWorsenedCoResidence(messy, worse)).toThrow(/b18/);
+    });
+  });
+
+  it("judges each vessel independently — healing one while worsening another still refuses", () => {
+    const before = [bal("messy", "A"), bal("messy", "B"), bal("clean", "C")];
+    const after = [bal("messy", "A"), bal("clean", "C"), bal("clean", "D")];
+    const v = findWorsenedCoResidence(before, after);
+    expect(v.map((x) => x.vesselId)).toEqual(["clean"]);
+  });
+
+  it("a drain-and-refill swap in one operation stays legal", () => {
+    expect(findWorsenedCoResidence([bal("t", "OLD")], [bal("t", "NEW")])).toEqual([]);
   });
 });

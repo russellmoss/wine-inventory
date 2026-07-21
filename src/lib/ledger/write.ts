@@ -6,6 +6,7 @@ import { ActionError } from "@/lib/action-error";
 import { round2 } from "@/lib/bottling/draw";
 import {
   assertBalanced,
+  assertNoWorsenedCoResidence,
   balanceKey,
   foldLines,
   type LedgerLine,
@@ -247,6 +248,14 @@ export async function writeLotOperation(
       };
     }),
   });
+
+  // LEDGER-12: a vessel holds one cohesive liquid. Enforced on the POST-FOLD balances, so an
+  // operation that drains one lot while filling another in the SAME op stays legal. Monotone by
+  // design — see assertNoWorsenedCoResidence.
+  assertNoWorsenedCoResidence(
+    current.map((r) => ({ vesselId: r.vesselId, lotId: r.lotId, volumeL: num(r.volumeL) })),
+    next,
+  );
 
   // Apply the projection diff: update/create the survivors, delete those swept to zero.
   const nextByKey = new Map(next.map((b) => [balanceKey(b.vesselId, b.lotId), b]));
