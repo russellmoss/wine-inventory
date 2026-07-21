@@ -285,19 +285,30 @@ is two decisions that are Russell's, not code:
    Pop when branch 1 merges. **PR #444 closes as superseded**; the whole-tank-tasting-note TODO is
    marked SUPERSEDED (it was the 3rd instance-level answer to this class-level defect).
 
-   🛑 **STOPPED ON A DECISION — Units 1-12 committed (14 commits, not pushed). Demo T5 COLLAPSED
-   IN PRODUCTION (op #4336, reversible).**
-   • ⚠️ **OPEN BLOCKER — composition lies after an absorb.** Verifying the T5 rehearsal (not
-     trusting it) showed T5 correctly holding ONE lot at 6,995 L but `vessel_component` reporting
-     **Syrah 6,995 L = 100%** when 625 L of it is Cabernet. Unit 5 only fixed HALF the problem:
-     the fold consults lineage for origin-LESS (blend) lots, but `2026-SY-2` HAS an origin so
-     `hasTuple` short-circuits and the absorbed volume is attributed to Syrah. Second defect:
-     `GROW_EXISTING` writes `fraction = parentGross/grossDenom` over the INCOMING parents only, so
-     it recorded 0.99999 ("all the incoming wine was 2026-CS") when composition needs "2026-CS is
-     8.9% of the RESULT". Both PRE-EXISTING and untested — `verify-blends` exercises grow-existing
-     but never asserts composition. Written up as **Unit 12b** in the plan.
-     **Do not collapse more vessels until this is fixed** — each one bakes in another wrong
-     breakdown, and Unit 18's vessel screen reads straight from `vessel_component`.
+   ✅ **Units 1-12 + 12b committed (16 commits, not pushed). Demo T5 COLLAPSED AND VERIFIED
+   (op #4580): one lot, 6,995 L, composition Syrah 6,370 + Cabernet 625.**
+   • ✅ **COMPOSITION BUG FIXED (Unit 12b)** — found by verifying the rehearsal rather than
+     trusting it. THREE pre-existing defects, none previously tested:
+     (1) the fold never consulted lineage for a lot that HAS an origin, so a single-origin lot
+     absorbing another credited the incoming wine to its own variety (Unit 5 fixed only the
+     mirror case, origin-LESS blend children);
+     (2) `GROW_EXISTING` recorded the parent's share of the INCOMING wine (0.99999) not of the
+     RESULT (0.08935) — now `resident + incoming`, with earlier parents re-scaled on each grow so
+     a twice-absorbed lot can't drift past 1. ⚠️ the denominator MUST be read BEFORE
+     `writeLotOperation` or it counts the new wine twice;
+     (3) attribution has to be **DIRECTIONAL and op-type-gated**: arriving wine takes the consumed
+     lots' makeup (BLEND/CRUSH/PRESS/SAIGNEE only), returning wine in a CORRECTION takes the
+     receiver's, everything else its own. Without this a revert drew the resident down
+     proportionally and a **revert→re-apply silently LOST the Cabernet**.
+   • 🔎 **`vessel_component` folds INCREMENTALLY — self-healing for volume, self-CORRUPTING for
+     attribution.** Once an op books a delta against the wrong variety no later op takes it back,
+     so fixing the code did not fix the data. New **`rebuild:vessel-composition`** recomputes it
+     directly from occupancy + lineage + origins (idempotent, no replay). Across all 38 occupied
+     vessels only **2 had drifted**; unattributable shares are REPORTED, never folded into another
+     variety.
+   • ✅ **The real check: after the rebuild + re-collapse, a fresh recomputation reports ZERO
+     drift against the incremental fold.** Round trip proven on live data — reverted, rebuilt,
+     re-collapsed, verified.
    • ⛔ **BHUTAN IS OUT OF SCOPE (Russell): leave Barrel 18's 3 lots alone**, but new work must
      follow the rule. Two consequences now in the plan: the **DB UNIQUE cannot ship** while any
      tenant is dirty, and the app guard must become **"never make it worse"** (an op may not
