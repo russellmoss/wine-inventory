@@ -240,7 +240,122 @@ is two decisions that are Russell's, not code:
    `cmrm5xew80004l204ssuducfc` (Bhutan) are NOT closed — both have an `AGENTIC_FIX` run stuck in
    `RUNNING`, and `closeFeedbackItemCore` refuses to close while one is running, so the stuck run
    must be neutralized first.
-8. ← you are here
+8. **OPEN — multi-lot-in-one-vessel is a MODELING defect, not a UX one (assistant thumbs-down
+   `cmruoc3yk0000jf0491y8hety`, 2026-07-21).** Russell: "if we say we are going to rack a tank and
+   there are multiple lots in the tank, you can't choose which lot, you're doing the whole tank."
+   The auto-fix agent already opened **PR #444** — but it only touches
+   `src/lib/assistant/tools/record-tasting-note.ts` (whole-tank tasting notes), i.e. a sliver.
+   Investigation done, blast radius mapped, competitor docs read. Findings:
+   • **The rack CORE is already right** (`vessels/rack-core.ts` draws proportionally across every
+   resident lot; `rack_wine` takes vessels only). The pickers live in the *other* ops.
+   • **Only ONE write site creates co-residence**: `ledger/write.ts:264-266` (the projection fold).
+   That is the chokepoint an invariant would sit on.
+   • **Live data (read-only audit, 2026-07-21): 5 vessels currently hold >1 lot** — incl.
+   `org_bhutan_wine_co` BARREL 18 (3 lots, PRODUCTION). Creating ops: RACK 8, SEED 5, CRUSH 5,
+   CORRECTION 2, PRESS 1.
+   • **InnoVint and Vintrace both forbid it.** InnoVint's own "How to Split a Lot" says you must
+   round-trip through a *phantom vessel* — proof a vessel cannot hold two lots. Every movement
+   resolves identity at the moment of the move (retain / combine-with-existing / create-new), and
+   drain-and-press "assumes all weight… is homogenized (the composition is blended)". Vintrace
+   attaches a **batch** per vessel and tracks blend % as a **composition** on the batch.
+   • **We already own all three primitives** — CRUSH `mode:"ADD"`, `decideRackRoute` GROW_EXISTING /
+   NEW_LOT, `blendLotsCore` — they are just not universal, and `decideRackRoute` bails when the
+   destination already holds >1 lot.
+   ✅ **PLAN 088 WRITTEN + HARDENED** —
+   [2026-07-21-088-…](docs/plans/2026-07-21-088-refactor-one-lot-per-vessel-plan.md), Deep, 19 units,
+   **2 branches** (1-13 = the rule + cleanup + DB constraint; 14-19 = delete the pickers + vessel UI).
+   Reviewed by council (Codex + Gemini →
+   [council-feedback-088-…](council-feedback-088-one-lot-per-vessel.md)), `/plan-eng-review`, and
+   `/plan-design-review`. Four findings worth remembering:
+   • 🔎 **`write.ts:379` drops composition for BLEND lots** — `origin*` is NULL by construction
+   (`blend-core.ts:215` says so), so the fold's "can't form a tuple" `continue` silently skips them.
+   Cosmetic today; this plan makes blend lots the norm, so the tank readout Unit 18 rests on would
+   decay. Fix reuses `composeRollup` ancestor attribution — but `composeLeaves` must be extracted
+   first, because separate marginals (byVariety/byVineyard/byVintage) cannot rebuild the JOINT tuple
+   `VesselComponent` needs.
+   • 🔎 **ABSORB must REFUSE across tax class / ownership** — inheriting the resident's class is a
+   TTB 5120.17 lines 5/20 filing error. InnoVint documents this exact hazard in its blend FAQ.
+   • ⚠️ **Unit 10 collided with UX Principle 12 ("no phantom vessels")** — requiring real destination
+   vessels for split children pushes users to invent fake ones, regressing a principle this app built
+   a first-class op to satisfy. Resolved with trial TAGS on the capture records instead.
+   • ⚠️ **3 in-flight WO tasks** reference lots the collapse would absorb; **0 dust rows** (so a plain
+   UNIQUE is safe — Gemini's partial-index objection refuted by reading `foldLines`); Bhutan B18 is
+   Day-Zero data entry (3 same-day SEEDs summing to exactly 225/225 L), and **Russell accepted a
+   uniform collapse** — he'll re-account it by hand.
+   Pop when branch 1 merges. **PR #444 closes as superseded**; the whole-tank-tasting-note TODO is
+   marked SUPERSEDED (it was the 3rd instance-level answer to this class-level defect).
+
+   🛑 **STOPPED ON A DECISION — Units 1-12 committed (14 commits, not pushed). Demo T5 COLLAPSED
+   IN PRODUCTION (op #4336, reversible).**
+   • ⚠️ **OPEN BLOCKER — composition lies after an absorb.** Verifying the T5 rehearsal (not
+     trusting it) showed T5 correctly holding ONE lot at 6,995 L but `vessel_component` reporting
+     **Syrah 6,995 L = 100%** when 625 L of it is Cabernet. Unit 5 only fixed HALF the problem:
+     the fold consults lineage for origin-LESS (blend) lots, but `2026-SY-2` HAS an origin so
+     `hasTuple` short-circuits and the absorbed volume is attributed to Syrah. Second defect:
+     `GROW_EXISTING` writes `fraction = parentGross/grossDenom` over the INCOMING parents only, so
+     it recorded 0.99999 ("all the incoming wine was 2026-CS") when composition needs "2026-CS is
+     8.9% of the RESULT". Both PRE-EXISTING and untested — `verify-blends` exercises grow-existing
+     but never asserts composition. Written up as **Unit 12b** in the plan.
+     **Do not collapse more vessels until this is fixed** — each one bakes in another wrong
+     breakdown, and Unit 18's vessel screen reads straight from `vessel_component`.
+   • ⛔ **BHUTAN IS OUT OF SCOPE (Russell): leave Barrel 18's 3 lots alone**, but new work must
+     follow the rule. Two consequences now in the plan: the **DB UNIQUE cannot ship** while any
+     tenant is dirty, and the app guard must become **"never make it worse"** (an op may not
+     increase a vessel's lot count) — otherwise Barrel 18 freezes and they cannot even rack out
+     of it. Monotone, so the estate heals and can never regress.
+   • Remaining violations: 4 (Bhutan B18 by decision; Demo B4/B5/T7 blocked on ONE approved
+     work-order task, "Rack Tank T3 to Tank T4", targeting `2024-OAK-1-CS-2`).
+
+   _(build detail)_ **Units 1-11 of 13 committed, 13 commits, not pushed.**
+   Units 6-11 (`2e92586e` rack · `365f0e5b` topping · `33052e62` seed · `f98e4ba6` crush/press ·
+   `14773134` split · `5db974f4` deferred WO destination). **Full suite green: 293 files / 3264
+   tests / 0 failures**; the guard still reports the 5 pre-existing violations Unit 12 will collapse.
+   Worth remembering from that stretch:
+   • 🔎 **The split guard had to be stricter than the plan said.** The plan (and my first cut) only
+     compared children to each other. The existing verifier split 60 L off a 200 L parent and left
+     the child beside the parent's own **115 L remainder** — two lots in one vessel. Real rule: a
+     child may stay in the source ONLY when the parent is fully drawn out of it.
+   • 🔎 **`mergeIntoLotId` already existed on press fractions** and IS the absorb. My first press
+     guard was too blunt and `verify:reverse-transform` caught it.
+   • 🔎 **`runtimeInputs` already modelled "let cellar staff choose"** — CRUSH used it for its
+     destination, RACK just didn't. Unit 11 was 11 lines.
+   • ⚠️ **Trial tags deferred.** The design review's answer to the split refusal was a *filterable*
+     tag on capture records; that needs a migration, and migrations reach production here. Grouped
+     with Units 12/13. The refusal points at the existing free-text note meanwhile.
+   • 🔻 **Fixed two real bugs in `verify-cellar-ops` en route** — it deleted ops before their
+     cost_line children (P2003) and scrubbed vessels/lots from in-process arrays, so every failed
+     run left junk in the production DB and broke the NEXT run. Now child→parent and by-pattern.
+     It still fails LATER on a pre-existing issue: it edits `rateValue`, which `edit-policy.ts:18`
+     fences. Unrelated to 088.
+
+   _(earlier)_ **Units 1-5, 6 commits.**
+   `6a1a6bcd` LEDGER-12 pure guard · `eb41a084` verify:one-lot-per-vessel · `511e9675`
+   audit:co-residence · `896cc56e` decideCombineRoute · `dd37f4e3` **the P1 composition fix** ·
+   `c7a3168f` loadCombineState.
+   • **The P1 is fixed and PROVEN on the live DB** — `verify:vessel-composition`, 13 assertions on
+     Demo with QA- fixtures. A blend vessel now gets a component row per ancestor leaf (it produced
+     **zero** rows before); racking 400 L of a 70/30 blend carries 280/120; a blend-of-a-blend
+     multiplies down the chain; composition always sums to actual vessel volume.
+   • 🔎 **The fix needed a second mechanism nobody predicted:** a lot being CREATED by the very op
+     being folded has **no lineage rows yet** — cores write their edges AFTER `writeLotOperation`
+     (blend-core: op at :255, lineage at :295). So the fold also reads the op's OWN lines: the lots
+     it consumed ARE the parentage, each then expanded through its own lineage. That avoided
+     reordering blend-core's reversal-sensitive sequence.
+   • 🔎 **The Unit 3 audit turned council C1 from a maybe into a certainty:** **all 6** non-survivor
+     lots also occupy other vessels (one of them 5 others). A lot-keyed deplete during the collapse
+     would have drained wine from vessels nobody was repairing. Collapse must be **vessel-scoped**.
+     Also corrected the in-flight WO count: **1** task, not 3.
+   • ⚠️ **OPEN, needs a decision:** `absorbIntoResidentTx` as a *Tx-form* wrapper. `blendLotsCore`
+     owns its own `runLedgerWrite` and there is no `blendLotsTx`, so a tx-composable absorb means
+     refactoring a reversal-sensitive core. `rackVesselCore` already calls `blendLotsCore` non-tx,
+     so **Unit 6 is unblocked without it** — only WO-completion composition needs the Tx form.
+   • ⚠️ **Units 12 + 13 touch PRODUCTION** (the 5-vessel collapse, then the DB unique index) and are
+     deliberately NOT started: Unit 12's dry-run needs Russell's eyes, and Unit 13 closes the
+     rollback window the moment it lands.
+   • 🔻 3 test files fail on this box — `assistant-commit-tenant-context` (10s `beforeAll` hook
+     timeout), `compliance-fill-pdf`, `verify-ai-native` (30s). **All three verified PRE-EXISTING**
+     by reverting the changes and re-running at HEAD; all pass standalone. Load flakes, not regressions.
+9. ← you are here
 
 ## 🪝 Off-path — do NOT do now
 
