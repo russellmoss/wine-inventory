@@ -372,3 +372,64 @@ uncatchable without understanding git state). Do not oversell it. It is a lint, 
 
 **Where:** new `scripts/verify-now-links.ts`; `package.json` (`verify:now`); `.git/hooks/post-commit`
 or wherever `verify:invariants` is already invoked non-blocking. Precedent: any `scripts/verify-*.ts`.
+
+## Touch-target minimum for `DESIGN.md` + the assistant dock's header controls
+
+**What:** (a) Add a documented minimum touch-target size to `DESIGN.md` — it currently specifies
+Button heights (sm/md/lg = 34/42/50) but no *minimum tap area* at all. (b) Bring the assistant dock's
+title-bar controls up to it. Today the enlarge button is `padding: 6` around a 17px SVG (~29px) and
+the close `×` is `padding: 4` + `fontSize: 20` (~28px), both in `src/components/assistant/AssistantDock.tsx:311-335`.
+
+**Why:** the winemaker persona is explicitly a touch device (tablet on a barrel, gloved or wet hands),
+and ~28px targets are below every published guideline (WCAG 2.5.8 minimum 24px, Apple HIG 44px,
+Material 48dp). Surfaced during the plan-089 design review: adding a third element to that header
+makes an already-cramped strip worse, but the debt itself is pre-existing and repo-wide, so it was
+explicitly held out of a UI-relocation plan.
+
+**Pros:** one documented number ends the per-component guessing; the dock is the most-touched chrome
+in the app since it follows the user across every route.
+**Cons:** touches a component API and many call sites if applied globally — `DESIGN.md:132-153`
+already lists this class of change as "fix deliberately, not in a doc pass."
+**Context:** `DESIGN.md` keeps a decision log at `:153`; add the minimum there with a rationale.
+Start with the dock header alone, then audit.
+**Depends on:** nothing. Independent of plan 089 (which only relocates controls).
+
+## Tablet auto-expand for assistant voice mode (deferred from plan 089)
+
+**What:** When a voice session starts on a tablet-width viewport (768–1024px), automatically trigger
+the dock's existing "expand to center" mode, and return to the corner when voice ends. The control
+already exists (`setExpanded` in `src/components/assistant/AssistantDock.tsx`); this is a trigger, not
+new UI.
+
+**Why:** `AssistantDock.tsx:43-51` clamps the dock to `min(440, vw×0.94) × min(620, vh×0.80)`. On a
+375px phone that is 94% of the width — effectively full-screen. On desktop the user is close to the
+screen. **Tablet is the only band where the dock is under half the screen** (768×1024 → 57% wide),
+and tablet-on-a-barrel is exactly the cellar-floor posture voice mode is for. A 28px orb in a corner
+is not readable from four feet. Raised by Gemini in the plan-089 council review; the user chose one
+behavior on every device for now, explicitly leaving this as a later addition.
+
+**Pros:** reuses a built control; no new component; `DESIGN.md:97` already establishes 768px as this
+app's breakpoint, so there is a house-standard line to hang it on.
+**Cons:** a mode that changes itself can feel like the app grabbing the screen; needs a QA pass at
+both tablet orientations; the user may simply not miss it.
+**Context:** plan 089 ships the inline dock voice UI with no device special-casing. Revisit after real
+cellar-floor use — if nobody complains, do not build it.
+**Depends on:** plan 089 shipping first.
+
+## Keyboard shortcut to reach the assistant dock during voice (WCAG 2.4.1)
+
+**What:** A shortcut that moves focus into the assistant dock (and optionally direct bindings for
+Interrupt / Confirm) while a voice session is live.
+
+**Why:** plan 089 deliberately removes the voice UI's focus trap so the page behind stays
+keyboard-reachable — that is the whole point of the change. The cost: a keyboard user who has been
+navigated to a data-dense page (a vessel table) must now tab through potentially hundreds of nodes to
+reach Interrupt or a Confirm button in the dock. That is a WCAG 2.4.1 "Bypass Blocks" gap that the
+old modal masked by trapping focus. Raised by Gemini in the plan-089 council review.
+
+**Pros:** closes a real a11y regression introduced by de-modalizing; useful for power users generally.
+**Cons:** global hotkeys collide with browser and OS bindings and need a discoverability story
+(announce them in the session-start message, per the same review).
+**Context:** the confirm path is security-relevant — a Confirm hotkey must go through the same
+signed-token / single-use nonce flow as a tap, never a shortcut around it.
+**Depends on:** plan 089 shipping first.

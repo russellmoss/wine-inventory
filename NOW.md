@@ -7,39 +7,41 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CORNELL FRUIT RESOURCES IS LIVE IN THE CORPUS. Plans 085 (MSU) and the Cornell work are both
-CLOSED. Nothing outstanding on either.**
+**Plan 089 — INLINE VOICE MODE IN THE ASSISTANT DOCK. Planned + triple-reviewed, NOT yet built.**
+Plan: [089](docs/plans/2026-07-21-089-feat-inline-voice-in-dock-plan.md) · 8 units · branch
+`claude/conversational-mode-ui-d4a6a3`.
 
-`cornell-grapes`: **96 documents / 948 chunks**, 64 PDFs, `verify:knowledge-base` **20/20 PASS**
-(titles 95/95, dates 71/95, all 8 retrieval goldens, both rejection checks). It now surfaces as a
-third publisher in the diversity check alongside AWRI and Wine Australia. Date range 1998–2023.
-Merged: #424 (source, reconciled) · #425 (crawl error visibility) · #426 (CDN) · #427 (title fix).
+Retire the full-screen voice overlay; run voice inline in the dock so the user can **see** the page
+while talking. The navigate-and-narrate behavior already works (`useVoiceSession.ts:318-325` pushes
+the route and keeps the loop alive) — it is merely occluded by an opaque `inset: 0` curtain. Voice
+even speaks *"I've put a draft on screen, have a look at the card"* while covering that card.
 
-**Three things this cost that are worth remembering:**
+**Reviews: [council](docs/plans/2026-07-21-089-council-feedback.md) (Codex + Gemini) ·
+[eng](docs/plans/2026-07-21-089-eng-review.md) · [design](docs/plans/2026-07-21-089-design-review.md).**
+Four findings that changed the plan:
 
-- 🔎 **main was FABRICATING publication dates.** `resolvePublishedDate` opened with a bare
-  `new Date(meta)`, and V8's legacy parser invents a January 1st from junk — `"Issue 2019"` →
-  `2019-01-01`, `"Spring 2020"` → `2020-01-01`. Those cleared the range checks, were stored as
-  fact, and fed the assistant's "which advice is more recent" judgment. Caught by #411's author,
-  fixed in #424. Age was also being derived from sitemap `lastmod`, so an undated 2009 IPM page
-  bulk-edited last month scored `ageYears: 0`.
-- ⚠️ **A newly-allowlisted target is UNDISCOVERABLE by re-crawl.** A 304 page yields no links
-  (`crawler.ts` says so explicitly), so every page linking to a newly-allowed path short-circuits
-  and the new target is never enqueued. Cornell's `/newfruit/` PDFs stayed at 0 until
-  `reset:knowledge-source` forced full re-fetches. **After ANY allow/deny scope change: reset, then
-  re-crawl.** That is what the reset script's own docstring says it is for.
-- ⚠️ **Cornell's files live on a SHARED CDN.** Every `blogs.cornell.edu` upload 302s to
-  `bpb-us-e1.wpmucdn.com`, which serves all CampusPress customers. Host + path are separate gates:
-  the host must be in TRUSTED_DOMAINS *and* `/blogs.cornell.edu/` must be an allowPrefix, or the
-  PDFs vanish as a throw or as `skippedRedirect`. The path prefix is the ONLY thing bounding us to
-  Cornell — sabotage-verified tests refuse a Harvard/Penn State path on the same CDN.
+- 🚨 **P0, and the plan created it.** `historyRef` (`useVoiceSession.ts:132`) is snapshotted at mount
+  and only ever appended by *voice* turns (`:400`/`:469`), while `:277` is what gets SENT. Today the
+  overlay makes typing impossible so it cannot diverge. Let the user type — as this plan does — and
+  the assistant silently forgets it: type "log 22.4 for Block 3", then say "make it 23" → *"make what
+  23?"*. **Unit 3 adds `appendHistory` to `VoiceSession`, so this is NOT a pure presentation swap.**
+- ⚠️ **Escape is a landmine.** `AssistantDock.tsx:132` defers to voice via a
+  `[role=dialog][aria-modal=true]` DOM query. Delete `aria-modal` and Escape silently starts
+  collapsing the whole dock. **Unit 5 must be ONE commit** + a temporary dual guard.
+- ⚠️ **Two features were about to be deleted by omission** — `focusNotice` (voiceprint feedback,
+  sole render site `VoiceOverlay.tsx:180-184`) and the first-run helper line (`:259-261`). Both now on
+  an explicit keep-list.
+- 🎨 **Two transcript defects the shared-caption approach exposes:** every voice turn would grow a
+  👍/👎 `FeedbackBar` (`AssistantChat.tsx:807-815`), and `:447-462` force-snaps to bottom
+  unconditionally, so you cannot scroll up mid-conversation. Both fixed in Unit 6.
+
+**Decisions taken:** orb animates only while audio flows (`DESIGN.md` bans decorative animation —
+exception to be logged) · voice navigation stays instant, diverging deliberately from the text chat's
+3s countdown · no tablet special-casing (phone is already 94% width; only tablet is affected → TODO).
 
 ⛔ **MSU (`msu-grapes`) stays DORMANT — do not retry.** Imperva refuses this crawler from every
-network available (residential IP 5/5 across all UAs; GitHub runners `skippedChallenge: 1`). A
-curated URL list does not help — same blocked network. `npm run verify:msu` is the probe: if it
-ever reports **live PASS**, un-dormant both flags + re-seed.
-
-⚠️ **Vercel builds were rate-limited for ~24h** on 2026-07-20 (free-tier daily cap, ~8 PRs). Recovered.
+network available. `npm run verify:msu` is the probe: if it ever reports **live PASS**, un-dormant
+both flags + re-seed.
 
 ## 🔭 Also in flight
 
@@ -261,6 +263,13 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Cornell Fruit Resources knowledge source — CLOSED.** `cornell-grapes` live: **96 docs / 948
+  chunks**, 64 PDFs, `verify:knowledge-base` **20/20 PASS**, third publisher in the diversity check
+  alongside AWRI and Wine Australia. Merged #424 (source + the fabricated-date fix) · #425 (crawl
+  error visibility) · #426 (shared CampusPress CDN) · #427 (title fix). Plans 085 (MSU) and the
+  Cornell work are both closed; nothing outstanding. The three durable lessons (V8 inventing
+  January 1st from junk metadata, a newly-allowlisted target being undiscoverable without a reset,
+  and host-vs-path being separate gates on a shared CDN) are captured in memory.
 - **Consumable cost surfacing (#372 "pricing") — MERGED (PR #435, squash `b46cd30`).** Mike: "I don't see the
   price I entered" + "are we averaging across shipments?". The engine already captured both — each `SupplyLot`
   stores the receipt price; the material's unit cost is the weighted average across open priced lots — but the
@@ -360,7 +369,15 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-21 — **assistant VOICE MODE is conversational and LIVE IN PROD** (#439
+_Last updated: 2026-07-21 — **plan 089 (inline voice in the dock) WRITTEN + triple-reviewed, not
+built.** Council (Codex + Gemini) → eng → design. The reviews found a P0 the plan itself created:
+letting the user type during a voice session silently breaks the assistant's memory, because
+`historyRef` only ever sees voice turns. Fixing it means one additive method on `VoiceSession`, so
+this is no longer a pure presentation swap. Also: deleting `aria-modal` breaks the dock's Escape
+handoff (`AssistantDock.tsx:132`), and two features (`focusNotice`, the first-run helper) were about
+to vanish by omission. 3 TODOs filed (touch-target minimum, tablet auto-expand, dock keyboard
+shortcut). Next: `/work` plan 089 — Unit 3 first, Unit 5 as ONE commit.
+Prior: **assistant VOICE MODE is conversational and LIVE IN PROD** (#439
 `9cc51cd8` + #441 `e516248a`, live-verified on a real device). Barge-in is now ADAPTIVE: a single
 fixed loudness threshold structurally cannot separate the user's voice from the assistant's own
 echo, so `echoAdjustedLevel()` subtracts the assistant's live output from the mic level — the bar
