@@ -47,6 +47,9 @@ export type BlendLotsInput = {
   // vessels; volumes must sum to the net blended volume. Takes precedence over toVesselId.
   destinations?: BlendDestinationInput[];
   lossL?: number;
+  /** GROW_EXISTING only: which resident absorbs the others, when the destination holds several.
+   *  Repair-path escape (plan 088, Unit 12) — normal callers leave it unset. */
+  growIntoLotId?: string;
   // NEW_LOT only:
   token?: string; // 2–4 letter blend tag (required for NEW_LOT)
   vintage?: number | null; // null/absent → NV
@@ -136,13 +139,23 @@ export async function blendLotsTx(
   const destResidents = residents.filter((r) => r.vesselId === toVesselId);
   let growChildLotId: string | null = null;
   if (mode === "GROW_EXISTING") {
-    if (destResidents.length !== 1) {
-      throw new ActionError(
-        `Grow-existing needs the destination to hold exactly one lot (it holds ${destResidents.length}).`,
-        "CONFLICT",
-      );
+    if (input.growIntoLotId) {
+      // Explicit survivor. Needed ONLY by the one-lot-per-vessel repair (plan 088, Unit 12):
+      // a vessel that already violates the invariant holds several lots, so "the resident" is
+      // ambiguous and the caller has to say which one absorbs the others. Normal callers leave
+      // this unset and get the single-resident rule below.
+      const match = destResidents.find((r) => r.lotId === input.growIntoLotId);
+      if (!match) throw new ActionError("The lot chosen to absorb the others isn't in the destination vessel.", "CONFLICT");
+      growChildLotId = match.lotId;
+    } else {
+      if (destResidents.length !== 1) {
+        throw new ActionError(
+          `Grow-existing needs the destination to hold exactly one lot (it holds ${destResidents.length}).`,
+          "CONFLICT",
+        );
+      }
+      growChildLotId = destResidents[0].lotId;
     }
-    growChildLotId = destResidents[0].lotId;
   }
 
   // Build effective draws + total loss (deplete = pull the whole position, heel → loss).

@@ -65,6 +65,7 @@
     "verify:one-lot-per-vessel": "tsx --env-file=.env scripts/verify-one-lot-per-vessel.ts",
     "verify:vessel-composition": "tsx --conditions=react-server --env-file=.env scripts/verify-vessel-composition.ts",
     "audit:co-residence": "tsx --env-file=.env scripts/audit-co-residence.ts",
+    "repair:co-residence": "tsx --conditions=react-server --env-file=.env scripts/repair-co-residence.ts",
     "verify:ingest": "tsx --conditions=react-server --env-file=.env scripts/verify-ingest.ts",
     "verify:fx": "tsx --conditions=react-server --env-file=.env scripts/verify-fx.ts",
     "verify:fx-live": "tsx --conditions=react-server --env-file=.env scripts/verify-fx-live.ts",
