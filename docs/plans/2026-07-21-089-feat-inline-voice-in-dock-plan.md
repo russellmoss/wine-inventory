@@ -1,12 +1,13 @@
 ---
 title: Inline conversational voice mode in the assistant dock
 type: feat
-status: reviewed
+status: built — code complete, browser QA pending
 date: 2026-07-21
 branch: claude/conversational-mode-ui-d4a6a3
 depth: standard
 units: 8
 reviews: council (Codex + Gemini) · eng · design
+built: 2026-07-21 (commits fae190ba, 2064aeef) — tsc + eslint + 3251 tests + next build green; U8 browser QA needs an authed mic session (user-gated)
 ---
 
 ## Overview

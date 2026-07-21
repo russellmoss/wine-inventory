@@ -7,9 +7,16 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 089 — INLINE VOICE MODE IN THE ASSISTANT DOCK. Planned + triple-reviewed, NOT yet built.**
-Plan: [089](docs/plans/2026-07-21-089-feat-inline-voice-in-dock-plan.md) · 8 units · branch
-`claude/conversational-mode-ui-d4a6a3`.
+**Plan 089 — INLINE VOICE MODE IN THE ASSISTANT DOCK. CODE COMPLETE (U1–U7). Browser QA (U8) is the
+only thing left, and it needs YOU — an authed Demo Winery session with a live mic that I can't drive.**
+Plan: [089](docs/plans/2026-07-21-089-feat-inline-voice-in-dock-plan.md) · commits `fae190ba` (U1/U3
+foundation) + `2064aeef` (UI swap + overlay retired) on branch `claude/conversational-mode-ui-d4a6a3`.
+Gates green: tsc, eslint, **3251 tests** (+ new scroll suite), `next build`. Not shipped — no PR yet.
+
+**Run before shipping:** the 20 QA scenarios in the plan's Test Strategy — especially #14 (type "log
+22.4 for Block 3", then SAY "make it 23" → must resolve, proves the P0 fix), #6 (Escape ends voice not
+the dock), #9 (confirm card fully visible + confirmable at 440×620), #7 (drag the title bar from the
+orb still moves the panel), #13 (orb static while thinking). Then `/ship`.
 
 Retire the full-screen voice overlay; run voice inline in the dock so the user can **see** the page
 while talking. The navigate-and-narrate behavior already works (`useVoiceSession.ts:318-325` pushes
