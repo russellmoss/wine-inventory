@@ -56,10 +56,10 @@ async function makeVessel(code: string, capacityL = 1000): Promise<{ id: string;
   return { id: vessel.id, code: vessel.code, capacityL: Number(vessel.capacityL) };
 }
 
-async function seedCostedLot(vesselId: string, vesselCode: string): Promise<{ lotId: string; seedOpId: number }> {
+async function seedCostedLot(vesselId: string, vesselCode: string, suffix = "PARENT"): Promise<{ lotId: string; seedOpId: number }> {
   const lot = await prisma.lot.create({
     data: {
-      code: `${prefix}-PARENT`,
+      code: `${prefix}-${suffix}`,
       form: "WINE",
       vintageYear: 2026,
       ownership: "ESTATE",
@@ -110,6 +110,7 @@ async function main() {
       console.log("\n1. Split in place writes truthful children, loss, and lineage");
       const source = await makeVessel(`${prefix}-SRC`);
       const leesTank = await makeVessel(`${prefix}-LEES`);
+      const expTank = await makeVessel(`${prefix}-EXP`);
       const { lotId: parentLotId } = await seedCostedLot(source.id, source.code);
       const beforeCost = await computeLotCost(parentLotId);
       assert(near(beforeCost.totalCost, 200), "parent starts with known cost basis");
@@ -117,8 +118,11 @@ async function main() {
       const result = await splitLotInPlaceCore(ACTOR, {
         parentLotId,
         sourceVesselId: source.id,
+        // LEDGER-12 (plan 088): EXP-A used to stay in the SOURCE tank alongside the parent's
+        // 115 L remainder — two lots in one vessel, the fiction at its smallest scale. A sub-lot
+        // now needs its own vessel unless the parent is fully drawn out of the source.
         children: [
-          { volumeL: 60, sublotTag: "EXP-A", destVesselId: source.id },
+          { volumeL: 60, sublotTag: "EXP-A", destVesselId: expTank.id },
           { volumeL: 20, sublotTag: "LEES", destVesselId: leesTank.id, role: "LEES" },
         ],
         discardedLeesL: 5,
@@ -171,6 +175,54 @@ async function main() {
       const reversalTransfers = await prisma.operationCostTransfer.findMany({ where: { operationId: reversed.correctionId ?? -1 } });
       assert(reversalTransfers.length === 2 && reversalTransfers.every((t) => t.reversalOfTransferId), "reversal wrote inverse cost-transfer rows");
       assert(near((await computeLotCost(parentLotId)).totalCost, 200), "reversal restored parent cost basis");
+
+      // ── LEDGER-12: a sub-lot cannot sit beside the parent's remainder (plan 088, Unit 10) ──
+      console.log("\n4. A vessel still holds one wine after a split");
+      const src2 = await makeVessel(`${prefix}-SRC2`);
+      const { lotId: parent2 } = await seedCostedLot(src2.id, src2.code, "PARENT2");
+
+      let refusedRemainder: string | null = null;
+      await splitLotInPlaceCore(ACTOR, {
+        parentLotId: parent2,
+        sourceVesselId: src2.id,
+        // Draws 60 of 200 and leaves EXP-B behind → the tank would hold the child AND 140 L of parent.
+        children: [{ volumeL: 60, sublotTag: "EXP-B", destVesselId: src2.id }],
+        commandId: `${prefix}-cmd-remainder`,
+      }).catch((e: unknown) => {
+        refusedRemainder = e instanceof Error ? e.message : String(e);
+      });
+      assert(refusedRemainder !== null, "a sub-lot left beside the parent's remainder is refused");
+      assert(/one wine/i.test(refusedRemainder ?? ""), "the refusal explains that a vessel holds one wine");
+      assert(
+        /own\s+vessel|note the trial/i.test(refusedRemainder ?? ""),
+        "the refusal offers a way forward (no dead end, no phantom vessel — ux-principles rule 12)",
+      );
+
+      let refusedTwo: string | null = null;
+      await splitLotInPlaceCore(ACTOR, {
+        parentLotId: parent2,
+        sourceVesselId: src2.id,
+        // Two sub-lots into the SAME tank — one liquid, not two, even if the parent is fully drawn.
+        children: [
+          { volumeL: 100, sublotTag: "EXP-C", destVesselId: src2.id },
+          { volumeL: 100, sublotTag: "EXP-D", destVesselId: src2.id },
+        ],
+        commandId: `${prefix}-cmd-two`,
+      }).catch((e: unknown) => {
+        refusedTwo = e instanceof Error ? e.message : String(e);
+      });
+      assert(refusedTwo !== null, "two sub-lots in one vessel are refused even when the parent is fully drawn");
+
+      // The legal shape: draw the WHOLE parent, and one child may stay behind.
+      const wholeSplit = await splitLotInPlaceCore(ACTOR, {
+        parentLotId: parent2,
+        sourceVesselId: src2.id,
+        children: [{ volumeL: 200, sublotTag: "EXP-E", destVesselId: src2.id }],
+        commandId: `${prefix}-cmd-whole`,
+      });
+      assert(wholeSplit.children.length === 1, "splitting the WHOLE parent in place is still allowed");
+      const src2Rows = await prisma.vesselLot.findMany({ where: { vesselId: src2.id } });
+      assert(src2Rows.length === 1, "the source vessel ends holding exactly one lot");
 
       console.log(`\nPhase 6C split-in-place verifier passed (${passed} assertions).`);
     } finally {
