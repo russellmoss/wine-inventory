@@ -58,6 +58,61 @@ export function assertBalanced(lines: LedgerLine[]): void {
 }
 
 /**
+ * LEDGER-12 — a vessel holds AT MOST ONE lot. A vessel's contents are one cohesive liquid;
+ * two lots in one tank is a state the physical world does not have (plan 088).
+ *
+ * The inverse direction stays legal and unbounded: ONE lot may occupy MANY vessels (a lot
+ * across 40 barrels is normal), which is why this checks per-vessel and never per-lot.
+ *
+ *   LEGAL                                ILLEGAL
+ *   ─────                                ───────
+ *   tankA → L1                           tankA → L1, L2
+ *   tankA → L1, tankB → L1  (40 barrels) tankA → L1, L2, L3
+ *   tankA → L1, tankB → L2
+ *
+ * Runs on POST-FOLD balances (see foldLines), so an operation that drains lot B while
+ * filling lot A in the SAME op is legal — only the surviving state must satisfy it. That
+ * also means a resident swept to functional zero is not a second lot: foldLines already
+ * dropped its row. This is why the DB constraint can be a plain UNIQUE rather than a
+ * partial index.
+ */
+export type CoResidence = { vesselId: string; lotIds: string[] };
+
+/** Every vessel in the projection that holds more than one lot. Pure; empty = clean. */
+export function findCoResidence(balances: VesselLotBalance[]): CoResidence[] {
+  const byVessel = new Map<string, string[]>();
+  for (const b of balances) {
+    const lots = byVessel.get(b.vesselId);
+    if (lots) lots.push(b.lotId);
+    else byVessel.set(b.vesselId, [b.lotId]);
+  }
+  const violations: CoResidence[] = [];
+  for (const [vesselId, lotIds] of byVessel) {
+    if (lotIds.length > 1) violations.push({ vesselId, lotIds });
+  }
+  return violations;
+}
+
+/**
+ * Throw if any vessel would end up holding more than one lot.
+ *
+ * This is DEFENSE IN DEPTH at the ledger chokepoint, not the winemaker-facing refusal. By
+ * fold time the domain intent ("you tried to rack Cab into a tank holding Pinot") is gone,
+ * so the message is deliberately worded for an engineer: reaching it means a core skipped
+ * its combine preflight (see decideCombineRoute). The user-facing refusals live in the
+ * cores and are RETURNED, never thrown, because server-action errors are redacted in prod.
+ */
+export function assertOneLotPerVessel(balances: VesselLotBalance[]): void {
+  const violations = findCoResidence(balances);
+  if (violations.length === 0) return;
+  const detail = violations.map((v) => `${v.vesselId} would hold ${v.lotIds.length} lots (${v.lotIds.join(", ")})`).join("; ");
+  throw new Error(
+    `Invariant LEDGER-12 violated: a vessel holds at most one lot. ${detail}. ` +
+      `A core is missing its combine preflight (decideCombineRoute).`,
+  );
+}
+
+/**
  * Apply an operation's lines to the current projection and return the new balances.
  * Only in-vessel lines (vesselId != null) touch the projection; null-vessel lines are
  * the external counter-account. A residual at/below FUNCTIONAL_ZERO_L is swept to 0
