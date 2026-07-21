@@ -42,6 +42,11 @@ async function vesselTotal(vesselId: string): Promise<number> {
   const rows = await prisma.vesselLot.findMany({ where: { vesselId } });
   return r2(rows.reduce((a, r) => a + Number(r.volumeL), 0));
 }
+/** The lots currently resident in a vessel (LEDGER-12: this must never exceed one). */
+async function residents(vesselId: string): Promise<string[]> {
+  const rows = await prisma.vesselLot.findMany({ where: { vesselId }, select: { lotId: true } });
+  return rows.map((r) => r.lotId);
+}
 
 // ── fixtures ──
 const createdVesselIds: string[] = [];
@@ -91,6 +96,17 @@ async function projectionMatchesFold(): Promise<boolean> {
 
 async function scrub() {
   console.log("\n── scrubbing test data ──");
+  // Cost artifacts FIRST: cost_line/supply_consumption/operation_cost_transfer hold a composite
+  // FK to lot_operation, and an ADDITION or FINING here books one. Deleting the ops first raises
+  // P2003, which left the fixtures behind AND made the NEXT run fail in its opening scrub — the
+  // script could not recover from its own interrupted run. Child → parent, like verify-blends.
+  const ownOps = await prisma.lotOperation.findMany({ where: { enteredBy: ACTOR.actorEmail }, select: { id: true } });
+  const ownOpIds = ownOps.map((o) => o.id);
+  if (ownOpIds.length > 0) {
+    await prisma.costLine.deleteMany({ where: { operationId: { in: ownOpIds } } }).catch(() => {});
+    await prisma.supplyConsumption.deleteMany({ where: { operationId: { in: ownOpIds } } }).catch(() => {});
+    await prisma.operationCostTransfer.deleteMany({ where: { operationId: { in: ownOpIds } } }).catch(() => {});
+  }
   // Ops (cascades lines + treatments), found by the verify actor email.
   const delOps = await prisma.lotOperation.deleteMany({ where: { enteredBy: ACTOR.actorEmail } });
   await prisma.lotTreatment.deleteMany({ where: { lotId: { in: createdLotIds } } });
@@ -99,8 +115,19 @@ async function scrub() {
   });
   // The group test uses an ad-hoc vessel selection (no saved VesselGroup), so there's no
   // group row to remove. Deleting the vessels cascades vessel_lot + any group memberships.
-  await prisma.vessel.deleteMany({ where: { id: { in: createdVesselIds } } });
-  await prisma.lot.deleteMany({ where: { id: { in: createdLotIds } } });
+  // BY PATTERN, not just the in-process arrays: a crashed run has no arrays to clean up, so the
+  // fixtures orphaned forever and the next run died on the unique vessel code (verify-blends
+  // already scrubs this way).
+  const orphanLots = await prisma.lot.findMany({ where: { code: { startsWith: "ZZTEST-" } }, select: { id: true } });
+  const orphanVessels = await prisma.vessel.findMany({ where: { code: { startsWith: "ZZ-TEST-" } }, select: { id: true } });
+  const allLotIds = [...new Set([...createdLotIds, ...orphanLots.map((l) => l.id)])];
+  const allVesselIds = [...new Set([...createdVesselIds, ...orphanVessels.map((v) => v.id)])];
+  await prisma.lotLineage.deleteMany({
+    where: { OR: [{ parentLotId: { in: allLotIds } }, { childLotId: { in: allLotIds } }] },
+  }).catch(() => {});
+  await prisma.vesselLot.deleteMany({ where: { OR: [{ lotId: { in: allLotIds } }, { vesselId: { in: allVesselIds } }] } }).catch(() => {});
+  await prisma.vessel.deleteMany({ where: { id: { in: allVesselIds } } });
+  await prisma.lot.deleteMany({ where: { id: { in: allLotIds } } });
   await prisma.cellarMaterial.deleteMany({ where: { normalizedKey: normalizeMaterialKey("ZZTEST KMBS") } });
   await prisma.cellarMaterial.deleteMany({ where: { normalizedKey: normalizeMaterialKey("ZZTEST BENTONITE") } });
   const delAudit = await prisma.auditLog.deleteMany({ where: { actorEmail: ACTOR.actorEmail } });
@@ -164,7 +191,12 @@ async function main() {
   // 6) TOPPING — keg → B1 + lineage
   console.log("\n── 6. TOPPING (10 L keg → B1) ──");
   const top = await topVesselCore(ACTOR, { toVesselId: b1, fromVesselId: keg, volumeL: 10 });
-  assert((await vol(b1, lotKeg)) === 10, "B1 now holds 10 L of the keg lot");
+  // LEDGER-12 (plan 088): topping used to leave the keg lot sitting in B1 as a SECOND resident.
+  // A vessel holds one cohesive liquid, so the topped-up wine now ABSORBS — B1 still holds only
+  // its own lot, grown by 10 L, and the lineage edge below is what records where it came from.
+  assert((await vol(b1, lotKeg)) === 0, "the keg lot does NOT become a second resident of B1");
+  assert((await residents(b1)).length === 1, "B1 still holds exactly one lot after topping");
+  assert((await vol(b1, lotB1)) === 210, "B1's own lot absorbed the top-up (200 → 210 L)");
   assert((await vol(keg, lotKeg)) === 40, "KEG dropped 50 → 40");
   assert((await vesselTotal(b1)) === 210, "B1 total 200 → 210");
   const edge = await prisma.lotLineage.findFirst({ where: { parentLotId: lotKeg, childLotId: lotB1 } });

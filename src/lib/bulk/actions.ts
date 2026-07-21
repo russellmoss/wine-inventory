@@ -89,6 +89,22 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
     );
   }
 
+  // LEDGER-12: seeding mints a BRAND NEW lot, so it can only ever go into an empty vessel — a
+  // vessel holds one cohesive liquid. This is the path that produced five of the five live
+  // co-residence violations, every one of them a same-day onboarding fill (plan 088, Unit 9).
+  const resident = await prisma.vesselLot.findFirst({
+    where: { vesselId },
+    orderBy: { volumeL: "desc" },
+    select: { lot: { select: { code: true } } },
+  });
+  if (resident) {
+    throw new ActionError(
+      `${vessel.code} already holds ${resident.lot.code}. Add this volume to ${resident.lot.code} instead, ` +
+        `or fill an empty vessel.`,
+      "CONFLICT",
+    );
+  }
+
   for (let attempt = 0; ; attempt++) {
     try {
       await runLedgerWrite(async (tx) => {
