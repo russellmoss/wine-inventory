@@ -40,9 +40,21 @@ export async function POST(req: Request) {
   }
 
   try {
-    const settings = await runAsTenant(user.activeOrganizationId, () => getVoiceSettingsForUser(user.id));
+    // Audio isolation is a best-effort enhancement, NEVER a prerequisite for
+    // hearing the user. Both the settings read and the isolation pass must fall
+    // back to the raw audio on any failure — coupling speech-to-text to a DB read
+    // (or a slow/aggressive isolation call) is what made voice mode silently drop
+    // turns and "stop hearing us." STT itself is the only thing allowed to fail
+    // this request.
     let input: Blob = file;
-    if (settings.preference.audioIsolationEnabled) {
+    let isolationEnabled = false;
+    try {
+      const settings = await runAsTenant(user.activeOrganizationId, () => getVoiceSettingsForUser(user.id));
+      isolationEnabled = settings.preference.audioIsolationEnabled;
+    } catch (settingsErr) {
+      console.warn("[transcribe] voice settings unavailable; skipping isolation:", settingsErr);
+    }
+    if (isolationEnabled) {
       input = await isolateVoiceAudio(file).catch(() => file);
     }
     const text = await transcribeAudio(input);

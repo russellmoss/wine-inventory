@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { VadDetector } from "@/lib/voice/vad";
+import { VadDetector, BARGE_VAD_OPTIONS } from "@/lib/voice/vad";
 
 // Owns the microphone: one persistent getUserMedia stream + AudioContext +
 // AnalyserNode, with an RAF loop that computes RMS every frame. That RMS does
@@ -46,7 +46,11 @@ export function useMicCapture(): MicCapture {
   const dataRef = React.useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const modeRef = React.useRef<Mode>("idle");
+  // Two detectors: `vadRef` for listening (sensitive), `bargeVadRef` for barge-in
+  // (robust — see BARGE_VAD_OPTIONS). Keeping them separate is what lets us hear a
+  // quiet turn while refusing to interrupt the assistant on its own echo.
   const vadRef = React.useRef(new VadDetector());
+  const bargeVadRef = React.useRef(new VadDetector(BARGE_VAD_OPTIONS));
   const recorderRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<BlobPart[]>([]);
   const mimeRef = React.useRef<string | undefined>(undefined);
@@ -105,7 +109,7 @@ export function useMicCapture(): MicCapture {
           const evt = vadRef.current.process(rms, now);
           if (evt === "finalize") finalizeListen();
         } else if (mode === "barge") {
-          const evt = vadRef.current.process(rms, now);
+          const evt = bargeVadRef.current.process(rms, now);
           if (evt === "speech-confirmed") {
             modeRef.current = "idle";
             const rec = recorderRef.current;
@@ -161,7 +165,7 @@ export function useMicCapture(): MicCapture {
   const beginBargeIn = React.useCallback((onSpeech: (audio?: Blob) => void, options?: { record?: boolean }) => {
     const stream = streamRef.current;
     onSpeechRef.current = onSpeech;
-    vadRef.current.reset();
+    bargeVadRef.current.reset();
     chunksRef.current = [];
     if (options?.record && stream) {
       const prev = recorderRef.current;

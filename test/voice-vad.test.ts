@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { VadDetector } from "@/lib/voice/vad";
+import { VadDetector, BARGE_VAD_OPTIONS, DEFAULT_VAD_OPTIONS } from "@/lib/voice/vad";
 
 // Feed synthetic (rms, time) sequences and assert onset/finalize timing. Times
 // are explicit ms so the test doesn't depend on a clock.
@@ -66,6 +66,43 @@ describe("VadDetector", () => {
     v.process(0.2, 200);
     expect(v.process(0.0, 700)).toBe("finalize"); // first turn done
     expect(v.process(0.2, 800)).toBe("speech-start"); // second turn begins
+  });
+
+  // Barge-in (interrupting the assistant while it speaks) must be much harder to
+  // trip than listening, or the assistant interrupts itself on its own echo / a
+  // table bang. These lock the preset's intent so a future tweak can't quietly
+  // regress it back to the sensitive listen thresholds.
+  describe("BARGE_VAD_OPTIONS (robust barge-in)", () => {
+    it("is strictly less sensitive than the listen defaults", () => {
+      expect(BARGE_VAD_OPTIONS.speechThreshold).toBeGreaterThan(DEFAULT_VAD_OPTIONS.speechThreshold);
+      expect(BARGE_VAD_OPTIONS.minSpeechMs).toBeGreaterThan(DEFAULT_VAD_OPTIONS.minSpeechMs);
+    });
+
+    it("ignores soft echo / room chatter below the barge threshold", () => {
+      const v = new VadDetector(BARGE_VAD_OPTIONS);
+      // Residual playback + background chatter around the listen threshold but
+      // below the barge threshold: never even registers as onset.
+      expect(v.process(0.05, 0)).toBe("none");
+      expect(v.process(0.08, 300)).toBe("none");
+      expect(v.process(0.1, 900)).toBe("none");
+      expect(v.isSpeaking).toBe(false);
+    });
+
+    it("ignores a loud-but-brief transient (a bang on the table)", () => {
+      const v = new VadDetector(BARGE_VAD_OPTIONS);
+      expect(v.process(0.4, 0)).toBe("speech-start"); // loud spike registers onset
+      // ...but it's gone well before minSpeechMs, so it never confirms an interrupt.
+      expect(v.process(0.3, 200)).toBe("none");
+      expect(v.process(0.02, 400)).toBe("none");
+      expect(v.isConfirmed).toBe(false);
+    });
+
+    it("still confirms a deliberate, sustained interruption", () => {
+      const v = new VadDetector(BARGE_VAD_OPTIONS);
+      expect(v.process(0.3, 0)).toBe("speech-start");
+      expect(v.process(0.3, 300)).toBe("none"); // under minSpeechMs (600) so far
+      expect(v.process(0.3, 650)).toBe("speech-confirmed"); // sustained past 600ms -> interrupt
+    });
   });
 
   it("reset() returns to the idle state", () => {

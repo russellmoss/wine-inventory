@@ -23,6 +23,22 @@ export const DEFAULT_VAD_OPTIONS: VadOptions = {
   minSpeechMs: 250,
 };
 
+// Barge-in runs WHILE the assistant is speaking, so the mic is simultaneously
+// hearing the assistant's own voice (echo cancellation is never perfect) and any
+// room noise. Detecting an interruption with the *listen* thresholds made the
+// assistant interrupt itself on its own playback and cut off on a table bang —
+// the loop would oscillate through "thinking/speaking" and never actually talk.
+// Barge must clear a much higher, longer bar: only a deliberate, sustained
+// interruption should stop playback. A transient bang is loud but short, so the
+// longer minSpeechMs filters it; steady background chatter sits below the higher
+// threshold. Voice-interrupt is intentionally harder here; the on-screen
+// "Interrupt" button is always available as the instant, foolproof path.
+export const BARGE_VAD_OPTIONS: VadOptions = {
+  speechThreshold: 0.15,
+  hangoverMs: 400,
+  minSpeechMs: 600,
+};
+
 export class VadDetector {
   private opts: VadOptions;
   private active = false;
