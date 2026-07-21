@@ -7,39 +7,42 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CORNELL FRUIT RESOURCES IS LIVE IN THE CORPUS. Plans 085 (MSU) and the Cornell work are both
-CLOSED. Nothing outstanding on either.**
+**Plan 088 — one lot per vessel (LEDGER-12). Units 1–19 BUILT; branch 2 (14–19) is on
+`refactor/one-lot-per-vessel-sweep`, unmerged.**
 
-`cornell-grapes`: **96 documents / 948 chunks**, 64 PDFs, `verify:knowledge-base` **20/20 PASS**
-(titles 95/95, dates 71/95, all 8 retrieval goldens, both rejection checks). It now surfaces as a
-third publisher in the diversity check alongside AWRI and Wine Australia. Date range 1998–2023.
-Merged: #424 (source, reconciled) · #425 (crawl error visibility) · #426 (CDN) · #427 (title fix).
+A winemaker thumbs-downed the assistant for asking *"you have 3 lots in one tank — which lot do you
+want to transfer?"* — **"stupid and physically impossible."** He was right, and the picker was the
+symptom, not the bug: the DATA MODEL permitted several `vessel_lot` rows per vessel, and every
+"which lot?" prompt in the app existed to resolve a state the cellar cannot be in. Reported THREE
+times, answered three times with instance-level fan-outs.
 
-**Three things this cost that are worth remembering:**
+Now: **a vessel holds ONE lot; a lot may occupy MANY vessels.** Enforced at `writeLotOperation` (the
+single `vessel_lot` write site) by a monotone guard + a `(tenantId, vesselId)` unique index.
+Identity is decided at the moment of combination by ONE shared `decideCombineRoute` — KEEP / ABSORB
+/ NEW_BLEND — that rack, crush, press, saignée, topping and blend all call.
 
-- 🔎 **main was FABRICATING publication dates.** `resolvePublishedDate` opened with a bare
-  `new Date(meta)`, and V8's legacy parser invents a January 1st from junk — `"Issue 2019"` →
-  `2019-01-01`, `"Spring 2020"` → `2020-01-01`. Those cleared the range checks, were stored as
-  fact, and fed the assistant's "which advice is more recent" judgment. Caught by #411's author,
-  fixed in #424. Age was also being derived from sitemap `lastmod`, so an undated 2009 IPM page
-  bulk-edited last month scored `ageYears: 0`.
-- ⚠️ **A newly-allowlisted target is UNDISCOVERABLE by re-crawl.** A 304 page yields no links
-  (`crawler.ts` says so explicitly), so every page linking to a newly-allowed path short-circuits
-  and the new target is never enqueued. Cornell's `/newfruit/` PDFs stayed at 0 until
-  `reset:knowledge-source` forced full re-fetches. **After ANY allow/deny scope change: reset, then
-  re-crawl.** That is what the reset script's own docstring says it is for.
-- ⚠️ **Cornell's files live on a SHARED CDN.** Every `blogs.cornell.edu` upload 302s to
-  `bpb-us-e1.wpmucdn.com`, which serves all CampusPress customers. Host + path are separate gates:
-  the host must be in TRUSTED_DOMAINS *and* `/blogs.cornell.edu/` must be an allowPrefix, or the
-  PDFs vanish as a throw or as `skippedRedirect`. The path prefix is the ONLY thing bounding us to
-  Cornell — sabotage-verified tests refuse a Harvard/Penn State path on the same CDN.
+Live proof the absorb isn't data loss:
+```
+Bhutan Barrel 18   45% Merlot · 33% Cabernet Franc · 22% Cabernet Sauvignon
+Demo T5            91% Syrah · 9% Cabernet Sauvignon
+```
 
-⛔ **MSU (`msu-grapes`) stays DORMANT — do not retry.** Imperva refuses this crawler from every
-network available (residential IP 5/5 across all UAs; GitHub runners `skippedChallenge: 1`). A
-curated URL list does not help — same blocked network. `npm run verify:msu` is the probe: if it
-ever reports **live PASS**, un-dormant both flags + re-seed.
+**Three things worth remembering from this:**
 
-⚠️ **Vercel builds were rate-limited for ~24h** on 2026-07-20 (free-tier daily cap, ~8 PRs). Recovered.
+- 🔎 **The Bhutan diagnosis was BACKWARDS at first.** Barrel 18's three lots looked like data entry
+  ("nobody commingles at exactly 100/75/50"). They came from `system@day-zero-migration`, note
+  *"Day-Zero legacy seed from vessel_component"* — the OLD model was a COMPOSITION table and the
+  migration turned each component ROW into its own LOT. It was always ONE Bordeaux blend. Barrel 18
+  is the fossil of the exact modelling error the plan fixes.
+- 🔎 **Making composition load-bearing exposed a silent bug**: the fold wrote NOTHING for a
+  blend-lot destination (it resolved origins only for lots with a DIRECT origin), so an absorb into
+  a blend lost the breakdown. Fixed via `composeLeaves` for every lot. Verified by TWO independent
+  methods agreeing — the incremental fold vs a full recompute — zero drift across 38 vessels.
+- ⚠️ **Pre-invariant FIXTURES are the recurring blocker.** `verify:chemistry`, `verify:bond` and
+  `verify:naming` all seeded several lots into one tank and started failing the moment the guard
+  went on. Each needed its own vessel per lot. Expect more if a verify script is added.
+
+**Left to do:** merge branch 2, then the 375px browser pass on Demo (needs a human login).
 
 ## 🔭 Also in flight
 
@@ -430,6 +433,17 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Cornell fruit resources KB source — CLOSED.** `cornell-grapes`: 96 documents / 948 chunks, 64
+  PDFs, `verify:knowledge-base` 20/20 PASS. Merged #424 (source, reconciled) · #425 (crawl error
+  visibility) · #426 (CDN) · #427 (title fix). Plan 085 (MSU) closed alongside it. 🔎 Lessons kept:
+  main was FABRICATING publication dates (`new Date("Issue 2019")` → 2019-01-01, and sitemap
+  `lastmod` made an undated 2009 page score `ageYears: 0`); a newly-allowlisted target is
+  UNDISCOVERABLE by re-crawl (a 304 yields no links — after ANY scope change, reset THEN re-crawl);
+  Cornell's files live on a SHARED CampusPress CDN, so host and path are separate gates and the
+  `/blogs.cornell.edu/` prefix is the only thing bounding us to Cornell. ⛔ `msu-grapes` stays
+  DORMANT — Imperva refuses this crawler from every available network; `npm run verify:msu` is the
+  probe, un-dormant only if it ever reports a live PASS.
+
 - **Consumable cost surfacing (#372 "pricing") — MERGED (PR #435, squash `b46cd30`).** Mike: "I don't see the
   price I entered" + "are we averaging across shipments?". The engine already captured both — each `SupplyLot`
   stores the receipt price; the material's unit cost is the weighted average across open priced lots — but the
@@ -529,28 +543,10 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-21 — **assistant VOICE MODE is conversational and LIVE IN PROD** (#439
-`9cc51cd8` + #441 `e516248a`, live-verified on a real device). Barge-in is now ADAPTIVE: a single
-fixed loudness threshold structurally cannot separate the user's voice from the assistant's own
-echo, so `echoAdjustedLevel()` subtracts the assistant's live output from the mic level — the bar
-rises while it talks, drops in the gaps. Plus a voice-ONLY prompt seam (text chat + goldens
-byte-identical), citations WRITTEN but never SPOKEN, units spoken as words, a thinking earcon, and
-the new ElevenLabs voice. Vercel needed NO env change (verified: `ELEVENLABS_API_KEY` is the only
-`ELEVENLABS_*` set, so code defaults apply). tsc 0, eslint 0, **vitest 3219/0**. ⚠️ Feedback tickets
-`cmrtzeh63…` (Demo) + `cmrm5xew8…` (Bhutan) still OPEN — each has an `AGENTIC_FIX` run stuck
-`RUNNING`, which `closeFeedbackItemCore` refuses to close over until it's neutralized.
-Prior: **#373 "drop down" closed as REDUNDANT** (no code): the consumable vendor field is
-already a fuzzy `VendorPicker` over first-class vendors (persists vendorId, NAMING-1) in both the Add/Edit form
-(Plan 069) and the Receive panel (U17, PR #395); free-text was retired in #433. Mike DMed + RESOLVED. **This
-closes the ENTIRE Mike consumables-flow cluster: #377 → #366/#370 → #372 → #374 → #373.** Prior: **#374 "cost"
-closed as REDUNDANT** (U16 in PR #395, completed by #372/#435); Mike DMed + RESOLVED. Prior: **#372 consumable cost
-surfacing MERGED** (PR #435, `b46cd30`): the detail view now shows each shipment's "Paid $X/unit" + explains
-the weighted-average method (InfoHint + summary); read-only, reuses the engine's weightedAvgUnitCost; ticket
-RESOLVED + Mike DMed. Prior: **#366/#370 receive-by-pack
-MERGED** (PR #433, `3b13b6e`): retired the grams-only ReceiveModal so "Receive" opens the pack-aware Move-stock
-panel; both tickets DMed + RESOLVED (reporter Mike). Prior: **Cornell Fruit Resources LIVE** (96 docs / 948 chunks, verify:knowledge-base
-20/20). Landed as #424 (reconciling a parallel session's #411), then #425 crawl-error visibility, #426
-the CampusPress CDN, #427 the dropped canonicalTitle. En route: main was found to be FABRICATING
-publication dates from junk metadata, and a newly-allowlisted crawl target proved undiscoverable
-without a reset. Prior: plan 085 CLOSED, MSU unreachable and DORMANT (#422); the sweep fail-closed
-fix (#418) that un-broke the monthly refresh for all 21 sources._
+_Last updated: 2026-07-21 — **plan 088 (one lot per vessel) is built through Unit 19.** A vessel
+holds ONE lot; a lot may occupy MANY vessels (LEDGER-12), enforced at the single `vessel_lot` write
+site plus a `(tenantId, vesselId)` unique index, with identity decided at the moment of combination
+by one shared `decideCombineRoute`. Every "which lot?" picker in the app is gone, and a tank now
+shows what it is MADE of — Bhutan Barrel 18 reads `45% Merlot · 33% Cabernet Franc · 22% Cabernet
+Sauvignon` instead of pretending to be three wines. Branch 2 is unmerged; the 375px browser pass
+still needs a human login._
