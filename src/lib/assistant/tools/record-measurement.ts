@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { resolveLotTargetOrChoice, resolveVesselContents } from "../scope";
+import { resolveLotTargetOrChoice } from "../scope";
 import { recordMeasurementsAction, recordVesselReadingAction } from "@/lib/chemistry/actions";
 import { getAnalyte, resolveAnalyteKey } from "@/lib/chemistry/analytes";
 import type { RecordMeasurementsInput } from "@/lib/chemistry/measurements";
@@ -16,7 +16,7 @@ function readingLabel(analyteKey: string): string {
 // Wraps recordMeasurementsAction → recordMeasurementsCore (no re-implemented chemistry, no db_*).
 //
 // Decisions (interview 2026-07-05): attaches to exactly ONE lot (measurements are per-lot, never
-// whole-vessel — the one-lot invariant); a blend vessel is ambiguous → resolveLotTarget asks which lot.
+// whole-vessel — LEDGER-12 means a vessel resolves to its one lot, so there is nothing to ask.
 // Values are accepted as typed (no plausibility ceiling) and shown in the confirm card so a typo is
 // visible before confirming. This is NOT the block-ripeness Brix reading (that's log_brix, on a vineyard
 // block with grapes still on the vine / at harvest) — this is a cellar lot's chemistry, INCLUDING a
@@ -89,13 +89,13 @@ export const analyteProps = Object.fromEntries(
 export const recordMeasurementTool: AssistantTool = {
   name: "record_measurement",
   description:
-    "Record a bench/lab reading (pH, TA, free/total SO₂, VA, residual sugar, malic, alcohol, and Brix/sugar) against a LOT or a whole vessel. Use when the user reports numbers for wine or must that is ALREADY in a vessel — including a mid-ferment SUGAR/BRIX reading on a tank/barrel (pass it as `brix`). Give the lot by code (e.g. 'lot 24-CS-A') OR the vessel (e.g. 'tank 5' / 'T4'). If a tank holds MORE THAN ONE lot (a co-ferment), naming the vessel records the reading on the WHOLE TANK — one reading fanned out to every co-resident lot (the winemaker does NOT have to pick a lot). To attach to just one lot instead, name that lot. This is NOT the vineyard-block ripeness Brix reading on grapes still on the vine at harvest — that's log_brix. Does NOT save immediately — returns a preview to confirm.",
+    "Record a bench/lab reading (pH, TA, free/total SO₂, VA, residual sugar, malic, alcohol, and Brix/sugar) against a LOT or a whole vessel. Use when the user reports numbers for wine or must that is ALREADY in a vessel — including a mid-ferment SUGAR/BRIX reading on a tank/barrel (pass it as `brix`). Give the lot by code (e.g. 'lot 24-CS-A') OR the vessel (e.g. 'tank 5' / 'T4') — a vessel holds one wine, so naming the tank is enough and never asks which lot. This is NOT the vineyard-block ripeness Brix reading on grapes still on the vine at harvest — that's log_brix. Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       lot: { type: "string", description: "Lot code, e.g. '24-CS-A'." },
-      vessel: { type: "string", description: "Vessel holding the lot, e.g. 'tank 5' or 'barrel 12' (resolved to its lot; a blend asks which)." },
+      vessel: { type: "string", description: "Vessel holding the wine, e.g. 'tank 5' or 'barrel 12' (resolved to the lot in it)." },
       ...analyteProps,
       other: {
         type: "array",
@@ -116,32 +116,9 @@ export const recordMeasurementTool: AssistantTool = {
     const when = observedAt ? ` on ${observedAt}` : " today";
     const readingStr = readings.map((r) => `${readingLabel(r.analyte)} ${r.value}${r.unit ? ` ${r.unit}` : ""}`).join(", ");
 
-    // Plan 060 whole-tank default: a bare VESSEL ref (no explicit lot) on a MULTI-LOT tank fans the
-    // reading out to every co-resident lot — no "which lot?" dead-end. The confirm card NAMES the lots
-    // so a wrong default (two different wines parked in one tank) is caught before the write. Naming a
-    // lot (input.lot, incl. the picker pin "#<id>") stays the single-lot path below.
-    if (input.vessel && !input.lot) {
-      const contents = await resolveVesselContents(input.vessel);
-      if (contents.kind === "empty") {
-        throw new Error(`${contents.vesselLabel} is empty — there's no wine to record a reading against.`);
-      }
-      if (contents.kind === "blend") {
-        const codes = contents.lots.map((l) => l.code).join(" + ");
-        const preview = `Record ${readingStr} on the whole ${contents.vesselLabel}${when} — all ${contents.lots.length} co-fermenting lots (${codes}). To record on just one lot instead, name that lot.`;
-        const token = signProposal("record_measurement", {
-          fanout: true,
-          vesselId: contents.vesselId,
-          vesselLabel: contents.vesselLabel,
-          lotCount: contents.lots.length,
-          readings,
-          ...(observedAt ? { observedAt } : {}),
-          ...(input.note ? { note: input.note } : {}),
-        });
-        return { needsConfirmation: true, preview, token };
-      }
-      // single-lot vessel → falls through to the single-lot resolution below
-    }
-
+    // Plan 060's whole-tank FAN-OUT branch lived here: on a multi-lot tank it proposed writing the SAME
+    // reading to every co-resident lot, because there was no single answer to "which lot is this for".
+    // A vessel now holds one wine (LEDGER-12), so naming the vessel resolves it — one reading, one row.
     const resolved = await resolveLotTargetOrChoice({ lot: input.lot, vessel: input.vessel }, "record_measurement", input as Record<string, unknown>);
     if (resolved.kind === "choice") return resolved.choice;
     const { lotId, lotCode } = resolved.row;
@@ -165,7 +142,9 @@ export const commitRecordMeasurement: Committer = async (_user, args) => {
   const n = readings.length;
   const plural = n === 1 ? "" : "s";
 
-  // Plan 060: whole-tank fan-out — one reading recorded against every co-resident lot.
+  // Tolerant reader for a token signed BEFORE this deploy — proposals are short-lived, but a confirm
+  // card can already be sitting on someone's screen. recordVesselReadingAction now writes ONE panel,
+  // against the vessel's one lot, so an old card commits to exactly what a new one would.
   if (args.fanout && args.vesselId) {
     const res = await recordVesselReadingAction({ vesselId: String(args.vesselId), observedAt, readings: mapped, note });
     const lots = res.panels.length;

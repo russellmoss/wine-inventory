@@ -152,6 +152,47 @@ export async function pressLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
     if (!v.isActive) throw new ActionError(`${v.code} is inactive.`);
   }
 
+  // LEDGER-12: each press fraction mints its OWN child lot, so every fraction needs its own
+  // vessel and that vessel has to be empty — a vessel holds one cohesive liquid. Sending free run
+  // and pressings to the same tank is the mistake this catches: they would be one wine, not two
+  // fractions, which is exactly why InnoVint tells you to drain the free run off FIRST if you
+  // want to keep it separate (plan 088, Unit 8).
+  const fractionsPerVessel = new Map<string, number>();
+  for (const f of input.fractions) fractionsPerVessel.set(f.destVesselId, (fractionsPerVessel.get(f.destVesselId) ?? 0) + 1);
+  const shared = [...fractionsPerVessel.entries()].find(([, n]) => n > 1);
+  if (shared) {
+    throw new ActionError(
+      `Two fractions are going into ${vesselById.get(shared[0])!.code}. They would be one wine, not two — ` +
+        `send each fraction to its own vessel, or press them together as a single fraction.`,
+      "CONFLICT",
+    );
+  }
+  const occupied = await tx.vesselLot.findMany({
+    where: { vesselId: { in: destVesselIds } },
+    select: { vesselId: true, lotId: true, lot: { select: { code: true } } },
+  });
+  const residentsByVessel = new Map<string, { lotId: string; code: string }[]>();
+  for (const o of occupied) {
+    residentsByVessel.set(o.vesselId, [...(residentsByVessel.get(o.vesselId) ?? []), { lotId: o.lotId, code: o.lot.code }]);
+  }
+  for (const f of input.fractions) {
+    // Pressing back into the SOURCE is the normal in-place case — the parent is drawn down by the
+    // same operation, so it is not a foreign resident.
+    if (f.destVesselId === input.sourceVesselId) continue;
+    const residents = residentsByVessel.get(f.destVesselId) ?? [];
+    if (residents.length === 0) continue;
+    // `mergeIntoLotId` IS the absorb: the fraction joins an existing lot rather than minting a
+    // child. Legal exactly when that lot is the one already in the vessel.
+    if (f.mergeIntoLotId && residents.length === 1 && residents[0].lotId === f.mergeIntoLotId) continue;
+    const v = vesselById.get(f.destVesselId)!;
+    const codes = residents.map((r) => r.code).join(", ");
+    throw new ActionError(
+      `${v.code} already holds ${codes}. Press into an empty vessel, or send this fraction into ` +
+        `${codes} so it becomes part of that wine.`,
+      "CONFLICT",
+    );
+  }
+
   // Pre-resolve abbreviations for new-lot codes (single-origin parent → readable code).
   let originAbbrs: { vineyardAbbr: string; varietyAbbr: string; blockCode?: string; blockLabel?: string } | null = null;
   if (parent.originVineyardId && parent.originVarietyId) {

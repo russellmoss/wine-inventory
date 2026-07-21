@@ -98,9 +98,10 @@ export async function listVesselAnalyses(vesselId: string): Promise<VesselAnalys
     orderBy: { observedAt: "asc" },
     include: { readings: true },
   });
-  // Plan 060: a whole-tank reading fans out to one panel per co-resident lot, all sharing a
-  // vesselReadingGroupId. This is a VESSEL-scoped view, so collapse each group to ONE physical
-  // reading (identical readings across the group) — otherwise the trend + panelCount double-count.
+  // LEGACY groups: plan 060 fanned a whole-tank reading out to one panel per co-resident lot, all
+  // sharing a vesselReadingGroupId. New readings write a single panel (LEDGER-12), but the historical
+  // groups are real rows, so this VESSEL-scoped view still collapses each to ONE physical reading -
+  // otherwise the trend + panelCount double-count them.
   const panels = dedupeByPhysicalReading(rows);
   const readings = panels.flatMap((p) =>
     p.readings.map((r) => ({ analyte: r.analyte, value: Number(r.value), unit: r.unit, date: p.observedAt.getTime() })),

@@ -9,13 +9,20 @@ import { planLedgerRack, type VesselLotBalance } from "@/lib/ledger/math";
 import type { CaptureMethod } from "@/lib/ledger/vocabulary";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { vesselLabel, type CellarBaseResult } from "@/lib/cellar/addition";
+import { decideCombineRoute } from "@/lib/ledger/combine";
+import { loadCombineState } from "@/lib/ledger/combine-state";
 
 // Script-safe core for TOPPING (Phase 3, Unit 6). Topping is a TRANSFER, not an additive:
 // it moves wine from a source keg lot into the target via the rack mechanic
 // (planLedgerRack), under op type TOPPING, and appends a LotLineage edge from the keg lot
-// to each pre-existing target lot (kind TOPPING) so the target's composition stays honest.
-// It does NOT mint a new blend lot (that's Phase 5) — the keg wine becomes co-resident in
-// the target and the lineage records the micro-merge. Capacity is guarded by the chokepoint.
+// to each pre-existing target lot (kind TOPPING) so the micro-merge is recorded.
+//
+// Plan 088 (LEDGER-12): the keg wine no longer becomes CO-RESIDENT in the target. A vessel
+// holds one cohesive liquid, so the topped-up wine ABSORBS — it lands as the resident lot and
+// the keg lot simply leaves its own vessel. Op type stays TOPPING so the 5120.17 fold still
+// treats it as cellar practice rather than a declarable blend (lines 5 / 20); Vintrace
+// documents the same separation ("Topping Without Updating Wine Composition"). Capacity is
+// guarded by the chokepoint.
 
 export type ToppingInput = {
   toVesselId: string;
@@ -71,13 +78,32 @@ export async function topVesselTx(tx: Prisma.TransactionClient, actor: LedgerAct
   const addedL = plan.addedL;
   const dstTotalAfter = round2(dstTotalBefore + addedL);
 
-  // Volume each source (keg) lot contributed, for the lineage fraction.
+  // Volume each source (keg) lot contributed — the lineage fraction, and the basis for the
+  // absorb redirect below. Read BEFORE the lines are remapped.
   const contributedBySrc = new Map<string, number>();
   for (const l of plan.lines) {
     if (l.vesselId === toVesselId && l.deltaL > 0) {
       contributedBySrc.set(l.lotId, round2((contributedBySrc.get(l.lotId) ?? 0) + l.deltaL));
     }
   }
+
+  // LEDGER-12: topping used to leave the keg wine sitting beside the target as a SECOND resident
+  // ("it does NOT mint a new blend lot — the keg wine becomes co-resident"). A tank holds one
+  // cohesive liquid, so the topped-up wine now ABSORBS into the resident: it keeps the target's
+  // identity and the keg lot simply leaves its vessel (plan 088, Unit 7).
+  const state = await loadCombineState({ toVesselId, incomingLotIds: [...contributedBySrc.keys()] }, tx);
+  const decision = decideCombineRoute({ destResidentLots: state.destResidentLots, incoming: state.incoming });
+  if (!decision.ok) throw new ActionError(decision.message, "CONFLICT");
+
+  // ABSORB → the wine arrives as the resident lot. KEEP (empty target, or the keg lot is already
+  // the resident) leaves the lines exactly as planned.
+  const lines =
+    decision.mode === "ABSORB" && decision.residentLotId
+      ? plan.lines.map((l) =>
+          l.vesselId === toVesselId && l.deltaL > 0 ? { ...l, lotId: decision.residentLotId as string } : l,
+        )
+      : plan.lines;
+
   // Pre-existing target lots become the lineage children (exclude any keg lot just moved in).
   const childLots = dstLots.map((r) => r.lotId).filter((id) => !contributedBySrc.has(id));
 
@@ -92,9 +118,12 @@ export async function topVesselTx(tx: Prisma.TransactionClient, actor: LedgerAct
   ]);
   const summary = `Topped ${addedL} L from ${vesselLabel(from)} into ${vesselLabel(to)}`;
 
+  // Op type stays TOPPING on purpose: the 5120.17 fold treats topping as cellar practice, NOT a
+  // declarable blend (lines 5 / 20). Absorbing changes which lot the wine lands as; it must not
+  // turn a top-up into a reportable blending event.
   const opId = await writeLotOperation(tx, {
     type: "TOPPING",
-    lines: plan.lines,
+    lines,
     actorUserId: actor.actorUserId,
     enteredBy: actor.actorEmail,
     captureMethod: input.captureMethod,

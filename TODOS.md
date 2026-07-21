@@ -331,7 +331,15 @@ data-scrubbing. Tracked in `docs/architecture/security-register.md` (🟡).
 
 Also not done, and out of repo: the `/bug-triage` skill step that reads the captured hunt trail.
 
-## Whole-tank tasting notes (fan out the way chem panels already do)
+## ~~Whole-tank tasting notes (fan out the way chem panels already do)~~ — SUPERSEDED 2026-07-21
+
+⛔ **Do not build this.** Superseded by
+[plan 088 — one lot per vessel](docs/plans/2026-07-21-088-refactor-one-lot-per-vessel-plan.md).
+This TODO, plan 060's `record_measurement` fan-out, and PR #444 are **three instance-level
+answers to one class-level defect**: the app permits N lots in one vessel, so every per-lot
+record has to ask "which one?". Plan 088 removes the state instead, which deletes the fan-out
+rather than extending it. PR #444 closes as superseded. Original text kept below for context.
+
 You taste the TANK, not one lot inside it. `record_measurement` already handles this —
 plan 060 fans a reading out to every co-resident lot, one row each, so the "a row belongs
 to exactly one lot" rule still holds. `record_tasting_note` never got the same treatment:

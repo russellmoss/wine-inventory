@@ -790,9 +790,10 @@ export async function getWorkOrderPickers(tenantId: string): Promise<{ vessels: 
       prisma.cellarMaterial.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, stockUnit: true, kind: true, category: true, subcategory: true, isStockTracked: true, genericName: true, brandName: true, preferGeneric: true } }),
       prisma.lot.findMany({ where: { status: "ACTIVE" }, orderBy: { code: "asc" }, take: 500, select: { id: true, code: true } }),
       // Current occupancy (the fold of the ledger, VesselLot): drives BOTH the dose calculator's per-vessel
-      // volume and the vessel→lot narrowing. Lot codes come from here, so a resident lot is always
-      // selectable even if it falls outside the 500-lot list above.
-      prisma.vesselLot.findMany({ select: { vesselId: true, volumeL: true, lot: { select: { id: true, code: true } } }, orderBy: { lot: { code: "asc" } } }),
+      // volume and the vessel→lot resolution. Lot codes come from here, so a resident lot is always
+      // selectable even if it falls outside the 500-lot list above. Volume-descending so a pre-LEDGER-12
+      // row with several residents still resolves to the wine that is actually in the tank.
+      prisma.vesselLot.findMany({ select: { vesselId: true, volumeL: true, lot: { select: { id: true, code: true } } }, orderBy: [{ volumeL: "desc" }, { lot: { code: "asc" } }] }),
       // Per-material on-hand (summed open SupplyLots) — surfaced next to each option in the picker.
       prisma.supplyLot.groupBy({ by: ["materialId"], where: { qtyRemaining: { gt: 0 } }, _sum: { qtyRemaining: true } }),
     ]);

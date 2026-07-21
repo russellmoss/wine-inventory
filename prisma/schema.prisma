@@ -1853,6 +1853,15 @@ model VesselLot {
   vessel    Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
   lot       Lot      @relation(fields: [lotId], references: [id], onDelete: Restrict)
 
+  // LEDGER-12 (plan 088): a vessel holds ONE cohesive liquid. The app refuses it at the ledger
+  // chokepoint in domain language; this makes it structurally impossible — for scripts, imports,
+  // and any future code that forgets. The inverse stays unbounded: one lot may occupy MANY
+  // vessels (40 barrels is normal), which is why this keys on the vessel, never the lot.
+  // Safe because BOTTLE_STORAGE ledger legs carry vesselId: null, so bottled wine is not
+  // vessel occupancy and never lands here.
+  @@unique([tenantId, vesselId])
+  // Kept deliberately: strictly weaker than the above, but it is a live WhereUniqueInput target
+  // for existing findUnique/upsert call sites. Removing it is a separate mechanical sweep.
   @@unique([tenantId, vesselId, lotId])
   @@index([lotId])
   @@index([tenantId])

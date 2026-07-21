@@ -16,13 +16,13 @@ type RawInput = { lot?: string; vessel?: string; totalCost?: number; note?: stri
 export const recordBulkWineCostTool: AssistantTool = {
   name: "record_bulk_wine_cost",
   description:
-    "Record the PURCHASE COST of a bulk-wine lot — a mid-process cost node so the lot's cost roll-up is accurate (e.g. bought bulk wine, or a custom-crush charge on a lot). Use when the user states what a bulk WINE lot cost: 'the bulk Cab in tank 4 cost $5,000', 'record $2,400 for lot 24-BULK-1'. Give the lot by code or its vessel (a blend asks which lot). The lot must be a bulk wine lot (not fruit/must/bottled). This is NOT a material/supply receipt (that's receive_supply). Returns a preview to confirm.",
+    "Record the PURCHASE COST of a bulk-wine lot — a mid-process cost node so the lot's cost roll-up is accurate (e.g. bought bulk wine, or a custom-crush charge on a lot). Use when the user states what a bulk WINE lot cost: 'the bulk Cab in tank 4 cost $5,000', 'record $2,400 for lot 24-BULK-1'. Give the lot by code, or the vessel that holds it. The lot must be a bulk wine lot (not fruit/must/bottled). This is NOT a material/supply receipt (that's receive_supply). Returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       lot: { type: "string", description: "Bulk wine lot code, e.g. '24-BULK-1'." },
-      vessel: { type: "string", description: "Vessel holding the bulk lot, e.g. 'tank 4' (a blend asks which lot)." },
+      vessel: { type: "string", description: "Vessel holding the bulk lot, e.g. 'tank 4'." },
       totalCost: { type: "number", description: "Total purchase cost in the tenant's currency (> 0)." },
       note: { type: "string", description: "Optional note (supplier, invoice, etc.)." },
     },

@@ -1,34 +1,15 @@
-// Plan 060: pure fan-out planning for a whole-tank reading. DB-free so it is unit-tested without
-// a database (mirrors resolveResidentLot in resolve-lot.ts). Given the resident lots of a vessel and
-// a STABLE base key (the capture's clientRequestId), it produces a deterministic group id + one
-// per-lot idempotency key. Deterministic is the whole point: a retry / offline re-sync with the same
-// base lands the SAME group and per-lot keys, so the (tenantId, vesselReadingGroupId, lotId) unique
-// makes each per-lot write a no-op on replay instead of a duplicate.
+// Read-side collapsing for whole-tank readings. DB-free so it is unit-tested without a database.
+//
+// ⚠️ LEGACY, and deliberately kept (plan 088, Units 14/15). Plan 060 used to FAN a whole-tank
+// reading OUT to every co-resident lot, one panel each, sharing a vesselReadingGroupId, so
+// vessel-scoped views could show one row while each lot kept its own curve. A vessel now holds ONE
+// lot (LEDGER-12), so nothing mints a group id any more and the planner that did is gone.
+//
+// The COLLAPSING stays, because the history does: five readings in production were genuinely
+// fanned out across lots that have since been merged. Without this, each of them renders twice in
+// a vessel view, forever. Deleting those panels instead would destroy real measurements to tidy a
+// column — not a trade worth making.
 
-export type FanoutPlan = {
-  vesselReadingGroupId: string;
-  perLot: { lotId: string; clientRequestId: string }[];
-};
-
-/**
- * Deterministic group id + per-lot idempotency keys from a stable base + resident lot ids.
- * Group id = `vrg:${base}`; each lot's panel key = `${groupId}#${lotId}` (cuid/uuid ids and lot ids
- * never contain `#`, so the delimiter is safe). Same (residents, base) → byte-identical plan.
- */
-export function planVesselReadingFanout(residentLotIds: string[], baseClientRequestId: string): FanoutPlan {
-  const vesselReadingGroupId = `vrg:${baseClientRequestId}`;
-  return {
-    vesselReadingGroupId,
-    perLot: residentLotIds.map((lotId) => ({ lotId, clientRequestId: `${vesselReadingGroupId}#${lotId}` })),
-  };
-}
-
-/**
- * The "physical reading" id for VESSEL-scoped dedup: the N fanned-out panels of one whole-tank
- * reading share their group id, so coalesce(vesselReadingGroupId, id) collapses them to one; an
- * ungrouped (legacy / single-lot) panel is its own. Used ONLY by vessel-scoped views (vessel History,
- * /bulk trends, panel counts). LOT-scoped views must NOT dedup — each lot keeps its own panel/curve.
- */
 export function physicalReadingKey(p: { id: string; vesselReadingGroupId: string | null }): string {
   return p.vesselReadingGroupId ?? p.id;
 }

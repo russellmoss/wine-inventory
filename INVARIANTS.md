@@ -35,6 +35,18 @@ state of any vessel/lot is the fold of all lines over time, materialized in `Ves
 5. **Writes run at `SERIALIZABLE` isolation** and lock the involved `VesselLot` rows in
    canonical (sorted) order before folding, so concurrent racks can't lose updates or
    overfill. P2034/serialization failures are retried (`withWriteRetry`).
+5b. **LEDGER-12 — one lot per vessel.** `UNIQUE (tenantId, vesselId)` on `VesselLot`. A vessel's
+   contents are ONE cohesive liquid; two lots in one tank is a state the physical world does not
+   have, and permitting it is what forced every per-lot record to ask "which lot?". The INVERSE
+   stays unbounded: one lot may occupy MANY vessels (40 barrels is normal), so this keys on the
+   vessel and never on the lot. Bottled wine is unaffected — `BOTTLE_STORAGE` legs carry
+   `vesselId: null`.
+   Identity is resolved at the moment of combination by `decideCombineRoute` (absorb into the
+   resident / keep / mint a new blend lot), which refuses absorbing across tax class, ownership,
+   bond, form or ferment state. The chokepoint's own assertion is deliberately **monotone** — it
+   refuses an operation that leaves a vessel with MORE lots than it started with, rather than one
+   that merely isn't perfect, so an already-mis-recorded vessel can still be racked out and healed
+   instead of being frozen unusable. See [[LEDGER-12-one-lot-per-vessel]].
 
 ### Enforced in pure code (and asserted in tests)
 6. **Balanced operations.** For every operation, `sum(deltaL) == 0` across all its lines

@@ -166,6 +166,39 @@ export async function crushLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
     };
   });
 
+  // LEDGER-12: a vessel holds one cohesive liquid, so crushing into a vessel that already holds
+  // wine ABSORBS into that lot rather than adding a second resident — InnoVint's "combine with
+  // existing lot", and the co-ferment case (Syrah + Viognier into one fermenter) is the NORMAL
+  // path here, not an error. `mode: "ADD"` is the primitive that already does this (plan 088,
+  // Unit 8). A multi-vessel NEW crush (whole-cluster press) needs every destination empty: one
+  // new lot cannot absorb into several different residents.
+  let effectiveTarget: CrushTarget = input.target;
+  if (input.target.mode === "NEW") {
+    const occupancy = await tx.vesselLot.findMany({
+      where: { vesselId: { in: destVesselIds } },
+      select: { vesselId: true, lotId: true, lot: { select: { code: true } } },
+    });
+    if (occupancy.length > 0) {
+      if (destVesselIds.length > 1) {
+        const codes = [...new Set(occupancy.map((o) => o.lot.code))].join(", ");
+        throw new ActionError(
+          `Splitting a new lot across several vessels needs them all empty — ${codes} is already in one of them. ` +
+            `Press into empty vessels, or crush into ${codes} on its own.`,
+          "CONFLICT",
+        );
+      }
+      const residentIds = [...new Set(occupancy.map((o) => o.lotId))];
+      if (residentIds.length > 1) {
+        throw new ActionError(
+          `${vessel.code} is recorded as holding ${residentIds.length} separate wines. Sort out what's ` +
+            `actually in it before crushing into it.`,
+          "CONFLICT",
+        );
+      }
+      effectiveTarget = { mode: "ADD", lotId: residentIds[0] };
+    }
+  }
+
   // Resolve the target lot's identity + origin.
   let mode: "NEW" | "ADD";
   let originBlockId: string | null = null;
@@ -174,21 +207,23 @@ export async function crushLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
   let vintage: number | null = null;
   let existingLotId: string | null = null;
 
-  if (input.target.mode === "ADD") {
+  if (effectiveTarget.mode === "ADD") {
     mode = "ADD";
     const lot = await tx.lot.findUnique({
-      where: { id: input.target.lotId },
+      where: { id: effectiveTarget.lotId },
       select: { id: true, code: true, form: true, status: true },
     });
     if (!lot) throw new ActionError("The must lot to add into was not found.");
     if (lot.status !== "ACTIVE") throw new ActionError("Can't add fruit to an inactive lot.");
     if (lot.form !== "MUST" && lot.form !== "JUICE") {
+      // Reached both when the winemaker picked the lot AND when crushing into an occupied vessel
+      // re-targeted onto its resident — you cannot crush fruit into finished wine either way.
       throw new ActionError(`Sequential fill needs a MUST/JUICE lot — lot ${lot.code} is ${lot.form}.`);
     }
     existingLotId = lot.id;
   } else {
     mode = "NEW";
-    vintage = input.target.vintage;
+    vintage = effectiveTarget.vintage;
     // A single-origin must lot needs one block of origin; picks spanning blocks → that's a blend.
     const blocks = new Set(picks.map((p) => p.harvestRecord.block?.id ?? "").filter(Boolean));
     if (blocks.size !== 1) {
@@ -197,7 +232,7 @@ export async function crushLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
     const block = picks[0].harvestRecord.block!;
     originBlockId = block.id;
     originVineyardId = picks[0].harvestRecord.vineyardId;
-    originVarietyId = input.target.varietyId ?? block.varietyId ?? null;
+    originVarietyId = effectiveTarget.varietyId ?? block.varietyId ?? null;
     if (!originVarietyId) {
       throw new ActionError("Set the block's variety (or pass one) before crushing a new lot.");
     }

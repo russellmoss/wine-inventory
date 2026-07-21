@@ -49,7 +49,8 @@ export const recordMeasurementsAction = action(
   },
 );
 
-/** Plan 060: record ONE reading across a whole vessel (fan-out to every co-resident lot). */
+/** Record ONE reading against a whole vessel. (Plan 060 fanned this out to every co-resident lot; a
+ *  vessel holds one wine now, LEDGER-12, so it writes the single panel it always should have.) */
 export const recordVesselReadingAction = action(
   async ({ actor }, input: RecordVesselReadingInput): Promise<RecordVesselReadingResult> => {
     const res = await recordVesselReadingCore(actor, input);

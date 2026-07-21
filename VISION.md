@@ -188,6 +188,10 @@ run the right math.
   Brix, temperature, RS, free/total SO₂, malic acid, VA, alcohol. Logging what was
   measured. Because these are tied to a lot + timestamp, **trend charts come for
   free** (the app already does this for vineyard Brix).
+  A reading belongs to exactly one lot **because a vessel IS exactly one lot**
+  ([[0008-one-lot-per-vessel]], LEDGER-12) — not in spite of it. You measure the
+  liquid in the tank; the tank holds one wine; so the reading has one home. The app
+  never asks which lot a tank reading is for, and never writes a copy per lot.
 - **Tasting / flavor notes** — aroma, flavor, structure, score, "needs more time,"
   "ready to blend." Logged at any stage; becomes a searchable tasting history.
 - **Operations / work done** — the physical actions that move/transform wine. Each is
