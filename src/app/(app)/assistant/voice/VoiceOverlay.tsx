@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Badge, Button } from "@/components/ui";
+import { Markdown } from "../Markdown";
 import { AudioVisualizer } from "./AudioVisualizer";
 import {
   useVoiceSession,
@@ -216,11 +217,15 @@ export function VoiceOverlay({ initialHistory, conversationId, onConversationId,
               color: c.role === "user" ? "var(--accent-on)" : "var(--text-primary)",
               fontSize: "var(--text-body-sm)",
               lineHeight: "var(--leading-normal)",
-              whiteSpace: "pre-wrap",
+              // The assistant's text is markdown (it carries citation links); let the
+              // renderer own its whitespace. The user's transcript is plain speech.
+              whiteSpace: c.role === "user" ? "pre-wrap" : "normal",
               wordBreak: "break-word",
             }}
           >
-            {c.content}
+            {/* Assistant captions render as markdown so the citations the voice
+                deliberately does NOT speak are still here, and clickable. */}
+            {c.role === "assistant" ? <Markdown text={c.content} /> : c.content}
           </div>
         ))}
       </div>

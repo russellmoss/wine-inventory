@@ -10,6 +10,8 @@ const ENV_KEYS = [
   "ELEVENLABS_MODEL_ID",
   "ELEVENLABS_STABILITY",
   "ELEVENLABS_SIMILARITY_BOOST",
+  "ELEVENLABS_STYLE",
+  "ELEVENLABS_SPEAKER_BOOST",
   "OPENAI_API_KEY",
 ] as const;
 
@@ -65,24 +67,45 @@ describe("getVoiceConfig", () => {
     const { getVoiceConfig } = await import("@/lib/voice/config");
     const cfg = getVoiceConfig();
     expect(cfg.apiKey).toBe("sk_test");
-    expect(cfg.voiceId).toBe("Cb8NLd0sUB8jI4MW2f9M");
-    expect(cfg.modelId).toBe("eleven_turbo_v2_5");
-    expect(cfg.stability).toBe(0.5);
+    expect(cfg.voiceId).toBe("UgBBYS2sOqTuMpoF3BR0");
+    expect(cfg.modelId).toBe("eleven_flash_v2_5"); // lowest latency for real-time conversation
+    expect(cfg.stability).toBe(0.45);
     expect(cfg.similarityBoost).toBe(0.75);
+    expect(cfg.style).toBe(0);
+    expect(cfg.useSpeakerBoost).toBe(true);
   });
 
   it("honors env overrides and falls back to defaults on non-numeric tuning", async () => {
     process.env.ELEVENLABS_API_KEY = "sk_test";
     process.env.ELEVENLABS_VOICE_ID = "voice123";
-    process.env.ELEVENLABS_MODEL_ID = "eleven_flash_v2_5";
+    process.env.ELEVENLABS_MODEL_ID = "eleven_turbo_v2_5";
     process.env.ELEVENLABS_STABILITY = "0.3";
     process.env.ELEVENLABS_SIMILARITY_BOOST = "not-a-number";
+    process.env.ELEVENLABS_STYLE = "0.4";
     const { getVoiceConfig } = await import("@/lib/voice/config");
     const cfg = getVoiceConfig();
     expect(cfg.voiceId).toBe("voice123");
-    expect(cfg.modelId).toBe("eleven_flash_v2_5");
+    expect(cfg.modelId).toBe("eleven_turbo_v2_5");
     expect(cfg.stability).toBe(0.3);
     expect(cfg.similarityBoost).toBe(0.75); // bad value -> default
+    expect(cfg.style).toBe(0.4);
+  });
+
+  it("parses the speaker-boost flag from common truthy/falsey spellings", async () => {
+    process.env.ELEVENLABS_API_KEY = "sk_test";
+    for (const [raw, expected] of [
+      ["false", false],
+      ["0", false],
+      ["no", false],
+      ["true", true],
+      ["1", true],
+      ["garbage", true], // unparseable -> default (true)
+    ] as const) {
+      vi.resetModules();
+      process.env.ELEVENLABS_SPEAKER_BOOST = raw;
+      const { getVoiceConfig } = await import("@/lib/voice/config");
+      expect(getVoiceConfig().useSpeakerBoost, `for "${raw}"`).toBe(expected);
+    }
   });
 });
 
@@ -109,8 +132,15 @@ describe("synthesizeStream", () => {
     expect(headers.accept).toBe("audio/mpeg");
     const parsed = JSON.parse(init.body as string);
     expect(parsed.text).toBe("Hello there.");
-    expect(parsed.model_id).toBe("eleven_turbo_v2_5");
-    expect(parsed.voice_settings).toEqual({ stability: 0.5, similarity_boost: 0.75 });
+    expect(parsed.model_id).toBe("eleven_flash_v2_5");
+    // All FOUR settings must go on the wire — style and use_speaker_boost were being
+    // dropped before, so setting them had no effect no matter what they were set to.
+    expect(parsed.voice_settings).toEqual({
+      stability: 0.45,
+      similarity_boost: 0.75,
+      style: 0,
+      use_speaker_boost: true,
+    });
   });
 
   it("throws a clean error on a non-2xx upstream response", async () => {

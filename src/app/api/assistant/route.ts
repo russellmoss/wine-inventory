@@ -42,6 +42,11 @@ export async function POST(req: Request) {
   const requestedConversationId =
     typeof rawCid === "string" && rawCid.length > 0 && rawCid.length <= 64 ? rawCid : null;
 
+  // Hands-free voice turn (the VoiceOverlay sets this). Only effect is an extra
+  // spoken-style block on the system prompt; strictly boolean so a junk value can't
+  // half-enable it. Text chat omits it and behaves exactly as before.
+  const isVoice = (body as { voice?: unknown })?.voice === true;
+
   const lastUserMessage = messages[messages.length - 1].content;
 
   const encoder = new TextEncoder();
@@ -105,7 +110,7 @@ export async function POST(req: Request) {
       }
 
       try {
-        const run = await runAssistant({ user, messages: replayed, send });
+        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice });
         // Persist when there is text OR any tool call. A turn that emitted only a card has no text;
         // dropping it (the old `run.text.trim()` gate) threw away exactly the tool evidence replay
         // needs, so the next turn would look like the assistant answered a write request with nothing.

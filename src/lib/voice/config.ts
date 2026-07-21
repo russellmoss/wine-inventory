@@ -5,13 +5,18 @@ import "server-only";
 // project's .env. Speech-to-text reuses the existing OPENAI_API_KEY. Everything
 // here is server-only; no secret is ever exposed to the client.
 
-// Reference values carried over from horseplay's lib/ai/elevenlabs.ts. The model
-// defaults to a low-latency turbo build for the Jarvis "talks back fast" feel;
-// override per-deploy via env without touching code.
-const DEFAULT_VOICE_ID = "Cb8NLd0sUB8jI4MW2f9M";
-const DEFAULT_MODEL_ID = "eleven_turbo_v2_5";
-const DEFAULT_STABILITY = 0.5;
+// Tuned for a real-time conversational assistant: the product-chosen voice on the
+// low-latency flash build, so the assistant starts talking back fast enough to feel
+// like a conversation rather than a render. Every value is env-overridable per
+// deploy without touching code (see .env.example).
+const DEFAULT_VOICE_ID = "UgBBYS2sOqTuMpoF3BR0";
+const DEFAULT_MODEL_ID = "eleven_flash_v2_5";
+const DEFAULT_STABILITY = 0.45;
 const DEFAULT_SIMILARITY = 0.75;
+// style 0 keeps delivery neutral (style > 0 adds latency and can over-emote on
+// short operational replies); speaker boost sharpens the voice's identity.
+const DEFAULT_STYLE = 0.0;
+const DEFAULT_SPEAKER_BOOST = true;
 
 export type VoiceConfig = {
   apiKey: string;
@@ -19,12 +24,22 @@ export type VoiceConfig = {
   modelId: string;
   stability: number;
   similarityBoost: number;
+  style: number;
+  useSpeakerBoost: boolean;
 };
 
 function num(envValue: string | undefined, fallback: number): number {
   if (envValue === undefined || envValue.trim() === "") return fallback;
   const n = Number(envValue);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function bool(envValue: string | undefined, fallback: boolean): boolean {
+  if (envValue === undefined || envValue.trim() === "") return fallback;
+  const v = envValue.trim().toLowerCase();
+  if (v === "true" || v === "1" || v === "yes") return true;
+  if (v === "false" || v === "0" || v === "no") return false;
+  return fallback;
 }
 
 /** True when text-to-speech is configured (the ElevenLabs key is present). */
@@ -58,5 +73,7 @@ export function getVoiceConfig(): VoiceConfig {
     modelId: process.env.ELEVENLABS_MODEL_ID || DEFAULT_MODEL_ID,
     stability: num(process.env.ELEVENLABS_STABILITY, DEFAULT_STABILITY),
     similarityBoost: num(process.env.ELEVENLABS_SIMILARITY_BOOST, DEFAULT_SIMILARITY),
+    style: num(process.env.ELEVENLABS_STYLE, DEFAULT_STYLE),
+    useSpeakerBoost: bool(process.env.ELEVENLABS_SPEAKER_BOOST, DEFAULT_SPEAKER_BOOST),
   };
 }

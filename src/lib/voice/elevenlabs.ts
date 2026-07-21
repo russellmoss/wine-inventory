@@ -29,6 +29,8 @@ export async function synthesizeStream(text: string): Promise<ReadableStream<Uin
       voice_settings: {
         stability: cfg.stability,
         similarity_boost: cfg.similarityBoost,
+        style: cfg.style,
+        use_speaker_boost: cfg.useSpeakerBoost,
       },
     }),
   });

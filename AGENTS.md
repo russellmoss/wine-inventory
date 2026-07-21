@@ -97,9 +97,12 @@ read the ALS tenant inside a cached fn (K12) — pass tenantId as an explicit ar
   Dashboard project for council / research tooling.
 - `ELEVENLABS_API_KEY` — assistant voice mode, BOTH directions: text-to-speech and
   speech-to-text (Scribe) run on this one key (no OpenAI needed). Reuse the same key
-  from the `horseplay` project's `.env`. Optional overrides: `ELEVENLABS_VOICE_ID`,
-  `ELEVENLABS_MODEL_ID` (default `eleven_turbo_v2_5`), `ELEVENLABS_STT_MODEL`
-  (default `scribe_v1`), `ELEVENLABS_STABILITY`, `ELEVENLABS_SIMILARITY_BOOST`.
+  from the `horseplay` project's `.env`. Optional overrides: `ELEVENLABS_VOICE_ID`
+  (default `UgBBYS2sOqTuMpoF3BR0`), `ELEVENLABS_MODEL_ID` (default
+  `eleven_flash_v2_5` — lowest latency for real-time conversation; `eleven_turbo_v2_5`
+  also works), `ELEVENLABS_STT_MODEL` (default `scribe_v1`), `ELEVENLABS_STABILITY`
+  (0.45), `ELEVENLABS_SIMILARITY_BOOST` (0.75), `ELEVENLABS_STYLE` (0.0),
+  `ELEVENLABS_SPEAKER_BOOST` (true).
   Unset → the "Talk" button is hidden and the assistant stays text-only.
 - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — optional. Google Map Tiles API key for the
   vineyard satellite basemap (`src/components/ui/SatelliteMap.tsx`). Client-exposed

@@ -25,19 +25,43 @@ export const DEFAULT_VAD_OPTIONS: VadOptions = {
 
 // Barge-in runs WHILE the assistant is speaking, so the mic is simultaneously
 // hearing the assistant's own voice (echo cancellation is never perfect) and any
-// room noise. Detecting an interruption with the *listen* thresholds made the
-// assistant interrupt itself on its own playback and cut off on a table bang —
-// the loop would oscillate through "thinking/speaking" and never actually talk.
-// Barge must clear a much higher, longer bar: only a deliberate, sustained
-// interruption should stop playback. A transient bang is loud but short, so the
-// longer minSpeechMs filters it; steady background chatter sits below the higher
-// threshold. Voice-interrupt is intentionally harder here; the on-screen
-// "Interrupt" button is always available as the instant, foolproof path.
+// room noise. A single fixed loudness bar cannot work: set it low and the
+// assistant interrupts itself on its own echo (oscillates, never talks); set it
+// high and the user's real "yeah, I got it" can't cross it (barge-in ignored).
+//
+// So the bar is ADAPTIVE — the caller feeds an echo-adjusted level
+// (`echoAdjustedLevel`) that subtracts a fraction of the assistant's OWN current
+// output from what the mic hears. Effect: while the assistant is talking loudly
+// the effective bar rises (its echo is discounted), and in the natural gaps
+// between its words the bar drops to `speechThreshold` so the user cuts through
+// easily. `minSpeechMs` still filters a transient bang (loud but too short to
+// confirm). The on-screen "Interrupt" button remains the instant, foolproof path.
 export const BARGE_VAD_OPTIONS: VadOptions = {
-  speechThreshold: 0.15,
+  speechThreshold: 0.09,
   hangoverMs: 400,
-  minSpeechMs: 600,
+  minSpeechMs: 400,
 };
+
+// How much of the assistant's own output level to subtract from the mic level
+// before barge detection. This is a soft echo discount, not a full AEC: small
+// enough that a user talking OVER loud playback still clears the bar, large
+// enough that residual echo during loud passages does not. Equivalent to a
+// dynamic threshold of `speechThreshold + ECHO_REFERENCE_GAIN * outputLevel`.
+export const ECHO_REFERENCE_GAIN = 0.3;
+
+/**
+ * Discount the assistant's own playback from the mic level so barge detection
+ * reacts to the USER, not the assistant's echo. `outputLevel` is the live RMS of
+ * the TTS playback (0 when nothing is playing). Clamped at 0 — the mic can only
+ * ever be quieter-than-expected, never negatively loud.
+ */
+export function echoAdjustedLevel(
+  micLevel: number,
+  outputLevel: number,
+  gain: number = ECHO_REFERENCE_GAIN,
+): number {
+  return Math.max(0, micLevel - gain * outputLevel);
+}
 
 export class VadDetector {
   private opts: VadOptions;
