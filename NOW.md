@@ -314,8 +314,23 @@ is two decisions that are Russell's, not code:
      tenant is dirty, and the app guard must become **"never make it worse"** (an op may not
      increase a vessel's lot count) — otherwise Barrel 18 freezes and they cannot even rack out
      of it. Monotone, so the estate heals and can never regress.
-   • Remaining violations: 4 (Bhutan B18 by decision; Demo B4/B5/T7 blocked on ONE approved
-     work-order task, "Rack Tank T3 to Tank T4", targeting `2024-OAK-1-CS-2`).
+   • ✅ **ALL OF DEMO IS COLLAPSED AND VERIFIED** (T5 #4580; B4 #4731, B5 #4732, T7 #4733).
+     Remaining violation: **1** — Bhutan Barrel 18, out of scope by decision.
+   • 🔎 **A THIRD defect surfaced only because B4/B5/T7 absorbed the SAME parent three times**
+     (once per vessel). A lineage edge is one row per (parent, child), so each absorb OVERWROTE
+     the fraction with just its own draw: 0.25627 recorded vs 0.27711 true — B4+B5's 125.53 L
+     vanished from the lot's makeup. **The folded composition stayed correct**, so nothing looked
+     wrong; it only appeared by diffing the fold against an independent recomputation. A parent's
+     share now ACCUMULATES: (prior contribution + arriving gross) / new total.
+   • 🔎 **The fold is MORE precise than the recomputation.** The fold adds real line volumes; the
+     rebuild multiplies a `Decimal(6,5)` fraction, so it carries ~1e-5 relative error (0.02 L on a
+     5,572 L tank). The rebuild therefore compares with a TOLERANCE — rewriting the exact folded
+     number with the approximation would be a downgrade and would report drift forever.
+   • ✅ **Evidence, on live data:** composition **byte-identical** before/after (collapsing lot
+     identity does not change what is in the tank) · **12,225.00 L conserved exactly** ·
+     **B6/T2/T4 untouched** at 500/1500/4200 L, proving the vessel-scoped draw for a lot spread
+     over SIX vessels · **ZERO drift across all 38 vessels in all 8 tenants** ·
+     `--rewrite-tasks` exercised (the blocking approved WO re-pointed; `verify:work-orders` 43).
 
    _(build detail)_ **Units 1-11 of 13 committed, 13 commits, not pushed.**
    Units 6-11 (`2e92586e` rack · `365f0e5b` topping · `33052e62` seed · `f98e4ba6` crush/press ·
