@@ -241,9 +241,12 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   $5.00). Ticket RESOLVED (canonical console path) + Mike DMed. 🔎 **Lesson: resolve feedback via
   `closeFeedbackItemCore` from the start — a raw status write skips the structured outcome note + reporter
   notice and can't be re-closed cleanly (the #366 reopen/version-race trap).**
-  **#374 "cost" closed as REDUNDANT (no code):** the read-only per-unit cost on every consumable list row was
-  the U16 fix already shipped in **PR #395**; #372 completed the surfacing. Confirmed on main, DMed Mike,
-  RESOLVED. That closes the whole Mike consumables-flow cluster (#377 → #366/#370 → #372 → #374).
+  **#374 "cost" + #373 "drop down" closed as REDUNDANT (no code):** #374 — the read-only per-unit cost on every
+  consumable list row was the U16 fix already shipped in **PR #395**, completed by #372. #373 — the vendor
+  free-text field is already a fuzzy `VendorPicker` over first-class vendors (persists the immutable vendorId,
+  NAMING-1) in both the Add/Edit `MaterialForm` (Plan 069) and the Receive `MaterialMovePanel` (U17, **PR #395**);
+  the old free-text lived in the ReceiveModal retired in **PR #433**. Both confirmed on main, DMed Mike, RESOLVED.
+  That closes the ENTIRE Mike consumables-flow cluster (#377 → #366/#370 → #372 → #374 → #373).
 
 - **Consumables receive-by-pack (#366/#370) — MERGED (PR #433, squash `3b13b6e`).** The receive machinery
   (`resolveReceiptQuantity`, location-aware `receiveConsumableCore`, the `MaterialMovePanel` unit selector +
@@ -326,9 +329,11 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-20 — **#374 "cost" closed as REDUNDANT** (no code): read-only per-unit cost on the
-consumable view already shipped (U16 in PR #395, completed by #372/#435); Mike DMed + ticket RESOLVED. This
-closes the whole Mike consumables-flow cluster (#377 → #366/#370 → #372 → #374). Prior: **#372 consumable cost
+_Last updated: 2026-07-21 — **#373 "drop down" closed as REDUNDANT** (no code): the consumable vendor field is
+already a fuzzy `VendorPicker` over first-class vendors (persists vendorId, NAMING-1) in both the Add/Edit form
+(Plan 069) and the Receive panel (U17, PR #395); free-text was retired in #433. Mike DMed + RESOLVED. **This
+closes the ENTIRE Mike consumables-flow cluster: #377 → #366/#370 → #372 → #374 → #373.** Prior: **#374 "cost"
+closed as REDUNDANT** (U16 in PR #395, completed by #372/#435); Mike DMed + RESOLVED. Prior: **#372 consumable cost
 surfacing MERGED** (PR #435, `b46cd30`): the detail view now shows each shipment's "Paid $X/unit" + explains
 the weighted-average method (InfoHint + summary); read-only, reuses the engine's weightedAvgUnitCost; ticket
 RESOLVED + Mike DMed. Prior: **#366/#370 receive-by-pack
