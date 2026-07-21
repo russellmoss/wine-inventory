@@ -626,19 +626,40 @@ migration checks). Self-enforcing beats documented.
 while violations exist, and it closes the rollback window)
 **Verification:** `npm run verify:invariants` && `npm run verify:invariant-frontmatter` && `npm run verify:one-lot-per-vessel`
 
-### Unit 14: Serialized-contract sweep
+### Unit 14: Serialized-contract sweep ✅ DONE
 
 **Goal:** Find the persisted shapes that a `tsc` pass will not catch before the deletions start.
-**Files:** `src/lib/offline/queue.ts`, assistant tool schemas + goldens, persisted work-order
-drafts, `test/contract-sweep.test.ts`
-**Approach:** Council: Units 15–17 remove `"ambiguous"` / `{kind:"blend"}` branches and the
-vessel-choice prompt, but some of those are **serialized** contracts — the offline queue's
-N-capture payload, assistant tool input schemas and golden fixtures, and any persisted WO draft
-JSON. Enumerate them, add a migration/compat path for anything already on disk or in the DB, and
-only then delete. This unit produces the list; 15–17 consume it.
+
+**Findings (measured against production, 2026-07-21):**
+
+| Surface | Persisted? | Live rows | Verdict |
+|---|---|---|---|
+| `AnalysisPanel.vesselReadingGroupId` | **DB column** | 10 panels in **5 real fan-out groups** | ⚠️ **KEEP THE READ PATH** |
+| `CaptureInput.occupancyToken` | **IndexedDB, on tablets** | unknown (client-side) | ⚠️ keep accepting it |
+| `CaptureInput.vesselReadingGroupId` | IndexedDB | unknown | stop sending; tolerate on read |
+| `WorkOrderTask.plannedPayload` lot fields | DB JSON | 89 tasks, **3 in unexecuted WOs** | safe — Unit 11 already made the lot optional |
+| Assistant resume tokens (`#<lotId>` pin) | signed, in-flight chat only | 1,182 messages | safe — the pin path SURVIVES for ambiguous lot codes |
+
+**⚠️ The one that changes Unit 15's scope.** `vesselReadingGroupId` was going to be deleted with
+the fan-out. It cannot be: **5 whole-tank readings were genuinely fanned out** across lots that
+have since been merged, and both vessel-scoped read paths
+([timeline-data.ts:232](src/lib/vessel/timeline-data.ts:232),
+[chemistry/data.ts:102](src/lib/chemistry/data.ts:102)) collapse a group to ONE timeline item.
+Drop the column and those five readings each render **twice**, forever.
+
+Deleting the duplicate panels instead is worse — they are real recorded measurements against real
+(now-merged) lots, and destroying measurement history to tidy a column is not a trade worth making.
+
+**So Unit 15 deletes the WRITE path and keeps the READ path.** Stop minting group ids; keep
+collapsing by them. The column becomes documented legacy: a record of how readings were captured
+before LEDGER-12, not a shape anything new produces.
+
+**`occupancyToken` likewise stays accepted.** It is a resident-lot signature living in IndexedDB on
+cellar tablets; a device that has been offline across the deploy will still send it. It degenerates
+to `${vesselId}:${lotId}` for a single-lot vessel, so it costs nothing to keep honouring.
+
 **Depends on:** Unit 13
-**Verification:** the sweep list is complete — grep for every removed discriminator across
-persisted payloads
+**Verification:** the counts above, re-run before the deletions land
 
 ### Unit 15: Delete the chemistry pickers and the fan-out
 
