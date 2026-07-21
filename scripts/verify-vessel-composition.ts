@@ -308,6 +308,36 @@ async function main() {
   assert(shareOf(cRedone, cab) === 500, "re-apply restores the Cabernet — the round trip loses nothing");
   assert(r2(cRedone.reduce((a, c) => a + c.volumeL, 0)) === 2500, "composition still sums to the vessel volume");
 
+  // ── 8. The SAME parent absorbed into the SAME lot from several vessels ─────
+  // A lineage edge is one row per (parent, child), so absorbing the same wine twice must
+  // ACCUMULATE the parent's share rather than overwrite it with just the latest draw. Missing
+  // this under-counted every earlier absorb — invisible until a recomputation was compared
+  // against the incrementally-folded composition.
+  console.log("\n8. The same parent absorbed twice, from two vessels");
+  const tA = await makeVessel("QA-VC-TA", 4000);
+  const tB = await makeVessel("QA-VC-TB", 2000);
+  const tC = await makeVessel("QA-VC-TC", 2000);
+  await seedLot("QA-VC-SY3", tA, 800, { varietyId: syrah, vineyardId: vyA, vintage: 2026 });
+  await seedLot("QA-VC-CS4", tB, 100, { varietyId: cab, vineyardId: vyB, vintage: 2026 });
+  const sy3Lot = (await prisma.lot.findFirstOrThrow({ where: { code: "QA-VC-SY3" } })).id;
+  const cs4Lot = (await prisma.lot.findFirstOrThrow({ where: { code: "QA-VC-CS4" } })).id;
+
+  // Put the SAME Cabernet lot in a second vessel, then absorb from both in turn.
+  await rackVesselCore(ACTOR, { fromVesselId: tB, toVesselId: tC, drawL: 40 });
+  await blendLotsCore(ACTOR, { mode: "GROW_EXISTING", toVesselId: tA, components: [{ vesselId: tB, lotId: cs4Lot, drawL: 60, deplete: true }] });
+  await blendLotsCore(ACTOR, { mode: "GROW_EXISTING", toVesselId: tA, components: [{ vesselId: tC, lotId: cs4Lot, drawL: 40, deplete: true }] });
+
+  const cTwoVessels = await composition(tA);
+  assert((await vesselVolume(tA)) === 900, "the resident absorbed from both vessels (800 + 60 + 40)");
+  assert(shareOf(cTwoVessels, cab) === 100, "BOTH absorbs of the same parent are counted (60 + 40)");
+  assert(shareOf(cTwoVessels, syrah) === 800, "the resident's own Syrah is untouched");
+
+  const accEdge = await prisma.lotLineage.findFirstOrThrow({ where: { parentLotId: cs4Lot, childLotId: sy3Lot } });
+  assert(
+    Math.abs(Number(accEdge.fraction) - 100 / 900) < 1e-3,
+    `the parent's share ACCUMULATED across both absorbs (${Number(accEdge.fraction).toFixed(5)} ≈ 0.11111), not just the last one`,
+  );
+
   console.log(`\nALL ${passed} ASSERTIONS PASSED`);
 }
 

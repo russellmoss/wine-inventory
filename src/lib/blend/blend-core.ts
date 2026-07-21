@@ -342,9 +342,16 @@ export async function blendLotsTx(
    */
   const denominator = mode === "GROW_EXISTING" ? round2(residentPriorL + grossDenom) : grossDenom;
 
+  // A parent may already be in this lot — the same wine absorbed again, in another vessel or on
+  // another day. Its share has to ACCUMULATE, not be overwritten: prior contribution (its old
+  // fraction applied to the old total) plus what is arriving now. Overwriting under-counted every
+  // earlier absorb, which only showed up when one lot absorbed the same parent across three
+  // vessels and the recomputed composition disagreed with the folded one.
+  const priorFractionByParent = new Map(priorEdges.map((e) => [e.parentLotId, e.fraction]));
   let edges = 0;
   for (const p of parentGross) {
-    const fraction = denominator > 0 ? Math.min(0.99999, round5(p.grossL / denominator)) : null;
+    const priorVolume = (priorFractionByParent.get(p.lotId) ?? 0) * residentPriorL;
+    const fraction = denominator > 0 ? Math.min(0.99999, round5((priorVolume + p.grossL) / denominator)) : null;
     await tx.lotLineage.upsert({
       where: { parentLotId_childLotId: { parentLotId: p.lotId, childLotId } },
       create: { parentLotId: p.lotId, childLotId, kind: LINEAGE_KIND.BLEND, fraction },

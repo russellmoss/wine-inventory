@@ -90,9 +90,15 @@ async function main() {
     const scopedExisting = existing.filter((e) => !TENANT || e.tenantId === TENANT);
     const toDelete = scopedExisting.filter((e) => !desired.has(`${e.vesselId}::${e.varietyId}::${e.vineyardId}::${e.vintage}`));
     const toCreate = [...desired.entries()].filter(([k]) => !existingByKey.has(k)).map(([, v]) => v);
+    // Tolerance, not equality. The INCREMENTAL fold is the precise one — it adds real line
+    // volumes. This recomputation multiplies a lineage fraction stored as Decimal(6,5), so it
+    // carries ~1e-5 relative error: on a 5,572 L tank that is 0.06 L per edge. Rewriting the exact
+    // folded number with the approximation would be a downgrade, and would make every run report
+    // drift forever. Real drift (the kind this script exists to repair) has been 100+ L.
+    const tolerance = (volumeL: number) => Math.max(0.05, Math.abs(volumeL) * 1e-4);
     const toUpdate = [...desired.entries()]
       .map(([k, v]) => ({ v, e: existingByKey.get(k) }))
-      .filter((x): x is { v: typeof x.v; e: Existing } => !!x.e && Math.abs(Number(x.e.volumeL) - x.v.volumeL) > 0.01);
+      .filter((x): x is { v: typeof x.v; e: Existing } => !!x.e && Math.abs(Number(x.e.volumeL) - x.v.volumeL) > tolerance(x.v.volumeL));
 
     const drifted = new Set([...toDelete.map((d) => d.vesselId), ...toCreate.map((c) => c.vesselId), ...toUpdate.map((u) => u.v.vesselId)]);
     const codeByVessel = new Map(held.map((h) => [h.vesselId, `${h.tenantId} ${h.vesselCode}`]));
