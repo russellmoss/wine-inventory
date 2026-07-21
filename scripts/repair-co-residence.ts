@@ -227,7 +227,16 @@ async function main() {
         components: losers.map((l) => ({ vesselId: t.vesselId, lotId: l.lotId, drawL: l.volumeL, deplete: true })),
         note: `One lot per vessel (LEDGER-12): ${survivor.lotCode} absorbed ${losers.map((l) => l.lotCode).join(", ")} in ${t.label}.`,
       });
-      console.log(`  ✅ APPLIED — op #${res.operationId}, ${res.lineageEdges} lineage edge(s), ${res.childCode} now ${r2(res.childTotalL)} L`);
+      // childTotalL is the volume this blend ADDED, not the resulting total — read the projection
+      // back so the line says what the vessel actually holds. (The first version printed
+      // "now 625 L" after collapsing to 6,995 L, which is exactly the kind of success message
+      // that gets trusted instead of checked.)
+      const after = await prisma.vesselLot.findMany({ where: { vesselId: t.vesselId }, select: { volumeL: true } });
+      const afterL = r2(after.reduce((a, r) => a + Number(r.volumeL), 0));
+      console.log(
+        `  ✅ APPLIED — op #${res.operationId}, ${res.lineageEdges} lineage edge(s); ` +
+          `${t.label} now holds ${after.length} lot (${survivor.lotCode}, ${afterL} L)`,
+      );
     });
   }
 

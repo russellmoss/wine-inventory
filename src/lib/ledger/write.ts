@@ -339,7 +339,7 @@ export async function writeLotOperation(
     }
   }
 
-  await syncVesselComponents(tx, input.lines);
+  await syncVesselComponents(tx, input.lines, input.type);
 
   // Phase 2 (AMEND-1): the compliance domain's fold at the chokepoint. If this op lands at/inside an
   // already-FILED 5120.17 period, mark the affected (formType, bond) chains NEEDS_AMENDMENT in the SAME
@@ -411,7 +411,7 @@ async function loadAncestryEdges(tx: Prisma.TransactionClient, rootIds: string[]
   return edges;
 }
 
-async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerLine[]): Promise<void> {
+async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerLine[], opType: OperationType): Promise<void> {
   const tenantId = requireTenantId();
   const lotIds = [...new Set(lines.map((l) => l.lotId))];
   const lots = await tx.lot.findMany({
@@ -424,9 +424,20 @@ async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerL
   const hasTuple = (o: Origin | undefined): o is Origin & { originVarietyId: string; originVineyardId: string; vintageYear: number } =>
     !!o?.originVarietyId && !!o.originVineyardId && o.vintageYear != null;
 
-  // Lots on these lines that carry no origin of their own: resolve each to its ancestor leaves.
-  const needLineage = [...new Set(lines.filter((l) => l.vesselId).map((l) => l.lotId))].filter((id) => !hasTuple(originById.get(id)));
+  // EVERY lot on these lines resolves through its lineage, not just the origin-less ones.
+  //
+  // Unit 5 only walked lots with no origin tuple, which fixed blend children but left the mirror
+  // case wrong: a lot that HAS an origin and then ABSORBS another lot. `hasTuple` short-circuited,
+  // so the absorbed wine was credited to the resident's own variety and the tank reported 100% of
+  // it — 625 L of Cabernet showing as Syrah. composeLeaves handles both shapes with one rule: a
+  // lot with no parents is its own single leaf (so a plain single-origin lot is unchanged), and a
+  // lot with parents is attributed to its ancestors with the uncovered remainder falling back to
+  // itself — which is precisely the resident's own share (plan 088, Unit 12b).
+  const needLineage = [...new Set(lines.filter((l) => l.vesselId).map((l) => l.lotId))];
   const leafShares = new Map<string, { lotId: string; weight: number }[]>();
+  // Direction-aware attribution: what ARRIVED (identity-changing ops) or what is GOING BACK
+  // (corrections). Falls through to the lot’s own makeup when neither applies.
+  const directionalShares = new Map<string, { sign: 1 | -1; leaves: { lotId: string; weight: number }[] }>();
   if (needLineage.length > 0) {
     const edges = await loadAncestryEdges(tx, needLineage);
 
@@ -441,26 +452,53 @@ async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerL
     }
     const consumed = [...netByLot.entries()].filter(([, net]) => net < -1e-9);
     const consumedTotal = consumed.reduce((a, [, net]) => a + Math.abs(net), 0);
+    const gained = [...netByLot.entries()].filter(([, net]) => net > 1e-9);
+    const gainedTotal = gained.reduce((a, [, net]) => a + net, 0);
 
+    // This fold applies DELTAS, so the two directions are attributed differently:
+    //   • wine LEAVING draws down what is already in the vessel → the lot's own makeup;
+    //   • wine ARRIVING is whatever this operation consumed to produce it → the in-op parents.
+    // Using one attribution for both is what made a GROW_EXISTING absorb wrong: the +625 L that
+    // arrived is Cabernet, even though the lot receiving it is a Syrah lot.
+    //
+    // ⚠️ ONLY on ops that actually CHANGE a wine's identity. On a CORRECTION the wine is going
+    // back where it came from and keeps its own makeup — attributing it to "whatever this op
+    // consumed" made a reversal credit the returning Cabernet to Syrah, so reverting and
+    // re-applying a collapse silently lost the Cabernet. TOPPING is excluded on purpose too: a
+    // top-up deliberately does not restate composition (Unit 7).
+    const identityChanging = opType === "BLEND" || opType === "PRESS" || opType === "SAIGNEE" || opType === "CRUSH";
     const leafIds = new Set<string>();
+    const expand = (lotId: string) => composeLeaves(lotId, edges).leaves;
+    // What this op consumed, expanded through each parent's OWN lineage so a blend of a blend
+    // reaches real origins instead of stopping at the intermediate lot.
+    const incomingLeaves = (forLotId: string) =>
+      consumed
+        .filter(([parentId]) => parentId !== forLotId)
+        .flatMap(([parentId, net]) =>
+          expand(parentId).map((leaf) => ({ lotId: leaf.lotId, weight: (leaf.weight * Math.abs(net)) / consumedTotal })),
+        );
+
+    // A CORRECTION hands wine BACK, so the volume leaving is specifically the wine that arrived —
+    // not a proportional slice of the blend it briefly joined. Mirror of the rule above: the
+    // identity comes from the lot RECEIVING the return. Without this, reverting an absorb drew
+    // the resident down proportionally and permanently smeared the two wines together.
+    const returningLeaves = (forLotId: string) =>
+      gained
+        .filter(([gainerId]) => gainerId !== forLotId)
+        .flatMap(([gainerId, net]) => expand(gainerId).map((leaf) => ({ lotId: leaf.lotId, weight: (leaf.weight * net) / gainedTotal })));
+
     for (const lotId of needLineage) {
-      const viaLineage = composeLeaves(lotId, edges);
-      const unresolved = viaLineage.leaves.length === 1 && viaLineage.leaves[0].lotId === lotId;
-
-      const leaves =
-        unresolved && consumedTotal > 0
-          ? // Expand each in-op parent through ITS OWN lineage too, so a blend of a blend still
-            // reaches real origins rather than stopping at the intermediate lot.
-            consumed
-              .filter(([parentId]) => parentId !== lotId)
-              .flatMap(([parentId, net]) => {
-                const share = Math.abs(net) / consumedTotal;
-                return composeLeaves(parentId, edges).leaves.map((leaf) => ({ lotId: leaf.lotId, weight: leaf.weight * share }));
-              })
-          : viaLineage.leaves;
-
-      leafShares.set(lotId, leaves);
-      for (const leaf of leaves) leafIds.add(leaf.lotId);
+      const own = expand(lotId);
+      const net = netByLot.get(lotId) ?? 0;
+      let directional: { lotId: string; weight: number }[] = [];
+      if (identityChanging && net > 1e-9 && consumedTotal > 0) {
+        directional = incomingLeaves(lotId); // wine arriving from what this op consumed
+      } else if (opType === "CORRECTION" && net < -1e-9 && gainedTotal > 0) {
+        directional = returningLeaves(lotId); // wine going back to whoever is receiving it
+      }
+      leafShares.set(lotId, own);
+      if (directional.length > 0) directionalShares.set(lotId, { sign: net > 0 ? 1 : -1, leaves: directional });
+      for (const leaf of [...own, ...directional]) leafIds.add(leaf.lotId);
     }
 
     // The leaves are ancestors, so their origins were not in the first query.
@@ -492,15 +530,18 @@ async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerL
 
   for (const line of lines) {
     if (!line.vesselId) continue;
-    const own = originById.get(line.lotId);
-    if (hasTuple(own)) {
-      addDelta(line.vesselId, own, line.deltaL);
-      continue;
-    }
-    // No origin of its own — spread the delta across the ancestor leaves that DO have one.
-    for (const leaf of leafShares.get(line.lotId) ?? []) {
+    // Wine arriving into a lot that gained volume from other lots in THIS op is made of those
+    // lots; anything else is the lot's own makeup (its ancestry, or its own origin if it has no
+    // parents). A leaf with no origin tuple is genuinely unattributable — that share is left out
+    // and the lot's provenanceComplete: false is what tells the UI to say so.
+    // Apply the directional attribution only to lines running in that direction; the other side
+    // of the same lot (a heel, a loss leg) still draws on the lot’s own makeup.
+    const directional = directionalShares.get(line.lotId);
+    const useDirectional = directional && Math.sign(line.deltaL) === directional.sign;
+    const shares = (useDirectional ? directional!.leaves : undefined) ?? leafShares.get(line.lotId) ?? [];
+    for (const leaf of shares) {
       const leafOrigin = originById.get(leaf.lotId);
-      if (!hasTuple(leafOrigin)) continue; // unattributable share; provenanceComplete carries that signal
+      if (!hasTuple(leafOrigin)) continue;
       addDelta(line.vesselId, leafOrigin, round2(line.deltaL * leaf.weight));
     }
   }

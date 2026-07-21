@@ -158,6 +158,15 @@ export async function blendLotsTx(
     }
   }
 
+  // How much of the resident already exists, across EVERY vessel — lineage describes the LOT, not
+  // one holding. Read HERE, before writeLotOperation folds the incoming volume into the
+  // projection; reading it afterwards counts the new wine twice and deflates every fraction.
+  let residentPriorL = 0;
+  if (growChildLotId) {
+    const held = await tx.vesselLot.findMany({ where: { lotId: growChildLotId }, select: { volumeL: true } });
+    residentPriorL = round2(held.reduce((a, r) => a + Number(r.volumeL), 0));
+  }
+
   // Build effective draws + total loss (deplete = pull the whole position, heel → loss).
   let totalLoss = round2(input.lossL ?? 0);
   if (totalLoss < 0) throw new ActionError("Loss can't be negative.");
@@ -294,29 +303,70 @@ export async function blendLotsTx(
   // provenanceComplete + source-vineyard set.
   let growSelf: { provenanceComplete: boolean; vineyardIds: string[] } | null = null;
   let priorLineage: { parentLotId: string; existed: boolean; priorFraction: number | null }[] = [];
+  let priorEdges: { parentLotId: string; fraction: number | null }[] = [];
   if (mode === "GROW_EXISTING") {
     const self = await tx.lot.findUnique({
       where: { id: childLotId },
       select: { provenanceComplete: true, sourceVineyards: { select: { vineyardId: true } } },
     });
     growSelf = { provenanceComplete: self?.provenanceComplete ?? true, vineyardIds: self?.sourceVineyards.map((s) => s.vineyardId) ?? [] };
-    const priors = await tx.lotLineage.findMany({
-      where: { childLotId, parentLotId: { in: parentGross.map((p) => p.lotId) } },
-      select: { parentLotId: true, fraction: true },
-    });
-    const priorByParent = new Map(priors.map((e) => [e.parentLotId, e.fraction == null ? null : Number(e.fraction)]));
-    priorLineage = parentGross.map((p) => ({ parentLotId: p.lotId, existed: priorByParent.has(p.lotId), priorFraction: priorByParent.get(p.lotId) ?? null }));
+    // Snapshot EVERY existing edge, not just this blend's parents — the rescale below touches
+    // them all, and a reversal has to put every one back (blend-correct's restore loop already
+    // handles `existed`/`priorFraction` generically).
+    priorEdges = (
+      await tx.lotLineage.findMany({ where: { childLotId }, select: { parentLotId: true, fraction: true } })
+    ).map((e) => ({ parentLotId: e.parentLotId, fraction: e.fraction == null ? null : Number(e.fraction) }));
+    const priorByParent = new Map(priorEdges.map((e) => [e.parentLotId, e.fraction]));
+    const touched = new Set([...parentGross.map((p) => p.lotId), ...priorEdges.map((e) => e.parentLotId)]);
+    priorLineage = [...touched].map((parentLotId) => ({
+      parentLotId,
+      existed: priorByParent.has(parentLotId),
+      priorFraction: priorByParent.get(parentLotId) ?? null,
+    }));
   }
+
+  /**
+   * A lineage fraction is the parent's share of the RESULTING wine.
+   *
+   * For NEW_LOT the child starts empty, so its share of the result IS its share of the input —
+   * gross, deliberately loss-independent (council S1/C2). Unchanged.
+   *
+   * For GROW_EXISTING the resident already held wine, and that wine is still in there. Dividing
+   * by the incoming volume alone said "100% of what arrived came from X" and, read as
+   * composition, claimed the resulting lot was 100% X. Absorbing 625 L into a 6,370 L resident
+   * wrote fraction 0.99999 — the composition fold then attributed the whole tank to the parent
+   * (or, before it consulted lineage at all, entirely to the resident). Neither is the wine.
+   * Dividing by resident + incoming makes the parents' shares sum to less than 1, and
+   * composeLeaves attributes the remainder to the resident's own origin, which is exactly right
+   * (plan 088, Unit 12b).
+   */
+  const denominator = mode === "GROW_EXISTING" ? round2(residentPriorL + grossDenom) : grossDenom;
 
   let edges = 0;
   for (const p of parentGross) {
-    const fraction = grossDenom > 0 ? Math.min(0.99999, round5(p.grossL / grossDenom)) : null;
+    const fraction = denominator > 0 ? Math.min(0.99999, round5(p.grossL / denominator)) : null;
     await tx.lotLineage.upsert({
       where: { parentLotId_childLotId: { parentLotId: p.lotId, childLotId } },
       create: { parentLotId: p.lotId, childLotId, kind: LINEAGE_KIND.BLEND, fraction },
       update: { fraction, kind: LINEAGE_KIND.BLEND },
     });
     edges++;
+  }
+
+  // Re-scale the resident's EARLIER parents: their share was measured against the smaller wine,
+  // so growing it dilutes them by residentPrior / (residentPrior + incoming). Without this, a lot
+  // grown twice ends up with fractions summing past 1 and a composition that over-counts the
+  // first blend.
+  if (mode === "GROW_EXISTING" && denominator > 0 && residentPriorL > 0) {
+    const scale = residentPriorL / denominator;
+    const growParents = new Set(parentGross.map((p) => p.lotId));
+    for (const e of priorEdges) {
+      if (growParents.has(e.parentLotId) || e.fraction == null) continue; // re-written above, or unknown
+      await tx.lotLineage.update({
+        where: { parentLotId_childLotId: { parentLotId: e.parentLotId, childLotId } },
+        data: { fraction: Math.min(0.99999, round5(e.fraction * scale)) },
+      });
+    }
   }
 
   // Child source-vineyard set = UNION of parents' FULL sets (+ the resident's own, in grow
