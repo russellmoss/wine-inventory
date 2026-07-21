@@ -209,21 +209,37 @@ is two decisions that are Russell's, not code:
    ⚠️ Also learned: `recrawl-knowledge` reads sources from the **DB**, not config — merging a
    source does NOTHING until `seed:knowledge-sources` runs. Easy to miss.
    Gates: tsc 0, eslint 0, **vitest 2985/0**, verify:invariants 36/36, verify:vt-enology PASS.
-7. **OPEN — assistant VOICE MODE "oscillates, never speaks" fixed LOCALLY (branch
-   `claude/voice-recognition-detection-7eb06e`, NOT committed/pushed).** Root cause: barge-in (the
-   "talk over the assistant to interrupt it" detector) used the SAME 0.04 RMS threshold as normal
-   listening, so while the assistant spoke, the mic heard its own playback past echo-cancellation
+7. ✅ **POPPED — assistant VOICE MODE is conversational and LIVE IN PROD. Merged #439
+   (`9cc51cd8`) then #441 (`e516248a`); live-verified on a real device by Russell.** Two rounds:
+   • **#439 — "oscillates, never speaks."** Barge-in used the SAME 0.04 RMS threshold as normal
+   listening, so while the assistant spoke the mic heard its own playback past echo-cancellation
    (or a table bang) and interrupted itself → listen→transcribe→think→(cut off)→loop, no audio ever.
-   The Jul-8 "voice focus" commit `75d20d5b` is where this + a latent STT fragility landed. Fixes:
-   (a) `BARGE_VAD_OPTIONS` in `vad.ts` (0.15 threshold / 600ms sustained) + a dedicated `bargeVadRef`
-   in `useMicCapture.ts` so LISTEN stays sensitive but BARGE is robust; (b) hardened
-   `transcribe/route.ts` so the per-utterance voice-settings read + audio-isolation can NEVER 502 a
-   turn (they now fall back to raw audio) — that coupling was the latent "stops hearing us."
-   Ruled OUT by elimination: STT works (reaches "thinking"), TTS works (hit ElevenLabs directly →
-   200 + 28KB audio), normalizer/chunker fine. The voiceprint/speaker-match gating was NEVER wired
-   into the live loop, so nothing to unwind there. Gates: **vitest voice-vad 12/12**, eslint 0 on the
-   3 touched files. ⚠️ **NOT live-verified** — barge-in needs a real mic; requires a human to talk to
-   it on Demo. Pop when confirmed talking on a device.
+   Landed in the Jul-8 "voice focus" commit `75d20d5b`. Diagnosed by ELIMINATION, which is the
+   reusable part: reaching "thinking" proves STT works (an empty transcript never gets that far), and
+   hitting ElevenLabs directly proved TTS works — leaving barge as the only thing between "has audio"
+   and "never plays it." Also hardened `transcribe/route.ts` so the per-utterance voice-settings read
+   + audio-isolation can NEVER 502 a turn (that coupling was the latent "stops hearing us").
+   • **#441 — the over-correction, and the real lesson.** #439 raised the bar to 0.15/600ms, which
+   then ignored a real "yeah, I got it" (ticket `cmrtzeh63`). ⚠️ **A single fixed loudness threshold
+   structurally cannot work**: low enough to hear the user is low enough to hear the assistant's own
+   echo; high enough to reject echo is too high for real speech. Fix is a DYNAMIC bar —
+   `echoAdjustedLevel()` subtracts a fraction of the assistant's own live output from the mic level,
+   so the bar rises while it talks and drops in the gaps (0.09 / 400ms).
+   • Also in #441: a voice-ONLY prompt seam (`VOICE_STYLE_PROMPT`, appended only when `voice: true`,
+   so text chat + goldens are byte-identical); citations are **written but never spoken**
+   (`/kb/source/` links dropped from speech, captions now render markdown so they stay clickable);
+   units spoken as words (mg/L, g/L, ppm, SO₂ — `mg/L` must match before `g/L`, and `SO₂` needs a
+   lookahead because U+2082 is not a word char so `\b` never matches); a "thinking" earcon; and
+   ElevenLabs voice `UgBBYS2sOqTuMpoF3BR0` / `eleven_flash_v2_5`.
+   🔎 **Two silent bugs found en route:** `style` + `use_speaker_boost` were never sent in the TTS
+   request body at all (setting them did nothing), and `proxy.ts` auth-gated `.mp3` so the earcon
+   would have died on a lapsed session.
+   ✅ **Vercel needs NO env change** — verified all 44 prod vars: `ELEVENLABS_API_KEY` is the only
+   `ELEVENLABS_*` set, so the new voice/model ship as code defaults with nothing overriding them.
+   ⚠️ **Still open:** feedback tickets `cmrtzeh630001jx04e92nzf2b` (Demo) and
+   `cmrm5xew80004l204ssuducfc` (Bhutan) are NOT closed — both have an `AGENTIC_FIX` run stuck in
+   `RUNNING`, and `closeFeedbackItemCore` refuses to close while one is running, so the stuck run
+   must be neutralized first.
 8. ← you are here
 
 ## 🪝 Off-path — do NOT do now
@@ -344,11 +360,16 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
 
-_Last updated: 2026-07-21 — **assistant VOICE MODE "never speaks" fixed locally** (branch
-`claude/voice-recognition-detection-7eb06e`, not committed): barge-in was self-interrupting on the
-assistant's own audio because it used the listen threshold; added a robust `BARGE_VAD_OPTIONS`
-(0.15/600ms) on a dedicated detector, and hardened the transcribe route so the settings/isolation
-read can't 502 a turn. vitest voice-vad 12/12, eslint 0. NOT yet live-verified (needs a real mic).
+_Last updated: 2026-07-21 — **assistant VOICE MODE is conversational and LIVE IN PROD** (#439
+`9cc51cd8` + #441 `e516248a`, live-verified on a real device). Barge-in is now ADAPTIVE: a single
+fixed loudness threshold structurally cannot separate the user's voice from the assistant's own
+echo, so `echoAdjustedLevel()` subtracts the assistant's live output from the mic level — the bar
+rises while it talks, drops in the gaps. Plus a voice-ONLY prompt seam (text chat + goldens
+byte-identical), citations WRITTEN but never SPOKEN, units spoken as words, a thinking earcon, and
+the new ElevenLabs voice. Vercel needed NO env change (verified: `ELEVENLABS_API_KEY` is the only
+`ELEVENLABS_*` set, so code defaults apply). tsc 0, eslint 0, **vitest 3219/0**. ⚠️ Feedback tickets
+`cmrtzeh63…` (Demo) + `cmrm5xew8…` (Bhutan) still OPEN — each has an `AGENTIC_FIX` run stuck
+`RUNNING`, which `closeFeedbackItemCore` refuses to close over until it's neutralized.
 Prior: **#373 "drop down" closed as REDUNDANT** (no code): the consumable vendor field is
 already a fuzzy `VendorPicker` over first-class vendors (persists vendorId, NAMING-1) in both the Add/Edit form
 (Plan 069) and the Receive panel (U17, PR #395); free-text was retired in #433. Mike DMed + RESOLVED. **This
