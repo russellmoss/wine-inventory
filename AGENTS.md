@@ -121,7 +121,18 @@ read the ALS tenant inside a cached fn (K12) — pass tenantId as an explicit ar
 ## Assistant voice mode
 
 Hands-free "talk to the assistant" mode (Jarvis-style). Opens from a "Talk" button
-in the chat (`src/app/(app)/assistant/AssistantChat.tsx`) into a full-screen overlay.
+in the chat (`src/app/(app)/assistant/AssistantChat.tsx`) and runs **inline** in the
+assistant dock (plan 089), NOT a full-screen overlay: a small audio-reactive orb sits
+in the dock's title bar, the conversation stays in the dock's own transcript, and the
+page behind stays visible/clickable/keyboard-reachable so the user can SEE the pages
+the assistant navigates to mid-conversation. "Talk" becomes "End" in place; the text
+composer stays usable (a typed turn is merged into the voice session's history via
+`VoiceSession.appendHistory`, and blocked only while a voice turn is mid-reply). Escape
+ends voice, not the dock (the dock owns the key; the full `/assistant` page owns it
+itself). The voice write-confirmation card is pinned above the composer, never in the
+scroller (ticket #203). The dock survives client navigation; the full `/assistant` page
+does not, so a voice-triggered nav ends the session there — the dock is the supported
+surface.
 
 - Loop: listen (mic + VAD) → transcribe (server) → think → speak → listen. It reuses
   the exact same `/api/assistant` NDJSON stream + tool-use loop as the text chat, so
@@ -133,10 +144,17 @@ in the chat (`src/app/(app)/assistant/AssistantChat.tsx`) into a full-screen ove
   `transcribe` (STT), plus pure isomorphic logic — `speech` (markdown→spoken),
   `sentence-chunker` (stream→sentences), `vad` (end-of-speech), `audio-queue`
   (ordered playback). The pure logic is unit-tested in `test/voice-*.test.ts`.
+- Pure UI-decision logic (testable under `environment: "node"` — the components are not):
+  `inline-ui` (state label, orb-motion gate, SR-announcement reducer, mic-error copy),
+  `history` (the rolling session history + trim), `state-types` (`VoiceState`); the
+  focus-action model lives in `focus`. Unit-tested in `test/voice-{inline-ui,history,focus}.test.ts`
+  and `test/assistant-scroll.test.ts`.
 - Client in `src/app/(app)/assistant/voice/`: `useMicCapture`, `useAudioPlayback`,
-  `useVoiceSession` (state machine), `AudioVisualizer` (canvas orb, design tokens,
-  reduced-motion aware), `VoiceOverlay`. Lazy-loaded, no new runtime deps (raw fetch
-  + Web Audio + MediaRecorder).
+  `useVoiceSession` (state machine + `appendHistory`), `AudioVisualizer` (canvas orb,
+  design tokens, reduced-motion aware, `animate` prop gating motion to audio-flow states
+  per DESIGN.md), `VoiceHeaderOrb` (the pointer-inert title-bar orb), `VoiceInlinePanel`
+  (the de-modalized voice UI). Lazy-loaded, no new runtime deps (raw fetch + Web Audio +
+  MediaRecorder). The old `VoiceOverlay` was retired in plan 089.
 - Requirements: HTTPS (or localhost) + mic permission; best in Chrome/Edge/Safari.
   Write actions still require explicit confirmation (signed-token / single-use nonce
   path is unchanged) — voice can confirm by tap or by saying "confirm".

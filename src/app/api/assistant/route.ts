@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   const requestedConversationId =
     typeof rawCid === "string" && rawCid.length > 0 && rawCid.length <= 64 ? rawCid : null;
 
-  // Hands-free voice turn (the VoiceOverlay sets this). Only effect is an extra
+  // Hands-free voice turn (the voice session sets this). Only effect is an extra
   // spoken-style block on the system prompt; strictly boolean so a junk value can't
   // half-enable it. Text chat omits it and behaves exactly as before.
   const isVoice = (body as { voice?: unknown })?.voice === true;

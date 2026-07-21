@@ -14,6 +14,9 @@ import {
   type VoiceFocusSession,
   type VoiceProfileState,
 } from "@/lib/voice/focus";
+import { appendTurn, appendTurns } from "@/lib/voice/history";
+import { micErrorMessage } from "@/lib/voice/inline-ui";
+import type { VoiceState } from "@/lib/voice/state-types";
 import type { VoiceSettingsView } from "@/lib/voice/settings-types";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { clampHistoryForSend } from "@/lib/assistant/message-window";
@@ -38,7 +41,9 @@ import { useThinkingSound } from "./useThinkingSound";
 // it. This keeps the hook lint-clean (no refs written during render, no
 // use-before-declare) and free of stale-closure bugs.
 
-export type VoiceState = "idle" | "listening" | "transcribing" | "thinking" | "speaking" | "error";
+// Re-exported so existing importers (AudioVisualizer, the voice UI) keep working while
+// the canonical declaration lives in lib/ where the pure modules can reach it.
+export type { VoiceState };
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type Caption = { role: "user" | "assistant"; content: string };
@@ -51,7 +56,6 @@ export type PendingProposal = {
   result?: string;
 };
 
-const MAX_HISTORY = 40;
 const CONFIRM_RE = /\b(confirm|yes|yep|do it|go ahead|approve|apply)\b/i;
 const CANCEL_RE = /\b(cancel|no|nope|stop|never ?mind|discard)\b/i;
 
@@ -89,6 +93,16 @@ export type VoiceSession = {
   stop: () => void;
   /** Manually interrupt the assistant mid-reply and listen again. */
   interrupt: () => void;
+  /**
+   * Merge turn(s) that happened OUTSIDE the voice loop into this session's history.
+   *
+   * Inline voice (plan 089) leaves the text composer usable mid-session, and a typed
+   * exchange goes through the chat's own send path — the voice session never sees it.
+   * Without this the assistant answers the next spoken question against a history that
+   * is missing what the user just wrote: type "log 22.4 for Block 3", say "make it 23",
+   * get back "make what 23?". History-only; it starts no turn and changes no state.
+   */
+  appendHistory: (turns: ChatMessage | ChatMessage[]) => void;
   openToAnyone: () => void;
   setMyVoice: () => void;
   confirmProposal: () => void;
@@ -397,7 +411,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
       if (assistantText.trim()) {
         pushCaption("assistant", assistantText);
         optsRef.current.onTurn?.({ role: "assistant", content: assistantText });
-        historyRef.current.push({ role: "assistant", content: assistantText });
+        historyRef.current = appendTurn(historyRef.current, { role: "assistant", content: assistantText });
       }
 
       // Stream fully arrived. If audio already finished (or none was queued), loop
@@ -466,10 +480,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
 
       pushCaption("user", transcript);
       optsRef.current.onTurn?.({ role: "user", content: transcript });
-      historyRef.current.push({ role: "user", content: transcript });
-      if (historyRef.current.length > MAX_HISTORY) {
-        historyRef.current = historyRef.current.slice(-MAX_HISTORY);
-      }
+      historyRef.current = appendTurn(historyRef.current, { role: "user", content: transcript });
 
       await runAssistantTurn();
     };
@@ -509,8 +520,11 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         setFocus(next);
         setFocusNotice(focusModeLabel(next.mode));
       }
-    } catch {
-      setError("I need microphone access to listen. Check your browser's mic permission.");
+    } catch (e) {
+      // Distinguish the failure modes: a blocked permission, no mic on the device, and
+      // "another app already holds the mic" need different actions from the user, and the
+      // last one is common in a cellar where a phone is already running something.
+      setError(micErrorMessage(e));
       stateRef.current = "error";
       setState("error");
       return;
@@ -532,6 +546,11 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   }, [mic, playback]);
 
   const interrupt = React.useCallback(() => implRef.current.interrupt(), []);
+  // Ref-only write: history is not rendered, so merging a typed exchange must NOT
+  // re-render the session (and with it the whole chat subtree) mid-conversation.
+  const appendHistory = React.useCallback((turns: ChatMessage | ChatMessage[]) => {
+    historyRef.current = appendTurns(historyRef.current, Array.isArray(turns) ? turns : [turns]);
+  }, []);
   const openToAnyone = React.useCallback(() => {
     const next = setVoiceFocusMode(focusRef.current, "team_session");
     focusRef.current = next;
@@ -574,6 +593,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     start,
     stop,
     interrupt,
+    appendHistory,
     openToAnyone,
     setMyVoice,
     confirmProposal,
