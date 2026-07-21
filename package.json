@@ -63,6 +63,7 @@
     "verify:group-rack-progressive": "tsx --conditions=react-server --env-file=.env scripts/verify-group-rack-progressive.ts",
     "verify:naming": "tsx --env-file=.env scripts/verify-naming.ts",
     "verify:one-lot-per-vessel": "tsx --env-file=.env scripts/verify-one-lot-per-vessel.ts",
+    "verify:vessel-composition": "tsx --conditions=react-server --env-file=.env scripts/verify-vessel-composition.ts",
     "audit:co-residence": "tsx --env-file=.env scripts/audit-co-residence.ts",
     "verify:ingest": "tsx --conditions=react-server --env-file=.env scripts/verify-ingest.ts",
     "verify:fx": "tsx --conditions=react-server --env-file=.env scripts/verify-fx.ts",

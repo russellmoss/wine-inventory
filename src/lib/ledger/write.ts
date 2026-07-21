@@ -16,6 +16,7 @@ import { foldBottledLot, resolveBucket, assertCountVolumeConsistent } from "@/li
 import { foldBarrelFills, type BarrelAffected } from "@/lib/cost/barrel-fold";
 import { cascadeAmendmentsForWrite } from "@/lib/compliance/amend";
 import { assertLotsNotArchivedForNormalWriteTx, syncLotLifecycleStatusTx } from "@/lib/lot/lifecycle";
+import { composeLeaves, type LineageEdge } from "@/lib/lot/lineage";
 import type { SparklingMethod, BottleStage } from "@prisma/client";
 
 // The single transactional chokepoint for every bulk-wine operation (Phase 1 spine).
@@ -356,12 +357,60 @@ export async function writeLotOperation(
 }
 
 /**
- * Keep the legacy `vessel_component` table (variety/vineyard/vintage tuples) in sync as a
- * SECOND derived projection of the ledger, via each lot's origin. This lets the existing
- * read paths behave identically during transition; reads migrate to `vessel_lot` in
- * Phase 2. `vessel_component` is no longer a source of truth. Lots without a full origin
- * tuple (none in Phase 1) are skipped. Folds incrementally so unchanged rows keep their ids.
+ * Keep `vessel_component` (variety/vineyard/vintage tuples) in sync as a SECOND derived
+ * projection of the ledger. This is the "what's actually in this tank" breakdown the vessel
+ * screens read — Vintrace's composition model, folded from the same lines as the occupancy.
+ * Folds incrementally so unchanged rows keep their ids.
+ *
+ * A lot with a full origin tuple contributes it directly. A BLEND lot has NO origin by
+ * construction (blend-core: "origin* stay NULL — a multi-source blend has no single origin"),
+ * so it is attributed to its ANCESTOR LEAVES via composeLeaves, weighted by lineage fractions:
+ *
+ *     24-BL-A  (blend, no origin)          →  0.7 × 24-PN-1  (Pinot / Rilla / 2024)
+ *       ├─ 0.7 24-PN-1                        0.3 × 24-CS-1  (Cabernet / Oak Ridge / 2024)
+ *       └─ 0.3 24-CS-1
+ *
+ * Without that walk the whole delta is silently dropped and the tank's breakdown decays every
+ * time blended wine moves — which is exactly the case that became the norm once every combine
+ * defaults to absorbing into the resident lot (plan 088, Unit 5).
+ *
+ * A leaf that still has no origin tuple (a legacy/unknown-provenance lot) contributes nothing;
+ * that share is genuinely unattributable, and the lot's `provenanceComplete: false` is what
+ * tells the UI to say so rather than imply the breakdown is whole.
  */
+/**
+ * Load every lineage edge reachable UPWARD from `rootIds`, breadth-first with a depth bound.
+ * composeLeaves is cycle-guarded, but the read itself needs a ceiling so a deep solera can't
+ * turn one write into an unbounded walk. Depth 8 matches lineage.ts's DEFAULT_MAX_DEPTH.
+ */
+async function loadAncestryEdges(tx: Prisma.TransactionClient, rootIds: string[]): Promise<LineageEdge[]> {
+  const edges: LineageEdge[] = [];
+  const seen = new Set<string>(rootIds);
+  let frontier = rootIds;
+  for (let depth = 0; depth < 8 && frontier.length > 0; depth++) {
+    const rows = await tx.lotLineage.findMany({
+      where: { childLotId: { in: frontier } },
+      select: { parentLotId: true, childLotId: true, fraction: true, kind: true },
+    });
+    if (rows.length === 0) break;
+    const next: string[] = [];
+    for (const r of rows) {
+      edges.push({
+        parentLotId: r.parentLotId,
+        childLotId: r.childLotId,
+        fraction: r.fraction == null ? null : num(r.fraction),
+        kind: r.kind,
+      });
+      if (!seen.has(r.parentLotId)) {
+        seen.add(r.parentLotId);
+        next.push(r.parentLotId);
+      }
+    }
+    frontier = next;
+  }
+  return edges;
+}
+
 async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerLine[]): Promise<void> {
   const tenantId = requireTenantId();
   const lotIds = [...new Set(lines.map((l) => l.lotId))];
@@ -371,45 +420,124 @@ async function syncVesselComponents(tx: Prisma.TransactionClient, lines: LedgerL
   });
   const originById = new Map(lots.map((l) => [l.id, l]));
 
+  type Origin = { originVarietyId: string | null; originVineyardId: string | null; vintageYear: number | null };
+  const hasTuple = (o: Origin | undefined): o is Origin & { originVarietyId: string; originVineyardId: string; vintageYear: number } =>
+    !!o?.originVarietyId && !!o.originVineyardId && o.vintageYear != null;
+
+  // Lots on these lines that carry no origin of their own: resolve each to its ancestor leaves.
+  const needLineage = [...new Set(lines.filter((l) => l.vesselId).map((l) => l.lotId))].filter((id) => !hasTuple(originById.get(id)));
+  const leafShares = new Map<string, { lotId: string; weight: number }[]>();
+  if (needLineage.length > 0) {
+    const edges = await loadAncestryEdges(tx, needLineage);
+
+    // A lot being CREATED by this very operation has no lineage row yet — the cores write their
+    // LotLineage edges after the ledger write (blend-core does). Its parentage is still knowable:
+    // it is right here in the same operation. The lots this op CONSUMED (net-negative across the
+    // cellar) are exactly what the new wine is made of, weighted by how much of each went in.
+    const netByLot = new Map<string, number>();
+    for (const l of lines) {
+      if (!l.vesselId) continue;
+      netByLot.set(l.lotId, round2((netByLot.get(l.lotId) ?? 0) + l.deltaL));
+    }
+    const consumed = [...netByLot.entries()].filter(([, net]) => net < -1e-9);
+    const consumedTotal = consumed.reduce((a, [, net]) => a + Math.abs(net), 0);
+
+    const leafIds = new Set<string>();
+    for (const lotId of needLineage) {
+      const viaLineage = composeLeaves(lotId, edges);
+      const unresolved = viaLineage.leaves.length === 1 && viaLineage.leaves[0].lotId === lotId;
+
+      const leaves =
+        unresolved && consumedTotal > 0
+          ? // Expand each in-op parent through ITS OWN lineage too, so a blend of a blend still
+            // reaches real origins rather than stopping at the intermediate lot.
+            consumed
+              .filter(([parentId]) => parentId !== lotId)
+              .flatMap(([parentId, net]) => {
+                const share = Math.abs(net) / consumedTotal;
+                return composeLeaves(parentId, edges).leaves.map((leaf) => ({ lotId: leaf.lotId, weight: leaf.weight * share }));
+              })
+          : viaLineage.leaves;
+
+      leafShares.set(lotId, leaves);
+      for (const leaf of leaves) leafIds.add(leaf.lotId);
+    }
+
+    // The leaves are ancestors, so their origins were not in the first query.
+    const missing = [...leafIds].filter((id) => !originById.has(id));
+    if (missing.length > 0) {
+      const ancestors = await tx.lot.findMany({
+        where: { id: { in: missing } },
+        select: { id: true, originVarietyId: true, originVineyardId: true, vintageYear: true },
+      });
+      for (const a of ancestors) originById.set(a.id, a);
+    }
+  }
+
   type CompDelta = { vesselId: string; varietyId: string; vineyardId: string; vintage: number; delta: number };
   const deltas = new Map<string, CompDelta>();
-  for (const line of lines) {
-    if (!line.vesselId) continue;
-    const o = originById.get(line.lotId);
-    if (!o?.originVarietyId || !o.originVineyardId || o.vintageYear == null) continue; // can't form a tuple
-    const key = `${line.vesselId}::${o.originVarietyId}::${o.originVineyardId}::${o.vintageYear}`;
+  const addDelta = (vesselId: string, o: { originVarietyId: string; originVineyardId: string; vintageYear: number }, deltaL: number) => {
+    const key = `${vesselId}::${o.originVarietyId}::${o.originVineyardId}::${o.vintageYear}`;
     const cur = deltas.get(key);
-    if (cur) cur.delta = round2(cur.delta + line.deltaL);
+    if (cur) cur.delta = round2(cur.delta + deltaL);
     else
       deltas.set(key, {
-        vesselId: line.vesselId,
+        vesselId,
         varietyId: o.originVarietyId,
         vineyardId: o.originVineyardId,
         vintage: o.vintageYear,
-        delta: line.deltaL,
+        delta: deltaL,
       });
+  };
+
+  for (const line of lines) {
+    if (!line.vesselId) continue;
+    const own = originById.get(line.lotId);
+    if (hasTuple(own)) {
+      addDelta(line.vesselId, own, line.deltaL);
+      continue;
+    }
+    // No origin of its own — spread the delta across the ancestor leaves that DO have one.
+    for (const leaf of leafShares.get(line.lotId) ?? []) {
+      const leafOrigin = originById.get(leaf.lotId);
+      if (!hasTuple(leafOrigin)) continue; // unattributable share; provenanceComplete carries that signal
+      addDelta(line.vesselId, leafOrigin, round2(line.deltaL * leaf.weight));
+    }
   }
 
-  for (const c of deltas.values()) {
-    if (Math.abs(c.delta) < 1e-9) continue;
-    const existing = await tx.vesselComponent.findFirst({
-      where: {
-        vesselId: c.vesselId,
-        varietyId: c.varietyId,
-        vineyardId: c.vineyardId,
-        vintage: c.vintage,
-      },
-      select: { id: true, volumeL: true },
-    });
-    const next = round2((existing ? Number(existing.volumeL) : 0) + c.delta);
+  const material = [...deltas.values()].filter((c) => Math.abs(c.delta) >= 1e-9);
+  if (material.length === 0) return;
+
+  // One read for every touched tuple, then batched writes — this used to be a findFirst + write
+  // per tuple, awaited in series, inside a SERIALIZABLE tx with a 20s ceiling. Blend attribution
+  // multiplies the tuple count, so the round trips were about to matter.
+  const existingRows = await tx.vesselComponent.findMany({
+    where: { OR: material.map((c) => ({ vesselId: c.vesselId, varietyId: c.varietyId, vineyardId: c.vineyardId, vintage: c.vintage })) },
+    select: { id: true, vesselId: true, varietyId: true, vineyardId: true, vintage: true, volumeL: true },
+  });
+  const existingByKey = new Map(
+    existingRows.map((r) => [`${r.vesselId}::${r.varietyId}::${r.vineyardId}::${r.vintage}`, r]),
+  );
+
+  const toDelete: string[] = [];
+  const toCreate: { tenantId: string; vesselId: string; varietyId: string; vineyardId: string; vintage: number; volumeL: number }[] = [];
+  const toUpdate: { id: string; volumeL: number }[] = [];
+
+  for (const c of material) {
+    const existing = existingByKey.get(`${c.vesselId}::${c.varietyId}::${c.vineyardId}::${c.vintage}`);
+    const next = round2((existing ? num(existing.volumeL) : 0) + c.delta);
     if (next <= FUNCTIONAL_ZERO_L) {
-      if (existing) await tx.vesselComponent.delete({ where: { id: existing.id } });
+      if (existing) toDelete.push(existing.id);
     } else if (existing) {
-      await tx.vesselComponent.update({ where: { id: existing.id }, data: { volumeL: next } });
+      toUpdate.push({ id: existing.id, volumeL: next });
     } else {
-      await tx.vesselComponent.create({
-        data: { tenantId, vesselId: c.vesselId, varietyId: c.varietyId, vineyardId: c.vineyardId, vintage: c.vintage, volumeL: next },
-      });
+      toCreate.push({ tenantId, vesselId: c.vesselId, varietyId: c.varietyId, vineyardId: c.vineyardId, vintage: c.vintage, volumeL: next });
     }
+  }
+
+  if (toDelete.length > 0) await tx.vesselComponent.deleteMany({ where: { id: { in: toDelete } } });
+  if (toCreate.length > 0) await tx.vesselComponent.createMany({ data: toCreate });
+  for (const u of toUpdate) {
+    await tx.vesselComponent.update({ where: { id: u.id }, data: { volumeL: u.volumeL } });
   }
 }
