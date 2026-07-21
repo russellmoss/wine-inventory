@@ -3,6 +3,7 @@
 import React from "react";
 import { usePathname } from "next/navigation";
 import { usePrefersReducedMotion } from "@/components/ui/Collapsible";
+import type { HostVoiceStatus } from "@/app/(app)/assistant/AssistantChat";
 
 // Phase 038: a global, collapsible assistant dock — the same AssistantChat brain on every authed page.
 // Hidden on /assistant (that's the full-page chat, so the two never double-mount + fight over history).
@@ -26,6 +27,9 @@ import { usePrefersReducedMotion } from "@/components/ui/Collapsible";
 
 const AssistantChat = React.lazy(() =>
   import("@/app/(app)/assistant/AssistantChat").then((m) => ({ default: m.AssistantChat })),
+);
+const VoiceHeaderOrb = React.lazy(() =>
+  import("@/app/(app)/assistant/voice/VoiceHeaderOrb").then((m) => ({ default: m.VoiceHeaderOrb })),
 );
 
 const DOCK_MARGIN = 12; // keep this much gap between the panel and the viewport edges
@@ -90,6 +94,12 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
   // (SSR-safe — no window); reset to the viewport-aware default every time the dock opens (see openDock),
   // so it always opens where/how it used to and closing is the reset.
   const [rect, setRect] = React.useState<DockRect>({ right: 24, bottom: 24, width: BASE_W, height: BASE_H });
+  // Voice status lifted out of the chat so the title bar can draw the orb and Escape can
+  // be routed. Set only when the state ENUM changes, so this never churns per audio frame.
+  const [voiceStatus, setVoiceStatus] = React.useState<HostVoiceStatus | null>(null);
+  // Brief close-out so ending voice is not a silent disappearance ("did it stop
+  // listening?" is not an anxiety a mic-bearing feature may leave hanging).
+  const [justEnded, setJustEnded] = React.useState(false);
   const fabRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const mounted = React.useRef(false);
@@ -122,20 +132,49 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
     mounted.current = true;
   }, [open]);
 
-  // Escape closes the panel while it's open — but defer to any modal dialog on top of it (e.g. the
-  // voice overlay, aria-modal), so one Escape ends voice and drops back to the chat rather than
-  // collapsing the whole dock. Matches the full-page behavior where Escape only leaves voice.
+  // The dock is the SINGLE owner of Escape, and routes it by precedence:
+  //   voice live -> end voice (the dock stays open)   [most specific]
+  //   expanded   -> shrink
+  //   otherwise  -> close the dock
+  //
+  // This used to defer to `[role=dialog][aria-modal=true]`, i.e. the full-screen voice
+  // overlay. Inline voice deletes that attribute (a modal is exactly what it must not
+  // be), which would have silently turned "Escape ends voice" into "Escape collapses the
+  // dock mid-conversation". The dual guard keeps the old overlay working on the
+  // /assistant route until it is retired; drop it with the overlay.
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (voiceStatus) {
+        voiceStatus.end();
+        return;
+      }
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (expanded) setExpanded(false);
       else closeDock();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded, open]);
+  }, [expanded, open, voiceStatus]);
+
+  // Show "Voice ended" for a beat after a live session goes away, then clear it. Skipped
+  // when the dock itself is closing — there is no title bar left to read it on.
+  const hadVoice = React.useRef(false);
+  React.useEffect(() => {
+    if (voiceStatus) {
+      hadVoice.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing a transient notice when voice restarts
+      setJustEnded(false);
+      return;
+    }
+    if (!hadVoice.current || !open) return;
+    hadVoice.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the notice IS an effect of the session ending
+    setJustEnded(true);
+    const t = setTimeout(() => setJustEnded(false), 2000);
+    return () => clearTimeout(t);
+  }, [voiceStatus, open]);
 
   // --- Drag to move / drag-corner to grow -------------------------------------------------------------
   // Shared pointer loop. `move` shifts the bottom-right anchor (right/bottom); `resize` grows width/height
@@ -301,13 +340,37 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
           <div
             onPointerDown={expanded ? undefined : onHeaderPointerDown}
             style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
+              // 3 columns, not space-between: the orb has to sit in the OPTICAL centre
+              // regardless of how wide the title or the button cluster are.
+              display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8,
               padding: "var(--space-3) var(--space-4)", borderBottom: "1px solid var(--border-strong)", flex: "none",
               cursor: expanded ? "default" : "move", touchAction: expanded ? "auto" : "none", userSelect: "none",
             }}
           >
-            <span id={titleId} style={{ fontFamily: "var(--font-heading)", fontWeight: 500, fontSize: 15, color: "var(--text-primary)" }}>Assistant</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span id={titleId} style={{ fontFamily: "var(--font-heading)", fontWeight: 500, fontSize: 15, color: "var(--text-primary)", minWidth: 0 }}>Assistant</span>
+            {/* Middle column of the 3-column grid: the voice orb, optically centred no
+                matter how wide the title or the button cluster get. It is pointer-inert
+                (see VoiceHeaderOrb) so a drag started here still moves the panel. */}
+            <span style={{ display: "flex", justifyContent: "center", minWidth: 0, overflow: "hidden" }}>
+              {voiceStatus ? (
+                <React.Suspense fallback={null}>
+                  <VoiceHeaderOrb state={voiceStatus.state} getLevel={voiceStatus.getLevel} />
+                </React.Suspense>
+              ) : justEnded ? (
+                <span
+                  style={{
+                    fontFamily: "var(--font-body)",
+                    fontSize: 12,
+                    color: "var(--text-muted)",
+                    whiteSpace: "nowrap",
+                    transition: "opacity var(--duration-normal, 220ms) ease",
+                  }}
+                >
+                  Voice ended
+                </span>
+              ) : null}
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
@@ -337,7 +400,13 @@ export function AssistantDock({ userLabel, voiceEnabled = false }: { userLabel: 
           </div>
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: "0 var(--space-4) var(--space-4)" }}>
             <React.Suspense fallback={<div style={{ padding: "var(--space-4)", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)" }}>Loading…</div>}>
-              <AssistantChat userLabel={userLabel} embedded voiceEnabled={voiceEnabled} active={open} />
+              <AssistantChat
+                userLabel={userLabel}
+                embedded
+                voiceEnabled={voiceEnabled}
+                active={open}
+                onVoiceStatus={setVoiceStatus}
+              />
             </React.Suspense>
           </div>
         </div>

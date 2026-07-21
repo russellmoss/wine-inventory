@@ -4,6 +4,9 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 import { Markdown } from "./Markdown";
+import { shouldStickToBottom } from "@/lib/assistant/scroll";
+import type { VoiceState } from "@/lib/voice/state-types";
+import type { VoiceSessionApi } from "./voice/VoiceInlinePanel";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import {
   ConversationSidebar,
@@ -22,8 +25,11 @@ type VoiceMode = "converse" | "transcribe";
 
 // Voice mode is heavy (Web Audio, MediaRecorder, the visualizer) and only loads
 // when the user actually opens it — keep it out of the main chat bundle.
-const VoiceOverlay = React.lazy(() =>
-  import("./voice/VoiceOverlay").then((m) => ({ default: m.VoiceOverlay })),
+const VoiceInlinePanel = React.lazy(() =>
+  import("./voice/VoiceInlinePanel").then((m) => ({ default: m.VoiceInlinePanel })),
+);
+const VoiceHeaderOrb = React.lazy(() =>
+  import("./voice/VoiceHeaderOrb").then((m) => ({ default: m.VoiceHeaderOrb })),
 );
 
 type Role = "user" | "assistant";
@@ -139,7 +145,31 @@ const TOOL_LABELS: Record<string, string> = {
   archive_template: "Preparing to archive",
 };
 
-export function AssistantChat({ userLabel, voiceEnabled = false, embedded = false, active = true }: { userLabel: string; voiceEnabled?: boolean; embedded?: boolean; active?: boolean }) {
+/**
+ * What the chat publishes upward while a voice session is live, so the host chrome (the
+ * dock title bar) can draw the orb and own the Escape key. Set only when the state enum
+ * changes; `getLevel`/`end` are stable, so this never churns at audio frame rate.
+ */
+export type HostVoiceStatus = {
+  state: VoiceState;
+  getLevel: () => number;
+  /** End voice without collapsing the host. */
+  end: () => void;
+};
+
+export function AssistantChat({
+  userLabel,
+  voiceEnabled = false,
+  embedded = false,
+  active = true,
+  onVoiceStatus,
+}: {
+  userLabel: string;
+  voiceEnabled?: boolean;
+  embedded?: boolean;
+  active?: boolean;
+  onVoiceStatus?: (status: HostVoiceStatus | null) => void;
+}) {
   const [items, setItems] = React.useState<Item[]>([]);
   const [input, setInput] = React.useState("");
   const [voiceOpen, setVoiceOpen] = React.useState(false);
@@ -162,6 +192,48 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     setPrevActive(active);
     if (!active) setVoiceOpen(false);
   }
+
+  // --- Live voice session bridge -----------------------------------------------------
+  // `voiceState` is the primitive the host chrome renders from. `voiceApiRef` is how a
+  // TYPED exchange reaches the voice session's history: the session snapshots history at
+  // mount and only appends its own turns, so without this the assistant silently forgets
+  // anything the user typed mid-session ("make it 23" → "make what 23?"). It also
+  // answers "is a voice turn in flight?" so a typed send cannot race one.
+  const [voiceState, setVoiceState] = React.useState<VoiceState | null>(null);
+  const voiceApiRef = React.useRef<VoiceSessionApi | null>(null);
+  const voiceLevelRef = React.useRef<() => number>(() => 0);
+  const endVoiceRef = React.useRef<() => void>(() => {});
+  endVoiceRef.current = () => setVoiceOpen(false);
+
+  const handleVoiceStatus = React.useCallback((state: VoiceState | null, getLevel: () => number) => {
+    voiceLevelRef.current = getLevel;
+    setVoiceState(state);
+  }, []);
+
+  // Escape ends voice on the FULL PAGE only. The dock owns Escape on the embedded
+  // surface (and routing it in both places would double-fire), so this listener is the
+  // single owner for the standalone /assistant route, which has no dock above it.
+  React.useEffect(() => {
+    if (embedded || !voiceOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setVoiceOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [embedded, voiceOpen]);
+
+  // Publish upward from an EFFECT keyed on the primitive — never during render (React 19
+  // warns on updating another component while rendering this one).
+  const hostStatusCbRef = React.useRef(onVoiceStatus);
+  hostStatusCbRef.current = onVoiceStatus;
+  React.useEffect(() => {
+    hostStatusCbRef.current?.(
+      voiceState === null
+        ? null
+        : { state: voiceState, getLevel: () => voiceLevelRef.current(), end: () => endVoiceRef.current() },
+    );
+  }, [voiceState]);
+  React.useEffect(() => () => hostStatusCbRef.current?.(null), []);
 
   // Dictation ("Transcribe" mode): record → transcribe → drop the text into the input box for
   // review/edit, rather than the hands-free Converse loop. Append to whatever's already typed.
@@ -455,8 +527,17 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     // fold). A rAF-deferred instant scroll reaches the true bottom every time. This still holds for the
     // (taller) Draft cards added in plan 081: the card renders synchronously before paint, so
     // `scrollHeight` already includes its full height by the time the rAF callback runs.
+    //
+    // The snap used to be unconditional. That was safe while voice was a full-screen
+    // overlay with its own caption list, but inline voice turns this transcript into the
+    // caption stream — and an unconditional snap means the user can never scroll up to
+    // re-read anything during a conversation, because every turn yanks them back. So it
+    // is now near-bottom-gated. The #203 protection does not depend on this any more:
+    // voice confirm cards are pinned OUTSIDE this scroller entirely, and a text-chat user
+    // who has scrolled away has done so deliberately.
+    const pinned = shouldStickToBottom(el);
     const id = requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
+      if (pinned) el.scrollTop = el.scrollHeight;
     });
     return () => cancelAnimationFrame(id);
   }, [items, status]);
@@ -497,7 +578,12 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
 
   async function send(override?: string) {
     const text = (override ?? input).trim();
-    if (!text || busy) return;
+    // `busy` only tracks the TEXT chat's own turn. A voice turn runs entirely inside
+    // useVoiceSession and never sets it, so without the second check a typed message
+    // could open a second concurrent assistant turn on the same conversation. Typing
+    // while it LISTENS is fine and is the whole point (the mic misheard a lot number);
+    // typing while it is mid-reply is not.
+    if (!text || busy || voiceApiRef.current?.isTurnActive()) return;
     if (text.length > MAX_CONTENT) {
       setError(`Message is too long (max ${MAX_CONTENT.toLocaleString()} characters). Please shorten it.`);
       return;
@@ -515,6 +601,11 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     setItems((prev) => [...prev, { kind: "text", role: "user", content: text }]);
     setBusy(true);
     setStatus("Thinking…");
+
+    // Accumulated so a live voice session can be told what was typed and what came back.
+    // Read from the stream rather than from `items`, because setState is async and the
+    // finally block would otherwise see the pre-reply array.
+    let replyText = "";
 
     try {
       const res = await fetch("/api/assistant", {
@@ -538,6 +629,7 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       const handle = (evt: AssistantEvent) => {
         switch (evt.type) {
           case "text":
+            replyText += evt.text;
             appendText(evt.text);
             return;
           case "tool":
@@ -616,6 +708,14 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
     } finally {
       setBusy(false);
       setStatus(null);
+      // Keep a live voice session's history in step with what was just typed. Without
+      // this the next SPOKEN turn is answered against a history missing this exchange,
+      // and the assistant looks like it forgot — the failure this whole bridge exists
+      // for. Ordering matters: question then reply, so a follow-up "make it 23" resolves.
+      voiceApiRef.current?.appendHistory([
+        { role: "user", content: text },
+        ...(replyText.trim() ? [{ role: "assistant" as const, content: replyText }] : []),
+      ]);
       // Reflect the new/updated conversation (title, order) in the sidebar.
       void refreshList();
     }
@@ -715,6 +815,15 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
 
   const column: React.CSSProperties = { width: "100%", maxWidth: CONTENT_MAX, marginLeft: "auto", marginRight: "auto" };
 
+  // Inline voice, both surfaces. `active &&` is the hot-mic guard: the dock keeps this
+  // chat mounted under display:none when collapsed, and display:none is not unmount.
+  // Known and documented: on the full /assistant page the chat unmounts on navigation,
+  // so a voice-triggered router.push ends the session there — already true of the old
+  // overlay (same page component), so no regression. The DOCK is the surface that
+  // survives navigation, and it is the supported one.
+  const voiceInline = voiceOpen && active;
+  const voiceLive = voiceInline && voiceState !== null;
+
   return (
     // Embedded (the dock): fill the parent panel + drop the page-sized sidebar/header. Page: full viewport.
     <div style={{ display: "flex", flexDirection: "row", gap: "var(--space-4)", height: embedded ? "100%" : "calc(100vh - 7rem)", minHeight: embedded ? 0 : 420 }}>
@@ -737,7 +846,16 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       {!embedded ? (
         <div style={{ ...column, paddingBottom: "var(--space-3)" }}>
-          <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: "var(--text-h2)", margin: 0 }}>Assistant</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+            <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: "var(--text-h2)", margin: 0 }}>Assistant</h1>
+            {/* On the full page THIS chat is the host, so it draws its own orb from the
+                local state (the dock draws its own on the embedded surface). */}
+            {voiceLive && voiceState ? (
+              <React.Suspense fallback={null}>
+                <VoiceHeaderOrb state={voiceState} getLevel={() => voiceLevelRef.current()} />
+              </React.Suspense>
+            ) : null}
+          </div>
           <p style={{ fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", color: "var(--text-muted)", marginTop: 4 }}>
             Ask about your vineyards in plain language, {userLabel.split("@")[0]}.
           </p>
@@ -778,7 +896,9 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
         </div>
       ) : (
       <>
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
+      {/* minHeight floor: with the voice panel and a pinned confirm card above the
+          composer, a tablet's virtual keyboard would otherwise squeeze this to 0px. */}
+      <div ref={scrollRef} style={{ flex: 1, minHeight: 60, overflowY: "auto" }}>
         <div style={{ ...column, display: "flex", flexDirection: "column", gap: "var(--space-5)", padding: "var(--space-4) 0 var(--space-6)" }}>
           {items.length === 0 ? (
             <div style={{ margin: "auto", textAlign: "center", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body)", maxWidth: 460, paddingTop: "var(--space-8)" }}>
@@ -804,7 +924,12 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
               return (
                 <div key={i} style={{ alignSelf: "stretch" }}>
                   <Bubble role="assistant" content={it.content} />
-                  {it.content && !streaming ? (
+                  {/* No 👍/👎 while voice is live. Voice turns mirror into this same list,
+                      so a hands-free conversation would grow a feedback bar per spoken
+                      reply — noise you cannot act on by voice, in the panel where
+                      vertical space is the binding constraint. Text turns keep theirs,
+                      and everything is ratable again once the session ends. */}
+                  {it.content && !streaming && !voiceLive ? (
                     <FeedbackBar
                       state={feedback[i] ?? { mode: "idle" }}
                       onUp={() => void sendFeedback(i, "up")}
@@ -828,6 +953,35 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
       {navPending ? (
         <div style={{ ...column, paddingBottom: "var(--space-2)" }}>
           <NavToast label={navPending.label} onCancel={() => setNavPending(null)} />
+        </div>
+      ) : null}
+
+      {/* Inline voice, mounted between the transcript and the composer so the confirm card
+          is pinned OUT of the scroller (ticket #203: a card below the fold reads as
+          "Confirm does nothing"). Gated on `active` too, not just `voiceOpen`: the dock
+          keeps this chat mounted under display:none when collapsed, and display:none is
+          not unmount — a live mic behind a closed dock is a trust event, not a bug. */}
+      {voiceEnabled && voiceInline ? (
+        <div style={{ ...column }}>
+          <React.Suspense fallback={null}>
+            <VoiceInlinePanel
+              initialHistory={items
+                .filter((it): it is TextItem => it.kind === "text")
+                .map((it) => ({ role: it.role, content: it.content }))}
+              conversationId={conversationId}
+              onConversationId={setConversationId}
+              onTurn={addVoiceTurn}
+              onClose={() => {
+                setVoiceOpen(false);
+                void refreshList();
+              }}
+              onVoiceStatus={handleVoiceStatus}
+              onSessionApi={(api) => {
+                voiceApiRef.current = api;
+              }}
+              showFirstRunHint={items.length === 0}
+            />
+          </React.Suspense>
         </div>
       ) : null}
 
@@ -884,15 +1038,17 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
                 {dictation.state === "recording" ? "⏹ Stop" : dictation.state === "transcribing" ? "…" : "🎙 Talk"}
               </Button>
             ) : (
+              // Talk becomes End in PLACE — same DOM node, only the label changes — so
+              // keyboard focus stays put across the transition and needs no management.
               <Button
                 size="lg"
                 variant="secondary"
-                onClick={() => setVoiceOpen(true)}
-                disabled={busy}
-                title="Talk to the assistant"
-                aria-label="Talk to the assistant"
+                onClick={() => setVoiceOpen((v) => !v)}
+                disabled={busy && !voiceOpen}
+                title={voiceOpen ? "End the voice conversation" : "Talk to the assistant"}
+                aria-label={voiceOpen ? "End the voice conversation" : "Talk to the assistant"}
               >
-                🎙 Talk
+                {voiceOpen ? "⏹ End" : "🎙 Talk"}
               </Button>
             )
           ) : null}
@@ -904,7 +1060,9 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           </Button>
           </div>
         </div>
-        {voiceEnabled ? (
+        {/* Hidden while voice is live: the toggle is already disabled during a session, so
+            it is ~40px of dead pixels in a 620px panel that the transcript can use. */}
+        {voiceEnabled && !voiceLive ? (
           <div style={{ ...column, display: "flex", alignItems: "center", gap: "var(--space-2)", paddingTop: 8, flexWrap: "wrap" }}>
             <div
               role="group"
@@ -950,29 +1108,15 @@ export function AssistantChat({ userLabel, voiceEnabled = false, embedded = fals
           </div>
         ) : null}
         <div style={{ ...column, fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-body)", paddingTop: 6, paddingBottom: 2 }}>
-          The assistant can make mistakes. It only acts on your permitted vineyards, and changes need your confirmation.
+          {voiceLive
+            ? "Changes still need your confirmation."
+            : "The assistant can make mistakes. It only acts on your permitted vineyards, and changes need your confirmation."}
         </div>
       </div>
       </>
       )}
       </div>
 
-      {voiceOpen ? (
-        <React.Suspense fallback={null}>
-          <VoiceOverlay
-            initialHistory={items
-              .filter((it): it is TextItem => it.kind === "text")
-              .map((it) => ({ role: it.role, content: it.content }))}
-            conversationId={conversationId}
-            onConversationId={setConversationId}
-            onTurn={addVoiceTurn}
-            onClose={() => {
-              setVoiceOpen(false);
-              void refreshList();
-            }}
-          />
-        </React.Suspense>
-      ) : null}
       <FeedbackTicketModal open={ticketOpen} onClose={() => setTicketOpen(false)} />
     </div>
   );
