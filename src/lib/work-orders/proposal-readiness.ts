@@ -377,6 +377,17 @@ function readTask(ctx: Ctx, state: ReadinessLoadedState, seq: number, task: Task
   switch (task.taskType) {
     case "RACK": {
       const from = requireVessel(ctx, state, seq, str(v.fromVesselId), "source");
+      // "Let cellar staff choose vessels" (plan 088, Unit 11). A rack is often drafted today and
+      // run tomorrow, when the cellar master can see which vessels are actually clean and empty —
+      // InnoVint models exactly this. Leaving the destination out is therefore a DEFERRAL, not a
+      // gap: it is a runtime input like CRUSH's already is, and the combine decision runs at
+      // EXECUTION, when the vessel is finally named. This is what keeps "keep it separate = send
+      // it somewhere else" workable at planning time instead of forcing a guess.
+      if (!str(v.toVesselId)) {
+        runtime(ctx, seq, "RACK", "toVesselId", "Destination vessel", "The destination vessel is chosen on the execute screen.");
+        if (from) mustSourceNotice(ctx, state, seq, from.id, "Racking");
+        return;
+      }
       const to = requireVessel(ctx, state, seq, str(v.toVesselId), "destination");
       if (!from || !to) return;
       // Mirror the execution guard (rack-core.ts rackWineTx: `fromVesselId === toVesselId` is refused): a
