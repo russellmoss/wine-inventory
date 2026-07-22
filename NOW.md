@@ -7,14 +7,39 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 090 — fix KB RAG retrieval quality BEFORE adding any source. UNITS 1, 1b, 2, 3 DONE (4 commits,
-NOT pushed). Next: Unit 4 (PDF titles) → Unit 5 (PDF heading inference, the risky one).**
+**PLAN 090 — fix KB RAG retrieval quality BEFORE adding any source. UNITS 1, 1b, 2, 3, 4, 5, 6, 7, 8
+DONE (8 commits, NOT pushed). ⏭️ NEXT: Unit 9 — the PRODUCTION RE-INDEX (needs a go-ahead).**
 Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md) (Deep, 12 units).
 Started as "should we add AJEV to the KB"; measuring the corpus to answer that found a bigger problem.
 
-✅ **The instrument phase is complete and the baseline is captured.** `npm run kb:snapshot [-- --diff]`
-writes `docs/kb-eval/snapshot.json` (20 queries × top-8). `verify:knowledge-base` **21 passed / 0
-failed**; full suite **3354 passed / 0 failed**; tsc 0, eslint 0.
+✅ **ALL THE CODE IS WRITTEN AND GREEN.** `verify:knowledge-base` **21 passed / 0 failed**; full suite
+**3410 passed / 0 failed** (all 304 files); tsc 0, eslint 0 errors.
+
+🔎 **Unit 5 de-risked then delivered.** The MEDIUM-confidence unknown was whether `unpdf` exposes font
+data. Spiked first: `unpdf@1.6.2 extractTextItems(pdf)` returns `{totalPages, items: item[][]}` with a
+first-class **`fontSize`** per item (plus x/y/fontFamily/hasEOL) — better than reading transform
+matrices. Heading inference now feeds the EXISTING `chunk.ts` breadcrumb machinery, which was never
+broken, only starved.
+
+📊 **Measured across 34 real PDFs from 13 sources: 23 restructured confidently, 11 fell back, 0
+failures.** Breadcrumbs per document before → after: **scott-labs 1 → 437**, incavi 1 → 81,
+laffort 1 → 44, chambre-gironde 1 → 41, wine-australia 1 → 24, icvv 1 → 23. Every breadcrumb now
+under the 140-char cap (sampled averages 25–136, was 192).
+
+⚠️ **A CONFIDENCE GATE is the load-bearing safety property, added after overfitting became visible.**
+Font size tracks structure in typeset reports and NOT in marketing-styled fact sheets, where the size
+signal produced "headings" like `24/12, please let` and `T&C form. If`. Filtering those one at a time
+is whack-a-mole, so the verdict is now made on the RESULT in aggregate (headings ≤20% of lines, ≤50%
+introducing no content) and anything else **falls back wholesale to today's linearized text**. A PDF
+that resists structure ends up exactly where it is now, never worse.
+
+🔻 **Unit 8 caught a silent no-op that would have made Units 4-7 pointless.** `deriveIndexHash` folded
+only `SECTION_FILTER_VERSION`, and section filtering is HTML-only — so a PDF's index hash was the bare
+content hash and `indexDocument` would short-circuit to `unchanged` forever. Same trap plan 084
+documented for HTML, reproduced on the PDF side because the guard did not reach. Now
+`PDF_EXTRACT_VERSION` folds in for `contentType === "pdf"` **and HTML hashes stay byte-identical**.
+👉 **Consequence: the existing monthly recrawl propagates the fix on its own.** Unit 9's script only
+accelerates it.
 
 🔻 **A stated plan premise was FALSIFIED during execution — "retrieval is deterministic, so the diff is
 noise-free" is FALSE.** Two causes, one fixed, one open:
@@ -615,7 +640,14 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-22 — **PLAN 090 UNITS 1/1b/2/3 DONE (4 commits, unpushed): the eval instrument is built and the baseline captured.** Next is Unit 4 (PDF titles) then Unit 5 (PDF heading inference, the MEDIUM-confidence one). Building the instrument found a REAL PRODUCTION BUG: neither retrieval arm had a total ORDER BY, so tied ts_rank rows straddling the LIMIT cut changed which candidate survived and propagated through RRF+MMR into what users see (fixed with a `, c."id"` tiebreaker). It also FALSIFIED a plan premise — retrieval is NOT fully deterministic; ~1 query in 18 wobbled from an unidentified cause, so Unit 1b makes the snapshot measure its own stability and quarantine what it cannot vouch for. Prior: **plan 090 written: fix KB RAG retrieval quality before adding sources.**
+_Last updated: 2026-07-22 — **PLAN 090 UNITS 1/1b/2/3/4/5/6/7/8 DONE (8 commits, unpushed). All the
+code is written and green; the only thing left is the PRODUCTION RE-INDEX (Unit 9), which needs a
+go-ahead.** Measured across 34 real PDFs from 13 sources: 23 restructured, 11 safely fell back, 0
+failures — scott-labs went from ONE breadcrumb to 437. Two things worth remembering: a CONFIDENCE GATE
+was added after per-document heuristic tuning started overfitting, so a PDF that resists structure
+falls back to exactly today's output rather than gaining junk breadcrumbs; and Unit 8 caught a silent
+no-op that would have made the whole fix pointless (PDF index hashes carried no version, so unchanged
+bytes could never re-extract). Prior: **PLAN 090 UNITS 1/1b/2/3 DONE (4 commits, unpushed): the eval instrument is built and the baseline captured.** Next is Unit 4 (PDF titles) then Unit 5 (PDF heading inference, the MEDIUM-confidence one). Building the instrument found a REAL PRODUCTION BUG: neither retrieval arm had a total ORDER BY, so tied ts_rank rows straddling the LIMIT cut changed which candidate survived and propagated through RRF+MMR into what users see (fixed with a `, c."id"` tiebreaker). It also FALSIFIED a plan premise — retrieval is NOT fully deterministic; ~1 query in 18 wobbled from an unidentified cause, so Unit 1b makes the snapshot measure its own stability and quarantine what it cannot vouch for. Prior: **plan 090 written: fix KB RAG retrieval quality before adding sources.**
 Started as "should we add AJEV to the knowledge base"; measuring the corpus to answer that found
 **42% of it is chunked wrong** (headingless PDFs starve the heading-driven chunker, so the breadcrumb
 becomes a 192-char slab of page one, prepended to every chunk and embedded). Also found: 95% of docs
