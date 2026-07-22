@@ -137,7 +137,38 @@ async function main() {
     //
     // Reading it from curated-specs keeps "may we ignore robots for this host" as ONE documented
     // decision in one place. A re-index script must never make that judgment on its own.
+    // --ignore-robots=<key,key>: OPERATOR OVERRIDE, per source, never global and never implicit.
+    //
+    // OWNER DECISION 2026-07-22 (Russell), recorded here because the repo's standard demands it —
+    // curated-specs.ts states "NO ignoreRobots. Every host here was checked individually and permits
+    // these files", so any exception has to carry its reasoning.
+    //
+    // wine-australia's robots.txt says `# Block all media files` / `Disallow: /getmedia/*`, and the
+    // Wayback snapshot from 2025-01-03 is byte-identical, so this is long-standing and deliberate, not
+    // drift. robots-parser@3.0.1 merges the file's two `User-agent: *` groups and refuses /getmedia/,
+    // which is correct per RFC 9309 — our crawler is right, and the 228 PDFs predate that enforcement.
+    //
+    // Why the override is nonetheless justified HERE, and only here:
+    //   - The 228 documents are ALREADY in the corpus. This RE-EXTRACTS material we hold to fix a
+    //     formatting defect; it acquires nothing new. That is a materially smaller imposition than
+    //     crawling fresh content.
+    //   - The stated intent is bandwidth ("block all media files"), not confidentiality — the same file
+    //     explicitly ALLOWS Googlebot, so the documents are meant to be publicly discoverable.
+    //   - Wine Australia is a levy-funded industry body whose remit is getting exactly this material to
+    //     growers and winemakers, who are this application's users.
+    //   - One pass, crawl-delay honoured, no link-following.
+    //
+    // SCOPE IS DELIBERATELY NARROW: this flag affects only an explicitly named source in a manually
+    // invoked script. The monthly sweep (recrawl-knowledge) still refuses /getmedia/, so NEW discovery
+    // stays robots-compliant. Re-run this only when the extractor changes again.
+    //
+    // The clean long-term fix is to ask Wine Australia for an allowance rather than rely on this.
+    const robotsOverride = (arg("ignore-robots") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     const spec = findCuratedSpec(key);
+    const overrideRobots = robotsOverride.includes(key);
+    if (overrideRobots) {
+      console.log(`\n⚠️  ${key}: robots override ACTIVE (operator flag) — re-extracting documents already held.`);
+    }
     console.log(
       `\n=== ${key} — ${urls.length} urls${spec?.ignoreRobots ? "  [curated: ignoreRobots]" : ""} ===`,
     );
@@ -157,7 +188,7 @@ async function main() {
       summary = await crawlUrls(key, urls, {
       // See the header note: without this the conditional GET 304s and nothing is re-indexed.
       ignoreValidators: true,
-      ignoreRobots: spec?.ignoreRobots,
+      ignoreRobots: spec?.ignoreRobots || overrideRobots,
       delayMs: spec?.delayMs,
       maxBytes: spec?.maxBytes,
       onDocument: async (doc) => {
