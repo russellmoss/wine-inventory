@@ -68,6 +68,46 @@ describe("VadDetector", () => {
     expect(v.process(0.2, 800)).toBe("speech-start"); // second turn begins
   });
 
+  // Regression (bug: "voice mode interrupts the user before they finish speaking").
+  // The user pauses mid-sentence to think, then keeps talking. With the OLD 1200ms
+  // hangover a ~1.5-2s thinking pause finalized the turn and the assistant cut them
+  // off. The listen-mode default must tolerate a natural mid-thought pause: no
+  // finalize during the pause, and the turn continues when the user resumes.
+  describe("end-of-turn tolerates a mid-thought pause (default listen options)", () => {
+    it("does not finalize on a ~2s mid-sentence pause, then continues the turn", () => {
+      const v = new VadDetector(); // DEFAULT_VAD_OPTIONS — what listen mode uses
+      // "Yeah. So what I want is just like that information..."
+      expect(v.process(0.12, 0)).toBe("speech-start");
+      expect(v.process(0.12, 300)).toBe("speech-confirmed");
+      expect(v.process(0.12, 900)).toBe("none"); // still talking
+      // ...user pauses to think for ~2s (longer than the OLD 1200ms window)...
+      expect(v.process(0.005, 1500)).toBe("none"); // 600ms silence
+      expect(v.process(0.005, 2200)).toBe("none"); // 1300ms silence — WOULD have finalized before the fix
+      expect(v.process(0.005, 2800)).toBe("none"); // 1900ms silence, still under 2500ms
+      expect(v.isSpeaking).toBe(true); // turn is NOT handed over
+      // ...user resumes the same thought without being cut off.
+      expect(v.process(0.12, 3000)).toBe("none"); // still the same turn, already confirmed
+      expect(v.isSpeaking).toBe(true);
+    });
+
+    it("still finalizes once the user has genuinely stopped (full hangover of silence)", () => {
+      const v = new VadDetector();
+      expect(v.process(0.12, 0)).toBe("speech-start");
+      expect(v.process(0.12, 300)).toBe("speech-confirmed");
+      // Now the user is actually done — silence past the full 2500ms window.
+      expect(v.process(0.005, 2000)).toBe("none"); // 1700ms silence, under 2500
+      expect(v.process(0.005, 2799)).toBe("none"); // 2499ms silence, just under
+      expect(v.process(0.005, 2801)).toBe("finalize"); // 2501ms >= 2500 -> turn over
+    });
+
+    it("the listen default hangover is long enough to clear a natural pause", () => {
+      // Locks the intent: the end-of-turn window must comfortably exceed a normal
+      // mid-sentence thinking pause, and be longer than the too-short 1200ms it replaced.
+      expect(DEFAULT_VAD_OPTIONS.hangoverMs).toBeGreaterThan(1200);
+      expect(DEFAULT_VAD_OPTIONS.hangoverMs).toBeGreaterThanOrEqual(2000);
+    });
+  });
+
   // Barge-in (interrupting the assistant while it speaks) is less sensitive than
   // listening AND fed an echo-adjusted level, so the assistant can't interrupt
   // itself while the user still can. These lock the preset's intent + timing.
@@ -77,6 +117,12 @@ describe("VadDetector", () => {
       expect(BARGE_VAD_OPTIONS.minSpeechMs).toBeGreaterThanOrEqual(DEFAULT_VAD_OPTIONS.minSpeechMs);
       // Not so high that a normal spoken interruption can't cross it.
       expect(BARGE_VAD_OPTIONS.speechThreshold).toBeLessThanOrEqual(0.1);
+    });
+
+    it("keeps its own short hangover independent of the listen turn-taking window", () => {
+      // Barge hangover governs how fast the assistant yields on interruption, not
+      // user turn-taking, so it must stay short even though the listen window grew.
+      expect(BARGE_VAD_OPTIONS.hangoverMs).toBeLessThan(DEFAULT_VAD_OPTIONS.hangoverMs);
     });
 
     it("ignores an echo-adjusted level below the barge threshold", () => {
