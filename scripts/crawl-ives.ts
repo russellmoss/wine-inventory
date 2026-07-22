@@ -50,6 +50,24 @@ function tag(xml: string, name: string): string | null {
   return m ? decodeEntities(m[1].trim()) : null;
 }
 
+/**
+ * Pick the ENGLISH title from a record.
+ *
+ * A record carries one <dc:title> PER LANGUAGE (de-DE, en-US, es-ES, fr-FR, …) — the article's own
+ * title translated, not separate articles. Taking the first match therefore files an English article
+ * under whichever translation the journal happened to emit first, which for article/2524 is German.
+ * Prefer en-*, fall back to the first available so a record with no English title still gets one.
+ */
+export function pickEnglishTitle(recordXml: string): string | null {
+  const titles = [...recordXml.matchAll(/<dc:title([^>]*)>([\s\S]*?)<\/dc:title>/g)].map((m) => ({
+    attrs: m[1],
+    text: decodeEntities(m[2].trim()),
+  }));
+  if (titles.length === 0) return null;
+  const english = titles.find((t) => /xml:lang="en/i.test(t.attrs));
+  return (english ?? titles[0]).text || null;
+}
+
 /** Walk every resumptionToken page. OJS pages at 100; the feed is the only complete index we have. */
 async function listRecords(): Promise<OaiRecord[]> {
   const out: OaiRecord[] = [];
@@ -70,7 +88,7 @@ async function listRecords(): Promise<OaiRecord[]> {
       const parsed = rawDate ? new Date(rawDate) : null;
       out.push({
         url: link,
-        title: tag(r, "dc:title"),
+        title: pickEnglishTitle(r),
         // Only a date the record actually declared — never invent one (retrieve.ts reasons about age).
         date: parsed && !Number.isNaN(+parsed) ? parsed : null,
         language: tag(r, "dc:language"),
@@ -179,6 +197,31 @@ async function main() {
       else if (!ir.skipped) {
         stats.docs++;
         stats.chunks += ir.chunks;
+      }
+
+      // Re-apply the OAI metadata AFTER indexing. indexDocument writes publishedAt + canonicalTitle
+      // UNCONDITIONALLY from what it extracted, including null (buildDocumentMetadata says so, and the
+      // reasoning is sound: metadata must describe the content it came from, or a reused URL keeps a
+      // stale date). For this source that extraction loses to the feed on both fields:
+      //   - the article HTML declares NO date, so publishedAt was being nulled even though the OAI
+      //     record carries the journal's own publication date. 209 undated documents would regress
+      //     exactly the gap plan 084 closed, and retrieve.ts reasons about age.
+      //   - the HTML <title> is "<article title> | IVES Technical Reviews, vine and wine" with the site
+      //     suffix and raw whitespace; the feed's dc:title is the clean one.
+      // The feed is not a second-hand guess — it is the publisher's own metadata for this exact
+      // article, and its datestamp moves when the article does, so the "tied to the content" property
+      // the comment cares about still holds. Runs on the unchanged path too, so a re-run repairs rows
+      // ingested before this fix (indexDocument early-returns on an unchanged hash and would not).
+      if (r.date || r.title) {
+        await runAsSystem((db) =>
+          db.knowledgeDocument.update({
+            where: { id: docId },
+            data: {
+              ...(r.date ? { publishedAt: r.date } : {}),
+              ...(r.title ? { canonicalTitle: r.title.slice(0, 300) } : {}),
+            },
+          }),
+        );
       }
     } catch (e) {
       stats.errors++;
