@@ -94,6 +94,14 @@ export type VoiceSession = {
   /** Manually interrupt the assistant mid-reply and listen again. */
   interrupt: () => void;
   /**
+   * Hand the turn over NOW instead of waiting out the end-of-speech hangover.
+   *
+   * The listen VAD waits up to ~3s on a long, pause-heavy turn so it stops cutting
+   * people off mid-thought; that patience needs an opt-out or it just trades one
+   * complaint for a slower one. No-op unless we're actually listening.
+   */
+  finishTurn: () => void;
+  /**
    * Merge turn(s) that happened OUTSIDE the voice loop into this session's history.
    *
    * Inline voice (plan 089) leaves the text composer usable mid-session, and a typed
@@ -582,6 +590,12 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   }, [mic, playback]);
 
   const interrupt = React.useCallback(() => implRef.current.interrupt(), []);
+  // Not routed through implRef: it needs no live closure, only the stable mic handle,
+  // and the state guard reads the same ref the orchestration functions write.
+  const finishTurn = React.useCallback(() => {
+    if (!activeRef.current || stateRef.current !== "listening") return;
+    mic.finishListening();
+  }, [mic]);
   // Ref-only write: history is not rendered, so merging a typed exchange must NOT
   // re-render the session (and with it the whole chat subtree) mid-conversation.
   const appendHistory = React.useCallback((turns: ChatMessage | ChatMessage[]) => {
@@ -629,6 +643,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     start,
     stop,
     interrupt,
+    finishTurn,
     appendHistory,
     openToAnyone,
     setMyVoice,

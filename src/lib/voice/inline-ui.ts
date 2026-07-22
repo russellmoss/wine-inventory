@@ -36,6 +36,29 @@ export function orbShouldAnimate(state: VoiceState): boolean {
   return state === "listening" || state === "speaking";
 }
 
+/**
+ * Which of the two turn controls are live right now.
+ *
+ * They are two separate always-rendered buttons rather than one relabelling
+ * button on purpose: the row sits in a 440px dock and the label would change on
+ * every single state transition, reflowing the controls under the user's thumb
+ * mid-sentence. Same reasoning as `aria-disabled` over `disabled` below them —
+ * the control keeps its place and stays announced, it just stops acting.
+ *
+ * "Done talking" exists because the listen VAD is now deliberately patient (it
+ * waits out mid-thought pauses instead of answering over them); without a way to
+ * say "I'm finished", that patience reads as lag.
+ */
+export function voiceControlAvailability(state: VoiceState): {
+  canFinish: boolean;
+  canInterrupt: boolean;
+} {
+  return {
+    canFinish: state === "listening",
+    canInterrupt: state === "speaking",
+  };
+}
+
 export type VoiceAnnouncementContext = {
   /** Completed assistant turns so far. Used to announce the first reply only. */
   turnCount: number;
