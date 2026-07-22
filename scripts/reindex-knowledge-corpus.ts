@@ -63,12 +63,18 @@ async function main() {
   // Selects documents whose ACTIVE chunks were last embedded before the cutoff, plus any with no
   // chunks at all (a previously failed document has no new revision, so it correctly reappears).
   const staleBefore = arg("stale-before");
+  // --pdf-only: plan 090 changed PDF extraction ONLY, and deriveIndexHash reflects that — an HTML
+  // document's index hash is byte-identical to before, so re-fetching one can never produce a new
+  // revision. It would cost a full network round trip to reach "unchanged". Skipping them cuts this
+  // campaign from 1,461 documents to 790 (awri alone drops 736 -> 424).
+  const pdfOnly = process.argv.includes("--pdf-only");
   const docs = await runAsSystem((db) =>
     db.$queryRawUnsafe<DocRow[]>(
       `SELECT d."id", d."canonicalUrl", d."contentType", s."key" AS "sourceKey"
        FROM "knowledge_document" d
        JOIN "knowledge_source" s ON s."id" = d."sourceId"
        WHERE d."status" = 'active' AND s."key" = ANY($1::text[])
+         AND ($3::boolean IS NOT TRUE OR d."contentType" = 'pdf')
          AND ($2::timestamp IS NULL OR COALESCE(
                (SELECT MAX(c."embeddedAt") FROM "knowledge_chunk" c
                 WHERE c."documentId" = d."id" AND c."revision" = d."activeRevision"),
@@ -76,9 +82,12 @@ async function main() {
        ORDER BY s."key", d."canonicalUrl"`,
       sources,
       staleBefore ?? null,
+      pdfOnly,
     ),
   );
-  if (staleBefore) console.log(`resuming: only documents last embedded before ${staleBefore}\n`);
+  if (staleBefore) console.log(`resuming: only documents last embedded before ${staleBefore}`);
+  if (pdfOnly) console.log(`pdf-only: HTML documents skipped (their index hash is unchanged by plan 090)`);
+  if (staleBefore || pdfOnly) console.log("");
 
   const bySource = new Map<string, DocRow[]>();
   for (const d of docs) {
