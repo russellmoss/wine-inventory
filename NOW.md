@@ -7,38 +7,28 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Plan 089 — INLINE VOICE MODE IN THE ASSISTANT DOCK. Built + browser-QA'd, SHIPPING as PR #451.**
-Plan: [089](docs/plans/2026-07-21-089-feat-inline-voice-in-dock-plan.md) · commits `fae190ba` (U1/U3
-foundation) + `2064aeef` (UI swap + overlay retired) on branch `claude/conversational-mode-ui-d4a6a3`.
-Gates green: tsc, eslint, **3310 tests** on the merged state, `next build`.
+**BACKLOG IS CLEAR — 0 active feedback items, 0 open PRs. Nothing is in flight.**
+A full `/bug-triage` goalie run (live, all sweeps) on 2026-07-21 left the queue empty and honest.
+The next objective is a CHOICE, not a continuation — see **⏭️ Next up**.
 
-Retire the full-screen voice overlay; run voice inline in the dock so the user can **see** the page
-while talking. The navigate-and-narrate behavior already works (`useVoiceSession.ts:318-325` pushes
-the route and keeps the loop alive) — it is merely occluded by an opaque `inset: 0` curtain. Voice
-even speaks *"I've put a draft on screen, have a look at the card"* while covering that card.
+Box score: backlog 26 → **0 active** (25 already closed, 1 reconciled to RESOLVED — its fix had
+shipped in #391 and nobody wrote the status back). 1 open PR triaged + merged (#443). 18 open issues
+swept → **10 kept**: 2 stale `feedback: plan` issues auto-closed on DB truth (#374, #373), 5 Sentry
+issues closed as dev-noise (#446–#450), 1 real bug found and fixed (#324). **ERP-standards pass: 0
+conflicts, 0 cautions.**
 
-**Reviews: [council](docs/plans/2026-07-21-089-council-feedback.md) (Codex + Gemini) ·
-[eng](docs/plans/2026-07-21-089-eng-review.md) · [design](docs/plans/2026-07-21-089-design-review.md).**
-Four findings that changed the plan:
+🔎 **The finding worth keeping: 5 of the 6 open Sentry issues were ONE dev session, not five bugs.**
+All five were `.claude/worktrees/vigorous-nash-2fe4be` losing its Neon pooler connection, captured at
+five different query sites within ~5 minutes. Dev-worktree noise is the dominant false positive in
+this repo's Sentry feed, and it now gets dropped in `beforeSend` (#456) rather than triaged by hand
+every run. ⚠️ **The tell can sit DEEP in the stack while the top frames look production-clean** —
+judging from the title or top frame is what mislabelled a stale error as a real bug in #237, so the
+filter scans every frame plus culprit/transaction/message.
 
-- 🚨 **P0, and the plan created it.** `historyRef` (`useVoiceSession.ts:132`) is snapshotted at mount
-  and only ever appended by *voice* turns (`:400`/`:469`), while `:277` is what gets SENT. Today the
-  overlay makes typing impossible so it cannot diverge. Let the user type — as this plan does — and
-  the assistant silently forgets it: type "log 22.4 for Block 3", then say "make it 23" → *"make what
-  23?"*. **Unit 3 adds `appendHistory` to `VoiceSession`, so this is NOT a pure presentation swap.**
-- ⚠️ **Escape is a landmine.** `AssistantDock.tsx:132` defers to voice via a
-  `[role=dialog][aria-modal=true]` DOM query. Delete `aria-modal` and Escape silently starts
-  collapsing the whole dock. **Unit 5 must be ONE commit** + a temporary dual guard.
-- ⚠️ **Two features were about to be deleted by omission** — `focusNotice` (voiceprint feedback,
-  sole render site `VoiceOverlay.tsx:180-184`) and the first-run helper line (`:259-261`). Both now on
-  an explicit keep-list.
-- 🎨 **Two transcript defects the shared-caption approach exposes:** every voice turn would grow a
-  👍/👎 `FeedbackBar` (`AssistantChat.tsx:807-815`), and `:447-462` force-snaps to bottom
-  unconditionally, so you cannot scroll up mid-conversation. Both fixed in Unit 6.
+⚠️ **A Sentry-side inbound filter is still worth adding** (console change, Russell's). #456 drops the
+events in the SDK, so they are already sent and counted against quota before being discarded.
 
-**Decisions taken:** orb animates only while audio flows (`DESIGN.md` bans decorative animation —
-exception logged) · voice navigation stays instant, diverging deliberately from the text chat's
-3s countdown · no tablet special-casing (phone is already 94% width; only tablet is affected → TODO).
+_(Plan 089 — inline voice in the dock — MERGED as #451; see Done recently.)_
 
 ⛔ **MSU (`msu-grapes`) stays DORMANT — do not retry.** Imperva refuses this crawler from every
 network available. `npm run verify:msu` is the probe: if it ever reports **live PASS**, un-dormant
@@ -433,6 +423,25 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Leaflet attribution teardown crash (Sentry #324) — MERGED (PR #455, squash `5c5b72fe`).** The one
+  real production defect in an 18-issue pile. The Google copyright string refreshes on a 400ms
+  debounce after `moveend`; the init effect's cleanup set `cancelled` and called `map.remove()` but
+  never cleared that timer, and `refresh()` read `map.getBounds()` *before* checking cancellation — so
+  a pending refresh ran against a torn-down pane. Only reachable with a Google Maps key set (the
+  keyless Esri fallback never wires attribution), which is why the event count stayed low. Fixed with
+  a pre-guard **plus** self-destruct on Leaflet's `unload`, because `addBasemap` is fire-and-forget and
+  the caller holds no teardown handle. Logic extracted to `src/lib/map/attribution-refresh.ts` with a
+  structural map type so it tests under `environment: "node"` — this repo has no jsdom. 🔎 **Lesson:
+  verify a regression test actually regresses.** With the guard and `unload` removed, 3 of 7 cases
+  fail with the literal production error; without checking that, a passing suite proves nothing.
+
+- **Sentry dev-noise filter — MERGED (PR #456, squash `a764d85f`).** Drops events whose stack carries
+  `.claude/worktrees/…` or `.next/dev/…` in `beforeSend`, across all three runtimes. Born from the
+  triage finding that 5 of 6 open Sentry issues were one dev session. ⚠️ **Conservative by
+  construction, and tested to be:** the suite pins that #324's own event shape is KEPT, that a
+  production `.next/server` path is KEPT, and that `"development"` doesn't match — a filter that ate
+  the real bug sitting next to the noise would be worse than the noise.
+
 - **Inline voice mode in the assistant dock (plan 089) — SHIPPED (PR #451).** Retired the full-screen
   voice overlay; voice now runs inline in the dock so the page stays visible and clickable while the
   assistant navigates and talks. Triple-reviewed before building, which caught a P0 the plan itself
@@ -561,8 +570,21 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 - **Plan 086** (US pesticide registration) — planned, not started. The big one; read the plan file.
 - Browser-verify "delete Block 1" on Demo, then close the loop with Mike (from the plan-082 residue).
 - Confirm plan 082's noted-at-merge gaps (U6 read-back, eval LLM half, browser QA) or accept them.
+- **Add a Sentry-side inbound filter** for `.claude/worktrees` / `.next/dev` (console, ~2 min). #456
+  drops these in `beforeSend`, but only after they are sent and counted against quota.
+- **The 10 kept issues are the real remaining queue** — 3 KB re-crawl reports (#420/#417/#325, two
+  same-day duplicates), 4 hand-filed bugs (#414 flaky test, #413 soft-404 tombstones, #412 undated
+  corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
+  and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-21 — **plan 089 (inline voice in the dock) BUILT, QA'd and SHIPPING (PR #451).** Planned,
+_Last updated: 2026-07-21 — **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
+`/bug-triage` goalie run (live, all sweeps) reconciled the queue and cleared the pile: 26 backlog items
+→ 0 active, 1 open PR triaged + merged (#443), 18 open issues → 10 kept. It found exactly ONE real
+production bug among 6 Sentry issues — **#324**, a Leaflet debounce that outlived `map.remove()` — now
+fixed and merged (**#455**); the other five were a single dev-worktree session and are closed, with a
+`beforeSend` filter (**#456**) so that class never files again. ⚠️ Two things left for Russell: a
+**Sentry-side inbound filter** (console; #456 drops events only after they are sent and counted), and
+the standing decisions below (phantom-stock unwind, accountant GL sign-off). Prior: **plan 089 (inline voice in the dock) SHIPPED (PR #451).** Planned,
 then triple-reviewed (council Codex+Gemini → eng → design) before a line was written, which paid for
 itself: the reviews found a P0 the plan itself created — letting the user type during a voice session
 silently breaks the assistant's memory, because `historyRef` only ever sees voice turns — so it needed
