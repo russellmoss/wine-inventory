@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T05:03:17.786Z",
+  "capturedAt": "2026-07-22T05:13:35.020Z",
   "entries": [
     {
       "query": "What is a good pre-infection fungicide I can use for downy mildew?",
@@ -728,21 +728,21 @@
           "rank": 5,
           "publisher": "Virginia Tech Enology",
           "tier": 1,
-          "canonicalUrl": "https://enology.fst.vt.edu/downloads/EnologyNotes169.pdf",
-          "sectionPath": "Enology Notes #169, May 21, 2014 To: Grape and Wine Producers From: Bruce Zoecklein, Professor Emeritus, Enology-Grape Chemistry Group, Virginia Tech Subjects: 1. Nitrogen a. Red vs. White Grapes b. N",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "1c54f42e7ac1"
-        },
-        {
-          "rank": 6,
-          "publisher": "Virginia Tech Enology",
-          "tier": 1,
           "canonicalUrl": "https://enology.fst.vt.edu/EN/105.html",
           "sectionPath": "",
           "publishedAt": null,
           "dateSource": "unknown",
           "textHash": "270236488d89"
+        },
+        {
+          "rank": 6,
+          "publisher": "Virginia Tech Enology",
+          "tier": 1,
+          "canonicalUrl": "https://enology.fst.vt.edu/downloads/EnologyNotes169.pdf",
+          "sectionPath": "Enology Notes #169, May 21, 2014 To: Grape and Wine Producers From: Bruce Zoecklein, Professor Emeritus, Enology-Grape Chemistry Group, Virginia Tech Subjects: 1. Nitrogen a. Red vs. White Grapes b. N",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "1c54f42e7ac1"
         },
         {
           "rank": 7,
@@ -764,9 +764,7 @@
           "dateSource": "published",
           "textHash": "b1d4dd17f08f"
         }
-      ],
-      "unstable": true,
-      "observedProfiles": 2
+      ]
     },
     {
       "query": "Does wildfire smoke exposure affect wine grapes and the resulting wine?",
@@ -1021,9 +1019,7 @@
           "dateSource": "unknown",
           "textHash": "f68ada438f2c"
         }
-      ],
-      "unstable": true,
-      "observedProfiles": 2
+      ]
     },
     {
       "query": "What are the integrated pest management thresholds for wine grapes?",
@@ -1281,6 +1277,91 @@
       ]
     },
     {
+      "query": "What is the best way to measure volatile acidity?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/va/",
+          "sectionPath": "Measurement of volatile acidity (VA) in wine > Enzymatic assay – acetic acid",
+          "publishedAt": "2011-06-02",
+          "dateSource": "published",
+          "textHash": "03236af0b84f"
+        },
+        {
+          "rank": 2,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/va/",
+          "sectionPath": "Measurement of volatile acidity (VA) in wine > Steam distillation/titration",
+          "publishedAt": "2011-06-02",
+          "dateSource": "published",
+          "textHash": "9c680e9e3002"
+        },
+        {
+          "rank": 3,
+          "publisher": "Virginia Tech Enology",
+          "tier": 1,
+          "canonicalUrl": "https://enology.fst.vt.edu/EN/120.html",
+          "sectionPath": "",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "89313ccf171d"
+        },
+        {
+          "rank": 4,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/va/",
+          "sectionPath": "Measurement of volatile acidity (VA) in wine > High performance liquid chromatography (HPLC) – acetic acid",
+          "publishedAt": "2011-06-02",
+          "dateSource": "published",
+          "textHash": "df114a4b8265"
+        },
+        {
+          "rank": 5,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2020/03/s2140.pdf",
+          "sectionPath": "Discrepancies in analytical results for volatile acidity The AWRI has recently received queries about differences between results of volatile acidity (VA) analyses conducted overseas and those conduct",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "3fee982725b8"
+        },
+        {
+          "rank": 6,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/04/TR-143.TECHNOTE.03.pdf",
+          "sectionPath": "Technical Review No.143 April 2003 40 The relationship between acetic acid and volatile acidity Volatile acidity (VA) is well known as a major indicator of wine spoilage. It consists principally of ac",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "02f4f4ff2f4a"
+        },
+        {
+          "rank": 7,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/va/",
+          "sectionPath": "Measurement of volatile acidity (VA) in wine > References and further reading",
+          "publishedAt": "2011-06-02",
+          "dateSource": "published",
+          "textHash": "ad5810c4cc02"
+        },
+        {
+          "rank": 8,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/va/",
+          "sectionPath": "Measurement of volatile acidity (VA) in wine",
+          "publishedAt": "2011-06-02",
+          "dateSource": "published",
+          "textHash": "108d89b6140e"
+        }
+      ]
+    },
+    {
       "query": "How do I brew a hoppy IPA beer with dry hopping?",
       "results": [
         {
@@ -1532,6 +1613,91 @@
           "publishedAt": null,
           "dateSource": "unknown",
           "textHash": "03039ccfa9a0"
+        }
+      ]
+    },
+    {
+      "query": "what are the best nutrients to add to Pinot noir fermentation",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/rr172584r",
+          "sectionPath": "Welcome to the Summer 2015 NewsleƩer Our current issue of the OWRI Technical NewsleƩer is packed with Extension informaƟon, research results, and program updates. Paul Schreiner, Research Plant Pathol",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "22c397f51e67"
+        },
+        {
+          "rank": 2,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/9p290b79c",
+          "sectionPath": "Oregon Wine Advisory Board Research Progress Report 1996 - 1997 Nitrogen Compounds in Oregon Musts and Wines Barney Watson and Hsiao Ping Chen Department of Food Science and Technology Oregon State Un",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "d63397426062"
+        },
+        {
+          "rank": 3,
+          "publisher": "Scott Laboratories",
+          "tier": 2,
+          "canonicalUrl": "https://scottlab.com/content/files/documents/handbooks/rev/scott%20laboratories%202025-2026%20winemaking%20handbook%20aug.pdf",
+          "sectionPath": "2 VINEYARDYEASTNUTRIENTSML BACTERIAOAKTANNINSENZYMESFINING & STABILITYMICRO CONTROL Welcome to the 2025-2026 Scott Laboratories Winemaking Handbook – our 30th edition! As a proud part of Lallemand Inc",
+          "publishedAt": "2025-01-01",
+          "dateSource": "published",
+          "textHash": "b03366dba908"
+        },
+        {
+          "rank": 4,
+          "publisher": "OSU Extension (Oregon State University)",
+          "tier": 1,
+          "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-9658-wine-grape-tissue-nutrient-guidelines-oregon",
+          "sectionPath": "Wine grape tissue nutrient guidelines for Oregon > Rationale and considerations for critical nutrient levels in Oregon wine grapes",
+          "publishedAt": "2025-10-01",
+          "dateSource": "published",
+          "textHash": "d8e900f4c1f5"
+        },
+        {
+          "rank": 5,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/08612p99f",
+          "sectionPath": "Manipulating Soil Moisture and Nitrogen Availability Part II: Effects on Pinot noir Must and Wine Composition Barney Watson, Mee Godard, and Hsiao-Ping Chen Department of Food Science and Technology,",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "607ca13b0f3b"
+        },
+        {
+          "rank": 6,
+          "publisher": "Virginia Tech Enology",
+          "tier": 1,
+          "canonicalUrl": "https://enology.fst.vt.edu/EN/105.html",
+          "sectionPath": "",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "cc23262b7988"
+        },
+        {
+          "rank": 7,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/7s75dd518",
+          "sectionPath": "Oregon Wine Advisory Board Research Progress Report 1998 - 1999 Evaluation of Nitrogen Deficiencies in Oregon Grapevines, Musts and Wines Barney Watson1, Anna Specht1, and Ed Hellman2 Department of Fo",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "0062d9c167bd"
+        },
+        {
+          "rank": 8,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/08612p99f",
+          "sectionPath": "Manipulating Soil Moisture and Nitrogen Availability Part II: Effects on Pinot noir Must and Wine Composition Barney Watson, Mee Godard, and Hsiao-Ping Chen Department of Food Science and Technology,",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "493b62ae5296"
         }
       ]
     }

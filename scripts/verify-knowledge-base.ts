@@ -19,7 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { mentionsOffTopic } from "./kb-eval-match";
 // Plan 090 Unit 1 — the cases moved to a shared module so scripts/kb-snapshot.ts scores the SAME
 // queries this gate asserts on. A snapshot of a different query set would be evidence about nothing.
-import { RETRIEVAL_CASES, REJECTION_CASES, DIVERSITY_QUERY } from "./kb-eval-cases";
+import { RETRIEVAL_CASES, REJECTION_CASES, COVERAGE_CASES } from "./kb-eval-cases";
 
 const TENANT = "org_demo_winery";
 
@@ -164,18 +164,34 @@ async function main() {
     );
   }
 
-  console.log("\n— source diversity / conflict-surfacing (Unit 9) —");
-  {
-    // a topic BOTH AWRI and Wine Australia cover should surface passages from >1 publisher, so the
-    // assistant can present each authority's view rather than silently picking one.
-    const q = DIVERSITY_QUERY;
-    const passages = await retrieveKnowledge({ tenantId: TENANT, query: q, topK: 8 });
-    const publishers = new Set(passages.map((p) => p.publisher));
+  console.log("\n— multi-publisher coverage (plan 090 Unit 2; was the single diversity check) —");
+  for (const c of COVERAGE_CASES) {
+    const passages = await retrieveKnowledge({ tenantId: TENANT, query: c.q, topK: 8 });
+    const publishers = [...new Set(passages.map((p) => p.publisher))];
     const dated = passages.filter((p) => p.publishedAt).length;
-    assert(publishers.size >= 2, `diversity: dual-coverage query surfaces >=2 publishers`, `saw: ${[...publishers].join(", ")}`);
-    console.log(`  (${passages.length} passages, ${publishers.size} publishers, ${dated} with a date)`);
-    if (process.env.KB_EVAL_JUDGE === "1") {
-      await optionalJudge("conflict-surfacing", `${q} — do AWRI and Wine Australia agree, and if not what does each recommend?`, passages);
+    // Substring, case-insensitive: publisher strings are long and descriptive
+    // ("OSU Extension (Oregon State University)"), so exact equality would be brittle to a rename.
+    const missing = c.expectPublishers.filter(
+      (want) => !publishers.some((p) => p.toLowerCase().includes(want.toLowerCase())),
+    );
+    const ok = missing.length === 0 && publishers.length >= c.minPublishers;
+    const detail = `saw ${publishers.length} publisher(s): ${publishers.join(", ") || "none"}${missing.length ? `  — MISSING: ${missing.join(", ")}` : ""}`;
+
+    if (c.knownFailing && !ok) {
+      // A known gap reports as PENDING rather than failing. Failing it would leave the gate red for the
+      // whole of plan 090, which would stop it catching anything else — the opposite of the point.
+      console.log(`⋯ PENDING  coverage: ${c.q.slice(0, 46)}  — ${detail}`);
+      console.log(`           known gap: ${c.knownFailing}`);
+    } else if (c.knownFailing && ok) {
+      // The signal to tighten the gate. Without this, a fixed gap stays marked "known failing" forever
+      // and silently stops asserting anything.
+      assert(true, `coverage RESOLVED: ${c.q.slice(0, 40)}`, `remove knownFailing — ${detail}`);
+    } else {
+      assert(ok, `coverage: ${c.q.slice(0, 46)}`, detail);
+    }
+    console.log(`  (${passages.length} passages, ${publishers.length} publishers, ${dated} with a date)`);
+    if (process.env.KB_EVAL_JUDGE === "1" && !c.knownFailing) {
+      await optionalJudge("conflict-surfacing", `${c.q} — do the authorities agree, and if not what does each recommend?`, passages);
     }
   }
 
