@@ -550,9 +550,8 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
-- **The assistant can read a vessel's/lot's OPERATION history — built, on
-  `claude/vessel-lot-operation-history-536db0`** (feedback `cmrwdgt2u…`, the ledger counterpart to
-  #463's chemistry read). Nothing in the assistant surface touched `LotOperation` — `query_transfers`
+- **The assistant can read a vessel's/lot's OPERATION history — MERGED + LIVE** (PR #468, squash
+  `a9016c3f`, branch pruned; feedback `cmrwdgt2u…`, the ledger counterpart to #463's chemistry read). Nothing in the assistant surface touched `LotOperation` — `query_transfers`
   is RACK-only, `query_audit` is entity CRUD (cellar ops are not audit rows), `query_cellar_contents`
   is point-in-time — so "what additions did we make to T2" had no path. `query_operations` wraps the
   **same loaders the pages render from** (`getVesselTimeline` / `getLotDetail`), so it cannot drift
