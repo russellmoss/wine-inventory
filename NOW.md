@@ -7,8 +7,33 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**KB source vetting — licensing + a retrieval-displacement gate. 3 commits on
-`claude/kb-paraphrase-citation-copyright-355aa9`, UNPUSHED, no PR.**
+**IVES Technical Reviews is LIVE in the corpus — 209 docs / 3,316 chunks, default-ON.
+7 commits on `claude/kb-paraphrase-citation-copyright-355aa9`, UNPUSHED, no PR.**
+
+✅ **Crawled + verified + measured.** 209/209 dated (**100%** — corpus-wide is ~31%, so it is the
+best-dated source in the registry), 209/209 titled, all chunks embedded, 2019–2026. Corpus 3,320
+active docs. Enabled for `org_demo_winery` AND `org_bhutan_wine_co`.
+
+🔎 **Default-on is the MEASURED position.** Staged: shipped `false` → crawled → enabled for Demo alone
+→ `verify:kb-register` vs the pre-IVES baseline → **4/120 slots moved (3%, cap 25%)**, no question
+losing more than 2 of 6, **17 of 20 unchanged**. It took slots on oak ageing, oxidation at pressing,
+Riesling acid targets. Integration, not crowding-out. Baseline then RE-CAPTURED so this accepted state
+is the new reference.
+
+⚠️ **Two bugs the smoke test caught that the counters hid** (`5 docs / 70 chunks / 0 errors` while
+writing wrong metadata — read the rows back, never trust the tally):
+- `indexDocument` writes `publishedAt`/`canonicalTitle` **unconditionally, including null**
+  (`buildDocumentMetadata` — deliberate, so metadata matches the content it came from). IVES HTML
+  declares no date, so all 209 would have been UNDATED. Fixed by re-applying the OAI feed's metadata
+  AFTER indexing (runs on the unchanged path too, so a re-run repairs old rows).
+- An OAI record carries one `<dc:title>` **per language** — the same article translated, NOT separate
+  articles. First-match filed English articles under German titles. `pickEnglishTitle` prefers `en*`.
+  ⚠️ This also CORRECTS an earlier misreading: the 209 records are 209 distinct articles, so the
+  "translations will waste retrieval slots" worry never applied.
+
+⚠️ **Known, filed not fixed:** chunk breadcrumbs still carry the polluted HTML title
+(`… | IVES Technical Reviews, vine and wine > …`) because chunking runs inside `indexDocument` before
+the correction. Generic breadcrumb behaviour, not IVES-specific → TODOS.
 
 Evaluating **IVES Technical Reviews** (`ives-technicalreviews.eu`) as a source. It is **CC BY** —
 confirmed on their own Open Access Policy page — which makes it the ONLY source in the corpus with an
