@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import { parseVesselRef } from "@/lib/vessels/ref";
 import { casesAndLoose } from "@/lib/bottling/draw";
+import { summarizeVesselComposition } from "@/lib/vessel/composition";
 
 export type CellarContentsQuery = {
   vessel?: string;
@@ -38,6 +39,25 @@ export type CellarContentsResult = {
       vineyardName: string | null;
       vintage: number | null;
     }[];
+    /**
+     * What the wine is MADE OF — the answer to "is T5 100% Syrah?" and "which tanks hold a blend?".
+     *
+     * A vessel holds one lot (LEDGER-12), and that lot's `originVarietyId` is only its ORIGIN — for a
+     * wine that absorbed another, the origin names the surviving identity and says nothing about what
+     * was blended in. T5's lot is `2026-SY-2` (origin Syrah), but the tank is 6,370 L Syrah + 625 L
+     * Cabernet Sauvignon. Reading `lots[].varietyName` alone reports that tank as 100% Syrah, which is
+     * how the assistant came to tell a winemaker his blend didn't exist.
+     */
+    composition: {
+      /** "91% Syrah · 9% Cabernet Sauvignon" — empty string when the vessel is empty. */
+      summary: string;
+      /** True when more than one VARIETY is present. This is the "is it a blend" answer. */
+      isBlend: boolean;
+      /** False when some of the wine has no recorded origin (surfaced, never renormalised away). */
+      provenanceComplete: boolean;
+      /** Per variety/vineyard/vintage, largest share first. */
+      parts: { variety: string; vineyardName: string | null; vintage: number | null; volumeL: number; pct: string }[];
+    };
   }[];
   emptyMatches: number;
   truncated: boolean;
@@ -150,8 +170,6 @@ async function idsForNameSearch(model: "variety" | "vineyard", name: string): Pr
 
 async function buildLotWhere(query: CellarContentsQuery): Promise<Prisma.LotWhereInput | null> {
   const AND: Prisma.LotWhereInput[] = [{ status: "ACTIVE" }];
-  const variety = clean(query.variety);
-  const vineyard = clean(query.vineyard);
   const lot = clean(query.lot);
   const form = normalizeForm(query.form);
 
@@ -167,22 +185,50 @@ async function buildLotWhere(query: CellarContentsQuery): Promise<Prisma.LotWher
   if (query.form && !form) return null;
   if (form) AND.push({ form });
   if (query.onlyPressable) AND.push({ form: "MUST", status: "ACTIVE" });
+  // NOTE: variety and vineyard are deliberately NOT filtered here. They are properties of what the
+  // vessel is MADE OF, not of the surviving lot's identity, so they are matched at the VESSEL level
+  // (buildVesselOriginWhere) against composition as well as lot origin. Filtering them here would
+  // hide the wine: asking for Cabernet would miss T5, whose lot's origin is Syrah but which holds
+  // 625 L of Cab. It would also empty out `lots[]` for a vessel that legitimately matched.
+  return AND.length === 1 ? AND[0] : { AND };
+}
+
+/**
+ * Vessel-level match for variety / vineyard: the vessel qualifies if EITHER its wine's own origin
+ * matches (the pre-composition behaviour, kept so nothing that matched before stops matching) OR its
+ * composition contains it (the wine that was blended in). Returns `null` for "no such name" so the
+ * caller can short-circuit to an empty result, and `undefined` when neither filter was requested.
+ */
+async function buildVesselOriginWhere(
+  query: CellarContentsQuery,
+): Promise<Prisma.VesselWhereInput[] | null | undefined> {
+  const variety = clean(query.variety);
+  const vineyard = clean(query.vineyard);
+  if (!variety && !vineyard) return undefined;
+  const clauses: Prisma.VesselWhereInput[] = [];
+
   if (variety) {
     const ids = await idsForNameSearch("variety", variety);
     if (ids.length === 0) return null;
-    AND.push({ originVarietyId: { in: ids } });
+    clauses.push({
+      OR: [
+        { vesselLots: { some: { lot: { originVarietyId: { in: ids } } } } },
+        { components: { some: { varietyId: { in: ids } } } },
+      ],
+    });
   }
   if (vineyard) {
     const ids = await idsForNameSearch("vineyard", vineyard);
     if (ids.length === 0) return null;
-    AND.push({
+    clauses.push({
       OR: [
-        { originVineyardId: { in: ids } },
-        { sourceVineyards: { some: { vineyardId: { in: ids } } } },
+        { vesselLots: { some: { lot: { originVineyardId: { in: ids } } } } },
+        { vesselLots: { some: { lot: { sourceVineyards: { some: { vineyardId: { in: ids } } } } } } },
+        { components: { some: { vineyardId: { in: ids } } } },
       ],
     });
   }
-  return AND.length === 1 ? AND[0] : { AND };
+  return clauses;
 }
 
 export async function queryCellarContents(raw: CellarContentsQuery): Promise<CellarContentsResult> {
@@ -193,8 +239,12 @@ export async function queryCellarContents(raw: CellarContentsQuery): Promise<Cel
   const lotWhere = await buildLotWhere(query);
   if (lotWhere == null) return { vessels: [], emptyMatches: 0, truncated: false };
 
+  const originWhere = await buildVesselOriginWhere(query);
+  if (originWhere === null) return { vessels: [], emptyMatches: 0, truncated: false };
+
   const where: Prisma.VesselWhereInput = vesselWhere(clean(query.vessel), query.vesselType);
   if (onlyNonEmpty) where.vesselLots = { some: { lot: lotWhere } };
+  if (originWhere && originWhere.length > 0) where.AND = originWhere;
 
   const rows = await prisma.vessel.findMany({
     where,
@@ -223,6 +273,17 @@ export async function queryCellarContents(raw: CellarContentsQuery): Promise<Cel
               sourceVineyards: { select: { vineyardId: true } },
             },
           },
+        },
+      },
+      // What the wine is MADE OF (the Unit 18 readout's data), so a blended tank reports its parts
+      // instead of just the surviving lot's origin variety.
+      components: {
+        orderBy: { volumeL: "desc" },
+        select: {
+          vintage: true,
+          volumeL: true,
+          variety: { select: { name: true } },
+          vineyard: { select: { name: true } },
         },
       },
     },
@@ -273,14 +334,38 @@ export async function queryCellarContents(raw: CellarContentsQuery): Promise<Cel
       emptyMatches += 1;
       if (!exactVessel && onlyNonEmpty) return [];
     }
+    const totalVolumeL = Math.round(lots.reduce((sum, lot) => sum + lot.volumeL, 0) * 100) / 100;
+    // Same pure function the vessel screens use, so the assistant and the UI can never disagree
+    // about what a tank is made of.
+    const comp = summarizeVesselComposition(
+      totalVolumeL,
+      v.components.map((c) => ({
+        varietyName: c.variety.name,
+        vineyardName: c.vineyard.name,
+        vintage: c.vintage,
+        volumeL: num(c.volumeL),
+      })),
+    );
     return [{
       vesselId: v.id,
       label: label(v.type, v.code),
       code: v.code,
       type: v.type as "TANK" | "BARREL",
       capacityL: num(v.capacityL),
-      totalVolumeL: Math.round(lots.reduce((sum, lot) => sum + lot.volumeL, 0) * 100) / 100,
+      totalVolumeL,
       lots,
+      composition: {
+        summary: comp.summary,
+        isBlend: comp.byVariety.filter((s) => !s.unrecorded).length > 1,
+        provenanceComplete: comp.provenanceComplete,
+        parts: comp.detail.map((s) => ({
+          variety: s.label,
+          vineyardName: s.vineyardName,
+          vintage: s.vintage,
+          volumeL: s.volumeL,
+          pct: s.pctLabel,
+        })),
+      },
     }];
   });
 
