@@ -7,8 +7,8 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**KB citation tombstone now shows an EXCERPT, not the whole withdrawn document.** Built on
-`claude/kb-paraphrase-citation-copyright-355aa9`, **NOT pushed, no PR yet.**
+**KB citation tombstone now shows an EXCERPT, not the whole withdrawn document. MERGED + LIVE**
+(PR #462, squash `8f6099b5`, branch pruned).
 
 Came out of Russell's question — *"paraphrase with citation is how peer-reviewed articles get
 written, so it shouldn't be a copyright problem, right?"* Right about the output, and the assistant
@@ -627,8 +627,8 @@ assistant already does it, but citation cures plagiarism, not infringement — a
 (`renderTombstoneHtml`) served up to 20,000 chars verbatim precisely when a publisher had pulled the
 page. Capped to a 600-char excerpt via a pure, tested `buildTombstoneExcerpt`, `take: 3` on the read,
 truncation disclosed, `noindex, noarchive`, plus a retraction warning (safety, not only legal).
-10/10 tests, tsc + eslint clean; branch `claude/kb-paraphrase-citation-copyright-355aa9`, unpushed,
-not browser-verified. Prior:_
+10/10 tests, tsc + eslint clean. MERGED as **#462** (`8f6099b5`); not browser-verified — the
+tombstone only renders for a *withdrawn* document. Prior:_
 
 _2026-07-22 — **voice mode no longer cuts the user off mid-thought** (ticket `cmrvhj5b8…`,
 PR #460 MERGED `ddeeaaf8`, ticket RESOLVED, branch pruned). The listen VAD's flat 1200ms silence bar
