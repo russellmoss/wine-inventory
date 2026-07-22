@@ -154,9 +154,23 @@ new `docs/kb-eval/snapshot.json` (committed)
 **Approach:** For every eval query, record ordered `{rank, publisher, tier, canonicalUrl,
 sectionPath, publishedAt, dateSource, textHash}`. Write to a stable-sorted JSON committed to
 the repo. Add a `--diff` mode that compares current retrieval against the committed snapshot
-and prints per-query rank movements. Retrieval is deterministic (pgvector cosine + `ts_rank`),
-so a diff is signal, not noise. Do NOT gate CI on the diff yet — it is an evidence artifact
+and prints per-query rank movements. Do NOT gate CI on the diff yet — it is an evidence artifact
 this round.
+
+⚠️ **CORRECTED DURING EXECUTION.** This unit originally asserted "retrieval is deterministic
+(pgvector cosine + `ts_rank`), so a diff is signal, not noise." **That was measured and found
+false.** Two causes were investigated:
+
+1. **FIXED — neither arm had a total `ORDER BY`.** `ts_rank` produces coarse, heavily-tied scores
+   (measured: 2 tied rows inside the top 40 for the leafroll/mealybug query), and there is no ANN
+   index on `embedding`, so the dense arm is a sequential scan. With `LIMIT candidateK`, a tie
+   straddling the cut changed which candidate survived, and that propagated through RRF and MMR.
+   Both arms now carry a `, c."id"` tiebreaker. This only decides among rows that already scored
+   equal, so it changes no ranking that was actually determined.
+2. **NOT FIXED — residual, unidentified.** ~1 query in 18 still varies between runs. Ruled out by
+   direct experiment: the embedding API returns bit-identical vectors (cosine 1.000000000000
+   across calls); both SQL arms return identical chunk-id lists across 4 in-process executions;
+   the corpus had no write in 2 days. Cause unknown. See Unit 1b.
 **Tests:** Unit-test the diff formatter (pure): identical input → empty diff; a swapped pair →
 two movements; a new URL → an insertion.
 **Depends on:** none
@@ -164,6 +178,30 @@ two movements; a new URL → an insertion.
 **Patterns to follow:** `scripts/verify-knowledge-base.ts:100-106` assert helper.
 **Verification:** `npm run verify:knowledge-base` still passes; `kb-snapshot.ts` run twice
 back to back yields an empty diff.
+
+### Unit 1b: Make the instrument noise-tolerant  (ADDED DURING EXECUTION)
+
+**Goal:** Stop an unexplained wobble from being readable as a regression.
+**Files:** `scripts/kb-snapshot.ts`, `scripts/kb-snapshot-diff.ts`, `test/knowledge-snapshot-diff.test.ts`
+**Approach:** Capture each query `--repeat N` times (default 3) and trust it only when all repeats
+agree on the DOCUMENT PROFILE — `profileKey`, keyed on exactly what the diff compares (url,
+bestRank, count) and nothing else. Judging stability on raw row equality would flag harmless
+`sectionPath`/`textHash` churn and throw away usable queries. An unstable query is KEPT in the
+artifact with its first observation and flagged `unstable: true`; `diffSnapshots` refuses to
+compare it and `formatDiff` names it. Never silently dropped — a query vanishing from the artifact
+would read as "unchanged".
+**Tests:** `profileKey` equality/inequality across order, rank, count and identity changes;
+`diffSnapshots` refuses comparison when EITHER side is unstable; stable queries still compare
+normally alongside unstable ones; `formatDiff` excludes unstable from the moved count.
+**Depends on:** Unit 1
+**Verification:** ✅ DONE. Baseline captured at `--repeat 3`: **16 stable, 2 unstable** (the
+yeast-strain and tirage queries — both have unusually broad valid-source sets, i.e. many near-tied
+candidates). Two consecutive `--diff` runs both report "no change" across all 16 stable queries and
+name the same 2 unstable ones.
+
+⚠️ **Consequence for Unit 10:** the two unstable queries cannot testify about the re-index either
+way. If the residual cause is found later, re-baseline and they rejoin. Until then, treat 16/18
+coverage as the honest figure rather than claiming 18.
 
 ### Unit 2: Lock in what already works + close the named coverage gaps
 
@@ -340,6 +378,7 @@ present, no masthead, dates visible.
 | Section denylist deletes real content | MED | HIGH | Classifier keys on heading AND section shape, not heading alone; explicit false-positive test |
 | Breadcrumb removal from tsvector changes lexical behaviour unexpectedly | MED | MED | Deliberately NOT doing it this round; revisit only if the diff shows regression |
 | Doing 5 things at once makes the diff uninterpretable | MED | HIGH | Units are individually verifiable; snapshot can be re-captured between units if a movement is confusing |
+| **Residual retrieval nondeterminism (~1 query in 18), cause unidentified** | **CONFIRMED** | MED | Unit 1b: repeat-and-consensus capture; unstable queries flagged and excluded from diffs rather than silently compared. Coverage is honestly 16/18, not 18/18 |
 | Scope creep into AJEV | LOW | MED | Explicitly out of scope; research preserved above so it costs nothing to resume |
 
 ## Success Criteria

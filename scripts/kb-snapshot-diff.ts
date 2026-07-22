@@ -26,6 +26,18 @@ export interface SnapshotResult {
 export interface QuerySnapshot {
   query: string;
   results: SnapshotResult[];
+  /**
+   * Plan 090 Unit 1b — set when repeated captures of this query disagreed on the document profile.
+   *
+   * MEASURED, not assumed: repeated captures against an unchanged corpus disagree on roughly 1 query in
+   * 18. Ruled out by direct experiment — the embedding API returns bit-identical vectors (cosine
+   * 1.000000000000 across calls), both SQL arms return identical chunk-id lists across 4 in-process
+   * executions, and the corpus had no write in 2 days. The residual source is UNIDENTIFIED, so the
+   * instrument records the wobble rather than pretending it is not there.
+   */
+  unstable?: boolean;
+  /** How many DISTINCT document profiles the repeated captures produced. >1 means unstable. */
+  observedProfiles?: number;
 }
 
 export interface Snapshot {
@@ -49,7 +61,8 @@ export type Movement =
 
 export interface QueryDiff {
   query: string;
-  status: "changed" | "added" | "removed";
+  /** "unstable" = not compared, because a repeated capture disagreed with itself. Never a regression. */
+  status: "changed" | "added" | "removed" | "unstable";
   movements: Movement[];
   publishersGained: string[];
   publishersLost: string[];
@@ -90,6 +103,21 @@ export function documentProfile(results: SnapshotResult[]): Map<string, DocProfi
 
 function publishersOf(results: SnapshotResult[]): Set<string> {
   return new Set(results.map((r) => r.publisher));
+}
+
+/**
+ * Canonical serialization of a result set's DOCUMENT PROFILE — the stability predicate.
+ *
+ * Deliberately keyed on exactly what diffQuery compares (url, bestRank, count) and nothing else. Two
+ * captures that place the same documents at the same best ranks are equivalent for diffing even if the
+ * underlying rows differ in order, sectionPath or textHash, so judging stability on raw row equality
+ * would flag harmless churn as instability and throw away usable queries.
+ */
+export function profileKey(results: SnapshotResult[]): string {
+  return [...documentProfile(results).entries()]
+    .map(([url, p]) => `${url}@${p.bestRank}x${p.count}`)
+    .sort()
+    .join("|");
 }
 
 /** Diff one query's ranked results. Movements are sorted by URL so the artifact diffs cleanly in git. */
@@ -162,6 +190,12 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): QueryDiff[] {
       });
       continue;
     }
+    // A query that disagreed with itself across repeated captures cannot testify either way. Report it
+    // and refuse to compare, so a wobble can never be read as a regression (or mask one).
+    if (be.unstable || ae.unstable) {
+      out.push({ query: q, status: "unstable", movements: [], publishersGained: [], publishersLost: [] });
+      continue;
+    }
     const d = diffQuery(be, ae);
     if (d.movements.length || d.publishersGained.length || d.publishersLost.length) out.push(d);
   }
@@ -222,10 +256,11 @@ function describe(m: Movement): string {
  * format therefore states what moved and leaves the verdict to a person.
  */
 export function formatDiff(diffs: QueryDiff[]): string {
-  if (diffs.length === 0) return "no change — retrieval is identical to the committed snapshot";
-
+  const unstable = diffs.filter((d) => d.status === "unstable");
+  const moved = diffs.filter((d) => d.status !== "unstable");
   const lines: string[] = [];
-  for (const d of diffs) {
+
+  for (const d of moved) {
     const tag = d.status === "changed" ? "" : `  [QUERY ${d.status.toUpperCase()}]`;
     lines.push(`\n"${d.query}"${tag}`);
     if (d.publishersLost.length) lines.push(`   publishers LOST:   ${d.publishersLost.join(", ")}`);
@@ -235,9 +270,23 @@ export function formatDiff(diffs: QueryDiff[]): string {
       lines.push(`       ${slug(m.canonicalUrl)}`);
     }
   }
-  lines.push(
-    `\n${diffs.length} quer${diffs.length === 1 ? "y" : "ies"} moved. A movement is NOT automatically a regression —`,
-  );
-  lines.push("a better source displacing a worse one looks identical here. Judge each one.");
+
+  if (moved.length === 0) {
+    lines.push("no change — every stable query is identical to the committed snapshot");
+  } else {
+    lines.push(
+      `\n${moved.length} quer${moved.length === 1 ? "y" : "ies"} moved. A movement is NOT automatically a regression —`,
+    );
+    lines.push("a better source displacing a worse one looks identical here. Judge each one.");
+  }
+
+  // Never silently omitted. An unstable query is a query this artifact cannot speak for, and a reader
+  // who does not know that will read its absence as "unchanged".
+  if (unstable.length) {
+    lines.push(
+      `\n⚠️  ${unstable.length} quer${unstable.length === 1 ? "y" : "ies"} UNSTABLE — not compared (repeated captures disagreed):`,
+    );
+    for (const d of unstable) lines.push(`   · ${d.query}`);
+  }
   return lines.join("\n");
 }

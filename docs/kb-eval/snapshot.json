@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T04:53:16.374Z",
+  "capturedAt": "2026-07-22T05:03:17.786Z",
   "entries": [
     {
       "query": "What is a good pre-infection fungicide I can use for downy mildew?",
@@ -764,7 +764,9 @@
           "dateSource": "published",
           "textHash": "b1d4dd17f08f"
         }
-      ]
+      ],
+      "unstable": true,
+      "observedProfiles": 2
     },
     {
       "query": "Does wildfire smoke exposure affect wine grapes and the resulting wine?",
@@ -1019,7 +1021,9 @@
           "dateSource": "unknown",
           "textHash": "f68ada438f2c"
         }
-      ]
+      ],
+      "unstable": true,
+      "observedProfiles": 2
     },
     {
       "query": "What are the integrated pest management thresholds for wine grapes?",

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   documentProfile,
+  profileKey,
   diffQuery,
   diffSnapshots,
   formatDiff,
@@ -160,7 +161,101 @@ describe("diffSnapshots", () => {
   });
 });
 
+// Plan 090 Unit 1b. MEASURED, not assumed: repeated captures against an unchanged corpus disagree on
+// roughly 1 query in 18. Ruled out by direct experiment — the embedding API returns bit-identical
+// vectors (cosine 1.000000000000 across calls), both SQL arms return identical chunk-id lists across 4
+// in-process executions, and the corpus had no write in 2 days. The residual source is UNIDENTIFIED.
+//
+// So the instrument does not get to assume determinism. It captures each query several times and only
+// trusts a query whose DOCUMENT PROFILE (the thing the diff actually compares) is identical every time.
+// An unstable query is recorded and reported, never silently dropped — a query quietly vanishing from
+// the artifact is how a coverage hole hides.
+describe("profileKey (stability predicate)", () => {
+  it("is identical for the same profile regardless of input order", () => {
+    // Stability must be judged on what the diff compares, not on raw row order. Two captures that
+    // return the same documents at the same best ranks are equivalent for diff purposes even if the
+    // underlying rows arrived differently.
+    const a = [r(1, AWRI_VA, "AWRI"), r(2, OWRI_N, "OWRI")];
+    const b = [r(2, OWRI_N, "OWRI"), r(1, AWRI_VA, "AWRI")];
+    expect(profileKey(a)).toBe(profileKey(b));
+  });
+
+  it("differs when a document's best rank changes", () => {
+    expect(profileKey([r(1, AWRI_VA, "AWRI")])).not.toBe(profileKey([r(2, AWRI_VA, "AWRI")]));
+  });
+
+  it("differs when a document occupies a different number of slots", () => {
+    const once = [r(5, OWRI_N, "OWRI")];
+    const twice = [r(5, OWRI_N, "OWRI"), r(8, OWRI_N, "OWRI")];
+    expect(profileKey(once)).not.toBe(profileKey(twice));
+  });
+
+  it("differs when a document is swapped for another", () => {
+    expect(profileKey([r(1, AWRI_VA, "AWRI")])).not.toBe(profileKey([r(1, VT_105, "VT")]));
+  });
+});
+
+describe("diffSnapshots with unstable queries", () => {
+  const stable: QuerySnapshot = { query: "q", results: [r(1, AWRI_VA, "AWRI")] };
+
+  it("refuses to compare a query flagged unstable on EITHER side", () => {
+    // A wobbling query must not be able to manufacture a movement that reads as a regression.
+    const before = { entries: [stable] };
+    const after = { entries: [{ query: "q", results: [r(1, OWRI_N, "OWRI")], unstable: true }] };
+    const d = diffSnapshots(before, after);
+    expect(d).toHaveLength(1);
+    expect(d[0].status).toBe("unstable");
+    expect(d[0].movements).toEqual([]);
+  });
+
+  it("flags unstable even when the baseline side is the unstable one", () => {
+    const before = { entries: [{ ...stable, unstable: true }] };
+    const after = { entries: [{ query: "q", results: [r(1, OWRI_N, "OWRI")] }] };
+    expect(diffSnapshots(before, after)[0].status).toBe("unstable");
+  });
+
+  it("still compares stable queries normally alongside unstable ones", () => {
+    const before = { entries: [stable, { query: "z", results: [r(1, VT_105, "VT")] }] };
+    const after = {
+      entries: [
+        { query: "q", results: [r(1, OWRI_N, "OWRI")], unstable: true },
+        { query: "z", results: [r(3, VT_105, "VT")] },
+      ],
+    };
+    const d = diffSnapshots(before, after);
+    expect(d.find((x) => x.query === "q")?.status).toBe("unstable");
+    expect(d.find((x) => x.query === "z")?.movements).toEqual([
+      { kind: "worsened", canonicalUrl: VT_105, publisher: "VT", from: 1, to: 3 },
+    ]);
+  });
+});
+
 describe("formatDiff", () => {
+  it("reports unstable queries separately and excludes them from the moved count", () => {
+    // The count is what a human reads first. Counting a query that merely wobbled as a query that
+    // "moved" is precisely the misreading that cost plan 088 a wrong conclusion.
+    const out = formatDiff([
+      { query: "wobbler", status: "unstable", movements: [], publishersGained: [], publishersLost: [] },
+      {
+        query: "mover",
+        status: "changed",
+        movements: [{ kind: "worsened", canonicalUrl: AWRI_VA, publisher: "AWRI", from: 1, to: 4 }],
+        publishersGained: [],
+        publishersLost: [],
+      },
+    ]);
+    expect(out).toMatch(/unstable/i);
+    expect(out).toContain("wobbler");
+    expect(out).toMatch(/1 query moved/);
+  });
+
+  it("says so explicitly when everything stable was unchanged but something wobbled", () => {
+    const out = formatDiff([
+      { query: "wobbler", status: "unstable", movements: [], publishersGained: [], publishersLost: [] },
+    ]);
+    expect(out).toMatch(/no change/i);
+    expect(out).toMatch(/unstable/i);
+  });
   it("renders an empty diff as an explicit no-change line, not blank output", () => {
     // A silent empty string reads as "the script broke". Say so.
     expect(formatDiff([])).toMatch(/no change/i);
