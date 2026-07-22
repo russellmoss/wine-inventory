@@ -114,6 +114,7 @@ async function main() {
   }
 
   const totals = { reindexed: 0, unchanged: 0, skipped: 0, errors: 0, chunks: 0 };
+  const abandoned: string[] = [];
   for (const [key, rows] of bySource) {
     const urls = (limit ? rows.slice(0, limit) : rows).map((r) => r.canonicalUrl);
 
@@ -132,7 +133,19 @@ async function main() {
       `\n=== ${key} — ${urls.length} urls${spec?.ignoreRobots ? "  [curated: ignoreRobots]" : ""} ===`,
     );
 
-    const summary = await crawlUrls(key, urls, {
+    // ONE SOURCE'S CRASH MUST NOT ABANDON THE REST.
+    //
+    // crawlUrls does its own DB reads (the conditional-GET validator lookup), and those are NOT inside
+    // the per-document try/catch below. Observed twice on this box: a transient Neon P1001 ("Can't
+    // reach database server") threw straight out of crawlUrls and killed the whole run, taking every
+    // source after it — wbi never started because the crash landed mid-osu-owri.
+    //
+    // Interruptions are NORMAL at this scale, so the loop absorbs them per source and reports which
+    // ones were abandoned. Nothing is lost either way: a document that never reached indexDocument
+    // keeps its old revision and reappears in the next --stale-before pass.
+    let summary;
+    try {
+      summary = await crawlUrls(key, urls, {
       // See the header note: without this the conditional GET 304s and nothing is re-indexed.
       ignoreValidators: true,
       ignoreRobots: spec?.ignoreRobots,
@@ -158,8 +171,14 @@ async function main() {
           totals.errors++;
           console.log(`  ! index failed ${doc.canonicalUrl}: ${(e as Error).message.slice(0, 160)}`);
         }
-      },
-    });
+        },
+      });
+    } catch (e) {
+      abandoned.push(key);
+      console.log(`  ✗ ${key} ABANDONED mid-source: ${(e as Error).message.slice(0, 180)}`);
+      console.log(`    re-run with the same --stale-before to pick it up; nothing was lost.`);
+      continue;
+    }
     console.log(
       `  fetched ${summary.fetched}, documents ${summary.documents}, notModified ${summary.notModified}, skippedRobots ${summary.skippedRobots}, errors ${summary.errors}`,
     );
@@ -180,6 +199,11 @@ async function main() {
   );
   if (totals.unchanged > 0) {
     console.log(`⚠️  "unchanged" means indexDocument short-circuited — check PDF_EXTRACT_VERSION actually moved.`);
+  }
+  if (abandoned.length) {
+    console.log(`\n⚠️  ${abandoned.length} source(s) ABANDONED mid-run: ${abandoned.join(", ")}`);
+    console.log(`   This run is INCOMPLETE. Re-run with the same --stale-before before trusting any before/after comparison.`);
+    process.exitCode = 1;
   }
 
   await disconnectSystem();
