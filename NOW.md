@@ -514,6 +514,21 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **The assistant can read a vessel's/lot's OPERATION history — MERGED + LIVE** (PR #468, squash
+  `a9016c3f`, branch pruned; feedback `cmrwdgt2u…`, the ledger counterpart to #463's chemistry read). Nothing in the assistant surface touched `LotOperation` — `query_transfers`
+  is RACK-only, `query_audit` is entity CRUD (cellar ops are not audit rows), `query_cellar_contents`
+  is point-in-time — so "what additions did we make to T2" had no path. `query_operations` wraps the
+  **same loaders the pages render from** (`getVesselTimeline` / `getLotDetail`), so it cannot drift
+  from what the operator sees. Russell's two scope calls: a vessel question means the **current fill**
+  (`allTime` opts out), and the sweep ships in v1 ("which tanks haven't been punched down in 3 days").
+  Three ways this could have lied, all closed: neutral ops (ADDITION/FINING/CAP_MGMT) carry **no**
+  ledger lines so every query UNIONs `lot_treatment`; a vessel with no matching op is returned in
+  `neverInThisFill`, never dropped from an "overdue" answer; and a **pre-LEDGER-12 co-resident-lot
+  fan-out** wrote one treatment row PER LOT, so an addition fanned across 3 lots reported the dose 3×
+  — `dedupePhysicalTreatments` collapses it (8 such groups live in Demo; caught by reading real rows,
+  not fixtures). 30 new tests, suite 3425 passing, `verify:ai-native` + lint + tsc green, verified
+  read-only on Demo across 12 scenarios.
+
 - **KB citation tombstone shows an EXCERPT, not the whole withdrawn document — MERGED + LIVE**
   (PR #462, squash `8f6099b5`, branch pruned). From Russell's copyright question: paraphrase-with-
   citation IS the right shape and `search-knowledge-base.ts` already does it, but **citation cures
@@ -716,6 +731,15 @@ have no `canonicalTitle`, so citations name a publisher but not a document. The 
 throughout because it only sees 3 of 8 slots — Unit 1 fixes the instrument before anything else moves.
 AJEV deferred with its research preserved. Prior: **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
 Prior: **the assistant can finally read a tank's Brix back** (bug report
+Prior: **the assistant can now read a vessel's/lot's operation history back**
+(feedback `cmrwdgt2u…`) — the ledger counterpart to the chemistry read below. `query_operations`
+reuses the vessel-History and lot-timeline loaders verbatim, defaults a vessel question to the
+current fill, and sweeps a whole vessel type for "which tanks are overdue for a punchdown". The
+load-bearing catch came from reading real Demo rows rather than trusting fixtures: **one physical
+action on a pre-LEDGER-12 vessel wrote one treatment row per co-resident lot**, so a dose fanned
+across 3 lots would have been reported 3×. Prior:_
+
+_2026-07-22 — **the assistant can finally read a tank's Brix back** (bug report
 `cmrw8s5ct…`, PR #463). It could write a chem panel and read current contents but had no read tool
 for `AnalysisPanel`, so a tank-Brix question reached for the vineyard-block ripeness tool and
 dead-ended in "open the lot page". `query_measurements` covers a lot, a vessel, a vessel range, or
