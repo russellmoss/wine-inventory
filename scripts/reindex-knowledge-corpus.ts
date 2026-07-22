@@ -53,16 +53,32 @@ async function main() {
     process.exit(2);
   }
 
+  // RESUME FILTER. Without it a re-run re-FETCHES every document in scope: already-processed ones
+  // short-circuit inside indexDocument to "unchanged", but only AFTER the network round trip, and the
+  // fetch is the expensive part (OWRI serves 1-2 MB PDFs against a 30s timeout). This matters because
+  // fetch failures and interruptions are NORMAL at this scale — the first live run died to a dropped
+  // connection with 121 of 616 documents left, and re-fetching the 495 finished ones would have cost
+  // hours for nothing.
+  //
+  // Selects documents whose ACTIVE chunks were last embedded before the cutoff, plus any with no
+  // chunks at all (a previously failed document has no new revision, so it correctly reappears).
+  const staleBefore = arg("stale-before");
   const docs = await runAsSystem((db) =>
     db.$queryRawUnsafe<DocRow[]>(
       `SELECT d."id", d."canonicalUrl", d."contentType", s."key" AS "sourceKey"
        FROM "knowledge_document" d
        JOIN "knowledge_source" s ON s."id" = d."sourceId"
        WHERE d."status" = 'active' AND s."key" = ANY($1::text[])
+         AND ($2::timestamp IS NULL OR COALESCE(
+               (SELECT MAX(c."embeddedAt") FROM "knowledge_chunk" c
+                WHERE c."documentId" = d."id" AND c."revision" = d."activeRevision"),
+               'epoch'::timestamp) < $2::timestamp)
        ORDER BY s."key", d."canonicalUrl"`,
       sources,
+      staleBefore ?? null,
     ),
   );
+  if (staleBefore) console.log(`resuming: only documents last embedded before ${staleBefore}\n`);
 
   const bySource = new Map<string, DocRow[]>();
   for (const d of docs) {
@@ -79,17 +95,19 @@ async function main() {
   if (missing.length) console.log(`  ⚠️  no active documents for: ${missing.join(", ")}`);
 
   if (dryRun) {
+    // Counted over the SELECTED document ids, not the whole source. With --stale-before the two differ
+    // by an order of magnitude, and a dry run that overstates its own scope is exactly the kind of
+    // reassuring-but-wrong output this plan has spent its time eliminating.
     const chunks = await runAsSystem((db) =>
       db.$queryRawUnsafe<{ chunks: bigint }[]>(
         `SELECT COUNT(c."id")::bigint AS chunks
          FROM "knowledge_chunk" c
          JOIN "knowledge_document" d ON d."id" = c."documentId" AND c."revision" = d."activeRevision"
-         JOIN "knowledge_source" s ON s."id" = d."sourceId"
-         WHERE d."status" = 'active' AND s."key" = ANY($1::text[])`,
-        sources,
+         WHERE d."id" = ANY($1::text[])`,
+        docs.map((d) => d.id),
       ),
     );
-    console.log(`\nwould re-embed ~${chunks[0]?.chunks ?? 0} chunks. No writes performed.`);
+    console.log(`\nwould re-fetch ${docs.length} documents and re-embed ~${chunks[0]?.chunks ?? 0} chunks. No writes performed.`);
     await disconnectSystem();
     await prisma.$disconnect();
     return;
