@@ -23,8 +23,7 @@ import { clampHistoryForSend } from "@/lib/assistant/message-window";
 import { readDraftGaps } from "@/lib/assistant/proposal-card";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
-import { useThinkingSound } from "./useThinkingSound";
-import { useReadySound } from "./useReadySound";
+import { useEarcons } from "./useEarcons";
 
 // The orchestrator. Owns the hands-free state machine and stitches the pieces
 // together: listen (mic + VAD) -> transcribe (server) -> think (assistant stream)
@@ -166,15 +165,18 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     focusRef.current = focus;
   }, [focus]);
 
-  // Ambient earcon while the assistant works out its reply, so the wait isn't dead
+  // Earcons play through the TTS AudioContext (see useEarcons for why HTMLAudio was
+  // silent on mobile). They therefore depend on `playback.ensureContext()` having run,
+  // which start() awaits first — so by the time either cue fires the context is live.
+  const earcons = useEarcons(playback.getContext);
+
+  // Ambient bed while the assistant works out its reply, so the wait isn't dead
   // silence. Driven off the rendered state (not the impl ref) so every path that
   // leaves "thinking" — reply, barge-in, interrupt, error, stop — silences it.
-  const thinkingSound = useThinkingSound();
-  const readySound = useReadySound();
   React.useEffect(() => {
-    if (state === "thinking") thinkingSound.start();
-    else thinkingSound.stop();
-  }, [state, thinkingSound]);
+    if (state === "thinking") earcons.startThinking();
+    else earcons.stopThinking();
+  }, [state, earcons]);
 
   React.useEffect(() => {
     optsRef.current = opts;
@@ -221,7 +223,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
         return;
       }
       readyChimedRef.current = true;
-      readySound.play(armMic);
+      earcons.playReady(armMic);
     };
 
     // Invalidate the in-flight assistant turn (stream + pending TTS) so its
@@ -541,6 +543,11 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     readyChimedRef.current = false;
     try {
       await playback.ensureContext();
+      // Context is live, so decode the earcons now, in parallel with the mic
+      // permission prompt. The ready cue holds the mic closed until it finishes, and
+      // a cold fetch+decode inside that window would be dead air the user just waits
+      // through. Fire-and-forget: failure is handled at play time.
+      earcons.preload();
       await mic.ensureReady();
       const settings = await loadVoiceSettings();
       if (settings) {
@@ -560,7 +567,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     }
     activeRef.current = true;
     implRef.current.startListening();
-  }, [mic, playback]);
+  }, [mic, playback, earcons]);
 
   const stop = React.useCallback(() => {
     activeRef.current = false;
