@@ -27,6 +27,42 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "query_cellar_contents",
     args: { onlyPressable: true, form: "MUST" },
   },
+  // Measurement/analysis history (the cellar chemistry read). The bug that motivated this tool:
+  // asking for a tank's Brix reached for query_brix — the VINEYARD-BLOCK ripeness reading — found
+  // nothing for a tank, and dead-ended in "open the lot page". These cases pin the split.
+  {
+    utterance: "What is tank T5's Brix right now?",
+    tool: "query_measurements",
+    args: { vessel: "tank T5", analyte: "BRIX" },
+    note: "a TANK's sugar is cellar chemistry (query_measurements), NOT query_brix (grapes on the vine)",
+  },
+  {
+    utterance: "Pull up the measurement history for lot 2026-SY-2",
+    tool: "query_measurements",
+    args: { lot: "2026-SY-2", history: true },
+  },
+  {
+    utterance: "What is the pH of barrels 1 through 5?",
+    tool: "query_measurements",
+    args: { vessels: ["barrels 1 through 5"], analyte: "PH" },
+    note: "enumeration — one value per barrel, never averaged into a single pH",
+  },
+  {
+    utterance: "Which tank is closest to fully dry?",
+    tool: "query_measurements",
+    args: { vesselType: "TANK", analyte: "BRIX", rank: "lowest" },
+    note: "superlative — ascending Brix, so a negative reading correctly beats zero",
+  },
+  {
+    utterance: "Which barrel has the lowest free SO2?",
+    tool: "query_measurements",
+    args: { vesselType: "BARREL", analyte: "FREE_SO2", rank: "lowest" },
+  },
+  {
+    utterance: "Show me the free SO2 and pH on tank 3 over the last 30 days",
+    tool: "query_measurements",
+    args: { vessel: "tank 3", analytes: ["FREE_SO2", "PH"], sinceDays: 30, history: true },
+  },
   {
     utterance: "How much DAP do we have on hand?",
     tool: "query_materials",

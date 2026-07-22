@@ -38,6 +38,7 @@ import { queryYieldTool } from "./tools/query-yield";
 import { queryRecentHarvestsTool } from "./tools/query-recent-harvests";
 import { queryTransfersTool } from "./tools/query-transfers";
 import { queryCellarContentsTool } from "./tools/query-cellar-contents";
+import { queryMeasurementsTool } from "./tools/query-measurements";
 import { estimatePackagingNeedsTool } from "./tools/estimate-packaging-needs";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryFieldReportsTool } from "./tools/query-field-reports";
@@ -121,6 +122,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryRecentHarvestsTool,
   queryTransfersTool,
   queryCellarContentsTool,
+  queryMeasurementsTool,
   queryMaterialsTool,
   queryVendorsTool,
   estimatePackagingNeedsTool,
