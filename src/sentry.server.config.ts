@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { scrubSentryEvent } from "@/lib/observability/redact";
+import { isDevNoiseEvent } from "@/lib/observability/dev-noise";
 
 // Node.js server runtime.
 Sentry.init({
@@ -19,7 +20,10 @@ Sentry.init({
 
   // SEC-S4: strip access/refresh tokens, auth codes, Authorization headers, and the
   // encrypted-token columns from every event (extra, request, and stack-frame vars).
+  // Local dev-build events are dropped first — Sentry files each one as a GitHub issue
+  // and dev-worktree noise otherwise dominates the feed (see dev-noise.ts).
   beforeSend: (event) => {
+    if (isDevNoiseEvent(event as unknown as Record<string, unknown>)) return null;
     scrubSentryEvent(event as unknown as Record<string, unknown>);
     return event;
   },

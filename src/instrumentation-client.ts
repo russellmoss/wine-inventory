@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import { installConsoleCapture } from "@/lib/observability/console-buffer";
 import { buildReplayOptions } from "@/lib/observability/sentry-replay";
+import { isDevNoiseEvent } from "@/lib/observability/dev-noise";
 
 // Browser/client runtime. DSN is public (it ships in the client bundle either
 // way) — the env var lets us point at a different project without a code change.
@@ -22,6 +23,10 @@ Sentry.init({
   replaysOnErrorSampleRate: 1.0,
 
   enableLogs: true,
+
+  // Drop local dev-build events so they never become GitHub issues (see dev-noise.ts).
+  beforeSend: (event) =>
+    isDevNoiseEvent(event as unknown as Record<string, unknown>) ? null : event,
 
   integrations: [
     // Masking is ALWAYS on and request/response BODIES are NEVER captured — there is no tenant,
