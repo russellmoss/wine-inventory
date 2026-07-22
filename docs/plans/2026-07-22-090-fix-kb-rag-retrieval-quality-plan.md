@@ -70,7 +70,24 @@ explains most of the observed symptoms. Fix the mechanism, not the symptoms.
 
 ## Research Summary
 
-### Measured corpus state (Neon, 2026-07-22)
+### ⚠️ CORRECTED during execution — the defect is 50% of the corpus, not 42%
+
+The table below classified PDFs by `canonicalUrl ILIKE '%.pdf%'`. That **undercounts**: `osu-owri`
+serves every document from extensionless `/downloads/<id>` URLs, so all 266 of its PDFs were counted
+as HTML. Re-measured against the authoritative `contentType` column:
+
+| contentType | docs | chunks | collapsed to ONE breadcrumb |
+|---|---|---|---|
+| **pdf** | 1,404 | 13,385 | **1,161 docs / 13,142 chunks** |
+| html | 1,704 | 12,879 | 329 docs / 1,401 chunks |
+
+**13,142 chunks = 50% of the corpus**, and **98% of all PDF chunks** are in a collapsed document —
+essentially every PDF in the corpus has the bug. 287 PDF documents were invisible to the URL heuristic.
+
+Lesson worth keeping: `contentType` is authoritative; a URL-extension heuristic silently undercounts.
+The HTML "collapsed" rows are mostly legitimate — short single-section pages with one real breadcrumb.
+
+### Measured corpus state (Neon, 2026-07-22) — original, URL-keyed (see correction above)
 
 | Metric | HTML | PDF | Total |
 |---|---|---|---|
