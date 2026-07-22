@@ -7,6 +7,67 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**IVES Technical Reviews is LIVE in the corpus — 209 docs / 3,316 chunks, default-ON.
+7 commits on `claude/kb-paraphrase-citation-copyright-355aa9`, UNPUSHED, no PR.**
+
+✅ **Crawled + verified + measured.** 209/209 dated (**100%** — corpus-wide is ~31%, so it is the
+best-dated source in the registry), 209/209 titled, all chunks embedded, 2019–2026. Corpus 3,320
+active docs. Enabled for `org_demo_winery` AND `org_bhutan_wine_co`.
+
+🔎 **Default-on is the MEASURED position.** Staged: shipped `false` → crawled → enabled for Demo alone
+→ `verify:kb-register` vs the pre-IVES baseline → **4/120 slots moved (3%, cap 25%)**, no question
+losing more than 2 of 6, **17 of 20 unchanged**. It took slots on oak ageing, oxidation at pressing,
+Riesling acid targets. Integration, not crowding-out. Baseline then RE-CAPTURED so this accepted state
+is the new reference.
+
+⚠️ **Two bugs the smoke test caught that the counters hid** (`5 docs / 70 chunks / 0 errors` while
+writing wrong metadata — read the rows back, never trust the tally):
+- `indexDocument` writes `publishedAt`/`canonicalTitle` **unconditionally, including null**
+  (`buildDocumentMetadata` — deliberate, so metadata matches the content it came from). IVES HTML
+  declares no date, so all 209 would have been UNDATED. Fixed by re-applying the OAI feed's metadata
+  AFTER indexing (runs on the unchanged path too, so a re-run repairs old rows).
+- An OAI record carries one `<dc:title>` **per language** — the same article translated, NOT separate
+  articles. First-match filed English articles under German titles. `pickEnglishTitle` prefers `en*`.
+  ⚠️ This also CORRECTS an earlier misreading: the 209 records are 209 distinct articles, so the
+  "translations will waste retrieval slots" worry never applied.
+
+⚠️ **Known, filed not fixed:** chunk breadcrumbs still carry the polluted HTML title
+(`… | IVES Technical Reviews, vine and wine > …`) because chunking runs inside `indexDocument` before
+the correction. Generic breadcrumb behaviour, not IVES-specific → TODOS.
+
+Evaluating **IVES Technical Reviews** (`ives-technicalreviews.eu`) as a source. It is **CC BY** —
+confirmed on their own Open Access Policy page — which makes it the ONLY source in the corpus with an
+actual licence grant rather than an absence of objection, and the only one immune to the
+commercial-scope question. **Not added yet, deliberately.**
+
+Two things built first:
+- **`6d4ff1f3` TLS** — their server sends only the leaf cert (chain depth 0, no intermediate).
+  Browsers recover via AIA; **Node does not**, so every crawler fetch died
+  `UNABLE_TO_VERIFY_LEAF_SIGNATURE` against a host that loads fine by hand. `crawl/tls.ts` now supplies
+  Node's roots PLUS omitted intermediates via an undici dispatcher. NOT a relaxation — the cert is
+  signed by a root already trusted. `undici` promoted from a phantom (transitive) dep to a direct one.
+- **`7f3ce919` + `24243552` displacement gate** — `npm run verify:kb-register`.
+
+🔎 **THE BASELINE FOUND TWO THINGS THAT CHANGE THE LICENSING CALCULUS** (120 slots, 20 practical
+questions, live corpus):
+- **Virginia Tech = 18/120 slots (15%), the #2 source** — and it is the one asserting copyright with
+  **no licence granted**. The weakest licensing position is also load-bearing. Dropping it is
+  technically cheap (`reset:knowledge-source`) but functionally expensive.
+- **Scott Laboratories — a tier-2 VENDOR the config itself calls product-biased — holds 12% overall
+  and 5 OF 6 SLOTS on "my ferment is stuck at 5 Brix."** A stuck ferment is an emergency, and it is
+  answered almost entirely by a company that sells the remedy. **This is true TODAY, before IVES.**
+  I had earlier called the vendor PDFs "least valuable, drop them" — wrong: they are HIGH-VOLUME,
+  which is worse.
+
+⚠️ **`verify:knowledge-base` passes on that corpus.** It scores recall (one expected doc anywhere in
+top-k) and never inspects the other slots — so a vendor holding 5/6 on a stuck ferment is invisible
+to it. That blindness is why the new gate exists.
+
+_(Prior objectives, both MERGED + LIVE: assistant measurement-history read tool — PR #463, squash
+`88577fd7`; KB citation tombstone excerpt cap — PR #462, squash `8f6099b5`. Both in Done recently.)_
+
+## 🗂️ Landed while this was in flight
+
 **The assistant can now READ a tank/barrel/lot's chemistry history, and rank vessels by an analyte.
 MERGED + LIVE** (PR #463, squash `88577fd7`, branch pruned).
 
@@ -35,8 +96,8 @@ eval cases, and `query_measurements` added to `REQUIRED_READ_TOOL_NAMES` so D26/
 Verified **read-only** against Demo Winery across 10 scenarios (both rank directions, range
 enumeration, lot history, 4 refusal paths). No UI surface, so nothing to browser-verify.
 
-_(Prior objective: KB citation tombstone excerpt cap — MERGED + LIVE, PR #462, squash `8f6099b5`,
-branch pruned. See Done recently.)_
+_(#463 detail preserved here rather than dropped in the merge — it landed on main while the KB source
+vetting below was in flight.)_
 
 Came out of Russell's question — *"paraphrase with citation is how peer-reviewed articles get
 written, so it shouldn't be a copyright problem, right?"* Right about the output, and the assistant
