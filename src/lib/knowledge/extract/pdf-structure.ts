@@ -24,6 +24,22 @@
 //
 // Pure and unit-testable: everything here operates on a plain array of items, no PDF needed.
 
+/**
+ * Plan 090 Unit 8 — the PDF extractor's version, folded into `KnowledgeDocument.indexedContentHash`
+ * by `deriveIndexHash`. BUMP THIS whenever extraction output changes for the same input bytes.
+ *
+ * Why it has to exist. `indexDocument` short-circuits to "unchanged" when the stored hash matches, and
+ * before this the hash for a PDF was the raw content hash with NO version component — `deriveIndexHash`
+ * only folded SECTION_FILTER_VERSION, and section filtering is HTML-only. So a PDF whose BYTES had not
+ * changed could never be re-extracted, however much the extractor improved. Units 4-7 would have landed
+ * in code and changed nothing in the corpus, silently. Exactly the trap SECTION_FILTER_VERSION was
+ * created for on the HTML side (plan 084), reproduced on the PDF side because the guard did not reach.
+ *
+ * "1" is the first version that carries heading inference, typographic titles, running-header removal,
+ * boilerplate suppression, the confidence gate and ligature repair.
+ */
+export const PDF_EXTRACT_VERSION = "1";
+
 export interface PdfTextItem {
   str: string;
   x?: number;

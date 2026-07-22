@@ -8,6 +8,7 @@ import {
   shouldApplySectionFilter,
   SECTION_FILTER_VERSION,
 } from "@/lib/knowledge/sections";
+import { PDF_EXTRACT_VERSION } from "@/lib/knowledge/extract/pdf-structure";
 import { extractHtml } from "@/lib/knowledge/extract/html";
 
 const FIXTURES = path.join(process.cwd(), "test", "fixtures", "knowledge", "vt");
@@ -139,6 +140,37 @@ describe("deriveIndexHash — R1, the silent no-op guard", () => {
   it("passes the hash through untouched when no filter is configured", () => {
     // Guarantees zero blast radius on the 17 existing sources.
     expect(deriveIndexHash(RAW, false)).toBe(RAW);
+  });
+
+  // Plan 090 Unit 8 — the same silent-no-op trap, on the PDF side, where the guard did not reach.
+  describe("PDF extractor version", () => {
+    it("leaves NON-pdf hashes byte-identical to pre-plan-090 behaviour", () => {
+      // The whole point of the isPdf flag being separate: HTML documents must not be dragged into a
+      // needless re-index by a PDF-only change.
+      expect(deriveIndexHash(RAW, false, false)).toBe(RAW);
+      expect(deriveIndexHash(RAW, true, false)).toBe(deriveIndexHash(RAW, true));
+    });
+
+    it("changes the hash for a PDF even with no section filter", () => {
+      // Section filtering is HTML-only, so before this a PDF's index hash was the bare content hash
+      // and NO extractor improvement could force a re-index of unchanged bytes. Units 4-7 would have
+      // shipped in code and changed nothing in the corpus, silently.
+      expect(deriveIndexHash(RAW, false, true)).not.toBe(RAW);
+    });
+
+    it("is deterministic, and distinct from the section-filter-only hash", () => {
+      expect(deriveIndexHash(RAW, false, true)).toBe(deriveIndexHash(RAW, false, true));
+      expect(deriveIndexHash(RAW, false, true)).not.toBe(deriveIndexHash(RAW, true, false));
+    });
+
+    it("moves when PDF_EXTRACT_VERSION moves", () => {
+      const current = deriveIndexHash(RAW, false, true);
+      const asIfBumped = crypto
+        .createHash("sha256")
+        .update(`${RAW}|pdf:${Number(PDF_EXTRACT_VERSION) + 1}`)
+        .digest("hex");
+      expect(asIfBumped).not.toBe(current);
+    });
   });
 
   it("changes the stored hash when a filter IS applied", () => {

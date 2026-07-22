@@ -6,6 +6,7 @@
 // extractLinks drops "#" hrefs, and alias-dedup keys on the raw-byte hash).
 
 import crypto from "node:crypto";
+import { PDF_EXTRACT_VERSION } from "../extract/pdf-structure";
 import { findSourceConfig } from "../config";
 import { splitHtmlSections } from "./split-html-sections";
 import { classifySection } from "./classify-section";
@@ -98,9 +99,17 @@ export function applySectionFilter(rawHtml: string): SectionFilterResult {
  * changing a drop pattern actually forces a re-index. KnowledgeBlob.contentHash (byte-level dedup,
  * written by the crawler) is deliberately NOT affected — only the index idempotency basis moves.
  */
-export function deriveIndexHash(contentHash: string, filterApplied: boolean): string {
-  if (!filterApplied) return contentHash;
-  return crypto.createHash("sha256").update(`${contentHash}|sf:${SECTION_FILTER_VERSION}`).digest("hex");
+export function deriveIndexHash(contentHash: string, filterApplied: boolean, isPdf = false): string {
+  const parts: string[] = [];
+  if (filterApplied) parts.push(`sf:${SECTION_FILTER_VERSION}`);
+  // Plan 090 Unit 8 — PDFs get their own version component. Section filtering is HTML-only, so before
+  // this a PDF's index hash was the bare content hash and NO extractor improvement could ever force a
+  // re-index of unchanged bytes. See PDF_EXTRACT_VERSION for the full note.
+  if (isPdf) parts.push(`pdf:${PDF_EXTRACT_VERSION}`);
+  // No version component applies => the bare content hash, byte-identical to pre-plan-090 behaviour, so
+  // HTML documents are not needlessly re-indexed by this change.
+  if (parts.length === 0) return contentHash;
+  return crypto.createHash("sha256").update([contentHash, ...parts].join("|")).digest("hex");
 }
 
 export { splitHtmlSections } from "./split-html-sections";

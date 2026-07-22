@@ -81,7 +81,10 @@ export async function indexDocument(input: {
   // of short-circuiting to "unchanged" forever. Computed WITHOUT running the filter, so the cheap
   // idempotency check below still short-circuits before any parsing.
   const sectionFilterApplies = shouldApplySectionFilter(input.contentType, input.sourceKey);
-  const indexHash = deriveIndexHash(input.contentHash, sectionFilterApplies);
+  // Plan 090 Unit 8 — PDFs additionally fold in PDF_EXTRACT_VERSION, so an extractor improvement
+  // actually reaches documents whose bytes have not changed. Without it Units 4-7 would have shipped
+  // in code and changed nothing in the corpus, silently.
+  const indexHash = deriveIndexHash(input.contentHash, sectionFilterApplies, input.contentType === "pdf");
 
   // idempotency: same content already indexed with the current model -> no-op
   if (doc.indexedContentHash === indexHash) {
