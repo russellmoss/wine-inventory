@@ -33,7 +33,16 @@ writing wrong metadata — read the rows back, never trust the tally):
 
 ⚠️ **Known, filed not fixed:** chunk breadcrumbs still carry the polluted HTML title
 (`… | IVES Technical Reviews, vine and wine > …`) because chunking runs inside `indexDocument` before
-the correction. Generic breadcrumb behaviour, not IVES-specific → TODOS.
+the correction. Generic behaviour across all 24 sources, not IVES-specific — **filed in `TODOS.md`**
+(fixing the code does NOT fix the corpus; the breadcrumb is baked into stored chunk text and its
+vector, so it needs `reset:knowledge-source` + re-crawl per source).
+
+⛔ **The licensing ADR (0009) is DECLINED — Russell, 2026-07-22. Do not re-propose it.** The
+underlying facts still stand and are recorded in `KnowledgeSource.license` per source: VT asserts
+copyright with no licence granted (accepted risk — "they aren't litigious", and
+`reset:knowledge-source` makes a takedown a minutes-long job), and three robots/`ai-train` signals
+were read as not covering reference-use RAG. IVES is the contrast case: the one source with a real
+CC BY grant.
 
 Evaluating **IVES Technical Reviews** (`ives-technicalreviews.eu`) as a source. It is **CC BY** —
 confirmed on their own Open Access Policy page — which makes it the ONLY source in the corpus with an
