@@ -21,6 +21,7 @@ import type { VoiceSettingsView } from "@/lib/voice/settings-types";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { clampHistoryForSend } from "@/lib/assistant/message-window";
 import { readDraftGaps } from "@/lib/assistant/proposal-card";
+import { RESOLVED_CARD_LINGER_MS, admitProposal, releaseProposal } from "@/lib/assistant/card-lifecycle";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
 import { useEarcons } from "./useEarcons";
@@ -154,6 +155,12 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
   const historyRef = React.useRef<ChatMessage[]>(opts.initialHistory.slice());
   const conversationIdRef = React.useRef<string | null>(opts.conversationId);
   const proposalRef = React.useRef<PendingProposal | null>(null);
+  // Cards proposed while another was still awaiting the user. The panel has room for ONE
+  // card above the composer, so a second proposal in the same turn used to overwrite the
+  // first outright — the user was told about a write they could then never confirm
+  // (feedback cmrwiky4p). They now wait their turn instead.
+  const proposalQueueRef = React.useRef<PendingProposal[]>([]);
+  const retireTimerRef = React.useRef<number | null>(null);
   const optsRef = React.useRef(opts);
   // Turn supersession: every assistant turn captures `turnRef.current`. interrupt(),
   // stop(), and barge-in bump it (and abort the in-flight request), so a superseded
@@ -199,6 +206,36 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     const setProp = (p: PendingProposal | null) => {
       proposalRef.current = p;
       setProposal(p);
+    };
+    // The visible card is finished with: clear it and promote whoever was behind it.
+    // Without this a confirmed card stayed pinned above the composer for the rest of the
+    // session, and the flow read as stuck on a card the user had already dealt with.
+    const retireProposal = () => {
+      if (retireTimerRef.current !== null) {
+        clearTimeout(retireTimerRef.current);
+        retireTimerRef.current = null;
+      }
+      const next = releaseProposal({ current: proposalRef.current, queued: proposalQueueRef.current });
+      proposalQueueRef.current = next.queued;
+      setProp(next.current);
+    };
+    const retireAfterLinger = () => {
+      if (retireTimerRef.current !== null) clearTimeout(retireTimerRef.current);
+      retireTimerRef.current = window.setTimeout(() => {
+        retireTimerRef.current = null;
+        retireProposal();
+      }, RESOLVED_CARD_LINGER_MS);
+    };
+    // A new card arrives. It queues behind anything the user still has to act on, and
+    // otherwise takes the slot — a resolved card must never outrank live work.
+    const admit = (p: PendingProposal) => {
+      if (retireTimerRef.current !== null) {
+        clearTimeout(retireTimerRef.current);
+        retireTimerRef.current = null;
+      }
+      const next = admitProposal({ current: proposalRef.current, queued: proposalQueueRef.current }, p);
+      proposalQueueRef.current = next.queued;
+      setProp(next.current);
     };
     const pushCaption = (role: "user" | "assistant", content: string) => {
       setCaptions((prev) => [...prev, { role, content }]);
@@ -260,6 +297,9 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
           if (!activeRef.current) return; // overlay closed mid-request
           if (res.ok && data?.ok) {
             setProp({ ...p, status: "done", result: data.message });
+            // Hold the green state long enough to read, then clear the slot so the next
+            // card can come up. A FAILED card is left standing — the user has to see why.
+            retireAfterLinger();
             // Bust the client Router Cache so the page behind the overlay reflects the write (the
             // committer's server-side revalidatePath doesn't reach the client). Mirrors AssistantChat.
             router.refresh();
@@ -271,8 +311,9 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     };
 
     const cancelProposal = () => {
-      const p = proposalRef.current;
-      if (p) setProp({ ...p, status: "error", result: "Cancelled." });
+      // Dismissed on the user's own instruction — no linger, and the next card comes
+      // straight up. Nothing to read: they know what they just cancelled.
+      if (proposalRef.current) retireProposal();
     };
 
     const interrupt = () => {
@@ -346,7 +387,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
               return;
             case "proposal": {
               const draft = evt.draft === true;
-              setProp({ preview: evt.preview, ...(draft ? { draft: true } : { token: evt.token }), status: "pending" });
+              admit({ preview: evt.preview, ...(draft ? { draft: true } : { token: evt.token }), status: "pending" });
               // Plan 081 U8 — DEFINED voice behavior for a Draft: say what it needs, then defer to the
               // visual card. Deliberately NOT attempting in-voice field resolution: dictating an email
               // address or a lot code through STT is exactly where a wrong value gets committed, and a
@@ -585,6 +626,13 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     playback.stopAll();
     mic.endTurn();
     mic.dispose();
+    // Ending the session ends the card queue with it — a card queued in a conversation
+    // the user has walked away from must not resurface at the top of the next one.
+    if (retireTimerRef.current !== null) {
+      clearTimeout(retireTimerRef.current);
+      retireTimerRef.current = null;
+    }
+    proposalQueueRef.current = [];
     stateRef.current = "idle";
     setState("idle");
   }, [mic, playback]);
@@ -625,6 +673,11 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
       abortRef.current = null;
       playback.stopAll();
       mic.dispose();
+      // A pending card-retire must not fire into an unmounted tree.
+      if (retireTimerRef.current !== null) {
+        clearTimeout(retireTimerRef.current);
+        retireTimerRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
