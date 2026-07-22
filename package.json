@@ -120,7 +120,8 @@
     "eval:assistant-currency": "vitest run test/evals/assistant-currency-warning.eval.test.ts",
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate",
-    "verify:kb-register": "tsx --env-file=.env scripts/verify-kb-register.ts"
+    "verify:kb-register": "tsx --env-file=.env scripts/verify-kb-register.ts",
+    "crawl:ives": "tsx --env-file=.env scripts/crawl-ives.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

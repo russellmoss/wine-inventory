@@ -47,6 +47,45 @@ export interface KnowledgeSourceConfig {
 
 export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
   {
+    key: "ives-technical-reviews",
+    publisher: "IVES Technical Reviews",
+    homeDomain: "ives-technicalreviews.eu",
+    tier: 1, // International Viticulture and Enology Society; peer-reviewed research transferred to end users
+    // THE ONLY SOURCE IN THIS REGISTRY WITH AN ACTUAL LICENCE GRANT. Every other entry rests on an
+    // ABSENCE of objection (public extension content, fair use, no explicit permission). CC BY is
+    // affirmative permission to reproduce and redistribute, INCLUDING commercially — so this source is
+    // the one immune to the "does the posture change if Cellarhand is sold to wineries" question.
+    // Verified 2026-07-22 on their own Open Access Policy page (/accessPolicy).
+    //
+    // ATTRIBUTION IS THE LICENCE CONDITION, not a courtesy. CC BY requires crediting the author plus a
+    // link to the source. Citations carry publisher + canonicalUrl today; author-level attribution is a
+    // known gap (KnowledgeDocument has no author field) and is tracked in TODOS.
+    license:
+      "Creative Commons Attribution (CC BY) — authors retain copyright and readers are explicitly free " +
+      "to read, download, copy and disseminate the full text with mandatory reference to the authors and " +
+      "original publication. https://ives-technicalreviews.eu/accessPolicy",
+    // autoCrawl:false — there is NO sitemap (both probes 404) and /issue/archive server-renders zero
+    // issue links, so sitemap discovery and link-following would between them reach only the current
+    // issue's ~11 articles out of 200+. scripts/crawl-ives.ts enumerates the journal's OAI-PMH feed
+    // instead, which is complete and machine-readable. Same pattern as ets/incavi.
+    autoCrawl: false,
+    seedRoots: ["https://ives-technicalreviews.eu/issue/current"],
+    allowPrefixes: ["/article/"],
+    // robots.txt disallows only /cache/ for generic agents (named blocks on SemrushBot, Bytedance,
+    // Bytespider, Arquivo do not apply to this crawler). The rest are OJS application routes with no
+    // technical content — cheap to refuse explicitly so a future link-follow can never wander in.
+    denyPrefixes: ["/cache/", "/user/", "/login", "/submit", "/search", "/$$$call$$$", "/plugins/"],
+    crawlCadence: "monthly",
+    // STAGED ROLLOUT, deliberately. The intent is default-on — the licensing is the cleanest in the
+    // corpus and this is research winemakers should be able to read. But `.env` and production are ONE
+    // Neon database, so seeding defaultEnabled:true would put IVES into every tenant's retrieval
+    // (including the real Bhutan winery) the moment the crawl finished, before anyone had seen the
+    // effect. So: ship false, enable it for the Demo Winery sandbox via a subscription row, measure with
+    // `npm run verify:kb-register` against the pre-IVES baseline in docs/kb-register-baseline.json, THEN
+    // flip this to true and re-seed. Flipping is a one-line change; un-ringing a bad rollout is not.
+    defaultEnabled: false,
+  },
+  {
     key: "cornell-grapes",
     publisher: "Cornell Fruit Resources: Grapes",
     homeDomain: "blogs.cornell.edu",
@@ -705,6 +744,11 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
 // NOT listed here is logged to CandidateSource for human promotion, never crawled. Includes www + apex.
 export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
+  // IVES Technical Reviews. Whole host is the journal, and crawl-ives.ts only ever fetches
+  // /article/view/<id> URLs recovered from the journal's own OAI-PMH feed — so reach is bounded by
+  // the feed, not just by the host.
+  { domain: "ives-technicalreviews.eu", sourceKey: "ives-technical-reviews" },
+  { domain: "www.ives-technicalreviews.eu", sourceKey: "ives-technical-reviews" },
   { domain: "enology.fst.vt.edu", sourceKey: "vt-enology-notes" },
   { domain: "www.enology.fst.vt.edu", sourceKey: "vt-enology-notes" }, // both hosts serve 200
   // Cornell's university-wide WordPress multisite. Trusting the HOST is unavoidable (the crawler gates
