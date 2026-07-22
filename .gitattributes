@@ -16,3 +16,13 @@ scripts/lib/*.mjs text eol=lf
 
 # Vintrace API knowledge base (specs + generated KB) — keep LF for clean diffs.
 vintrace-docs/api/** text eol=lf
+
+# Claude Code workflow scripts (/bug-triage, /health-check, /health-remediate).
+# The Workflow tool inlines the script into its approval dialog and REFUSES any
+# file containing CR — "script contains control characters that would be hidden in
+# the approval dialog" — even when invoked by scriptPath. So on a Windows checkout
+# (core.autocrlf=true) these skills are simply unlaunchable until someone strips the
+# CRs by hand. The blobs are already LF; it is the CHECKOUT that reintroduces them,
+# which is why this cannot be fixed by committing the file: with autocrlf on, git
+# reports no diff at all for an LF-ified working copy. This pin is the only fix.
+.claude/workflows/*.js text eol=lf
