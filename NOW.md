@@ -7,8 +7,17 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Ticket `cmrvhj5b8…` — VOICE MODE INTERRUPTS THE USER MID-THOUGHT. Fixed; PR #460 open.**
-Branch `claude/voice-mode-interruption-46ea11`.
+**Ticket `cmrvhj5b8…` — VOICE MODE INTERRUPTS THE USER MID-THOUGHT. SHIPPED + CLOSED.**
+PR #460 merged (squash `ddeeaaf8`), branch pruned, ticket RESOLVED with a reporter-facing outcome.
+**The one thing left: Russell re-tests on his phone** — if it still cuts him off, reopen and turn
+`hangoverGrowthRatio` / `maxHangoverMs` up (both single constants with tests around them).
+
+⚠️ **The AGENTIC_FIX auto-fix agent worked this ticket in PARALLEL** and had already opened draft
+PR #457 — which changed **only the test file**, asserting a fix it never made to `vad.ts`, so its CI
+was red from the first push. Closed as superseded, run set to SKIPPED, branch deleted. Worth knowing
+before trusting a red auto-fix PR: `gh pr diff --name-only` first, it may not have attempted the fix
+at all. Also learned: `closeFeedbackItemCore` does NOT neutralize a `PR_OPENED` run (only
+`QUEUED`/`AWAITING_APPROVAL`), so the ticket would have closed still advertising the dead PR.
 
 Reporter (on a phone, hands-free): *"it would maybe let me talk for like 30 seconds before it would
 just start thinking… I can't just keep talking for a long time like I can in Claude or Gemini."*
@@ -606,12 +615,14 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
 _Last updated: 2026-07-22 — **voice mode no longer cuts the user off mid-thought** (ticket `cmrvhj5b8…`,
-PR #460). The listen VAD's flat 1200ms silence bar became an adaptive 1600→3000ms one that scales with
-how long the speaker has held the floor, plus onset/release hysteresis so a trailing syllable doesn't
-start the clock; a "Done talking" control is the opt-out. The reported "30 seconds" was a red herring —
-there is no utterance cap, that was just the first pause over 1.2s. tsc + eslint + 3338 tests green.
-NOT browser-verified: the fix is about how a real pause FEELS, so the reporter has to re-test on a
-phone before it counts as resolved. Prior:_
+PR #460 MERGED `ddeeaaf8`, ticket RESOLVED, branch pruned). The listen VAD's flat 1200ms silence bar
+became an adaptive 1600→3000ms one that scales with how long the speaker has held the floor, plus
+onset/release hysteresis so a trailing syllable doesn't start the clock; a "Done talking" control is
+the opt-out. The reported "30 seconds" was a red herring — there is no utterance cap, that was just the
+first pause over 1.2s. tsc + eslint + 3338 tests green on main. ⚠️ The auto-fix agent raced this ticket
+and its draft PR #457 changed ONLY the test file (red CI, tests for a fix it never made) — closed as
+superseded. NOT browser-verified: the fix is about how a real pause FEELS, so Russell has to re-test on
+a phone. Prior:_
 
 _2026-07-21 — **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
 `/bug-triage` goalie run (live, all sweeps) reconciled the queue and cleared the pile: 26 backlog items
