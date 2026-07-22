@@ -27,6 +27,33 @@ slot; it is nowhere near contention. The same doc ranks **#1** on "ideal YAN con
 must". The gap is **VOCABULARY** (nutrient vs "Yeast Assimilable Nitrogen"), needs synonym expansion or
 query rewriting, and **does not belong to plan 090**. The eval case's `knownFailing` note now says so.
 
+🔄 **IN FLIGHT: re-index of the remaining 790 PDF docs** (awri 424, wine-australia 228, cornell 64,
+wsu 38, chambre-gironde 17, vt-enology 7, icvv 5, incavi/scott-labs 2, mapa/enartis/laffort 1).
+`--pdf-only` (HTML index hashes are unchanged by plan 090, so re-fetching them can only reach
+"unchanged" after a wasted round trip). Resume with the SAME command — `--stale-before` makes it cheap.
+
+⚠️ **A PARALLEL SESSION IS WORKING THE SAME SUBSYSTEM AND THE SAME PRODUCTION CORPUS.**
+Branch `claude/kb-paraphrase-citation-copyright-355aa9` shipped **IVES Technical Reviews live and
+default-on** (209 docs / 3,316 chunks, 100% dated, first seen 16:27 on 2026-07-22). 8 commits, unpushed.
+- ✅ My Unit 10 verdict is UNAFFECTED — IVES appears **zero** times in `snapshot.json`, so it never
+  reached top-8 on any of the 20 eval queries. That was luck, not design.
+- 🔻 **THE REAL COUPLING IS TWO BASELINE FILES, NOT CODE.** Source overlap is only `NOW.md` +
+  `package.json`. But they maintain `docs/kb-register-baseline.json` and I maintain
+  `docs/kb-eval/snapshot.json`, and BOTH are stale the moment the 790-run lands. Re-capture **both
+  together, after the corpus stops moving** — re-capturing one leaves the other reporting permanent
+  drift, which is exactly how a gate teaches people to ignore it.
+- 🔎 **The two instruments are COMPLEMENTARY, keep both.** Theirs (`verify:kb-register`) is a CI GATE on
+  publisher-slot occupancy with a hard 25% cap — deliberately coarse because "which publisher won a slot
+  is an objective fact". Mine (`kb:snapshot`) is an EVIDENCE artifact at document/rank granularity,
+  deliberately NOT gated because a movement is not automatically a regression. We independently found
+  the SAME defect in `verify-knowledge-base.ts` (it scores recall, never inspects the other slots).
+  👉 **Durable fix: ONE `npm run kb:baseline` that captures both**, or the forgotten one rots.
+- 📥 **Handoff owed to me:** their filed-not-fixed "chunk breadcrumbs carry the polluted HTML title" is
+  MY layer. My 140-char cap bounds it but does not fix a wrong-but-short title — the real fix is
+  ordering: their metadata correction must land BEFORE chunking inside `indexDocument`.
+- **Recommended order:** push/open their PR now → let the 790-run finish → re-capture BOTH baselines in
+  one commit → merge both → add `kb:baseline`.
+
 ⏭️ **NEXT — and the residual junk proves the fix works:** every remaining bad passage in the top-8 (AWRI
 copyright page, Scott Labs handbook masthead) is from a source **not yet re-indexed**. Extend the
 re-index to the other ~798 PDF docs (awri, scott-labs, cornell-grapes, wine-australia, wsu, icvv,
