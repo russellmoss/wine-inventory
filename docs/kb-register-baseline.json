@@ -1,0 +1,226 @@
+{
+  "capturedAt": "2026-07-22T15:52:03.016Z",
+  "topK": 6,
+  "questions": [
+    {
+      "question": "What is the most ideal YAN concentration for a white must?",
+      "publishers": [
+        "AWRI",
+        "AWRI",
+        "Scott Laboratories",
+        "Virginia Tech Enology",
+        "Virginia Tech Enology",
+        "Oregon Wine Research Institute (OSU)"
+      ]
+    },
+    {
+      "question": "How do I get rid of Brett character in a red before bottling?",
+      "publishers": [
+        "Virginia Tech Enology",
+        "AWRI",
+        "WSU Viticulture & Enology",
+        "AWRI",
+        "Oregon Wine Research Institute (OSU)",
+        "AWRI"
+      ]
+    },
+    {
+      "question": "How much SO2 should I add at crush?",
+      "publishers": [
+        "AWRI",
+        "Virginia Tech Enology",
+        "AWRI",
+        "Virginia Tech Enology",
+        "AWRI",
+        "AWRI"
+      ]
+    },
+    {
+      "question": "My ferment is stuck at 5 Brix — what do I do?",
+      "publishers": [
+        "Scott Laboratories",
+        "Scott Laboratories",
+        "Scott Laboratories",
+        "AWRI",
+        "Scott Laboratories",
+        "Scott Laboratories"
+      ]
+    },
+    {
+      "question": "When should I rack a red off gross lees?",
+      "publishers": [
+        "AWRI",
+        "Oregon Wine Research Institute (OSU)",
+        "Virginia Tech Enology",
+        "Virginia Tech Enology",
+        "AWRI",
+        "Virginia Tech Enology"
+      ]
+    },
+    {
+      "question": "How do I cold stabilise a white wine?",
+      "publishers": [
+        "AWRI",
+        "AWRI",
+        "AWRI",
+        "Wine Australia",
+        "AWRI",
+        "AWRI"
+      ]
+    },
+    {
+      "question": "What causes hydrogen sulfide in ferment and how do I fix it?",
+      "publishers": [
+        "Oregon Wine Research Institute (OSU)",
+        "Virginia Tech Enology",
+        "Oregon Wine Research Institute (OSU)",
+        "ETS Laboratories",
+        "Virginia Tech Enology",
+        "AWRI"
+      ]
+    },
+    {
+      "question": "How do I sanitise barrels before filling?",
+      "publishers": [
+        "AWRI",
+        "AWRI",
+        "AWRI",
+        "AWRI",
+        "AWRI",
+        "AWRI"
+      ]
+    },
+    {
+      "question": "What TA and pH should I target for a Riesling?",
+      "publishers": [
+        "WSU Viticulture & Enology",
+        "WSU Viticulture & Enology",
+        "LVWO Weinsberg (Germany)",
+        "WSU Viticulture & Enology",
+        "AWRI",
+        "LVWO Weinsberg (Germany)"
+      ]
+    },
+    {
+      "question": "How do I do a bench trial for fining with bentonite?",
+      "publishers": [
+        "Oregon Wine Research Institute (OSU)",
+        "Oregon Wine Research Institute (OSU)",
+        "AWRI",
+        "ETS Laboratories",
+        "Scott Laboratories",
+        "AWRI"
+      ]
+    },
+    {
+      "question": "When is the right time to pick based on numbers?",
+      "publishers": [
+        "Oregon Wine Research Institute (OSU)",
+        "Oregon Wine Research Institute (OSU)",
+        "AWRI",
+        "Virginia Tech Enology",
+        "Cornell Fruit Resources: Grapes",
+        "Oregon Wine Research Institute (OSU)"
+      ]
+    },
+    {
+      "question": "How do I manage a stuck malolactic fermentation?",
+      "publishers": [
+        "Scott Laboratories",
+        "Oregon Wine Research Institute (OSU)",
+        "AWRI",
+        "AWRI",
+        "Scott Laboratories",
+        "Scott Laboratories"
+      ]
+    },
+    {
+      "question": "What is the correct dose of DAP for a nitrogen-deficient must?",
+      "publishers": [
+        "AWRI",
+        "Virginia Tech Enology",
+        "Scott Laboratories",
+        "Oregon Wine Research Institute (OSU)",
+        "OSU Extension (Oregon State University)",
+        "Oregon Wine Research Institute (OSU)"
+      ]
+    },
+    {
+      "question": "How do I prevent oxidation during pressing?",
+      "publishers": [
+        "AWRI",
+        "AWRI",
+        "Scott Laboratories",
+        "Virginia Tech Enology",
+        "AWRI",
+        "AWRI"
+      ]
+    },
+    {
+      "question": "What temperature should I ferment a Pinot Noir at?",
+      "publishers": [
+        "AWRI",
+        "Cornell Fruit Resources: Grapes",
+        "Cornell Fruit Resources: Grapes",
+        "AWRI",
+        "AWRI",
+        "Oregon Wine Research Institute (OSU)"
+      ]
+    },
+    {
+      "question": "How do I test for protein stability?",
+      "publishers": [
+        "Virginia Tech Enology",
+        "AWRI",
+        "AWRI",
+        "Virginia Tech Enology",
+        "Oregon Wine Research Institute (OSU)",
+        "Oregon Wine Research Institute (OSU)"
+      ]
+    },
+    {
+      "question": "What do I do about volatile acidity in a barrel?",
+      "publishers": [
+        "Virginia Tech Enology",
+        "Virginia Tech Enology",
+        "Scott Laboratories",
+        "WSU Viticulture & Enology",
+        "ICVV — Instituto de Ciencias de la Vid y del Vino (Spain)",
+        "Virginia Tech Enology"
+      ]
+    },
+    {
+      "question": "How long should I age a red on oak?",
+      "publishers": [
+        "Wine Australia",
+        "AWRI",
+        "ICVV — Instituto de Ciencias de la Vid y del Vino (Spain)",
+        "WSU Viticulture & Enology",
+        "LVWO Weinsberg (Germany)",
+        "Scott Laboratories"
+      ]
+    },
+    {
+      "question": "How do I control powdery mildew in the vineyard?",
+      "publishers": [
+        "AWRI",
+        "Wine Australia",
+        "AWRI",
+        "Oregon Wine Research Institute (OSU)",
+        "Wine Australia",
+        "Oregon Wine Research Institute (OSU)"
+      ]
+    },
+    {
+      "question": "What is the right time to apply a pre-infection fungicide for downy mildew?",
+      "publishers": [
+        "Wine Australia",
+        "Wine Australia",
+        "UC IPM (UC Agriculture & Natural Resources)",
+        "Wine Australia",
+        "Wine Australia",
+        "AWRI"
+      ]
+    }
+  ]
+}
