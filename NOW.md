@@ -7,41 +7,33 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Ticket `cmrvhj5b8…` — VOICE MODE INTERRUPTS THE USER MID-THOUGHT. SHIPPED + CLOSED.**
-PR #460 merged (squash `ddeeaaf8`), branch pruned, ticket RESOLVED with a reporter-facing outcome.
-**The one thing left: Russell re-tests on his phone** — if it still cuts him off, reopen and turn
-`hangoverGrowthRatio` / `maxHangoverMs` up (both single constants with tests around them).
+**KB citation tombstone now shows an EXCERPT, not the whole withdrawn document.** Built on
+`claude/kb-paraphrase-citation-copyright-355aa9`, **NOT pushed, no PR yet.**
 
-⚠️ **The AGENTIC_FIX auto-fix agent worked this ticket in PARALLEL** and had already opened draft
-PR #457 — which changed **only the test file**, asserting a fix it never made to `vad.ts`, so its CI
-was red from the first push. Closed as superseded, run set to SKIPPED, branch deleted. Worth knowing
-before trusting a red auto-fix PR: `gh pr diff --name-only` first, it may not have attempted the fix
-at all. Also learned: `closeFeedbackItemCore` does NOT neutralize a `PR_OPENED` run (only
-`QUEUED`/`AWAITING_APPROVAL`), so the ticket would have closed still advertising the dead PR.
+Came out of Russell's question — *"paraphrase with citation is how peer-reviewed articles get
+written, so it shouldn't be a copyright problem, right?"* Right about the output, and the assistant
+side is already the strong shape (`search-knowledge-base.ts` answers only from retrieved passages,
+cites each fact, quotes only NUMBERS verbatim — and facts aren't copyrightable). **But the analogy
+hides the real distinction: citation cures PLAGIARISM, an academic norm; it is not a licence and not
+a defence to infringement.** Peer-reviewed articles are safe because facts aren't protected, quotes
+are short, and the author obtained the source lawfully.
 
-Reporter (on a phone, hands-free): *"it would maybe let me talk for like 30 seconds before it would
-just start thinking… I can't just keep talking for a long time like I can in Claude or Gemini."*
+Storing full text to power the index is fine — that's the Google-Books / HathiTrust shape, and it's
+defensible *because* what we surface is a snippet. **One code path inverted it:**
+`renderTombstoneHtml` reassembled the chunks and served **up to 20,000 characters verbatim**, firing
+exactly when the publisher had taken the page down. Now `buildTombstoneExcerpt` (pure, exported,
+tested) caps at **600 chars** at a word boundary, the DB read is `take: 3`, truncation is disclosed,
+the page is `noindex, noarchive`, and the notice warns that a withdrawal may be a **RETRACTION** —
+a safety point, not just a legal one: a retracted paper served in full from cache invites someone to
+act on conclusions the publisher pulled.
 
-**Root cause: `DEFAULT_VAD_OPTIONS.hangoverMs` was a FLAT 1200ms** (`src/lib/voice/vad.ts`). There is
-no 30-second cap anywhere — 30s is simply when the reporter first paused for more than 1.2s. People
-thinking out loud pause for about that long constantly, so every one of those pauses read as handing
-over the turn.
+Gates: `vitest test/knowledge-citation.test.ts` **10/10**, `tsc --noEmit` clean, eslint clean.
+⚠️ **Not browser-verified** — the tombstone only renders for a *withdrawn* document, and this
+worktree has no `.env`. Rendering is fully covered by the pure tests; nobody has looked at the page.
 
-Two mechanisms, both pure and unit-tested (`test/voice-vad.test.ts`):
-- **Adaptive hangover** — silence-to-finalize now scales with how long the speaker has held the floor
-  (1600ms base → 3000ms cap, +0.15ms per ms held). A crisp "tank four" stays snappy; someone eight
-  seconds into a sentence gets the full three seconds. Barge-in stays deliberately FLAT (a lowered bar
-  would let the assistant's own echo sustain a run — see [[voice-mode-barge-self-interrupt]]).
-- **Hysteresis** — onset needs 0.04 RMS, but staying in speech only needs 0.025, so a trailing
-  syllable or a soft "um" no longer starts the silence clock early.
-
-Plus the escape hatch that patience requires: a **"✓ Done talking"** button beside Interrupt
-(`voiceControlAvailability` in `inline-ui.ts` → `VoiceSession.finishTurn` → `mic.finishListening`),
-so anyone who wants an answer NOW says so instead of waiting out 3s of silence.
-
-⚠️ **Not browser-verified, and it can't be from here** — proving this needs a real mic and a real
-human pausing mid-sentence. The pure timing logic is covered by tests; the *feel* is not. Have the
-reporter re-test on the phone before calling it resolved.
+_(Ticket `cmrvhj5b8…` voice-interruption: SHIPPED + CLOSED, see Done recently. **Still waiting on
+Russell to re-test on his phone** — if it still cuts him off, turn `hangoverGrowthRatio` /
+`maxHangoverMs` up, both single constants with tests around them.)_
 
 ## 🗂️ Last run  (was the objective)
 
@@ -460,6 +452,21 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Voice mode no longer cuts the user off mid-thought (ticket `cmrvhj5b8…`) — MERGED (PR #460,
+  squash `ddeeaaf8`).** Reporter, hands-free on a phone: *"it would maybe let me talk for like 30
+  seconds before it would just start thinking."* **The 30 seconds was a red herring — there is no
+  utterance cap anywhere**; `DEFAULT_VAD_OPTIONS.hangoverMs` was a FLAT 1200ms, so 30s was simply the
+  first time he paused longer than that. People thinking out loud pause about that long constantly.
+  Now adaptive (1600ms base → 3000ms cap, scaling with how long the speaker has held the floor) plus
+  onset/release hysteresis (0.04 to start, 0.025 to stay), with a **"✓ Done talking"** control as the
+  opt-out. ⚠️ **Barge-in stays deliberately FLAT** — lowering that bar lets the assistant's own echo
+  sustain a run ([[voice-mode-barge-self-interrupt]]). Still needs Russell's phone re-test: the pure
+  timing is tested, the *feel* can't be. ⚠️ The AGENTIC_FIX agent raced this ticket and its draft
+  PR #457 changed **only the test file**, asserting a fix it never made to `vad.ts` — red CI from the
+  first push, closed as superseded. `gh pr diff --name-only` before trusting a red auto-fix PR. Also:
+  `closeFeedbackItemCore` does NOT neutralize a `PR_OPENED` run (only `QUEUED`/`AWAITING_APPROVAL`),
+  so the ticket would have closed still advertising the dead PR.
+
 - **Leaflet attribution teardown crash (Sentry #324) — MERGED (PR #455, squash `5c5b72fe`).** The one
   real production defect in an 18-issue pile. The Google copyright string refreshes on a 400ms
   debounce after `moveend`; the init effect's cleanup set `cancelled` and called `map.remove()` but
@@ -614,7 +621,16 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-22 — **voice mode no longer cuts the user off mid-thought** (ticket `cmrvhj5b8…`,
+_Last updated: 2026-07-22 — **the KB citation tombstone no longer re-serves a withdrawn document in
+full.** From Russell's copyright question: paraphrase-with-citation IS the right shape and the
+assistant already does it, but citation cures plagiarism, not infringement — and one path
+(`renderTombstoneHtml`) served up to 20,000 chars verbatim precisely when a publisher had pulled the
+page. Capped to a 600-char excerpt via a pure, tested `buildTombstoneExcerpt`, `take: 3` on the read,
+truncation disclosed, `noindex, noarchive`, plus a retraction warning (safety, not only legal).
+10/10 tests, tsc + eslint clean; branch `claude/kb-paraphrase-citation-copyright-355aa9`, unpushed,
+not browser-verified. Prior:_
+
+_2026-07-22 — **voice mode no longer cuts the user off mid-thought** (ticket `cmrvhj5b8…`,
 PR #460 MERGED `ddeeaaf8`, ticket RESOLVED, branch pruned). The listen VAD's flat 1200ms silence bar
 became an adaptive 1600→3000ms one that scales with how long the speaker has held the floor, plus
 onset/release hysteresis so a trailing syllable doesn't start the clock; a "Done talking" control is
