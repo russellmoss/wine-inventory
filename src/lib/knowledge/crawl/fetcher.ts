@@ -5,6 +5,7 @@
 
 import { assertPublicHost } from "./ssrf";
 import { detectChallengePage, type ChallengeInfo } from "./challenge";
+import { crawlDispatcher } from "./tls";
 
 export type DetectedType = "html" | "pdf" | "other";
 
@@ -130,7 +131,17 @@ export async function fetchDocument(
       };
       if (opts.etag) headers["If-None-Match"] = opts.etag;
       if (opts.lastModified) headers["If-Modified-Since"] = opts.lastModified;
-      res = await fetch(current, { method: "GET", headers, redirect: "manual", signal: controller.signal });
+      // `dispatcher` carries the CA bundle from ./tls — Node's roots PLUS intermediates that some
+      // publishers fail to send. Without it those hosts throw UNABLE_TO_VERIFY_LEAF_SIGNATURE even
+      // though they load fine in a browser (browsers fetch the missing link via AIA; Node does not).
+      // Verification is unchanged in every other respect.
+      res = await fetch(current, {
+        method: "GET",
+        headers,
+        redirect: "manual",
+        signal: controller.signal,
+        dispatcher: crawlDispatcher(),
+      } as RequestInit);
     } finally {
       clearTimeout(timer);
     }

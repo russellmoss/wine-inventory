@@ -287,7 +287,7 @@ describe("knowledge registry integrity", () => {
 
   // A curated source is reachable by exactly two mechanisms, and the registry records neither:
   // a declarative CURATED_SPECS entry (driven by scripts/crawl-curated.ts), or a bespoke script for a
-  // source whose shape a spec cannot express. These four are the bespoke ones. Listing them here is the
+  // source whose shape a spec cannot express. These five are the bespoke ones. Listing them here is the
   // point: adding a curated source now forces a conscious choice between the two, instead of producing
   // a source that is registered, toggleable in Settings, and permanently empty because nothing crawls it.
   const SCRIPT_BACKED_CURATED = new Set([
@@ -295,6 +295,12 @@ describe("knowledge registry integrity", () => {
     "osu-extension", // scripts/crawl-osu-extension.ts
     "scott-labs", // scripts/crawl-scott-labs.ts
     "ets", // scripts/crawl-ets.ts — a JSON API, not a crawl at all
+    // scripts/crawl-ives.ts — OAI-PMH enumeration. Both sitemap probes 404 and /issue/archive
+    // client-renders its issue list, so sitemap discovery and link-following would between them reach
+    // ~11 of 209 articles. This guard caught the source the moment it went defaultEnabled:true (while
+    // it was still false it read as DORMANT and was skipped) — exactly the conscious choice it exists
+    // to force.
+    "ives-technical-reviews",
   ]);
 
   it("every curated (autoCrawl:false) source is reachable by SOME operator path", () => {

@@ -121,7 +121,9 @@
     "eval:assistant-must-propose": "vitest run test/evals/assistant-must-propose.eval.test.ts",
     "eval:assistant-currency": "vitest run test/evals/assistant-currency-warning.eval.test.ts",
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "verify:kb-register": "tsx --env-file=.env scripts/verify-kb-register.ts",
+    "crawl:ives": "tsx --env-file=.env scripts/crawl-ives.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -147,6 +149,7 @@
     "react-dom": "19.2.4",
     "robots-parser": "^3.0.1",
     "server-only": "^0.0.1",
+    "undici": "^6.27.0",
     "unpdf": "^1.6.2"
   },
   "devDependencies": {

@@ -2,6 +2,45 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## Chunk breadcrumbs carry the page `<title>`, site suffix and all
+
+**What:** every chunk's `sectionPath` is prefixed with the raw HTML `<title>`, so the embedded text
+of an IVES chunk begins:
+
+```
+Understanding Esca: watch out for the grafting type!
+			| IVES Technical Reviews, vine and wine > Understanding Esca: watch out for the grafting type! …
+```
+
+The article title appears **twice**, once with the publisher's site suffix and literal tabs/newlines.
+That string is part of what gets embedded and part of what the assistant sees, on every chunk.
+
+**Why it matters:** `sectionPath` is not cosmetic — it is concatenated into the chunk text before
+embedding, so the noise is inside the vector. At ~14 chunks/article it is a few hundred characters of
+repeated boilerplate per chunk. It also lands in the citation UI. Related in kind to the known
+breadcrumb defect where headingless PDFs take a page-one slab as their breadcrumb.
+
+**Why it was NOT fixed with IVES (PR #465):** chunking runs inside `indexDocument`, *before* the
+crawl script re-applies the feed's clean `dc:title`. Fixing it there would mean either reordering the
+index pipeline or special-casing one source — and this is **generic behaviour affecting all 24
+sources**, not an IVES quirk. Patching around it in `crawl-ives.ts` would have been the wrong layer
+and would have hidden the general problem behind one source looking fine.
+
+**Shape of the fix (unverified):** normalise the title before it becomes a breadcrumb — collapse
+whitespace, strip a trailing ` | <publisher>` / ` - <publisher>` suffix, and drop the leading title
+segment when it merely repeats the first heading. Pure and unit-testable.
+
+**⚠️ Re-embedding required.** The breadcrumb is baked into stored chunk text and its vector, so
+fixing the code does **not** fix the corpus — the same trap as the `vessel_component` incremental
+fold. Existing chunks need `reset:knowledge-source` + a re-crawl per source, or they keep the old
+breadcrumbs forever (`indexDocument` early-returns on an unchanged content hash).
+
+**Measure before and after:** `npm run verify:kb-register` against
+`docs/kb-register-baseline.json` — this changes embedded text corpus-wide, so it can move retrieval.
+
+**Where:** `src/lib/knowledge/chunk.ts`, `src/lib/knowledge/index-documents.ts`,
+`src/lib/knowledge/extract/`.
+
 ## Knowledge-corpus prompt-injection posture (all 17 sources, pre-existing)
 
 **What:** Crawled prose flows to markdown → chunks → embeddings → assistant context with NO

@@ -3,7 +3,7 @@
 import React from "react";
 import { Button } from "@/components/ui";
 import { focusAction } from "@/lib/voice/focus";
-import { voiceAnnouncement } from "@/lib/voice/inline-ui";
+import { voiceAnnouncement, voiceControlAvailability } from "@/lib/voice/inline-ui";
 import type { VoiceState } from "@/lib/voice/state-types";
 import {
   useVoiceSession,
@@ -147,7 +147,7 @@ export function VoiceInlinePanel({
   }, [session.state]);
 
   const action = focusAction(session.focusMode, session.profileState);
-  const speaking = session.state === "speaking";
+  const { canFinish, canInterrupt } = voiceControlAvailability(session.state);
 
   return (
     <div
@@ -206,20 +206,30 @@ export function VoiceInlinePanel({
 
       {showFirstRunHint && !session.error ? (
         <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: "var(--leading-normal)" }}>
-          Speak naturally — I&rsquo;ll answer out loud, and I can take you to what you ask about.
+          Speak naturally — take your time and pause to think, I&rsquo;ll wait for you to finish (or
+          tap Done talking). I&rsquo;ll answer out loud, and I can take you to what you ask about.
         </div>
       ) : null}
 
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap" }}>
-        {/* Always rendered, inert unless speaking. `aria-disabled` rather than `disabled`
-            so it stays focusable and announced; a control that vanishes and reappears
-            mid-sentence would reflow the row every single turn. */}
+        {/* Both controls are always rendered and go inert out of state. `aria-disabled`
+            rather than `disabled` so they stay focusable and announced; a control that
+            vanishes and reappears mid-sentence would reflow the row every single turn. */}
         <Button
           size="sm"
           variant="secondary"
-          aria-disabled={!speaking}
-          onClick={speaking ? session.interrupt : undefined}
-          style={speaking ? undefined : { opacity: 0.45, cursor: "default" }}
+          aria-disabled={!canFinish}
+          onClick={canFinish ? session.finishTurn : undefined}
+          style={canFinish ? undefined : { opacity: 0.45, cursor: "default" }}
+        >
+          ✓ Done talking
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          aria-disabled={!canInterrupt}
+          onClick={canInterrupt ? session.interrupt : undefined}
+          style={canInterrupt ? undefined : { opacity: 0.45, cursor: "default" }}
         >
           ⏸ Interrupt
         </Button>

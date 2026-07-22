@@ -11,6 +11,30 @@
 Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md).
 Verdict: [docs/kb-eval/DIFF-090.md](docs/kb-eval/DIFF-090.md). `verify:knowledge-base` **21/0**.
 
+## 🔭 Also in flight
+
+**IVES Technical Reviews — LIVE and MERGED (#465).** 209 docs / 3,316 chunks, default-ON for both
+tenants, **209/209 dated (100%)** vs ~31% corpus-wide. Default-on is the MEASURED position: staged
+`false` → crawled → enabled for Demo alone → `verify:kb-register` vs the pre-IVES baseline →
+**4/120 slots moved (3%, cap 25%)**, 17 of 20 questions untouched. Baseline re-captured so the
+accepted state is the new reference.
+
+⛔ **The licensing ADR (0009) is DECLINED — Russell, 2026-07-22. Do NOT re-propose it.** Facts live in
+each `KnowledgeSource.license`. IVES is the ONLY source with a real CC BY grant; every other rests on
+an absence of objection. VT asserts copyright with no licence (accepted risk).
+
+⚠️ **Two bugs their smoke test caught while reporting `5 docs / 70 chunks / 0 errors` — read the rows
+back, never trust the tally:** `indexDocument` writes `publishedAt`/`canonicalTitle` **unconditionally
+including null** (so all 209 would have been undated — fixed by re-applying OAI metadata AFTER
+indexing), and an OAI record carries one `<dc:title>` **per language**, so first-match filed English
+articles under German titles.
+
+🔗 **Their filed-not-fixed breadcrumb issue is the SAME defect plan 090 fixes**, and their note that
+"fixing the code does NOT fix the corpus — it needs a re-crawl per source" is exactly right. Plan 090
+supplies that re-crawl (`npm run reindex:knowledge`) and has now run it across **all 1,378 PDF
+documents**. IVES itself is HTML, so it is NOT covered by that pass and still carries the polluted
+title — it needs the same treatment.
+
 ✅ **On the three re-indexed sources (osu-owri, wbi, lvwo):** avg breadcrumbs **1.00 → 3.0/3.6/20.1**;
 avg max breadcrumb **200 → 71/84/108** chars (worst anywhere = 140, the cap, exactly); titles
 **0/606 → 606/606**; dates **~5/606 → 606/606**; mojibake **7 docs → 0**; **0 HTML docs disturbed**
@@ -490,6 +514,30 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **KB citation tombstone shows an EXCERPT, not the whole withdrawn document — MERGED + LIVE**
+  (PR #462, squash `8f6099b5`, branch pruned). From Russell's copyright question: paraphrase-with-
+  citation IS the right shape and `search-knowledge-base.ts` already does it, but **citation cures
+  plagiarism, not infringement**. `renderTombstoneHtml` served up to 20,000 chars verbatim precisely
+  when a publisher had pulled the page. Now `buildTombstoneExcerpt` caps at 600 chars on a word
+  boundary, `take: 3` on the read, truncation disclosed, `noindex, noarchive`, plus a **retraction**
+  warning (a safety point, not only a legal one). 10/10 tests. Not browser-verified — the tombstone
+  only renders for a *withdrawn* document.
+
+- **Voice mode no longer cuts the user off mid-thought (ticket `cmrvhj5b8…`) — MERGED (PR #460,
+  squash `ddeeaaf8`).** Reporter, hands-free on a phone: *"it would maybe let me talk for like 30
+  seconds before it would just start thinking."* **The 30 seconds was a red herring — there is no
+  utterance cap anywhere**; `DEFAULT_VAD_OPTIONS.hangoverMs` was a FLAT 1200ms, so 30s was simply the
+  first time he paused longer than that. People thinking out loud pause about that long constantly.
+  Now adaptive (1600ms base → 3000ms cap, scaling with how long the speaker has held the floor) plus
+  onset/release hysteresis (0.04 to start, 0.025 to stay), with a **"✓ Done talking"** control as the
+  opt-out. ⚠️ **Barge-in stays deliberately FLAT** — lowering that bar lets the assistant's own echo
+  sustain a run ([[voice-mode-barge-self-interrupt]]). Still needs Russell's phone re-test: the pure
+  timing is tested, the *feel* can't be. ⚠️ The AGENTIC_FIX agent raced this ticket and its draft
+  PR #457 changed **only the test file**, asserting a fix it never made to `vad.ts` — red CI from the
+  first push, closed as superseded. `gh pr diff --name-only` before trusting a red auto-fix PR. Also:
+  `closeFeedbackItemCore` does NOT neutralize a `PR_OPENED` run (only `QUEUED`/`AWAITING_APPROVAL`),
+  so the ticket would have closed still advertising the dead PR.
+
 - **Leaflet attribution teardown crash (Sentry #324) — MERGED (PR #455, squash `5c5b72fe`).** The one
   real production defect in an 18-issue pile. The Google copyright string refreshes on a 400ms
   debounce after `moveend`; the init effect's cleanup set `cancelled` and called `map.remove()` but
@@ -667,6 +715,37 @@ becomes a 192-char slab of page one, prepended to every chunk and embedded). Als
 have no `canonicalTitle`, so citations name a publisher but not a document. The eval suite is green
 throughout because it only sees 3 of 8 slots — Unit 1 fixes the instrument before anything else moves.
 AJEV deferred with its research preserved. Prior: **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
+Prior: **the assistant can finally read a tank's Brix back** (bug report
+`cmrw8s5ct…`, PR #463). It could write a chem panel and read current contents but had no read tool
+for `AnalysisPanel`, so a tank-Brix question reached for the vineyard-block ripeness tool and
+dead-ended in "open the lot page". `query_measurements` covers a lot, a vessel, a vessel range, or
+every vessel of a type. **Russell's scope rule is the load-bearing part: never average across
+vessels** — comparisons are per-vessel enumeration or a ranking sort, so "which tank is closest to
+dry" names a tank instead of inventing a cellar-wide number. Guarded against the two ways a ranking
+lies: readings of different ages (staleness warning; the live sweep hit a real 18.4-day spread) and
+vessels with no data (reported, never dropped). 25 new tests, suite 3377/0, verified read-only on
+Demo across 10 scenarios. Prior:_
+
+_2026-07-22 — **the KB citation tombstone no longer re-serves a withdrawn document in
+full.** From Russell's copyright question: paraphrase-with-citation IS the right shape and the
+assistant already does it, but citation cures plagiarism, not infringement — and one path
+(`renderTombstoneHtml`) served up to 20,000 chars verbatim precisely when a publisher had pulled the
+page. Capped to a 600-char excerpt via a pure, tested `buildTombstoneExcerpt`, `take: 3` on the read,
+truncation disclosed, `noindex, noarchive`, plus a retraction warning (safety, not only legal).
+10/10 tests, tsc + eslint clean. MERGED as **#462** (`8f6099b5`); not browser-verified — the
+tombstone only renders for a *withdrawn* document. Prior:_
+
+_2026-07-22 — **voice mode no longer cuts the user off mid-thought** (ticket `cmrvhj5b8…`,
+PR #460 MERGED `ddeeaaf8`, ticket RESOLVED, branch pruned). The listen VAD's flat 1200ms silence bar
+became an adaptive 1600→3000ms one that scales with how long the speaker has held the floor, plus
+onset/release hysteresis so a trailing syllable doesn't start the clock; a "Done talking" control is
+the opt-out. The reported "30 seconds" was a red herring — there is no utterance cap, that was just the
+first pause over 1.2s. tsc + eslint + 3338 tests green on main. ⚠️ The auto-fix agent raced this ticket
+and its draft PR #457 changed ONLY the test file (red CI, tests for a fix it never made) — closed as
+superseded. NOT browser-verified: the fix is about how a real pause FEELS, so Russell has to re-test on
+a phone. Prior:_
+
+_2026-07-21 — **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
 `/bug-triage` goalie run (live, all sweeps) reconciled the queue and cleared the pile: 26 backlog items
 → 0 active, 1 open PR triaged + merged (#443), 18 open issues → 10 kept. It found exactly ONE real
 production bug among 6 Sentry issues — **#324**, a Leaflet debounce that outlived `map.remove()` — now

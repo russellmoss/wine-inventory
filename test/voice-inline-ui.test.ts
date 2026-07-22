@@ -4,6 +4,7 @@ import {
   navigationAnnouncement,
   orbShouldAnimate,
   voiceAnnouncement,
+  voiceControlAvailability,
   voiceStatusLabel,
 } from "@/lib/voice/inline-ui";
 import type { VoiceState } from "@/lib/voice/state-types";
@@ -39,6 +40,31 @@ describe("orb motion gate", () => {
     expect(orbShouldAnimate("transcribing")).toBe(false);
     expect(orbShouldAnimate("idle")).toBe(false);
     expect(orbShouldAnimate("error")).toBe(false);
+  });
+});
+
+describe("turn controls", () => {
+  it("offers Done talking only while listening", () => {
+    // The escape hatch for the now-patient end-of-speech detection: a user who is
+    // finished can hand over immediately instead of waiting out the hangover.
+    expect(voiceControlAvailability("listening").canFinish).toBe(true);
+    for (const s of ALL_STATES.filter((s) => s !== "listening")) {
+      expect(voiceControlAvailability(s).canFinish).toBe(false);
+    }
+  });
+
+  it("offers Interrupt only while the assistant is speaking", () => {
+    expect(voiceControlAvailability("speaking").canInterrupt).toBe(true);
+    for (const s of ALL_STATES.filter((s) => s !== "speaking")) {
+      expect(voiceControlAvailability(s).canInterrupt).toBe(false);
+    }
+  });
+
+  it("never lights both controls at once", () => {
+    for (const s of ALL_STATES) {
+      const { canFinish, canInterrupt } = voiceControlAvailability(s);
+      expect(canFinish && canInterrupt).toBe(false);
+    }
   });
 });
 
