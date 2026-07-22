@@ -39,6 +39,7 @@ import {
   getGoogleMapSession,
 } from "@/lib/map/google-tiles";
 import { loadWaybackReleases, type WaybackRelease } from "@/lib/map/wayback";
+import { wireAttributionRefresh } from "@/lib/map/attribution-refresh";
 
 const ESRI_IMAGERY_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -61,34 +62,22 @@ function addEsriBasemap(map: L.Map, setBase?: (l: L.TileLayer) => void): L.TileL
   return l;
 }
 
-/** Keep the required Google copyright string current as the viewport changes. */
+/**
+ * Keep the required Google copyright string current as the viewport changes.
+ * The debounce/teardown logic lives in `wireAttributionRefresh` (unit-tested) —
+ * a pending refresh must never touch a map that has already been removed (#324).
+ */
 function wireGoogleAttribution(
   map: L.Map,
   key: string,
   session: string,
   isCancelled: () => boolean,
 ): void {
-  let last = "";
-  let timer: number | undefined;
-  const refresh = async () => {
-    const b = map.getBounds();
-    const txt = await getGoogleAttribution(
-      key,
-      session,
-      { north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() },
-      map.getZoom(),
-    );
-    if (isCancelled() || !txt || txt === last) return;
-    if (last) map.attributionControl.removeAttribution(last);
-    map.attributionControl.addAttribution(txt);
-    last = txt;
-  };
-  const onMove = () => {
-    if (timer) window.clearTimeout(timer);
-    timer = window.setTimeout(refresh, 400);
-  };
-  map.on("moveend", onMove);
-  void refresh();
+  wireAttributionRefresh({
+    map,
+    isCancelled,
+    fetchAttribution: (bounds, zoom) => getGoogleAttribution(key, session, bounds, zoom),
+  });
 }
 
 /**
