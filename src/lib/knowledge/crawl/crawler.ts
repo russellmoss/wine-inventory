@@ -640,7 +640,14 @@ async function persistDocument(
 export async function crawlUrls(
   sourceKey: string,
   urls: string[],
-  opts: { onDocument?: (doc: CrawledDoc) => Promise<void>; ignoreRobots?: boolean; delayMs?: number; maxBytes?: number } = {},
+  opts: {
+    onDocument?: (doc: CrawledDoc) => Promise<void>;
+    ignoreRobots?: boolean;
+    delayMs?: number;
+    maxBytes?: number;
+    /** Plan 090 Unit 9 — skip the conditional-GET validators so unchanged bytes are refetched. */
+    ignoreValidators?: boolean;
+  } = {},
 ): Promise<CrawlSummary> {
   const cfg = findSourceConfig(sourceKey);
   if (!cfg) throw new Error(`unknown source: ${sourceKey}`);
@@ -687,7 +694,19 @@ export async function crawlUrls(
     );
     let res;
     try {
-      res = await fetchDocument(url, { etag: existing?.etag ?? null, lastModified: existing?.lastModifiedHttp ?? null, isAllowedHost, maxBytes: opts.maxBytes });
+      // Plan 090 Unit 9 — `ignoreValidators` forces an UNCONDITIONAL GET.
+      //
+      // Re-indexing existing documents after an EXTRACTOR change needs the bytes back, but the
+      // publisher's content has not changed, so a conditional GET returns 304, the branch below
+      // `continue`s, and onDocument never fires. The re-index would report a clean run and change
+      // nothing — the same silent-no-op shape Unit 8 fixed one layer down, and the reason the note in
+      // plan 084 says to reset before re-crawling after a scope change.
+      //
+      // Off by default, so every existing caller keeps its conditional-GET politeness untouched.
+      const validators = opts.ignoreValidators
+        ? { etag: null, lastModified: null }
+        : { etag: existing?.etag ?? null, lastModified: existing?.lastModifiedHttp ?? null };
+      res = await fetchDocument(url, { ...validators, isAllowedHost, maxBytes: opts.maxBytes });
     } catch (e) {
       summary.errors++;
       console.log(`  ! fetch failed ${url}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);

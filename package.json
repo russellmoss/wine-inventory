@@ -33,6 +33,7 @@
     "crawl:ets": "tsx --conditions=react-server --env-file=.env scripts/crawl-ets.ts",
     "reset:knowledge-source": "tsx --conditions=react-server --env-file=.env scripts/reset-knowledge-source.ts",
     "backfill:published-dates": "tsx --conditions=react-server --env-file=.env scripts/backfill-published-dates.ts",
+    "reindex:knowledge": "tsx --conditions=react-server --env-file=.env scripts/reindex-knowledge-corpus.ts",
     "kb:snapshot": "tsx --env-file=.env scripts/kb-snapshot.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
     "verify:vt-enology": "tsx scripts/verify-vt-enology.ts",
