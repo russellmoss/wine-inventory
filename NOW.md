@@ -7,10 +7,33 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 090 — fix KB RAG retrieval quality BEFORE adding any source. UNITS 1, 1b, 2, 3, 4, 5, 6, 7, 8
-DONE (8 commits, NOT pushed). ⏭️ NEXT: Unit 9 — the PRODUCTION RE-INDEX (needs a go-ahead).**
+**PLAN 090 — fix KB RAG retrieval quality BEFORE adding any source. UNITS 1-9 DONE (12 commits, NOT
+pushed). 🔄 THE PRODUCTION RE-INDEX IS RUNNING (osu-owri + wbi + lvwo, 616 docs). ⏭️ THEN Unit 10 —
+the before/after snapshot diff, which is where we learn whether the nutrient query finally finds AWRI.**
 Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md) (Deep, 12 units).
 Started as "should we add AJEV to the KB"; measuring the corpus to answer that found a bigger problem.
+
+🔻 **THE REAL LESSON OF THIS PLAN: the code fix was the easy part. Making it REACH THE DATA took three
+separate silent no-ops, each of which would have shipped a green, successful-looking run that changed
+nothing.**
+1. **Unit 8 — `indexDocument` short-circuits on an unchanged index hash.** `deriveIndexHash` folded
+   only `SECTION_FILTER_VERSION`, which is HTML-only, so a PDF's hash was the bare content hash and no
+   extractor improvement could ever re-extract unchanged bytes. Fixed with `PDF_EXTRACT_VERSION`.
+2. **Unit 9 — `crawlUrls` issues a CONDITIONAL GET.** Publisher bytes have not changed → 304 →
+   `continue` → `onDocument` never fires. Fixed with `ignoreValidators` (off by default).
+3. **Unit 9 again — robots.** lvwo and wbi block PDFs with a generic `/*.pdf$` rule; their curated
+   specs already carry `ignoreRobots` with the reasoning, but the re-index did not inherit it, so
+   **350 of 616 documents** came back `skippedRobots` while the summary still read success. Now
+   inherits `ignoreRobots`/`delayMs`/`maxBytes` from `findCuratedSpec()` — that judgment stays in ONE
+   documented place — and warns loudly on any `skippedRobots > 0`.
+
+⚠️ **Only #3 was found by WATCHING a live run** (lvwo/wbi stuck at zero while osu-owri progressed).
+Reading the code found the other two. Both habits were needed.
+
+⚠️ **Fetch timeouts are expected and the script is RESUMABLE by design.** OWRI serves 1-2 MB PDFs
+against a 30s `TIMEOUT_MS`; a failed fetch never reaches `indexDocument`, so that document keeps its
+old revision and a re-run retries it. **Re-run until the error count stops falling before trusting
+Unit 10's diff.**
 
 ✅ **ALL THE CODE IS WRITTEN AND GREEN.** `verify:knowledge-base` **21 passed / 0 failed**; full suite
 **3410 passed / 0 failed** (all 304 files); tsc 0, eslint 0 errors.
@@ -640,7 +663,16 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-22 — **PLAN 090 UNITS 1/1b/2/3/4/5/6/7/8 DONE (8 commits, unpushed). All the
+_Last updated: 2026-07-22 — **PLAN 090 UNITS 1-9 DONE (12 commits, unpushed); the PRODUCTION RE-INDEX
+IS RUNNING** (osu-owri + wbi + lvwo, 616 docs, ~4h at observed rate). Unit 10 (the before/after diff)
+is blocked on it finishing. **The lesson of this plan is that the code fix was the easy part** — making
+it reach the data took THREE separate silent no-ops, each of which would have produced a green,
+successful-looking run that changed nothing: the index-hash short-circuit (Unit 8), the conditional-GET
+304 (Unit 9), and robots refusing 350 of 616 documents because the re-index did not inherit the curated
+`ignoreRobots` (Unit 9). Only the third was found by WATCHING a live run. Verified on production so far:
+titles and dates now populate, breadcrumbs multiply where structure exists, the 140-char cap holds, zero
+mojibake, and **0 HTML documents were disturbed** (exactly the targeted blast radius Unit 8 claimed).
+Prior: **PLAN 090 UNITS 1/1b/2/3/4/5/6/7/8 DONE (8 commits, unpushed). All the
 code is written and green; the only thing left is the PRODUCTION RE-INDEX (Unit 9), which needs a
 go-ahead.** Measured across 34 real PDFs from 13 sources: 23 restructured, 11 safely fell back, 0
 failures — scott-labs went from ONE breadcrumb to 437. Two things worth remembering: a CONFIDENCE GATE
