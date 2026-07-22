@@ -514,6 +514,31 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Confirmed action cards no longer stick, and the next card actually comes up** (feedback
+  `cmrwiky4p…`, Demo). Reporter issued two nutrient work orders in one turn (Day 1 Fermaid-O, Day 2
+  DAP); confirming the first left it on screen at full height and the second never surfaced. **Three
+  defects, only the first of which the ticket describes:**
+  • a resolved card was immortal — the green state kept the whole card (preview + task table + cost +
+  diff) forever. Now it lingers ~2.2s then folds to a one-line receipt, KEEPING the outcome message
+  and the "View X →" link (deleting it would take away the user's only pointer to what was written).
+  • 🔻 **the auto-follow switched itself off permanently, and this is the real reason the second card
+  was unreachable.** `shouldStickToBottom(el)` was measured **inside the effect that runs AFTER React
+  committed the new content**, so it asked "is the user near the bottom of a transcript that just grew
+  by a 320px card?" — always no. One tall item in one render killed following for the rest of the
+  session. In the dock (a ~180px scroller) the FIRST proposal card did it. The gate now reads a
+  `stickRef` written only by real scroll events, i.e. where the user was BEFORE the content arrived.
+  • ⚠️ **voice had a single card slot** — a second `proposal` event in one turn OVERWROTE the first, so
+  an announced write became permanently unconfirmable. Now a queue, and a confirmed card retires
+  instead of staying pinned above the composer for the rest of the session.
+  🔎 **The reveal's first cut was subtly wrong and only measurement caught it:** bottom-align-if-below /
+  top-align-if-above looks complete, but a 320px card in a 180px scroller that has scrolled off the TOP
+  has its bottom edge above the fold too — so it took the top-align branch and "revealed" the card with
+  Confirm just as unreachable as before (feedback #203 all over again). Anything taller than the
+  viewport now gets its FOOT pinned.
+  Gates: tsc 0, eslint 0, **vitest 3529/0**, `verify:naming` 25/25, `next build` clean. Browser-QA'd on
+  Demo end-to-end in the dock (two cards → confirm → fold → next card's Confirm in view → confirm →
+  none remain); QA work orders cleaned up with `scripts/qa-cards-clean.ts`.
+
 - **The assistant can read a vessel's/lot's OPERATION history — MERGED + LIVE** (PR #468, squash
   `a9016c3f`, branch pruned; feedback `cmrwdgt2u…`, the ledger counterpart to #463's chemistry read). Nothing in the assistant surface touched `LotOperation` — `query_transfers`
   is RACK-only, `query_audit` is entity CRUD (cellar ops are not audit rows), `query_cellar_contents`

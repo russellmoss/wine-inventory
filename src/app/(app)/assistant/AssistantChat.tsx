@@ -15,6 +15,11 @@ import {
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
 import { proposalGate } from "@/lib/assistant/proposal-card";
+import {
+  RESOLVED_CARD_LINGER_MS,
+  collapsesAfterLinger,
+  nextActionableCardIndex,
+} from "@/lib/assistant/card-lifecycle";
 import { MAX_CONTENT, clampHistoryForSend } from "@/lib/assistant/message-window";
 import { drainConsoleBuffer } from "@/lib/observability/console-buffer";
 import type { Caption } from "./voice/useVoiceSession";
@@ -47,6 +52,11 @@ type ProposalItem = {
   result?: string;
   // A "View X →" link surfaced after a create/confirm succeeds (Unit 5).
   navigate?: { path: string; label: string };
+  /**
+   * Resolved and folded down to a one-line receipt, so it stops occupying the panel a
+   * still-pending card needs (feedback cmrwiky4p). See card-lifecycle.ts.
+   */
+  collapsed?: boolean;
 };
 // A clickable disambiguation picker (tool couldn't resolve a name to one record). `resume` is the
 // deterministic path (POST a signed token → tool re-runs pinned by id → confirm card); `send` is a
@@ -180,7 +190,21 @@ export function AssistantChat({
   const [feedback, setFeedback] = React.useState<Record<number, FeedbackState>>({});
   const [ticketOpen, setTicketOpen] = React.useState(false);
   const [navPending, setNavPending] = React.useState<NavPending | null>(null);
+  // Bumped when a resolved card folds away and the next one should be scrolled to.
+  const [revealTick, setRevealTick] = React.useState(0);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  // Is the transcript still following new content? Answered by the user's own scrolling,
+  // never by measuring after a render — see the pin effect for why. Starts true: an empty
+  // transcript is by definition at its own bottom.
+  const stickRef = React.useRef(true);
+  // Live handles on the rendered proposal cards, keyed by transcript index, so the reveal
+  // can measure the real element instead of guessing at offsets.
+  const cardRefs = React.useRef(new Map<number, HTMLDivElement>());
+  const collapseTimers = React.useRef<number[]>([]);
+  // `items` as the collapse timers and the reveal effect see it — both run outside the
+  // render that produced them, and neither may re-subscribe to every item change.
+  const itemsRef = React.useRef<Item[]>(items);
+  itemsRef.current = items;
   const router = useRouter();
 
   // When embedded in the dock, the chat stays mounted (display:none) after the dock collapses so its
@@ -535,12 +559,86 @@ export function AssistantChat({
     // is now near-bottom-gated. The #203 protection does not depend on this any more:
     // voice confirm cards are pinned OUTSIDE this scroller entirely, and a text-chat user
     // who has scrolled away has done so deliberately.
-    const pinned = shouldStickToBottom(el);
+    //
+    // The gate is read from `stickRef` — what the LAST SCROLL said — and deliberately not
+    // measured here. This effect runs after React has already committed the new content,
+    // so measuring live asks "is the user near the bottom of a transcript that just grew
+    // by a 350px card?" and the answer is always no. One tall item landing in a single
+    // render therefore switched auto-follow off permanently: in the dock (a ~180px
+    // scroller) the very first proposal card did it, stranding every later card below a
+    // fold that never moved again. That is how the reporter ended up unable to reach a
+    // second card at all (feedback cmrwiky4p). The question that matters is where the
+    // user was BEFORE the content arrived, and only a scroll event can answer it.
+    const pinned = stickRef.current;
     const id = requestAnimationFrame(() => {
       if (pinned) el.scrollTop = el.scrollHeight;
     });
     return () => cancelAnimationFrame(id);
   }, [items, status]);
+
+  // Bring the next still-actionable card fully into view once a resolved one has folded
+  // away. Read through a ref, not the dep array: this must fire exactly once per reveal
+  // request, not again on every subsequent item change (which would yank a reading user
+  // back down mid-turn — the very thing shouldStickToBottom exists to prevent).
+  React.useEffect(() => {
+    if (revealTick === 0) return;
+    const scroller = scrollRef.current;
+    const idx = nextActionableCardIndex(itemsRef.current);
+    if (!scroller || idx === null) return;
+    const el = cardRefs.current.get(idx);
+    if (!el) return;
+    // Two frames deep: the pin-to-bottom effect above schedules its own rAF on the same
+    // render, and the scroll that lands LAST is the one the user sees.
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        const sr = scroller.getBoundingClientRect();
+        const er = el.getBoundingClientRect();
+        const pad = 12;
+        // Align on the card's FOOT, because that is where Confirm/Cancel live and a card
+        // whose buttons are below the fold is exactly feedback #203 ("Confirm does
+        // nothing" — the click hit-tests to the container behind them).
+        //
+        // The height test is not redundant with the overflow test, and getting it wrong
+        // is how this was first written: a work-order card is ~320px and the dock's
+        // transcript is ~180px, so a card scrolled off the TOP has its bottom edge above
+        // the fold too. Top-aligning it then technically "reveals the card" while leaving
+        // the buttons just as unreachable as before. Anything taller than the viewport
+        // gets its foot pinned; only a card that genuinely fits is aligned by its top.
+        if (er.height > sr.height || er.bottom > sr.bottom) {
+          scroller.scrollTop += er.bottom - sr.bottom + pad;
+        } else if (er.top < sr.top) {
+          scroller.scrollTop -= sr.top - er.top + pad;
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [revealTick]);
+
+  // Every pending collapse, so a dock close / route change doesn't leave a timer writing
+  // into an unmounted tree.
+  React.useEffect(
+    () => () => {
+      for (const t of collapseTimers.current) clearTimeout(t);
+      collapseTimers.current = [];
+    },
+    [],
+  );
+
+  /**
+   * A card just succeeded. Let the green state stand for a beat, then fold it to its
+   * receipt and surface whatever is still waiting behind it.
+   */
+  function scheduleCollapse(index: number) {
+    const t = window.setTimeout(() => {
+      setItems((prev) => updateProposal(prev, index, { collapsed: true }));
+      setRevealTick((n) => n + 1);
+    }, RESOLVED_CARD_LINGER_MS);
+    collapseTimers.current.push(t);
+  }
 
   function appendText(text: string) {
     setStatus(null);
@@ -599,6 +697,9 @@ export function AssistantChat({
     history.push({ role: "user", content: text });
 
     setItems((prev) => [...prev, { kind: "text", role: "user", content: text }]);
+    // Sending is an explicit "I'm at the live end of this conversation" — re-arm the
+    // follow even if an earlier reveal parked the view on a card further up.
+    stickRef.current = true;
     setBusy(true);
     setStatus("Thinking…");
 
@@ -708,6 +809,12 @@ export function AssistantChat({
     } finally {
       setBusy(false);
       setStatus(null);
+      // The turn is over. If it left a card the user has to act on, park the view on THAT
+      // rather than wherever the bottom happens to be — a write tool almost always emits a
+      // trailing "review and confirm it" line after the card, so pinning to the bottom
+      // shows the sentence ABOUT the card instead of the card, with its Confirm button
+      // above the fold. No-ops when the turn produced nothing to act on.
+      setRevealTick((n) => n + 1);
       // Keep a live voice session's history in step with what was just typed. Without
       // this the next SPOKEN turn is answered against a history missing this exchange,
       // and the assistant looks like it forgot — the failure this whole bridge exists
@@ -742,6 +849,9 @@ export function AssistantChat({
             ? { path: data.navigate.path as string, label: data.navigate.label as string }
             : undefined;
         setItems((prev) => updateProposal(prev, index, { status: "done", result: data.message, navigate: nav }));
+        // The card has done its job. Hold the green state briefly, then fold it down so the
+        // next card in the turn is not stranded behind it (feedback cmrwiky4p).
+        if (collapsesAfterLinger("done")) scheduleCollapse(index);
         // A committed write invalidates the server caches (revalidatePath in the committer), but the
         // user's client Router Cache is untouched because this wasn't a component-bound server action.
         // Without this, a freshly created/updated record (e.g. an issued work order) won't appear on an
@@ -757,7 +867,11 @@ export function AssistantChat({
   }
 
   function cancelProposal(index: number) {
-    setItems((prev) => updateProposal(prev, index, { status: "error", result: "Cancelled." }));
+    // Collapsed immediately, with no linger: the user just said "get rid of this", so
+    // making them watch the dismissed card sit there for two more seconds is perverse.
+    // (A card that FAILED stays expanded — see collapsesAfterLinger.)
+    setItems((prev) => updateProposal(prev, index, { status: "error", result: "Cancelled.", collapsed: true }));
+    setRevealTick((n) => n + 1);
   }
 
   // Tap a disambiguation option → lock the card, then resolve it DETERMINISTICALLY: POST the signed
@@ -793,6 +907,9 @@ export function AssistantChat({
               status: "pending",
             },
           ]);
+          // The user just picked an option and is owed the card it produced, even if they
+          // had scrolled off to re-read an earlier one.
+          setRevealTick((n) => n + 1);
         } else {
           setError(data?.error ?? "Couldn't prepare that selection.");
         }
@@ -898,7 +1015,16 @@ export function AssistantChat({
       <>
       {/* minHeight floor: with the voice panel and a pinned confirm card above the
           composer, a tablet's virtual keyboard would otherwise squeeze this to 0px. */}
-      <div ref={scrollRef} style={{ flex: 1, minHeight: 60, overflowY: "auto" }}>
+      <div
+        ref={scrollRef}
+        // The ONLY writer of the follow flag. Fires for the user's own scrolling AND for
+        // our programmatic snaps (which land at the bottom and so re-arm it), so the two
+        // stay consistent without either having to know about the other.
+        onScroll={(e) => {
+          stickRef.current = shouldStickToBottom(e.currentTarget);
+        }}
+        style={{ flex: 1, minHeight: 60, overflowY: "auto" }}
+      >
         <div style={{ ...column, display: "flex", flexDirection: "column", gap: "var(--space-5)", padding: "var(--space-4) 0 var(--space-6)" }}>
           {items.length === 0 ? (
             <div style={{ margin: "auto", textAlign: "center", color: "var(--text-muted)", fontFamily: "var(--font-body)", fontSize: "var(--text-body)", maxWidth: 460, paddingTop: "var(--space-8)" }}>
@@ -911,6 +1037,10 @@ export function AssistantChat({
                   <ProposalCard
                     key={i}
                     item={it}
+                    cardRef={(el) => {
+                      if (el) cardRefs.current.set(i, el);
+                      else cardRefs.current.delete(i);
+                    }}
                     onConfirm={() => void confirmProposal(i)}
                     onCancel={() => cancelProposal(i)}
                   />
@@ -1333,10 +1463,49 @@ function ChoiceCard({ item, disabled, onPick }: { item: ChoiceItem; disabled: bo
   );
 }
 
-function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onConfirm: () => void; onCancel: () => void }) {
+function ProposalCard({
+  item,
+  cardRef,
+  onConfirm,
+  onCancel,
+}: {
+  item: ProposalItem;
+  cardRef?: (el: HTMLDivElement | null) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
   const done = item.status === "done";
   const errored = item.status === "error";
   const details = item.details;
+
+  // Folded down after the user acted on it: one muted line, no box, no task table, no
+  // cost or diff. It keeps the outcome message and the "View X →" link because those are
+  // the user's only record of what was written — but it stops holding the panel hostage
+  // while a second card from the same turn waits below it (feedback cmrwiky4p).
+  if (item.collapsed) {
+    return (
+      <div
+        ref={cardRef}
+        role="status"
+        style={{
+          alignSelf: "stretch",
+          display: "flex",
+          alignItems: "baseline",
+          flexWrap: "wrap",
+          gap: "var(--space-2)",
+          fontFamily: "var(--font-body)",
+          fontSize: "var(--text-body-sm)",
+          color: done ? "var(--positive)" : "var(--text-muted)",
+        }}
+      >
+        <span>
+          {done ? "✓ " : "⊘ "}
+          {item.result ?? (done ? "Applied." : "Not applied.")}
+        </span>
+        {done && item.navigate ? <Markdown text={`[View ${item.navigate.label} →](${item.navigate.path})`} /> : null}
+      </div>
+    );
+  }
   // Plan 081 U7: a Draft renders as a card — that is the whole point — but cannot be confirmed. It has
   // no token, so Confirm has nothing to POST; the gate decides what the user is TOLD about that.
   const gate = proposalGate(item);
@@ -1352,6 +1521,7 @@ function ProposalCard({ item, onConfirm, onCancel }: { item: ProposalItem; onCon
         : "var(--accent)";
   return (
     <div
+      ref={cardRef}
       style={{
         alignSelf: "stretch",
         padding: "var(--space-3) var(--space-4)",
