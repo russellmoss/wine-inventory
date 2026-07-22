@@ -7,81 +7,35 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 090 — fix KB RAG retrieval quality BEFORE adding any source. UNITS 1-9 DONE (12 commits, NOT
-pushed). 🔄 THE PRODUCTION RE-INDEX IS RUNNING (osu-owri + wbi + lvwo, 616 docs). ⏭️ THEN Unit 10 —
-the before/after snapshot diff, which is where we learn whether the nutrient query finally finds AWRI.**
-Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md) (Deep, 12 units).
-Started as "should we add AJEV to the KB"; measuring the corpus to answer that found a bigger problem.
+**PLAN 090 — UNITS 1-10 DONE (18 commits, NOT pushed). RE-INDEX COMPLETE (606 docs), DIFF JUDGED.**
+Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md).
+Verdict: [docs/kb-eval/DIFF-090.md](docs/kb-eval/DIFF-090.md). `verify:knowledge-base` **21/0**.
 
-🔻 **THE REAL LESSON OF THIS PLAN: the code fix was the easy part. Making it REACH THE DATA took three
-separate silent no-ops, each of which would have shipped a green, successful-looking run that changed
-nothing.**
-1. **Unit 8 — `indexDocument` short-circuits on an unchanged index hash.** `deriveIndexHash` folded
-   only `SECTION_FILTER_VERSION`, which is HTML-only, so a PDF's hash was the bare content hash and no
-   extractor improvement could ever re-extract unchanged bytes. Fixed with `PDF_EXTRACT_VERSION`.
-2. **Unit 9 — `crawlUrls` issues a CONDITIONAL GET.** Publisher bytes have not changed → 304 →
-   `continue` → `onDocument` never fires. Fixed with `ignoreValidators` (off by default).
-3. **Unit 9 again — robots.** lvwo and wbi block PDFs with a generic `/*.pdf$` rule; their curated
-   specs already carry `ignoreRobots` with the reasoning, but the re-index did not inherit it, so
-   **350 of 616 documents** came back `skippedRobots` while the summary still read success. Now
-   inherits `ignoreRobots`/`delayMs`/`maxBytes` from `findCuratedSpec()` — that judgment stays in ONE
-   documented place — and warns loudly on any `skippedRobots > 0`.
+✅ **On the three re-indexed sources (osu-owri, wbi, lvwo):** avg breadcrumbs **1.00 → 3.0/3.6/20.1**;
+avg max breadcrumb **200 → 71/84/108** chars (worst anywhere = 140, the cap, exactly); titles
+**0/606 → 606/606**; dates **~5/606 → 606/606**; mojibake **7 docs → 0**; **0 HTML docs disturbed**
+(exactly what `deriveIndexHash(…, isPdf)` was designed to guarantee).
 
-⚠️ **Only #3 was found by WATCHING a live run** (lvwo/wbi stuck at zero while osu-owri progressed).
-Reading the code found the other two. Both habits were needed.
+🎯 **The masthead is dead.** On "best nutrients to add to Pinot noir fermentation" the 2015 newsletter
+masthead fell **rank 1 → 7**; rank 1 is now real data ("194 samples… alpha-amino acid content"); dates
+went 2/8 → 7/8. All 9 moved queries judged individually; both rejection cases still reject.
 
-⚠️ **Fetch timeouts are expected and the script is RESUMABLE by design.** OWRI serves 1-2 MB PDFs
-against a 30s `TIMEOUT_MS`; a failed fetch never reaches `indexDocument`, so that document keeps its
-old revision and a re-run retries it. **Re-run until the error count stops falling before trusting
-Unit 10's diff.**
+🔻 **MY ROOT CAUSE WAS HALF WRONG, and this is the part to remember.** I recorded the nutrient gap as
+"OWRI PDFs dominate via the 192-char prefix". That explains the MASTHEAD and nothing else. **AWRI is not
+in the TOP 40 for that phrasing — zero AWRI passages in 40.** It was never being crowded out of the last
+slot; it is nowhere near contention. The same doc ranks **#1** on "ideal YAN concentration for a white
+must". The gap is **VOCABULARY** (nutrient vs "Yeast Assimilable Nitrogen"), needs synonym expansion or
+query rewriting, and **does not belong to plan 090**. The eval case's `knownFailing` note now says so.
 
-✅ **ALL THE CODE IS WRITTEN AND GREEN.** `verify:knowledge-base` **21 passed / 0 failed**; full suite
-**3410 passed / 0 failed** (all 304 files); tsc 0, eslint 0 errors.
+⏭️ **NEXT — and the residual junk proves the fix works:** every remaining bad passage in the top-8 (AWRI
+copyright page, Scott Labs handbook masthead) is from a source **not yet re-indexed**. Extend the
+re-index to the other ~798 PDF docs (awri, scott-labs, cornell-grapes, wine-australia, wsu, icvv,
+incavi, mapa, chambre-gironde, laffort, enartis, vt-enology-notes). Then Unit 11 (deferred decisions),
+then AJEV.
 
-🔎 **Unit 5 de-risked then delivered.** The MEDIUM-confidence unknown was whether `unpdf` exposes font
-data. Spiked first: `unpdf@1.6.2 extractTextItems(pdf)` returns `{totalPages, items: item[][]}` with a
-first-class **`fontSize`** per item (plus x/y/fontFamily/hasEOL) — better than reading transform
-matrices. Heading inference now feeds the EXISTING `chunk.ts` breadcrumb machinery, which was never
-broken, only starved.
-
-📊 **Measured across 34 real PDFs from 13 sources: 23 restructured confidently, 11 fell back, 0
-failures.** Breadcrumbs per document before → after: **scott-labs 1 → 437**, incavi 1 → 81,
-laffort 1 → 44, chambre-gironde 1 → 41, wine-australia 1 → 24, icvv 1 → 23. Every breadcrumb now
-under the 140-char cap (sampled averages 25–136, was 192).
-
-⚠️ **A CONFIDENCE GATE is the load-bearing safety property, added after overfitting became visible.**
-Font size tracks structure in typeset reports and NOT in marketing-styled fact sheets, where the size
-signal produced "headings" like `24/12, please let` and `T&C form. If`. Filtering those one at a time
-is whack-a-mole, so the verdict is now made on the RESULT in aggregate (headings ≤20% of lines, ≤50%
-introducing no content) and anything else **falls back wholesale to today's linearized text**. A PDF
-that resists structure ends up exactly where it is now, never worse.
-
-🔻 **Unit 8 caught a silent no-op that would have made Units 4-7 pointless.** `deriveIndexHash` folded
-only `SECTION_FILTER_VERSION`, and section filtering is HTML-only — so a PDF's index hash was the bare
-content hash and `indexDocument` would short-circuit to `unchanged` forever. Same trap plan 084
-documented for HTML, reproduced on the PDF side because the guard did not reach. Now
-`PDF_EXTRACT_VERSION` folds in for `contentType === "pdf"` **and HTML hashes stay byte-identical**.
-👉 **Consequence: the existing monthly recrawl propagates the fix on its own.** Unit 9's script only
-accelerates it.
-
-🔻 **A stated plan premise was FALSIFIED during execution — "retrieval is deterministic, so the diff is
-noise-free" is FALSE.** Two causes, one fixed, one open:
-- **FIXED:** neither retrieval arm had a total `ORDER BY`. `ts_rank` ties are common (measured: 2 tied
-  rows in the top 40 for the leafroll query) and there's no ANN index on `embedding`, so a tie
-  straddling `LIMIT candidateK` changed which candidate survived → propagated through RRF + MMR into
-  what users see. Both arms now carry `, c."id"`. **This was a real production bug, not just an eval one.**
-- **OPEN, cause UNIDENTIFIED:** ~1 query in 18 still wobbled. Ruled out by direct experiment — embeddings
-  are bit-identical (cosine 1.000000000000), both SQL arms identical across 4 in-process runs, corpus
-  unwritten for 2 days. Unit 1b makes the instrument measure its own stability instead: each query is
-  captured `--repeat 3` and trusted only if all repeats agree on the document profile; a disagreeing
-  query is flagged `unstable`, **excluded from diffs, and named** (never silently dropped).
-  ⚠️ Do not trust a single-run diff in Unit 10. The current baseline happens to be 20/20 stable, but a
-  later run still caught one wobble and correctly quarantined it.
-
-🎯 **The nutrient gap is now encoded as a live PENDING assertion**, not prose: the gate prints
-`saw 4 publisher(s): OWRI, Scott Labs, OSU Extension, VT — MISSING: AWRI`. It auto-flips to a hard
-assertion the moment it passes (`knownFailing` → RESOLVED branch). The VA case is pinned as a
-regression guard BEFORE the chunker is touched, because it is the one path already working.
+🐛 **Two small real bugs in the new code, filed not fixed:** running headers that vary slightly per page
+slip past `dropRunningHeaders`; an extensionless filename stem ("VitEnoTechNwsltr-mar2016-Danielle
+Fianl") slipped past `cleanPdfTitle`.
 
 🔎 **ROOT CAUSE: `chunkMarkdown` is heading-driven but `extractPdf` emits headingless text.** So for
 **893 PDF documents / 11,051 chunks (42% of the corpus)** the section breadcrumb degenerates to the
