@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T16:53:03.138Z",
+  "capturedAt": "2026-07-22T19:44:22.317Z",
   "topK": 6,
   "questions": [
     {
@@ -9,18 +9,18 @@
         "AWRI",
         "Scott Laboratories",
         "Virginia Tech Enology",
-        "Virginia Tech Enology",
-        "Oregon Wine Research Institute (OSU)"
+        "AWRI",
+        "Virginia Tech Enology"
       ]
     },
     {
       "question": "How do I get rid of Brett character in a red before bottling?",
       "publishers": [
         "Virginia Tech Enology",
-        "AWRI",
         "WSU Viticulture & Enology",
         "AWRI",
-        "Oregon Wine Research Institute (OSU)",
+        "AWRI",
+        "AWRI",
         "AWRI"
       ]
     },
@@ -30,8 +30,8 @@
         "AWRI",
         "Virginia Tech Enology",
         "AWRI",
-        "Virginia Tech Enology",
         "AWRI",
+        "Virginia Tech Enology",
         "AWRI"
       ]
     },
@@ -39,10 +39,10 @@
       "question": "My ferment is stuck at 5 Brix — what do I do?",
       "publishers": [
         "Scott Laboratories",
+        "Virginia Tech Enology",
         "Scott Laboratories",
-        "Scott Laboratories",
+        "Virginia Tech Enology",
         "AWRI",
-        "Scott Laboratories",
         "Scott Laboratories"
       ]
     },
@@ -51,9 +51,9 @@
       "publishers": [
         "AWRI",
         "Oregon Wine Research Institute (OSU)",
-        "Virginia Tech Enology",
-        "Virginia Tech Enology",
         "AWRI",
+        "Virginia Tech Enology",
+        "Virginia Tech Enology",
         "Virginia Tech Enology"
       ]
     },
@@ -63,7 +63,7 @@
         "AWRI",
         "AWRI",
         "AWRI",
-        "Wine Australia",
+        "AWRI",
         "AWRI",
         "AWRI"
       ]
@@ -94,32 +94,32 @@
       "question": "What TA and pH should I target for a Riesling?",
       "publishers": [
         "WSU Viticulture & Enology",
+        "AWRI",
         "WSU Viticulture & Enology",
         "LVWO Weinsberg (Germany)",
-        "IVES Technical Reviews",
         "WSU Viticulture & Enology",
-        "AWRI"
+        "IVES Technical Reviews"
       ]
     },
     {
       "question": "How do I do a bench trial for fining with bentonite?",
       "publishers": [
         "Oregon Wine Research Institute (OSU)",
-        "Oregon Wine Research Institute (OSU)",
         "AWRI",
-        "ETS Laboratories",
+        "Oregon Wine Research Institute (OSU)",
         "Scott Laboratories",
+        "ETS Laboratories",
         "AWRI"
       ]
     },
     {
       "question": "When is the right time to pick based on numbers?",
       "publishers": [
-        "Oregon Wine Research Institute (OSU)",
+        "AWRI",
         "Oregon Wine Research Institute (OSU)",
         "AWRI",
-        "Virginia Tech Enology",
-        "Cornell Fruit Resources: Grapes",
+        "AWRI",
+        "AWRI",
         "Oregon Wine Research Institute (OSU)"
       ]
     },
@@ -129,7 +129,7 @@
         "Scott Laboratories",
         "Oregon Wine Research Institute (OSU)",
         "AWRI",
-        "AWRI",
+        "Scott Laboratories",
         "Scott Laboratories",
         "Scott Laboratories"
       ]
@@ -137,11 +137,11 @@
     {
       "question": "What is the correct dose of DAP for a nitrogen-deficient must?",
       "publishers": [
-        "AWRI",
-        "Virginia Tech Enology",
         "Scott Laboratories",
+        "AWRI",
+        "Scott Laboratories",
+        "Virginia Tech Enology",
         "OSU Extension (Oregon State University)",
-        "Oregon Wine Research Institute (OSU)",
         "Oregon Wine Research Institute (OSU)"
       ]
     },
@@ -151,9 +151,9 @@
         "AWRI",
         "AWRI",
         "Scott Laboratories",
-        "Virginia Tech Enology",
         "AWRI",
-        "IVES Technical Reviews"
+        "Virginia Tech Enology",
+        "AWRI"
       ]
     },
     {
@@ -163,7 +163,7 @@
         "Cornell Fruit Resources: Grapes",
         "Cornell Fruit Resources: Grapes",
         "AWRI",
-        "AWRI",
+        "Cornell Fruit Resources: Grapes",
         "Oregon Wine Research Institute (OSU)"
       ]
     },
@@ -172,8 +172,8 @@
       "publishers": [
         "Virginia Tech Enology",
         "AWRI",
-        "AWRI",
         "Virginia Tech Enology",
+        "AWRI",
         "Oregon Wine Research Institute (OSU)",
         "Oregon Wine Research Institute (OSU)"
       ]
@@ -182,22 +182,22 @@
       "question": "What do I do about volatile acidity in a barrel?",
       "publishers": [
         "Virginia Tech Enology",
-        "Virginia Tech Enology",
-        "Scott Laboratories",
         "WSU Viticulture & Enology",
-        "ICVV — Instituto de Ciencias de la Vid y del Vino (Spain)",
-        "Virginia Tech Enology"
+        "Scott Laboratories",
+        "Virginia Tech Enology",
+        "AWRI",
+        "WSU Viticulture & Enology"
       ]
     },
     {
       "question": "How long should I age a red on oak?",
       "publishers": [
         "Wine Australia",
-        "IVES Technical Reviews",
         "ICVV — Instituto de Ciencias de la Vid y del Vino (Spain)",
+        "AWRI",
         "Scott Laboratories",
-        "Virginia Tech Enology",
-        "AWRI"
+        "IVES Technical Reviews",
+        "IVES Technical Reviews"
       ]
     },
     {
@@ -206,20 +206,20 @@
         "AWRI",
         "Wine Australia",
         "AWRI",
-        "Oregon Wine Research Institute (OSU)",
-        "Wine Australia",
-        "Oregon Wine Research Institute (OSU)"
+        "AWRI",
+        "AWRI",
+        "WSU Viticulture & Enology"
       ]
     },
     {
       "question": "What is the right time to apply a pre-infection fungicide for downy mildew?",
       "publishers": [
         "Wine Australia",
+        "AWRI",
+        "Wine Australia",
         "Wine Australia",
         "UC IPM (UC Agriculture & Natural Resources)",
-        "Wine Australia",
-        "Wine Australia",
-        "AWRI"
+        "Cornell Fruit Resources: Grapes"
       ]
     }
   ]
