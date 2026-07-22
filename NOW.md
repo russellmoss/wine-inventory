@@ -7,9 +7,33 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 090 — fix KB RAG retrieval quality BEFORE adding any source. PLANNED, awaiting approval.**
-Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md) (Deep, 11 units).
+**PLAN 090 — fix KB RAG retrieval quality BEFORE adding any source. UNITS 1, 1b, 2, 3 DONE (4 commits,
+NOT pushed). Next: Unit 4 (PDF titles) → Unit 5 (PDF heading inference, the risky one).**
+Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md) (Deep, 12 units).
 Started as "should we add AJEV to the KB"; measuring the corpus to answer that found a bigger problem.
+
+✅ **The instrument phase is complete and the baseline is captured.** `npm run kb:snapshot [-- --diff]`
+writes `docs/kb-eval/snapshot.json` (20 queries × top-8). `verify:knowledge-base` **21 passed / 0
+failed**; full suite **3354 passed / 0 failed**; tsc 0, eslint 0.
+
+🔻 **A stated plan premise was FALSIFIED during execution — "retrieval is deterministic, so the diff is
+noise-free" is FALSE.** Two causes, one fixed, one open:
+- **FIXED:** neither retrieval arm had a total `ORDER BY`. `ts_rank` ties are common (measured: 2 tied
+  rows in the top 40 for the leafroll query) and there's no ANN index on `embedding`, so a tie
+  straddling `LIMIT candidateK` changed which candidate survived → propagated through RRF + MMR into
+  what users see. Both arms now carry `, c."id"`. **This was a real production bug, not just an eval one.**
+- **OPEN, cause UNIDENTIFIED:** ~1 query in 18 still wobbled. Ruled out by direct experiment — embeddings
+  are bit-identical (cosine 1.000000000000), both SQL arms identical across 4 in-process runs, corpus
+  unwritten for 2 days. Unit 1b makes the instrument measure its own stability instead: each query is
+  captured `--repeat 3` and trusted only if all repeats agree on the document profile; a disagreeing
+  query is flagged `unstable`, **excluded from diffs, and named** (never silently dropped).
+  ⚠️ Do not trust a single-run diff in Unit 10. The current baseline happens to be 20/20 stable, but a
+  later run still caught one wobble and correctly quarantined it.
+
+🎯 **The nutrient gap is now encoded as a live PENDING assertion**, not prose: the gate prints
+`saw 4 publisher(s): OWRI, Scott Labs, OSU Extension, VT — MISSING: AWRI`. It auto-flips to a hard
+assertion the moment it passes (`knownFailing` → RESOLVED branch). The VA case is pinned as a
+regression guard BEFORE the chunker is touched, because it is the one path already working.
 
 🔎 **ROOT CAUSE: `chunkMarkdown` is heading-driven but `extractPdf` emits headingless text.** So for
 **893 PDF documents / 11,051 chunks (42% of the corpus)** the section breadcrumb degenerates to the
@@ -591,7 +615,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-22 — **PLAN 090 written: fix KB RAG retrieval quality before adding sources.**
+_Last updated: 2026-07-22 — **PLAN 090 UNITS 1/1b/2/3 DONE (4 commits, unpushed): the eval instrument is built and the baseline captured.** Next is Unit 4 (PDF titles) then Unit 5 (PDF heading inference, the MEDIUM-confidence one). Building the instrument found a REAL PRODUCTION BUG: neither retrieval arm had a total ORDER BY, so tied ts_rank rows straddling the LIMIT cut changed which candidate survived and propagated through RRF+MMR into what users see (fixed with a `, c."id"` tiebreaker). It also FALSIFIED a plan premise — retrieval is NOT fully deterministic; ~1 query in 18 wobbled from an unidentified cause, so Unit 1b makes the snapshot measure its own stability and quarantine what it cannot vouch for. Prior: **plan 090 written: fix KB RAG retrieval quality before adding sources.**
 Started as "should we add AJEV to the knowledge base"; measuring the corpus to answer that found
 **42% of it is chunked wrong** (headingless PDFs starve the heading-driven chunker, so the breadcrumb
 becomes a 192-char slab of page one, prepended to every chunk and embedded). Also found: 95% of docs
