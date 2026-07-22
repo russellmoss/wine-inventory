@@ -374,11 +374,28 @@ export function cleanPdfTitle(raw: unknown): string | null {
   // as a breadcrumb to EVERY chunk of the document, so an unbounded /Title from a malformed or hostile
   // PDF would bloat the whole document and its embedding cost. Slicing before the regex work also keeps
   // the string operations below bounded regardless of input size.
-  let t = raw.slice(0, 200).trim();
+  // Plan 090 Unit 4 cut this from 200 to 110, matching MAX_TITLE_CHARS in extract/pdf-structure.
+  let t = raw.slice(0, 110).trim();
+
+  // A FILE PATH is never a title. Observed live: the OWRI "Nitrogen Compounds in Oregon Musts" report
+  // carries /Title = "file://E:\OWAB Research\1996-97\Report3\watso97a.htm", and citation.ts would have
+  // rendered that local path to the user as the document's name.
+  if (/^file:\/\//i.test(t) || /^[a-z]:[\\/]/i.test(t)) return null;
+
   // "Microsoft Word - foo.docx" / "Microsoft PowerPoint - foo.pptx" — the real title follows the dash.
-  t = t.replace(/^Microsoft\s+(?:Word|PowerPoint|Excel)\s*-\s*/i, "").trim();
-  // Drop a trailing authoring-tool file extension left over from the above.
-  t = t.replace(/\.(?:docx?|pptx?|xlsx?|pdf|indd)$/i, "").trim();
+  t = t.replace(/^Microsoft\s+(?:Word|PowerPoint|Excel|Publisher)\s*-\s*/i, "").trim();
+
+  // Drop a trailing authoring-tool file extension. `.pub` (Publisher), `.htm`/`.html` and `.qxd`
+  // (QuarkXPress) were added in plan 090 after the OWRI newsletter shipped a /Title of
+  // "VitEnoTechNwsltr-June2015.pub".
+  const hadExtension = /\.(?:docx?|pptx?|xlsx?|pdf|indd|pub|html?|qxd|rtf|odt|wpd|tex)$/i.test(t);
+  t = t.replace(/\.(?:docx?|pptx?|xlsx?|pdf|indd|pub|html?|qxd|rtf|odt|wpd|tex)$/i, "").trim();
+
+  // A stem with no whitespace left over from an extension is a FILENAME, not a title
+  // ("VitEnoTechNwsltr-June2015"). Reject so the caller falls back to typography, which reads the real
+  // title off the page. "Microsoft Word - Grape Disease Control 2017.docx" keeps its spaces and passes.
+  if (hadExtension && !/\s/.test(t)) return null;
+
   if (t.length < 4) return null;
   if (/^(?:PowerPoint|Word|Excel)\s+Presentation$/i.test(t)) return null;
   if (/^untitled$/i.test(t)) return null;

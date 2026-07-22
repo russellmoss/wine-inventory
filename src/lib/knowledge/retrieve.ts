@@ -85,6 +85,19 @@ export async function retrieveKnowledge(opts: {
   const qlit = `[${qvec.join(",")}]`;
   const lexQuery = expandQueryTerms(opts.query);
 
+  // Plan 090 Unit 1 — both arms carry a `, c."id"` TIEBREAKER, and it is load-bearing rather than
+  // cosmetic. Neither ORDER BY was total: `ts_rank` in particular produces coarse, heavily-tied scores
+  // (measured: 2 tied rows inside the top 40 for the leafroll/mealybug eval query), and there is no ANN
+  // index on `embedding`, so the dense arm is a sequential scan whose row order among equal distances is
+  // whatever the plan happens to produce. With `LIMIT ${candidateK}` a tie straddling the cut means the
+  // surviving candidate varies between executions, and that propagates through RRF and MMR into the
+  // final ranking.
+  //
+  // Measured before the fix: 2 of 5 identical snapshot runs showed a spurious single-query movement, a
+  // DIFFERENT query each time. That noise would have shown up in the plan-090 before/after artifact as a
+  // retrieval change nobody made. `id` is unique and stable within a revision, so this only decides
+  // among rows that already scored equal — it changes no ranking that was actually determined.
+  //
   // Dense arm: cosine nearest neighbors.
   const dense = await prisma.$queryRaw<Row[]>`
     SELECT c."id" AS "chunkId", c."documentId", c."sectionPath", c."text",
@@ -96,7 +109,7 @@ export async function retrieveKnowledge(opts: {
       AND d."status" = 'active' AND c."revision" = d."activeRevision"
       AND c."embedding" IS NOT NULL
       AND c."embeddingModel" = ${KB_EMBEDDING_MODEL} AND c."embeddingDim" = ${KB_EMBEDDING_DIM}
-    ORDER BY c."embedding" <=> ${qlit}::vector
+    ORDER BY c."embedding" <=> ${qlit}::vector, c."id"
     LIMIT ${candidateK}`;
 
   // Lexical arm: full-text over the generated tsvector (with synonym expansion for acronyms/units).
@@ -110,7 +123,7 @@ export async function retrieveKnowledge(opts: {
       AND d."status" = 'active' AND c."revision" = d."activeRevision"
       AND c."embedding" IS NOT NULL
       AND c."search_vector" @@ websearch_to_tsquery('english', ${lexQuery})
-    ORDER BY ts_rank(c."search_vector", websearch_to_tsquery('english', ${lexQuery})) DESC
+    ORDER BY ts_rank(c."search_vector", websearch_to_tsquery('english', ${lexQuery})) DESC, c."id"
     LIMIT ${candidateK}`;
 
   const byId = new Map<string, Row>();

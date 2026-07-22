@@ -7,155 +7,119 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**IVES Technical Reviews is LIVE in the corpus — 209 docs / 3,316 chunks, default-ON.
-7 commits on `claude/kb-paraphrase-citation-copyright-355aa9`, UNPUSHED, no PR.**
+**PLAN 090 — UNITS 1-10 DONE (18 commits, NOT pushed). RE-INDEX COMPLETE (606 docs), DIFF JUDGED.**
+Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md).
+Verdict: [docs/kb-eval/DIFF-090.md](docs/kb-eval/DIFF-090.md). `verify:knowledge-base` **21/0**.
 
-✅ **Crawled + verified + measured.** 209/209 dated (**100%** — corpus-wide is ~31%, so it is the
-best-dated source in the registry), 209/209 titled, all chunks embedded, 2019–2026. Corpus 3,320
-active docs. Enabled for `org_demo_winery` AND `org_bhutan_wine_co`.
+## 🔭 Also in flight
 
-🔎 **Default-on is the MEASURED position.** Staged: shipped `false` → crawled → enabled for Demo alone
-→ `verify:kb-register` vs the pre-IVES baseline → **4/120 slots moved (3%, cap 25%)**, no question
-losing more than 2 of 6, **17 of 20 unchanged**. It took slots on oak ageing, oxidation at pressing,
-Riesling acid targets. Integration, not crowding-out. Baseline then RE-CAPTURED so this accepted state
-is the new reference.
+**IVES Technical Reviews — LIVE and MERGED (#465).** 209 docs / 3,316 chunks, default-ON for both
+tenants, **209/209 dated (100%)** vs ~31% corpus-wide. Default-on is the MEASURED position: staged
+`false` → crawled → enabled for Demo alone → `verify:kb-register` vs the pre-IVES baseline →
+**4/120 slots moved (3%, cap 25%)**, 17 of 20 questions untouched. Baseline re-captured so the
+accepted state is the new reference.
 
-⚠️ **Two bugs the smoke test caught that the counters hid** (`5 docs / 70 chunks / 0 errors` while
-writing wrong metadata — read the rows back, never trust the tally):
-- `indexDocument` writes `publishedAt`/`canonicalTitle` **unconditionally, including null**
-  (`buildDocumentMetadata` — deliberate, so metadata matches the content it came from). IVES HTML
-  declares no date, so all 209 would have been UNDATED. Fixed by re-applying the OAI feed's metadata
-  AFTER indexing (runs on the unchanged path too, so a re-run repairs old rows).
-- An OAI record carries one `<dc:title>` **per language** — the same article translated, NOT separate
-  articles. First-match filed English articles under German titles. `pickEnglishTitle` prefers `en*`.
-  ⚠️ This also CORRECTS an earlier misreading: the 209 records are 209 distinct articles, so the
-  "translations will waste retrieval slots" worry never applied.
+⛔ **The licensing ADR (0009) is DECLINED — Russell, 2026-07-22. Do NOT re-propose it.** Facts live in
+each `KnowledgeSource.license`. IVES is the ONLY source with a real CC BY grant; every other rests on
+an absence of objection. VT asserts copyright with no licence (accepted risk).
 
-⚠️ **Known, filed not fixed:** chunk breadcrumbs still carry the polluted HTML title
-(`… | IVES Technical Reviews, vine and wine > …`) because chunking runs inside `indexDocument` before
-the correction. Generic behaviour across all 24 sources, not IVES-specific — **filed in `TODOS.md`**
-(fixing the code does NOT fix the corpus; the breadcrumb is baked into stored chunk text and its
-vector, so it needs `reset:knowledge-source` + re-crawl per source).
+⚠️ **Two bugs their smoke test caught while reporting `5 docs / 70 chunks / 0 errors` — read the rows
+back, never trust the tally:** `indexDocument` writes `publishedAt`/`canonicalTitle` **unconditionally
+including null** (so all 209 would have been undated — fixed by re-applying OAI metadata AFTER
+indexing), and an OAI record carries one `<dc:title>` **per language**, so first-match filed English
+articles under German titles.
 
-⛔ **The licensing ADR (0009) is DECLINED — Russell, 2026-07-22. Do not re-propose it.** The
-underlying facts still stand and are recorded in `KnowledgeSource.license` per source: VT asserts
-copyright with no licence granted (accepted risk — "they aren't litigious", and
-`reset:knowledge-source` makes a takedown a minutes-long job), and three robots/`ai-train` signals
-were read as not covering reference-use RAG. IVES is the contrast case: the one source with a real
-CC BY grant.
+🔗 **Their filed-not-fixed breadcrumb issue is the SAME defect plan 090 fixes**, and their note that
+"fixing the code does NOT fix the corpus — it needs a re-crawl per source" is exactly right. Plan 090
+supplies that re-crawl (`npm run reindex:knowledge`) and has now run it across **all 1,378 PDF
+documents**. IVES itself is HTML, so it is NOT covered by that pass and still carries the polluted
+title — it needs the same treatment.
 
-Evaluating **IVES Technical Reviews** (`ives-technicalreviews.eu`) as a source. It is **CC BY** —
-confirmed on their own Open Access Policy page — which makes it the ONLY source in the corpus with an
-actual licence grant rather than an absence of objection, and the only one immune to the
-commercial-scope question. **Not added yet, deliberately.**
+✅ **On the three re-indexed sources (osu-owri, wbi, lvwo):** avg breadcrumbs **1.00 → 3.0/3.6/20.1**;
+avg max breadcrumb **200 → 71/84/108** chars (worst anywhere = 140, the cap, exactly); titles
+**0/606 → 606/606**; dates **~5/606 → 606/606**; mojibake **7 docs → 0**; **0 HTML docs disturbed**
+(exactly what `deriveIndexHash(…, isPdf)` was designed to guarantee).
 
-Two things built first:
-- **`6d4ff1f3` TLS** — their server sends only the leaf cert (chain depth 0, no intermediate).
-  Browsers recover via AIA; **Node does not**, so every crawler fetch died
-  `UNABLE_TO_VERIFY_LEAF_SIGNATURE` against a host that loads fine by hand. `crawl/tls.ts` now supplies
-  Node's roots PLUS omitted intermediates via an undici dispatcher. NOT a relaxation — the cert is
-  signed by a root already trusted. `undici` promoted from a phantom (transitive) dep to a direct one.
-- **`7f3ce919` + `24243552` displacement gate** — `npm run verify:kb-register`.
+🎯 **The masthead is dead.** On "best nutrients to add to Pinot noir fermentation" the 2015 newsletter
+masthead fell **rank 1 → 7**; rank 1 is now real data ("194 samples… alpha-amino acid content"); dates
+went 2/8 → 7/8. All 9 moved queries judged individually; both rejection cases still reject.
 
-🔎 **THE BASELINE FOUND TWO THINGS THAT CHANGE THE LICENSING CALCULUS** (120 slots, 20 practical
-questions, live corpus):
-- **Virginia Tech = 18/120 slots (15%), the #2 source** — and it is the one asserting copyright with
-  **no licence granted**. The weakest licensing position is also load-bearing. Dropping it is
-  technically cheap (`reset:knowledge-source`) but functionally expensive.
-- **Scott Laboratories — a tier-2 VENDOR the config itself calls product-biased — holds 12% overall
-  and 5 OF 6 SLOTS on "my ferment is stuck at 5 Brix."** A stuck ferment is an emergency, and it is
-  answered almost entirely by a company that sells the remedy. **This is true TODAY, before IVES.**
-  I had earlier called the vendor PDFs "least valuable, drop them" — wrong: they are HIGH-VOLUME,
-  which is worse.
+🔻 **MY ROOT CAUSE WAS HALF WRONG, and this is the part to remember.** I recorded the nutrient gap as
+"OWRI PDFs dominate via the 192-char prefix". That explains the MASTHEAD and nothing else. **AWRI is not
+in the TOP 40 for that phrasing — zero AWRI passages in 40.** It was never being crowded out of the last
+slot; it is nowhere near contention. The same doc ranks **#1** on "ideal YAN concentration for a white
+must". The gap is **VOCABULARY** (nutrient vs "Yeast Assimilable Nitrogen"), needs synonym expansion or
+query rewriting, and **does not belong to plan 090**. The eval case's `knownFailing` note now says so.
 
-⚠️ **`verify:knowledge-base` passes on that corpus.** It scores recall (one expected doc anywhere in
-top-k) and never inspects the other slots — so a vendor holding 5/6 on a stuck ferment is invisible
-to it. That blindness is why the new gate exists.
+🔄 **IN FLIGHT: re-index of the remaining 790 PDF docs** (awri 424, wine-australia 228, cornell 64,
+wsu 38, chambre-gironde 17, vt-enology 7, icvv 5, incavi/scott-labs 2, mapa/enartis/laffort 1).
+`--pdf-only` (HTML index hashes are unchanged by plan 090, so re-fetching them can only reach
+"unchanged" after a wasted round trip). Resume with the SAME command — `--stale-before` makes it cheap.
 
-_(Prior objectives, both MERGED + LIVE: assistant measurement-history read tool — PR #463, squash
-`88577fd7`; KB citation tombstone excerpt cap — PR #462, squash `8f6099b5`. Both in Done recently.)_
+⚠️ **A PARALLEL SESSION IS WORKING THE SAME SUBSYSTEM AND THE SAME PRODUCTION CORPUS.**
+Branch `claude/kb-paraphrase-citation-copyright-355aa9` shipped **IVES Technical Reviews live and
+default-on** (209 docs / 3,316 chunks, 100% dated, first seen 16:27 on 2026-07-22). 8 commits, unpushed.
+- ✅ My Unit 10 verdict is UNAFFECTED — IVES appears **zero** times in `snapshot.json`, so it never
+  reached top-8 on any of the 20 eval queries. That was luck, not design.
+- 🔻 **THE REAL COUPLING IS TWO BASELINE FILES, NOT CODE.** Source overlap is only `NOW.md` +
+  `package.json`. But they maintain `docs/kb-register-baseline.json` and I maintain
+  `docs/kb-eval/snapshot.json`, and BOTH are stale the moment the 790-run lands. Re-capture **both
+  together, after the corpus stops moving** — re-capturing one leaves the other reporting permanent
+  drift, which is exactly how a gate teaches people to ignore it.
+- 🔎 **The two instruments are COMPLEMENTARY, keep both.** Theirs (`verify:kb-register`) is a CI GATE on
+  publisher-slot occupancy with a hard 25% cap — deliberately coarse because "which publisher won a slot
+  is an objective fact". Mine (`kb:snapshot`) is an EVIDENCE artifact at document/rank granularity,
+  deliberately NOT gated because a movement is not automatically a regression. We independently found
+  the SAME defect in `verify-knowledge-base.ts` (it scores recall, never inspects the other slots).
+  👉 **Durable fix: ONE `npm run kb:baseline` that captures both**, or the forgotten one rots.
+- 📥 **Handoff owed to me:** their filed-not-fixed "chunk breadcrumbs carry the polluted HTML title" is
+  MY layer. My 140-char cap bounds it but does not fix a wrong-but-short title — the real fix is
+  ordering: their metadata correction must land BEFORE chunking inside `indexDocument`.
+- **Recommended order:** push/open their PR now → let the 790-run finish → re-capture BOTH baselines in
+  one commit → merge both → add `kb:baseline`.
 
-## 🗂️ Landed while this was in flight
+⏭️ **NEXT — and the residual junk proves the fix works:** every remaining bad passage in the top-8 (AWRI
+copyright page, Scott Labs handbook masthead) is from a source **not yet re-indexed**. Extend the
+re-index to the other ~798 PDF docs (awri, scott-labs, cornell-grapes, wine-australia, wsu, icvv,
+incavi, mapa, chambre-gironde, laffort, enartis, vt-enology-notes). Then Unit 11 (deferred decisions),
+then AJEV.
 
-**The assistant can now READ a tank/barrel/lot's chemistry history, and rank vessels by an analyte.
-MERGED + LIVE** (PR #463, squash `88577fd7`, branch pruned).
+🐛 **Two small real bugs in the new code, filed not fixed:** running headers that vary slightly per page
+slip past `dropRunningHeaders`; an extensionless filename stem ("VitEnoTechNwsltr-mar2016-Danielle
+Fianl") slipped past `cleanPdfTitle`.
 
-From the in-app bug report `cmrw8s5ct…` (Demo): the assistant could log a chem panel and read
-current cellar contents, but had **no tool to read a reading back**, so "what's tank T5's Brix"
-dead-ended in "open the lot page". It reached for `query_brix` — the **vineyard-block ripeness**
-reading on grapes still on the vine — found nothing for a tank, and gave up. The auto-fix agent had
-already failed this one ("could not produce a safe fix"): adding a tool is outside its fence.
-**Missing seam, not missing data** — `listVesselAnalyses()` already renders this on `/bulk`.
+🔎 **ROOT CAUSE: `chunkMarkdown` is heading-driven but `extractPdf` emits headingless text.** So for
+**893 PDF documents / 11,051 chunks (42% of the corpus)** the section breadcrumb degenerates to the
+first ~192 chars of page one — `chunk.ts:36-90` builds it from a heading stack that stays empty, and
+`chunk.ts:130` prepends it into `text`, which is embedded AND backs the GENERATED `search_vector`. A
+query matching that slab matches **every chunk of that document equally**, on the prefix alone.
 
-`query_measurements` reads `AnalysisPanel`/`AnalysisReading` for a lot, a vessel, a vessel range, or
-every vessel of a type. Russell's scope call, and it's the load-bearing one: **never average across
-vessels** — a mean pH over 40 barrels describes no wine anybody can taste. Cross-vessel questions
-are ENUMERATION ("pH of barrels 1 through 5" → one row each) or a RANKING sort ("closest to dry" =
-lowest latest Brix; a finished red parks *below* zero, so ascending is correct).
+Measured (Neon, 2026-07-22): corpus **26,253 chunks / 3,120 docs / 22 sources**. PDFs avg
+`sectionPath` **192 chars** vs HTML **96**. `publishedAt` present on **14% of PDFs**;
+`canonicalTitle` NULL on **95% of ALL docs** → `citation.ts` renders a bare publisher name with no
+document title. Ligature mojibake (`NewsleƩer`) is real but small: **113 chunks / 7 docs**.
 
-⚠️ **Two ways a ranking can lie, both handled.** (1) It compares latest readings taken on DIFFERENT
-days — T5 measured today at 2.1 °Bx beats T9 measured four days ago at 6 °Bx in the sort, but T9 has
-had four days to ferment. `stalenessVerdict` warns when the spread exceeds 2 days and the tool
-description tells the model to relay it. **Not hypothetical: the live sweep hit an 18.4-day spread
-across Demo's tanks and warned.** (2) Vessels with no reading come back in `vesselsWithNoReadings`,
-never dropped, so "lowest free SO₂ is B-17" can't be stated off a partial set.
+🔻 **Three of my own estimates were wrong, and measurement caught each.** The suspected VA coverage
+hole does not exist (AWRI's VA page is excellent — enzymatic / Cash-still / HPLC as separate
+passages, and it's HTML so its breadcrumbs survive). Ligature damage was ~6% of my guess. And
+`mmr.ts` is NOT buggy — the "duplicate chunks" were the shared 192-char prefix. **Do not
+re-investigate MMR.**
 
-Gates: **25 new unit tests** (pure, DB-free), **full suite 3377/0**, tsc + eslint clean, 6 golden
-eval cases, and `query_measurements` added to `REQUIRED_READ_TOOL_NAMES` so D26/H8 governs it.
-Verified **read-only** against Demo Winery across 10 scenarios (both rank directions, range
-enumeration, lot history, 4 refusal paths). No UI surface, so nothing to browser-verify.
+⚠️ **The eval suite is green through all of this** — `verify-knowledge-base.ts` only asserts "expected
+doc in top-k + facts present", so it sees 3 of 8 slots. On the *passing* YAN control case, 4 of 8
+returned passages are junk (a copyright page, a website announcement, an off-topic VT passage).
+**Unit 1 is the ranked-snapshot instrument; nothing else may land before the baseline is captured.**
 
-_(#463 detail preserved here rather than dropped in the merge — it landed on main while the KB source
-vetting below was in flight.)_
+⛔ **AJEV import is DEFERRED, not dropped** — research is preserved in the plan's Scope Boundaries
+(full OA since 2025-01-01 under CC BY 4.0, stock-Drupal robots with `Crawl-delay: 7`, ~150 OA papers
+growing ~55/yr, pre-2025 paywalled). Do not re-research it. Rejected in passing: an AI relevance
+gate (deletes the explanatory layer; false negatives are invisible) and AI-written summary chunks
+(`topK=6` is a fixed slot budget, so "in addition to" is false in retrieval, and it breaks the
+citation contract).
 
-Came out of Russell's question — *"paraphrase with citation is how peer-reviewed articles get
-written, so it shouldn't be a copyright problem, right?"* Right about the output, and the assistant
-side is already the strong shape (`search-knowledge-base.ts` answers only from retrieved passages,
-cites each fact, quotes only NUMBERS verbatim — and facts aren't copyrightable). **But the analogy
-hides the real distinction: citation cures PLAGIARISM, an academic norm; it is not a licence and not
-a defence to infringement.** Peer-reviewed articles are safe because facts aren't protected, quotes
-are short, and the author obtained the source lawfully.
-
-Storing full text to power the index is fine — that's the Google-Books / HathiTrust shape, and it's
-defensible *because* what we surface is a snippet. **One code path inverted it:**
-`renderTombstoneHtml` reassembled the chunks and served **up to 20,000 characters verbatim**, firing
-exactly when the publisher had taken the page down. Now `buildTombstoneExcerpt` (pure, exported,
-tested) caps at **600 chars** at a word boundary, the DB read is `take: 3`, truncation is disclosed,
-the page is `noindex, noarchive`, and the notice warns that a withdrawal may be a **RETRACTION** —
-a safety point, not just a legal one: a retracted paper served in full from cache invites someone to
-act on conclusions the publisher pulled.
-
-Gates: `vitest test/knowledge-citation.test.ts` **10/10**, `tsc --noEmit` clean, eslint clean.
-⚠️ **Not browser-verified** — the tombstone only renders for a *withdrawn* document, and this
-worktree has no `.env`. Rendering is fully covered by the pure tests; nobody has looked at the page.
-
-_(Ticket `cmrvhj5b8…` voice-interruption: SHIPPED + CLOSED, see Done recently. **Still waiting on
-Russell to re-test on his phone** — if it still cuts him off, turn `hangoverGrowthRatio` /
-`maxHangoverMs` up, both single constants with tests around them.)_
-
-## 🗂️ Last run  (was the objective)
-
-**BACKLOG WAS CLEAR — 0 active feedback items, 0 open PRs.** A full `/bug-triage` goalie run (live,
-all sweeps) on 2026-07-21 left the queue empty and honest; the voice ticket above arrived after it.
-
-Box score: backlog 26 → **0 active** (25 already closed, 1 reconciled to RESOLVED — its fix had
-shipped in #391 and nobody wrote the status back). 1 open PR triaged + merged (#443). 18 open issues
-swept → **10 kept**: 2 stale `feedback: plan` issues auto-closed on DB truth (#374, #373), 5 Sentry
-issues closed as dev-noise (#446–#450), 1 real bug found and fixed (#324). **ERP-standards pass: 0
-conflicts, 0 cautions.**
-
-🔎 **The finding worth keeping: 5 of the 6 open Sentry issues were ONE dev session, not five bugs.**
-All five were `.claude/worktrees/vigorous-nash-2fe4be` losing its Neon pooler connection, captured at
-five different query sites within ~5 minutes. Dev-worktree noise is the dominant false positive in
-this repo's Sentry feed, and it now gets dropped in `beforeSend` (#456) rather than triaged by hand
-every run. ⚠️ **The tell can sit DEEP in the stack while the top frames look production-clean** —
-judging from the title or top frame is what mislabelled a stale error as a real bug in #237, so the
-filter scans every frame plus culprit/transaction/message.
-
-⚠️ **A Sentry-side inbound filter is still worth adding** (console change, Russell's). #456 drops the
-events in the SDK, so they are already sent and counted against quota before being discarded.
-
-_(Plan 089 — inline voice in the dock — MERGED as #451; see Done recently.)_
+_(Backlog was cleared 2026-07-21 by a full `/bug-triage` run: 26 → 0 active, 18 issues → 10 kept,
+one real bug found and fixed (#324) + a `beforeSend` dev-noise filter (#456). ⚠️ A **Sentry-side
+inbound filter** is still Russell's to add — #456 drops events only after they're sent and counted.)_
 
 ⛔ **MSU (`msu-grapes`) stays DORMANT — do not retry.** Imperva refuses this crawler from every
 network available. `npm run verify:msu` is the probe: if it ever reports **live PASS**, un-dormant
@@ -743,7 +707,31 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-22 — **the assistant can now read a vessel's/lot's operation history back**
+_Last updated: 2026-07-22 — **PLAN 090 UNITS 1-9 DONE (12 commits, unpushed); the PRODUCTION RE-INDEX
+IS RUNNING** (osu-owri + wbi + lvwo, 616 docs, ~4h at observed rate). Unit 10 (the before/after diff)
+is blocked on it finishing. **The lesson of this plan is that the code fix was the easy part** — making
+it reach the data took THREE separate silent no-ops, each of which would have produced a green,
+successful-looking run that changed nothing: the index-hash short-circuit (Unit 8), the conditional-GET
+304 (Unit 9), and robots refusing 350 of 616 documents because the re-index did not inherit the curated
+`ignoreRobots` (Unit 9). Only the third was found by WATCHING a live run. Verified on production so far:
+titles and dates now populate, breadcrumbs multiply where structure exists, the 140-char cap holds, zero
+mojibake, and **0 HTML documents were disturbed** (exactly the targeted blast radius Unit 8 claimed).
+Prior: **PLAN 090 UNITS 1/1b/2/3/4/5/6/7/8 DONE (8 commits, unpushed). All the
+code is written and green; the only thing left is the PRODUCTION RE-INDEX (Unit 9), which needs a
+go-ahead.** Measured across 34 real PDFs from 13 sources: 23 restructured, 11 safely fell back, 0
+failures — scott-labs went from ONE breadcrumb to 437. Two things worth remembering: a CONFIDENCE GATE
+was added after per-document heuristic tuning started overfitting, so a PDF that resists structure
+falls back to exactly today's output rather than gaining junk breadcrumbs; and Unit 8 caught a silent
+no-op that would have made the whole fix pointless (PDF index hashes carried no version, so unchanged
+bytes could never re-extract). Prior: **PLAN 090 UNITS 1/1b/2/3 DONE (4 commits, unpushed): the eval instrument is built and the baseline captured.** Next is Unit 4 (PDF titles) then Unit 5 (PDF heading inference, the MEDIUM-confidence one). Building the instrument found a REAL PRODUCTION BUG: neither retrieval arm had a total ORDER BY, so tied ts_rank rows straddling the LIMIT cut changed which candidate survived and propagated through RRF+MMR into what users see (fixed with a `, c."id"` tiebreaker). It also FALSIFIED a plan premise — retrieval is NOT fully deterministic; ~1 query in 18 wobbled from an unidentified cause, so Unit 1b makes the snapshot measure its own stability and quarantine what it cannot vouch for. Prior: **plan 090 written: fix KB RAG retrieval quality before adding sources.**
+Started as "should we add AJEV to the knowledge base"; measuring the corpus to answer that found
+**42% of it is chunked wrong** (headingless PDFs starve the heading-driven chunker, so the breadcrumb
+becomes a 192-char slab of page one, prepended to every chunk and embedded). Also found: 95% of docs
+have no `canonicalTitle`, so citations name a publisher but not a document. The eval suite is green
+throughout because it only sees 3 of 8 slots — Unit 1 fixes the instrument before anything else moves.
+AJEV deferred with its research preserved. Prior: **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
+Prior: **the assistant can finally read a tank's Brix back** (bug report
+Prior: **the assistant can now read a vessel's/lot's operation history back**
 (feedback `cmrwdgt2u…`) — the ledger counterpart to the chemistry read below. `query_operations`
 reuses the vessel-History and lot-timeline loaders verbatim, defaults a vessel question to the
 current fill, and sweeps a whole vessel type for "which tanks are overdue for a punchdown". The

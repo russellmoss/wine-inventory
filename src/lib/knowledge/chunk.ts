@@ -16,6 +16,29 @@ const TARGET_TOKENS = 512;
 const MAX_TOKENS = 700; // a single block bigger than this is force-split (prose) or kept whole (table)
 const OVERLAP_TOKENS = 75; // ~15%
 
+/**
+ * Plan 090 Unit 4 — hard ceiling on a breadcrumb, enforced HERE rather than only at the extractors.
+ *
+ * The breadcrumb is prepended into every chunk's `text` (see `emit` below), which is embedded AND backs
+ * the GENERATED `search_vector`. When extractPdf fed this function headingless text, the stack never
+ * pushed and the breadcrumb collapsed to `rootTitle` — 192 characters of page one on average, repeated
+ * across every chunk of the document, so a query matching that slab matched all of them equally.
+ *
+ * extract/pdf.ts now caps its own title, but a cap that lives only in one caller is one new extractor
+ * away from regressing. 140 sits above the 96-character average of a real HTML breadcrumb in this
+ * corpus and well below the 192 that caused the problem. Truncation is on a word boundary with an
+ * ellipsis so a clipped breadcrumb reads as clipped rather than as a mangled sentence.
+ */
+const MAX_BREADCRUMB_CHARS = 140;
+
+export function capBreadcrumb(crumb: string): string {
+  const s = crumb.trim().replace(/\s+/g, " ");
+  if (s.length <= MAX_BREADCRUMB_CHARS) return s;
+  const cut = s.slice(0, MAX_BREADCRUMB_CHARS);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > MAX_BREADCRUMB_CHARS * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
 export function estimateTokens(s: string): number {
   return Math.ceil(s.length / 4);
 }
@@ -37,7 +60,7 @@ function parseSegments(markdown: string, rootTitle: string): Segment[] {
   const lines = markdown.split("\n");
   const stack: { level: number; text: string }[] = [];
   const breadcrumb = () =>
-    [rootTitle.trim(), ...stack.map((h) => h.text)].filter(Boolean).join(" > ");
+    capBreadcrumb([rootTitle.trim(), ...stack.map((h) => h.text)].filter(Boolean).join(" > "));
 
   const segments: Segment[] = [];
   let blocks: Block[] = [];
