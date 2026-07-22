@@ -15,6 +15,21 @@ export type AudioPlayback = {
   levelRef: React.RefObject<number>;
   /** Create/resume the output AudioContext on a user gesture (autoplay policy). */
   ensureContext: () => Promise<void>;
+  /**
+   * The live output context, or null before `ensureContext`.
+   *
+   * Exposed so the earcons can play through the SAME already-unlocked context. On
+   * mobile an HTMLAudioElement must be `.play()`-ed inside a user gesture to ever
+   * become playable, and every earcon fires long after the tap (behind the
+   * getUserMedia prompt, or on a later state change) — so they were silently
+   * rejected with NotAllowedError. Web Audio has no such per-element unlock once
+   * the context is resumed, which is exactly why TTS worked and the earcons did not.
+   *
+   * Callers MUST connect to `ctx.destination` directly and never to the analyser:
+   * the analyser drives the orb and the echo-adjusted barge-in bar, and an earcon
+   * has no business in either.
+   */
+  getContext: () => AudioContext | null;
   /** Queue a clip for playback. The promise should already be in flight. */
   enqueue: (clip: Promise<ArrayBuffer>) => void;
   /** Stop everything immediately and clear the queue (barge-in / close). */
@@ -54,6 +69,8 @@ export function useAudioPlayback(onDrained?: () => void): AudioPlayback {
     }
     if (ctxRef.current.state === "suspended") await ctxRef.current.resume();
   }, []);
+
+  const getContext = React.useCallback(() => ctxRef.current, []);
 
   const startMeter = React.useCallback(() => {
     if (rafRef.current !== null) return;
@@ -153,7 +170,7 @@ export function useAudioPlayback(onDrained?: () => void): AudioPlayback {
   // Stable identity (see useMicCapture) so useVoiceSession's start/stop don't
   // change every render and retrigger the overlay's mount effect.
   return React.useMemo(
-    () => ({ levelRef, ensureContext, enqueue, stopAll, isActiveRef }),
-    [levelRef, ensureContext, enqueue, stopAll, isActiveRef],
+    () => ({ levelRef, ensureContext, getContext, enqueue, stopAll, isActiveRef }),
+    [levelRef, ensureContext, getContext, enqueue, stopAll, isActiveRef],
   );
 }
