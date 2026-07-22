@@ -177,8 +177,10 @@ TEMPLATE — copy this block for each new decision:
 - **Tripwire:** the `(vesselId, vesselReadingGroupId)` index dropped; a vessel-scoped reading query NOT using
   `coalesce(vesselReadingGroupId, id)`; resident-lot counts per vessel trending high; a lot-scoped query
   applying the vessel dedup.
-- **Status:** 🟢 (additive nullable column + two indexes; winery-scale co-ferment counts; guarded by the
-  `(tenantId, vesselReadingGroupId, lotId)` unique + `chemistry-fanout` test).
+- **Status:** ⚪ **SUPERSEDED by plan 088 / LEDGER-12 (2026-07-22).** A vessel now holds one lot, so nothing
+  fans a reading out any more — the write path (`planVesselReadingFanout`) is gone. Only the read-side collapse
+  of the handful of LEGACY fanned-out groups remains (`dedupeByPhysicalReading`); the row is kept for history.
+  The `(vesselId, vesselReadingGroupId)` index + per-tenant unique stay to render those legacy readings once.
 
 ### All-at-once multi-vessel maintenance completion is one Serializable tx over the member set (plan 061)
 - **Choice:** a consolidated maintenance task (`plannedPayload.groupActivity`, "clean B1–B60") completes in
@@ -240,6 +242,24 @@ TEMPLATE — copy this block for each new decision:
   `src/lib/knowledge/sections/index.ts` MUST be bumped whenever a drop pattern changes — it folds into
   `indexedContentHash`, and without a bump the raw bytes are unchanged so every re-crawl short-circuits
   to `skipped:"unchanged"` and the new rules never take effect, silently.
+
+### One-lot-per-vessel: every combine loads resident+incoming domain state on the write path (plan 088)
+- **Choice:** each combining op (rack/crush/press/saignée/topping/blend) resolves lot identity through
+  `decideCombineRoute`, fed by `loadCombineState` (`src/lib/ledger/combine-state.ts`). That load runs INSIDE the
+  SERIALIZABLE `runLedgerWrite` and, per lot involved, derives tax class (`deriveTaxClass` + the tax-ABV
+  resolver) and **point-in-time bond** (`deriveBond`, one call per lot). Separately, `write.ts` folds
+  `VesselComponent` composition through lineage via `composeLeaves` on every relevant write.
+- **Fine until:** a combine touches a handful of lots (the norm — a rack is 1→1, a blend is a few draws), and
+  lineage stays shallow so `composeLeaves` walks few ancestors.
+- **What breaks at scale:** a combine with many incoming lots, or a lot with deep/wide lineage, multiplies the
+  per-lot `deriveBond`/tax-ABV derivations and the `composeLeaves` walk — all on the SERIALIZABLE write path, so
+  it adds lock-hold time (ties to the D18/H2 retry pressure), not just read latency. `deriveBond` is one query
+  per lot (no batch), so N incoming lots = N bond derivations.
+- **Tripwire:** a combine/blend whose `runLedgerWrite` approaches `LEDGER_TX_TIMEOUT_MS`; rising `[write-retry]`
+  volume concentrated on combine ops; composition reads slow on deep-lineage blend lots. **Escape (not built):**
+  batch the per-lot bond/tax-ABV derivation; memoize `composeLeaves` per lineage.
+- **Status:** 🟢 (human-paced combines over shallow lineage today; guarded by `verify:one-lot-per-vessel` +
+  `verify:vessel-composition`; see [[decisions/0008-one-lot-per-vessel]]).
 
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

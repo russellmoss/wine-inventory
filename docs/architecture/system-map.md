@@ -115,7 +115,7 @@ A natural-language assistant over the whole app, powered by `@anthropic-ai/sdk`.
 - `run.ts` — the tool-use loop; `tools/` + `registry.ts` — the actions it can take; `scope.ts` — permissions.
 - **Writes require explicit confirmation:** `confirm.ts` + `commit.ts` (signed-token / single-use nonce).
 - `conversations.ts` / `history.ts` — persisted, shared across text + voice.
-- **Voice mode** reuses the *same* `/api/assistant` stream + tool loop (one brain); ElevenLabs does STT + TTS. Server key stays server-side.
+- **Voice mode** reuses the *same* `/api/assistant` stream + tool loop (one brain); ElevenLabs does STT + TTS. Server key stays server-side. Since plan 089 it runs **inline in the assistant dock** (`VoiceInlinePanel` + the pointer-inert `VoiceHeaderOrb`), not a full-screen overlay (`VoiceOverlay` retired) — the page behind stays visible/clickable so the user can watch the assistant navigate mid-conversation. The turn-taking VAD (`src/lib/voice/vad.ts`) uses a growing hangover so it waits for the user to finish a thought before answering (#460).
 
 ### 7. Vineyard + maps — `src/lib/map/`, `src/lib/vineyard/`, `src/lib/harvest/`
 Satellite basemap (Esri keyless, or Google Map Tiles if keyed) with drawable blocks (`leaflet` +
@@ -179,16 +179,15 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   never a row edit). Approve/reject use compare-and-swap on `PENDING_APPROVAL`; a reject blocked by a later
   op (LEDGER-11) surfaces as a conflict. Authority is a minimal `authority.ts` (`canApprove`,
   admin + auto-finalize-self-executed; Phase-23-replaceable). Bulk approve segregates deviations.
-- **Multi-lot vessel readings (plan 060, `src/lib/chemistry/`):** one physical whole-tank reading on a
-  co-ferment/multi-lot vessel **fans out** to one `AnalysisPanel` per co-resident lot, all sharing a
-  `vesselReadingGroupId` (VISION D2 intact — each panel still attaches to exactly ONE lot, so each lot keeps
-  its own curve). The group id is derived **deterministically** from the capture's stable `clientRequestId`
-  (`planVesselReadingFanout` in `fanout-plan.ts`, DB-free + unit-tested), and a per-tenant
-  `@@unique([tenantId, vesselReadingGroupId, lotId])` makes the fan-out **idempotent** (a retry/offline
-  re-sync collides → P2002 → no-op). NULL group = an ordinary single-lot reading (NULLs are distinct in
-  Postgres uniques, so legacy rows never collide — effectively partial). **Vessel-scoped** views (vessel
-  History, `/bulk` trends, panel counts) dedup by `coalesce(vesselReadingGroupId, id)` over
-  `@@index([vesselId, vesselReadingGroupId])`; **lot-scoped** views must NOT dedup.
+- **Whole-tank readings (was plan 060's fan-out; RETIRED by plan 088 / LEDGER-12):** a vessel now holds
+  ONE lot, so a whole-tank reading writes ONE `AnalysisPanel` on that lot — the old fan-out that minted one
+  panel per co-resident lot (`planVesselReadingFanout`) is **gone**, and nothing mints a `vesselReadingGroupId`
+  any more. What survives is the **read-side collapse** (`dedupeByPhysicalReading`/`physicalReadingKey` in
+  `fanout-plan.ts`, DB-free + unit-tested): a handful of production readings were genuinely fanned out across
+  lots that have since merged, so **vessel-scoped** views (vessel History, `/bulk` trends, panel counts) still
+  dedup by `coalesce(vesselReadingGroupId, id)` over `@@index([vesselId, vesselReadingGroupId])` to render each
+  legacy physical reading once; **lot-scoped** views must NOT dedup. The `vesselReadingGroupId` column + its
+  per-tenant unique stay for that history — deleting the panels to tidy a column would destroy real measurements.
 - **Two other lanes:** OBSERVATION tasks (`observations.ts`) write chem/tasting/ferment readings directly,
   no gate. MAINTENANCE tasks (`vessel-activity.ts`, `maintenance.ts`) are LOTLESS — a `VesselActivityEvent`
   (+ optional OVERHEAD `VesselActivitySupplyUse`, WORKORDER-3). Kinds: temp-setpoint / clean / sanitize / steam /
@@ -324,7 +323,17 @@ model names, tool `name` strings, committer keys and parity evidence paths are u
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-21 (plan 080 / feedback #372 cost surfacing): added `cost-display.ts`
+*Refreshed 2026-07-22 (plans 088–089): **one lot per vessel** ([[0008-one-lot-per-vessel]] / **LEDGER-12**) — a
+vessel holds AT MOST one lot, a lot may occupy MANY vessels, enforced at `writeLotOperation`
+(`assertNoWorsenedCoResidence`, monotone) + a `(tenantId, vesselId)` unique index. Identity at combination is
+resolved by ONE shared `decideCombineRoute` (`src/lib/ledger/combine.ts` + `combine-state.ts`) — KEEP / ABSORB /
+NEW_BLEND, refused across ownership/bond/form/ferment-state/tax-class — that rack/crush/press/saignée/topping/blend
+all call; `write.ts` folds `VesselComponent` composition through lineage via `composeLeaves` (blend lots included).
+Consequences: every "which lot?" picker deleted; **plan 060's whole-tank fan-out RETIRED** (§10 — a whole-tank
+reading is now one panel; only the legacy read-side collapse survives). Ledger/naming/tax/bond invariant notes
+reviewed for drift and left intact (the refactor upholds their statements; the new rule is captured by LEDGER-12).
+**Voice** (plan 089) moved inline into the assistant dock (`VoiceInlinePanel`/`VoiceHeaderOrb`; `VoiceOverlay`
+retired). Prior refresh 2026-07-21 (plan 080 / feedback #372 cost surfacing): added `cost-display.ts`
 (`summarizeConsumableCost`) — a pure read-only fold that shows the blended cost of on-hand consumables +
 a priced/unpriced shipment count, reusing the engine's `weightedAvgUnitCost` (COST-1) and excluding
 unpriced lots (COST-2), consumed by `ConsumablesSection.tsx`. No schema, RLS, or ledger-invariant change;
