@@ -7,28 +7,42 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**BACKLOG IS CLEAR — 0 active feedback items, 0 open PRs. Nothing is in flight.**
-A full `/bug-triage` goalie run (live, all sweeps) on 2026-07-21 left the queue empty and honest.
-The next objective is a CHOICE, not a continuation — see **⏭️ Next up**.
+**PLAN 090 — fix KB RAG retrieval quality BEFORE adding any source. PLANNED, awaiting approval.**
+Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md) (Deep, 11 units).
+Started as "should we add AJEV to the KB"; measuring the corpus to answer that found a bigger problem.
 
-Box score: backlog 26 → **0 active** (25 already closed, 1 reconciled to RESOLVED — its fix had
-shipped in #391 and nobody wrote the status back). 1 open PR triaged + merged (#443). 18 open issues
-swept → **10 kept**: 2 stale `feedback: plan` issues auto-closed on DB truth (#374, #373), 5 Sentry
-issues closed as dev-noise (#446–#450), 1 real bug found and fixed (#324). **ERP-standards pass: 0
-conflicts, 0 cautions.**
+🔎 **ROOT CAUSE: `chunkMarkdown` is heading-driven but `extractPdf` emits headingless text.** So for
+**893 PDF documents / 11,051 chunks (42% of the corpus)** the section breadcrumb degenerates to the
+first ~192 chars of page one — `chunk.ts:36-90` builds it from a heading stack that stays empty, and
+`chunk.ts:130` prepends it into `text`, which is embedded AND backs the GENERATED `search_vector`. A
+query matching that slab matches **every chunk of that document equally**, on the prefix alone.
 
-🔎 **The finding worth keeping: 5 of the 6 open Sentry issues were ONE dev session, not five bugs.**
-All five were `.claude/worktrees/vigorous-nash-2fe4be` losing its Neon pooler connection, captured at
-five different query sites within ~5 minutes. Dev-worktree noise is the dominant false positive in
-this repo's Sentry feed, and it now gets dropped in `beforeSend` (#456) rather than triaged by hand
-every run. ⚠️ **The tell can sit DEEP in the stack while the top frames look production-clean** —
-judging from the title or top frame is what mislabelled a stale error as a real bug in #237, so the
-filter scans every frame plus culprit/transaction/message.
+Measured (Neon, 2026-07-22): corpus **26,253 chunks / 3,120 docs / 22 sources**. PDFs avg
+`sectionPath` **192 chars** vs HTML **96**. `publishedAt` present on **14% of PDFs**;
+`canonicalTitle` NULL on **95% of ALL docs** → `citation.ts` renders a bare publisher name with no
+document title. Ligature mojibake (`NewsleƩer`) is real but small: **113 chunks / 7 docs**.
 
-⚠️ **A Sentry-side inbound filter is still worth adding** (console change, Russell's). #456 drops the
-events in the SDK, so they are already sent and counted against quota before being discarded.
+🔻 **Three of my own estimates were wrong, and measurement caught each.** The suspected VA coverage
+hole does not exist (AWRI's VA page is excellent — enzymatic / Cash-still / HPLC as separate
+passages, and it's HTML so its breadcrumbs survive). Ligature damage was ~6% of my guess. And
+`mmr.ts` is NOT buggy — the "duplicate chunks" were the shared 192-char prefix. **Do not
+re-investigate MMR.**
 
-_(Plan 089 — inline voice in the dock — MERGED as #451; see Done recently.)_
+⚠️ **The eval suite is green through all of this** — `verify-knowledge-base.ts` only asserts "expected
+doc in top-k + facts present", so it sees 3 of 8 slots. On the *passing* YAN control case, 4 of 8
+returned passages are junk (a copyright page, a website announcement, an off-topic VT passage).
+**Unit 1 is the ranked-snapshot instrument; nothing else may land before the baseline is captured.**
+
+⛔ **AJEV import is DEFERRED, not dropped** — research is preserved in the plan's Scope Boundaries
+(full OA since 2025-01-01 under CC BY 4.0, stock-Drupal robots with `Crawl-delay: 7`, ~150 OA papers
+growing ~55/yr, pre-2025 paywalled). Do not re-research it. Rejected in passing: an AI relevance
+gate (deletes the explanatory layer; false negatives are invisible) and AI-written summary chunks
+(`topK=6` is a fixed slot budget, so "in addition to" is false in retrieval, and it breaks the
+citation contract).
+
+_(Backlog was cleared 2026-07-21 by a full `/bug-triage` run: 26 → 0 active, 18 issues → 10 kept,
+one real bug found and fixed (#324) + a `beforeSend` dev-noise filter (#456). ⚠️ A **Sentry-side
+inbound filter** is still Russell's to add — #456 drops events only after they're sent and counted.)_
 
 ⛔ **MSU (`msu-grapes`) stays DORMANT — do not retry.** Imperva refuses this crawler from every
 network available. `npm run verify:msu` is the probe: if it ever reports **live PASS**, un-dormant
@@ -577,7 +591,13 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-21 — **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
+_Last updated: 2026-07-22 — **PLAN 090 written: fix KB RAG retrieval quality before adding sources.**
+Started as "should we add AJEV to the knowledge base"; measuring the corpus to answer that found
+**42% of it is chunked wrong** (headingless PDFs starve the heading-driven chunker, so the breadcrumb
+becomes a 192-char slab of page one, prepended to every chunk and embedded). Also found: 95% of docs
+have no `canonicalTitle`, so citations name a publisher but not a document. The eval suite is green
+throughout because it only sees 3 of 8 slots — Unit 1 fixes the instrument before anything else moves.
+AJEV deferred with its research preserved. Prior: **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
 `/bug-triage` goalie run (live, all sweeps) reconciled the queue and cleared the pile: 26 backlog items
 → 0 active, 1 open PR triaged + merged (#443), 18 open issues → 10 kept. It found exactly ONE real
 production bug among 6 Sentry issues — **#324**, a Leaflet debounce that outlived `map.remove()` — now
