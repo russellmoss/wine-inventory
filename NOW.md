@@ -7,8 +7,38 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**KB citation tombstone now shows an EXCERPT, not the whole withdrawn document. MERGED + LIVE**
-(PR #462, squash `8f6099b5`, branch pruned).
+**KB source vetting — licensing + a retrieval-displacement gate. 3 commits on
+`claude/kb-paraphrase-citation-copyright-355aa9`, UNPUSHED, no PR.**
+
+Evaluating **IVES Technical Reviews** (`ives-technicalreviews.eu`) as a source. It is **CC BY** —
+confirmed on their own Open Access Policy page — which makes it the ONLY source in the corpus with an
+actual licence grant rather than an absence of objection, and the only one immune to the
+commercial-scope question. **Not added yet, deliberately.**
+
+Two things built first:
+- **`6d4ff1f3` TLS** — their server sends only the leaf cert (chain depth 0, no intermediate).
+  Browsers recover via AIA; **Node does not**, so every crawler fetch died
+  `UNABLE_TO_VERIFY_LEAF_SIGNATURE` against a host that loads fine by hand. `crawl/tls.ts` now supplies
+  Node's roots PLUS omitted intermediates via an undici dispatcher. NOT a relaxation — the cert is
+  signed by a root already trusted. `undici` promoted from a phantom (transitive) dep to a direct one.
+- **`7f3ce919` + `24243552` displacement gate** — `npm run verify:kb-register`.
+
+🔎 **THE BASELINE FOUND TWO THINGS THAT CHANGE THE LICENSING CALCULUS** (120 slots, 20 practical
+questions, live corpus):
+- **Virginia Tech = 18/120 slots (15%), the #2 source** — and it is the one asserting copyright with
+  **no licence granted**. The weakest licensing position is also load-bearing. Dropping it is
+  technically cheap (`reset:knowledge-source`) but functionally expensive.
+- **Scott Laboratories — a tier-2 VENDOR the config itself calls product-biased — holds 12% overall
+  and 5 OF 6 SLOTS on "my ferment is stuck at 5 Brix."** A stuck ferment is an emergency, and it is
+  answered almost entirely by a company that sells the remedy. **This is true TODAY, before IVES.**
+  I had earlier called the vendor PDFs "least valuable, drop them" — wrong: they are HIGH-VOLUME,
+  which is worse.
+
+⚠️ **`verify:knowledge-base` passes on that corpus.** It scores recall (one expected doc anywhere in
+top-k) and never inspects the other slots — so a vendor holding 5/6 on a stuck ferment is invisible
+to it. That blindness is why the new gate exists.
+
+_(Prior objective: KB citation tombstone excerpt cap — MERGED + LIVE, PR #462, squash `8f6099b5`.)_
 
 Came out of Russell's question — *"paraphrase with citation is how peer-reviewed articles get
 written, so it shouldn't be a copyright problem, right?"* Right about the output, and the assistant
