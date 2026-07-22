@@ -99,16 +99,32 @@ export const COVERAGE_CASES: CoverageCase[] = [
     minPublishers: 2,
   },
   {
-    // The defect this plan exists to fix, stated as an assertion. Measured 2026-07-22 (top-8):
-    // rank 1 was an OWRI newsletter MASTHEAD ("Welcome to the Summer 2015 Newsletter"), ranks 2/5/7/8
-    // were 1996-1999 Oregon research reports (two of them the SAME document), and AWRI was absent
-    // entirely. Root cause is the PDF breadcrumb collapse — every chunk of those reports carries the
-    // same ~192-char page-one slab, so a nitrogen query matches all of them equally on the prefix alone.
+    // Measured 2026-07-22 BEFORE the plan-090 re-index (top-8): rank 1 was an OWRI newsletter MASTHEAD
+    // ("Welcome to the Summer 2015 Newsletter"), ranks 2/5/7/8 were 1996-1999 Oregon research reports
+    // (two of them the SAME document, both showing only their title block), and AWRI was absent.
+    //
+    // ⚠️ MY ORIGINAL DIAGNOSIS WAS HALF WRONG, and the correction is the useful part.
+    //
+    // I recorded the cause as "OWRI PDFs dominate via the 192-char breadcrumb prefix". The re-index
+    // proved that explains the MASTHEAD — it fell from rank 1 to 7 once real breadcrumbs existed, and
+    // 7 of 8 results now carry dates. It does NOT explain AWRI's absence.
+    //
+    // Measured after the re-index: the AWRI YAN page is NOT IN THE TOP 40 for this phrasing, and there
+    // are ZERO AWRI passages anywhere in the top 40. It is not being crowded out of the last slots by
+    // Oregon PDFs — it is nowhere near contention. The same document ranks #1 on "What is the most
+    // ideal YAN concentration for a white must?", so it is present, enabled and retrievable.
+    //
+    // The real gap is VOCABULARY, not chunking: "nutrients to add to Pinot noir fermentation" matches
+    // Oregon nitrogen field research more strongly than AWRI's page, which is titled and written around
+    // "Yeast Assimilable Nitrogen (YAN)". Nothing in plan 090 addresses that. Candidate fixes are
+    // synonym expansion (synonyms.ts already exists for acronyms/units) or query rewriting — deliberately
+    // NOT attempted here, because changing scoring during an ingest change makes the diff uninterpretable.
     q: "what are the best nutrients to add to Pinot noir fermentation",
     expectPublishers: ["AWRI"],
     minPublishers: 3,
     knownFailing:
-      "AWRI absent; OWRI PDFs dominate via the 192-char breadcrumb prefix (plan 090 Units 4-9 target this)",
+      "AWRI not in top-40 at all — a VOCABULARY gap (nutrient/YAN), not the breadcrumb collapse. " +
+      "Plan 090 fixed the masthead (rank 1 -> 7) and the dates; this needs synonym expansion or query rewriting.",
   },
 ];
 

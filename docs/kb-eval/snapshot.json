@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T05:13:35.020Z",
+  "capturedAt": "2026-07-22T16:47:13.484Z",
   "entries": [
     {
       "query": "What is a good pre-infection fungicide I can use for downy mildew?",
@@ -206,6 +206,16 @@
         },
         {
           "rank": 4,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/jd473508h",
+          "sectionPath": "Viticulture & Enology > Viticulture & Enology > Influence of Wine Bacteria on Brettanomyces Spoilage",
+          "publishedAt": "2014-12-05",
+          "dateSource": "published",
+          "textHash": "136a96d24523"
+        },
+        {
+          "rank": 5,
           "publisher": "WSU Viticulture & Enology",
           "tier": 1,
           "canonicalUrl": "https://wine.wsu.edu/documents/2026/03/veen-spring-2016.pdf",
@@ -215,7 +225,7 @@
           "textHash": "3b3ff2eacdda"
         },
         {
-          "rank": 5,
+          "rank": 6,
           "publisher": "WSU Viticulture & Enology",
           "tier": 1,
           "canonicalUrl": "https://wine.wsu.edu/viticulture-enology-extension-news-spring-2018/",
@@ -225,7 +235,7 @@
           "textHash": "0a21d83e5517"
         },
         {
-          "rank": 6,
+          "rank": 7,
           "publisher": "Scott Laboratories",
           "tier": 2,
           "canonicalUrl": "https://scottlab.com/content/files/documents/handbooks/rev/scott%20laboratories%202025-2026%20winemaking%20handbook%20aug.pdf",
@@ -235,24 +245,14 @@
           "textHash": "886d97325d81"
         },
         {
-          "rank": 7,
-          "publisher": "WSU Viticulture & Enology",
-          "tier": 1,
-          "canonicalUrl": "https://wine.wsu.edu/viticulture-enology-extension-news-spring-2016/",
-          "sectionPath": "Viticulture & Enology Extension News – Spring 2016 | Viticulture & Enology > Investigating Brett in Vineyards & Oak Barrels",
-          "publishedAt": "2026-07-01",
-          "dateSource": "published",
-          "textHash": "a259f9a407b1"
-        },
-        {
           "rank": 8,
-          "publisher": "Oregon Wine Research Institute (OSU)",
+          "publisher": "Virginia Tech Enology",
           "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/xs55mn029",
-          "sectionPath": "ViƟculture & Enology Technical NewsleƩer Welcome to the Spring 2013 Newsletter Welcome to the spring edition of the OWRI Technical Newsletter. This edition showcases several articles and resources tha",
+          "canonicalUrl": "https://enology.fst.vt.edu/EN/60.html",
+          "sectionPath": "",
           "publishedAt": null,
           "dateSource": "unknown",
-          "textHash": "7a923793c15f"
+          "textHash": "55afad8fb11d"
         }
       ]
     },
@@ -271,6 +271,16 @@
         },
         {
           "rank": 2,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/jd473508h",
+          "sectionPath": "Viticulture & Enology > Viticulture & Enology > Influence of Wine Bacteria on Brettanomyces Spoilage",
+          "publishedAt": "2014-12-05",
+          "dateSource": "published",
+          "textHash": "136a96d24523"
+        },
+        {
+          "rank": 3,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/storage-and-packaging/packaging-operations/barrel-cleaning-storage-and-maintenance/",
@@ -280,7 +290,7 @@
           "textHash": "2d4ad12394c1"
         },
         {
-          "rank": 3,
+          "rank": 4,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/10/s2117.pdf",
@@ -290,7 +300,7 @@
           "textHash": "c7ad5684ebb3"
         },
         {
-          "rank": 4,
+          "rank": 5,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/storage-and-packaging/packaging-operations/barrel-cleaning-storage-and-maintenance/",
@@ -300,7 +310,7 @@
           "textHash": "d03a8ce1754f"
         },
         {
-          "rank": 5,
+          "rank": 6,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/storage-and-packaging/packaging-operations/barrel-cleaning-storage-and-maintenance/",
@@ -310,7 +320,7 @@
           "textHash": "c1f95fd969ee"
         },
         {
-          "rank": 6,
+          "rank": 7,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/10/s2117.pdf",
@@ -318,16 +328,6 @@
           "publishedAt": null,
           "dateSource": "unknown",
           "textHash": "70cc1756ab1d"
-        },
-        {
-          "rank": 7,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2014/05/Brett-fact-sheet.pdf",
-          "sectionPath": "Updated February 2023 Fact Sheet Please find attached signed T&C form. If there is anything else that we can to sign or you need before the 24/12, please let me know. Thanks WINEMAKING IntroductionBre",
-          "publishedAt": "2023-02-01",
-          "dateSource": "published",
-          "textHash": "53467856fd46"
         },
         {
           "rank": 8,
@@ -366,16 +366,6 @@
         },
         {
           "rank": 3,
-          "publisher": "Oregon Wine Research Institute (OSU)",
-          "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/j9602826x",
-          "sectionPath": "New Source of Enology Information James Osborne, Ph.D., Enology Extension Specialit Announcing the development of a new source for Enology information, the ‘EnologyAccess. org’ website. This organizat",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "26d4b649deb3"
-        },
-        {
-          "rank": 4,
           "publisher": "Scott Laboratories",
           "tier": 2,
           "canonicalUrl": "https://scottlab.com/content/files/documents/handbooks/rev/scott%20laboratories%202025-2026%20winemaking%20handbook%20aug.pdf",
@@ -385,7 +375,7 @@
           "textHash": "d10f57c7125b"
         },
         {
-          "rank": 5,
+          "rank": 4,
           "publisher": "Virginia Tech Enology",
           "tier": 1,
           "canonicalUrl": "https://enology.fst.vt.edu/EN/133.html",
@@ -395,7 +385,7 @@
           "textHash": "489b18c02248"
         },
         {
-          "rank": 6,
+          "rank": 5,
           "publisher": "Virginia Tech Enology",
           "tier": 1,
           "canonicalUrl": "https://enology.fst.vt.edu/EN/141.html",
@@ -403,6 +393,16 @@
           "publishedAt": null,
           "dateSource": "unknown",
           "textHash": "282726e91a1b"
+        },
+        {
+          "rank": 6,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/vd66w7932",
+          "sectionPath": "VitEnoTechNwsltr-mar2016-Danielle Fianl > Viticulture & Enology > Viticulture & Enology > Oregon Wine Research Institute—Viticulture &…",
+          "publishedAt": "2016-04-04",
+          "dateSource": "published",
+          "textHash": "245ae67d634d"
         },
         {
           "rank": 7,
@@ -579,20 +579,20 @@
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/heat_stab/",
-          "sectionPath": "Measuring heat stability of wine > Heat test",
+          "sectionPath": "Measuring heat stability of wine > Additional resources",
           "publishedAt": "2011-06-02",
           "dateSource": "published",
-          "textHash": "4baf95f2ff81"
+          "textHash": "c4ffd6523476"
         },
         {
           "rank": 8,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/heat_stab/",
-          "sectionPath": "Measuring heat stability of wine > Additional resources",
+          "sectionPath": "Measuring heat stability of wine > Heat test",
           "publishedAt": "2011-06-02",
           "dateSource": "published",
-          "textHash": "c4ffd6523476"
+          "textHash": "4baf95f2ff81"
         }
       ]
     },
@@ -719,10 +719,10 @@
           "publisher": "Oregon Wine Research Institute (OSU)",
           "tier": 1,
           "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/tm70mw521",
-          "sectionPath": "Oregon Wine Advisory Board Research Progress Report 1989 Managing Wine Microbiological Processes Marty Bannister Vinquiry Laboratory, Healdsburg, California This paper was presented at an enology work",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "5d362c1a5907"
+          "sectionPath": "Oregon Wine Advisory Board Research Progress Report",
+          "publishedAt": "2006-06-01",
+          "dateSource": "published",
+          "textHash": "4ede90cfe31d"
         },
         {
           "rank": 5,
@@ -736,16 +736,6 @@
         },
         {
           "rank": 6,
-          "publisher": "Virginia Tech Enology",
-          "tier": 1,
-          "canonicalUrl": "https://enology.fst.vt.edu/downloads/EnologyNotes169.pdf",
-          "sectionPath": "Enology Notes #169, May 21, 2014 To: Grape and Wine Producers From: Bruce Zoecklein, Professor Emeritus, Enology-Grape Chemistry Group, Virginia Tech Subjects: 1. Nitrogen a. Red vs. White Grapes b. N",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "1c54f42e7ac1"
-        },
-        {
-          "rank": 7,
           "publisher": "Scott Laboratories",
           "tier": 2,
           "canonicalUrl": "https://scottlab.com/scott-labs-yeast-nutrient-choosing-guide",
@@ -753,6 +743,16 @@
           "publishedAt": "2023-09-20",
           "dateSource": "published",
           "textHash": "5bf91e4d33b2"
+        },
+        {
+          "rank": 7,
+          "publisher": "Virginia Tech Enology",
+          "tier": 1,
+          "canonicalUrl": "https://enology.fst.vt.edu/downloads/EnologyNotes169.pdf",
+          "sectionPath": "Enology Notes #169, May 21, 2014 To: Grape and Wine Producers From: Bruce Zoecklein, Professor Emeritus, Enology-Grape Chemistry Group, Virginia Tech Subjects: 1. Nitrogen a. Red vs. White Grapes b. N",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "1c54f42e7ac1"
         },
         {
           "rank": 8,
@@ -869,13 +869,23 @@
           "publisher": "Oregon Wine Research Institute (OSU)",
           "tier": 1,
           "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/j098zk18c",
-          "sectionPath": "OSU Wine and Grape Research and Extension Newsletter December 2010 http://wine.oregonstate.edu Welcome to the December 2010 Newsletter We are happy to present a viticulture-based newsletter this quart",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "12471751463c"
+          "sectionPath": "OSU Wine and Grape Research and Extension Newsletter > Determining vine leafroll distribution",
+          "publishedAt": "2010-12-08",
+          "dateSource": "published",
+          "textHash": "e17defaf6ac8"
         },
         {
           "rank": 3,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/kh04dz532",
+          "sectionPath": "Preliminary information on biology and management of rust mites in Oregon vineyards > Viticulture Extension > Vineyard Notes March 2010 >…",
+          "publishedAt": "2010-03-08",
+          "dateSource": "published",
+          "textHash": "f0affdab3943"
+        },
+        {
+          "rank": 4,
           "publisher": "OSU Extension (Oregon State University)",
           "tier": 1,
           "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-8990-preventing-managing-grapevine-leafroll-virus-mealybugs-oregon-vineyards",
@@ -883,16 +893,6 @@
           "publishedAt": "2014-12-18",
           "dateSource": "published",
           "textHash": "325f1d453e02"
-        },
-        {
-          "rank": 4,
-          "publisher": "Oregon Wine Research Institute (OSU)",
-          "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/zs25xj240",
-          "sectionPath": "OSU Wine and Grape Research and Extension Newsletter August 2010 http://wine.oregonstate.edu In this issue: Welcome Crop thinning and yield should be a moving target Monitoring grapevine nutrition",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "8b8a34889289"
         },
         {
           "rank": 5,
@@ -906,26 +906,6 @@
         },
         {
           "rank": 6,
-          "publisher": "Oregon Wine Research Institute (OSU)",
-          "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/kh04dz532",
-          "sectionPath": "1 March 8, 2010 Welcome to this month’s issue of Vineyard Notes produced by the OSU Viticulture Extension Program. As we near bud-break throughout Oregon, there are some important topics that need to",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "60a5e2359194"
-        },
-        {
-          "rank": 7,
-          "publisher": "Oregon Wine Research Institute (OSU)",
-          "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/j098zk18c",
-          "sectionPath": "OSU Wine and Grape Research and Extension Newsletter December 2010 http://wine.oregonstate.edu Welcome to the December 2010 Newsletter We are happy to present a viticulture-based newsletter this quart",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "259180c513dc"
-        },
-        {
-          "rank": 8,
           "publisher": "OSU Extension (Oregon State University)",
           "tier": 1,
           "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-9092-distribution-monitoring-grape-mealybug-key-vector-grapevine-leafroll-disease-oregon",
@@ -933,6 +913,26 @@
           "publishedAt": "2014-12-18",
           "dateSource": "published",
           "textHash": "680ee8ac810f"
+        },
+        {
+          "rank": 7,
+          "publisher": "Wine Australia",
+          "tier": 1,
+          "canonicalUrl": "https://www.wineaustralia.com/getmedia/dcbd8f4f-5c90-48a6-bce9-3d3ccf4fd635/201404_Grapevine-leafroll.pdf",
+          "sectionPath": "Grapevine leafroll-associated viruses Fiona Constable and Brendon Rodoni, Department of Environment and Primary Industries (DEPI), Victoria Summary Leafroll is a serious disease of grapevines that is",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "4d2cb9dd65ca"
+        },
+        {
+          "rank": 8,
+          "publisher": "OSU Extension (Oregon State University)",
+          "tier": 1,
+          "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-8985-field-monitoring-leafroll-virus-mealybug-pacific-northwest-vineyards",
+          "sectionPath": "Field Monitoring for Leafroll Virus and Mealybug in Pacific Northwest Vineyards > Additional information",
+          "publishedAt": "2014-12-18",
+          "dateSource": "published",
+          "textHash": "683eaf68fc34"
         }
       ]
     },
@@ -1039,13 +1039,23 @@
           "publisher": "Oregon Wine Research Institute (OSU)",
           "tier": 1,
           "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/xs55mn029",
-          "sectionPath": "ViƟculture & Enology Technical NewsleƩer Welcome to the Spring 2013 Newsletter Welcome to the spring edition of the OWRI Technical Newsletter. This edition showcases several articles and resources tha",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "65b88c132109"
+          "sectionPath": "Viticulture & Enology > Viticulture & Enology > Viticulture & Enology > Save the Date!",
+          "publishedAt": "2013-04-24",
+          "dateSource": "published",
+          "textHash": "e4074322f2f5"
         },
         {
           "rank": 3,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/vh53x446x",
+          "sectionPath": "OSU Wine and Grape Research and Extension Newsletter > Being Burned by Cold in the Vineyard",
+          "publishedAt": "2009-08-05",
+          "dateSource": "published",
+          "textHash": "551f0983a214"
+        },
+        {
+          "rank": 4,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/nematodes_in_aust_soil.pdf",
@@ -1055,7 +1065,7 @@
           "textHash": "ca817f27d4a0"
         },
         {
-          "rank": 4,
+          "rank": 5,
           "publisher": "UC IPM (UC Agriculture & Natural Resources)",
           "tier": 1,
           "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/leafhoppers",
@@ -1065,7 +1075,7 @@
           "textHash": "e6440b6e55fc"
         },
         {
-          "rank": 5,
+          "rank": 6,
           "publisher": "UC IPM (UC Agriculture & Natural Resources)",
           "tier": 1,
           "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/2017-fungicide-efficacy-and-treatment-timing",
@@ -1075,7 +1085,7 @@
           "textHash": "f68c8a4ad8e7"
         },
         {
-          "rank": 6,
+          "rank": 7,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/lbam_management.pdf",
@@ -1085,7 +1095,7 @@
           "textHash": "20d7c0f72ccf"
         },
         {
-          "rank": 7,
+          "rank": 8,
           "publisher": "UC IPM (UC Agriculture & Natural Resources)",
           "tier": 1,
           "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/mealybugs-pseudococcus",
@@ -1093,16 +1103,6 @@
           "publishedAt": "2015-07-01",
           "dateSource": "published",
           "textHash": "c452b0cf9c1d"
-        },
-        {
-          "rank": 8,
-          "publisher": "MAPA — Ministerio de Agricultura (Spain)",
-          "tier": 1,
-          "canonicalUrl": "https://www.mapa.gob.es/dam/mapa/contenido/agricultura/temas/medios-de-produccion/productos-fitosanitarios/uso-sostenible-de-productos-fitosanitarios/guias-de-gestion-integrada-de-plagas/guiauvadetransformacion.pdf",
-          "sectionPath": "GUÍA DE GESTIÓN INTEGRADA DE PLAGAS UVA DE TRANSFORMACIÓN",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "5dfd33b4253d"
         }
       ]
     },
@@ -1376,13 +1376,13 @@
         },
         {
           "rank": 2,
-          "publisher": "AWRI",
+          "publisher": "Oregon Wine Research Institute (OSU)",
           "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/small_lot_fermentation_method.pdf",
-          "sectionPath": "Updated October 2023 Reviewed November 2024 Fact Sheet WINEMAKING http://www.ebay. com.au/itm/Art- Vintage-Aqua- Navy-Set-Home- Decor-Cotton- Linen-CUSHION- COVER-PILLOW- CASE-18- /201337496692? pt=LH",
-          "publishedAt": "2024-11-01",
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/1257b183b",
+          "sectionPath": "Viticulture & Enology > Viticulture & Enology > Technical Newsletter > Harvest Prep – Grapes, Nutrients, and Yeast",
+          "publishedAt": "2011-10-12",
           "dateSource": "published",
-          "textHash": "1235bb3bde74"
+          "textHash": "074bdc6e8046"
         },
         {
           "rank": 3,
@@ -1398,6 +1398,16 @@
           "rank": 4,
           "publisher": "AWRI",
           "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/small_lot_fermentation_method.pdf",
+          "sectionPath": "Updated October 2023 Reviewed November 2024 Fact Sheet WINEMAKING http://www.ebay. com.au/itm/Art- Vintage-Aqua- Navy-Set-Home- Decor-Cotton- Linen-CUSHION- COVER-PILLOW- CASE-18- /201337496692? pt=LH",
+          "publishedAt": "2024-11-01",
+          "dateSource": "published",
+          "textHash": "1235bb3bde74"
+        },
+        {
+          "rank": 5,
+          "publisher": "AWRI",
+          "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/wine_fermentation/yeast-rehydration/",
           "sectionPath": "Active Dry Wine Yeast (ADWY) rehydration > Equipment and materials required",
           "publishedAt": "2011-06-02",
@@ -1405,7 +1415,7 @@
           "textHash": "f8a541f83c65"
         },
         {
-          "rank": 5,
+          "rank": 6,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/wine_fermentation/",
@@ -1413,16 +1423,6 @@
           "publishedAt": "2011-06-02",
           "dateSource": "published",
           "textHash": "40d920b2d596"
-        },
-        {
-          "rank": 6,
-          "publisher": "Oregon Wine Research Institute (OSU)",
-          "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/1257b183b",
-          "sectionPath": "Viticulture & Enology Technical Newsletter Welcome to the October 2011 Viticulture & Enology Technical Newsletter! This newsletter comes as many of you anxiously await this year’s harvest. We have tak",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "02a0ab817171"
         },
         {
           "rank": 7,
@@ -1451,6 +1451,36 @@
       "results": [
         {
           "rank": 1,
+          "publisher": "LVWO Weinsberg (Germany)",
+          "tier": 1,
+          "canonicalUrl": "https://lvwo.landwirtschaft-bw.de/site/pbs-bw-rebrush2024/get/documents_E-879843375/MLR.LEL/PB5Documents/lvwo/Weinbau/Rebschutz/Vorjahr/2025%20Pflanzenschutz%20-%20Mittellisten%20und%20Tabellen/2025_4_PSM_Tafeltrauben.pdf",
+          "sectionPath": "### Behandlungs- > 3. Vorblüte x 2 200 - 800",
+          "publishedAt": "2025-01-29",
+          "dateSource": "published",
+          "textHash": "d01c9424bc5e"
+        },
+        {
+          "rank": 2,
+          "publisher": "LVWO Weinsberg (Germany)",
+          "tier": 1,
+          "canonicalUrl": "https://lvwo.landwirtschaft-bw.de/site/pbs-bw-rebrush2024/get/documents_E-2012455756/MLR.LEL/PB5Documents/lvwo/Weinbau/Rebschutz/Aktuelles/2026_PSM_Mittellisten%20und%20Tabellen/2026_4_PSM_Tafeltrauben.pdf",
+          "sectionPath": "### Behandlungs- > 3. Vorblüte x 2 200 - 800",
+          "publishedAt": "2026-02-04",
+          "dateSource": "published",
+          "textHash": "d01c9424bc5e"
+        },
+        {
+          "rank": 3,
+          "publisher": "LVWO Weinsberg (Germany)",
+          "tier": 1,
+          "canonicalUrl": "https://lvwo.landwirtschaft-bw.de/site/pbs-bw-rebrush2024/get/documents_E-879843375/MLR.LEL/PB5Documents/lvwo/Weinbau/Rebschutz/Vorjahr/2025%20Pflanzenschutz%20-%20Mittellisten%20und%20Tabellen/2025_4_PSM_Tafeltrauben.pdf",
+          "sectionPath": "### Behandlungs- > 1. Vorblüte x 1 100 - 400",
+          "publishedAt": "2025-01-29",
+          "dateSource": "published",
+          "textHash": "5ae23420b684"
+        },
+        {
+          "rank": 4,
           "publisher": "Scott Laboratories",
           "tier": 2,
           "canonicalUrl": "https://scottlab.com/scott-labs-fining-and-stability-choosing-guide",
@@ -1460,7 +1490,27 @@
           "textHash": "6eef58ed35c5"
         },
         {
-          "rank": 2,
+          "rank": 5,
+          "publisher": "LVWO Weinsberg (Germany)",
+          "tier": 1,
+          "canonicalUrl": "https://lvwo.landwirtschaft-bw.de/site/pbs-bw-rebrush2024/get/documents_E-2012455756/MLR.LEL/PB5Documents/lvwo/Weinbau/Rebschutz/Aktuelles/2026_PSM_Mittellisten%20und%20Tabellen/2026_4_PSM_Tafeltrauben.pdf",
+          "sectionPath": "### Behandlungs- > 2. Vorblüte x 1,5 200 - 800",
+          "publishedAt": "2026-02-04",
+          "dateSource": "published",
+          "textHash": "e08e377ea0bb"
+        },
+        {
+          "rank": 6,
+          "publisher": "LVWO Weinsberg (Germany)",
+          "tier": 1,
+          "canonicalUrl": "https://lvwo.landwirtschaft-bw.de/site/pbs-bw-rebrush2024/get/documents_E-879843375/MLR.LEL/PB5Documents/lvwo/Weinbau/Rebschutz/Vorjahr/2025%20Pflanzenschutz%20-%20Mittellisten%20und%20Tabellen/2025_4_PSM_Tafeltrauben.pdf",
+          "sectionPath": "### Behandlungs- > 2. Vorblüte x 1,5 200 - 800",
+          "publishedAt": "2025-01-29",
+          "dateSource": "published",
+          "textHash": "e08e377ea0bb"
+        },
+        {
+          "rank": 7,
           "publisher": "ETS Laboratories",
           "tier": 2,
           "canonicalUrl": "https://www.etslabs.com/publications/publication/54",
@@ -1470,64 +1520,14 @@
           "textHash": "45cbfe98c1b3"
         },
         {
-          "rank": 3,
-          "publisher": "IFV Occitanie (Institut Français de la Vigne et du Vin)",
-          "tier": 1,
-          "canonicalUrl": "https://www.vignevin-occitanie.com/fiches-pratiques/criteres-de-description-ampelographiques/criteres-ampelographiques-feuille-adulte/densite-poils-couches/",
-          "sectionPath": "densite-poils-couches",
-          "publishedAt": "2018-10-17",
-          "dateSource": "published",
-          "textHash": "96f75b02adcd"
-        },
-        {
-          "rank": 4,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/storage-and-packaging/pre-packaging-preparation/filtration-physical-removal-of-microorganisms/",
-          "sectionPath": "Filtration – physical removal of microorganisms > What level of filtration do I need?",
-          "publishedAt": "2020-05-14",
-          "dateSource": "published",
-          "textHash": "74820fe5acda"
-        },
-        {
-          "rank": 5,
-          "publisher": "Scott Laboratories",
-          "tier": 2,
-          "canonicalUrl": "https://scottlab.com/scott-labs-fining-and-stability-choosing-guide",
-          "sectionPath": "Scott Labs Fining and Stability Choosing Guide > Scott Labs Fining and Stability Choosing Guide > Choosing Chart pdf Download",
-          "publishedAt": "2023-09-24",
-          "dateSource": "published",
-          "textHash": "5f097c352039"
-        },
-        {
-          "rank": 6,
-          "publisher": "ETS Laboratories",
-          "tier": 2,
-          "canonicalUrl": "https://www.etslabs.com/publications/publication/54",
-          "sectionPath": "Interpreting Filterability Results",
-          "publishedAt": "2025-09-01",
-          "dateSource": "published",
-          "textHash": "8024f1040d9c"
-        },
-        {
-          "rank": 7,
-          "publisher": "IFV Occitanie (Institut Français de la Vigne et du Vin)",
-          "tier": 1,
-          "canonicalUrl": "https://www.vignevin-occitanie.com/fiches-pratiques/criteres-de-description-ampelographiques/criteres-ampelographiques-feuille-adulte/densite-poils-dresses/",
-          "sectionPath": "densite-poils-dresses",
-          "publishedAt": "2018-10-17",
-          "dateSource": "published",
-          "textHash": "f792d1c91050"
-        },
-        {
           "rank": 8,
-          "publisher": "ETS Laboratories",
-          "tier": 2,
-          "canonicalUrl": "https://www.etslabs.com/publications/publication/23",
-          "sectionPath": "Predicting \"seediness\" with catechin/tannin ratios",
-          "publishedAt": "2025-09-01",
+          "publisher": "LVWO Weinsberg (Germany)",
+          "tier": 1,
+          "canonicalUrl": "https://lvwo.landwirtschaft-bw.de/site/pbs-bw-rebrush2024/get/documents_E-2012455756/MLR.LEL/PB5Documents/lvwo/Weinbau/Rebschutz/Aktuelles/2026_PSM_Mittellisten%20und%20Tabellen/2026_4_PSM_Tafeltrauben.pdf",
+          "sectionPath": "### Behandlungs- > 1. Vorblüte x 1 100 - 400",
+          "publishedAt": "2026-02-04",
           "dateSource": "published",
-          "textHash": "39f215b9afe6"
+          "textHash": "5ae23420b684"
         }
       ]
     },
@@ -1623,34 +1623,24 @@
           "rank": 1,
           "publisher": "Oregon Wine Research Institute (OSU)",
           "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/rr172584r",
-          "sectionPath": "Welcome to the Summer 2015 NewsleƩer Our current issue of the OWRI Technical NewsleƩer is packed with Extension informaƟon, research results, and program updates. Paul Schreiner, Research Plant Pathol",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "22c397f51e67"
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/9p290b79c",
+          "sectionPath": "Oregon Wine Advisory Board Research Progress Report",
+          "publishedAt": "2006-06-01",
+          "dateSource": "published",
+          "textHash": "d070c5e030d0"
         },
         {
           "rank": 2,
           "publisher": "Oregon Wine Research Institute (OSU)",
           "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/9p290b79c",
-          "sectionPath": "Oregon Wine Advisory Board Research Progress Report 1996 - 1997 Nitrogen Compounds in Oregon Musts and Wines Barney Watson and Hsiao Ping Chen Department of Food Science and Technology Oregon State Un",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "d63397426062"
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/08612p99f",
+          "sectionPath": "Manipulating Soil Moisture and Nitrogen Availability Part II: Effects on Pinot noir Must and Wine Composition > Manipulating Soil Moisture…",
+          "publishedAt": "2006-05-16",
+          "dateSource": "published",
+          "textHash": "04c0eb439183"
         },
         {
           "rank": 3,
-          "publisher": "Scott Laboratories",
-          "tier": 2,
-          "canonicalUrl": "https://scottlab.com/content/files/documents/handbooks/rev/scott%20laboratories%202025-2026%20winemaking%20handbook%20aug.pdf",
-          "sectionPath": "2 VINEYARDYEASTNUTRIENTSML BACTERIAOAKTANNINSENZYMESFINING & STABILITYMICRO CONTROL Welcome to the 2025-2026 Scott Laboratories Winemaking Handbook – our 30th edition! As a proud part of Lallemand Inc",
-          "publishedAt": "2025-01-01",
-          "dateSource": "published",
-          "textHash": "b03366dba908"
-        },
-        {
-          "rank": 4,
           "publisher": "OSU Extension (Oregon State University)",
           "tier": 1,
           "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-9658-wine-grape-tissue-nutrient-guidelines-oregon",
@@ -1660,17 +1650,17 @@
           "textHash": "d8e900f4c1f5"
         },
         {
-          "rank": 5,
-          "publisher": "Oregon Wine Research Institute (OSU)",
-          "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/08612p99f",
-          "sectionPath": "Manipulating Soil Moisture and Nitrogen Availability Part II: Effects on Pinot noir Must and Wine Composition Barney Watson, Mee Godard, and Hsiao-Ping Chen Department of Food Science and Technology,",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "607ca13b0f3b"
+          "rank": 4,
+          "publisher": "Scott Laboratories",
+          "tier": 2,
+          "canonicalUrl": "https://scottlab.com/content/files/documents/handbooks/rev/scott%20laboratories%202025-2026%20winemaking%20handbook%20aug.pdf",
+          "sectionPath": "2 VINEYARDYEASTNUTRIENTSML BACTERIAOAKTANNINSENZYMESFINING & STABILITYMICRO CONTROL Welcome to the 2025-2026 Scott Laboratories Winemaking Handbook – our 30th edition! As a proud part of Lallemand Inc",
+          "publishedAt": "2025-01-01",
+          "dateSource": "published",
+          "textHash": "b03366dba908"
         },
         {
-          "rank": 6,
+          "rank": 5,
           "publisher": "Virginia Tech Enology",
           "tier": 1,
           "canonicalUrl": "https://enology.fst.vt.edu/EN/105.html",
@@ -1680,24 +1670,34 @@
           "textHash": "cc23262b7988"
         },
         {
-          "rank": 7,
+          "rank": 6,
           "publisher": "Oregon Wine Research Institute (OSU)",
           "tier": 1,
           "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/7s75dd518",
-          "sectionPath": "Oregon Wine Advisory Board Research Progress Report 1998 - 1999 Evaluation of Nitrogen Deficiencies in Oregon Grapevines, Musts and Wines Barney Watson1, Anna Specht1, and Ed Hellman2 Department of Fo",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "0062d9c167bd"
+          "sectionPath": "Oregon Wine Advisory Board Research Progress Report",
+          "publishedAt": "2006-05-31",
+          "dateSource": "published",
+          "textHash": "2ff11a8dcf8c"
+        },
+        {
+          "rank": 7,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/rr172584r",
+          "sectionPath": "Viticulture & Enology > Viticulture & Enology > Technical Newsletter > Oregon Wine Research Institute—Viticulture & Enology Technical…",
+          "publishedAt": "2015-08-06",
+          "dateSource": "published",
+          "textHash": "dac29a66d85d"
         },
         {
           "rank": 8,
           "publisher": "Oregon Wine Research Institute (OSU)",
           "tier": 1,
           "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/08612p99f",
-          "sectionPath": "Manipulating Soil Moisture and Nitrogen Availability Part II: Effects on Pinot noir Must and Wine Composition Barney Watson, Mee Godard, and Hsiao-Ping Chen Department of Food Science and Technology,",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "493b62ae5296"
+          "sectionPath": "Manipulating Soil Moisture and Nitrogen Availability Part II: Effects on Pinot noir Must and Wine Composition > Manipulating Soil Moisture…",
+          "publishedAt": "2006-05-16",
+          "dateSource": "published",
+          "textHash": "da5d60cf5bba"
         }
       ]
     }
