@@ -34,7 +34,9 @@ describe("VadDetector", () => {
   });
 
   it("finalizes after enough speech followed by the hangover of silence", () => {
-    const v = new VadDetector({ speechThreshold: 0.04, hangoverMs: 1200, minSpeechMs: 250 });
+    // growth pinned to 0: this case is about the flat base timing. The adaptive
+    // hangover has its own describe block below.
+    const v = new VadDetector({ speechThreshold: 0.04, hangoverMs: 1200, minSpeechMs: 250, hangoverGrowthRatio: 0 });
     expect(v.process(0.1, 0)).toBe("speech-start");
     expect(v.process(0.1, 300)).toBe("speech-confirmed"); // 300ms of speech (>= minSpeech)
     expect(v.process(0.01, 800)).toBe("none"); // silence starts (500ms since loud)
@@ -43,7 +45,7 @@ describe("VadDetector", () => {
   });
 
   it("does not finalize before the hangover elapses", () => {
-    const v = new VadDetector({ hangoverMs: 1200, minSpeechMs: 100 });
+    const v = new VadDetector({ hangoverMs: 1200, minSpeechMs: 100, hangoverGrowthRatio: 0 });
     v.process(0.1, 0); // speech-start, lastLoud=0
     v.process(0.1, 200); // lastLoud=200
     expect(v.process(0.0, 1000)).toBe("none"); // 800ms silence < 1200
@@ -68,6 +70,65 @@ describe("VadDetector", () => {
     expect(v.process(0.2, 800)).toBe("speech-start"); // second turn begins
   });
 
+  // The reported bug: hands-free, the assistant answered while the user was still
+  // mid-thought. People think out loud and pause — a flat 1.2s bar read every one of
+  // those pauses as handing over the turn. These lock the two mechanisms that fixed it.
+  describe("mid-thought pauses (turn-taking)", () => {
+    it("does not hand over the turn on a 1.2s mid-sentence pause", () => {
+      // Regression for the ticket. Verbatim shape of the complaint: talk, pause to
+      // think, keep going — and the assistant must still be listening.
+      const v = new VadDetector();
+      expect(v.process(0.1, 0)).toBe("speech-start");
+      v.process(0.1, 4000); // ~4s of "so what I want is just, like…"
+      expect(v.process(0.005, 5000)).toBe("none"); // 1.0s of thinking silence
+      expect(v.process(0.005, 5200)).toBe("none"); // 1.2s — the OLD cutoff
+      expect(v.process(0.005, 5600)).toBe("none"); // 1.6s — still under the grown bar
+      expect(v.isSpeaking).toBe(true); // …and the user picks the sentence back up:
+      expect(v.process(0.1, 5800)).toBe("none"); // same utterance, not a new one
+    });
+
+    it("grants more silence the longer the user has held the floor", () => {
+      const v = new VadDetector();
+      v.process(0.1, 0);
+      const shortTurn = v.currentHangoverMs();
+      v.process(0.1, 8000); // eight seconds in — audibly composing a thought
+      const longTurn = v.currentHangoverMs();
+      expect(longTurn).toBeGreaterThan(shortTurn);
+      expect(shortTurn).toBe(DEFAULT_VAD_OPTIONS.hangoverMs);
+    });
+
+    it("caps the grown hangover so a long turn can't hang the loop open", () => {
+      const v = new VadDetector();
+      v.process(0.1, 0);
+      v.process(0.1, 120_000); // two solid minutes of floor time
+      expect(v.currentHangoverMs()).toBe(DEFAULT_VAD_OPTIONS.maxHangoverMs);
+    });
+
+    it("keeps a crisp short answer snappy", () => {
+      // The flip side: "tank four" is complete in itself. It must not inherit the
+      // patience a rambling turn earns, or every quick exchange feels laggy.
+      const v = new VadDetector();
+      v.process(0.1, 0);
+      v.process(0.1, 400); // 400ms utterance
+      expect(v.currentHangoverMs()).toBeLessThanOrEqual(DEFAULT_VAD_OPTIONS.hangoverMs + 100);
+      expect(v.process(0.005, 2200)).toBe("finalize"); // 1.8s later, turn handed over
+    });
+
+    it("keeps the utterance alive through a trailing-off syllable (hysteresis)", () => {
+      // The tail of "…for this one" decays below the ONSET bar but stays above the
+      // release bar, so it must not start the silence clock early.
+      const v = new VadDetector();
+      const { speechThreshold, releaseThreshold } = DEFAULT_VAD_OPTIONS;
+      expect(releaseThreshold).toBeLessThan(speechThreshold);
+      const trailing = (speechThreshold + releaseThreshold) / 2; // between the two bars
+      expect(v.process(trailing, 0)).toBe("none"); // too quiet to START a turn
+      expect(v.process(0.1, 100)).toBe("speech-start");
+      v.process(trailing, 500); // trailing off, but still counted as speech
+      expect(v.process(trailing, 3000)).toBe("none"); // 2.5s of it and still no finalize
+      expect(v.isSpeaking).toBe(true);
+    });
+  });
+
   // Barge-in (interrupting the assistant while it speaks) is less sensitive than
   // listening AND fed an echo-adjusted level, so the assistant can't interrupt
   // itself while the user still can. These lock the preset's intent + timing.
@@ -77,6 +138,14 @@ describe("VadDetector", () => {
       expect(BARGE_VAD_OPTIONS.minSpeechMs).toBeGreaterThanOrEqual(DEFAULT_VAD_OPTIONS.minSpeechMs);
       // Not so high that a normal spoken interruption can't cross it.
       expect(BARGE_VAD_OPTIONS.speechThreshold).toBeLessThanOrEqual(0.1);
+    });
+
+    it("stays flat — no listen-side patience leaks into barge detection", () => {
+      // A lowered release bar would let residual echo sustain a run, and a growing
+      // hangover is meaningless when the only event barge cares about is confirmation.
+      expect(BARGE_VAD_OPTIONS.hangoverGrowthRatio).toBe(0);
+      expect(BARGE_VAD_OPTIONS.releaseThreshold).toBe(BARGE_VAD_OPTIONS.speechThreshold);
+      expect(DEFAULT_VAD_OPTIONS.hangoverGrowthRatio).toBeGreaterThan(0);
     });
 
     it("ignores an echo-adjusted level below the barge threshold", () => {

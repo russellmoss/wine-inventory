@@ -22,6 +22,9 @@ export type MicCapture = {
   ensureReady: () => Promise<void>;
   /** Begin a recording turn; fires onUtterance(blob) once on end-of-speech. */
   beginListen: (onUtterance: (audio: Blob) => void) => void;
+  /** End the current listen turn NOW (user tapped "Done talking") instead of waiting
+   *  out the VAD hangover. No-op unless a listen turn is actually in progress. */
+  finishListening: () => void;
   /** Begin barge-in monitoring; fires onSpeech() once speech is sustained enough to be intentional.
    *  `getOutputLevel` returns the assistant's live TTS output RMS so barge detection can discount its
    *  own echo (see echoAdjustedLevel) — pass it while the assistant is speaking. */
@@ -177,6 +180,15 @@ export function useMicCapture(): MicCapture {
     modeRef.current = "listen";
   }, []);
 
+  // The user's own end-of-turn signal. The listen VAD is deliberately patient now
+  // (DEFAULT_VAD_OPTIONS) so a mid-thought pause isn't mistaken for handing over;
+  // this is the other half of that bargain — anyone who wants an answer NOW says so
+  // rather than waiting out up to three seconds of silence.
+  const finishListening = React.useCallback(() => {
+    if (modeRef.current !== "listen") return;
+    finalizeListen();
+  }, [finalizeListen]);
+
   const beginBargeIn = React.useCallback((
     onSpeech: (audio?: Blob) => void,
     options?: { record?: boolean; getOutputLevel?: () => number },
@@ -260,7 +272,7 @@ export function useMicCapture(): MicCapture {
   // so a fresh literal every render would cause a start/stop loop. All members
   // are stable (refs + empty-dep useCallbacks), so this memo never changes.
   return React.useMemo(
-    () => ({ levelRef, ensureReady, beginListen, beginBargeIn, endTurn, dispose }),
-    [levelRef, ensureReady, beginListen, beginBargeIn, endTurn, dispose],
+    () => ({ levelRef, ensureReady, beginListen, finishListening, beginBargeIn, endTurn, dispose }),
+    [levelRef, ensureReady, beginListen, finishListening, beginBargeIn, endTurn, dispose],
   );
 }

@@ -7,9 +7,37 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**BACKLOG IS CLEAR — 0 active feedback items, 0 open PRs. Nothing is in flight.**
-A full `/bug-triage` goalie run (live, all sweeps) on 2026-07-21 left the queue empty and honest.
-The next objective is a CHOICE, not a continuation — see **⏭️ Next up**.
+**Ticket `cmrvhj5b8…` — VOICE MODE INTERRUPTS THE USER MID-THOUGHT. Fixed; PR #460 open.**
+Branch `claude/voice-mode-interruption-46ea11`.
+
+Reporter (on a phone, hands-free): *"it would maybe let me talk for like 30 seconds before it would
+just start thinking… I can't just keep talking for a long time like I can in Claude or Gemini."*
+
+**Root cause: `DEFAULT_VAD_OPTIONS.hangoverMs` was a FLAT 1200ms** (`src/lib/voice/vad.ts`). There is
+no 30-second cap anywhere — 30s is simply when the reporter first paused for more than 1.2s. People
+thinking out loud pause for about that long constantly, so every one of those pauses read as handing
+over the turn.
+
+Two mechanisms, both pure and unit-tested (`test/voice-vad.test.ts`):
+- **Adaptive hangover** — silence-to-finalize now scales with how long the speaker has held the floor
+  (1600ms base → 3000ms cap, +0.15ms per ms held). A crisp "tank four" stays snappy; someone eight
+  seconds into a sentence gets the full three seconds. Barge-in stays deliberately FLAT (a lowered bar
+  would let the assistant's own echo sustain a run — see [[voice-mode-barge-self-interrupt]]).
+- **Hysteresis** — onset needs 0.04 RMS, but staying in speech only needs 0.025, so a trailing
+  syllable or a soft "um" no longer starts the silence clock early.
+
+Plus the escape hatch that patience requires: a **"✓ Done talking"** button beside Interrupt
+(`voiceControlAvailability` in `inline-ui.ts` → `VoiceSession.finishTurn` → `mic.finishListening`),
+so anyone who wants an answer NOW says so instead of waiting out 3s of silence.
+
+⚠️ **Not browser-verified, and it can't be from here** — proving this needs a real mic and a real
+human pausing mid-sentence. The pure timing logic is covered by tests; the *feel* is not. Have the
+reporter re-test on the phone before calling it resolved.
+
+## 🗂️ Last run  (was the objective)
+
+**BACKLOG WAS CLEAR — 0 active feedback items, 0 open PRs.** A full `/bug-triage` goalie run (live,
+all sweeps) on 2026-07-21 left the queue empty and honest; the voice ticket above arrived after it.
 
 Box score: backlog 26 → **0 active** (25 already closed, 1 reconciled to RESOLVED — its fix had
 shipped in #391 and nobody wrote the status back). 1 open PR triaged + merged (#443). 18 open issues
@@ -577,7 +605,15 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-21 — **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
+_Last updated: 2026-07-22 — **voice mode no longer cuts the user off mid-thought** (ticket `cmrvhj5b8…`,
+PR #460). The listen VAD's flat 1200ms silence bar became an adaptive 1600→3000ms one that scales with
+how long the speaker has held the floor, plus onset/release hysteresis so a trailing syllable doesn't
+start the clock; a "Done talking" control is the opt-out. The reported "30 seconds" was a red herring —
+there is no utterance cap, that was just the first pause over 1.2s. tsc + eslint + 3338 tests green.
+NOT browser-verified: the fix is about how a real pause FEELS, so the reporter has to re-test on a
+phone before it counts as resolved. Prior:_
+
+_2026-07-21 — **the backlog is CLEAR: 0 active feedback items, 0 open PRs.** A full
 `/bug-triage` goalie run (live, all sweeps) reconciled the queue and cleared the pile: 26 backlog items
 → 0 active, 1 open PR triaged + merged (#443), 18 open issues → 10 kept. It found exactly ONE real
 production bug among 6 Sentry issues — **#324**, a Leaflet debounce that outlived `map.remove()` — now
