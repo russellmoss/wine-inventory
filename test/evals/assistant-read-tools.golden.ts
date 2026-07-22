@@ -63,6 +63,44 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "query_measurements",
     args: { vessel: "tank 3", analytes: ["FREE_SO2", "PH"], sinceDays: 30, history: true },
   },
+  // Operation history (the cellar LEDGER read). Filed by the winemaker after asking what additions
+  // had been made to Tank T2 and getting nothing: the assistant could WRITE every one of these
+  // operations but could not read one back. The split these cases pin: what was DONE to the wine is
+  // query_operations; what was MEASURED on it is query_measurements.
+  {
+    utterance: "What additions did we make to tank T2?",
+    tool: "query_operations",
+    args: { vessel: "tank T2", opTypes: ["additions"] },
+    note: "the motivating bug — an ADDITION is a ledger operation, not a measurement and not a transfer",
+  },
+  {
+    utterance: "When did we last punch down T5?",
+    tool: "query_operations",
+    args: { vessel: "T5", opTypes: ["punchdowns"] },
+    note: "cap management is CAP_MGMT in the ledger; 'punch down' must not reach query_measurements",
+  },
+  {
+    utterance: "Show me the racking history of barrel 14",
+    tool: "query_operations",
+    args: { vessel: "barrel 14", opTypes: ["racking"] },
+  },
+  {
+    utterance: "What have we done to lot 2026-SY-2?",
+    tool: "query_operations",
+    args: { lot: "2026-SY-2" },
+    note: "no opTypes = the whole feed; lot scope follows the wine across vessels",
+  },
+  {
+    utterance: "Which tanks haven't been punched down in 3 days?",
+    tool: "query_operations",
+    args: { vesselType: "TANK", opTypes: ["punchdowns"], staleAfterDays: 3 },
+    note: "recency sweep — the operations counterpart to a query_measurements ranking",
+  },
+  {
+    utterance: "Has tank 3 been topped in the last month?",
+    tool: "query_operations",
+    args: { vessel: "tank 3", opTypes: ["toppings"], sinceDays: 30 },
+  },
   {
     utterance: "How much DAP do we have on hand?",
     tool: "query_materials",

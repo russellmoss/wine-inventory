@@ -23,7 +23,7 @@ import { ASSISTANT_READ_GOLDEN } from "./assistant-read-tools.golden";
 const TOOLS = getToolsFor({ role: "admin" } as never);
 const BY_NAME = new Map<string, AssistantTool>(TOOLS.map((t) => [t.name, t]));
 const WRITE_TOOL_NAMES = TOOLS.filter((t) => t.kind === "write").map((t) => t.name);
-const REQUIRED_READ_TOOL_NAMES = ["query_cellar_contents", "query_measurements"];
+const REQUIRED_READ_TOOL_NAMES = ["query_cellar_contents", "query_measurements", "query_operations"];
 
 // Write tools intentionally NOT covered by a golden case (yet), with the reason. A NEW write tool that
 // is neither covered nor listed here fails the coverage guard — that's the D26 "governed from day one"
