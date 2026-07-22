@@ -76,14 +76,14 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     // technical content — cheap to refuse explicitly so a future link-follow can never wander in.
     denyPrefixes: ["/cache/", "/user/", "/login", "/submit", "/search", "/$$$call$$$", "/plugins/"],
     crawlCadence: "monthly",
-    // STAGED ROLLOUT, deliberately. The intent is default-on — the licensing is the cleanest in the
-    // corpus and this is research winemakers should be able to read. But `.env` and production are ONE
-    // Neon database, so seeding defaultEnabled:true would put IVES into every tenant's retrieval
-    // (including the real Bhutan winery) the moment the crawl finished, before anyone had seen the
-    // effect. So: ship false, enable it for the Demo Winery sandbox via a subscription row, measure with
-    // `npm run verify:kb-register` against the pre-IVES baseline in docs/kb-register-baseline.json, THEN
-    // flip this to true and re-seed. Flipping is a one-line change; un-ringing a bad rollout is not.
-    defaultEnabled: false,
+    // Default-ON, and this is the MEASURED position rather than the hoped-for one. It was staged: shipped
+    // false, crawled (209 documents / 3,316 chunks), enabled for the Demo Winery sandbox alone, then
+    // measured with `npm run verify:kb-register` against the pre-IVES baseline captured before the source
+    // existed. Result: **4 of 120 slots changed hands (3%)**, no question losing more than 2 of 6, and 17
+    // of 20 practical questions completely unchanged. IVES took slots on oak ageing, oxidation at
+    // pressing and Riesling acid targets — topics where a research review genuinely belongs. That is
+    // integration, not crowding-out, so the gate's own verdict supports enabling it everywhere.
+    defaultEnabled: true,
   },
   {
     key: "cornell-grapes",

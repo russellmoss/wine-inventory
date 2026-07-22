@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T15:52:03.016Z",
+  "capturedAt": "2026-07-22T16:53:03.138Z",
   "topK": 6,
   "questions": [
     {
@@ -96,9 +96,9 @@
         "WSU Viticulture & Enology",
         "WSU Viticulture & Enology",
         "LVWO Weinsberg (Germany)",
+        "IVES Technical Reviews",
         "WSU Viticulture & Enology",
-        "AWRI",
-        "LVWO Weinsberg (Germany)"
+        "AWRI"
       ]
     },
     {
@@ -140,8 +140,8 @@
         "AWRI",
         "Virginia Tech Enology",
         "Scott Laboratories",
-        "Oregon Wine Research Institute (OSU)",
         "OSU Extension (Oregon State University)",
+        "Oregon Wine Research Institute (OSU)",
         "Oregon Wine Research Institute (OSU)"
       ]
     },
@@ -153,7 +153,7 @@
         "Scott Laboratories",
         "Virginia Tech Enology",
         "AWRI",
-        "AWRI"
+        "IVES Technical Reviews"
       ]
     },
     {
@@ -193,11 +193,11 @@
       "question": "How long should I age a red on oak?",
       "publishers": [
         "Wine Australia",
-        "AWRI",
+        "IVES Technical Reviews",
         "ICVV — Instituto de Ciencias de la Vid y del Vino (Spain)",
-        "WSU Viticulture & Enology",
-        "LVWO Weinsberg (Germany)",
-        "Scott Laboratories"
+        "Scott Laboratories",
+        "Virginia Tech Enology",
+        "AWRI"
       ]
     },
     {
