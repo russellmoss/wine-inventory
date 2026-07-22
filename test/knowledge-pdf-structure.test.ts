@@ -6,6 +6,8 @@ import {
   isHeadingLine,
   assignHeadingLevels,
   linesToMarkdown,
+  dropRunningHeaders,
+  isBoilerplateSection,
   inferTitle,
   type PdfTextItem,
   type PdfLine,
@@ -187,6 +189,21 @@ describe("isHeadingLine", () => {
     expect(isHeadingLine(line(slab, 32), BODY)).toBe(false);
   });
 
+  it("rejects a sentence fragment that merely happens to be set larger", () => {
+    // Found by running the real extractor over the AWRI fact sheets. Size alone promoted wrapped body
+    // text to headings, giving breadcrumbs like "Fact Sheet > me know." and "… > come about?". Every
+    // such fragment starts lowercase because it is the tail of a sentence.
+    for (const frag of ["me know.", "come about?", "ask the", "point?", "become resistant?"]) {
+      expect(isHeadingLine(line(frag, 14), BODY), frag).toBe(false);
+    }
+  });
+
+  it("still accepts real headings that start with a capital or a number", () => {
+    expect(isHeadingLine(line("Where to from here?", 14), BODY)).toBe(true);
+    expect(isHeadingLine(line("Requirements for Pinot noir?", 14), BODY)).toBe(true);
+    expect(isHeadingLine(line("3. Tissue Interpretation", 14), BODY)).toBe(true);
+  });
+
   it("rejects lines with no letters", () => {
     // Page numbers and rules set in a display face would otherwise produce breadcrumbs like "12 > 13".
     expect(isHeadingLine(line("12", 28), BODY)).toBe(false);
@@ -267,6 +284,144 @@ describe("linesToMarkdown", () => {
     expect(paths.some((p) => p.includes("Vineyard Nutrition > Petiole Sampling"))).toBe(true);
     // And every breadcrumb stays short enough to be a citation string, unlike the 192-char slab.
     for (const p of paths) expect(p.length).toBeLessThan(120);
+  });
+});
+
+// Plan 090 Unit 6.
+describe("dropRunningHeaders", () => {
+  const onPages = (text: string, fontSize: number, pages: number[]) =>
+    pages.map((p) => line(text, fontSize, p));
+
+  it("drops a header repeated across most pages", () => {
+    // The real case: the OWRI newsletter repeats "Viticulture & Enology" atop all 13 pages, set larger
+    // than body text, so every one became a heading and the breadcrumbs read
+    // "Viticulture & Enology > Viticulture & Enology > Technical Newsletter > ...".
+    const lines = [
+      ...onPages("Viticulture & Enology", 14, [0, 1, 2, 3, 4, 5]),
+      ...[0, 1, 2, 3, 4, 5].map((p) => line(`unique body text for page ${p}`, 11, p)),
+    ];
+    const kept = dropRunningHeaders(lines);
+    expect(kept.some((l) => l.text === "Viticulture & Enology")).toBe(false);
+    expect(kept).toHaveLength(6);
+  });
+
+  it("keeps a line that appears on only a few pages", () => {
+    const lines = [
+      ...onPages("Occasional Subhead", 14, [0, 1]),
+      ...[0, 1, 2, 3, 4, 5].map((p) => line(`body ${p}`, 11, p)),
+    ];
+    expect(dropRunningHeaders(lines).some((l) => l.text === "Occasional Subhead")).toBe(true);
+  });
+
+  it("does nothing on a short document", () => {
+    // Two pages give nothing to generalize from; a repeated line there may just be a real repeat.
+    const lines = [...onPages("Repeated", 14, [0, 1]), line("body", 11, 0)];
+    expect(dropRunningHeaders(lines)).toHaveLength(3);
+  });
+
+  it("never drops a long line even if it repeats", () => {
+    // A length ceiling keeps genuine repeated CONTENT out of scope. Furniture is short.
+    const long = "This is a long sentence of actual content that happens to be repeated across pages verbatim.";
+    const lines = [...onPages(long, 11, [0, 1, 2, 3, 4, 5]), line("other", 11, 0)];
+    expect(dropRunningHeaders(lines).filter((l) => l.text === long)).toHaveLength(6);
+  });
+});
+
+describe("isBoilerplateSection", () => {
+  it("drops unambiguous structural furniture on the heading alone", () => {
+    expect(isBoilerplateSection("Acknowledgements", ["We thank the OWRI staff."])).toMatch(/boilerplate/);
+    expect(isBoilerplateSection("Copyright", ["© 2019 The Australian Wine Research Institute"])).toMatch(/boilerplate/);
+    expect(isBoilerplateSection("IN THIS ISSUE", ["Cluster ripening", "Nitrogen"])).toMatch(/boilerplate/);
+  });
+
+  it("drops a reference list that really is citations", () => {
+    const body = [
+      "Amerine, M.A.; Ough, C.S. (1980) Methods for analysis of musts and wines. New York Wiley.",
+      "Bokulich, N.A. et al. (2015) Sulfur dioxide treatment alters wine microbial diversity.",
+      "Schreiner, R.P. (2016) Nutrient uptake in Pinot noir. Am J Enol Vitic 67(2): 234-241.",
+    ];
+    expect(isBoilerplateSection("References", body)).toMatch(/bibliography/);
+    expect(isBoilerplateSection("Literature Cited", body)).toMatch(/bibliography/);
+  });
+
+  it("KEEPS a 'Further reading' section that is actually guidance", () => {
+    // The false positive a heading-only denylist would create, and the reason the bibliography branch
+    // demands corroborating evidence from the body.
+    const guidance = [
+      "Add 25 mg/L of sulfur dioxide at crush to stabilise the microbial population before inoculation.",
+      "Check free SO2 again after malolactic fermentation completes and top up to the target.",
+    ];
+    expect(isBoilerplateSection("Further reading", guidance)).toBeNull();
+  });
+
+  it("matches whole headings only, never substrings", () => {
+    // "Reference method" and "Contents of the must" are real technical headings.
+    expect(isBoilerplateSection("Reference method for volatile acidity", ["Steam distillation."])).toBeNull();
+    expect(isBoilerplateSection("Contents of the must", ["Sugar and acid at harvest."])).toBeNull();
+    expect(isBoilerplateSection("Acknowledgement of receipt procedures", ["Steps."])).toBeNull();
+  });
+
+  it("handles the corpus's other languages", () => {
+    expect(isBoilerplateSection("Remerciements", ["Merci à l'équipe."])).toMatch(/boilerplate/);
+    expect(isBoilerplateSection("Agradecimientos", ["Gracias al equipo."])).toMatch(/boilerplate/);
+    expect(isBoilerplateSection("Danksagung", ["Wir danken dem Team."])).toMatch(/boilerplate/);
+  });
+
+  it("fails open on anything unrecognized", () => {
+    expect(isBoilerplateSection("Petiole Sampling", ["Sample 60 petioles at bloom."])).toBeNull();
+    expect(isBoilerplateSection("", ["orphan body"])).toBeNull();
+  });
+});
+
+describe("linesToMarkdown boilerplate filtering", () => {
+  it("removes a boilerplate section together with its body", () => {
+    // Dropping the heading alone would orphan the reference list under the preceding section, which is
+    // worse than leaving it in place.
+    const { markdown, dropped } = linesToMarkdown([
+      line("Petiole Sampling", 14),
+      line("Sample 60 petioles at bloom from the leaf opposite the basal cluster.", 11),
+      line("References", 14),
+      line("Amerine, M.A.; Ough, C.S. (1980) Methods for analysis of musts and wines.", 11),
+      line("Schreiner, R.P. et al. (2016) Nutrient uptake in Pinot noir.", 11),
+    ]);
+    expect(markdown).toContain("Petiole Sampling");
+    expect(markdown).not.toContain("References");
+    expect(markdown).not.toContain("Amerine");
+    expect(dropped).toHaveLength(1);
+  });
+
+  it("merges a heading that wraps onto a second line", () => {
+    // Real case: "Strobilurin resistance to powdery mildew in a vineyard" wraps, and treating the two
+    // lines as separate headings produced "Strobilurin resistance … > mildew in a vineyard > …".
+    const { markdown } = linesToMarkdown([
+      line("Strobilurin resistance to powdery", 16),
+      line("Mildew in a vineyard", 16),
+      line("Resistance arises when a single-site fungicide is used repeatedly.", 11),
+    ]);
+    expect(markdown).toContain("# Strobilurin resistance to powdery Mildew in a vineyard");
+    expect(markdown.match(/^#/gm) ?? []).toHaveLength(1);
+  });
+
+  it("does NOT merge sibling headings that have content between them", () => {
+    const { markdown } = linesToMarkdown([
+      line("First Section", 14),
+      line("Some real body content sits here between the two headings.", 11),
+      line("Second Section", 14),
+      line("More body content follows the second heading.", 11),
+    ]);
+    expect(markdown.match(/^#/gm) ?? []).toHaveLength(2);
+    expect(markdown).toContain("# First Section");
+    expect(markdown).toContain("# Second Section");
+  });
+
+  it("counts only KEPT headings, so a fully boilerplate document fails soft", () => {
+    // headingCount drives extractPdf's fallback. If every heading were boilerplate, the document has no
+    // usable structure and should fall back to linearized text rather than emit a shell.
+    const { headingCount } = linesToMarkdown([
+      line("Acknowledgements", 14),
+      line("We thank the staff.", 11),
+    ]);
+    expect(headingCount).toBe(0);
   });
 });
 

@@ -209,6 +209,13 @@ export function isHeadingLine(line: PdfLine, bodySize: number): boolean {
   // Must contain a letter: page numbers, rules and figure captions set in a display face are not
   // structure, and promoting them would create breadcrumbs like "12 > 13".
   if (!/\p{L}/u.test(t)) return false;
+  // Must START like a heading, not like the middle of a sentence.
+  //
+  // Found by running the real extractor over the AWRI fact sheets: size alone promoted body-text
+  // fragments to headings, producing breadcrumbs such as "Fact Sheet > me know." and "… > come about?"
+  // and "… > ask the". Every one of them starts lowercase because it is the tail of a wrapped sentence
+  // that happened to be set a little larger. Real headings begin with a capital or a number.
+  if (!/^[\p{Lu}\p{N}]/u.test(t)) return false;
   return true;
 }
 
@@ -224,10 +231,143 @@ export function assignHeadingLevels(headingSizes: number[]): Map<number, number>
   return levels;
 }
 
+/**
+ * Plan 090 Unit 6 (a) — drop RUNNING HEADERS AND FOOTERS.
+ *
+ * Found by running the real extractor, not by reasoning: the OWRI newsletter repeats "Viticulture &
+ * Enology" / "Technical Newsletter" at the top of all 13 pages, and because they are set larger than
+ * body text every one of them became a heading. The result was breadcrumbs reading
+ * "Viticulture & Enology > Viticulture & Enology > Technical Newsletter > Requirements for…" — the page
+ * furniture crowding out the actual section name in the citation.
+ *
+ * A short line appearing on at least half the pages of a multi-page document is furniture by
+ * construction; real prose does not repeat verbatim across a document. Guarded three ways: a minimum
+ * page count (nothing to generalize from in a 2-page leaflet), a minimum absolute repeat count, and a
+ * length ceiling so a genuinely repeated sentence of content is never eligible.
+ */
+export function dropRunningHeaders(lines: PdfLine[]): PdfLine[] {
+  const pages = new Set(lines.map((l) => l.page));
+  if (pages.size < 4) return lines;
+
+  const seenOnPages = new Map<string, Set<number>>();
+  for (const l of lines) {
+    const key = l.text.trim();
+    if (!key || key.length > 80) continue;
+    if (!seenOnPages.has(key)) seenOnPages.set(key, new Set());
+    seenOnPages.get(key)!.add(l.page);
+  }
+  const threshold = Math.max(3, Math.ceil(pages.size * 0.5));
+  const furniture = new Set(
+    [...seenOnPages.entries()].filter(([, p]) => p.size >= threshold).map(([t]) => t),
+  );
+  return furniture.size === 0 ? lines : lines.filter((l) => !furniture.has(l.text.trim()));
+}
+
+/**
+ * Plan 090 Unit 6 (b) — structural boilerplate whose heading is unambiguous on its own.
+ *
+ * These are furniture in every document that has them, in every language in this corpus
+ * (EN / FR / ES / DE / CA). Matching is WHOLE-HEADING after normalization, never substring, so
+ * "Reference method for volatile acidity" and "Contents of the must" are untouched.
+ */
+const ALWAYS_DROP_HEADINGS =
+  /^(?:acknowledge?ments?|acknowledgements?|remerciements|agradecimientos|agra[ïi]ments|danksagung|copyright(?:\s+notice)?|all\s+rights\s+reserved|table\s+of\s+contents|contents|in\s+this\s+issue|impressum)$/i;
+
+/**
+ * Bibliography-type headings. These drop ONLY when the section body actually looks like a
+ * bibliography — see isBoilerplateSection. A "Further reading" section that contains real dosing
+ * guidance must survive, which is exactly the false positive a heading-only rule would create.
+ */
+const BIBLIOGRAPHY_HEADINGS =
+  /^(?:references?(?:\s+and\s+further\s+reading)?|further\s+reading|bibliograph(?:y|ie|ía|ia)|literature\s+cited|works\s+cited|r[ée]f[ée]rences|referencias|referencies|literatur(?:verzeichnis)?)$/i;
+
+/** A line that reads like a citation: a bare year in parens, an "et al.", or a volume(issue):pages run. */
+function looksLikeCitation(line: string): boolean {
+  return (
+    /\(\s*(?:19|20)\d{2}[a-z]?\s*\)/.test(line) ||
+    /\bet\s+al\.?/i.test(line) ||
+    /\b\d+\s*\(\s*\d+\s*\)\s*[:,]\s*\d+/.test(line) ||
+    /\bpp?\.\s*\d+\s*[-–]\s*\d+/.test(line) ||
+    /\bdoi:\s*10\./i.test(line)
+  );
+}
+
+/**
+ * Decide whether a section is boilerplate. Returns a reason (for logging) or null to keep.
+ *
+ * Fails OPEN like the plan-084 classifier: anything unrecognized is kept. Dropping a bibliography is a
+ * small win; dropping a section of real winemaking guidance is a real loss, so the bibliography branch
+ * demands corroborating evidence from the body rather than trusting the heading alone.
+ */
+export function isBoilerplateSection(heading: string, bodyLines: string[]): string | null {
+  const h = heading.replace(/^#+\s*/, "").replace(/[:.]$/, "").replace(/\s+/g, " ").trim();
+  if (!h) return null;
+  if (ALWAYS_DROP_HEADINGS.test(h)) return `boilerplate heading: ${h}`;
+  if (BIBLIOGRAPHY_HEADINGS.test(h)) {
+    const meaningful = bodyLines.map((l) => l.trim()).filter((l) => l.length > 20);
+    if (meaningful.length === 0) return `empty ${h} section`;
+    const cited = meaningful.filter(looksLikeCitation).length;
+    // Majority rule. A reference list is overwhelmingly citations; a "Further reading" section that is
+    // really guidance will not clear this bar and is kept.
+    if (cited / meaningful.length >= 0.5) return `bibliography: ${h} (${cited}/${meaningful.length} citation-shaped)`;
+    return null;
+  }
+  return null;
+}
+
 export interface StructuredPdf {
   markdown: string;
   headingCount: number;
   bodySize: number;
+  /** Reasons for each dropped section, for operator visibility. */
+  dropped: string[];
+  /**
+   * Whether font size actually tracked document structure here. See `isConfident` — extractPdf only
+   * uses the restructured markdown when this is true, otherwise it keeps today's linearized text.
+   */
+  confident: boolean;
+  /** Why not, when `confident` is false. Empty when confident. */
+  lowConfidenceReason: string;
+}
+
+/**
+ * Does the inferred structure look like real structure?
+ *
+ * WHY THIS GATE EXISTS. Font size tracks structure beautifully in typeset reports and newsletters and
+ * not at all in marketing-styled fact sheets, where body text is set at several sizes for emphasis. On
+ * the AWRI fact sheets the size signal produced headings like "24/12, please let" and "T&C form. If" —
+ * sentence fragments that merely happened to be set larger. Filtering those individually is
+ * whack-a-mole and overfits to whichever document is in front of you.
+ *
+ * So instead of trusting per-line heuristics, judge the RESULT in aggregate and fall back wholesale
+ * when it does not look like a table of contents. A document that resists structure then ends up
+ * exactly where it is today rather than with a corpus of junk breadcrumbs. Failing soft is the whole
+ * safety property of this change.
+ *
+ * Both thresholds are shape-based, not tuned to a specific document:
+ *   - headings must be a MINORITY of lines. When a fifth of all lines are "headings", size is tracking
+ *     emphasis, not hierarchy.
+ *   - most headings must actually INTRODUCE something. A heading with no body under it is a fragment.
+ */
+const MAX_HEADING_RATIO = 0.2;
+const MAX_ORPHAN_RATIO = 0.5;
+const MIN_BODY_LINES_PER_HEADING = 2;
+
+export function isConfident(
+  headings: number,
+  totalLines: number,
+  orphanHeadings: number,
+): { confident: boolean; reason: string } {
+  if (headings < 2) return { confident: false, reason: `only ${headings} heading(s) found` };
+  const headingRatio = headings / Math.max(totalLines, 1);
+  if (headingRatio > MAX_HEADING_RATIO) {
+    return { confident: false, reason: `${Math.round(headingRatio * 100)}% of lines look like headings (max ${MAX_HEADING_RATIO * 100}%)` };
+  }
+  const orphanRatio = orphanHeadings / headings;
+  if (orphanRatio > MAX_ORPHAN_RATIO) {
+    return { confident: false, reason: `${orphanHeadings}/${headings} headings introduce no content` };
+  }
+  return { confident: true, reason: "" };
 }
 
 /**
@@ -237,29 +377,69 @@ export interface StructuredPdf {
  * paragraph boundary and packs paragraphs into ~512-token chunks. Emitting every visual line as its own
  * paragraph would hand the chunker hundreds of one-line blocks and defeat its packing.
  */
-export function linesToMarkdown(lines: PdfLine[]): StructuredPdf {
+export function linesToMarkdown(input: PdfLine[]): StructuredPdf {
+  // Page furniture first: it is set larger than body text, so leaving it in would let every repeated
+  // header become a heading and dominate the breadcrumbs (Unit 6a).
+  const lines = dropRunningHeaders(input);
+
   const bodySize = bodyFontSize(lines);
   const headingSizes = lines.filter((l) => isHeadingLine(l, bodySize)).map((l) => l.fontSize);
   const levels = assignHeadingLevels(headingSizes);
 
-  const out: string[] = [];
-  let para: string[] = [];
-  const flushPara = () => {
-    if (para.length) out.push(para.join(" "));
-    para = [];
-  };
-
+  // Split into sections so a boilerplate heading takes its BODY with it. Dropping the heading alone
+  // would orphan a reference list under whatever section preceded it, which is worse than leaving it.
+  interface Section {
+    heading: PdfLine | null;
+    body: PdfLine[];
+  }
+  const sections: Section[] = [{ heading: null, body: [] }];
   for (const line of lines) {
     if (isHeadingLine(line, bodySize)) {
-      flushPara();
-      out.push(`${"#".repeat(levels.get(bucket(line.fontSize)) ?? 1)} ${line.text}`);
+      const last = sections[sections.length - 1];
+      // MERGE consecutive heading lines set at the same size into ONE heading. A title that wraps onto
+      // a second line is two items in the stream but one heading, and treating them separately produced
+      // breadcrumbs like "Strobilurin resistance to powdery mildew in a vineyard > mildew in a vineyard".
+      // Only merge when nothing has intervened (the previous section has no body yet), so two genuinely
+      // adjacent sibling headings with content between them are unaffected.
+      if (last.heading && last.body.length === 0 && bucket(last.heading.fontSize) === bucket(line.fontSize)) {
+        last.heading = { ...last.heading, text: `${last.heading.text} ${line.text}`.replace(/\s+/g, " ").trim() };
+        continue;
+      }
+      sections.push({ heading: line, body: [] });
     } else {
-      para.push(line.text);
+      sections[sections.length - 1].body.push(line);
     }
   }
-  flushPara();
 
-  return { markdown: out.join("\n\n"), headingCount: headingSizes.length, bodySize };
+  const dropped: string[] = [];
+  const out: string[] = [];
+  let kept = 0;
+  let orphans = 0;
+  for (const s of sections) {
+    if (s.heading) {
+      const reason = isBoilerplateSection(s.heading.text, s.body.map((b) => b.text));
+      if (reason) {
+        dropped.push(reason);
+        continue;
+      }
+      out.push(`${"#".repeat(levels.get(bucket(s.heading.fontSize)) ?? 1)} ${s.heading.text}`);
+      kept++;
+      if (s.body.length < MIN_BODY_LINES_PER_HEADING) orphans++;
+    }
+    // Consecutive body lines become ONE paragraph: chunk.ts packs paragraphs into ~512-token chunks,
+    // so one-line-per-paragraph would hand it hundreds of tiny blocks and defeat the packing.
+    if (s.body.length) out.push(s.body.map((b) => b.text).join(" "));
+  }
+
+  const { confident, reason } = isConfident(kept, lines.length, orphans);
+  return {
+    markdown: out.join("\n\n"),
+    headingCount: kept,
+    bodySize,
+    dropped,
+    confident,
+    lowConfidenceReason: reason,
+  };
 }
 
 /** Length beyond which a candidate title is prose, not a title. Well under the old 200-char slab. */

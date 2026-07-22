@@ -77,11 +77,17 @@ export async function extractPdf(bytes: Buffer): Promise<ExtractedPdf> {
   const lines = groupLines(pages).map((l) => ({ ...l, text: normalizeLigatures(l.text) }));
   const structured = lines.length ? linesToMarkdown(lines) : null;
 
-  // FAIL SOFT. If no heading was found, the document genuinely has no typographic hierarchy (or the
-  // item stream was unreadable). Emitting the reconstructed body text anyway would risk changing
-  // well-behaved documents for no structural gain, so fall back to the linearized text that shipped
-  // before this change. A PDF that resists structure ends up exactly where it is today, never worse.
-  const useStructured = !!structured && structured.headingCount > 0;
+  // FAIL SOFT, and the bar is CONFIDENCE, not "found at least one heading".
+  //
+  // Font size tracks structure in typeset reports and newsletters, and not at all in marketing-styled
+  // fact sheets where body text is set at several sizes for emphasis. Measured on the AWRI fact sheets:
+  // a heading-count test passed while the "headings" were sentence fragments ("24/12, please let",
+  // "T&C form. If"). Chasing those individually is whack-a-mole that overfits to whichever document is
+  // in front of you, so the judgment is made on the RESULT in aggregate — see isConfident.
+  //
+  // A document that resists structure ends up exactly where it is today, never worse. That is the
+  // safety property this whole change rests on.
+  const useStructured = !!structured && structured.confident;
   const clean = useStructured ? structured.markdown : linearized;
   // Heuristic: a real fact sheet has well over ~40 chars/page; far less => scanned image or failed parse.
   // Measured against the LINEARIZED text on purpose, so the signal keeps meaning "how much text did we
