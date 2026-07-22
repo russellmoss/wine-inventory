@@ -63,7 +63,41 @@ questions, live corpus):
 top-k) and never inspects the other slots — so a vendor holding 5/6 on a stuck ferment is invisible
 to it. That blindness is why the new gate exists.
 
-_(Prior objective: KB citation tombstone excerpt cap — MERGED + LIVE, PR #462, squash `8f6099b5`.)_
+_(Prior objectives, both MERGED + LIVE: assistant measurement-history read tool — PR #463, squash
+`88577fd7`; KB citation tombstone excerpt cap — PR #462, squash `8f6099b5`. Both in Done recently.)_
+
+## 🗂️ Landed while this was in flight
+
+**The assistant can now READ a tank/barrel/lot's chemistry history, and rank vessels by an analyte.
+MERGED + LIVE** (PR #463, squash `88577fd7`, branch pruned).
+
+From the in-app bug report `cmrw8s5ct…` (Demo): the assistant could log a chem panel and read
+current cellar contents, but had **no tool to read a reading back**, so "what's tank T5's Brix"
+dead-ended in "open the lot page". It reached for `query_brix` — the **vineyard-block ripeness**
+reading on grapes still on the vine — found nothing for a tank, and gave up. The auto-fix agent had
+already failed this one ("could not produce a safe fix"): adding a tool is outside its fence.
+**Missing seam, not missing data** — `listVesselAnalyses()` already renders this on `/bulk`.
+
+`query_measurements` reads `AnalysisPanel`/`AnalysisReading` for a lot, a vessel, a vessel range, or
+every vessel of a type. Russell's scope call, and it's the load-bearing one: **never average across
+vessels** — a mean pH over 40 barrels describes no wine anybody can taste. Cross-vessel questions
+are ENUMERATION ("pH of barrels 1 through 5" → one row each) or a RANKING sort ("closest to dry" =
+lowest latest Brix; a finished red parks *below* zero, so ascending is correct).
+
+⚠️ **Two ways a ranking can lie, both handled.** (1) It compares latest readings taken on DIFFERENT
+days — T5 measured today at 2.1 °Bx beats T9 measured four days ago at 6 °Bx in the sort, but T9 has
+had four days to ferment. `stalenessVerdict` warns when the spread exceeds 2 days and the tool
+description tells the model to relay it. **Not hypothetical: the live sweep hit an 18.4-day spread
+across Demo's tanks and warned.** (2) Vessels with no reading come back in `vesselsWithNoReadings`,
+never dropped, so "lowest free SO₂ is B-17" can't be stated off a partial set.
+
+Gates: **25 new unit tests** (pure, DB-free), **full suite 3377/0**, tsc + eslint clean, 6 golden
+eval cases, and `query_measurements` added to `REQUIRED_READ_TOOL_NAMES` so D26/H8 governs it.
+Verified **read-only** against Demo Winery across 10 scenarios (both rank directions, range
+enumeration, lot history, 4 refusal paths). No UI surface, so nothing to browser-verify.
+
+_(#463 detail preserved here rather than dropped in the merge — it landed on main while the KB source
+vetting below was in flight.)_
 
 Came out of Russell's question — *"paraphrase with citation is how peer-reviewed articles get
 written, so it shouldn't be a copyright problem, right?"* Right about the output, and the assistant
@@ -507,6 +541,15 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **KB citation tombstone shows an EXCERPT, not the whole withdrawn document — MERGED + LIVE**
+  (PR #462, squash `8f6099b5`, branch pruned). From Russell's copyright question: paraphrase-with-
+  citation IS the right shape and `search-knowledge-base.ts` already does it, but **citation cures
+  plagiarism, not infringement**. `renderTombstoneHtml` served up to 20,000 chars verbatim precisely
+  when a publisher had pulled the page. Now `buildTombstoneExcerpt` caps at 600 chars on a word
+  boundary, `take: 3` on the read, truncation disclosed, `noindex, noarchive`, plus a **retraction**
+  warning (a safety point, not only a legal one). 10/10 tests. Not browser-verified — the tombstone
+  only renders for a *withdrawn* document.
+
 - **Voice mode no longer cuts the user off mid-thought (ticket `cmrvhj5b8…`) — MERGED (PR #460,
   squash `ddeeaaf8`).** Reporter, hands-free on a phone: *"it would maybe let me talk for like 30
   seconds before it would just start thinking."* **The 30 seconds was a red herring — there is no
@@ -676,7 +719,18 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-22 — **the KB citation tombstone no longer re-serves a withdrawn document in
+_Last updated: 2026-07-22 — **the assistant can finally read a tank's Brix back** (bug report
+`cmrw8s5ct…`, PR #463). It could write a chem panel and read current contents but had no read tool
+for `AnalysisPanel`, so a tank-Brix question reached for the vineyard-block ripeness tool and
+dead-ended in "open the lot page". `query_measurements` covers a lot, a vessel, a vessel range, or
+every vessel of a type. **Russell's scope rule is the load-bearing part: never average across
+vessels** — comparisons are per-vessel enumeration or a ranking sort, so "which tank is closest to
+dry" names a tank instead of inventing a cellar-wide number. Guarded against the two ways a ranking
+lies: readings of different ages (staleness warning; the live sweep hit a real 18.4-day spread) and
+vessels with no data (reported, never dropped). 25 new tests, suite 3377/0, verified read-only on
+Demo across 10 scenarios. Prior:_
+
+_2026-07-22 — **the KB citation tombstone no longer re-serves a withdrawn document in
 full.** From Russell's copyright question: paraphrase-with-citation IS the right shape and the
 assistant already does it, but citation cures plagiarism, not infringement — and one path
 (`renderTombstoneHtml`) served up to 20,000 chars verbatim precisely when a publisher had pulled the
