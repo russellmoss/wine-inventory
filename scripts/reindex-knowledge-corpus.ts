@@ -27,6 +27,7 @@
  */
 import { crawlUrls } from "@/lib/knowledge/crawl/crawler";
 import { indexDocument } from "@/lib/knowledge/index-documents";
+import { findCuratedSpec } from "@/lib/knowledge/curated-specs";
 import { runAsSystem, disconnectSystem } from "@/lib/tenant/system";
 import { prisma } from "@/lib/prisma";
 
@@ -97,11 +98,28 @@ async function main() {
   const totals = { reindexed: 0, unchanged: 0, skipped: 0, errors: 0, chunks: 0 };
   for (const [key, rows] of bySource) {
     const urls = (limit ? rows.slice(0, limit) : rows).map((r) => r.canonicalUrl);
-    console.log(`\n=== ${key} — ${urls.length} urls ===`);
+
+    // INHERIT the source's curated fetch policy rather than restating it here.
+    //
+    // Found by watching a live run: lvwo and wbi sat at ZERO re-indexed while osu-owri progressed,
+    // because both German state institutes block PDFs with a generic `/*.pdf$` robots rule (CMS
+    // boilerplate, not anti-AI — the curated specs say so and set ignoreRobots for exactly that
+    // reason). Without inheriting it, 350 of these 616 documents are silently skipped as
+    // skippedRobots and the run still prints a success summary.
+    //
+    // Reading it from curated-specs keeps "may we ignore robots for this host" as ONE documented
+    // decision in one place. A re-index script must never make that judgment on its own.
+    const spec = findCuratedSpec(key);
+    console.log(
+      `\n=== ${key} — ${urls.length} urls${spec?.ignoreRobots ? "  [curated: ignoreRobots]" : ""} ===`,
+    );
 
     const summary = await crawlUrls(key, urls, {
       // See the header note: without this the conditional GET 304s and nothing is re-indexed.
       ignoreValidators: true,
+      ignoreRobots: spec?.ignoreRobots,
+      delayMs: spec?.delayMs,
+      maxBytes: spec?.maxBytes,
       onDocument: async (doc) => {
         try {
           const res = await indexDocument({
@@ -125,8 +143,13 @@ async function main() {
       },
     });
     console.log(
-      `  fetched ${summary.fetched}, documents ${summary.documents}, notModified ${summary.notModified}, errors ${summary.errors}`,
+      `  fetched ${summary.fetched}, documents ${summary.documents}, notModified ${summary.notModified}, skippedRobots ${summary.skippedRobots}, errors ${summary.errors}`,
     );
+    // A source whose every URL is refused by robots re-indexes NOTHING while the run still looks
+    // successful — that is how lvwo and wbi sat at zero unnoticed. Say it loudly.
+    if (summary.skippedRobots > 0) {
+      console.log(`  ⚠️  ${summary.skippedRobots} urls refused by robots — NOT re-indexed. Does this source need ignoreRobots in curated-specs?`);
+    }
     // notModified should be ZERO with ignoreValidators. If it is not, the flag is not reaching
     // fetchDocument and the run is a no-op wearing a success message.
     if (summary.notModified > 0) {
