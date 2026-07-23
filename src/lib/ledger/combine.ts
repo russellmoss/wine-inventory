@@ -95,16 +95,10 @@ function distinct(lots: CombineLotState[]): CombineLotState[] {
  * the TTB, or the customer blocks it.
  */
 function checkAbsorbLegality(resident: CombineLotState, incoming: CombineLotState): CombineDecision | null {
-  if (resident.ownership !== incoming.ownership) {
-    return {
-      ok: false,
-      reason: "ownership-mismatch",
-      message:
-        `${incoming.lotCode} and ${resident.lotCode} belong to different owners, so they can't be combined. ` +
-        `Move one of them to its own vessel.`,
-    };
-  }
-
+  // Plan 093 Unit 6 (council C2): a cross-OWNER absorb is ALLOWED — refusing it deadlocks the daily
+  // topping op (facility wine into a client barrel). The receiving/resident owner dominates the scalar
+  // result; the consumed minority owner's fraction is billed via emitBillableConsumption at execution, not
+  // blocked here. (Cross-BOND is still refused below — that IS a real TTB boundary needing a transfer.)
   if (resident.bondId !== incoming.bondId) {
     return {
       ok: false,
@@ -193,10 +187,10 @@ export function decideCombineRoute(input: CombineRouteInput): CombineDecision {
     };
   }
 
-  // Ownership and bond are absolute — they block even the new-blend escape, so they are checked
-  // before the mode branches.
+  // Bond is absolute — it blocks even the new-blend escape, so it is checked before the mode branches.
+  // (Ownership is NOT — Plan 093 Unit 6 allows cross-owner combines, billed at execution.)
   for (const i of incoming) {
-    if (resident.ownership !== i.ownership || resident.bondId !== i.bondId) {
+    if (resident.bondId !== i.bondId) {
       return checkAbsorbLegality(resident, i)!;
     }
   }

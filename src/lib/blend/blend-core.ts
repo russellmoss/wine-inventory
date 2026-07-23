@@ -3,6 +3,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import { LINEAGE_KIND } from "@/lib/lot/lineage";
 import { resolveOriginatingOwnerId } from "@/lib/owner/resolve";
+import { emitBillableConsumption } from "@/lib/owner/billable-consumption-core";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planBlend, planBlendSplit, foldLines, balanceKey, type BlendComponentDraw, type BlendPlan, type VesselLotBalance } from "@/lib/ledger/math";
@@ -211,7 +212,7 @@ export async function blendLotsTx(
   const parentLotIds = [...new Set(effective.map((c) => c.lotId))].filter((id) => id !== growChildLotId);
   const parents = await tx.lot.findMany({
     where: { id: { in: parentLotIds } },
-    select: { id: true, provenanceComplete: true, sourceVineyards: { select: { vineyardId: true } } },
+    select: { id: true, ownerId: true, provenanceComplete: true, sourceVineyards: { select: { vineyardId: true } } },
   });
 
   // Phase 2 (BOND-1 / CO-2, Gemini-CRIT3): a blend can't straddle two bonds — wine can't be in a
@@ -301,6 +302,22 @@ export async function blendLotsTx(
   // Fraction = gross input share over the actual parents (council S1/C2).
   const parentGross = plan.parentGrossByLot.filter((p) => p.lotId !== childLotId);
   const grossDenom = parentGross.reduce((a, p) => a + p.grossL, 0);
+
+  // Plan 093 Unit 6 (council C2): a cross-owner blend is ALLOWED and BILLED, never blocked. The child
+  // (result) owner dominates; any consumed parent owned by someone ELSE has its input volume recorded as a
+  // pending BILLABLE_WINE_CONSUMED (the facility bills the client for topping wine, or a JV reconciles).
+  // emitBillableConsumption no-ops when the two owners match (the common same-owner / all-estate case).
+  const childOwnerId = (await tx.lot.findUnique({ where: { id: childLotId }, select: { ownerId: true } }))?.ownerId ?? null;
+  const ownerByParent = new Map(parents.map((p) => [p.id, p.ownerId]));
+  for (const pg of parentGross) {
+    await emitBillableConsumption(tx, {
+      operationId: opId,
+      sourceLotId: pg.lotId,
+      consumedOwnerId: ownerByParent.get(pg.lotId) ?? null,
+      receivingOwnerId: childOwnerId,
+      volumeL: pg.grossL,
+    });
+  }
 
   // (024b) GROW_EXISTING mutates a PRE-EXISTING lot's lineage + provenance in place. Snapshot
   // exactly what we're about to change so a reversal RESTORES it (never blind-deletes — MUST-FIX

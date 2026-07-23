@@ -1524,6 +1524,29 @@ model Owner {
   @@map("owner")
 }
 
+// Plan 093 Unit 6 (council C2): a cross-owner blend is ALLOWED (refusing it deadlocks the daily topping
+// op). The receiving owner dominates the scalar result; the CONSUMED minority owner's fraction records a
+// pending BILLABLE_WINE_CONSUMED entry so the commercial side is captured (the facility bills the client
+// for topping wine, or a JV reconciles) — NEVER blocking the physical cellar work. One row per consumed
+// (minority) lot per blend op. Append-only in spirit; a blend reversal voids the row (status VOID).
+model BillableWineConsumed {
+  tenantId         String   @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id               String   @id @default(cuid())
+  operationId      Int // the BLEND op that consumed the wine
+  sourceLotId      String // the consumed (minority-owner) lot
+  consumedOwnerId  String? // the minority owner whose wine was consumed (NULL = facility topping wine)
+  receivingOwnerId String? // the dominant/receiving owner of the result (NULL = facility)
+  volumeL          Decimal  @db.Decimal(12, 4)
+  status           String   @default("PENDING") // PENDING | INVOICED | RECONCILED | VOID
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId, operationId, sourceLotId]) // idempotent: one row per consumed lot per op
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("billable_wine_consumed")
+}
+
 // A singleton winery-level settings row (the app is single-tenant). Read/created via
 // getAppSettings(). `sparklingEnabled` gates the ENTIRE traditional-method UI/nav (K14,
 // default off) — backend enums/cores ship regardless and are inert when unused.
