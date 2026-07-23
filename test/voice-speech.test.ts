@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { toSpeakable } from "@/lib/voice/speech";
+import { isPatternRule, LEXICON } from "@/lib/voice/lexicon";
 
 describe("toSpeakable", () => {
   it("strips bold and inline code", () => {
@@ -119,5 +120,41 @@ describe("toSpeakable", () => {
   it("returns empty string for empty input", () => {
     expect(toSpeakable("")).toBe("");
     expect(toSpeakable("   \n  ")).toBe("");
+  });
+});
+
+// The real pipeline calls toSpeakable TWICE on the same sentence: once on the client
+// before POSTing to /api/assistant/speak, once in the route as defense in depth. Any
+// transform that is not idempotent garbles speech in production while every
+// single-pass test stays green. This models the actual call pattern.
+describe("toSpeakable is idempotent (client + route double application)", () => {
+  const samples = [
+    "The **latest** reading is 24.5 °Bx.",
+    "Add 30 mg/L SO2 and hold at 28°C.",
+    "Free SO₂ is 25 ppm; total is 0.8%.",
+    "AWRI puts the red minimum near 100 [AWRI: YAN levels](/kb/source/abc123).",
+    "Readings:\n- Block 1 is ready\n- Block 2 needs time",
+    "## Harvest\n> note here",
+    "Run this:\n```sql\nSELECT 1\n```",
+    "Ferment at 28°C, then 60°F, then 35°.",
+    "Yield was 12 g/hL with 2 mL/L and 3 g/L, plus 40 mg N/L.",
+    "",
+  ];
+
+  it("applying twice equals applying once, across the full transform", () => {
+    for (const sample of samples) {
+      const once = toSpeakable(sample);
+      expect(toSpeakable(once), `not idempotent for: ${JSON.stringify(sample)}`).toBe(once);
+    }
+  });
+
+  it("applying twice equals applying once for every shipped lexicon term", () => {
+    for (const rule of LEXICON) {
+      const probe = isPatternRule(rule)
+        ? `We handled ${rule.example} today.`
+        : `We handled ${rule.term} today.`;
+      const once = toSpeakable(probe);
+      expect(toSpeakable(once), `not idempotent for lexicon rule: ${probe}`).toBe(once);
+    }
   });
 });

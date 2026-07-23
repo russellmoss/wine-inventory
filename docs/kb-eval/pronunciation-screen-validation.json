@@ -1,0 +1,110 @@
+{
+  "generatedAt": "2026-07-23T06:37:13.817Z",
+  "knownGood": [
+    {
+      "term": "barrel",
+      "transcript": "The next word is barrel, followed by a pause",
+      "survived": true
+    },
+    {
+      "term": "bottle",
+      "transcript": "The next word is bottle, followed by a pause.",
+      "survived": true
+    },
+    {
+      "term": "cellar",
+      "transcript": "The next word is \"seller,\" followed by a pause.",
+      "survived": false
+    },
+    {
+      "term": "filter",
+      "transcript": "The next word is filter, followed by a pause",
+      "survived": true
+    },
+    {
+      "term": "harvest",
+      "transcript": "The next word is harvest, followed by a pause",
+      "survived": true
+    },
+    {
+      "term": "pump",
+      "transcript": "The next word is pump, followed by a pause.",
+      "survived": true
+    },
+    {
+      "term": "sugar",
+      "transcript": "The next word is sugar, followed by a pause",
+      "survived": true
+    },
+    {
+      "term": "tank",
+      "transcript": "The next word is tank, followed by a pause.",
+      "survived": true
+    },
+    {
+      "term": "vineyard",
+      "transcript": "The next word is vineyard, followed by a pause.",
+      "survived": true
+    },
+    {
+      "term": "water",
+      "transcript": "The next word is water, followed by a pause",
+      "survived": true
+    }
+  ],
+  "knownHard": [
+    {
+      "term": "bâtonnage",
+      "transcript": "The next word is batonage, followed by a pause",
+      "survived": false
+    },
+    {
+      "term": "Brettanomyces",
+      "transcript": "The next word is Brettanomyces, followed by a pause.",
+      "survived": true
+    },
+    {
+      "term": "Gewürztraminer",
+      "transcript": "The next word is Gewürztraminer, followed by a pause",
+      "survived": true
+    },
+    {
+      "term": "Mourvèdre",
+      "transcript": "The next word is Morvedra, followed by a pause.",
+      "survived": false
+    },
+    {
+      "term": "Oenococcus",
+      "transcript": "The next word is onococus, followed by a pause.",
+      "survived": false
+    },
+    {
+      "term": "Riesling",
+      "transcript": "The next word is Riesling, followed by a pause",
+      "survived": true
+    },
+    {
+      "term": "Saccharomyces",
+      "transcript": "The next word is Saccharomyces, followed by a pause",
+      "survived": true
+    },
+    {
+      "term": "Syrah",
+      "transcript": "The next word is Syrah, followed by a pause",
+      "survived": true
+    },
+    {
+      "term": "veraison",
+      "transcript": "The next word is verizon, followed by a pause",
+      "survived": false
+    },
+    {
+      "term": "Viognier",
+      "transcript": "The next word is Viognier, followed by a pause.",
+      "survived": true
+    }
+  ],
+  "goodFailureRate": 0.1,
+  "hardFailureRate": 0.4,
+  "separation": 0.30000000000000004
+}
