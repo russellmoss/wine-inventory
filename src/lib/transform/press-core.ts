@@ -129,6 +129,7 @@ export async function pressLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
       originVineyardId: true,
       originVarietyId: true,
       originBlockId: true,
+      ownerId: true, // Plan 093 Unit 4b: the pressed lot inherits the must/juice parent's owner
       sourceVineyards: { select: { vineyardId: true } },
     },
   });
@@ -273,6 +274,7 @@ export async function pressLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
           originBlockId: parent.originBlockId,
           vintageYear: parent.vintageYear,
           provenanceComplete: parent.provenanceComplete,
+          ownerId: parent.ownerId, // Plan 093 Unit 4b
         },
         select: { id: true, code: true },
       });

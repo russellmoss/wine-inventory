@@ -85,6 +85,11 @@ export async function publishMigrationBatchCore(actor: MigrationActor, batchId: 
             isLegacy: true,
             legacySnapshot: seed.legacySnapshot ?? Prisma.JsonNull,
             provenanceComplete: false,
+            // ⚠️ Plan 093 Unit 4b — DEFERRED: a migrated custom-crush lot should land OWNED. The seed shape
+            // does not yet carry an owner, so this stamps Estate (NULL). Currently correct (no client imports
+            // exist), but the seed→owner mapping (add seed.ownerName → resolve-or-create Owner) is the one
+            // remaining Unit 4b piece; the eng-review flagged this exact site as the silent-NULL landmine.
+            ownerId: null,
           },
           select: { id: true, code: true },
         });

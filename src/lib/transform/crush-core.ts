@@ -277,6 +277,7 @@ export async function crushLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
         originVineyardId,
         originBlockId,
         vintageYear: vintage,
+        ownerId: null, // Plan 093: crush originates from PICKS; Unit 10 stamps ownerId from the consuming picks' weigh-tag lines. NULL = Estate until then.
       },
       select: { id: true, code: true },
     });

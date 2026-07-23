@@ -127,6 +127,7 @@ export const addComponent = action(async ({ actor }, formData: FormData) => {
             originSubblockId: subblockForCode?.id ?? null,
             vintageYear: vintage,
             sublotTag: tag,
+            ownerId: null, // Plan 093: manual bulk seed = facility wine (Estate) by default; an explicit owner input is a later enhancement.
           },
           select: { id: true },
         });

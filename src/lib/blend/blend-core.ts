@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import { LINEAGE_KIND } from "@/lib/lot/lineage";
+import { resolveOriginatingOwnerId } from "@/lib/owner/resolve";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planBlend, planBlendSplit, foldLines, balanceKey, type BlendComponentDraw, type BlendPlan, type VesselLotBalance } from "@/lib/ledger/math";
@@ -235,11 +236,16 @@ export async function blendLotsTx(
   if (mode === "NEW_LOT") {
     if (!input.token) throw new ActionError("A 2–4 letter blend tag is required for a new blend lot.");
     childCode = await nextBlendLotCode(tx, { vintage: input.vintage ?? null, token: input.token });
+    // Plan 093 Unit 4b: the new blend lot's owner = the dominant owner of the SOURCES (read their current
+    // ownerId column, not lineage). Today combine refuses cross-owner blends upstream, so the sources share
+    // one owner (or all Estate/NULL); Unit 6 makes this volume-weighted dominant + bills the minority.
+    const originatingOwnerId = await resolveOriginatingOwnerId(tx, parentLotIds);
     const created = await tx.lot.create({
       data: {
         code: childCode,
         form: (input.form ?? "WINE") as LotForm,
         vintageYear: input.vintage ?? null,
+        ownerId: originatingOwnerId,
         // origin* stay NULL — a multi-source blend has no single origin.
       },
       select: { id: true, code: true },
