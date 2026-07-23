@@ -1,0 +1,4937 @@
+{
+  "generatedAt": "2026-07-23T06:34:18.710Z",
+  "corpus": {
+    "chunks": 36931,
+    "docs": 3299
+  },
+  "limit": 400,
+  "counts": {
+    "appVocabulary": 175,
+    "corpusCandidatesFound": 19767,
+    "corpusCandidatesKept": 400,
+    "corpusCandidatesDropped": 19367,
+    "total": 575
+  },
+  "perStratum": {
+    "binomial": {
+      "kept": 100,
+      "found": 1945
+    },
+    "scientific": {
+      "kept": 100,
+      "found": 470
+    },
+    "accented": {
+      "kept": 100,
+      "found": 1122
+    },
+    "proper-noun": {
+      "kept": 100,
+      "found": 16230
+    }
+  },
+  "candidates": [
+    {
+      "term": "Syrah",
+      "docFrequency": 68,
+      "occurrences": 125,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.name"
+      ]
+    },
+    {
+      "term": "Merlot",
+      "docFrequency": 164,
+      "occurrences": 322,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.name"
+      ]
+    },
+    {
+      "term": "Sauvignon Blanc",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.name"
+      ]
+    },
+    {
+      "term": "Solaris",
+      "docFrequency": 2,
+      "occurrences": 2,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.name",
+        "Variety.clone"
+      ]
+    },
+    {
+      "term": "1616 Couderc",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.rootstock"
+      ]
+    },
+    {
+      "term": "Meunier",
+      "docFrequency": 14,
+      "occurrences": 24,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.name"
+      ]
+    },
+    {
+      "term": "Pinot Noir",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.name"
+      ]
+    },
+    {
+      "term": "Chardonnay",
+      "docFrequency": 276,
+      "occurrences": 586,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.name"
+      ]
+    },
+    {
+      "term": "Cabernet Sauvignon",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "Variety.name"
+      ]
+    },
+    {
+      "term": "Bentonite",
+      "docFrequency": 11,
+      "occurrences": 19,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(FINING)",
+        "CellarMaterial.brandName",
+        "CellarMaterial.brandName",
+        "CellarMaterial.genericName",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Calcium bentonite (Pluxbenton N)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Enartis",
+      "docFrequency": 2,
+      "occurrences": 2,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "BM11",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "Magnum Burgundy",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "BENTONITE",
+      "docFrequency": 11,
+      "occurrences": 19,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(BENTONITE)"
+      ]
+    },
+    {
+      "term": "Sodium-calcium bentonite (NaCalit PORE-TEC)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Erbslöh",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "EGG WHITE ALBUMEN",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(FINING)"
+      ]
+    },
+    {
+      "term": "Egg albumen fining agent (Ovoclar)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Laffort",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Egg White Albumen",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "AB26BL",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "Ann's Blend 26 Back Label",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Label Factory",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "B12",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "Bordeaux 12 pack cardboard case",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Cardboard Inc.",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Potassium Metabisulfite",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(SO2)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "Potassium metabisulfite (KMBS)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Scott Laboratories",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "EC-1118",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(YEAST)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "Wine yeast (S. cerevisiae bayanus)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Lalvin",
+      "docFrequency": 14,
+      "occurrences": 28,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "AMORIN 47MM GRAND CRU CORK",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "Luxury Cork",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Amorim",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Amorin 47mm Grand Cru cork",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "GRAPE TANNIN VR SUPRA",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(TANNIN)"
+      ]
+    },
+    {
+      "term": "Grape/oak blended tannin (Tanin VR Supra)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Grape Tannin VR Supra",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "SENTIA TITRATABLE ACIDITY TEST STRIP",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(EQUIPMENT)"
+      ]
+    },
+    {
+      "term": "Titratable acidity test strip",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Sentia Titratable Acidity Test Strip",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "ATTEND TO GENERAL CORPORATE MATTERS 07 15 24 - TIM NAM",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(OTHER)"
+      ]
+    },
+    {
+      "term": "OEC-BL",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "25 Ojai Estate Cuvee Label back",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "REVIEW TRADEMARK WATCH NOTICES CONSIDER ENFORCEMENT STRATEGY GEHMAN LISA B 05 15 26",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(OTHER)"
+      ]
+    },
+    {
+      "term": "ATTEND TO STOCK TRANSFER MATTERS 07 16 24 - TIM NAM",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(OTHER)"
+      ]
+    },
+    {
+      "term": "3SS",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "3 bottle Styro Shipper",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "OENOCOCCUS OENI VP41",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(MLF)"
+      ]
+    },
+    {
+      "term": "DIAMMONIUM PHOSPHATE DAP",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(NUTRIENT)"
+      ]
+    },
+    {
+      "term": "POTASSIUM METABISULFITE KMBS",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(SO2)"
+      ]
+    },
+    {
+      "term": "LAFAZYM EXTRACT",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(ENZYME)"
+      ]
+    },
+    {
+      "term": "Pectolytic enzyme",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Lafazym Extract",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "FERMOPLUS DAP FREE",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(NUTRIENT)"
+      ]
+    },
+    {
+      "term": "Yeast nutrient (DAP free)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "AEB",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Fermoplus DAP Free",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "MICROCOL ALPHA",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(BENTONITE)"
+      ]
+    },
+    {
+      "term": "Microcol Alpha",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "POLYMUST PRESS",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(FINING)"
+      ]
+    },
+    {
+      "term": "PVPP / plant protein fining agent",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Polymust Press",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "MANNOPROTEIN",
+      "docFrequency": 1,
+      "occurrences": 6,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(SUR LIE AID)"
+      ]
+    },
+    {
+      "term": "Mannoprotein (Mannofeel)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Mannoprotein",
+      "docFrequency": 1,
+      "occurrences": 6,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "MALIC ACID",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(ACID)"
+      ]
+    },
+    {
+      "term": "DL-Malic acid",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "BSG",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Malic Acid",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "CANE SUGAR",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(SUGAR)"
+      ]
+    },
+    {
+      "term": "Cane Sugar (Pure Cane Sugar)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "C&H",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Cane Sugar",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "STAR SAN",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(SANITIZER)"
+      ]
+    },
+    {
+      "term": "Acid-anionic no-rinse sanitizer",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Five Star Chemicals",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Star San",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "PEA PROTEIN VEGAN",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(FINING)"
+      ]
+    },
+    {
+      "term": "Pea protein fining agent (vegan) (Vegecoll)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Pea Protein Vegan",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "KWK GRANULAR",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(BENTONITE)"
+      ]
+    },
+    {
+      "term": "Scott",
+      "docFrequency": 78,
+      "occurrences": 138,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "KWK Granular",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "CITRIC ACID CLEANER",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(CLEANING)"
+      ]
+    },
+    {
+      "term": "Citric acid (anhydrous)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Citric Acid Cleaner",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "FERMAID K",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(NUTRIENT)"
+      ]
+    },
+    {
+      "term": "Complex yeast nutrient",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Lallemand",
+      "docFrequency": 15,
+      "occurrences": 51,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Fermaid K",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "LALVIN QA23",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(YEAST)"
+      ]
+    },
+    {
+      "term": "Wine Yeast",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName",
+        "CellarMaterial.genericName",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Lalvin QA23",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "LALVIN RC-212",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(YEAST)"
+      ]
+    },
+    {
+      "term": "Lalvin RC-212",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "VINIFLORA OENOS MLF",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(MLF)"
+      ]
+    },
+    {
+      "term": "Malolactic bacteria (Oenococcus oeni)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Chr. Hansen",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Viniflora Oenos MLF",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "750ML BURGUNDY BOTTLE DEAD LEAF",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "750 mL Burgundy bottle, dead leaf green (Bourgogne Tradition 750 mL Dead Leaf)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Saverglass",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "750ML Burgundy Bottle Dead Leaf",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "DIAM 30 CORK",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "Technical cork closure, 44 x 24 mm",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Diam",
+      "docFrequency": 2,
+      "occurrences": 3,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Diam 30 Cork",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "TIN CAPSULE BURGUNDY GREEN",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "Tin capsule, 30.5 x 60 mm (Tin Capsule 30.5x60 Burgundy Green)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Ramondin",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Tin Capsule Burgundy Green",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "BACK LABEL ESTATE",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "Pressure-sensitive back label (Estate Back Label)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "MCC Label",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Back Label Estate",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "2BSS",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "2 Bottle Styro Shipper",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Cardboard Factory",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "CHITOSAN",
+      "docFrequency": 3,
+      "occurrences": 7,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(CHITOSAN)"
+      ]
+    },
+    {
+      "term": "PERACETIC ACID PAA",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(SANITIZER)"
+      ]
+    },
+    {
+      "term": "TARTARIC ACID",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(ACID)"
+      ]
+    },
+    {
+      "term": "GELATIN FINING",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(FINING)"
+      ]
+    },
+    {
+      "term": "QA-INGEST EXISTING YEAST",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(YEAST)"
+      ]
+    },
+    {
+      "term": "PECTIC ENZYME PECTINASE",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(ENZYME)"
+      ]
+    },
+    {
+      "term": "ZZ-P6R-MRUW6JBM-KMBS",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(OTHER)"
+      ]
+    },
+    {
+      "term": "OAK TANNIN FT ROUGE",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(TANNIN)"
+      ]
+    },
+    {
+      "term": "LALVIN EC-1118",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(YEAST)"
+      ]
+    },
+    {
+      "term": "Lalvin EC-1118",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "ISINGLASS",
+      "docFrequency": 2,
+      "occurrences": 4,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(FINING)"
+      ]
+    },
+    {
+      "term": "Isinglass fining agent (Isinglass Powder)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Isinglass",
+      "docFrequency": 2,
+      "occurrences": 4,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "CHITOSAN FUNGAL",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(CHITOSAN)"
+      ]
+    },
+    {
+      "term": "Fungal chitosan (Brettanomyces control) (No Brett Inside)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Chitosan Fungal",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "FERMAID O",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(NUTRIENT)"
+      ]
+    },
+    {
+      "term": "Organic yeast nutrient (yeast autolysate)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Fermaid O",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "PECTINASE LALLZYME EX",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(ENZYME)"
+      ]
+    },
+    {
+      "term": "Pectinase Lallzyme EX",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "LYSOZYME",
+      "docFrequency": 3,
+      "occurrences": 5,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(ENZYME)"
+      ]
+    },
+    {
+      "term": "Lysozyme (lactic-bacteria control)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Lysozyme",
+      "docFrequency": 3,
+      "occurrences": 5,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "RCGJ GRAPE CONCENTRATE",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(SUGAR)"
+      ]
+    },
+    {
+      "term": "Rectified concentrated grape must (68 Brix) (Rectified Grape Concentrate)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Gusmer",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "RCGJ Grape Concentrate",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "750ML BORDEAUX BOTTLE ANTIQUE GREEN",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "750 mL Bordeaux bottle, antique green (Bordelaise Prestige 750 mL Antique Green)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "750ML Bordeaux Bottle Antique Green",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "NATURAL CORK 44X24",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "Natural cork closure, 44 x 24 mm",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Natural Cork 44x24",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "FRONT LABEL ESTATE",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "Pressure-sensitive front label (Estate Front Label)",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Front Label Estate",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "BHUTAN 23 SER KEM 1ST BARREL V2 SET LABEL",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)"
+      ]
+    },
+    {
+      "term": "Pressure-sensitive label set",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Bhutan 23 Ser Kem 1st Barrel V2 Set Label",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "OEC-FL",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "25 Ojai Estate Cuvee front label",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "6BSS",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "6 Bottle Styro Shipper",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Cardboard Inc",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "Raven Vodka",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "Raven",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.brand"
+      ]
+    },
+    {
+      "term": "AB26F",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(PACKAGING)",
+        "CellarMaterial.brandName"
+      ]
+    },
+    {
+      "term": "Ann's Blend 2026 Front Label",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.genericName"
+      ]
+    },
+    {
+      "term": "ZZ-P6R-MRUX2UKS-KMBS",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(OTHER)"
+      ]
+    },
+    {
+      "term": "SACCHAROMYCES CEREVISIAE EC-1118",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(YEAST)"
+      ]
+    },
+    {
+      "term": "POTASSIUM BITARTRATE KHT",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(OTHER)"
+      ]
+    },
+    {
+      "term": "SODIUM BENTONITE",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(BENTONITE)"
+      ]
+    },
+    {
+      "term": "PROXYCARB SODIUM PERCARBONATE",
+      "docFrequency": 0,
+      "occurrences": 0,
+      "reasons": [
+        "app-vocabulary",
+        "CellarMaterial.name(CLEANING)"
+      ]
+    },
+    {
+      "term": "Saccharomyces cerevisiae",
+      "docFrequency": 438,
+      "occurrences": 692,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Botrytis cinerea",
+      "docFrequency": 98,
+      "occurrences": 217,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Oenococcus oeni",
+      "docFrequency": 68,
+      "occurrences": 143,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Pinot gris",
+      "docFrequency": 57,
+      "occurrences": 103,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Brettanomyces bruxellensis",
+      "docFrequency": 40,
+      "occurrences": 138,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Lobesia botrana",
+      "docFrequency": 37,
+      "occurrences": 76,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Vigneron champenois",
+      "docFrequency": 28,
+      "occurrences": 187,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Bacillus thuringiensis",
+      "docFrequency": 28,
+      "occurrences": 51,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Eupoecilia ambiguella",
+      "docFrequency": 27,
+      "occurrences": 67,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Saccharomyces yeasts",
+      "docFrequency": 27,
+      "occurrences": 55,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Calepitrimerus vitis",
+      "docFrequency": 26,
+      "occurrences": 33,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Eutypa lata",
+      "docFrequency": 25,
+      "occurrences": 41,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Drosophila suzukii",
+      "docFrequency": 22,
+      "occurrences": 80,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Scaphoideus titanus",
+      "docFrequency": 21,
+      "occurrences": 64,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Daktulosphaira vitifoliae",
+      "docFrequency": 21,
+      "occurrences": 24,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Phomopsis viticola",
+      "docFrequency": 20,
+      "occurrences": 39,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Lactobacillus plantarum",
+      "docFrequency": 20,
+      "occurrences": 25,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Phomopsis cane",
+      "docFrequency": 19,
+      "occurrences": 51,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Hyalesthes obsoletus",
+      "docFrequency": 19,
+      "occurrences": 44,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Champagne dans",
+      "docFrequency": 18,
+      "occurrences": 58,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Saccharomyces yeast",
+      "docFrequency": 18,
+      "occurrences": 46,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Leaf area",
+      "docFrequency": 17,
+      "occurrences": 37,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Vitis rupestris",
+      "docFrequency": 17,
+      "occurrences": 31,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Agrobacterium vitis",
+      "docFrequency": 17,
+      "occurrences": 28,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Planococcus ficus",
+      "docFrequency": 17,
+      "occurrences": 18,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Pseudococcus maritimus",
+      "docFrequency": 16,
+      "occurrences": 19,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Rebenperonospora nicht",
+      "docFrequency": 15,
+      "occurrences": 17,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Sauvignon gris",
+      "docFrequency": 15,
+      "occurrences": 17,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Empoasca vitis",
+      "docFrequency": 14,
+      "occurrences": 26,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Souvignier gris",
+      "docFrequency": 14,
+      "occurrences": 18,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Reverse osmosis",
+      "docFrequency": 14,
+      "occurrences": 14,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Phaeomoniella chlamydospora",
+      "docFrequency": 13,
+      "occurrences": 21,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Hanseniaspora uvarum",
+      "docFrequency": 12,
+      "occurrences": 20,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Colomerus vitis",
+      "docFrequency": 12,
+      "occurrences": 17,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Henry trellis",
+      "docFrequency": 11,
+      "occurrences": 20,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Rebenperonospora wurde",
+      "docFrequency": 11,
+      "occurrences": 18,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Xylella fastidiosa",
+      "docFrequency": 11,
+      "occurrences": 17,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Xiphinema diversicaudatum",
+      "docFrequency": 11,
+      "occurrences": 13,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Dans tous",
+      "docFrequency": 10,
+      "occurrences": 28,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Tetranychus urticae",
+      "docFrequency": 10,
+      "occurrences": 24,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Vitis riparia",
+      "docFrequency": 10,
+      "occurrences": 17,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Parthenolecanium persicae",
+      "docFrequency": 10,
+      "occurrences": 13,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Champagne sous",
+      "docFrequency": 9,
+      "occurrences": 43,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Champagne depuis",
+      "docFrequency": 9,
+      "occurrences": 23,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Brettanomyces yeast",
+      "docFrequency": 9,
+      "occurrences": 12,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Peronospora befallen",
+      "docFrequency": 9,
+      "occurrences": 12,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Pseudomonas syringae",
+      "docFrequency": 9,
+      "occurrences": 11,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Saccharomyces cerevisi",
+      "docFrequency": 9,
+      "occurrences": 11,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Grapevine virus",
+      "docFrequency": 9,
+      "occurrences": 10,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Paralongidorus maximus",
+      "docFrequency": 8,
+      "occurrences": 38,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Pseudococcus longispinus",
+      "docFrequency": 8,
+      "occurrences": 14,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Botrytis fungus",
+      "docFrequency": 8,
+      "occurrences": 12,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Kloeckera apiculata",
+      "docFrequency": 8,
+      "occurrences": 12,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Aureobasidium pullulans",
+      "docFrequency": 8,
+      "occurrences": 10,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Criconemella xenoplax",
+      "docFrequency": 8,
+      "occurrences": 10,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Preliminary data",
+      "docFrequency": 8,
+      "occurrences": 10,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Saccharomyces bayanus",
+      "docFrequency": 8,
+      "occurrences": 10,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Chenopodium album",
+      "docFrequency": 8,
+      "occurrences": 9,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Peronospora nicht",
+      "docFrequency": 8,
+      "occurrences": 9,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Phomopsis dieback",
+      "docFrequency": 8,
+      "occurrences": 8,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Vignoble champenois",
+      "docFrequency": 7,
+      "occurrences": 35,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Mais dans",
+      "docFrequency": 7,
+      "occurrences": 18,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Fomitiporia mediterranea",
+      "docFrequency": 7,
+      "occurrences": 15,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Bacillus amyloliquefaciens",
+      "docFrequency": 7,
+      "occurrences": 10,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Lupinus albus",
+      "docFrequency": 7,
+      "occurrences": 10,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Lactobacillus hilgardii",
+      "docFrequency": 7,
+      "occurrences": 9,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Peronospora infiziert",
+      "docFrequency": 7,
+      "occurrences": 9,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Tribulus terrestris",
+      "docFrequency": 7,
+      "occurrences": 8,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Bacillus subtilis",
+      "docFrequency": 7,
+      "occurrences": 7,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Pseudococcus viburni",
+      "docFrequency": 7,
+      "occurrences": 7,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Torulaspora delbrueckii",
+      "docFrequency": 6,
+      "occurrences": 28,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Malolactic bacteria",
+      "docFrequency": 6,
+      "occurrences": 22,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Coteaux champenois",
+      "docFrequency": 6,
+      "occurrences": 14,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "What plans",
+      "docFrequency": 6,
+      "occurrences": 14,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Rebenperonospora breitete",
+      "docFrequency": 6,
+      "occurrences": 10,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Brettanomyces infection",
+      "docFrequency": 6,
+      "occurrences": 9,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Dekkera bruxellensis",
+      "docFrequency": 6,
+      "occurrences": 9,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Spissistilus festinus",
+      "docFrequency": 6,
+      "occurrences": 9,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Achillea millefolium",
+      "docFrequency": 6,
+      "occurrences": 8,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Bacillus amyl",
+      "docFrequency": 6,
+      "occurrences": 8,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Bordeaux area",
+      "docFrequency": 6,
+      "occurrences": 8,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Guignardia bidwellii",
+      "docFrequency": 6,
+      "occurrences": 8,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Bacillus thuring",
+      "docFrequency": 6,
+      "occurrences": 7,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Xiphinema americanum",
+      "docFrequency": 6,
+      "occurrences": 7,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Atriplex semibaccata",
+      "docFrequency": 6,
+      "occurrences": 6,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Brettanomyces infections",
+      "docFrequency": 6,
+      "occurrences": 6,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Grapevine rupestris",
+      "docFrequency": 6,
+      "occurrences": 6,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Saccharomyces cereviasiae",
+      "docFrequency": 6,
+      "occurrences": 6,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Vitis rotundifolia",
+      "docFrequency": 5,
+      "occurrences": 32,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Gris virus",
+      "docFrequency": 5,
+      "occurrences": 21,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Lachancea thermotolerans",
+      "docFrequency": 5,
+      "occurrences": 11,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Fomitiporia punctata",
+      "docFrequency": 5,
+      "occurrences": 8,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Frankliniella occidentalis",
+      "docFrequency": 5,
+      "occurrences": 7,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Neofusicoccum parvum",
+      "docFrequency": 5,
+      "occurrences": 7,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Vitis cinerea",
+      "docFrequency": 5,
+      "occurrences": 7,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Vitis labruscana",
+      "docFrequency": 5,
+      "occurrences": 7,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Acetobacter pasteurianus",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Conyza canadensis",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Parthenolecanium pruinosum",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Pseudomonas chloroaphis",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "binomial"
+      ]
+    },
+    {
+      "term": "Saccharomyces",
+      "docFrequency": 518,
+      "occurrences": 956,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Brettanomyces",
+      "docFrequency": 117,
+      "occurrences": 390,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "glucose",
+      "docFrequency": 100,
+      "occurrences": 176,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Oenococcus",
+      "docFrequency": 76,
+      "occurrences": 173,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "fructose",
+      "docFrequency": 53,
+      "occurrences": 100,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Prognose",
+      "docFrequency": 50,
+      "occurrences": 137,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Pediococcus",
+      "docFrequency": 48,
+      "occurrences": 69,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "cellulose",
+      "docFrequency": 40,
+      "occurrences": 73,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Pseudococcus",
+      "docFrequency": 35,
+      "occurrences": 51,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Acetobacter",
+      "docFrequency": 30,
+      "occurrences": 47,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Fructose",
+      "docFrequency": 28,
+      "occurrences": 56,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Glucose",
+      "docFrequency": 27,
+      "occurrences": 52,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "laccase",
+      "docFrequency": 26,
+      "occurrences": 64,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "pectinase",
+      "docFrequency": 25,
+      "occurrences": 39,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Eisenmangelchlorose",
+      "docFrequency": 21,
+      "occurrences": 57,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "glycosidase",
+      "docFrequency": 20,
+      "occurrences": 42,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "glucosidase",
+      "docFrequency": 20,
+      "occurrences": 36,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "sucrose",
+      "docFrequency": 18,
+      "occurrences": 29,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Reifephase",
+      "docFrequency": 18,
+      "occurrences": 22,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Laccase",
+      "docFrequency": 17,
+      "occurrences": 46,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Planococcus",
+      "docFrequency": 17,
+      "occurrences": 21,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "decompose",
+      "docFrequency": 16,
+      "occurrences": 29,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Zygosaccharomyces",
+      "docFrequency": 15,
+      "occurrences": 21,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Polymerase",
+      "docFrequency": 14,
+      "occurrences": 21,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "oxidase",
+      "docFrequency": 14,
+      "occurrences": 18,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Chlorose",
+      "docFrequency": 13,
+      "occurrences": 46,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "zellwandlose",
+      "docFrequency": 13,
+      "occurrences": 15,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "glucanase",
+      "docFrequency": 12,
+      "occurrences": 19,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "anthracnose",
+      "docFrequency": 11,
+      "occurrences": 39,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Saccharose",
+      "docFrequency": 11,
+      "occurrences": 38,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "dehydrogenase",
+      "docFrequency": 11,
+      "occurrences": 16,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "plantdisease",
+      "docFrequency": 11,
+      "occurrences": 13,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "polymerase",
+      "docFrequency": 11,
+      "occurrences": 12,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Umkehrosmose",
+      "docFrequency": 10,
+      "occurrences": 37,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "synthase",
+      "docFrequency": 10,
+      "occurrences": 17,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Cellulose",
+      "docFrequency": 10,
+      "occurrences": 13,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Glucanase",
+      "docFrequency": 10,
+      "occurrences": 13,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Espinase",
+      "docFrequency": 10,
+      "occurrences": 11,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "reductase",
+      "docFrequency": 10,
+      "occurrences": 11,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "hemicellulose",
+      "docFrequency": 9,
+      "occurrences": 11,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Hauptwachstumsphase",
+      "docFrequency": 9,
+      "occurrences": 10,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "esterase",
+      "docFrequency": 9,
+      "occurrences": 9,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Anthracnose",
+      "docFrequency": 8,
+      "occurrences": 27,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "saccharomyces",
+      "docFrequency": 8,
+      "occurrences": 16,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "carboxymethylcellulose",
+      "docFrequency": 8,
+      "occurrences": 13,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Schizosaccharomyces",
+      "docFrequency": 8,
+      "occurrences": 13,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Eutypiose",
+      "docFrequency": 8,
+      "occurrences": 11,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "decarboxylase",
+      "docFrequency": 8,
+      "occurrences": 9,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "galactose",
+      "docFrequency": 8,
+      "occurrences": 8,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Wachstumsphase",
+      "docFrequency": 8,
+      "occurrences": 8,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "chlorose",
+      "docFrequency": 7,
+      "occurrences": 23,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Chitinase",
+      "docFrequency": 7,
+      "occurrences": 13,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Vinextase",
+      "docFrequency": 7,
+      "occurrences": 13,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Botryosphaeriaceae",
+      "docFrequency": 7,
+      "occurrences": 12,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Trockenphase",
+      "docFrequency": 7,
+      "occurrences": 9,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Gluconobacter",
+      "docFrequency": 7,
+      "occurrences": 8,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Entwicklungsphase",
+      "docFrequency": 7,
+      "occurrences": 7,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Peronosporaprognose",
+      "docFrequency": 6,
+      "occurrences": 19,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "protease",
+      "docFrequency": 6,
+      "occurrences": 14,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Rapidase",
+      "docFrequency": 6,
+      "occurrences": 14,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Flugphase",
+      "docFrequency": 6,
+      "occurrences": 9,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "romyces",
+      "docFrequency": 6,
+      "occurrences": 9,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Excoriose",
+      "docFrequency": 6,
+      "occurrences": 7,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "pentose",
+      "docFrequency": 6,
+      "occurrences": 7,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "excoriose",
+      "docFrequency": 5,
+      "occurrences": 11,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "carboxylase",
+      "docFrequency": 5,
+      "occurrences": 9,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Ascomycota",
+      "docFrequency": 5,
+      "occurrences": 8,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "saccharose",
+      "docFrequency": 5,
+      "occurrences": 7,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "coccus",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "dextrose",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Glucosidase",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Glycosidase",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "repurpose",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Aerosoldose",
+      "docFrequency": 5,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Buttrose",
+      "docFrequency": 5,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Stilbensynthase",
+      "docFrequency": 5,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Witterungsphase",
+      "docFrequency": 5,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Carboxymethylcellulose",
+      "docFrequency": 4,
+      "occurrences": 14,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "grandiose",
+      "docFrequency": 4,
+      "occurrences": 12,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Cryptococcus",
+      "docFrequency": 4,
+      "occurrences": 8,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Basidiomycota",
+      "docFrequency": 4,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "desaturase",
+      "docFrequency": 4,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "ckenlose",
+      "docFrequency": 4,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "mannose",
+      "docFrequency": 4,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Sepharose",
+      "docFrequency": 4,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Austriebsphase",
+      "docFrequency": 4,
+      "occurrences": 4,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Coccus",
+      "docFrequency": 4,
+      "occurrences": 4,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "hprognose",
+      "docFrequency": 4,
+      "occurrences": 4,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Lactococcus",
+      "docFrequency": 4,
+      "occurrences": 4,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Wetterprognose",
+      "docFrequency": 4,
+      "occurrences": 4,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "brettanomyces",
+      "docFrequency": 3,
+      "occurrences": 9,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "symbiose",
+      "docFrequency": 3,
+      "occurrences": 8,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "acariose",
+      "docFrequency": 3,
+      "occurrences": 7,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "methylesterase",
+      "docFrequency": 3,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Methyltransferase",
+      "docFrequency": 3,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Transkriptase",
+      "docFrequency": 3,
+      "occurrences": 6,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Glukose",
+      "docFrequency": 3,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Kluyveromyces",
+      "docFrequency": 3,
+      "occurrences": 5,
+      "reasons": [
+        "proper-noun",
+        "scientific"
+      ]
+    },
+    {
+      "term": "Sucrose",
+      "docFrequency": 3,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "Vegetationsphase",
+      "docFrequency": 3,
+      "occurrences": 5,
+      "reasons": [
+        "scientific"
+      ]
+    },
+    {
+      "term": "véraison",
+      "docFrequency": 63,
+      "occurrences": 190,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "rosé",
+      "docFrequency": 60,
+      "occurrences": 151,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Université",
+      "docFrequency": 59,
+      "occurrences": 169,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Moët",
+      "docFrequency": 58,
+      "occurrences": 58,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Baumé",
+      "docFrequency": 27,
+      "occurrences": 45,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "García",
+      "docFrequency": 24,
+      "occurrences": 44,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Français",
+      "docFrequency": 24,
+      "occurrences": 41,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Ribéreau",
+      "docFrequency": 22,
+      "occurrences": 41,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Rosé",
+      "docFrequency": 20,
+      "occurrences": 83,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Rhône",
+      "docFrequency": 19,
+      "occurrences": 72,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Martínez",
+      "docFrequency": 19,
+      "occurrences": 43,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Unité",
+      "docFrequency": 17,
+      "occurrences": 51,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Gewürztraminer",
+      "docFrequency": 17,
+      "occurrences": 41,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Fernández",
+      "docFrequency": 15,
+      "occurrences": 29,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Cécile",
+      "docFrequency": 15,
+      "occurrences": 19,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Château",
+      "docFrequency": 14,
+      "occurrences": 20,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Gómez",
+      "docFrequency": 13,
+      "occurrences": 27,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "González",
+      "docFrequency": 13,
+      "occurrences": 27,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "saignée",
+      "docFrequency": 13,
+      "occurrences": 24,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Pérez",
+      "docFrequency": 13,
+      "occurrences": 20,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Véraison",
+      "docFrequency": 12,
+      "occurrences": 35,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Sébastien",
+      "docFrequency": 12,
+      "occurrences": 19,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Gaudillère",
+      "docFrequency": 12,
+      "occurrences": 18,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Mourvèdre",
+      "docFrequency": 12,
+      "occurrences": 17,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "délestage",
+      "docFrequency": 12,
+      "occurrences": 15,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Stéphanie",
+      "docFrequency": 12,
+      "occurrences": 15,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Médoc",
+      "docFrequency": 11,
+      "occurrences": 25,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "José",
+      "docFrequency": 11,
+      "occurrences": 17,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Niña",
+      "docFrequency": 11,
+      "occurrences": 16,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Duchêne",
+      "docFrequency": 10,
+      "occurrences": 23,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Pomarède",
+      "docFrequency": 10,
+      "occurrences": 21,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "générée",
+      "docFrequency": 10,
+      "occurrences": 20,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Gutiérrez",
+      "docFrequency": 10,
+      "occurrences": 19,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "qualité",
+      "docFrequency": 10,
+      "occurrences": 19,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Choné",
+      "docFrequency": 10,
+      "occurrences": 16,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Progrès",
+      "docFrequency": 10,
+      "occurrences": 16,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "François",
+      "docFrequency": 10,
+      "occurrences": 14,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Sánchez",
+      "docFrequency": 9,
+      "occurrences": 24,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Niño",
+      "docFrequency": 9,
+      "occurrences": 19,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Rességuier",
+      "docFrequency": 9,
+      "occurrences": 18,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "écran",
+      "docFrequency": 9,
+      "occurrences": 14,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Céline",
+      "docFrequency": 9,
+      "occurrences": 12,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Comté",
+      "docFrequency": 8,
+      "occurrences": 33,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Graça",
+      "docFrequency": 8,
+      "occurrences": 18,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "España",
+      "docFrequency": 8,
+      "occurrences": 16,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "María",
+      "docFrequency": 8,
+      "occurrences": 15,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Comité",
+      "docFrequency": 8,
+      "occurrences": 13,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Marín",
+      "docFrequency": 8,
+      "occurrences": 13,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Álvarez",
+      "docFrequency": 8,
+      "occurrences": 12,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Hervé",
+      "docFrequency": 8,
+      "occurrences": 12,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Pôle",
+      "docFrequency": 8,
+      "occurrences": 12,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Côtes",
+      "docFrequency": 8,
+      "occurrences": 11,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Bioquímica",
+      "docFrequency": 7,
+      "occurrences": 37,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Química",
+      "docFrequency": 7,
+      "occurrences": 20,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Albariño",
+      "docFrequency": 7,
+      "occurrences": 18,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Rozès",
+      "docFrequency": 7,
+      "occurrences": 17,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Delière",
+      "docFrequency": 7,
+      "occurrences": 14,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Traité",
+      "docFrequency": 7,
+      "occurrences": 14,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Università",
+      "docFrequency": 7,
+      "occurrences": 14,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Tempère",
+      "docFrequency": 7,
+      "occurrences": 13,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Agrícola",
+      "docFrequency": 7,
+      "occurrences": 12,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Française",
+      "docFrequency": 7,
+      "occurrences": 12,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Agroécologie",
+      "docFrequency": 7,
+      "occurrences": 11,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "étude",
+      "docFrequency": 7,
+      "occurrences": 11,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Étude",
+      "docFrequency": 7,
+      "occurrences": 11,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Gény",
+      "docFrequency": 7,
+      "occurrences": 10,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Trégoat",
+      "docFrequency": 7,
+      "occurrences": 10,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "rosés",
+      "docFrequency": 6,
+      "occurrences": 96,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Saignée",
+      "docFrequency": 6,
+      "occurrences": 22,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Trás",
+      "docFrequency": 6,
+      "occurrences": 19,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Éric",
+      "docFrequency": 6,
+      "occurrences": 13,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Ágnes",
+      "docFrequency": 6,
+      "occurrences": 12,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Sémillon",
+      "docFrequency": 6,
+      "occurrences": 11,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Séverine",
+      "docFrequency": 6,
+      "occurrences": 10,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Úrbez",
+      "docFrequency": 6,
+      "occurrences": 10,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Gerós",
+      "docFrequency": 6,
+      "occurrences": 9,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Donèche",
+      "docFrequency": 6,
+      "occurrences": 8,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "dorée",
+      "docFrequency": 6,
+      "occurrences": 8,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Valérie",
+      "docFrequency": 6,
+      "occurrences": 8,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Émilion",
+      "docFrequency": 6,
+      "occurrences": 6,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Airén",
+      "docFrequency": 5,
+      "occurrences": 17,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Procédés",
+      "docFrequency": 5,
+      "occurrences": 14,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Aligoté",
+      "docFrequency": 5,
+      "occurrences": 11,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "López",
+      "docFrequency": 5,
+      "occurrences": 11,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "développement",
+      "docFrequency": 5,
+      "occurrences": 10,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Schüttler",
+      "docFrequency": 5,
+      "occurrences": 10,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "azotée",
+      "docFrequency": 5,
+      "occurrences": 9,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Cortázar",
+      "docFrequency": 5,
+      "occurrences": 9,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Côte",
+      "docFrequency": 5,
+      "occurrences": 9,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "édition",
+      "docFrequency": 5,
+      "occurrences": 9,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "intérêt",
+      "docFrequency": 5,
+      "occurrences": 9,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "moûts",
+      "docFrequency": 5,
+      "occurrences": 9,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Agnès",
+      "docFrequency": 5,
+      "occurrences": 8,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Chloé",
+      "docFrequency": 5,
+      "occurrences": 8,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Délestage",
+      "docFrequency": 5,
+      "occurrences": 8,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Sáenz",
+      "docFrequency": 5,
+      "occurrences": 8,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "méthode",
+      "docFrequency": 5,
+      "occurrences": 7,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Hérault",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Müller",
+      "docFrequency": 5,
+      "occurrences": 6,
+      "reasons": [
+        "accented",
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "ESPAÑOL",
+      "docFrequency": 5,
+      "occurrences": 5,
+      "reasons": [
+        "accented"
+      ]
+    },
+    {
+      "term": "Australia",
+      "docFrequency": 688,
+      "occurrences": 2462,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Australian",
+      "docFrequency": 642,
+      "occurrences": 1597,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Viticulture",
+      "docFrequency": 448,
+      "occurrences": 978,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "State",
+      "docFrequency": 421,
+      "occurrences": 1221,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Food",
+      "docFrequency": 377,
+      "occurrences": 622,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Science",
+      "docFrequency": 375,
+      "occurrences": 585,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Enology",
+      "docFrequency": 364,
+      "occurrences": 1694,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Pinot",
+      "docFrequency": 355,
+      "occurrences": 1077,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Valley",
+      "docFrequency": 348,
+      "occurrences": 722,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Sauvignon",
+      "docFrequency": 337,
+      "occurrences": 729,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "California",
+      "docFrequency": 333,
+      "occurrences": 616,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Oregon",
+      "docFrequency": 327,
+      "occurrences": 1274,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Cabernet",
+      "docFrequency": 284,
+      "occurrences": 569,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Board",
+      "docFrequency": 268,
+      "occurrences": 910,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Agriculture",
+      "docFrequency": 268,
+      "occurrences": 448,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Adelaide",
+      "docFrequency": 268,
+      "occurrences": 415,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "South",
+      "docFrequency": 261,
+      "occurrences": 464,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Technology",
+      "docFrequency": 261,
+      "occurrences": 361,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Report",
+      "docFrequency": 260,
+      "occurrences": 1370,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Industry",
+      "docFrequency": 260,
+      "occurrences": 424,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Advisory",
+      "docFrequency": 253,
+      "occurrences": 908,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "January",
+      "docFrequency": 252,
+      "occurrences": 355,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "April",
+      "docFrequency": 249,
+      "occurrences": 387,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "France",
+      "docFrequency": 245,
+      "occurrences": 823,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "June",
+      "docFrequency": 244,
+      "occurrences": 469,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Group",
+      "docFrequency": 239,
+      "occurrences": 401,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Chemistry",
+      "docFrequency": 237,
+      "occurrences": 381,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "July",
+      "docFrequency": 233,
+      "occurrences": 377,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Reviews",
+      "docFrequency": 224,
+      "occurrences": 3302,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Plant",
+      "docFrequency": 214,
+      "occurrences": 418,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Specialist",
+      "docFrequency": 211,
+      "occurrences": 285,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "York",
+      "docFrequency": 208,
+      "occurrences": 478,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Zealand",
+      "docFrequency": 205,
+      "occurrences": 390,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Pest",
+      "docFrequency": 203,
+      "occurrences": 364,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "September",
+      "docFrequency": 202,
+      "occurrences": 353,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Noir",
+      "docFrequency": 200,
+      "occurrences": 369,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Progress",
+      "docFrequency": 199,
+      "occurrences": 787,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Virginia",
+      "docFrequency": 196,
+      "occurrences": 361,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Water",
+      "docFrequency": 193,
+      "occurrences": 435,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "August",
+      "docFrequency": 189,
+      "occurrences": 317,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Washington",
+      "docFrequency": 188,
+      "occurrences": 1031,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "October",
+      "docFrequency": 185,
+      "occurrences": 361,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Development",
+      "docFrequency": 179,
+      "occurrences": 310,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "March",
+      "docFrequency": 176,
+      "occurrences": 282,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Agricultural",
+      "docFrequency": 175,
+      "occurrences": 314,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Grapevine",
+      "docFrequency": 173,
+      "occurrences": 360,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Shiraz",
+      "docFrequency": 165,
+      "occurrences": 303,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Peter",
+      "docFrequency": 165,
+      "occurrences": 171,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Centre",
+      "docFrequency": 162,
+      "occurrences": 250,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Page",
+      "docFrequency": 160,
+      "occurrences": 543,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Tech",
+      "docFrequency": 160,
+      "occurrences": 251,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Winemaker",
+      "docFrequency": 159,
+      "occurrences": 219,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Vitis",
+      "docFrequency": 158,
+      "occurrences": 306,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Riesling",
+      "docFrequency": 157,
+      "occurrences": 264,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Services",
+      "docFrequency": 157,
+      "occurrences": 207,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Program",
+      "docFrequency": 156,
+      "occurrences": 424,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Bordeaux",
+      "docFrequency": 155,
+      "occurrences": 524,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Guide",
+      "docFrequency": 154,
+      "occurrences": 567,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Spring",
+      "docFrequency": 154,
+      "occurrences": 530,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Innovation",
+      "docFrequency": 154,
+      "occurrences": 195,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Professor",
+      "docFrequency": 153,
+      "occurrences": 220,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Climate",
+      "docFrequency": 150,
+      "occurrences": 250,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Horticulture",
+      "docFrequency": 150,
+      "occurrences": 171,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Service",
+      "docFrequency": 149,
+      "occurrences": 224,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Corner",
+      "docFrequency": 149,
+      "occurrences": 184,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Press",
+      "docFrequency": 147,
+      "occurrences": 213,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "French",
+      "docFrequency": 146,
+      "occurrences": 242,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "February",
+      "docFrequency": 146,
+      "occurrences": 225,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Reports",
+      "docFrequency": 143,
+      "occurrences": 381,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "High",
+      "docFrequency": 142,
+      "occurrences": 211,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Vine",
+      "docFrequency": 141,
+      "occurrences": 261,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Center",
+      "docFrequency": 141,
+      "occurrences": 224,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Botrytis",
+      "docFrequency": 140,
+      "occurrences": 413,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Zoecklein",
+      "docFrequency": 139,
+      "occurrences": 223,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "International",
+      "docFrequency": 139,
+      "occurrences": 217,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "American",
+      "docFrequency": 139,
+      "occurrences": 213,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Central",
+      "docFrequency": 139,
+      "occurrences": 155,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Collapse",
+      "docFrequency": 138,
+      "occurrences": 465,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Sciences",
+      "docFrequency": 138,
+      "occurrences": 387,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "European",
+      "docFrequency": 138,
+      "occurrences": 273,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "North",
+      "docFrequency": 138,
+      "occurrences": 188,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "November",
+      "docFrequency": 136,
+      "occurrences": 224,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Association",
+      "docFrequency": 136,
+      "occurrences": 190,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "National",
+      "docFrequency": 134,
+      "occurrences": 259,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "December",
+      "docFrequency": 134,
+      "occurrences": 216,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Soil",
+      "docFrequency": 133,
+      "occurrences": 409,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Society",
+      "docFrequency": 133,
+      "occurrences": 185,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Index",
+      "docFrequency": 129,
+      "occurrences": 245,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Government",
+      "docFrequency": 129,
+      "occurrences": 161,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Guidelines",
+      "docFrequency": 126,
+      "occurrences": 742,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Irrigation",
+      "docFrequency": 125,
+      "occurrences": 310,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Degree",
+      "docFrequency": 124,
+      "occurrences": 301,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Laboratory",
+      "docFrequency": 123,
+      "occurrences": 170,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Resources",
+      "docFrequency": 120,
+      "occurrences": 430,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Northwest",
+      "docFrequency": 118,
+      "occurrences": 254,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Grove",
+      "docFrequency": 118,
+      "occurrences": 124,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Updated",
+      "docFrequency": 117,
+      "occurrences": 156,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Other",
+      "docFrequency": 116,
+      "occurrences": 159,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Pacific",
+      "docFrequency": 115,
+      "occurrences": 220,
+      "reasons": [
+        "proper-noun"
+      ]
+    },
+    {
+      "term": "Brix",
+      "docFrequency": 115,
+      "occurrences": 204,
+      "reasons": [
+        "proper-noun"
+      ]
+    }
+  ]
+}
