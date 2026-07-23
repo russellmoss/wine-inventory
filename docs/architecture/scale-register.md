@@ -241,5 +241,23 @@ TEMPLATE — copy this block for each new decision:
   `indexedContentHash`, and without a bump the raw bytes are unchanged so every re-crawl short-circuits
   to `skipped:"unchanged"` and the new rules never take effect, silently.
 
+### Every ledger write folds vessel composition + asserts co-residence (plan 088 / LEDGER-12)
+- **Choice:** `runLedgerWrite`/`writeLotOperation` is the ONE write site for the `VesselLot` occupancy
+  projection AND the `VesselComponent` composition (variety/vineyard/vintage shares), attributing every lot —
+  including origin-less blend lots — through lineage via `composeLeaves`. It also runs the monotone
+  `assertNoWorsenedCoResidence` guard on the POST-FOLD balances to enforce one-lot-per-vessel
+  ([[invariants/LEDGER-12-one-lot-per-vessel]], [[decisions/0008-one-lot-per-vessel]]).
+- **Fine until:** a lot's lineage tree is shallow and a vessel holds a handful of components — the norm. The
+  fold and the assert are in-memory work over the operation's own touched vessels/lots, not a table scan.
+- **What breaks at scale:** `composeLeaves` walks lineage, so a lot assembled from a deep chain of blends-of-
+  blends makes the per-write fold cost grow with lineage depth × leaf count; a single op touching very many
+  vessels (a large group-rack / bulk maintenance range) multiplies the fold + assert per touched vessel inside
+  the one Serializable tx, lengthening the write lock.
+- **Tripwire:** ledger-write latency climbing on blend-heavy tenants; group operations touching tens of vessels
+  timing out inside `runLedgerWrite`; `composeLeaves` showing up in traces as a non-trivial share of write time.
+- **Status:** 🟢 (winery-scale lineage is shallow; the DB `(tenantId, vesselId)` unique makes the illegal state
+  unreachable regardless, so the fold+assert are correctness reinforcement, not the sole guard; guarded by
+  `verify:one-lot-per-vessel` + `test/ledger-math.test.ts`).
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*

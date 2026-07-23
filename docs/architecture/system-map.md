@@ -115,7 +115,19 @@ A natural-language assistant over the whole app, powered by `@anthropic-ai/sdk`.
 - `run.ts` — the tool-use loop; `tools/` + `registry.ts` — the actions it can take; `scope.ts` — permissions.
 - **Writes require explicit confirmation:** `confirm.ts` + `commit.ts` (signed-token / single-use nonce).
 - `conversations.ts` / `history.ts` — persisted, shared across text + voice.
+- **Read tools** answer without a write: alongside cellar-contents / measurements / operations queries, the
+  assistant can read a lot/vessel's **operation history** and **measurement history** and rank vessels by an
+  analyte, and sweep for **overdue work** — all read-only, no confirmation gate.
 - **Voice mode** reuses the *same* `/api/assistant` stream + tool loop (one brain); ElevenLabs does STT + TTS. Server key stays server-side.
+  - **Inline in the dock (plan 089):** voice runs *inline* in the assistant dock (an audio-reactive title-bar
+    orb + the dock's own transcript), NOT a full-screen overlay, so the page the assistant navigates to stays
+    visible/clickable. `VoiceInlinePanel`/`VoiceHeaderOrb` replaced the retired `VoiceOverlay`.
+  - **Pronunciation lexicon (plan 091):** `src/lib/voice/lexicon.ts` is a pure term→phonetic matcher (single-pass
+    alternation, longest-match-first, accent-tolerant, idempotent/no-cascade) wired LAST in `toSpeakable` after
+    `normalizeUnits`, so TTS says winery terms right. ⚠️ It shipped with the lexicon table **EMPTY** — machinery
+    only, a no-op for users until the table is populated by ear (issue #464 still open). The TTS→STT screening
+    approach was tried and documented as a **negative result** (Scribe normalizes to the intended word, so it
+    cannot measure pronunciation) — do not rebuild it.
 
 ### 7. Vineyard + maps — `src/lib/map/`, `src/lib/vineyard/`, `src/lib/harvest/`
 Satellite basemap (Esri keyless, or Google Map Tiles if keyed) with drawable blocks (`leaflet` +
@@ -232,6 +244,17 @@ task **kinds**: OPERATION / OBSERVATION / MAINTENANCE.
   `runLedgerWrite` txs, per-tank pass/fail, one `commandId` per task; the execute screen's `BatchCapExecutor`
   is the "punch down 3, 4, 5" UI. The assistant can ISSUE a cap-management WO by chat
   (`issue_cap_management_wo`, draft→confirm, deep-links to the WO).
+- **Due-TIME precision (#472):** a WO can be requested for a date AND a time of day ("tomorrow at 9am"), not
+  just a date. `work_order.dueAt` was already a timestamp; the new `dueAtHasTime` boolean records whether a
+  clock time was actually *asked for* (the instant alone can't tell "the 23rd" from "the 23rd at midnight", and
+  midnight work is real at harvest) so the UI shows a time only when one was requested. Additive, NOT NULL
+  default `false` — every legacy row was date-only. `src/lib/work-orders/due-at.ts` + `DueAt.tsx` own the parse/render.
+- **Winery clock (#473, follow-on to due-time):** work is planned where the wine is, so the winery gets its own
+  operating timezone — `AppSettings.timeZone` (nullable IANA zone id, e.g. `America/Los_Angeles`; NULL = "not
+  configured" → every reader falls back to the viewer's browser zone, exactly the pre-column behaviour). Set on
+  `/settings` (`WineryTimeZoneCard`); pushed app-wide via `WineryTimeZoneProvider` and consumed by `LocalTime.tsx`
+  so an owner in New York sees a Bhutan winery's 9am pumpover on the *winery's* clock. Validated against `Intl`
+  in app code (a bogus zone degrades to the fallback), not a DB CHECK (the tz database changes over time).
 - **Templates** (`templates.ts`, `template-vocabulary.ts`, `system-templates.ts`): typed-field vocabulary
   (never free-form), versioned clone-on-customize; an issued WO snaps the version it used; recurring +
   pay-basis stub (`recurring.ts`). Seeded via `npm run seed:work-order-templates`.
@@ -324,7 +347,19 @@ model names, tool `name` strings, committer keys and parity evidence paths are u
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-21 (plan 080 / feedback #372 cost surfacing): added `cost-display.ts`
+*Refreshed 2026-07-23 (brain auto-refresh; plans 088–091 + #472/#473): the **one-lot-per-vessel** refactor
+(plan 088, LEDGER-12 / [[0008-one-lot-per-vessel]]) was already captured in §2 by its own PR — a vessel holds
+AT MOST ONE lot (`(tenantId, vesselId)` unique + monotone `assertNoWorsenedCoResidence` + `decideCombineRoute`
+KEEP/ABSORB/NEW_BLEND), and every write folds `VesselComponent` composition via `composeLeaves`; this pass
+added the scale note for that per-write fold ([[scale-register]]). New user-facing time features: **work-order
+due-TIME precision** (#472, `dueAtHasTime` — additive column) and the **winery operating clock** (#473,
+`AppSettings.timeZone` — additive nullable column, NULL falls back to the viewer's zone) — both are additive
+columns on EXISTING tenant-scoped tables, no new table / no RLS change, so the Phase-12 checklist and TENANT-1
+did not move. Assistant gained **operation-history / measurement-history read tools** + an overdue-work sweep;
+voice went **inline in the dock** (plan 089, `VoiceOverlay` retired) and got a **pronunciation lexicon**
+(plan 091, `voice/lexicon.ts`) that shipped with an EMPTY table (issue #464 open). The 22 drift-flagged
+invariant notes were reviewed and left intact (the changes reinforce or are orthogonal to them; `verify:invariants`
+green). Prior refresh 2026-07-21 (plan 080 / feedback #372 cost surfacing): added `cost-display.ts`
 (`summarizeConsumableCost`) — a pure read-only fold that shows the blended cost of on-hand consumables +
 a priced/unpriced shipment count, reusing the engine's `weightedAvgUnitCost` (COST-1) and excluding
 unpriced lots (COST-2), consumed by `ConsumablesSection.tsx`. No schema, RLS, or ledger-invariant change;
