@@ -4022,6 +4022,10 @@ model WorkOrder {
   assigneeId           String?
   assigneeEmail        String?
   dueAt                DateTime?
+  // Did the requester ask for a TIME OF DAY, or just a date? `dueAt` is an instant either way, so the
+  // stored value alone can't tell "the 23rd" from "the 23rd at midnight" — and midnight work is real
+  // during harvest, so it can't be inferred. Every legacy row was date-only, hence the `false` default.
+  dueAtHasTime         Boolean         @default(false)
   scheduledFor         DateTime?
   // Plan 053 B8: ERP planning fields (data capture only; no auto-scheduling). priority is a validated
   // string (LOW/NORMAL/HIGH/URGENT — no enum, Windows ALTER TYPE hazard); scheduledStart/End are a window.

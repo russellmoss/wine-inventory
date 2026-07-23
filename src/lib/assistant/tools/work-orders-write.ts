@@ -9,6 +9,7 @@ import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
+import { DUE_AT_SCHEMA_PROPERTIES, dueClause, dueFromCommitArgs, dueProposalArgs, resolveDueAt } from "./due-at-args";
 
 // Plan 043: the assistant can ISSUE a cap-management work order by chat ("punch down tanks 3, 4, 5 this
 // afternoon"). Draft→confirm (D10): run() resolves the vessels + technique and returns a signed proposal;
@@ -29,12 +30,21 @@ function label(v: Pick<ResolvedVessel, "type" | "code">): string {
   return v.type === "BARREL" ? `Barrel ${v.code}` : `Tank ${v.code}`;
 }
 
-type IssueInput = { technique?: unknown; vessels?: unknown; durationMin?: unknown; note?: unknown; title?: unknown; assigneeEmail?: unknown };
+type IssueInput = {
+  technique?: unknown;
+  vessels?: unknown;
+  durationMin?: unknown;
+  note?: unknown;
+  title?: unknown;
+  assigneeEmail?: unknown;
+  dueDate?: unknown;
+  dueTime?: unknown;
+};
 
 export const issueCapManagementWoTool: AssistantTool = {
   name: "issue_cap_management_wo",
   description:
-    "Issue a cap-management WORK ORDER for a red ferment across one or more tanks — pumpover, punchdown, cold-soak, maceration, or pulse-air. Use when the user wants to ASSIGN cap work to the crew ('punch down tanks 3, 4, 5 this afternoon', 'issue pumpovers for the ferments'). This creates a work order the cellar hand completes on the floor — it does NOT itself log the operation. To record a single cap op you just did, that's a different flow. Refer to tanks in plain language like 'tank 3'. Pass the assignee's email if the user names who should do the work. This does NOT save immediately — it returns a preview to confirm.",
+    "Issue a cap-management WORK ORDER for a red ferment across one or more tanks — pumpover, punchdown, cold-soak, maceration, or pulse-air. Use when the user wants to ASSIGN cap work to the crew ('punch down tanks 3, 4, 5 this afternoon', 'issue pumpovers for the ferments'). This creates a work order the cellar hand completes on the floor — it does NOT itself log the operation. To record a single cap op you just did, that's a different flow. Refer to tanks in plain language like 'tank 3'. Pass the assignee's email if the user names who should do the work. When the user says WHEN the work should happen, pass dueDate (and dueTime for a clock time — 'tomorrow at 9am' is dueDate + dueTime '09:00'); durationMin is how LONG the work takes, which is a different thing. This does NOT save immediately — it returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -49,10 +59,11 @@ export const issueCapManagementWoTool: AssistantTool = {
       note: { type: "string", description: "Optional note for the crew." },
       title: { type: "string", description: "Optional work-order title (defaults to a sensible one)." },
       assigneeEmail: { type: "string", description: "Email of the crew member this work order is assigned to (optional)." },
+      ...DUE_AT_SCHEMA_PROPERTIES,
     },
     required: ["technique", "vessels"],
   },
-  async run(_ctx, rawInput) {
+  async run(ctx, rawInput) {
     const input = (rawInput ?? {}) as IssueInput;
     const technique = typeof input.technique === "string" ? input.technique.toUpperCase() : "";
     if (!isCapKind(technique)) {
@@ -88,10 +99,14 @@ export const issueCapManagementWoTool: AssistantTool = {
         ? input.title.trim()
         : `${CAP_LABELS[technique].replace(/^\w/, (c) => c.toUpperCase())} — ${resolved.length} ${resolved.length === 1 ? "tank" : "tanks"}`;
 
+    // Ticket cmrwkmapf: cap work is scheduled work — a 30-minute pumpover at 9am is a different job from
+    // the same pumpover at 5pm. This flow had no due date at ALL, so the time had nowhere to go.
+    const due = resolveDueAt(input.dueDate, input.dueTime, ctx.timeZone);
+
     const vesselList = resolved.map((v) => label(v)).join(", ");
     const durClause = durationMin ? ` (${durationMin} min)` : "";
     const asgClause = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
-    const preview = `Issue a cap-management work order: ${CAP_LABELS[technique]} on ${vesselList}${durClause}${asgClause}. One task per tank; the crew records each on the floor.`;
+    const preview = `Issue a cap-management work order: ${CAP_LABELS[technique]} on ${vesselList}${durClause}${asgClause}${dueClause(due)}. One task per tank; the crew records each on the floor.`;
 
     const token = signProposal("issue_cap_management_wo", {
       technique,
@@ -99,6 +114,7 @@ export const issueCapManagementWoTool: AssistantTool = {
       note,
       title,
       ...(assigneeEmail ? { assigneeEmail } : {}),
+      ...dueProposalArgs(due),
       vessels: resolved.map((v) => ({ id: v.id, label: label(v) })),
     });
     return { needsConfirmation: true, preview, token };
@@ -126,7 +142,8 @@ export const commitIssueCapManagementWo: Committer = async (_user, args) => {
   }));
   const tasks = instantiateTaskBuilds(builds, await resolveTaskVocabulary());
 
-  const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail }));
+  const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
+  const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt, dueAtHasTime }));
   unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
 
   const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";

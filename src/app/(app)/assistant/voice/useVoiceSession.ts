@@ -21,6 +21,7 @@ import type { VoiceSettingsView } from "@/lib/voice/settings-types";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { clampHistoryForSend } from "@/lib/assistant/message-window";
 import { readDraftGaps } from "@/lib/assistant/proposal-card";
+import { browserTimeZone } from "@/lib/work-orders/due-at";
 import { RESOLVED_CARD_LINGER_MS, admitProposal, releaseProposal } from "@/lib/assistant/card-lifecycle";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
@@ -367,6 +368,8 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
             messages: clampHistoryForSend(historyRef.current),
             conversationId: conversationIdRef.current,
             voice: true,
+            // See AssistantChat: the viewer's clock is what "tomorrow at 9am" means.
+            timeZone: browserTimeZone(),
           }),
           signal: ac.signal,
         });

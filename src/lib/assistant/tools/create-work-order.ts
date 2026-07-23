@@ -6,6 +6,7 @@ import { resolveExactlyOne } from "./resolve";
 import { listWorkOrderTemplates } from "@/lib/work-orders/data";
 import { createWorkOrderFromTemplateAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
+import { DUE_AT_SCHEMA_PROPERTIES, dueClause, dueFromCommitArgs, dueProposalArgs, resolveDueAt } from "./due-at-args";
 
 // Assistant-coverage Wave 1 #3a — create AND issue a work order from a template by chat. Wraps the
 // existing template + lifecycle cores (createWorkOrderFromTemplateAction → issueWorkOrderAction); no db_*.
@@ -13,19 +14,19 @@ import { unwrap } from "@/lib/action-result";
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-type CreateWoRawInput = { template?: string; dueDate?: string; assigneeEmail?: string; title?: string };
+type CreateWoRawInput = { template?: string; dueDate?: string; dueTime?: string; assigneeEmail?: string; title?: string };
 
 export const createWorkOrderTool: AssistantTool = {
   name: "create_work_order",
   description:
-    "Create and ISSUE a work order from a TEMPLATE — a live, assignable order whose tasks come from the template AS-IS. Use ONLY when the user names a template or wants a general SOP order (e.g. 'issue the weekly barrel-care order for tomorrow'). Give the template by name; optionally a due date, assignee email, and a title. Does NOT save immediately — returns a preview to confirm. " +
+    "Create and ISSUE a work order from a TEMPLATE — a live, assignable order whose tasks come from the template AS-IS. Use ONLY when the user names a template or wants a general SOP order (e.g. 'issue the weekly barrel-care order for tomorrow'). Give the template by name; optionally a due date (plus dueTime for a requested clock time, e.g. 'tomorrow at 9am' → dueDate + dueTime '09:00'), assignee email, and a title. Does NOT save immediately — returns a preview to confirm. " +
     "DO NOT use this when the user names SPECIFIC vessels for a whole-vessel operation (topping / filtration / addition / fining across 'barrels 1–5', 'tanks 3, 4 and 7', etc.) — this tool clones a fixed template and CANNOT fan out one task per vessel, so the vessel scope would be lost. For that, use issue_operation_wo. For cap work (punchdown / pumpover / cold-soak) across vessels, use issue_cap_management_wo.",
   kind: "write",
   inputSchema: {
     type: "object",
     properties: {
       template: { type: "string", description: "Template name, e.g. 'Weekly barrel care'." },
-      dueDate: { type: "string", description: "Due date as YYYY-MM-DD (resolve relative dates like 'tomorrow' to a date). Optional." },
+      ...DUE_AT_SCHEMA_PROPERTIES,
       assigneeEmail: { type: "string", description: "Assignee email (optional)." },
       title: { type: "string", description: "Override title for this work order (optional; defaults to the template name)." },
     },
@@ -49,14 +50,13 @@ export const createWorkOrderTool: AssistantTool = {
       manyMsg: `Several templates match "${input.template}"`,
     });
 
-    const dueDate = input.dueDate ? String(input.dueDate) : null;
-    const dueClause = dueDate ? `, due ${dueDate}` : "";
+    const due = resolveDueAt(input.dueDate, input.dueTime, ctx.timeZone);
     const asgClause = input.assigneeEmail ? `, assigned to ${input.assigneeEmail}` : "";
-    const preview = `Create and issue a work order from "${tpl.name}"${dueClause}${asgClause}.`;
+    const preview = `Create and issue a work order from "${tpl.name}"${dueClause(due)}${asgClause}.`;
     const token = signProposal("create_work_order", {
       templateId: tpl.id,
       templateName: tpl.name,
-      ...(dueDate ? { dueDate } : {}),
+      ...dueProposalArgs(due),
       ...(input.assigneeEmail ? { assigneeEmail: input.assigneeEmail } : {}),
       ...(input.title ? { title: input.title } : {}),
     });
@@ -65,11 +65,13 @@ export const createWorkOrderTool: AssistantTool = {
 };
 
 export const commitCreateWorkOrder: Committer = async (_user, args) => {
+  const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
   const created = unwrap(await createWorkOrderFromTemplateAction({
     templateId: String(args.templateId),
     title: args.title == null ? undefined : String(args.title),
     assigneeEmail: args.assigneeEmail == null ? null : String(args.assigneeEmail),
-    dueAt: args.dueDate ? new Date(String(args.dueDate)) : null,
+    dueAt,
+    dueAtHasTime,
   }));
   unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
   return {

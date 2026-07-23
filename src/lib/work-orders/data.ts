@@ -82,6 +82,7 @@ export type WorkOrderDetail = {
   instructions: string | null;
   assigneeEmail: string | null;
   dueAt: string | null;
+  dueAtHasTime: boolean; // was a TIME of day requested, or just a date?
   scheduledFor: string | null;
   priority: string | null; // plan 053 B8
   locationName: string | null; // plan 053 B9
@@ -178,6 +179,7 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
       instructions: wo.instructions,
       assigneeEmail: wo.assigneeEmail,
       dueAt: wo.dueAt ? wo.dueAt.toISOString() : null,
+      dueAtHasTime: wo.dueAtHasTime,
       scheduledFor: wo.scheduledFor ? wo.scheduledFor.toISOString() : null,
       priority: wo.priority,
       locationName: loc?.name ?? null,
@@ -264,7 +266,7 @@ export type WorkOrderPrintTask = {
 };
 export type WorkOrderPrintView = {
   number: number; title: string; status: string;
-  issuedByEmail: string | null; assigneeEmail: string | null; issuedAt: string | null; dueAt: string | null; instructions: string | null;
+  issuedByEmail: string | null; assigneeEmail: string | null; issuedAt: string | null; dueAt: string | null; dueAtHasTime: boolean; instructions: string | null;
   tasks: WorkOrderPrintTask[];
 };
 
@@ -412,6 +414,7 @@ export async function getWorkOrderPrintView(tenantId: string, workOrderId: strin
       number: wo.number, title: wo.title, status: wo.status,
       issuedByEmail: wo.issuedByEmail, assigneeEmail: wo.assigneeEmail,
       issuedAt: wo.issuedAt ? wo.issuedAt.toISOString() : null, dueAt: wo.dueAt ? wo.dueAt.toISOString() : null,
+      dueAtHasTime: wo.dueAtHasTime,
       instructions: wo.instructions, tasks,
     };
   });
@@ -427,7 +430,7 @@ export type WorkOrderEditTaskRow = {
 };
 export type WorkOrderEditData = {
   id: string; number: number; status: string; title: string;
-  assigneeEmail: string | null; dueAt: string | null; priority: string | null; locationId: string | null;
+  assigneeEmail: string | null; dueAt: string | null; dueAtHasTime: boolean; priority: string | null; locationId: string | null;
   dependsOn: string[];
   tasks: WorkOrderEditTaskRow[];
   equipmentByTask: Record<string, string[]>;
@@ -454,6 +457,7 @@ export async function getWorkOrderForEdit(tenantId: string, workOrderId: string)
       title: wo.title,
       assigneeEmail: wo.assigneeEmail,
       dueAt: wo.dueAt ? wo.dueAt.toISOString() : null,
+      dueAtHasTime: wo.dueAtHasTime,
       priority: wo.priority,
       locationId: wo.locationId,
       dependsOn: depEdges.map((d) => d.dependsOnWorkOrderId),
@@ -539,6 +543,7 @@ export type WorkOrderListRow = {
   title: string;
   status: string;
   dueAt: Date | null; // kept as Date for bucketing; the client gets ISO via the summary shape below
+  dueAtHasTime: boolean; // was a TIME of day requested, or just a date?
   assigneeEmail: string | null;
   startedByEmail: string | null;
   taskCount: number;
@@ -562,12 +567,12 @@ export async function getWorkOrderDashboard(
       where: buildOpenWhere(filters) as Prisma.WorkOrderWhereInput,
       orderBy: [{ dueAt: "asc" }, { number: "asc" }],
       select: {
-        id: true, number: true, title: true, status: true, dueAt: true, assigneeEmail: true, startedByEmail: true,
+        id: true, number: true, title: true, status: true, dueAt: true, dueAtHasTime: true, assigneeEmail: true, startedByEmail: true,
         tasks: { select: { status: true } },
       },
     });
     const list: WorkOrderListRow[] = rows.map((r) => ({
-      id: r.id, number: r.number, title: r.title, status: r.status, dueAt: r.dueAt,
+      id: r.id, number: r.number, title: r.title, status: r.status, dueAt: r.dueAt, dueAtHasTime: r.dueAtHasTime,
       assigneeEmail: r.assigneeEmail, startedByEmail: r.startedByEmail,
       taskCount: r.tasks.length,
       doneCount: r.tasks.filter((t) => t.status === "APPROVED" || t.status === "DONE").length,

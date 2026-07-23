@@ -13,6 +13,7 @@ import { TASK_VOCABULARY, type TaskBuild, type ResolvedTaskVocabulary } from "@/
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
 import { buildWorkOrderReadiness, assertFreshReadiness } from "@/lib/work-orders/proposal-readiness";
 import { normalizeWorkOrderPriority } from "@/lib/work-orders/planning";
+import { normalizeTimeZone, parseDueAt, type DueAt } from "@/lib/work-orders/due-at";
 import { isPressableLotState } from "@/lib/ferment/press-data";
 import {
   canonicalizeNlWorkOrderDraft,
@@ -79,19 +80,23 @@ function vesselLabel(v: Pick<ResolvedVesselState, "type" | "code">): string {
   return `${v.type === "BARREL" ? "Barrel" : "Tank"} ${v.code}`;
 }
 
-function dateOrNull(value: string | null): Date | null {
+/**
+ * A proposal's `dueDate` is a WALL CLOCK — `YYYY-MM-DD`, or `YYYY-MM-DDTHH:mm` when the user asked for a
+ * time of day ("tomorrow at 9am"). `dueTimeZone` is the zone it was spoken in (the viewer's, threaded
+ * from the chat request); without it a 9am request would resolve against the server's UTC clock.
+ */
+function dueOrNull(value: string | null, timeZone: string | null | undefined): DueAt | null {
   if (!value) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Due date must be an ISO date (YYYY-MM-DD).");
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) throw new Error("Due date must be a real ISO date.");
-  return date;
+  const due = parseDueAt(value, normalizeTimeZone(timeZone));
+  if (!due) throw new Error("Due date must be an ISO date (YYYY-MM-DD), optionally with a time (YYYY-MM-DDTHH:mm).");
+  return due;
 }
 
-export function validateNlWorkOrderMetadata(draft: Pick<NlWorkOrderDraft, "assigneeEmail" | "dueDate">): void {
+export function validateNlWorkOrderMetadata(draft: Pick<NlWorkOrderDraft, "assigneeEmail" | "dueDate" | "dueTimeZone">): void {
   if (draft.assigneeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.assigneeEmail)) {
     throw new Error("Assignee must be an email address.");
   }
-  dateOrNull(draft.dueDate);
+  dueOrNull(draft.dueDate, draft.dueTimeZone);
 }
 
 async function resolveVesselState(ref: string): Promise<ResolvedVesselState> {
@@ -926,6 +931,7 @@ async function computeNlProposal(raw: unknown): Promise<{ proposal: WorkOrderPro
     title: draft.title,
     assigneeEmail: draft.assigneeEmail,
     dueDate: draft.dueDate,
+    dueTimeZone: draft.dueTimeZone,
     status,
     stateReadAt: readiness.stateReadAt,
     tasks,
@@ -984,6 +990,7 @@ export function buildNlWorkOrderCommitArgs(proposal: WorkOrderProposal): NlWorkO
     title: proposal.title,
     assigneeEmail: proposal.assigneeEmail,
     dueDate: proposal.dueDate,
+    dueTimeZone: proposal.dueTimeZone,
     taskBuilds: proposal.taskBuilds,
     fingerprint: proposal.fingerprint,
   };
@@ -1012,6 +1019,9 @@ async function assertPinnedPressSourcesFresh(taskBuilds: TaskBuild[]): Promise<v
   }
 }
 
-export function dueAtFromCommitArgs(args: Pick<NlWorkOrderCommitArgs, "dueDate">): Date | null {
-  return dateOrNull(args.dueDate);
+export function dueAtFromCommitArgs(
+  args: Pick<NlWorkOrderCommitArgs, "dueDate" | "dueTimeZone">,
+): { dueAt: Date | null; dueAtHasTime: boolean } {
+  const due = dueOrNull(args.dueDate, args.dueTimeZone);
+  return { dueAt: due?.at ?? null, dueAtHasTime: due?.hasTime ?? false };
 }

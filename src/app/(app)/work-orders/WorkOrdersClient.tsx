@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Card, Button, Badge, Eyebrow, LocalTime } from "@/components/ui";
 import type { WorkOrderSummary } from "@/lib/work-orders/data";
+import { DueAt } from "@/components/work-orders/DueAt";
 import { OPEN_STATUSES, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersTabs } from "./WorkOrdersTabs";
 import { WorkOrderFilterBar } from "./WorkOrderFilterBar";
@@ -21,6 +22,11 @@ function fmtDate(iso: string | null) {
   return <LocalTime value={iso} mode="date" options={{ month: "short", day: "numeric" }} />;
 }
 
+/** Due date, plus the requested time of day when there was one. */
+function fmtDue(wo: WorkOrderSummary) {
+  return <DueAt value={wo.dueAt} hasTime={wo.dueAtHasTime} dateOptions={{ month: "short", day: "numeric" }} />;
+}
+
 function WoCard({ wo }: { wo: WorkOrderSummary }) {
   return (
     <Link href={`/work-orders/${wo.id}`} style={{ textDecoration: "none", color: "inherit" }}>
@@ -31,7 +37,7 @@ function WoCard({ wo }: { wo: WorkOrderSummary }) {
             {wo.doneCount}/{wo.taskCount} tasks
             {wo.assigneeEmail ? ` · ${wo.assigneeEmail}` : ""}
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}
-            {wo.dueAt ? <> · due {fmtDate(wo.dueAt)}</> : null}
+            {wo.dueAt ? <> · due {fmtDue(wo)}</> : null}
           </div>
         </div>
         <Badge tone={statusTone(wo.status)}>{wo.status.replace(/_/g, " ").toLowerCase()}</Badge>

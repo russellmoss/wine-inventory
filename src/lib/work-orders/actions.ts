@@ -118,6 +118,7 @@ export const createWorkOrderFromTemplateAction = safeAction(
       assigneeId?: string | null;
       assigneeEmail?: string | null;
       dueAt?: Date | null;
+      dueAtHasTime?: boolean;
       autoFinalize?: boolean;
       perTaskOverrides?: Record<string, unknown>[];
       taskBuilds?: { taskType: string; title?: string; values: Record<string, unknown> }[];
@@ -170,6 +171,7 @@ export const createWorkOrderFromBuildsAction = safeAction(
       assigneeId?: string | null;
       assigneeEmail?: string | null;
       dueAt?: Date | null;
+      dueAtHasTime?: boolean;
       priority?: string | null;
       estimatedDurationMin?: number | null;
       scheduledStart?: Date | null;
@@ -198,6 +200,7 @@ export const createWorkOrderFromBuildsAction = safeAction(
       assigneeId: input.assigneeId ?? null,
       assigneeEmail: input.assigneeEmail ?? null,
       dueAt: input.dueAt ?? null,
+      dueAtHasTime: input.dueAtHasTime,
       priority,
       estimatedDurationMin,
       scheduledStart: input.scheduledStart ?? null,
@@ -248,6 +251,7 @@ export const updateWorkOrderFromBuildsAction = safeAction(
       assigneeId?: string | null;
       assigneeEmail?: string | null;
       dueAt?: Date | null;
+      dueAtHasTime?: boolean;
       priority?: string | null;
       locationId?: string | null;
       groups: EditTaskInput[][];
@@ -290,6 +294,7 @@ export const updateWorkOrderFromBuildsAction = safeAction(
       assigneeId: input.assigneeId ?? null,
       assigneeEmail: input.assigneeEmail ?? null,
       dueAt: input.dueAt ?? null,
+      dueAtHasTime: input.dueAtHasTime,
       priority,
       locationId: input.locationId ?? null,
       slots,
@@ -322,7 +327,7 @@ export const assignWorkOrderAction = safeAction(
 );
 
 export const scheduleWorkOrderAction = safeAction(
-  async ({ actor }, input: { workOrderId: string; dueAt?: Date | null; scheduledFor?: Date | null }) => {
+  async ({ actor }, input: { workOrderId: string; dueAt?: Date | null; dueAtHasTime?: boolean; scheduledFor?: Date | null }) => {
     const res = await scheduleWorkOrderCore(actor, input);
     revalidateWorkOrders(res.workOrderId);
     return res;

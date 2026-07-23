@@ -22,6 +22,7 @@ import {
 } from "@/lib/assistant/card-lifecycle";
 import { MAX_CONTENT, clampHistoryForSend } from "@/lib/assistant/message-window";
 import { drainConsoleBuffer } from "@/lib/observability/console-buffer";
+import { browserTimeZone } from "@/lib/work-orders/due-at";
 import type { Caption } from "./voice/useVoiceSession";
 import { useDictation } from "./voice/useDictation";
 import { FeedbackTicketModal } from "./FeedbackTicketModal";
@@ -712,7 +713,9 @@ export function AssistantChat({
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: clampHistoryForSend(history), conversationId }),
+        // timeZone: the server is UTC, so a due date/time the assistant resolves ("tomorrow at 9am")
+        // needs the viewer's own clock to land on the right instant.
+        body: JSON.stringify({ messages: clampHistoryForSend(history), conversationId, timeZone: browserTimeZone() }),
       });
       if (!res.ok || !res.body) {
         const msg = await res.json().catch(() => null);

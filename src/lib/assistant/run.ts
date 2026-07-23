@@ -7,6 +7,7 @@ import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
 import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION, OVERCLAIM_REPAIR_PROMPT } from "./overclaim-guard";
 import { type AssistantEvent, asProposal, asChoice, asNavigation, isDraftProposal } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
+import { normalizeTimeZone } from "@/lib/work-orders/due-at";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
 import {
   newAssistantTrace,
@@ -52,6 +53,9 @@ export async function runAssistant(opts: {
   /** Hands-free voice turn: append the spoken-reply style block (see VOICE_STYLE_PROMPT).
    *  Omitted for text chat and for the golden evals, which keep the markdown-rendering brain. */
   voice?: boolean;
+  /** The viewer's IANA timezone (sent by the chat client). Drives "today" in the prompt and every
+   *  wall-clock a tool resolves — the server is UTC, so without it "tomorrow at 9am" lands hours off. */
+  timeZone?: string;
   /** Test seam. Omitted in production, where it defaults to the real Anthropic SDK stream. */
   createStream?: AssistantStreamFactory;
 }): Promise<AssistantRunResult> {
@@ -99,7 +103,10 @@ export async function runAssistant(opts: {
   let client: Anthropic | null = null;
   const createStream: AssistantStreamFactory =
     opts.createStream ?? ((params) => (client ??= new Anthropic()).messages.stream(params));
-  let system = buildSystemPrompt();
+  // The viewer's zone, not the server's: "today" and any due time the model resolves are wall clocks in
+  // the winery's own day, and this process runs in UTC. Bogus/absent → UTC (the previous behaviour).
+  const timeZone = normalizeTimeZone(opts.timeZone);
+  let system = buildSystemPrompt(new Date(), timeZone);
   // Voice turns get an extra style block so spoken replies are conversational instead of
   // screen-shaped (no markdown, no read-aloud citations, units as words). Text chat and the
   // golden evals never set this, so their behaviour is byte-identical to before.
@@ -168,7 +175,7 @@ export async function runAssistant(opts: {
           try {
             const tool = tools.find((t) => t.name === tu.name);
             if (!tool) throw new Error(`Unknown tool: ${tu.name}`);
-            const out = await tool.run({ user, lastUserMessage }, tu.input);
+            const out = await tool.run({ user, lastUserMessage, timeZone }, tu.input);
 
             const proposal = tool.kind === "write" ? asProposal(out) : null;
             if (proposal) {

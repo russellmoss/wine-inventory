@@ -3,9 +3,13 @@
 // stable for prompt-cache friendliness.
 
 import { describeSectionsForPrompt } from "./routes";
+import { zonedDateKey } from "@/lib/work-orders/due-at";
 
-export function buildSystemPrompt(now: Date = new Date()): string {
-  const today = now.toISOString().slice(0, 10);
+export function buildSystemPrompt(now: Date = new Date(), timeZone = "UTC"): string {
+  // The VIEWER's calendar day, not the server's. This process runs in UTC, so a winery in California
+  // asking at 5pm was already being told "today" was tomorrow — and that off-by-one now propagates into
+  // any due date the model resolves from "tomorrow".
+  const today = zonedDateKey(now, timeZone);
   return `You are the assistant for Cellarhand, a winery inventory and vineyard app. You help winery staff get answers and make changes using ONLY the tools provided. Today's date is ${today}.
 
 What you can do:

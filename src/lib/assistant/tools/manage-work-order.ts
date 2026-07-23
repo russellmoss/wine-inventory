@@ -5,6 +5,7 @@ import { signProposal } from "../confirm";
 import { resolveWorkOrder, resolveWorkOrderTask } from "../scope";
 import { startTaskAction, assignWorkOrderAction, scheduleWorkOrderAction, cancelWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
+import { dueFromCommitArgs, dueProposalArgs, resolveDueAt } from "./due-at-args";
 
 // Assistant-coverage Wave 1 #3c — work-order lifecycle in one discriminated tool (keeps the tool count
 // down): start a task, or assign / reschedule / cancel a work order. Wraps the existing lifecycle
@@ -17,13 +18,14 @@ type ManageRawInput = {
   task?: string | number; // start only
   assigneeEmail?: string; // assign only
   dueDate?: string; // schedule only (YYYY-MM-DD)
+  dueTime?: string; // schedule only (HH:mm), optional
   reason?: string; // cancel only
 };
 
 export const manageWorkOrderTool: AssistantTool = {
   name: "manage_work_order",
   description:
-    "Manage a work order's lifecycle: start a task ('start task 2 on WO 142', 'start the punchdown on tank 1'), assign it ('assign WO 142 to sam@…'), reschedule it ('move WO 142 to Friday'), or cancel it ('cancel WO 142'). Identify the work order by its number (142), its id, or a pasted link (…/work-orders/<id>) in `wo`. For START only, when no WO number is given you may instead name the vessel the task is on (`vessel`, e.g. 'tank 1'). Does NOT act immediately — returns a preview to confirm.",
+    "Manage a work order's lifecycle: start a task ('start task 2 on WO 142', 'start the punchdown on tank 1'), assign it ('assign WO 142 to sam@…'), reschedule it ('move WO 142 to Friday', 'make WO 142 due tomorrow at 9am' — pass dueTime for a clock time), or cancel it ('cancel WO 142'). Identify the work order by its number (142), its id, or a pasted link (…/work-orders/<id>) in `wo`. For START only, when no WO number is given you may instead name the vessel the task is on (`vessel`, e.g. 'tank 1'). Does NOT act immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -34,11 +36,16 @@ export const manageWorkOrderTool: AssistantTool = {
       task: { type: "string", description: "start only: which task (number/title/op word like 'punchdown'). Optional if one is open." },
       assigneeEmail: { type: "string", description: "assign only: the assignee's email." },
       dueDate: { type: "string", description: "schedule only: new due date as YYYY-MM-DD." },
+      dueTime: {
+        type: "string",
+        description:
+          "schedule only: the requested TIME of day on that date, 24-hour HH:mm (e.g. '09:00' for 9am). Optional — omit it to leave the work order due on the date with no particular time.",
+      },
       reason: { type: "string", description: "cancel only: why (optional)." },
     },
     required: ["action"],
   },
-  async run(_ctx, rawInput) {
+  async run(ctx, rawInput) {
     const input = (rawInput ?? {}) as ManageRawInput;
     const action = input.action;
     if (!action || !["start", "assign", "schedule", "cancel"].includes(action)) throw new Error("Say what to do: start, assign, schedule, or cancel.");
@@ -57,8 +64,10 @@ export const manageWorkOrderTool: AssistantTool = {
     }
     if (action === "schedule") {
       if (!input.dueDate) throw new Error("What date should it be due? Give YYYY-MM-DD.");
-      const token = signProposal("manage_work_order", { action, workOrderId: wo.workOrderId, dueDate: input.dueDate, woNumber: wo.number });
-      return { needsConfirmation: true, preview: `Reschedule WO #${wo.number} due ${input.dueDate}.`, token };
+      const due = resolveDueAt(input.dueDate, input.dueTime, ctx.timeZone);
+      if (!due) throw new Error("That due date isn't a date I can read. Give it as YYYY-MM-DD.");
+      const token = signProposal("manage_work_order", { action, workOrderId: wo.workOrderId, ...dueProposalArgs(due), dueText: due.text, woNumber: wo.number });
+      return { needsConfirmation: true, preview: `Reschedule WO #${wo.number} due ${due.text}.`, token };
     }
     // cancel
     const token = signProposal("manage_work_order", { action, workOrderId: wo.workOrderId, ...(input.reason ? { reason: input.reason } : {}), woNumber: wo.number });
@@ -78,8 +87,9 @@ export const commitManageWorkOrder: Committer = async (_user, args) => {
     return { message: `Assigned WO #${woNumber} to ${String(args.assigneeEmail)}.` };
   }
   if (action === "schedule") {
-    unwrap(await scheduleWorkOrderAction({ workOrderId: String(args.workOrderId), dueAt: args.dueDate ? new Date(String(args.dueDate)) : null }));
-    return { message: `Rescheduled WO #${woNumber} to ${String(args.dueDate)}.` };
+    const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
+    unwrap(await scheduleWorkOrderAction({ workOrderId: String(args.workOrderId), dueAt, dueAtHasTime }));
+    return { message: `Rescheduled WO #${woNumber} to ${String(args.dueText ?? args.dueDate ?? "")}.` };
   }
   unwrap(await cancelWorkOrderAction({ workOrderId: String(args.workOrderId), reason: args.reason == null ? undefined : String(args.reason) }));
   return { message: `Cancelled WO #${woNumber}.` };

@@ -15,6 +15,7 @@ import { PackagingBoMEditor } from "@/components/work-orders/PackagingBoMEditor"
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import type { PackagingPlanLine } from "@/lib/bottling/packaging-bom";
 import { WORK_ORDER_PRIORITIES } from "@/lib/work-orders/planning";
+import { browserTimeZone, combineDateAndTime, parseDueAt, toDueInputs } from "@/lib/work-orders/due-at";
 import { vesselLotState, reconcileLotValue, type LotsByVessel } from "@/lib/work-orders/vessel-lot-resolve";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
@@ -50,7 +51,9 @@ export type ExistingWorkOrderSeed = {
   leadEmail: string;
   priority: string;
   locationId: string;
-  dueAt: string; // yyyy-mm-dd (or "")
+  /** The stored due instant (ISO) + whether a time of day was requested; localized to the viewer on mount. */
+  dueAtIso: string | null;
+  dueAtHasTime: boolean;
   dependsOn: string[];
 };
 
@@ -122,7 +125,24 @@ export function WorkOrderBuilderClient({
       : []
   ), [seed]);
   const [title, setTitle] = React.useState(existing?.title ?? seed?.title ?? "");
-  const [dueAt, setDueAt] = React.useState(existing ? existing.dueAt : todayLocal());
+  // Due date + optional time of day.
+  //
+  // When editing, the seed comes from the stored INSTANT, which only means something once you know the
+  // viewer's timezone — and the server doesn't. So it's DERIVED, not state: formatted in UTC for the
+  // server render and the first client render (identical HTML, no hydration mismatch), then re-derived in
+  // the viewer's real zone once mounted. `dueEdit` holds the user's own edits and wins from the first
+  // keystroke. Same mount-gate mechanism as LocalTime; deriving rather than setState-ing in an effect
+  // keeps it to a single render pass.
+  const mounted = React.useSyncExternalStore(() => () => {}, () => true, () => false);
+  const seededDue = React.useMemo(
+    () => toDueInputs(existing?.dueAtIso ?? null, existing?.dueAtHasTime ?? false, mounted ? browserTimeZone() : "UTC"),
+    [existing?.dueAtIso, existing?.dueAtHasTime, mounted],
+  );
+  const [dueEdit, setDueEdit] = React.useState<{ date: string; time: string } | null>(null);
+  const dueAt = dueEdit ? dueEdit.date : existing ? seededDue.date : todayLocal();
+  const dueTime = dueEdit ? dueEdit.time : seededDue.time;
+  const setDueAt = (date: string) => setDueEdit({ date, time: date ? dueTime : "" });
+  const setDueTime = (time: string) => setDueEdit({ date: dueAt, time });
   const [leadEmail, setLeadEmail] = React.useState(existing?.leadEmail ?? "");
   const leadRef = React.useRef<HTMLSelectElement>(null);
   const [priority, setPriority] = React.useState(existing?.priority || "NORMAL");
@@ -384,7 +404,11 @@ export function WorkOrderBuilderClient({
     // Plan 070: every work order must have a Lead.
     if (!leadEmail) { setError("A work order needs a lead — pick one at the top (a task’s assignee isn’t the WO lead)."); leadRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); leadRef.current?.focus(); return; }
     const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
-    const dueDate = dueAt ? new Date(`${dueAt}T00:00:00`) : null;
+    // The controls hold a WALL CLOCK; resolve it in the viewer's own timezone so "9am" means 9am here,
+    // and carry whether a time was actually asked for (empty time control = date-only, as before).
+    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), browserTimeZone());
+    const dueDate = due?.at ?? null;
+    const dueAtHasTime = due?.hasTime ?? false;
 
     if (isEdit && existing) {
       if (totalCount === 0) { setError("A work order needs at least one task."); return; }
@@ -410,6 +434,7 @@ export function WorkOrderBuilderClient({
             priority,
             locationId: locationId || null,
             dueAt: dueDate,
+            dueAtHasTime,
             groups: editGroups,
             dependsOnWorkOrderIds: dependsOn,
             readinessFingerprint: readiness?.fingerprint ?? null,
@@ -431,8 +456,8 @@ export function WorkOrderBuilderClient({
           assigneeEmail: leadEmail || null,
           priority,
           locationId: locationId || null,
-          // Parse the yyyy-mm-dd as LOCAL midnight (not UTC) so the due date doesn't shift a day back.
           dueAt: dueDate,
+          dueAtHasTime,
           taskBuilds,
           dependsOnWorkOrderIds: dependsOn,
           readinessFingerprint: readiness?.fingerprint ?? null,
@@ -479,14 +504,14 @@ export function WorkOrderBuilderClient({
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 4px" }}>
       {/* Responsive: stack the header + palette/canvas grids on narrow viewports (phones/tablets). */}
-      <style>{`@media (max-width: 760px){.wob-header-grid{grid-template-columns:1fr !important}.wob-main-grid{grid-template-columns:1fr !important}}`}</style>
+      <style>{`@media (max-width: 1040px){.wob-header-grid{grid-template-columns:1fr 1fr 1fr !important}}@media (max-width: 760px){.wob-header-grid{grid-template-columns:1fr !important}.wob-main-grid{grid-template-columns:1fr !important}}`}</style>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 300, margin: 0 }}>{isEdit ? "Edit work order" : "New work order"}</h1>
         <Link href="/work-orders"><Button variant="ghost">Cancel</Button></Link>
       </div>
 
       <Card style={{ padding: 16, marginBottom: 16 }}>
-        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12 }}>
+        <div className="wob-header-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 0.8fr", gap: 12 }}>
           <label style={labelStyle}>Title
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Racking + topping — Block 12" />
           </label>
@@ -509,8 +534,20 @@ export function WorkOrderBuilderClient({
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </label>
+          {/* Date + an OPTIONAL time of day, so the crew can plan by clock time ("T7 pumpover tomorrow at
+              9am"). Leaving the time blank keeps the order date-only, exactly as before. */}
           <label style={labelStyle}>Due
             <input type="date" style={field} value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+          </label>
+          <label style={labelStyle}>Time (optional)
+            <input
+              type="time"
+              style={field}
+              value={dueTime}
+              disabled={!dueAt}
+              onChange={(e) => setDueTime(e.target.value)}
+              aria-label="Requested time of day"
+            />
           </label>
         </div>
         {dependableWorkOrders.length > 0 && (

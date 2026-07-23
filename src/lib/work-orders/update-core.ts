@@ -32,6 +32,8 @@ export type UpdateWorkOrderInput = {
   assigneeId?: string | null;
   assigneeEmail?: string | null;
   dueAt?: Date | null;
+  /** Whether `dueAt` carries a requested TIME of day, or only a date (see lib/work-orders/due-at.ts). */
+  dueAtHasTime?: boolean;
   priority?: string | null;
   locationId?: string | null;
   slots: UpdateTaskSlot[];
@@ -136,7 +138,8 @@ export async function updateWorkOrderCore(actor: LedgerActor, input: UpdateWorkO
         ...(input.instructions !== undefined ? { instructions: input.instructions?.trim() || null } : {}),
         assigneeId: leadId,
         ...(input.assigneeEmail !== undefined ? { assigneeEmail: input.assigneeEmail ?? null } : {}),
-        ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
+        // The due date and its precision move together — clearing the date clears the time of day.
+        ...(input.dueAt !== undefined ? { dueAt: input.dueAt, dueAtHasTime: input.dueAt ? input.dueAtHasTime ?? false : false } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.locationId !== undefined ? { locationId: input.locationId } : {}),
       },

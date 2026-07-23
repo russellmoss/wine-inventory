@@ -11,6 +11,7 @@ import {
   markThreadReadAction,
 } from "@/lib/inbox/actions";
 import { inboxHref, type InboxBucket } from "@/lib/inbox/routes";
+import { DueAt } from "@/components/work-orders/DueAt";
 import type {
   DirectMessageThreadDetail,
   DirectMessageThreadSummary,
@@ -152,7 +153,7 @@ export function InboxClient(props: {
                     <span style={{ color: "var(--text-primary)" }}>#{w.number} · {w.title}</span>
                     <StatusPill status={w.status} />
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Updated {fmt(w.updatedAt)}{w.dueAt ? <> · due {fmt(w.dueAt)}</> : null}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Updated {fmt(w.updatedAt)}{w.dueAt ? <> · due <DueAt value={w.dueAt} hasTime={w.dueAtHasTime} /></> : null}</div>
                 </Link>
               ))}
             </>

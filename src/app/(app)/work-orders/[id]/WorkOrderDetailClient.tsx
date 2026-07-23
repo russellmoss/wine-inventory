@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Button, Badge, Eyebrow, LocalTime } from "@/components/ui";
 import type { WorkOrderDetail } from "@/lib/work-orders/data";
+import { DueAt } from "@/components/work-orders/DueAt";
 import { issueWorkOrderAction, cancelWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { statusTone } from "@/lib/work-orders/status-badge";
@@ -41,7 +42,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
             {wo.priority && wo.priority !== "NORMAL" ? `${wo.priority.charAt(0)}${wo.priority.slice(1).toLowerCase()} priority · ` : ""}
             {wo.locationName ? `${wo.locationName} · ` : ""}
             {wo.assigneeEmail ? `Assigned to ${wo.assigneeEmail} · ` : ""}
-            {wo.dueAt ? <>Due <LocalTime value={wo.dueAt} mode="date" /></> : "Unscheduled"}
+            {wo.dueAt ? <>Due <DueAt value={wo.dueAt} hasTime={wo.dueAtHasTime} /></> : "Unscheduled"}
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}
           </div>
         </div>
