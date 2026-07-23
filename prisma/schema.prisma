@@ -353,10 +353,33 @@ model Variety {
   @@map("variety")
 }
 
+// Plan 093 Unit 8 (custom-crush intake): a first-class GROWER — the party that farmed the fruit. Replaces
+// the free-text `VineyardDetail.manager` (kept as legacy; NOT auto-parsed). Strongest un-built both-incumbent
+// gap. Distinct from Owner (who OWNS the wine): a grower sells fruit that a client then owns. `isEstate`
+// flags the winery's own vineyards. Full AGENTS.md 9-step (tenant_isolation RLS, etc.).
+model Grower {
+  tenantId  String   @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id        String   @id @default(cuid())
+  name      String // grower / farm name (per-tenant unique)
+  company   String? // legal entity, if different from the display name
+  contact   String? // free-text contact (phone/email/person)
+  address   String?
+  isEstate  Boolean  @default(false) // the winery's own vineyard (estate fruit), vs a third-party grower
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name]) // per-tenant unique name
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — vineyard/block growerId references this
+  @@index([tenantId])
+  @@map("grower")
+}
+
 model Vineyard {
   tenantId        String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
   name            String
+  growerId        String? // Plan 093 Unit 8: the grower that farms this vineyard (composite FK -> grower(tenantId,id), raw-SQL K11). NULL = unassigned/legacy.
   abbreviation    String? // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
@@ -375,6 +398,7 @@ model Vineyard {
   @@unique([tenantId, abbreviation])
   @@unique([tenantId, id])
   @@index([tenantId])
+  @@index([tenantId, growerId]) // Plan 093 Unit 8
   @@map("vineyard")
 }
 
@@ -406,6 +430,7 @@ model VineyardBlock {
   tenantId       String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id             String             @id @default(cuid())
   vineyardId     String
+  growerId       String? // Plan 093 Unit 8: block-level grower override (else inherits the vineyard's). Composite FK -> grower(tenantId,id), raw-SQL K11.
   blockLabel     String? // e.g. "Block 1", "A"
   code           String? // short token for lot codes (e.g. "1", "A"); falls back to a normalized blockLabel
   numRows        Int? // informational (drives optional vines/row readout)
@@ -432,6 +457,7 @@ model VineyardBlock {
   @@index([vineyardId])
   @@index([varietyId])
   @@index([tenantId])
+  @@index([tenantId, growerId]) // Plan 093 Unit 8
   @@map("vineyard_block")
 }
 
