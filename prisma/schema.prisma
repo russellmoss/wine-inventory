@@ -1487,6 +1487,32 @@ enum LotOwnership {
   CUSTOM_CRUSH_CLIENT
 }
 
+// Plan 093 (custom-crush data foundation) — the first-class party that OWNS wine. Replaces the scalar
+// `LotOwnership` enum (kept as a mirror until Unit 3 cuts the 11 readers over and drops it). Facility's
+// OWN wine = NO Owner row (ownerId NULL everywhere), so `kind` needs no ESTATE value — a NULL ownerId on
+// a LOT means "Estate (facility)" (the load-bearing convention behind the cost predicate + verify).
+// SCALAR ownership (one Owner per lot); a future `LotOwnershipShare(ownerId, lotId, pct)` is the additive
+// fractional extension — do NOT build it, but Owner is shaped so adding it later is non-breaking.
+enum OwnerKind {
+  CUSTOM_CRUSH_CLIENT // a client whose wine we make under OUR bond (title differs, bond does not)
+  AP_PROPRIETOR // an Alternating-Proprietor client operating under their OWN bond (distinct BWN)
+}
+
+model Owner {
+  tenantId  String    @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id        String    @id @default(cuid())
+  name      String // the client/proprietor name (per-tenant unique)
+  kind      OwnerKind
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, name]) // per-tenant unique name
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — bond.ownerId references this
+  @@index([tenantId])
+  @@map("owner")
+}
+
 // A singleton winery-level settings row (the app is single-tenant). Read/created via
 // getAppSettings(). `sparklingEnabled` gates the ENTIRE traditional-method UI/nav (K14,
 // default off) — backend enums/cores ship regardless and are inert when unused.
@@ -2490,7 +2516,7 @@ model Bond {
   registryNumber String // TTB bond registry number (per-tenant unique)
   penalSum       Decimal? @db.Decimal(12, 2)
   premises       String? // bonded-premises address/description
-  ownerId        String? // optional owner link (organization / tenant owner record) — raw-SQL FK
+  ownerId        String? // Plan 093: the Owner this bond belongs to (an AP proprietor's own bond). Composite (tenantId, ownerId) → owner(tenantId, id), enforced raw-SQL (K11). NULL = the tenant's own/primary bond.
   isPrimary      Boolean  @default(false) // the tenant's default bond (exactly one; created at backfill)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
