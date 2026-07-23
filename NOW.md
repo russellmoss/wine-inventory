@@ -7,9 +7,11 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**`/bug-triage` re-offered SHIPPED code as new work — FIXED, awaiting human merge ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478)).**
+**`/bug-triage` re-offered SHIPPED code as new work — FIXED and LIVE on `main` ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478), squash `0b649b74`).**
 New **Merged Sweep** phase + boilerplate-plan-issue detection. `.claude/workflows/` is outside the
-auto-fix fence, so #478 needs a human merge. Details under ✅ Done recently.
+auto-fix fence, so #478 took an owner merge rather than the automation. Details under ✅ Done recently.
+⚠️ **A worktree only picks this up on a fresh checkout** — sibling worktrees still carry the OLD
+`bug-triage.js`. Run `/bug-triage` from a checkout at `origin/main`.
 
 <details><summary>Previous objective — PLAN 091 voice pronunciation (done, in prod)</summary>
 
@@ -549,7 +551,7 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
-- **`/bug-triage` re-offered PRODUCTION CODE as new work — FIXED ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478), needs a human merge).**
+- **`/bug-triage` re-offered PRODUCTION CODE as new work — FIXED, LIVE on `main` ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478), squash `0b649b74`).**
   Ticket `cmrwdgt2u…` ("assistant should read a vessel's/lot's operation history") was ranked the
   run's ONE actionable plan-ready item, pointing at plan issue #466 — a day AFTER the work shipped in
   #468 (`query-operations.ts`, `operation-history.ts`, 30 tests, 7 goldens).
@@ -869,8 +871,8 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-23 — **`/bug-triage` reconcile blind spot closed (PR #478, needs a human
-merge).** Triage ranked a ticket as the run's one actionable item a day after the work shipped in a
+_Last updated: 2026-07-23 — **`/bug-triage` reconcile blind spot closed and LIVE on `main` (PR #478,
+squash `0b649b74`).** Triage ranked a ticket as the run's one actionable item a day after the work shipped in a
 hand-built PR #468: nothing stamped the PR on the ticket, Reconcile needs a PR on the ticket, and the
 PR sweep lists only OPEN PRs. New **Merged Sweep** scans merged PRs for a feedback id in the body,
 validates it through `triage:lookup` (a bogus id comes back `missing` — the DB is the gate, not the
