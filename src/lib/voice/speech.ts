@@ -5,6 +5,9 @@
 //
 // Pure, dependency-free, and isomorphic: the client runs it before POSTing each
 // sentence to /api/assistant/speak, and the speak route runs it again defensively.
+// That double application is why every transform here has to be idempotent.
+
+import { applyLexicon } from "./lexicon";
 
 /**
  * A link target that is a SOURCE citation rather than part of the sentence.
@@ -117,5 +120,8 @@ export function toSpeakable(markdown: string): string {
     .replace(/\(\s*\)/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
-  return normalizeUnits(tidied);
+  // Lexicon runs LAST, after normalizeUnits — the ordering is load-bearing.
+  // normalizeUnits GENERATES the word "Brix" out of "°Bx", so a lexicon running
+  // ahead of it would never see half the terms it is meant to fix.
+  return applyLexicon(normalizeUnits(tidied));
 }
