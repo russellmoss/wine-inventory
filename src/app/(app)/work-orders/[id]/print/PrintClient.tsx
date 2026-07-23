@@ -79,7 +79,7 @@ export function PrintClient({ wo, workOrderId, printedAt }: { wo: WorkOrderPrint
           <div style={metaCell}><div style={metaLabel}>Issued</div>{fmtDate(wo.issuedAt)}</div>
           {/* The crew works off the printout, so the requested time of day has to survive printing. */}
           <div style={metaCell}><div style={metaLabel}>Due</div>
-            <DueAt value={wo.dueAt} hasTime={wo.dueAtHasTime} dateOptions={{ year: "numeric", month: "long", day: "numeric" }} />
+            <DueAt value={wo.dueAt} hasTime={wo.dueAtHasTime} dateOptions={{ year: "numeric", month: "long", day: "numeric" }} showZone />
           </div>
         </div>
 

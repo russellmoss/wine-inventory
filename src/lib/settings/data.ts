@@ -3,6 +3,7 @@ import { FeedbackAutomationMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
 import { coerceCurrency, type CurrencyCode } from "@/lib/money/currency";
+import { isRealTimeZone } from "@/lib/work-orders/due-at";
 
 // Phase 12 (K10): per-org winery settings — one row per tenant. findFirst is tenant-scoped by the
 // active tenant context (RLS + the Prisma extension), so it returns the calling org's row (default
@@ -48,6 +49,20 @@ export async function isSparklingEnabled(): Promise<boolean> {
 export async function getTenantCurrency(): Promise<CurrencyCode> {
   const s = await prisma.appSettings.findFirst({ select: { currency: true } });
   return coerceCurrency(s?.currency);
+}
+
+/**
+ * The winery's OPERATING clock (IANA zone), or null when an admin hasn't set one.
+ *
+ * Null is the meaningful default, not a missing value: every reader falls back to the VIEWER's browser
+ * zone, which is the behaviour that shipped with the due-TIME feature (#472). Pair it with
+ * `resolveOperatingTimeZone(wineryTz, viewerTz)` rather than defaulting it here, so the two-step
+ * fallback stays in one place.
+ */
+export async function getWineryTimeZone(): Promise<string | null> {
+  const s = await prisma.appSettings.findFirst({ select: { timeZone: true } });
+  // A value that somehow got in without passing the write-side gate must not break a page render.
+  return isRealTimeZone(s?.timeZone) ? s!.timeZone : null;
 }
 
 /** Plan 077: per-tenant opt-in — eagerly create a QBO vendor when one is created in Cellarhand (default off;

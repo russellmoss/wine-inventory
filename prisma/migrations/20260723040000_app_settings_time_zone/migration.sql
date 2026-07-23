@@ -1,0 +1,23 @@
+-- The winery's OPERATING timezone.
+--
+-- Follow-on to the work-order due-TIME feature (#472). That shipped resolving a requested
+-- wall clock ("tomorrow at 9am") against the VIEWER's browser zone, which is right for a
+-- crew standing in the winery and wrong for anyone reading from elsewhere: an owner in
+-- New York looking at a winery in Bhutan saw a 9am pumpover rendered against their own
+-- clock. Work is planned where the wine is, so the winery gets its own clock.
+--
+-- NULLABLE, with no default, on purpose. NULL means "not configured", and every reader
+-- falls back to the viewer's browser zone — precisely the behaviour before this column
+-- existed. So this migration changes nothing on its own for any existing tenant, and the
+-- feature only turns on when an admin picks a zone in /settings.
+--
+-- Value is an IANA zone id ("America/Los_Angeles"). Validated in application code against
+-- Intl (a bogus zone degrades to the fallback rather than throwing) — not a CHECK, because
+-- the tz database changes over time and a CHECK would freeze the accepted set at today's.
+--
+-- No new table, so the Phase-12 RLS checklist does not apply — `app_settings` already has
+-- tenantId + FK + FORCE ROW LEVEL SECURITY, and the tenant_isolation policy is row-level,
+-- so it covers new columns automatically.
+
+-- AlterTable
+ALTER TABLE "app_settings" ADD COLUMN "timeZone" TEXT;

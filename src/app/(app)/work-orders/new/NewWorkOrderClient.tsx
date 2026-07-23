@@ -14,7 +14,8 @@ import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadi
 import { VesselMultiSelect } from "./VesselMultiSelect";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
-import { browserTimeZone, combineDateAndTime, formatDueAt, parseDueAt } from "@/lib/work-orders/due-at";
+import { browserTimeZone, combineDateAndTime, formatDueAt, parseDueAt, zonedDateKey } from "@/lib/work-orders/due-at";
+import { useWineryTimeZone } from "@/components/time/WineryTimeZoneProvider";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
@@ -92,7 +93,11 @@ export function NewWorkOrderClient({
     initialTemplateId && templates.some((t) => t.id === initialTemplateId) ? initialTemplateId : templates[0]?.id ?? "",
   );
   const [title, setTitle] = React.useState("");
-  const [dueAt, setDueAt] = React.useState(todayLocal()); // default to today (editable)
+  // The clock the due date is entered on: the winery's if configured, else the viewer's own.
+  const { zone: wineryZone } = useWineryTimeZone();
+  const dueZone = wineryZone ?? browserTimeZone();
+  // "Today" means the WINERY's today — near midnight the crew's date and the reader's can differ.
+  const [dueAt, setDueAt] = React.useState(() => (wineryZone ? zonedDateKey(new Date(), wineryZone) : todayLocal()));
   const [dueTime, setDueTime] = React.useState(""); // optional time of day; empty = date-only
   const [assigneeEmail, setAssigneeEmail] = React.useState("");
   const [autoFinalize, setAutoFinalize] = React.useState(false);
@@ -315,9 +320,9 @@ export function NewWorkOrderClient({
   const readinessBlocked = hasTasks && readiness?.status === "blocked";
   // Echo the due date back the way it will be stored, so a mistyped time is caught before issuing.
   const dueSummary = React.useMemo(() => {
-    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), browserTimeZone());
-    return due ? formatDueAt(due.at, due.hasTime, browserTimeZone()) : "";
-  }, [dueAt, dueTime]);
+    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), dueZone);
+    return due ? formatDueAt(due.at, due.hasTime, dueZone) : "";
+  }, [dueAt, dueTime, dueZone]);
 
   function submit() {
     setError(null);
@@ -326,7 +331,7 @@ export function NewWorkOrderClient({
     if (readinessBlocked) { setError("Resolve the blocking issues above before issuing."); return; }
     // Resolve the due wall clock in the VIEWER's timezone — "9am" has to mean 9am to the crew, not 9am
     // wherever the server happens to run. An empty time control keeps the order date-only.
-    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), browserTimeZone());
+    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), dueZone);
     const payload = {
       templateId,
       title: title.trim() || undefined,

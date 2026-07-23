@@ -53,8 +53,9 @@ export async function runAssistant(opts: {
   /** Hands-free voice turn: append the spoken-reply style block (see VOICE_STYLE_PROMPT).
    *  Omitted for text chat and for the golden evals, which keep the markdown-rendering brain. */
   voice?: boolean;
-  /** The viewer's IANA timezone (sent by the chat client). Drives "today" in the prompt and every
-   *  wall-clock a tool resolves — the server is UTC, so without it "tomorrow at 9am" lands hours off. */
+  /** The ALREADY-RESOLVED operating zone for this turn — the winery's if configured, else the viewer's
+   *  (the route does that resolution). Drives "today" in the prompt and every wall clock a tool
+   *  resolves; the server is UTC, so without it "tomorrow at 9am" lands hours off. */
   timeZone?: string;
   /** Test seam. Omitted in production, where it defaults to the real Anthropic SDK stream. */
   createStream?: AssistantStreamFactory;
@@ -103,8 +104,8 @@ export async function runAssistant(opts: {
   let client: Anthropic | null = null;
   const createStream: AssistantStreamFactory =
     opts.createStream ?? ((params) => (client ??= new Anthropic()).messages.stream(params));
-  // The viewer's zone, not the server's: "today" and any due time the model resolves are wall clocks in
-  // the winery's own day, and this process runs in UTC. Bogus/absent → UTC (the previous behaviour).
+  // The clock this turn is reasoned on. The caller resolves it (winery zone if configured, else the
+  // viewer's — see the route); this loop only normalizes, so it stays constructible without a database.
   const timeZone = normalizeTimeZone(opts.timeZone);
   let system = buildSystemPrompt(new Date(), timeZone);
   // Voice turns get an extra style block so spoken replies are conversational instead of

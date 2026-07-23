@@ -1,4 +1,5 @@
-import { getAppSettings, getCostSettings, getPushVendorsToQbo } from "@/lib/settings/data";
+import { getAppSettings, getCostSettings, getPushVendorsToQbo, getWineryTimeZone } from "@/lib/settings/data";
+import { listCanonicalTimeZones } from "@/lib/work-orders/due-at";
 import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { asOpsCadence, asReturnCadence } from "@/lib/compliance/types";
@@ -14,7 +15,7 @@ export const metadata = { title: "Settings" };
 export default async function SettingsPage() {
   const user = await requireReadyUser();
   await requireActiveTenant();
-  const [settings, cost, profile, accounting, accountingMappings, accountingAp, accountingApPayment, commerce7, voice, pushVendorsToQbo, knowledgeSources] = await Promise.all([
+  const [settings, cost, profile, accounting, accountingMappings, accountingAp, accountingApPayment, commerce7, voice, pushVendorsToQbo, knowledgeSources, wineryTimeZone] = await Promise.all([
     getAppSettings(),
     getCostSettings(),
     prisma.complianceProfile.findFirst(),
@@ -26,6 +27,7 @@ export default async function SettingsPage() {
     getVoiceSettingsForUser(user.id),
     getPushVendorsToQbo(),
     listSourceSettings(),
+    getWineryTimeZone(),
   ]);
   return (
     <SettingsClient
@@ -39,6 +41,8 @@ export default async function SettingsPage() {
       commerce7={commerce7}
       voice={voice}
       knowledgeSources={knowledgeSources}
+      wineryTimeZone={wineryTimeZone}
+      timeZoneOptions={listCanonicalTimeZones()}
       complianceProfile={{
         ein: profile?.ein ?? "",
         registryNumber: profile?.registryNumber ?? "",

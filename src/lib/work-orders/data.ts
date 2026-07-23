@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { materialDisplayName } from "@/lib/cellar/materials-shared";
 import { bucketWorkOrders, type BucketedItem } from "@/lib/work-orders/buckets";
+import { getWineryTimeZone } from "@/lib/settings/data";
 import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/lib/work-orders/deviation";
 import { buildArchiveWhere, buildOpenWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilters, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
 import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
@@ -579,7 +580,10 @@ export async function getWorkOrderDashboard(
     }));
     const open = list.filter((r) => r.status === "ISSUED" || r.status === "IN_PROGRESS");
     const pendingApproval = list.filter((r) => r.status === "PENDING_APPROVAL");
-    const bucketedDates = bucketWorkOrders(open.map((r) => ({ ...r, dueAt: r.dueAt })), now);
+    // Bucket on the WINERY's calendar, not the server's (UTC in production): a WO due 9pm Eastern is
+    // 01:00Z the next day, and would otherwise read "upcoming" on the evening the crew has to do it.
+    const timeZone = await getWineryTimeZone();
+    const bucketedDates = bucketWorkOrders(open.map((r) => ({ ...r, dueAt: r.dueAt })), now, timeZone ?? undefined);
     const buckets: BucketedItem<WorkOrderSummary> = {
       overdue: bucketedDates.overdue.map(toSummary),
       today: bucketedDates.today.map(toSummary),

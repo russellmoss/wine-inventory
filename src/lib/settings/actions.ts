@@ -9,6 +9,7 @@ import { COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
 import { coerceCurrency } from "@/lib/money/currency";
 import { ActionError } from "@/lib/action-error";
 import { baseHomeCurrencyMismatch, baseHomeMismatchMessage } from "@/lib/accounting/currency-guard";
+import { isCanonicalTimeZone } from "@/lib/work-orders/due-at";
 
 // Phase 7 (K14): toggle the winery-level sparkling capability. Admin-only; audited. Revalidates
 // the layout so the gated nav (En Tirage) appears/disappears immediately.
@@ -41,6 +42,44 @@ export const setPushVendorsToQbo = adminAction(async ({ actor }, enabled: boolea
   revalidatePath("/settings");
   return { pushVendorsToQbo: enabled };
 });
+
+/**
+ * Set (or clear) the winery's OPERATING timezone. Admin-only; audited.
+ *
+ * `null` clears it, which is a real choice, not an error state: every reader then falls back to the
+ * viewer's own browser zone, exactly as before this setting existed. A non-null value must be a
+ * CANONICAL IANA id — `isCanonicalTimeZone` refuses legacy abbreviations like "EST", which format fine
+ * but are fixed-offset with no daylight rule and would leave the winery an hour off for much of the year.
+ *
+ * Revalidates the layout, not just /settings: due times and the overdue/today buckets are rendered
+ * against this zone all over the app, so a change has to reach every cached page.
+ */
+export const setWineryTimeZone = adminAction(
+  async ({ actor }, input: { timeZone: string | null }): Promise<{ timeZone: string | null }> => {
+    const raw = typeof input?.timeZone === "string" ? input.timeZone.trim() : null;
+    const timeZone = raw === null || raw === "" ? null : raw;
+    if (timeZone !== null && !isCanonicalTimeZone(timeZone)) {
+      throw new ActionError(`"${timeZone}" isn't a recognized timezone. Pick one from the list.`, "VALIDATION");
+    }
+    await runInTenantTx(async (tx) => {
+      await tx.appSettings.upsert({
+        where: { tenantId: actor.tenantId },
+        update: { timeZone },
+        create: { timeZone }, // tenantId auto-injected; id defaults to a cuid
+      });
+      await writeAudit(tx, {
+        ...actor,
+        action: "UPDATE",
+        entityType: "AppSettings",
+        entityId: actor.tenantId,
+        summary: timeZone ? `Winery timezone set to ${timeZone}` : "Winery timezone cleared (falls back to each viewer's own)",
+      });
+    });
+    revalidatePath("/settings");
+    revalidatePath("/", "layout");
+    return { timeZone };
+  },
+);
 
 // Phase 8 (Unit 9, D5/D17): save the per-tenant costing policy — method + which components capitalize.
 // Admin-only; audited. The roll-up (Unit 4) already consults these via `isComponentCapitalized` /

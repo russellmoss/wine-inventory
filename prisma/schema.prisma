@@ -1505,6 +1505,12 @@ model AppSettings {
   // whether they roll up. `costingPolicyVersion` stamps every derived row so a toggle/method change
   // never re-values closed history (D17).
   currency                 String                 @default("USD")
+  // The winery's OPERATING clock (IANA zone, e.g. "America/Los_Angeles"). Work is planned where the
+  // wine is: a 9am pumpover means the crew's 9am, not the reader's — so a due time is entered, stored,
+  // and displayed against this zone, and the assistant's "today" follows it too. NULLABLE on purpose:
+  // unset means "not configured", and every reader falls back to the VIEWER's browser zone, which is
+  // exactly the behaviour before this column existed. See src/lib/work-orders/due-at.ts.
+  timeZone                 String?
   costingMethod            CostingMethod          @default(WEIGHTED_AVG)
   costingMethodEffectiveAt DateTime?
   capitalizeFruit          Boolean                @default(true)

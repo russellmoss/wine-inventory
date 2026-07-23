@@ -15,7 +15,8 @@ import { PackagingBoMEditor } from "@/components/work-orders/PackagingBoMEditor"
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import type { PackagingPlanLine } from "@/lib/bottling/packaging-bom";
 import { WORK_ORDER_PRIORITIES } from "@/lib/work-orders/planning";
-import { browserTimeZone, combineDateAndTime, parseDueAt, toDueInputs } from "@/lib/work-orders/due-at";
+import { browserTimeZone, combineDateAndTime, parseDueAt, toDueInputs, zonedDateKey } from "@/lib/work-orders/due-at";
+import { useWineryTimeZone } from "@/components/time/WineryTimeZoneProvider";
 import { vesselLotState, reconcileLotValue, type LotsByVessel } from "@/lib/work-orders/vessel-lot-resolve";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
@@ -134,12 +135,17 @@ export function WorkOrderBuilderClient({
   // keystroke. Same mount-gate mechanism as LocalTime; deriving rather than setState-ing in an effect
   // keeps it to a single render pass.
   const mounted = React.useSyncExternalStore(() => () => {}, () => true, () => false);
+  // A configured winery zone is known on the SERVER, so it needs no mount gate; only the viewer-zone
+  // fallback does (reading the browser's zone during SSR would produce mismatched HTML).
+  const { zone: wineryZone } = useWineryTimeZone();
+  const dueZone = wineryZone ?? (mounted ? browserTimeZone() : "UTC");
   const seededDue = React.useMemo(
-    () => toDueInputs(existing?.dueAtIso ?? null, existing?.dueAtHasTime ?? false, mounted ? browserTimeZone() : "UTC"),
-    [existing?.dueAtIso, existing?.dueAtHasTime, mounted],
+    () => toDueInputs(existing?.dueAtIso ?? null, existing?.dueAtHasTime ?? false, dueZone),
+    [existing?.dueAtIso, existing?.dueAtHasTime, dueZone],
   );
   const [dueEdit, setDueEdit] = React.useState<{ date: string; time: string } | null>(null);
-  const dueAt = dueEdit ? dueEdit.date : existing ? seededDue.date : todayLocal();
+  // "Today" means the WINERY's today — near midnight the crew's date and the reader's can differ.
+  const dueAt = dueEdit ? dueEdit.date : existing ? seededDue.date : wineryZone ? zonedDateKey(new Date(), wineryZone) : todayLocal();
   const dueTime = dueEdit ? dueEdit.time : seededDue.time;
   const setDueAt = (date: string) => setDueEdit({ date, time: date ? dueTime : "" });
   const setDueTime = (time: string) => setDueEdit({ date: dueAt, time });
@@ -406,7 +412,7 @@ export function WorkOrderBuilderClient({
     const leadUserId = members.find((m) => m.email === leadEmail)?.userId ?? null;
     // The controls hold a WALL CLOCK; resolve it in the viewer's own timezone so "9am" means 9am here,
     // and carry whether a time was actually asked for (empty time control = date-only, as before).
-    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), browserTimeZone());
+    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), dueZone);
     const dueDate = due?.at ?? null;
     const dueAtHasTime = due?.hasTime ?? false;
 
