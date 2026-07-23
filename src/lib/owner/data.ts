@@ -43,6 +43,14 @@ export function isBillableOwner(owner: Pick<OwnerRow, "kind"> | null | undefined
   return owner?.kind === "CUSTOM_CRUSH_CLIENT";
 }
 
+/** The cost-surface ownership label derived from an Owner: a billable custom-crush client shows as
+ *  CUSTOM_CRUSH_CLIENT, everything else (facility=NULL, or AP proprietor) as ESTATE for the estate cost
+ *  roll-up. The ONE derivation shared by the cost authority (cost/data.ts) and its cache (cost/cache.ts)
+ *  so they can't drift. Replaces the old `lot.ownership` enum read. */
+export function costOwnershipLabel(owner: Pick<OwnerRow, "kind"> | null | undefined): "ESTATE" | "CUSTOM_CRUSH_CLIENT" {
+  return isBillableOwner(owner) ? "CUSTOM_CRUSH_CLIENT" : "ESTATE";
+}
+
 /** List the current tenant's owners (name-sorted). Reads via the extended `prisma` (tenant resolved from
  *  the session) so it works in a server-component render with no ALS context — mirrors listCustomUnitsCore. */
 export async function listOwnersCore(injectedTx?: Prisma.TransactionClient): Promise<OwnerRow[]> {

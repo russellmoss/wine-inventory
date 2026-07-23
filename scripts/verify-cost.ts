@@ -47,8 +47,10 @@ const createdMaterialIds: string[] = [];
 const createdLocationIds: string[] = [];
 const KMBS_KEY = normalizeMaterialKey("ZZCOST KMBS");
 
-async function seedLot(code: string, vesselId: string, volumeL: number, ownership: "ESTATE" | "CUSTOM_CRUSH_CLIENT" = "ESTATE"): Promise<string> {
-  const lot = await prisma.lot.create({ data: { code, form: "WINE", ownership } });
+async function seedLot(code: string, vesselId: string, volumeL: number, ownership: "ESTATE" | "CUSTOM_CRUSH_CLIENT" = "ESTATE", ownerId: string | null = null): Promise<string> {
+  // Plan 093 Unit 3: billability now resolves from ownerId → Owner, not the ownership enum. The enum is
+  // still set (to-be-dropped mirror); a client lot must also carry a real ownerId for the cost roll-up.
+  const lot = await prisma.lot.create({ data: { code, form: "WINE", ownership, ownerId } });
   createdLotIds.push(lot.id);
   const vessel = await prisma.vessel.findUniqueOrThrow({ where: { id: vesselId } });
   const lines: LedgerLine[] = [
@@ -118,6 +120,7 @@ async function scrub() {
   await prisma.lotLineage.deleteMany({ where: { OR: [{ parentLotId: { in: lotIds } }, { childLotId: { in: lotIds } }] } });
   await prisma.vessel.deleteMany({ where: { code: { startsWith: "ZZ-COST" } } });
   await prisma.lot.deleteMany({ where: { code: { startsWith: "ZZCOST" } } });
+  await prisma.owner.deleteMany({ where: { name: { startsWith: "ZZCOST" } } }); // after lots (ownerId FK is RESTRICT)
   await prisma.cellarMaterial.deleteMany({ where: { id: { in: matIds } } });
   await prisma.location.deleteMany({ where: { name: { startsWith: "ZZ-COST" } } });
   await prisma.auditLog.deleteMany({ where: { actorEmail: ACTOR.actorEmail } });
@@ -213,7 +216,8 @@ async function main() {
   console.log("\n── CUSTOM-CRUSH ownership routing (U16) ──");
   const ccTank = await prisma.vessel.create({ data: { code: "ZZ-COST-CCTANK", type: "TANK", capacityL: 500 } });
   createdVesselIds.push(ccTank.id);
-  const ccLot = await seedLot("ZZCOST-CC", ccTank.id, 200, "CUSTOM_CRUSH_CLIENT");
+  const ccOwner = await prisma.owner.create({ data: { name: "ZZCOST Client", kind: "CUSTOM_CRUSH_CLIENT" } });
+  const ccLot = await seedLot("ZZCOST-CC", ccTank.id, 200, "CUSTOM_CRUSH_CLIENT", ccOwner.id);
   const ccBefore = r2(Number((await prisma.supplyLot.findFirstOrThrow({ where: { materialId: bent.id }, orderBy: { receivedAt: "asc" } })).qtyRemaining));
   const ccAdd = await addAdditionCore(ACTOR, { vesselId: ccTank.id, materialId: bent.id, rateValue: 1, rateBasis: "G_L" }); // 1 g/L × 200 L = 200 g
   const ccCons = await prisma.supplyConsumption.findMany({ where: { operationId: ccAdd.operationId } });
