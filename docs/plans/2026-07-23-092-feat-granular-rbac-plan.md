@@ -10,6 +10,7 @@ units: 24
 roadmap: Phase 23
 reviews: [plan-eng-review (6 decisions + 2 criticals), council (codex+gemini, 4 decisions + 6 fold-ins), plan-design-review (5→9/10, 3 decisions), incumbent-parity (vintrace+innovint, 2 decisions) — all 2026-07-23]
 incumbent-parity: docs/plans/092-incumbent-parity-ap-custom-crush.md
+depends-on: "the custom-crush data foundation (ownership data model + intake spine) must be BUILT AND VERIFIED first — this plan is the RBAC ENFORCEMENT layer (capability matrix + RLS quad) on top. Re-sequenced 2026-07-23 (Russell): the old Branch A1 bundled the ownership data model with the RLS; split them — foundation first (no RLS), then enforcement. Scalar ownership, designed for additive fractional. See docs/architecture/data_model_coalescence.md P0."
 honors: [D9, D10, D14, D16, D21, D26]
 ---
 
