@@ -113,9 +113,18 @@ validate Jan–Jun), so this is a priority order, not a fire drill. Each item is
 verify** cycle. `S/M/L` = effort; **⚠️** = touches the live lot/ledger/RLS spine → **backfill-then-
 enforce on the live tenant, never a bare additive migration**. `+asst` = needs assistant tool + eval.
 
-### P0 — Custom-crush core (the deal-makers) — this IS Phase 23 / plan 092
+### P0 — Custom-crush core (the deal-makers)
 The three things custom crush lives on are ownership, intake, and billing visibility. Ownership +
 billing land here; intake is P0-Intake below.
+
+> ⚠️ **DEPENDS ON THE FOUNDATION (re-sequenced 2026-07-23, Russell).** P0 splits in two: build the
+> ownership **data model** (Owner entity, `ownerId` + directional attribution, `CHANGE_OWNERSHIP`,
+> bond precedence) + the intake spine **first, with NO RLS**, and VERIFY it against real custom-crush
+> scenarios; **then** layer the RBAC **enforcement** (capability matrix + RESTRICTIVE RLS quad) on the
+> verified model. This splits what plan 092's old "Branch A1" bundled. Build **scalar ownership,
+> structured for additive fractional** (facility cut = CostLine/billing, not wine-ownership; confirm
+> JV/fractional with the design partner). Rationale: scalar-vs-fractional = column-vs-join, the one
+> choice that would force a full RLS re-migration on the live tenant. Plan 092 is the enforcement half.
 
 | Item | Verdict | Effort | Assistant | Note |
 |---|---|---|---|---|
