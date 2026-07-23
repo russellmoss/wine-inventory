@@ -137,6 +137,7 @@ export async function crushLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
     select: {
       id: true,
       weightKg: true,
+      weighTagLineId: true, // Plan 093 Unit 10: the pick's owner/grower source
       harvestRecord: {
         select: {
           vintageYear: true,
@@ -148,6 +149,39 @@ export async function crushLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
   });
   if (picks.length !== pickIds.length) throw new ActionError("A selected pick no longer exists.");
   const pickById = new Map(picks.map((p) => [p.id, p]));
+
+  // Plan 093 Unit 10: resolve each consuming pick's OWNER via its weigh-tag line (Unit 9). A line still
+  // flagged needsOwnerAssignment is a HARD STOP at CRUSH — you cannot originate a titled lot from fruit of
+  // unknown title — but only here (a resolvable desk decision), NEVER at the scale (the wet-hands receipt).
+  const wtlIds = [...new Set(picks.map((p) => p.weighTagLineId).filter((x): x is string => !!x))];
+  const wtLines = wtlIds.length
+    ? await tx.weighTagLine.findMany({ where: { id: { in: wtlIds } }, select: { id: true, ownerId: true, needsOwnerAssignment: true } })
+    : [];
+  const wtLineById = new Map(wtLines.map((l) => [l.id, l]));
+  const ownerOfPick = (pickId: string): string | null => {
+    const wtlId = pickById.get(pickId)?.weighTagLineId;
+    return wtlId ? (wtLineById.get(wtlId)?.ownerId ?? null) : null; // no line = legacy/estate
+  };
+  for (const p of input.picks) {
+    const wtlId = pickById.get(p.pickId)?.weighTagLineId;
+    if (wtlId && wtLineById.get(wtlId)?.needsOwnerAssignment) {
+      throw new ActionError("A bin on this fruit still needs an owner assigned before it can be crushed. Assign it on the weigh-tag first.", "CONFLICT");
+    }
+  }
+  // The originated lot's owner = the DOMINANT owner of the consuming picks, weighted by consumed kg (a
+  // co-fermented cuvée of mixed-owner fruit is legitimate — not refused). Minority-owner fruit billing is
+  // deferred to Phase 20 (fruit contracts / per-ton pricing) — the wine-volume BillableWineConsumed model
+  // does not fit fruit kg, so it is NOT emitted here.
+  const kgByOwner = new Map<string | null, number>();
+  for (const p of input.picks) {
+    const oid = ownerOfPick(p.pickId);
+    kgByOwner.set(oid, (kgByOwner.get(oid) ?? 0) + p.consumedKg);
+  }
+  let originatedOwnerId: string | null = null;
+  let maxKg = -1;
+  for (const [oid, kg] of kgByOwner) {
+    if (kg > maxKg) { maxKg = kg; originatedOwnerId = oid; }
+  }
 
   const consumedAgg = await tx.lotHarvestSource.groupBy({
     by: ["harvestPickId"],
@@ -277,7 +311,7 @@ export async function crushLotTx(tx: Prisma.TransactionClient, actor: LedgerActo
         originVineyardId,
         originBlockId,
         vintageYear: vintage,
-        ownerId: null, // Plan 093: crush originates from PICKS; Unit 10 stamps ownerId from the consuming picks' weigh-tag lines. NULL = Estate until then.
+        ownerId: originatedOwnerId, // Plan 093 Unit 10: dominant owner of the consuming picks (via their weigh-tag lines). NULL = Estate.
       },
       select: { id: true, code: true },
     });

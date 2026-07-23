@@ -592,6 +592,7 @@ model HarvestPick {
   createdByEmail  String
   note            String?
   weighTagLineId  String? // Plan 093 Unit 9: the weigh-tag bin-line this pick came off (its owner/grower/block source). Composite FK -> weigh_tag_line(tenantId,id), onDelete Restrict (K11, raw-SQL).
+  sold            Boolean            @default(false) // Plan 093 Unit 10: fruit sold OUT (not crushed here) → TTB Part IV fruit removal
   createdAt       DateTime           @default(now())
   harvestRecord   HarvestRecord      @relation(fields: [harvestRecordId], references: [id], onDelete: Cascade)
   // Phase 6: lots this pick was (partially) crushed into. A pick can feed several fermenters;
