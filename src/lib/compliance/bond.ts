@@ -75,7 +75,8 @@ export async function getPrimaryBond(client: DbClient = prisma as unknown as DbC
 /**
  * Resolve the authoritative bond id of each lot as-of `asOf`, batched (no N+1 — mirrors
  * resolveClassesForLots at generate.ts:85). Precedence per lot:
- *   1. the destBondId of its most-recent bond-moving line ≤ asOf (the ledger is authority);
+ *   0. AP-owner precedence: if the lot's owner (ownerId) has its own bond (Bond.ownerId), that wins (Unit 7);
+ *   1. else the destBondId of its most-recent bond-moving line ≤ asOf (the ledger is authority);
  *   2. else its single/unanimous parent's derived bond as-of the lineage event (lineage-child rule);
  *   3. else the tenant's primary bond (legacy / origination fallback).
  * Returns Map<lotId, bondId> covering every input id.
@@ -90,9 +91,25 @@ export async function resolveBondsForLots(
   const ids = [...new Set(lotIds)].filter(Boolean);
   if (ids.length === 0) return out;
 
-  // 1. Direct: the latest line that stamped a dest bond for the lot (the position it moved onto).
+  // 0. AP-owner precedence (Plan 093 Unit 7): a lot owned by an Alternating-Proprietor client sits on
+  //    THAT owner's own bond (distinct BWN), which takes precedence over the ledger/lineage/primary order
+  //    below ("AP owner-bond always wins" — both incumbents). The Owner→bond link is Bond.ownerId. Resolved
+  //    lots are excluded from the direct/lineage/fallback steps so this precedence holds.
+  const lotOwners = await client.lot.findMany({ where: { id: { in: ids } }, select: { id: true, ownerId: true } });
+  const ownerIds = [...new Set(lotOwners.map((l) => l.ownerId).filter((x): x is string => x != null))];
+  if (ownerIds.length > 0) {
+    const ownerBonds = await client.bond.findMany({ where: { ownerId: { in: ownerIds } }, select: { id: true, ownerId: true } });
+    const bondByOwner = new Map(ownerBonds.map((b) => [b.ownerId as string, b.id]));
+    for (const l of lotOwners) {
+      const b = l.ownerId ? bondByOwner.get(l.ownerId) : undefined;
+      if (b) out.set(l.id, b);
+    }
+  }
+
+  // 1. Direct: the latest line that stamped a dest bond for the lot (the position it moved onto). Skips
+  //    lots already resolved by AP precedence (step 0) so that bond wins.
   const bondLines = await client.lotOperationLine.findMany({
-    where: { lotId: { in: ids }, destBondId: { not: null }, operation: { observedAt: { lte: asOf } } },
+    where: { lotId: { in: ids.filter((id) => !out.has(id)) }, destBondId: { not: null }, operation: { observedAt: { lte: asOf } } },
     select: { lotId: true, destBondId: true, operation: { select: { observedAt: true, id: true } } },
   });
   const latest = new Map<string, { bondId: string; observedAt: Date; opId: number }>();
