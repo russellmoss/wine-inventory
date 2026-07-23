@@ -1324,10 +1324,13 @@ enum OperationType {
   // Phase 2 (bond + tax-class): cross-bond movement (symmetric removed/received-in-bond) and the
   // refund-flagged re-admission of tax-paid wine. Added in a DEDICATED enum-only migration
   // (Postgres ALTER TYPE ADD VALUE can't be used in the tx that adds it) so the values commit
-  // before transfer-in-bond-core.ts / return-to-bond-core.ts write them. CHANGE_OWNERSHIP is
-  // DEFERRED (needs alternate-proprietor logic — Phase-2 OQ-1 resolved: not built this phase).
+  // before transfer-in-bond-core.ts / return-to-bond-core.ts write them.
   TRANSFER_IN_BOND
   RETURN_TO_BOND
+  // Plan 093 (custom-crush): a change of PROPRIETOR (ownerId). CONDITIONAL on the bond delta — a pure
+  // title transfer (same bond, ZERO TTB) OR title + a symmetric transfer-in-bond (host↔AP, distinct BWN).
+  // Own enum-only migration (20260723140000) so the value commits before change-ownership-core writes it.
+  CHANGE_OWNERSHIP
 }
 
 // Phase 6: fermentation is THREE orthogonal state vectors, NOT a linear phase enum
