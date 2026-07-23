@@ -7,26 +7,32 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 091 — voice pronunciation lexicon. MERGED + IN PROD (#474, squash `f578dada`).**
-⚠️ **Issue #464 is NOT fixed — the lexicon table shipped EMPTY, so this is a no-op for users.**
+**PLAN 091 — voice pronunciation. DONE. #464 RESOLVED, in prod (#474 + #477, squash `b2dcd70e`).**
+Russell's verdict on the phoneme build: "WAY better than what we had."
 Plan: [2026-07-23-091-…](docs/plans/2026-07-23-091-feat-voice-pronunciation-lexicon-plan.md).
 Audit: [docs/kb-eval/pronunciation-lexicon-audit.md](docs/kb-eval/pronunciation-lexicon-audit.md).
 
-Landed: the matcher (single-pass alternation, longest-match-first, accent-tolerant,
-idempotency + no-cascade guards) wired LAST in `toSpeakable` after `normalizeUnits`;
-the miner (575 candidates from 36,931 chunks + Demo vocabulary, 26,320 dropped and
-logged); the rejected screen, kept as a documented negative result. 3,642 tests green.
+Landed: TTS switched to `eleven_flash_v2` (honours inline `<phoneme>` tags, **same ~75ms**
+as v2_5, English-only which this app already is); 11 CMU-Arpabet phoneme rules + the
+EC-1118 expansion; the matcher, the miner, and the rejected screen as a negative result.
+3,653 tests green.
 
-⛔ **The TTS→STT screen does NOT work and it is structural — do not rebuild it.** Scribe's
-job is to output the word you MEANT regardless of pronunciation, which is exactly the
-signal being measured. It missed Syrah, Saccharomyces, Gewürztraminer, Viognier, Riesling
-and Brettanomyces, and flagged a correctly-said `cellar` as the homophone *seller*.
-Knock-on: **the objective before/after number is gone**; the ear is the only gate.
+⛔ **Three things not to re-derive:**
+1. **`eleven_flash_v2_5` SILENTLY IGNORES phoneme tags.** Accepts them, changes nothing,
+   no error. Plan 091 ruled phonemes out on this basis and wrongly assumed any model
+   change cost latency — it doesn't, and that mistake cost a whole wasted build round.
+2. **The TTS→STT screen does NOT work, structurally.** STT outputs the word you MEANT
+   regardless of pronunciation — exactly the signal being measured. It passed Syrah and
+   Saccharomyces (both wrong) and flagged a correct `cellar` as *seller*. Ear only.
+3. **A model switch re-rolls EVERY word, not just tagged ones.** `bâtonnage` had no rule,
+   passed on v2_5, regressed on v2. Re-listen to the whole batch after a model change.
 
-▶️ **NEXT, and it needs Russell, not an agent:** play
-`pronunciation-sample.mp3` (regenerate any time with `npm run sample:pronunciation`),
-report which of the 27 numbers sound wrong. Only those get a rule — a rule on a word
-that was already right can only move it one direction. Then Units 5/6 write the table.
+▶️ **NEXT — Pronunciation Settings (Russell asked for it, not yet planned).** Type a word,
+record yourself saying it, pick the matching playback; developer entries global, tenant
+overrides on top (mirror `KnowledgeSource` — resolve globals at READ time, do NOT copy
+into tenants, or you repeat the SYSTEM_TEMPLATES gap). Speech→phoneme is the risky step:
+propose candidates, let the ear confirm. Also: `toSpeakable` runs client-side too, so
+per-tenant rules mean moving lexicon application into the speak route only.
 
 ## 🔭 Also in flight
 
