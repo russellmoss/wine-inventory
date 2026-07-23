@@ -103,9 +103,121 @@ the weak direction is unreliable).
 
 ---
 
-## Unit 5 — adopted rules
+## Unit 7 — ear pass, batch 1 (2026-07-23, Russell)
 
-Pending. Blocked on the screening decision above.
+27 numbered terms, one ~90s file, grounded in Demo's real varieties and materials plus
+the two the ticket names. **9 of 27 judged wrong.**
+
+### The result that matters
+
+The ear pass is the reason the automated screen was right to be rejected — it got the
+answer wrong in *both* directions:
+
+| Term | Automated screen | Russell's ear |
+|---|---|---|
+| Syrah | passed | **wrong** |
+| Saccharomyces | passed | **wrong** |
+| Gewürztraminer | passed | **wrong** |
+| Brettanomyces | passed | **wrong** |
+| veraison | **failed** | fine |
+| bâtonnage | **failed** | fine |
+
+Trusting the screen would have left every reported term broken while rewriting two
+words the engine already says correctly. That is worse than doing nothing, and it is
+why the rule is: nothing enters the table without being heard.
+
+### Adopted (9)
+
+| # | Term | Spoken as |
+|---|---|---|
+| 1 | Syrah | `see-rah` |
+| 2 | Saccharomyces cerevisiae | `sack-a-roh-my-seez sair-uh-vizz-ee-eye` |
+| 11 | Gewürztraminer | `guh-verts-trah-mee-ner` |
+| 15 | Sangiovese | `san-joh-vay-zeh` |
+| 16 | Brettanomyces | `bret-an-oh-my-seez` |
+| 17 | Oenococcus oeni | `ee-noh-kok-us ee-nee` |
+| 22 | Erbslöh | `erbs-luh` |
+| 24 | EC-1118 | `E C eleven eighteen` |
+| 25 | potassium metabisulfite | `puh-tass-ee-um met-a-by-sul-fite` |
+
+Plus three companion forms for when the assistant says the short version on its own:
+bare `Saccharomyces`, bare `Oenococcus`, bare `metabisulfite`, and `cerevisiae` after an
+abbreviated genus. 13 rules total.
+
+**#24 is a convention, not a reading rule.** "E C eleven eighteen" is how the industry
+says that strain (confirmed by Russell). It is deliberately NOT generalised into a
+pattern over strain codes: `D254` and `RC212` have their own spoken conventions that are
+custom rather than arithmetic, and guessing them ships a confident mispronunciation.
+They get rules when they get an ear pass.
+
+### Judged fine — deliberately NOT given rules (18)
+
+Meunier, Solaris, Sauvignon Blanc, Cabernet Sauvignon, Pinot Noir, Chardonnay, Merlot,
+Viognier, Mourvèdre, Grenache, Riesling, veraison, bâtonnage, malolactic, Brix, Lalvin,
+Amorim, and the lot code `2026-SY-2`.
+
+Their absence from the table is an assertion, and `test/voice-lexicon.test.ts` pins it.
+
+**Unit 6 (lot / vessel / strain code rules) is therefore mostly unnecessary.** The plan
+assumed `2026-SY-2` would read as "twenty-twenty-six minus S Y minus two"; it does not,
+so no code rule was written. Only the EC-1118 strain convention needed one.
+
+## Respellings failed. Phoneme tags replaced them.
+
+Russell heard the respelling build and rejected **8 of the 9**. Only `EC-1118` passed.
+
+**That is the line: alias rules are for EXPANSIONS, not phonetics.** `EC-1118` →
+"E C eleven eighteen" is the same class of thing as `normalizeUnits` turning `mg/L` into
+"milligrams per liter" — writing out what a person says, with no sounding-out involved.
+"see-rah" is a hope that the model's letter-to-sound guesser lands somewhere good. It did not.
+
+### The correction
+
+`eleven_flash_v2` honours inline SSML `<phoneme>` tags with CMU Arpabet or IPA, at
+**~75ms, the same latency as `eleven_flash_v2_5`**. The only difference is English-only
+vs 32 languages, and this app is English throughout (STT is already pinned to `eng`).
+
+The original plan ruled phonemes out because v2_5 ignores them, and assumed any model
+change would cost latency. That was wrong, and it cost a wasted build round. ElevenLabs'
+own guidance is that CMU is more predictable than IPA in their implementation.
+
+Verified the tags are parsed rather than read aloud by transcribing the rendered audio
+back: no `phoneme` / `arpabet` / `<` leaked into the transcript.
+
+### The idempotency trap this introduced
+
+A rendered tag CONTAINS the word it wraps, and `toSpeakable` runs twice per spoken
+sentence, so a naive second pass nests tags inside themselves. Fixed by making an
+already-rendered tag the FIRST alternative in the single-pass alternation: it is consumed
+whole, so its contents are never re-scanned.
+
+The no-cascade guard needed rewriting too. It read `rule.spoken`, which is `undefined` on
+a phoneme rule, so it was testing the literal string "undefined" and passing without
+checking anything. It now asserts the real invariant — re-applying the lexicon to a
+rule's own output changes nothing.
+
+## v3/v4 re-cuts — ACCEPTED (2026-07-23)
+
+Russell on the phoneme build: **"WAY better than what we had."** Two re-cuts, then accepted.
+
+| # | Term | Problem | Fix |
+|---|---|---|---|
+| 15 | Sangiovese | Correct ITALIAN reading ("san-joh-VAY-zeh"), wrong for an American cellar | `S AE2 N JH IY0 OW0 V EY1 S EY0` — the `IY0` makes the "gee", ending is S not Z |
+| 19 | bâtonnage | Had NO rule and was judged fine in batch 1 | `B AE2 T OW0 N AA1 ZH` — "bat-ohn-AHJ" |
+
+**A phoneme rule can be RIGHT and still be WRONG.** Sangiovese was accurate Italian. The
+target is how the crew says it, not how Tuscany does.
+
+**A model switch invalidates every prior "sounds fine" verdict.** bâtonnage was never
+tagged and passed batch 1 — but batch 1 ran on `eleven_flash_v2_5`. Moving to `flash_v2`
+for phoneme support re-rolled the pronunciation of the whole vocabulary, not just the
+tagged words. Two of the eighteen untouched terms regressed. Re-listen to the entire
+batch after a model change, never just the diff.
+
+## Unit 5 — outstanding
+
+Batch 1 covered 27 terms. 548 of the 575 mined candidates remain unheard. Whether to run
+more batches depends on how batch 1's fix lands.
 
 ## Deliberately out of scope
 
