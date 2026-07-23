@@ -57,11 +57,16 @@ vi.mock("@/lib/assistant/tools/db-update", () => ({
 let signProposal: typeof import("@/lib/assistant/confirm").signProposal;
 let commitProposal: typeof import("@/lib/assistant/commit").commitProposal;
 
+// 30s, not the 10s default: this hook dynamically imports @/lib/assistant/commit, which
+// pulls in the entire ~40-tool assistant surface. Cold-transforming that graph while the
+// rest of the suite runs in parallel exceeds 10s, so the file fails to load with a
+// "Hook timed out" that looks like a product bug and is really a transform-cost one. It
+// passes in isolation every time; only whole-suite contention trips it.
 beforeAll(async () => {
   process.env.BETTER_AUTH_SECRET = "test-secret-aaaaaaaaaaaaaaaaaaaa";
   ({ signProposal } = await import("@/lib/assistant/confirm"));
   ({ commitProposal } = await import("@/lib/assistant/commit"));
-});
+}, 30_000);
 
 const USER = {
   id: "u1",

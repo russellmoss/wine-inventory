@@ -103,9 +103,69 @@ the weak direction is unreliable).
 
 ---
 
-## Unit 5 — adopted rules
+## Unit 7 — ear pass, batch 1 (2026-07-23, Russell)
 
-Pending. Blocked on the screening decision above.
+27 numbered terms, one ~90s file, grounded in Demo's real varieties and materials plus
+the two the ticket names. **9 of 27 judged wrong.**
+
+### The result that matters
+
+The ear pass is the reason the automated screen was right to be rejected — it got the
+answer wrong in *both* directions:
+
+| Term | Automated screen | Russell's ear |
+|---|---|---|
+| Syrah | passed | **wrong** |
+| Saccharomyces | passed | **wrong** |
+| Gewürztraminer | passed | **wrong** |
+| Brettanomyces | passed | **wrong** |
+| veraison | **failed** | fine |
+| bâtonnage | **failed** | fine |
+
+Trusting the screen would have left every reported term broken while rewriting two
+words the engine already says correctly. That is worse than doing nothing, and it is
+why the rule is: nothing enters the table without being heard.
+
+### Adopted (9)
+
+| # | Term | Spoken as |
+|---|---|---|
+| 1 | Syrah | `see-rah` |
+| 2 | Saccharomyces cerevisiae | `sack-a-roh-my-seez sair-uh-vizz-ee-eye` |
+| 11 | Gewürztraminer | `guh-verts-trah-mee-ner` |
+| 15 | Sangiovese | `san-joh-vay-zeh` |
+| 16 | Brettanomyces | `bret-an-oh-my-seez` |
+| 17 | Oenococcus oeni | `ee-noh-kok-us ee-nee` |
+| 22 | Erbslöh | `erbs-luh` |
+| 24 | EC-1118 | `E C eleven eighteen` |
+| 25 | potassium metabisulfite | `puh-tass-ee-um met-a-by-sul-fite` |
+
+Plus three companion forms for when the assistant says the short version on its own:
+bare `Saccharomyces`, bare `Oenococcus`, bare `metabisulfite`, and `cerevisiae` after an
+abbreviated genus. 13 rules total.
+
+**#24 is a convention, not a reading rule.** "E C eleven eighteen" is how the industry
+says that strain (confirmed by Russell). It is deliberately NOT generalised into a
+pattern over strain codes: `D254` and `RC212` have their own spoken conventions that are
+custom rather than arithmetic, and guessing them ships a confident mispronunciation.
+They get rules when they get an ear pass.
+
+### Judged fine — deliberately NOT given rules (18)
+
+Meunier, Solaris, Sauvignon Blanc, Cabernet Sauvignon, Pinot Noir, Chardonnay, Merlot,
+Viognier, Mourvèdre, Grenache, Riesling, veraison, bâtonnage, malolactic, Brix, Lalvin,
+Amorim, and the lot code `2026-SY-2`.
+
+Their absence from the table is an assertion, and `test/voice-lexicon.test.ts` pins it.
+
+**Unit 6 (lot / vessel / strain code rules) is therefore mostly unnecessary.** The plan
+assumed `2026-SY-2` would read as "twenty-twenty-six minus S Y minus two"; it does not,
+so no code rule was written. Only the EC-1118 strain convention needed one.
+
+## Unit 5 — outstanding
+
+Batch 1 covered 27 terms. 548 of the 575 mined candidates remain unheard. Whether to run
+more batches depends on how batch 1's fix lands.
 
 ## Deliberately out of scope
 

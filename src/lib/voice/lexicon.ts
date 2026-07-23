@@ -152,8 +152,68 @@ export function compileLexicon(rules: LexiconRule[]): CompiledLexicon | null {
   return { regex: new RegExp(sources.join("|"), "giu"), order };
 }
 
-/** The shipped rule table. Populated from screened failures — see the plan's Unit 5. */
-export const LEXICON: LexiconRule[] = [];
+/**
+ * The shipped rule table.
+ *
+ * EVERY entry here failed a human listening pass. Nothing is in this table on theory.
+ * The automated TTS->STT screen was built and rejected (see
+ * docs/kb-eval/pronunciation-lexicon-audit.md) and the ear pass proved why: the screen
+ * PASSED Syrah, Saccharomyces, Gewürztraminer and Brettanomyces, all of which are wrong,
+ * and FLAGGED veraison and bâtonnage, both of which the engine says correctly. Trusting
+ * it would have broken working words and left the reported ones broken.
+ *
+ * So: do not add a term here because it looks foreign or hard. Add it after hearing it.
+ * `npm run sample:pronunciation` renders the batch; `-- --lexicon` renders it with these
+ * rules applied, which is how you check a respelling helped instead of hurt.
+ *
+ * Respellings are lowercase and hyphenated on purpose. ALL-CAPS syllables read as
+ * initialisms or hard emphasis on some voices, which trades one wrong reading for another.
+ */
+export const LEXICON: LexiconRule[] = [
+  // --- Grape varieties -----------------------------------------------------
+  { term: "Syrah", spoken: "see-rah", note: "ear pass 2026-07-23 #1; named in ticket #464" },
+  {
+    term: "Gewürztraminer",
+    spoken: "guh-verts-trah-mee-ner",
+    note: "ear pass #11; matches the unaccented spelling too",
+  },
+  { term: "Sangiovese", spoken: "san-joh-vay-zeh", note: "ear pass #15" },
+
+  // --- Microbiology --------------------------------------------------------
+  // The binomials come first in the table for readability; compileLexicon sorts by
+  // length anyway, so "Saccharomyces cerevisiae" cannot lose to bare "Saccharomyces".
+  {
+    term: "Saccharomyces cerevisiae",
+    spoken: "sack-a-roh-my-seez sair-uh-vizz-ee-eye",
+    note: "ear pass #2; named in ticket #464",
+  },
+  { term: "Saccharomyces", spoken: "sack-a-roh-my-seez", note: "bare genus, said on its own" },
+  { term: "cerevisiae", spoken: "sair-uh-vizz-ee-eye", note: "epithet after an abbreviated genus" },
+  { term: "Brettanomyces", spoken: "bret-an-oh-my-seez", note: "ear pass #16" },
+  { term: "Oenococcus oeni", spoken: "ee-noh-kok-us ee-nee", note: "ear pass #17" },
+  { term: "Oenococcus", spoken: "ee-noh-kok-us", note: "bare genus, said on its own" },
+
+  // --- Materials and additives --------------------------------------------
+  {
+    term: "potassium metabisulfite",
+    spoken: "puh-tass-ee-um met-a-by-sul-fite",
+    note: "ear pass #25",
+  },
+  { term: "metabisulfite", spoken: "met-a-by-sul-fite", note: "said without the potassium" },
+  { term: "Erbslöh", spoken: "erbs-luh", note: "ear pass #22; German supplier in Demo's materials" },
+
+  // --- Yeast strain codes --------------------------------------------------
+  // "E C eleven eighteen" is how the industry says it, per Russell. Deliberately NOT
+  // generalised into a pattern rule: D254 and RC212 have their own spoken conventions
+  // ("D two fifty four", "R C two twelve") that are convention, not arithmetic, and
+  // guessing them is how you ship a confident mispronunciation. They get rules when
+  // they get an ear pass.
+  {
+    term: "EC-1118",
+    spoken: "E C eleven eighteen",
+    note: "ear pass #24; industry convention, confirmed by Russell",
+  },
+];
 
 // applyLexicon runs twice per spoken sentence (client + speak route), so the
 // alternation regex is built once per table rather than once per call. Keyed on the

@@ -192,3 +192,45 @@ describe("buildTermSource", () => {
     expect(buildTermSource("cafe")).toContain("[eèéêë]");
   });
 });
+
+// These pin the SHIPPED table's content, not the machinery. Every entry got here by
+// failing Russell's listening pass on 2026-07-23 — see the audit doc.
+describe("shipped lexicon", () => {
+  it("covers both terms named in ticket #464", () => {
+    expect(applyLexicon("We inoculated the Syrah.")).toBe("We inoculated the see-rah.");
+    expect(applyLexicon("It is Saccharomyces cerevisiae.")).toBe(
+      "It is sack-a-roh-my-seez sair-uh-vizz-ee-eye.",
+    );
+  });
+
+  it("prefers the binomial over the bare genus", () => {
+    expect(applyLexicon("Saccharomyces cerevisiae")).toBe("sack-a-roh-my-seez sair-uh-vizz-ee-eye");
+    expect(applyLexicon("Saccharomyces")).toBe("sack-a-roh-my-seez");
+    expect(applyLexicon("Oenococcus oeni")).toBe("ee-noh-kok-us ee-nee");
+    expect(applyLexicon("Oenococcus")).toBe("ee-noh-kok-us");
+  });
+
+  it("says EC-1118 the way the industry says it", () => {
+    expect(applyLexicon("Pitch EC-1118 tomorrow.")).toBe("Pitch E C eleven eighteen tomorrow.");
+  });
+
+  it("matches Gewürztraminer with or without the umlaut", () => {
+    expect(applyLexicon("Gewürztraminer")).toBe("guh-verts-trah-mee-ner");
+    expect(applyLexicon("Gewurztraminer")).toBe("guh-verts-trah-mee-ner");
+  });
+
+  it("prefers the two-word additive over the bare one", () => {
+    expect(applyLexicon("Add potassium metabisulfite.")).toBe(
+      "Add puh-tass-ee-um met-a-by-sul-fite.",
+    );
+    expect(applyLexicon("Add metabisulfite.")).toBe("Add met-a-by-sul-fite.");
+  });
+
+  // The ear pass said these are ALREADY correct. A rule on a word that is already right
+  // can only move it in one direction, so their ABSENCE is the assertion.
+  it("leaves alone the words the ear pass judged fine", () => {
+    for (const ok of ["Viognier", "Mourvèdre", "Riesling", "veraison", "bâtonnage", "Merlot", "Brix"]) {
+      expect(applyLexicon(ok), `${ok} was judged fine and must not be rewritten`).toBe(ok);
+    }
+  });
+});
