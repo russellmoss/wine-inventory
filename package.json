@@ -109,6 +109,7 @@
     "verify:projection": "tsx --env-file=.env scripts/verify-projection.ts",
     "seed:demo-commerce7": "tsx --conditions=react-server --env-file=.env scripts/seed-demo-commerce7.ts",
     "seed:developer": "tsx --conditions=react-server --env-file=.env scripts/seed-developer.ts",
+    "sample:pronunciation": "tsx --conditions=react-server --env-file=.env scripts/sample-pronunciation-audio.ts",
     "screen:pronunciation": "tsx --conditions=react-server --env-file=.env scripts/screen-pronunciation.ts",
     "mine:pronunciation": "tsx --conditions=react-server --env-file=.env scripts/mine-pronunciation-candidates.ts",
     "triage:list": "tsx --conditions=react-server --env-file=.env scripts/bug-triage-list.ts",
