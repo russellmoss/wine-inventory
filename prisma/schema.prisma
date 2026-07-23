@@ -687,6 +687,7 @@ model VesselTransfer {
 
 model WineSku {
   tenantId         String                 @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id               String                 @id @default(cuid())
   name             String
   // Phase 7 (K11): NULLABLE for NV / multi-vintage sparkling; isNonVintage marks a true NV
@@ -717,11 +718,13 @@ model WineSku {
   @@unique([tenantId, id]) // Phase 8: composite-tenant-FK target for bottling_cost_snapshot (K11)
   @@index([categoryId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("wine_sku")
 }
 
 model BottlingRun {
   tenantId              String                 @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                    String                 @id @default(cuid())
   date                  DateTime
   wineSkuId             String
@@ -749,11 +752,13 @@ model BottlingRun {
   @@index([wineSkuId])
   @@index([date])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("bottling_run")
 }
 
 model BottlingSource {
   tenantId        String      @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id              String      @id @default(cuid())
   bottlingRunId   String
   // Phase 7 (K13, extended): origin columns are NULLABLE. A blended / multi-vintage sparkling
@@ -778,6 +783,7 @@ model BottlingSource {
   @@index([vesselId])
   @@index([lotId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("bottling_source")
 }
 
@@ -785,6 +791,7 @@ model BottlingSource {
 
 model StockMovement {
   tenantId        String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id              String        @id @default(cuid())
   createdAt       DateTime      @default(now())
   createdById     String?
@@ -809,11 +816,13 @@ model StockMovement {
   @@index([createdAt])
   @@index([transferGroupId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("stock_movement")
 }
 
 model BottledInventory {
   tenantId     String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id           String   @id @default(cuid())
   wineSkuId    String
   locationId   String
@@ -825,6 +834,7 @@ model BottledInventory {
   @@unique([tenantId, wineSkuId, locationId])
   @@index([locationId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("bottled_inventory")
 }
 
@@ -1599,6 +1609,7 @@ model PressCycle {
 // immutable after the first operation (enforced in the service layer).
 model Lot {
   tenantId           String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                 String             @id @default(cuid())
   code               String
   // Phase 1 (identity presentation): a MUTABLE, NON-unique free-text human label. Deliberately
@@ -1680,6 +1691,7 @@ model Lot {
   @@index([status])
   @@index([originVineyardId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("lot")
 }
 
@@ -1695,6 +1707,7 @@ model Lot {
 // kinds without an ALTER TYPE) — plan Q4.
 model LotIdentifier {
   tenantId         String    @default("")
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id               String    @id @default(cuid())
   lotId            String
   kind             String // current-code | source-system-id | spreadsheet-alias | ttb-label | prior-code(Phase-3 imports only)
@@ -1711,6 +1724,7 @@ model LotIdentifier {
 
   @@unique([tenantId, id])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@index([tenantId, lotId])
   @@index([tenantId, value]) // cross-identifier search index
   @@map("lot_identifier")
@@ -1723,6 +1737,7 @@ model LotIdentifier {
 // SQL (a fixed domain — plan Q4). Composite FK + RLS in raw SQL.
 model LotCodeEvent {
   tenantId    String   @default("")
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id          String   @id @default(cuid())
   lotId       String
   field       String // code | displayName (CHECK-constrained in migration)
@@ -1741,6 +1756,7 @@ model LotCodeEvent {
   @@index([tenantId, lotId])
   @@index([tenantId, toValue]) // historical-code search
   @@index([tenantId, fromValue]) // historical-code search
+  @@index([tenantId, ownerId])
   @@map("lot_code_event")
 }
 
@@ -1837,6 +1853,7 @@ model LotOperation {
 // are durable snapshots so history reads survive later renames/deletes.
 model LotOperationLine {
   tenantId     String       @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id           Int          @id @default(autoincrement())
   operationId  Int
   lotId        String
@@ -1868,6 +1885,7 @@ model LotOperationLine {
   @@index([lotId])
   @@index([vesselId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@index([tenantId, destBondId]) // Phase 2: bond derivation lookup (latest dest bond ≤ asOf)
   @@map("lot_operation_line")
 }
@@ -1877,6 +1895,7 @@ model LotOperationLine {
 // a row at functional zero is deleted, never stored at 0.
 model VesselLot {
   tenantId  String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id        String   @id @default(cuid())
   vesselId  String
   lotId     String
@@ -1897,6 +1916,7 @@ model VesselLot {
   @@unique([tenantId, vesselId, lotId])
   @@index([lotId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("vessel_lot")
 }
 
@@ -1933,6 +1953,7 @@ model LotLineage {
 // op metadata; the measured output liters is the only balanced line.
 model LotHarvestSource {
   tenantId      String      @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id            String      @id @default(cuid())
   lotId         String
   harvestPickId String
@@ -1944,6 +1965,7 @@ model LotHarvestSource {
   @@index([lotId])
   @@index([harvestPickId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("lot_harvest_source")
 }
 
@@ -1954,6 +1976,7 @@ model LotHarvestSource {
 // `commandId` UNIQUE makes a phase mutation idempotent (duplicate-as-success, council S4).
 model LotStateEvent {
   tenantId       String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id             String        @id @default(cuid())
   lotId          String
   vesselId       String? // snapshot context (the vessel the lot sat in at the transition)
@@ -1975,6 +1998,7 @@ model LotStateEvent {
 
   @@index([lotId, observedAt])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("lot_state_event")
 }
 
@@ -1985,6 +2009,7 @@ model LotStateEvent {
 // exactly like a VesselLot row. CHECK(bottleCount >= 0) and CHECK(volumeL >= 0) in migration.
 model BottledLotState {
   tenantId            String          @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   lotId               String          @id
   bottleCount         Int
   nominalFillMl       Int             @default(750)
@@ -2007,6 +2032,7 @@ model BottledLotState {
   @@index([stage])
   @@index([disgorgementRunId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("bottled_lot_state")
 }
 
@@ -2018,6 +2044,7 @@ model BottledLotState {
 // query is "lots whose source vineyard ∈ my set" → index on vineyardId.
 model LotVineyard {
   tenantId   String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id         String   @id @default(cuid())
   lotId      String
   vineyardId String
@@ -2028,6 +2055,7 @@ model LotVineyard {
   @@unique([tenantId, lotId, vineyardId])
   @@index([vineyardId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("lot_vineyard")
 }
 
@@ -2120,6 +2148,7 @@ model BlendTrialComponent {
 // recomputed (VISION D14). Corrected/voided via voidedByOperationId (stays visible).
 model LotTreatment {
   tenantId            String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                  String   @id @default(cuid())
   operationId         Int
   lotId               String
@@ -2149,6 +2178,7 @@ model LotTreatment {
   @@index([operationId])
   @@index([vesselId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("lot_treatment")
 }
 
@@ -2265,6 +2295,7 @@ enum TastingScoreScale {
 // lab result is a panel with `sampleId` set. SO₂ pairing happens WITHIN one panel only.
 model AnalysisPanel {
   tenantId             String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                   String            @id @default(cuid())
   lotId                String
   vesselId             String? // snapshot context (the vessel the lot sat in when measured)
@@ -2309,6 +2340,7 @@ model AnalysisPanel {
   @@index([vesselId, vesselReadingGroupId])
   @@index([sampleId])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("analysis_panel")
 }
 
@@ -2342,6 +2374,7 @@ model AnalysisReading {
 // notes/aroma/flavor — no tsvector this phase (avoids the search_vector migration gotcha).
 model LotTastingNote {
   tenantId        String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id              String             @id @default(cuid())
   lotId           String
   vesselId        String?
@@ -2370,6 +2403,7 @@ model LotTastingNote {
 
   @@index([lotId, observedAt])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("lot_tasting_note")
 }
 
@@ -2380,6 +2414,7 @@ model LotTastingNote {
 // current vessel — backdated/late-resulted readings must not be misattributed). D2.
 model Sample {
   tenantId        String          @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id              String          @id @default(cuid())
   lotId           String
   vesselId        String?
@@ -2406,6 +2441,7 @@ model Sample {
   @@index([lotId, status])
   @@index([status])
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@map("sample")
 }
 
@@ -2885,6 +2921,7 @@ model MaterialMovement {
 // the op). `reversalOfCostLineId` links an identity-negation row (Unit 11). Never mutated.
 model CostLine {
   tenantId             String                @default("")
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                   String                @id @default(cuid())
   operationId          Int
   lotId                String?
@@ -2900,6 +2937,7 @@ model CostLine {
   lot                  Lot?                  @relation(fields: [lotId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@index([tenantId, operationId, component])
   @@index([tenantId, lotId])
   @@map("cost_line")
@@ -3051,6 +3089,7 @@ model BarrelAsset {
 // barrel each get their own fill row → cost splits by volume×time.
 model BarrelFill {
   tenantId               String      @default("")
+  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                     String      @id @default(cuid())
   barrelAssetId          String
   lotId                  String
@@ -3070,6 +3109,7 @@ model BarrelFill {
   lot                    Lot         @relation(fields: [lotId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
+  @@index([tenantId, ownerId])
   @@index([tenantId, lotId])
   @@index([tenantId, barrelAssetId, endedAt])
   @@map("barrel_fill")
