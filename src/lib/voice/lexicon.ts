@@ -236,7 +236,15 @@ export const LEXICON: LexiconRule[] = [
     phoneme: "G AH0 V ER1 T S T R AH0 M IY2 N ER0",
     note: "ear pass #11; the matcher also catches the unaccented spelling",
   },
-  { term: "Sangiovese", phoneme: "S AE2 N JH OW0 V EY1 Z EY0", note: "ear pass #15" },
+  // AMERICAN, not Italian. The first attempt was "S AE2 N JH OW0 V EY1 Z EY0", which is
+  // the proper Italian "san-joh-VAY-zeh" and sounded foreign in an American cellar.
+  // Russell wants "san-gee-oh-vay-say": the extra IY0 makes the "gee", and the ending is
+  // an S, not a Z. The target is how the crew says it, not how Tuscany says it.
+  {
+    term: "Sangiovese",
+    phoneme: "S AE2 N JH IY0 OW0 V EY1 S EY0",
+    note: "ear pass #15, then re-cut on v3 — Italian reading rejected for the American one",
+  },
 
   // Microbiology. ONE WORD PER RULE — the tag is a single-word construct, so a binomial
   // is tagged half by half rather than as one phrase.
@@ -249,6 +257,19 @@ export const LEXICON: LexiconRule[] = [
   { term: "Brettanomyces", phoneme: "B R EH2 T AH0 N OW0 M AY1 S IY2 Z", note: "ear pass #16" },
   { term: "Oenococcus", phoneme: "IY2 N OW0 K AA1 K AH0 S", note: "ear pass #17" },
   { term: "oeni", phoneme: "IY1 N IY0", note: "ear pass #17" },
+
+  // Cellar process vocabulary.
+  //
+  // bâtonnage carries a lesson: it had NO rule and was judged FINE in the first ear
+  // pass. That pass ran on eleven_flash_v2_5. Switching to flash_v2 for phoneme support
+  // re-rolled the pronunciation of every word in the vocabulary, not just the tagged
+  // ones, and this is one of two that changed for the worse. A model switch invalidates
+  // prior "sounds fine" verdicts — re-listen to the whole batch, not just the diff.
+  {
+    term: "bâtonnage",
+    phoneme: "B AE2 T OW0 N AA1 ZH",
+    note: "regression from the v2_5 -> v2 model switch; bat-ohn-AHJ",
+  },
 
   // Materials. "potassium" is deliberately absent — it is ordinary English and was not
   // flagged, and a rule on a word that is already right can only move it one way.

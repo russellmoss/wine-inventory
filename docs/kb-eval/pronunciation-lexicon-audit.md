@@ -196,6 +196,24 @@ a phoneme rule, so it was testing the literal string "undefined" and passing wit
 checking anything. It now asserts the real invariant — re-applying the lexicon to a
 rule's own output changes nothing.
 
+## v3/v4 re-cuts — ACCEPTED (2026-07-23)
+
+Russell on the phoneme build: **"WAY better than what we had."** Two re-cuts, then accepted.
+
+| # | Term | Problem | Fix |
+|---|---|---|---|
+| 15 | Sangiovese | Correct ITALIAN reading ("san-joh-VAY-zeh"), wrong for an American cellar |  — the  makes the "gee", ending is S not Z |
+| 19 | bâtonnage | Had NO rule and was judged fine in batch 1 |  — "bat-ohn-AHJ" |
+
+**A phoneme rule can be RIGHT and still be WRONG.** Sangiovese was accurate Italian. The
+target is how the crew says it, not how Tuscany does.
+
+**A model switch invalidates every prior "sounds fine" verdict.** bâtonnage was never
+tagged and passed batch 1 — but batch 1 ran on . Moving to 
+for phoneme support re-rolled the pronunciation of the whole vocabulary, not just the
+tagged words. Two of the eighteen untouched terms regressed. Re-listen to the entire
+batch after a model change, never just the diff.
+
 ## Unit 5 — outstanding
 
 Batch 1 covered 27 terms. 548 of the 575 mined candidates remain unheard. Whether to run

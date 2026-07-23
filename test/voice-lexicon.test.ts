@@ -232,7 +232,7 @@ describe("shipped lexicon", () => {
   // The ear pass said these are ALREADY correct. Their ABSENCE is the assertion.
   it("leaves alone the words the ear pass judged fine", () => {
     for (const ok of [
-      "Viognier", "Mourvèdre", "Riesling", "veraison", "bâtonnage",
+      "Viognier", "Mourvèdre", "Riesling", "veraison",
       "Merlot", "Brix", "potassium", "Lalvin", "Amorim",
     ]) {
       expect(applyLexicon(ok), `${ok} was judged fine and must not be rewritten`).toBe(ok);
@@ -269,5 +269,30 @@ describe("phoneme tags survive double application", () => {
   it("leaves a hand-written phoneme tag untouched", () => {
     const already = '<phoneme alphabet="cmu-arpabet" ph="S IH0 R AA1">Syrah</phoneme>';
     expect(applyLexicon(already)).toBe(already);
+  });
+});
+
+// Re-cuts after the v3 listen. Both exist because a phoneme rule can be RIGHT and still
+// be WRONG for the audience.
+describe("v3 re-cuts", () => {
+  // The first Sangiovese was the correct Italian pronunciation. Correct, and wrong: an
+  // American cellar says "san-gee-oh-vay-say". The IY0 makes the "gee"; the ending is an
+  // S, not a Z.
+  it("says Sangiovese the American way, not the Italian way", () => {
+    const out = applyLexicon("Sangiovese");
+    expect(out).toContain('ph="S AE2 N JH IY0 OW0 V EY1 S EY0"');
+    expect(out).not.toContain("JH OW0 V EY1 Z EY0");
+  });
+
+  // bâtonnage had NO rule and was judged fine on eleven_flash_v2_5. Moving to flash_v2
+  // for phoneme support re-rolled every word in the vocabulary, and this one regressed.
+  it("tags bâtonnage, a regression caused by the model switch", () => {
+    const out = applyLexicon("We began bâtonnage.");
+    expect(out).toContain('ph="B AE2 T OW0 N AA1 ZH"');
+  });
+
+  it("matches bâtonnage with or without the circumflex", () => {
+    expect(applyLexicon("batonnage")).toContain('ph="B AE2 T OW0 N AA1 ZH"');
+    expect(applyLexicon("bâtonnage")).toContain('ph="B AE2 T OW0 N AA1 ZH"');
   });
 });
