@@ -96,3 +96,6 @@ innovint-docs/_raw/
 # AI agent tool dirs (Codex/agents scratch — never commit)
 .agents/
 .codex/
+
+# Generated pronunciation listening-pass audio (plan 091) — never commit
+pronunciation-sample*.mp3
