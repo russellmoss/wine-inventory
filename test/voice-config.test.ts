@@ -68,7 +68,7 @@ describe("getVoiceConfig", () => {
     const cfg = getVoiceConfig();
     expect(cfg.apiKey).toBe("sk_test");
     expect(cfg.voiceId).toBe("UgBBYS2sOqTuMpoF3BR0");
-    expect(cfg.modelId).toBe("eleven_flash_v2_5"); // lowest latency for real-time conversation
+    expect(cfg.modelId).toBe("eleven_flash_v2"); // same ~75ms as v2_5, but honours <phoneme> tags
     expect(cfg.stability).toBe(0.45);
     expect(cfg.similarityBoost).toBe(0.75);
     expect(cfg.style).toBe(0);
@@ -132,7 +132,7 @@ describe("synthesizeStream", () => {
     expect(headers.accept).toBe("audio/mpeg");
     const parsed = JSON.parse(init.body as string);
     expect(parsed.text).toBe("Hello there.");
-    expect(parsed.model_id).toBe("eleven_flash_v2_5");
+    expect(parsed.model_id).toBe("eleven_flash_v2");
     // All FOUR settings must go on the wire — style and use_speaker_boost were being
     // dropped before, so setting them had no effect no matter what they were set to.
     expect(parsed.voice_settings).toEqual({

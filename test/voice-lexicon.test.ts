@@ -5,7 +5,9 @@ import {
   compileLexicon,
   foldDiacritics,
   isPatternRule,
+  isPhonemeRule,
   LEXICON,
+  phonemeTag,
   type LexiconRule,
 } from "@/lib/voice/lexicon";
 
@@ -123,17 +125,21 @@ describe("idempotency", () => {
 // rule (or itself) would match. This is what keeps the table safe to extend later by
 // someone who has not read the plan.
 describe("no-cascade guard", () => {
+  // Stated as "re-applying the lexicon to a rule's own output changes nothing", rather
+  // than "the output matches no pattern". The stricter-sounding version is WRONG for
+  // phoneme rules: a rendered tag necessarily contains the word it wraps, and it is the
+  // tag guard, not the absence of a match, that stops it nesting. An earlier version of
+  // this read `rule.spoken`, which is undefined on a phoneme rule, so it tested the
+  // literal string "undefined" and passed without checking anything.
   function assertNoCascade(rules: LexiconRule[]) {
-    const compiled = compileLexicon(rules);
-    if (!compiled) return;
+    if (!compileLexicon(rules)) return;
     for (const rule of rules) {
       if (isPatternRule(rule)) continue;
-      const output = rule.spoken;
-      const fresh = new RegExp(compiled.regex.source, "giu");
+      const output = isPhonemeRule(rule) ? phonemeTag(rule) : rule.spoken;
       expect(
-        fresh.test(output),
-        `rule "${rule.term}" -> "${output}" matches another rule; it will cascade`,
-      ).toBe(false);
+        applyLexicon(output, rules),
+        `rule "${rule.term}" -> "${output}" is rewritten again on a second pass; it cascades`,
+      ).toBe(output);
     }
   }
 
@@ -193,44 +199,75 @@ describe("buildTermSource", () => {
   });
 });
 
-// These pin the SHIPPED table's content, not the machinery. Every entry got here by
-// failing Russell's listening pass on 2026-07-23 — see the audit doc.
+// These pin the SHIPPED table. Every phoneme entry first failed as a RESPELLING in the
+// 2026-07-23 ear pass — respelling asks the model to guess, a phoneme tag tells it.
 describe("shipped lexicon", () => {
-  it("covers both terms named in ticket #464", () => {
-    expect(applyLexicon("We inoculated the Syrah.")).toBe("We inoculated the see-rah.");
-    expect(applyLexicon("It is Saccharomyces cerevisiae.")).toBe(
-      "It is sack-a-roh-my-seez sair-uh-vizz-ee-eye.",
+  it("emits a phoneme tag for the terms named in ticket #464", () => {
+    expect(applyLexicon("We inoculated the Syrah.")).toBe(
+      'We inoculated the <phoneme alphabet="cmu-arpabet" ph="S IH0 R AA1">Syrah</phoneme>.',
+    );
+    expect(applyLexicon("Saccharomyces cerevisiae")).toBe(
+      '<phoneme alphabet="cmu-arpabet" ph="S AE2 K ER0 OW0 M AY1 S IY2 Z">Saccharomyces</phoneme>' +
+        ' <phoneme alphabet="cmu-arpabet" ph="S EH2 R AH0 V IH1 S IY0 AY2">cerevisiae</phoneme>',
     );
   });
 
-  it("prefers the binomial over the bare genus", () => {
-    expect(applyLexicon("Saccharomyces cerevisiae")).toBe("sack-a-roh-my-seez sair-uh-vizz-ee-eye");
-    expect(applyLexicon("Saccharomyces")).toBe("sack-a-roh-my-seez");
-    expect(applyLexicon("Oenococcus oeni")).toBe("ee-noh-kok-us ee-nee");
-    expect(applyLexicon("Oenococcus")).toBe("ee-noh-kok-us");
+  it("tags each half of a binomial separately", () => {
+    const out = applyLexicon("Oenococcus oeni");
+    expect(out).toContain('ph="IY2 N OW0 K AA1 K AH0 S">Oenococcus</phoneme>');
+    expect(out).toContain('ph="IY1 N IY0">oeni</phoneme>');
   });
 
-  it("says EC-1118 the way the industry says it", () => {
+  it("keeps EC-1118 as a plain expansion, not a phoneme tag", () => {
     expect(applyLexicon("Pitch EC-1118 tomorrow.")).toBe("Pitch E C eleven eighteen tomorrow.");
   });
 
-  it("matches Gewürztraminer with or without the umlaut", () => {
-    expect(applyLexicon("Gewürztraminer")).toBe("guh-verts-trah-mee-ner");
-    expect(applyLexicon("Gewurztraminer")).toBe("guh-verts-trah-mee-ner");
+  it("tags Gewürztraminer whether or not the umlaut is present", () => {
+    const withUmlaut = applyLexicon("Gewürztraminer");
+    const without = applyLexicon("Gewurztraminer");
+    expect(withUmlaut).toContain('ph="G AH0 V ER1 T S T R AH0 M IY2 N ER0"');
+    expect(without).toContain('ph="G AH0 V ER1 T S T R AH0 M IY2 N ER0"');
   });
 
-  it("prefers the two-word additive over the bare one", () => {
-    expect(applyLexicon("Add potassium metabisulfite.")).toBe(
-      "Add puh-tass-ee-um met-a-by-sul-fite.",
-    );
-    expect(applyLexicon("Add metabisulfite.")).toBe("Add met-a-by-sul-fite.");
-  });
-
-  // The ear pass said these are ALREADY correct. A rule on a word that is already right
-  // can only move it in one direction, so their ABSENCE is the assertion.
+  // The ear pass said these are ALREADY correct. Their ABSENCE is the assertion.
   it("leaves alone the words the ear pass judged fine", () => {
-    for (const ok of ["Viognier", "Mourvèdre", "Riesling", "veraison", "bâtonnage", "Merlot", "Brix"]) {
+    for (const ok of [
+      "Viognier", "Mourvèdre", "Riesling", "veraison", "bâtonnage",
+      "Merlot", "Brix", "potassium", "Lalvin", "Amorim",
+    ]) {
       expect(applyLexicon(ok), `${ok} was judged fine and must not be rewritten`).toBe(ok);
     }
+  });
+});
+
+// A rendered phoneme tag CONTAINS the word it wraps, so a naive second pass would match
+// that inner text and nest a tag inside itself. toSpeakable runs twice on every spoken
+// sentence, so this is not hypothetical.
+describe("phoneme tags survive double application", () => {
+  const samples = [
+    "We inoculated the Syrah.",
+    "Saccharomyces cerevisiae and Brettanomyces.",
+    "Oenococcus oeni finished the malolactic.",
+    "Add metabisulfite, then pitch EC-1118.",
+    "Gewürztraminer, Sangiovese, Erbslöh.",
+  ];
+
+  it("applying twice equals applying once", () => {
+    for (const s of samples) {
+      const once = applyLexicon(s);
+      expect(applyLexicon(once), `nested tag for: ${s}`).toBe(once);
+    }
+  });
+
+  it("never nests a phoneme tag inside another", () => {
+    for (const s of samples) {
+      const twice = applyLexicon(applyLexicon(s));
+      expect(twice).not.toMatch(/<phoneme[^>]*>[^<]*<phoneme/);
+    }
+  });
+
+  it("leaves a hand-written phoneme tag untouched", () => {
+    const already = '<phoneme alphabet="cmu-arpabet" ph="S IH0 R AA1">Syrah</phoneme>';
+    expect(applyLexicon(already)).toBe(already);
   });
 });

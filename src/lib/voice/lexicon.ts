@@ -44,11 +44,55 @@ export type PatternRule = {
   note?: string;
 };
 
-export type LexiconRule = TermRule | PatternRule;
+/**
+ * A term whose pronunciation is specified in ACTUAL PHONEMES, not a respelling.
+ *
+ * This is the mechanism that works. Respelling ("Syrah" -> "see-rah") is a hope that the
+ * model's letter-to-sound guesser lands somewhere good; it was tried on 9 terms and
+ * failed on 8. A phoneme tag states the sounds and the stress outright.
+ *
+ * Requires `eleven_flash_v2` — `eleven_flash_v2_5` accepts the tag and silently ignores
+ * it. See the model comment in config.ts. ElevenLabs' own guidance is that CMU Arpabet
+ * is more predictable than IPA in their implementation, so that is the default.
+ *
+ * ONE WORD PER RULE. The tag is a single-word construct, so a binomial like
+ * "Saccharomyces cerevisiae" is two rules, not one, and the matcher tags each half.
+ */
+export type PhonemeRule = {
+  term: string;
+  /** e.g. "S IH0 R AA1" — CMU Arpabet, digits are stress (0 none, 1 primary, 2 secondary). */
+  phoneme: string;
+  alphabet?: "cmu-arpabet" | "ipa";
+  note?: string;
+};
+
+export type LexiconRule = TermRule | PatternRule | PhonemeRule;
 
 export function isPatternRule(rule: LexiconRule): rule is PatternRule {
   return "pattern" in rule;
 }
+
+export function isPhonemeRule(rule: LexiconRule): rule is PhonemeRule {
+  return "phoneme" in rule;
+}
+
+/** Render a phoneme rule as the SSML the TTS understands. */
+export function phonemeTag(rule: PhonemeRule): string {
+  const alphabet = rule.alphabet ?? "cmu-arpabet";
+  return `<phoneme alphabet="${alphabet}" ph="${rule.phoneme}">${rule.term}</phoneme>`;
+}
+
+/**
+ * Matches a complete, already-rendered phoneme tag.
+ *
+ * This is prepended to the alternation as the FIRST alternative, and it is what makes
+ * phoneme rules idempotent. The rendered tag CONTAINS the original word, so on a second
+ * pass the bare-term rule would match that inner text and nest a tag inside itself —
+ * and `toSpeakable` genuinely does run twice on every spoken sentence. Because the
+ * matcher is a single leftmost-first pass, consuming the whole tag here means its
+ * contents are never re-scanned.
+ */
+const RENDERED_TAG_SOURCE = "<phoneme\\b[^>]*>[^<]*</phoneme>";
 
 /** Strip combining marks so "Mourvèdre" and "Mourvedre" fold to the same base. */
 export function foldDiacritics(text: string): string {
@@ -133,7 +177,7 @@ export function compileLexicon(rules: LexiconRule[]): CompiledLexicon | null {
     const bPattern = isPatternRule(b);
     if (aPattern !== bPattern) return aPattern ? -1 : 1;
     if (aPattern && bPattern) return b.pattern.length - a.pattern.length;
-    return (b as TermRule).term.length - (a as TermRule).term.length;
+    return termOf(b).length - termOf(a).length;
   });
 
   const sources = order.map((rule) => {
@@ -146,10 +190,20 @@ export function compileLexicon(rules: LexiconRule[]): CompiledLexicon | null {
       }
       return `(${rule.pattern})`;
     }
-    return `(${buildTermSource(rule.term)})`;
+    return `(${buildTermSource(termOf(rule))})`;
   });
 
-  return { regex: new RegExp(sources.join("|"), "giu"), order };
+  // The tag guard is alternative ZERO. Leftmost-first alternation means an
+  // already-rendered tag is consumed whole before any term rule can see inside it.
+  return {
+    regex: new RegExp([`(${RENDERED_TAG_SOURCE})`, ...sources].join("|"), "giu"),
+    order,
+  };
+}
+
+/** The literal term a non-pattern rule matches on. */
+function termOf(rule: LexiconRule): string {
+  return isPatternRule(rule) ? rule.label : rule.term;
 }
 
 /**
@@ -170,48 +224,50 @@ export function compileLexicon(rules: LexiconRule[]): CompiledLexicon | null {
  * initialisms or hard emphasis on some voices, which trades one wrong reading for another.
  */
 export const LEXICON: LexiconRule[] = [
-  // --- Grape varieties -----------------------------------------------------
-  { term: "Syrah", spoken: "see-rah", note: "ear pass 2026-07-23 #1; named in ticket #464" },
+  // --- PHONEME rules: the actual sounds ------------------------------------
+  // Every one of these first failed as a RESPELLING in the 2026-07-23 ear pass. A
+  // respelling asks the model to guess; a phoneme tag tells it. CMU Arpabet, where the
+  // trailing digit is stress: 1 primary, 2 secondary, 0 unstressed.
+
+  // Grape varieties.
+  { term: "Syrah", phoneme: "S IH0 R AA1", note: "ear pass #1; ticket #464. sih-RAH" },
   {
     term: "Gewürztraminer",
-    spoken: "guh-verts-trah-mee-ner",
-    note: "ear pass #11; matches the unaccented spelling too",
+    phoneme: "G AH0 V ER1 T S T R AH0 M IY2 N ER0",
+    note: "ear pass #11; the matcher also catches the unaccented spelling",
   },
-  { term: "Sangiovese", spoken: "san-joh-vay-zeh", note: "ear pass #15" },
+  { term: "Sangiovese", phoneme: "S AE2 N JH OW0 V EY1 Z EY0", note: "ear pass #15" },
 
-  // --- Microbiology --------------------------------------------------------
-  // The binomials come first in the table for readability; compileLexicon sorts by
-  // length anyway, so "Saccharomyces cerevisiae" cannot lose to bare "Saccharomyces".
+  // Microbiology. ONE WORD PER RULE — the tag is a single-word construct, so a binomial
+  // is tagged half by half rather than as one phrase.
   {
-    term: "Saccharomyces cerevisiae",
-    spoken: "sack-a-roh-my-seez sair-uh-vizz-ee-eye",
-    note: "ear pass #2; named in ticket #464",
+    term: "Saccharomyces",
+    phoneme: "S AE2 K ER0 OW0 M AY1 S IY2 Z",
+    note: "ear pass #2; ticket #464",
   },
-  { term: "Saccharomyces", spoken: "sack-a-roh-my-seez", note: "bare genus, said on its own" },
-  { term: "cerevisiae", spoken: "sair-uh-vizz-ee-eye", note: "epithet after an abbreviated genus" },
-  { term: "Brettanomyces", spoken: "bret-an-oh-my-seez", note: "ear pass #16" },
-  { term: "Oenococcus oeni", spoken: "ee-noh-kok-us ee-nee", note: "ear pass #17" },
-  { term: "Oenococcus", spoken: "ee-noh-kok-us", note: "bare genus, said on its own" },
+  { term: "cerevisiae", phoneme: "S EH2 R AH0 V IH1 S IY0 AY2", note: "ear pass #2" },
+  { term: "Brettanomyces", phoneme: "B R EH2 T AH0 N OW0 M AY1 S IY2 Z", note: "ear pass #16" },
+  { term: "Oenococcus", phoneme: "IY2 N OW0 K AA1 K AH0 S", note: "ear pass #17" },
+  { term: "oeni", phoneme: "IY1 N IY0", note: "ear pass #17" },
 
-  // --- Materials and additives --------------------------------------------
-  {
-    term: "potassium metabisulfite",
-    spoken: "puh-tass-ee-um met-a-by-sul-fite",
-    note: "ear pass #25",
-  },
-  { term: "metabisulfite", spoken: "met-a-by-sul-fite", note: "said without the potassium" },
-  { term: "Erbslöh", spoken: "erbs-luh", note: "ear pass #22; German supplier in Demo's materials" },
+  // Materials. "potassium" is deliberately absent — it is ordinary English and was not
+  // flagged, and a rule on a word that is already right can only move it one way.
+  { term: "metabisulfite", phoneme: "M EH2 T AH0 B AY0 S AH1 L F AY2 T", note: "ear pass #25" },
+  { term: "Erbslöh", phoneme: "ER1 B Z L ER0", note: "ear pass #22; German supplier in Demo" },
 
-  // --- Yeast strain codes --------------------------------------------------
-  // "E C eleven eighteen" is how the industry says it, per Russell. Deliberately NOT
-  // generalised into a pattern rule: D254 and RC212 have their own spoken conventions
-  // ("D two fifty four", "R C two twelve") that are convention, not arithmetic, and
-  // guessing them is how you ship a confident mispronunciation. They get rules when
-  // they get an ear pass.
+  // --- ALIAS rule: an EXPANSION, not a phonetic ----------------------------
+  // This is the one respelling that worked, and it worked because it is a different
+  // mechanism: turning a written code into the words a person says, the same class of
+  // thing as normalizeUnits turning "mg/L" into "milligrams per liter". Nothing here is
+  // being sounded out.
+  //
+  // Deliberately NOT generalised into a pattern over strain codes: D254 and RC212 have
+  // their own spoken conventions that are custom rather than arithmetic, and guessing
+  // them ships a confident mispronunciation. They get rules when they get an ear pass.
   {
     term: "EC-1118",
     spoken: "E C eleven eighteen",
-    note: "ear pass #24; industry convention, confirmed by Russell",
+    note: "ear pass #24; the only respelling that passed. Industry convention, per Russell",
   },
 ];
 
@@ -241,12 +297,19 @@ export function applyLexicon(text: string, rules: LexiconRule[] = LEXICON): stri
   const { regex, order } = compiled;
   return text.replace(regex, (...args: unknown[]) => {
     const matched = args[0] as string;
-    // Every rule contributes exactly one group (inner captures are rejected at
-    // compile time), so group i+1 maps to rule i.
+
+    // Group 1 is the already-rendered-tag guard. Hand it back untouched: this is the
+    // whole reason applying the lexicon twice does not nest tags inside themselves.
+    if (args[1] !== undefined) return matched;
+
+    // Every rule contributes exactly one group (inner captures are rejected at compile
+    // time), so rule i owns group i+2 — the guard occupies group 1.
     for (let i = 0; i < order.length; i++) {
-      if (args[i + 1] === undefined) continue;
+      if (args[i + 2] === undefined) continue;
       const rule = order[i];
-      return isPatternRule(rule) ? rule.spoken(matched) : rule.spoken;
+      if (isPatternRule(rule)) return rule.spoken(matched);
+      if (isPhonemeRule(rule)) return phonemeTag(rule);
+      return rule.spoken;
     }
     return matched;
   });

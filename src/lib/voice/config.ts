@@ -10,7 +10,18 @@ import "server-only";
 // like a conversation rather than a render. Every value is env-overridable per
 // deploy without touching code (see .env.example).
 const DEFAULT_VOICE_ID = "UgBBYS2sOqTuMpoF3BR0";
-const DEFAULT_MODEL_ID = "eleven_flash_v2_5";
+// eleven_flash_v2, NOT v2_5, and the difference is load-bearing: only flash_v2 honours
+// inline SSML <phoneme> tags. v2_5 accepts them and SILENTLY ignores them, so the wine
+// vocabulary comes out wrong with no error anywhere (see src/lib/voice/lexicon.ts).
+//
+// This costs nothing that matters. Both are ~75ms — v2_5 buys 32 languages over v2's
+// English-only, and this app is English throughout (STT is already pinned to `eng` in
+// transcribe.ts). Trading 31 unused languages for correct pronunciation of the words the
+// winemaker says every day is not a close call.
+//
+// If a future deploy needs a non-English voice, override ELEVENLABS_MODEL_ID — but know
+// that phoneme rules stop working the moment you do.
+const DEFAULT_MODEL_ID = "eleven_flash_v2";
 const DEFAULT_STABILITY = 0.45;
 const DEFAULT_SIMILARITY = 0.75;
 // style 0 keeps delivery neutral (style > 0 adds latency and can over-emote on

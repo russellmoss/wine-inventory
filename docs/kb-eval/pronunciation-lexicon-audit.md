@@ -162,6 +162,40 @@ Their absence from the table is an assertion, and `test/voice-lexicon.test.ts` p
 assumed `2026-SY-2` would read as "twenty-twenty-six minus S Y minus two"; it does not,
 so no code rule was written. Only the EC-1118 strain convention needed one.
 
+## Respellings failed. Phoneme tags replaced them.
+
+Russell heard the respelling build and rejected **8 of the 9**. Only `EC-1118` passed.
+
+**That is the line: alias rules are for EXPANSIONS, not phonetics.** `EC-1118` →
+"E C eleven eighteen" is the same class of thing as `normalizeUnits` turning `mg/L` into
+"milligrams per liter" — writing out what a person says, with no sounding-out involved.
+"see-rah" is a hope that the model's letter-to-sound guesser lands somewhere good. It did not.
+
+### The correction
+
+`eleven_flash_v2` honours inline SSML `<phoneme>` tags with CMU Arpabet or IPA, at
+**~75ms, the same latency as `eleven_flash_v2_5`**. The only difference is English-only
+vs 32 languages, and this app is English throughout (STT is already pinned to `eng`).
+
+The original plan ruled phonemes out because v2_5 ignores them, and assumed any model
+change would cost latency. That was wrong, and it cost a wasted build round. ElevenLabs'
+own guidance is that CMU is more predictable than IPA in their implementation.
+
+Verified the tags are parsed rather than read aloud by transcribing the rendered audio
+back: no `phoneme` / `arpabet` / `<` leaked into the transcript.
+
+### The idempotency trap this introduced
+
+A rendered tag CONTAINS the word it wraps, and `toSpeakable` runs twice per spoken
+sentence, so a naive second pass nests tags inside themselves. Fixed by making an
+already-rendered tag the FIRST alternative in the single-pass alternation: it is consumed
+whole, so its contents are never re-scanned.
+
+The no-cascade guard needed rewriting too. It read `rule.spoken`, which is `undefined` on
+a phoneme rule, so it was testing the literal string "undefined" and passing without
+checking anything. It now asserts the real invariant — re-applying the lexicon to a
+rule's own output changes nothing.
+
 ## Unit 5 — outstanding
 
 Batch 1 covered 27 terms. 548 of the 575 mined candidates remain unheard. Whether to run
